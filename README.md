@@ -17,7 +17,7 @@
 
 - git pull origin main
 
-##After finishing work in VS Code:
+## After finishing work in VS Code:
 
 - git add .
 - git commit -m "Code update"
