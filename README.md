@@ -1,6 +1,6 @@
-Git Workflow for Trading_Projects
+# Git Workflow for Trading_Projects
 
-Initial Setup (only once):
+## Initial Setup (only once)
 
 git init
 git --version
@@ -12,13 +12,13 @@ git commit -m "First commit"
 git branch -M main
 git push -u origin main
 
-Daily Workflow:
+## Daily Workflow:
 
-When starting work in VS Code:
+- When starting work in VS Code:
 
 git pull origin main
 
-After finishing work in VS Code:
+- After finishing work in VS Code:
 
 git add .
 git commit -m "Code update"
