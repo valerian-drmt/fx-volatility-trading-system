@@ -25,3 +25,6 @@
 
 ## Link
 - [SMC library](https://github.com/joshyattridge/smart-money-concepts?tab=readme-ov-file#sessions)
+
+- rajouter amp optimization
+- rajouter enregistremnt du modele à lafin
