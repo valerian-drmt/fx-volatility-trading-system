@@ -23,7 +23,7 @@ class DataFetcher:
         self.interval = interval
         self.raw_data = None
 
-    def get_binance_btc_data(self):
+    def get_binance_data(self):
         binance = ccxt.binance({
             'options': {'defaultType': 'future'},
             'enableRateLimit': True

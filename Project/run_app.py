@@ -23,9 +23,10 @@ def main():
 
     try:
         fetcher = DataFetcher(symbol, currency, start_date, end_date, interval)
-        #fetcher.get_binance_btc_data()
+        #fetcher.get_binance_data()
         #fetcher.save_to_csv(directory="./Data")
         fetcher.load_from_csv(directory="./Data")
+        print(fetcher.raw_data.head())
         logger.info(f"Excel Size: {fetcher.raw_data.shape}")
         logger.info("✅ Pipeline completed successfully.")
 
