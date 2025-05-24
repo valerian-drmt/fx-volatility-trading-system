@@ -1,54 +1,121 @@
-from ib_insync import *
+from datetime import datetime
+import ccxt
+import pandas as pd
+import time
 
+# 🔧 Config import
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '..'))
+sys.path.append(project_root)
+from Config.LoggerConfig import colored_logger
+logger = colored_logger()
+current_file = os.path.basename(__file__)
+logger.info(f"Logger initialized ({current_file})")
 
 class DataFetcher:
-    def __init__(self):
-        self.raw_data = None  # Contiendra le DataFrame OHLCV
+    def __init__(self, symbol, currency, start_date, end_date, interval):
+        self.symbol = symbol
+        self.currency = currency
+        self.start_date = start_date
+        self.end_date = end_date
+        self.interval = interval
+        self.raw_data = None
 
-    def get_btc_data_from_ib(self, host='127.0.0.1', port=4002, client_id=1,
-                             duration='5 D', bar_size='1 hour'):
-        # Connexion à IB Gateway
-        ib = IB()
-        ib.connect(host, port, clientId=client_id)
+    def get_binance_btc_data(self):
+        binance = ccxt.binance({
+            'options': {'defaultType': 'future'},
+            'enableRateLimit': True
+        })
 
-        # Définir le contrat Crypto Spot BTC/USD via PAXOS
-        btc_spot = Contract()
-        btc_spot.symbol = 'BTC'
-        btc_spot.secType = 'CRYPTO'
-        btc_spot.exchange = 'PAXOS'
-        btc_spot.currency = 'USD'
+        binance_symbol = f"{self.symbol}/{self.currency}"
 
-        # Vérification du contrat
-        contracts = ib.reqContractDetails(btc_spot)
-        if not contracts:
-            ib.disconnect()
-            raise Exception("No BTC spot contract found. Assure-toi que l'accès crypto est activé.")
+        # Vérifier l'intervalle
+        interval_map_ms = {
+            "1m": 60 * 1000,
+            "3m": 3 * 60 * 1000,
+            "5m": 5 * 60 * 1000,
+            "15m": 15 * 60 * 1000,
+            "30m": 30 * 60 * 1000,
+            "1h": 60 * 60 * 1000
+        }
 
-        # Récupération des données historiques
-        bars = ib.reqHistoricalData(
-            btc_spot,
-            endDateTime='',
-            durationStr=duration,
-            barSizeSetting=bar_size,
-            whatToShow='AGGTRADES',  # obligatoire pour cryptos
-            useRTH=False,
-            formatDate=1
-        )
+        if self.interval not in interval_map_ms:
+            raise ValueError(f"Interval '{self.interval}' not supported. Choose from {list(interval_map_ms.keys())}")
 
-        # Conversion en DataFrame
-        df = util.df(bars)
-        self.raw_data = df[['date', 'open', 'high', 'low', 'close', 'volume']]
+        start = datetime.strptime(self.start_date, "%d-%m-%Y")
+        end = datetime.strptime(self.end_date, "%d-%m-%Y")
+        since = int(start.timestamp() * 1000)
+        end_ts = int(end.timestamp() * 1000)
+        interval_ms = interval_map_ms[self.interval]
+        limit = 1000
 
-        # Déconnexion propre
-        ib.disconnect()
+        all_data = []
+        logger.info(f"Fetching {self.interval} Binance Futures data for {self.symbol}/{self.currency}")
 
+        while since < end_ts:
+            try:
+                ohlcv = binance.fetch_ohlcv(
+                    symbol=binance_symbol,
+                    timeframe=self.interval,
+                    since=since,
+                    limit=limit
+                )
+                if not ohlcv:
+                    logger.warning("No more data returned by Binance.")
+                    break
+
+                all_data.extend(ohlcv)
+                since = ohlcv[-1][0] + interval_ms
+                time.sleep(0.5)
+            except Exception as e:
+                logger.error(f"Binance API error: {e}")
+                break
+
+        if not all_data:
+            logger.warning("No data collected from Binance.")
+            self.raw_data = pd.DataFrame()
+            return self.raw_data
+
+        df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df = df[df['timestamp'] <= end]
+
+        self.raw_data = df
+        logger.info(f"✅ Data fetch completed: {len(df)} rows.")
         return self.raw_data
 
-fetcher = DataFetcher()
-df = fetcher.get_btc_data_from_ib()
-print(fetcher.raw_data.head())
+    def save_to_csv(self, directory="./"):
+        if self.raw_data is None or self.raw_data.empty:
+            raise ValueError("raw_data is empty. Please fetch data first.")
 
+        filename = f"{self.symbol}_{self.currency}_{self.start_date}_{self.end_date}_{self.interval.replace(' ', '')}.csv"
+        path = f"{directory.rstrip('/')}/{filename}"
+        self.raw_data.to_csv(path, index=False)
+        logger.info(f"📁 Data saved to: {path}")
 
+    def load_from_csv(self, directory="./"):
+        required_attrs = [self.symbol, self.currency, self.start_date, self.end_date, self.interval]
+        if any(attr is None for attr in required_attrs):
+            logger.error("Missing metadata attributes to build the CSV filename.")
+            return
+
+        filename = f"{self.symbol}_{self.currency}_{self.start_date}_{self.end_date}_{self.interval.replace(' ', '')}.csv"
+        path = f"{directory.rstrip('/')}/{filename}"
+
+        if not os.path.exists(path):
+            logger.error(f"CSV file not found: {path}")
+            return
+
+        df = pd.read_csv(path)
+
+        if df.empty:
+            logger.error("Loaded CSV file is empty.")
+            return
+
+        self.raw_data = df
+        logger.info(f"📥 Data loaded from: {path}")
 
 
 
