@@ -1,20 +1,12 @@
 # 📌 Planned Modifications to Apply
 
-## Raw Data
-- X
-## Feature Data
-- X
-## Label Data
-- X
-## Performance Optimization
-
 - Update Pytorch to tensorflow
 - Finish Data Storage structure
 - Change Binance API -> IB API
 - Connect drive to the codelab
+- Update VSC to PyCharm
 
 ## NOT PRIORITY!!!
-- Update VSC to PyCharm
 - Add Tensor Board with TensorBoard
 - Begin GUI Interface with Pyside6
 - Standardize variable naming to improve code clarity and maintainability
