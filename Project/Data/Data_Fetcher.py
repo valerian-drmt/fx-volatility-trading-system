@@ -80,7 +80,7 @@ class DataFetcher:
 
         df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df = df[df['timestamp'] <= end]
+        df = df[df['timestamp'] <= pd.to_datetime(end)]
 
         self.raw_data = df
         logger.info(f"✅ Data fetch completed: {len(df)} rows.")

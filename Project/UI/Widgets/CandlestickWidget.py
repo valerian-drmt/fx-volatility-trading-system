@@ -1,30 +1,45 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout
-from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtCore import QUrl
-import vectorbt as vbt
+from lightweight_charts.widgets import QtChart
 import pandas as pd
-import tempfile
 import os
+import sys
+# Set up project root in sys.path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '..'))
+sys.path.append(project_root)
+
+# Imports internes
+from Config.LoggerConfig import colored_logger
+
+logger = colored_logger()
+current_file = os.path.basename(__file__)
+logger.info(f"Logger initialized ({current_file})")
 
 class CandlestickWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.browser = QWebEngineView()
+        self.chart = QtChart(self)
         layout = QVBoxLayout()
-        layout.addWidget(self.browser)
+        layout.addWidget(self.chart.get_webview())
         self.setLayout(layout)
 
-    def plot_candles(self, df: pd.DataFrame, datetime_col: str = "Date"):
+    def plot_candles(self, df: pd.DataFrame, datetime_col: str = 'timestamp'):
+        if df.empty:
+            logger.error("The DataFrame is empty.")
+            return
+
+        if datetime_col not in df.columns:
+            logger.error(f"Missing required datetime column: '{datetime_col}'")
+            return
+
+        logger.info("Starting candle plot preparation.")
 
         df = df.copy()
         df[datetime_col] = pd.to_datetime(df[datetime_col])
-        df.set_index(datetime_col, inplace=True)
+        df.sort_values(by=datetime_col, inplace=True)
+        df.rename(columns={datetime_col: 'time'}, inplace=True)
+        df['time'] = df['time'].dt.strftime('%Y-%m-%dT%H:%M:%S')
 
-        # Create Plotly candlestick chart using vectorbt
-        fig = vbt.IndicatorFactory.from_pandas(df).plot()
-
-        # Save to temporary HTML file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmpfile:
-            fig.write_html(tmpfile.name)
-            self.browser.load(QUrl.fromLocalFile(tmpfile.name))
-
+        logger.info("DataFrame prepared successfully. Sending to chart.")
+        self.chart.set(df)
+        logger.info("Candlestick chart updated.")
