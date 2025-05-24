@@ -6,6 +6,5 @@
 
 ## NOT PRIORITY!!!
 - Add Tensor Board with TensorBoard
-- Begin GUI Interface with Pyside6
 - Standardize variable naming to improve code clarity and maintainability
 - Add an optimization loop to test model performance across all variable combinations
