@@ -2,9 +2,7 @@
 
 - Update Pytorch to tensorflow
 - Finish Data Storage structure
-- Change Binance API -> IB API
 - Connect drive to the codelab
-- Update VSC to PyCharm
 
 ## NOT PRIORITY!!!
 - Add Tensor Board with TensorBoard
