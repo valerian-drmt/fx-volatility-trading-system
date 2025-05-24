@@ -48,7 +48,7 @@ def main():
         window = MainWindow()
         logger.info("MainWindow initialized.")
 
-        df = fetcher.raw_data.copy()
+        df = fetcher.raw_data[-3000:].copy()
         logger.info("Raw data copied for plotting.")
 
         if 'timestamp' not in df.columns:
