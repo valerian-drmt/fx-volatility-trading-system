@@ -7,4 +7,4 @@
 ## NOT PRIORITY!!!
 - Add Tensor Board with TensorBoard
 - Standardize variable naming to improve code clarity and maintainability
-- Add an optimization loop to test model performance across all variable combinations
+- Add an optimization loop with OPTUNA to test model performance across all variable combinations

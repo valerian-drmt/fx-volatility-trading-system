@@ -21,8 +21,7 @@ logger.info(f"Logger initialized ({current_file})")
 
 def main():
     # 📊 Data parameters
-    symbol = "BTC"
-    currency = "USD"
+    symbol = "BTCUSDT"
     start_date = "01-01-2025"
     end_date = "24-04-2025"
     interval = "1m"
@@ -30,11 +29,13 @@ def main():
     # -----------------------------------------------------------------
     # 📥 Load data
     try:
-        logger.info(f"Initializing DataFetcher for {symbol}/{currency} from {start_date} to {end_date} at {interval} interval.")
-        fetcher = DataFetcher(symbol, currency, start_date, end_date, interval)
+        logger.info(f"Initializing DataFetcher for {symbol} from {start_date} to {end_date} at {interval} interval.")
+        fetcher = DataFetcher(symbol, start_date, end_date, interval)
+        #fetcher.get_binance_data()
+        #fetcher.save_to_csv(directory="./Data")
         fetcher.load_from_csv(directory="./Data")
-        logger.info(f"✅ Data successfully loaded. Shape: {fetcher.raw_data.shape}")
         print(fetcher.raw_data.head())
+        logger.info(f"✅ Data successfully loaded. Shape: {fetcher.raw_data.shape}")
     except Exception as e:
         logger.error(f"❌ Failed to load data: {e}")
         return
@@ -49,7 +50,6 @@ def main():
         logger.info("MainWindow initialized.")
 
         df = fetcher.raw_data[-3000:].copy()
-        logger.info("Raw data copied for plotting.")
 
         if 'timestamp' not in df.columns:
             logger.error("❌ 'timestamp' column missing from DataFrame.")

@@ -15,9 +15,8 @@ current_file = os.path.basename(__file__)
 logger.info(f"Logger initialized ({current_file})")
 
 class DataFetcher:
-    def __init__(self, symbol, currency, start_date, end_date, interval):
+    def __init__(self, symbol, start_date, end_date, interval):
         self.symbol = symbol
-        self.currency = currency
         self.start_date = start_date
         self.end_date = end_date
         self.interval = interval
@@ -29,7 +28,7 @@ class DataFetcher:
             'enableRateLimit': True
         })
 
-        binance_symbol = f"{self.symbol}/{self.currency}"
+        binance_symbol = f"{self.symbol}"
 
         # Vérifier l'intervalle
         interval_map_ms = {
@@ -52,7 +51,7 @@ class DataFetcher:
         limit = 1000
 
         all_data = []
-        logger.info(f"Fetching {self.interval} Binance Futures data for {self.symbol}/{self.currency}")
+        logger.info(f"Fetching {self.interval} Binance Futures data for {self.symbol}")
 
         while since < end_ts:
             try:
@@ -90,18 +89,18 @@ class DataFetcher:
         if self.raw_data is None or self.raw_data.empty:
             raise ValueError("raw_data is empty. Please fetch data first.")
 
-        filename = f"{self.symbol}_{self.currency}_{self.start_date}_{self.end_date}_{self.interval.replace(' ', '')}.csv"
+        filename = f"{self.symbol}_{self.start_date}_{self.end_date}_{self.interval.replace(' ', '')}.csv"
         path = f"{directory.rstrip('/')}/{filename}"
         self.raw_data.to_csv(path, index=False)
         logger.info(f"📁 Data saved to: {path}")
 
     def load_from_csv(self, directory="./"):
-        required_attrs = [self.symbol, self.currency, self.start_date, self.end_date, self.interval]
+        required_attrs = [self.symbol, self.start_date, self.end_date, self.interval]
         if any(attr is None for attr in required_attrs):
             logger.error("Missing metadata attributes to build the CSV filename.")
             return
 
-        filename = f"{self.symbol}_{self.currency}_{self.start_date}_{self.end_date}_{self.interval.replace(' ', '')}.csv"
+        filename = f"{self.symbol}_{self.start_date}_{self.end_date}_{self.interval.replace(' ', '')}.csv"
         path = f"{directory.rstrip('/')}/{filename}"
 
         if not os.path.exists(path):
