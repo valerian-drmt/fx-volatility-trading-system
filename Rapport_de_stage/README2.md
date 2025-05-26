@@ -17,7 +17,7 @@
 - Appel Mardi 26 mai 15h
 
 #### DevoTeam
-- envoyé: demande de connection à Célia Guessoum
+- à faire: message linkedin Celia guessoum
 
 #### Finaxys
 - envoyé: connection avec Georges Maaiki
