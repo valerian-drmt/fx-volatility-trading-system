@@ -14,7 +14,7 @@
 - envoyé: messgae linkedin Asma Zohret et Tiphaine Hubert
 
 #### BMarkets:
-- envoyé: message linkedin Mélina Caldeira
+- Appel Mardi 26 mai 15h
 
 #### DevoTeam
 - envoyé: demande de connection à Célia Guessoum
