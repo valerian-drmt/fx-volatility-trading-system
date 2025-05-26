@@ -5,7 +5,7 @@
 - RDV Vendredi 6 Juin Martin Broyer 15h
 
 ## Margo
-- envoyé : candidature libre e message à Stanislas Labrosse
+- RDV Vendredi 6 Juin Staniaslas La Bougousse 9h30
 
 ## Méritis 
 - à envoyer : candidature commando
