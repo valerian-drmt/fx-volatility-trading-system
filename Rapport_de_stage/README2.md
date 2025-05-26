@@ -1,26 +1,26 @@
-## Algofi
+#### Algofi
 - RDV Vendredi 6 Juin Manel Belgharbi 16h
 
-## Exalt-Fi
+#### Exalt-Fi
 - RDV Vendredi 6 Juin Martin Broyer 15h
 
-## Margo
+#### Margo
 - RDV Vendredi 6 Juin Staniaslas La Bougousse 9h30
 
-## Méritis 
+#### Méritis 
 - à envoyer : candidature commando
 
-## SoftTeam 
+#### SoftTeam 
 - envoyé: messgae linkedin Asma Zohret et Tiphaine Hubert
 
-## BMarkets:
+#### BMarkets:
 - envoyé: message linkedin Mélina Caldeira
 
-## DevoTeam
+#### DevoTeam
 - envoyé: demande de connection à Célia Guessoum
 
-## Finaxys
+#### Finaxys
 - envoyé: connection avec Georges Maaiki
 
-## Lunalogic
+#### Lunalogic
 - envoyé: connection avec Amel Galouche
