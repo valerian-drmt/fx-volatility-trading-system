@@ -1,27 +1,19 @@
-# Git Workflow for Trading_Projects
+# Algofi
+- RDV Vendredi 6 Juin Manel Belgharbi 16h
 
-## Initial Setup (only once)
+# Exalt-Fi
+- RDV Vendredi 6 Juin Martin Broyer 15h
 
-- git init
-- git --version
-- git remote add origin https://github.com/valerian-drmt/Trading_Projects.git
-- git config --global user.email "valeriandarmente@gmail.com"
-- git config --global user.name "valerian-drmt"
-- git add .
-- git commit -m "First commit"
-- git branch -M main
-- git push -u origin main
+# Margo
+- envoyé : candidature libre
+- à envoyé: demander contact à léo
 
+# Méritis 
+- à envoyer : candidature commando
 
-## When starting work in VS Code:
+# SoftTeam 
+- envoyé: messgae linkedin Asma Zohret et Tiphaine Hubert
 
-- git pull origin main
+# BMarkets:
+- envoyé: message linkedin Mélina Caldeira
 
-## After finishing work in VS Code:
-
-- git add .
-- git commit -m "Code update"
-- git push origin main
-
-## Link
-- [SMC library](https://github.com/joshyattridge/smart-money-concepts?tab=readme-ov-file#sessions)
