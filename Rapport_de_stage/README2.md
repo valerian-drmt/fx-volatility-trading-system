@@ -5,8 +5,7 @@
 - RDV Vendredi 6 Juin Martin Broyer 15h
 
 ## Margo
-- envoyé : candidature libre
-- à envoyé: demander contact à léo
+- envoyé : candidature libre e message à Stanislas Labrosse
 
 ## Méritis 
 - à envoyer : candidature commando
@@ -17,3 +16,8 @@
 # BMarkets:
 - envoyé: message linkedin Mélina Caldeira
 
+# DevoTeam
+- envoyé: demande de connection à Célia Guessoum
+
+# Finaxys
+- c
