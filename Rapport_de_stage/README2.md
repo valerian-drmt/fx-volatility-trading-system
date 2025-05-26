@@ -13,11 +13,14 @@
 ## SoftTeam 
 - envoyé: messgae linkedin Asma Zohret et Tiphaine Hubert
 
-# BMarkets:
+## BMarkets:
 - envoyé: message linkedin Mélina Caldeira
 
-# DevoTeam
+## DevoTeam
 - envoyé: demande de connection à Célia Guessoum
 
-# Finaxys
-- c
+## Finaxys
+- envoyé: connection avec Georges Maaiki
+
+## Lunalogic
+- envoyé: connection avec Amel Galouche
