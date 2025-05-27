@@ -11,7 +11,7 @@
 - à envoyer : candidature commando
 
 #### SoftTeam 
-- envoyé: messgae linkedin Asma Zohret et Tiphaine Hubert
+- envoyé: message linkedin Asma Zohret et Tiphaine Hubert
 
 #### BMarkets:
 - Appel Mardi 26 mai 15h avec Mélina Caldeira
@@ -23,4 +23,4 @@
 - envoyé: connection avec Georges Maaiki
 
 #### Lunalogic
-- envoyé: connection avec Amel Galouche
+- à faire: envoyer message à Amel Galouche
