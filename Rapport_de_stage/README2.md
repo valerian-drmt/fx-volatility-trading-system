@@ -14,7 +14,7 @@
 - envoyé: message linkedin Asma Zohret et Tiphaine Hubert
 
 #### BMarkets:
-- Appel Mardi 27 mai 15h avec Mélina Caldeira
+- RDV Vendredi 6 Juin Mélina Caldeira 12h
 
 #### DevoTeam
 - envoyé: message linkedin Celia guessoum
