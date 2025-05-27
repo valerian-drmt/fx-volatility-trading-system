@@ -17,10 +17,10 @@
 - Appel Mardi 26 mai 15h avec Mélina Caldeira
 
 #### DevoTeam
-- à faire: message linkedin Celia guessoum
+- envoyé: message linkedin Celia guessoum
 
 #### Finaxys
 - envoyé: connection avec Georges Maaiki
 
 #### Lunalogic
-- à faire: envoyer message à Amel Galouche
+- envoyé: message à Amel Galouche
