@@ -20,7 +20,7 @@
 - envoyé: message linkedin Celia guessoum
 
 #### Finaxys
-- envoyé: connection avec Georges Maaiki
+- envoyé: messag linkedin Georges Maaiki
 
 #### Lunalogic
 - envoyé: message à Amel Galouche
