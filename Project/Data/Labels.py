@@ -15,57 +15,69 @@ class LSTM_Labels():
         self.data = data
 
     def Categorize_Volume_Pivot_Points(self, look_forward: int):
-        vw_below = []
-        vw_above = []
+        try:
+            logger.info(f"Starting Categorize_Volume_Pivot_Points with look_forward={look_forward}")
 
-        for i in range(len(self.data)):
-            # Fin du DataFrame atteinte
-            if i + 1 + look_forward > len(self.data):
-                vw_below.append(0)
-                vw_above.append(0)
-                continue
+            vw_below = []
+            vw_above = []
 
-            future_data = self.data.iloc[i + 1:i + 1 + look_forward]
+            for i in range(len(self.data)):
+                if i + 1 + look_forward > len(self.data):
+                    vw_below.append(0)
+                    vw_above.append(0)
+                    continue
 
-            current_volume_low_pivot = self.data.iloc[i]['Volume_Low_Pivot']
-            current_volume_high_pivot = self.data.iloc[i]['Volume_High_Pivot']
+                future_data = self.data.iloc[i + 1:i + 1 + look_forward]
 
-            # Vérification par rapport à VWAP_5m
-            low_condition = (future_data['VWAP_5m'] < current_volume_low_pivot).any()
-            high_condition = (future_data['VWAP_5m'] > current_volume_high_pivot).any()
+                current_volume_low_pivot = self.data.iloc[i]['Volume_Low_Pivot']
+                current_volume_high_pivot = self.data.iloc[i]['Volume_High_Pivot']
 
-            vw_below.append(int(low_condition))
-            vw_above.append(int(high_condition))
+                low_condition = (future_data['VWAP_5m'] < current_volume_low_pivot).any()
+                high_condition = (future_data['VWAP_5m'] > current_volume_high_pivot).any()
 
-        self.data['VWAP_Below_Volume_Low'] = vw_below
-        self.data['VWAP_Above_Volume_High'] = vw_above
+                vw_below.append(int(low_condition))
+                vw_above.append(int(high_condition))
 
-        return self
+            self.data['VWAP_Below_Volume_Low'] = vw_below
+            self.data['VWAP_Above_Volume_High'] = vw_above
+
+            logger.info("Categorize_Volume_Pivot_Points completed successfully.")
+            return self
+
+        except Exception as e:
+            logger.error(f"Error in Categorize_Volume_Pivot_Points: {e}", exc_info=True)
+            raise
 
     def Categorize_Pivot_Points(self, look_forward: int):
-        low_below = []
-        high_above = []
+        try:
+            logger.info(f"Starting Categorize_Pivot_Points with look_forward={look_forward}")
 
-        for i in range(len(self.data)):
-            # Si la fenêtre dépasse la fin du DataFrame, on considère que la condition est fausse
-            if i + 1 + look_forward > len(self.data):
-                low_below.append(0)
-                high_above.append(0)
-                continue
+            low_below = []
+            high_above = []
 
-            future_data = self.data.iloc[i + 1:i + 1 + look_forward]
+            for i in range(len(self.data)):
+                if i + 1 + look_forward > len(self.data):
+                    low_below.append(0)
+                    high_above.append(0)
+                    continue
 
-            current_low_pivot = self.data.iloc[i]['Low_Pivot']
-            current_high_pivot = self.data.iloc[i]['High_Pivot']
+                future_data = self.data.iloc[i + 1:i + 1 + look_forward]
 
-            # Vérification des conditions
-            low_condition = (future_data['Low'] < current_low_pivot).any()
-            high_condition = (future_data['High'] > current_high_pivot).any()
+                current_low_pivot = self.data.iloc[i]['Low_Pivot']
+                current_high_pivot = self.data.iloc[i]['High_Pivot']
 
-            low_below.append(int(low_condition))
-            high_above.append(int(high_condition))
+                low_condition = (future_data['Low'] < current_low_pivot).any()
+                high_condition = (future_data['High'] > current_high_pivot).any()
 
-        self.data['Low_Below_Pivot'] = low_below
-        self.data['High_Above_Pivot'] = high_above
+                low_below.append(int(low_condition))
+                high_above.append(int(high_condition))
 
-        return self
+            self.data['Low_Below_Pivot'] = low_below
+            self.data['High_Above_Pivot'] = high_above
+
+            logger.info("Categorize_Pivot_Points completed successfully.")
+            return self
+
+        except Exception as e:
+            logger.error(f"Error in Categorize_Pivot_Points: {e}", exc_info=True)
+            raise
