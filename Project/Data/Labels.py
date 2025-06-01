@@ -1,0 +1,71 @@
+# 🔧 Config import
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '..'))
+sys.path.append(project_root)
+from Config.LoggerConfig import colored_logger
+logger = colored_logger()
+current_file = os.path.basename(__file__)
+logger.info(f"Logger initialized ({current_file})")
+
+
+class LSTM_Labels():
+    def __init__(self, data):
+        self.data = data
+
+    def Categorize_Volume_Pivot_Points(self, look_forward: int):
+        vw_below = []
+        vw_above = []
+
+        for i in range(len(self.data)):
+            # Fin du DataFrame atteinte
+            if i + 1 + look_forward > len(self.data):
+                vw_below.append(0)
+                vw_above.append(0)
+                continue
+
+            future_data = self.data.iloc[i + 1:i + 1 + look_forward]
+
+            current_volume_low_pivot = self.data.iloc[i]['Volume_Low_Pivot']
+            current_volume_high_pivot = self.data.iloc[i]['Volume_High_Pivot']
+
+            # Vérification par rapport à VWAP_5m
+            low_condition = (future_data['VWAP_5m'] < current_volume_low_pivot).any()
+            high_condition = (future_data['VWAP_5m'] > current_volume_high_pivot).any()
+
+            vw_below.append(int(low_condition))
+            vw_above.append(int(high_condition))
+
+        self.data['VWAP_Below_Volume_Low'] = vw_below
+        self.data['VWAP_Above_Volume_High'] = vw_above
+
+        return self
+
+    def Categorize_Pivot_Points(self, look_forward: int):
+        low_below = []
+        high_above = []
+
+        for i in range(len(self.data)):
+            # Si la fenêtre dépasse la fin du DataFrame, on considère que la condition est fausse
+            if i + 1 + look_forward > len(self.data):
+                low_below.append(0)
+                high_above.append(0)
+                continue
+
+            future_data = self.data.iloc[i + 1:i + 1 + look_forward]
+
+            current_low_pivot = self.data.iloc[i]['Low_Pivot']
+            current_high_pivot = self.data.iloc[i]['High_Pivot']
+
+            # Vérification des conditions
+            low_condition = (future_data['Low'] < current_low_pivot).any()
+            high_condition = (future_data['High'] > current_high_pivot).any()
+
+            low_below.append(int(low_condition))
+            high_above.append(int(high_condition))
+
+        self.data['Low_Below_Pivot'] = low_below
+        self.data['High_Above_Pivot'] = high_above
+
+        return self
