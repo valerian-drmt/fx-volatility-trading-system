@@ -77,9 +77,9 @@ class DataFetcher:
             self.raw_data = pd.DataFrame()
             return self.raw_data
 
-        df = pd.DataFrame(all_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df = df[df['timestamp'] <= pd.to_datetime(end)]
+        df = pd.DataFrame(all_data, columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'], unit='ms')
+        df = df[df['Timestamp'] <= pd.to_datetime(end)]
 
         self.raw_data = df
         logger.info(f"✅ Data fetch completed: {len(df)} rows.")
@@ -107,7 +107,10 @@ class DataFetcher:
             logger.error(f"CSV file not found: {path}")
             return
 
-        df = pd.read_csv(path)
+        df_raw = pd.read_csv(path)
+        df = pd.DataFrame(df_raw, columns=['Timestamp', 'Open', 'High', 'Low', 'Close', 'Volume'])
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+        df.set_index('Timestamp', inplace=True)
 
         if df.empty:
             logger.error("Loaded CSV file is empty.")
