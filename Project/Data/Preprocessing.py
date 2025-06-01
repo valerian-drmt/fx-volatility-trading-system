@@ -19,91 +19,75 @@ class Preprocessing:
     def __init__(self,train_test_data):
         self.data = train_test_data
 
-        self.batch_size = None
+        # create_train_test_data def
+        self.x_train = None
+        self.y_train = None
+        self.x_test = None
+        self.y_test = None
 
+        # create_dataloaders def
         self.train_loader = None
         self.val_loader = None
         self.batch_size = None
         self.val_dataset = None
 
-    def create_train_test_data(train_test_data, lookback, size_test_prct):
-        # 1. Select columns
-        feature_cols = [col for col in train_test_data.columns if col.startswith("Feature")]
-        label_cols = [col for col in train_test_data.columns if col.startswith("Label")]
+        # suggest_batch_size def
+        self.batch_size = None
 
-        # 2. Convert to numpy
-        features = train_test_data[feature_cols].values
-        labels = train_test_data[label_cols].values
+    def create_train_test_data(self, train_test_data, lookback, size_test_prct):
+        try:
+            logger.info("Starting creation of train/test data.")
 
-        # 3. Normalize features
-        features = (features - features.min(axis=0)) / (features.max(axis=0) - features.min(axis=0))
+            # 1. Select columns
+            feature_cols = [col for col in train_test_data.columns if col.startswith("Feature")]
+            label_cols = [col for col in train_test_data.columns if col.startswith("Label")]
+            logger.info(f"Selected {len(feature_cols)} feature(s) and {len(label_cols)} label(s).")
 
-        # 4. Stack features and labels
-        data_all = np.hstack((features, labels))
+            # 2. Convert to numpy
+            features = train_test_data[feature_cols].values
+            labels = train_test_data[label_cols].values
 
-        # 5. Create sequences
-        data = []
-        for index in range(len(data_all) - lookback):
-            data.append(data_all[index: index + lookback])
-        data = np.array(data)
+            # 3. Normalize features
+            features = (features - features.min(axis=0)) / (features.max(axis=0) - features.min(axis=0))
+            logger.info("Features normalized (min-max).")
 
-        # 6. Split train/test
-        test_set_size = int(np.round(size_test_prct * data.shape[0]))
-        train_set_size = data.shape[0] - test_set_size
+            # 4. Stack features and labels
+            data_all = np.hstack((features, labels))
 
-        x_train = data[:train_set_size, :, :len(feature_cols)]
-        y_train = data[:train_set_size, -1, len(feature_cols):]
-        x_test = data[train_set_size:, :, :len(feature_cols)]
-        y_test = data[train_set_size:, -1, len(feature_cols):]
+            # 5. Create sequences
+            data = []
+            for index in range(len(data_all) - lookback):
+                data.append(data_all[index: index + lookback])
+            data = np.array(data)
+            logger.info(f"Generated {len(data)} sequences of length {lookback}.")
 
-        # 7. Convert to PyTorch tensors
-        x_train = torch.from_numpy(x_train).float()
-        y_train = torch.from_numpy(y_train).long()
-        x_test = torch.from_numpy(x_test).float()
-        y_test = torch.from_numpy(y_test).long()
+            # 6. Split train/test
+            test_set_size = int(np.round(size_test_prct * data.shape[0]))
+            train_set_size = data.shape[0] - test_set_size
+            logger.info(f"Train/Test split: {train_set_size} train / {test_set_size} test samples.")
 
-        return x_train, y_train, x_test, y_test
+            x_train = data[:train_set_size, :, :len(feature_cols)]
+            y_train = data[:train_set_size, -1, len(feature_cols):]
+            x_test = data[train_set_size:, :, :len(feature_cols)]
+            y_test = data[train_set_size:, -1, len(feature_cols):]
 
-    def split_data(self, train_test_data, lookback, size_test_prct):
-        # 1. Save input
-        self.train_test_data = train_test_data
+            # 7. Convert to TensorFlow tensors
+            x_train = tf.convert_to_tensor(x_train, dtype=tf.float32)
+            y_train = tf.convert_to_tensor(y_train, dtype=tf.int32)
+            x_test = tf.convert_to_tensor(x_test, dtype=tf.float32)
+            y_test = tf.convert_to_tensor(y_test, dtype=tf.int32)
 
-        # 2. Split automatically: features = columns starting with "Feature_", labels = columns starting with "Label_"
-        feature_cols = [col for col in train_test_data.columns if col.startswith("Feature")]
-        label_cols = [col for col in train_test_data.columns if col.startswith("Label")]
+            self.x_train = x_train
+            self.y_train = y_train
+            self.x_test = x_test
+            self.y_test = y_test
 
-        # 3. Convert to numpy arrays
-        features = train_test_data[feature_cols].values
-        labels = train_test_data[label_cols].values
+            logger.info("✅ Train/test tensors successfully created.")
+            return self
 
-        # 4. Normalize features
-        features = (features - features.min(axis=0)) / (features.max(axis=0) - features.min(axis=0))
-
-        # 5. Stack features and labels
-        data_all = np.hstack((features, labels))
-
-        # 6. Create sequences
-        data = []
-        for index in range(len(data_all) - lookback):
-            data.append(data_all[index: index + lookback])
-        data = np.array(data)
-
-        # 7. Split train/test
-        test_set_size = int(np.round(size_test_prct * data.shape[0]))
-        train_set_size = data.shape[0] - test_set_size
-
-        x_train = data[:train_set_size, :, :len(feature_cols)]
-        y_train = data[:train_set_size, -1, len(feature_cols):]
-        x_test = data[train_set_size:, :, :len(feature_cols)]
-        y_test = data[train_set_size:, -1, len(feature_cols):]
-
-        # 8. Convert to PyTorch tensors
-        self.x_train = torch.from_numpy(x_train).float()
-        self.y_train = torch.from_numpy(y_train).long()
-        self.x_test = torch.from_numpy(x_test).float()
-        self.y_test = torch.from_numpy(y_test).long()
-
-        return self  # for chaining
+        except Exception as e:
+            logger.error(f"❌ Error during create_train_test_data: {e}", exc_info=True)
+            raise
 
     def create_dataloaders(self, x_train, y_train, val_ratio, feature_dim, n_labels, lookback,
                            reserved_ram_gb, hidden_dim, num_layers):
