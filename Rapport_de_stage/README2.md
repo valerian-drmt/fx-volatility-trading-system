@@ -11,16 +11,16 @@
 - à envoyer : candidature commando
 
 #### SoftTeam 
-- envoyé: message linkedin Asma Zohret et Tiphaine Hubert
+- à relancer: message linkedin Asma Zohret et Tiphaine Hubert
 
 #### BMarkets:
 - RDV Vendredi 6 Juin Mélina Caldeira 12h
 
 #### DevoTeam
-- envoyé: message linkedin Celia guessoum
+- à relancer: message linkedin Celia guessoum
 
 #### Finaxys
-- envoyé: messag linkedin Georges Maaiki
+- à relancer: messag linkedin Georges Maaiki
 
 #### Lunalogic
-- envoyé: message à Amel Galouche
+- à relancer: message à Amel Galouche
