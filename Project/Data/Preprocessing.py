@@ -28,13 +28,14 @@ class Preprocessing:
 
         # suggest_batch_size def
         self.batch_size = None
+        self.report_lines = None
 
         # create_dataloaders def
         self.train_loader = None
         self.val_loader = None
         self.val_dataset = None
 
-    def create_train_test_data(self, train_test_data, lookback, size_test_prct):
+    def create_train_test_data(self, lookback, size_test_prct):
         try:
             logger.info("Starting creation of train/test data.")
 
@@ -123,7 +124,7 @@ class Preprocessing:
             self.val_loader = val_loader
             self.val_dataset = val_dataset
 
-            return train_loader, val_loader, val_dataset
+            return self
 
         except Exception as e:
             logger.error(f"❌ Error while creating TensorFlow DataLoaders: {e}", exc_info=True)
@@ -171,23 +172,26 @@ class Preprocessing:
             max_batch_size = max(1, min(n_samples, int(max_batch_size)))
             batch_size = 2 ** int(math.log2(max_batch_size))
 
-            # ---- 9. Log summary
-            logger.info("--- Batch Size Estimation Report (TensorFlow) ---")
-            logger.info(f"Total RAM (GB):         {total_ram_bytes / 1024 ** 3:.2f}")
-            logger.info(f"Reserved RAM (GB):      {reserved_ram_gb}")
-            logger.info(f"Usable RAM (GB):        {usable_ram_bytes / 1024 ** 3:.2f}")
-            logger.info(f"Samples (n_samples):    {n_samples}")
-            logger.info(f"Features per timestep:  {n_features}")
-            logger.info(f"Labels (n_labels):      {n_labels}")
-            logger.info(f"Lookback (timesteps):   {lookback}")
-            logger.info(f"Hidden dimensions:      {hidden_dim} (layers: {num_layers})")
-            logger.info(f"Bytes/sample:           {bytes_per_sample / 1024:.2f} KB")
-            logger.info(f"Max batch size (RAM):   {max_batch_size_ram}")
-            logger.info(f"Max batch size (CPU):   {max_batch_size_cpu}")
-            logger.info(f"Using GPU:              {'Yes' if has_gpu else 'No'}")
-            logger.info(f"Final suggested batch:  {batch_size}")
-            logger.info("--------------------------------------------------")
+            # ---- 9. Summary
+            report_lines = [
+                "--- Batch Size Estimation Report (TensorFlow) ---",
+                f"Total RAM (GB):         {total_ram_bytes / 1024 ** 3:.2f}",
+                f"Reserved RAM (GB):      {reserved_ram_gb}",
+                f"Usable RAM (GB):        {usable_ram_bytes / 1024 ** 3:.2f}",
+                f"Samples (n_samples):    {n_samples}",
+                f"Features per timestep:  {n_features}",
+                f"Labels (n_labels):      {n_labels}",
+                f"Lookback (timesteps):   {lookback}",
+                f"Hidden dimensions:      {hidden_dim} (layers: {num_layers})",
+                f"Bytes/sample:           {bytes_per_sample / 1024:.2f} KB",
+                f"Max batch size (RAM):   {max_batch_size_ram}",
+                f"Max batch size (CPU):   {max_batch_size_cpu}",
+                f"Using GPU:              {'Yes' if has_gpu else 'No'}",
+                f"Final suggested batch:  {batch_size}",
+                "--------------------------------------------------"
+            ]
 
+            self.report_lines = report_lines
             self.batch_size = batch_size
 
             return self
