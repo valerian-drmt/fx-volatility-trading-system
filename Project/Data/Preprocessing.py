@@ -7,6 +7,9 @@ import numpy as np
 # 🔧 Config import
 import sys
 import os
+
+from LSTM_Strategy import num_layers
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, '..'))
 sys.path.append(project_root)
@@ -16,8 +19,8 @@ current_file = os.path.basename(__file__)
 logger.info(f"Logger initialized ({current_file})")
 
 class Preprocessing:
-    def __init__(self,train_test_data):
-        self.data = train_test_data
+    def __init__(self, train_test_data):
+        self.train_test_data = train_test_data
 
         # create_train_test_data def
         self.x_train = None
@@ -25,27 +28,26 @@ class Preprocessing:
         self.x_test = None
         self.y_test = None
 
-        # create_dataloaders def
-        self.train_loader = None
-        self.val_loader = None
-        self.batch_size = None
-        self.val_dataset = None
-
         # suggest_batch_size def
         self.batch_size = None
 
-    def create_train_test_data(self, train_test_data, lookback, size_test_prct):
+        # create_dataloaders def
+        self.train_loader = None
+        self.val_loader = None
+        self.val_dataset = None
+
+    def create_train_test_data(self, lookback, size_test_prct):
         try:
             logger.info("Starting creation of train/test data.")
 
             # 1. Select columns
-            feature_cols = [col for col in train_test_data.columns if col.startswith("Feature")]
-            label_cols = [col for col in train_test_data.columns if col.startswith("Label")]
+            feature_cols = [col for col in self.train_test_data.columns if col.startswith("Feature")]
+            label_cols = [col for col in self.train_test_data.columns if col.startswith("Label")]
             logger.info(f"Selected {len(feature_cols)} feature(s) and {len(label_cols)} label(s).")
 
             # 2. Convert to numpy
-            features = train_test_data[feature_cols].values
-            labels = train_test_data[label_cols].values
+            features = self.train_test_data[feature_cols].values
+            labels = self.train_test_data[label_cols].values
 
             # 3. Normalize features
             features = (features - features.min(axis=0)) / (features.max(axis=0) - features.min(axis=0))
@@ -89,47 +91,38 @@ class Preprocessing:
             logger.error(f"❌ Error during create_train_test_data: {e}", exc_info=True)
             raise
 
-    def create_dataloaders(self, x_train, y_train, val_ratio, feature_dim, n_labels, lookback,
-                           reserved_ram_gb, hidden_dim, num_layers):
+    def create_dataloaders(self, val_ratio):
         try:
             logger.info("Creating TensorFlow DataLoaders...")
 
             # ---- 1. Détermination de la taille de validation
-            n_samples = x_train.shape[0]
+            n_samples = self.x_train.shape[0]
             val_size = int(val_ratio * n_samples)
             train_size = n_samples - val_size
             logger.info(f"Train/Val split: {train_size} train / {val_size} val samples")
 
-            # ---- 2. Calcul du batch size optimal
-            batch_size = self.suggest_batch_size(
-                n_samples, feature_dim, n_labels, lookback,
-                reserved_ram_gb, hidden_dim, num_layers
-            )
-            logger.info(f"Suggested batch size: {batch_size}")
-
-            # ---- 3. Mélange et split manuel
+            # ---- 2. Mélange et split manuel
             indices = np.random.permutation(n_samples)
             train_indices = indices[:train_size]
             val_indices = indices[train_size:]
 
-            x_train_split = tf.gather(x_train, train_indices)
-            y_train_split = tf.gather(y_train, train_indices)
-            x_val_split = tf.gather(x_train, val_indices)
-            y_val_split = tf.gather(y_train, val_indices)
+            x_train_split = tf.gather(self.x_train, train_indices)
+            y_train_split = tf.gather(self.y_train, train_indices)
+            x_val_split = tf.gather(self.x_train, val_indices)
+            y_val_split = tf.gather(self.y_train, val_indices)
 
-            # ---- 4. Création des tf.data.Dataset
+            # ---- 3. Création des tf.data.Dataset
             train_dataset = tf.data.Dataset.from_tensor_slices((x_train_split, y_train_split))
             val_dataset = tf.data.Dataset.from_tensor_slices((x_val_split, y_val_split))
 
-            # ---- 5. Batching et options
-            train_loader = train_dataset.shuffle(buffer_size=train_size).batch(batch_size).prefetch(tf.data.AUTOTUNE)
-            val_loader = val_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+            # ---- 4. Batching et options
+            train_loader = train_dataset.shuffle(buffer_size=train_size).batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
+            val_loader = val_dataset.batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
 
             logger.info("✅ TensorFlow DataLoaders created successfully.")
 
             self.train_loader = train_loader
             self.val_loader = val_loader
-            self.batch_size = batch_size
             self.val_dataset = val_dataset
 
             return self
@@ -138,10 +131,11 @@ class Preprocessing:
             logger.error(f"❌ Error while creating TensorFlow DataLoaders: {e}", exc_info=True)
             raise
 
-    def suggest_batch_size(self,n_samples, n_features, n_labels, lookback, reserved_ram_gb, hidden_dim, num_layers):
+    def suggest_batch_size(self, n_features, n_labels, lookback, reserved_ram_gb, hidden_dim):
         try:
             logger.info("Starting batch size estimation...")
-
+            n_samples = self.x_train.shape[0]
+            num_layers = len(hidden_dim)
             # ---- 1. RAM available on the machine
             total_ram_bytes = psutil.virtual_memory().total
             reserved_ram_bytes = reserved_ram_gb * 1024 ** 3
