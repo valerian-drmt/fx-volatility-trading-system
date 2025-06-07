@@ -8,8 +8,6 @@ import numpy as np
 import sys
 import os
 
-from LSTM_Strategy import num_layers
-
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, '..'))
 sys.path.append(project_root)
@@ -36,7 +34,7 @@ class Preprocessing:
         self.val_loader = None
         self.val_dataset = None
 
-    def create_train_test_data(self, lookback, size_test_prct):
+    def create_train_test_data(self, train_test_data, lookback, size_test_prct):
         try:
             logger.info("Starting creation of train/test data.")
 
@@ -85,7 +83,7 @@ class Preprocessing:
             self.y_test = y_test
 
             logger.info("✅ Train/test tensors successfully created.")
-            return self
+            return x_train, y_train, x_test, y_test
 
         except Exception as e:
             logger.error(f"❌ Error during create_train_test_data: {e}", exc_info=True)
@@ -125,7 +123,7 @@ class Preprocessing:
             self.val_loader = val_loader
             self.val_dataset = val_dataset
 
-            return self
+            return train_loader, val_loader, val_dataset
 
         except Exception as e:
             logger.error(f"❌ Error while creating TensorFlow DataLoaders: {e}", exc_info=True)
@@ -192,7 +190,7 @@ class Preprocessing:
 
             self.batch_size = batch_size
 
-            return self
+            return batch_size
 
         except Exception as e:
             logger.error(f"❌ Error during batch size estimation: {e}", exc_info=True)
