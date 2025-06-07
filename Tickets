@@ -2,9 +2,7 @@
 
 - Update Pytorch to tensorflow
 - Finish Data Storage structure
-- Connect drive to the codelab
-
-## NOT PRIORITY!!!
+- update Volume Pivot Point Indicator, offset error
 - Add Tensor Board with TensorBoard
-- Standardize variable naming to improve code clarity and maintainability
+- Standardize variable naming
 - Add an optimization loop with OPTUNA to test model performance across all variable combinations
