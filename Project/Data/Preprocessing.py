@@ -83,7 +83,7 @@ class Preprocessing:
             self.y_test = y_test
 
             logger.info("✅ Train/test tensors successfully created.")
-            return x_train, y_train, x_test, y_test
+            return self
 
         except Exception as e:
             logger.error(f"❌ Error during create_train_test_data: {e}", exc_info=True)
@@ -190,7 +190,7 @@ class Preprocessing:
 
             self.batch_size = batch_size
 
-            return batch_size
+            return self
 
         except Exception as e:
             logger.error(f"❌ Error during batch size estimation: {e}", exc_info=True)
