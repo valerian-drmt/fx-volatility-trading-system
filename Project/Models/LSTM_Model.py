@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.keras.layers import LSTM, Dense
+from tensorflow.keras.layers import LSTM
 
 # 🔧 Config import
 import sys
@@ -13,7 +13,7 @@ logger = colored_logger()
 current_file = os.path.basename(__file__)
 logger.info(f"Logger initialized ({current_file})")
 
-class LSTM_Model(tf.keras.Model):
+class LSTMModel(tf.keras.Model):
     def __init__(self, feature_dim, label_dim, hidden_dims, lookback, dropout):
         super().__init__()
         self.lookback = lookback
@@ -57,3 +57,23 @@ class LSTM_Model(tf.keras.Model):
     def build_graph(self):
         x = tf.keras.Input(shape=(self.lookback, self.feature_dim))
         return tf.keras.Model(inputs=[x], outputs=self.call(x))
+
+class F1Score(tf.keras.metrics.Metric):
+    def __init__(self, name='f1_score', threshold=0.5, **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.threshold = threshold
+        self.precision = tf.keras.metrics.Precision(thresholds=self.threshold)
+        self.recall = tf.keras.metrics.Recall(thresholds=self.threshold)
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        self.precision.update_state(y_true, y_pred, sample_weight)
+        self.recall.update_state(y_true, y_pred, sample_weight)
+
+    def result(self):
+        p = self.precision.result()
+        r = self.recall.result()
+        return 2 * (p * r) / (p + r + tf.keras.backend.epsilon())
+
+    def reset_states(self):
+        self.precision.reset_state()
+        self.recall.reset_state()
