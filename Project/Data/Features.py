@@ -15,7 +15,7 @@ logger = colored_logger()
 current_file = os.path.basename(__file__)
 logger.info(f"Logger initialized ({current_file})")
 
-class LSTMFeatures:
+class Features:
     def __init__(self, data):
         self.data = data
 
