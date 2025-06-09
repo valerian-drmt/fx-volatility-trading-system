@@ -1,6 +1,6 @@
 # 📌 Planned Modifications to Apply
 
-- Update Pytorch to tensorflow
+- Add analysis between Features and Labels
 - Finish Data Storage structure
 - update Volume Pivot Point Indicator, offset error
 - Add Tensor Board with TensorBoard
