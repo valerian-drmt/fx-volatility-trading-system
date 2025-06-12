@@ -1,8 +1,7 @@
 # 📌 Planned Modifications to Apply
 
 - Add analysis between Features and Labels
-- Finish Data Storage structure
 - update Volume Pivot Point Indicator, offset error
-- Add Tensor Board with TensorBoard
+- Change TensorFlow to Pytorch
 - Standardize variable naming
 - Add an optimization loop with OPTUNA to test model performance across all variable combinations
