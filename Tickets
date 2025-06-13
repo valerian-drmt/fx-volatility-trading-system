@@ -6,3 +6,5 @@
 - Standardize variable naming
 - Add an optimization loop with OPTUNA to test model performance across all variable combinations
 - For RL, use Ray/RLlib
+- supprimer Features IS_Noise
+- S'intéresser au CVD, OI
