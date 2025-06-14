@@ -99,7 +99,7 @@ class DataFetcher:
         self.raw_data.to_csv(path, index=False)
         logger.info(f"📁 Data saved to: {path}")
 
-    def load_from_csv(self, directory="./"):
+    def load_from_csv_Binance(self, directory="./"):
         required_attrs = [self.symbol, self.start_date, self.end_date, self.interval]
         if any(attr is None for attr in required_attrs):
             logger.error("Missing metadata attributes to build the CSV filename.")
@@ -131,6 +131,42 @@ class DataFetcher:
                 return
 
             df.set_index('Timestamp', inplace=True)
+            self.raw_data = df
+            logger.info(f"📥 Data loaded from: {path}")
+        except Exception as e:
+            logger.exception(f"Failed to load CSV: {e}")
+
+    def load_from_csv_IB(self, directory="./"):
+        required_attrs = [self.symbol, self.start_date, self.end_date, self.interval]
+        if any(attr is None for attr in required_attrs):
+            logger.error("Missing metadata attributes to build the CSV filename.")
+            return
+
+        filename = f"{self.symbol}_{self.start_date}_{self.end_date}_{self.interval.replace(' ', '')}.csv"
+        path = f"{directory.rstrip('/')}/{filename}"
+
+        if not os.path.exists(path):
+            logger.error(f"CSV file not found: {path}")
+            return
+
+        try:
+            df_raw = pd.read_csv(path, low_memory=False)
+            expected_cols = ['time', 'bid', 'ask', 'bidSize', 'askSize']
+
+            missing = [col for col in expected_cols if col not in df_raw.columns]
+            if missing:
+                logger.error(f"Missing columns in CSV: {missing}")
+                return
+
+            df = df_raw[expected_cols].copy()
+            df = df[df['time'].notna()]
+            df = df[df['time'].apply(lambda x: isinstance(x, pd.Timestamp))]
+
+            if df.empty:
+                logger.error("Loaded CSV file is empty after cleaning.")
+                return
+
+            df.set_index('time', inplace=True)
             self.raw_data = df
             logger.info(f"📥 Data loaded from: {path}")
         except Exception as e:
