@@ -8,3 +8,14 @@
 - For RL, use Ray/RLlib
 - supprimer Features IS_Noise
 - S'intéresser au CVD, OI
+
+
+| Feature Name        | Formula/Logic                               | Type          |
+| ------------------- | ------------------------------------------- | ------------- |
+| `cvd`               | ∑(bid\_vol - ask\_vol)                      | Momentum      |
+| `obi`               | (bid\_vol - ask\_vol)/(bid\_vol + ask\_vol) | Pressure      |
+| `price_change`      | price\_t - price\_{t-1}                     | Price action  |
+| `reaction_ratio`    | price\_change / (cvd\_t + ε)                | Liquidity     |
+| `rolling_std_price` | std(price, window=10)                       | Volatility    |
+| `rolling_mean_cvd`  | mean(cvd, window=10)                        | Smoothed flow |
+
