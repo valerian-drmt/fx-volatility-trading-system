@@ -6,16 +6,19 @@
 - Standardize variable naming
 - Add an optimization loop with OPTUNA to test model performance across all variable combinations
 - For RL, use Ray/RLlib
-- supprimer Features IS_Noise
-- S'intéresser au CVD, OI
 
 
-| Feature Name        | Formula/Logic                               | Type          |
-| ------------------- | ------------------------------------------- | ------------- |
-| `cvd`               | ∑(bid\_vol - ask\_vol)                      | Momentum      |
-| `obi`               | (bid\_vol - ask\_vol)/(bid\_vol + ask\_vol) | Pressure      |
-| `price_change`      | price\_t - price\_{t-1}                     | Price action  |
-| `reaction_ratio`    | price\_change / (cvd\_t + ε)                | Liquidity     |
-| `rolling_std_price` | std(price, window=10)                       | Volatility    |
-| `rolling_mean_cvd`  | mean(cvd, window=10)                        | Smoothed flow |
 
+| Indicator             | Theme              |
+|-----------------------|--------------------|
+| resample_with_vwap    | Liquidity          |
+| market_sessions       | Market Context     |
+| pivot_point           | Support/Resistance |
+| volume_pivot_point    | Volume-based S/R   |
+| volume_delta          | Momentum           |
+| cvd                   | Momentum           |
+| obi                   | Pressure           |
+| price_change          | Price Action       |
+| reaction_ratio        | Liquidity          |
+| rolling_std_price     | Volatility         |
+| rolling_mean_cvd      | Smoothed Flow      |

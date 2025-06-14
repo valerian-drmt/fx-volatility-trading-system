@@ -99,7 +99,7 @@ class DataFetcher:
         self.raw_data.to_csv(path, index=False)
         logger.info(f"📁 Data saved to: {path}")
 
-    def load_from_csv_Binance(self, directory="./"):
+    def load_from_csv_binance(self, directory="./"):
         required_attrs = [self.symbol, self.start_date, self.end_date, self.interval]
         if any(attr is None for attr in required_attrs):
             logger.error("Missing metadata attributes to build the CSV filename.")
@@ -136,7 +136,7 @@ class DataFetcher:
         except Exception as e:
             logger.exception(f"Failed to load CSV: {e}")
 
-    def load_from_csv_IB(self, directory="./"):
+    def load_from_csv_ib(self, directory="./"):
         required_attrs = [self.symbol, self.start_date, self.end_date, self.interval]
         if any(attr is None for attr in required_attrs):
             logger.error("Missing metadata attributes to build the CSV filename.")
@@ -158,20 +158,57 @@ class DataFetcher:
                 logger.error(f"Missing columns in CSV: {missing}")
                 return
 
-            df = df_raw[expected_cols].copy()
-            df = df[df['time'].notna()]
-            df = df[df['time'].apply(lambda x: isinstance(x, pd.Timestamp))]
-
-            if df.empty:
+            if df_raw.empty:
                 logger.error("Loaded CSV file is empty after cleaning.")
                 return
 
-            df.set_index('time', inplace=True)
-            self.raw_data = df
+            df_raw.set_index('time', inplace=True)
+            self.raw_data = df_raw
             logger.info(f"📥 Data loaded from: {path}")
         except Exception as e:
             logger.exception(f"Failed to load CSV: {e}")
 
+    def resample_to_1m(self):
+        df = self.raw_data.copy()
+        logger.debug("Starting resample_to_1m...")
+
+        # Convert index to datetime if it's not already
+        if not isinstance(df.index, pd.DatetimeIndex):
+            logger.debug("Index is not a DatetimeIndex. Attempting to convert...")
+            try:
+                df.index = pd.to_datetime(df.index)
+                logger.debug("Index successfully converted to DatetimeIndex.")
+            except Exception as e:
+                logger.error(f"Failed to convert index: {e}")
+                raise TypeError("Index could not be converted to DatetimeIndex.")
+
+        # Compute mid price
+        df['mid'] = (df['bid'] + df['ask']) / 2
+        logger.debug("Mid price computed.")
+
+        # Resample mid price to 1-minute OHLC
+        ohlc = df['mid'].resample('1min').ohlc()
+        logger.debug("Resampled mid prices to 1-minute OHLC.")
+
+        # Sum bidSize and askSize per minute
+        bid_size = df['bidSize'].resample('1min').sum() / 1000
+        ask_size = df['askSize'].resample('1min').sum() / 1000
+        logger.debug("Resampled bidSize and askSize to 1-minute sums (in thousands).")
+
+        # Total volume
+        volume = bid_size + ask_size
+        logger.debug("Volume computed as sum of bidSize and askSize.")
+
+        # Combine all into a final DataFrame
+        result = pd.concat([ohlc, volume, bid_size, ask_size], axis=1)
+        result.columns = ['Open', 'High', 'Low', 'Close', 'Volume', 'bidSize', 'askSize']
+        logger.debug("Concatenated OHLC and volume columns.")
+
+        result.dropna(inplace=True)
+        logger.info(f"Resampling complete. Final shape: {result.shape}")
+
+        self.raw_data = result
+        return self
 
 
 
