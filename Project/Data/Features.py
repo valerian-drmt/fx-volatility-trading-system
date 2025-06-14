@@ -82,39 +82,6 @@ class Features:
             logger.error(f"Error in market_sessions: {e}", exc_info=True)
             raise
 
-    def is_noise(self, noise_ratio):
-        try:
-            logger.info(f"Starting noise detection with noise_ratio={noise_ratio}.")
-
-            df = self.data.copy()
-
-            # Calcul de la range (High - Low)
-            df['Range'] = df['High'] - df['Low']
-
-            # Normalisation min-max
-            vol_norm = (df['Volume'] - df['Volume'].min()) / (df['Volume'].max() - df['Volume'].min())
-            range_norm = (df['Range'] - df['Range'].min()) / (df['Range'].max() - df['Range'].min())
-
-            # Score de silence
-            silence_score = (1 - vol_norm) + (1 - range_norm)
-            df['Silence_Score'] = silence_score
-
-            # Seuil automatique
-            threshold = df['Silence_Score'].quantile(1 - noise_ratio)
-            df['Is_Noise'] = (df['Silence_Score'] >= threshold).astype(int)
-
-            logger.info(f"Noise detection completed. Threshold used: {threshold:.4f}")
-
-            # Nettoyage
-            df.drop(columns=['Range', 'Silence_Score'], inplace=True)
-
-            self.data = df
-            return self
-
-        except Exception as e:
-            logger.error(f"Error in is_noise: {e}", exc_info=True)
-            raise
-
     def Pivot_Points(self, pivot_left, pivot_right):
         try:
             logger.info(f"Starting pivot point detection with left={pivot_left}, right={pivot_right}.")
@@ -514,5 +481,43 @@ class Features:
         except Exception as e:
             logger.error(f"Error in Volume_Pivot_Points: {e}", exc_info=True)
             raise
+
+    def add_volume_delta(self):
+        print(self.data.columns.tolist())
+        self.data['volume_delta'] = self.data['bidSize'] - self.data['askSize']
+        return self
+
+    def add_cvd(self):
+        if 'volume_delta' not in self.data.columns:
+            self.add_volume_delta()
+        self.data['CVD'] = self.data['volume_delta'].cumsum()
+        return self
+
+    def add_obi(self):
+        self.data['obi'] = (self.data['bidSize'] - self.data['askSize']) / (
+                    self.data['bidSize'] + self.data['askSize'] + 1e-9)
+        return self
+
+    def add_price_change(self):
+        self.data['price_change'] = self.data['Close'].diff()
+        return self
+
+    def add_reaction_ratio(self, epsilon=1e-6):
+        if 'price_change' not in self.data.columns:
+            self.add_price_change()
+        if 'CVD' not in self.data.columns:
+            self.add_cvd()
+        self.data['reaction_ratio'] = self.data['price_change'] / (self.data['CVD'] + epsilon)
+        return self
+
+    def add_rolling_std_price(self, std_window):
+        self.data['rolling_std_price'] = self.data['Close'].rolling(window=std_window).std()
+        return self
+
+    def add_rolling_mean_cvd(self, mean_window):
+        if 'CVD' not in self.data.columns:
+            self.add_cvd()
+        self.data['rolling_mean_cvd'] = self.data['CVD'].rolling(window=mean_window).mean()
+        return self
 
 
