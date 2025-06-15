@@ -1,6 +1,6 @@
 # 📌 Planned Modifications to Apply
 
-- Understand DataAnalysis Part and Add Try/Logger
+- Understand DataAnalysis Method and Add Try/Logger
 - Update Volume Pivot Point Indicator, offset error
 - Finish IB API Request Definition
 - Change from TensorFlow to Pytorch
