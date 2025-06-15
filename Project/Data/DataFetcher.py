@@ -163,12 +163,12 @@ class DataFetcher:
                 return
 
             df_raw.set_index('time', inplace=True)
-            self.raw_data = df_raw
+            self.raw_data = df_raw.dropna()
             logger.info(f"📥 Data loaded from: {path}")
         except Exception as e:
             logger.exception(f"Failed to load CSV: {e}")
 
-    def resample_to_1m(self):
+    def resample_to_1m_ohlcv(self):
         df = self.raw_data.copy()
         logger.debug("Starting resample_to_1m...")
 
