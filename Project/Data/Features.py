@@ -34,6 +34,8 @@ class Features:
             resampled['Low'] = df['Low'].resample(resample_period).min()
             resampled['Close'] = df['Close'].resample(resample_period).last()
             resampled['Volume'] = df['Volume'].resample(resample_period).sum()
+            resampled['bidSize'] = df['bidSize'].resample(resample_period).sum()
+            resampled['askSize'] = df['askSize'].resample(resample_period).sum()
 
             logger.info("Basic OHLCV resampling done.")
 
@@ -476,6 +478,7 @@ class Features:
 
             self.data = df.copy()
             logger.info("Volume pivot point detection completed successfully.")
+
             return self
 
         except Exception as e:
@@ -483,41 +486,79 @@ class Features:
             raise
 
     def add_volume_delta(self):
-        print(self.data.columns.tolist())
-        self.data['volume_delta'] = self.data['bidSize'] - self.data['askSize']
+        try:
+            logger.info("Adding 'volume_delta' column...")
+            self.data['volume_delta'] = self.data['bidSize'] - self.data['askSize']
+            logger.info("'volume_delta' column added.")
+        except Exception as e:
+            logger.exception("Error while adding 'volume_delta'")
         return self
 
     def add_cvd(self):
-        if 'volume_delta' not in self.data.columns:
-            self.add_volume_delta()
-        self.data['CVD'] = self.data['volume_delta'].cumsum()
+        try:
+            logger.info("Adding 'CVD' column...")
+            if 'volume_delta' not in self.data.columns:
+                logger.info("'volume_delta' not found, calling add_volume_delta()...")
+                self.add_volume_delta()
+            self.data['CVD'] = self.data['volume_delta'].cumsum()
+            logger.info("'CVD' column added.")
+        except Exception as e:
+            logger.exception("Error while adding 'CVD'")
         return self
 
     def add_obi(self):
-        self.data['obi'] = (self.data['bidSize'] - self.data['askSize']) / (
+        try:
+            logger.info("Adding 'obi' column...")
+            self.data['obi'] = (self.data['bidSize'] - self.data['askSize']) / (
                     self.data['bidSize'] + self.data['askSize'] + 1e-9)
+            logger.info("'obi' column added.")
+        except Exception as e:
+            logger.exception("Error while adding 'obi'")
         return self
 
     def add_price_change(self):
-        self.data['price_change'] = self.data['Close'].diff()
+        try:
+            logger.info("Adding 'price_change' column...")
+            self.data['price_change'] = self.data['Close'].diff()
+            logger.info("'price_change' column added.")
+        except Exception as e:
+            logger.exception("Error while adding 'price_change'")
         return self
 
     def add_reaction_ratio(self, epsilon=1e-6):
-        if 'price_change' not in self.data.columns:
-            self.add_price_change()
-        if 'CVD' not in self.data.columns:
-            self.add_cvd()
-        self.data['reaction_ratio'] = self.data['price_change'] / (self.data['CVD'] + epsilon)
+        try:
+            logger.info("Adding 'reaction_ratio' column...")
+            if 'price_change' not in self.data.columns:
+                logger.info("'price_change' not found, calling add_price_change()...")
+                self.add_price_change()
+            if 'CVD' not in self.data.columns:
+                logger.info("'CVD' not found, calling add_cvd()...")
+                self.add_cvd()
+            self.data['reaction_ratio'] = self.data['price_change'] / (self.data['CVD'] + epsilon)
+            logger.info("'reaction_ratio' column added.")
+        except Exception as e:
+            logger.exception("Error while adding 'reaction_ratio'")
         return self
 
     def add_rolling_std_price(self, std_window):
-        self.data['rolling_std_price'] = self.data['Close'].rolling(window=std_window).std()
+        try:
+            logger.info(f"Adding 'rolling_std_price' column with window={std_window}...")
+            self.data['rolling_std_price'] = self.data['Close'].rolling(window=std_window).std()
+            logger.info("'rolling_std_price' column added.")
+        except Exception as e:
+            logger.exception("Error while adding 'rolling_std_price'")
         return self
 
     def add_rolling_mean_cvd(self, mean_window):
-        if 'CVD' not in self.data.columns:
-            self.add_cvd()
-        self.data['rolling_mean_cvd'] = self.data['CVD'].rolling(window=mean_window).mean()
+        try:
+            logger.info(f"Adding 'rolling_mean_cvd' column with window={mean_window}...")
+            if 'CVD' not in self.data.columns:
+                logger.info("'CVD' not found, calling add_cvd()...")
+                self.add_cvd()
+            self.data['rolling_mean_cvd'] = self.data['CVD'].rolling(window=mean_window).mean()
+            logger.info("'rolling_mean_cvd' column added.")
+        except Exception as e:
+            logger.exception("Error while adding 'rolling_mean_cvd'")
         return self
 
 
