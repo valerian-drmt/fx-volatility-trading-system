@@ -1,7 +1,8 @@
+import numpy as np
 import math
 import psutil
-import tensorflow as tf
-import numpy as np
+import torch
+from torch.utils.data import DataLoader, TensorDataset, Subset
 
 # 🔧 Config import
 import os
@@ -13,6 +14,10 @@ logger.info(f"Logger initialized ({current_file})")
 class Preprocessing:
     def __init__(self, train_test_data):
         self.train_test_data = train_test_data
+
+        # Device configuration
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"✅ Using device: {self.device}")
 
         # create_train_test_data def
         self.x_train = None
@@ -31,7 +36,7 @@ class Preprocessing:
 
     def create_train_test_data(self, lookback, size_test_prct):
         try:
-            logger.info("Starting creation of train/test data.")
+            logger.info("Starting creation of train/test data (PyTorch).")
 
             # 1. Select columns
             feature_cols = [col for col in self.train_test_data.columns if col.startswith("Feature")]
@@ -66,18 +71,18 @@ class Preprocessing:
             x_test = data[train_set_size:, :, :len(feature_cols)]
             y_test = data[train_set_size:, -1, len(feature_cols):]
 
-            # 7. Convert to TensorFlow tensors
-            x_train = tf.convert_to_tensor(x_train, dtype=tf.float32)
-            y_train = tf.convert_to_tensor(y_train, dtype=tf.int32)
-            x_test = tf.convert_to_tensor(x_test, dtype=tf.float32)
-            y_test = tf.convert_to_tensor(y_test, dtype=tf.int32)
+            # 7. Convert to PyTorch tensors
+            x_train = torch.tensor(x_train, dtype=torch.float32)
+            y_train = torch.tensor(y_train, dtype=torch.int64 if y_train.shape[1] == 1 else torch.float32)
+            x_test = torch.tensor(x_test, dtype=torch.float32)
+            y_test = torch.tensor(y_test, dtype=torch.int64 if y_test.shape[1] == 1 else torch.float32)
 
             self.x_train = x_train
             self.y_train = y_train
             self.x_test = x_test
             self.y_test = y_test
 
-            logger.info("✅ Train/test tensors successfully created.")
+            logger.info("✅ Train/test tensors successfully created (PyTorch).")
             return self
 
         except Exception as e:
@@ -86,33 +91,31 @@ class Preprocessing:
 
     def create_dataloaders(self, val_ratio):
         try:
-            logger.info("Creating TensorFlow DataLoaders...")
+            logger.info("Creating PyTorch DataLoaders...")
 
-            # ---- 1. Détermination de la taille de validation
+            # ---- 1. Determine validation size
             n_samples = self.x_train.shape[0]
             val_size = int(val_ratio * n_samples)
             train_size = n_samples - val_size
             logger.info(f"Train/Val split: {train_size} train / {val_size} val samples")
 
-            # ---- 2. Mélange et split manuel
+            # ---- 2. Shuffle and manual split
             indices = np.random.permutation(n_samples)
             train_indices = indices[:train_size]
             val_indices = indices[train_size:]
 
-            x_train_split = tf.gather(self.x_train, train_indices)
-            y_train_split = tf.gather(self.y_train, train_indices)
-            x_val_split = tf.gather(self.x_train, val_indices)
-            y_val_split = tf.gather(self.y_train, val_indices)
+            # ---- 3. Convert to PyTorch tensors
+            x_tensor = torch.tensor(self.x_train, dtype=torch.float32)
+            y_tensor = torch.tensor(self.y_train, dtype=torch.float32)
 
-            # ---- 3. Création des tf.data.Dataset
-            train_dataset = tf.data.Dataset.from_tensor_slices((x_train_split, y_train_split))
-            val_dataset = tf.data.Dataset.from_tensor_slices((x_val_split, y_val_split))
+            train_dataset = Subset(TensorDataset(x_tensor, y_tensor), train_indices)
+            val_dataset = Subset(TensorDataset(x_tensor, y_tensor), val_indices)
 
-            # ---- 4. Batching et options
-            train_loader = train_dataset.shuffle(buffer_size=train_size).batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
-            val_loader = val_dataset.batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
+            # ---- 4. Create DataLoaders
+            train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=2)
+            val_loader = DataLoader(val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=2)
 
-            logger.info("✅ TensorFlow DataLoaders created successfully.")
+            logger.info("✅ PyTorch DataLoaders created successfully.")
 
             self.train_loader = train_loader
             self.val_loader = val_loader
@@ -121,14 +124,15 @@ class Preprocessing:
             return self
 
         except Exception as e:
-            logger.error(f"❌ Error while creating TensorFlow DataLoaders: {e}", exc_info=True)
+            logger.error(f"❌ Error during DataLoader creation: {e}", exc_info=True)
             raise
 
     def suggest_batch_size(self, n_features, n_labels, lookback, reserved_ram_gb, hidden_dim):
         try:
-            logger.info("Starting batch size estimation...")
+            logger.info("Starting batch size estimation (PyTorch)...")
             n_samples = self.x_train.shape[0]
             num_layers = len(hidden_dim)
+
             # ---- 1. RAM available on the machine
             total_ram_bytes = psutil.virtual_memory().total
             reserved_ram_bytes = reserved_ram_gb * 1024 ** 3
@@ -154,8 +158,7 @@ class Preprocessing:
             max_batch_size_cpu = cpu_cores * 8  # empirical limit
 
             # ---- 7. GPU or CPU constraints
-            gpus = tf.config.list_physical_devices('GPU')
-            has_gpu = len(gpus) > 0
+            has_gpu = torch.cuda.is_available()
 
             if has_gpu:
                 max_batch_size = min(max_batch_size_ram, 1024)
@@ -168,7 +171,7 @@ class Preprocessing:
 
             # ---- 9. Summary
             report_lines = [
-                "--- Batch Size Estimation Report (TensorFlow) ---",
+                "--- Batch Size Estimation Report (PyTorch) ---",
                 f"Total RAM (GB):         {total_ram_bytes / 1024 ** 3:.2f}",
                 f"Reserved RAM (GB):      {reserved_ram_gb}",
                 f"Usable RAM (GB):        {usable_ram_bytes / 1024 ** 3:.2f}",
