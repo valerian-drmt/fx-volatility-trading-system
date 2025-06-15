@@ -1,6 +1,4 @@
-import numpy as np
 import pandas as pd
-import warnings
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.feature_selection import RFE
 from sklearn.ensemble import RandomForestClassifier
@@ -10,12 +8,8 @@ from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
 
 # 🔧 Config import
-import sys
 import os
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, '..'))
-sys.path.append(project_root)
-from Config.LoggerConfig import colored_logger
+from Project.Config.LoggerConfig import *
 logger = colored_logger()
 current_file = os.path.basename(__file__)
 logger.info(f"Logger initialized ({current_file})")
@@ -48,11 +42,11 @@ class DataAnalysis:
     def plot_mutual_information_classification(self):
 
         for label in self.label_columns:
-            X = self.data[self.feature_columns]
+            x = self.data[self.feature_columns]
             y = self.data[label]
 
             # Mutual Information
-            mi = mutual_info_classif(X, y, random_state=42)
+            mi = mutual_info_classif(x, y, random_state=42)
             mi_series = pd.Series(mi, index=self.feature_columns).sort_values(ascending=False)
 
             # Plotly bar chart
@@ -72,11 +66,11 @@ class DataAnalysis:
         en utilisant un RandomForestClassifier. Affichage interactif avec Plotly.
         """
         for label in self.label_columns:
-            X = self.data[self.feature_columns]
+            x = self.data[self.feature_columns]
             y = self.data[label]
 
             model = RandomForestClassifier(n_estimators=100, random_state=42)
-            model.fit(X, y)
+            model.fit(x, y)
 
             importances = pd.Series(model.feature_importances_, index=self.feature_columns)
             importances = importances.sort_values(ascending=False)
@@ -100,12 +94,12 @@ class DataAnalysis:
         - n_features_to_select (int): nombre de features à conserver
         """
         for label in self.label_columns:
-            X = self.data[self.feature_columns]
+            x = self.data[self.feature_columns]
             y = self.data[label]
 
             estimator = RandomForestClassifier(n_estimators=100, random_state=42)
             selector = RFE(estimator=estimator, n_features_to_select=n_features_to_select, step=1)
-            selector = selector.fit(X, y)
+            selector.fit(x, y)
 
             ranking = pd.Series(selector.ranking_, index=self.feature_columns)
             selected_features = ranking[ranking == 1].sort_index()
@@ -132,11 +126,11 @@ class DataAnalysis:
         - L'importance des features dans la première composante (PC1)
         - La variance expliquée cumulée par les composantes principales
         """
-        X = self.data[self.feature_columns]
+        x = self.data[self.feature_columns]
 
         # Appliquer PCA
         pca = PCA(n_components=len(self.feature_columns))
-        X_pca = pca.fit_transform(X)
+        pca.fit_transform(x)
 
         # Loadings des features sur chaque composante
         loadings = pd.DataFrame(
@@ -220,15 +214,15 @@ class DataAnalysis:
         Calcule le Variance Inflation Factor (VIF) pour chaque feature afin d'évaluer
         la multicolinéarité. Affichage interactif avec Plotly.
         """
-        X = self.data[self.feature_columns]
+        x = self.data[self.feature_columns]
 
         # Ajouter constante pour statsmodels
-        X_const = add_constant(X)
+        x_const = add_constant(x)
 
         # Calcul du VIF (on ignore l'intercept => i + 1)
         vif_data = pd.DataFrame()
-        vif_data["Feature"] = X.columns
-        vif_data["VIF"] = [variance_inflation_factor(X_const.values, i + 1) for i in range(len(X.columns))]
+        vif_data["Feature"] = x.columns
+        vif_data["VIF"] = [variance_inflation_factor(x_const.values, i + 1) for i in range(len(x.columns))]
 
         # Trier les résultats
         vif_data = vif_data.sort_values(by="VIF", ascending=False)
