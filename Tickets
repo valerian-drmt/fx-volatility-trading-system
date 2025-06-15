@@ -3,7 +3,7 @@
 - Understand DataAnalysis Part and Add Try/Logger
 - Update Volume Pivot Point Indicator, offset error
 - Finish IB API Request Definition
-- Change TensorFlow to Pytorch
+- Change from TensorFlow to Pytorch
 - Standardize variable naming
 - Add an optimization loop with OPTUNA to test model performance across all variable combinations
 - For RL, use Ray/RLlib
