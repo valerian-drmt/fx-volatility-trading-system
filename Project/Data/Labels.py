@@ -1,3 +1,5 @@
+import pandas as pd
+
 # 🔧 Config import
 import os
 from Project.Config.LoggerConfig import *
@@ -5,11 +7,11 @@ logger = colored_logger()
 current_file = os.path.basename(__file__)
 logger.info(f"Logger initialized ({current_file})")
 
-class Labels():
-    def __init__(self, data):
+class Labels:
+    def __init__(self, data : pd.DataFrame):
         self.data = data
 
-    def Categorize_Volume_Pivot_Points(self, look_forward: int):
+    def categorize_colume_pivot_points(self, look_forward: int):
         try:
             logger.info(f"Starting Categorize_Volume_Pivot_Points with look_forward={look_forward}")
 
@@ -43,7 +45,7 @@ class Labels():
             logger.error(f"Error in Categorize_Volume_Pivot_Points: {e}", exc_info=True)
             raise
 
-    def Categorize_Pivot_Points(self, look_forward: int):
+    def categorize_pivot_points(self, look_forward: int):
         try:
             logger.info(f"Starting Categorize_Pivot_Points with look_forward={look_forward}")
 
@@ -56,7 +58,7 @@ class Labels():
                     high_above.append(0)
                     continue
 
-                future_data = self.data.iloc[i + 1:i + 1 + look_forward]
+                future_data: pd.DataFrame = self.data.iloc[i + 1:i + 1 + look_forward]
 
                 current_low_pivot = self.data.iloc[i]['Low_Pivot']
                 current_high_pivot = self.data.iloc[i]['High_Pivot']
