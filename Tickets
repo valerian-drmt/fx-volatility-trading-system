@@ -3,11 +3,11 @@
 - Understand DataAnalysis Method and Add Try/Logger
 - Update Volume Pivot Point Indicator, offset error
 - Finish IB API Request Definition
-- Change from TensorFlow to Pytorch
 - Standardize variable naming
 - Add an optimization loop with OPTUNA to test model performance across all variable combinations
 - For RL, use Ray/RLlib
-
+- For features/Labels, Create TradingView Graph with Pyside6 and add option to choose which indicator
+  you want to show on the graph
 
 
 | Indicator             | Theme              |

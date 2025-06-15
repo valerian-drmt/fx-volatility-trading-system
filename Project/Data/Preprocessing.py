@@ -48,7 +48,9 @@ class Preprocessing:
             labels = self.train_test_data[label_cols].values
 
             # 3. Normalize features
-            features = (features - features.min(axis=0)) / (features.max(axis=0) - features.min(axis=0))
+            epsilon = 1e-8
+            features = (features - features.min(axis=0)) / (features.max(axis=0) - features.min(axis=0) + epsilon)
+            features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
             logger.info("Features normalized (min-max).")
 
             # 4. Stack features and labels
@@ -105,8 +107,8 @@ class Preprocessing:
             val_indices = indices[train_size:]
 
             # ---- 3. Convert to PyTorch tensors
-            x_tensor = torch.tensor(self.x_train, dtype=torch.float32)
-            y_tensor = torch.tensor(self.y_train, dtype=torch.float32)
+            x_tensor = self.x_train.detach().clone() if isinstance(self.x_train, torch.Tensor) else torch.tensor(self.x_train, dtype=torch.float32)
+            y_tensor = self.y_train.detach().clone() if isinstance(self.y_train, torch.Tensor) else torch.tensor(self.y_train, dtype=torch.float32)
 
             train_dataset = Subset(TensorDataset(x_tensor, y_tensor), train_indices)
             val_dataset = Subset(TensorDataset(x_tensor, y_tensor), val_indices)
