@@ -23,3 +23,11 @@
 | reaction_ratio        | Liquidity          |
 | rolling_std_price     | Volatility         |
 | rolling_mean_cvd      | Smoothed Flow      |
+
+Il existe plusieurs techniques pour traiter la non-stationnarité dans les séries temporelles :
+
+Différenciation : Calculer la différence entre les valeurs consécutives de la série. Cela peut éliminer les tendances et la saisonnalité.
+Transformation logarithmique : Appliquer une transformation logarithmique aux données. Cela peut réduire l'hétéroscédasticité.
+Désaisonnalisation : Supprimer les composantes saisonnières de la série.
+Modèles ARMA/ARIMA : Utiliser des modèles autorégressifs à moyenne mobile (ARMA) ou des modèles autorégressifs intégrés à moyenne mobile (ARIMA) pour modéliser la série temporelle et éliminer la non-stationnarité.
+Tests de stationnarité : Effectuer des tests de stationnarité (comme le test de Dickey-Fuller augmenté ou le test de Kwiatkowski-Phillips-Schmidt-Shin) pour vérifier si une série est stationnaire.
