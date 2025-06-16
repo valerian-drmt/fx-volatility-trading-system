@@ -10,6 +10,7 @@
   you want to show on the graph
 - DataAnalysis: mettre le test de stationnairité/ non stationnarité
 - Idéalement les données utilisé pour le PCA doivent etre stationnaires
+- crée def pour rendre des données stationnaire -> non stationnaire ou l'inverse
 
 | Indicator             | Theme              |
 |-----------------------|--------------------|
