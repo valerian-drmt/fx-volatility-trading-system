@@ -3,6 +3,7 @@
 - Understand DataAnalysis Method and Add Try/Logger
 - Update Volume Pivot Point Indicator, offset error
 - Finish IB API Request Definition
+- Création de la Def Request DOM Data BTCUSDT Binance
 - Standardize variable naming
 - Add an optimization loop with OPTUNA to test model performance across all variable combinations
 - For RL, use Ray/RLlib
