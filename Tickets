@@ -28,3 +28,10 @@
 | rolling_mean_cvd      | Smoothed Flow      |
 
 
+
+Condition for a data series to be stationary:
+- no trend -> test Trend with Ducky-Fuller 
+- constant variance
+- no dynamics change
+
+Stationarize data with: diff perf, log perf, sqrt perf, relative diff perf
