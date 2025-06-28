@@ -9,7 +9,7 @@ project_root = os.path.abspath(os.path.join(current_dir, '..'))
 sys.path.append(project_root)
 
 # Imports internes
-from Config.LoggerConfig import colored_logger
+from Class.Config import colored_logger
 
 logger = colored_logger()
 current_file = os.path.basename(__file__)
