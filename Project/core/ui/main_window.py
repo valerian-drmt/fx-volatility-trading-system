@@ -1,19 +1,12 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout
-from Class.UI.Widgets.CandlestickWidget import CandlestickWidget
-import os
-import sys
+import core.ui.widgets.candlestick_widget as candlestick_widget
 import pandas as pd
 
-# Set up project root in sys.path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, '..'))
-sys.path.append(project_root)
-
-# Internal imports
-from Class.Config import colored_logger
-
+# 🔧 config import
+import os
+from core.config.logger_config import colored_logger
 logger = colored_logger()
-current_file = os.path.basename(__file__)
+current_file = os.path.basename(__file__) if '__file__' in globals() else "Notebook"
 logger.info(f"Logger initialized ({current_file})")
 
 
@@ -25,7 +18,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Raw data Candlestick Viewer")
         self.resize(1200, 800)
 
-        self.candle_widget = CandlestickWidget()
+        self.candle_widget = candlestick_widget.CandlestickWidget()
 
         central_widget = QWidget()
         layout = QVBoxLayout()
@@ -42,8 +35,10 @@ class MainWindow(QMainWindow):
             return
 
         logger.info("Loading DataFrame into candlestick widget...")
+
         try:
             self.candle_widget.plot_candles(df)
             logger.info("Candlestick plot updated successfully.")
+
         except Exception as e:
             logger.exception(f"Failed to plot candlesticks: {e}")

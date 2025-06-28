@@ -105,7 +105,7 @@ class LSTMTrainer:
         for col in range(y_true.shape[1]):
             unique_vals = np.unique(y_true[:, col])
             if len(unique_vals) == 1:
-                # Inject the missing class artificially
+                # Inject the missing core artificially
                 if unique_vals[0] == 0:
                     y_true_copy[0, col] = 1
                 else:
