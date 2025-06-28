@@ -4,9 +4,9 @@ import pandas as pd
 
 # 🔧 config import
 import os
-
+from core.config.logger_config import colored_logger
 logger = colored_logger()
-current_file = os.path.basename(__file__)
+current_file = os.path.basename(__file__) if '__file__' in globals() else "Notebook"
 logger.info(f"Logger initialized ({current_file})")
 
 class DataFetcher:
@@ -62,16 +62,13 @@ class DataFetcher:
                 all_data.extend(ohlcv)
                 last_timestamp = ohlcv[-1][0]
 
-                logger.info(
-                    f"Fetched {len(ohlcv)} candles (Request {request_count}) — Last candle time: {datetime.utcfromtimestamp(last_timestamp / 1000)}")
-
                 if last_timestamp == since:
                     since += ms_per_candle
                 else:
                     since = last_timestamp + ms_per_candle
 
             except Exception as e:
-                logger.error(f"Error fetching data from Binance at {datetime.utcfromtimestamp(since / 1000)}: {e}")
+                logger.error(f"Error fetching data from Binance: {e}")
                 break
 
         if all_data:
@@ -126,7 +123,6 @@ class DataFetcher:
                 logger.error("Loaded CSV file is empty after cleaning.")
                 return
 
-            df.set_index('Timestamp', inplace=True)
             self.raw_data = df
             logger.info(f"📥 Data loaded from: {path}")
         except Exception as e:
