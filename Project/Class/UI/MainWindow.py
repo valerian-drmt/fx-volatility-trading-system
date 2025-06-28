@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout
-from UI.Widgets.CandlestickWidget import CandlestickWidget
+from Class.UI.Widgets.CandlestickWidget import CandlestickWidget
 import os
 import sys
 import pandas as pd
@@ -10,7 +10,7 @@ project_root = os.path.abspath(os.path.join(current_dir, '..'))
 sys.path.append(project_root)
 
 # Internal imports
-from Config.LoggerConfig import colored_logger
+from Class.Config import colored_logger
 
 logger = colored_logger()
 current_file = os.path.basename(__file__)

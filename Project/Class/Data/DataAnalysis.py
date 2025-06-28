@@ -9,7 +9,7 @@ from statsmodels.tools.tools import add_constant
 
 # 🔧 Config import
 import os
-from Project.Config.LoggerConfig import *
+
 logger = colored_logger()
 current_file = os.path.basename(__file__)
 logger.info(f"Logger initialized ({current_file})")
