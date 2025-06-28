@@ -1,6 +1,6 @@
 import pandas as pd
 
-# 🔧 Config import
+# 🔧 config import
 import os
 
 logger = colored_logger()

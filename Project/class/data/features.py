@@ -3,7 +3,7 @@ import pandas as pd
 import warnings
 from collections import deque
 
-# 🔧 Config import
+# 🔧 config import
 import os
 
 logger = colored_logger()

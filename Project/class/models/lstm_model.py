@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-# 🔧 Config import
+# 🔧 config import
 import os
 
 logger = colored_logger()

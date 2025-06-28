@@ -22,7 +22,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         logger.info("Initializing MainWindow...")
 
-        self.setWindowTitle("Raw Data Candlestick Viewer")
+        self.setWindowTitle("Raw data Candlestick Viewer")
         self.resize(1200, 800)
 
         self.candle_widget = CandlestickWidget()
