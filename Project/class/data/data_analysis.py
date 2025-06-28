@@ -7,7 +7,7 @@ import plotly.express as px
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.tools.tools import add_constant
 
-# 🔧 Config import
+# 🔧 config import
 import os
 
 logger = colored_logger()

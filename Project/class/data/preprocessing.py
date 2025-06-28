@@ -4,7 +4,7 @@ import psutil
 import torch
 from torch.utils.data import DataLoader, TensorDataset, Subset
 
-# 🔧 Config import
+# 🔧 config import
 import os
 
 logger = colored_logger()

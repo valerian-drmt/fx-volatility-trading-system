@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score, hamming_loss
 
-# 🔧 Config import
+# 🔧 config import
 import os
 
 logger = colored_logger()
