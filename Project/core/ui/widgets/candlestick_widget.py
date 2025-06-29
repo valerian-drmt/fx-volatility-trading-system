@@ -9,10 +9,6 @@ logger = colored_logger()
 current_file = os.path.basename(__file__) if '__file__' in globals() else "Notebook"
 logger.info(f"Logger initialized ({current_file})")
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout
-import pandas as pd
-from lightweight_charts.widgets import QtChart
-
 class CandlestickWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
