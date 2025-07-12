@@ -68,9 +68,9 @@ class Features:
                 return (1 <= hour < 7)
 
             # Directly create session flags
-            self.data['London_open'] = self.data.index.map(lambda ts: int(is_london_open(ts.hour, ts.minute)))
-            self.data['NY_open'] = self.data.index.map(lambda ts: int(is_ny_open(ts.hour, ts.minute)))
-            self.data['HK_open'] = self.data.index.map(lambda ts: int(is_tokyo_open(ts.hour, ts.minute)))
+            self.data['london_open'] = self.data.index.map(lambda ts: int(is_london_open(ts.hour, ts.minute)))
+            self.data['ny_open'] = self.data.index.map(lambda ts: int(is_ny_open(ts.hour, ts.minute)))
+            self.data['hk_open'] = self.data.index.map(lambda ts: int(is_tokyo_open(ts.hour, ts.minute)))
 
             logger.info("Market session flags successfully added.")
             return self
@@ -254,13 +254,13 @@ class Features:
 
             logger.info("Pivot filtering logic applied (highs/lows lists, broken levels).")
 
-            colonnes_a_supprimer = ['Last_high_Value', 'Last_low_Value']
-            data = data.drop(colonnes_a_supprimer, axis=1)
+            col_to_remove = ['Last_high_Value', 'Last_low_Value']
+            data = data.drop(col_to_remove, axis=1)
 
-            self.data["Dif_low_Pivot"] = data["low_Pivot"] - data["low"]
-            self.data["Dif_high_Pivot"] = data["high_Pivot"] - data["high"]
-            self.data["low_Pivot"] = data["low_Pivot"]
-            self.data["high_Pivot"] = data["high_Pivot"]
+            self.data["dif_low_pivot"] = data["low_Pivot"] - data["low"]
+            self.data["dif_high_pivot"] = data["high_Pivot"] - data["high"]
+            self.data["low_pivot"] = data["low_Pivot"]
+            self.data["high_pivot"] = data["high_Pivot"]
 
             logger.info("Pivot point detection completed successfully.")
             return self
