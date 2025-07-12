@@ -26,8 +26,8 @@ class Labels:
 
                 future_data = self.data.iloc[i + 1:i + 1 + look_forward]
 
-                current_volume_low_pivot = self.data.iloc[i]['Volume_Low_Pivot']
-                current_volume_high_pivot = self.data.iloc[i]['Volume_High_Pivot']
+                current_volume_low_pivot = self.data.iloc[i]['volume_low_Pivot']
+                current_volume_high_pivot = self.data.iloc[i]['volume_high_Pivot']
 
                 low_condition = (future_data['VWAP_5m'] < current_volume_low_pivot).any()
                 high_condition = (future_data['VWAP_5m'] > current_volume_high_pivot).any()
@@ -35,8 +35,8 @@ class Labels:
                 vw_below.append(int(low_condition))
                 vw_above.append(int(high_condition))
 
-            self.data['VWAP_Below_Volume_Low'] = vw_below
-            self.data['VWAP_Above_Volume_High'] = vw_above
+            self.data['vwap_below_volume_low'] = vw_below
+            self.data['vwap_above_volume_high'] = vw_above
 
             logger.info("Categorize_Volume_Pivot_Points completed successfully.")
             return self
@@ -60,17 +60,17 @@ class Labels:
 
                 future_data: pd.DataFrame = self.data.iloc[i + 1:i + 1 + look_forward]
 
-                current_low_pivot = self.data.iloc[i]['Low_Pivot']
-                current_high_pivot = self.data.iloc[i]['High_Pivot']
+                current_low_pivot = self.data.iloc[i]['low_pivot']
+                current_high_pivot = self.data.iloc[i]['high_pivot']
 
-                low_condition = (future_data['Low'] < current_low_pivot).any()
-                high_condition = (future_data['High'] > current_high_pivot).any()
+                low_condition = (future_data['low'] < current_low_pivot).any()
+                high_condition = (future_data['high'] > current_high_pivot).any()
 
                 low_below.append(int(low_condition))
                 high_above.append(int(high_condition))
 
-            self.data['Low_Below_Pivot'] = low_below
-            self.data['High_Above_Pivot'] = high_above
+            self.data['low_below_pivot'] = low_below
+            self.data['high_above_pivot'] = high_above
 
             logger.info("Categorize_Pivot_Points completed successfully.")
             return self
