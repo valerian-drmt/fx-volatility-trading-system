@@ -1,0 +1,46 @@
+name: "🐛 Bug report"
+description: "Report a reproducible problem in Trading_Project"
+title: "[BUG] <short summary>"
+labels: ["bug", "triage"]
+body:
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: "Example: Windows 11, Python 3.11, TensorFlow 2.15"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: "Write exact steps to reproduce the issue"
+      render: bash
+      placeholder: |
+        1. Run ...
+        2. Load ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: "What should happen?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: "What actually happens?"
+      render: bash
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Traceback
+      render: bash
