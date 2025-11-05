@@ -137,3 +137,6 @@ Complexité : Modèles simples (ARIMA) pour séries simples, hybrides ou deep le
 Ressources : Deep learning nécessite plus de calcul que les modèles statistiques.
 Interprétabilité : Modèles statistiques ou bayésiens plus interprétables que le deep learning.
 Si vous avez un cas spécifique (ex. type de données, objectif) ou souhaitez un exemple avec un modèle particulier, précisez-le, et je peux approfondir ou fournir un exemple pratique !
+
+
+### test
