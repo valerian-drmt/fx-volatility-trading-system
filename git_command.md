@@ -82,7 +82,7 @@ git push -u origin feature/my-task                 # Push new branch to GitHub
 ```bash
 git checkout main                                  # Switch to main
 git pull                                           # Pull latest main updates
-git checkout feature/my-task                       # Go back to your branch
+git checkout dev                                   # Go back to your branch
 git merge main                                     # Merge main into your branch
 ```
 
