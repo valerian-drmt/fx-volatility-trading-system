@@ -1,20 +1,6 @@
 ## Link
 - [SMC library](https://github.com/joshyattridge/smart-money-concepts?tab=readme-ov-file#sessions)
 
-- # 📌 Planned Modifications to Apply
-
-- Understand DataAnalysis Method and Add Try/Logger
-- Update Volume Pivot Point Indicator, offset error
-- Finish IB API Request Definition
-- Création de la Def Request DOM Data BTCUSDT Binance
-- Standardize variable naming
-- Add an optimization loop with OPTUNA to test model performance across all variable combinations
-- For RL, use Ray/RLlib
-- For features/Labels, Create TradingView Graph with Pyside6 and add option to choose which indicator
-  you want to show on the graph
-- DataAnalysis: mettre le test de stationnairité/ non stationnarité
-- Idéalement les données utilisé pour le PCA doivent etre stationnaires
-- crée def pour rendre des données stationnaire -> non stationnaire ou l'inverse
 
 | Indicator             | Theme              |
 |-----------------------|--------------------|
