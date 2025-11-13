@@ -36,7 +36,7 @@ class Preprocessing:
 
     def create_train_test_data(self, lookback, size_test_prct):
         try:
-            logger.info("Starting creation of train/test data (PyTorch).")
+            logger.info("Starting creation of train/idea data (PyTorch).")
 
             # 1. Select columns
             feature_cols = [col for col in self.train_test_data.columns if col.startswith("Feature")]
@@ -63,10 +63,10 @@ class Preprocessing:
             data = np.array(data)
             logger.info(f"Generated {len(data)} sequences of length {lookback}.")
 
-            # 6. Split train/test
+            # 6. Split train/idea
             test_set_size = int(np.round(size_test_prct * data.shape[0]))
             train_set_size = data.shape[0] - test_set_size
-            logger.info(f"Train/Test split: {train_set_size} train / {test_set_size} test samples.")
+            logger.info(f"Train/Test split: {train_set_size} train / {test_set_size} idea samples.")
 
             x_train = data[:train_set_size, :, :len(feature_cols)]
             y_train = data[:train_set_size, -1, len(feature_cols):]
@@ -84,7 +84,7 @@ class Preprocessing:
             self.x_test = x_test
             self.y_test = y_test
 
-            logger.info("✅ Train/test tensors successfully created (PyTorch).")
+            logger.info("✅ Train/idea tensors successfully created (PyTorch).")
             return self
 
         except Exception as e:
