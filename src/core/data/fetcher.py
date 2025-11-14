@@ -7,7 +7,7 @@ import gzip
 
 # 🔧 config import
 import os
-from core.config.logger_config import colored_logger
+from src.core.config.logger_config import colored_logger
 logger = colored_logger()
 current_file = os.path.basename(__file__) if '__file__' in globals() else "Notebook"
 logger.info(f"Logger initialized ({current_file})")
