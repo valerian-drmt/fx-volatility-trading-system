@@ -1,2 +1,3 @@
 colorlog
 pytest
+numpy
