@@ -16,7 +16,6 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest colorlog
-          pip install -r requirements.txt  # keep this if you populate requirements.txt
+          pip install -r requirements.txt
       - name: Run pytest
         run: pytest
