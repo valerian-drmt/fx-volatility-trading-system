@@ -9,18 +9,16 @@ import sys
 import PyQt5
 from PyQt5.QtWidgets import QApplication, QWidget
 
-# Print the location of the PyQt5 installation
-print(PyQt5.__file__)
-
-
 class Window(QWidget):
     def __init__(self):
         super().__init__()
-        self.setGeometry(50, 50, 300, 450)
+        self.setGeometry(500, 500, 1000, 1000)
         self.setWindowTitle("Trading Project")
         self.show()
 
 
-App = QApplication(sys.argv)
-window = Window()
-sys.exit(App.exec())
+
+if __name__ == "__main__":
+    App = QApplication(sys.argv)
+    window = Window()
+    sys.exit(App.exec())
