@@ -25,7 +25,7 @@ class Window(QWidget):
         text2.move(200,100)
         text3.move(300,150)
 
-
+        print("a")
         self.show()
 
 def main():
