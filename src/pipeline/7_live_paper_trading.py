@@ -65,7 +65,7 @@ class LiveTickWindow(QMainWindow):
         if ask is not None and not math.isnan(ask):
             self.last_ask = ask
 
-        # Only append if we have a complete quote (both bid & ask known)
+        # Only append if we have a complete quote (both bid and ask known)
         if self.last_bid is not None and self.last_ask is not None:
             self.bids.append(self.last_bid)
             self.asks.append(self.last_ask)
