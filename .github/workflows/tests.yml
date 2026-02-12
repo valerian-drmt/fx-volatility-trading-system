@@ -9,7 +9,7 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     env:
-      QT_QPA_PLATFORM: offscreen
+      QT_QPA_PLATFORM: xcb
       PYTHONPATH: src
     steps:
       - name: Checkout
@@ -38,7 +38,8 @@ jobs:
             libxcb-sync1 \
             libxcb-xfixes0 \
             libxcb-xinerama0 \
-            libxcb-xkb1
+            libxcb-xkb1 \
+            libxcb-cursor0
 
       - name: Install deps
         run: |
@@ -46,4 +47,4 @@ jobs:
           python -m pip install pytest PyQt5 pyqtgraph ib_insync numpy
 
       - name: Run tests
-        run: python -m pytest -q
+        run: xvfb-run -a python -m pytest -q
