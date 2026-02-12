@@ -9,7 +9,7 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     env:
-      QT_QPA_PLATFORM: xcb
+      QT_QPA_PLATFORM: offscreen
       PYTHONPATH: src
     steps:
       - name: Checkout
@@ -46,4 +46,4 @@ jobs:
           python -m pip install pytest PyQt5 pyqtgraph ib_insync numpy
 
       - name: Run tests
-        run: xvfb-run -a python -m pytest -q
+        run: python -m pytest -q
