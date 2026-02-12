@@ -14,3 +14,6 @@ vectorbt
 torch
 pyqtgraph
 ib_insync
+pytest
+colorlog
+PyQt5
