@@ -11,3 +11,4 @@ sdmx
 pandas_datareader
 datetime
 vectorbt
+torch
