@@ -12,3 +12,5 @@ pandas_datareader
 datetime
 vectorbt
 torch
+pyqtgraph
+ib_insync
