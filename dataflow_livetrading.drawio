@@ -1,6 +1,6 @@
-<mxfile host="drawio-plugin" modified="2026-02-14T13:24:59.152Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" etag="kiA3Ej2Jj2mKTigbqDh8" version="22.1.22" type="embed">
+<mxfile host="drawio-plugin" modified="2026-02-14T13:41:38.648Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" etag="X9DjciRvo8YgtgVLW5Ex" version="22.1.22" type="embed">
   <diagram id="dataflow-live" name="Live Trading Dataflow">
-    <mxGraphModel dx="2674" dy="914" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+    <mxGraphModel dx="2604" dy="914" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -23,7 +23,7 @@
           <mxGeometry x="-440" y="310" width="220" height="50" as="geometry" />
         </mxCell>
         <mxCell id="svc_ib_client" value="src/services/ib_client.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
-          <mxGeometry x="650" y="60" width="240" height="50" as="geometry" />
+          <mxGeometry x="680" y="110" width="240" height="50" as="geometry" />
         </mxCell>
         <mxCell id="svc_data_feed" value="src/services/data_feed.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="240" y="170" width="240" height="50" as="geometry" />
@@ -61,7 +61,10 @@
         <mxCell id="panel_logs" value="src/ui/panels/logs_panel.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
           <mxGeometry x="1050" y="70" width="260" height="50" as="geometry" />
         </mxCell>
-        <mxCell id="db" value="DB (SQLite/Postgres)" style="shape=database;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;" parent="1" vertex="1">
+        <mxCell id="ext_ib_client" value="IB Client (TWS/Gateway API)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="680" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="aws_db" value="AWS DB (RDS/Postgres)" style="shape=database;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
           <mxGeometry x="310" y="810" width="230" height="70" as="geometry" />
         </mxCell>
         <mxCell id="edge_app_ib" value="create + connect" style="endArrow=block;html=1;" parent="1" source="app" target="svc_ib_client" edge="1">
@@ -111,10 +114,14 @@
             <mxPoint x="50" y="550" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="edge_persist_db" value="write/read" style="endArrow=block;html=1;" parent="1" source="svc_persistence" target="db" edge="1">
-          <mxGeometry relative="1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
+        <mxCell id="edge_ib_ext_to_service" value="market/account/events" style="endArrow=block;html=1;" parent="1" source="ext_ib_client" target="svc_ib_client" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_service_to_ib_ext" value="orders + subscriptions" style="endArrow=block;html=1;dashed=1;" parent="1" source="svc_ib_client" target="ext_ib_client" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_persist_aws_db" value="write/read" style="endArrow=block;html=1;startArrow=block;startFill=1;" parent="1" source="svc_persistence" target="aws_db" edge="1">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="edge_ib_ui" value="account + connection events" style="endArrow=block;html=1;dashed=1;" parent="1" source="svc_ib_client" target="svc_data_feed" edge="1">
           <mxGeometry relative="1" as="geometry" />
