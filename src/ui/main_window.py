@@ -7,7 +7,8 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QDockWidget, QFrame, QSizePolicy
 import pyqtgraph as pg
 
-from ib_insync import IB, Forex
+from ib_insync import IB
+from services.ib_client import IBClient
 
 from ui.panels.chart_panel import ChartPanel
 from ui.panels.performance_panel import PerformancePanel
@@ -58,10 +59,13 @@ class LiveTickWindow(QMainWindow):
         self.ticker = ticker
         self.max_candles = max_candles
         self.setObjectName("live_tick_window")
-        self._ib_host = host
-        self._ib_port = port
-        self._ib_client_id = client_id
-        self._ib_readonly = readonly
+        self.ib_client = IBClient(
+            ib=ib,
+            host=host,
+            port=port,
+            client_id=client_id,
+            readonly=readonly,
+        )
 
         # last valid quote
         self.last_bid = None
@@ -279,7 +283,7 @@ class LiveTickWindow(QMainWindow):
             mode = "read-only" if readonly else "read-write"
         self.status_panel.set_mode(mode)
 
-        port = self._ib_port
+        port = self.ib_client.port
         if port in (4002, 7497):
             env_text = "paper"
         elif port in (4001, 7496):
@@ -288,7 +292,7 @@ class LiveTickWindow(QMainWindow):
             env_text = "unknown"
         self.status_panel.set_env(env_text)
 
-        self.status_panel.set_client_id(str(self._ib_client_id))
+        self.status_panel.set_client_id(str(self.ib_client.client_id))
 
         accounts = []
         if hasattr(self.ib, "managedAccounts"):
@@ -312,26 +316,7 @@ class LiveTickWindow(QMainWindow):
         self._update_status()
         QApplication.processEvents()
         try:
-            try:
-                self.ib.connect(
-                    self._ib_host,
-                    self._ib_port,
-                    clientId=self._ib_client_id,
-                    readonly=self._ib_readonly,
-                    timeout=1.0,
-                )
-            except TypeError:
-                self.ib.connect(
-                    self._ib_host,
-                    self._ib_port,
-                    clientId=self._ib_client_id,
-                    readonly=self._ib_readonly,
-                )
-            if self.ticker is None:
-                eurusd = Forex("EURUSD")
-                self.ticker = self.ib.reqMktData(eurusd)
-            if hasattr(self.ib, "reqAccountSummary"):
-                self.ib.reqAccountSummary()
+            self.ticker = self.ib_client.connect_and_prepare(self.ticker)
         except Exception as exc:
             self._last_connect_error = str(exc)
         finally:

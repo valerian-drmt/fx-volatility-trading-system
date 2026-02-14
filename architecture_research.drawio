@@ -1,0 +1,52 @@
+<mxfile host="drawio-plugin" modified="2026-02-13T10:01:23.724Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" version="22.1.22" etag="PUYOU98oilm4AOHQIG0e" type="embed">
+  <diagram id="research" name="Research and Training">
+    <mxGraphModel dx="1255" dy="914" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="fetcher" value="Fetch&#xa;src/data/fetcher.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="280" y="70" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="features" value="Features&#xa;src/data/features.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="280" y="190" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="labels" value="Labels&#xa;src/data/labels.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="280" y="310" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="prep" value="Preprocess&#xa;src/data/preprocessing.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="275" y="430" width="190" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="trainer" value="Train&#xa;src/ml/trainer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="280" y="560" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="model" value="Model&#xa;src/ml/models" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="280" y="690" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="analysis" value="Analysis&#xa;src/data/analysis.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="560" y="250" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_fetcher_features" value="raw data" style="endArrow=block;html=1;" parent="1" source="fetcher" target="features" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_features_labels" value="feature set" style="endArrow=block;html=1;" parent="1" source="features" target="labels" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_labels_prep" value="labeled data" style="endArrow=block;html=1;" parent="1" source="labels" target="prep" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_prep_trainer" value="tensors" style="endArrow=block;html=1;" parent="1" source="prep" target="trainer" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_trainer_model" value="fit" style="endArrow=block;html=1;" parent="1" source="trainer" target="model" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_features_analysis" value="EDA" style="endArrow=block;html=1;dashed=1;" parent="1" source="features" target="analysis" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_labels_analysis" value="metrics" style="endArrow=block;html=1;dashed=1;" parent="1" source="labels" target="analysis" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
