@@ -1,0 +1,404 @@
+<mxfile host="drawio-plugin" modified="2026-02-14T14:08:08.607Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" version="22.1.22" etag="_87bi_klk9nfiDKstA6J" type="embed">
+  <diagram id="ib-client-requests-all-methods" name="IBClient - One Method One Output">
+    <mxGraphModel dx="1244" dy="914" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="2800" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="m01" value="__init__(self, ib, ticker, host, port, client_id, readonly)&#xa;Initialize IB client and internal attributes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="180" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m02" value="connect(self, timeout=1.0)&#xa;Open connection to IBKR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="250" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m03" value="connect_and_prepare(self)&#xa;Connect, then prepare ticker and account summary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="320" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m04" value="is_connected(self)&#xa;Connected?" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="390" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m05" value="process_messages(self)&#xa;Process pending IB messages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="460" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m06" value="_is_valid_price(value)&#xa;Valid price?" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="530" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m07" value="get_latest_bid_ask(self)&#xa;Get latest valid bid/ask" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="600" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m08" value="get_portfolio_snapshot(self)&#xa;Get account summary and positions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="670" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m09" value="cancel_account_summary(self)&#xa;Stop account summary stream" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="740" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m10" value="get_connection_mode(self)&#xa;Return read-only/read-write mode" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="810" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m11" value="get_environment(self)&#xa;Return paper/live from port mapping" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="880" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m12" value="get_account(self)&#xa;Get primary IB account id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="950" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m13" value="supports_server_time(self)&#xa;Server time supported?" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1020" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m14" value="get_server_time_and_latency(self)&#xa;Get server clock time and latency" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1090" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m15" value="get_status_snapshot(self)&#xa;Build aggregated status snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1160" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m16" value="get_market_snapshot(contract, wait_seconds=1.0)&#xa;Get one-shot market quote snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1230" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m17" value="get_historical_bars(contract, duration, bar_size, what_to_show, use_rth)&#xa;Get historical OHLC bars" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1300" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m18" value="get_head_timestamp(contract, what_to_show, use_rth)&#xa;Get earliest historical timestamp" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1370" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m19" value="qualify_contract(contract)&#xa;Qualify contract and resolve conId" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1440" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m20" value="get_contract_details(contract)&#xa;Get metadata for the contract" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1510" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m21" value="get_account_values()&#xa;Get account value tags snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1580" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m22" value="get_open_orders_snapshot()&#xa;Get current open orders snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1650" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m23" value="get_fills_snapshot()&#xa;Get received fills snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1720" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m24" value="get_executions_snapshot()&#xa;Get execution reports snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1790" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m25" value="get_pnl_snapshot(account, model_code)&#xa;Get account-level PnL object" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1860" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m26" value="get_pnl_single_snapshot(account, con_id, model_code)&#xa;Get symbol-level PnL object" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="1930" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m27" value="get_market_depth_snapshot(contract, num_rows, wait_seconds)&#xa;Get order book depth snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2000" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o01" value="Output: IBClient initialized" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="180" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o02" value="Output: connection established or exception" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="240" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o03" value="Output: ticker ready + account summary requested" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="310" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o04" value="Output: bool connected" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="390" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o05" value="Output: message cycle processed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="460" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o06" value="Output: bool valid_price" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="530" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o07" value="Output: (bid, ask) or (None, None)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="600" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o08" value="Output: (accountSummary, positions)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="670" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o09" value="Output: account summary stream canceled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="740" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o10" value="Output: mode string (read-only/read-write/unknown)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="810" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o11" value="Output: environment string (paper/live/unknown)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="880" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o12" value="Output: account id or &#39;--&#39;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="950" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o13" value="Output: bool supports_server_time" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1020" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o14" value="Output: (server_time, latency_ms)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1090" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o15" value="Output: status dict {connected, mode, env, client_id, account}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1160" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o16" value="Output: quote snapshot dict" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1230" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o17" value="Output: historical bars list" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1300" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o18" value="Output: head timestamp or None" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1370" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o19" value="Output: qualified contract or None" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1440" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o20" value="Output: contract details list" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1510" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o21" value="Output: account values list" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1580" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o22" value="Output: open orders list" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1650" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o23" value="Output: fills list" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1720" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o24" value="Output: executions list" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1790" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o25" value="Output: account PnL object or None" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1860" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o26" value="Output: symbol PnL object or None" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="1930" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o27" value="Output: market depth dict {bids, asks}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2000" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="r01" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m01" target="o01" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r02" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m02" target="o02" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r03" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m03" target="o03" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r04" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m04" target="o04" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r05" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m05" target="o05" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r06" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m06" target="o06" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r07" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m07" target="o07" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r08" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m08" target="o08" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r09" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m09" target="o09" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r10" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m10" target="o10" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r11" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m11" target="o11" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r12" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m12" target="o12" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r13" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m13" target="o13" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r14" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m14" target="o14" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r15" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m15" target="o15" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r16" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m16" target="o16" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r17" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m17" target="o17" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r18" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m18" target="o18" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r19" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m19" target="o19" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r20" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m20" target="o20" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r21" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m21" target="o21" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r22" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m22" target="o22" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r23" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m23" target="o23" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r24" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m24" target="o24" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r25" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m25" target="o25" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r26" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m26" target="o26" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="r27" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m27" target="o27" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+              <mxCell id="i28" value="Input: group_name + tags" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="20" y="2070" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m28" value="request_account_summary(self, group_name, tags)&#xa;Send reqAccountSummary request to IB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2070" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o28" value="Output: account summary subscription started or error" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2070" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="i29" value="Input: contract + generic_tick_list + snapshot + regulatory_snapshot" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="20" y="2140" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m29" value="request_market_data(self, contract, generic_tick_list, snapshot, regulatory_snapshot)&#xa;Send reqMktData request to IB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2140" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o29" value="Output: ticker subscription object or snapshot ticker" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2140" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="i30" value="Input: contract" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="20" y="2210" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m30" value="cancel_market_data(self, contract)&#xa;Send cancelMktData request to IB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2210" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o30" value="Output: market data subscription canceled" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2210" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="i31" value="Input: contract + order" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="20" y="2280" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m31" value="place_order(self, contract, order)&#xa;Send placeOrder request to IB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2280" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o31" value="Output: Trade object (submitted order) or error" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2280" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="i32" value="Input: trade_or_order" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="20" y="2350" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m32" value="cancel_order(self, trade_or_order)&#xa;Send cancelOrder request to IB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2350" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o32" value="Output: cancellation request acknowledged" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2350" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="i33" value="Input: contract + order_with_existing_order_id" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="20" y="2420" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m33" value="replace_order(self, contract, order_with_existing_order_id)&#xa;Modify existing order via placeOrder" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2420" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o33" value="Output: Trade object (modified order) or error" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2420" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="i34" value="Input: contract + order" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="20" y="2490" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m34" value="what_if_order(self, contract, order)&#xa;Send whatIfOrder request to IB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2490" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o34" value="Output: what-if order state (margin/commission impact)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2490" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="i35" value="Input: none" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="20" y="2560" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m35" value="request_all_open_orders(self)&#xa;Send reqAllOpenOrders request to IB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2560" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o35" value="Output: all open orders synchronized" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2560" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="i36" value="Input: api_only flag" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="20" y="2630" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m36" value="request_completed_orders(self, api_only=False)&#xa;Send reqCompletedOrders request to IB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2630" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o36" value="Output: completed orders list" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2630" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="i37" value="Input: none" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="20" y="2700" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="m37" value="get_open_trades_snapshot(self)&#xa;Request current open trades/status from IB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="260" y="2700" width="460" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="o37" value="Output: open trades list" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="810" y="2700" width="380" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ri28" value="input" style="endArrow=block;html=1;dashed=1;" parent="1" source="i28" target="m28" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ro28" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m28" target="o28" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ri29" value="input" style="endArrow=block;html=1;dashed=1;" parent="1" source="i29" target="m29" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ro29" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m29" target="o29" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ri30" value="input" style="endArrow=block;html=1;dashed=1;" parent="1" source="i30" target="m30" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ro30" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m30" target="o30" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ri31" value="input" style="endArrow=block;html=1;dashed=1;" parent="1" source="i31" target="m31" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ro31" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m31" target="o31" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ri32" value="input" style="endArrow=block;html=1;dashed=1;" parent="1" source="i32" target="m32" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ro32" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m32" target="o32" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ri33" value="input" style="endArrow=block;html=1;dashed=1;" parent="1" source="i33" target="m33" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ro33" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m33" target="o33" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ri34" value="input" style="endArrow=block;html=1;dashed=1;" parent="1" source="i34" target="m34" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ro34" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m34" target="o34" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ri35" value="input" style="endArrow=block;html=1;dashed=1;" parent="1" source="i35" target="m35" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ro35" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m35" target="o35" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ri36" value="input" style="endArrow=block;html=1;dashed=1;" parent="1" source="i36" target="m36" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ro36" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m36" target="o36" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ri37" value="input" style="endArrow=block;html=1;dashed=1;" parent="1" source="i37" target="m37" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ro37" value="output" style="endArrow=block;html=1;dashed=1;" parent="1" source="m37" target="o37" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
+

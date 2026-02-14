@@ -1,4 +1,3 @@
-import math
 import time
 from collections import deque
 
@@ -23,23 +22,13 @@ from ui.panels.status_panel import StatusPanel
 class ServerTimeWorker(QtCore.QThread):
     result = QtCore.pyqtSignal(str, str)
 
-    def __init__(self, ib: IB):
+    def __init__(self, ib_client: IBClient):
         super().__init__()
-        self.ib = ib
+        self.ib_client = ib_client
 
     def run(self):
-        try:
-            start = time.time()
-            server_time = self.ib.reqCurrentTime()
-            elapsed_ms = int((time.time() - start) * 1000)
-            if isinstance(server_time, (int, float)):
-                server_dt = time.localtime(server_time)
-                time_text = time.strftime("%H:%M:%S", server_dt)
-            else:
-                time_text = server_time.strftime("%H:%M:%S")
-            self.result.emit(time_text, f"{elapsed_ms} ms")
-        except Exception:
-            self.result.emit("--", "--")
+        time_text, latency_text = self.ib_client.get_server_time_and_latency()
+        self.result.emit(time_text, latency_text)
 
 
 class LiveTickWindow(QMainWindow):
@@ -55,21 +44,16 @@ class LiveTickWindow(QMainWindow):
     ):
         super().__init__()
 
-        self.ib = ib
-        self.ticker = ticker
         self.max_candles = max_candles
         self.setObjectName("live_tick_window")
         self.ib_client = IBClient(
             ib=ib,
+            ticker=ticker,
             host=host,
             port=port,
             client_id=client_id,
             readonly=readonly,
         )
-
-        # last valid quote
-        self.last_bid = None
-        self.last_ask = None
 
         # --- tick state ---
         self.tick_index = 0
@@ -151,24 +135,17 @@ class LiveTickWindow(QMainWindow):
         3) Update the tick plot.
         """
         self._update_status()
-        if not self.ib.isConnected() or self.ticker is None:
+        if not self.ib_client.is_connected():
             return
 
-        self.ib.sleep(0)
+        self.ib_client.process_messages()
         self._update_portfolio_value()
 
-        bid = self.ticker.bid
-        ask = self.ticker.ask
-
-        if bid is not None and not math.isnan(bid):
-            self.last_bid = bid
-        if ask is not None and not math.isnan(ask):
-            self.last_ask = ask
-
-        if self.last_bid is None or self.last_ask is None:
+        bid, ask = self.ib_client.get_latest_bid_ask()
+        if bid is None or ask is None:
             return
 
-        self._update_tick_series(self.last_bid, self.last_ask)
+        self._update_tick_series(bid, ask)
 
     def _update_tick_series(self, bid: float, ask: float):
         self.tick_index += 1
@@ -194,24 +171,16 @@ class LiveTickWindow(QMainWindow):
         self.plot.setXRange(self.tick_x[0], self.tick_x[-1], padding=0.02)
 
     def _update_portfolio_value(self):
-        if not self.ib.isConnected():
+        if not self.ib_client.is_connected():
             return
-        summary = self.ib.accountSummary()
+        summary, positions = self.ib_client.get_portfolio_snapshot()
         self.portfolio_panel.update_summary(summary)
-
-        positions = []
-        if hasattr(self.ib, "positions"):
-            try:
-                positions = self.ib.positions()
-            except Exception:
-                positions = []
         self.portfolio_panel.update_positions(positions)
 
     def closeEvent(self, event):
         try:
             self._save_layout()
-            if hasattr(self.ib, "cancelAccountSummary"):
-                self.ib.cancelAccountSummary()
+            self.ib_client.cancel_account_summary()
         finally:
             super().closeEvent(event)
 
@@ -271,34 +240,14 @@ class LiveTickWindow(QMainWindow):
         if self._last_status_sec == now_sec:
             return
         self._last_status_sec = now_sec
-        connected = self.ib.isConnected()
+        status = self.ib_client.get_status_snapshot()
+        connected = status["connected"]
         self.status_panel.set_connection_state(connected, self._connecting)
         self.status_panel.set_reconnect_enabled(not self._connecting)
-
-        client = getattr(self.ib, "client", None)
-        readonly = getattr(client, "readonly", None) if client is not None else None
-        if readonly is None:
-            mode = "unknown"
-        else:
-            mode = "read-only" if readonly else "read-write"
-        self.status_panel.set_mode(mode)
-
-        port = self.ib_client.port
-        if port in (4002, 7497):
-            env_text = "paper"
-        elif port in (4001, 7496):
-            env_text = "live"
-        else:
-            env_text = "unknown"
-        self.status_panel.set_env(env_text)
-
-        self.status_panel.set_client_id(str(self.ib_client.client_id))
-
-        accounts = []
-        if hasattr(self.ib, "managedAccounts"):
-            accounts = self.ib.managedAccounts()
-        account_text = accounts[0] if accounts else "--"
-        self.status_panel.set_account(account_text)
+        self.status_panel.set_mode(status["mode"])
+        self.status_panel.set_env(status["env"])
+        self.status_panel.set_client_id(status["client_id"])
+        self.status_panel.set_account(status["account"])
 
         if not connected:
             self._latency_ms_text = "--"
@@ -310,13 +259,13 @@ class LiveTickWindow(QMainWindow):
             self._start_server_time_sync()
 
     def _start_connect(self):
-        if self._connecting or self.ib.isConnected():
+        if self._connecting or self.ib_client.is_connected():
             return
         self._connecting = True
         self._update_status()
         QApplication.processEvents()
         try:
-            self.ticker = self.ib_client.connect_and_prepare(self.ticker)
+            self.ib_client.connect_and_prepare()
         except Exception as exc:
             self._last_connect_error = str(exc)
         finally:
@@ -330,9 +279,9 @@ class LiveTickWindow(QMainWindow):
                     return
             except RuntimeError:
                 self._server_time_worker = None
-        if not hasattr(self.ib, "reqCurrentTime"):
+        if not self.ib_client.supports_server_time():
             return
-        self._server_time_worker = ServerTimeWorker(self.ib)
+        self._server_time_worker = ServerTimeWorker(self.ib_client)
         self._server_time_worker.result.connect(self._on_server_time_result)
         self._server_time_worker.finished.connect(self._on_server_time_finished)
         self._server_time_worker.start()
