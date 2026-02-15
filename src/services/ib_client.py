@@ -51,6 +51,13 @@ class IBClient:
     def is_connected(self) -> bool:
         return bool(self.ib.isConnected())
 
+    def get_connection_state(self, connecting: bool = False) -> str:
+        if self.is_connected():
+            return "connected"
+        if connecting:
+            return "connecting"
+        return "disconnected"
+
     def process_messages(self):
         self.ib.sleep(0)
 
