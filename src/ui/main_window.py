@@ -130,12 +130,13 @@ class LiveTickWindow(QMainWindow):
     def update_data_and_plot(self):
         """
         Periodic callback.
-        1) Process IB messages.
-        2) Read latest bid/ask.
-        3) Update the tick plot.
+        1) Check connectivity.
+        2) Refresh status panel.
+        3) Process IB messages and update UI data.
         """
+        connected = self.ib_client.is_connected()
         self._update_status()
-        if not self.ib_client.is_connected():
+        if not connected:
             return
 
         self.ib_client.process_messages()
@@ -241,8 +242,9 @@ class LiveTickWindow(QMainWindow):
             return
         self._last_status_sec = now_sec
         status = self.ib_client.get_status_snapshot()
-        connected = status["connected"]
-        self.status_panel.set_connection_state(connected, self._connecting)
+        connection_state = self.ib_client.get_connection_state(connecting=self._connecting)
+        connected = connection_state == "connected"
+        self.status_panel.set_connection_state(connection_state)
         self.status_panel.set_reconnect_enabled(not self._connecting)
         self.status_panel.set_mode(status["mode"])
         self.status_panel.set_env(status["env"])

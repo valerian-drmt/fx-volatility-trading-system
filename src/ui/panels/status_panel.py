@@ -54,11 +54,12 @@ class StatusPanel(QWidget):
         layout.addLayout(form)
         layout.addStretch(1)
 
-    def set_connection_state(self, connected: bool, connecting: bool):
-        if connected:
+    def set_connection_state(self, state: str):
+        state = (state or "").lower()
+        if state == "connected":
             text = "Connected"
             color = "#2ecc71"
-        elif connecting:
+        elif state == "connecting":
             text = "Connecting"
             color = "#f1c40f"
         else:
