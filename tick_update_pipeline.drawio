@@ -1,0 +1,144 @@
+﻿<mxfile host="drawio-plugin" modified="2026-02-17T16:20:00.000Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" version="22.1.22" type="embed">
+  <diagram id="tick-pipeline" name="Tick Update Pipeline">
+    <mxGraphModel dx="1800" dy="980" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="n_app" value="src/app.py&lt;br&gt;main()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="40" y="40" width="210" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_run" value="src/controller.py&lt;br&gt;Controller.run()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1">
+          <mxGeometry x="300" y="40" width="250" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_connect" value="_connect_ib()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1">
+          <mxGeometry x="600" y="40" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_prepare" value="IBClient.connect_and_prepare()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="830" y="40" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_ib_connect" value="ib.connect(...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="1140" y="10" width="170" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="n_req_mkt" value="ib.reqMktData(Forex('EURUSD'))&lt;br&gt;sets ticker" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="1140" y="70" width="230" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_create_window" value="_create_window(ticker)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1">
+          <mxGeometry x="830" y="150" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_window_init" value="LiveTickWindow.__init__&lt;br&gt;creates IBClient(ticker=...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="540" y="150" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_timer" value="QTimer interval = 100ms&lt;br&gt;timeout -&gt; update_data_and_plot()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="240" y="150" width="270" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="n_update" value="update_data_and_plot()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="40" y="250" width="210" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_is_connected" value="ib_client.is_connected()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="40" y="340" width="210" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_status" value="_update_status()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="40" y="430" width="210" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d_connected" value="connected ?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="310" y="350" width="130" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="n_return_disconnected" value="return&lt;br&gt;(no tick update)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="500" y="360" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_process" value="ib_client.process_messages()&lt;br&gt;ib.sleep(0)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="40" y="520" width="250" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_portfolio" value="_update_portfolio_value()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="40" y="610" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_bid_ask" value="ib_client.get_latest_bid_ask()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="40" y="700" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d_bidask" value="bid/ask available ?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="330" y="690" width="150" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="n_return_nodata" value="return&lt;br&gt;(wait next timer tick)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="540" y="705" width="190" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_series" value="_update_tick_series(bid, ask)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="40" y="800" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="n_plot" value="bid_item.setData(...)&lt;br&gt;ask_item.setData(...)&lt;br&gt;_autoscale_main_plot()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="40" y="890" width="290" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="n_note" value="Note: current live tick pipeline does NOT use&lt;br&gt;src/services/data_feed.py or ib_client_bis.py" style="shape=note;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="820" y="320" width="360" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" value="" style="endArrow=block;html=1;" parent="1" source="n_app" target="n_run" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="" style="endArrow=block;html=1;" parent="1" source="n_run" target="n_connect" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="" style="endArrow=block;html=1;" parent="1" source="n_connect" target="n_prepare" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="" style="endArrow=block;html=1;" parent="1" source="n_prepare" target="n_ib_connect" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="" style="endArrow=block;html=1;" parent="1" source="n_prepare" target="n_req_mkt" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="returns ticker" style="endArrow=block;html=1;" parent="1" source="n_prepare" target="n_create_window" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="" style="endArrow=block;html=1;" parent="1" source="n_create_window" target="n_window_init" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="" style="endArrow=block;html=1;" parent="1" source="n_window_init" target="n_timer" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="" style="endArrow=block;html=1;" parent="1" source="n_timer" target="n_update" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="" style="endArrow=block;html=1;" parent="1" source="n_update" target="n_is_connected" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="" style="endArrow=block;html=1;" parent="1" source="n_is_connected" target="n_status" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" value="" style="endArrow=block;html=1;" parent="1" source="n_status" target="d_connected" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" value="No" style="endArrow=block;html=1;" parent="1" source="d_connected" target="n_return_disconnected" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" value="Yes" style="endArrow=block;html=1;" parent="1" source="d_connected" target="n_process" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="250" y="550" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" value="" style="endArrow=block;html=1;" parent="1" source="n_process" target="n_portfolio" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" value="" style="endArrow=block;html=1;" parent="1" source="n_portfolio" target="n_bid_ask" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e17" value="" style="endArrow=block;html=1;" parent="1" source="n_bid_ask" target="d_bidask" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e18" value="No" style="endArrow=block;html=1;" parent="1" source="d_bidask" target="n_return_nodata" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e19" value="Yes" style="endArrow=block;html=1;" parent="1" source="d_bidask" target="n_series" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="250" y="830" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e20" value="" style="endArrow=block;html=1;" parent="1" source="n_series" target="n_plot" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
+
