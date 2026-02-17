@@ -8,6 +8,7 @@ import pyqtgraph as pg
 
 from ib_insync import IB
 from services.ib_client import IBClient
+from services.pipeline_runner import PipelineRunner
 
 from ui.panels.chart_panel import ChartPanel
 from ui.panels.performance_panel import PerformancePanel
@@ -41,6 +42,7 @@ class LiveTickWindow(QMainWindow):
         port: int = 4002,
         client_id: int = 2,
         readonly: bool = True,
+        connect_on_start: bool = True,
     ):
         super().__init__()
 
@@ -72,6 +74,7 @@ class LiveTickWindow(QMainWindow):
         self._latency_ms_text = "--"
         self._connecting = False
         self._server_time_worker = None
+        self._pipeline_runner = None
         self._last_connect_error = ""
 
         self.chart_panel = ChartPanel()
@@ -120,33 +123,22 @@ class LiveTickWindow(QMainWindow):
 
         self._init_window_menu()
         self._restore_layout()
-        QTimer.singleShot(0, self._start_connect)
+        if connect_on_start:
+            QTimer.singleShot(0, self._start_connect)
 
-        self.timer = QTimer(self)
-        self.timer.setInterval(100)
-        self.timer.timeout.connect(self.update_data_and_plot)
-        self.timer.start()
+        self._pipeline_runner = PipelineRunner(
+            ib_client=self.ib_client,
+            update_status=self._update_status,
+            update_portfolio=self._update_portfolio_value,
+            update_ticks=self._update_tick_series,
+            interval_ms=100,
+            parent=self,
+        )
+        self._pipeline_runner.start()
 
     def update_data_and_plot(self):
-        """
-        Periodic callback.
-        1) Check connectivity.
-        2) Refresh status panel.
-        3) Process IB messages and update UI data.
-        """
-        connected = self.ib_client.is_connected()
-        self._update_status()
-        if not connected:
-            return
-
-        self.ib_client.process_messages()
-        self._update_portfolio_value()
-
-        bid, ask = self.ib_client.get_latest_bid_ask()
-        if bid is None or ask is None:
-            return
-
-        self._update_tick_series(bid, ask)
+        if self._pipeline_runner is not None:
+            self._pipeline_runner.run_once()
 
     def _update_tick_series(self, bid: float, ask: float):
         self.tick_index += 1
@@ -180,6 +172,8 @@ class LiveTickWindow(QMainWindow):
 
     def closeEvent(self, event):
         try:
+            if self._pipeline_runner is not None:
+                self._pipeline_runner.stop()
             self._save_layout()
             self.ib_client.cancel_account_summary()
         finally:
