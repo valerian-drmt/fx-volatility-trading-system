@@ -8,11 +8,11 @@ class IBClient:
     def __init__(
         self,
         ib: IB,
+        host: str,
+        port: int,
+        client_id: int,
+        readonly: bool,
         ticker=None,
-        host: str = "127.0.0.1",
-        port: int = 4002,
-        client_id: int = 2,
-        readonly: bool = True,
     ):
         self.ib = ib
         self.host = host
@@ -23,7 +23,7 @@ class IBClient:
         self.last_bid = None
         self.last_ask = None
 
-    def connect(self, timeout: float = 1.0):
+    def connect_and_prepare(self, ticker: str = "EURUSD", timeout: float = 1.0):
         try:
             self.ib.connect(
                 self.host,
@@ -39,11 +39,8 @@ class IBClient:
                 clientId=self.client_id,
                 readonly=self.readonly,
             )
-
-    def connect_and_prepare(self):
-        self.connect()
-        if self.ticker is None:
-            self.ticker = self.ib.reqMktData(Forex("EURUSD"))
+        if self.ticker is None and ticker:
+            self.ticker = self.ib.reqMktData(Forex(ticker))
         if hasattr(self.ib, "reqAccountSummary"):
             self.ib.reqAccountSummary()
         return self.ticker

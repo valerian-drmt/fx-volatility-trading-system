@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (
     QTableWidget,
     QAbstractItemView,
     QHeaderView,
+    QTableWidgetItem,
 )
 
 
@@ -40,3 +41,22 @@ class RobotsPanel(QWidget):
 
         layout.addLayout(controls)
         layout.addWidget(self.table)
+
+    def update(self, payload=None):
+        if not isinstance(payload, dict):
+            return
+        robots = payload.get("robots") or []
+
+        self.table.setRowCount(len(robots))
+        for row, robot in enumerate(robots):
+            name = robot.get("name", "") if isinstance(robot, dict) else getattr(robot, "name", "")
+            instrument = robot.get("instrument", "") if isinstance(robot, dict) else getattr(robot, "instrument", "")
+            state = robot.get("state", "") if isinstance(robot, dict) else getattr(robot, "state", "")
+            last_action = robot.get("last_action", "") if isinstance(robot, dict) else getattr(robot, "last_action", "")
+            pnl = robot.get("pnl", "") if isinstance(robot, dict) else getattr(robot, "pnl", "")
+
+            self.table.setItem(row, 0, QTableWidgetItem(str(name)))
+            self.table.setItem(row, 1, QTableWidgetItem(str(instrument)))
+            self.table.setItem(row, 2, QTableWidgetItem(str(state)))
+            self.table.setItem(row, 3, QTableWidgetItem(str(last_action)))
+            self.table.setItem(row, 4, QTableWidgetItem(str(pnl)))

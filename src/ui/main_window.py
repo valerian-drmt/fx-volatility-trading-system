@@ -1,14 +1,7 @@
-import time
-from collections import deque
+from typing import Callable
 
 from PyQt5 import QtCore
-from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QDockWidget, QFrame, QSizePolicy
-import pyqtgraph as pg
-
-from ib_insync import IB
-from services.ib_client import IBClient
-from services.pipeline_runner import PipelineRunner
+from PyQt5.QtWidgets import QMainWindow, QWidget, QLabel, QDockWidget, QFrame, QSizePolicy
 
 from ui.panels.chart_panel import ChartPanel
 from ui.panels.performance_panel import PerformancePanel
@@ -20,75 +13,69 @@ from ui.panels.portfolio_panel import PortfolioPanel
 from ui.panels.status_panel import StatusPanel
 
 
-class ServerTimeWorker(QtCore.QThread):
-    result = QtCore.pyqtSignal(str, str)
-
-    def __init__(self, ib_client: IBClient):
-        super().__init__()
-        self.ib_client = ib_client
-
-    def run(self):
-        time_text, latency_text = self.ib_client.get_server_time_and_latency()
-        self.result.emit(time_text, latency_text)
-
-
-class LiveTickWindow(QMainWindow):
-    def __init__(
-        self,
-        ib: IB,
-        ticker=None,
-        max_candles: int = 500,
-        host: str = "127.0.0.1",
-        port: int = 4002,
-        client_id: int = 2,
-        readonly: bool = True,
-        connect_on_start: bool = True,
-    ):
-        super().__init__()
-
-        self.max_candles = max_candles
-        self.setObjectName("live_tick_window")
-        self.ib_client = IBClient(
-            ib=ib,
-            ticker=ticker,
+class MainWindow(QMainWindow):
+    @classmethod
+    def create_main_window(
+        cls,
+        max_candles: int,
+        on_connect: Callable[[], None] | None,
+        on_start_live_streaming: Callable[[], None] | None,
+        on_save_settings: Callable[[], None] | None,
+        host: str,
+        port: int,
+        client_id: int,
+        readonly: bool,
+        market_symbol: str,
+    ) -> "MainWindow":
+        return cls(
+            max_candles=max_candles,
+            on_connect=on_connect,
+            on_start_live_streaming=on_start_live_streaming,
+            on_save_settings=on_save_settings,
             host=host,
             port=port,
             client_id=client_id,
             readonly=readonly,
+            market_symbol=market_symbol,
         )
 
-        # --- tick state ---
-        self.tick_index = 0
-        self.tick_x = deque(maxlen=max_candles)
-        self.tick_bid = deque(maxlen=max_candles)
-        self.tick_ask = deque(maxlen=max_candles)
+    def __init__(
+        self,
+        max_candles: int,
+        on_connect: Callable[[], None] | None,
+        on_start_live_streaming: Callable[[], None] | None,
+        on_save_settings: Callable[[], None] | None,
+        host: str,
+        port: int,
+        client_id: int,
+        readonly: bool,
+        market_symbol: str,
+    ):
+        super().__init__()
 
-        # --- UI setup ---
+        self.setObjectName("main_window")
         self.setWindowTitle("Trading Control Center - IBKR")
 
-        self._docks = {}
-        self._settings = QtCore.QSettings("TradingApp", "LiveTick")
-        self._last_status_sec = None
-        self._last_server_sync_sec = None
-        self._server_time_text = "--"
-        self._latency_ms_text = "--"
-        self._connecting = False
-        self._server_time_worker = None
-        self._pipeline_runner = None
-        self._last_connect_error = ""
-
-        self.chart_panel = ChartPanel()
-        self.plot = self.chart_panel.main_plot
-        self.performance_panel = PerformancePanel()
-        self.logs_panel = LogsPanel()
-        self.robots_panel = RobotsPanel()
-        self.orders_panel = OrdersPanel()
-        self.risk_panel = RiskPanel()
-        self.portfolio_panel = PortfolioPanel()
-        self.status_panel = StatusPanel(self._start_connect)
-
-        self.bid_item = self.plot.plot([], [], pen=pg.mkPen('g', width=1))
-        self.ask_item = self.plot.plot([], [], pen=pg.mkPen('r', width=1))
+        self.chart_panel = self.create_chart_panel(max_candles=max_candles)
+        self.performance_panel = self.create_performance_panel()
+        self.logs_panel = self.create_logs_panel()
+        self.robots_panel = self.create_robots_panel()
+        self.orders_panel = self.create_orders_panel()
+        self.risk_panel = self.create_risk_panel()
+        self.portfolio_panel = self.create_portfolio_panel()
+        self.status_panel = self.create_status_panel(
+            on_connect,
+            on_start_live_streaming,
+            on_save_settings,
+            connection_defaults={
+                "host": host,
+                "port": port,
+                "client_id": client_id,
+                "readonly": readonly,
+                "max_candles": max_candles,
+                "market_symbol": market_symbol,
+            },
+        )
 
         dock_spacer = QWidget()
         dock_spacer.setObjectName("dock_spacer")
@@ -101,85 +88,96 @@ class LiveTickWindow(QMainWindow):
             QMainWindow.AnimatedDocks | QMainWindow.AllowNestedDocks | QMainWindow.AllowTabbedDocks
         )
 
-        robots_dock = self._add_dock("Robots", QtCore.Qt.LeftDockWidgetArea, self.robots_panel)
-        chart_dock = self._add_dock("Chart", QtCore.Qt.LeftDockWidgetArea, self.chart_panel)
-        portfolio_dock = self._add_dock("Portfolio", QtCore.Qt.RightDockWidgetArea, self.portfolio_panel)
-        performance_dock = self._add_dock("Performance", QtCore.Qt.RightDockWidgetArea, self.performance_panel)
-        risk_dock = self._add_dock("Risk", QtCore.Qt.RightDockWidgetArea, self.risk_panel)
-        status_dock = self._add_dock("Status", QtCore.Qt.RightDockWidgetArea, self.status_panel)
-        orders_dock = self._add_dock("Orders", QtCore.Qt.BottomDockWidgetArea, self.orders_panel)
-        logs_dock = self._add_dock("Logs", QtCore.Qt.BottomDockWidgetArea, self.logs_panel)
+        self._docks = {}
+        self._docks["Robots"] = self.create_dock("Robots", QtCore.Qt.LeftDockWidgetArea, self.robots_panel)
+        self._docks["Chart"] = self.create_dock("Chart", QtCore.Qt.LeftDockWidgetArea, self.chart_panel)
+        self._docks["Status"] = self.create_dock("Status", QtCore.Qt.LeftDockWidgetArea, self.status_panel)
+        self._docks["Logs"] = self.create_dock("Logs", QtCore.Qt.LeftDockWidgetArea, self.logs_panel)
+        self._docks["Orders"] = self.create_dock("Orders", QtCore.Qt.LeftDockWidgetArea, self.orders_panel)
+        self._docks["Portfolio"] = self.create_dock("Portfolio", QtCore.Qt.RightDockWidgetArea, self.portfolio_panel)
+        self._docks["Performance"] = self.create_dock(
+            "Performance", QtCore.Qt.RightDockWidgetArea, self.performance_panel
+        )
+        self._docks["Risk"] = self.create_dock("Risk", QtCore.Qt.RightDockWidgetArea, self.risk_panel)
 
-        self._apply_default_layout(
-            robots_dock,
-            chart_dock,
-            portfolio_dock,
-            performance_dock,
-            risk_dock,
-            status_dock,
-            orders_dock,
-            logs_dock,
+        # 3-column layout:
+        # col1 = Status / Robots / Logs
+        # col2 = Chart / Orders
+        # col3 = Portfolio / Performance / Risk
+        self.splitDockWidget(self._docks["Status"], self._docks["Chart"], QtCore.Qt.Horizontal)
+        self.splitDockWidget(self._docks["Chart"], self._docks["Portfolio"], QtCore.Qt.Horizontal)
+        self.splitDockWidget(self._docks["Status"], self._docks["Robots"], QtCore.Qt.Vertical)
+        self.splitDockWidget(self._docks["Robots"], self._docks["Logs"], QtCore.Qt.Vertical)
+        self.splitDockWidget(self._docks["Chart"], self._docks["Orders"], QtCore.Qt.Vertical)
+        self.splitDockWidget(self._docks["Portfolio"], self._docks["Performance"], QtCore.Qt.Vertical)
+        self.splitDockWidget(self._docks["Performance"], self._docks["Risk"], QtCore.Qt.Vertical)
+
+        first_col_initial_width = max(
+            self.status_panel.minimumSizeHint().width(),
+            self.status_panel.minimumWidth(),
+            1,
+        )
+        self.resizeDocks(
+            [self._docks["Status"], self._docks["Chart"], self._docks["Portfolio"]],
+            [first_col_initial_width, 860, 300],
+            QtCore.Qt.Horizontal,
+        )
+        self.resizeDocks(
+            [self._docks["Status"], self._docks["Robots"], self._docks["Logs"]],
+            [140, 280, 200],
+            QtCore.Qt.Vertical,
+        )
+        self.resizeDocks(
+            [self._docks["Chart"], self._docks["Orders"]],
+            [650, 230],
+            QtCore.Qt.Vertical,
+        )
+        self.resizeDocks(
+            [self._docks["Portfolio"], self._docks["Performance"], self._docks["Risk"]],
+            [220, 220, 200],
+            QtCore.Qt.Vertical,
         )
 
-        self._init_window_menu()
-        self._restore_layout()
-        if connect_on_start:
-            QTimer.singleShot(0, self._start_connect)
+        window_menu = self.menuBar().addMenu("Window")
+        for title in ("Chart", "Robots", "Portfolio", "Performance", "Risk", "Status", "Orders", "Logs"):
+            window_menu.addAction(self._docks[title].toggleViewAction())
 
-        self._pipeline_runner = PipelineRunner(
-            ib_client=self.ib_client,
-            update_status=self._update_status,
-            update_portfolio=self._update_portfolio_value,
-            update_ticks=self._update_tick_series,
-            interval_ms=100,
-            parent=self,
+    def create_chart_panel(self, max_candles: int) -> ChartPanel:
+        return ChartPanel(max_candles=max_candles)
+
+    def create_performance_panel(self) -> PerformancePanel:
+        return PerformancePanel()
+
+    def create_logs_panel(self) -> LogsPanel:
+        return LogsPanel()
+
+    def create_robots_panel(self) -> RobotsPanel:
+        return RobotsPanel()
+
+    def create_orders_panel(self) -> OrdersPanel:
+        return OrdersPanel()
+
+    def create_risk_panel(self) -> RiskPanel:
+        return RiskPanel()
+
+    def create_portfolio_panel(self) -> PortfolioPanel:
+        return PortfolioPanel()
+
+    def create_status_panel(
+        self,
+        on_connect: Callable[[], None] | None,
+        on_start_live_streaming: Callable[[], None] | None,
+        on_save_settings: Callable[[], None] | None,
+        connection_defaults: dict,
+    ) -> StatusPanel:
+        return StatusPanel(
+            on_connect,
+            on_start_live_streaming,
+            on_save_settings,
+            connection_defaults=connection_defaults,
         )
-        self._pipeline_runner.start()
 
-    def update_data_and_plot(self):
-        if self._pipeline_runner is not None:
-            self._pipeline_runner.run_once()
-
-    def _update_tick_series(self, bid: float, ask: float):
-        self.tick_index += 1
-        self.tick_x.append(self.tick_index)
-        self.tick_bid.append(bid)
-        self.tick_ask.append(ask)
-
-        self.bid_item.setData(list(self.tick_x), list(self.tick_bid))
-        self.ask_item.setData(list(self.tick_x), list(self.tick_ask))
-        self._autoscale_main_plot()
-
-    def _autoscale_main_plot(self):
-        if not self.tick_x:
-            return
-
-        min_price = min(min(self.tick_bid), min(self.tick_ask))
-        max_price = max(max(self.tick_bid), max(self.tick_ask))
-        if min_price == max_price:
-            pad = max(1e-4, abs(min_price) * 0.001)
-        else:
-            pad = (max_price - min_price) * 0.1
-        self.plot.setYRange(min_price - pad, max_price + pad, padding=0)
-        self.plot.setXRange(self.tick_x[0], self.tick_x[-1], padding=0.02)
-
-    def _update_portfolio_value(self):
-        if not self.ib_client.is_connected():
-            return
-        summary, positions = self.ib_client.get_portfolio_snapshot()
-        self.portfolio_panel.update_summary(summary)
-        self.portfolio_panel.update_positions(positions)
-
-    def closeEvent(self, event):
-        try:
-            if self._pipeline_runner is not None:
-                self._pipeline_runner.stop()
-            self._save_layout()
-            self.ib_client.cancel_account_summary()
-        finally:
-            super().closeEvent(event)
-
-    def _add_dock(self, title: str, area: QtCore.Qt.DockWidgetArea, widget: QWidget = None):
+    def create_dock(self, title: str, area: QtCore.Qt.DockWidgetArea, widget: QWidget | None):
         dock = QDockWidget(title, self)
         dock.setObjectName(f"dock_{title.lower()}")
         dock.setFeatures(
@@ -193,116 +191,4 @@ class LiveTickWindow(QMainWindow):
         else:
             dock.setWidget(widget)
         self.addDockWidget(area, dock)
-        self._docks[title] = dock
         return dock
-
-    def _apply_default_layout(
-        self,
-        robots_dock: QDockWidget,
-        chart_dock: QDockWidget,
-        portfolio_dock: QDockWidget,
-        performance_dock: QDockWidget,
-        risk_dock: QDockWidget,
-        status_dock: QDockWidget,
-        orders_dock: QDockWidget,
-        logs_dock: QDockWidget,
-    ):
-        self.splitDockWidget(robots_dock, chart_dock, QtCore.Qt.Horizontal)
-        self.splitDockWidget(chart_dock, portfolio_dock, QtCore.Qt.Horizontal)
-        self.splitDockWidget(portfolio_dock, performance_dock, QtCore.Qt.Vertical)
-        self.splitDockWidget(performance_dock, risk_dock, QtCore.Qt.Vertical)
-        self.splitDockWidget(risk_dock, status_dock, QtCore.Qt.Vertical)
-        self.splitDockWidget(chart_dock, orders_dock, QtCore.Qt.Vertical)
-        self.splitDockWidget(orders_dock, logs_dock, QtCore.Qt.Vertical)
-
-        self.resizeDocks([robots_dock, chart_dock, portfolio_dock], [220, 860, 260], QtCore.Qt.Horizontal)
-        self.resizeDocks([chart_dock, orders_dock, logs_dock], [640, 200, 180], QtCore.Qt.Vertical)
-        self.resizeDocks(
-            [portfolio_dock, performance_dock, risk_dock, status_dock],
-            [200, 200, 160, 120],
-            QtCore.Qt.Vertical,
-        )
-
-    def _init_window_menu(self):
-        window_menu = self.menuBar().addMenu("Window")
-        for title in ("Chart", "Robots", "Portfolio", "Performance", "Risk", "Status", "Orders", "Logs"):
-            dock = self._docks.get(title)
-            if dock is not None:
-                window_menu.addAction(dock.toggleViewAction())
-
-    def _update_status(self):
-        now_sec = int(time.time())
-        if self._last_status_sec == now_sec:
-            return
-        self._last_status_sec = now_sec
-        status = self.ib_client.get_status_snapshot()
-        connection_state = self.ib_client.get_connection_state(connecting=self._connecting)
-        connected = connection_state == "connected"
-        self.status_panel.set_connection_state(connection_state)
-        self.status_panel.set_reconnect_enabled(not self._connecting)
-        self.status_panel.set_mode(status["mode"])
-        self.status_panel.set_env(status["env"])
-        self.status_panel.set_client_id(status["client_id"])
-        self.status_panel.set_account(status["account"])
-
-        if not connected:
-            self._latency_ms_text = "--"
-            self._server_time_text = "--"
-        self.status_panel.set_latency(self._latency_ms_text)
-        self.status_panel.set_server_time(self._server_time_text)
-
-        if connected and (self._last_server_sync_sec is None or now_sec - self._last_server_sync_sec >= 10):
-            self._start_server_time_sync()
-
-    def _start_connect(self):
-        if self._connecting or self.ib_client.is_connected():
-            return
-        self._connecting = True
-        self._update_status()
-        QApplication.processEvents()
-        try:
-            self.ib_client.connect_and_prepare()
-        except Exception as exc:
-            self._last_connect_error = str(exc)
-        finally:
-            self._connecting = False
-            self._update_status()
-
-    def _start_server_time_sync(self):
-        if self._server_time_worker is not None:
-            try:
-                if self._server_time_worker.isRunning():
-                    return
-            except RuntimeError:
-                self._server_time_worker = None
-        if not self.ib_client.supports_server_time():
-            return
-        self._server_time_worker = ServerTimeWorker(self.ib_client)
-        self._server_time_worker.result.connect(self._on_server_time_result)
-        self._server_time_worker.finished.connect(self._on_server_time_finished)
-        self._server_time_worker.start()
-
-    def _on_server_time_result(self, time_text: str, latency_text: str):
-        self._server_time_text = time_text
-        self._latency_ms_text = latency_text
-        self._last_server_sync_sec = int(time.time())
-        self.status_panel.set_latency(self._latency_ms_text)
-        self.status_panel.set_server_time(self._server_time_text)
-
-    def _on_server_time_finished(self):
-        if self._server_time_worker is not None:
-            self._server_time_worker.deleteLater()
-        self._server_time_worker = None
-
-    def _restore_layout(self):
-        geometry = self._settings.value("window/geometry", type=QtCore.QByteArray)
-        state = self._settings.value("window/state", type=QtCore.QByteArray)
-        if geometry:
-            self.restoreGeometry(geometry)
-        if state:
-            self.restoreState(state)
-
-    def _save_layout(self):
-        self._settings.setValue("window/geometry", self.saveGeometry())
-        self._settings.setValue("window/state", self.saveState())
-        self._settings.sync()

@@ -1,62 +1,11 @@
-from PyQt5 import QtCore, QtGui
+from collections import deque
+
 from PyQt5.QtWidgets import QWidget, QGridLayout
 import pyqtgraph as pg
 
 
-class CandlestickItem(pg.GraphicsObject):
-    """
-    Simple candlestick item for pyqtgraph.
-    Data is a list of (x, open, high, low, close).
-    """
-    def __init__(self, data):
-        super().__init__()
-        self.data = data
-        self.picture = None
-        self._generate_picture()
-
-    def set_data(self, data):
-        self.data = data
-        self._generate_picture()
-        self.update()
-
-    def _generate_picture(self):
-        self.picture = QtGui.QPicture()
-        p = QtGui.QPainter(self.picture)
-        w = 0.6  # candle body width
-
-        for (x, open_, high, low, close) in self.data:
-            if close >= open_:
-                pen = pg.mkPen('g', width=1)
-                brush = pg.mkBrush('g')
-            else:
-                pen = pg.mkPen('r', width=1)
-                brush = pg.mkBrush('r')
-
-            p.setPen(pen)
-            p.setBrush(brush)
-
-            # wick
-            p.drawLine(QtCore.QPointF(x, low), QtCore.QPointF(x, high))
-
-            # body
-            rect = QtCore.QRectF(x - w / 2, open_, w, close - open_)
-            p.drawRect(rect.normalized())
-
-        p.end()
-
-    def paint(self, painter, *args):
-        if self.picture is not None:
-            painter.drawPicture(0, 0, self.picture)
-
-    def boundingRect(self):
-        if self.picture is None:
-            return QtCore.QRectF()
-        r = self.picture.boundingRect()
-        return QtCore.QRectF(r.left(), r.top(), r.width(), r.height())
-
-
 class ChartPanel(QWidget):
-    def __init__(self):
+    def __init__(self, max_candles: int = 500):
         super().__init__()
 
         layout = QGridLayout(self)
@@ -74,3 +23,42 @@ class ChartPanel(QWidget):
             layout.addWidget(plot, index // 2, index % 2)
 
         self.main_plot = self.plots[0]
+        self.bid_item = self.main_plot.plot([], [], pen=pg.mkPen("g", width=1))
+        self.ask_item = self.main_plot.plot([], [], pen=pg.mkPen("r", width=1))
+
+        self.tick_index = 0
+        self.tick_x = deque(maxlen=max_candles)
+        self.tick_bid = deque(maxlen=max_candles)
+        self.tick_ask = deque(maxlen=max_candles)
+
+    def update(self, payload=None):
+        if not isinstance(payload, dict):
+            return
+
+        max_candles = payload.get("max_candles")
+        if isinstance(max_candles, int) and max_candles > 0 and self.tick_x.maxlen != max_candles:
+            self.tick_x = deque(self.tick_x, maxlen=max_candles)
+            self.tick_bid = deque(self.tick_bid, maxlen=max_candles)
+            self.tick_ask = deque(self.tick_ask, maxlen=max_candles)
+
+        bid = payload.get("bid")
+        ask = payload.get("ask")
+        if bid is None or ask is None:
+            return
+
+        self.tick_index += 1
+        self.tick_x.append(self.tick_index)
+        self.tick_bid.append(bid)
+        self.tick_ask.append(ask)
+
+        self.bid_item.setData(list(self.tick_x), list(self.tick_bid))
+        self.ask_item.setData(list(self.tick_x), list(self.tick_ask))
+
+        min_price = min(min(self.tick_bid), min(self.tick_ask))
+        max_price = max(max(self.tick_bid), max(self.tick_ask))
+        if min_price == max_price:
+            pad = max(1e-4, abs(min_price) * 0.001)
+        else:
+            pad = (max_price - min_price) * 0.1
+        self.main_plot.setYRange(min_price - pad, max_price + pad, padding=0)
+        self.main_plot.setXRange(self.tick_x[0], self.tick_x[-1], padding=0.02)

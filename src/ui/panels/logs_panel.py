@@ -41,5 +41,17 @@ class LogsPanel(QWidget):
         layout.addLayout(controls)
         layout.addWidget(self.log_view)
 
-    def append_log(self, message: str):
-        self.log_view.append(message)
+    def update(self, payload=None):
+        if not isinstance(payload, dict):
+            return
+        if payload.get("clear"):
+            self.log_view.clear()
+            return
+
+        message = payload.get("message")
+        if message:
+            self.log_view.append(str(message))
+
+        messages = payload.get("messages") or []
+        for item in messages:
+            self.log_view.append(str(item))
