@@ -17,46 +17,41 @@ class MainWindow(QMainWindow):
     @classmethod
     def create_main_window(
         cls,
-        max_candles: int,
         on_connect: Callable[[], None] | None,
         on_start_live_streaming: Callable[[], None] | None,
         on_save_settings: Callable[[], None] | None,
-        host: str,
-        port: int,
-        client_id: int,
-        readonly: bool,
-        market_symbol: str,
+        on_save_live_streaming_settings: Callable[[], None] | None,
+        status_defaults: dict,
+        live_streaming_defaults: dict,
     ) -> "MainWindow":
         return cls(
-            max_candles=max_candles,
             on_connect=on_connect,
             on_start_live_streaming=on_start_live_streaming,
             on_save_settings=on_save_settings,
-            host=host,
-            port=port,
-            client_id=client_id,
-            readonly=readonly,
-            market_symbol=market_symbol,
+            on_save_live_streaming_settings=on_save_live_streaming_settings,
+            status_defaults=status_defaults,
+            live_streaming_defaults=live_streaming_defaults,
         )
 
     def __init__(
         self,
-        max_candles: int,
         on_connect: Callable[[], None] | None,
         on_start_live_streaming: Callable[[], None] | None,
         on_save_settings: Callable[[], None] | None,
-        host: str,
-        port: int,
-        client_id: int,
-        readonly: bool,
-        market_symbol: str,
+        on_save_live_streaming_settings: Callable[[], None] | None,
+        status_defaults: dict,
+        live_streaming_defaults: dict,
     ):
         super().__init__()
 
         self.setObjectName("main_window")
         self.setWindowTitle("Trading Control Center - IBKR")
 
-        self.chart_panel = self.create_chart_panel(max_candles=max_candles)
+        self.chart_panel = self.create_chart_panel(
+            max_candles=int(live_streaming_defaults["max_candles"]),
+            market_symbol=str(live_streaming_defaults["market_symbol"]).upper(),
+            on_apply_and_save=on_save_live_streaming_settings,
+        )
         self.performance_panel = self.create_performance_panel()
         self.logs_panel = self.create_logs_panel()
         self.robots_panel = self.create_robots_panel()
@@ -67,14 +62,7 @@ class MainWindow(QMainWindow):
             on_connect,
             on_start_live_streaming,
             on_save_settings,
-            connection_defaults={
-                "host": host,
-                "port": port,
-                "client_id": client_id,
-                "readonly": readonly,
-                "max_candles": max_candles,
-                "market_symbol": market_symbol,
-            },
+            connection_defaults=status_defaults,
         )
 
         dock_spacer = QWidget()
@@ -112,11 +100,9 @@ class MainWindow(QMainWindow):
         self.splitDockWidget(self._docks["Portfolio"], self._docks["Performance"], QtCore.Qt.Vertical)
         self.splitDockWidget(self._docks["Performance"], self._docks["Risk"], QtCore.Qt.Vertical)
 
-        first_col_initial_width = max(
-            self.status_panel.minimumSizeHint().width(),
-            self.status_panel.minimumWidth(),
-            1,
-        )
+        first_col_initial_width = max(1, self.status_panel.minimumSizeHint().width())
+        self.status_panel.setMinimumWidth(first_col_initial_width)
+        self._docks["Status"].setMinimumWidth(first_col_initial_width)
         self.resizeDocks(
             [self._docks["Status"], self._docks["Chart"], self._docks["Portfolio"]],
             [first_col_initial_width, 860, 300],
@@ -142,8 +128,17 @@ class MainWindow(QMainWindow):
         for title in ("Chart", "Robots", "Portfolio", "Performance", "Risk", "Status", "Orders", "Logs"):
             window_menu.addAction(self._docks[title].toggleViewAction())
 
-    def create_chart_panel(self, max_candles: int) -> ChartPanel:
-        return ChartPanel(max_candles=max_candles)
+    def create_chart_panel(
+        self,
+        max_candles: int,
+        market_symbol: str,
+        on_apply_and_save: Callable[[], None] | None,
+    ) -> ChartPanel:
+        return ChartPanel(
+            max_candles=max_candles,
+            market_symbol=market_symbol,
+            on_apply_and_save=on_apply_and_save,
+        )
 
     def create_performance_panel(self) -> PerformancePanel:
         return PerformancePanel()

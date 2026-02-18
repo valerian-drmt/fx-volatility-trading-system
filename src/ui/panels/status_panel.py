@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
 class StatusPanel(QWidget):
     def __init__(self, on_connect, on_start_live_streaming, on_save_settings, connection_defaults):
         super().__init__()
-        required = ("host", "port", "client_id", "readonly", "max_candles", "market_symbol")
+        required = ("host", "port", "client_id", "readonly")
         missing = [key for key in required if key not in connection_defaults]
         if missing:
             raise ValueError(f"Missing connection defaults keys: {', '.join(missing)}")
@@ -23,8 +23,6 @@ class StatusPanel(QWidget):
         port_default = int(connection_defaults["port"])
         client_id_default = int(connection_defaults["client_id"])
         readonly_default = bool(connection_defaults["readonly"])
-        max_candles_default = int(connection_defaults["max_candles"])
-        market_symbol_default = str(connection_defaults["market_symbol"]).upper()
 
         self.status_dot = QLabel()
         self.status_dot.setFixedSize(10, 10)
@@ -46,10 +44,6 @@ class StatusPanel(QWidget):
         self.client_id_input.setValue(client_id_default)
         self.readonly_input = QCheckBox("Read-only")
         self.readonly_input.setChecked(readonly_default)
-        self.max_candles_input = QSpinBox()
-        self.max_candles_input.setRange(10, 50000)
-        self.max_candles_input.setValue(max_candles_default)
-        self.market_symbol_input = QLineEdit(market_symbol_default)
 
         self.connect_button = QPushButton("Connect")
         self.connect_button.clicked.connect(on_connect)
@@ -90,9 +84,7 @@ class StatusPanel(QWidget):
         form.addRow("Host:", self.host_input)
         form.addRow("Port:", self.port_input)
         form.addRow("ClientId cfg:", self.client_id_input)
-        form.addRow("Readonly:", self.readonly_input)
-        form.addRow("Max candles:", self.max_candles_input)
-        form.addRow("Market symbol:", self.market_symbol_input)
+        form.addRow("Read Only:", self.readonly_input)
 
         layout.addLayout(header_layout)
         layout.addLayout(form)
