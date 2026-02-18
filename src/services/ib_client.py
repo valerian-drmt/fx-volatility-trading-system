@@ -23,7 +23,7 @@ class IBClient:
         self.last_bid = None
         self.last_ask = None
 
-    def connect_and_prepare(self, ticker: str = "EURUSD", timeout: float = 1.0):
+    def connect_and_prepare(self, ticker: str, timeout: float = 1.0):
         try:
             self.ib.connect(
                 self.host,

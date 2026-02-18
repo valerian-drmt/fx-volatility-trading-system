@@ -1,8 +1,12 @@
 {
-  "host": "127.0.0.1",
-  "port": 4002,
-  "client_id": 2,
-  "readonly": false,
-  "max_candles": 500,
-  "market_symbol": "EURUSD"
+  "status": {
+    "host": "127.0.0.1",
+    "port": 4002,
+    "client_id": 2,
+    "readonly": false
+  },
+  "live_streaming": {
+    "max_candles": 5000,
+    "market_symbol": "EURUSD"
+  }
 }

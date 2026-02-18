@@ -1,23 +1,23 @@
-﻿<mxfile host="drawio-plugin" modified="2026-02-17T16:05:40.946Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" etag="W1rZlkrYxI3Sz-zRTzAg" version="22.1.22" type="embed">
+﻿<mxfile host="drawio-plugin" modified="2026-02-18T12:47:04.647Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" etag="B5vY1B-GQwID_ZLeWf3N" version="22.1.22" type="embed">
   <diagram id="dataflow-live" name="Live Trading Dataflow">
-    <mxGraphModel dx="2838" dy="914" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
+    <mxGraphModel dx="2789" dy="914" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
         <mxCell id="ui_main" value="src/ui/main_window.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-          <mxGeometry x="900" y="220" width="230" height="60" as="geometry" />
+          <mxGeometry x="1370" y="220" width="230" height="60" as="geometry" />
         </mxCell>
         <mxCell id="app_entry" value="src/app.py&lt;br&gt;App launcher (single main)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
-          <mxGeometry x="-270" y="205" width="220" height="60" as="geometry" />
+          <mxGeometry x="-250" y="230" width="220" height="60" as="geometry" />
         </mxCell>
         <mxCell id="domain_events" value="src/domain/events.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
           <mxGeometry x="-130" y="600" width="200" height="50" as="geometry" />
         </mxCell>
         <mxCell id="domain_types" value="src/domain/types.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
-          <mxGeometry x="60" y="20" width="200" height="50" as="geometry" />
+          <mxGeometry x="-40" width="200" height="50" as="geometry" />
         </mxCell>
         <mxCell id="utils_formatters" value="src/utils/formatters.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
-          <mxGeometry x="1100" y="490" width="220" height="50" as="geometry" />
+          <mxGeometry x="1020" y="580" width="220" height="50" as="geometry" />
         </mxCell>
         <mxCell id="utils_throttle" value="src/utils/throttle.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
           <mxGeometry x="80" y="690" width="220" height="50" as="geometry" />
@@ -34,7 +34,7 @@
           </mxGeometry>
         </mxCell>
         <mxCell id="svc_data_feed" value="src/services/data_feed.py&lt;br&gt;Data aggregation service&lt;br&gt;(market/account/orders - no lifecycle)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
-          <mxGeometry x="710" y="510" width="240" height="70" as="geometry" />
+          <mxGeometry x="700" y="470" width="240" height="70" as="geometry" />
         </mxCell>
         <mxCell id="svc_robot_mgr" value="src/services/robot_manager.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="-70" y="110" width="260" height="50" as="geometry" />
@@ -43,37 +43,37 @@
           <mxGeometry x="655" y="110" width="260" height="50" as="geometry" />
         </mxCell>
         <mxCell id="svc_perf" value="src/services/performance_service.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
-          <mxGeometry x="570" y="700" width="280" height="50" as="geometry" />
+          <mxGeometry x="680" y="670" width="280" height="50" as="geometry" />
         </mxCell>
         <mxCell id="svc_controller" value="src/controller.py&lt;br&gt;Lifecycle orchestrator&lt;br&gt;(start/stop services + threads)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
           <mxGeometry x="370" y="230" width="250" height="70" as="geometry" />
         </mxCell>
         <mxCell id="svc_pipeline_runner" value="src/services/pipeline_runner.py&lt;br&gt;Update loop runner&lt;br&gt;(schedule every x ms / x ticks)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
-          <mxGeometry x="180" y="490" width="250" height="70" as="geometry" />
+          <mxGeometry x="180" y="430" width="250" height="70" as="geometry" />
         </mxCell>
         <mxCell id="panel_chart" value="src/ui/panels/chart_panel.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-          <mxGeometry x="1340" y="70" width="260" height="50" as="geometry" />
+          <mxGeometry x="1810" y="70" width="260" height="50" as="geometry" />
         </mxCell>
         <mxCell id="panel_portfolio" value="src/ui/panels/portfolio_panel.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-          <mxGeometry x="1340" y="140" width="260" height="50" as="geometry" />
+          <mxGeometry x="1810" y="140" width="260" height="50" as="geometry" />
         </mxCell>
         <mxCell id="panel_orders" value="src/ui/panels/orders_panel.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-          <mxGeometry x="1340" y="210" width="260" height="50" as="geometry" />
+          <mxGeometry x="1810" y="210" width="260" height="50" as="geometry" />
         </mxCell>
         <mxCell id="panel_robots" value="src/ui/panels/robots_panel.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-          <mxGeometry x="1340" y="280" width="260" height="50" as="geometry" />
+          <mxGeometry x="1810" y="280" width="260" height="50" as="geometry" />
         </mxCell>
         <mxCell id="panel_performance" value="src/ui/panels/performance_panel.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-          <mxGeometry x="1340" y="420" width="260" height="50" as="geometry" />
+          <mxGeometry x="1810" y="420" width="260" height="50" as="geometry" />
         </mxCell>
         <mxCell id="panel_risk" value="src/ui/panels/risk_panel.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-          <mxGeometry x="1340" y="350" width="260" height="50" as="geometry" />
+          <mxGeometry x="1810" y="350" width="260" height="50" as="geometry" />
         </mxCell>
         <mxCell id="panel_status" value="src/ui/panels/status_panel.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-          <mxGeometry x="1340" y="490" width="260" height="50" as="geometry" />
+          <mxGeometry x="1810" y="490" width="260" height="50" as="geometry" />
         </mxCell>
         <mxCell id="panel_logs" value="src/ui/panels/logs_panel.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-          <mxGeometry x="1340" width="260" height="50" as="geometry" />
+          <mxGeometry x="1810" width="260" height="50" as="geometry" />
         </mxCell>
         <mxCell id="ext_ib_client" value="IB Client (TWS/Gateway API)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" parent="1" vertex="1">
           <mxGeometry x="360" width="240" height="60" as="geometry" />
