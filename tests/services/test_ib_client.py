@@ -263,13 +263,13 @@ class FakeIB:
         return self.open_trades_result
 
 
-def test_connect_calls_ib_with_expected_args():
+def test_connect_and_prepare_calls_ib_with_expected_args():
     from services.ib_client import IBClient
 
     ib = FakeIB()
     client = IBClient(ib=ib, host="127.0.0.1", port=4002, client_id=7, readonly=True)
 
-    client.connect(timeout=1.5)
+    client.connect_and_prepare(ticker="", timeout=1.5)
 
     assert ib.connected is True
     assert ib.connect_calls[-1] == {
@@ -281,14 +281,14 @@ def test_connect_calls_ib_with_expected_args():
     }
 
 
-def test_connect_falls_back_when_timeout_not_supported():
+def test_connect_and_prepare_falls_back_when_timeout_not_supported():
     from services.ib_client import IBClient
 
     ib = FakeIB()
     ib.raise_type_error_on_timeout = True
     client = IBClient(ib=ib)
 
-    client.connect(timeout=1.0)
+    client.connect_and_prepare(ticker="", timeout=1.0)
 
     assert len(ib.connect_calls) == 2
     assert ib.connect_calls[0]["timeout"] == 1.0

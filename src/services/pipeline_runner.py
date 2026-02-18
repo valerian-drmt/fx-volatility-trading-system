@@ -11,7 +11,7 @@ class PipelineRunner(QObject):
     """
     Periodic runner for the live UI pipeline.
 
-    It drives the same sequence previously in LiveTickWindow.update_data_and_plot:
+    It drives the periodic live data loop from the controller:
     - update status
     - process IB messages
     - update portfolio

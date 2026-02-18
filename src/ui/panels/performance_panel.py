@@ -35,3 +35,11 @@ class PerformancePanel(QWidget):
         layout.addWidget(self.plot)
         layout.addWidget(stats_widget)
         layout.addStretch(1)
+
+    def update(self, payload=None):
+        if not isinstance(payload, dict):
+            return
+        self.total_pnl_label.setText(str(payload.get("total_pnl", "--")))
+        self.max_dd_label.setText(str(payload.get("max_dd", "--")))
+        self.trades_label.setText(str(payload.get("trades", "--")))
+        self.win_rate_label.setText(str(payload.get("win_rate", "--")))

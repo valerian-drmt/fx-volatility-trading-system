@@ -1,0 +1,82 @@
+<mxfile host="drawio-plugin" modified="2026-02-18T18:30:00.000Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36" version="22.1.22" type="embed">
+  <diagram id="app-launch-only" name="App Launch Only Flow">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="App Launch Flow (Only What Runs On Startup)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=22;fontStyle=1;" parent="1" vertex="1">
+          <mxGeometry x="40" y="20" width="760" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step1" value="1. src/app.py&#xa;main()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="60" y="100" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="step2" value="2. Controller.__init__()&#xa;create QApplication, IB, IBClient" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="340" y="100" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="step3" value="3. Controller.run()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="700" y="100" width="200" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="step4" value="4. Controller._create_window()&#xa;create LiveTickWindow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="960" y="100" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="step5" value="5. LiveTickWindow.__init__()&#xa;build panels/docks&#xa;set initial disconnected status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="1320" y="100" width="360" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="step6" value="6. Controller._setup_services()&#xa;create PipelineRunner (instance only)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="960" y="250" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="step7" value="7. Start status QTimer (1s)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="1320" y="250" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="step8" value="8. Controller._refresh_status(force=True)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+          <mxGeometry x="960" y="390" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="step9" value="9. IBClient status reads&#xa;get_status_snapshot()&#xa;get_connection_state()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="1320" y="390" width="260" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="step10" value="10. LiveTickWindow.update_status_view(...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="960" y="530" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="step11" value="11. QApplication.exec_()&#xa;event loop idle, waiting for buttons" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+          <mxGeometry x="700" y="660" width="340" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="noteTitle" value="NOT CALLED DURING LAUNCH" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=16;fontStyle=1;fontColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="60" y="300" width="340" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="note1" value="- Controller._start_connect()&#xa;- IBClient.connect() / connect_and_prepare()&#xa;- Controller._start_live_streaming()&#xa;- PipelineRunner.start() / run_once()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="60" y="340" width="620" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" style="endArrow=block;html=1;rounded=0;" parent="1" source="step1" target="step2" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" style="endArrow=block;html=1;rounded=0;" parent="1" source="step2" target="step3" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" style="endArrow=block;html=1;rounded=0;" parent="1" source="step3" target="step4" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" style="endArrow=block;html=1;rounded=0;" parent="1" source="step4" target="step5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" style="endArrow=block;html=1;rounded=0;" parent="1" source="step4" target="step6" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" style="endArrow=block;html=1;rounded=0;" parent="1" source="step6" target="step7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" style="endArrow=block;html=1;rounded=0;" parent="1" source="step6" target="step8" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" style="endArrow=block;html=1;rounded=0;" parent="1" source="step8" target="step9" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" style="endArrow=block;html=1;rounded=0;" parent="1" source="step8" target="step10" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" style="endArrow=block;html=1;rounded=0;" parent="1" source="step10" target="step11" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

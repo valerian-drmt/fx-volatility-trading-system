@@ -67,3 +67,27 @@ class RiskPanel(QWidget):
         layout.addWidget(usage_group)
         layout.addWidget(controls_group)
         layout.addStretch(1)
+
+    def update(self, payload=None):
+        if not isinstance(payload, dict):
+            return
+        self.max_dd_label.setText(str(payload.get("max_dd", "--")))
+        self.max_pos_label.setText(str(payload.get("max_position", "--")))
+        self.max_loss_label.setText(str(payload.get("max_loss_day", "--")))
+        self.risk_used_label.setText(str(payload.get("risk_used", "--")))
+        self.margin_used_label.setText(str(payload.get("margin_used", "--")))
+
+        kill_switch = payload.get("kill_switch")
+        if kill_switch is not None:
+            self.kill_switch.setChecked(bool(kill_switch))
+
+        kill_reason = payload.get("kill_reason")
+        if kill_reason is not None:
+            self.kill_reason.setText(str(kill_reason))
+
+        risk_budget = payload.get("risk_budget")
+        if risk_budget is not None:
+            try:
+                self.risk_slider.setValue(int(risk_budget))
+            except (TypeError, ValueError):
+                pass

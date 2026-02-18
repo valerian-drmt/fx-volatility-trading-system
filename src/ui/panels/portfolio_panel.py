@@ -38,17 +38,21 @@ class PortfolioPanel(QWidget):
         layout.addWidget(self.exposure_label)
         layout.addStretch(1)
 
-    def update_summary(self, summary):
+    def update(self, payload=None):
+        if not isinstance(payload, dict):
+            return
+        summary = payload.get("summary") or []
+        positions = payload.get("positions") or []
+
         for item in summary:
-            label = self.fields.get(item.tag)
+            tag = getattr(item, "tag", None)
+            label = self.fields.get(tag)
             if label is None:
                 continue
-            if item.currency:
-                label.setText(f"{item.value} {item.currency}")
-            else:
-                label.setText(str(item.value))
+            value = getattr(item, "value", "--")
+            currency = getattr(item, "currency", "")
+            label.setText(f"{value} {currency}".strip())
 
-    def update_positions(self, positions):
         if not positions:
             self.exposure_label.setText("--")
             return
@@ -57,5 +61,6 @@ class PortfolioPanel(QWidget):
         for pos in positions[:5]:
             contract = getattr(pos, "contract", None)
             symbol = getattr(contract, "localSymbol", None) or getattr(contract, "symbol", None) or "?"
-            items.append(f"{symbol}:{pos.position}")
+            position_value = getattr(pos, "position", "?")
+            items.append(f"{symbol}:{position_value}")
         self.exposure_label.setText(", ".join(items))
