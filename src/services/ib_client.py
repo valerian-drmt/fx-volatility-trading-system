@@ -22,8 +22,10 @@ class IBClient:
         self.ticker = ticker
         self.last_bid = None
         self.last_ask = None
+        self._received_ticks = []
+        self._ticker_event_source = None
 
-    def connect_and_prepare(self, ticker: str, timeout: float = 1.0):
+    def connect(self, timeout: float = 1.0) -> bool:
         try:
             self.ib.connect(
                 self.host,
@@ -39,10 +41,51 @@ class IBClient:
                 clientId=self.client_id,
                 readonly=self.readonly,
             )
-        if self.ticker is None and ticker:
-            self.ticker = self.ib.reqMktData(Forex(ticker))
         if hasattr(self.ib, "reqAccountSummary"):
-            self.ib.reqAccountSummary()
+            try:
+                self.ib.reqAccountSummary()
+            except Exception:
+                pass
+        return self.is_connected()
+
+    def start_live_streaming(self, ticker: str) -> bool:
+        if not self.is_connected():
+            return False
+
+        symbol = str(ticker).strip().upper()
+        if not symbol:
+            return False
+
+        self.stop_live_streaming()
+        stream_ticker = self.request_market_data(Forex(symbol), snapshot=False, regulatory_snapshot=False)
+        if stream_ticker is None:
+            return False
+
+        self.ticker = stream_ticker
+        self._received_ticks = []
+        self.last_bid = None
+        self.last_ask = None
+        self._attach_ticker_listener()
+        return self.ticker is not None
+
+    def stop_live_streaming(self):
+        self._detach_ticker_listener()
+
+        contract = None
+        if self.ticker is not None:
+            contract = getattr(self.ticker, "contract", None)
+        if contract is not None:
+            self.cancel_market_data(contract)
+
+        self.ticker = None
+        self._received_ticks = []
+        self.last_bid = None
+        self.last_ask = None
+
+    def connect_and_prepare(self, ticker: str = "", timeout: float = 1.0):
+        self.connect(timeout=timeout)
+        if ticker:
+            self.start_live_streaming(ticker)
         return self.ticker
 
     def is_connected(self) -> bool:
@@ -55,8 +98,76 @@ class IBClient:
             return "connecting"
         return "disconnected"
 
-    def process_messages(self):
-        self.ib.sleep(0)
+    def process_messages(self) -> list[dict]:
+        if self.is_connected():
+            self.ib.sleep(0)
+        return self.drain_received_ticks()
+
+    def _attach_ticker_listener(self):
+        ticker = self.ticker
+        if ticker is None:
+            return
+
+        update_event = getattr(ticker, "updateEvent", None)
+        if update_event is None:
+            return
+
+        if self._ticker_event_source is ticker:
+            return
+
+        self._detach_ticker_listener()
+        try:
+            update_event += self._on_ticker_update
+            self._ticker_event_source = ticker
+        except Exception:
+            self._ticker_event_source = None
+
+    def _detach_ticker_listener(self):
+        if self._ticker_event_source is None:
+            return
+
+        update_event = getattr(self._ticker_event_source, "updateEvent", None)
+        if update_event is None:
+            self._ticker_event_source = None
+            return
+
+        try:
+            update_event -= self._on_ticker_update
+        except Exception:
+            pass
+        self._ticker_event_source = None
+
+    @staticmethod
+    def _format_tick_time(raw_time) -> str:
+        if raw_time is None:
+            return "--"
+        if hasattr(raw_time, "strftime"):
+            try:
+                return raw_time.strftime("%H:%M:%S.%f")[:-3]
+            except Exception:
+                return str(raw_time)
+        return str(raw_time)
+
+    def _on_ticker_update(self, ticker=None, *_):
+        source = ticker if ticker is not None else self.ticker
+        if source is None:
+            return
+
+        self._received_ticks.append(
+            {
+                "time": self._format_tick_time(getattr(source, "time", None)),
+                "bid": getattr(source, "bid", None),
+                "ask": getattr(source, "ask", None),
+                "bid_size": getattr(source, "bidSize", None),
+                "ask_size": getattr(source, "askSize", None),
+                "last": getattr(source, "last", None),
+            }
+        )
+
+    def drain_received_ticks(self) -> list[dict]:
+        ticks = self._received_ticks
+        self._received_ticks = []
+        return ticks
 
     @staticmethod
     def _is_valid_price(value) -> bool:

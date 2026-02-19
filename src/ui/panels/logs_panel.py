@@ -1,3 +1,7 @@
+import math
+import re
+
+from PyQt5.QtGui import QTextCursor
 from PyQt5.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -10,6 +14,10 @@ from PyQt5.QtWidgets import (
 
 
 class LogsPanel(QWidget):
+    _LOG_PREFIX_PATTERN = re.compile(r"^\[(?P<level>[^\]]+)\]\[(?P<source>[^\]]+)\]")
+    _MAX_ENTRIES = 4000
+    _PRICE_DECIMALS = 8
+
     def __init__(self):
         super().__init__()
 
@@ -24,7 +32,7 @@ class LogsPanel(QWidget):
         self.level_combo = QComboBox()
         self.level_combo.addItems(["ALL", "INFO", "WARN", "ERROR"])
         self.source_combo = QComboBox()
-        self.source_combo.addItems(["ALL", "system", "strategy", "execution"])
+        self.source_combo.addItems(["ALL", "system", "strategy", "execution", "market_tick"])
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Filter text...")
 
@@ -41,17 +49,163 @@ class LogsPanel(QWidget):
         layout.addLayout(controls)
         layout.addWidget(self.log_view)
 
+        self._entries: list[dict] = []
+
+        self.level_combo.currentTextChanged.connect(self._apply_filters)
+        self.source_combo.currentTextChanged.connect(self._apply_filters)
+        self.search_edit.textChanged.connect(self._apply_filters)
+
+    @staticmethod
+    def _format_tick_value(value) -> str:
+        if isinstance(value, (int, float)):
+            try:
+                if math.isnan(value):
+                    return "--"
+            except TypeError:
+                return str(value)
+            value_float = float(value)
+            return f"{value_float:.{LogsPanel._PRICE_DECIMALS}f}".rstrip("0").rstrip(".")
+        return "--" if value is None else str(value)
+
+    @staticmethod
+    def _format_tick_size(value) -> str:
+        if isinstance(value, (int, float)):
+            try:
+                if math.isnan(value):
+                    return "--"
+            except TypeError:
+                return str(value)
+            value_float = float(value)
+            if value_float.is_integer():
+                return str(int(value_float))
+            return f"{value_float:.2f}"
+        return "--" if value is None else str(value)
+
+    def _format_tick_log_message(self, tick: dict) -> str:
+        tick_time = str(tick.get("time", "--"))
+        bid = self._format_tick_value(tick.get("bid"))
+        ask = self._format_tick_value(tick.get("ask"))
+        bid_size = self._format_tick_size(tick.get("bid_size"))
+        ask_size = self._format_tick_size(tick.get("ask_size"))
+        last = self._format_tick_value(tick.get("last"))
+        return (
+            f"[INFO][market_tick] t={tick_time} "
+            f"bid={bid} ask={ask} bid_size={bid_size} ask_size={ask_size} last={last}"
+        )
+
+    @staticmethod
+    def _normalize_level(value: str) -> str:
+        level = str(value).strip().upper()
+        if level.startswith("WARN"):
+            return "WARN"
+        if level.startswith("ERR"):
+            return "ERROR"
+        if level.startswith("INFO"):
+            return "INFO"
+        return level
+
+    def _parse_log_entry(self, text: str) -> dict:
+        message = str(text)
+        level = "INFO"
+        source = "system"
+
+        match = self._LOG_PREFIX_PATTERN.match(message.strip())
+        if match:
+            parsed_level = self._normalize_level(match.group("level"))
+            parsed_source = str(match.group("source")).strip().lower()
+            if parsed_level:
+                level = parsed_level
+            if parsed_source:
+                source = parsed_source
+
+        return {
+            "text": message,
+            "text_lower": message.lower(),
+            "level": level,
+            "source": source,
+        }
+
+    def _ensure_source_exists(self, source: str):
+        if not source:
+            return
+        if self.source_combo.findText(source) < 0:
+            self.source_combo.addItem(source)
+
+    def _append_entry(self, message: str):
+        entry = self._parse_log_entry(message)
+        self._entries.append(entry)
+        dropped = False
+        overflow = len(self._entries) - self._MAX_ENTRIES
+        if overflow > 0:
+            del self._entries[:overflow]
+            dropped = True
+        self._ensure_source_exists(entry["source"])
+        return entry, dropped
+
+    def _has_default_filters(self) -> bool:
+        return (
+            self.level_combo.currentText().strip().upper() == "ALL"
+            and self.source_combo.currentText().strip().lower() == "all"
+            and not self.search_edit.text().strip()
+        )
+
+    def _matches_filters(self, entry: dict) -> bool:
+        selected_level = self.level_combo.currentText().strip().upper()
+        selected_source = self.source_combo.currentText().strip().lower()
+        search_text = self.search_edit.text().strip().lower()
+
+        if selected_level and selected_level != "ALL" and entry["level"] != selected_level:
+            return False
+        if selected_source and selected_source != "all" and entry["source"] != selected_source:
+            return False
+        if search_text and search_text not in entry["text_lower"]:
+            return False
+        return True
+
+    def _apply_filters(self, *_):
+        filtered_lines = [entry["text"] for entry in self._entries if self._matches_filters(entry)]
+        self.log_view.setPlainText("\n".join(filtered_lines))
+        cursor = self.log_view.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        self.log_view.setTextCursor(cursor)
+
     def update(self, payload=None):
         if not isinstance(payload, dict):
             return
         if payload.get("clear"):
+            self._entries.clear()
             self.log_view.clear()
             return
 
+        has_new_entries = False
+        dropped_entries = False
+        new_entries = []
+
+        ticks = payload.get("ticks") or []
+        for tick in ticks:
+            if isinstance(tick, dict):
+                entry, dropped = self._append_entry(self._format_tick_log_message(tick))
+                new_entries.append(entry)
+                dropped_entries = dropped_entries or dropped
+                has_new_entries = True
+
         message = payload.get("message")
         if message:
-            self.log_view.append(str(message))
+            entry, dropped = self._append_entry(str(message))
+            new_entries.append(entry)
+            dropped_entries = dropped_entries or dropped
+            has_new_entries = True
 
         messages = payload.get("messages") or []
         for item in messages:
-            self.log_view.append(str(item))
+            entry, dropped = self._append_entry(str(item))
+            new_entries.append(entry)
+            dropped_entries = dropped_entries or dropped
+            has_new_entries = True
+
+        if has_new_entries:
+            if self._has_default_filters() and not dropped_entries:
+                for entry in new_entries:
+                    self.log_view.append(entry["text"])
+            else:
+                self._apply_filters()

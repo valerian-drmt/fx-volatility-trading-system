@@ -19,6 +19,7 @@ class MainWindow(QMainWindow):
         cls,
         on_connect: Callable[[], None] | None,
         on_start_live_streaming: Callable[[], None] | None,
+        on_stop_live_streaming: Callable[[], None] | None,
         on_save_settings: Callable[[], None] | None,
         on_save_live_streaming_settings: Callable[[], None] | None,
         status_defaults: dict,
@@ -27,6 +28,7 @@ class MainWindow(QMainWindow):
         return cls(
             on_connect=on_connect,
             on_start_live_streaming=on_start_live_streaming,
+            on_stop_live_streaming=on_stop_live_streaming,
             on_save_settings=on_save_settings,
             on_save_live_streaming_settings=on_save_live_streaming_settings,
             status_defaults=status_defaults,
@@ -37,6 +39,7 @@ class MainWindow(QMainWindow):
         self,
         on_connect: Callable[[], None] | None,
         on_start_live_streaming: Callable[[], None] | None,
+        on_stop_live_streaming: Callable[[], None] | None,
         on_save_settings: Callable[[], None] | None,
         on_save_live_streaming_settings: Callable[[], None] | None,
         status_defaults: dict,
@@ -61,6 +64,7 @@ class MainWindow(QMainWindow):
         self.status_panel = self.create_status_panel(
             on_connect,
             on_start_live_streaming,
+            on_stop_live_streaming,
             on_save_settings,
             connection_defaults=status_defaults,
         )
@@ -162,12 +166,14 @@ class MainWindow(QMainWindow):
         self,
         on_connect: Callable[[], None] | None,
         on_start_live_streaming: Callable[[], None] | None,
+        on_stop_live_streaming: Callable[[], None] | None,
         on_save_settings: Callable[[], None] | None,
         connection_defaults: dict,
     ) -> StatusPanel:
         return StatusPanel(
             on_connect,
             on_start_live_streaming,
+            on_stop_live_streaming,
             on_save_settings,
             connection_defaults=connection_defaults,
         )

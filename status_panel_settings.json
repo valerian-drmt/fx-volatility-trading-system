@@ -6,7 +6,7 @@
     "readonly": false
   },
   "live_streaming": {
-    "max_candles": 5000,
+    "max_candles": 500,
     "market_symbol": "EURUSD"
   }
 }

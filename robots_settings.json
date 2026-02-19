@@ -1,0 +1,18 @@
+{
+  "robots": [
+    {
+      "name": "Terminator",
+      "instrument": "",
+      "state": "stopped",
+      "last_action": "Stopped",
+      "pnl": "--"
+    },
+    {
+      "name": "Nairlav",
+      "instrument": "",
+      "state": "stopped",
+      "last_action": "Stopped",
+      "pnl": "--"
+    }
+  ]
+}

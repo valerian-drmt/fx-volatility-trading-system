@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
 
 
 class StatusPanel(QWidget):
-    def __init__(self, on_connect, on_start_live_streaming, on_save_settings, connection_defaults):
+    def __init__(self, on_connect, on_start_live_streaming, on_stop_live_streaming, on_save_settings, connection_defaults):
         super().__init__()
         required = ("host", "port", "client_id", "readonly")
         missing = [key for key in required if key not in connection_defaults]
@@ -55,6 +55,12 @@ class StatusPanel(QWidget):
         self.live_stream_button = QPushButton("Start Live Streaming")
         self.live_stream_button.setEnabled(False)
         self.live_stream_button.clicked.connect(on_start_live_streaming)
+        self.stop_live_stream_button = QPushButton("Stop Live Streaming")
+        self.stop_live_stream_button.setEnabled(False)
+        if callable(on_stop_live_streaming):
+            self.stop_live_stream_button.clicked.connect(on_stop_live_streaming)
+        else:
+            self.stop_live_stream_button.setEnabled(False)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -69,6 +75,7 @@ class StatusPanel(QWidget):
         header_layout.addWidget(self.connect_button)
         header_layout.addWidget(self.save_button)
         header_layout.addWidget(self.live_stream_button)
+        header_layout.addWidget(self.stop_live_stream_button)
         header_layout.addStretch(1)
 
         form = QFormLayout()
@@ -124,9 +131,6 @@ class StatusPanel(QWidget):
         self.status_server_time_label.setText(server_time)
 
         self.connect_button.setEnabled(not connecting and not connected)
-        if pipeline_running:
-            self.live_stream_button.setText("Live Streaming Running")
-            self.live_stream_button.setEnabled(False)
-        else:
-            self.live_stream_button.setText("Start Live Streaming")
-            self.live_stream_button.setEnabled(connected and not connecting)
+        self.live_stream_button.setText("Start Live Streaming")
+        self.live_stream_button.setEnabled(connected and not connecting and not pipeline_running)
+        self.stop_live_stream_button.setEnabled(not connecting and pipeline_running)
