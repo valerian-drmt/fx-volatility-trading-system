@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import math
 from typing import Callable
 
 from PyQt5.QtCore import QObject, QTimer
 
 from services.ib_client import IBClient
+from services.pipeline_snapshot_thread import SnapshotThreadLoop
 
 
 class PipelineRunner(QObject):
@@ -12,11 +14,10 @@ class PipelineRunner(QObject):
     Periodic runner for the live UI pipeline.
 
     It drives the periodic live data loop from the controller:
-    - update status
-    - process IB messages
-    - update portfolio
-    - fetch latest bid/ask
-    - push tick update callback
+    - fast tick loop (status + ticks + logs + robot manager)
+    - slow chart loop (chart repaint cadence)
+    - collect slow snapshots asynchronously
+    - update slow panels from snapshot cache
     """
 
     def __init__(
@@ -31,6 +32,8 @@ class PipelineRunner(QObject):
         robots_panel,
         logs_panel,
         interval_ms: int = 100,
+        chart_interval_ms: int = 1000,
+        snapshot_interval_ms: int = 750,
         parent: QObject | None = None,
     ):
         super().__init__(parent)
@@ -43,22 +46,62 @@ class PipelineRunner(QObject):
         self.risk_panel = risk_panel
         self.robots_panel = robots_panel
         self.logs_panel = logs_panel
+        self._snapshot_payload_pending = False
+        self._chart_interval_ms = max(100, int(chart_interval_ms))
+        self._current_candle: dict | None = None
+        self._next_candle_index = 1
+        self._last_valid_tick_price: float | None = None
 
-        self._timer = QTimer(self)
-        self._timer.setInterval(interval_ms)
-        self._timer.timeout.connect(self.run_once)
+        self._snapshot_loop = SnapshotThreadLoop(
+            ib_client=self.ib_client,
+            interval_ms=snapshot_interval_ms,
+            parent=self,
+        )
+        self._snapshot_loop.payload_ready.connect(self._on_snapshot_payload_ready)
+        self._snapshot_loop.failed.connect(self._on_snapshot_payload_failed)
+
+        self._orders_payload_cache = {"open_orders": [], "fills": []}
+        self._portfolio_payload_cache = {"summary": [], "positions": []}
+        self._performance_payload_cache = None
+        self._risk_payload_cache = None
+        self._robots_payload_cache = None
+
+        self._tick_timer = QTimer(self)
+        self._tick_timer.setInterval(interval_ms)
+        self._tick_timer.timeout.connect(self.qtimer_tick_loop)
+
+        self._chart_timer = QTimer(self)
+        self._chart_timer.setInterval(self._chart_interval_ms)
+        self._chart_timer.timeout.connect(self.qtimer_chart_loop)
 
     def start(self):
-        self._timer.start()
+        self._snapshot_loop.start()
+        self._snapshot_payload_pending = True
+        self._current_candle = None
+        self._next_candle_index = 1
+        self._last_valid_tick_price = None
+        self._tick_timer.start()
+        self._chart_timer.start()
 
     def stop(self):
-        self._timer.stop()
+        self._tick_timer.stop()
+        self._chart_timer.stop()
+        self._snapshot_loop.stop()
+        self._current_candle = None
+        self._last_valid_tick_price = None
 
     def is_running(self) -> bool:
-        return self._timer.isActive()
+        return self._tick_timer.isActive() or self._chart_timer.isActive()
 
     def set_interval(self, interval_ms: int):
-        self._timer.setInterval(interval_ms)
+        self._tick_timer.setInterval(interval_ms)
+
+    def set_chart_interval(self, interval_ms: int):
+        self._chart_interval_ms = max(100, int(interval_ms))
+        self._chart_timer.setInterval(self._chart_interval_ms)
+
+    def set_snapshot_interval(self, interval_ms: int):
+        self._snapshot_loop.set_interval(interval_ms)
 
     def get_status_panel_payload(self) -> dict:
         status = self.ib_client.get_status_snapshot()
@@ -70,38 +113,116 @@ class PipelineRunner(QObject):
             "account": status.get("account", "--"),
         }
 
-    def get_chart_panel_payload(self) -> dict | None:
-        bid, ask = self.ib_client.get_latest_bid_ask()
-        if bid is None or ask is None:
+    @staticmethod
+    def _is_valid_tick_price(value) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, (int, float)):
+            return not math.isnan(value)
+        return False
+
+    def _get_tick_price(self, tick: dict) -> float | None:
+        bid = tick.get("bid")
+        ask = tick.get("ask")
+        last = tick.get("last")
+
+        candidate = None
+        has_bid = self._is_valid_tick_price(bid)
+        has_ask = self._is_valid_tick_price(ask)
+        if has_bid and has_ask:
+            candidate = (float(bid) + float(ask)) / 2.0
+        elif has_bid:
+            candidate = float(bid)
+        elif has_ask:
+            candidate = float(ask)
+        elif self._is_valid_tick_price(last):
+            candidate = float(last)
+
+        if candidate is None:
             return None
-        return {"bid": bid, "ask": ask}
+        # Keep native precision from source, and reject suspicious spikes/spreads.
+        reference = self._last_valid_tick_price if self._last_valid_tick_price is not None else candidate
 
-    def get_portfolio_panel_payload(self) -> dict:
-        summary, positions = self.ib_client.get_portfolio_snapshot()
-        return {"summary": summary, "positions": positions}
+        if has_bid and has_ask:
+            spread = abs(float(ask) - float(bid))
+            spread_limit = max(0.0015, abs(reference) * 0.0012)
+            if spread > spread_limit:
+                return None
 
-    def get_orders_panel_payload(self) -> dict:
-        return {
-            "open_orders": self.ib_client.get_open_orders_snapshot(),
-            "fills": self.ib_client.get_fills_snapshot(),
-        }
+        if self._last_valid_tick_price is not None:
+            jump = abs(candidate - self._last_valid_tick_price)
+            jump_limit = max(0.0040, abs(self._last_valid_tick_price) * 0.0030)
+            if jump > jump_limit:
+                return None
 
-    def get_performance_panel_payload(self) -> dict | None:
-        return None
+        self._last_valid_tick_price = candidate
+        return candidate
 
-    def get_risk_panel_payload(self) -> dict | None:
-        return None
+    def _ingest_ticks_into_current_candle(self, ticks: list[dict]):
+        for tick in ticks:
+            if not isinstance(tick, dict):
+                continue
 
-    def get_robots_panel_payload(self) -> dict | None:
-        return None
+            price = self._get_tick_price(tick)
+            if price is None:
+                continue
 
-    def get_logs_panel_payload(self) -> dict | None:
-        return None
+            if self._current_candle is None:
+                self._current_candle = {
+                    "index": self._next_candle_index,
+                    "open": price,
+                    "high": price,
+                    "low": price,
+                    "close": price,
+                }
+                continue
+
+            self._current_candle["high"] = max(self._current_candle["high"], price)
+            self._current_candle["low"] = min(self._current_candle["low"], price)
+            self._current_candle["close"] = price
+
+    def get_ib_ticks(self) -> list[dict]:
+        ticks = self.ib_client.process_messages()
+        if not isinstance(ticks, list):
+            return []
+        return [tick for tick in ticks if isinstance(tick, dict)]
+
+    def get_logs_panel_payload(self, ticks: list[dict]) -> dict | None:
+        if not ticks:
+            return None
+        return {"ticks": ticks}
+
+    def _on_snapshot_payload_ready(self, payload):
+        if not isinstance(payload, dict):
+            return
+
+        orders_payload = payload.get("orders_payload")
+        portfolio_payload = payload.get("portfolio_payload")
+
+        if isinstance(orders_payload, dict):
+            self._orders_payload_cache = orders_payload
+        if isinstance(portfolio_payload, dict):
+            self._portfolio_payload_cache = portfolio_payload
+
+        self._performance_payload_cache = payload.get("performance_payload")
+        self._risk_payload_cache = payload.get("risk_payload")
+        self._robots_payload_cache = payload.get("robots_payload")
+        self._snapshot_payload_pending = True
+
+    def _on_snapshot_payload_failed(self, message: str):
+        self.update_logs_panel(
+            {"message": f"[WARN][pipeline] Snapshot worker disabled, fallback sync mode: {message}"}
+        )
 
     def update_chart_panel(self, payload: dict):
         if self.chart_panel is None:
             return
         self.chart_panel.update(payload)
+
+    def update_status_panel(self, payload: dict):
+        if not callable(self._update_status_panel):
+            return
+        self._update_status_panel(payload)
 
     def update_portfolio_panel(self, payload: dict):
         if self.portfolio_panel is None:
@@ -133,36 +254,79 @@ class PipelineRunner(QObject):
             return
         self.logs_panel.update(payload)
 
-    def run_once(self):
-        connected = self.ib_client.is_connected()
-        self._update_status_panel(self.get_status_panel_payload())
+    def update_robot_manager(
+        self,
+        ticks: list[dict],
+        risk_payload: dict | None,
+        orders_payload: dict,
+        performance_payload: dict | None,
+        portfolio_payload: dict,
+        robots_payload: dict | None,
+    ):
+        pass
 
-        performance_payload = self.get_performance_panel_payload()
-        if performance_payload is not None:
-            self.update_performance_panel(performance_payload)
+    def qtimer_tick_loop(self):
+        # 1) Status Update
+        status_payload = self.get_status_panel_payload()
+        self.update_status_panel(status_payload)
+        connected = status_payload.get("connection_state") == "connected"
 
-        risk_payload = self.get_risk_panel_payload()
-        if risk_payload is not None:
-            self.update_risk_panel(risk_payload)
+        # 2) Connection Gate
+        if not connected:
+            self._current_candle = None
+            self._last_valid_tick_price = None
+            self._snapshot_loop.reset_in_flight()
+            return
 
-        robots_payload = self.get_robots_panel_payload()
-        if robots_payload is not None:
-            self.update_robots_panel(robots_payload)
+        # 3) Collect fast live-stream ticks.
+        tick_payload = self.get_ib_ticks()
 
-        logs_payload = self.get_logs_panel_payload()
+        # 4) Collect slow snapshots on dedicated cadence/thread.
+        self._snapshot_loop.request_if_due()
+        risk_payload = self._risk_payload_cache
+        orders_payload = self._orders_payload_cache
+        performance_payload = self._performance_payload_cache
+        portfolio_payload = self._portfolio_payload_cache
+        robots_payload = self._robots_payload_cache
+
+        # 5) Forward payloads to robot manager pipeline block.
+        self.update_robot_manager(
+            ticks=tick_payload,
+            risk_payload=risk_payload,
+            orders_payload=orders_payload,
+            performance_payload=performance_payload,
+            portfolio_payload=portfolio_payload,
+            robots_payload=robots_payload,
+        )
+
+        # 6) Update slow UI panels only when new snapshot payload is available.
+        if self._snapshot_payload_pending:
+            if performance_payload is not None:
+                self.update_performance_panel(performance_payload)
+            if risk_payload is not None:
+                self.update_risk_panel(risk_payload)
+            if robots_payload is not None:
+                self.update_robots_panel(robots_payload)
+            self.update_orders_panel(orders_payload)
+            self.update_portfolio_panel(portfolio_payload)
+            self._snapshot_payload_pending = False
+
+        # 7) Log Update
+        logs_payload = self.get_logs_panel_payload(tick_payload)
         if logs_payload is not None:
             self.update_logs_panel(logs_payload)
-        self.update_orders_panel(self.get_orders_panel_payload())
 
-        if not connected:
-            self.update_portfolio_panel(self.get_portfolio_panel_payload())
+        # 8) Build current 1-second candle from incoming ticks.
+        self._ingest_ticks_into_current_candle(tick_payload)
+
+    def qtimer_chart_loop(self):
+        if self._current_candle is None:
             return
+        candle_payload = {"candle": dict(self._current_candle)}
+        self._current_candle = None
+        self._next_candle_index += 1
+        self.update_chart_panel(candle_payload)
 
-        self.ib_client.process_messages()
-        self.update_portfolio_panel(self.get_portfolio_panel_payload())
-
-        chart_payload = self.get_chart_panel_payload()
-        if chart_payload is None:
-            return
-
-        self.update_chart_panel(chart_payload)
+    # Backward-compat alias (existing diagrams/docs may still reference this name).
+    def qtimer_loop(self):
+        self.qtimer_tick_loop()

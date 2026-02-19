@@ -66,6 +66,7 @@ class Controller:
         self.window = MainWindow.create_main_window(
             on_connect=self._start_connect,
             on_start_live_streaming=self._start_live_streaming,
+            on_stop_live_streaming=self._stop_live_streaming,
             on_save_settings=self._save_app_settings,
             on_save_live_streaming_settings=self._save_live_streaming_settings,
             status_defaults={
@@ -151,29 +152,24 @@ class Controller:
         if self._connecting or self.ib_client.is_connected() or self.window is None:
             return
 
+        if self._pipeline_runner is not None and self._pipeline_runner.is_running():
+            self._pipeline_runner.stop()
+        self.ib_client.stop_live_streaming()
+
         try:
             status_settings = self._validate_status_settings(self._read_status_settings_from_panel())
-            live_streaming_settings = self._validate_live_streaming_settings(
-                self._read_live_streaming_settings_from_panel()
-            )
             self._apply_status_settings(status_settings)
-            self._apply_live_streaming_settings(live_streaming_settings)
         except Exception as exc:
             self._last_connect_error = str(exc)
             print(f"Invalid settings: {self._last_connect_error}")
             self._refresh_status(force=True)
             return
 
-        self.ib_client.ticker = None
-        self.ib_client.last_bid = None
-        self.ib_client.last_ask = None
-        self.window.chart_panel.update({"max_candles": self.max_candles, "market_symbol": self.market_symbol})
-
         self._connecting = True
         self._refresh_status(force=True)
         QApplication.processEvents()
         try:
-            self.ib_client.connect_and_prepare(self.market_symbol)
+            self.ib_client.connect()
         except Exception as exc:
             self._last_connect_error = str(exc)
             print(f"IB connection failed: {self._last_connect_error}")
@@ -182,13 +178,36 @@ class Controller:
             self._refresh_status(force=True)
 
     def _start_live_streaming(self):
-        if self._pipeline_runner is None or self._pipeline_runner.is_running():
+        if self.window is None or self._pipeline_runner is None or self._pipeline_runner.is_running():
             return
         if not self.ib_client.is_connected():
             self._refresh_status(force=True)
             return
 
+        try:
+            live_streaming_settings = self._validate_live_streaming_settings(
+                self._read_live_streaming_settings_from_panel()
+            )
+            self._apply_live_streaming_settings(live_streaming_settings)
+        except Exception as exc:
+            self._last_connect_error = str(exc)
+            print(f"Invalid live streaming settings: {self._last_connect_error}")
+            self._refresh_status(force=True)
+            return
+
+        self.window.chart_panel.update({"max_candles": self.max_candles, "market_symbol": self.market_symbol})
+        if not self.ib_client.start_live_streaming(self.market_symbol):
+            print("Live streaming start failed: could not subscribe market data.")
+            self._refresh_status(force=True)
+            return
+
         self._pipeline_runner.start()
+        self._refresh_status(force=True)
+
+    def _stop_live_streaming(self):
+        if self._pipeline_runner is not None and self._pipeline_runner.is_running():
+            self._pipeline_runner.stop()
+        self.ib_client.stop_live_streaming()
         self._refresh_status(force=True)
 
     def _read_status_settings_from_panel(self) -> dict:
@@ -375,6 +394,7 @@ class Controller:
 
         if self._pipeline_runner is not None:
             self._pipeline_runner.stop()
+        self.ib_client.stop_live_streaming()
 
         self.ib_client.cancel_account_summary()
         if self.ib.isConnected():
