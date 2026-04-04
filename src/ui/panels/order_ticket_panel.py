@@ -21,13 +21,14 @@ class OrderTicketPanel(QWidget):
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(6)
 
-        ticket_group = QGroupBox("Order Ticket")
+        ticket_group = QGroupBox("Order Ticket (FX)")
         ticket_form = QFormLayout(ticket_group)
         ticket_form.setContentsMargins(8, 8, 8, 8)
         ticket_form.setHorizontalSpacing(10)
         ticket_form.setVerticalSpacing(4)
 
         self.symbol_input = QLineEdit("EURUSD")
+        self.symbol_input.setPlaceholderText("FX pair, e.g. EURUSD")
         self.symbol_input.setMaxLength(32)
         self.side_combo = QComboBox()
         self.side_combo.addItems(["BUY", "SELL"])
@@ -42,7 +43,7 @@ class OrderTicketPanel(QWidget):
         self.limit_price_input.setValue(1.10000)
         self.limit_price_input.setSingleStep(0.00001)
 
-        ticket_form.addRow("Symbol:", self.symbol_input)
+        ticket_form.addRow("FX Symbol:", self.symbol_input)
         ticket_form.addRow("Side:", self.side_combo)
         ticket_form.addRow("Type:", self.order_type_combo)
         ticket_form.addRow("Quantity:", self.qty_input)

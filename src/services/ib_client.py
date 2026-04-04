@@ -47,6 +47,12 @@ class IBClient:
             finally:
                 loop.close()
 
+    def _call_ib(self, method_name: str, *args, **kwargs):
+        method = getattr(self.ib, method_name, None)
+        if method is None:
+            raise AttributeError(f"IB client has no method '{method_name}'")
+        return self._resolve_maybe_awaitable(method(*args, **kwargs))
+
     def connect(self, timeout: float = 1.0) -> bool:
         try:
             self._resolve_maybe_awaitable(
@@ -253,17 +259,20 @@ class IBClient:
 
     def cancel_account_summary(self):
         if hasattr(self.ib, "cancelAccountSummary"):
-            self.ib.cancelAccountSummary()
+            try:
+                self._call_ib("cancelAccountSummary")
+            except Exception:
+                pass
 
     def request_account_summary(self, group_name: str = "All", tags: str = "NetLiquidation,AvailableFunds") -> bool:
         if not self.is_connected() or not hasattr(self.ib, "reqAccountSummary"):
             return False
         try:
-            self.ib.reqAccountSummary(group_name, tags)
+            self._call_ib("reqAccountSummary", group_name, tags)
             return True
         except TypeError:
             try:
-                self.ib.reqAccountSummary()
+                self._call_ib("reqAccountSummary")
                 return True
             except Exception:
                 return False
@@ -316,9 +325,9 @@ class IBClient:
         if not self.is_connected():
             return {}
         try:
-            ticker = self.ib.reqMktData(contract, "", True, False)
+            ticker = self._call_ib("reqMktData", contract, "", True, False)
             if wait_seconds > 0:
-                self.ib.sleep(wait_seconds)
+                self._call_ib("sleep", wait_seconds)
             return {
                 "bid": getattr(ticker, "bid", None),
                 "ask": getattr(ticker, "ask", None),
@@ -355,7 +364,7 @@ class IBClient:
         if not self.is_connected() or not hasattr(self.ib, "cancelMktData"):
             return False
         try:
-            self.ib.cancelMktData(contract)
+            self._call_ib("cancelMktData", contract)
             return True
         except Exception:
             return False
@@ -371,7 +380,8 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            return self.ib.reqHistoricalData(
+            result = self._call_ib(
+                "reqHistoricalData",
                 contract,
                 endDateTime="",
                 durationStr=duration,
@@ -381,6 +391,7 @@ class IBClient:
                 formatDate=1,
                 keepUpToDate=False,
             )
+            return result or []
         except Exception:
             return []
 
@@ -388,7 +399,8 @@ class IBClient:
         if not self.is_connected():
             return None
         try:
-            return self.ib.reqHeadTimeStamp(
+            return self._call_ib(
+                "reqHeadTimeStamp",
                 contract,
                 whatToShow=what_to_show,
                 useRTH=use_rth,
@@ -412,7 +424,8 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            return self.ib.reqContractDetails(contract)
+            result = self._call_ib("reqContractDetails", contract)
+            return result or []
         except Exception:
             return []
 
@@ -420,7 +433,8 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            return self.ib.accountValues()
+            result = self._call_ib("accountValues")
+            return result or []
         except Exception:
             return []
 
@@ -438,9 +452,10 @@ class IBClient:
             return []
         try:
             if hasattr(self.ib, "reqAllOpenOrders"):
-                self.ib.reqAllOpenOrders()
+                self._call_ib("reqAllOpenOrders")
             if hasattr(self.ib, "openOrders"):
-                return self.ib.openOrders()
+                result = self._call_ib("openOrders")
+                return result or []
             return []
         except Exception:
             return []
@@ -449,10 +464,12 @@ class IBClient:
         if not self.is_connected() or not hasattr(self.ib, "reqCompletedOrders"):
             return []
         try:
-            return self.ib.reqCompletedOrders(apiOnly=api_only)
+            result = self._call_ib("reqCompletedOrders", apiOnly=api_only)
+            return result or []
         except TypeError:
             try:
-                return self.ib.reqCompletedOrders(api_only)
+                result = self._call_ib("reqCompletedOrders", api_only)
+                return result or []
             except Exception:
                 return []
         except Exception:
@@ -462,7 +479,8 @@ class IBClient:
         if not self.is_connected() or not hasattr(self.ib, "openTrades"):
             return []
         try:
-            return self.ib.openTrades()
+            result = self._call_ib("openTrades")
+            return result or []
         except Exception:
             return []
 
@@ -490,14 +508,14 @@ class IBClient:
         if not self.is_connected() or not hasattr(self.ib, "cancelOrder"):
             return False
         try:
-            self.ib.cancelOrder(trade_or_order)
+            self._call_ib("cancelOrder", trade_or_order)
             return True
         except Exception:
             order_obj = getattr(trade_or_order, "order", None)
             if order_obj is None:
                 return False
             try:
-                self.ib.cancelOrder(order_obj)
+                self._call_ib("cancelOrder", order_obj)
                 return True
             except Exception:
                 return False
@@ -514,7 +532,8 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            return self.ib.reqExecutions()
+            result = self._call_ib("reqExecutions")
+            return result or []
         except Exception:
             return []
 
@@ -522,8 +541,8 @@ class IBClient:
         if not self.is_connected():
             return None
         try:
-            pnl = self.ib.reqPnL(account, modelCode=model_code)
-            self.ib.sleep(0)
+            pnl = self._call_ib("reqPnL", account, modelCode=model_code)
+            self._call_ib("sleep", 0)
             return pnl
         except Exception:
             return None
@@ -532,8 +551,8 @@ class IBClient:
         if not self.is_connected():
             return None
         try:
-            pnl_single = self.ib.reqPnLSingle(account, modelCode=model_code, conId=con_id)
-            self.ib.sleep(0)
+            pnl_single = self._call_ib("reqPnLSingle", account, modelCode=model_code, conId=con_id)
+            self._call_ib("sleep", 0)
             return pnl_single
         except Exception:
             return None
@@ -542,9 +561,9 @@ class IBClient:
         if not self.is_connected():
             return {"bids": [], "asks": []}
         try:
-            ticker = self.ib.reqMktDepth(contract, numRows=num_rows)
+            ticker = self._call_ib("reqMktDepth", contract, numRows=num_rows)
             if wait_seconds > 0:
-                self.ib.sleep(wait_seconds)
+                self._call_ib("sleep", wait_seconds)
             bids = [
                 {
                     "price": getattr(level, "price", None),
@@ -567,7 +586,7 @@ class IBClient:
         finally:
             if hasattr(self.ib, "cancelMktDepth"):
                 try:
-                    self.ib.cancelMktDepth(contract)
+                    self._call_ib("cancelMktDepth", contract)
                 except Exception:
                     pass
 
