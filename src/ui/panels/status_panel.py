@@ -8,13 +8,14 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QSpinBox,
     QCheckBox,
+    QGroupBox,
 )
 
 
 class StatusPanel(QWidget):
     def __init__(self, on_connect, on_start_live_streaming, on_stop_live_streaming, on_save_settings, connection_defaults):
         super().__init__()
-        required = ("host", "port", "client_id", "readonly")
+        required = ("host", "port", "client_id", "readonly", "market_symbol")
         missing = [key for key in required if key not in connection_defaults]
         if missing:
             raise ValueError(f"Missing connection defaults keys: {', '.join(missing)}")
@@ -23,6 +24,7 @@ class StatusPanel(QWidget):
         port_default = int(connection_defaults["port"])
         client_id_default = int(connection_defaults["client_id"])
         readonly_default = bool(connection_defaults["readonly"])
+        market_symbol_default = str(connection_defaults["market_symbol"]).strip().upper()
 
         self.status_dot = QLabel()
         self.status_dot.setFixedSize(10, 10)
@@ -44,6 +46,8 @@ class StatusPanel(QWidget):
         self.client_id_input.setValue(client_id_default)
         self.readonly_input = QCheckBox("Read-only")
         self.readonly_input.setChecked(readonly_default)
+        self.market_symbol_input = QLineEdit(market_symbol_default)
+        self.market_symbol_input.setMaxLength(32)
 
         self.connect_button = QPushButton("Connect")
         self.connect_button.clicked.connect(on_connect)
@@ -73,28 +77,43 @@ class StatusPanel(QWidget):
         header_layout.addWidget(self.status_conn_label)
         header_layout.addWidget(self.status_dot)
         header_layout.addWidget(self.connect_button)
-        header_layout.addWidget(self.save_button)
-        header_layout.addWidget(self.live_stream_button)
-        header_layout.addWidget(self.stop_live_stream_button)
         header_layout.addStretch(1)
 
-        form = QFormLayout()
-        form.setContentsMargins(0, 0, 0, 0)
-        form.setHorizontalSpacing(10)
-        form.setVerticalSpacing(4)
-        form.addRow("Mode:", self.status_mode_label)
-        form.addRow("Env:", self.status_env_label)
-        form.addRow("Latency:", self.status_latency_label)
-        form.addRow("Server time:", self.status_server_time_label)
-        form.addRow("ClientId:", self.status_client_label)
-        form.addRow("Account:", self.status_account_label)
-        form.addRow("Host:", self.host_input)
-        form.addRow("Port:", self.port_input)
-        form.addRow("ClientId cfg:", self.client_id_input)
-        form.addRow("Read Only:", self.readonly_input)
+        live_controls_layout = QHBoxLayout()
+        live_controls_layout.setContentsMargins(0, 0, 0, 0)
+        live_controls_layout.setSpacing(8)
+        live_controls_layout.addWidget(self.live_stream_button)
+        live_controls_layout.addWidget(self.stop_live_stream_button)
+        live_controls_layout.addStretch(1)
+
+        status_group = QGroupBox("Runtime Status")
+        status_form = QFormLayout(status_group)
+        status_form.setContentsMargins(8, 8, 8, 8)
+        status_form.setHorizontalSpacing(10)
+        status_form.setVerticalSpacing(4)
+        status_form.addRow("Mode:", self.status_mode_label)
+        status_form.addRow("Env:", self.status_env_label)
+        status_form.addRow("Latency:", self.status_latency_label)
+        status_form.addRow("Server time:", self.status_server_time_label)
+        status_form.addRow("ClientId:", self.status_client_label)
+        status_form.addRow("Account:", self.status_account_label)
+
+        settings_group = QGroupBox("Connection Settings")
+        settings_form = QFormLayout(settings_group)
+        settings_form.setContentsMargins(8, 8, 8, 8)
+        settings_form.setHorizontalSpacing(10)
+        settings_form.setVerticalSpacing(4)
+        settings_form.addRow("Host:", self.host_input)
+        settings_form.addRow("Port:", self.port_input)
+        settings_form.addRow("ClientId cfg:", self.client_id_input)
+        settings_form.addRow("Read Only:", self.readonly_input)
+        settings_form.addRow("Market symbol:", self.market_symbol_input)
+        settings_form.addRow("", self.save_button)
 
         layout.addLayout(header_layout)
-        layout.addLayout(form)
+        layout.addLayout(live_controls_layout)
+        layout.addWidget(status_group)
+        layout.addWidget(settings_group)
         layout.addStretch(1)
 
     def update(self, payload=None):

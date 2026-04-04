@@ -1,3 +1,5 @@
+import asyncio
+import inspect
 import math
 import time
 
@@ -25,25 +27,49 @@ class IBClient:
         self._received_ticks = []
         self._ticker_event_source = None
 
+    @staticmethod
+    def _resolve_maybe_awaitable(value):
+        """
+        Support both sync and async-style IB API variants.
+
+        Some runtimes expose methods like `sleep()` / `accountSummary()` as coroutines.
+        This helper executes awaitables in the current thread when needed.
+        """
+        if not inspect.isawaitable(value):
+            return value
+        try:
+            return asyncio.run(value)
+        except RuntimeError:
+            # Fallback when a loop context already exists in this thread.
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(value)
+            finally:
+                loop.close()
+
     def connect(self, timeout: float = 1.0) -> bool:
         try:
-            self.ib.connect(
-                self.host,
-                self.port,
-                clientId=self.client_id,
-                readonly=self.readonly,
-                timeout=timeout,
+            self._resolve_maybe_awaitable(
+                self.ib.connect(
+                    self.host,
+                    self.port,
+                    clientId=self.client_id,
+                    readonly=self.readonly,
+                    timeout=timeout,
+                )
             )
         except TypeError:
-            self.ib.connect(
-                self.host,
-                self.port,
-                clientId=self.client_id,
-                readonly=self.readonly,
+            self._resolve_maybe_awaitable(
+                self.ib.connect(
+                    self.host,
+                    self.port,
+                    clientId=self.client_id,
+                    readonly=self.readonly,
+                )
             )
         if hasattr(self.ib, "reqAccountSummary"):
             try:
-                self.ib.reqAccountSummary()
+                self._resolve_maybe_awaitable(self.ib.reqAccountSummary())
             except Exception:
                 pass
         return self.is_connected()
@@ -113,7 +139,7 @@ class IBClient:
     def process_messages(self) -> list[dict]:
         if hasattr(self.ib, "sleep"):
             try:
-                self.ib.sleep(0)
+                self._resolve_maybe_awaitable(self.ib.sleep(0))
             except Exception:
                 pass
         return self.drain_received_ticks()
@@ -212,11 +238,15 @@ class IBClient:
         if not self.is_connected():
             return [], []
 
-        summary = self.ib.accountSummary()
+        summary = self._resolve_maybe_awaitable(self.ib.accountSummary())
+        if summary is None:
+            summary = []
         positions = []
         if hasattr(self.ib, "positions"):
             try:
-                positions = self.ib.positions()
+                positions = self._resolve_maybe_awaitable(self.ib.positions())
+                if positions is None:
+                    positions = []
             except Exception:
                 positions = []
         return summary, positions
@@ -257,7 +287,10 @@ class IBClient:
     def get_account(self) -> str:
         accounts = []
         if hasattr(self.ib, "managedAccounts"):
-            accounts = self.ib.managedAccounts()
+            try:
+                accounts = self._resolve_maybe_awaitable(self.ib.managedAccounts())
+            except Exception:
+                accounts = []
         return accounts[0] if accounts else "--"
 
     def supports_server_time(self) -> bool:
@@ -268,7 +301,7 @@ class IBClient:
             return "--", "--"
         try:
             start = time.time()
-            server_time = self.ib.reqCurrentTime()
+            server_time = self._resolve_maybe_awaitable(self.ib.reqCurrentTime())
             elapsed_ms = int((time.time() - start) * 1000)
             if isinstance(server_time, (int, float)):
                 server_dt = time.localtime(server_time)
@@ -307,11 +340,13 @@ class IBClient:
         if not self.is_connected():
             return None
         try:
-            return self.ib.reqMktData(
-                contract,
-                generic_tick_list,
-                snapshot,
-                regulatory_snapshot,
+            return self._resolve_maybe_awaitable(
+                self.ib.reqMktData(
+                    contract,
+                    generic_tick_list,
+                    snapshot,
+                    regulatory_snapshot,
+                )
             )
         except Exception:
             return None
@@ -366,7 +401,9 @@ class IBClient:
         if not self.is_connected():
             return None
         try:
-            contracts = self.ib.qualifyContracts(contract)
+            contracts = self._resolve_maybe_awaitable(self.ib.qualifyContracts(contract))
+            if contracts is None:
+                return None
             return contracts[0] if contracts else None
         except Exception:
             return None
@@ -391,7 +428,8 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            return self.ib.openOrders()
+            result = self._resolve_maybe_awaitable(self.ib.openOrders())
+            return result or []
         except Exception:
             return []
 
@@ -432,7 +470,8 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            return self.ib.fills()
+            result = self._resolve_maybe_awaitable(self.ib.fills())
+            return result or []
         except Exception:
             return []
 
@@ -440,7 +479,7 @@ class IBClient:
         if not self.is_connected() or not hasattr(self.ib, "placeOrder"):
             return None
         try:
-            return self.ib.placeOrder(contract, order)
+            return self._resolve_maybe_awaitable(self.ib.placeOrder(contract, order))
         except Exception:
             return None
 
@@ -467,7 +506,7 @@ class IBClient:
         if not self.is_connected() or not hasattr(self.ib, "whatIfOrder"):
             return None
         try:
-            return self.ib.whatIfOrder(contract, order)
+            return self._resolve_maybe_awaitable(self.ib.whatIfOrder(contract, order))
         except Exception:
             return None
 

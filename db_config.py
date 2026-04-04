@@ -1,5 +1,0 @@
-db_host = "livetrading-db.c9q0mugk2c4l.eu-west-3.rds.amazonaws.com"
-db_name = "livetrading_db"
-db_port = "5432"
-db_user = "postgres"
-db_password = "dH5wlTCWTlaae9LrfiZe"
