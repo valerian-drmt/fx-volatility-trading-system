@@ -74,6 +74,10 @@ def test_validate_app_settings_supports_status_payload():
 
     assert validated["status"]["market_symbol"] == "EURUSD"
     assert validated["status"]["client_id"] == 2
+    assert validated["runtime"] == {
+        "tick_interval_ms": 100,
+        "snapshot_interval_ms": 2000,
+    }
 
 
 @pytest.mark.unit
@@ -90,9 +94,42 @@ def test_validate_app_settings_supports_legacy_top_level_payload():
 
     assert validated["status"]["host"] == "127.0.0.1"
     assert validated["status"]["market_symbol"] == "GBPUSD"
+    assert validated["runtime"] == {
+        "tick_interval_ms": 100,
+        "snapshot_interval_ms": 2000,
+    }
+
+
+@pytest.mark.unit
+def test_validate_app_settings_runtime_override_is_supported():
+    validated = Controller._validate_app_settings(
+        {
+            "status": {
+                "host": "127.0.0.1",
+                "port": 4002,
+                "client_id": 2,
+                "readonly": True,
+                "market_symbol": "EURUSD",
+            },
+            "runtime": {
+                "tick_interval_ms": 150,
+                "snapshot_interval_ms": 2500,
+            },
+        }
+    )
+    assert validated["runtime"] == {
+        "tick_interval_ms": 150,
+        "snapshot_interval_ms": 2500,
+    }
 
 
 @pytest.mark.unit
 def test_validate_app_settings_rejects_non_object():
     with pytest.raises(ValueError, match="JSON object"):
         Controller._validate_app_settings([])
+
+
+@pytest.mark.unit
+def test_validate_runtime_settings_rejects_too_fast_snapshot():
+    with pytest.raises(ValueError, match="snapshot_interval_ms"):
+        Controller._validate_runtime_settings({"tick_interval_ms": 100, "snapshot_interval_ms": 50})
