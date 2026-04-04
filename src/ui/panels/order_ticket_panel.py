@@ -42,18 +42,34 @@ class OrderTicketPanel(QWidget):
         self.limit_price_input.setRange(0.0, 1000000.0)
         self.limit_price_input.setValue(1.10000)
         self.limit_price_input.setSingleStep(0.00001)
+        self.take_profit_input = QDoubleSpinBox()
+        self.take_profit_input.setDecimals(8)
+        self.take_profit_input.setRange(0.0, 1000000.0)
+        self.take_profit_input.setValue(0.0)
+        self.take_profit_input.setSingleStep(0.00001)
+        self.take_profit_input.setSpecialValueText("None")
+        self.stop_loss_input = QDoubleSpinBox()
+        self.stop_loss_input.setDecimals(8)
+        self.stop_loss_input.setRange(0.0, 1000000.0)
+        self.stop_loss_input.setValue(0.0)
+        self.stop_loss_input.setSingleStep(0.00001)
+        self.stop_loss_input.setSpecialValueText("None")
 
         ticket_form.addRow("FX Symbol:", self.symbol_input)
         ticket_form.addRow("Side:", self.side_combo)
         ticket_form.addRow("Type:", self.order_type_combo)
         ticket_form.addRow("Quantity:", self.qty_input)
         ticket_form.addRow("Limit price:", self.limit_price_input)
+        ticket_form.addRow("Take profit:", self.take_profit_input)
+        ticket_form.addRow("Stop loss:", self.stop_loss_input)
 
         actions_layout = QHBoxLayout()
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.setSpacing(8)
         self.preview_button = QPushButton("Preview")
+        self.preview_button.setEnabled(False)
         self.place_button = QPushButton("Place Order")
+        self.place_button.setEnabled(False)
         self.cancel_all_button = QPushButton("Cancel All")
         self.cancel_all_button.setEnabled(False)
         actions_layout.addWidget(self.preview_button)
@@ -68,14 +84,32 @@ class OrderTicketPanel(QWidget):
         layout.addWidget(self.feedback_label)
         layout.addStretch(1)
 
+        self.order_type_combo.currentTextChanged.connect(self._on_order_type_changed)
+        self._on_order_type_changed(self.order_type_combo.currentText())
+
     def get_order_request(self) -> dict:
+        order_type = self.order_type_combo.currentText().strip().upper()
+        take_profit = float(self.take_profit_input.value())
+        stop_loss = float(self.stop_loss_input.value())
         return {
             "symbol": self.symbol_input.text().strip().upper(),
             "side": self.side_combo.currentText().strip().upper(),
-            "order_type": self.order_type_combo.currentText().strip().upper(),
+            "order_type": order_type,
             "quantity": int(self.qty_input.value()),
-            "limit_price": float(self.limit_price_input.value()),
+            "limit_price": float(self.limit_price_input.value()) if order_type == "LMT" else 0.0,
+            "take_profit": take_profit if order_type == "LMT" and take_profit > 0 else None,
+            "stop_loss": stop_loss if order_type == "LMT" and stop_loss > 0 else None,
         }
+
+    def _on_order_type_changed(self, value: str):
+        order_type = str(value).strip().upper()
+        is_limit_order = order_type == "LMT"
+        self.limit_price_input.setEnabled(is_limit_order)
+        self.take_profit_input.setEnabled(is_limit_order)
+        self.stop_loss_input.setEnabled(is_limit_order)
+        if not is_limit_order:
+            self.take_profit_input.setValue(0.0)
+            self.stop_loss_input.setValue(0.0)
 
     def set_feedback(self, message: str, level: str = "info"):
         text = str(message).strip() or "--"

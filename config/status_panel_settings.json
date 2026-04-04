@@ -5,5 +5,9 @@
     "client_id": 2,
     "readonly": true,
     "market_symbol": "EURUSD"
+  },
+  "runtime": {
+    "tick_interval_ms": 100,
+    "snapshot_interval_ms": 2000
   }
 }
