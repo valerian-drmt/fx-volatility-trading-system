@@ -29,18 +29,54 @@ class ServerTimeWorker(QtCore.QThread):
         self.result.emit(time_text, latency_text)
 
 
+class ConnectWorker(QtCore.QThread):
+    result = QtCore.pyqtSignal(bool, str)
+
+    def __init__(self, ib_client: IBClient, io_lock: RLock):
+        super().__init__()
+        self.ib_client = ib_client
+        self.io_lock = io_lock
+
+    def run(self):
+        error_message = ""
+        connected = False
+        try:
+            with self.io_lock:
+                connected = bool(self.ib_client.connect())
+                if not connected:
+                    error_message = self.ib_client.get_last_error_text() or "Unable to connect to IBKR."
+        except Exception as exc:
+            error_message = str(exc)
+        self.result.emit(connected, error_message)
+
+
 class Controller:
+    DEFAULT_STATUS_SETTINGS = {
+        "host": "127.0.0.1",
+        "port": 4002,
+        "client_id": 1,
+        "readonly": True,
+        "market_symbol": "EURUSD",
+    }
+    DEFAULT_RUNTIME_SETTINGS = {
+        "tick_interval_ms": 100,
+        "snapshot_interval_ms": 2000,
+    }
+
     def __init__(self):
         self._project_root = Path(__file__).resolve().parents[1]
         self._settings_path = self._resolve_settings_path()
         app_settings = self._load_app_settings()
         status_settings = app_settings["status"]
+        runtime_settings = app_settings["runtime"]
 
         self.host = status_settings["host"]
         self.port = status_settings["port"]
         self.client_id = status_settings["client_id"]
         self.readonly = status_settings["readonly"]
         self.market_symbol = status_settings["market_symbol"]
+        self.tick_interval_ms = runtime_settings["tick_interval_ms"]
+        self.snapshot_interval_ms = runtime_settings["snapshot_interval_ms"]
 
         self.app = QApplication(sys.argv)
         self.ib = IB()
@@ -57,6 +93,7 @@ class Controller:
         self.window: MainWindow | None = None
         self._status_timer: QTimer | None = None
         self._server_time_worker: ServerTimeWorker | None = None
+        self._connect_worker: ConnectWorker | None = None
 
         self._market_data_thread: QtCore.QThread | None = None
         self._market_data_worker: MarketDataWorker | None = None
@@ -115,6 +152,7 @@ class Controller:
         self._setup_market_data_worker()
         self.window.order_ticket_panel.place_button.clicked.connect(self._queue_order_from_ticket)
         self.window.order_ticket_panel.preview_button.clicked.connect(self._preview_order_from_ticket)
+        self.window.order_ticket_panel.cancel_all_button.clicked.connect(self._cancel_all_orders_from_ticket)
 
         self._status_timer = QTimer(self.window)
         self._status_timer.setInterval(1000)
@@ -136,8 +174,8 @@ class Controller:
         worker = MarketDataWorker(
             ib_client=self.ib_client,
             io_lock=self._io_lock,
-            interval_ms=100,
-            snapshot_interval_ms=750,
+            interval_ms=self.tick_interval_ms,
+            snapshot_interval_ms=self.snapshot_interval_ms,
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.start)
@@ -264,10 +302,15 @@ class Controller:
         qty = request.get("quantity", "")
         order_type = request.get("order_type", "")
         limit_price = request.get("limit_price", "")
-
-        confirm_text = f"Send order?\n{side} {qty} {symbol} {order_type}"
+        take_profit = request.get("take_profit", None)
+        stop_loss = request.get("stop_loss", None)
+        order_desc = f"{side} {qty} {symbol} {order_type}"
         if str(order_type).upper() == "LMT":
-            confirm_text += f" @ {limit_price}"
+            order_desc += f" @ {limit_price}"
+        if take_profit is not None and stop_loss is not None:
+            order_desc += f" TP={take_profit} SL={stop_loss}"
+
+        confirm_text = f"Send order?\n{order_desc}"
         confirm = QMessageBox.question(
             self.window,
             "Confirm Order",
@@ -277,11 +320,11 @@ class Controller:
         )
         if confirm != QMessageBox.Yes:
             self.window.order_ticket_panel.update({"message": "Order cancelled by user.", "level": "info"})
-            self.window.logs_panel.update({"message": f"[INFO][execution] user cancelled {side} {qty} {symbol} {order_type}"})
+            self.window.logs_panel.update({"message": f"[INFO][execution] user cancelled {order_desc}"})
             return
 
         self.window.order_ticket_panel.update({"message": "Order queued for execution thread.", "level": "info"})
-        self.window.logs_panel.update({"message": f"[INFO][execution] queued {side} {qty} {symbol} {order_type}"})
+        self.window.logs_panel.update({"message": f"[INFO][execution] queued {order_desc}"})
         self._order_worker.enqueue_order.emit(request)
 
     def _preview_order_from_ticket(self):
@@ -306,6 +349,43 @@ class Controller:
         self.window.logs_panel.update({"message": f"[INFO][execution] preview queued {side} {qty} {symbol} {order_type}"})
         self._order_worker.enqueue_preview.emit(request)
 
+    def _cancel_all_orders_from_ticket(self):
+        if self.window is None or self._order_worker is None:
+            return
+        if self._order_thread is None or not self._order_thread.isRunning():
+            self.window.order_ticket_panel.update({"message": "Order thread is not running.", "level": "error"})
+            return
+        with self._io_lock:
+            connected = self.ib_client.is_connected()
+        if not connected:
+            self.window.order_ticket_panel.update({"message": "Connect to IBKR before cancel requests.", "level": "error"})
+            return
+        if self.readonly:
+            self.window.order_ticket_panel.update(
+                {
+                    "message": "Read-only mode is enabled. Disable it in settings before cancel requests.",
+                    "level": "error",
+                }
+            )
+            self.window.logs_panel.update({"message": "[WARN][execution] blocked cancel all: read-only mode enabled"})
+            return
+
+        confirm = QMessageBox.question(
+            self.window,
+            "Confirm Cancel All",
+            "Cancel all open orders?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            self.window.order_ticket_panel.update({"message": "Cancel all aborted by user.", "level": "info"})
+            self.window.logs_panel.update({"message": "[INFO][execution] cancel all aborted by user"})
+            return
+
+        self.window.order_ticket_panel.update({"message": "Cancel all queued for execution thread.", "level": "info"})
+        self.window.logs_panel.update({"message": "[INFO][execution] cancel all queued"})
+        self._order_worker.enqueue_cancel_all.emit({})
+
     def _on_order_result(self, payload):
         if self.window is None or not isinstance(payload, dict):
             return
@@ -314,12 +394,17 @@ class Controller:
         kind = str(payload.get("kind", "order")).strip().lower()
         message = str(payload.get("message", "Order response received."))
         if ok:
-            level = "success" if kind == "order" else "info"
+            level = "success" if kind in {"order", "cancel_all"} else "info"
             log_level = "INFO"
         else:
             level = "error"
             log_level = "ERROR"
-        source = "execution_preview" if kind == "preview" else "execution"
+        if kind == "preview":
+            source = "execution_preview"
+        elif kind == "cancel_all":
+            source = "execution_cancel"
+        else:
+            source = "execution"
 
         self.window.order_ticket_panel.update({"message": message, "level": level})
         self.window.logs_panel.update({"message": f"[{log_level}][{source}] {message}"})
@@ -354,6 +439,7 @@ class Controller:
 
         connected = connection_state == "connected"
         pipeline_running = self._is_market_worker_running()
+        order_thread_running = self._order_thread is not None and self._order_thread.isRunning()
 
         if not connected:
             self._latency_ms_text = "--"
@@ -372,6 +458,11 @@ class Controller:
                 "pipeline_running": pipeline_running,
             }
         )
+        can_preview = connected and not self._connecting and order_thread_running
+        can_place = can_preview and not self.readonly
+        self.window.order_ticket_panel.preview_button.setEnabled(can_preview)
+        self.window.order_ticket_panel.place_button.setEnabled(can_place)
+        self.window.order_ticket_panel.cancel_all_button.setEnabled(can_place)
 
         if connected and (self._last_server_sync_sec is None or now_sec - self._last_server_sync_sec >= 10):
             self._start_server_time_sync()
@@ -382,6 +473,12 @@ class Controller:
         with self._io_lock:
             if self.ib_client.is_connected():
                 return
+        if self._connect_worker is not None:
+            try:
+                if self._connect_worker.isRunning():
+                    return
+            except RuntimeError:
+                self._connect_worker = None
 
         self._stop_market_data_worker()
         with self._io_lock:
@@ -397,17 +494,30 @@ class Controller:
             return
 
         self._connecting = True
+        self._last_connect_error = ""
         self._refresh_status(force=True)
-        QApplication.processEvents()
-        try:
-            with self._io_lock:
-                self.ib_client.connect()
-        except Exception as exc:
-            self._last_connect_error = str(exc)
-            print(f"IB connection failed: {self._last_connect_error}")
-        finally:
-            self._connecting = False
-            self._refresh_status(force=True)
+
+        self._connect_worker = ConnectWorker(self.ib_client, self._io_lock)
+        self._connect_worker.result.connect(self._on_connect_result)
+        self._connect_worker.finished.connect(self._on_connect_finished)
+        self._connect_worker.start()
+
+    def _on_connect_result(self, connected: bool, error_message: str):
+        self._connecting = False
+        self._last_connect_error = str(error_message or "").strip()
+        if self.window is not None:
+            if connected:
+                self.window.logs_panel.update({"message": "[INFO][connection] connected to IBKR"})
+            else:
+                message = self._last_connect_error or "IB connection failed."
+                self.window.logs_panel.update({"message": f"[ERROR][connection] {message}"})
+                self.window.order_ticket_panel.update({"message": message, "level": "error"})
+        self._refresh_status(force=True)
+
+    def _on_connect_finished(self):
+        if self._connect_worker is not None:
+            self._connect_worker.deleteLater()
+        self._connect_worker = None
 
     def _start_live_streaming(self):
         if self.window is None or self._is_market_worker_running():
@@ -482,13 +592,21 @@ class Controller:
         self.ib_client.readonly = self.readonly
 
     def _load_app_settings(self) -> dict:
+        defaults = self._default_app_settings()
         if not self._settings_path.exists():
-            raise FileNotFoundError(f"Missing settings file: {self._settings_path}")
+            print(f"Settings file missing. Creating defaults at {self._settings_path}")
+            self._write_full_app_settings(defaults)
+            return defaults
+
         try:
             raw = json.loads(self._settings_path.read_text(encoding="utf-8"))
-        except Exception:
-            raise ValueError(f"Invalid settings JSON: {self._settings_path}")
-        return self._validate_app_settings(raw)
+            validated = self._validate_app_settings(raw)
+            return validated
+        except Exception as exc:
+            print(f"Invalid settings detected ({self._settings_path}): {exc}")
+            print("Resetting to safe defaults.")
+            self._write_full_app_settings(defaults)
+            return defaults
 
     @staticmethod
     def _validate_app_settings(raw: dict) -> dict:
@@ -506,7 +624,35 @@ class Controller:
             if isinstance(legacy_streaming, dict):
                 normalized_status["market_symbol"] = legacy_streaming.get("market_symbol", "EURUSD")
 
-        return {"status": Controller._validate_status_settings(normalized_status)}
+        runtime_payload = raw.get("runtime")
+        if runtime_payload is None:
+            runtime_payload = {}
+
+        return {
+            "status": Controller._validate_status_settings(normalized_status),
+            "runtime": Controller._validate_runtime_settings(runtime_payload),
+        }
+
+    @staticmethod
+    def _validate_runtime_settings(raw: dict) -> dict:
+        if not isinstance(raw, dict):
+            raise ValueError("Runtime settings payload must be a JSON object")
+
+        tick_interval_ms = int(raw.get("tick_interval_ms", Controller.DEFAULT_RUNTIME_SETTINGS["tick_interval_ms"]))
+        snapshot_interval_ms = int(
+            raw.get("snapshot_interval_ms", Controller.DEFAULT_RUNTIME_SETTINGS["snapshot_interval_ms"])
+        )
+        if tick_interval_ms < 25:
+            raise ValueError("Runtime setting 'tick_interval_ms' must be >= 25")
+        if snapshot_interval_ms < 250:
+            raise ValueError("Runtime setting 'snapshot_interval_ms' must be >= 250")
+        if snapshot_interval_ms < tick_interval_ms:
+            raise ValueError("Runtime setting 'snapshot_interval_ms' must be >= tick_interval_ms")
+
+        return {
+            "tick_interval_ms": tick_interval_ms,
+            "snapshot_interval_ms": snapshot_interval_ms,
+        }
 
     @staticmethod
     def _validate_status_settings(raw: dict) -> dict:
@@ -537,10 +683,30 @@ class Controller:
     def _save_app_settings(self):
         status_settings = self._validate_status_settings(self._read_status_settings_from_panel())
         self._apply_status_settings(status_settings)
-        self._write_app_settings(status_settings)
+        runtime_settings = self._validate_runtime_settings(
+            {
+                "tick_interval_ms": self.tick_interval_ms,
+                "snapshot_interval_ms": self.snapshot_interval_ms,
+            }
+        )
+        self._write_app_settings(status_settings, runtime_settings)
 
-    def _write_app_settings(self, status_settings: dict):
-        app_settings = {"status": status_settings}
+    @staticmethod
+    def _default_app_settings() -> dict:
+        return {
+            "status": dict(Controller.DEFAULT_STATUS_SETTINGS),
+            "runtime": dict(Controller.DEFAULT_RUNTIME_SETTINGS),
+        }
+
+    def _write_full_app_settings(self, app_settings: dict):
+        validated = self._validate_app_settings(app_settings)
+        self._write_app_settings(validated["status"], validated["runtime"])
+
+    def _write_app_settings(self, status_settings: dict, runtime_settings: dict):
+        app_settings = {
+            "status": status_settings,
+            "runtime": runtime_settings,
+        }
         try:
             self._settings_path.parent.mkdir(parents=True, exist_ok=True)
             self._settings_path.write_text(json.dumps(app_settings, indent=2), encoding="utf-8")
@@ -580,6 +746,15 @@ class Controller:
     def _shutdown_services(self):
         if self._status_timer is not None:
             self._status_timer.stop()
+        self._connecting = False
+
+        if self._connect_worker is not None:
+            try:
+                if self._connect_worker.isRunning():
+                    self._connect_worker.wait(1500)
+            except RuntimeError:
+                pass
+            self._connect_worker = None
 
         self._stop_market_data_worker()
         self._stop_order_worker()

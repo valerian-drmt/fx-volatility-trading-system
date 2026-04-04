@@ -26,6 +26,8 @@ class IBClient:
         self.last_ask = None
         self._received_ticks = []
         self._ticker_event_source = None
+        self._last_error_context = ""
+        self._last_error_message = ""
 
     @staticmethod
     def _resolve_maybe_awaitable(value):
@@ -53,44 +55,80 @@ class IBClient:
             raise AttributeError(f"IB client has no method '{method_name}'")
         return self._resolve_maybe_awaitable(method(*args, **kwargs))
 
+    def clear_last_error(self):
+        self._last_error_context = ""
+        self._last_error_message = ""
+
+    def _set_last_error(self, context: str, error):
+        self._last_error_context = str(context or "ib").strip() or "ib"
+        self._last_error_message = str(error).strip()
+
+    def get_last_error(self) -> dict | None:
+        if not self._last_error_message:
+            return None
+        return {
+            "context": self._last_error_context or "ib",
+            "message": self._last_error_message,
+        }
+
+    def get_last_error_text(self) -> str:
+        payload = self.get_last_error()
+        if payload is None:
+            return ""
+        return f"{payload['context']}: {payload['message']}"
+
     def connect(self, timeout: float = 1.0) -> bool:
+        self.clear_last_error()
         try:
-            self._resolve_maybe_awaitable(
-                self.ib.connect(
-                    self.host,
-                    self.port,
-                    clientId=self.client_id,
-                    readonly=self.readonly,
-                    timeout=timeout,
+            try:
+                self._resolve_maybe_awaitable(
+                    self.ib.connect(
+                        self.host,
+                        self.port,
+                        clientId=self.client_id,
+                        readonly=self.readonly,
+                        timeout=timeout,
+                    )
                 )
-            )
-        except TypeError:
-            self._resolve_maybe_awaitable(
-                self.ib.connect(
-                    self.host,
-                    self.port,
-                    clientId=self.client_id,
-                    readonly=self.readonly,
+            except TypeError:
+                self._resolve_maybe_awaitable(
+                    self.ib.connect(
+                        self.host,
+                        self.port,
+                        clientId=self.client_id,
+                        readonly=self.readonly,
+                    )
                 )
-            )
+        except Exception as exc:
+            self._set_last_error("connect", exc)
+            return False
         if hasattr(self.ib, "reqAccountSummary"):
             try:
                 self._resolve_maybe_awaitable(self.ib.reqAccountSummary())
             except Exception:
                 pass
-        return self.is_connected()
+        connected = self.is_connected()
+        if connected:
+            self.clear_last_error()
+            return True
+        self._set_last_error("connect", f"Connection to {self.host}:{self.port} failed.")
+        return False
 
     def start_live_streaming(self, ticker: str) -> bool:
         if not self.is_connected():
+            self._set_last_error("start_live_streaming", "Not connected to IBKR.")
             return False
 
         symbol = str(ticker).strip().upper()
         if not symbol:
+            self._set_last_error("start_live_streaming", "Symbol is required.")
             return False
 
         self.stop_live_streaming()
         stream_ticker = self.request_market_data(Forex(symbol), snapshot=False, regulatory_snapshot=False)
         if stream_ticker is None:
+            if not self.get_last_error_text():
+                self._set_last_error("start_live_streaming", f"Market data subscription failed for {symbol}.")
             return False
 
         self.ticker = stream_ticker
@@ -98,6 +136,7 @@ class IBClient:
         self.last_bid = None
         self.last_ask = None
         self._attach_ticker_listener()
+        self.clear_last_error()
         return self.ticker is not None
 
     def stop_live_streaming(self):
@@ -347,9 +386,10 @@ class IBClient:
         regulatory_snapshot: bool = False,
     ):
         if not self.is_connected():
+            self._set_last_error("request_market_data", "Not connected to IBKR.")
             return None
         try:
-            return self._resolve_maybe_awaitable(
+            result = self._resolve_maybe_awaitable(
                 self.ib.reqMktData(
                     contract,
                     generic_tick_list,
@@ -357,7 +397,10 @@ class IBClient:
                     regulatory_snapshot,
                 )
             )
+            self.clear_last_error()
+            return result
         except Exception:
+            self._set_last_error("request_market_data", "reqMktData failed.")
             return None
 
     def cancel_market_data(self, contract) -> bool:
@@ -411,13 +454,21 @@ class IBClient:
 
     def qualify_contract(self, contract):
         if not self.is_connected():
+            self._set_last_error("qualify_contract", "Not connected to IBKR.")
             return None
         try:
             contracts = self._resolve_maybe_awaitable(self.ib.qualifyContracts(contract))
             if contracts is None:
+                self._set_last_error("qualify_contract", "No contract data returned.")
                 return None
-            return contracts[0] if contracts else None
-        except Exception:
+            result = contracts[0] if contracts else None
+            if result is None:
+                self._set_last_error("qualify_contract", "No qualified contract found.")
+                return None
+            self.clear_last_error()
+            return result
+        except Exception as exc:
+            self._set_last_error("qualify_contract", exc)
             return None
 
     def get_contract_details(self, contract):
@@ -495,38 +546,135 @@ class IBClient:
 
     def place_order(self, contract, order):
         if not self.is_connected() or not hasattr(self.ib, "placeOrder"):
+            if not self.is_connected():
+                self._set_last_error("place_order", "Not connected to IBKR.")
+            else:
+                self._set_last_error("place_order", "IB API missing placeOrder.")
             return None
         try:
-            return self._resolve_maybe_awaitable(self.ib.placeOrder(contract, order))
-        except Exception:
+            trade = self._resolve_maybe_awaitable(self.ib.placeOrder(contract, order))
+            if trade is None:
+                self._set_last_error("place_order", "API returned no trade object.")
+                return None
+            self.clear_last_error()
+            return trade
+        except Exception as exc:
+            self._set_last_error("place_order", exc)
             return None
+
+    def build_bracket_orders(
+        self,
+        side: str,
+        quantity: int,
+        limit_price: float,
+        take_profit_price: float,
+        stop_loss_price: float,
+    ):
+        if not self.is_connected() or not hasattr(self.ib, "bracketOrder"):
+            if not self.is_connected():
+                self._set_last_error("build_bracket_orders", "Not connected to IBKR.")
+            else:
+                self._set_last_error("build_bracket_orders", "IB API missing bracketOrder.")
+            return []
+        try:
+            orders = self._call_ib(
+                "bracketOrder",
+                side,
+                quantity,
+                limit_price,
+                take_profit_price,
+                stop_loss_price,
+            )
+            if not orders:
+                self._set_last_error("build_bracket_orders", "Bracket creation returned no orders.")
+                return []
+            self.clear_last_error()
+            return orders
+        except Exception as exc:
+            self._set_last_error("build_bracket_orders", exc)
+            return []
 
     def replace_order(self, contract, order_with_existing_order_id):
         return self.place_order(contract, order_with_existing_order_id)
 
     def cancel_order(self, trade_or_order) -> bool:
         if not self.is_connected() or not hasattr(self.ib, "cancelOrder"):
+            if not self.is_connected():
+                self._set_last_error("cancel_order", "Not connected to IBKR.")
+            else:
+                self._set_last_error("cancel_order", "IB API missing cancelOrder.")
             return False
         try:
             self._call_ib("cancelOrder", trade_or_order)
+            self.clear_last_error()
             return True
-        except Exception:
+        except Exception as first_exc:
             order_obj = getattr(trade_or_order, "order", None)
             if order_obj is None:
+                self._set_last_error("cancel_order", first_exc)
                 return False
             try:
                 self._call_ib("cancelOrder", order_obj)
+                self.clear_last_error()
                 return True
-            except Exception:
+            except Exception as second_exc:
+                self._set_last_error("cancel_order", second_exc)
                 return False
 
     def what_if_order(self, contract, order):
         if not self.is_connected() or not hasattr(self.ib, "whatIfOrder"):
+            if not self.is_connected():
+                self._set_last_error("what_if_order", "Not connected to IBKR.")
+            else:
+                self._set_last_error("what_if_order", "IB API missing whatIfOrder.")
             return None
         try:
-            return self._resolve_maybe_awaitable(self.ib.whatIfOrder(contract, order))
-        except Exception:
+            result = self._resolve_maybe_awaitable(self.ib.whatIfOrder(contract, order))
+            if result is None:
+                self._set_last_error("what_if_order", "What-If returned no payload.")
+                return None
+            self.clear_last_error()
+            return result
+        except Exception as exc:
+            self._set_last_error("what_if_order", exc)
             return None
+
+    def cancel_all_open_orders(self):
+        if not self.is_connected():
+            message = "Not connected to IBKR."
+            self._set_last_error("cancel_all_open_orders", message)
+            return False, 0, message
+
+        self.clear_last_error()
+        open_orders = self.get_open_orders_snapshot()
+        if not isinstance(open_orders, list):
+            open_orders = []
+        total_open = len(open_orders)
+
+        if hasattr(self.ib, "reqGlobalCancel"):
+            try:
+                self._call_ib("reqGlobalCancel")
+            except Exception as exc:
+                self._set_last_error("cancel_all_open_orders", exc)
+
+        cancelled = 0
+        failed = 0
+        for order in open_orders:
+            if self.cancel_order(order):
+                cancelled += 1
+            else:
+                failed += 1
+
+        if failed > 0:
+            message = f"Cancelled {cancelled}/{total_open} open orders."
+            self._set_last_error("cancel_all_open_orders", message)
+            return False, cancelled, message
+        if total_open == 0:
+            self.clear_last_error()
+            return True, 0, "No open orders to cancel."
+
+        self.clear_last_error()
+        return True, cancelled, f"Cancelled {cancelled} open orders."
 
     def get_executions_snapshot(self):
         if not self.is_connected():
