@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![PyQt5](https://img.shields.io/badge/PyQt5-GUI-41CD52?logo=qt&logoColor=white)
 ![ib-insync](https://img.shields.io/badge/ib--insync-IBKR%20API-blue)
-![CI](https://img.shields.io/github/actions/workflow/status/valerian-drmt/trading-ib/ci.yml?label=CI)
+![CI](https://img.shields.io/github/actions/workflow/status/valerian-drmt/trading-ib/tests.yml?label=CI)
 ![License](https://img.shields.io/badge/license-MIT-green)
  
 Lightweight desktop dashboard for **live FX monitoring and manual order execution** via IB Gateway/TWS.  
