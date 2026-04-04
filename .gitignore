@@ -2,10 +2,7 @@
 .pytest_cache/
 __pycache__/
 *.py[cod]
-
-.idea/workspace.xml
-.idea/shelf/
-
+.idea/
 .coverage
 htmlcov/
 build/
