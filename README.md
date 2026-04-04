@@ -1,73 +1,133 @@
-# Trading Dashboard (IBKR)
-
-Lightweight desktop dashboard focused on **live monitoring from IB Gateway/TWS**.
-
-## Scope
-- Connect to IBKR API (host/port/client ID/read-only mode).
-- Default startup is read-only mode for safer demo runs.
-- Start/stop live streaming for one FX symbol (ex: `EURUSD`).
-- Plot live tick mid-price chart.
-- Submit manual FX orders from an Order Ticket panel.
-- Show live status (connection state, environment, account, latency, server time).
-- Show account/portfolio snapshot.
-- Show open orders and recent fills.
-- Stream tick logs with filter controls.
-- Run market data and order execution in separate worker threads.
-
-This version intentionally excludes research notebooks, robots, persistence/database, and Docker.
-
+# Trading Dashboard — Live IBKR Monitor
+ 
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![PyQt5](https://img.shields.io/badge/PyQt5-GUI-41CD52?logo=qt&logoColor=white)
+![ib-insync](https://img.shields.io/badge/ib--insync-IBKR%20API-blue)
+![CI](https://img.shields.io/github/actions/workflow/status/valerian-drmt/trading-ib/ci.yml?label=CI)
+![License](https://img.shields.io/badge/license-MIT-green)
+ 
+Lightweight desktop dashboard for **live FX monitoring and manual order execution** via IB Gateway/TWS.  
+Multithreaded architecture separating market data streaming and order execution into independent QThread workers.
+ 
+---
+ 
+## Architecture
+ 
+```
+IB Gateway / TWS
+       │
+       ▼
+  ib_client.py  (IBKR API wrapper)
+       │
+       ├──► MarketDataWorker (QThread) ──► ChartPanel  (live mid-price)
+       │                                ──► LogsPanel  (tick stream)
+       │
+       └──► OrderWorker      (QThread) ──► OrderTicketPanel (LMT + TP/SL bracket)
+                                        ──► OrdersPanel     (open orders / fills)
+ 
+Controller ──► PortfolioPanel  (account snapshot)
+           ──► StatusPanel     (connection state, latency, server time)
+```
+ 
+---
+ 
+## Features
+ 
+- Connect to IBKR API (host / port / client ID / read-only mode)
+- Default startup in **read-only mode** for safe demo runs
+- Live FX tick streaming for one symbol (e.g. `EURUSD`) with mid-price chart
+- Manual order execution with optional **TP/SL bracket** for LMT orders
+- Cancel all open orders from the Order Ticket panel
+- Account / portfolio snapshot, open orders, and recent fills
+- Tick log stream with filter controls
+- Persisted settings via `config/status_panel_settings.json`
+ 
+> This version intentionally excludes research notebooks, signal robots, database persistence, and Docker.
+ 
+---
+ 
 ## Tech Stack
-- Python 3.11
-- PyQt5
-- ib-insync
-
+ 
+| Layer | Technology |
+|---|---|
+| Language | Python 3.11 |
+| GUI | PyQt5 |
+| IBKR connectivity | ib-insync |
+| Concurrency | QThread (market data + order workers) |
+| Testing | pytest |
+| Linting / CI | ruff · GitHub Actions |
+ 
+---
+ 
 ## Project Structure
-- `app.py`: entrypoint.
-- `src/controller.py`: app lifecycle + settings + service orchestration.
-- `src/services/ib_client.py`: IBKR API wrapper.
-- `src/services/market_data_worker.py`: periodic tick/snapshot worker (QThread).
-- `src/services/order_worker.py`: queued order execution worker (QThread).
-- `src/ui/main_window.py`: fixed 2x3 grid main window.
-- `src/ui/panels/`: `status_panel.py`, `chart_panel.py`, `order_ticket_panel.py`, `portfolio_panel.py`, `orders_panel.py`, `logs_panel.py`.
-- `config/status_panel_settings.json`: persisted app settings.
-
+ 
+```
+trading-ib/
+├── app.py                          # Entrypoint
+├── src/
+│   ├── controller.py               # App lifecycle, settings, service orchestration
+│   ├── services/
+│   │   ├── ib_client.py            # IBKR API wrapper
+│   │   ├── market_data_worker.py   # Periodic tick/snapshot worker (QThread)
+│   │   └── order_worker.py         # Queued order execution worker (QThread)
+│   └── ui/
+│       ├── main_window.py          # Fixed 2×3 grid layout
+│       └── panels/
+│           ├── status_panel.py
+│           ├── chart_panel.py
+│           ├── order_ticket_panel.py
+│           ├── portfolio_panel.py
+│           ├── orders_panel.py
+│           └── logs_panel.py
+├── config/
+│   └── status_panel_settings.json  # Persisted connection + runtime settings
+└── tests/
+```
+ 
+---
+ 
 ## Quickstart
-Prerequisites:
-- Python 3.11
-- IB Gateway or TWS running locally with API enabled (paper commonly on port `4002`).
-
-PowerShell:
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r .\requirements.txt
-python app.py
-```
-
-bash:
+ 
+**Prerequisites:** Python 3.11 · IB Gateway or TWS running locally with API enabled (paper: port `4002`)
+ 
 ```bash
+# Clone and install
 python -m venv .venv
-source .venv/bin/activate
-python -m pip install -r ./requirements.txt
+source .venv/bin/activate          # Windows: .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+ 
+# Run
 python app.py
 ```
-
+ 
+---
+ 
 ## Tests
-This project includes a pragmatic automated test baseline focused on production-risk areas:
-- settings validation and migration logic;
-- order validation and execution-thread behavior;
-- market-data worker payload construction and failure handling;
-- IB client fallback behavior and status snapshot formatting;
-- critical status panel state transitions.
-
-Run tests locally:
-
+ 
+Test coverage focused on production-risk areas:
+ 
+- Settings validation and migration logic
+- Order validation and execution-thread behavior
+- Market-data worker payload construction and failure handling
+- IB client fallback behavior and status snapshot formatting
+- Critical status panel state transitions
+ 
 ```bash
+# Full test suite
 python -m pytest
-```
-
-Run only fast unit tests (same scope as CI pull requests):
-
-```bash
+ 
+# Fast unit tests only (CI scope)
 python -m pytest -m "not integration"
+ 
+# Integration smoke tests (requires running IB Gateway)
+IB_RUN_INTEGRATION=1 IB_HOST=127.0.0.1 IB_PORT=4002 IB_CLIENT_ID=9001 \
+  python -m pytest -m "integration" -rs
 ```
+ 
+**CI quality gates:** `compileall` import sanity · `ruff` linting · unit tests
+ 
+---
+ 
+## License
+ 
+MIT — see [LICENSE](LICENSE)
