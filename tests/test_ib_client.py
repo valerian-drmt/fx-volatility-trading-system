@@ -101,3 +101,60 @@ def test_get_status_snapshot_builds_expected_payload():
         "client_id": "42",
         "account": "DU999999",
     }
+
+
+@pytest.mark.unit
+def test_build_bracket_orders_calls_ib_helper():
+    class BracketIB(BasicIB):
+        def __init__(self):
+            super().__init__(connected=True)
+            self.calls = []
+
+        def bracketOrder(self, side, quantity, limit_price, take_profit_price, stop_loss_price):
+            self.calls.append((side, quantity, limit_price, take_profit_price, stop_loss_price))
+            return ["parent", "tp", "sl"]
+
+    ib = BracketIB()
+    client = IBClient(ib=ib)
+    orders = client.build_bracket_orders(
+        side="BUY",
+        quantity=1000,
+        limit_price=1.1,
+        take_profit_price=1.12,
+        stop_loss_price=1.09,
+    )
+
+    assert orders == ["parent", "tp", "sl"]
+    assert ib.calls == [("BUY", 1000, 1.1, 1.12, 1.09)]
+
+
+@pytest.mark.unit
+def test_cancel_all_open_orders_cancels_each_open_order():
+    class CancelAllIB(BasicIB):
+        def __init__(self):
+            super().__init__(connected=True)
+            self.cancel_calls = []
+
+        def openOrders(self):
+            return ["ORDER-1", "ORDER-2"]
+
+        def cancelOrder(self, order):
+            self.cancel_calls.append(order)
+            return True
+
+    client = IBClient(ib=CancelAllIB())
+    ok, cancelled_count, message = client.cancel_all_open_orders()
+
+    assert ok is True
+    assert cancelled_count == 2
+    assert "Cancelled 2 open orders." in message
+
+
+@pytest.mark.unit
+def test_cancel_all_open_orders_requires_connection():
+    client = IBClient(ib=BasicIB(connected=False))
+    ok, cancelled_count, message = client.cancel_all_open_orders()
+
+    assert ok is False
+    assert cancelled_count == 0
+    assert message == "Not connected to IBKR."
