@@ -1,36 +1,34 @@
 # Trading Project
 
-End-to-end trading research and UI prototype: data fetch, feature engineering, labeling, model training, and a live tick dashboard for IBKR (via ib_insync).
+Trading UI and research stack for IBKR workflows: live tick dashboard, service orchestration, and an offline ML pipeline for data preparation and model training.
 
 ## Highlights
-- PyQt5 desktop UI with dockable panels for charts, performance, portfolio, orders, risk, logs, and connection status.
-- Data pipeline to fetch OHLCV and DOM data (Binance via ccxt, Bybit public data), save/load CSV, and resample.
-- Feature engineering (VWAP, session flags, pivot points, volume pivots, CVD, OBI, and more).
-- Labeling utilities for pivot-based classification targets.
-- LSTM model + trainer with early stopping and metrics.
-- Research notebooks in `Research/` for experimentation (fetching, features/labels, analysis, LSTM, SAC, backtesting).
+- PyQt5 desktop UI with dockable panels (chart, performance, portfolio, orders, risk, logs, status).
+- Live runtime orchestrated by `Controller` + services (`IBClient`, pipeline runner, persistence).
+- Research pipeline for fetch/features/labels/preprocessing/training under `research/ml`.
+- Draw.io architecture and dataflow diagrams under `Schemes/`.
 
 ## Project Structure
-- `src/app.py`: UI entrypoint (starts the LiveTickWindow).
-- `src/ui/`: PyQt5 app and panel widgets (chart, performance, portfolio, risk, orders, logs, status).
-- `src/data/`: fetchers, preprocessing, features, labels, and analysis helpers.
-- `src/ml/`: LSTM model and trainer (SAC stubs present).
-- `src/services/`: placeholders for IB client, data feed, robot manager.
-- `Research/`: notebooks and sample datasets.
-- `tests/`: pytest tests (currently a basic import test).
+- `app.py`: main entrypoint. Adds `src` to `sys.path`, then launches `Controller`.
+- `src/controller.py`: app bootstrap, UI wiring, service lifecycle.
+- `src/ui/`: PyQt5 main window and panel widgets.
+- `src/services/`: IB client and runtime services (`pipeline_runner`, persistence, performance, snapshot thread).
+- `src/domain/` and `src/utils/`: shared types/events and utility helpers.
+- `research/`: notebooks, datasets, and ML modules in `research/ml`.
+- `tests/services/`: pytest coverage for core service behavior.
+- `Schemes/`: architecture and runtime flow diagrams.
 
 ## Quickstart (UI)
 Prereqs:
 - Python 3.11
-- IB Gateway or TWS running locally with API access enabled (default: paper port 4002).
+- IB Gateway or TWS running locally with API access enabled (default paper port: `4002`).
 
 Setup (PowerShell):
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-$env:PYTHONPATH="src"
-python src\app.py
+python app.py
 ```
 
 Setup (bash):
@@ -38,16 +36,34 @@ Setup (bash):
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export PYTHONPATH=src
-python src/app.py
+python app.py
+```
+
+## Docker
+Build image:
+```bash
+docker build -t trading-system:latest .
+```
+
+Run container (headless check):
+```bash
+docker run --rm -e QT_QPA_PLATFORM=offscreen trading-system:latest
+```
+
+Run container with UI on Windows (PowerShell + VcXsrv):
+```powershell
+docker run --rm -it `
+  -e DISPLAY=host.docker.internal:0.0 `
+  -e QT_X11_NO_MITSHM=1 `
+  trading-system:latest
 ```
 
 ## Data and ML Workflow (High Level)
-1) Fetch market data (Binance OHLCV or Bybit DOM) in `src/data/fetcher.py`.
-2) Build features in `src/data/features.py`.
-3) Create labels in `src/data/labels.py`.
-4) Prepare tensors and loaders in `src/data/preprocessing.py`.
-5) Train the LSTM in `src/ml/models/lstm_model.py` and `src/ml/trainer/lstm_trainer.py`.
+1) Fetch market data in `research/ml/data/fetcher.py`.
+2) Build features in `research/ml/data/features.py`.
+3) Create labels in `research/ml/data/labels.py`.
+4) Prepare tensors and loaders in `research/ml/data/preprocessing.py`.
+5) Train models with `research/ml/models/lstm_model.py` and `research/ml/trainer/lstm_trainer.py`.
 
 ## Tests
 ```bash
@@ -55,6 +71,6 @@ python -m pytest -q
 ```
 
 ## Notes and Caveats
-- Some modules are placeholders (`src/services/ib_client.py`, `src/services/data_feed.py`, `src/services/robot_manager.py`, `src/ml/models/sac_model.py`, `src/ml/trainer/sac_trainer.py`).
-- Several data/ML modules require extra packages not listed in `requirements.txt` (for example: `ccxt`, `requests`, `scikit-learn`, `statsmodels`, `psutil`). Install as needed for those workflows.
-- The UI expects a live IBKR API connection to stream ticks; run IB Gateway/TWS first.
+- Placeholder modules currently exist in `src/services/data_feed.py`, `src/services/robot_manager.py`, `research/ml/models/sac_model.py`, and `research/ml/trainer/sac_trainer.py`.
+- Some research modules rely on optional packages not pinned in `requirements.txt` (for example `ccxt`, `requests`, `scikit-learn`, `statsmodels`, `psutil`).
+- Live UI features require an active IBKR API session (IB Gateway/TWS) to stream data.
