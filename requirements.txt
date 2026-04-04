@@ -1,4 +1,5 @@
-PyQt5
-ib-insync
-pytest
-pyqtgraph
+PyQt5==5.15.11
+ib-insync==0.9.86
+pytest==9.0.2
+pyqtgraph==0.14.0
+ruff==0.11.2
