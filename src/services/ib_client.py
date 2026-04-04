@@ -8,10 +8,10 @@ class IBClient:
     def __init__(
         self,
         ib: IB,
-        host: str,
-        port: int,
-        client_id: int,
-        readonly: bool,
+        host: str = "127.0.0.1",
+        port: int = 4002,
+        client_id: int = 1,
+        readonly: bool = True,
         ticker=None,
     ):
         self.ib = ib
@@ -84,8 +84,20 @@ class IBClient:
 
     def connect_and_prepare(self, ticker: str = "", timeout: float = 1.0):
         self.connect(timeout=timeout)
-        if ticker:
-            self.start_live_streaming(ticker)
+
+        if self.ticker is not None:
+            return self.ticker
+
+        symbol = str(ticker).strip().upper()
+        if symbol:
+            self.start_live_streaming(symbol)
+            return self.ticker
+
+        # Backward-compatible default stream request when no symbol is provided.
+        requested_ticker = self.request_market_data(Forex("EURUSD"), snapshot=False, regulatory_snapshot=False)
+        if requested_ticker is not None:
+            self.ticker = requested_ticker
+            self._attach_ticker_listener()
         return self.ticker
 
     def is_connected(self) -> bool:
@@ -99,8 +111,11 @@ class IBClient:
         return "disconnected"
 
     def process_messages(self) -> list[dict]:
-        if self.is_connected():
-            self.ib.sleep(0)
+        if hasattr(self.ib, "sleep"):
+            try:
+                self.ib.sleep(0)
+            except Exception:
+                pass
         return self.drain_received_ticks()
 
     def _attach_ticker_listener(self):

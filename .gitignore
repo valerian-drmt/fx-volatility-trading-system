@@ -1,1 +1,12 @@
 .venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+
+.idea/workspace.xml
+.idea/shelf/
+
+.coverage
+htmlcov/
+build/
+dist/
