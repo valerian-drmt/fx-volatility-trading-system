@@ -1,3 +1,4 @@
 PyQt5
 ib-insync
+pytest
 pyqtgraph

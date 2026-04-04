@@ -3,10 +3,7 @@
     "host": "127.0.0.1",
     "port": 4002,
     "client_id": 2,
-    "readonly": false
-  },
-  "live_streaming": {
-    "max_candles": 500,
+    "readonly": false,
     "market_symbol": "EURUSD"
   }
 }
