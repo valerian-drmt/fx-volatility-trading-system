@@ -6,7 +6,7 @@ from threading import RLock
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import QTimer
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QMessageBox
 from ib_insync import IB
 
 from services.ib_client import IBClient
@@ -31,7 +31,8 @@ class ServerTimeWorker(QtCore.QThread):
 
 class Controller:
     def __init__(self):
-        self._settings_path = Path(__file__).resolve().parents[1] / "status_panel_settings.json"
+        self._project_root = Path(__file__).resolve().parents[1]
+        self._settings_path = self._resolve_settings_path()
         app_settings = self._load_app_settings()
         status_settings = app_settings["status"]
 
@@ -69,6 +70,26 @@ class Controller:
         self._connecting = False
         self._last_connect_error = ""
 
+    def _resolve_settings_path(self) -> Path:
+        config_dir = self._project_root / "config"
+        config_path = config_dir / "status_panel_settings.json"
+        legacy_path = self._project_root / "status_panel_settings.json"
+
+        if config_path.exists():
+            return config_path
+
+        if legacy_path.exists():
+            try:
+                config_dir.mkdir(parents=True, exist_ok=True)
+                config_path.write_text(legacy_path.read_text(encoding="utf-8"), encoding="utf-8")
+                print(f"Migrated settings to {config_path}")
+                return config_path
+            except Exception as exc:
+                print(f"Settings migration warning ({legacy_path} -> {config_path}): {exc}")
+                return legacy_path
+
+        return config_path
+
     def _create_window(self):
         self.window = MainWindow.create_main_window(
             on_connect=self._start_connect,
@@ -103,8 +124,14 @@ class Controller:
         self._refresh_status(force=True)
 
     def _setup_market_data_worker(self):
-        if self.window is None or self._market_data_thread is not None:
+        if self.window is None:
             return
+        if self._market_data_thread is not None and self._market_data_thread.isRunning():
+            return
+
+        self._market_data_thread = None
+        self._market_data_worker = None
+
         thread = QtCore.QThread(self.window)
         worker = MarketDataWorker(
             ib_client=self.ib_client,
@@ -115,6 +142,7 @@ class Controller:
         worker.moveToThread(thread)
         thread.started.connect(worker.start)
         thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._on_market_data_thread_finished)
         worker.payload_ready.connect(self._on_market_data_payload)
         worker.failed.connect(self._on_market_data_failed)
         self._market_data_thread = thread
@@ -135,7 +163,11 @@ class Controller:
         self._order_worker = worker
 
     def _is_market_worker_running(self) -> bool:
-        return self._market_data_thread is not None and self._market_data_thread.isRunning()
+        return (
+            self._market_data_thread is not None
+            and self._market_data_thread.isRunning()
+            and self._market_data_worker is not None
+        )
 
     def _start_market_data_worker(self):
         self._setup_market_data_worker()
@@ -147,12 +179,21 @@ class Controller:
         thread = self._market_data_thread
         worker = self._market_data_worker
         if thread is None or not thread.isRunning():
+            self._market_data_thread = None
+            self._market_data_worker = None
             return
 
         if worker is not None:
             QtCore.QMetaObject.invokeMethod(worker, "stop", QtCore.Qt.BlockingQueuedConnection)
         thread.quit()
         thread.wait(1500)
+        if not thread.isRunning():
+            self._market_data_thread = None
+            self._market_data_worker = None
+
+    def _on_market_data_thread_finished(self):
+        self._market_data_thread = None
+        self._market_data_worker = None
 
     def _stop_order_worker(self):
         thread = self._order_thread
@@ -208,11 +249,37 @@ class Controller:
         if not connected:
             self.window.order_ticket_panel.update({"message": "Connect to IBKR before sending orders.", "level": "error"})
             return
+        if self.readonly:
+            self.window.order_ticket_panel.update(
+                {
+                    "message": "Read-only mode is enabled. Disable it in settings before placing orders.",
+                    "level": "error",
+                }
+            )
+            self.window.logs_panel.update({"message": "[WARN][execution] blocked order: read-only mode enabled"})
+            return
 
         symbol = request.get("symbol", "")
         side = request.get("side", "")
         qty = request.get("quantity", "")
         order_type = request.get("order_type", "")
+        limit_price = request.get("limit_price", "")
+
+        confirm_text = f"Send order?\n{side} {qty} {symbol} {order_type}"
+        if str(order_type).upper() == "LMT":
+            confirm_text += f" @ {limit_price}"
+        confirm = QMessageBox.question(
+            self.window,
+            "Confirm Order",
+            confirm_text,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            self.window.order_ticket_panel.update({"message": "Order cancelled by user.", "level": "info"})
+            self.window.logs_panel.update({"message": f"[INFO][execution] user cancelled {side} {qty} {symbol} {order_type}"})
+            return
+
         self.window.order_ticket_panel.update({"message": "Order queued for execution thread.", "level": "info"})
         self.window.logs_panel.update({"message": f"[INFO][execution] queued {side} {qty} {symbol} {order_type}"})
         self._order_worker.enqueue_order.emit(request)
@@ -475,6 +542,7 @@ class Controller:
     def _write_app_settings(self, status_settings: dict):
         app_settings = {"status": status_settings}
         try:
+            self._settings_path.parent.mkdir(parents=True, exist_ok=True)
             self._settings_path.write_text(json.dumps(app_settings, indent=2), encoding="utf-8")
             print(f"Saved settings to {self._settings_path}")
         except Exception as exc:
