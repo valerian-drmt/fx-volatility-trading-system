@@ -3,7 +3,5 @@
 __pycache__/
 *.py[cod]
 .idea/
-.coverage
-htmlcov/
 build/
 dist/
