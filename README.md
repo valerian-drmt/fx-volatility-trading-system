@@ -130,15 +130,30 @@ Test coverage focused on production-risk areas:
 - Critical status panel state transitions
  
 ```bash
-# Full test suite
+# Full project test suite (pytest)
 python -m pytest
- 
-# Fast unit tests only (CI scope)
-python -m pytest -m "not integration"
- 
-# Integration smoke tests (requires running IB Gateway)
-IB_RUN_INTEGRATION=1 IB_HOST=127.0.0.1 IB_PORT=4002 IB_CLIENT_ID=9001 \
-  python -m pytest -m "integration" -rs
+```
+
+Run unit tests + integration smoke tests together (requires running IB Gateway/TWS).
+Use the same IB connection values as the app from `config/status_panel_settings.json` (`status.host`, `status.port`, `status.client_id`):
+
+```bash
+# macOS / Linux (bash)
+export IB_RUN_INTEGRATION=1
+export IB_HOST=$(python -c "import json;print(json.load(open('config/status_panel_settings.json', encoding='utf-8'))['status']['host'])")
+export IB_PORT=$(python -c "import json;print(json.load(open('config/status_panel_settings.json', encoding='utf-8'))['status']['port'])")
+export IB_CLIENT_ID=$(python -c "import json;print(json.load(open('config/status_panel_settings.json', encoding='utf-8'))['status']['client_id'])")
+python -m pytest -m "unit or integration" -rs
+```
+
+```powershell
+# Windows PowerShell
+$cfg = (Get-Content config/status_panel_settings.json -Raw | ConvertFrom-Json).status
+$env:IB_RUN_INTEGRATION = "1"
+$env:IB_HOST = [string]$cfg.host
+$env:IB_PORT = [string]$cfg.port
+$env:IB_CLIENT_ID = [string]$cfg.client_id
+python -m pytest -m "unit or integration" -rs
 ```
  
 **CI quality gates:** `compileall` import sanity · `ruff` linting · unit tests
