@@ -9,16 +9,19 @@ from services.ib_client import IBClient
 
 
 class MarketDataWorker(QObject):
+    NO_TICK_WARNING_SECONDS = 10.0
+
     payload_ready = pyqtSignal(object)
     failed = pyqtSignal(str)
 
+    # Initialize periodic market-data polling state and timers.
     def __init__(
         self,
         ib_client: IBClient,
         io_lock: RLock,
         interval_ms: int = 100,
         snapshot_interval_ms: int = 750,
-    ):
+    ) -> None:
         super().__init__()
         self.ib_client = ib_client
         self.io_lock = io_lock
@@ -27,20 +30,26 @@ class MarketDataWorker(QObject):
         self._timer: QTimer | None = None
         self._last_snapshot_monotonic = 0.0
         self._running = False
+        self._no_tick_since_monotonic: float | None = None
+        self._no_tick_warning_emitted = False
 
     @pyqtSlot()
-    def start(self):
+    # Start periodic polling on the worker thread.
+    def start(self) -> None:
         if self._running:
             return
         self._running = True
         self._last_snapshot_monotonic = 0.0
+        self._no_tick_since_monotonic = None
+        self._no_tick_warning_emitted = False
         self._timer = QTimer(self)
         self._timer.setInterval(self._interval_ms)
         self._timer.timeout.connect(self._poll_once)
         self._timer.start()
 
     @pyqtSlot()
-    def stop(self):
+    # Stop polling and release the QTimer owned by this worker.
+    def stop(self) -> None:
         self._running = False
         if self._timer is None:
             return
@@ -49,15 +58,18 @@ class MarketDataWorker(QObject):
         self._timer = None
 
     @pyqtSlot()
-    def _poll_once(self):
+    # Poll IB state once and emit a normalized payload for the UI.
+    def _poll_once(self) -> None:
         if not self._running:
             return
 
         try:
+            messages: list[str] = []
             with self.io_lock:
                 status = self.ib_client.get_status_snapshot()
                 connection_state = self.ib_client.get_connection_state()
                 connected = connection_state == "connected"
+                now = time.monotonic()
 
                 ticks = self.ib_client.process_messages() if connected else []
                 if not isinstance(ticks, list):
@@ -65,9 +77,28 @@ class MarketDataWorker(QObject):
                 else:
                     ticks = [tick for tick in ticks if isinstance(tick, dict)]
 
+                if connected:
+                    if ticks:
+                        if self._no_tick_warning_emitted:
+                            messages.append("[INFO][market_data] tick stream resumed.")
+                        self._no_tick_since_monotonic = None
+                        self._no_tick_warning_emitted = False
+                    else:
+                        if self._no_tick_since_monotonic is None:
+                            self._no_tick_since_monotonic = now
+                        no_tick_seconds = now - self._no_tick_since_monotonic
+                        if no_tick_seconds >= self.NO_TICK_WARNING_SECONDS and not self._no_tick_warning_emitted:
+                            messages.append(
+                                "[WARN][market_data] no ticks received for 10s; market may be closed "
+                                "or data is unavailable for this symbol."
+                            )
+                            self._no_tick_warning_emitted = True
+                else:
+                    self._no_tick_since_monotonic = None
+                    self._no_tick_warning_emitted = False
+
                 orders_payload = None
                 portfolio_payload = None
-                now = time.monotonic()
                 if connected and (now - self._last_snapshot_monotonic) * 1000 >= self._snapshot_interval_ms:
                     open_orders = self.ib_client.get_open_orders_snapshot()
                     fills = self.ib_client.get_fills_snapshot()
@@ -87,6 +118,7 @@ class MarketDataWorker(QObject):
                 "ticks": ticks,
                 "orders_payload": orders_payload,
                 "portfolio_payload": portfolio_payload,
+                "messages": messages,
             }
             self.payload_ready.emit(payload)
         except Exception as exc:
