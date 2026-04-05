@@ -3,6 +3,7 @@ import sys
 import time
 from pathlib import Path
 from threading import RLock
+from typing import Any
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import QTimer
@@ -18,12 +19,14 @@ from ui.main_window import MainWindow
 class ServerTimeWorker(QtCore.QThread):
     result = QtCore.pyqtSignal(str, str)
 
-    def __init__(self, ib_client: IBClient, io_lock: RLock):
+    # Initialize async server-time worker dependencies.
+    def __init__(self, ib_client: IBClient, io_lock: RLock) -> None:
         super().__init__()
         self.ib_client = ib_client
         self.io_lock = io_lock
 
-    def run(self):
+    # Query IB server time and emit the result pair.
+    def run(self) -> None:
         with self.io_lock:
             time_text, latency_text = self.ib_client.get_server_time_and_latency()
         self.result.emit(time_text, latency_text)
@@ -32,12 +35,14 @@ class ServerTimeWorker(QtCore.QThread):
 class ConnectWorker(QtCore.QThread):
     result = QtCore.pyqtSignal(bool, str)
 
-    def __init__(self, ib_client: IBClient, io_lock: RLock):
+    # Initialize async connection worker dependencies.
+    def __init__(self, ib_client: IBClient, io_lock: RLock) -> None:
         super().__init__()
         self.ib_client = ib_client
         self.io_lock = io_lock
 
-    def run(self):
+    # Attempt IB connection and emit success/error status.
+    def run(self) -> None:
         error_message = ""
         connected = False
         try:
@@ -63,7 +68,8 @@ class Controller:
         "snapshot_interval_ms": 2000,
     }
 
-    def __init__(self):
+    # Initialize app state, services, and persisted settings.
+    def __init__(self) -> None:
         self._project_root = Path(__file__).resolve().parents[1]
         self._settings_path = self._resolve_settings_path()
         app_settings = self._load_app_settings()
@@ -107,6 +113,7 @@ class Controller:
         self._connecting = False
         self._last_connect_error = ""
 
+    # Resolve settings path and migrate legacy location when needed.
     def _resolve_settings_path(self) -> Path:
         config_dir = self._project_root / "config"
         config_path = config_dir / "status_panel_settings.json"
@@ -127,7 +134,8 @@ class Controller:
 
         return config_path
 
-    def _create_window(self):
+    # Create and show the main dashboard window.
+    def _create_window(self) -> None:
         self.window = MainWindow.create_main_window(
             on_connect=self._start_connect,
             on_start_live_streaming=self._start_live_streaming,
@@ -144,7 +152,8 @@ class Controller:
         self.window.resize(1500, 1000)
         self.window.show()
 
-    def _setup_services(self):
+    # Configure workers, signal wiring, and status timer.
+    def _setup_services(self) -> None:
         if self.window is None:
             return
 
@@ -161,7 +170,8 @@ class Controller:
 
         self._refresh_status(force=True)
 
-    def _setup_market_data_worker(self):
+    # Prepare market-data thread/worker wiring without starting it.
+    def _setup_market_data_worker(self) -> None:
         if self.window is None:
             return
         if self._market_data_thread is not None and self._market_data_thread.isRunning():
@@ -186,7 +196,8 @@ class Controller:
         self._market_data_thread = thread
         self._market_data_worker = worker
 
-    def _setup_order_worker(self):
+    # Start the order worker thread and connect result signals.
+    def _setup_order_worker(self) -> None:
         if self.window is None or self._order_thread is not None:
             return
         thread = QtCore.QThread(self.window)
@@ -200,6 +211,7 @@ class Controller:
         self._order_thread = thread
         self._order_worker = worker
 
+    # Return True when the market worker thread is active.
     def _is_market_worker_running(self) -> bool:
         return (
             self._market_data_thread is not None
@@ -207,13 +219,15 @@ class Controller:
             and self._market_data_worker is not None
         )
 
-    def _start_market_data_worker(self):
+    # Start market polling worker if it is not already running.
+    def _start_market_data_worker(self) -> None:
         self._setup_market_data_worker()
         if self._market_data_thread is None or self._market_data_thread.isRunning():
             return
         self._market_data_thread.start()
 
-    def _stop_market_data_worker(self):
+    # Stop market polling worker and clear thread references.
+    def _stop_market_data_worker(self) -> None:
         thread = self._market_data_thread
         worker = self._market_data_worker
         if thread is None or not thread.isRunning():
@@ -229,11 +243,13 @@ class Controller:
             self._market_data_thread = None
             self._market_data_worker = None
 
-    def _on_market_data_thread_finished(self):
+    # Clear market worker references after thread termination.
+    def _on_market_data_thread_finished(self) -> None:
         self._market_data_thread = None
         self._market_data_worker = None
 
-    def _stop_order_worker(self):
+    # Stop order worker thread and clear references.
+    def _stop_order_worker(self) -> None:
         thread = self._order_thread
         worker = self._order_worker
         if thread is None:
@@ -248,7 +264,8 @@ class Controller:
         self._order_worker = None
         self._order_thread = None
 
-    def _on_market_data_payload(self, payload):
+    # Route market payload slices to their corresponding UI panels.
+    def _on_market_data_payload(self, payload: Any) -> None:
         if self.window is None or not isinstance(payload, dict):
             return
 
@@ -261,6 +278,10 @@ class Controller:
             self.window.chart_panel.update({"ticks": ticks})
             self.window.logs_panel.update({"ticks": ticks})
 
+        messages = payload.get("messages")
+        if isinstance(messages, list) and messages:
+            self.window.logs_panel.update({"messages": [str(item) for item in messages]})
+
         orders_payload = payload.get("orders_payload")
         if isinstance(orders_payload, dict):
             self.window.orders_panel.update(orders_payload)
@@ -269,12 +290,14 @@ class Controller:
         if isinstance(portfolio_payload, dict):
             self.window.portfolio_panel.update(portfolio_payload)
 
-    def _on_market_data_failed(self, message: str):
+    # Surface market worker failures to the log panel.
+    def _on_market_data_failed(self, message: str) -> None:
         if self.window is None:
             return
         self.window.logs_panel.update({"message": f"[WARN][market_data] worker error: {message}"})
 
-    def _queue_order_from_ticket(self):
+    # Validate and enqueue a new order request from the ticket panel.
+    def _queue_order_from_ticket(self) -> None:
         if self.window is None or self._order_worker is None:
             return
         if self._order_thread is None or not self._order_thread.isRunning():
@@ -327,7 +350,8 @@ class Controller:
         self.window.logs_panel.update({"message": f"[INFO][execution] queued {order_desc}"})
         self._order_worker.enqueue_order.emit(request)
 
-    def _preview_order_from_ticket(self):
+    # Validate and enqueue an order preview request.
+    def _preview_order_from_ticket(self) -> None:
         if self.window is None or self._order_worker is None:
             return
         if self._order_thread is None or not self._order_thread.isRunning():
@@ -349,7 +373,8 @@ class Controller:
         self.window.logs_panel.update({"message": f"[INFO][execution] preview queued {side} {qty} {symbol} {order_type}"})
         self._order_worker.enqueue_preview.emit(request)
 
-    def _cancel_all_orders_from_ticket(self):
+    # Confirm and enqueue a cancel-all request.
+    def _cancel_all_orders_from_ticket(self) -> None:
         if self.window is None or self._order_worker is None:
             return
         if self._order_thread is None or not self._order_thread.isRunning():
@@ -386,7 +411,8 @@ class Controller:
         self.window.logs_panel.update({"message": "[INFO][execution] cancel all queued"})
         self._order_worker.enqueue_cancel_all.emit({})
 
-    def _on_order_result(self, payload):
+    # Render order worker responses in ticket/log panels.
+    def _on_order_result(self, payload: Any) -> None:
         if self.window is None or not isinstance(payload, dict):
             return
 
@@ -409,13 +435,15 @@ class Controller:
         self.window.order_ticket_panel.update({"message": message, "level": level})
         self.window.logs_panel.update({"message": f"[{log_level}][{source}] {message}"})
 
-    def _on_order_failed(self, message: str):
+    # Render fatal order worker errors.
+    def _on_order_failed(self, message: str) -> None:
         if self.window is None:
             return
         self.window.order_ticket_panel.update({"message": f"Order worker failure: {message}", "level": "error"})
         self.window.logs_panel.update({"message": f"[ERROR][execution] order worker failure: {message}"})
 
-    def _refresh_status(self, payload: dict | None = None, force: bool = False):
+    # Refresh status panel state and button availability.
+    def _refresh_status(self, payload: dict[str, Any] | None = None, force: bool = False) -> None:
         if self.window is None:
             return
 
@@ -467,18 +495,13 @@ class Controller:
         if connected and (self._last_server_sync_sec is None or now_sec - self._last_server_sync_sec >= 10):
             self._start_server_time_sync()
 
-    def _start_connect(self):
+    # Start connection flow using current settings.
+    def _start_connect(self) -> None:
         if self._connecting or self.window is None:
             return
         with self._io_lock:
             if self.ib_client.is_connected():
                 return
-        if self._connect_worker is not None:
-            try:
-                if self._connect_worker.isRunning():
-                    return
-            except RuntimeError:
-                self._connect_worker = None
 
         self._stop_market_data_worker()
         with self._io_lock:
@@ -497,12 +520,19 @@ class Controller:
         self._last_connect_error = ""
         self._refresh_status(force=True)
 
-        self._connect_worker = ConnectWorker(self.ib_client, self._io_lock)
-        self._connect_worker.result.connect(self._on_connect_result)
-        self._connect_worker.finished.connect(self._on_connect_finished)
-        self._connect_worker.start()
+        connected = False
+        error_message = ""
+        try:
+            with self._io_lock:
+                connected = bool(self.ib_client.connect())
+                if not connected:
+                    error_message = self.ib_client.get_last_error_text() or "Unable to connect to IBKR."
+        except Exception as exc:
+            error_message = str(exc)
+        self._on_connect_result(connected, error_message)
 
-    def _on_connect_result(self, connected: bool, error_message: str):
+    # Handle connect worker completion payload.
+    def _on_connect_result(self, connected: bool, error_message: str) -> None:
         self._connecting = False
         self._last_connect_error = str(error_message or "").strip()
         if self.window is not None:
@@ -514,12 +544,14 @@ class Controller:
                 self.window.order_ticket_panel.update({"message": message, "level": "error"})
         self._refresh_status(force=True)
 
-    def _on_connect_finished(self):
+    # Release connect worker resources after completion.
+    def _on_connect_finished(self) -> None:
         if self._connect_worker is not None:
             self._connect_worker.deleteLater()
         self._connect_worker = None
 
-    def _start_live_streaming(self):
+    # Start IB live market stream and polling worker.
+    def _start_live_streaming(self) -> None:
         if self.window is None or self._is_market_worker_running():
             return
 
@@ -552,7 +584,8 @@ class Controller:
                 {"message": f"[INFO][market_data] live stream started for {self.market_symbol}"}
             )
 
-    def _stop_live_streaming(self):
+    # Stop live stream subscription and market polling worker.
+    def _stop_live_streaming(self) -> None:
         self._stop_market_data_worker()
         with self._io_lock:
             self.ib_client.stop_live_streaming()
@@ -560,7 +593,8 @@ class Controller:
         if self.window is not None:
             self.window.logs_panel.update({"message": "[INFO][market_data] live stream stopped"})
 
-    def _read_status_settings_from_panel(self) -> dict:
+    # Read status settings from UI controls (or current state fallback).
+    def _read_status_settings_from_panel(self) -> dict[str, Any]:
         if self.window is None:
             return {
                 "host": self.host,
@@ -579,7 +613,8 @@ class Controller:
             "market_symbol": panel.market_symbol_input.text().strip().upper(),
         }
 
-    def _apply_status_settings(self, settings: dict):
+    # Apply validated status settings to controller and IB client.
+    def _apply_status_settings(self, settings: dict[str, Any]) -> None:
         self.host = str(settings["host"])
         self.port = int(settings["port"])
         self.client_id = int(settings["client_id"])
@@ -591,7 +626,8 @@ class Controller:
         self.ib_client.client_id = self.client_id
         self.ib_client.readonly = self.readonly
 
-    def _load_app_settings(self) -> dict:
+    # Load and validate persisted app settings with fallback defaults.
+    def _load_app_settings(self) -> dict[str, Any]:
         defaults = self._default_app_settings()
         if not self._settings_path.exists():
             print(f"Settings file missing. Creating defaults at {self._settings_path}")
@@ -609,7 +645,8 @@ class Controller:
             return defaults
 
     @staticmethod
-    def _validate_app_settings(raw: dict) -> dict:
+    # Validate whole app settings and normalize legacy payloads.
+    def _validate_app_settings(raw: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(raw, dict):
             raise ValueError("Settings payload must be a JSON object")
 
@@ -634,7 +671,8 @@ class Controller:
         }
 
     @staticmethod
-    def _validate_runtime_settings(raw: dict) -> dict:
+    # Validate runtime timing settings and enforce safe bounds.
+    def _validate_runtime_settings(raw: dict[str, Any]) -> dict[str, int]:
         if not isinstance(raw, dict):
             raise ValueError("Runtime settings payload must be a JSON object")
 
@@ -655,7 +693,8 @@ class Controller:
         }
 
     @staticmethod
-    def _validate_status_settings(raw: dict) -> dict:
+    # Validate status/connection settings and normalize fields.
+    def _validate_status_settings(raw: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(raw, dict):
             raise ValueError("Settings payload must be a JSON object")
 
@@ -680,7 +719,8 @@ class Controller:
             "market_symbol": symbol,
         }
 
-    def _save_app_settings(self):
+    # Persist current status and runtime settings to disk.
+    def _save_app_settings(self) -> None:
         status_settings = self._validate_status_settings(self._read_status_settings_from_panel())
         self._apply_status_settings(status_settings)
         runtime_settings = self._validate_runtime_settings(
@@ -692,17 +732,20 @@ class Controller:
         self._write_app_settings(status_settings, runtime_settings)
 
     @staticmethod
-    def _default_app_settings() -> dict:
+    # Return default app settings payload.
+    def _default_app_settings() -> dict[str, dict[str, Any]]:
         return {
             "status": dict(Controller.DEFAULT_STATUS_SETTINGS),
             "runtime": dict(Controller.DEFAULT_RUNTIME_SETTINGS),
         }
 
-    def _write_full_app_settings(self, app_settings: dict):
+    # Validate and write a full app settings payload.
+    def _write_full_app_settings(self, app_settings: dict[str, Any]) -> None:
         validated = self._validate_app_settings(app_settings)
         self._write_app_settings(validated["status"], validated["runtime"])
 
-    def _write_app_settings(self, status_settings: dict, runtime_settings: dict):
+    # Write split status/runtime settings payload to disk.
+    def _write_app_settings(self, status_settings: dict[str, Any], runtime_settings: dict[str, Any]) -> None:
         app_settings = {
             "status": status_settings,
             "runtime": runtime_settings,
@@ -714,7 +757,8 @@ class Controller:
         except Exception as exc:
             print(f"Failed to save settings: {exc}")
 
-    def _start_server_time_sync(self):
+    # Start background server-time synchronization if supported.
+    def _start_server_time_sync(self) -> None:
         if self._server_time_worker is not None:
             try:
                 if self._server_time_worker.isRunning():
@@ -732,18 +776,21 @@ class Controller:
         self._server_time_worker.finished.connect(self._on_server_time_finished)
         self._server_time_worker.start()
 
-    def _on_server_time_result(self, time_text: str, latency_text: str):
+    # Store latest server time/latency snapshot and refresh UI.
+    def _on_server_time_result(self, time_text: str, latency_text: str) -> None:
         self._server_time_text = time_text
         self._latency_ms_text = latency_text
         self._last_server_sync_sec = int(time.time())
         self._refresh_status(force=True)
 
-    def _on_server_time_finished(self):
+    # Release server-time worker resources.
+    def _on_server_time_finished(self) -> None:
         if self._server_time_worker is not None:
             self._server_time_worker.deleteLater()
         self._server_time_worker = None
 
-    def _shutdown_services(self):
+    # Stop workers, subscriptions, and IB connection on exit.
+    def _shutdown_services(self) -> None:
         if self._status_timer is not None:
             self._status_timer.stop()
         self._connecting = False
@@ -765,6 +812,7 @@ class Controller:
             if self.ib.isConnected():
                 self.ib.disconnect()
 
+    # Start the UI event loop and perform graceful shutdown.
     def run(self) -> int:
         self._create_window()
         self._setup_services()
