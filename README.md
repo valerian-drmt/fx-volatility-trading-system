@@ -91,12 +91,29 @@ trading-ib/
 **Prerequisites:** Python 3.11 · IB Gateway or TWS running locally with API enabled (paper: port `4002`)
  
 ```bash
-# Clone and install
+# Create virtual environment (no output on success)
 python -m venv .venv
-source .venv/bin/activate          # Windows: .\.venv\Scripts\Activate.ps1
+```
+
+Activate it with the command for your shell:
+
+```bash
+source .venv/bin/activate          # macOS / Linux
+```
+
+```powershell
+.\.venv\Scripts\Activate.ps1       # Windows PowerShell
+# If blocked in current session:
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+```bat
+.\.venv\Scripts\activate.bat       # Windows CMD
+```
+
+```bash
 pip install -r requirements.txt
- 
-# Run
 python app.py
 ```
  
