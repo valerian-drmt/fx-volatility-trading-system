@@ -11,10 +11,12 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from typing import Any
 
 
 class OrderTicketPanel(QWidget):
-    def __init__(self):
+    # Build order-entry controls and action buttons.
+    def __init__(self) -> None:
         super().__init__()
 
         layout = QVBoxLayout(self)
@@ -87,7 +89,8 @@ class OrderTicketPanel(QWidget):
         self.order_type_combo.currentTextChanged.connect(self._on_order_type_changed)
         self._on_order_type_changed(self.order_type_combo.currentText())
 
-    def get_order_request(self) -> dict:
+    # Collect and normalize the current order form values.
+    def get_order_request(self) -> dict[str, Any]:
         order_type = self.order_type_combo.currentText().strip().upper()
         take_profit = float(self.take_profit_input.value())
         stop_loss = float(self.stop_loss_input.value())
@@ -101,7 +104,8 @@ class OrderTicketPanel(QWidget):
             "stop_loss": stop_loss if order_type == "LMT" and stop_loss > 0 else None,
         }
 
-    def _on_order_type_changed(self, value: str):
+    # Toggle limit-specific fields based on selected order type.
+    def _on_order_type_changed(self, value: str) -> None:
         order_type = str(value).strip().upper()
         is_limit_order = order_type == "LMT"
         self.limit_price_input.setEnabled(is_limit_order)
@@ -111,7 +115,8 @@ class OrderTicketPanel(QWidget):
             self.take_profit_input.setValue(0.0)
             self.stop_loss_input.setValue(0.0)
 
-    def set_feedback(self, message: str, level: str = "info"):
+    # Display feedback text with a severity color.
+    def set_feedback(self, message: str, level: str = "info") -> None:
         text = str(message).strip() or "--"
         level_key = str(level).strip().lower()
         if level_key == "error":
@@ -123,7 +128,8 @@ class OrderTicketPanel(QWidget):
         self.feedback_label.setText(text)
         self.feedback_label.setStyleSheet(f"color: {color};")
 
-    def update(self, payload=None):
+    # Apply status updates sent by the controller.
+    def update(self, payload: dict[str, Any] | None = None) -> None:
         if not isinstance(payload, dict):
             return
         if "message" in payload:

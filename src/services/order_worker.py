@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from threading import RLock
+from typing import Any
 
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 from ib_insync import Forex, LimitOrder, MarketOrder
@@ -15,7 +16,8 @@ class OrderWorker(QObject):
     order_result = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, ib_client: IBClient, io_lock: RLock):
+    # Wire worker signals and initialize execution state.
+    def __init__(self, ib_client: IBClient, io_lock: RLock) -> None:
         super().__init__()
         self.ib_client = ib_client
         self.io_lock = io_lock
@@ -25,19 +27,23 @@ class OrderWorker(QObject):
         self.enqueue_cancel_all.connect(self.cancel_all_orders)
 
     @pyqtSlot()
-    def start(self):
+    # Mark the worker as ready to process queued requests.
+    def start(self) -> None:
         self._running = True
 
     @pyqtSlot()
-    def stop(self):
+    # Mark the worker as stopped and reject new requests.
+    def stop(self) -> None:
         self._running = False
 
     @staticmethod
+    # Normalize a symbol string to IB-friendly uppercase format.
     def _normalize_symbol(raw_symbol: str) -> str:
         return str(raw_symbol).strip().upper().replace("/", "")
 
     @staticmethod
-    def _normalize_request(request: dict) -> dict | None:
+    # Parse and sanitize an order request payload.
+    def _normalize_request(request: Any) -> dict[str, Any] | None:
         if not isinstance(request, dict):
             return None
 
@@ -75,7 +81,8 @@ class OrderWorker(QObject):
         }
 
     @staticmethod
-    def _validate_request(normalized: dict) -> str | None:
+    # Validate normalized order fields and return an error message when invalid.
+    def _validate_request(normalized: dict[str, Any]) -> str | None:
         symbol = normalized["symbol"]
         side = normalized["side"]
         order_type = normalized["order_type"]
@@ -114,13 +121,15 @@ class OrderWorker(QObject):
         return None
 
     @staticmethod
-    def _build_order(side: str, order_type: str, quantity: int, limit_price: float):
+    # Build an IB market or limit order object.
+    def _build_order(side: str, order_type: str, quantity: int, limit_price: float) -> Any:
         if order_type == "MKT":
             return MarketOrder(side, quantity)
         return LimitOrder(side, quantity, limit_price)
 
     @pyqtSlot(object)
-    def place_order(self, request):
+    # Execute a validated order request through the IB client.
+    def place_order(self, request: Any) -> None:
         if not self._running:
             self.order_result.emit({"ok": False, "kind": "order", "message": "Order worker is stopped."})
             return
@@ -230,7 +239,8 @@ class OrderWorker(QObject):
             self.failed.emit(str(exc))
 
     @pyqtSlot(object)
-    def preview_order(self, request):
+    # Run a what-if preview for a validated order request.
+    def preview_order(self, request: Any) -> None:
         if not self._running:
             self.order_result.emit({"ok": False, "kind": "preview", "message": "Order worker is stopped."})
             return
@@ -302,7 +312,8 @@ class OrderWorker(QObject):
             self.failed.emit(str(exc))
 
     @pyqtSlot(object)
-    def cancel_all_orders(self, _request=None):
+    # Cancel all currently open orders through the IB client.
+    def cancel_all_orders(self, _request: Any = None) -> None:
         if not self._running:
             self.order_result.emit({"ok": False, "kind": "cancel_all", "message": "Order worker is stopped."})
             return

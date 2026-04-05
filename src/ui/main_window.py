@@ -12,13 +12,14 @@ from ui.panels.status_panel import StatusPanel
 
 class MainWindow(QMainWindow):
     @classmethod
+    # Build the main window with callbacks and default settings.
     def create_main_window(
         cls,
         on_connect: Callable[[], None] | None,
         on_start_live_streaming: Callable[[], None] | None,
         on_stop_live_streaming: Callable[[], None] | None,
         on_save_settings: Callable[[], None] | None,
-        status_defaults: dict,
+        status_defaults: dict[str, object],
     ) -> "MainWindow":
         return cls(
             on_connect=on_connect,
@@ -28,14 +29,15 @@ class MainWindow(QMainWindow):
             status_defaults=status_defaults,
         )
 
+    # Create and lay out all dashboard panels.
     def __init__(
         self,
         on_connect: Callable[[], None] | None,
         on_start_live_streaming: Callable[[], None] | None,
         on_stop_live_streaming: Callable[[], None] | None,
         on_save_settings: Callable[[], None] | None,
-        status_defaults: dict,
-    ):
+        status_defaults: dict[str, object],
+    ) -> None:
         super().__init__()
 
         self.setObjectName("main_window")
@@ -86,28 +88,34 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(container)
 
+    # Create the chart panel instance.
     def create_chart_panel(self) -> ChartPanel:
         return ChartPanel(max_points=500)
 
+    # Create the log panel instance.
     def create_logs_panel(self) -> LogsPanel:
         return LogsPanel()
 
+    # Create the orders panel instance.
     def create_orders_panel(self) -> OrdersPanel:
         return OrdersPanel()
 
+    # Create the order ticket panel instance.
     def create_order_ticket_panel(self) -> OrderTicketPanel:
         return OrderTicketPanel()
 
+    # Create the portfolio panel instance.
     def create_portfolio_panel(self) -> PortfolioPanel:
         return PortfolioPanel()
 
+    # Create the status panel wired with controller callbacks.
     def create_status_panel(
         self,
         on_connect: Callable[[], None] | None,
         on_start_live_streaming: Callable[[], None] | None,
         on_stop_live_streaming: Callable[[], None] | None,
         on_save_settings: Callable[[], None] | None,
-        connection_defaults: dict,
+        connection_defaults: dict[str, object],
     ) -> StatusPanel:
         return StatusPanel(
             on_connect,
