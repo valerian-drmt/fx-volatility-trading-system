@@ -1,5 +1,6 @@
 import math
 import re
+from typing import Any
 
 from PyQt5.QtGui import QTextCursor
 from PyQt5.QtWidgets import (
@@ -18,7 +19,8 @@ class LogsPanel(QWidget):
     _MAX_ENTRIES = 4000
     _PRICE_DECIMALS = 8
 
-    def __init__(self):
+    # Build log controls, filters, and state storage.
+    def __init__(self) -> None:
         super().__init__()
 
         layout = QVBoxLayout(self)
@@ -56,7 +58,8 @@ class LogsPanel(QWidget):
         self.search_edit.textChanged.connect(self._apply_filters)
 
     @staticmethod
-    def _format_tick_value(value) -> str:
+    # Format tick price-like values for compact display.
+    def _format_tick_value(value: Any) -> str:
         if isinstance(value, (int, float)):
             try:
                 if math.isnan(value):
@@ -68,7 +71,8 @@ class LogsPanel(QWidget):
         return "--" if value is None else str(value)
 
     @staticmethod
-    def _format_tick_size(value) -> str:
+    # Format tick size values while preserving integer readability.
+    def _format_tick_size(value: Any) -> str:
         if isinstance(value, (int, float)):
             try:
                 if math.isnan(value):
@@ -81,7 +85,8 @@ class LogsPanel(QWidget):
             return f"{value_float:.2f}"
         return "--" if value is None else str(value)
 
-    def _format_tick_log_message(self, tick: dict) -> str:
+    # Build a single line log entry from a market-data tick.
+    def _format_tick_log_message(self, tick: dict[str, Any]) -> str:
         tick_time = str(tick.get("time", "--"))
         bid = self._format_tick_value(tick.get("bid"))
         ask = self._format_tick_value(tick.get("ask"))
@@ -94,6 +99,7 @@ class LogsPanel(QWidget):
         )
 
     @staticmethod
+    # Normalize free-form log levels to supported bucket names.
     def _normalize_level(value: str) -> str:
         level = str(value).strip().upper()
         if level.startswith("WARN"):
@@ -104,7 +110,8 @@ class LogsPanel(QWidget):
             return "INFO"
         return level
 
-    def _parse_log_entry(self, text: str) -> dict:
+    # Parse text into a structured log entry used by filters.
+    def _parse_log_entry(self, text: str) -> dict[str, str]:
         message = str(text)
         level = "INFO"
         source = "system"
@@ -125,13 +132,15 @@ class LogsPanel(QWidget):
             "source": source,
         }
 
-    def _ensure_source_exists(self, source: str):
+    # Add a source value to the source filter if it is new.
+    def _ensure_source_exists(self, source: str) -> None:
         if not source:
             return
         if self.source_combo.findText(source) < 0:
             self.source_combo.addItem(source)
 
-    def _append_entry(self, message: str):
+    # Append one message to memory and enforce max history size.
+    def _append_entry(self, message: str) -> tuple[dict[str, str], bool]:
         entry = self._parse_log_entry(message)
         self._entries.append(entry)
         dropped = False
@@ -142,6 +151,7 @@ class LogsPanel(QWidget):
         self._ensure_source_exists(entry["source"])
         return entry, dropped
 
+    # Return True when no custom log filters are applied.
     def _has_default_filters(self) -> bool:
         return (
             self.level_combo.currentText().strip().upper() == "ALL"
@@ -149,7 +159,8 @@ class LogsPanel(QWidget):
             and not self.search_edit.text().strip()
         )
 
-    def _matches_filters(self, entry: dict) -> bool:
+    # Check whether one log entry passes the current filters.
+    def _matches_filters(self, entry: dict[str, str]) -> bool:
         selected_level = self.level_combo.currentText().strip().upper()
         selected_source = self.source_combo.currentText().strip().lower()
         search_text = self.search_edit.text().strip().lower()
@@ -162,14 +173,16 @@ class LogsPanel(QWidget):
             return False
         return True
 
-    def _apply_filters(self, *_):
+    # Rebuild the log view from filtered in-memory entries.
+    def _apply_filters(self, *_: Any) -> None:
         filtered_lines = [entry["text"] for entry in self._entries if self._matches_filters(entry)]
         self.log_view.setPlainText("\n".join(filtered_lines))
         cursor = self.log_view.textCursor()
         cursor.movePosition(QTextCursor.End)
         self.log_view.setTextCursor(cursor)
 
-    def update(self, payload=None):
+    # Merge new ticks/messages into the log view.
+    def update(self, payload: dict[str, Any] | None = None) -> None:
         if not isinstance(payload, dict):
             return
         if payload.get("clear"):

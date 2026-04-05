@@ -1,4 +1,5 @@
 import math
+from typing import Any
 
 from PyQt5.QtWidgets import QFormLayout, QLabel, QVBoxLayout, QWidget
 
@@ -14,7 +15,8 @@ class PortfolioPanel(QWidget):
         ("GrossPositionValue", "Gross Pos:"),
     )
 
-    def __init__(self):
+    # Build account summary and exposure widgets.
+    def __init__(self) -> None:
         super().__init__()
 
         self.fields = {tag: QLabel("--") for tag, _ in self._SUMMARY_FIELDS}
@@ -45,12 +47,14 @@ class PortfolioPanel(QWidget):
         layout.addStretch(1)
 
     @staticmethod
+    # Format position quantities without unnecessary decimals.
     def _format_position_qty(value: float) -> str:
         if float(value).is_integer():
             return str(int(value))
         return f"{value:.4f}".rstrip("0").rstrip(".")
 
-    def update(self, payload=None):
+    # Refresh summary and top exposure values from payload data.
+    def update(self, payload: dict[str, Any] | None = None) -> None:
         if not isinstance(payload, dict):
             return
 

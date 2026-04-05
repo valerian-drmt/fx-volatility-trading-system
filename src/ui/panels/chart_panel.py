@@ -1,12 +1,14 @@
 from collections import deque
 import math
+from typing import Any
 
 import pyqtgraph as pg
 from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 
 class ChartPanel(QWidget):
-    def __init__(self, max_points: int = 500):
+    # Initialize chart buffers and plotting widgets.
+    def __init__(self, max_points: int = 500) -> None:
         super().__init__()
         self._max_points = max(50, int(max_points))
         self._x = deque(maxlen=self._max_points)
@@ -26,7 +28,8 @@ class ChartPanel(QWidget):
         layout.addWidget(self.plot)
 
     @staticmethod
-    def _is_valid_price(value) -> bool:
+    # Return True when a value can be used as a numeric price.
+    def _is_valid_price(value: Any) -> bool:
         if value is None:
             return False
         if not isinstance(value, (int, float)):
@@ -34,7 +37,8 @@ class ChartPanel(QWidget):
         return not math.isnan(float(value))
 
     @staticmethod
-    def _tick_to_mid_price(tick: dict) -> float | None:
+    # Convert an incoming tick payload to a single mid/last price.
+    def _tick_to_mid_price(tick: dict[str, Any]) -> float | None:
         bid = tick.get("bid")
         ask = tick.get("ask")
         last = tick.get("last")
@@ -50,12 +54,14 @@ class ChartPanel(QWidget):
             return float(last)
         return None
 
-    def _append_price(self, price: float):
+    # Append one price point to the fixed-size series.
+    def _append_price(self, price: float) -> None:
         self._last_index += 1
         self._x.append(self._last_index)
         self._y.append(price)
 
-    def _redraw(self):
+    # Redraw the curve and update y-axis range.
+    def _redraw(self) -> None:
         if not self._x:
             return
         self.curve.setData(list(self._x), list(self._y))
@@ -67,7 +73,8 @@ class ChartPanel(QWidget):
             pad = (y_max - y_min) * 0.1
         self.plot.setYRange(y_min - pad, y_max + pad, padding=0)
 
-    def update(self, payload=None):
+    # Apply incoming chart payload data.
+    def update(self, payload: dict[str, Any] | None = None) -> None:
         if not isinstance(payload, dict):
             return
 

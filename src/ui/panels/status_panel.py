@@ -10,10 +10,19 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QGroupBox,
 )
+from typing import Any, Callable
 
 
 class StatusPanel(QWidget):
-    def __init__(self, on_connect, on_start_live_streaming, on_stop_live_streaming, on_save_settings, connection_defaults):
+    # Build connection controls, runtime labels, and settings inputs.
+    def __init__(
+        self,
+        on_connect: Callable[[], None] | None,
+        on_start_live_streaming: Callable[[], None] | None,
+        on_stop_live_streaming: Callable[[], None] | None,
+        on_save_settings: Callable[[], None] | None,
+        connection_defaults: dict[str, Any],
+    ) -> None:
         super().__init__()
         required = ("host", "port", "client_id", "readonly", "market_symbol")
         missing = [key for key in required if key not in connection_defaults]
@@ -116,7 +125,8 @@ class StatusPanel(QWidget):
         layout.addWidget(settings_group)
         layout.addStretch(1)
 
-    def update(self, payload=None):
+    # Update connection status labels and action button states.
+    def update(self, payload: dict[str, Any] | None = None) -> None:
         if not isinstance(payload, dict):
             return
         state = str(payload.get("connection_state", "disconnected")).lower()

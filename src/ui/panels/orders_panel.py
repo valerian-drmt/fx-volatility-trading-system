@@ -7,10 +7,12 @@ from PyQt5.QtWidgets import (
     QHeaderView,
     QTableWidgetItem,
 )
+from typing import Any
 
 
 class OrdersPanel(QWidget):
-    def __init__(self):
+    # Build open-orders and fills tables.
+    def __init__(self) -> None:
         super().__init__()
 
         layout = QVBoxLayout(self)
@@ -39,7 +41,8 @@ class OrdersPanel(QWidget):
 
         layout.addWidget(self.fills_table)
 
-    def update(self, payload=None):
+    # Refresh tables from normalized orders/fills payloads.
+    def update(self, payload: dict[str, Any] | None = None) -> None:
         if not isinstance(payload, dict):
             return
         open_orders = payload.get("open_orders") or []
