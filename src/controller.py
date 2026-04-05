@@ -32,29 +32,6 @@ class ServerTimeWorker(QtCore.QThread):
         self.result.emit(time_text, latency_text)
 
 
-class ConnectWorker(QtCore.QThread):
-    result = QtCore.pyqtSignal(bool, str)
-
-    # Initialize async connection worker dependencies.
-    def __init__(self, ib_client: IBClient, io_lock: RLock) -> None:
-        super().__init__()
-        self.ib_client = ib_client
-        self.io_lock = io_lock
-
-    # Attempt IB connection and emit success/error status.
-    def run(self) -> None:
-        error_message = ""
-        connected = False
-        try:
-            with self.io_lock:
-                connected = bool(self.ib_client.connect())
-                if not connected:
-                    error_message = self.ib_client.get_last_error_text() or "Unable to connect to IBKR."
-        except Exception as exc:
-            error_message = str(exc)
-        self.result.emit(connected, error_message)
-
-
 class Controller:
     DEFAULT_STATUS_SETTINGS = {
         "host": "127.0.0.1",
@@ -99,7 +76,6 @@ class Controller:
         self.window: MainWindow | None = None
         self._status_timer: QTimer | None = None
         self._server_time_worker: ServerTimeWorker | None = None
-        self._connect_worker: ConnectWorker | None = None
 
         self._market_data_thread: QtCore.QThread | None = None
         self._market_data_worker: MarketDataWorker | None = None
@@ -544,12 +520,6 @@ class Controller:
                 self.window.order_ticket_panel.update({"message": message, "level": "error"})
         self._refresh_status(force=True)
 
-    # Release connect worker resources after completion.
-    def _on_connect_finished(self) -> None:
-        if self._connect_worker is not None:
-            self._connect_worker.deleteLater()
-        self._connect_worker = None
-
     # Start IB live market stream and polling worker.
     def _start_live_streaming(self) -> None:
         if self.window is None or self._is_market_worker_running():
@@ -794,14 +764,6 @@ class Controller:
         if self._status_timer is not None:
             self._status_timer.stop()
         self._connecting = False
-
-        if self._connect_worker is not None:
-            try:
-                if self._connect_worker.isRunning():
-                    self._connect_worker.wait(1500)
-            except RuntimeError:
-                pass
-            self._connect_worker = None
 
         self._stop_market_data_worker()
         self._stop_order_worker()
