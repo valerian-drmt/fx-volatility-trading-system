@@ -218,7 +218,13 @@ class LogsPanel(QWidget):
 
         if has_new_entries:
             if self._has_default_filters() and not dropped_entries:
-                for entry in new_entries:
-                    self.log_view.append(entry["text"])
+                if new_entries:
+                    cursor = self.log_view.textCursor()
+                    cursor.movePosition(QTextCursor.End)
+                    if self.log_view.document().characterCount() > 1:
+                        cursor.insertText("\n")
+                    cursor.insertText("\n".join(entry["text"] for entry in new_entries))
+                    self.log_view.setTextCursor(cursor)
+                    self.log_view.ensureCursorVisible()
             else:
                 self._apply_filters()

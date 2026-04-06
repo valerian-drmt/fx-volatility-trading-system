@@ -1,6 +1,9 @@
+import asyncio
+import threading
 from types import SimpleNamespace
 
 import pytest
+from ib_insync import LimitOrder, MarketOrder, StopOrder
 
 from services.ib_client import IBClient
 
@@ -13,6 +16,24 @@ class BasicIB:
         return self._connected
 
 
+class DummyEvent:
+    def __init__(self):
+        self.handlers = []
+
+    def __iadd__(self, handler):
+        self.handlers.append(handler)
+        return self
+
+    def __isub__(self, handler):
+        if handler in self.handlers:
+            self.handlers.remove(handler)
+        return self
+
+    def emit(self, *args):
+        for handler in list(self.handlers):
+            handler(*args)
+
+
 @pytest.mark.unit
 def test_get_environment_maps_known_ports():
     ib = BasicIB()
@@ -21,6 +42,24 @@ def test_get_environment_maps_known_ports():
     assert IBClient(ib=ib, port=4001).get_environment() == "live"
     assert IBClient(ib=ib, port=7496).get_environment() == "live"
     assert IBClient(ib=ib, port=1234).get_environment() == "unknown"
+
+
+@pytest.mark.unit
+def test_connect_is_noop_when_already_connected():
+    class AlreadyConnectedIB(BasicIB):
+        def __init__(self):
+            super().__init__(connected=True)
+            self.connect_calls = 0
+
+        def connect(self, *args, **kwargs):
+            self.connect_calls += 1
+            return True
+
+    ib = AlreadyConnectedIB()
+    client = IBClient(ib=ib)
+
+    assert client.connect(timeout=1.0) is True
+    assert ib.connect_calls == 0
 
 
 @pytest.mark.unit
@@ -129,6 +168,99 @@ def test_build_bracket_orders_calls_ib_helper():
 
 
 @pytest.mark.unit
+def test_build_bracket_orders_mkt_parent_builds_manual_bracket_orders():
+    class MktBracketIB(BasicIB):
+        def __init__(self):
+            super().__init__(connected=True)
+            self.calls = []
+            next_req_id = {"value": 10}
+
+            def _next_id():
+                next_req_id["value"] += 1
+                return next_req_id["value"]
+
+            self.client = SimpleNamespace(getReqId=_next_id)
+
+        def bracketOrder(self, *_args, **_kwargs):
+            self.calls.append("unexpected")
+            return []
+
+    ib = MktBracketIB()
+    client = IBClient(ib=ib)
+    orders = client.build_bracket_orders(
+        side="SELL",
+        quantity=5000,
+        limit_price=1.2,
+        take_profit_price=1.194,
+        stop_loss_price=1.203,
+        parent_order_type="MKT",
+    )
+
+    assert len(orders) == 3
+    assert isinstance(orders[0], MarketOrder)
+    assert isinstance(orders[1], LimitOrder)
+    assert isinstance(orders[2], StopOrder)
+    assert orders[0].action == "SELL"
+    assert int(orders[0].totalQuantity) == 5000
+    assert orders[0].transmit is False
+    assert orders[1].action == "BUY"
+    assert int(orders[1].totalQuantity) == 5000
+    assert orders[1].lmtPrice == pytest.approx(1.194)
+    assert orders[1].parentId == orders[0].orderId
+    assert orders[1].transmit is False
+    assert orders[2].action == "BUY"
+    assert int(orders[2].totalQuantity) == 5000
+    assert orders[2].auxPrice == pytest.approx(1.203)
+    assert orders[2].parentId == orders[0].orderId
+    assert orders[2].transmit is True
+    assert ib.calls == []
+
+
+@pytest.mark.unit
+def test_request_market_data_retries_with_delayed_mode_on_competing_session():
+    class MarketDataIB(BasicIB):
+        def __init__(self):
+            super().__init__(connected=True)
+            self.errorEvent = DummyEvent()
+            self.market_data_type_calls = []
+            self.cancel_calls = []
+            self.req_calls = 0
+
+        def reqMarketDataType(self, market_data_type):
+            self.market_data_type_calls.append(int(market_data_type))
+            return True
+
+        def cancelMktData(self, contract):
+            self.cancel_calls.append(contract)
+            return True
+
+        def reqMktData(self, contract, generic_tick_list, snapshot, regulatory_snapshot):
+            self.req_calls += 1
+            if self.req_calls == 1:
+                self.errorEvent.emit(4, 10197, "No market data during competing live session", contract)
+            return SimpleNamespace(
+                contract=contract,
+                bid=1.1,
+                ask=1.2,
+                last=None,
+                close=None,
+                volume=None,
+                time=None,
+                req_calls=self.req_calls,
+            )
+
+    ib = MarketDataIB()
+    client = IBClient(ib=ib)
+    ticker = client.request_market_data("EURUSD")
+
+    assert ticker is not None
+    assert ticker.req_calls == 2
+    assert ib.market_data_type_calls == [3]
+    assert ib.cancel_calls == ["EURUSD"]
+    assert client.get_last_error_text() == ""
+
+
+@pytest.mark.unit
 def test_cancel_all_open_orders_cancels_each_open_order():
     class CancelAllIB(BasicIB):
         def __init__(self):
@@ -158,3 +290,101 @@ def test_cancel_all_open_orders_requires_connection():
     assert ok is False
     assert cancelled_count == 0
     assert message == "Not connected to IBKR."
+
+
+@pytest.mark.unit
+def test_what_if_order_creates_event_loop_in_worker_thread():
+    class WhatIfIB(BasicIB):
+        def __init__(self):
+            super().__init__(connected=True)
+
+        def whatIfOrder(self, contract, order):
+            loop = asyncio.get_event_loop_policy().get_event_loop()
+            return {"loop_created": loop is not None, "contract": contract, "order": order}
+
+    client = IBClient(ib=WhatIfIB())
+    result: dict[str, object] = {}
+
+    def run_in_worker_thread():
+        result["value"] = client.what_if_order("C", "O")
+        result["error"] = client.get_last_error_text()
+
+    worker = threading.Thread(target=run_in_worker_thread, name="Dummy-WhatIf")
+    worker.start()
+    worker.join()
+
+    assert result["value"] == {"loop_created": True, "contract": "C", "order": "O"}
+    assert result["error"] == ""
+
+
+@pytest.mark.unit
+def test_qualify_contract_creates_event_loop_in_worker_thread():
+    class QualifyIB(BasicIB):
+        def __init__(self):
+            super().__init__(connected=True)
+
+        def qualifyContracts(self, contract):
+            loop = asyncio.get_event_loop_policy().get_event_loop()
+            return [f"QUAL-{contract}"] if loop is not None else []
+
+    client = IBClient(ib=QualifyIB())
+    result: dict[str, object] = {}
+
+    def run_in_worker_thread():
+        result["value"] = client.qualify_contract("EURUSD")
+        result["error"] = client.get_last_error_text()
+
+    worker = threading.Thread(target=run_in_worker_thread, name="Dummy-Qualify")
+    worker.start()
+    worker.join()
+
+    assert result["value"] == "QUAL-EURUSD"
+    assert result["error"] == ""
+
+
+@pytest.mark.unit
+def test_place_order_creates_event_loop_in_worker_thread():
+    class PlaceOrderIB(BasicIB):
+        def __init__(self):
+            super().__init__(connected=True)
+
+        def placeOrder(self, contract, order):
+            loop = asyncio.get_event_loop_policy().get_event_loop()
+            return {"loop_created": loop is not None, "contract": contract, "order": order}
+
+    client = IBClient(ib=PlaceOrderIB())
+    result: dict[str, object] = {}
+
+    def run_in_worker_thread():
+        result["value"] = client.place_order("C", "O")
+        result["error"] = client.get_last_error_text()
+
+    worker = threading.Thread(target=run_in_worker_thread, name="Dummy-PlaceOrder")
+    worker.start()
+    worker.join()
+
+    assert result["value"] == {"loop_created": True, "contract": "C", "order": "O"}
+    assert result["error"] == ""
+
+
+@pytest.mark.unit
+def test_what_if_order_retries_once_when_runtime_reports_missing_event_loop():
+    class RetryWhatIfIB(BasicIB):
+        def __init__(self):
+            super().__init__(connected=True)
+            self.calls = 0
+
+        def whatIfOrder(self, contract, order):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("There is no current event loop in thread 'Dummy-1'.")
+            return {"ok": True, "contract": contract, "order": order}
+
+    ib = RetryWhatIfIB()
+    client = IBClient(ib=ib)
+
+    result = client.what_if_order("C", "O")
+
+    assert result == {"ok": True, "contract": "C", "order": "O"}
+    assert ib.calls == 2
+    assert client.get_last_error_text() == ""

@@ -4,7 +4,7 @@ import math
 import time
 from typing import Any
 
-from ib_insync import Forex, IB
+from ib_insync import Forex, IB, LimitOrder, MarketOrder, StopOrder
 
 
 class IBClient:
@@ -68,6 +68,13 @@ class IBClient:
         except RuntimeError:
             return False
 
+    @staticmethod
+    # Ensure the current thread has an event loop for sync IB helpers that expect one.
+    def _ensure_default_event_loop() -> None:
+        if IBClient._thread_has_event_loop():
+            return
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
     # Safely pump IB network events without creating unawaited coroutine warnings.
     def _safe_ib_sleep(self, seconds: float) -> None:
         if not hasattr(self.ib, "sleep") or not self._thread_has_event_loop():
@@ -103,6 +110,8 @@ class IBClient:
     # Connect to IB and optionally trigger account summary bootstrap.
     def connect(self, timeout: float = 1.0) -> bool:
         self.clear_last_error()
+        if self.is_connected():
+            return True
         try:
             try:
                 self._resolve_maybe_awaitable(
@@ -217,6 +226,13 @@ class IBClient:
         except Exception:
             pass
         return self.drain_received_ticks()
+
+    # Pump IB network queue without draining received tick buffer.
+    def pump_network(self) -> None:
+        try:
+            self._safe_ib_sleep(0)
+        except Exception:
+            pass
 
     # Attach local tick callback to the active ticker update event.
     def _attach_ticker_listener(self) -> None:
@@ -420,7 +436,9 @@ class IBClient:
         if not self.is_connected():
             return {}
         try:
-            ticker = self._call_ib("reqMktData", contract, "", True, False)
+            ticker = self.request_market_data(contract, snapshot=True, regulatory_snapshot=False)
+            if ticker is None:
+                return {}
             if wait_seconds > 0:
                 self._safe_ib_sleep(wait_seconds)
             return {
@@ -445,6 +463,25 @@ class IBClient:
         if not self.is_connected():
             self._set_last_error("request_market_data", "Not connected to IBKR.")
             return None
+        gateway_errors: list[tuple[int, int, str]] = []
+
+        def _on_error(*args: Any) -> None:
+            req_id = args[0] if len(args) >= 1 else 0
+            error_code = args[1] if len(args) >= 2 else 0
+            error_msg = args[2] if len(args) >= 3 else "Unknown gateway error."
+            try:
+                gateway_errors.append((int(req_id), int(error_code), str(error_msg)))
+            except Exception:
+                gateway_errors.append((0, 0, str(error_msg)))
+
+        error_event_registered = False
+        error_event = getattr(self.ib, "errorEvent", None)
+        if error_event is not None:
+            try:
+                error_event += _on_error
+                error_event_registered = True
+            except Exception:
+                error_event_registered = False
         try:
             result = self._resolve_maybe_awaitable(
                 self.ib.reqMktData(
@@ -454,11 +491,54 @@ class IBClient:
                     regulatory_snapshot,
                 )
             )
+            self._safe_ib_sleep(0.15)
+            competing_live_session = any(code == 10197 for _req_id, code, _msg in gateway_errors)
+            if competing_live_session and hasattr(self.ib, "reqMarketDataType"):
+                try:
+                    self._call_ib("reqMarketDataType", 3)
+                    if hasattr(self.ib, "cancelMktData"):
+                        try:
+                            self._call_ib("cancelMktData", contract)
+                        except Exception:
+                            pass
+                    result = self._resolve_maybe_awaitable(
+                        self.ib.reqMktData(
+                            contract,
+                            generic_tick_list,
+                            snapshot,
+                            regulatory_snapshot,
+                        )
+                    )
+                    self._safe_ib_sleep(0.15)
+                except Exception as fallback_exc:
+                    if gateway_errors:
+                        compact_errors = ", ".join(f"{code}:{msg}" for _req_id, code, msg in gateway_errors[-3:])
+                        self._set_last_error("request_market_data", f"{fallback_exc} | Gateway errors: {compact_errors}")
+                    else:
+                        self._set_last_error("request_market_data", fallback_exc)
+                    return None
+            if result is None:
+                detail = "reqMktData failed."
+                if gateway_errors:
+                    compact_errors = ", ".join(f"{code}:{msg}" for _req_id, code, msg in gateway_errors[-3:])
+                    detail = f"{detail} Gateway errors: {compact_errors}"
+                self._set_last_error("request_market_data", detail)
+                return None
             self.clear_last_error()
             return result
-        except Exception:
-            self._set_last_error("request_market_data", "reqMktData failed.")
+        except Exception as exc:
+            if gateway_errors:
+                compact_errors = ", ".join(f"{code}:{msg}" for _req_id, code, msg in gateway_errors[-3:])
+                self._set_last_error("request_market_data", f"{exc} | Gateway errors: {compact_errors}")
+            else:
+                self._set_last_error("request_market_data", exc)
             return None
+        finally:
+            if error_event_registered and error_event is not None:
+                try:
+                    error_event -= _on_error
+                except Exception:
+                    pass
 
     # Cancel market-data subscription for a contract.
     def cancel_market_data(self, contract: Any) -> bool:
@@ -518,6 +598,7 @@ class IBClient:
             self._set_last_error("qualify_contract", "Not connected to IBKR.")
             return None
         try:
+            self._ensure_default_event_loop()
             contracts = self._resolve_maybe_awaitable(self.ib.qualifyContracts(contract))
             if contracts is None:
                 self._set_last_error("qualify_contract", "No contract data returned.")
@@ -620,16 +701,52 @@ class IBClient:
             else:
                 self._set_last_error("place_order", "IB API missing placeOrder.")
             return None
+
+        gateway_errors: list[tuple[int, int, str]] = []
+
+        def _on_error(*args: Any) -> None:
+            req_id = args[0] if len(args) >= 1 else 0
+            error_code = args[1] if len(args) >= 2 else 0
+            error_msg = args[2] if len(args) >= 3 else "Unknown gateway error."
+            try:
+                gateway_errors.append((int(req_id), int(error_code), str(error_msg)))
+            except Exception:
+                gateway_errors.append((0, 0, str(error_msg)))
+
+        error_event_registered = False
+        error_event = getattr(self.ib, "errorEvent", None)
+        if error_event is not None:
+            try:
+                error_event += _on_error
+                error_event_registered = True
+            except Exception:
+                error_event_registered = False
         try:
+            # placeOrder may require an event loop when called from worker threads.
+            self._ensure_default_event_loop()
             trade = self._resolve_maybe_awaitable(self.ib.placeOrder(contract, order))
             if trade is None:
-                self._set_last_error("place_order", "API returned no trade object.")
+                detail = "API returned no trade object."
+                if gateway_errors:
+                    compact_errors = ", ".join(f"{code}:{msg}" for _req_id, code, msg in gateway_errors[-3:])
+                    detail = f"{detail} Gateway errors: {compact_errors}"
+                self._set_last_error("place_order", detail)
                 return None
             self.clear_last_error()
             return trade
         except Exception as exc:
-            self._set_last_error("place_order", exc)
+            if gateway_errors:
+                compact_errors = ", ".join(f"{code}:{msg}" for _req_id, code, msg in gateway_errors[-3:])
+                self._set_last_error("place_order", f"{exc} | Gateway errors: {compact_errors}")
+            else:
+                self._set_last_error("place_order", exc)
             return None
+        finally:
+            if error_event_registered and error_event is not None:
+                try:
+                    error_event -= _on_error
+                except Exception:
+                    pass
 
     # Build IB bracket orders for parent, take-profit, and stop-loss legs.
     def build_bracket_orders(
@@ -639,17 +756,65 @@ class IBClient:
         limit_price: float,
         take_profit_price: float,
         stop_loss_price: float,
+        parent_order_type: str = "LMT",
     ) -> list[Any]:
-        if not self.is_connected() or not hasattr(self.ib, "bracketOrder"):
+        if not self.is_connected():
             if not self.is_connected():
                 self._set_last_error("build_bracket_orders", "Not connected to IBKR.")
-            else:
-                self._set_last_error("build_bracket_orders", "IB API missing bracketOrder.")
+            return []
+        normalized_side = str(side).strip().upper()
+        if normalized_side not in {"BUY", "SELL"}:
+            self._set_last_error("build_bracket_orders", "Invalid bracket side.")
+            return []
+        normalized_parent_type = str(parent_order_type).strip().upper()
+        if normalized_parent_type not in {"LMT", "MKT"}:
+            self._set_last_error("build_bracket_orders", "Invalid parent order type for bracket.")
+            return []
+
+        if normalized_parent_type == "MKT":
+            client = getattr(self.ib, "client", None)
+            get_req_id = getattr(client, "getReqId", None)
+            if get_req_id is None:
+                self._set_last_error("build_bracket_orders", "IB API missing client.getReqId for MKT bracket.")
+                return []
+            try:
+                reverse_side = "BUY" if normalized_side == "SELL" else "SELL"
+                parent_order_id = int(get_req_id())
+                parent = MarketOrder(
+                    normalized_side,
+                    quantity,
+                    orderId=parent_order_id,
+                    transmit=False,
+                )
+                take_profit = LimitOrder(
+                    reverse_side,
+                    quantity,
+                    take_profit_price,
+                    orderId=int(get_req_id()),
+                    transmit=False,
+                    parentId=parent_order_id,
+                )
+                stop_loss = StopOrder(
+                    reverse_side,
+                    quantity,
+                    stop_loss_price,
+                    orderId=int(get_req_id()),
+                    transmit=True,
+                    parentId=parent_order_id,
+                )
+                self.clear_last_error()
+                return [parent, take_profit, stop_loss]
+            except Exception as exc:
+                self._set_last_error("build_bracket_orders", exc)
+                return []
+
+        if not hasattr(self.ib, "bracketOrder"):
+            self._set_last_error("build_bracket_orders", "IB API missing bracketOrder.")
             return []
         try:
             orders = self._call_ib(
                 "bracketOrder",
-                side,
+                normalized_side,
                 quantity,
                 limit_price,
                 take_profit_price,
@@ -701,16 +866,58 @@ class IBClient:
             else:
                 self._set_last_error("what_if_order", "IB API missing whatIfOrder.")
             return None
+
+        gateway_errors: list[tuple[int, int, str]] = []
+
+        def _on_error(*args: Any) -> None:
+            req_id = args[0] if len(args) >= 1 else 0
+            error_code = args[1] if len(args) >= 2 else 0
+            error_msg = args[2] if len(args) >= 3 else "Unknown gateway error."
+            try:
+                gateway_errors.append((int(req_id), int(error_code), str(error_msg)))
+            except Exception:
+                gateway_errors.append((0, 0, str(error_msg)))
+
+        error_event_registered = False
+        error_event = getattr(self.ib, "errorEvent", None)
+        if error_event is not None:
+            try:
+                error_event += _on_error
+                error_event_registered = True
+            except Exception:
+                error_event_registered = False
         try:
-            result = self._resolve_maybe_awaitable(self.ib.whatIfOrder(contract, order))
+            self._ensure_default_event_loop()
+            try:
+                result = self._resolve_maybe_awaitable(self.ib.whatIfOrder(contract, order))
+            except RuntimeError as exc:
+                message = str(exc).lower()
+                if "no current event loop" not in message:
+                    raise
+                asyncio.set_event_loop(asyncio.new_event_loop())
+                result = self._resolve_maybe_awaitable(self.ib.whatIfOrder(contract, order))
             if result is None:
-                self._set_last_error("what_if_order", "What-If returned no payload.")
+                detail = "What-If returned no payload."
+                if gateway_errors:
+                    compact_errors = ", ".join(f"{code}:{msg}" for _req_id, code, msg in gateway_errors[-3:])
+                    detail = f"{detail} Gateway errors: {compact_errors}"
+                self._set_last_error("what_if_order", detail)
                 return None
             self.clear_last_error()
             return result
         except Exception as exc:
-            self._set_last_error("what_if_order", exc)
+            if gateway_errors:
+                compact_errors = ", ".join(f"{code}:{msg}" for _req_id, code, msg in gateway_errors[-3:])
+                self._set_last_error("what_if_order", f"{exc} | Gateway errors: {compact_errors}")
+            else:
+                self._set_last_error("what_if_order", exc)
             return None
+        finally:
+            if error_event_registered and error_event is not None:
+                try:
+                    error_event -= _on_error
+                except Exception:
+                    pass
 
     # Cancel all currently open orders and return summary tuple.
     def cancel_all_open_orders(self) -> tuple[bool, int, str]:
@@ -783,7 +990,12 @@ class IBClient:
             return None
 
     # Request level-2 market depth snapshot for a contract.
-    def get_market_depth_snapshot(self, contract: Any, num_rows: int = 5, wait_seconds: float = 1.0) -> dict[str, list[dict[str, Any]]]:
+    def get_market_depth_snapshot(
+        self,
+        contract: Any,
+        num_rows: int = 5,
+        wait_seconds: float = 1.0,
+    ) -> dict[str, list[dict[str, Any]]]:
         if not self.is_connected():
             return {"bids": [], "asks": []}
         try:

@@ -2,7 +2,7 @@ from threading import RLock
 from types import SimpleNamespace
 
 import pytest
-from ib_insync import LimitOrder, MarketOrder
+from ib_insync import Forex, LimitOrder, MarketOrder
 
 from services.order_worker import OrderWorker
 
@@ -16,18 +16,15 @@ class FakeIBClient:
         place_order_result=None,
         what_if_result=None,
         bracket_orders=None,
-        cancel_all_result=None,
     ):
         self.connected = connected
         self.qualified_contract = qualified_contract
         self.place_order_result = place_order_result
         self.what_if_result = what_if_result
         self.bracket_orders = bracket_orders if bracket_orders is not None else []
-        self.cancel_all_result = cancel_all_result if cancel_all_result is not None else (True, 0, "No open orders to cancel.")
         self.place_order_calls = []
         self.what_if_calls = []
         self.bracket_build_calls = []
-        self.cancel_all_calls = 0
         self._last_error_text = ""
 
     def is_connected(self):
@@ -50,7 +47,16 @@ class FakeIBClient:
     def get_last_error_text(self):
         return self._last_error_text
 
-    def build_bracket_orders(self, *, side, quantity, limit_price, take_profit_price, stop_loss_price):
+    def build_bracket_orders(
+        self,
+        *,
+        side,
+        quantity,
+        limit_price,
+        take_profit_price,
+        stop_loss_price,
+        parent_order_type="LMT",
+    ):
         self.bracket_build_calls.append(
             {
                 "side": side,
@@ -58,13 +64,10 @@ class FakeIBClient:
                 "limit_price": limit_price,
                 "take_profit_price": take_profit_price,
                 "stop_loss_price": stop_loss_price,
+                "parent_order_type": parent_order_type,
             }
         )
         return self.bracket_orders
-
-    def cancel_all_open_orders(self):
-        self.cancel_all_calls += 1
-        return self.cancel_all_result
 
 
 def _build_worker(ib_client):
@@ -82,26 +85,30 @@ def test_normalize_request_returns_none_for_non_dict():
 
 
 @pytest.mark.unit
-def test_normalize_request_parses_symbol_and_numbers():
+def test_normalize_request_parses_bracket_payload():
     normalized = OrderWorker._normalize_request(
         {
             "symbol": " eur/usd ",
             "side": " buy ",
-            "order_type": " mkt ",
-            "quantity": "10000",
+            "order_type": " lmt ",
+            "volume": "10000",
             "limit_price": "1.2345",
-            "take_profit": "1.2500",
-            "stop_loss": "1.2000",
+            "use_bracket": True,
+            "take_profit_pct": "0.5",
+            "stop_loss_pct": "0.25",
         }
     )
     assert normalized == {
         "symbol": "EURUSD",
         "side": "BUY",
-        "order_type": "MKT",
+        "order_type": "LMT",
+        "volume": 10000,
         "quantity": 10000,
         "limit_price": 1.2345,
-        "take_profit": 1.25,
-        "stop_loss": 1.2,
+        "reference_price": None,
+        "use_bracket": True,
+        "take_profit_pct": 0.5,
+        "stop_loss_pct": 0.25,
     }
 
 
@@ -114,31 +121,16 @@ def test_validate_request_rejects_invalid_limit_order():
             "order_type": "LMT",
             "quantity": 1000,
             "limit_price": 0.0,
-            "take_profit": None,
-            "stop_loss": None,
+            "use_bracket": False,
+            "take_profit_pct": None,
+            "stop_loss_pct": None,
         }
     )
     assert error == "Limit price must be > 0 for LMT orders."
 
 
 @pytest.mark.unit
-def test_validate_request_requires_tp_and_sl_together():
-    error = OrderWorker._validate_request(
-        {
-            "symbol": "EURUSD",
-            "side": "BUY",
-            "order_type": "LMT",
-            "quantity": 1000,
-            "limit_price": 1.1,
-            "take_profit": 1.2,
-            "stop_loss": None,
-        }
-    )
-    assert error == "Set both TP and SL, or leave both empty."
-
-
-@pytest.mark.unit
-def test_validate_request_rejects_tp_sl_for_market_order():
+def test_validate_request_accepts_bracket_for_market_order():
     error = OrderWorker._validate_request(
         {
             "symbol": "EURUSD",
@@ -146,17 +138,35 @@ def test_validate_request_rejects_tp_sl_for_market_order():
             "order_type": "MKT",
             "quantity": 1000,
             "limit_price": 0.0,
-            "take_profit": 1.2,
-            "stop_loss": 1.0,
+            "use_bracket": True,
+            "take_profit_pct": 0.5,
+            "stop_loss_pct": 0.25,
         }
     )
-    assert error == "TP/SL is currently supported only for LMT orders."
+    assert error is None
+
+
+@pytest.mark.unit
+def test_validate_request_requires_both_bracket_percentages():
+    error = OrderWorker._validate_request(
+        {
+            "symbol": "EURUSD",
+            "side": "BUY",
+            "order_type": "LMT",
+            "quantity": 1000,
+            "limit_price": 1.1,
+            "use_bracket": True,
+            "take_profit_pct": 0.5,
+            "stop_loss_pct": None,
+        }
+    )
+    assert error == "Set both TP% and SL% when bracket is enabled."
 
 
 @pytest.mark.unit
 def test_place_order_rejects_when_worker_is_stopped(qapp):
     worker, results, failures = _build_worker(FakeIBClient())
-    worker.place_order({"symbol": "EURUSD", "side": "BUY", "order_type": "MKT", "quantity": 1000})
+    worker.place_order({"symbol": "EURUSD", "side": "BUY", "order_type": "MKT", "volume": 1000})
 
     assert failures == []
     assert results[-1] == {"ok": False, "kind": "order", "message": "Order worker is stopped."}
@@ -166,7 +176,7 @@ def test_place_order_rejects_when_worker_is_stopped(qapp):
 def test_place_order_rejects_when_not_connected(qapp):
     worker, results, failures = _build_worker(FakeIBClient(connected=False))
     worker.start()
-    worker.place_order({"symbol": "EURUSD", "side": "BUY", "order_type": "MKT", "quantity": 1000})
+    worker.place_order({"symbol": "EURUSD", "side": "BUY", "order_type": "MKT", "volume": 1000})
 
     assert failures == []
     assert results[-1]["ok"] is False
@@ -174,11 +184,9 @@ def test_place_order_rejects_when_not_connected(qapp):
 
 
 @pytest.mark.unit
-def test_place_order_success_uses_qualified_contract(qapp):
-    qualified_contract = object()
+def test_place_order_success_uses_direct_forex_contract(qapp):
     fake_client = FakeIBClient(
         connected=True,
-        qualified_contract=qualified_contract,
         place_order_result=object(),
     )
     worker, results, failures = _build_worker(fake_client)
@@ -189,7 +197,7 @@ def test_place_order_success_uses_qualified_contract(qapp):
             "symbol": "eur/usd",
             "side": "BUY",
             "order_type": "MKT",
-            "quantity": 25000,
+            "volume": 25000,
             "limit_price": 0,
         }
     )
@@ -200,10 +208,64 @@ def test_place_order_success_uses_qualified_contract(qapp):
     assert "Order sent:" in results[-1]["message"]
 
     sent_contract, sent_order = fake_client.place_order_calls[-1]
-    assert sent_contract is qualified_contract
+    assert isinstance(sent_contract, Forex)
+    assert sent_contract.symbol == "EUR"
+    assert sent_contract.currency == "USD"
     assert isinstance(sent_order, MarketOrder)
     assert sent_order.action == "BUY"
     assert int(sent_order.totalQuantity) == 25000
+    assert sent_order.tif == "GTC"
+
+
+@pytest.mark.unit
+def test_place_order_does_not_call_contract_qualification(qapp):
+    class _QualifyFailsClient(FakeIBClient):
+        def qualify_contract(self, contract):
+            raise RuntimeError("should not be called by place_order")
+
+    fake_client = _QualifyFailsClient(connected=True, place_order_result=object())
+    worker, results, failures = _build_worker(fake_client)
+    worker.start()
+
+    worker.place_order(
+        {
+            "symbol": "EURUSD",
+            "side": "BUY",
+            "order_type": "MKT",
+            "volume": 25000,
+            "limit_price": 0,
+        }
+    )
+
+    assert failures == []
+    assert results[-1]["ok"] is True
+    assert len(fake_client.place_order_calls) == 1
+
+
+@pytest.mark.unit
+def test_place_order_rejects_when_ib_trade_status_is_cancelled(qapp):
+    rejected_trade = SimpleNamespace(orderStatus=SimpleNamespace(status="Cancelled"))
+    fake_client = FakeIBClient(
+        connected=True,
+        qualified_contract=object(),
+        place_order_result=rejected_trade,
+    )
+    worker, results, failures = _build_worker(fake_client)
+    worker.start()
+
+    worker.place_order(
+        {
+            "symbol": "EURUSD",
+            "side": "BUY",
+            "order_type": "MKT",
+            "volume": 1000,
+            "limit_price": 0,
+        }
+    )
+
+    assert failures == []
+    assert results[-1]["ok"] is False
+    assert "Order rejected" in results[-1]["message"]
 
 
 @pytest.mark.unit
@@ -222,10 +284,11 @@ def test_place_order_bracket_lmt_places_parent_tp_sl(qapp):
             "symbol": "EURUSD",
             "side": "BUY",
             "order_type": "LMT",
-            "quantity": 1000,
+            "volume": 1000,
             "limit_price": 1.1,
-            "take_profit": 1.12,
-            "stop_loss": 1.09,
+            "use_bracket": True,
+            "take_profit_pct": 0.5,
+            "stop_loss_pct": 0.25,
         }
     )
 
@@ -235,6 +298,45 @@ def test_place_order_bracket_lmt_places_parent_tp_sl(qapp):
     assert "Bracket sent:" in results[-1]["message"]
     assert len(fake_client.bracket_build_calls) == 1
     assert len(fake_client.place_order_calls) == 3
+    call = fake_client.bracket_build_calls[-1]
+    assert call["limit_price"] == pytest.approx(1.1)
+    assert call["take_profit_price"] == pytest.approx(1.1055)
+    assert call["stop_loss_price"] == pytest.approx(1.09725)
+    assert call["parent_order_type"] == "LMT"
+
+
+@pytest.mark.unit
+def test_place_order_bracket_mkt_uses_reference_price_for_tp_sl(qapp):
+    fake_client = FakeIBClient(
+        connected=True,
+        qualified_contract=object(),
+        place_order_result=object(),
+        bracket_orders=["parent", "tp", "sl"],
+    )
+    worker, results, failures = _build_worker(fake_client)
+    worker.start()
+
+    worker.place_order(
+        {
+            "symbol": "EURUSD",
+            "side": "SELL",
+            "order_type": "MKT",
+            "volume": 1000,
+            "limit_price": 0.0,
+            "reference_price": 1.2,
+            "use_bracket": True,
+            "take_profit_pct": 0.5,
+            "stop_loss_pct": 0.25,
+        }
+    )
+
+    assert failures == []
+    assert results[-1]["ok"] is True
+    call = fake_client.bracket_build_calls[-1]
+    assert call["limit_price"] == pytest.approx(1.2)
+    assert call["take_profit_price"] == pytest.approx(1.194)
+    assert call["stop_loss_price"] == pytest.approx(1.203)
+    assert call["parent_order_type"] == "MKT"
 
 
 @pytest.mark.unit
@@ -253,10 +355,11 @@ def test_place_order_bracket_rejects_when_build_fails(qapp):
             "symbol": "EURUSD",
             "side": "BUY",
             "order_type": "LMT",
-            "quantity": 1000,
+            "volume": 1000,
             "limit_price": 1.1,
-            "take_profit": 1.12,
-            "stop_loss": 1.09,
+            "use_bracket": True,
+            "take_profit_pct": 0.5,
+            "stop_loss_pct": 0.25,
         }
     )
 
@@ -268,9 +371,10 @@ def test_place_order_bracket_rejects_when_build_fails(qapp):
 @pytest.mark.unit
 def test_preview_order_success_includes_margin_fields(qapp):
     what_if = SimpleNamespace(initMarginChange="10", maintMarginChange="7", commission="0.2")
+    qualified_contract = object()
     fake_client = FakeIBClient(
         connected=True,
-        qualified_contract=object(),
+        qualified_contract=qualified_contract,
         what_if_result=what_if,
     )
     worker, results, failures = _build_worker(fake_client)
@@ -281,8 +385,11 @@ def test_preview_order_success_includes_margin_fields(qapp):
             "symbol": "EURUSD",
             "side": "SELL",
             "order_type": "LMT",
-            "quantity": 1000,
+            "volume": 1000,
             "limit_price": 1.11111,
+            "use_bracket": True,
+            "take_profit_pct": 0.5,
+            "stop_loss_pct": 0.25,
         }
     )
 
@@ -291,8 +398,11 @@ def test_preview_order_success_includes_margin_fields(qapp):
     assert results[-1]["kind"] == "preview"
     assert "InitMargin: 10" in results[-1]["message"]
     assert "Commission: 0.2" in results[-1]["message"]
-    _, sent_order = fake_client.what_if_calls[-1]
+    assert "TP=" in results[-1]["message"]
+    sent_contract, sent_order = fake_client.what_if_calls[-1]
+    assert sent_contract is qualified_contract
     assert isinstance(sent_order, LimitOrder)
+    assert sent_order.tif == "DAY"
 
 
 @pytest.mark.unit
@@ -306,7 +416,7 @@ def test_preview_order_returns_error_when_api_returns_none(qapp):
             "symbol": "EURUSD",
             "side": "SELL",
             "order_type": "MKT",
-            "quantity": 2000,
+            "volume": 2000,
             "limit_price": 0,
         }
     )
@@ -318,29 +428,29 @@ def test_preview_order_returns_error_when_api_returns_none(qapp):
 
 
 @pytest.mark.unit
-def test_cancel_all_orders_success(qapp):
-    fake_client = FakeIBClient(connected=True, cancel_all_result=(True, 2, "Cancelled 2 open orders."))
+def test_preview_order_returns_error_when_contract_qualification_fails(qapp):
+    class _PreviewClient(FakeIBClient):
+        def qualify_contract(self, contract):
+            self._last_error_text = "qualify_contract: No contract data returned."
+            return None
+
+    what_if = SimpleNamespace(initMarginChange="10", maintMarginChange="7", commission="0.2")
+    fake_client = _PreviewClient(connected=True, what_if_result=what_if)
     worker, results, failures = _build_worker(fake_client)
     worker.start()
 
-    worker.cancel_all_orders({})
-
-    assert failures == []
-    assert results[-1]["ok"] is True
-    assert results[-1]["kind"] == "cancel_all"
-    assert results[-1]["cancelled_count"] == 2
-    assert fake_client.cancel_all_calls == 1
-
-
-@pytest.mark.unit
-def test_cancel_all_orders_rejects_when_not_connected(qapp):
-    fake_client = FakeIBClient(connected=False)
-    worker, results, failures = _build_worker(fake_client)
-    worker.start()
-
-    worker.cancel_all_orders({})
+    worker.preview_order(
+        {
+            "symbol": "EURUSD",
+            "side": "BUY",
+            "order_type": "MKT",
+            "volume": 10000,
+            "limit_price": 0.0,
+        }
+    )
 
     assert failures == []
     assert results[-1]["ok"] is False
-    assert results[-1]["kind"] == "cancel_all"
-    assert "Not connected to IBKR." in results[-1]["message"]
+    assert results[-1]["kind"] == "preview"
+    assert "qualify_contract" in results[-1]["message"]
+    assert fake_client.what_if_calls == []
