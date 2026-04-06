@@ -55,6 +55,11 @@ class MainWindow(QMainWindow):
             on_save_settings,
             connection_defaults=status_defaults,
         )
+        default_symbol = str(status_defaults.get("market_symbol", "EURUSD")).strip().upper()
+        self.chart_panel.update({"symbol": default_symbol})
+        self.order_ticket_panel.set_symbol(default_symbol)
+        self.status_panel.market_symbol_input.currentTextChanged.connect(self.order_ticket_panel.set_symbol)
+        self.status_panel.market_symbol_input.currentTextChanged.connect(self._on_market_symbol_changed)
 
         container = QWidget(self)
         grid = QGridLayout(container)
@@ -88,9 +93,13 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(container)
 
+    # Reflect selected market symbol in chart title.
+    def _on_market_symbol_changed(self, symbol: str) -> None:
+        self.chart_panel.update({"symbol": symbol})
+
     # Create the chart panel instance.
     def create_chart_panel(self) -> ChartPanel:
-        return ChartPanel(max_points=500)
+        return ChartPanel(max_points=100)
 
     # Create the log panel instance.
     def create_logs_panel(self) -> LogsPanel:

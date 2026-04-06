@@ -169,3 +169,28 @@ def test_poll_once_emits_info_when_tick_stream_resumes(monkeypatch, qapp):
     ]
     assert payloads[4]["messages"] == ["[INFO][market_data] tick stream resumed."]
     assert payloads[4]["ticks"] == [{"bid": 1.1000, "ask": 1.1002}]
+
+
+@pytest.mark.unit
+def test_poll_once_skips_no_tick_startup_checks_after_first_tick(monkeypatch, qapp):
+    client = FakeMarketClient(connection_state="connected", ticks=[{"bid": 1.1000, "ask": 1.1002}])
+    worker = MarketDataWorker(ib_client=client, io_lock=RLock(), snapshot_interval_ms=100)
+    worker._running = True
+    payloads = []
+    worker.payload_ready.connect(payloads.append)
+
+    monotonic_values = iter([0.0, 2.1, 4.2, 6.3, 8.4])
+    monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: next(monotonic_values))
+
+    worker._poll_once()  # first tick received -> startup checks disabled afterwards
+    client.ticks = []
+    worker._poll_once()
+    worker._poll_once()
+    worker._poll_once()
+    worker._poll_once()
+
+    assert payloads[0]["ticks"] == [{"bid": 1.1000, "ask": 1.1002}]
+    assert payloads[1]["messages"] == []
+    assert payloads[2]["messages"] == []
+    assert payloads[3]["messages"] == []
+    assert payloads[4]["messages"] == []
