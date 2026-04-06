@@ -33,8 +33,7 @@ Controller ──► PortfolioPanel  (account snapshot)
  
 ## Features
  
-- Connect to IBKR API (host / port / client ID / read-only mode)
-- Default startup in **read-only mode** for safe demo runs
+- Connect to IBKR API (host / port / client ID)
 - Live FX tick streaming for one symbol (e.g. `EURUSD`) with mid-price chart
 - Manual order execution with optional **TP/SL bracket** for LMT orders
 - Cancel all open orders from the Order Ticket panel

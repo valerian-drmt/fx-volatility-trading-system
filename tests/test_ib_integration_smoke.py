@@ -30,7 +30,7 @@ def test_ib_paper_connection_smoke():
         host=host,
         port=port,
         client_id=client_id,
-        readonly=True,
+        readonly=False,
     )
     try:
         connected = client.connect(timeout=3.0)

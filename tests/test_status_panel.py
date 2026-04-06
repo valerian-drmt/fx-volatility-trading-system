@@ -8,7 +8,6 @@ def _build_panel():
         "host": "127.0.0.1",
         "port": 4002,
         "client_id": 1,
-        "readonly": True,
         "market_symbol": "EURUSD",
     }
     return StatusPanel(
@@ -92,3 +91,13 @@ def test_status_panel_pipeline_running_enables_stop(qapp):
 
     assert panel.live_stream_button.isEnabled() is False
     assert panel.stop_live_stream_button.isEnabled() is True
+
+
+@pytest.mark.unit
+def test_status_panel_market_symbol_uses_fx_pair_combo_box(qapp):
+    panel = _build_panel()
+
+    assert panel.market_symbol_input.isEditable() is False
+    assert panel.market_symbol_input.currentText() == "EURUSD"
+    assert panel.market_symbol_input.count() >= 10
+    assert panel.market_symbol_input.findText("GBPUSD") >= 0

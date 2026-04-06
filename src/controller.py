@@ -37,7 +37,7 @@ class Controller:
         "host": "127.0.0.1",
         "port": 4002,
         "client_id": 1,
-        "readonly": True,
+        "readonly": False,
         "market_symbol": "EURUSD",
     }
     DEFAULT_RUNTIME_SETTINGS = {
@@ -70,7 +70,7 @@ class Controller:
             host=self.host,
             port=self.port,
             client_id=self.client_id,
-            readonly=self.readonly,
+            readonly=False,
         )
 
         self.window: MainWindow | None = None
@@ -121,7 +121,6 @@ class Controller:
                 "host": self.host,
                 "port": self.port,
                 "client_id": self.client_id,
-                "readonly": self.readonly,
                 "market_symbol": self.market_symbol,
             },
         )
@@ -257,6 +256,13 @@ class Controller:
         messages = payload.get("messages")
         if isinstance(messages, list) and messages:
             self.window.logs_panel.update({"messages": [str(item) for item in messages]})
+            if self._should_auto_stop_live_stream(messages):
+                status_panel = getattr(self.window, "status_panel", None)
+                stop_button = getattr(status_panel, "stop_live_stream_button", None)
+                if stop_button is not None and hasattr(stop_button, "click"):
+                    stop_button.click()
+                else:
+                    self._stop_live_streaming()
 
         orders_payload = payload.get("orders_payload")
         if isinstance(orders_payload, dict):
@@ -265,6 +271,14 @@ class Controller:
         portfolio_payload = payload.get("portfolio_payload")
         if isinstance(portfolio_payload, dict):
             self.window.portfolio_panel.update(portfolio_payload)
+
+    @staticmethod
+    # Detect final no-tick warning that should auto-stop live streaming.
+    def _should_auto_stop_live_stream(messages: list[Any]) -> bool:
+        return any(
+            "[warn][market_data]" in str(item).lower() and "no ticks received (test 3/3)" in str(item).lower()
+            for item in messages
+        )
 
     # Surface market worker failures to the log panel.
     def _on_market_data_failed(self, message: str) -> None:
@@ -285,15 +299,6 @@ class Controller:
             connected = self.ib_client.is_connected()
         if not connected:
             self.window.order_ticket_panel.update({"message": "Connect to IBKR before sending orders.", "level": "error"})
-            return
-        if self.readonly:
-            self.window.order_ticket_panel.update(
-                {
-                    "message": "Read-only mode is enabled. Disable it in settings before placing orders.",
-                    "level": "error",
-                }
-            )
-            self.window.logs_panel.update({"message": "[WARN][execution] blocked order: read-only mode enabled"})
             return
 
         symbol = request.get("symbol", "")
@@ -360,15 +365,6 @@ class Controller:
             connected = self.ib_client.is_connected()
         if not connected:
             self.window.order_ticket_panel.update({"message": "Connect to IBKR before cancel requests.", "level": "error"})
-            return
-        if self.readonly:
-            self.window.order_ticket_panel.update(
-                {
-                    "message": "Read-only mode is enabled. Disable it in settings before cancel requests.",
-                    "level": "error",
-                }
-            )
-            self.window.logs_panel.update({"message": "[WARN][execution] blocked cancel all: read-only mode enabled"})
             return
 
         confirm = QMessageBox.question(
@@ -463,7 +459,7 @@ class Controller:
             }
         )
         can_preview = connected and not self._connecting and order_thread_running
-        can_place = can_preview and not self.readonly
+        can_place = can_preview
         self.window.order_ticket_panel.preview_button.setEnabled(can_preview)
         self.window.order_ticket_panel.place_button.setEnabled(can_place)
         self.window.order_ticket_panel.cancel_all_button.setEnabled(can_place)
@@ -570,7 +566,7 @@ class Controller:
                 "host": self.host,
                 "port": self.port,
                 "client_id": self.client_id,
-                "readonly": self.readonly,
+                "readonly": False,
                 "market_symbol": self.market_symbol,
             }
 
@@ -579,8 +575,8 @@ class Controller:
             "host": panel.host_input.text().strip(),
             "port": int(panel.port_input.value()),
             "client_id": int(panel.client_id_input.value()),
-            "readonly": bool(panel.readonly_input.isChecked()),
-            "market_symbol": panel.market_symbol_input.text().strip().upper(),
+            "readonly": False,
+            "market_symbol": panel.market_symbol_input.currentText().strip().upper(),
         }
 
     # Apply validated status settings to controller and IB client.
@@ -588,13 +584,13 @@ class Controller:
         self.host = str(settings["host"])
         self.port = int(settings["port"])
         self.client_id = int(settings["client_id"])
-        self.readonly = bool(settings["readonly"])
+        self.readonly = False
         self.market_symbol = str(settings["market_symbol"]).upper()
 
         self.ib_client.host = self.host
         self.ib_client.port = self.port
         self.ib_client.client_id = self.client_id
-        self.ib_client.readonly = self.readonly
+        self.ib_client.readonly = False
 
     # Load and validate persisted app settings with fallback defaults.
     def _load_app_settings(self) -> dict[str, Any]:
@@ -668,7 +664,7 @@ class Controller:
         if not isinstance(raw, dict):
             raise ValueError("Settings payload must be a JSON object")
 
-        required = ("host", "port", "client_id", "readonly")
+        required = ("host", "port", "client_id")
         missing = [key for key in required if key not in raw]
         if missing:
             raise ValueError(f"Missing settings keys: {', '.join(missing)}")
@@ -685,7 +681,7 @@ class Controller:
             "host": host,
             "port": int(raw["port"]),
             "client_id": int(raw["client_id"]),
-            "readonly": bool(raw["readonly"]),
+            "readonly": False,
             "market_symbol": symbol,
         }
 

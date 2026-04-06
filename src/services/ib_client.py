@@ -15,7 +15,7 @@ class IBClient:
         host: str = "127.0.0.1",
         port: int = 4002,
         client_id: int = 1,
-        readonly: bool = True,
+        readonly: bool = False,
         ticker: Any = None,
     ) -> None:
         self.ib = ib

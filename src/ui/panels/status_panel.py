@@ -6,14 +6,29 @@ from PyQt5.QtWidgets import (
     QLabel,
     QPushButton,
     QLineEdit,
+    QComboBox,
     QSpinBox,
-    QCheckBox,
     QGroupBox,
 )
 from typing import Any, Callable
 
 
 class StatusPanel(QWidget):
+    FX_PAIRS = (
+        "EURUSD",
+        "GBPUSD",
+        "USDJPY",
+        "USDCHF",
+        "USDCAD",
+        "AUDUSD",
+        "NZDUSD",
+        "EURGBP",
+        "EURJPY",
+        "GBPJPY",
+        "EURCHF",
+        "AUDJPY",
+    )
+
     # Build connection controls, runtime labels, and settings inputs.
     def __init__(
         self,
@@ -24,7 +39,7 @@ class StatusPanel(QWidget):
         connection_defaults: dict[str, Any],
     ) -> None:
         super().__init__()
-        required = ("host", "port", "client_id", "readonly", "market_symbol")
+        required = ("host", "port", "client_id", "market_symbol")
         missing = [key for key in required if key not in connection_defaults]
         if missing:
             raise ValueError(f"Missing connection defaults keys: {', '.join(missing)}")
@@ -32,7 +47,6 @@ class StatusPanel(QWidget):
         host_default = str(connection_defaults["host"])
         port_default = int(connection_defaults["port"])
         client_id_default = int(connection_defaults["client_id"])
-        readonly_default = bool(connection_defaults["readonly"])
         market_symbol_default = str(connection_defaults["market_symbol"]).strip().upper()
 
         self.status_dot = QLabel()
@@ -53,10 +67,12 @@ class StatusPanel(QWidget):
         self.client_id_input = QSpinBox()
         self.client_id_input.setRange(0, 999999)
         self.client_id_input.setValue(client_id_default)
-        self.readonly_input = QCheckBox("Read-only")
-        self.readonly_input.setChecked(readonly_default)
-        self.market_symbol_input = QLineEdit(market_symbol_default)
-        self.market_symbol_input.setMaxLength(32)
+        self.market_symbol_input = QComboBox()
+        self.market_symbol_input.setEditable(False)
+        self.market_symbol_input.addItems(self.FX_PAIRS)
+        if self.market_symbol_input.findText(market_symbol_default) < 0:
+            self.market_symbol_input.addItem(market_symbol_default)
+        self.market_symbol_input.setCurrentText(market_symbol_default)
 
         self.connect_button = QPushButton("Connect")
         self.connect_button.clicked.connect(on_connect)
@@ -115,7 +131,6 @@ class StatusPanel(QWidget):
         settings_form.addRow("Host:", self.host_input)
         settings_form.addRow("Port:", self.port_input)
         settings_form.addRow("ClientId cfg:", self.client_id_input)
-        settings_form.addRow("Read Only:", self.readonly_input)
         settings_form.addRow("Market symbol:", self.market_symbol_input)
         settings_form.addRow("", self.save_button)
 
