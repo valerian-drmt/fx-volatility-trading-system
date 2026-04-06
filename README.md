@@ -133,6 +133,11 @@ Test coverage focused on production-risk areas:
 python -m pytest
 ```
 
+```bash
+# Lint only (Ruff)
+python -m ruff check src tests app.py
+```
+
 To run the integration smoke test (instead of auto-skip), set `IB_RUN_INTEGRATION=1` and define `IB_HOST`, `IB_PORT`, `IB_CLIENT_ID` (typically from `config/status_panel_settings.json`), then run `python -m pytest -rs`.
  
 **CI quality gates:** `compileall` import sanity · `ruff` linting · unit tests
