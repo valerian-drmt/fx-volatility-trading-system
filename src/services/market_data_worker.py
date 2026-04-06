@@ -9,7 +9,8 @@ from services.ib_client import IBClient
 
 
 class MarketDataWorker(QObject):
-    NO_TICK_WARNING_SECONDS = 10.0
+    NO_TICK_CHECK_SECONDS = 2.0
+    NO_TICK_CHECK_REPETITIONS = 3
 
     payload_ready = pyqtSignal(object)
     failed = pyqtSignal(str)
@@ -30,7 +31,8 @@ class MarketDataWorker(QObject):
         self._timer: QTimer | None = None
         self._last_snapshot_monotonic = 0.0
         self._running = False
-        self._no_tick_since_monotonic: float | None = None
+        self._no_tick_check_started_at: float | None = None
+        self._no_tick_check_count = 0
         self._no_tick_warning_emitted = False
 
     @pyqtSlot()
@@ -40,7 +42,8 @@ class MarketDataWorker(QObject):
             return
         self._running = True
         self._last_snapshot_monotonic = 0.0
-        self._no_tick_since_monotonic = None
+        self._no_tick_check_started_at = None
+        self._no_tick_check_count = 0
         self._no_tick_warning_emitted = False
         self._timer = QTimer(self)
         self._timer.setInterval(self._interval_ms)
@@ -81,20 +84,33 @@ class MarketDataWorker(QObject):
                     if ticks:
                         if self._no_tick_warning_emitted:
                             messages.append("[INFO][market_data] tick stream resumed.")
-                        self._no_tick_since_monotonic = None
+                        self._no_tick_check_started_at = None
+                        self._no_tick_check_count = 0
                         self._no_tick_warning_emitted = False
                     else:
-                        if self._no_tick_since_monotonic is None:
-                            self._no_tick_since_monotonic = now
-                        no_tick_seconds = now - self._no_tick_since_monotonic
-                        if no_tick_seconds >= self.NO_TICK_WARNING_SECONDS and not self._no_tick_warning_emitted:
-                            messages.append(
-                                "[WARN][market_data] no ticks received for 10s; market may be closed "
-                                "or data is unavailable for this symbol."
-                            )
-                            self._no_tick_warning_emitted = True
+                        if self._no_tick_check_started_at is None:
+                            self._no_tick_check_started_at = now
+                        elif not self._no_tick_warning_emitted:
+                            no_tick_seconds = now - self._no_tick_check_started_at
+                            if no_tick_seconds >= self.NO_TICK_CHECK_SECONDS:
+                                self._no_tick_check_count += 1
+                                self._no_tick_check_started_at = now
+                                check_position = self._no_tick_check_count
+                                if check_position >= self.NO_TICK_CHECK_REPETITIONS:
+                                    messages.append(
+                                        f"[WARN][market_data] no ticks received "
+                                        f"(test {self.NO_TICK_CHECK_REPETITIONS}/{self.NO_TICK_CHECK_REPETITIONS}); "
+                                        "market may be closed or data is unavailable for this symbol."
+                                    )
+                                    self._no_tick_warning_emitted = True
+                                else:
+                                    messages.append(
+                                        f"[INFO][market_data] no ticks received "
+                                        f"(test {check_position}/{self.NO_TICK_CHECK_REPETITIONS})."
+                                    )
                 else:
-                    self._no_tick_since_monotonic = None
+                    self._no_tick_check_started_at = None
+                    self._no_tick_check_count = 0
                     self._no_tick_warning_emitted = False
 
                 orders_payload = None

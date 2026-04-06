@@ -117,22 +117,31 @@ def test_poll_once_emits_failed_when_exception_occurs(qapp):
 
 
 @pytest.mark.unit
-def test_poll_once_emits_warning_when_no_ticks_for_ten_seconds(monkeypatch, qapp):
+def test_poll_once_emits_warning_after_three_no_tick_checks(monkeypatch, qapp):
     client = FakeMarketClient(connection_state="connected", ticks=[])
     worker = MarketDataWorker(ib_client=client, io_lock=RLock(), snapshot_interval_ms=100)
     worker._running = True
     payloads = []
     worker.payload_ready.connect(payloads.append)
 
-    monotonic_values = iter([0.0, 11.0])
+    monotonic_values = iter([0.0, 2.1, 4.2, 6.3])
     monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: next(monotonic_values))
 
+    worker._poll_once()
+    worker._poll_once()
     worker._poll_once()
     worker._poll_once()
 
     assert payloads[0]["messages"] == []
     assert payloads[1]["messages"] == [
-        "[WARN][market_data] no ticks received for 10s; market may be closed or data is unavailable for this symbol."
+        "[INFO][market_data] no ticks received (test 1/3)."
+    ]
+    assert payloads[2]["messages"] == [
+        "[INFO][market_data] no ticks received (test 2/3)."
+    ]
+    assert payloads[3]["messages"] == [
+        "[WARN][market_data] no ticks received (test 3/3); "
+        "market may be closed or data is unavailable for this symbol."
     ]
 
 
@@ -144,13 +153,19 @@ def test_poll_once_emits_info_when_tick_stream_resumes(monkeypatch, qapp):
     payloads = []
     worker.payload_ready.connect(payloads.append)
 
-    monotonic_values = iter([0.0, 11.0, 12.0])
+    monotonic_values = iter([0.0, 2.1, 4.2, 6.3, 6.4])
     monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: next(monotonic_values))
 
+    worker._poll_once()
+    worker._poll_once()
     worker._poll_once()
     worker._poll_once()
     client.ticks = [{"bid": 1.1000, "ask": 1.1002}]
     worker._poll_once()
 
-    assert payloads[2]["messages"] == ["[INFO][market_data] tick stream resumed."]
-    assert payloads[2]["ticks"] == [{"bid": 1.1000, "ask": 1.1002}]
+    assert payloads[3]["messages"] == [
+        "[WARN][market_data] no ticks received (test 3/3); "
+        "market may be closed or data is unavailable for this symbol."
+    ]
+    assert payloads[4]["messages"] == ["[INFO][market_data] tick stream resumed."]
+    assert payloads[4]["ticks"] == [{"bid": 1.1000, "ask": 1.1002}]
