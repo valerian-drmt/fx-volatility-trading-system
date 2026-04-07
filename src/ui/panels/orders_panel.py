@@ -1,3 +1,4 @@
+from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -6,12 +7,27 @@ from PyQt5.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QTableWidgetItem,
+    QPushButton,
 )
 from typing import Any
 
 
+COLUMNS = ["Id", "Symbol", "Side", "Type", "Qty", "Price", "Status", "Time"]
+_COL_ID = 0
+_COL_SYMBOL = 1
+_COL_SIDE = 2
+_COL_TYPE = 3
+_COL_QTY = 4
+_COL_PRICE = 5
+_COL_STATUS = 6
+_COL_TIME = 7
+_COL_CANCEL = 8  # only for open orders table
+
+
 class OrdersPanel(QWidget):
-    # Build open-orders and fills tables.
+    cancel_order_requested = pyqtSignal(object)
+
+    # Build open-orders and fills tables with shared columns.
     def __init__(self) -> None:
         super().__init__()
 
@@ -20,26 +36,26 @@ class OrdersPanel(QWidget):
         layout.setSpacing(6)
 
         layout.addWidget(QLabel("Open orders"))
-        self.orders_table = QTableWidget(0, 7)
-        self.orders_table.setHorizontalHeaderLabels(["Id", "Symbol", "Side", "Type", "Qty", "Price", "Status"])
-        self.orders_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.orders_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.orders_table.setAlternatingRowColors(True)
-        self.orders_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.orders_table.verticalHeader().setVisible(False)
-
+        self.orders_table = QTableWidget(0, len(COLUMNS) + 1)
+        self.orders_table.setHorizontalHeaderLabels([*COLUMNS, ""])
+        self._configure_table(self.orders_table)
         layout.addWidget(self.orders_table)
+
         layout.addWidget(QLabel("Recent fills"))
-
-        self.fills_table = QTableWidget(0, 5)
-        self.fills_table.setHorizontalHeaderLabels(["Time", "Symbol", "Side", "Qty", "Price"])
-        self.fills_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.fills_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.fills_table.setAlternatingRowColors(True)
-        self.fills_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.fills_table.verticalHeader().setVisible(False)
-
+        self.fills_table = QTableWidget(0, len(COLUMNS))
+        self.fills_table.setHorizontalHeaderLabels(COLUMNS)
+        self._configure_table(self.fills_table)
         layout.addWidget(self.fills_table)
+
+        self._open_orders_raw: list[Any] = []
+
+    @staticmethod
+    def _configure_table(table: QTableWidget) -> None:
+        table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        table.setAlternatingRowColors(True)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.verticalHeader().setVisible(False)
 
     @staticmethod
     # Return the first non-empty value from a list of candidates.
@@ -62,47 +78,73 @@ class OrdersPanel(QWidget):
             return "SELL"
         return side
 
-    # Extract display fields from supported fill payload shapes.
-    def _extract_fill_row(self, fill: Any) -> tuple[str, str, str, str, str]:
-        if isinstance(fill, dict):
-            fill_time = self._coalesce(fill.get("time"), fill.get("timestamp"))
-            symbol = self._coalesce(fill.get("symbol"), fill.get("local_symbol"))
-            side = self._normalize_side(fill.get("side"))
-            qty = self._coalesce(fill.get("qty"), fill.get("quantity"), fill.get("shares"))
-            price = self._coalesce(fill.get("price"), fill.get("avg_price"))
-            return str(fill_time), str(symbol), str(side), str(qty), str(price)
-
-        contract = getattr(fill, "contract", None)
-        execution = getattr(fill, "execution", None)
-        fill_time = self._coalesce(
-            getattr(fill, "time", None),
-            getattr(execution, "time", None),
-        )
-        symbol = self._coalesce(
-            getattr(fill, "symbol", None),
-            getattr(contract, "localSymbol", None),
-            getattr(contract, "symbol", None),
-            getattr(execution, "symbol", None),
-        )
-        side = self._normalize_side(
-            self._coalesce(
-                getattr(fill, "side", None),
-                getattr(execution, "side", None),
+    # Extract shared row fields from an order object.
+    def _extract_order_row(self, order: Any) -> tuple[str, str, str, str, str, str, str, str]:
+        if isinstance(order, dict):
+            order_id = self._coalesce(order.get("orderId"), order.get("id"))
+            symbol = self._coalesce(order.get("symbol"), order.get("localSymbol"))
+            side = self._normalize_side(self._coalesce(order.get("action"), order.get("side")))
+            order_type = self._coalesce(order.get("orderType"), order.get("type"))
+            qty = self._coalesce(order.get("totalQuantity"), order.get("qty"), order.get("quantity"))
+            price = self._coalesce(order.get("lmtPrice"), order.get("price"), order.get("limit_price"))
+            status = self._coalesce(order.get("status"), order.get("state"))
+            t = self._coalesce(order.get("time"), order.get("timestamp"))
+        else:
+            contract = getattr(order, "contract", None)
+            execution = getattr(order, "execution", None)
+            order_obj = getattr(order, "order", None)
+            order_status = getattr(order, "orderStatus", None)
+            order_id = self._coalesce(
+                getattr(order_obj, "orderId", None),
+                getattr(execution, "orderId", None),
+                getattr(order, "orderId", None),
             )
-        )
-        qty = self._coalesce(
-            getattr(fill, "qty", None),
-            getattr(fill, "shares", None),
-            getattr(execution, "shares", None),
-            getattr(execution, "qty", None),
-        )
-        price = self._coalesce(
-            getattr(fill, "price", None),
-            getattr(fill, "avgPrice", None),
-            getattr(execution, "price", None),
-            getattr(execution, "avgPrice", None),
-        )
-        return str(fill_time), str(symbol), str(side), str(qty), str(price)
+            symbol = self._coalesce(
+                getattr(contract, "localSymbol", None),
+                getattr(contract, "symbol", None),
+                getattr(order, "symbol", None),
+            )
+            side = self._normalize_side(self._coalesce(
+                getattr(order_obj, "action", None),
+                getattr(order, "action", None),
+                getattr(execution, "side", None),
+                getattr(order, "side", None),
+            ))
+            order_type = self._coalesce(
+                getattr(order_obj, "orderType", None),
+                getattr(order, "orderType", None),
+                getattr(order, "type", None),
+            )
+            qty = self._coalesce(
+                getattr(order_obj, "totalQuantity", None),
+                getattr(order, "totalQuantity", None),
+                getattr(execution, "shares", None),
+                getattr(order, "qty", None),
+            )
+            price = self._coalesce(
+                getattr(order_obj, "lmtPrice", None),
+                getattr(order, "lmtPrice", None),
+                getattr(execution, "price", None),
+                getattr(execution, "avgPrice", None),
+                getattr(order, "price", None),
+            )
+            status = self._coalesce(
+                getattr(order_status, "status", None),
+                getattr(order, "status", None),
+            )
+            t = self._coalesce(
+                getattr(execution, "time", None),
+                getattr(order, "time", None),
+            )
+        return str(order_id), str(symbol), str(side), str(order_type), str(qty), str(price), str(status), str(t)
+
+    def _set_row(self, table: QTableWidget, row: int, fields: tuple[str, ...]) -> None:
+        for col, value in enumerate(fields):
+            table.setItem(row, col, QTableWidgetItem(value))
+
+    def _on_cancel_clicked(self, row: int) -> None:
+        if 0 <= row < len(self._open_orders_raw):
+            self.cancel_order_requested.emit(self._open_orders_raw[row])
 
     # Refresh tables from normalized orders/fills payloads.
     def update(self, payload: dict[str, Any] | None = None) -> None:
@@ -111,39 +153,20 @@ class OrdersPanel(QWidget):
         open_orders = payload.get("open_orders") or []
         fills = payload.get("fills") or []
 
+        self._open_orders_raw = list(open_orders)
         self.orders_table.setRowCount(len(open_orders))
         for row, order in enumerate(open_orders):
-            if isinstance(order, dict):
-                order_id = self._coalesce(order.get("orderId"), order.get("id"))
-                symbol = self._coalesce(order.get("symbol"), order.get("localSymbol"))
-                side = self._normalize_side(self._coalesce(order.get("action"), order.get("side")))
-                order_type = self._coalesce(order.get("orderType"), order.get("type"))
-                qty = self._coalesce(order.get("totalQuantity"), order.get("qty"), order.get("quantity"))
-                price = self._coalesce(order.get("lmtPrice"), order.get("price"), order.get("limit_price"))
-                status = self._coalesce(order.get("status"), order.get("state"))
-            else:
-                order_id = self._coalesce(getattr(order, "orderId", None), getattr(order, "id", ""))
-                symbol = self._coalesce(getattr(order, "symbol", None), getattr(order, "localSymbol", ""))
-                side = self._normalize_side(self._coalesce(getattr(order, "action", None), getattr(order, "side", "")))
-                order_type = self._coalesce(getattr(order, "orderType", None), getattr(order, "type", ""))
-                qty = self._coalesce(getattr(order, "totalQuantity", None), getattr(order, "qty", ""))
-                price = self._coalesce(getattr(order, "lmtPrice", None), getattr(order, "price", ""))
-                status = self._coalesce(getattr(order, "status", None), "")
-
-            self.orders_table.setItem(row, 0, QTableWidgetItem(str(order_id)))
-            self.orders_table.setItem(row, 1, QTableWidgetItem(str(symbol)))
-            self.orders_table.setItem(row, 2, QTableWidgetItem(str(side)))
-            self.orders_table.setItem(row, 3, QTableWidgetItem(str(order_type)))
-            self.orders_table.setItem(row, 4, QTableWidgetItem(str(qty)))
-            self.orders_table.setItem(row, 5, QTableWidgetItem(str(price)))
-            self.orders_table.setItem(row, 6, QTableWidgetItem(str(status)))
+            fields = self._extract_order_row(order)
+            self._set_row(self.orders_table, row, fields)
+            cancel_btn = QPushButton("Cancel")
+            cancel_btn.setFixedHeight(28)
+            cancel_btn.setStyleSheet("background-color: #c0392b; color: white; font-weight: bold; padding: 2px 8px;")
+            self.orders_table.setRowHeight(row, 32)
+            r = row  # capture for lambda
+            cancel_btn.clicked.connect(lambda _checked, r=r: self._on_cancel_clicked(r))
+            self.orders_table.setCellWidget(row, _COL_CANCEL, cancel_btn)
 
         self.fills_table.setRowCount(len(fills))
         for row, fill in enumerate(fills):
-            fill_time, symbol, side, qty, price = self._extract_fill_row(fill)
-
-            self.fills_table.setItem(row, 0, QTableWidgetItem(str(fill_time)))
-            self.fills_table.setItem(row, 1, QTableWidgetItem(str(symbol)))
-            self.fills_table.setItem(row, 2, QTableWidgetItem(str(side)))
-            self.fills_table.setItem(row, 3, QTableWidgetItem(str(qty)))
-            self.fills_table.setItem(row, 4, QTableWidgetItem(str(price)))
+            fields = self._extract_order_row(fill)
+            self._set_row(self.fills_table, row, fields)

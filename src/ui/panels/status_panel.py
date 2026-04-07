@@ -6,7 +6,6 @@ from PyQt5.QtWidgets import (
     QLabel,
     QPushButton,
     QLineEdit,
-    QComboBox,
     QSpinBox,
     QGroupBox,
 )
@@ -47,8 +46,6 @@ class StatusPanel(QWidget):
         host_default = str(connection_defaults["host"])
         port_default = int(connection_defaults["port"])
         client_id_default = int(connection_defaults["client_id"])
-        market_symbol_default = str(connection_defaults["market_symbol"]).strip().upper()
-
         self.status_dot = QLabel()
         self.status_dot.setFixedSize(10, 10)
         self.status_dot.setStyleSheet("background-color: #666666; border-radius: 5px;")
@@ -67,13 +64,6 @@ class StatusPanel(QWidget):
         self.client_id_input = QSpinBox()
         self.client_id_input.setRange(0, 999999)
         self.client_id_input.setValue(client_id_default)
-        self.market_symbol_input = QComboBox()
-        self.market_symbol_input.setEditable(False)
-        self.market_symbol_input.addItems(self.FX_PAIRS)
-        if self.market_symbol_input.findText(market_symbol_default) < 0:
-            self.market_symbol_input.addItem(market_symbol_default)
-        self.market_symbol_input.setCurrentText(market_symbol_default)
-
         self.connect_button = QPushButton("Connect")
         self.connect_button.clicked.connect(on_connect)
         self.save_button = QPushButton("Save Settings")
@@ -131,7 +121,6 @@ class StatusPanel(QWidget):
         settings_form.addRow("Host:", self.host_input)
         settings_form.addRow("Port:", self.port_input)
         settings_form.addRow("ClientId cfg:", self.client_id_input)
-        settings_form.addRow("Market symbol:", self.market_symbol_input)
         settings_form.addRow("", self.save_button)
 
         layout.addLayout(header_layout)

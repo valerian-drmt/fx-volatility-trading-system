@@ -3,10 +3,8 @@ import math
 import sys
 import time
 from pathlib import Path
-from threading import RLock
 from typing import Any
 
-from PyQt5 import QtCore
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from ib_insync import Forex, IB
@@ -16,22 +14,6 @@ from services.ib_client import IBClient
 from services.market_data_worker import MarketDataWorker
 from services.order_worker import OrderWorker
 from ui.main_window import MainWindow
-
-
-class ServerTimeWorker(QtCore.QThread):
-    result = QtCore.pyqtSignal(str, str)
-
-    # Initialize async server-time worker dependencies.
-    def __init__(self, ib_client: IBClient, io_lock: RLock) -> None:
-        super().__init__()
-        self.ib_client = ib_client
-        self.io_lock = io_lock
-
-    # Query IB server time and emit the result pair.
-    def run(self) -> None:
-        with self.io_lock:
-            time_text, latency_text = self.ib_client.get_server_time_and_latency()
-        self.result.emit(time_text, latency_text)
 
 
 class Controller:
@@ -66,45 +48,20 @@ class Controller:
         self.snapshot_interval_ms = runtime_settings["snapshot_interval_ms"]
 
         self.app = QApplication(sys.argv)
-        self.dashboard_ib = IB()
-        self.market_data_ib = IB()
-        self.order_ib = IB()
-        self.ib = self.market_data_ib
-        self._io_lock = RLock()
-        self.dashboard_client = IBClient(
-            ib=self.dashboard_ib,
+        self.ib = IB()
+        self.ib_client = IBClient(
+            ib=self.ib,
             ticker=None,
             host=self.host,
             port=self.port,
-            client_id=int(self.client_roles["dashboard"]),
+            client_id=self.client_id,
             readonly=False,
         )
-        self.market_data_client = IBClient(
-            ib=self.market_data_ib,
-            ticker=None,
-            host=self.host,
-            port=self.port,
-            client_id=int(self.client_roles["market_data"]),
-            readonly=False,
-        )
-        self.order_client = IBClient(
-            ib=self.order_ib,
-            ticker=None,
-            host=self.host,
-            port=self.port,
-            client_id=int(self.client_roles["order_worker"]),
-            readonly=False,
-        )
-        self.ib_client = self.market_data_client
 
         self.window: MainWindow | None = None
         self._status_timer: QTimer | None = None
-        self._ib_pump_timer: QTimer | None = None
-        self._server_time_worker: ServerTimeWorker | None = None
-
-        self._market_data_thread: QtCore.QThread | None = None
+        self._market_data_poll_timer: QTimer | None = None
         self._market_data_worker: MarketDataWorker | None = None
-        self._order_thread: QtCore.QThread | None = None
         self._order_worker: OrderWorker | None = None
 
         self._last_status_sec = None
@@ -118,85 +75,40 @@ class Controller:
         self._cash_balances_by_currency: dict[str, float] = {}
         self._ticket_funds_ok: bool | None = None
 
-    # Return the status client (dashboard role when available).
-    def _status_client(self) -> IBClient:
-        client = getattr(self, "dashboard_client", None)
-        if isinstance(client, IBClient):
-            return client
-        return self.ib_client
-
-    # Return the market-data client (streaming role).
-    def _market_client(self) -> IBClient:
-        return self.ib_client
-
-    # Return the order-execution client (order role when available).
-    def _order_client(self) -> IBClient:
-        client = getattr(self, "order_client", None)
-        if isinstance(client, IBClient):
-            return client
-        return self.ib_client
-
-    # Return all active IB clients used by this controller.
-    def _all_ib_clients(self) -> list[IBClient]:
-        clients = [self._status_client(), self._market_client(), self._order_client()]
-        unique: list[IBClient] = []
-        for client in clients:
-            if client not in unique:
-                unique.append(client)
-        return unique
-
-    # Return True when all role clients are connected.
-    def _are_all_clients_connected(self) -> bool:
-        return all(client.is_connected() for client in self._all_ib_clients())
-
-    # Return global connection state across all role clients.
+    # Return connection state text.
     def _global_connection_state(self, connecting: bool = False) -> str:
-        if self._are_all_clients_connected():
+        if self.ib_client.is_connected():
             return "connected"
         if connecting:
             return "connecting"
         return "disconnected"
 
-    # Disconnect all role clients and stop active subscriptions.
-    def _disconnect_all_clients(self) -> None:
-        for client in self._all_ib_clients():
+    # Disconnect the IB client and stop active subscriptions.
+    def _disconnect_client(self) -> None:
+        try:
+            self.ib_client.stop_live_streaming()
+        except Exception:
+            pass
+        try:
+            self.ib_client.cancel_account_summary()
+        except Exception:
+            pass
+        if self.ib.isConnected():
             try:
-                client.stop_live_streaming()
+                self.ib.disconnect()
             except Exception:
                 pass
-            try:
-                client.cancel_account_summary()
-            except Exception:
-                pass
-            ib = getattr(client, "ib", None)
-            if ib is not None and hasattr(ib, "isConnected") and ib.isConnected():
-                try:
-                    ib.disconnect()
-                except Exception:
-                    pass
 
-    # Connect all role clients and return (ok, error_message).
-    def _connect_all_clients(self) -> tuple[bool, str]:
-        sequence = (
-            ("dashboard", self._status_client()),
-            ("market_data", self._market_client()),
-            ("order_worker", self._order_client()),
-        )
-        seen_client_ids: set[int] = set()
-        for role_name, client in sequence:
-            marker = id(client)
-            if marker in seen_client_ids:
-                continue
-            seen_client_ids.add(marker)
-            if client.is_connected():
-                continue
-            ok = bool(client.connect())
-            if ok:
-                continue
-            reason = client.get_last_error_text() or "Unable to connect to IBKR."
-            self._disconnect_all_clients()
-            return False, f"{role_name}: {reason}"
-        return True, ""
+    # Connect the IB client and return (ok, error_message).
+    def _connect_client(self) -> tuple[bool, str]:
+        if self.ib_client.is_connected():
+            return True, ""
+        ok = bool(self.ib_client.connect())
+        if ok:
+            return True, ""
+        reason = self.ib_client.get_last_error_text() or "Unable to connect to IBKR."
+        self._disconnect_client()
+        return False, reason
 
     # Resolve settings path and migrate legacy location when needed.
     def _resolve_settings_path(self) -> Path:
@@ -242,10 +154,10 @@ class Controller:
             return
 
         self._setup_order_worker()
-        self._setup_market_data_worker()
         self.window.order_ticket_panel.place_button.clicked.connect(self._queue_order_from_ticket)
         self.window.order_ticket_panel.preview_button.clicked.connect(self._preview_order_from_ticket)
         self.window.order_ticket_panel.limit_price_update_button.clicked.connect(self._update_limit_price_from_market)
+        self.window.orders_panel.cancel_order_requested.connect(self._cancel_single_order)
         symbol_input = getattr(self.window.order_ticket_panel, "symbol_input", None)
         if symbol_input is not None and hasattr(symbol_input, "currentTextChanged"):
             symbol_input.currentTextChanged.connect(self._refresh_order_ticket_market_context)
@@ -262,127 +174,62 @@ class Controller:
         if limit_price_input is not None and hasattr(limit_price_input, "valueChanged"):
             limit_price_input.valueChanged.connect(self._refresh_order_ticket_market_context)
 
+        self.window.chart_panel.market_symbol_input.currentTextChanged.connect(self._on_market_symbol_changed)
+
         self._status_timer = QTimer(self.window)
         self._status_timer.setInterval(1000)
         self._status_timer.timeout.connect(self._refresh_status)
         self._status_timer.start()
 
-        # IB network loop must be pumped on the main/UI thread to receive streaming updates.
-        self._ib_pump_timer = QTimer(self.window)
-        self._ib_pump_timer.setInterval(max(25, min(100, int(self.tick_interval_ms))))
-        self._ib_pump_timer.timeout.connect(self._pump_ib_network)
-        self._ib_pump_timer.start()
-
         self._refresh_status(force=True)
 
-    # Prepare market-data thread/worker wiring without starting it.
-    def _setup_market_data_worker(self) -> None:
-        if self.window is None:
+    # Create the order worker (plain class, no thread).
+    def _setup_order_worker(self) -> None:
+        if self._order_worker is not None:
             return
-        if self._market_data_thread is not None and self._market_data_thread.isRunning():
+        self._order_worker = OrderWorker(ib_client=self.ib_client)
+        self._order_worker.start()
+
+    # Return True when the market worker is active.
+    def _is_market_worker_running(self) -> bool:
+        return self._market_data_worker is not None
+
+    # Start market data polling via QTimer on the main thread.
+    def _start_market_data_worker(self) -> None:
+        if self._market_data_worker is not None:
             return
-
-        self._market_data_thread = None
-        self._market_data_worker = None
-
-        thread = QtCore.QThread(self.window)
-        worker = MarketDataWorker(
-            ib_client=self._market_client(),
-            status_client=self._status_client(),
-            orders_client=self._order_client(),
-            portfolio_client=self._status_client(),
-            io_lock=self._io_lock,
+        self._market_data_worker = MarketDataWorker(
+            ib_client=self.ib_client,
             interval_ms=self.tick_interval_ms,
             snapshot_interval_ms=self.snapshot_interval_ms,
         )
-        worker.moveToThread(thread)
-        thread.started.connect(worker.start)
-        thread.finished.connect(worker.deleteLater)
-        thread.finished.connect(self._on_market_data_thread_finished)
-        worker.payload_ready.connect(self._on_market_data_payload)
-        worker.failed.connect(self._on_market_data_failed)
-        self._market_data_thread = thread
-        self._market_data_worker = worker
+        self._market_data_poll_timer = QTimer(self.window)
+        self._market_data_poll_timer.setInterval(self.tick_interval_ms)
+        self._market_data_poll_timer.timeout.connect(self._poll_market_data)
+        self._market_data_poll_timer.start()
 
-    # Start the order worker thread and connect result signals.
-    def _setup_order_worker(self) -> None:
-        if self.window is None or self._order_thread is not None:
+    # Poll market data worker and route payload to UI.
+    def _poll_market_data(self) -> None:
+        if self._market_data_worker is None:
             return
-        thread = QtCore.QThread(self.window)
-        worker = OrderWorker(ib_client=self._order_client(), io_lock=self._io_lock)
-        worker.moveToThread(thread)
-        thread.started.connect(worker.start)
-        thread.finished.connect(worker.deleteLater)
-        worker.order_result.connect(self._on_order_result)
-        worker.failed.connect(self._on_order_failed)
-        thread.start()
-        self._order_thread = thread
-        self._order_worker = worker
+        try:
+            payload = self._market_data_worker.poll_once()
+            self._on_market_data_payload(payload)
+        except Exception as exc:
+            self._on_market_data_failed(str(exc))
 
-    # Return True when the market worker thread is active.
-    def _is_market_worker_running(self) -> bool:
-        return (
-            self._market_data_thread is not None
-            and self._market_data_thread.isRunning()
-            and self._market_data_worker is not None
-        )
-
-    # Start market polling worker if it is not already running.
-    def _start_market_data_worker(self) -> None:
-        self._setup_market_data_worker()
-        if self._market_data_thread is None or self._market_data_thread.isRunning():
-            return
-        self._market_data_thread.start()
-
-    # Stop market polling worker and clear thread references.
+    # Stop market data polling and clear worker.
     def _stop_market_data_worker(self) -> None:
-        thread = self._market_data_thread
-        worker = self._market_data_worker
-        if thread is None or not thread.isRunning():
-            self._market_data_thread = None
-            self._market_data_worker = None
-            return
-
-        if worker is not None:
-            QtCore.QMetaObject.invokeMethod(worker, "stop", QtCore.Qt.BlockingQueuedConnection)
-        thread.quit()
-        thread.wait(1500)
-        if not thread.isRunning():
-            self._market_data_thread = None
-            self._market_data_worker = None
-
-    # Clear market worker references after thread termination.
-    def _on_market_data_thread_finished(self) -> None:
-        self._market_data_thread = None
+        if self._market_data_poll_timer is not None:
+            self._market_data_poll_timer.stop()
+            self._market_data_poll_timer = None
         self._market_data_worker = None
 
-    # Pump IB network updates from the main thread.
-    def _pump_ib_network(self) -> None:
-        with self._io_lock:
-            market_client = self._market_client()
-            if market_client.is_connected():
-                market_client.pump_network()
-            status_client = self._status_client()
-            if status_client is not market_client and status_client.is_connected():
-                status_client.pump_network()
-            # Keep order client traffic in the order worker thread only.
-            # Cross-thread pumping of the same IB instance can destabilize ib_insync.
-
-    # Stop order worker thread and clear references.
+    # Stop order worker.
     def _stop_order_worker(self) -> None:
-        thread = self._order_thread
-        worker = self._order_worker
-        if thread is None:
-            return
-
-        if worker is not None and thread.isRunning():
-            QtCore.QMetaObject.invokeMethod(worker, "stop", QtCore.Qt.BlockingQueuedConnection)
-        if thread.isRunning():
-            thread.quit()
-            thread.wait(1500)
-
+        if self._order_worker is not None:
+            self._order_worker.stop()
         self._order_worker = None
-        self._order_thread = None
 
     # Route market payload slices to their corresponding UI panels.
     def _on_market_data_payload(self, payload: Any) -> None:
@@ -419,6 +266,74 @@ class Controller:
             self.window.portfolio_panel.update(portfolio_payload)
             self._update_cash_balances_from_summary(portfolio_payload.get("summary"))
             self._refresh_order_ticket_market_context()
+
+    # Collect a best-effort open-orders list for account-level display.
+    def _collect_open_orders_for_panel(self, orders_client: Any) -> list[Any]:
+        open_orders: Any = []
+        request_all_open_orders = getattr(orders_client, "request_all_open_orders", None)
+        if callable(request_all_open_orders):
+            try:
+                open_orders = request_all_open_orders() or []
+            except Exception:
+                open_orders = []
+
+        if not isinstance(open_orders, list) or not open_orders:
+            get_open_orders_snapshot = getattr(orders_client, "get_open_orders_snapshot", None)
+            if callable(get_open_orders_snapshot):
+                try:
+                    open_orders = get_open_orders_snapshot() or []
+                except Exception:
+                    open_orders = []
+
+        return open_orders if isinstance(open_orders, list) else []
+
+    # Collect recent order activity for display (executions first, then fills).
+    def _collect_recent_orders_for_panel(self, orders_client: Any) -> list[Any]:
+        recent_orders: Any = []
+        get_recent_fills_snapshot = getattr(orders_client, "get_recent_fills_snapshot", None)
+        if callable(get_recent_fills_snapshot):
+            try:
+                recent_orders = get_recent_fills_snapshot() or []
+            except Exception:
+                recent_orders = []
+
+        if isinstance(recent_orders, list) and recent_orders:
+            return recent_orders
+
+        get_executions_snapshot = getattr(orders_client, "get_executions_snapshot", None)
+        if callable(get_executions_snapshot):
+            try:
+                recent_orders = get_executions_snapshot() or []
+            except Exception:
+                recent_orders = []
+
+        if not isinstance(recent_orders, list) or not recent_orders:
+            get_fills_snapshot = getattr(orders_client, "get_fills_snapshot", None)
+            if callable(get_fills_snapshot):
+                try:
+                    recent_orders = get_fills_snapshot() or []
+                except Exception:
+                    recent_orders = []
+
+        return recent_orders if isinstance(recent_orders, list) else []
+
+    # Fetch and render one-shot orders/portfolio snapshots for a connected session.
+    def _refresh_account_snapshots(self) -> None:
+        if self.window is None:
+            return
+
+        if not self.ib_client.is_connected():
+            return
+        orders_client = self.ib_client
+        portfolio_client = self.ib_client
+        open_orders = self._collect_open_orders_for_panel(orders_client)
+        fills = self._collect_recent_orders_for_panel(orders_client)
+        summary, positions = portfolio_client.get_portfolio_snapshot()
+
+        self.window.orders_panel.update({"open_orders": open_orders, "fills": fills})
+        self.window.portfolio_panel.update({"summary": summary, "positions": positions})
+        self._update_cash_balances_from_summary(summary)
+        self._refresh_order_ticket_market_context()
 
     @staticmethod
     # Parse numeric values from IB account snapshot fields.
@@ -587,11 +502,10 @@ class Controller:
         if stream_symbol == symbol and self._is_valid_market_price(self._latest_ask):
             return float(self._latest_ask), ""
 
-        with self._io_lock:
-            market_client = self._market_client()
-            if not market_client.is_connected():
-                return None, "Connect to IBKR and start streaming before sending BUY market orders."
-            snapshot = market_client.get_market_snapshot(Forex(symbol), wait_seconds=0.35)
+        market_client = self.ib_client
+        if not market_client.is_connected():
+            return None, "Connect to IBKR and start streaming before sending BUY market orders."
+        snapshot = market_client.get_market_snapshot(Forex(symbol), wait_seconds=0.35)
 
         if isinstance(snapshot, dict):
             ask = self._parse_float(snapshot.get("ask"))
@@ -711,15 +625,10 @@ class Controller:
             }
         )
 
-        io_lock = getattr(self, "_io_lock", None)
-        if io_lock is None:
-            return
-        with io_lock:
-            connecting = bool(getattr(self, "_connecting", False))
-            connected = self._global_connection_state(connecting=connecting) == "connected"
-        order_thread = getattr(self, "_order_thread", None)
-        order_thread_running = order_thread is not None and order_thread.isRunning()
-        self._sync_order_ticket_action_buttons(connected=connected, order_thread_running=order_thread_running)
+        connecting = bool(getattr(self, "_connecting", False))
+        connected = self._global_connection_state(connecting=connecting) == "connected"
+        order_worker_running = self._order_worker is not None and self._order_worker._running
+        self._sync_order_ticket_action_buttons(connected=connected, order_thread_running=order_worker_running)
 
     @staticmethod
     # Detect final no-tick warning that should auto-stop live streaming.
@@ -739,13 +648,12 @@ class Controller:
     def _queue_order_from_ticket(self) -> None:
         if self.window is None or self._order_worker is None:
             return
-        if self._order_thread is None or not self._order_thread.isRunning():
+        if self._order_worker is None or not self._order_worker._running:
             self.window.order_ticket_panel.update({"message": "Order thread is not running.", "level": "error"})
             return
 
         request = self.window.order_ticket_panel.get_order_request()
-        with self._io_lock:
-            connected = self._order_client().is_connected()
+        connected = self.ib_client.is_connected()
         if not connected:
             self.window.order_ticket_panel.update({"message": "Connect to IBKR before sending orders.", "level": "error"})
             return
@@ -770,33 +678,39 @@ class Controller:
             order_desc += f" BRACKET TP={float(take_profit_pct):.3f}% SL={float(stop_loss_pct):.3f}%"
 
         confirm_text = f"Send order?\n{order_desc}"
-        confirm = QMessageBox.question(
-            self.window,
-            "Confirm Order",
-            confirm_text,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if confirm != QMessageBox.Yes:
-            self.window.order_ticket_panel.update({"message": "Order cancelled by user.", "level": "info"})
-            self.window.logs_panel.update({"message": f"[INFO][execution] user cancelled {order_desc}"})
-            return
+        msg_box = QMessageBox(self.window)
+        msg_box.setWindowTitle("Confirm Order")
+        msg_box.setText(confirm_text)
+        msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg_box.setDefaultButton(QMessageBox.No)
 
-        self.window.order_ticket_panel.update({"message": "Order queued for execution thread.", "level": "info"})
-        self.window.logs_panel.update({"message": f"[INFO][execution] queued {order_desc}"})
-        self._order_worker.enqueue_order.emit(request)
+        def _on_confirm(button: Any) -> None:
+            role = msg_box.buttonRole(button)
+            if role != QMessageBox.YesRole:
+                self.window.order_ticket_panel.update({"message": "Order cancelled by user.", "level": "info"})
+                self.window.logs_panel.update({"message": f"[INFO][execution] user cancelled {order_desc}"})
+                return
+            try:
+                self.window.order_ticket_panel.update({"message": "Order queued for execution.", "level": "info"})
+                self.window.logs_panel.update({"message": f"[INFO][execution] queued {order_desc}"})
+                result = self._order_worker.place_order(request)
+                self._on_order_result(result)
+            except Exception as exc:
+                self.window.order_ticket_panel.update({"message": f"Order error: {exc}", "level": "error"})
+
+        msg_box.buttonClicked.connect(_on_confirm)
+        msg_box.show()
 
     # Validate and enqueue an order preview request.
     def _preview_order_from_ticket(self) -> None:
         if self.window is None or self._order_worker is None:
             return
-        if self._order_thread is None or not self._order_thread.isRunning():
+        if self._order_worker is None or not self._order_worker._running:
             self.window.order_ticket_panel.update({"message": "Order thread is not running.", "level": "error"})
             return
 
         request = self.window.order_ticket_panel.get_order_request()
-        with self._io_lock:
-            connected = self._order_client().is_connected()
+        connected = self.ib_client.is_connected()
         if not connected:
             self.window.order_ticket_panel.update({"message": "Connect to IBKR before preview.", "level": "error"})
             return
@@ -807,7 +721,42 @@ class Controller:
         order_type = request.get("order_type", "")
         self.window.order_ticket_panel.update({"message": "Preview queued for execution thread.", "level": "info"})
         self.window.logs_panel.update({"message": f"[INFO][execution] preview queued {side} {qty} {symbol} {order_type}"})
-        self._order_worker.enqueue_preview.emit(request)
+        result = self._order_worker.preview_order(request)
+        self._on_order_result(result)
+
+    # Cancel a single order from the orders panel.
+    def _cancel_single_order(self, trade: Any) -> None:
+        if self.window is None:
+            return
+        if not self.ib_client.is_connected():
+            self.window.logs_panel.update({"message": "[WARN][cancel] not connected to IBKR"})
+            return
+
+        # For bracket child orders, cancel the parent instead (children follow).
+        order_obj = getattr(trade, "order", trade)
+        parent_id = getattr(order_obj, "parentId", 0)
+        target = trade
+        if parent_id:
+            open_trades = self.ib_client.get_open_orders_snapshot()
+            for t in open_trades:
+                t_order = getattr(t, "order", t)
+                if getattr(t_order, "orderId", None) == parent_id:
+                    target = t
+                    break
+
+        # Skip if already inactive.
+        target_order = getattr(target, "order", target)
+        target_status = getattr(getattr(target, "orderStatus", None), "status", "")
+        if str(target_status).lower() in {"cancelled", "inactive", "apicancelled", "filled", "pendingcancel"}:
+            self.window.logs_panel.update({"message": f"[INFO][cancel] order already {target_status}"})
+            return
+
+        ok = self.ib_client.cancel_order(target_order)
+        if ok:
+            self.window.logs_panel.update({"message": "[INFO][cancel] order cancel requested"})
+        else:
+            error = self.ib_client.get_last_error_text() or "cancel failed"
+            self.window.logs_panel.update({"message": f"[WARN][cancel] {error}"})
 
     # Render order worker responses in ticket/log panels.
     def _on_order_result(self, payload: Any) -> None:
@@ -818,7 +767,12 @@ class Controller:
         kind = str(payload.get("kind", "order")).strip().lower()
         message = str(payload.get("message", "Order response received."))
         if ok:
-            level = "success" if kind in {"order", "cancel_all"} else "info"
+            if kind == "preview":
+                level = "preview"
+            elif kind in {"order", "cancel_all"}:
+                level = "success"
+            else:
+                level = "info"
             log_level = "INFO"
         else:
             level = "error"
@@ -881,10 +835,9 @@ class Controller:
             self.window.order_ticket_panel.update({"message": "Select LMT to update limit price.", "level": "info"})
             return
 
-        with self._io_lock:
-            market_client = self._market_client()
-            connected = market_client.is_connected()
-            bid, ask = market_client.get_latest_bid_ask() if connected else (None, None)
+        market_client = self.ib_client
+        connected = market_client.is_connected()
+        bid, ask = market_client.get_latest_bid_ask() if connected else (None, None)
 
         if not connected:
             self.window.order_ticket_panel.update(
@@ -938,15 +891,13 @@ class Controller:
         if isinstance(payload, dict):
             status = payload
         else:
-            with self._io_lock:
-                status = self._status_client().get_status_snapshot()
+            status = self.ib_client.get_status_snapshot()
 
-        with self._io_lock:
-            connection_state = self._global_connection_state(connecting=self._connecting)
+        connection_state = self._global_connection_state(connecting=self._connecting)
 
         connected = connection_state == "connected"
         pipeline_running = self._is_market_worker_running()
-        order_thread_running = self._order_thread is not None and self._order_thread.isRunning()
+        order_thread_running = self._order_worker is not None and self._order_worker._running
 
         if not connected:
             self._latency_ms_text = "--"
@@ -976,14 +927,12 @@ class Controller:
     def _start_connect(self) -> None:
         if self._connecting or self.window is None:
             return
-        with self._io_lock:
-            if self._are_all_clients_connected():
-                return
+        if self.ib_client.is_connected():
+            return
 
         self._stop_market_data_worker()
-        with self._io_lock:
-            self._market_client().stop_live_streaming()
-            self._disconnect_all_clients()
+        self.ib_client.stop_live_streaming()
+        self._disconnect_client()
 
         try:
             status_settings = self._validate_status_settings(self._read_status_settings_from_panel())
@@ -1001,8 +950,7 @@ class Controller:
         connected = False
         error_message = ""
         try:
-            with self._io_lock:
-                connected, error_message = self._connect_all_clients()
+            connected, error_message = self._connect_client()
         except Exception as exc:
             error_message = str(exc)
         self._on_connect_result(connected, error_message)
@@ -1014,40 +962,57 @@ class Controller:
         if self.window is not None:
             if connected:
                 self.window.logs_panel.update({"message": "[INFO][connection] connected to IBKR"})
+                self._refresh_account_snapshots()
             else:
                 message = self._last_connect_error or "IB connection failed."
                 self.window.logs_panel.update({"message": f"[ERROR][connection] {message}"})
                 self.window.order_ticket_panel.update({"message": message, "level": "error"})
         self._refresh_status(force=True)
 
+    # Handle market symbol change — restart streaming if active.
+    def _on_market_symbol_changed(self, symbol: str) -> None:
+        normalized = str(symbol).strip().upper()
+        if not normalized or normalized == self.market_symbol:
+            return
+        self.market_symbol = normalized
+        if self._is_market_worker_running():
+            self._stop_live_streaming()
+            self._start_live_streaming()
+
     # Start IB live market stream and polling worker.
     def _start_live_streaming(self) -> None:
-        if self.window is None or self._is_market_worker_running():
+        if self.window is None:
+            return
+        if self._is_market_worker_running():
             return
 
-        with self._io_lock:
-            connected = self._are_all_clients_connected()
+        connected = self.ib_client.is_connected()
+        print(f"[DEBUG][streaming] all clients connected: {connected}")
         if not connected:
             self._refresh_status(force=True)
             return
 
         try:
             status_settings = self._validate_status_settings(self._read_status_settings_from_panel())
+            print(f"[DEBUG][streaming] settings validated: symbol={status_settings.get('market_symbol')}")
             self._apply_status_settings(status_settings)
         except Exception as exc:
             self._last_connect_error = str(exc)
-            print(f"Invalid streaming settings: {self._last_connect_error}")
+            print(f"[DEBUG][streaming] settings validation failed: {self._last_connect_error}")
             self._refresh_status(force=True)
             return
 
-        with self._io_lock:
-            started = self._market_client().start_live_streaming(self.market_symbol)
+        print(f"[DEBUG][streaming] calling start_live_streaming({self.market_symbol!r}) on market client...")
+        started = self.ib_client.start_live_streaming(self.market_symbol)
+        print(f"[DEBUG][streaming] start_live_streaming returned: {started}")
         if not started:
-            print("Live streaming start failed: could not subscribe market data.")
+            error_text = self.ib_client.get_last_error_text()
+            print(f"[DEBUG][streaming] start failed, last error: {error_text!r}")
             self._refresh_status(force=True)
             return
 
         self._start_market_data_worker()
+        print(f"[DEBUG][streaming] worker running: {self._is_market_worker_running()}")
         self._refresh_status(force=True)
         if self.window is not None:
             self.window.logs_panel.update(
@@ -1057,8 +1022,7 @@ class Controller:
     # Stop live stream subscription and market polling worker.
     def _stop_live_streaming(self) -> None:
         self._stop_market_data_worker()
-        with self._io_lock:
-            self._market_client().stop_live_streaming()
+        self.ib_client.stop_live_streaming()
         if self.window is not None:
             self.window.chart_panel.update({"clear": True})
             self._latest_bid = None
@@ -1090,7 +1054,7 @@ class Controller:
             "client_id": int(roles["dashboard"]),
             "client_roles": roles,
             "readonly": False,
-            "market_symbol": panel.market_symbol_input.currentText().strip().upper(),
+            "market_symbol": self.window.chart_panel.market_symbol_input.currentText().strip().upper(),
         }
 
     # Apply validated status settings to controller and IB client.
@@ -1102,23 +1066,10 @@ class Controller:
         self.readonly = False
         self.market_symbol = str(settings["market_symbol"]).upper()
 
-        status_client = self._status_client()
-        status_client.host = self.host
-        status_client.port = self.port
-        status_client.client_id = int(self.client_roles["dashboard"])
-        status_client.readonly = False
-
-        market_client = self._market_client()
-        market_client.host = self.host
-        market_client.port = self.port
-        market_client.client_id = int(self.client_roles["market_data"])
-        market_client.readonly = False
-
-        order_client = self._order_client()
-        order_client.host = self.host
-        order_client.port = self.port
-        order_client.client_id = int(self.client_roles["order_worker"])
-        order_client.readonly = False
+        self.ib_client.host = self.host
+        self.ib_client.port = self.port
+        self.ib_client.client_id = self.client_id
+        self.ib_client.readonly = False
 
     # Load and validate persisted app settings with fallback defaults.
     def _load_app_settings(self) -> dict[str, Any]:
@@ -1269,56 +1220,44 @@ class Controller:
         except Exception as exc:
             print(f"Failed to save settings: {exc}")
 
-    # Start background server-time synchronization if supported.
+    # Synchronize server time if supported (direct call, no thread).
     def _start_server_time_sync(self) -> None:
-        if self._server_time_worker is not None:
-            try:
-                if self._server_time_worker.isRunning():
-                    return
-            except RuntimeError:
-                self._server_time_worker = None
-
-        with self._io_lock:
-            supports_server_time = self._status_client().supports_server_time()
-        if not supports_server_time:
+        if not self.ib_client.supports_server_time():
             return
-
-        self._server_time_worker = ServerTimeWorker(self._status_client(), self._io_lock)
-        self._server_time_worker.result.connect(self._on_server_time_result)
-        self._server_time_worker.finished.connect(self._on_server_time_finished)
-        self._server_time_worker.start()
-
-    # Store latest server time/latency snapshot and refresh UI.
-    def _on_server_time_result(self, time_text: str, latency_text: str) -> None:
+        time_text, latency_text = self.ib_client.get_server_time_and_latency()
         self._server_time_text = time_text
         self._latency_ms_text = latency_text
         self._last_server_sync_sec = int(time.time())
         self._refresh_status(force=True)
 
-    # Release server-time worker resources.
-    def _on_server_time_finished(self) -> None:
-        if self._server_time_worker is not None:
-            self._server_time_worker.deleteLater()
-        self._server_time_worker = None
-
     # Stop workers, subscriptions, and IB connection on exit.
     def _shutdown_services(self) -> None:
         if self._status_timer is not None:
             self._status_timer.stop()
-        if self._ib_pump_timer is not None:
-            self._ib_pump_timer.stop()
         self._connecting = False
 
         self._stop_market_data_worker()
         self._stop_order_worker()
 
-        with self._io_lock:
-            self._disconnect_all_clients()
+        self._disconnect_client()
 
-    # Start the UI event loop and perform graceful shutdown.
+    # Start the asyncio + Qt integrated event loop.
     def run(self) -> int:
         self._create_window()
         self._setup_services()
-        exit_code = self.app.exec_()
+        self.app.lastWindowClosed.connect(self._on_app_quit)
+        try:
+            self.ib.run()
+        except (SystemExit, KeyboardInterrupt):
+            pass
+        finally:
+            self._shutdown_services()
+        return 0
+
+    # Stop the asyncio event loop when the last window is closed.
+    def _on_app_quit(self) -> None:
         self._shutdown_services()
-        return exit_code
+        import asyncio
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.call_soon(loop.stop)

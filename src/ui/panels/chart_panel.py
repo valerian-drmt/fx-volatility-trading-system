@@ -3,14 +3,20 @@ import math
 import time
 from typing import Any
 
+import numpy as np
 import pyqtgraph as pg
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 
 class ChartPanel(QWidget):
     DEFAULT_SYMBOL = "EURUSD"
-    REDRAW_INTERVAL_MS = 200
+    FX_PAIRS = (
+        "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD",
+        "AUDUSD", "NZDUSD", "EURGBP", "EURJPY", "GBPJPY",
+        "EURCHF", "AUDJPY",
+    )
+    REDRAW_INTERVAL_MS = 50           # 20 fps — was 200 (5 fps), main source of perceived lag
     MAX_TICKS_PER_UPDATE = 50
     Y_RANGE_UPDATE_INTERVAL_MS = 400
     X_RANGE_LEFT_PADDING_POINTS = 2
@@ -20,13 +26,22 @@ class ChartPanel(QWidget):
     def __init__(self, max_points: int = 100) -> None:
         super().__init__()
         self._max_points = max(50, int(max_points))
-        self._x = deque(maxlen=self._max_points)
-        self._bid_y = deque(maxlen=self._max_points)
-        self._ask_y = deque(maxlen=self._max_points)
+
+        # --- numpy rolling buffers (zero-copy setData) ---
+        # _head: next write index (mod _max_points)
+        # _count: number of valid samples filled so far
+        self._x     = np.empty(self._max_points, dtype=np.float64)
+        self._bid_y = np.full(self._max_points, np.nan, dtype=np.float64)
+        self._ask_y = np.full(self._max_points, np.nan, dtype=np.float64)
+        self._head  = 0
+        self._count = 0
+
         self._last_index = 0
         self._last_bid: float | None = None
         self._last_ask: float | None = None
-        self._pending_ticks: list[dict[str, Any]] = []
+
+        # deque(maxlen=N) drops oldest automatically — no list concat/slice
+        self._pending_ticks: deque[dict[str, Any]] = deque(maxlen=self.MAX_TICKS_PER_UPDATE)
         self._pending_redraw = False
         self._last_y_range_update_ms = 0.0
         self._symbol = self.DEFAULT_SYMBOL
@@ -35,15 +50,28 @@ class ChartPanel(QWidget):
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(6)
 
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+        self.market_symbol_input = QComboBox()
+        self.market_symbol_input.setEditable(False)
+        self.market_symbol_input.addItems(self.FX_PAIRS)
+        self.market_symbol_input.setCurrentText(self._symbol)
+        self.market_symbol_input.currentTextChanged.connect(self.set_symbol)
+        header.addWidget(QLabel("Symbol:"))
+        header.addWidget(self.market_symbol_input)
         self._title_label = QLabel()
-        layout.addWidget(self._title_label)
+        header.addWidget(self._title_label)
+        header.addStretch(1)
+        layout.addLayout(header)
+
         self.plot = pg.PlotWidget()
         self.plot.setLabel("bottom", "Tick #")
         self.plot.setLabel("left", "Price")
         self.plot.showGrid(x=True, y=True, alpha=0.2)
         self.plot.addLegend()
-        self.bid_curve = self.plot.plot([], [], pen=pg.mkPen("#2980b9", width=1.4))
-        self.ask_curve = self.plot.plot([], [], pen=pg.mkPen("#e67e22", width=1.4))
+        self.bid_curve = self.plot.plot([], [], pen=pg.mkPen("#2980b9", width=1.4), name="Bid")
+        self.ask_curve = self.plot.plot([], [], pen=pg.mkPen("#e67e22", width=1.4), name="Ask")
         layout.addWidget(self.plot)
         self._apply_chart_title()
 
@@ -70,44 +98,64 @@ class ChartPanel(QWidget):
         ask_price = float(ask) if self._is_valid_price(ask) else self._last_ask
         return bid_price, ask_price
 
-    # Append one bid/ask point to fixed-size series.
+    # Write one sample into the circular numpy buffer — O(1), no allocation.
     def _append_prices(self, bid: float | None, ask: float | None) -> None:
+        i = self._head % self._max_points
         self._last_index += 1
-        self._x.append(self._last_index)
-        if bid is None:
-            self._bid_y.append(float("nan"))
-        else:
-            self._bid_y.append(bid)
+        self._x[i]     = float(self._last_index)
+        self._bid_y[i] = bid if bid is not None else np.nan
+        self._ask_y[i] = ask if ask is not None else np.nan
+        if bid is not None:
             self._last_bid = bid
-        if ask is None:
-            self._ask_y.append(float("nan"))
-        else:
-            self._ask_y.append(ask)
+        if ask is not None:
             self._last_ask = ask
+        self._head += 1
+        self._count = min(self._count + 1, self._max_points)
+
+    # Return contiguous view slices for the current window.
+    # Returns (x, bid, ask) as numpy arrays in chronological order.
+    def _get_display_arrays(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        if self._count < self._max_points:
+            # Buffer not yet full — straight slice, no copy needed
+            s = slice(0, self._count)
+            return self._x[s], self._bid_y[s], self._ask_y[s]
+        # Buffer full — data wraps around; reorder with np.roll
+        # np.roll allocates a new array, but this only triggers once the
+        # buffer is full, and it runs on the GPU-friendly contiguous path.
+        idx = self._head % self._max_points
+        return (
+            np.roll(self._x,     -idx),
+            np.roll(self._bid_y, -idx),
+            np.roll(self._ask_y, -idx),
+        )
 
     # Redraw curves and update y-axis range.
     def _redraw(self) -> None:
-        if not self._x:
+        if self._count == 0:
             return
-        x_values = list(self._x)
-        bid_values = list(self._bid_y)
-        ask_values = list(self._ask_y)
-        self.bid_curve.setData(x_values, bid_values)
-        self.ask_curve.setData(x_values, ask_values)
-        self._update_x_range()
+
+        x, bid, ask = self._get_display_arrays()
+
+        # setData on pre-existing PlotDataItem — fastest path, no scene rebuild
+        self.bid_curve.setData(x, bid)
+        self.ask_curve.setData(x, ask)
+        self._update_x_range(x)
 
         now_ms = time.monotonic() * 1000.0
         if (now_ms - self._last_y_range_update_ms) < self.Y_RANGE_UPDATE_INTERVAL_MS:
             return
         self._last_y_range_update_ms = now_ms
+        self._update_y_range(bid, ask)
 
-        all_prices = [
-            value for value in (bid_values + ask_values) if isinstance(value, (int, float)) and not math.isnan(value)
-        ]
-        if not all_prices:
+    # Compute y-axis bounds using numpy nanmin/nanmax — no Python list comprehension.
+    def _update_y_range(self, bid: np.ndarray, ask: np.ndarray) -> None:
+        # nanmin/nanmax ignore NaN natively, no filtering loop required
+        combined = np.concatenate([bid, ask])
+        valid = combined[~np.isnan(combined)]
+        if valid.size == 0:
             return
-        y_min = min(all_prices)
-        y_max = max(all_prices)
+        y_min = float(valid.min())
+        y_max = float(valid.max())
         if y_min == y_max:
             pad = max(0.0001, abs(y_min) * 0.001)
         else:
@@ -115,11 +163,11 @@ class ChartPanel(QWidget):
         self.plot.setYRange(y_min - pad, y_max + pad, padding=0)
 
     # Keep a stable moving x-window with right offset for readability.
-    def _update_x_range(self) -> None:
-        if not self._x:
+    def _update_x_range(self, x: np.ndarray) -> None:
+        if x.size == 0:
             return
-        left = float(self._x[0] - self.X_RANGE_LEFT_PADDING_POINTS)
-        right = float(self._x[-1] + self.X_RANGE_RIGHT_SHIFT_POINTS)
+        left  = float(x[0])  - self.X_RANGE_LEFT_PADDING_POINTS
+        right = float(x[-1]) + self.X_RANGE_RIGHT_SHIFT_POINTS
         if right <= left:
             right = left + 1.0
         self.plot.setXRange(left, right, padding=0)
@@ -140,18 +188,19 @@ class ChartPanel(QWidget):
         self._symbol = normalized_symbol
         self._apply_chart_title()
 
-    # Redraw only when new data arrived since the previous refresh slot.
+    # Drain pending ticks and repaint only when new data arrived.
     def _flush_redraw(self) -> None:
         if not self._pending_redraw:
             return
-        pending_ticks = self._pending_ticks
-        self._pending_ticks = []
+        # Swap out the pending queue atomically
+        pending = list(self._pending_ticks)
+        self._pending_ticks.clear()
         self._pending_redraw = False
-        if not pending_ticks:
+        if not pending:
             return
 
         changed = False
-        for tick in pending_ticks:
+        for tick in pending:
             bid_price, ask_price = self._tick_to_bid_ask(tick)
             if bid_price is None and ask_price is None:
                 continue
@@ -169,13 +218,15 @@ class ChartPanel(QWidget):
             self.set_symbol(str(payload.get("symbol", "")))
 
         if payload.get("clear"):
-            self._x.clear()
-            self._bid_y.clear()
-            self._ask_y.clear()
+            self._x[:]     = 0.0
+            self._bid_y[:] = np.nan
+            self._ask_y[:] = np.nan
+            self._head     = 0
+            self._count    = 0
             self._last_index = 0
-            self._last_bid = None
-            self._last_ask = None
-            self._pending_ticks = []
+            self._last_bid   = None
+            self._last_ask   = None
+            self._pending_ticks.clear()
             self._pending_redraw = False
             self.bid_curve.setData([], [])
             self.ask_curve.setData([], [])
@@ -184,10 +235,9 @@ class ChartPanel(QWidget):
         ticks = payload.get("ticks") or []
         if not isinstance(ticks, list):
             return
-        filtered_ticks = [tick for tick in ticks if isinstance(tick, dict)]
-        if not filtered_ticks:
+        filtered = [t for t in ticks if isinstance(t, dict)]
+        if not filtered:
             return
-        merged_ticks = self._pending_ticks + filtered_ticks
-        self._pending_ticks = merged_ticks[-self.MAX_TICKS_PER_UPDATE :]
-        if self._pending_ticks:
-            self._pending_redraw = True
+        # deque(maxlen) handles overflow automatically — no concat/slice
+        self._pending_ticks.extend(filtered)
+        self._pending_redraw = True

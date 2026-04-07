@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import logging
-from threading import RLock
 from typing import Any
 
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
 from ib_insync import Forex, LimitOrder, MarketOrder
 
 from services.ib_client import IBClient
@@ -19,34 +17,21 @@ logger.setLevel(logging.DEBUG)
 logger.propagate = False
 
 
-class OrderWorker(QObject):
-    enqueue_order = pyqtSignal(object)
-    enqueue_preview = pyqtSignal(object)
-    order_result = pyqtSignal(object)
-    failed = pyqtSignal(str)
-
+class OrderWorker:
     _REJECTED_STATUSES = {"APICANCELLED", "CANCELLED", "INACTIVE"}
 
-    # Wire worker signals and initialize execution state.
-    def __init__(self, ib_client: IBClient, io_lock: RLock) -> None:
-        super().__init__()
+    # Initialize execution state.
+    def __init__(self, ib_client: IBClient) -> None:
         self.ib_client = ib_client
-        self.io_lock = io_lock
         self._running = False
-        self.enqueue_order.connect(self.place_order)
-        self.enqueue_preview.connect(self.preview_order)
 
-    @pyqtSlot()
-    # Mark the worker as ready to process queued requests.
+    # Mark the worker as ready to process requests.
     def start(self) -> None:
         self._running = True
-        logger.debug("OrderWorker started.")
 
-    @pyqtSlot()
     # Mark the worker as stopped and reject new requests.
     def stop(self) -> None:
         self._running = False
-        logger.debug("OrderWorker stopped.")
 
     @staticmethod
     # Normalize a symbol string to IB-friendly uppercase format.
@@ -229,23 +214,19 @@ class OrderWorker(QObject):
             return False, self.ib_client.get_last_error_text() or f"IB status={trade_status}"
         return True, ""
 
-    @pyqtSlot(object)
     # Execute a validated order request through the IB client.
-    def place_order(self, request: Any) -> None:
+    def place_order(self, request: Any) -> dict[str, Any]:
         logger.debug("place_order received payload=%r", request)
         if not self._running:
-            self.order_result.emit({"ok": False, "kind": "order", "message": "Order worker is stopped."})
-            return
+            return {"ok": False, "kind": "order", "message": "Order worker is stopped."}
 
         normalized = self._normalize_request(request)
         if normalized is None:
-            self.order_result.emit({"ok": False, "kind": "order", "message": "Invalid order payload."})
-            return
+            return {"ok": False, "kind": "order", "message": "Invalid order payload."}
 
         validation_error = self._validate_request(normalized)
         if validation_error is not None:
-            self.order_result.emit({"ok": False, "kind": "order", "message": validation_error})
-            return
+            return {"ok": False, "kind": "order", "message": validation_error}
 
         symbol = normalized["symbol"]
         side = normalized["side"]
@@ -257,100 +238,88 @@ class OrderWorker(QObject):
         sl_pct = normalized["stop_loss_pct"]
 
         try:
-            with self.io_lock:
-                if not self.ib_client.is_connected():
-                    self.order_result.emit({"ok": False, "kind": "order", "message": "Not connected to IBKR."})
-                    return
+            if not self.ib_client.is_connected():
+                return {"ok": False, "kind": "order", "message": "Not connected to IBKR."}
 
-                contract = Forex(symbol)
-                logger.debug("Forex() built contract=%r", contract)
-                qualified_contract = contract
-                logger.debug("order_worker using direct Forex contract without qualification.")
+            contract = Forex(symbol)
+            logger.debug("Forex() built contract=%r", contract)
+            qualified_contract = contract
+            logger.debug("order_worker using direct Forex contract without qualification.")
 
-                take_profit = None
-                stop_loss = None
-                bracket_entry_price = None
-                if use_bracket:
-                    entry_price = self._resolve_entry_price(normalized)
-                    if entry_price is None or entry_price <= 0:
-                        self.order_result.emit(
-                            {
-                                "ok": False,
-                                "kind": "order",
-                                "message": "Cannot derive bracket levels: invalid entry price.",
-                            }
-                        )
-                        return
+            take_profit = None
+            stop_loss = None
+            bracket_entry_price = None
+            if use_bracket:
+                entry_price = self._resolve_entry_price(normalized)
+                if entry_price is None or entry_price <= 0:
+                    return {
+                        
+                            "ok": False,
+                            "kind": "order",
+                            "message": "Cannot derive bracket levels: invalid entry price.",
+                        }
 
-                    try:
-                        take_profit, stop_loss = self._derive_bracket_prices(
-                            side=side,
-                            entry_price=entry_price,
-                            tp_pct=float(tp_pct),
-                            sl_pct=float(sl_pct),
-                        )
-                    except Exception as exc:
-                        self.order_result.emit(
-                            {
-                                "ok": False,
-                                "kind": "order",
-                                "message": f"Cannot derive bracket levels - {exc}",
-                            }
-                        )
-                        return
-
-                    bracket_entry_price = float(entry_price)
-                    self.ib_client.clear_last_error()
-                    logger.debug("self.ib_client.clear_last_error() before build_bracket_orders()")
-                    bracket_orders = self.ib_client.build_bracket_orders(
+                try:
+                    take_profit, stop_loss = self._derive_bracket_prices(
                         side=side,
-                        quantity=quantity,
-                        limit_price=bracket_entry_price,
-                        take_profit_price=take_profit,
-                        stop_loss_price=stop_loss,
-                        parent_order_type=order_type,
+                        entry_price=entry_price,
+                        tp_pct=float(tp_pct),
+                        sl_pct=float(sl_pct),
                     )
-                    logger.debug("order_worker build_bracket_orders() response=%r", bracket_orders)
-                    if not bracket_orders:
-                        reason = self.ib_client.get_last_error_text() or "Unknown IB error."
-                        self.order_result.emit(
-                            {
+                except Exception as exc:
+                    return {
+                        
+                            "ok": False,
+                            "kind": "order",
+                            "message": f"Cannot derive bracket levels - {exc}",
+                        }
+
+                bracket_entry_price = float(entry_price)
+                self.ib_client.clear_last_error()
+                logger.debug("self.ib_client.clear_last_error() before build_bracket_orders()")
+                bracket_orders = self.ib_client.build_bracket_orders(
+                    side=side,
+                    quantity=quantity,
+                    limit_price=bracket_entry_price,
+                    take_profit_price=take_profit,
+                    stop_loss_price=stop_loss,
+                    parent_order_type=order_type,
+                )
+                logger.debug("order_worker build_bracket_orders() response=%r", bracket_orders)
+                if not bracket_orders:
+                    reason = self.ib_client.get_last_error_text() or "Unknown IB error."
+                    return {
+                        
+                            "ok": False,
+                            "kind": "order",
+                            "message": (
+                                f"Bracket build failed ({side} {quantity} {symbol} {order_type}) - {reason}"
+                            ),
+                        }
+
+                for bracket_order in bracket_orders:
+                    logger.debug("order_worker bracket order built=%r", bracket_order)
+                    ok, reason = self._submit_one(qualified_contract, bracket_order)
+                    if not ok:
+                        return {
+                            
                                 "ok": False,
                                 "kind": "order",
                                 "message": (
-                                    f"Bracket build failed ({side} {quantity} {symbol} {order_type}) - {reason}"
+                                    f"Bracket order rejected ({side} {quantity} {symbol} {order_type}) - {reason}"
                                 ),
                             }
-                        )
-                        return
-
-                    for bracket_order in bracket_orders:
-                        logger.debug("order_worker bracket order built=%r", bracket_order)
-                        ok, reason = self._submit_one(qualified_contract, bracket_order)
-                        if not ok:
-                            self.order_result.emit(
-                                {
-                                    "ok": False,
-                                    "kind": "order",
-                                    "message": (
-                                        f"Bracket order rejected ({side} {quantity} {symbol} {order_type}) - {reason}"
-                                    ),
-                                }
-                            )
-                            return
-                else:
-                    order = self._build_order(side, order_type, quantity, limit_price)
-                    logger.debug("order_worker single order built=%r", order)
-                    ok, reason = self._submit_one(qualified_contract, order)
-                    if not ok:
-                        self.order_result.emit(
-                            {
-                                "ok": False,
-                                "kind": "order",
-                                "message": f"Order rejected ({side} {quantity} {symbol} {order_type}) - {reason}",
-                            }
-                        )
-                        return
+            else:
+                order = self._build_order(side, order_type, quantity, limit_price)
+                logger.debug("order_worker single order built=%r", order)
+                ok, reason = self._submit_one(qualified_contract, order)
+                if not ok:
+                    return {
+                        
+                            "ok": False,
+                            "kind": "order",
+                            "message": f"Order rejected ({side} {quantity} {symbol} {order_type}) - {reason}",
+                        }
 
             if not use_bracket:
                 message = f"Order sent: {side} {quantity} {symbol} {order_type}."
@@ -359,8 +328,8 @@ class OrderWorker(QObject):
                     f"Bracket sent: {side} {quantity} {symbol} {order_type} @ {bracket_entry_price} "
                     f"TP={take_profit:.8f} ({tp_pct}%) SL={stop_loss:.8f} ({sl_pct}%)."
                 )
-            self.order_result.emit(
-                {
+            return {
+                
                     "ok": True,
                     "kind": "order",
                     "message": message,
@@ -376,28 +345,23 @@ class OrderWorker(QObject):
                     "take_profit": take_profit,
                     "stop_loss": stop_loss,
                 }
-            )
-        except Exception as exc:
+        except Exception:
             logger.exception("place_order unexpected failure")
-            self.failed.emit(str(exc))
+            raise
 
-    @pyqtSlot(object)
     # Run a what-if preview for a validated order request.
-    def preview_order(self, request: Any) -> None:
+    def preview_order(self, request: Any) -> dict[str, Any]:
         logger.debug("preview_order received payload=%r", request)
         if not self._running:
-            self.order_result.emit({"ok": False, "kind": "preview", "message": "Order worker is stopped."})
-            return
+            return {"ok": False, "kind": "preview", "message": "Order worker is stopped."}
 
         normalized = self._normalize_request(request)
         if normalized is None:
-            self.order_result.emit({"ok": False, "kind": "preview", "message": "Invalid order payload."})
-            return
+            return {"ok": False, "kind": "preview", "message": "Invalid order payload."}
 
         validation_error = self._validate_request(normalized)
         if validation_error is not None:
-            self.order_result.emit({"ok": False, "kind": "preview", "message": validation_error})
-            return
+            return {"ok": False, "kind": "preview", "message": validation_error}
 
         symbol = normalized["symbol"]
         side = normalized["side"]
@@ -409,80 +373,72 @@ class OrderWorker(QObject):
         sl_pct = normalized["stop_loss_pct"]
 
         try:
-            with self.io_lock:
-                if not self.ib_client.is_connected():
-                    self.order_result.emit({"ok": False, "kind": "preview", "message": "Not connected to IBKR."})
-                    return
+            if not self.ib_client.is_connected():
+                return {"ok": False, "kind": "preview", "message": "Not connected to IBKR."}
 
-                contract = Forex(symbol)
-                logger.debug("preview_order built contract=%r", contract)
-                self.ib_client.clear_last_error()
-                logger.debug("self.ib_client.clear_last_error() before qualify_contract() for preview")
-                qualified_contract = self.ib_client.qualify_contract(contract)
-                if qualified_contract is None:
-                    reason = self.ib_client.get_last_error_text() or "Unable to qualify contract."
-                    self.order_result.emit(
-                        {
+            contract = Forex(symbol)
+            logger.debug("preview_order built contract=%r", contract)
+            self.ib_client.clear_last_error()
+            logger.debug("self.ib_client.clear_last_error() before qualify_contract() for preview")
+            qualified_contract = self.ib_client.qualify_contract(contract)
+            if qualified_contract is None:
+                reason = self.ib_client.get_last_error_text() or "Unable to qualify contract."
+                return {
+                    
+                        "ok": False,
+                        "kind": "preview",
+                        "message": f"Preview failed for {side} {quantity} {symbol} {order_type} - {reason}",
+                    }
+            logger.debug("preview_order using qualified contract=%r", qualified_contract)
+            order = self._build_order(side, order_type, quantity, limit_price)
+            self.ib_client.clear_last_error()
+            logger.debug("self.ib_client.clear_last_error() before ib.whatIfOrder()")
+            what_if = self.ib_client.what_if_order(qualified_contract, order)
+            logger.debug("ib.whatIfOrder() response=%r", what_if)
+            if what_if is None:
+                reason = self.ib_client.get_last_error_text() or "Unknown IB error."
+                logger.debug("ib.whatIfOrder() failure reason=%s", reason)
+                return {
+                    
+                        "ok": False,
+                        "kind": "preview",
+                        "message": f"Preview failed for {side} {quantity} {symbol} {order_type} - {reason}",
+                    }
+
+            take_profit = None
+            stop_loss = None
+            if use_bracket:
+                entry_price = self._resolve_entry_price(normalized)
+                if entry_price is None or entry_price <= 0:
+                    return {
+                        
                             "ok": False,
                             "kind": "preview",
-                            "message": f"Preview failed for {side} {quantity} {symbol} {order_type} - {reason}",
+                            "message": "Preview failed: invalid entry price for bracket levels.",
                         }
-                    )
-                    return
-                logger.debug("preview_order using qualified contract=%r", qualified_contract)
-                order = self._build_order(side, order_type, quantity, limit_price)
-                self.ib_client.clear_last_error()
-                logger.debug("self.ib_client.clear_last_error() before ib.whatIfOrder()")
-                what_if = self.ib_client.what_if_order(qualified_contract, order)
-                logger.debug("ib.whatIfOrder() response=%r", what_if)
-                if what_if is None:
-                    reason = self.ib_client.get_last_error_text() or "Unknown IB error."
-                    logger.debug("ib.whatIfOrder() failure reason=%s", reason)
-                    self.order_result.emit(
-                        {
-                            "ok": False,
-                            "kind": "preview",
-                            "message": f"Preview failed for {side} {quantity} {symbol} {order_type} - {reason}",
-                        }
-                    )
-                    return
-
-                preview_suffix = ""
-                take_profit = None
-                stop_loss = None
-                if use_bracket:
-                    entry_price = self._resolve_entry_price(normalized)
-                    if entry_price is None or entry_price <= 0:
-                        self.order_result.emit(
-                            {
-                                "ok": False,
-                                "kind": "preview",
-                                "message": "Preview failed: invalid entry price for bracket levels.",
-                            }
-                        )
-                        return
-                    take_profit, stop_loss = self._derive_bracket_prices(
-                        side=side,
-                        entry_price=entry_price,
-                        tp_pct=float(tp_pct),
-                        sl_pct=float(sl_pct),
-                    )
-                    preview_suffix = (
-                        f" | TP={take_profit:.8f} ({tp_pct}%)"
-                        f" SL={stop_loss:.8f} ({sl_pct}%)"
-                    )
-
+                take_profit, stop_loss = self._derive_bracket_prices(
+                    side=side,
+                    entry_price=entry_price,
+                    tp_pct=float(tp_pct),
+                    sl_pct=float(sl_pct),
+                )
             logger.debug("preview_order ib_response=%r", self._what_if_debug_payload(what_if))
             init_margin = getattr(what_if, "initMarginChange", "--")
             maint_margin = getattr(what_if, "maintMarginChange", "--")
             commission = getattr(what_if, "commission", "--")
-            preview_message = (
-                f"Preview {side} {quantity} {symbol} {order_type} | "
-                f"InitMargin: {init_margin} MaintMargin: {maint_margin} Commission: {commission}"
-                f"{preview_suffix}"
-            )
-            self.order_result.emit(
-                {
+            lines = [
+                f"Preview: {side} {quantity} {symbol} {order_type}",
+                f"Init Margin: {init_margin}",
+                f"Maint Margin: {maint_margin}",
+                f"Commission: {commission}",
+            ]
+            if take_profit is not None:
+                lines.append(f"Take Profit: {take_profit:.8f} ({tp_pct}%)")
+            if stop_loss is not None:
+                lines.append(f"Stop Loss: {stop_loss:.8f} ({sl_pct}%)")
+            preview_message = "\n".join(lines)
+            return {
+                
                     "ok": True,
                     "kind": "preview",
                     "message": preview_message,
@@ -498,7 +454,6 @@ class OrderWorker(QObject):
                     "take_profit": take_profit,
                     "stop_loss": stop_loss,
                 }
-            )
-        except Exception as exc:
+        except Exception:
             logger.exception("preview_order unexpected failure")
-            self.failed.emit(str(exc))
+            raise
