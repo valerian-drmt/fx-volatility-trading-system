@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//mnt/c/Users/Valérian Darmenté/Documents/Python Project/**)",
+      "Bash(python -m pytest tests/test_market_data_worker.py -v)",
+      "Bash(python -m pytest -m \"not integration\" -v)",
+      "Bash(python -m ruff check src tests app.py)",
+      "Bash(python -m pytest -m \"not integration\" -v --ignore=tests/test_chart_panel.py)",
+      "Bash(python -m ruff check src/services/market_data_worker.py)",
+      "Bash(pip show:*)",
+      "WebSearch",
+      "Bash(python -c \"import ib_insync; print\\(ib_insync.__file__\\)\")",
+      "Bash(python -c \"import ib_insync; print\\(ib_insync.__path__\\)\")",
+      "Bash(pip list:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:ib-insync.readthedocs.io)",
+      "WebFetch(domain:groups.io)",
+      "Bash(python -m pytest tests/test_ib_client.py -v)",
+      "Bash(python -m ruff check tests/test_ib_client.py src/services/ib_client.py)",
+      "Bash(python -m ruff check src/services/ib_client.py tests/test_ib_client.py)",
+      "Bash(python -m ruff check src/services/order_worker.py)",
+      "Bash(python -m ruff check src/services/order_worker.py --fix)",
+      "Bash(python -m pytest tests/test_order_worker.py -v)",
+      "Bash(python -m ruff check src/services/ tests/test_order_worker.py tests/test_market_data_worker.py tests/test_ib_client.py)",
+      "Bash(python -m pytest tests/test_ib_client.py tests/test_market_data_worker.py tests/test_order_worker.py -v)",
+      "Bash(python -m ruff check src/controller.py app.py)",
+      "Bash(python -m pytest tests/test_controller_settings.py -v --tb=short)",
+      "Bash(python -m pytest tests/test_controller_settings.py -v --tb=line)",
+      "Bash(python -c ':*)",
+      "Bash(python -m pytest -m \"not integration\" --ignore=tests/test_chart_panel.py -v)",
+      "Bash(python -m ruff check src/ui/panels/status_panel.py src/ui/panels/chart_panel.py src/ui/main_window.py src/controller.py)",
+      "Bash(python -m pytest -m \"not integration\" --ignore=tests/test_chart_panel.py -v --tb=short)",
+      "Bash(python -m pytest -m \"not integration\" --ignore=tests/test_chart_panel.py --tb=line -q)",
+      "Bash(python -m ruff check src/controller.py)",
+      "Bash(python -m pytest tests/test_orders_panel.py -v --tb=short)",
+      "Bash(python -m pytest -m \"not integration\" --ignore=tests/test_chart_panel.py -q --tb=line)",
+      "Bash(python -m ruff check src)",
+      "Bash(python -m ruff check src/ui/panels/orders_panel.py)"
+    ]
+  }
+}
