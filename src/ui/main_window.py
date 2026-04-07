@@ -56,10 +56,10 @@ class MainWindow(QMainWindow):
             connection_defaults=status_defaults,
         )
         default_symbol = str(status_defaults.get("market_symbol", "EURUSD")).strip().upper()
-        self.chart_panel.update({"symbol": default_symbol})
+        self.chart_panel.set_symbol(default_symbol)
+        self.chart_panel.market_symbol_input.setCurrentText(default_symbol)
         self.order_ticket_panel.set_symbol(default_symbol)
-        self.status_panel.market_symbol_input.currentTextChanged.connect(self.order_ticket_panel.set_symbol)
-        self.status_panel.market_symbol_input.currentTextChanged.connect(self._on_market_symbol_changed)
+        self.chart_panel.market_symbol_input.currentTextChanged.connect(self.order_ticket_panel.set_symbol)
 
         container = QWidget(self)
         grid = QGridLayout(container)
@@ -77,25 +77,21 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.orders_panel, 1, 1)
         grid.addWidget(self.portfolio_panel, 1, 2)
 
-        # Relative sizes: col0/col1/col2 = 1/2/1 and row0/row1 = 1/1.
+        # Relative sizes: col0/col1/col2 = 1/4/1 and row0/row1 = 1/1.
         grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 2)
+        grid.setColumnStretch(1, 4)
         grid.setColumnStretch(2, 1)
         grid.setRowStretch(0, 1)
         grid.setRowStretch(1, 1)
 
         # Optional hard minimums to keep layout readable when window is small.
         grid.setColumnMinimumWidth(0, 250)
-        grid.setColumnMinimumWidth(1, 500)
+        grid.setColumnMinimumWidth(1, 800)
         grid.setColumnMinimumWidth(2, 250)
         grid.setRowMinimumHeight(0, 300)
         grid.setRowMinimumHeight(1, 300)
 
         self.setCentralWidget(container)
-
-    # Reflect selected market symbol in chart title.
-    def _on_market_symbol_changed(self, symbol: str) -> None:
-        self.chart_panel.update({"symbol": symbol})
 
     # Create the chart panel instance.
     def create_chart_panel(self) -> ChartPanel:

@@ -1,5 +1,3 @@
-import asyncio
-import inspect
 import math
 import time
 from typing import Any
@@ -32,54 +30,41 @@ class IBClient:
         self._last_error_message = ""
 
     @staticmethod
-    # Resolve values that may be coroutine-like in some ib_insync runtimes.
-    def _resolve_maybe_awaitable(value: Any) -> Any:
-        """
-        Support both sync and async-style IB API variants.
+    # Build a stable identity tuple for snapshot objects returned by IB.
+    def _snapshot_identity(item: Any) -> tuple[Any, ...]:
+        if isinstance(item, dict):
+            return (
+                item.get("execId"),
+                item.get("orderId"),
+                item.get("time"),
+                item.get("symbol"),
+                item.get("localSymbol"),
+                item.get("side"),
+                item.get("shares"),
+                item.get("qty"),
+                item.get("quantity"),
+                item.get("price"),
+                item.get("avgPrice"),
+                item.get("avg_price"),
+            )
 
-        Some runtimes expose methods like `sleep()` / `accountSummary()` as coroutines.
-        This helper executes awaitables in the current thread when needed.
-        """
-        if not inspect.isawaitable(value):
-            return value
-        try:
-            return asyncio.run(value)
-        except RuntimeError:
-            # Fallback when a loop context already exists in this thread.
-            loop = asyncio.new_event_loop()
-            try:
-                return loop.run_until_complete(value)
-            finally:
-                loop.close()
-
-    # Call an IB method by name and resolve async/sync return variants.
-    def _call_ib(self, method_name: str, *args: Any, **kwargs: Any) -> Any:
-        method = getattr(self.ib, method_name, None)
-        if method is None:
-            raise AttributeError(f"IB client has no method '{method_name}'")
-        return self._resolve_maybe_awaitable(method(*args, **kwargs))
-
-    @staticmethod
-    # Return True when current thread already has an asyncio event loop.
-    def _thread_has_event_loop() -> bool:
-        try:
-            asyncio.get_event_loop_policy().get_event_loop()
-            return True
-        except RuntimeError:
-            return False
-
-    @staticmethod
-    # Ensure the current thread has an event loop for sync IB helpers that expect one.
-    def _ensure_default_event_loop() -> None:
-        if IBClient._thread_has_event_loop():
-            return
-        asyncio.set_event_loop(asyncio.new_event_loop())
-
-    # Safely pump IB network events without creating unawaited coroutine warnings.
-    def _safe_ib_sleep(self, seconds: float) -> None:
-        if not hasattr(self.ib, "sleep") or not self._thread_has_event_loop():
-            return
-        self._resolve_maybe_awaitable(self.ib.sleep(max(0.0, float(seconds))))
+        execution = getattr(item, "execution", None)
+        payload = execution if execution is not None else item
+        contract = getattr(item, "contract", None)
+        return (
+            getattr(payload, "execId", None),
+            getattr(payload, "orderId", None),
+            getattr(payload, "time", None),
+            getattr(contract, "localSymbol", None),
+            getattr(contract, "symbol", None),
+            getattr(payload, "side", None),
+            getattr(payload, "shares", None),
+            getattr(payload, "qty", None),
+            getattr(payload, "quantity", None),
+            getattr(payload, "price", None),
+            getattr(payload, "avgPrice", None),
+            getattr(payload, "avg_price", None),
+        )
 
     # Reset the last recorded IB error context/message.
     def clear_last_error(self) -> None:
@@ -114,30 +99,26 @@ class IBClient:
             return True
         try:
             try:
-                self._resolve_maybe_awaitable(
-                    self.ib.connect(
-                        self.host,
-                        self.port,
-                        clientId=self.client_id,
-                        readonly=self.readonly,
-                        timeout=timeout,
-                    )
+                self.ib.connect(
+                    self.host,
+                    self.port,
+                    clientId=self.client_id,
+                    readonly=self.readonly,
+                    timeout=timeout,
                 )
             except TypeError:
-                self._resolve_maybe_awaitable(
-                    self.ib.connect(
-                        self.host,
-                        self.port,
-                        clientId=self.client_id,
-                        readonly=self.readonly,
-                    )
+                self.ib.connect(
+                    self.host,
+                    self.port,
+                    clientId=self.client_id,
+                    readonly=self.readonly,
                 )
         except Exception as exc:
             self._set_last_error("connect", exc)
             return False
         if hasattr(self.ib, "reqAccountSummary"):
             try:
-                self._resolve_maybe_awaitable(self.ib.reqAccountSummary())
+                self.ib.reqAccountSummary()
             except Exception:
                 pass
         connected = self.is_connected()
@@ -222,7 +203,7 @@ class IBClient:
     # Process pending IB events and drain buffered tick updates.
     def process_messages(self) -> list[dict[str, Any]]:
         try:
-            self._safe_ib_sleep(0)
+            self.ib.sleep(0)
         except Exception:
             pass
         return self.drain_received_ticks()
@@ -230,7 +211,7 @@ class IBClient:
     # Pump IB network queue without draining received tick buffer.
     def pump_network(self) -> None:
         try:
-            self._safe_ib_sleep(0)
+            self.ib.sleep(0)
         except Exception:
             pass
 
@@ -339,18 +320,18 @@ class IBClient:
         summary: list[Any] = []
         if hasattr(self.ib, "accountValues"):
             try:
-                summary = self._resolve_maybe_awaitable(self.ib.accountValues()) or []
+                summary = self.ib.accountValues() or []
             except Exception:
                 summary = []
         if not summary and hasattr(self.ib, "accountSummaryAsync"):
             try:
-                summary = self._resolve_maybe_awaitable(self.ib.accountSummaryAsync()) or []
+                summary = self.ib.accountSummary() or []
             except Exception:
                 summary = []
         positions = []
         if hasattr(self.ib, "positions"):
             try:
-                positions = self._resolve_maybe_awaitable(self.ib.positions())
+                positions = self.ib.positions()
                 if positions is None:
                     positions = []
             except Exception:
@@ -361,7 +342,7 @@ class IBClient:
     def cancel_account_summary(self) -> None:
         if hasattr(self.ib, "cancelAccountSummary"):
             try:
-                self._call_ib("cancelAccountSummary")
+                self.ib.cancelAccountSummary()
             except Exception:
                 pass
 
@@ -370,11 +351,11 @@ class IBClient:
         if not self.is_connected() or not hasattr(self.ib, "reqAccountSummary"):
             return False
         try:
-            self._call_ib("reqAccountSummary", group_name, tags)
+            self.ib.reqAccountSummary(group_name, tags)
             return True
         except TypeError:
             try:
-                self._call_ib("reqAccountSummary")
+                self.ib.reqAccountSummary()
                 return True
             except Exception:
                 return False
@@ -402,7 +383,7 @@ class IBClient:
         accounts = []
         if hasattr(self.ib, "managedAccounts"):
             try:
-                accounts = self._resolve_maybe_awaitable(self.ib.managedAccounts())
+                accounts = self.ib.managedAccounts()
             except Exception:
                 accounts = []
         return accounts[0] if accounts else "--"
@@ -417,10 +398,7 @@ class IBClient:
             return "--", "--"
         try:
             start = time.time()
-            if hasattr(self.ib, "reqCurrentTimeAsync"):
-                server_time = self._resolve_maybe_awaitable(self.ib.reqCurrentTimeAsync())
-            else:
-                server_time = self._resolve_maybe_awaitable(self.ib.reqCurrentTime())
+            server_time = self.ib.reqCurrentTime()
             elapsed_ms = int((time.time() - start) * 1000)
             if isinstance(server_time, (int, float)):
                 server_dt = time.localtime(server_time)
@@ -440,7 +418,7 @@ class IBClient:
             if ticker is None:
                 return {}
             if wait_seconds > 0:
-                self._safe_ib_sleep(wait_seconds)
+                self.ib.sleep(wait_seconds)
             return {
                 "bid": getattr(ticker, "bid", None),
                 "ask": getattr(ticker, "ask", None),
@@ -483,33 +461,29 @@ class IBClient:
             except Exception:
                 error_event_registered = False
         try:
-            result = self._resolve_maybe_awaitable(
-                self.ib.reqMktData(
-                    contract,
-                    generic_tick_list,
-                    snapshot,
-                    regulatory_snapshot,
-                )
+            result = self.ib.reqMktData(
+                contract,
+                generic_tick_list,
+                snapshot,
+                regulatory_snapshot,
             )
-            self._safe_ib_sleep(0.15)
+            self.ib.sleep(0.15)
             competing_live_session = any(code == 10197 for _req_id, code, _msg in gateway_errors)
             if competing_live_session and hasattr(self.ib, "reqMarketDataType"):
                 try:
-                    self._call_ib("reqMarketDataType", 3)
+                    self.ib.reqMarketDataType(3)
                     if hasattr(self.ib, "cancelMktData"):
                         try:
-                            self._call_ib("cancelMktData", contract)
+                            self.ib.cancelMktData(contract)
                         except Exception:
                             pass
-                    result = self._resolve_maybe_awaitable(
-                        self.ib.reqMktData(
-                            contract,
-                            generic_tick_list,
-                            snapshot,
-                            regulatory_snapshot,
-                        )
+                    result = self.ib.reqMktData(
+                        contract,
+                        generic_tick_list,
+                        snapshot,
+                        regulatory_snapshot,
                     )
-                    self._safe_ib_sleep(0.15)
+                    self.ib.sleep(0.15)
                 except Exception as fallback_exc:
                     if gateway_errors:
                         compact_errors = ", ".join(f"{code}:{msg}" for _req_id, code, msg in gateway_errors[-3:])
@@ -545,7 +519,7 @@ class IBClient:
         if not self.is_connected() or not hasattr(self.ib, "cancelMktData"):
             return False
         try:
-            self._call_ib("cancelMktData", contract)
+            self.ib.cancelMktData(contract)
             return True
         except Exception:
             return False
@@ -562,8 +536,7 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            result = self._call_ib(
-                "reqHistoricalData",
+            result = self.ib.reqHistoricalData(
                 contract,
                 endDateTime="",
                 durationStr=duration,
@@ -582,8 +555,7 @@ class IBClient:
         if not self.is_connected():
             return None
         try:
-            return self._call_ib(
-                "reqHeadTimeStamp",
+            return self.ib.reqHeadTimeStamp(
                 contract,
                 whatToShow=what_to_show,
                 useRTH=use_rth,
@@ -598,8 +570,7 @@ class IBClient:
             self._set_last_error("qualify_contract", "Not connected to IBKR.")
             return None
         try:
-            self._ensure_default_event_loop()
-            contracts = self._resolve_maybe_awaitable(self.ib.qualifyContracts(contract))
+            contracts = self.ib.qualifyContracts(contract)
             if contracts is None:
                 self._set_last_error("qualify_contract", "No contract data returned.")
                 return None
@@ -618,7 +589,7 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            result = self._call_ib("reqContractDetails", contract)
+            result = self.ib.reqContractDetails(contract)
             return result or []
         except Exception:
             return []
@@ -628,17 +599,26 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            result = self._call_ib("accountValues")
+            result = self.ib.accountValues()
             return result or []
         except Exception:
             return []
 
-    # Return currently open orders snapshot.
+    _INACTIVE_STATUSES = {"cancelled", "inactive", "apicancelled", "filled", "pendingcancel"}
+
+    # Return currently open trades snapshot, excluding cancelled/filled.
     def get_open_orders_snapshot(self) -> list[Any]:
         if not self.is_connected():
             return []
         try:
-            result = self._resolve_maybe_awaitable(self.ib.openOrders())
+            if hasattr(self.ib, "openTrades"):
+                trades = self.ib.openTrades() or []
+                return [
+                    t for t in trades
+                    if str(getattr(getattr(t, "orderStatus", None), "status", "")).lower()
+                    not in self._INACTIVE_STATUSES
+                ]
+            result = self.ib.openOrders()
             return result or []
         except Exception:
             return []
@@ -649,9 +629,9 @@ class IBClient:
             return []
         try:
             if hasattr(self.ib, "reqAllOpenOrders"):
-                self._call_ib("reqAllOpenOrders")
+                self.ib.reqAllOpenOrders()
             if hasattr(self.ib, "openOrders"):
-                result = self._call_ib("openOrders")
+                result = self.ib.openOrders()
                 return result or []
             return []
         except Exception:
@@ -662,11 +642,11 @@ class IBClient:
         if not self.is_connected() or not hasattr(self.ib, "reqCompletedOrders"):
             return []
         try:
-            result = self._call_ib("reqCompletedOrders", apiOnly=api_only)
+            result = self.ib.reqCompletedOrders(apiOnly=api_only)
             return result or []
         except TypeError:
             try:
-                result = self._call_ib("reqCompletedOrders", api_only)
+                result = self.ib.reqCompletedOrders(api_only)
                 return result or []
             except Exception:
                 return []
@@ -678,7 +658,7 @@ class IBClient:
         if not self.is_connected() or not hasattr(self.ib, "openTrades"):
             return []
         try:
-            result = self._call_ib("openTrades")
+            result = self.ib.openTrades()
             return result or []
         except Exception:
             return []
@@ -688,10 +668,28 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            result = self._resolve_maybe_awaitable(self.ib.fills())
+            result = self.ib.fills()
             return result or []
         except Exception:
             return []
+
+    # Return recent fills merged from requested executions and local session cache.
+    def get_recent_fills_snapshot(self) -> list[Any]:
+        if not self.is_connected():
+            return []
+
+        merged: list[Any] = []
+        seen: set[tuple[Any, ...]] = set()
+        for source in (self.get_executions_snapshot(), self.get_fills_snapshot()):
+            if not isinstance(source, list):
+                continue
+            for item in source:
+                identity = self._snapshot_identity(item)
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                merged.append(item)
+        return merged
 
     # Place an order and return the created trade object.
     def place_order(self, contract: Any, order: Any) -> Any:
@@ -722,9 +720,7 @@ class IBClient:
             except Exception:
                 error_event_registered = False
         try:
-            # placeOrder may require an event loop when called from worker threads.
-            self._ensure_default_event_loop()
-            trade = self._resolve_maybe_awaitable(self.ib.placeOrder(contract, order))
+            trade = self.ib.placeOrder(contract, order)
             if trade is None:
                 detail = "API returned no trade object."
                 if gateway_errors:
@@ -812,8 +808,7 @@ class IBClient:
             self._set_last_error("build_bracket_orders", "IB API missing bracketOrder.")
             return []
         try:
-            orders = self._call_ib(
-                "bracketOrder",
+            orders = self.ib.bracketOrder(
                 normalized_side,
                 quantity,
                 limit_price,
@@ -842,7 +837,7 @@ class IBClient:
                 self._set_last_error("cancel_order", "IB API missing cancelOrder.")
             return False
         try:
-            self._call_ib("cancelOrder", trade_or_order)
+            self.ib.cancelOrder(trade_or_order)
             self.clear_last_error()
             return True
         except Exception as first_exc:
@@ -851,7 +846,7 @@ class IBClient:
                 self._set_last_error("cancel_order", first_exc)
                 return False
             try:
-                self._call_ib("cancelOrder", order_obj)
+                self.ib.cancelOrder(order_obj)
                 self.clear_last_error()
                 return True
             except Exception as second_exc:
@@ -887,15 +882,7 @@ class IBClient:
             except Exception:
                 error_event_registered = False
         try:
-            self._ensure_default_event_loop()
-            try:
-                result = self._resolve_maybe_awaitable(self.ib.whatIfOrder(contract, order))
-            except RuntimeError as exc:
-                message = str(exc).lower()
-                if "no current event loop" not in message:
-                    raise
-                asyncio.set_event_loop(asyncio.new_event_loop())
-                result = self._resolve_maybe_awaitable(self.ib.whatIfOrder(contract, order))
+            result = self.ib.whatIfOrder(contract, order)
             if result is None:
                 detail = "What-If returned no payload."
                 if gateway_errors:
@@ -934,7 +921,7 @@ class IBClient:
 
         if hasattr(self.ib, "reqGlobalCancel"):
             try:
-                self._call_ib("reqGlobalCancel")
+                self.ib.reqGlobalCancel()
             except Exception as exc:
                 self._set_last_error("cancel_all_open_orders", exc)
 
@@ -962,7 +949,7 @@ class IBClient:
         if not self.is_connected():
             return []
         try:
-            result = self._call_ib("reqExecutions")
+            result = self.ib.reqExecutions()
             return result or []
         except Exception:
             return []
@@ -972,8 +959,8 @@ class IBClient:
         if not self.is_connected():
             return None
         try:
-            pnl = self._call_ib("reqPnL", account, modelCode=model_code)
-            self._safe_ib_sleep(0)
+            pnl = self.ib.reqPnL(account, modelCode=model_code)
+            self.ib.sleep(0)
             return pnl
         except Exception:
             return None
@@ -983,8 +970,8 @@ class IBClient:
         if not self.is_connected():
             return None
         try:
-            pnl_single = self._call_ib("reqPnLSingle", account, modelCode=model_code, conId=con_id)
-            self._safe_ib_sleep(0)
+            pnl_single = self.ib.reqPnLSingle(account, modelCode=model_code, conId=con_id)
+            self.ib.sleep(0)
             return pnl_single
         except Exception:
             return None
@@ -999,9 +986,9 @@ class IBClient:
         if not self.is_connected():
             return {"bids": [], "asks": []}
         try:
-            ticker = self._call_ib("reqMktDepth", contract, numRows=num_rows)
+            ticker = self.ib.reqMktDepth(contract, numRows=num_rows)
             if wait_seconds > 0:
-                self._safe_ib_sleep(wait_seconds)
+                self.ib.sleep(wait_seconds)
             bids = [
                 {
                     "price": getattr(level, "price", None),
@@ -1024,7 +1011,7 @@ class IBClient:
         finally:
             if hasattr(self.ib, "cancelMktDepth"):
                 try:
-                    self._call_ib("cancelMktDepth", contract)
+                    self.ib.cancelMktDepth(contract)
                 except Exception:
                     pass
 

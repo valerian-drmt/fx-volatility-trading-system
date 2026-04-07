@@ -1,5 +1,3 @@
-import asyncio
-import threading
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +12,9 @@ class BasicIB:
 
     def isConnected(self):
         return self._connected
+
+    def sleep(self, seconds=0):
+        pass
 
 
 class DummyEvent:
@@ -292,99 +293,35 @@ def test_cancel_all_open_orders_requires_connection():
     assert message == "Not connected to IBKR."
 
 
+
 @pytest.mark.unit
-def test_what_if_order_creates_event_loop_in_worker_thread():
-    class WhatIfIB(BasicIB):
+def test_get_recent_fills_snapshot_merges_execution_and_session_fills_without_duplicates():
+    class FillsIB(BasicIB):
         def __init__(self):
             super().__init__(connected=True)
 
-        def whatIfOrder(self, contract, order):
-            loop = asyncio.get_event_loop_policy().get_event_loop()
-            return {"loop_created": loop is not None, "contract": contract, "order": order}
+        @staticmethod
+        def reqExecutions():
+            return [
+                {"execId": "EXEC-1", "symbol": "EUR.USD", "side": "BOT", "shares": 1000, "price": 1.1},
+            ]
 
-    client = IBClient(ib=WhatIfIB())
-    result: dict[str, object] = {}
+        @staticmethod
+        def fills():
+            return [
+                {"execId": "EXEC-1", "symbol": "EUR.USD", "side": "BOT", "shares": 1000, "price": 1.1},
+                {"execId": "EXEC-2", "symbol": "GBP.USD", "side": "SLD", "shares": 2000, "price": 1.25},
+            ]
 
-    def run_in_worker_thread():
-        result["value"] = client.what_if_order("C", "O")
-        result["error"] = client.get_last_error_text()
+    client = IBClient(ib=FillsIB())
 
-    worker = threading.Thread(target=run_in_worker_thread, name="Dummy-WhatIf")
-    worker.start()
-    worker.join()
+    fills = client.get_recent_fills_snapshot()
 
-    assert result["value"] == {"loop_created": True, "contract": "C", "order": "O"}
-    assert result["error"] == ""
-
-
-@pytest.mark.unit
-def test_qualify_contract_creates_event_loop_in_worker_thread():
-    class QualifyIB(BasicIB):
-        def __init__(self):
-            super().__init__(connected=True)
-
-        def qualifyContracts(self, contract):
-            loop = asyncio.get_event_loop_policy().get_event_loop()
-            return [f"QUAL-{contract}"] if loop is not None else []
-
-    client = IBClient(ib=QualifyIB())
-    result: dict[str, object] = {}
-
-    def run_in_worker_thread():
-        result["value"] = client.qualify_contract("EURUSD")
-        result["error"] = client.get_last_error_text()
-
-    worker = threading.Thread(target=run_in_worker_thread, name="Dummy-Qualify")
-    worker.start()
-    worker.join()
-
-    assert result["value"] == "QUAL-EURUSD"
-    assert result["error"] == ""
+    assert fills == [
+        {"execId": "EXEC-1", "symbol": "EUR.USD", "side": "BOT", "shares": 1000, "price": 1.1},
+        {"execId": "EXEC-2", "symbol": "GBP.USD", "side": "SLD", "shares": 2000, "price": 1.25},
+    ]
 
 
-@pytest.mark.unit
-def test_place_order_creates_event_loop_in_worker_thread():
-    class PlaceOrderIB(BasicIB):
-        def __init__(self):
-            super().__init__(connected=True)
-
-        def placeOrder(self, contract, order):
-            loop = asyncio.get_event_loop_policy().get_event_loop()
-            return {"loop_created": loop is not None, "contract": contract, "order": order}
-
-    client = IBClient(ib=PlaceOrderIB())
-    result: dict[str, object] = {}
-
-    def run_in_worker_thread():
-        result["value"] = client.place_order("C", "O")
-        result["error"] = client.get_last_error_text()
-
-    worker = threading.Thread(target=run_in_worker_thread, name="Dummy-PlaceOrder")
-    worker.start()
-    worker.join()
-
-    assert result["value"] == {"loop_created": True, "contract": "C", "order": "O"}
-    assert result["error"] == ""
 
 
-@pytest.mark.unit
-def test_what_if_order_retries_once_when_runtime_reports_missing_event_loop():
-    class RetryWhatIfIB(BasicIB):
-        def __init__(self):
-            super().__init__(connected=True)
-            self.calls = 0
-
-        def whatIfOrder(self, contract, order):
-            self.calls += 1
-            if self.calls == 1:
-                raise RuntimeError("There is no current event loop in thread 'Dummy-1'.")
-            return {"ok": True, "contract": contract, "order": order}
-
-    ib = RetryWhatIfIB()
-    client = IBClient(ib=ib)
-
-    result = client.what_if_order("C", "O")
-
-    assert result == {"ok": True, "contract": "C", "order": "O"}
-    assert ib.calls == 2
-    assert client.get_last_error_text() == ""

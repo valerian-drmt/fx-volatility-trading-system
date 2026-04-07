@@ -113,6 +113,7 @@ class OrderTicketPanel(QWidget):
         actions_layout.addStretch(1)
 
         self.feedback_label = QLabel("--")
+        self.feedback_label.setWordWrap(True)
 
         layout.addWidget(ticket_group)
         layout.addLayout(actions_layout)
@@ -229,6 +230,8 @@ class OrderTicketPanel(QWidget):
             color = "#e74c3c"
         elif level_key == "success":
             color = "#2ecc71"
+        elif level_key == "preview":
+            color = "#3498db"
         else:
             color = "#f1c40f"
         self.feedback_label.setText(text)

@@ -1,4 +1,3 @@
-from threading import RLock
 
 import pytest
 
@@ -179,6 +178,14 @@ class _DummyLogsPanel:
         self.calls.append(payload)
 
 
+class _DummyDataPanel:
+    def __init__(self):
+        self.calls = []
+
+    def update(self, payload):
+        self.calls.append(payload)
+
+
 class _DummyButton:
     def __init__(self):
         self.click_calls = 0
@@ -267,52 +274,79 @@ def test_on_market_data_payload_does_not_click_stop_button_before_test_3():
     assert stop_button.click_calls == 0
 
 
+
 @pytest.mark.unit
-def test_pump_ib_network_calls_pump_when_connected():
+def test_on_connect_result_connected_refreshes_orders_and_portfolio_snapshots():
     class _FakeClient:
         def __init__(self):
-            self.connected_calls = 0
-            self.pump_calls = 0
+            self.request_all_open_orders_calls = 0
+            self.get_open_orders_snapshot_calls = 0
+            self.get_executions_snapshot_calls = 0
+            self.get_fills_snapshot_calls = 0
 
-        def is_connected(self):
-            self.connected_calls += 1
+        @staticmethod
+        def is_connected():
             return True
 
-        def pump_network(self):
-            self.pump_calls += 1
+        def get_portfolio_snapshot(self):
+            summary = [type("SummaryItem", (), {"tag": "CashBalance", "currency": "USD", "value": "1250"})()]
+            return summary, ["position-1"]
+
+        def request_all_open_orders(self):
+            self.request_all_open_orders_calls += 1
+            return ["open-all-1"]
+
+        def get_open_orders_snapshot(self):
+            self.get_open_orders_snapshot_calls += 1
+            return ["open-1"]
+
+        def get_executions_snapshot(self):
+            self.get_executions_snapshot_calls += 1
+            return ["exec-1"]
+
+        def get_fills_snapshot(self):
+            self.get_fills_snapshot_calls += 1
+            return ["fill-1"]
+
+    logs_panel = _DummyLogsPanel()
+    orders_panel = _DummyDataPanel()
+    portfolio_panel = _DummyDataPanel()
+    order_ticket_panel = _DummyOrderTicketPanel(symbol="EURUSD")
 
     controller = Controller.__new__(Controller)
-    controller._io_lock = RLock()
-    controller.ib_client = _FakeClient()
+    controller._connecting = True
+    controller._last_connect_error = ""
+    controller._latest_bid = None
+    controller._latest_ask = None
+    controller._cash_balances_by_currency = {}
+    controller._ticket_funds_ok = None
+    controller._order_worker = None
+    controller.market_symbol = "EURUSD"
+    fake_client = _FakeClient()
+    controller.ib_client = fake_client
+    controller.window = type(
+        "DummyWindow",
+        (),
+        {
+            "logs_panel": logs_panel,
+            "orders_panel": orders_panel,
+            "portfolio_panel": portfolio_panel,
+            "order_ticket_panel": order_ticket_panel,
+        },
+    )()
+    refresh_calls = []
+    controller._refresh_status = lambda *args, **kwargs: refresh_calls.append((args, kwargs))
 
-    controller._pump_ib_network()
+    controller._on_connect_result(True, "")
 
-    assert controller.ib_client.connected_calls == 1
-    assert controller.ib_client.pump_calls == 1
-
-
-@pytest.mark.unit
-def test_pump_ib_network_skips_when_disconnected():
-    class _FakeClient:
-        def __init__(self):
-            self.connected_calls = 0
-            self.pump_calls = 0
-
-        def is_connected(self):
-            self.connected_calls += 1
-            return False
-
-        def pump_network(self):
-            self.pump_calls += 1
-
-    controller = Controller.__new__(Controller)
-    controller._io_lock = RLock()
-    controller.ib_client = _FakeClient()
-
-    controller._pump_ib_network()
-
-    assert controller.ib_client.connected_calls == 1
-    assert controller.ib_client.pump_calls == 0
+    assert logs_panel.calls == [{"message": "[INFO][connection] connected to IBKR"}]
+    assert len(portfolio_panel.calls) == 1
+    portfolio_payload = portfolio_panel.calls[0]
+    assert portfolio_payload["positions"] == ["position-1"]
+    assert len(portfolio_payload["summary"]) == 1
+    assert getattr(portfolio_payload["summary"][0], "currency", "") == "USD"
+    assert controller._cash_balances_by_currency == {"USD": 1250.0}
+    assert refresh_calls and refresh_calls[-1][1].get("force") is True
 
 
 @pytest.mark.unit
@@ -360,7 +394,6 @@ def test_stop_live_streaming_clears_chart_and_logs_message():
     logs_panel = _DummyLogsPanel()
 
     controller = Controller.__new__(Controller)
-    controller._io_lock = RLock()
     controller.ib_client = _FakeClient()
     controller.window = type("DummyWindow", (), {"chart_panel": chart_panel, "logs_panel": logs_panel})()
     controller._stop_market_data_worker = lambda: stop_worker_calls.append(True)
@@ -405,7 +438,6 @@ def test_update_limit_price_from_market_uses_ask_for_buy():
     logs_panel = _DummyLogsPanel()
     order_ticket_panel = _DummyOrderTicketPanel()
     controller = Controller.__new__(Controller)
-    controller._io_lock = RLock()
     controller.ib_client = _FakeClient()
     controller.market_symbol = "EURUSD"
     controller.window = type(
@@ -451,7 +483,6 @@ def test_update_limit_price_from_market_rejects_symbol_mismatch():
     logs_panel = _DummyLogsPanel()
     order_ticket_panel = _DummyOrderTicketPanel()
     controller = Controller.__new__(Controller)
-    controller._io_lock = RLock()
     controller.ib_client = _FakeClient()
     controller.market_symbol = "EURUSD"
     controller.window = type(
@@ -489,6 +520,10 @@ def test_on_market_data_payload_updates_order_ticket_quote_and_max_quantities():
     controller._latest_bid = None
     controller._latest_ask = None
     controller._cash_balances_by_currency = {}
+    controller._ticket_funds_ok = None
+    controller._order_worker = None
+    controller._connecting = False
+    controller.ib_client = type("FakeClient", (), {"is_connected": lambda self: True})()
 
     summary = [
         type("SummaryItem", (), {"tag": "CashBalance", "currency": "USD", "value": "1100.2"})(),
@@ -567,7 +602,6 @@ def test_validate_order_funds_rejects_buy_when_quote_balance_is_insufficient():
     controller.market_symbol = "EURUSD"
     controller._latest_ask = 1.2
     controller._cash_balances_by_currency = {"USD": 100.0}
-    controller._io_lock = RLock()
 
     ok, message = controller._validate_order_funds(
         {
@@ -597,12 +631,12 @@ def test_queue_order_from_ticket_blocks_when_funds_are_insufficient():
 
     class _DummyOrderWorker:
         def __init__(self):
-            self.enqueue_order = _DummyEmitter()
+            self._running = True
+            self.place_order_calls = []
 
-    class _DummyThread:
-        @staticmethod
-        def isRunning():
-            return True
+        def place_order(self, request):
+            self.place_order_calls.append(request)
+            return {"ok": True, "kind": "order", "message": "sent"}
 
     class _OrderTicketPanel:
         def __init__(self):
@@ -625,13 +659,13 @@ def test_queue_order_from_ticket_blocks_when_funds_are_insufficient():
     order_worker = _DummyOrderWorker()
 
     controller = Controller.__new__(Controller)
-    controller._io_lock = RLock()
     controller.ib_client = _FakeClient()
     controller.market_symbol = "EURUSD"
     controller._latest_ask = 1.2
     controller._cash_balances_by_currency = {"USD": 100.0}
-    controller._order_thread = _DummyThread()
     controller._order_worker = order_worker
+    controller._connecting = False
+    controller._ticket_funds_ok = None
     controller.window = type(
         "DummyWindow",
         (),
@@ -643,7 +677,7 @@ def test_queue_order_from_ticket_blocks_when_funds_are_insufficient():
 
     controller._queue_order_from_ticket()
 
-    assert order_worker.enqueue_order.payloads == []
+    assert order_worker.place_order_calls == []
     assert any("insufficient usd funds" in str(call.get("message", "")).lower() for call in order_ticket_panel.calls)
     assert any("[WARN][execution]" in str(call.get("message", "")) for call in logs_panel.calls)
 

@@ -1,4 +1,3 @@
-from threading import RLock
 from types import SimpleNamespace
 
 import pytest
@@ -71,12 +70,8 @@ class FakeIBClient:
 
 
 def _build_worker(ib_client):
-    worker = OrderWorker(ib_client=ib_client, io_lock=RLock())
-    results = []
-    failures = []
-    worker.order_result.connect(results.append)
-    worker.failed.connect(failures.append)
-    return worker, results, failures
+    worker = OrderWorker(ib_client=ib_client)
+    return worker
 
 
 @pytest.mark.unit
@@ -165,22 +160,20 @@ def test_validate_request_requires_both_bracket_percentages():
 
 @pytest.mark.unit
 def test_place_order_rejects_when_worker_is_stopped(qapp):
-    worker, results, failures = _build_worker(FakeIBClient())
-    worker.place_order({"symbol": "EURUSD", "side": "BUY", "order_type": "MKT", "volume": 1000})
+    worker = _build_worker(FakeIBClient())
+    result = worker.place_order({"symbol": "EURUSD", "side": "BUY", "order_type": "MKT", "volume": 1000})
 
-    assert failures == []
-    assert results[-1] == {"ok": False, "kind": "order", "message": "Order worker is stopped."}
+    assert result == {"ok": False, "kind": "order", "message": "Order worker is stopped."}
 
 
 @pytest.mark.unit
 def test_place_order_rejects_when_not_connected(qapp):
-    worker, results, failures = _build_worker(FakeIBClient(connected=False))
+    worker = _build_worker(FakeIBClient(connected=False))
     worker.start()
-    worker.place_order({"symbol": "EURUSD", "side": "BUY", "order_type": "MKT", "volume": 1000})
+    result = worker.place_order({"symbol": "EURUSD", "side": "BUY", "order_type": "MKT", "volume": 1000})
 
-    assert failures == []
-    assert results[-1]["ok"] is False
-    assert results[-1]["message"] == "Not connected to IBKR."
+    assert result["ok"] is False
+    assert result["message"] == "Not connected to IBKR."
 
 
 @pytest.mark.unit
@@ -189,10 +182,10 @@ def test_place_order_success_uses_direct_forex_contract(qapp):
         connected=True,
         place_order_result=object(),
     )
-    worker, results, failures = _build_worker(fake_client)
+    worker = _build_worker(fake_client)
     worker.start()
 
-    worker.place_order(
+    result = worker.place_order(
         {
             "symbol": "eur/usd",
             "side": "BUY",
@@ -202,10 +195,9 @@ def test_place_order_success_uses_direct_forex_contract(qapp):
         }
     )
 
-    assert failures == []
-    assert results[-1]["ok"] is True
-    assert results[-1]["kind"] == "order"
-    assert "Order sent:" in results[-1]["message"]
+    assert result["ok"] is True
+    assert result["kind"] == "order"
+    assert "Order sent:" in result["message"]
 
     sent_contract, sent_order = fake_client.place_order_calls[-1]
     assert isinstance(sent_contract, Forex)
@@ -224,10 +216,10 @@ def test_place_order_does_not_call_contract_qualification(qapp):
             raise RuntimeError("should not be called by place_order")
 
     fake_client = _QualifyFailsClient(connected=True, place_order_result=object())
-    worker, results, failures = _build_worker(fake_client)
+    worker = _build_worker(fake_client)
     worker.start()
 
-    worker.place_order(
+    result = worker.place_order(
         {
             "symbol": "EURUSD",
             "side": "BUY",
@@ -237,8 +229,7 @@ def test_place_order_does_not_call_contract_qualification(qapp):
         }
     )
 
-    assert failures == []
-    assert results[-1]["ok"] is True
+    assert result["ok"] is True
     assert len(fake_client.place_order_calls) == 1
 
 
@@ -250,10 +241,10 @@ def test_place_order_rejects_when_ib_trade_status_is_cancelled(qapp):
         qualified_contract=object(),
         place_order_result=rejected_trade,
     )
-    worker, results, failures = _build_worker(fake_client)
+    worker = _build_worker(fake_client)
     worker.start()
 
-    worker.place_order(
+    result = worker.place_order(
         {
             "symbol": "EURUSD",
             "side": "BUY",
@@ -263,9 +254,8 @@ def test_place_order_rejects_when_ib_trade_status_is_cancelled(qapp):
         }
     )
 
-    assert failures == []
-    assert results[-1]["ok"] is False
-    assert "Order rejected" in results[-1]["message"]
+    assert result["ok"] is False
+    assert "Order rejected" in result["message"]
 
 
 @pytest.mark.unit
@@ -276,10 +266,10 @@ def test_place_order_bracket_lmt_places_parent_tp_sl(qapp):
         place_order_result=object(),
         bracket_orders=["parent", "tp", "sl"],
     )
-    worker, results, failures = _build_worker(fake_client)
+    worker = _build_worker(fake_client)
     worker.start()
 
-    worker.place_order(
+    result = worker.place_order(
         {
             "symbol": "EURUSD",
             "side": "BUY",
@@ -292,10 +282,9 @@ def test_place_order_bracket_lmt_places_parent_tp_sl(qapp):
         }
     )
 
-    assert failures == []
-    assert results[-1]["ok"] is True
-    assert results[-1]["kind"] == "order"
-    assert "Bracket sent:" in results[-1]["message"]
+    assert result["ok"] is True
+    assert result["kind"] == "order"
+    assert "Bracket sent:" in result["message"]
     assert len(fake_client.bracket_build_calls) == 1
     assert len(fake_client.place_order_calls) == 3
     call = fake_client.bracket_build_calls[-1]
@@ -313,10 +302,10 @@ def test_place_order_bracket_mkt_uses_reference_price_for_tp_sl(qapp):
         place_order_result=object(),
         bracket_orders=["parent", "tp", "sl"],
     )
-    worker, results, failures = _build_worker(fake_client)
+    worker = _build_worker(fake_client)
     worker.start()
 
-    worker.place_order(
+    result = worker.place_order(
         {
             "symbol": "EURUSD",
             "side": "SELL",
@@ -330,8 +319,7 @@ def test_place_order_bracket_mkt_uses_reference_price_for_tp_sl(qapp):
         }
     )
 
-    assert failures == []
-    assert results[-1]["ok"] is True
+    assert result["ok"] is True
     call = fake_client.bracket_build_calls[-1]
     assert call["limit_price"] == pytest.approx(1.2)
     assert call["take_profit_price"] == pytest.approx(1.194)
@@ -347,10 +335,10 @@ def test_place_order_bracket_rejects_when_build_fails(qapp):
         place_order_result=object(),
         bracket_orders=[],
     )
-    worker, results, failures = _build_worker(fake_client)
+    worker = _build_worker(fake_client)
     worker.start()
 
-    worker.place_order(
+    result = worker.place_order(
         {
             "symbol": "EURUSD",
             "side": "BUY",
@@ -363,9 +351,8 @@ def test_place_order_bracket_rejects_when_build_fails(qapp):
         }
     )
 
-    assert failures == []
-    assert results[-1]["ok"] is False
-    assert "Bracket build failed" in results[-1]["message"]
+    assert result["ok"] is False
+    assert "Bracket build failed" in result["message"]
 
 
 @pytest.mark.unit
@@ -377,10 +364,10 @@ def test_preview_order_success_includes_margin_fields(qapp):
         qualified_contract=qualified_contract,
         what_if_result=what_if,
     )
-    worker, results, failures = _build_worker(fake_client)
+    worker = _build_worker(fake_client)
     worker.start()
 
-    worker.preview_order(
+    result = worker.preview_order(
         {
             "symbol": "EURUSD",
             "side": "SELL",
@@ -393,12 +380,11 @@ def test_preview_order_success_includes_margin_fields(qapp):
         }
     )
 
-    assert failures == []
-    assert results[-1]["ok"] is True
-    assert results[-1]["kind"] == "preview"
-    assert "InitMargin: 10" in results[-1]["message"]
-    assert "Commission: 0.2" in results[-1]["message"]
-    assert "TP=" in results[-1]["message"]
+    assert result["ok"] is True
+    assert result["kind"] == "preview"
+    assert "Init Margin: 10" in result["message"]
+    assert "Commission: 0.2" in result["message"]
+    assert "Take Profit:" in result["message"]
     sent_contract, sent_order = fake_client.what_if_calls[-1]
     assert sent_contract is qualified_contract
     assert isinstance(sent_order, LimitOrder)
@@ -408,10 +394,10 @@ def test_preview_order_success_includes_margin_fields(qapp):
 @pytest.mark.unit
 def test_preview_order_returns_error_when_api_returns_none(qapp):
     fake_client = FakeIBClient(connected=True, qualified_contract=object(), what_if_result=None)
-    worker, results, failures = _build_worker(fake_client)
+    worker = _build_worker(fake_client)
     worker.start()
 
-    worker.preview_order(
+    result = worker.preview_order(
         {
             "symbol": "EURUSD",
             "side": "SELL",
@@ -421,10 +407,9 @@ def test_preview_order_returns_error_when_api_returns_none(qapp):
         }
     )
 
-    assert failures == []
-    assert results[-1]["ok"] is False
-    assert results[-1]["kind"] == "preview"
-    assert "Preview failed" in results[-1]["message"]
+    assert result["ok"] is False
+    assert result["kind"] == "preview"
+    assert "Preview failed" in result["message"]
 
 
 @pytest.mark.unit
@@ -436,10 +421,10 @@ def test_preview_order_returns_error_when_contract_qualification_fails(qapp):
 
     what_if = SimpleNamespace(initMarginChange="10", maintMarginChange="7", commission="0.2")
     fake_client = _PreviewClient(connected=True, what_if_result=what_if)
-    worker, results, failures = _build_worker(fake_client)
+    worker = _build_worker(fake_client)
     worker.start()
 
-    worker.preview_order(
+    result = worker.preview_order(
         {
             "symbol": "EURUSD",
             "side": "BUY",
@@ -449,8 +434,7 @@ def test_preview_order_returns_error_when_contract_qualification_fails(qapp):
         }
     )
 
-    assert failures == []
-    assert results[-1]["ok"] is False
-    assert results[-1]["kind"] == "preview"
-    assert "qualify_contract" in results[-1]["message"]
+    assert result["ok"] is False
+    assert result["kind"] == "preview"
+    assert "qualify_contract" in result["message"]
     assert fake_client.what_if_calls == []

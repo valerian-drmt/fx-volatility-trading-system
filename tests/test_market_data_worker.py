@@ -1,5 +1,3 @@
-from threading import RLock
-
 import pytest
 
 from services.market_data_worker import MarketDataWorker
@@ -43,29 +41,20 @@ class FakeMarketClient:
 
 
 @pytest.mark.unit
-def test_poll_once_connected_emits_full_payload(monkeypatch, qapp):
+def test_poll_once_connected_emits_full_payload(monkeypatch):
     client = FakeMarketClient(
         connection_state="connected",
         ticks=[{"bid": 1.1, "ask": 1.2}, "bad", {"last": 1.15}],
     )
     worker = MarketDataWorker(
         ib_client=client,
-        io_lock=RLock(),
         interval_ms=50,
         snapshot_interval_ms=100,
     )
-    worker._running = True
-    payloads = []
-    errors = []
-    worker.payload_ready.connect(payloads.append)
-    worker.failed.connect(errors.append)
 
     monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: 1.0)
-    worker._poll_once()
+    payload = worker.poll_once()
 
-    assert errors == []
-    assert len(payloads) == 1
-    payload = payloads[0]
     assert payload["status"]["connection_state"] == "connected"
     assert payload["status"]["mode"] == "read-only"
     assert payload["ticks"] == [{"bid": 1.1, "ask": 1.2}, {"last": 1.15}]
@@ -76,17 +65,34 @@ def test_poll_once_connected_emits_full_payload(monkeypatch, qapp):
 
 
 @pytest.mark.unit
-def test_poll_once_disconnected_skips_stream_and_snapshots(monkeypatch, qapp):
-    client = FakeMarketClient(connection_state="disconnected", ticks=[{"bid": 1.1}])
-    worker = MarketDataWorker(ib_client=client, io_lock=RLock(), snapshot_interval_ms=100)
-    worker._running = True
-    payloads = []
-    worker.payload_ready.connect(payloads.append)
+def test_poll_once_connected_uses_cached_snapshots_only(monkeypatch):
+    """Worker must only use cached snapshot reads (no active IB requests)."""
+    client = FakeMarketClient(
+        connection_state="connected",
+        ticks=[{"bid": 1.1, "ask": 1.2}],
+    )
+    worker = MarketDataWorker(
+        ib_client=client,
+        interval_ms=50,
+        snapshot_interval_ms=100,
+    )
 
     monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: 1.0)
-    worker._poll_once()
+    payload = worker.poll_once()
 
-    payload = payloads[0]
+    assert payload["orders_payload"] == {"open_orders": ["open-order"], "fills": ["fill-1"]}
+    assert client.open_orders_calls == 1
+    assert client.fills_calls == 1
+
+
+@pytest.mark.unit
+def test_poll_once_disconnected_skips_stream_and_snapshots(monkeypatch):
+    client = FakeMarketClient(connection_state="disconnected", ticks=[{"bid": 1.1}])
+    worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
+
+    monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: 1.0)
+    payload = worker.poll_once()
+
     assert payload["status"]["connection_state"] == "disconnected"
     assert payload["ticks"] == []
     assert payload["orders_payload"] is None
@@ -97,100 +103,83 @@ def test_poll_once_disconnected_skips_stream_and_snapshots(monkeypatch, qapp):
 
 
 @pytest.mark.unit
-def test_poll_once_emits_failed_when_exception_occurs(qapp):
+def test_poll_once_raises_when_exception_occurs():
     class BrokenClient(FakeMarketClient):
         def get_status_snapshot(self):
             raise RuntimeError("status failure")
 
-    worker = MarketDataWorker(ib_client=BrokenClient(), io_lock=RLock())
-    worker._running = True
-    errors = []
-    payloads = []
-    worker.failed.connect(errors.append)
-    worker.payload_ready.connect(payloads.append)
+    worker = MarketDataWorker(ib_client=BrokenClient())
 
-    worker._poll_once()
-
-    assert payloads == []
-    assert errors
-    assert "status failure" in errors[0]
+    with pytest.raises(RuntimeError, match="status failure"):
+        worker.poll_once()
 
 
 @pytest.mark.unit
-def test_poll_once_emits_warning_after_three_no_tick_checks(monkeypatch, qapp):
+def test_poll_once_emits_warning_after_three_no_tick_checks(monkeypatch):
     client = FakeMarketClient(connection_state="connected", ticks=[])
-    worker = MarketDataWorker(ib_client=client, io_lock=RLock(), snapshot_interval_ms=100)
-    worker._running = True
-    payloads = []
-    worker.payload_ready.connect(payloads.append)
+    worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
 
     monotonic_values = iter([0.0, 2.1, 4.2, 6.3])
     monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: next(monotonic_values))
 
-    worker._poll_once()
-    worker._poll_once()
-    worker._poll_once()
-    worker._poll_once()
+    p0 = worker.poll_once()
+    p1 = worker.poll_once()
+    p2 = worker.poll_once()
+    p3 = worker.poll_once()
 
-    assert payloads[0]["messages"] == []
-    assert payloads[1]["messages"] == [
+    assert p0["messages"] == []
+    assert p1["messages"] == [
         "[INFO][market_data] no ticks received (test 1/3)."
     ]
-    assert payloads[2]["messages"] == [
+    assert p2["messages"] == [
         "[INFO][market_data] no ticks received (test 2/3)."
     ]
-    assert payloads[3]["messages"] == [
+    assert p3["messages"] == [
         "[WARN][market_data] no ticks received (test 3/3); "
         "market may be closed or data is unavailable for this symbol."
     ]
 
 
 @pytest.mark.unit
-def test_poll_once_emits_info_when_tick_stream_resumes(monkeypatch, qapp):
+def test_poll_once_emits_info_when_tick_stream_resumes(monkeypatch):
     client = FakeMarketClient(connection_state="connected", ticks=[])
-    worker = MarketDataWorker(ib_client=client, io_lock=RLock(), snapshot_interval_ms=100)
-    worker._running = True
-    payloads = []
-    worker.payload_ready.connect(payloads.append)
+    worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
 
     monotonic_values = iter([0.0, 2.1, 4.2, 6.3, 6.4])
     monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: next(monotonic_values))
 
-    worker._poll_once()
-    worker._poll_once()
-    worker._poll_once()
-    worker._poll_once()
+    worker.poll_once()
+    worker.poll_once()
+    worker.poll_once()
+    p3 = worker.poll_once()
     client.ticks = [{"bid": 1.1000, "ask": 1.1002}]
-    worker._poll_once()
+    p4 = worker.poll_once()
 
-    assert payloads[3]["messages"] == [
+    assert p3["messages"] == [
         "[WARN][market_data] no ticks received (test 3/3); "
         "market may be closed or data is unavailable for this symbol."
     ]
-    assert payloads[4]["messages"] == ["[INFO][market_data] tick stream resumed."]
-    assert payloads[4]["ticks"] == [{"bid": 1.1000, "ask": 1.1002}]
+    assert p4["messages"] == ["[INFO][market_data] tick stream resumed."]
+    assert p4["ticks"] == [{"bid": 1.1000, "ask": 1.1002}]
 
 
 @pytest.mark.unit
-def test_poll_once_skips_no_tick_startup_checks_after_first_tick(monkeypatch, qapp):
+def test_poll_once_skips_no_tick_startup_checks_after_first_tick(monkeypatch):
     client = FakeMarketClient(connection_state="connected", ticks=[{"bid": 1.1000, "ask": 1.1002}])
-    worker = MarketDataWorker(ib_client=client, io_lock=RLock(), snapshot_interval_ms=100)
-    worker._running = True
-    payloads = []
-    worker.payload_ready.connect(payloads.append)
+    worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
 
     monotonic_values = iter([0.0, 2.1, 4.2, 6.3, 8.4])
     monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: next(monotonic_values))
 
-    worker._poll_once()  # first tick received -> startup checks disabled afterwards
+    p0 = worker.poll_once()  # first tick received -> startup checks disabled afterwards
     client.ticks = []
-    worker._poll_once()
-    worker._poll_once()
-    worker._poll_once()
-    worker._poll_once()
+    p1 = worker.poll_once()
+    p2 = worker.poll_once()
+    p3 = worker.poll_once()
+    p4 = worker.poll_once()
 
-    assert payloads[0]["ticks"] == [{"bid": 1.1000, "ask": 1.1002}]
-    assert payloads[1]["messages"] == []
-    assert payloads[2]["messages"] == []
-    assert payloads[3]["messages"] == []
-    assert payloads[4]["messages"] == []
+    assert p0["ticks"] == [{"bid": 1.1000, "ask": 1.1002}]
+    assert p1["messages"] == []
+    assert p2["messages"] == []
+    assert p3["messages"] == []
+    assert p4["messages"] == []
