@@ -1,8 +1,9 @@
 
 import pytest
 
-from client_roles import default_client_roles
 from controller import Controller
+
+_DEFAULT_CLIENT_ROLES = {"order_worker": 1, "market_data": 2, "dashboard": 3}
 
 
 @pytest.mark.unit
@@ -110,7 +111,7 @@ def test_validate_app_settings_supports_status_payload():
 
     assert validated["status"]["market_symbol"] == "EURUSD"
     assert validated["status"]["client_id"] == 3
-    assert validated["status"]["client_roles"] == default_client_roles()
+    assert validated["status"]["client_roles"] == _DEFAULT_CLIENT_ROLES
     assert validated["runtime"] == {
         "tick_interval_ms": 100,
         "snapshot_interval_ms": 2000,
@@ -201,6 +202,9 @@ class _DummyChartPanel:
     def update(self, payload):
         self.calls.append(payload)
 
+    def set_volume(self, v):
+        pass
+
 
 class _DummySymbolInput:
     def __init__(self, value: str):
@@ -213,6 +217,7 @@ class _DummySymbolInput:
 class _DummyOrderTicketPanel:
     def __init__(self, symbol: str = "EURUSD"):
         self.symbol_input = _DummySymbolInput(symbol)
+        self.qty_input = type("FakeQty", (), {"value": lambda self: 20000})()
         self.calls = []
 
     def update(self, payload):
@@ -228,7 +233,7 @@ def test_on_market_data_payload_auto_clicks_stop_button_on_no_tick_test_3_warnin
         "DummyWindow",
         (),
         {
-            "status_panel": type("DummyStatusPanel", (), {"stop_live_stream_button": stop_button})(),
+            "status_panel": type("DummyStatusPanel", (), {"stop_engine_button": stop_button})(),
             "logs_panel": logs_panel,
             "chart_panel": type("DummyChartPanel", (), {"update": lambda self, payload: None})(),
             "orders_panel": type("DummyOrdersPanel", (), {"update": lambda self, payload: None})(),
@@ -257,7 +262,7 @@ def test_on_market_data_payload_does_not_click_stop_button_before_test_3():
         "DummyWindow",
         (),
         {
-            "status_panel": type("DummyStatusPanel", (), {"stop_live_stream_button": stop_button})(),
+            "status_panel": type("DummyStatusPanel", (), {"stop_engine_button": stop_button})(),
             "logs_panel": logs_panel,
             "chart_panel": type("DummyChartPanel", (), {"update": lambda self, payload: None})(),
             "orders_panel": type("DummyOrdersPanel", (), {"update": lambda self, payload: None})(),
@@ -357,17 +362,23 @@ def test_on_market_data_payload_does_not_push_ticks_to_logs_panel():
     class _DummyChartPanel:
         def update(self, payload):
             chart_calls.append(payload)
+        def set_volume(self, v):
+            pass
+
+    _qty = type("FakeQty", (), {"value": lambda self: 20000})()
+    _otp = type("FakeOTP", (), {"qty_input": _qty})()
 
     controller = Controller.__new__(Controller)
     controller.window = type(
         "DummyWindow",
         (),
         {
-            "status_panel": type("DummyStatusPanel", (), {"stop_live_stream_button": _DummyButton()})(),
+            "status_panel": type("DummyStatusPanel", (), {"stop_engine_button": _DummyButton()})(),
             "logs_panel": logs_panel,
             "chart_panel": _DummyChartPanel(),
             "orders_panel": type("DummyOrdersPanel", (), {"update": lambda self, payload: None})(),
             "portfolio_panel": type("DummyPortfolioPanel", (), {"update": lambda self, payload: None})(),
+            "order_ticket_panel": _otp,
         },
     )()
     controller._refresh_status = lambda *args, **kwargs: None
@@ -395,8 +406,13 @@ def test_stop_live_streaming_clears_chart_and_logs_message():
 
     controller = Controller.__new__(Controller)
     controller.ib_client = _FakeClient()
-    controller.window = type("DummyWindow", (), {"chart_panel": chart_panel, "logs_panel": logs_panel})()
+    _btn = type("FakeBtn", (), {"setEnabled": lambda self, v: None})()
+    controller.window = type("DummyWindow", (), {
+        "chart_panel": chart_panel, "logs_panel": logs_panel,
+        
+    })()
     controller._stop_market_data_worker = lambda: stop_worker_calls.append(True)
+    controller._stop_vol_engine = lambda: None
     controller._refresh_status = lambda *args, **kwargs: refresh_calls.append((args, kwargs))
 
     controller._stop_live_streaming()
@@ -506,9 +522,9 @@ def test_on_market_data_payload_updates_order_ticket_quote_and_max_quantities():
         "DummyWindow",
         (),
         {
-            "status_panel": type("DummyStatusPanel", (), {"stop_live_stream_button": _DummyButton()})(),
+            "status_panel": type("DummyStatusPanel", (), {"stop_engine_button": _DummyButton()})(),
             "logs_panel": _DummyLogsPanel(),
-            "chart_panel": type("DummyChartPanel", (), {"update": lambda self, payload: chart_calls.append(payload)})(),
+            "chart_panel": type("DummyChartPanel", (), {"update": lambda self, payload: chart_calls.append(payload), "set_volume": lambda self, v: None})(),
             "order_ticket_panel": order_ticket_panel,
             "orders_panel": type("DummyOrdersPanel", (), {"update": lambda self, payload: None})(),
             "portfolio_panel": type("DummyPortfolioPanel", (), {"update": lambda self, payload: None})(),
@@ -695,7 +711,6 @@ def test_sync_order_ticket_action_buttons_disables_place_when_funds_insufficient
         "DummyOrderTicketPanel",
         (),
         {
-            "preview_button": _ToggleButton(),
             "place_button": _ToggleButton(),
         },
     )()
@@ -707,5 +722,4 @@ def test_sync_order_ticket_action_buttons_disables_place_when_funds_insufficient
 
     controller._sync_order_ticket_action_buttons(connected=True, order_thread_running=True)
 
-    assert order_ticket_panel.preview_button.enabled is True
     assert order_ticket_panel.place_button.enabled is False

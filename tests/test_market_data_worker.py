@@ -1,6 +1,6 @@
 import pytest
 
-from services.market_data_worker import MarketDataWorker
+from services.data_feed import MarketDataWorker
 
 
 class FakeMarketClient:
@@ -52,7 +52,7 @@ def test_poll_once_connected_emits_full_payload(monkeypatch):
         snapshot_interval_ms=100,
     )
 
-    monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: 1.0)
+    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: 1.0)
     payload = worker.poll_once()
 
     assert payload["status"]["connection_state"] == "connected"
@@ -77,7 +77,7 @@ def test_poll_once_connected_uses_cached_snapshots_only(monkeypatch):
         snapshot_interval_ms=100,
     )
 
-    monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: 1.0)
+    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: 1.0)
     payload = worker.poll_once()
 
     assert payload["orders_payload"] == {"open_orders": ["open-order"], "fills": ["fill-1"]}
@@ -90,7 +90,7 @@ def test_poll_once_disconnected_skips_stream_and_snapshots(monkeypatch):
     client = FakeMarketClient(connection_state="disconnected", ticks=[{"bid": 1.1}])
     worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
 
-    monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: 1.0)
+    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: 1.0)
     payload = worker.poll_once()
 
     assert payload["status"]["connection_state"] == "disconnected"
@@ -120,7 +120,7 @@ def test_poll_once_emits_warning_after_three_no_tick_checks(monkeypatch):
     worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
 
     monotonic_values = iter([0.0, 2.1, 4.2, 6.3])
-    monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: next(monotonic_values))
 
     p0 = worker.poll_once()
     p1 = worker.poll_once()
@@ -146,7 +146,7 @@ def test_poll_once_emits_info_when_tick_stream_resumes(monkeypatch):
     worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
 
     monotonic_values = iter([0.0, 2.1, 4.2, 6.3, 6.4])
-    monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: next(monotonic_values))
 
     worker.poll_once()
     worker.poll_once()
@@ -169,7 +169,7 @@ def test_poll_once_skips_no_tick_startup_checks_after_first_tick(monkeypatch):
     worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
 
     monotonic_values = iter([0.0, 2.1, 4.2, 6.3, 8.4])
-    monkeypatch.setattr("services.market_data_worker.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: next(monotonic_values))
 
     p0 = worker.poll_once()  # first tick received -> startup checks disabled afterwards
     client.ticks = []
