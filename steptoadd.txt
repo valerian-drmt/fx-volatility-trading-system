@@ -1,0 +1,67 @@
+Voici l'ordre que je recommande, basé sur les dépendances et la valeur immédiate :
+
+  Phase 1 — Infrastructure thread + premier panel visible
+
+  Objectif : valider la plomberie Thread 1 <-> Thread 2 avec un résultat visible.
+
+  1a. vol_engine.py (Thread 2)
+      - threading.Thread + queue.Queue in/out
+      - Controller le démarre, envoie les données IB, poll les résultats via QTimer
+
+  1b. Intégrer vol_mid_step1.py dans le thread
+      - Le code existe déjà, il faut juste le découper en fonctions appelables
+      - Thread 1 collecte les données IB (reqSecDefOptParams, reqMktData tick 100)
+      - Thread 2 fait les calculs (BS inversion, delta pillars)
+
+  1c. Vol Scanner Panel (Panel 1)
+      - Table QTableWidget avec IV market vs sigma_mid
+      - Même sans Step 2, afficher juste l'IV market par strike/tenor est déjà utile
+
+  Pourquoi en premier : c'est le panel le plus impactant, step 1 est déjà écrit, et ça
+  valide toute la chaîne IB -> Thread 2 -> UI.
+
+  Phase 2 — Fair vol + signals
+
+  2a. Intégrer vol_fair_step2.py dans le thread
+      - Yang-Zhang RV (numpy, CPU-bound)
+      - GARCH calibration (arch library, CPU-bound)
+      - sigma_fair combination
+
+  2b. Enrichir le Scanner avec les colonnes sigma_fair, écart, signal
+      - CHEAP / EXPENSIVE / FAIR coloring
+
+  2c. Term Structure Panel (Panel 2)
+      - 3 courbes : IV market, sigma_fair, RV
+      - Zone rouge/verte entre IV et fair
+
+  Pourquoi en second : step 2 est déjà écrit aussi, et le scanner + term structure donnent
+  le signal de trading complet.
+
+  Phase 3 — Risk management
+
+  3a. Greeks Panel (Panel 4)
+      - reqPositions + reqMktData tick 100 pour les greeks
+      - Agrégation Delta/Vega/Gamma/Theta
+      - Delta hedge suggestion
+
+  3b. P&L Decomposition (Panel 5)
+      - Split delta/vega/theta sur les positions ouvertes
+
+  Pourquoi en troisième : c'est critique pour gérer le book, mais il faut d'abord des
+  positions ouvertes (donc l'exécution d'options doit fonctionner).
+
+  Phase 4 — Affinement
+
+  4a. Smile Chart (Panel 3) — market vs fair smile par tenor
+  4b. Option order ticket — adapter l'order ticket pour FOP (strike, expiry, right)
+  4c. RV vs IV Historique (Panel 6) — contexte long terme
+  4d. Vol P&L Post-Trade (Panel 7) — validation du modèle
+
+  Mon conseil concret
+
+  Commence par la Phase 1a+1b — c'est le socle. Une fois que tu as Thread 2 qui tourne et
+  qui reçoit/envoie des données, tout le reste est de l'ajout de calculs et de panels.
+
+  Le plus gros risque technique est la collecte des données options IB (reqSecDefOptParams
+  + tick 100 sur N strikes x N tenors = beaucoup d'appels API avec du throttling). Il faut
+  s'assurer que ça fonctionne proprement avant de coder les panels.
