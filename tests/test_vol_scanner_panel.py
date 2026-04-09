@@ -10,58 +10,39 @@ def test_vol_scanner_panel_renders_rows(qapp):
     panel.update({
         "spot": 1.085,
         "scanner_rows": [
-            {"tenor": "3M", "delta_label": "ATM", "strike": 1.085, "iv_market_pct": 8.50, "sigma_fair_pct": 7.81},
-            {"tenor": "3M", "delta_label": "25Dp", "strike": 1.060, "iv_market_pct": 8.22, "sigma_fair_pct": 8.45},
+            {"tenor": "3M", "delta_label": "ATM", "strike": 1.085, "iv_market_pct": 8.50},
+            {"tenor": "3M", "delta_label": "25Δp", "strike": 1.060, "iv_market_pct": 8.22},
         ],
         "error": None,
     })
 
     assert panel.table.rowCount() == 2
-    # Sorted by |ecart| desc: ATM ecart=+0.69 > 25Dp ecart=-0.23
-    assert panel.table.item(0, 0).text() == "3M"
+    # Sorted by tenor then delta: 25Δp first, ATM second
+    assert panel.table.item(0, 1).text() == "25Δp"
+    assert panel.table.item(1, 1).text() == "ATM"
+    assert panel.table.item(1, 3).text() == "8.50"
+
+
+@pytest.mark.unit
+def test_vol_scanner_panel_sorts_by_tenor_and_delta(qapp):
+    panel = VolScannerPanel()
+
+    panel.update({
+        "spot": 1.085,
+        "scanner_rows": [
+            {"tenor": "6M", "delta_label": "ATM", "strike": 1.085, "iv_market_pct": 9.00},
+            {"tenor": "1M", "delta_label": "10Δc", "strike": 1.10, "iv_market_pct": 8.40},
+            {"tenor": "1M", "delta_label": "ATM", "strike": 1.085, "iv_market_pct": 7.80},
+        ],
+        "error": None,
+    })
+
+    assert panel.table.rowCount() == 3
+    assert panel.table.item(0, 0).text() == "1M"
     assert panel.table.item(0, 1).text() == "ATM"
-    assert panel.table.item(0, 3).text() == "8.50"
-    assert panel.table.item(0, 4).text() == "7.81"
-    assert panel.table.item(0, 6).text() == "EXPENSIVE"
-
-
-@pytest.mark.unit
-def test_vol_scanner_panel_signal_coloring(qapp):
-    panel = VolScannerPanel()
-
-    panel.update({
-        "spot": 1.085,
-        "scanner_rows": [
-            {"tenor": "3M", "delta_label": "ATM", "strike": 1.085, "iv_market_pct": 8.50, "sigma_fair_pct": 7.81},
-            {"tenor": "3M", "delta_label": "25Dp", "strike": 1.060, "iv_market_pct": 8.22, "sigma_fair_pct": 8.60},
-            {"tenor": "6M", "delta_label": "ATM", "strike": 1.085, "iv_market_pct": 9.00, "sigma_fair_pct": 9.05},
-        ],
-        "error": None,
-    })
-
-    # Sorted by |ecart| desc
-    assert panel.table.item(0, 6).text() == "EXPENSIVE"  # +0.69
-    assert panel.table.item(1, 6).text() == "CHEAP"       # -0.38
-    assert panel.table.item(2, 6).text() == "FAIR"         # -0.05
-
-
-@pytest.mark.unit
-def test_vol_scanner_panel_without_fair_vol(qapp):
-    """When sigma_fair is not available, show IV but dash for fair/ecart/signal."""
-    panel = VolScannerPanel()
-
-    panel.update({
-        "spot": 1.085,
-        "scanner_rows": [
-            {"tenor": "3M", "delta_label": "ATM", "strike": 1.085, "iv_market_pct": 8.50},
-        ],
-        "error": None,
-    })
-
-    assert panel.table.rowCount() == 1
-    assert panel.table.item(0, 3).text() == "8.50"
-    assert panel.table.item(0, 4).text() == "—"
-    assert panel.table.item(0, 6).text() == "—"
+    assert panel.table.item(1, 0).text() == "1M"
+    assert panel.table.item(1, 1).text() == "10Δc"
+    assert panel.table.item(2, 0).text() == "6M"
 
 
 @pytest.mark.unit
@@ -90,7 +71,7 @@ def test_vol_scanner_panel_row_clicked_signal(qapp):
     panel.update({
         "spot": 1.085,
         "scanner_rows": [
-            {"tenor": "3M", "delta_label": "ATM", "strike": 1.085, "iv_market_pct": 8.50, "sigma_fair_pct": 7.81},
+            {"tenor": "3M", "delta_label": "ATM", "strike": 1.085, "iv_market_pct": 8.50},
         ],
         "error": None,
     })
