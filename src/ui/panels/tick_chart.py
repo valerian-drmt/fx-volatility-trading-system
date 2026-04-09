@@ -53,7 +53,7 @@ class ChartPanel(QWidget):
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(6)
 
-        chart_group = QGroupBox(f"EUR Future (6E) - {self._symbol}")
+        chart_group = QGroupBox("EUR/USD Spot")
         self._chart_group = chart_group
         chart_inner = QVBoxLayout(chart_group)
         chart_inner.setContentsMargins(8, 8, 8, 8)
@@ -187,7 +187,7 @@ class ChartPanel(QWidget):
         if normalized_symbol == self._symbol:
             return
         self._symbol = normalized_symbol
-        self._chart_group.setTitle(f"EUR Future (6E) - {self._symbol}")
+        self._chart_group.setTitle("EUR/USD Spot")
 
     # Close the current bucket: average ticks or repeat last known value.
     def _close_bucket(self) -> None:
