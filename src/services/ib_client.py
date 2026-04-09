@@ -484,7 +484,10 @@ class IBClient:
                         regulatory_snapshot,
                     )
                     self.ib.sleep(0.15)
+                    # Restore live type so FOP and other subscriptions are not affected
+                    self.ib.reqMarketDataType(1)
                 except Exception as fallback_exc:
+                    self.ib.reqMarketDataType(1)  # always restore
                     if gateway_errors:
                         compact_errors = ", ".join(f"{code}:{msg}" for _req_id, code, msg in gateway_errors[-3:])
                         self._set_last_error("request_market_data", f"{fallback_exc} | Gateway errors: {compact_errors}")

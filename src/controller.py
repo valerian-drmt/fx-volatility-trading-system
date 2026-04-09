@@ -1,6 +1,8 @@
 import json
 import math
+import queue
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -9,10 +11,10 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from ib_insync import Forex, IB
 
-from client_roles import default_client_roles
+from services.data_feed import MarketDataWorker, VolDataCollector
+from services.vol_engine import VolEngine
 from services.ib_client import IBClient
-from services.market_data_worker import MarketDataWorker
-from services.order_worker import OrderWorker
+from services.order_executor import OrderExecutor
 from ui.main_window import MainWindow
 
 
@@ -21,7 +23,7 @@ class Controller:
         "host": "127.0.0.1",
         "port": 4002,
         "client_id": 3,
-        "client_roles": default_client_roles(),
+        "client_roles": {"order_worker": 1, "market_data": 2, "dashboard": 3},
         "readonly": False,
         "market_symbol": "EURUSD",
     }
@@ -41,7 +43,7 @@ class Controller:
         self.host = status_settings["host"]
         self.port = status_settings["port"]
         self.client_id = status_settings["client_id"]
-        self.client_roles = dict(status_settings.get("client_roles", default_client_roles()))
+        self.client_roles = dict(status_settings.get("client_roles", {"order_worker": 1, "market_data": 2, "dashboard": 3}))
         self.readonly = status_settings["readonly"]
         self.market_symbol = status_settings["market_symbol"]
         self.tick_interval_ms = runtime_settings["tick_interval_ms"]
@@ -59,10 +61,22 @@ class Controller:
         )
 
         self.window: MainWindow | None = None
-        self._status_timer: QTimer | None = None
-        self._market_data_poll_timer: QTimer | None = None
+        self._ui_queue: queue.Queue = queue.Queue()
+        self._ui_poll_timer: QTimer | None = None
         self._market_data_worker: MarketDataWorker | None = None
-        self._order_worker: OrderWorker | None = None
+        self._market_data_thread: threading.Thread | None = None
+        self._market_data_stop: threading.Event = threading.Event()
+        self._order_worker: OrderExecutor | None = None
+        self._vol_engine: VolEngine | None = None
+        self._vol_input_queue: queue.Queue | None = None
+        self._vol_output_queue: queue.Queue | None = None
+        self._vol_data_collector: VolDataCollector | None = None
+        self._status_thread: threading.Thread | None = None
+        self._status_stop: threading.Event = threading.Event()
+        self._vol_poll_thread: threading.Thread | None = None
+        self._vol_poll_stop: threading.Event = threading.Event()
+        self._vol_collection_thread: threading.Thread | None = None
+        self._vol_collection_stop: threading.Event = threading.Event()
 
         self._last_status_sec = None
         self._last_server_sync_sec = None
@@ -98,6 +112,10 @@ class Controller:
                 self.ib.disconnect()
             except Exception:
                 pass
+        # Reset UI panels to default values
+        if self.window is not None:
+            self.window.portfolio_panel.reset()
+            self._refresh_status(force=True)
 
     # Connect the IB client and return (ok, error_message).
     def _connect_client(self) -> tuple[bool, str]:
@@ -135,8 +153,9 @@ class Controller:
     def _create_window(self) -> None:
         self.window = MainWindow.create_main_window(
             on_connect=self._start_connect,
-            on_start_live_streaming=self._start_live_streaming,
-            on_stop_live_streaming=self._stop_live_streaming,
+            on_disconnect=self._disconnect_client,
+            on_start_engine=self._start_live_streaming,
+            on_stop_engine=self._stop_live_streaming,
             on_save_settings=self._save_app_settings,
             status_defaults={
                 "host": self.host,
@@ -148,15 +167,27 @@ class Controller:
         self.window.resize(1500, 1000)
         self.window.show()
 
+    def _log(self, message: str) -> None:
+        """Send a message to the logs panel and print to console."""
+        print(message)
+        if self.window is not None:
+            self.window.logs_panel.update({"message": message})
+
     # Configure workers, signal wiring, and status timer.
     def _setup_services(self) -> None:
         if self.window is None:
             return
 
         self._setup_order_worker()
+        self._setup_vol_engine()
         self.window.order_ticket_panel.place_button.clicked.connect(self._queue_order_from_ticket)
-        self.window.order_ticket_panel.preview_button.clicked.connect(self._preview_order_from_ticket)
-        self.window.order_ticket_panel.limit_price_update_button.clicked.connect(self._update_limit_price_from_market)
+        self.window.order_ticket_panel.order_confirmed.connect(self._on_order_confirmed)
+        limit_update_btn = getattr(self.window.order_ticket_panel, "limit_price_update_button", None)
+        if limit_update_btn is not None:
+            try:
+                limit_update_btn.clicked.connect(self._update_limit_price_from_market)
+            except RuntimeError:
+                pass
         self.window.orders_panel.cancel_order_requested.connect(self._cancel_single_order)
         symbol_input = getattr(self.window.order_ticket_panel, "symbol_input", None)
         if symbol_input is not None and hasattr(symbol_input, "currentTextChanged"):
@@ -176,25 +207,66 @@ class Controller:
 
         self.window.chart_panel.market_symbol_input.currentTextChanged.connect(self._on_market_symbol_changed)
 
-        self._status_timer = QTimer(self.window)
-        self._status_timer.setInterval(1000)
-        self._status_timer.timeout.connect(self._refresh_status)
-        self._status_timer.start()
+        # Single QTimer polling the UI queue — only PyQt timer in the controller
+        self._ui_poll_timer = QTimer(self.window)
+        self._ui_poll_timer.setInterval(50)
+        self._ui_poll_timer.timeout.connect(self._drain_ui_queue)
+        self._ui_poll_timer.start()
 
+        self._start_status_thread()
         self._refresh_status(force=True)
+
+    # ── UI queue: single bridge from threads → main thread ──
+
+    def _post_ui(self, callback: Any) -> None:
+        """Post a callable to be executed on the main thread."""
+        self._ui_queue.put(callback)
+
+    def _drain_ui_queue(self) -> None:
+        """Drain all pending UI callbacks (called by the single QTimer)."""
+        while True:
+            try:
+                callback = self._ui_queue.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                callback()
+            except Exception as exc:
+                print(f"[ERROR][ui_queue] callback failed: {exc}")
+
+    # ── Status thread ──
+
+    def _start_status_thread(self) -> None:
+        if self._status_thread is not None and self._status_thread.is_alive():
+            return
+        self._status_stop.clear()
+        self._status_thread = threading.Thread(
+            target=self._status_loop, name="StatusThread", daemon=True,
+        )
+        self._status_thread.start()
+
+    def _stop_status_thread(self) -> None:
+        self._status_stop.set()
+        if self._status_thread is not None:
+            self._status_thread.join(timeout=2.0)
+            self._status_thread = None
+
+    def _status_loop(self) -> None:
+        while not self._status_stop.wait(timeout=1.0):
+            self._post_ui(lambda: self._refresh_status())
 
     # Create the order worker (plain class, no thread).
     def _setup_order_worker(self) -> None:
         if self._order_worker is not None:
             return
-        self._order_worker = OrderWorker(ib_client=self.ib_client)
+        self._order_worker = OrderExecutor(ib_client=self.ib_client)
         self._order_worker.start()
 
     # Return True when the market worker is active.
     def _is_market_worker_running(self) -> bool:
         return self._market_data_worker is not None
 
-    # Start market data polling via QTimer on the main thread.
+    # Start market data polling in a background thread.
     def _start_market_data_worker(self) -> None:
         if self._market_data_worker is not None:
             return
@@ -203,26 +275,30 @@ class Controller:
             interval_ms=self.tick_interval_ms,
             snapshot_interval_ms=self.snapshot_interval_ms,
         )
-        self._market_data_poll_timer = QTimer(self.window)
-        self._market_data_poll_timer.setInterval(self.tick_interval_ms)
-        self._market_data_poll_timer.timeout.connect(self._poll_market_data)
-        self._market_data_poll_timer.start()
+        self._market_data_stop.clear()
+        self._market_data_thread = threading.Thread(
+            target=self._market_data_loop, name="MarketDataPoll", daemon=True,
+        )
+        self._market_data_thread.start()
 
-    # Poll market data worker and route payload to UI.
-    def _poll_market_data(self) -> None:
-        if self._market_data_worker is None:
-            return
-        try:
-            payload = self._market_data_worker.poll_once()
-            self._on_market_data_payload(payload)
-        except Exception as exc:
-            self._on_market_data_failed(str(exc))
+    def _market_data_loop(self) -> None:
+        interval_s = self.tick_interval_ms / 1000.0
+        while not self._market_data_stop.wait(timeout=interval_s):
+            if self._market_data_worker is None:
+                break
+            try:
+                payload = self._market_data_worker.poll_once()
+                self._post_ui(lambda p=payload: self._on_market_data_payload(p))
+            except Exception as exc:
+                msg = str(exc)
+                self._post_ui(lambda m=msg: self._on_market_data_failed(m))
 
     # Stop market data polling and clear worker.
     def _stop_market_data_worker(self) -> None:
-        if self._market_data_poll_timer is not None:
-            self._market_data_poll_timer.stop()
-            self._market_data_poll_timer = None
+        self._market_data_stop.set()
+        if self._market_data_thread is not None:
+            self._market_data_thread.join(timeout=2.0)
+            self._market_data_thread = None
         self._market_data_worker = None
 
     # Stop order worker.
@@ -230,6 +306,135 @@ class Controller:
         if self._order_worker is not None:
             self._order_worker.stop()
         self._order_worker = None
+
+    # ── Vol Engine lifecycle ──
+
+    def _setup_vol_engine(self) -> None:
+        self._vol_input_queue = queue.Queue()
+        self._vol_output_queue = queue.Queue()
+        self._vol_engine = VolEngine(self._vol_input_queue, self._vol_output_queue)
+
+    def _start_vol_engine(self) -> None:
+        self._log("[VOL] Starting Thread 2 (VolEngine)...")
+        if self._vol_engine is None:
+            self._setup_vol_engine()
+        if self._vol_engine is not None and not self._vol_engine.is_alive():
+            self._vol_engine.start()
+            self._log(f"[VOL] Thread 2 started: alive={self._vol_engine.is_alive()}")
+
+        spot = self._get_mid_spot()
+        self._log(f"[VOL] Mid spot: {spot}")
+        if spot and spot > 0:
+            self._vol_data_collector = VolDataCollector(self.ib_client)
+            ok = self._vol_data_collector.discover_chains(spot)
+            if ok:
+                chains = self._vol_data_collector._chain_cache
+                for exp, strikes in chains.items():
+                    self._log(f"[VOL] Chain {exp}: {len(strikes)} strikes {strikes}")
+                self._vol_data_collector.subscribe_all()
+                n_tickers = len(self._vol_data_collector._fop_tickers)
+                self._log(f"[VOL] Subscribed: {n_tickers} FOP tickers")
+            else:
+                self._log("[VOL] WARNING: no chains discovered — check expiry dates or FOP data subscription")
+        else:
+            self._log("[VOL] WARNING: no spot price available — start live streaming first")
+
+        self._vol_poll_stop.clear()
+        self._vol_poll_thread = threading.Thread(
+            target=self._vol_poll_loop, name="VolPoll", daemon=True,
+        )
+        self._vol_poll_thread.start()
+
+        self._vol_collection_stop.clear()
+        self._vol_collection_thread = threading.Thread(
+            target=self._vol_collection_loop, name="VolCollection", daemon=True,
+        )
+        self._vol_collection_thread.start()
+        self._log("[VOL] Threads started: poll=500ms, collect=30s, first snapshot in 3s")
+        self._refresh_status(force=True)
+
+    def _stop_vol_engine(self) -> None:
+        self._vol_collection_stop.set()
+        if self._vol_collection_thread is not None:
+            self._vol_collection_thread.join(timeout=2.0)
+            self._vol_collection_thread = None
+        self._vol_poll_stop.set()
+        if self._vol_poll_thread is not None:
+            self._vol_poll_thread.join(timeout=2.0)
+            self._vol_poll_thread = None
+        if self._vol_data_collector is not None:
+            self._vol_data_collector.unsubscribe_all()
+            self._vol_data_collector = None
+        if self._vol_engine is not None:
+            self._vol_engine.stop()
+            if self._vol_engine.is_alive():
+                self._vol_engine.join(timeout=2.0)
+            self._vol_engine = None
+        self._log("[VOL] Vol engine stopped")
+        self._refresh_status(force=True)
+
+    def _vol_poll_loop(self) -> None:
+        while not self._vol_poll_stop.wait(timeout=0.5):
+            self._post_ui(self._poll_vol_engine)
+
+    def _vol_collection_loop(self) -> None:
+        # First snapshot after 3s
+        if self._vol_collection_stop.wait(timeout=3.0):
+            return
+        self._post_ui(self._collect_and_send_chain_data)
+        while not self._vol_collection_stop.wait(timeout=30.0):
+            self._post_ui(self._collect_and_send_chain_data)
+
+    def _poll_vol_engine(self) -> None:
+        if self._vol_output_queue is None or self.window is None:
+            return
+        try:
+            result = self._vol_output_queue.get_nowait()
+        except queue.Empty:
+            return
+        error = result.get("error")
+        if error:
+            self._log(f"[VOL] engine error: {error}")
+        else:
+            rows = result.get("scanner_rows", [])
+            self._log(f"[VOL] engine result: {len(rows)} pillars")
+            for r in rows:
+                self._log(f"  {r['tenor']} | {r['delta_label']} | "
+                          f"K={r['strike']:.5f} | IV={r['iv_market_pct']:.2f}%")
+        self.window.vol_scanner_panel.update(result)
+
+    def _collect_and_send_chain_data(self) -> None:
+        if self._vol_data_collector is None or self._vol_input_queue is None:
+            self._log("[VOL] collect skipped: no collector or queue")
+            return
+        if not self.ib_client.is_connected():
+            self._log("[VOL] collect skipped: not connected")
+            return
+        spot = self._get_mid_spot()
+        if not spot or spot <= 0:
+            self._log("[VOL] collect skipped: no valid spot price")
+            return
+        snapshot = self._vol_data_collector.collect_snapshot(spot)
+        if snapshot is not None:
+            chains = snapshot.get("chains", {})
+            total_rows = sum(len(c.get("rows", [])) for c in chains.values())
+            rows_with_iv = sum(
+                1 for c in chains.values()
+                for r in c.get("rows", [])
+                if r.get("iv_raw") is not None
+            )
+            self._log(f"[VOL] snapshot sent: spot={spot:.5f}, "
+                      f"{len(chains)} expiries, {rows_with_iv}/{total_rows} with IV")
+            self._vol_input_queue.put(snapshot)
+        else:
+            self._log("[VOL] snapshot returned None (no IV data yet)")
+
+    def _get_mid_spot(self) -> float | None:
+        bid = self._latest_bid
+        ask = self._latest_ask
+        if bid and ask and bid > 0 and ask > 0:
+            return (bid + ask) / 2.0
+        return bid or ask
 
     # Route market payload slices to their corresponding UI panels.
     def _on_market_data_payload(self, payload: Any) -> None:
@@ -251,7 +456,7 @@ class Controller:
             self.window.logs_panel.update({"messages": [str(item) for item in messages]})
             if self._should_auto_stop_live_stream(messages):
                 status_panel = getattr(self.window, "status_panel", None)
-                stop_button = getattr(status_panel, "stop_live_stream_button", None)
+                stop_button = getattr(status_panel, "stop_engine_button", None)
                 if stop_button is not None and hasattr(stop_button, "click"):
                     stop_button.click()
                 else:
@@ -645,6 +850,44 @@ class Controller:
         self.window.logs_panel.update({"message": f"[WARN][market_data] worker error: {message}"})
 
     # Validate and enqueue a new order request from the ticket panel.
+    def _on_order_confirmed(self, order: dict) -> None:
+        """Handle order confirmed — runs IB calls in a background thread."""
+        if self._order_worker is None or not self._order_worker._running:
+            self._log("Order executor is not running.", level="error")
+            return
+        if not self.ib_client.is_connected():
+            self._log("Not connected to IBKR.", level="error")
+            return
+
+        self.window.order_ticket_panel.set_feedback("Sending order...", level="info")
+
+        def _run() -> None:
+            try:
+                instrument = order.get("instrument", "")
+                if instrument == "Future":
+                    result = self._order_worker.place_future_order(order)
+                else:
+                    result = self._order_worker.place_order(order)
+                self._post_ui(lambda r=result: self._on_order_result_from_thread(r))
+            except Exception as err:
+                err_msg = str(err)
+                self._post_ui(lambda: self._on_order_result_from_thread(
+                    {"ok": False, "kind": "order", "message": err_msg}
+                ))
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
+    def _on_order_result_from_thread(self, result: dict) -> None:
+        """Handle order result posted back from background thread."""
+        if self.window is None:
+            return
+        ok = result.get("ok", False)
+        msg = result.get("message", "")
+        level = "success" if ok else "error"
+        self.window.order_ticket_panel.set_feedback(msg, level=level)
+        self._log(f"[{'OK' if ok else 'FAIL'}][order] {msg}")
+
     def _queue_order_from_ticket(self) -> None:
         if self.window is None or self._order_worker is None:
             return
@@ -795,13 +1038,10 @@ class Controller:
         if order_ticket_panel is None:
             return
         connecting = bool(getattr(self, "_connecting", False))
-        can_preview = bool(connected and not connecting and order_thread_running)
+        can_act = bool(connected and not connecting and order_thread_running)
         funds_ok = getattr(self, "_ticket_funds_ok", None)
-        can_place = can_preview and funds_ok is not False
-        preview_button = getattr(order_ticket_panel, "preview_button", None)
+        can_place = can_act and funds_ok is not False
         place_button = getattr(order_ticket_panel, "place_button", None)
-        if preview_button is not None and hasattr(preview_button, "setEnabled"):
-            preview_button.setEnabled(can_preview)
         if place_button is not None and hasattr(place_button, "setEnabled"):
             place_button.setEnabled(can_place)
 
@@ -920,6 +1160,7 @@ class Controller:
         if hasattr(self.window.order_ticket_panel, "set_limit_price_update_available"):
             self.window.order_ticket_panel.set_limit_price_update_available(connected and not self._connecting)
 
+
         if connected and (self._last_server_sync_sec is None or now_sec - self._last_server_sync_sec >= 10):
             self._start_server_time_sync()
 
@@ -1012,7 +1253,6 @@ class Controller:
             return
 
         self._start_market_data_worker()
-        print(f"[DEBUG][streaming] worker running: {self._is_market_worker_running()}")
         self._refresh_status(force=True)
         if self.window is not None:
             self.window.logs_panel.update(
@@ -1021,6 +1261,7 @@ class Controller:
 
     # Stop live stream subscription and market polling worker.
     def _stop_live_streaming(self) -> None:
+        self._stop_vol_engine()
         self._stop_market_data_worker()
         self.ib_client.stop_live_streaming()
         if self.window is not None:
@@ -1035,7 +1276,7 @@ class Controller:
     # Read status settings from UI controls (or current state fallback).
     def _read_status_settings_from_panel(self) -> dict[str, Any]:
         if self.window is None:
-            roles = dict(getattr(self, "client_roles", default_client_roles()))
+            roles = dict(getattr(self, "client_roles", {"order_worker": 1, "market_data": 2, "dashboard": 3}))
             return {
                 "host": self.host,
                 "port": self.port,
@@ -1046,7 +1287,7 @@ class Controller:
             }
 
         panel = self.window.status_panel
-        roles = dict(getattr(self, "client_roles", default_client_roles()))
+        roles = dict(getattr(self, "client_roles", {"order_worker": 1, "market_data": 2, "dashboard": 3}))
         roles["dashboard"] = int(panel.client_id_input.value())
         return {
             "host": panel.host_input.text().strip(),
@@ -1062,7 +1303,7 @@ class Controller:
         self.host = str(settings["host"])
         self.port = int(settings["port"])
         self.client_id = int(settings["client_id"])
-        self.client_roles = dict(settings.get("client_roles", default_client_roles()))
+        self.client_roles = dict(settings.get("client_roles", {"order_worker": 1, "market_data": 2, "dashboard": 3}))
         self.readonly = False
         self.market_symbol = str(settings["market_symbol"]).upper()
 
@@ -1157,7 +1398,7 @@ class Controller:
             raise ValueError("Settings 'market_symbol' cannot be empty")
 
         raw_roles = raw.get("client_roles")
-        default_roles = default_client_roles()
+        default_roles = {"order_worker": 1, "market_data": 2, "dashboard": 3}
         if isinstance(raw_roles, dict):
             roles = {
                 "order_worker": int(raw_roles.get("order_worker", default_roles["order_worker"])),
@@ -1196,7 +1437,7 @@ class Controller:
     # Return default app settings payload.
     def _default_app_settings() -> dict[str, dict[str, Any]]:
         status_defaults = dict(Controller.DEFAULT_STATUS_SETTINGS)
-        status_defaults["client_roles"] = dict(default_client_roles())
+        status_defaults["client_roles"] = dict({"order_worker": 1, "market_data": 2, "dashboard": 3})
         return {
             "status": status_defaults,
             "runtime": dict(Controller.DEFAULT_RUNTIME_SETTINGS),
@@ -1232,20 +1473,21 @@ class Controller:
 
     # Stop workers, subscriptions, and IB connection on exit.
     def _shutdown_services(self) -> None:
-        if self._status_timer is not None:
-            self._status_timer.stop()
         self._connecting = False
-
+        self._stop_status_thread()
+        self._stop_vol_engine()
         self._stop_market_data_worker()
         self._stop_order_worker()
-
+        if self._ui_poll_timer is not None:
+            self._ui_poll_timer.stop()
+            self._ui_poll_timer = None
         self._disconnect_client()
 
     # Start the asyncio + Qt integrated event loop.
     def run(self) -> int:
         self._create_window()
         self._setup_services()
-        self.app.lastWindowClosed.connect(self._on_app_quit)
+        self.window.window_closed.connect(self._on_app_quit)
         try:
             self.ib.run()
         except (SystemExit, KeyboardInterrupt):
