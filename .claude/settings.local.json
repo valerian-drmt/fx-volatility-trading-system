@@ -111,7 +111,19 @@
       "Bash(python -m pytest tests/test_order_ticket_panel.py -x -q)",
       "Bash(python -m ruff check src/controller.py src/ui/panels/order_ticket.py)",
       "Bash(python -m pytest tests/test_controller_settings.py tests/test_order_ticket_panel.py -x -q)",
-      "Bash(python -m pytest tests/ -x -q --ignore=tests/test_chart_panel.py --ignore=tests/test_ib_client.py)"
+      "Bash(python -m pytest tests/ -x -q --ignore=tests/test_chart_panel.py --ignore=tests/test_ib_client.py)",
+      "Bash(python -m ruff check src/controller.py src/ui/panels/order_ticket.py src/services/order_executor.py)",
+      "Bash(python -m ruff check src/ui/panels/order_ticket.py src/services/order_executor.py)",
+      "Bash(python -m ruff check src/ui/panels/order_ticket.py src/ui/panels/tick_chart.py src/services/order_executor.py)",
+      "Bash(python -m ruff check src/services/ib_client.py)",
+      "Bash(python -m ruff check src/services/order_executor.py src/controller.py src/ui/panels/order_ticket.py)",
+      "Bash(python -m ruff check src/ui/panels/order_ticket.py src/services/order_executor.py src/controller.py)",
+      "Bash(python -m ruff check src/services/order_executor.py src/ui/panels/order_ticket.py)",
+      "Bash(python -m ruff check src/ui/panels/vol_scanner.py src/ui/main_window.py)",
+      "Bash(python -m ruff check src/services/data_feed.py src/controller.py)",
+      "Bash(python -m ruff check src/services/data_feed.py)",
+      "Bash(python -m ruff check src/services/vol_engine.py)",
+      "Bash(python -m pytest tests/test_vol_engine.py tests/test_vol_engine_math.py -x -q)"
     ]
   }
 }
