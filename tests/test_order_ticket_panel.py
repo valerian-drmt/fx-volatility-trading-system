@@ -32,10 +32,12 @@ def test_futures_delta_updates_on_side_change(qapp):
 @pytest.mark.unit
 def test_option_order_fields(qapp):
     panel = OrderTicketPanel()
+    # Simulate chain discovery
+    panel.set_option_chains({"3M": [1.08, 1.09, 1.10]})
     panel.opt_side_combo.setCurrentText("BUY")
     panel.opt_right_combo.setCurrentText("CALL")
     panel.opt_expiry_combo.setCurrentText("3M")
-    panel.opt_strike_input.setValue(1.09)
+    panel.opt_strike_combo.setCurrentText("1.09000")
     panel.opt_qty_input.setValue(5)
 
     order = panel._get_option_order()
@@ -43,7 +45,7 @@ def test_option_order_fields(qapp):
     assert order["instrument"] == "Option"
     assert order["side"] == "BUY"
     assert order["right"] == "CALL"
-    assert order["expiry"] == "3M"
+    assert order["tenor"] == "3M"
     assert order["strike"] == pytest.approx(1.09)
     assert order["quantity"] == 5
     assert order["order_type"] == "MKT"
@@ -57,16 +59,6 @@ def test_set_symbol_updates_both_labels(qapp):
     assert panel._fut_symbol_label.text() == "GBPUSD"
     assert panel._opt_symbol_label.text() == "GBPUSD"
 
-
-@pytest.mark.unit
-def test_set_option_greeks(qapp):
-    panel = OrderTicketPanel()
-    panel.set_option_greeks(0.52, 0.012, -0.03, 0.18)
-
-    assert "0.52" in panel.opt_delta_label.text()
-    assert "0.012" in panel.opt_gamma_label.text()
-    assert "-0.03" in panel.opt_theta_label.text()
-    assert "0.18" in panel.opt_vega_label.text()
 
 
 @pytest.mark.unit

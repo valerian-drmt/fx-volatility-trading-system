@@ -42,11 +42,12 @@ def test_filter_liquid_keeps_valid_rows():
         {"iv_raw": 0.08, "bid": 0.0038, "ask": 0.004, "volume": 10},  # 5% spread, ok
         {"iv_raw": np.nan, "bid": 0.0038, "ask": 0.004, "volume": 10},  # no IV
         {"iv_raw": 0.08, "bid": 0.001, "ask": 0.010, "volume": 10},  # wide spread
-        {"iv_raw": 0.08, "bid": 0.0038, "ask": 0.004, "volume": 2},   # low volume
+        {"iv_raw": 0.08, "bid": 0.0038, "ask": 0.004, "volume": 0},   # no volume but ok (MIN_VOLUME=0)
     ])
     result = filter_liquid(df)
-    assert result["liquid"].sum() == 1
+    assert result["liquid"].sum() == 2  # rows 0 and 3 pass
     assert result.iloc[0]["liquid"]
+    assert result.iloc[3]["liquid"]
 
 
 @pytest.mark.unit

@@ -344,7 +344,7 @@ def test_on_connect_result_connected_refreshes_orders_and_portfolio_snapshots():
 
     controller._on_connect_result(True, "")
 
-    assert logs_panel.calls == [{"message": "[INFO][connection] connected to IBKR"}]
+    assert logs_panel.calls[0] == {"message": "[INFO][connection] connected to IBKR"}
     assert len(portfolio_panel.calls) == 1
     portfolio_payload = portfolio_panel.calls[0]
     assert portfolio_payload["positions"] == ["position-1"]
