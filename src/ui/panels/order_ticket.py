@@ -18,51 +18,86 @@ from typing import Any
 
 
 class OrderConfirmDialog(QDialog):
-    """Modal dialog summarizing the order before submission."""
+    """Modal dialog showing IB preview data before order submission."""
 
-    def __init__(self, order: dict[str, Any], parent: QWidget | None = None) -> None:
+    # Per-field formatting: (key, label, format)
+    # format: "str"=as-is, "qty"=int, "price5"=5 dec, "price6"=6 dec,
+    #          "usd"=comma+2dec, "margin"=comma+2dec+IB max filter
+    _FIELDS = [
+        ("contract", "Contract:", "str"),
+        ("side", "Side:", "str"),
+        ("quantity", "Quantity:", "qty"),
+        ("right", "Right:", "str"),
+        ("strike", "Strike:", "price5"),
+        ("expiry", "Expiry:", "str"),
+        ("bid", "Bid:", "price6"),
+        ("ask", "Ask:", "price6"),
+        ("mid", "Mid:", "price6"),
+        ("iv", "IV:", "str"),
+        ("notional", "Notional (USD):", "usd"),
+        ("delta_usd", "Delta (USD):", "usd"),
+        ("gamma_usd", "Gamma (USD/pip):", "usd"),
+        ("vega_usd", "Vega (USD/1%):", "usd"),
+        ("theta_usd", "Theta (USD/day):", "usd"),
+        ("init_margin", "Init Margin:", "margin"),
+        ("maint_margin", "Maint Margin:", "margin"),
+        ("commission", "Commission:", "margin"),
+        ("equity_change", "Equity Change:", "margin"),
+    ]
+
+    @staticmethod
+    def _fmt(value: Any, fmt: str) -> str:
+        if value is None or value == "--":
+            return "--"
+        if fmt == "str":
+            return str(value)
+        try:
+            f = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+        if f > 1e+300 or f < -1e+300:
+            return "--"
+        if fmt == "qty":
+            return f"{int(f):,}"
+        if fmt == "price5":
+            return f"{f:.5f}"
+        if fmt == "price6":
+            return f"{f:.6f}"
+        if fmt == "usd":
+            return f"{f:+,.2f}"
+        # margin
+        return f"{f:,.2f}"
+
+    # Fields summed in Net Position section
+    _NET_KEYS = ("notional", "delta_usd", "gamma_usd", "vega_usd", "theta_usd",
+                 "init_margin", "maint_margin", "commission", "equity_change")
+
+    def __init__(self, preview: dict[str, Any], parent: QWidget | None = None,
+                 hedge_preview: dict[str, Any] | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Order Confirmation")
-        self.setMinimumWidth(320)
+        self.setMinimumWidth(380)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
-        title = QLabel("Confirm Order")
-        title.setStyleSheet("font-size: 14px; font-weight: bold;")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        # ── Option / Future order section ──
+        section_title = "Option Order" if hedge_preview else "Order Preview"
+        self._add_section(layout, section_title, preview)
 
-        form = QFormLayout()
-        form.setHorizontalSpacing(12)
-        form.setVerticalSpacing(6)
+        # ── Delta Hedge section ──
+        if hedge_preview:
+            self._add_section(layout, "Delta Hedge (Future)", hedge_preview)
+            self._add_net_section(layout, preview, hedge_preview)
 
-        for key, label in [
-            ("instrument", "Instrument:"),
-            ("symbol", "Symbol:"),
-            ("side", "Side:"),
-            ("order_type", "Type:"),
-            ("quantity", "Quantity:"),
-            ("limit_price", "Limit Price:"),
-            ("strike", "Strike:"),
-            ("expiry", "Expiry:"),
-            ("right", "Right:"),
-        ]:
-            value = order.get(key)
-            if value is None:
-                continue
-            val_label = QLabel(str(value))
-            val_label.setStyleSheet("font-weight: bold;")
-            form.addRow(label, val_label)
-
-        layout.addLayout(form)
-
+        # ── Buttons ──
         buttons = QHBoxLayout()
         buttons.setSpacing(12)
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.clicked.connect(self.reject)
-        self.confirm_btn = QPushButton("Send Order")
+        btn_text = "Send Orders" if hedge_preview else "Send Order"
+        self.confirm_btn = QPushButton(btn_text)
         self.confirm_btn.setStyleSheet(
             "background-color: #2ecc71; color: white; font-weight: bold; padding: 6px 16px;"
         )
@@ -72,9 +107,63 @@ class OrderConfirmDialog(QDialog):
         buttons.addWidget(self.confirm_btn)
         layout.addLayout(buttons)
 
+    def _add_section(self, parent_layout: QVBoxLayout,
+                     title: str, data: dict[str, Any]) -> None:
+        section_label = QLabel(title)
+        section_label.setStyleSheet("font-size: 12px; font-weight: bold; margin-top: 6px;")
+        parent_layout.addWidget(section_label)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(4)
+        for key, label, fmt in self._FIELDS:
+            value = data.get(key)
+            if value is None:
+                continue
+            display = self._fmt(value, fmt)
+            val_label = QLabel(display)
+            val_label.setStyleSheet("font-weight: bold;")
+            form.addRow(label, val_label)
+        parent_layout.addLayout(form)
+
+    def _add_net_section(self, parent_layout: QVBoxLayout,
+                         opt: dict[str, Any], hedge: dict[str, Any]) -> None:
+        section_label = QLabel("Net Position")
+        section_label.setStyleSheet("font-size: 12px; font-weight: bold; margin-top: 6px;")
+        parent_layout.addWidget(section_label)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(12)
+        form.setVerticalSpacing(4)
+
+        for key, label, fmt in self._FIELDS:
+            if key not in self._NET_KEYS:
+                continue
+            v1 = opt.get(key)
+            v2 = hedge.get(key)
+            try:
+                f1 = float(v1) if v1 is not None and v1 != "--" else None
+                f2 = float(v2) if v2 is not None and v2 != "--" else None
+            except (TypeError, ValueError):
+                continue
+            if f1 is not None and f1 > 1e+300:
+                f1 = None
+            if f2 is not None and f2 > 1e+300:
+                f2 = None
+            if f1 is None and f2 is None:
+                continue
+            total = (f1 or 0) + (f2 or 0)
+            display = self._fmt(total, fmt)
+            val_label = QLabel(display)
+            val_label.setStyleSheet("font-weight: bold;")
+            form.addRow(f"Net {label}", val_label)
+
+        parent_layout.addLayout(form)
+
 
 class OrderTicketPanel(QWidget):
     order_confirmed = pyqtSignal(dict)
+    order_preview_requested = pyqtSignal(dict)
 
     FX_PAIRS = (
         "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD",
@@ -92,6 +181,7 @@ class OrderTicketPanel(QWidget):
         self._current_bid: float | None = None
         self._current_ask: float | None = None
         self._last_price_update: float = 0.0
+        self._preview_dialog: QDialog | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -130,8 +220,9 @@ class OrderTicketPanel(QWidget):
         self.side_combo = QComboBox()
         self.side_combo.addItems(["BUY", "SELL"])
         self._fut_type_label = QLabel("MKT")
+        self._fut_contract_label = QLabel("6E — 125,000 EUR")
         self.qty_input = QSpinBox()
-        self.qty_input.setRange(0, 100_000_000)
+        self.qty_input.setRange(0, 100_000)
         self.qty_input.setValue(0)
 
         self.fut_notional_label = QLabel("--")
@@ -140,12 +231,13 @@ class OrderTicketPanel(QWidget):
         fut_form.addRow("Symbol:", self._fut_symbol_label)
         fut_form.addRow("Side:", self.side_combo)
         fut_form.addRow("Type:", self._fut_type_label)
-        fut_form.addRow("Contracts:", self.qty_input)
-        fut_form.addRow("Notional:", self.fut_notional_label)
-        fut_form.addRow("Delta:", self.fut_delta_label)
+        fut_form.addRow("Contract:", self._fut_contract_label)
+        fut_form.addRow("Quantity:", self.qty_input)
+        fut_form.addRow("Notional (USD):", self.fut_notional_label)
+        fut_form.addRow("Delta (USD):", self.fut_delta_label)
         fut_inner.addLayout(fut_form)
 
-        self.fut_book_button = QPushButton("Book")
+        self.fut_book_button = QPushButton("Book (Preview)")
         self.fut_book_button.setEnabled(True)
         self.fut_book_button.setStyleSheet("QPushButton { font-weight: bold; padding: 4px; }")
         self.fut_book_button.clicked.connect(self._on_fut_book_clicked)
@@ -158,18 +250,12 @@ class OrderTicketPanel(QWidget):
         opt_inner.setContentsMargins(8, 8, 8, 8)
         opt_inner.setSpacing(6)
 
-        self.opt_bid_offer_label = QLabel("Bid / Offer : -- / --")
-        self.opt_bid_offer_label.setTextFormat(Qt.RichText)
-        self.opt_bid_offer_label.setAlignment(Qt.AlignCenter)
-        self.opt_bid_offer_label.setStyleSheet("font-size: 12px; font-weight: bold;")
-        opt_inner.addWidget(self.opt_bid_offer_label)
-
         opt_form = QFormLayout()
         opt_form.setContentsMargins(0, 0, 0, 0)
         opt_form.setHorizontalSpacing(8)
         opt_form.setVerticalSpacing(4)
 
-        self._opt_symbol_label = QLabel("EURUSD")
+        self._opt_symbol_label = QLabel("EUR FOP (CME)")
         self.opt_side_combo = QComboBox()
         self.opt_side_combo.addItems(["BUY", "SELL"])
         self.opt_right_combo = QComboBox()
@@ -177,39 +263,31 @@ class OrderTicketPanel(QWidget):
         self.opt_expiry_combo = QComboBox()
         self.opt_expiry_combo.addItems(self.EXPIRIES)
         self.opt_expiry_combo.setCurrentText("3M")
-        self.opt_strike_input = QDoubleSpinBox()
-        self.opt_strike_input.setDecimals(5)
-        self.opt_strike_input.setRange(0.0, 1_000_000.0)
-        self.opt_strike_input.setValue(1.09250)
-        self.opt_strike_input.setSingleStep(0.00050)
+        self.opt_strike_combo = QComboBox()
+        self.opt_strike_combo.setEditable(False)
         self._opt_type_label = QLabel("MKT")
         self.opt_qty_input = QSpinBox()
         self.opt_qty_input.setRange(0, 100_000)
         self.opt_qty_input.setValue(0)
 
-        self.opt_delta_label = QLabel("--")
-        self.opt_gamma_label = QLabel("--")
-        self.opt_theta_label = QLabel("--")
-        self.opt_vega_label = QLabel("--")
         self.opt_delta_hedge_checkbox = QCheckBox("Delta hedge")
         self.opt_delta_hedge_checkbox.setChecked(False)
+
+        self._opt_strikes_by_tenor: dict[str, list[float]] = {}
+        self._opt_atm_needed = True
 
         opt_form.addRow("Symbol:", self._opt_symbol_label)
         opt_form.addRow("Side:", self.opt_side_combo)
         opt_form.addRow("Right:", self.opt_right_combo)
         opt_form.addRow("Expiry:", self.opt_expiry_combo)
-        opt_form.addRow("Strike:", self.opt_strike_input)
+        opt_form.addRow("Strike:", self.opt_strike_combo)
         opt_form.addRow("Type:", self._opt_type_label)
-        opt_form.addRow("Contracts:", self.opt_qty_input)
-        opt_form.addRow("Delta:", self.opt_delta_label)
-        opt_form.addRow("Gamma:", self.opt_gamma_label)
-        opt_form.addRow("Theta:", self.opt_theta_label)
-        opt_form.addRow("Vega:", self.opt_vega_label)
+        opt_form.addRow("Quantity:", self.opt_qty_input)
         opt_form.addRow("", self.opt_delta_hedge_checkbox)
         opt_inner.addLayout(opt_form)
 
-        self.opt_book_button = QPushButton("Book")
-        self.opt_book_button.setEnabled(False)
+        self.opt_book_button = QPushButton("Book (Preview)")
+        self.opt_book_button.setEnabled(True)
         self.opt_book_button.setStyleSheet("QPushButton { font-weight: bold; padding: 4px; }")
         self.opt_book_button.clicked.connect(self._on_opt_book_clicked)
         opt_inner.addWidget(self.opt_book_button)
@@ -262,6 +340,11 @@ class OrderTicketPanel(QWidget):
         # Wire futures delta preview to side/qty changes
         self.side_combo.currentTextChanged.connect(lambda _: self._update_fut_delta())
         self.qty_input.valueChanged.connect(lambda _: (self._update_fut_notional(), self._update_fut_delta()))
+        # Wire option tenor change → update strikes
+        self.opt_expiry_combo.currentTextChanged.connect(lambda _: self._update_strikes_for_tenor())
+
+    FUT_MULTIPLIER = 125_000
+    FUT_IB_SYMBOL = "EUR"
 
     def _get_mid_price(self) -> float | None:
         if self._current_bid is not None and self._current_ask is not None:
@@ -271,31 +354,24 @@ class OrderTicketPanel(QWidget):
     def _update_fut_notional(self) -> None:
         mid = self._get_mid_price()
         qty = self.qty_input.value()
+        multiplier = self.FUT_MULTIPLIER
         if mid is not None and mid > 0 and qty > 0:
-            notional = mid * qty
-            self.fut_notional_label.setText(f"{notional:,.5f}")
+            notional = mid * qty * multiplier
+            self.fut_notional_label.setText(f"{notional:,.2f}")
         else:
             self.fut_notional_label.setText("--")
 
     def _update_fut_delta(self) -> None:
+        mid = self._get_mid_price()
         qty = self.qty_input.value()
+        multiplier = self.FUT_MULTIPLIER
         side = self.side_combo.currentText().strip().upper()
         sign = 1 if side == "BUY" else -1
-        price = self._current_bid if self._current_bid is not None else self._current_ask
-        if price is not None and price > 0 and qty > 0:
-            delta = sign * price * qty
-            self.fut_delta_label.setText(f"{delta:+,.5f}")
+        if mid is not None and mid > 0 and qty > 0:
+            delta = sign * mid * qty * multiplier
+            self.fut_delta_label.setText(f"{delta:+,.2f}")
         else:
             self.fut_delta_label.setText("--")
-
-    def set_option_greeks(
-        self, delta: float | None, gamma: float | None,
-        theta: float | None, vega: float | None,
-    ) -> None:
-        self.opt_delta_label.setText(f"{delta:+.4f}" if delta is not None else "--")
-        self.opt_gamma_label.setText(f"{gamma:+.6f}" if gamma is not None else "--")
-        self.opt_theta_label.setText(f"{theta:+.4f}" if theta is not None else "--")
-        self.opt_vega_label.setText(f"{vega:+.4f}" if vega is not None else "--")
 
     @staticmethod
     def _format_price(value: float | None) -> str:
@@ -311,11 +387,13 @@ class OrderTicketPanel(QWidget):
         reference_price = self._current_ask if side == "BUY" else self._current_bid
         return {
             "instrument": "Future",
+            "fut_symbol": self.FUT_IB_SYMBOL,
             "symbol": self._fut_symbol_label.text().strip().upper(),
             "side": side,
             "order_type": "MKT",
             "quantity": int(self.qty_input.value()),
             "volume": int(self.qty_input.value()),
+            "multiplier": self.FUT_MULTIPLIER,
             "limit_price": 0.0,
             "reference_price": reference_price,
             "use_bracket": False,
@@ -327,43 +405,66 @@ class OrderTicketPanel(QWidget):
         }
 
     def _get_option_order(self) -> dict[str, Any]:
+        strike_text = self.opt_strike_combo.currentText().strip()
+        try:
+            strike = float(strike_text)
+        except ValueError:
+            strike = 0.0
         return {
             "instrument": "Option",
-            "symbol": self._opt_symbol_label.text().strip().upper(),
+            "symbol": "EUR",
             "side": self.opt_side_combo.currentText().strip().upper(),
             "right": self.opt_right_combo.currentText().strip().upper(),
-            "expiry": self.opt_expiry_combo.currentText().strip(),
-            "strike": float(self.opt_strike_input.value()),
+            "tenor": self.opt_expiry_combo.currentText().strip(),
+            "strike": strike,
             "order_type": "MKT",
             "quantity": int(self.opt_qty_input.value()),
             "limit_price": 0.0,
+            "multiplier": self.FUT_MULTIPLIER,
+            "delta_hedge": self.opt_delta_hedge_checkbox.isChecked(),
         }
+
+    def set_option_chains(self, strikes_by_tenor: dict[str, list[float]]) -> None:
+        """Populate strike combo from IB data. Called by controller after connect."""
+        self._opt_strikes_by_tenor = strikes_by_tenor
+        self._update_strikes_for_tenor()
+
+    def _update_strikes_for_tenor(self) -> None:
+        """Update strike combo for the currently selected tenor."""
+        tenor = self.opt_expiry_combo.currentText().strip()
+        strikes = self._opt_strikes_by_tenor.get(tenor, [])
+        self.opt_strike_combo.clear()
+        for s in strikes:
+            self.opt_strike_combo.addItem(f"{s:.5f}")
+        self._opt_atm_needed = True  # re-select ATM on next price tick
+        # Try ATM now if price is available
+        mid = self._get_mid_price()
+        if mid and strikes:
+            closest = min(strikes, key=lambda s: abs(s - mid))
+            self.opt_strike_combo.setCurrentText(f"{closest:.5f}")
+            self._opt_atm_needed = False
 
     def _on_fut_book_clicked(self) -> None:
         order = self._get_futures_order()
-        self._show_confirm_dialog(order)
+        self.order_preview_requested.emit(order)
 
-    def _show_confirm_dialog(self, order: dict[str, Any]) -> None:
-        """Non-blocking confirm dialog — avoids nested event loop crash."""
-        dialog = OrderConfirmDialog(order, parent=self.window())
-        dialog.setAttribute(Qt.WA_DeleteOnClose)
-        dialog.accepted.connect(lambda: self.order_confirmed.emit(order))
-        dialog.open()
-
-    def _on_strike_atm_clicked(self) -> None:
-        bid = self._current_bid
-        ask = self._current_ask
-        if bid is not None and ask is not None:
-            mid = (bid + ask) / 2.0
-            self.opt_strike_input.setValue(mid)
-        elif bid is not None:
-            self.opt_strike_input.setValue(bid)
-        elif ask is not None:
-            self.opt_strike_input.setValue(ask)
+    def show_preview_dialog(
+        self, preview: dict[str, Any], on_confirmed: Any = None,
+        hedge_preview: dict[str, Any] | None = None,
+    ) -> None:
+        """Show preview dialog (non-blocking). Calls on_confirmed() if user clicks Send Order."""
+        dialog = OrderConfirmDialog(preview, parent=self, hedge_preview=hedge_preview)
+        self._preview_dialog = dialog  # prevent garbage collection
+        if callable(on_confirmed):
+            dialog.accepted.connect(on_confirmed)
+        dialog.finished.connect(lambda _: setattr(self, "_preview_dialog", None))
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def _on_opt_book_clicked(self) -> None:
         order = self._get_option_order()
-        self._show_confirm_dialog(order)
+        self.order_preview_requested.emit(order)
 
     def set_symbol(self, symbol: str) -> None:
         normalized = str(symbol).strip().upper()
@@ -405,6 +506,14 @@ class OrderTicketPanel(QWidget):
             )
         self._update_fut_notional()
         self._update_fut_delta()
+        # Auto-select ATM strike once after connect or tenor change
+        if self._opt_atm_needed and mid is not None and self._opt_strikes_by_tenor:
+            tenor = self.opt_expiry_combo.currentText().strip()
+            strikes = self._opt_strikes_by_tenor.get(tenor, [])
+            if strikes:
+                closest = min(strikes, key=lambda s: abs(s - mid))
+                self.opt_strike_combo.setCurrentText(f"{closest:.5f}")
+                self._opt_atm_needed = False
 
     @staticmethod
     def _format_volume_with_currency(value: float | None, currency: str | None) -> str:
@@ -418,14 +527,14 @@ class OrderTicketPanel(QWidget):
     def set_limit_price_update_available(self, available: bool) -> None:
         self._limit_price_update_available = bool(available)
 
-    def set_option_fields(self, right: str, expiry: str, strike: float) -> None:
+    def set_option_fields(self, right: str, tenor: str, strike: float) -> None:
         """Pre-fill option fields (e.g. from Vol Scanner row click)."""
         if right:
             self.opt_right_combo.setCurrentText(right.upper())
-        if expiry:
-            self.opt_expiry_combo.setCurrentText(expiry)
+        if tenor:
+            self.opt_expiry_combo.setCurrentText(tenor)
         if strike:
-            self.opt_strike_input.setValue(float(strike))
+            self.opt_strike_combo.setCurrentText(f"{float(strike):.5f}")
 
     def set_feedback(self, message: str, level: str = "info") -> None:
         text = str(message).strip()

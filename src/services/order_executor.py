@@ -349,58 +349,57 @@ class OrderExecutor:
             logger.exception("place_order unexpected failure")
             raise
 
-    def place_future_order(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Place a EUR future MKT order on CME."""
-        logger.info("place_future_order ENTER payload=%r", request)
+    def _resolve_front_future(self, ib_symbol: str = "EUR") -> tuple[Any | None, str]:
+        """Find the front quarterly future on CME. Returns (contract, error)."""
+        from datetime import date, timedelta
+
+        fut = Contract()
+        fut.symbol = ib_symbol
+        fut.secType = "FUT"
+        fut.exchange = "CME"
+        fut.currency = "USD"
+
+        logger.info("_resolve_front_future: reqContractDetails for %s...", ib_symbol)
+        details = self.ib_client.ib.reqContractDetails(fut)
+        if not details:
+            return None, f"No {ib_symbol} future found on CME."
+
+        today = date.today()
+        min_exp = (today + timedelta(days=7)).strftime("%Y%m%d")
+        quarterly = [
+            d for d in details
+            if d.contract.lastTradeDateOrContractMonth >= min_exp
+            and int(d.contract.lastTradeDateOrContractMonth[4:6]) in {3, 6, 9, 12}
+        ]
+        if not quarterly:
+            return None, f"No quarterly {ib_symbol} future available."
+        quarterly.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth)
+        qualified = quarterly[0].contract
+        logger.info("_resolve_front_future: %s conId=%s exp=%s multiplier=%s",
+                     qualified.localSymbol, qualified.conId,
+                     qualified.lastTradeDateOrContractMonth, qualified.multiplier)
+        return qualified, ""
+
+    def preview_future_order(self, request: dict[str, Any]) -> dict[str, Any]:
+        """What-if preview for a EUR future MKT order."""
+        logger.info("preview_future_order ENTER payload=%r", request)
         if not self._running:
-            logger.error("place_future_order: executor is stopped")
-            return {"ok": False, "kind": "order", "message": "Order executor is stopped."}
+            return {"ok": False, "kind": "preview", "message": "Order executor is stopped."}
         if not self.ib_client.is_connected():
-            logger.error("place_future_order: not connected to IBKR")
-            return {"ok": False, "kind": "order", "message": "Not connected to IBKR."}
+            return {"ok": False, "kind": "preview", "message": "Not connected to IBKR."}
 
         side = str(request.get("side", "")).strip().upper()
         qty = int(request.get("quantity", 0))
         if side not in ("BUY", "SELL"):
-            logger.error("place_future_order: invalid side=%r", side)
-            return {"ok": False, "kind": "order", "message": "Invalid side."}
+            return {"ok": False, "kind": "preview", "message": "Invalid side."}
         if qty <= 0:
-            logger.error("place_future_order: qty=%d must be > 0", qty)
-            return {"ok": False, "kind": "order", "message": "Quantity must be > 0."}
+            return {"ok": False, "kind": "preview", "message": "Quantity must be > 0."}
 
         try:
-            # Find front quarterly EUR future
-            fut = Contract()
-            fut.symbol = "EUR"
-            fut.secType = "FUT"
-            fut.exchange = "CME"
-            fut.currency = "USD"
-
-            logger.info("place_future_order: reqContractDetails for EUR FUT CME...")
-            details = self.ib_client.ib.reqContractDetails(fut)
-            logger.info("place_future_order: got %d contract details", len(details) if details else 0)
-            if not details:
-                logger.error("place_future_order: no EUR future found on CME")
-                return {"ok": False, "kind": "order", "message": "No EUR future found on CME."}
-
-            # Pick front quarterly
-            from datetime import date, timedelta
-            today = date.today()
-            min_exp = (today + timedelta(days=7)).strftime("%Y%m%d")
-            quarterly = [
-                d for d in details
-                if d.contract.lastTradeDateOrContractMonth >= min_exp
-                and int(d.contract.lastTradeDateOrContractMonth[4:6]) in {3, 6, 9, 12}
-            ]
-            logger.info("place_future_order: %d quarterly contracts after filter (min_exp=%s)", len(quarterly), min_exp)
-            if not quarterly:
-                logger.error("place_future_order: no quarterly EUR future available")
-                return {"ok": False, "kind": "order", "message": "No quarterly EUR future available."}
-            quarterly.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth)
-            qualified = quarterly[0].contract
-
-            logger.info("place_future_order: selected %s conId=%s exp=%s",
-                        qualified.localSymbol, qualified.conId, qualified.lastTradeDateOrContractMonth)
+            ib_symbol = str(request.get("fut_symbol", "EUR"))
+            qualified, err = self._resolve_front_future(ib_symbol)
+            if qualified is None:
+                return {"ok": False, "kind": "preview", "message": err}
 
             order = Order()
             order.action = side
@@ -408,24 +407,99 @@ class OrderExecutor:
             order.orderType = "MKT"
             order.tif = "DAY"
 
-            logger.info("place_future_order: placing order %s %d %s MKT...", side, qty, qualified.localSymbol)
+            self.ib_client.clear_last_error()
+            what_if = self.ib_client.what_if_order(qualified, order)
+            if what_if is None:
+                reason = self.ib_client.get_last_error_text() or "Unknown IB error."
+                return {"ok": False, "kind": "preview", "message": f"Preview failed: {reason}"}
+
+            logger.info("preview_future_order what_if=%r", self._what_if_debug_payload(what_if))
+
+            # Compute notional & delta from request
+            multiplier = int(request.get("multiplier", 125_000))
+            ref_price = self._parse_float(request.get("reference_price"), default=0.0)
+            sign = 1 if side == "BUY" else -1
+            notional = ref_price * qty * multiplier if ref_price > 0 else None
+            delta = sign * ref_price * qty * multiplier if ref_price > 0 else None
+
+            return {
+                "ok": True,
+                "kind": "preview",
+                "contract": qualified.localSymbol,
+                "side": side,
+                "quantity": qty,
+                "notional": notional,
+                "delta": delta,
+                "init_margin": getattr(what_if, "initMarginChange", "--"),
+                "maint_margin": getattr(what_if, "maintMarginChange", "--"),
+                "commission": getattr(what_if, "commission", "--"),
+                "min_commission": getattr(what_if, "minCommission", "--"),
+                "max_commission": getattr(what_if, "maxCommission", "--"),
+                "equity_change": getattr(what_if, "equityWithLoanChange", "--"),
+            }
+        except Exception:
+            logger.exception("preview_future_order unexpected failure")
+            raise
+
+    def place_future_order(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Place a EUR future MKT order on CME."""
+        logger.info("place_future_order ENTER payload=%r", request)
+        if not self._running:
+            return {"ok": False, "kind": "order", "message": "Order executor is stopped."}
+        if not self.ib_client.is_connected():
+            return {"ok": False, "kind": "order", "message": "Not connected to IBKR."}
+
+        side = str(request.get("side", "")).strip().upper()
+        qty = int(request.get("quantity", 0))
+        if side not in ("BUY", "SELL"):
+            return {"ok": False, "kind": "order", "message": "Invalid side."}
+        if qty <= 0:
+            return {"ok": False, "kind": "order", "message": "Quantity must be > 0."}
+
+        try:
+            ib_symbol = str(request.get("fut_symbol", "EUR"))
+            qualified, err = self._resolve_front_future(ib_symbol)
+            if qualified is None:
+                return {"ok": False, "kind": "order", "message": err}
+
+            order = Order()
+            order.action = side
+            order.totalQuantity = qty
+            order.orderType = "MKT"
+            order.tif = "DAY"
+
+            logger.info("place_future_order: placing %s %d %s MKT...", side, qty, qualified.localSymbol)
             self.ib_client.clear_last_error()
             trade = self.ib_client.place_order(qualified, order)
-            logger.info("place_future_order: place_order returned trade=%r", trade)
             if trade is None:
                 reason = self.ib_client.get_last_error_text() or "Unknown IB error."
-                logger.error("place_future_order: order rejected reason=%s", reason)
                 return {"ok": False, "kind": "order", "message": f"Order rejected: {reason}"}
+
+            # Wait for fill or rejection (up to 10s)
+            TIMEOUT_S = 10
+            TERMINAL = {"FILLED", "CANCELLED", "APICANCELLED", "INACTIVE"}
+            elapsed = 0.0
+            while elapsed < TIMEOUT_S:
+                status = self._trade_status(trade)
+                if status in TERMINAL:
+                    break
+                self.ib_client.ib.sleep(0.2)
+                elapsed += 0.2
 
             status = self._trade_status(trade)
-            logger.info("place_future_order: trade status=%s", status)
+            logger.info("place_future_order: final status=%s after %.1fs", status, elapsed)
+
             if status in self._REJECTED_STATUSES:
                 reason = self.ib_client.get_last_error_text() or f"IB status={status}"
-                logger.error("place_future_order: order rejected status=%s reason=%s", status, reason)
                 return {"ok": False, "kind": "order", "message": f"Order rejected: {reason}"}
 
-            msg = f"Order sent: {side} {qty} {qualified.localSymbol} MKT"
-            logger.info("place_future_order: SUCCESS — %s", msg)
+            if status == "FILLED":
+                fill_price = getattr(getattr(trade, "orderStatus", None), "avgFillPrice", 0)
+                msg = f"Filled: {side} {qty} {qualified.localSymbol} MKT @ {fill_price}"
+            else:
+                msg = f"Order submitted: {side} {qty} {qualified.localSymbol} MKT (status={status})"
+
+            logger.info("place_future_order: %s", msg)
             return {
                 "ok": True,
                 "kind": "order",
@@ -434,9 +508,207 @@ class OrderExecutor:
                 "side": side,
                 "order_type": "MKT",
                 "quantity": qty,
+                "status": status,
             }
         except Exception:
             logger.exception("place_future_order unexpected failure")
+            raise
+
+    # ── Option (FOP) methods ──
+
+    def _resolve_fop_contract(self, request: dict[str, Any]) -> tuple[Any | None, str]:
+        """Resolve a FOP contract from order request fields."""
+        right = str(request.get("right", "")).strip().upper()
+        if right == "CALL":
+            right = "C"
+        elif right == "PUT":
+            right = "P"
+        strike = float(request.get("strike", 0))
+        expiry = str(request.get("expiry", "")).strip()
+
+        fop = Contract()
+        fop.symbol = "EUR"
+        fop.secType = "FOP"
+        fop.exchange = "CME"
+        fop.currency = "USD"
+        fop.lastTradeDateOrContractMonth = expiry
+        fop.strike = strike
+        fop.right = right
+        fop.multiplier = "125000"
+        fop.tradingClass = "EUU"
+
+        logger.info("_resolve_fop_contract: reqContractDetails %s K=%.5f exp=%s...",
+                     right, strike, expiry)
+        details = self.ib_client.ib.reqContractDetails(fop)
+        if not details:
+            # Try without tradingClass (some expiries use different class)
+            fop.tradingClass = ""
+            details = self.ib_client.ib.reqContractDetails(fop)
+        if not details:
+            return None, f"FOP contract not found: {right} K={strike} exp={expiry}"
+
+        resolved = details[0].contract
+        logger.info("_resolve_fop_contract: %s conId=%s", resolved.localSymbol, resolved.conId)
+        return resolved, ""
+
+    def preview_option_order(self, request: dict[str, Any]) -> dict[str, Any]:
+        """What-if preview for a FOP option order."""
+        logger.info("preview_option_order ENTER payload=%r", request)
+        if not self._running:
+            return {"ok": False, "kind": "preview", "message": "Order executor is stopped."}
+        if not self.ib_client.is_connected():
+            return {"ok": False, "kind": "preview", "message": "Not connected to IBKR."}
+
+        side = str(request.get("side", "")).strip().upper()
+        qty = int(request.get("quantity", 0))
+        if side not in ("BUY", "SELL"):
+            return {"ok": False, "kind": "preview", "message": "Invalid side."}
+        if qty <= 0:
+            return {"ok": False, "kind": "preview", "message": "Quantity must be > 0."}
+
+        try:
+            qualified, err = self._resolve_fop_contract(request)
+            if qualified is None:
+                return {"ok": False, "kind": "preview", "message": err}
+
+            # Get greeks via market data
+            self.ib_client.ib.reqMarketDataType(3)
+            ticker = self.ib_client.ib.reqMktData(qualified, "100", False, False)
+            self.ib_client.ib.sleep(4)
+
+            greeks = getattr(ticker, "modelGreeks", None)
+            bid = getattr(ticker, "bid", None)
+            ask = getattr(ticker, "ask", None)
+            iv = getattr(greeks, "impliedVol", None) if greeks else None
+            delta = getattr(greeks, "delta", None) if greeks else None
+            gamma = getattr(greeks, "gamma", None) if greeks else None
+            vega = getattr(greeks, "vega", None) if greeks else None
+            theta = getattr(greeks, "theta", None) if greeks else None
+
+            self.ib_client.ib.cancelMktData(qualified)
+
+            # What-if
+            order = Order()
+            order.action = side
+            order.totalQuantity = qty
+            order.orderType = "MKT"
+            order.tif = "DAY"
+
+            self.ib_client.clear_last_error()
+            what_if = self.ib_client.what_if_order(qualified, order)
+
+            # Compute USD values: greek × qty × multiplier
+            multiplier = 125_000
+            mid = (bid + ask) / 2.0 if bid and ask else None
+            sign = 1 if side == "BUY" else -1
+            pos = sign * qty
+            notional = mid * qty * multiplier if mid else None
+            delta_usd = pos * (delta or 0) * multiplier if delta else None
+            # Gamma per pip (0.0001 move in spot)
+            gamma_usd = pos * (gamma or 0) * multiplier * 0.0001 if gamma else None
+            vega_usd = pos * (vega or 0) * multiplier if vega else None
+            # Theta is already per day from IB
+            theta_usd = pos * (theta or 0) * multiplier if theta else None
+
+            result = {
+                "ok": True,
+                "kind": "preview",
+                "contract": qualified.localSymbol,
+                "side": side,
+                "quantity": qty,
+                "right": qualified.right,
+                "strike": qualified.strike,
+                "expiry": qualified.lastTradeDateOrContractMonth,
+                "bid": bid,
+                "ask": ask,
+                "mid": mid,
+                "iv": f"{iv * 100:.2f}%" if iv else "--",
+                "delta_usd": delta_usd,
+                "gamma_usd": gamma_usd,
+                "vega_usd": vega_usd,
+                "theta_usd": theta_usd,
+                "notional": notional,
+                "init_margin": getattr(what_if, "initMarginChange", "--") if what_if else "--",
+                "maint_margin": getattr(what_if, "maintMarginChange", "--") if what_if else "--",
+                "commission": getattr(what_if, "commission", "--") if what_if else "--",
+                "equity_change": getattr(what_if, "equityWithLoanChange", "--") if what_if else "--",
+            }
+            logger.info("preview_option_order result=%r", result)
+            return result
+        except Exception:
+            logger.exception("preview_option_order unexpected failure")
+            raise
+
+    def place_option_order(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Place a FOP option MKT order on CME."""
+        logger.info("place_option_order ENTER payload=%r", request)
+        if not self._running:
+            return {"ok": False, "kind": "order", "message": "Order executor is stopped."}
+        if not self.ib_client.is_connected():
+            return {"ok": False, "kind": "order", "message": "Not connected to IBKR."}
+
+        side = str(request.get("side", "")).strip().upper()
+        qty = int(request.get("quantity", 0))
+        if side not in ("BUY", "SELL"):
+            return {"ok": False, "kind": "order", "message": "Invalid side."}
+        if qty <= 0:
+            return {"ok": False, "kind": "order", "message": "Quantity must be > 0."}
+
+        try:
+            qualified, err = self._resolve_fop_contract(request)
+            if qualified is None:
+                return {"ok": False, "kind": "order", "message": err}
+
+            order = Order()
+            order.action = side
+            order.totalQuantity = qty
+            order.orderType = "MKT"
+            order.tif = "DAY"
+
+            logger.info("place_option_order: placing %s %d %s MKT...", side, qty, qualified.localSymbol)
+            self.ib_client.clear_last_error()
+            trade = self.ib_client.place_order(qualified, order)
+            if trade is None:
+                reason = self.ib_client.get_last_error_text() or "Unknown IB error."
+                return {"ok": False, "kind": "order", "message": f"Order rejected: {reason}"}
+
+            # Wait for fill or rejection (up to 10s)
+            timeout_s = 10
+            terminal = {"FILLED", "CANCELLED", "APICANCELLED", "INACTIVE"}
+            elapsed = 0.0
+            while elapsed < timeout_s:
+                status = self._trade_status(trade)
+                if status in terminal:
+                    break
+                self.ib_client.ib.sleep(0.2)
+                elapsed += 0.2
+
+            status = self._trade_status(trade)
+            logger.info("place_option_order: final status=%s after %.1fs", status, elapsed)
+
+            if status in self._REJECTED_STATUSES:
+                reason = self.ib_client.get_last_error_text() or f"IB status={status}"
+                return {"ok": False, "kind": "order", "message": f"Order rejected: {reason}"}
+
+            if status == "FILLED":
+                fill_price = getattr(getattr(trade, "orderStatus", None), "avgFillPrice", 0)
+                msg = f"Filled: {side} {qty} {qualified.localSymbol} MKT @ {fill_price}"
+            else:
+                msg = f"Order submitted: {side} {qty} {qualified.localSymbol} MKT (status={status})"
+
+            logger.info("place_option_order: %s", msg)
+            return {
+                "ok": True,
+                "kind": "order",
+                "message": msg,
+                "symbol": qualified.localSymbol,
+                "side": side,
+                "order_type": "MKT",
+                "quantity": qty,
+                "status": status,
+            }
+        except Exception:
+            logger.exception("place_option_order unexpected failure")
             raise
 
     # Run a what-if preview for a validated order request.
