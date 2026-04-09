@@ -3,3 +3,6 @@ ib-insync==0.9.86
 pytest==9.0.2
 pyqtgraph==0.14.0
 ruff==0.11.2
+numpy>=1.24
+scipy>=1.10
+pandas>=2.0

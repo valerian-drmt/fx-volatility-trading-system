@@ -170,7 +170,7 @@ trading-ib/
 
 ## Volatility Model Documentation
 
-See [`docs/vol_engine_implementation.md`](docs/vol_engine_implementation.md) for the complete implementation guide covering:
+See [`docs/vol_engine_implementation.md`](vol_engine_implementation.md) for the complete implementation guide covering:
 - Step 1 & Step 2 data pipelines
 - IB API calls and data flow
 - Panel specifications and update frequencies
