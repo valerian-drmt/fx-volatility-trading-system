@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 from ib_insync import Forex, LimitOrder, MarketOrder
 
-from services.order_worker import OrderWorker
+from services.order_executor import OrderExecutor
 
 
 class FakeIBClient:
@@ -70,18 +70,18 @@ class FakeIBClient:
 
 
 def _build_worker(ib_client):
-    worker = OrderWorker(ib_client=ib_client)
+    worker = OrderExecutor(ib_client=ib_client)
     return worker
 
 
 @pytest.mark.unit
 def test_normalize_request_returns_none_for_non_dict():
-    assert OrderWorker._normalize_request("bad payload") is None
+    assert OrderExecutor._normalize_request("bad payload") is None
 
 
 @pytest.mark.unit
 def test_normalize_request_parses_bracket_payload():
-    normalized = OrderWorker._normalize_request(
+    normalized = OrderExecutor._normalize_request(
         {
             "symbol": " eur/usd ",
             "side": " buy ",
@@ -109,7 +109,7 @@ def test_normalize_request_parses_bracket_payload():
 
 @pytest.mark.unit
 def test_validate_request_rejects_invalid_limit_order():
-    error = OrderWorker._validate_request(
+    error = OrderExecutor._validate_request(
         {
             "symbol": "EURUSD",
             "side": "BUY",
@@ -126,7 +126,7 @@ def test_validate_request_rejects_invalid_limit_order():
 
 @pytest.mark.unit
 def test_validate_request_accepts_bracket_for_market_order():
-    error = OrderWorker._validate_request(
+    error = OrderExecutor._validate_request(
         {
             "symbol": "EURUSD",
             "side": "BUY",
@@ -143,7 +143,7 @@ def test_validate_request_accepts_bracket_for_market_order():
 
 @pytest.mark.unit
 def test_validate_request_requires_both_bracket_percentages():
-    error = OrderWorker._validate_request(
+    error = OrderExecutor._validate_request(
         {
             "symbol": "EURUSD",
             "side": "BUY",

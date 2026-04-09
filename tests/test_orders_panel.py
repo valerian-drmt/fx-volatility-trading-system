@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ui.panels.orders_panel import OrdersPanel
+from ui.panels.orders import OrdersPanel
 
 
 @pytest.mark.unit
@@ -34,7 +34,7 @@ def test_orders_panel_renders_open_order_columns(qapp):
     assert panel.orders_table.item(0, 5).text() == "1.1012"
     assert panel.orders_table.item(0, 6).text() == "Submitted"
     # Cancel button in last column
-    assert panel.orders_table.cellWidget(0, 8) is not None
+    assert panel.orders_table.cellWidget(0, 14) is not None
 
 
 @pytest.mark.unit

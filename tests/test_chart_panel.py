@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from ui.panels.chart_panel import ChartPanel
+from ui.panels.tick_chart import ChartPanel
 
 
 @pytest.mark.unit

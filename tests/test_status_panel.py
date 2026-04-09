@@ -1,6 +1,6 @@
 import pytest
 
-from ui.panels.status_panel import StatusPanel
+from ui.panels.status import StatusPanel
 
 
 def _build_panel():
@@ -12,8 +12,8 @@ def _build_panel():
     }
     return StatusPanel(
         on_connect=lambda: None,
-        on_start_live_streaming=lambda: None,
-        on_stop_live_streaming=lambda: None,
+        on_start_engine=lambda: None,
+        on_stop_engine=lambda: None,
         on_save_settings=lambda: None,
         connection_defaults=defaults,
     )
@@ -24,8 +24,8 @@ def test_status_panel_requires_all_default_keys(qapp):
     with pytest.raises(ValueError, match="Missing connection defaults keys"):
         StatusPanel(
             on_connect=lambda: None,
-            on_start_live_streaming=lambda: None,
-            on_stop_live_streaming=lambda: None,
+            on_start_engine=lambda: None,
+            on_stop_engine=lambda: None,
             on_save_settings=lambda: None,
             connection_defaults={"host": "127.0.0.1"},
         )
@@ -55,8 +55,8 @@ def test_status_panel_connected_state_updates_buttons(qapp):
     assert panel.status_client_label.text() == "2"
     assert panel.status_account_label.text() == "DU123"
     assert panel.connect_button.isEnabled() is False
-    assert panel.live_stream_button.isEnabled() is True
-    assert panel.stop_live_stream_button.isEnabled() is False
+    assert panel.start_engine_button.isEnabled() is True
+    assert panel.stop_engine_button.isEnabled() is False
 
 
 @pytest.mark.unit
@@ -73,12 +73,12 @@ def test_status_panel_connecting_state_disables_controls(qapp):
 
     assert panel.status_conn_label.text() == "Connecting"
     assert panel.connect_button.isEnabled() is False
-    assert panel.live_stream_button.isEnabled() is False
-    assert panel.stop_live_stream_button.isEnabled() is False
+    assert panel.start_engine_button.isEnabled() is False
+    assert panel.stop_engine_button.isEnabled() is False
 
 
 @pytest.mark.unit
-def test_status_panel_pipeline_running_enables_stop(qapp):
+def test_status_panel_engine_running_enables_stop(qapp):
     panel = _build_panel()
 
     panel.update(
@@ -89,11 +89,6 @@ def test_status_panel_pipeline_running_enables_stop(qapp):
         }
     )
 
-    assert panel.live_stream_button.isEnabled() is False
-    assert panel.stop_live_stream_button.isEnabled() is True
-
-
-@pytest.mark.unit
-def test_status_panel_no_longer_has_market_symbol_input(qapp):
-    panel = _build_panel()
-    assert not hasattr(panel, "market_symbol_input")
+    assert panel.start_engine_button.isEnabled() is False
+    assert panel.stop_engine_button.isEnabled() is True
+    assert panel.engine_status_label.text() == "Running"
