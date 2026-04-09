@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ══════════════════════════════════════════════════════════════════════════════
 
-MIN_VOLUME = 5
+MIN_VOLUME = 0  # relaxed for delayed/paper data (no live volume)
 MAX_BA_SPREAD_PCT = 0.20
 
 TARGET_DELTAS = {
