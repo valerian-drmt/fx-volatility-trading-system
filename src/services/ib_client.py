@@ -2,7 +2,7 @@ import math
 import time
 from typing import Any
 
-from ib_insync import Forex, IB, LimitOrder, MarketOrder, StopOrder
+from ib_insync import Contract, Forex, IB, LimitOrder, MarketOrder, StopOrder
 
 
 class IBClient:
@@ -154,6 +154,38 @@ class IBClient:
         self.clear_last_error()
         return self.ticker is not None
 
+    def _resolve_front_future(self) -> Any:
+        """Resolve the front quarterly EUR future (6E) on CME."""
+        from datetime import date, timedelta
+
+        fut = Contract()
+        fut.symbol = "EUR"
+        fut.secType = "FUT"
+        fut.exchange = "CME"
+        fut.currency = "USD"
+
+        try:
+            details = self.ib.reqContractDetails(fut)
+        except Exception:
+            return None
+        if not details:
+            return None
+
+        today = date.today()
+        min_exp = (today + timedelta(days=7)).strftime("%Y%m%d")
+        quarterly = [
+            d for d in details
+            if d.contract.lastTradeDateOrContractMonth >= min_exp
+            and int(d.contract.lastTradeDateOrContractMonth[4:6]) in {3, 6, 9, 12}
+        ]
+        if not quarterly:
+            return None
+        quarterly.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth)
+        resolved = quarterly[0].contract
+        print(f"[INFO][ib_client] Streaming future: {resolved.localSymbol} "
+              f"exp={resolved.lastTradeDateOrContractMonth}")
+        return resolved
+
     # Detach listeners and stop current live market-data stream.
     def stop_live_streaming(self) -> None:
         self._detach_ticker_listener()
@@ -181,8 +213,9 @@ class IBClient:
             self.start_live_streaming(symbol)
             return self.ticker
 
-        # Backward-compatible default stream request when no symbol is provided.
-        requested_ticker = self.request_market_data(Forex("EURUSD"), snapshot=False, regulatory_snapshot=False)
+        # Default stream: front EUR future
+        contract = self._resolve_front_future() or Forex("EURUSD")
+        requested_ticker = self.request_market_data(contract, snapshot=False, regulatory_snapshot=False)
         if requested_ticker is not None:
             self.ticker = requested_ticker
             self._attach_ticker_listener()

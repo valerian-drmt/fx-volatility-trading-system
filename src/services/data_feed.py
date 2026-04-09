@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import math
 import time
-from datetime import date, timedelta
 from typing import Any
 
 from ib_insync import Contract
@@ -159,7 +158,7 @@ CURRENCY = "USD"
 MULTIPLIER = "125000"
 MAX_OTM_PCT = 0.08
 MAX_STRIKES_PER_SIDE = 5  # 5 above ATM + 5 below = 10 per tenor
-NUM_FRONT_CONTRACTS = 2  # discover the 2 nearest quarterly futures
+TARGET_DTES = [30, 60, 90, 120, 150, 180]  # 6 target tenors
 
 
 class VolDataCollector:
@@ -175,7 +174,15 @@ class VolDataCollector:
         self._subscribed = False
 
     def _discover_front_contracts(self) -> dict[str, dict]:
-        """Find the N nearest quarterly EUR futures via IB and build targets dict."""
+        """Discover EUU chains for 6 target DTEs, like vol_mid_step1.py."""
+        from datetime import datetime as dt
+
+        # Request delayed data (critical for paper trading)
+        try:
+            self.ib_client.ib.reqMarketDataType(3)
+        except Exception:
+            pass
+
         fut = Contract()
         fut.symbol = SYMBOL
         fut.secType = "FUT"
@@ -188,44 +195,75 @@ class VolDataCollector:
             print("[VOL_COLLECTOR] WARNING: no EUR futures found on CME")
             return {}
 
-        QUARTERLY_MONTHS = {3, 6, 9, 12}
-        MIN_DTE = 14
-        today = date.today()
-        min_exp = (today + timedelta(days=MIN_DTE)).strftime("%Y%m%d")
-
-        valid = []
-        skipped = []
+        now = dt.now()
+        futures = []
         for d in details_list:
             exp = d.contract.lastTradeDateOrContractMonth
-            if exp < min_exp:
-                skipped.append(f"{exp}(too_soon)")
-                continue
             try:
-                month = int(exp[4:6])
-            except (ValueError, IndexError):
+                exp_date = dt.strptime(exp, "%Y%m%d")
+            except ValueError:
                 continue
-            if month not in QUARTERLY_MONTHS:
-                skipped.append(f"{exp}(monthly)")
+            dte = (exp_date - now).days
+            if dte < 7:
                 continue
-            valid.append(d)
-        valid.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth)
+            futures.append((dte, d.contract))
+        futures.sort(key=lambda x: x[0])
 
-        print(f"[VOL_COLLECTOR] Found {len(valid)} quarterly EUR futures (skipped: {skipped[:8]})")
-        for d in valid[:6]:
-            c = d.contract
-            print(f"  {c.lastTradeDateOrContractMonth} conId={c.conId} localSymbol={c.localSymbol}")
+        if not futures:
+            print("[VOL_COLLECTOR] WARNING: no valid EUR futures found")
+            return {}
+
+        # Discover all EUU chains across futures
+        euu_chains = []
+        seen = set()
+        for _dte, fut_c in futures[:8]:
+            chains = self.ib_client.ib.reqSecDefOptParams(
+                underlyingSymbol=SYMBOL, futFopExchange=EXCHANGE,
+                underlyingSecType="FUT", underlyingConId=fut_c.conId,
+            )
+            for ch in chains:
+                if ch.tradingClass != "EUU":
+                    continue
+                for exp in sorted(ch.expirations):
+                    if exp in seen:
+                        continue
+                    seen.add(exp)
+                    try:
+                        exp_date = dt.strptime(exp, "%Y%m%d")
+                    except ValueError:
+                        continue
+                    dte_fop = (exp_date - now).days
+                    if dte_fop < 10:
+                        continue
+                    euu_chains.append({
+                        "expiry": exp, "dte": dte_fop,
+                        "strikes": sorted(ch.strikes),
+                        "exchange": ch.exchange,
+                        "multiplier": ch.multiplier,
+                    })
+        euu_chains.sort(key=lambda x: x["dte"])
+        print(f"[VOL_COLLECTOR] Found {len(euu_chains)} EUU expirations")
+
+        # Select closest to each target DTE
+        selected = []
+        for target in TARGET_DTES:
+            best = min(euu_chains, key=lambda x: abs(x["dte"] - target))
+            if best not in selected:
+                selected.append(best)
 
         targets = {}
-        for i, d in enumerate(valid[:NUM_FRONT_CONTRACTS]):
-            exp = d.contract.lastTradeDateOrContractMonth
-            try:
-                exp_date = date(int(exp[:4]), int(exp[4:6]), int(exp[6:8]))
-            except (ValueError, IndexError):
-                exp_date = today + timedelta(days=90 * (i + 1))
-            t_years = max((exp_date - today).days / 365.0, 0.01)
-            tenor = f"{max(1, round(t_years * 12))}M"
-            targets[exp] = {"tenor": tenor, "T": round(t_years, 4), "conId": d.contract.conId}
-            print(f"[VOL_COLLECTOR] Target #{i+1}: {exp} tenor={tenor} T={t_years:.4f} conId={d.contract.conId}")
+        for ch in selected:
+            exp = ch["expiry"]
+            dte = ch["dte"]
+            t_years = max(dte / 365.0, 0.01)
+            months = round(t_years * 12)
+            tenor = f"{max(1, months)}M" if months < 12 else f"{months // 12}Y"
+            targets[exp] = {
+                "tenor": tenor, "T": round(t_years, 4),
+                "strikes": ch["strikes"], "dte": dte,
+            }
+            print(f"[VOL_COLLECTOR] Target: {exp} DTE={dte} tenor={tenor} "
+                  f"strikes={len(ch['strikes'])}")
 
         return targets
 
@@ -241,74 +279,25 @@ class VolDataCollector:
             if not self._targets:
                 return False
 
-        print(f"[VOL_COLLECTOR] targets: {list(self._targets.keys())}")
         self._chain_cache.clear()
-        lo = spot * (1 - MAX_OTM_PCT)
-        hi = spot * (1 + MAX_OTM_PCT)
-        print(f"[VOL_COLLECTOR] strike range: [{lo:.5f} - {hi:.5f}]")
 
-        for expiry, meta in list(self._targets.items()):
-            try:
-                con_id = meta.get("conId")
-                if not con_id:
-                    fut = Contract()
-                    fut.symbol = SYMBOL
-                    fut.secType = "FUT"
-                    fut.exchange = EXCHANGE
-                    fut.currency = CURRENCY
-                    fut.lastTradeDateOrContractMonth = expiry
+        for expiry, meta in self._targets.items():
+            all_strikes = meta.get("strikes", [])
+            dte = meta.get("dte", 0)
+            n_side = 6 if dte <= 45 else 10
 
-                    print(f"[VOL_COLLECTOR] reqContractDetails for FUT {SYMBOL} expiry={expiry}...")
-                    details = self.ib_client.ib.reqContractDetails(fut)
-                    if not details:
-                        print(f"[VOL_COLLECTOR] WARNING: no contract details for {expiry}")
-                        continue
-                    con_id = details[0].contract.conId
+            if not all_strikes:
+                continue
+            atm_idx = min(range(len(all_strikes)), key=lambda i: abs(all_strikes[i] - spot))
+            lo = max(0, atm_idx - n_side)
+            hi = min(len(all_strikes), atm_idx + n_side + 1)
+            selected = all_strikes[lo:hi]
 
-                print(f"[VOL_COLLECTOR] reqSecDefOptParams conId={con_id} for {expiry}...")
-                chains = self.ib_client.ib.reqSecDefOptParams(
-                    underlyingSymbol=SYMBOL,
-                    futFopExchange=EXCHANGE,
-                    underlyingSecType="FUT",
-                    underlyingConId=con_id,
-                )
-                if not chains:
-                    print(f"[VOL_COLLECTOR] WARNING: no option chain returned for {expiry}")
-                    continue
-                print(f"[VOL_COLLECTOR] got {len(chains)} chain(s) for {expiry}")
+            self._chain_cache[expiry] = selected
+            print(f"[VOL_COLLECTOR] {expiry} DTE={dte} tenor={meta.get('tenor')}: "
+                  f"{len(selected)} strikes [{selected[0]:.4f} - {selected[-1]:.4f}]")
 
-                chain = next((c for c in chains if c.exchange == EXCHANGE), chains[0])
-                all_strikes = sorted(chain.strikes)
-                fop_expirations = sorted(chain.expirations)
-                print(f"[VOL_COLLECTOR] {expiry}: {len(all_strikes)} total strikes "
-                      f"[{all_strikes[0]:.4f} - {all_strikes[-1]:.4f}]")
-                print(f"[VOL_COLLECTOR] {expiry}: FOP expirations available: {fop_expirations[:6]}")
-
-                if not fop_expirations:
-                    print(f"[VOL_COLLECTOR] WARNING: no FOP expirations for {expiry}")
-                    continue
-                fop_exp = min(fop_expirations, key=lambda e: abs(int(e) - int(expiry)))
-                print(f"[VOL_COLLECTOR] {expiry}: using FOP expiration {fop_exp}")
-
-                filtered = [k for k in all_strikes if lo <= k <= hi]
-                print(f"[VOL_COLLECTOR] {expiry}: {len(filtered)} strikes in range ±{MAX_OTM_PCT*100:.0f}%")
-
-                if not filtered:
-                    print(f"[VOL_COLLECTOR] WARNING: no strikes in range for {expiry}")
-                    continue
-
-                atm_idx = min(range(len(filtered)), key=lambda i: abs(filtered[i] - spot))
-                start = max(0, atm_idx - MAX_STRIKES_PER_SIDE)
-                end = min(len(filtered), atm_idx + MAX_STRIKES_PER_SIDE + 1)
-                selected = filtered[start:end]
-
-                self._chain_cache[fop_exp] = selected
-                self._targets[fop_exp] = meta
-                print(f"[VOL_COLLECTOR] {fop_exp}: selected {len(selected)} strikes: {selected}")
-            except Exception as exc:
-                print(f"[VOL_COLLECTOR] ERROR discover_chains({expiry}): {exc!r}")
-
-        print(f"[VOL_COLLECTOR] discover_chains done: {len(self._chain_cache)} expiries cached")
+        print(f"[VOL_COLLECTOR] discover_chains done: {len(self._chain_cache)} expiries")
         return bool(self._chain_cache)
 
     def subscribe_all(self) -> bool:
@@ -333,6 +322,7 @@ class VolDataCollector:
                         fop.strike = strike
                         fop.right = right
                         fop.multiplier = MULTIPLIER
+                        fop.tradingClass = "EUU"
 
                         ticker = self.ib_client.ib.reqMktData(fop, "100", False, False)
                         self._fop_tickers[key] = ticker
@@ -358,13 +348,11 @@ class VolDataCollector:
                 meta = self._targets.get(expiry, {"tenor": expiry, "T": 0.25})
                 chains[expiry] = {"tenor": meta["tenor"], "T": meta["T"], "rows": []}
 
-            iv = getattr(ticker, "impliedVolatility", None)
-            if not iv or (isinstance(iv, float) and math.isnan(iv)):
-                iv = getattr(ticker, "lastGreeks", None)
-                if iv:
-                    iv = getattr(iv, "impliedVol", None)
-
+            # Priority: modelGreeks > lastGreeks > impliedVolatility
             greeks = getattr(ticker, "modelGreeks", None) or getattr(ticker, "lastGreeks", None)
+            iv = getattr(greeks, "impliedVol", None) if greeks else None
+            if not iv or (isinstance(iv, float) and math.isnan(iv)):
+                iv = getattr(ticker, "impliedVolatility", None)
             delta = getattr(greeks, "delta", None) if greeks else None
 
             bid = self._safe_float(getattr(ticker, "bid", None))

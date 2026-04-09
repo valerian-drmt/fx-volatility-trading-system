@@ -181,7 +181,7 @@ class Controller:
         self._setup_order_worker()
         self._setup_vol_engine()
         self.window.order_ticket_panel.place_button.clicked.connect(self._queue_order_from_ticket)
-        self.window.order_ticket_panel.order_confirmed.connect(self._on_order_confirmed)
+        self.window.order_ticket_panel.order_preview_requested.connect(self._on_order_preview_requested)
         limit_update_btn = getattr(self.window.order_ticket_panel, "limit_price_update_button", None)
         if limit_update_btn is not None:
             try:
@@ -322,23 +322,6 @@ class Controller:
             self._vol_engine.start()
             self._log(f"[VOL] Thread 2 started: alive={self._vol_engine.is_alive()}")
 
-        spot = self._get_mid_spot()
-        self._log(f"[VOL] Mid spot: {spot}")
-        if spot and spot > 0:
-            self._vol_data_collector = VolDataCollector(self.ib_client)
-            ok = self._vol_data_collector.discover_chains(spot)
-            if ok:
-                chains = self._vol_data_collector._chain_cache
-                for exp, strikes in chains.items():
-                    self._log(f"[VOL] Chain {exp}: {len(strikes)} strikes {strikes}")
-                self._vol_data_collector.subscribe_all()
-                n_tickers = len(self._vol_data_collector._fop_tickers)
-                self._log(f"[VOL] Subscribed: {n_tickers} FOP tickers")
-            else:
-                self._log("[VOL] WARNING: no chains discovered — check expiry dates or FOP data subscription")
-        else:
-            self._log("[VOL] WARNING: no spot price available — start live streaming first")
-
         self._vol_poll_stop.clear()
         self._vol_poll_thread = threading.Thread(
             target=self._vol_poll_loop, name="VolPoll", daemon=True,
@@ -350,8 +333,26 @@ class Controller:
             target=self._vol_collection_loop, name="VolCollection", daemon=True,
         )
         self._vol_collection_thread.start()
-        self._log("[VOL] Threads started: poll=500ms, collect=30s, first snapshot in 3s")
+        self._log("[VOL] Threads started: poll=500ms, collect=30s, first snapshot in 5s")
         self._refresh_status(force=True)
+
+    def _ensure_vol_data_collector(self) -> bool:
+        """Lazy-init the VolDataCollector when spot becomes available."""
+        if self._vol_data_collector is not None:
+            return True
+        spot = self._get_mid_spot()
+        if not spot or spot <= 0:
+            return False
+        self._vol_data_collector = VolDataCollector(self.ib_client)
+        ok = self._vol_data_collector.discover_chains(spot)
+        if ok:
+            self._vol_data_collector.subscribe_all()
+            n_tickers = len(self._vol_data_collector._fop_tickers)
+            self._log(f"[VOL] Collector ready: {n_tickers} FOP tickers subscribed")
+            return True
+        self._log("[VOL] WARNING: no chains discovered")
+        self._vol_data_collector = None
+        return False
 
     def _stop_vol_engine(self) -> None:
         self._vol_collection_stop.set()
@@ -379,7 +380,7 @@ class Controller:
 
     def _vol_collection_loop(self) -> None:
         # First snapshot after 3s
-        if self._vol_collection_stop.wait(timeout=3.0):
+        if self._vol_collection_stop.wait(timeout=5.0):
             return
         self._post_ui(self._collect_and_send_chain_data)
         while not self._vol_collection_stop.wait(timeout=30.0):
@@ -397,18 +398,18 @@ class Controller:
             self._log(f"[VOL] engine error: {error}")
         else:
             rows = result.get("scanner_rows", [])
-            self._log(f"[VOL] engine result: {len(rows)} pillars")
-            for r in rows:
-                self._log(f"  {r['tenor']} | {r['delta_label']} | "
-                          f"K={r['strike']:.5f} | IV={r['iv_market_pct']:.2f}%")
+            tenors = sorted({r.get("tenor", "?") for r in rows})
+            self._log(f"[VOL] scanner update: {len(rows)} rows, tenors={tenors}")
         self.window.vol_scanner_panel.update(result)
 
     def _collect_and_send_chain_data(self) -> None:
-        if self._vol_data_collector is None or self._vol_input_queue is None:
-            self._log("[VOL] collect skipped: no collector or queue")
+        if self._vol_input_queue is None:
             return
         if not self.ib_client.is_connected():
             self._log("[VOL] collect skipped: not connected")
+            return
+        if not self._ensure_vol_data_collector():
+            self._log("[VOL] collect skipped: waiting for spot price...")
             return
         spot = self._get_mid_spot()
         if not spot or spot <= 0:
@@ -849,9 +850,8 @@ class Controller:
             return
         self.window.logs_panel.update({"message": f"[WARN][market_data] worker error: {message}"})
 
-    # Validate and enqueue a new order request from the ticket panel.
-    def _on_order_confirmed(self, order: dict) -> None:
-        """Handle order confirmed — runs IB calls in a background thread."""
+    def _on_order_preview_requested(self, order: dict) -> None:
+        """Book (Preview) clicked — preview → dialog → place if confirmed."""
         if self._order_worker is None or not self._order_worker._running:
             self._log("Order executor is not running.", level="error")
             return
@@ -859,34 +859,133 @@ class Controller:
             self._log("Not connected to IBKR.", level="error")
             return
 
-        self.window.order_ticket_panel.set_feedback("Sending order...", level="info")
+        self.window.order_ticket_panel.set_feedback("Loading preview...", level="info")
+        try:
+            instrument = order.get("instrument", "")
 
-        def _run() -> None:
-            try:
-                instrument = order.get("instrument", "")
-                if instrument == "Future":
-                    result = self._order_worker.place_future_order(order)
-                else:
-                    result = self._order_worker.place_order(order)
-                self._post_ui(lambda r=result: self._on_order_result_from_thread(r))
-            except Exception as err:
-                err_msg = str(err)
-                self._post_ui(lambda: self._on_order_result_from_thread(
-                    {"ok": False, "kind": "order", "message": err_msg}
-                ))
+            # Resolve tenor → expiry from cached JSON for options
+            if instrument == "Option" and "tenor" in order and "expiry" not in order:
+                order = dict(order)  # don't mutate original
+                order["expiry"] = self._resolve_tenor_to_expiry(order["tenor"])
+                if not order["expiry"]:
+                    self.window.order_ticket_panel.set_feedback(
+                        f"Unknown tenor: {order['tenor']}", level="error")
+                    return
 
-        t = threading.Thread(target=_run, daemon=True)
-        t.start()
+            if instrument == "Future":
+                preview = self._order_worker.preview_future_order(order)
+            elif instrument == "Option":
+                preview = self._order_worker.preview_option_order(order)
+            else:
+                preview = self._order_worker.preview_order(order)
 
-    def _on_order_result_from_thread(self, result: dict) -> None:
-        """Handle order result posted back from background thread."""
-        if self.window is None:
+            if not preview.get("ok", False):
+                self.window.order_ticket_panel.set_feedback(
+                    preview.get("message", "Preview failed"), level="error")
+                self._log(f"[FAIL][preview] {preview.get('message', '')}")
+                return
+
+            # Delta hedge preview if requested
+            hedge_preview = None
+            hedge_order = None
+            if instrument == "Option" and order.get("delta_hedge"):
+                hedge_order, hedge_preview = self._build_hedge_preview(order, preview)
+
+            self.window.order_ticket_panel.set_feedback("", level="info")
+
+            self.window.order_ticket_panel.show_preview_dialog(
+                preview,
+                on_confirmed=lambda: self._place_confirmed_order(order, hedge_order),
+                hedge_preview=hedge_preview,
+            )
+        except Exception as exc:
+            self.window.order_ticket_panel.set_feedback(str(exc), level="error")
+            self._log(f"[ERROR][order] {exc}")
+
+    def _build_hedge_preview(self, opt_order: dict, opt_preview: dict) -> tuple[dict | None, dict | None]:
+        """Compute delta hedge future order and its preview."""
+        try:
+            # Get raw delta from option preview (unit delta × qty × multiplier)
+            delta_usd = opt_preview.get("delta_usd")
+            if delta_usd is None or delta_usd == "--":
+                self._log("[WARN][hedge] No delta in option preview, skipping hedge")
+                return None, None
+
+            delta_usd = float(delta_usd)
+            # Each future = spot × 125,000 USD delta
+            mid = self._get_mid_spot() or 1.0
+            fut_delta_per_contract = mid * 125_000
+            hedge_qty = round(abs(delta_usd) / fut_delta_per_contract)
+            if hedge_qty < 1:
+                hedge_qty = 1
+
+            # Opposite side to neutralize delta
+            hedge_side = "SELL" if delta_usd > 0 else "BUY"
+
+            hedge_order = {
+                "instrument": "Future",
+                "fut_symbol": "EUR",
+                "symbol": "EURUSD",
+                "side": hedge_side,
+                "order_type": "MKT",
+                "quantity": hedge_qty,
+                "volume": hedge_qty,
+                "multiplier": 125_000,
+                "limit_price": 0.0,
+                "reference_price": mid,
+                "use_bracket": False,
+                "take_profit": None, "stop_loss": None,
+                "take_profit_pct": None, "stop_loss_pct": None,
+                "rr_ratio": None,
+            }
+
+            hedge_preview = self._order_worker.preview_future_order(hedge_order)
+            if not hedge_preview.get("ok", False):
+                self._log(f"[WARN][hedge] Hedge preview failed: {hedge_preview.get('message')}")
+                return None, None
+
+            return hedge_order, hedge_preview
+        except Exception as exc:
+            self._log(f"[ERROR][hedge] {exc}")
+            return None, None
+
+    def _place_confirmed_order(self, order: dict, hedge_order: dict | None = None) -> None:
+        """Called when user clicks Send Order in the preview dialog."""
+        if self._order_worker is None or not self._order_worker._running:
+            self._log("Order executor is not running.", level="error")
             return
-        ok = result.get("ok", False)
-        msg = result.get("message", "")
-        level = "success" if ok else "error"
-        self.window.order_ticket_panel.set_feedback(msg, level=level)
-        self._log(f"[{'OK' if ok else 'FAIL'}][order] {msg}")
+        try:
+            order = dict(order)
+            if order.get("instrument") == "Option" and "tenor" in order and "expiry" not in order:
+                order["expiry"] = self._resolve_tenor_to_expiry(order["tenor"])
+            instrument = order.get("instrument", "")
+
+            # 1. Place main order
+            if instrument == "Future":
+                result = self._order_worker.place_future_order(order)
+            elif instrument == "Option":
+                result = self._order_worker.place_option_order(order)
+            else:
+                result = self._order_worker.place_order(order)
+            ok = result.get("ok", False)
+            msg = result.get("message", "")
+            self._log(f"[{'OK' if ok else 'FAIL'}][order] {msg}")
+
+            # 2. Place hedge if requested and main order succeeded
+            if ok and hedge_order is not None:
+                self._log("[INFO][hedge] Placing delta hedge...")
+                hedge_result = self._order_worker.place_future_order(hedge_order)
+                hedge_ok = hedge_result.get("ok", False)
+                hedge_msg = hedge_result.get("message", "")
+                self._log(f"[{'OK' if hedge_ok else 'FAIL'}][hedge] {hedge_msg}")
+                msg = f"{msg} | Hedge: {hedge_msg}"
+                ok = ok and hedge_ok
+
+            level = "success" if ok else "error"
+            self.window.order_ticket_panel.set_feedback(msg, level=level)
+        except Exception as exc:
+            self.window.order_ticket_panel.set_feedback(str(exc), level="error")
+            self._log(f"[ERROR][order] {exc}")
 
     def _queue_order_from_ticket(self) -> None:
         if self.window is None or self._order_worker is None:
@@ -1204,6 +1303,7 @@ class Controller:
             if connected:
                 self.window.logs_panel.update({"message": "[INFO][connection] connected to IBKR"})
                 self._refresh_account_snapshots()
+                self._discover_option_chains()
             else:
                 message = self._last_connect_error or "IB connection failed."
                 self.window.logs_panel.update({"message": f"[ERROR][connection] {message}"})
@@ -1253,11 +1353,119 @@ class Controller:
             return
 
         self._start_market_data_worker()
+        self._start_vol_engine()
         self._refresh_status(force=True)
         if self.window is not None:
             self.window.logs_panel.update(
                 {"message": f"[INFO][market_data] live stream started for {self.market_symbol}"}
             )
+
+    def _resolve_tenor_to_expiry(self, tenor: str) -> str:
+        """Read config/fop_expiries.json and return expiry YYYYMMDD for a tenor."""
+        path = self._project_root / "config" / "fop_expiries.json"
+        if not path.exists():
+            return ""
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data.get(tenor, "")
+        except Exception:
+            return ""
+
+    def _discover_option_chains(self) -> None:
+        """Discover FOP expiries/strikes on Connect. Saves 2 JSONs + populates Strike combo.
+
+        Iterates over all quarterly EUR futures to collect all FOP expiries.
+        """
+        if self.window is None or not self.ib_client.is_connected():
+            return
+        try:
+            from datetime import date, datetime, timedelta
+            from ib_insync import Contract
+
+            # 1. Get all quarterly EUR futures
+            fut = Contract()
+            fut.symbol = "EUR"
+            fut.secType = "FUT"
+            fut.exchange = "CME"
+            fut.currency = "USD"
+
+            details = self.ib_client.ib.reqContractDetails(fut)
+            if not details:
+                self._log("[WARN][options] No EUR futures found")
+                return
+
+            today = date.today()
+            min_exp = (today + timedelta(days=7)).strftime("%Y%m%d")
+            quarterly = [
+                d.contract for d in details
+                if d.contract.lastTradeDateOrContractMonth >= min_exp
+                and int(d.contract.lastTradeDateOrContractMonth[4:6]) in {3, 6, 9, 12}
+            ]
+            quarterly.sort(key=lambda c: c.lastTradeDateOrContractMonth)
+            self._log(f"[INFO][options] Found {len(quarterly)} quarterly futures")
+
+            # 2. For each future, get option params — track strikes per expiry
+            expiry_strikes: dict[str, set[float]] = {}
+
+            for fut_c in quarterly:
+                params = self.ib_client.ib.reqSecDefOptParams(
+                    "EUR", "CME", "FUT", fut_c.conId)
+                euu = [p for p in params if p.tradingClass == "EUU"]
+                for p in euu:
+                    for exp in p.expirations:
+                        if exp not in expiry_strikes:
+                            expiry_strikes[exp] = set()
+                        expiry_strikes[exp].update(p.strikes)
+                pass
+
+            sorted_expiries = sorted(expiry_strikes.keys())
+            self._log(f"[INFO][options] Total: {len(sorted_expiries)} expiries")
+
+            # 3. Build tenor→date mapping (like list_fop_expiries.py)
+            now = datetime.now()
+            tenor_map: dict[str, str] = {}
+            for exp in sorted_expiries:
+                exp_date = datetime.strptime(exp, "%Y%m%d")
+                days = (exp_date - now).days
+                if days < 1:
+                    continue
+                months = round(days / 30.44)
+                if months < 1:
+                    label = f"{days}D"
+                elif months < 12:
+                    label = f"{months}M"
+                else:
+                    years = months // 12
+                    remainder = months % 12
+                    label = f"{years}Y" if remainder == 0 else f"{years}Y{remainder}M"
+                if label not in tenor_map:
+                    tenor_map[label] = exp
+
+            # Build per-tenor strikes
+            tenor_strikes: dict[str, list[float]] = {}
+            for t, exp in tenor_map.items():
+                tenor_strikes[t] = sorted(expiry_strikes.get(exp, set()))
+
+            self._log(f"[INFO][options] {len(tenor_map)} tenors")
+            pass
+
+            # 4. Save fop_expiries.json (tenor → date)
+            config_dir = self._project_root / "config"
+            config_dir.mkdir(parents=True, exist_ok=True)
+
+            expiries_path = config_dir / "fop_expiries.json"
+            expiries_path.write_text(json.dumps(tenor_map, indent=2), encoding="utf-8")
+            self._log(f"[INFO][options] Saved {expiries_path}")
+
+            # 5. Save fop_strikes.json (strikes per tenor)
+            strikes_path = config_dir / "fop_strikes.json"
+            strikes_path.write_text(json.dumps(tenor_strikes, indent=2), encoding="utf-8")
+            self._log(f"[INFO][options] Saved {strikes_path}")
+
+            # 6. Populate panel with per-tenor strikes
+            self.window.order_ticket_panel.set_option_chains(tenor_strikes)
+        except Exception as exc:
+            self._log(f"[ERROR][options] Chain discovery failed: {exc}")
 
     # Stop live stream subscription and market polling worker.
     def _stop_live_streaming(self) -> None:
