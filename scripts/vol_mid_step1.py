@@ -1,8 +1,8 @@
 """
-vol_mid_step1.py — version asynchrone optimisée
-6 tenors × strikes adaptatifs | refresh 30min | output DataFrame
+vol_mid_step1.py — scan C+P, merge IV, PCHIP on call-delta axis
+6 tenors × strikes adaptatifs | output: 3 DataFrames (vol_mid, diagnostics, arb_flags)
 """
-import math
+import math, csv, time
 import pandas as pd
 from datetime import datetime
 from scipy.interpolate import PchipInterpolator
@@ -11,30 +11,16 @@ from ib_insync import IB, Contract, util
 
 util.patchAsyncio()
 
-# ── Config globale ──
-PORT      = 4002
-CLIENT_ID = 14
+# ── Config ──
+PORT, CLIENT_ID = 4002, 14
+TARGET_DTES     = [30, 60, 90, 120, 150, 180]
+WAIT_GREEKS     = 8
+IV_ARB_THRESHOLD = 0.005
 
-TARGET_DTES  = [30, 60, 90, 120, 150, 180]
-WAIT_GREEKS  = 8
-
-# Paramètres par tenor (court vs long)
 PARAMS = {
-    "short": {"n_side": 6,  "rr25_max": 10.0, "bf25_min": -6.0, "min_strikes": 5},  # DTE <= 45
-    "long":  {"n_side": 10, "rr25_max":  6.0, "bf25_min": -4.0, "min_strikes": 7},  # DTE > 45
+    "short": {"n_side": 20, "rr25_max": 10.0, "bf25_min": -6.0, "min_strikes": 5},
+    "long":  {"n_side": 30, "rr25_max":  6.0, "bf25_min": -4.0, "min_strikes": 7},
 }
-
-# ── Connexion ──
-ib = IB()
-ib.connect("127.0.0.1", PORT, clientId=CLIENT_ID)
-
-def on_error(reqId, errorCode, errorString, contract):
-    if errorCode in (10090, 10197, 10167, 200, 2119, 2104):
-        return
-    print(f"Error {errorCode}, reqId {reqId}: {errorString}")
-
-ib.errorEvent += on_error
-ib.reqMarketDataType(3)
 
 def safe(val):
     return val if val is not None and not (isinstance(val, float) and math.isnan(val)) else None
@@ -42,17 +28,22 @@ def safe(val):
 def get_params(dte):
     return PARAMS["short"] if dte <= 45 else PARAMS["long"]
 
-# ── Step 1 : Front future → F ──
-print("=" * 60)
-print("Step 1 : Front future EUR/CME → F")
-print("=" * 60)
+def step(msg):
+    print(f"  [{time.perf_counter() - T0:.1f}s] {msg}", flush=True)
 
-fut = Contract()
-fut.symbol   = "EUR"
-fut.secType  = "FUT"
-fut.exchange = "CME"
-fut.currency = "USD"
+T0 = time.perf_counter()
 
+# ── Step 1 : Connect + Forward ──
+step("1/5  connect + forward")
+ib = IB()
+ib.connect("127.0.0.1", PORT, clientId=CLIENT_ID)
+_SUPPRESS = {10090, 10197, 10167, 200, 2119, 2104, 2108}
+ib.errorEvent += lambda reqId, code, msg, contract: (
+    print(f"IB Error {code}: {msg}") if code not in _SUPPRESS else None
+)
+ib.reqMarketDataType(3)
+
+fut = Contract(symbol="EUR", secType="FUT", exchange="CME", currency="USD")
 details = ib.reqContractDetails(fut)
 now = datetime.now()
 
@@ -65,200 +56,199 @@ for d in details:
     except ValueError:
         continue
     dte = (exp_date - now).days
-    if dte < 7:
-        continue
-    futures.append((dte, c))
+    if dte >= 7:
+        futures.append((dte, c))
 
 futures.sort(key=lambda x: x[0])
 front_fut = futures[0][1]
 
 fut_ticker = ib.reqMktData(front_fut, "", False, False)
 ib.sleep(3)
-bid_f = safe(fut_ticker.bid)
-ask_f = safe(fut_ticker.ask)
+bid_f, ask_f = safe(fut_ticker.bid), safe(fut_ticker.ask)
 F_global = (bid_f + ask_f) / 2.0 if bid_f and ask_f else safe(fut_ticker.close)
 ib.cancelMktData(front_fut)
 ib.sleep(1)
-print(f"  {front_fut.localSymbol}  F = {F_global:.5f}")
+step(f"1/5  done — F={F_global:.5f}")
 
-# ── Step 2 : Chains EUU ──
-print(f"\n{'=' * 60}")
-print("Step 2 : Chains EUU disponibles")
-print("=" * 60)
-
-euu_chains = []
-seen = set()
+# ── Step 2 : Chains EUU (all multipliers) ──
+step("2/5  chains EUU")
+# Collect per expiry: union of strikes from all multipliers
+chain_data = {}  # {expiry: {"dte": int, "strikes": set, "multipliers": set, "exchange": str, ...}}
+seen_exp = set()
 
 for dte, fut_c in futures[:8]:
-    chains = ib.reqSecDefOptParams(
-        underlyingSymbol  = "EUR",
-        futFopExchange    = "CME",
-        underlyingSecType = "FUT",
-        underlyingConId   = fut_c.conId,
-    )
+    chains = ib.reqSecDefOptParams("EUR", "CME", "FUT", fut_c.conId)
     for ch in chains:
         if ch.tradingClass != "EUU":
             continue
         for exp in sorted(ch.expirations):
-            if exp in seen:
-                continue
-            seen.add(exp)
             exp_date = datetime.strptime(exp, "%Y%m%d") if len(exp) == 8 else datetime.strptime(exp, "%Y%m")
             dte_fop = (exp_date - now).days
             if dte_fop < 10:
                 continue
-            euu_chains.append({
-                "expiry":     exp,
-                "dte":        dte_fop,
-                "strikes":    sorted(ch.strikes),
-                "exchange":   ch.exchange,
-                "multiplier": ch.multiplier,
-                "fut_conId":  fut_c.conId,
-                "fut_symbol": fut_c.localSymbol,
-            })
+            if exp not in chain_data:
+                chain_data[exp] = {
+                    "expiry": exp, "dte": dte_fop,
+                    "strikes": set(), "multipliers": set(),
+                    "exchange": ch.exchange,
+                    "fut_conId": fut_c.conId, "fut_symbol": fut_c.localSymbol,
+                }
+            chain_data[exp]["strikes"].update(ch.strikes)
+            chain_data[exp]["multipliers"].add(str(ch.multiplier))
 
+euu_chains = []
+for exp, data in chain_data.items():
+    data["strikes"] = sorted(data["strikes"])
+    data["multipliers"] = sorted(data["multipliers"])
+    euu_chains.append(data)
 euu_chains.sort(key=lambda x: x["dte"])
-print(f"  {len(euu_chains)} expirations EUU disponibles :")
-for ch in euu_chains:
-    print(f"    {ch['expiry']}  DTE={ch['dte']:>3}  nStrikes={len(ch['strikes'])}")
 
-# ── Step 3 : Sélection tenors ──
 selected = []
 for target in TARGET_DTES:
     best = min(euu_chains, key=lambda x: abs(x["dte"] - target))
     if best not in selected:
         selected.append(best)
+step(f"2/5  done — {len(selected)} tenors")
 
-print(f"\n  Tenors sélectionnés :")
-for ch in selected:
-    p = get_params(ch["dte"])
-    print(f"    {ch['expiry']}  DTE={ch['dte']:>3}  "
-          f"n_strikes={p['n_side']*2+1}  "
-          f"rr25_max={p['rr25_max']}  bf25_min={p['bf25_min']}")
-
-# ── Step 4 : Qualification contrats ──
-print(f"\n{'=' * 60}")
-print("Step 3 : Qualification des contrats")
-print("=" * 60)
-
+# ── Step 3 : Qualify C+P contracts (try all multipliers) ──
+step("3/5  qualify contracts (C+P × multipliers)")
 qualified_contracts = {}
-
 for ch in selected:
-    strikes = ch["strikes"]
-    expiry  = ch["expiry"]
-    dte     = ch["dte"]
-    p       = get_params(dte)
-    n_side  = p["n_side"]
-
+    strikes, expiry, dte = ch["strikes"], ch["expiry"], ch["dte"]
+    multipliers = ch["multipliers"]
+    n_side = get_params(dte)["n_side"]
     atm_idx = min(range(len(strikes)), key=lambda i: abs(strikes[i] - F_global))
     lo = max(0, atm_idx - n_side)
     hi = min(len(strikes) - 1, atm_idx + n_side)
     scan_strikes = strikes[lo:hi+1]
 
     qualified_contracts[expiry] = {}
-    print(f"  {expiry} (DTE={dte}) — {len(scan_strikes)} strikes...", end=" ", flush=True)
-
     for K in scan_strikes:
-        fop = Contract()
-        fop.symbol       = "EUR"
-        fop.secType      = "FOP"
-        fop.exchange     = ch["exchange"]
-        fop.currency     = "USD"
-        fop.lastTradeDateOrContractMonth = expiry
-        fop.strike       = K
-        fop.right        = "C"
-        fop.multiplier   = str(ch["multiplier"])
-        fop.tradingClass = "EUU"
+        qualified_contracts[expiry][K] = {}
+        for right in ("C", "P"):
+            # Try each multiplier, keep first valid contract
+            for mult in multipliers:
+                fop = Contract(symbol="EUR", secType="FOP", exchange=ch["exchange"],
+                               currency="USD", lastTradeDateOrContractMonth=expiry,
+                               strike=K, right=right, multiplier=mult,
+                               tradingClass="EUU")
+                det = ib.reqContractDetails(fop)
+                if det:
+                    qualified_contracts[expiry][K][right] = det[0].contract
+                    break  # got one, no need to try other multipliers
+step("3/5  done")
 
-        fop_details = ib.reqContractDetails(fop)
-        if fop_details:
-            qualified_contracts[expiry][K] = fop_details[0].contract
-
-    print(f"{len(qualified_contracts[expiry])} OK")
-
-# ── Step 5 : Scan IV parallèle ──
-print(f"\n{'=' * 60}")
-print(f"Step 4 : Scan IV parallèle (wait={WAIT_GREEKS}s/tenor)")
-print("=" * 60)
-
-rows = []
+# ── Step 4 : Scan IV ──
+step("4/5  scan IV (reqMktData)")
+rows, diag_rows, all_arb_flags = [], [], []
 
 for ch in selected:
-    expiry    = ch["expiry"]
-    dte       = ch["dte"]
-    p         = get_params(dte)
+    expiry, dte = ch["expiry"], ch["dte"]
+    p = get_params(dte)
     contracts = qualified_contracts.get(expiry, {})
-
     if not contracts:
-        print(f"\n  {expiry} — aucun contrat qualifié, SKIP")
+        diag_rows.append({"expiry": expiry, "dte": dte, "status": "NO_CONTRACTS",
+                          "n_strikes": 0, "delta_min": None, "delta_max": None})
         continue
 
-    print(f"\n  {expiry} (DTE={dte}) — envoi {len(contracts)} reqMktData simultanés...")
-
     tickers = {}
-    for K, contract in contracts.items():
-        tickers[K] = (contract, ib.reqMktData(contract, "100", False, False))
-
+    for K, rights in contracts.items():
+        for right, contract in rights.items():
+            tickers[(K, right)] = (contract, ib.reqMktData(contract, "100", False, False))
     ib.sleep(WAIT_GREEKS)
 
-    iv_by_strike    = {}
-    delta_by_strike = {}
-
-    for K, (contract, ticker) in tickers.items():
+    raw = {}
+    for (K, right), (contract, ticker) in tickers.items():
         greeks = ticker.modelGreeks
         iv    = safe(greeks.impliedVol) if greeks else None
         delta = safe(greeks.delta)      if greeks else None
-
         if iv and iv > 0:
-            iv_by_strike[K]    = iv
-            delta_by_strike[K] = delta
-            print(f"    K={K:.4f}  IV={iv*100:.2f}%  Δ={delta:.3f}" if delta else
-                  f"    K={K:.4f}  IV={iv*100:.2f}%  Δ=--")
-        else:
-            print(f"    K={K:.4f}  IV=--")
-
+            raw[(K, right)] = {"iv": iv, "delta": delta}
         ib.cancelMktData(contract)
-
     ib.sleep(0.5)
 
+    # Merge C+P
+    iv_by_strike, delta_by_strike = {}, {}
+    all_strikes = sorted(set(K for (K, _) in raw.keys()))
+
+    for K in all_strikes:
+        c_data, p_data = raw.get((K, "C")), raw.get((K, "P"))
+        iv_c = c_data["iv"] if c_data else None
+        iv_p = p_data["iv"] if p_data else None
+        d_c  = c_data["delta"] if c_data else None
+        d_p  = p_data["delta"] if p_data else None
+
+        if iv_c and iv_p:
+            diff = abs(iv_c - iv_p)
+            if diff > IV_ARB_THRESHOLD:
+                all_arb_flags.append({"expiry": expiry, "strike": K,
+                                      "iv_call": round(iv_c*100, 4),
+                                      "iv_put": round(iv_p*100, 4),
+                                      "diff_pct": round(diff*100, 4)})
+            iv_merged = (iv_c + iv_p) / 2.0
+        elif iv_c:
+            iv_merged = iv_c
+        elif iv_p:
+            iv_merged = iv_p
+        else:
+            continue
+
+        if d_c is not None:
+            delta = d_c
+        elif d_p is not None:
+            delta = 1.0 + d_p
+        else:
+            delta = None
+
+        if delta is not None:
+            iv_by_strike[K] = iv_merged
+            delta_by_strike[K] = delta
+
     if len(iv_by_strike) < p["min_strikes"]:
-        print(f"    SKIP — pas assez de strikes ({len(iv_by_strike)} < {p['min_strikes']})")
+        diag_rows.append({"expiry": expiry, "dte": dte, "status": "TOO_FEW_STRIKES",
+                          "n_strikes": len(iv_by_strike), "delta_min": None, "delta_max": None})
         continue
 
-    # ── Interpolation delta-space ──
-    pairs = [(delta_by_strike[k], iv_by_strike[k], k)
-             for k in iv_by_strike if delta_by_strike.get(k) is not None]
-    pairs.sort(key=lambda x: x[0])
+    # PCHIP
+    pairs = sorted([(delta_by_strike[k], iv_by_strike[k], k) for k in iv_by_strike])
+    deltas = np.array([t[0] for t in pairs])
+    ivs    = np.array([t[1] for t in pairs])
+    ks     = np.array([t[2] for t in pairs])
 
-    deltas = np.array([p[0] for p in pairs])
-    ivs    = np.array([p[1] for p in pairs])
-    ks     = np.array([p[2] for p in pairs])
-
+    delta_min, delta_max = float(deltas[0]), float(deltas[-1])
     interp_iv     = PchipInterpolator(deltas, ivs)
     interp_strike = PchipInterpolator(deltas, ks)
 
-    def get_iv_delta(d):
+    def get_iv(d):
+        if d < delta_min or d > delta_max:
+            return None, None
         try:
             return float(interp_iv(d)), float(interp_strike(d))
         except Exception:
             return None, None
 
-    iv_atm,  k_atm  = get_iv_delta(0.50)
-    iv_25dc, k_25dc = get_iv_delta(0.25)
-    iv_25dp, k_25dp = get_iv_delta(-0.25)
-    iv_10dc, k_10dc = get_iv_delta(0.10)
-    iv_10dp, k_10dp = get_iv_delta(-0.10)
+    iv_atm,  k_atm  = get_iv(0.50)
+    iv_25dc, k_25dc = get_iv(0.25)
+    iv_25dp, k_25dp = get_iv(0.75)
+    iv_10dc, k_10dc = get_iv(0.10)
+    iv_10dp, k_10dp = get_iv(0.90)
 
     rr25 = (iv_25dc - iv_25dp) * 100 if iv_25dc and iv_25dp else None
     bf25 = ((iv_25dc + iv_25dp) / 2 - iv_atm) * 100 if iv_25dc and iv_25dp and iv_atm else None
 
-    # ── Validation adaptative ──
-    tenor_params = get_params(dte)
-    if rr25 is not None and abs(rr25) > tenor_params["rr25_max"]:
-        print(f"    SKIP {expiry} — RR25 aberrant ({rr25:.2f}%)")
-        continue
-    if bf25 is not None and bf25 < tenor_params["bf25_min"]:
-        print(f"    SKIP {expiry} — BF25 aberrant ({bf25:.2f}%)")
+    tp = get_params(dte)
+    skip_reason = None
+    if rr25 is not None and abs(rr25) > tp["rr25_max"]:
+        skip_reason = f"RR25={rr25:.2f}"
+    if bf25 is not None and bf25 < tp["bf25_min"]:
+        skip_reason = f"BF25={bf25:.2f}"
+
+    diag_rows.append({"expiry": expiry, "dte": dte,
+                       "status": f"SKIP({skip_reason})" if skip_reason else "OK",
+                       "n_strikes": len(iv_by_strike),
+                       "delta_min": round(delta_min, 4),
+                       "delta_max": round(delta_max, 4)})
+    if skip_reason:
         continue
 
     if   dte <= 45:  label = "1M"
@@ -268,7 +258,7 @@ for ch in selected:
     elif dte <= 165: label = "5M"
     else:            label = "6M"
 
-    row = {
+    rows.append({
         "tenor_label":   label,
         "expiry":        expiry,
         "dte":           dte,
@@ -285,34 +275,52 @@ for ch in selected:
         "strike_atm":    round(k_atm,  4)          if k_atm   else None,
         "strike_25dc":   round(k_25dc, 4)          if k_25dc  else None,
         "strike_10dc":   round(k_10dc, 4)          if k_10dc  else None,
-    }
-    rows.append(row)
+    })
+step("4/5  done")
 
-    print(f"\n    sigma_ATM={row['sigma_ATM_pct']}%  "
-          f"RR25={row['RR25_pct']}%  BF25={row['BF25_pct']}%")
-
-# ── DataFrame summary ──
-print(f"\n{'=' * 120}")
-print(f"DATAFRAME VOL_MID  —  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-print("=" * 120)
+# ── Step 5 : Output ──
+step("5/5  output")
+ib.disconnect()
 
 pd.set_option("display.max_columns", None)
-pd.set_option("display.width", 200)
+pd.set_option("display.width", 220)
 pd.set_option("display.float_format", "{:.4f}".format)
 
+ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+print(f"\n{'═' * 120}")
+print(f"  VOL_MID  —  {ts}  —  F={F_global:.5f}")
+print(f"{'═' * 120}")
 if rows:
     df = pd.DataFrame(rows)
     print(df.to_string(index=False))
-    print(f"\n  {len(rows)} tenors valides sur {len(selected)} scannés")
 else:
-    print("  Aucune donnée valide")
+    print("  (empty)")
 
-print("=" * 120)
+print(f"\n{'═' * 120}")
+print(f"  DIAGNOSTICS")
+print(f"{'═' * 120}")
+if diag_rows:
+    df_diag = pd.DataFrame(diag_rows)
+    print(df_diag.to_string(index=False))
+else:
+    print("  all tenors OK")
 
-# ── Export CSV ──
+print(f"\n{'═' * 120}")
+print(f"  ARB FLAGS  (|iv_C - iv_P| > {IV_ARB_THRESHOLD*100:.1f}%)")
+print(f"{'═' * 120}")
+if all_arb_flags:
+    df_arb = pd.DataFrame(all_arb_flags)
+    print(df_arb.to_string(index=False))
+else:
+    print("  none")
+
+print(f"{'═' * 120}")
+step("done")
+print()
+
+# ── CSV ──
 if rows:
-    import csv
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for r in rows:
         r["timestamp"] = ts
     fields = ["timestamp"] + [k for k in rows[0].keys() if k != "timestamp"]
@@ -320,5 +328,3 @@ if rows:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
-    print(f"\n  >> vol_mid_output.csv écrit ({len(rows)} tenors)")
-ib.disconnect()

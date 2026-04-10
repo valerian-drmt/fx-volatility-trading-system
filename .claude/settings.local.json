@@ -123,7 +123,20 @@
       "Bash(python -m ruff check src/services/data_feed.py src/controller.py)",
       "Bash(python -m ruff check src/services/data_feed.py)",
       "Bash(python -m ruff check src/services/vol_engine.py)",
-      "Bash(python -m pytest tests/test_vol_engine.py tests/test_vol_engine_math.py -x -q)"
+      "Bash(python -m pytest tests/test_vol_engine.py tests/test_vol_engine_math.py -x -q)",
+      "Bash(python -m ruff check src/services/vol_engine.py src/ui/panels/vol_scanner.py)",
+      "Bash(python -m pytest tests/test_vol_engine.py tests/test_vol_scanner_panel.py -x -q)",
+      "Bash(python -m ruff check src/services/vol_engine.py src/services/data_feed.py)",
+      "Bash(python -m ruff check src/controller.py src/services/data_feed.py)",
+      "Bash(python -m ruff check src/controller.py src/services/vol_engine.py)",
+      "Bash(python -m ruff check src/services/vol_engine.py src/controller.py)",
+      "Bash(python -m pytest tests/test_vol_engine.py tests/test_vol_scanner_panel.py tests/test_controller_settings.py -x -q -m \"not integration\")",
+      "Bash(python -m pytest tests/test_vol_engine_math.py -x -q)",
+      "Bash(python -m pytest tests/ -x -q -m \"not integration\" --ignore=tests/test_chart_panel.py --ignore=tests/test_ib_client.py)",
+      "Bash(python -m ruff check src/services/vol_engine.py src/controller.py src/ui/panels/vol_scanner.py)",
+      "Bash(python -m ruff check src/controller.py src/ui/panels/term_structure.py src/ui/panels/smile_chart.py)",
+      "Bash(python -m pytest tests/test_controller_settings.py tests/test_vol_scanner_panel.py -x -q -m \"not integration\")",
+      "Bash(python -m ruff check src/services/vol_engine.py src/controller.py src/ui/panels/vol_scanner.py src/ui/panels/smile_chart.py)"
     ]
   }
 }
