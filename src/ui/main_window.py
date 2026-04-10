@@ -134,8 +134,8 @@ class MainWindow(QMainWindow):
 
         col1_widget.setMaximumWidth(345)
         main_layout.addWidget(col1_widget, 0)
-        main_layout.addWidget(col2_widget, 2)
-        main_layout.addWidget(col3_widget, 3)
+        main_layout.addWidget(col2_widget, 3)
+        main_layout.addWidget(col3_widget, 2)
 
         self.setCentralWidget(container)
         self.resize(1920, 1080)
