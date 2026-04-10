@@ -157,7 +157,7 @@ EXCHANGE = "CME"
 CURRENCY = "USD"
 MULTIPLIER = "125000"
 MAX_OTM_PCT = 0.08
-MAX_STRIKES_PER_SIDE = 5  # 5 above ATM + 5 below = 10 per tenor
+MAX_STRIKES_PER_SIDE = 12  # wide enough for 10-delta wings
 TARGET_DTES = [30, 60, 90, 120, 150, 180]  # 6 target tenors
 
 
@@ -275,6 +275,7 @@ class VolDataCollector:
             return False
 
         if not self._targets:
+            print("[VOL_COLLECTOR] No cached targets, discovering from IB...")
             self._targets = self._discover_front_contracts()
             if not self._targets:
                 return False
@@ -284,7 +285,7 @@ class VolDataCollector:
         for expiry, meta in self._targets.items():
             all_strikes = meta.get("strikes", [])
             dte = meta.get("dte", 0)
-            n_side = 6 if dte <= 45 else 10
+            n_side = MAX_STRIKES_PER_SIDE
 
             if not all_strikes:
                 continue
@@ -386,22 +387,6 @@ class VolDataCollector:
             n_total += 1
             if iv_clean is not None:
                 n_with_iv += 1
-
-        print(f"[VOL_COLLECTOR] snapshot: {n_with_iv}/{n_total} tickers have IV, spot={spot:.5f}")
-
-        shown = 0
-        for (expiry, strike, right), ticker in self._fop_tickers.items():
-            if shown >= 3:
-                break
-            print(f"  [{expiry} K={strike:.4f} {right}] "
-                  f"bid={getattr(ticker, 'bid', '?')} ask={getattr(ticker, 'ask', '?')} "
-                  f"last={getattr(ticker, 'last', '?')} close={getattr(ticker, 'close', '?')} "
-                  f"IV={getattr(ticker, 'impliedVolatility', '?')} "
-                  f"delayedBid={getattr(ticker, 'delayedBid', '?')} "
-                  f"delayedLast={getattr(ticker, 'delayedLast', '?')} "
-                  f"modelGreeks={getattr(ticker, 'modelGreeks', '?')} "
-                  f"lastGreeks={getattr(ticker, 'lastGreeks', '?')}")
-            shown += 1
 
         if n_with_iv == 0:
             print("[VOL_COLLECTOR] WARNING: no tickers have IV data — "
