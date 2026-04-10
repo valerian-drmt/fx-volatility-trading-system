@@ -11,7 +11,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from ib_insync import Forex, IB
 
-from services.data_feed import MarketDataWorker, VolDataCollector
+from services.data_feed import MarketDataWorker
 from services.vol_engine import VolEngine
 from services.ib_client import IBClient
 from services.order_executor import OrderExecutor
@@ -68,15 +68,11 @@ class Controller:
         self._market_data_stop: threading.Event = threading.Event()
         self._order_worker: OrderExecutor | None = None
         self._vol_engine: VolEngine | None = None
-        self._vol_input_queue: queue.Queue | None = None
-        self._vol_output_queue: queue.Queue | None = None
-        self._vol_data_collector: VolDataCollector | None = None
-        self._status_thread: threading.Thread | None = None
-        self._status_stop: threading.Event = threading.Event()
+        self._vol_output_queue: queue.Queue = queue.Queue()
         self._vol_poll_thread: threading.Thread | None = None
         self._vol_poll_stop: threading.Event = threading.Event()
-        self._vol_collection_thread: threading.Thread | None = None
-        self._vol_collection_stop: threading.Event = threading.Event()
+        self._status_thread: threading.Thread | None = None
+        self._status_stop: threading.Event = threading.Event()
 
         self._last_status_sec = None
         self._last_server_sync_sec = None
@@ -179,7 +175,6 @@ class Controller:
             return
 
         self._setup_order_worker()
-        self._setup_vol_engine()
         self.window.order_ticket_panel.place_button.clicked.connect(self._queue_order_from_ticket)
         self.window.order_ticket_panel.order_preview_requested.connect(self._on_order_preview_requested)
         limit_update_btn = getattr(self.window.order_ticket_panel, "limit_price_update_button", None)
@@ -310,66 +305,39 @@ class Controller:
     # ── Vol Engine lifecycle ──
 
     def _setup_vol_engine(self) -> None:
-        self._vol_input_queue = queue.Queue()
         self._vol_output_queue = queue.Queue()
-        self._vol_engine = VolEngine(self._vol_input_queue, self._vol_output_queue)
 
     def _start_vol_engine(self) -> None:
         self._log("[VOL] Starting Thread 2 (VolEngine)...")
-        if self._vol_engine is None:
-            self._setup_vol_engine()
-        if self._vol_engine is not None and not self._vol_engine.is_alive():
+        if self._vol_engine is None or not self._vol_engine.is_alive():
+            self._vol_output_queue = queue.Queue()
+            self._vol_engine = VolEngine(
+                output_queue=self._vol_output_queue,
+                host=str(self.host),
+                port=int(self.port),
+                client_id=10,
+            )
             self._vol_engine.start()
             self._log(f"[VOL] Thread 2 started: alive={self._vol_engine.is_alive()}")
 
+        # Poll thread to read results from vol engine
         self._vol_poll_stop.clear()
         self._vol_poll_thread = threading.Thread(
             target=self._vol_poll_loop, name="VolPoll", daemon=True,
         )
         self._vol_poll_thread.start()
-
-        self._vol_collection_stop.clear()
-        self._vol_collection_thread = threading.Thread(
-            target=self._vol_collection_loop, name="VolCollection", daemon=True,
-        )
-        self._vol_collection_thread.start()
-        self._log("[VOL] Threads started: poll=500ms, collect=30s, first snapshot in 5s")
+        self._log("[VOL] Poll thread started (500ms)")
         self._refresh_status(force=True)
 
-    def _ensure_vol_data_collector(self) -> bool:
-        """Lazy-init the VolDataCollector when spot becomes available."""
-        if self._vol_data_collector is not None:
-            return True
-        spot = self._get_mid_spot()
-        if not spot or spot <= 0:
-            return False
-        self._vol_data_collector = VolDataCollector(self.ib_client)
-        ok = self._vol_data_collector.discover_chains(spot)
-        if ok:
-            self._vol_data_collector.subscribe_all()
-            n_tickers = len(self._vol_data_collector._fop_tickers)
-            self._log(f"[VOL] Collector ready: {n_tickers} FOP tickers subscribed")
-            return True
-        self._log("[VOL] WARNING: no chains discovered")
-        self._vol_data_collector = None
-        return False
-
     def _stop_vol_engine(self) -> None:
-        self._vol_collection_stop.set()
-        if self._vol_collection_thread is not None:
-            self._vol_collection_thread.join(timeout=2.0)
-            self._vol_collection_thread = None
         self._vol_poll_stop.set()
         if self._vol_poll_thread is not None:
             self._vol_poll_thread.join(timeout=2.0)
             self._vol_poll_thread = None
-        if self._vol_data_collector is not None:
-            self._vol_data_collector.unsubscribe_all()
-            self._vol_data_collector = None
         if self._vol_engine is not None:
             self._vol_engine.stop()
             if self._vol_engine.is_alive():
-                self._vol_engine.join(timeout=2.0)
+                self._vol_engine.join(timeout=5.0)
             self._vol_engine = None
         self._log("[VOL] Vol engine stopped")
         self._refresh_status(force=True)
@@ -377,14 +345,6 @@ class Controller:
     def _vol_poll_loop(self) -> None:
         while not self._vol_poll_stop.wait(timeout=0.5):
             self._post_ui(self._poll_vol_engine)
-
-    def _vol_collection_loop(self) -> None:
-        # First snapshot after 3s
-        if self._vol_collection_stop.wait(timeout=5.0):
-            return
-        self._post_ui(self._collect_and_send_chain_data)
-        while not self._vol_collection_stop.wait(timeout=30.0):
-            self._post_ui(self._collect_and_send_chain_data)
 
     def _poll_vol_engine(self) -> None:
         if self._vol_output_queue is None or self.window is None:
@@ -398,37 +358,59 @@ class Controller:
             self._log(f"[VOL] engine error: {error}")
         else:
             rows = result.get("scanner_rows", [])
-            tenors = sorted({r.get("tenor", "?") for r in rows})
-            self._log(f"[VOL] scanner update: {len(rows)} rows, tenors={tenors}")
+            spot = result.get("spot", 0)
+            print(f"\n[VOL] Scanner — F={spot:.5f}")
+            print(f"  {'Tenor':<6} {'DTE':>4} {'σ Mid':>7} {'σ Fair':>7} {'Ecart':>7} {'Signal':>10} {'RV':>7} {'RR25':>7} {'BF25':>7}")
+            print(f"  {'─'*6} {'─'*4} {'─'*7} {'─'*7} {'─'*7} {'─'*10} {'─'*7} {'─'*7} {'─'*7}")
+            for r in rows:
+                def _f(v, fmt=".2f"):
+                    return f"{v:{fmt}}" if v is not None else "—"
+                t = r.get("tenor", "")
+                dte = str(r.get("dte", ""))
+                mid = _f(r.get("sigma_mid_pct"))
+                sf = _f(r.get("sigma_fair_pct"))
+                ec = _f(r.get("ecart_pct"), "+.2f") if r.get("ecart_pct") is not None else "—"
+                sig = r.get("signal", "—") or "—"
+                rv = _f(r.get("RV_pct"))
+                rr = _f(r.get("RR25_pct"), "+.2f") if r.get("RR25_pct") is not None else "—"
+                bf = _f(r.get("BF25_pct"), "+.2f") if r.get("BF25_pct") is not None else "—"
+                print(f"  {t:<6} {dte:>4} {mid:>7} {sf:>7} {ec:>7} {sig:>10} {rv:>7} {rr:>7} {bf:>7}")
         self.window.vol_scanner_panel.update(result)
+        self._update_term_structure(result)
+        self._update_smile_chart(result)
 
-    def _collect_and_send_chain_data(self) -> None:
-        if self._vol_input_queue is None:
+    def _update_term_structure(self, result: dict) -> None:
+        """Build term structure payload from vol engine pillar_rows."""
+        pillar_rows = result.get("pillar_rows", [])
+        if not pillar_rows:
             return
-        if not self.ib_client.is_connected():
-            self._log("[VOL] collect skipped: not connected")
-            return
-        if not self._ensure_vol_data_collector():
-            self._log("[VOL] collect skipped: waiting for spot price...")
-            return
-        spot = self._get_mid_spot()
-        if not spot or spot <= 0:
-            self._log("[VOL] collect skipped: no valid spot price")
-            return
-        snapshot = self._vol_data_collector.collect_snapshot(spot)
-        if snapshot is not None:
-            chains = snapshot.get("chains", {})
-            total_rows = sum(len(c.get("rows", [])) for c in chains.values())
-            rows_with_iv = sum(
-                1 for c in chains.values()
-                for r in c.get("rows", [])
-                if r.get("iv_raw") is not None
-            )
-            self._log(f"[VOL] snapshot sent: spot={spot:.5f}, "
-                      f"{len(chains)} expiries, {rows_with_iv}/{total_rows} with IV")
-            self._vol_input_queue.put(snapshot)
-        else:
-            self._log("[VOL] snapshot returned None (no IV data yet)")
+        tenors = []
+        iv_market = []
+        sigma_fair = []
+        rv = []
+        for p in pillar_rows:
+            atm = p.get("sigma_ATM_pct")
+            if atm is None:
+                continue
+            tenors.append(p.get("tenor_label", ""))
+            iv_market.append(atm)
+            fair = p.get("sigma_fair_pct")
+            sigma_fair.append(fair if fair is not None else atm)
+            rv_val = p.get("RV_pct")
+            rv.append(rv_val if rv_val is not None else 0)
+        if tenors:
+            self.window.term_structure_panel.update({
+                "tenors": tenors,
+                "iv_market": iv_market,
+                "sigma_fair": sigma_fair,
+                "rv": rv,
+            })
+
+    def _update_smile_chart(self, result: dict) -> None:
+        """Pass smile data from vol engine to smile chart panel."""
+        smile_data = result.get("smile_data", {})
+        if smile_data:
+            self.window.smile_chart_panel.update({"smiles": smile_data})
 
     def _get_mid_spot(self) -> float | None:
         bid = self._latest_bid

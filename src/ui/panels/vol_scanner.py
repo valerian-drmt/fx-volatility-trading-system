@@ -1,4 +1,5 @@
 from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtGui import QBrush, QColor
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -10,15 +11,10 @@ from PyQt5.QtWidgets import (
 )
 from typing import Any
 
-COLUMNS = ["Tenor", "Delta", "Strike", "IV Mid %"]
+COLUMNS = ["Tenor", "DTE", "σ Mid", "σ Fair", "Ecart", "Signal", "RV", "RR25", "BF25"]
 
-# Tenor sort order
-_TENOR_ORDER = {
-    "1M": 1, "2M": 2, "3M": 3, "4M": 4, "5M": 5, "6M": 6,
-    "7M": 7, "8M": 8, "9M": 9, "10M": 10, "11M": 11, "1Y": 12,
-}
-# Delta sort order within tenor
-_DELTA_ORDER = {"10Δp": 1, "25Δp": 2, "ATM": 3, "25Δc": 4, "10Δc": 5}
+COLOR_EXPENSIVE = QColor("#FCEBEB")
+COLOR_CHEAP = QColor("#E1F5EE")
 
 
 class VolScannerPanel(QWidget):
@@ -31,7 +27,7 @@ class VolScannerPanel(QWidget):
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(6)
 
-        self._title = QLabel("Vol Scanner — waiting for data...")
+        self._title = QLabel("Vol Scanner")
         layout.addWidget(self._title)
 
         self.table = QTableWidget(0, len(COLUMNS))
@@ -58,34 +54,41 @@ class VolScannerPanel(QWidget):
 
         error = payload.get("error")
         if error:
-            self._title.setText(f"Vol Scanner — error: {error}")
+            self._title.setText(f"Vol Scanner — {error}")
             self.table.setRowCount(0)
             self._rows_data.clear()
             return
 
         scanner_rows = payload.get("scanner_rows") or []
-        spot = payload.get("spot", 0)
-        self._title.setText(f"Vol Scanner — spot {spot:.5f} — {len(scanner_rows)} pillars")
+        self._title.setText("Vol Scanner")
+        self._rows_data = scanner_rows
 
-        # Sort by tenor then delta order
-        sorted_rows = sorted(
-            scanner_rows,
-            key=lambda r: (
-                _TENOR_ORDER.get(r.get("tenor", ""), 99),
-                _DELTA_ORDER.get(r.get("delta_label", ""), 99),
-            ),
-        )
-        self._rows_data = sorted_rows
+        self.table.setRowCount(len(scanner_rows))
+        for row_idx, r in enumerate(scanner_rows):
+            signal = r.get("signal")
+            bg = None
+            if signal == "EXPENSIVE":
+                bg = COLOR_EXPENSIVE
+            elif signal == "CHEAP":
+                bg = COLOR_CHEAP
 
-        self.table.setRowCount(len(sorted_rows))
-        for row_idx, row_data in enumerate(sorted_rows):
-            iv = row_data.get("iv_market_pct", 0) or 0
+            def _f(v, fmt=".2f"):
+                return f"{v:{fmt}}" if v is not None else "—"
+
             items = [
-                QTableWidgetItem(str(row_data.get("tenor", ""))),
-                QTableWidgetItem(str(row_data.get("delta_label", ""))),
-                QTableWidgetItem(f"{row_data.get('strike', 0):.5f}"),
-                QTableWidgetItem(f"{iv:.2f}"),
+                QTableWidgetItem(str(r.get("tenor", ""))),
+                QTableWidgetItem(str(r.get("dte", ""))),
+                QTableWidgetItem(_f(r.get("sigma_mid_pct"))),
+                QTableWidgetItem(_f(r.get("sigma_fair_pct"))),
+                QTableWidgetItem(_f(r.get("ecart_pct"), "+.2f") if r.get("ecart_pct") is not None else "—"),
+                QTableWidgetItem(signal or "—"),
+                QTableWidgetItem(_f(r.get("RV_pct"))),
+                QTableWidgetItem(_f(r.get("RR25_pct"), "+.2f") if r.get("RR25_pct") is not None else "—"),
+                QTableWidgetItem(_f(r.get("BF25_pct"), "+.2f") if r.get("BF25_pct") is not None else "—"),
             ]
+
             for col_idx, item in enumerate(items):
                 item.setTextAlignment(Qt.AlignCenter)
+                if bg is not None:
+                    item.setBackground(QBrush(bg))
                 self.table.setItem(row_idx, col_idx, item)

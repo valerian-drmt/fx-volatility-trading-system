@@ -7,7 +7,7 @@ from typing import Any
 
 class TermStructurePanel(QWidget):
     # Demo tenor positions on x-axis (in months)
-    TENOR_X = {"1W": 0.25, "2W": 0.5, "1M": 1, "2M": 2, "3M": 3, "6M": 6, "9M": 9, "1Y": 12}
+    TENOR_X = {"1W": 0.25, "2W": 0.5, "1M": 1, "2M": 2, "3M": 3, "4M": 4, "5M": 5, "6M": 6, "9M": 9, "1Y": 12}
 
     def __init__(self) -> None:
         super().__init__()

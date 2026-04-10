@@ -1,21 +1,21 @@
 """
-vol_fair_step2.py
-─────────────────
-Calcule σ_fair par tenor depuis vol_mid_output.csv (step 1).
+vol_fair_step2.py — σ_fair par tenor (v2)
+──────────────────────────────────────────
+Fixes vs v1:
+  - RP dynamique basé sur VRP spot (au lieu de constantes arbitraires)
+  - GARCH blendé avec mean-reversion empirique RV
+  - W1 conditionnel au ratio RV_court/RV_long
 
-Pipeline :
-  A. Realized Vol Yang-Zhang  ← reqHistoricalData IB (OHLC journalier)
-  B. σ_model GARCH(1,1)       ← calibré sur returns historiques
-  C. δ_book                   ← vega net portfolio / vega limit
-  D. σ_fair = W1*(RV+RP) + W2*σ_model + δ_book
-
-Input  : vol_mid_output.csv
-Output : vol_fair_output.csv + print DataFrame
+Pipeline:
+  A. Yang-Zhang RV + RP dynamique
+  B. GARCH(1,1) + empirical blend
+  C. δ_book
+  D. σ_fair = W1_adj*(RV+RP_dyn) + W2_adj*σ_model_blend + δ_book
 """
-
-import math
+import math, csv, time
 import numpy as np
 import pandas as pd
+from datetime import datetime
 from arch import arch_model
 from ib_insync import IB, Contract, util
 import warnings
@@ -23,172 +23,191 @@ warnings.filterwarnings("ignore")
 
 util.patchAsyncio()
 
-# ─────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────
+# ── Config ──
+PORT, CLIENT_ID = 4002, 16
+WAIT_GREEKS     = 3
 
-PORT      = 4002
-CLIENT_ID = 16
-
-W1 = 0.65
-W2 = 0.35
-
+W1_BASE, W2_BASE = 0.65, 0.35
 ALPHA_BOOK       = 0.20
 SIGNAL_THRESHOLD = 0.20
 
-RISK_PREMIUM = {
-    "1M": 1.20, "2M": 1.35, "3M": 1.50,
-    "4M": 1.55, "5M": 1.58, "6M": 1.60,
-}
+# RP floors and VRP shift (instead of fixed RP per tenor)
+RP_FLOOR    = 0.20   # minimum RP in vol%
+VRP_SHIFT   = 0.50   # additive shift on VRP spot to get RP
 
-VEGA_LIMITS = {
-    "1M": 150_000, "2M": 200_000, "3M": 300_000,
-    "4M": 350_000, "5M": 375_000, "6M": 400_000,
-}
+# Fallback RP if no IV available (should not happen)
+RP_FALLBACK = {"1M": 1.20, "2M": 1.35, "3M": 1.50,
+               "4M": 1.55, "5M": 1.58, "6M": 1.60}
 
-TENOR_T = {
-    "1M": 1/12, "2M": 2/12, "3M": 3/12,
-    "4M": 4/12, "5M": 5/12, "6M": 6/12,
-}
+VEGA_LIMITS  = {"1M": 150_000, "2M": 200_000, "3M": 300_000,
+                "4M": 350_000, "5M": 375_000, "6M": 400_000}
+
+TENOR_T      = {"1M": 1/12, "2M": 2/12, "3M": 3/12,
+                "4M": 4/12, "5M": 5/12, "6M": 6/12}
+
+# W1 adjustment: if RV_short/RV_long > this threshold, reduce W1
+W1_RATIO_THRESHOLD = 1.15
+W1_RATIO_SENSITIVITY = 0.10  # W1 reduction per unit of excess ratio
+W1_FLOOR = 0.40
+
+# GARCH-empirical blend weight
+GARCH_EMPIRICAL_BLEND = 0.50  # 50% GARCH, 50% empirical mean-reversion
+EMPIRICAL_KAPPA = 2.0         # empirical mean-reversion speed (annualized)
 
 def safe(val):
     return val if val is not None and not (isinstance(val, float) and math.isnan(val)) else None
 
-# ─────────────────────────────────────────────
-# CONNEXION IB
-# ─────────────────────────────────────────────
+def step(msg):
+    print(f"  [{time.perf_counter() - T0:.1f}s] {msg}", flush=True)
 
-ib = IB()
-ib.connect("127.0.0.1", PORT, clientId=CLIENT_ID)
-
-def on_error(reqId, errorCode, errorString, contract):
-    if errorCode in (10090, 10197, 10167, 200, 2119, 2104, 2106):
-        return
-    print(f"  [IB Error {errorCode}] {errorString}")
-
-ib.errorEvent += on_error
-ib.reqMarketDataType(3)
-
-# ─────────────────────────────────────────────
-# CHARGEMENT STEP 1
-# ─────────────────────────────────────────────
-
-df_step1 = pd.read_csv("vol_mid_output.csv")
-print(f"[Step2] {len(df_step1)} tenors chargés depuis vol_mid_output.csv")
-
-# ─────────────────────────────────────────────
-# COUCHE A — OHLC + Yang-Zhang RV
-# ─────────────────────────────────────────────
-
-print("\n" + "=" * 50)
-print("COUCHE A — Realized Vol (Yang-Zhang)")
-print("=" * 50)
-
-fut_continuous = Contract()
-fut_continuous.symbol   = "EUR"
-fut_continuous.secType  = "CONTFUT"
-fut_continuous.exchange = "CME"
-fut_continuous.currency = "USD"
-
-bars = ib.reqHistoricalData(
-    fut_continuous,
-    endDateTime    = "",
-    durationStr    = "1 Y",
-    barSizeSetting = "1 day",
-    whatToShow     = "ADJUSTED_LAST",
-    useRTH         = True,
-    formatDate     = 1,
-)
-
-if not bars:
-    raise ValueError("Pas de données historiques IB")
-
-df_ohlc = util.df(bars)[["date", "open", "high", "low", "close"]]
-df_ohlc["date"] = pd.to_datetime(df_ohlc["date"])
-df_ohlc = df_ohlc.sort_values("date").reset_index(drop=True)
-print(f"  Contrat continu EUR/CME")
-print(f"  {len(df_ohlc)} barres [{df_ohlc['date'].iloc[0].date()} → {df_ohlc['date'].iloc[-1].date()}]")
-
-# Yang-Zhang par tenor
-rv_map = {}
-for label, T in TENOR_T.items():
-    window = max(21, int(T * 252))
-    window = min(window, len(df_ohlc) - 1)
-
+def yang_zhang_rv(df_ohlc, window):
+    """Compute Yang-Zhang RV on the last `window` bars. Returns annualized vol in %."""
     df_w = df_ohlc.tail(window).copy()
-    n    = len(df_w)
-
+    n = len(df_w)
+    if n < 3:
+        return None
     o = np.log(df_w["open"].values)
     h = np.log(df_w["high"].values)
     l = np.log(df_w["low"].values)
     c = np.log(df_w["close"].values)
-
     overnight = o[1:] - c[:-1]
-    oc        = c[1:] - o[1:]
-    rs        = ((h[1:] - c[1:]) * (h[1:] - o[1:]) +
-                 (l[1:] - c[1:]) * (l[1:] - o[1:]))
+    oc = c[1:] - o[1:]
+    rs = (h[1:] - c[1:]) * (h[1:] - o[1:]) + (l[1:] - c[1:]) * (l[1:] - o[1:])
+    s2_on = np.var(overnight, ddof=1)
+    s2_oc = np.var(oc, ddof=1)
+    s2_rs = np.mean(rs)
+    k_yz = 0.34 / (1.34 + (n + 1) / (n - 1))
+    s2_yz = s2_on + k_yz * s2_oc + (1 - k_yz) * s2_rs
+    return float(np.sqrt(max(s2_yz, 0) * 252) * 100)
 
-    sigma2_on = np.var(overnight, ddof=1)
-    sigma2_oc = np.var(oc, ddof=1)
-    sigma2_rs = np.mean(rs)
-    k_yz      = 0.34 / (1.34 + (n + 1) / (n - 1))
-    sigma2_yz = sigma2_on + k_yz * sigma2_oc + (1 - k_yz) * sigma2_rs
+T0 = time.perf_counter()
 
-    rv = float(np.sqrt(max(sigma2_yz, 0) * 252) * 100)
-    rv_map[label] = round(rv, 4)
-    print(f"    {label} (fenêtre {window}j) : RV = {rv:.2f}%")
+# ── Step 1 : Connect + load step1 ──
+step("1/6  connect + load vol_mid_output.csv")
+ib = IB()
+ib.connect("127.0.0.1", PORT, clientId=CLIENT_ID)
+_SUPPRESS = {10090, 10197, 10167, 200, 2119, 2104, 2108, 2106}
+ib.errorEvent += lambda reqId, code, msg, contract: (
+    print(f"IB Error {code}: {msg}") if code not in _SUPPRESS else None
+)
+ib.reqMarketDataType(3)
 
-# ─────────────────────────────────────────────
-# COUCHE B — GARCH(1,1)
-# ─────────────────────────────────────────────
+df_step1 = pd.read_csv("vol_mid_output.csv")
+# Build IV_ATM lookup for dynamic RP
+iv_atm_by_tenor = dict(zip(df_step1["tenor_label"], df_step1["sigma_ATM_pct"]))
+step(f"1/6  done — {len(df_step1)} tenors loaded")
 
-print("\n" + "=" * 50)
-print("COUCHE B — GARCH(1,1) forward vol")
-print("=" * 50)
+# ── Step 2 : OHLC + Yang-Zhang RV + dynamic RP ──
+step("2/6  OHLC + Yang-Zhang RV + dynamic RP")
 
-returns = (np.log(df_ohlc["close"] / df_ohlc["close"].shift(1))
-           .dropna() * 100)
+fut_cont = Contract(symbol="EUR", secType="CONTFUT", exchange="CME", currency="USD")
+bars = ib.reqHistoricalData(
+    fut_cont, endDateTime="", durationStr="1 Y",
+    barSizeSetting="1 day", whatToShow="ADJUSTED_LAST",
+    useRTH=True, formatDate=1,
+)
+if not bars:
+    raise ValueError("No historical data from IB")
 
-garch_model  = arch_model(returns, vol="Garch", p=1, q=1,
-                           mean="Constant", dist="normal")
-garch_result = garch_model.fit(disp="off")
+df_ohlc = util.df(bars)[["date", "open", "high", "low", "close"]]
+df_ohlc["date"] = pd.to_datetime(df_ohlc["date"])
+df_ohlc = df_ohlc.sort_values("date").reset_index(drop=True)
 
-omega = garch_result.params["omega"]
-alpha = garch_result.params["alpha[1]"]
-beta  = garch_result.params["beta[1]"]
+# Full-window RV (1 year) for empirical mean-reversion target
+rv_full = yang_zhang_rv(df_ohlc, len(df_ohlc) - 1)
 
-cond_var    = garch_result.conditional_volatility.iloc[-1] ** 2
-vol_current = np.sqrt(cond_var * 252)
-
-persistence = min(alpha + beta, 0.9999)
-vol_lr      = np.sqrt(omega / (1 - persistence) * 252)
-kappa       = -np.log(persistence)
-
-print(f"    ω={omega:.6f}  α={alpha:.4f}  β={beta:.4f}  "
-      f"persist={persistence:.4f}  κ={kappa:.4f}")
-print(f"    Vol courante={vol_current:.2f}%  Vol LT={vol_lr:.2f}%")
-
-model_map = {}
-var_c  = (vol_current / 100) ** 2
-var_lr = (vol_lr      / 100) ** 2
-
+rv_rows = []
 for label, T in TENOR_T.items():
+    window = max(21, int(T * 252))
+    window = min(window, len(df_ohlc) - 1)
+    rv = yang_zhang_rv(df_ohlc, window)
+
+    # Dynamic RP: based on observed VRP (IV - RV)
+    iv_atm = iv_atm_by_tenor.get(label)
+    if rv is not None and iv_atm is not None:
+        vrp_spot = iv_atm - rv  # negative if IV < RV
+        rp = max(RP_FLOOR, vrp_spot + VRP_SHIFT)
+    else:
+        rp = RP_FALLBACK.get(label, 1.50)
+
+    anchor = round(rv + rp, 4) if rv is not None else None
+    rv_rows.append({
+        "tenor": label, "window": window,
+        "RV_pct": round(rv, 4) if rv else None,
+        "IV_ATM_pct": round(iv_atm, 4) if iv_atm else None,
+        "VRP_spot_pct": round(iv_atm - rv, 4) if iv_atm and rv else None,
+        "RP_pct": round(rp, 4),
+        "anchor_pct": anchor,
+    })
+
+step(f"2/6  done — {len(df_ohlc)} bars, RV_full={rv_full:.2f}%")
+
+# ── Step 3 : GARCH(1,1) + empirical blend ──
+step("3/6  GARCH(1,1) + empirical blend")
+
+returns = (np.log(df_ohlc["close"] / df_ohlc["close"].shift(1)).dropna() * 100)
+garch_fit = arch_model(returns, vol="Garch", p=1, q=1,
+                        mean="Constant", dist="normal").fit(disp="off")
+
+omega = garch_fit.params["omega"]
+alpha = garch_fit.params["alpha[1]"]
+beta  = garch_fit.params["beta[1]"]
+persistence = min(alpha + beta, 0.9999)
+kappa = -np.log(persistence)
+
+cond_var = garch_fit.conditional_volatility.iloc[-1] ** 2
+vol_current = np.sqrt(cond_var * 252)
+vol_lr = np.sqrt(omega / (1 - persistence) * 252)
+
+var_c  = (vol_current / 100) ** 2
+var_lr = (vol_lr / 100) ** 2
+
+rv_map_for_blend = {r["tenor"]: r["RV_pct"] for r in rv_rows}
+
+garch_rows = []
+for label, T in TENOR_T.items():
+    # GARCH forward projection
     var_T = var_lr + (var_c - var_lr) * np.exp(-kappa * T)
-    vol   = float(np.sqrt(max(var_T, 0)) * 100)
-    model_map[label] = round(vol, 4)
-    print(f"    {label} (T={T:.3f}y) : σ_model = {vol:.2f}%")
+    vol_garch = float(np.sqrt(max(var_T, 0)) * 100)
 
-# ─────────────────────────────────────────────
-# COUCHE C — δ_book depuis portfolio IB
-# ─────────────────────────────────────────────
+    # Empirical mean-reversion: RV(tenor) converges to RV_full at speed EMPIRICAL_KAPPA
+    rv_tenor = rv_map_for_blend.get(label)
+    if rv_tenor is not None and rv_full is not None:
+        vol_empirical = rv_full + (rv_tenor - rv_full) * np.exp(-EMPIRICAL_KAPPA * T)
+    else:
+        vol_empirical = vol_garch  # fallback
 
-print("\n" + "=" * 50)
-print("COUCHE C — δ_book portfolio IB")
-print("=" * 50)
+    # Blend
+    vol_model = GARCH_EMPIRICAL_BLEND * vol_garch + (1 - GARCH_EMPIRICAL_BLEND) * vol_empirical
 
-from datetime import datetime
+    garch_rows.append({
+        "tenor": label, "T": round(T, 4),
+        "sigma_garch_pct": round(vol_garch, 4),
+        "sigma_empirical_pct": round(vol_empirical, 4),
+        "sigma_model_pct": round(vol_model, 4),
+    })
+
+step(f"3/6  done — ω={omega:.6f} α={alpha:.4f} β={beta:.4f} persist={persistence:.4f} RV_full={rv_full:.2f}%")
+
+# ── Step 4 : Conditional W1 ──
+rv_1m = next((r["RV_pct"] for r in rv_rows if r["tenor"] == "1M"), None)
+rv_6m = next((r["RV_pct"] for r in rv_rows if r["tenor"] == "6M"), None)
+
+if rv_1m and rv_6m and rv_6m > 0:
+    rv_ratio = rv_1m / rv_6m
+    if rv_ratio > W1_RATIO_THRESHOLD:
+        W1 = max(W1_FLOOR, W1_BASE - W1_RATIO_SENSITIVITY * (rv_ratio - 1.0))
+    else:
+        W1 = W1_BASE
+else:
+    W1 = W1_BASE
+    rv_ratio = None
+W2 = 1.0 - W1
+
+# ── Step 5 : δ_book (portfolio vega) ──
+step("4/6  δ_book (portfolio vega)")
+
 now = datetime.now()
-
 positions = ib.reqPositions()
 ib.sleep(2)
 
@@ -197,164 +216,162 @@ fop_pos = [p for p in positions
            and p.contract.secType == "FOP"
            and p.position != 0]
 
-print(f"  {len(fop_pos)} positions FOP EUR ouvertes")
-
-expiry_to_label = dict(zip(
-    df_step1["expiry"].astype(str),
-    df_step1["tenor_label"]
-))
-
+expiry_to_label = dict(zip(df_step1["expiry"].astype(str), df_step1["tenor_label"]))
+target_dtes = {"1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180}
 vega_by_tenor = {label: 0.0 for label in TENOR_T}
 
 for pos in fop_pos:
     c = pos.contract
     c.exchange = "CME"
-    details = ib.reqContractDetails(c)
-    if details:
-        c = details[0].contract
-
+    det = ib.reqContractDetails(c)
+    if det:
+        c = det[0].contract
     ticker = ib.reqMktData(c, "100", False, False)
-    ib.sleep(3)
-
+    ib.sleep(WAIT_GREEKS)
     greeks = ticker.modelGreeks
-    vega   = safe(greeks.vega) if greeks else None
+    vega = safe(greeks.vega) if greeks else None
     ib.cancelMktData(c)
-
     if vega is None:
-        print(f"    {c.localSymbol} — vega non disponible, skip")
         continue
-
-    # Associer au tenor
     exp_str = c.lastTradeDateOrContractMonth
     if exp_str in expiry_to_label:
         label = expiry_to_label[exp_str]
     else:
         try:
-            exp_date = (datetime.strptime(exp_str, "%Y%m%d")
-                        if len(exp_str) == 8
+            exp_date = (datetime.strptime(exp_str, "%Y%m%d") if len(exp_str) == 8
                         else datetime.strptime(exp_str, "%Y%m"))
+            dte_pos = (exp_date - now).days
+            label = min(target_dtes, key=lambda t: abs(target_dtes[t] - dte_pos))
         except ValueError:
             label = "3M"
-        else:
-            dte_pos = (exp_date - now).days
-            target_dtes = {"1M": 30, "2M": 60, "3M": 90,
-                           "4M": 120, "5M": 150, "6M": 180}
-            label = min(target_dtes, key=lambda t: abs(target_dtes[t] - dte_pos))
-
     if label not in vega_by_tenor:
         continue
-
     contrib = vega * pos.position * float(c.multiplier or 125000) / 100.0
     vega_by_tenor[label] += contrib
-    print(f"    {c.localSymbol}  qty={pos.position:+.0f}  "
-          f"vega={vega:.5f}  contrib={contrib:+.0f}€/%")
 
-for label, vnet in vega_by_tenor.items():
-    print(f"    Vega net {label} = {vnet:+,.0f} €/vol%")
-
-dbook_map = {}
+book_rows = []
 for label, vnet in vega_by_tenor.items():
     limit = VEGA_LIMITS.get(label, 300_000)
     ratio = max(-1.0, min(1.0, vnet / limit))
-    db    = round(-ALPHA_BOOK * ratio, 5)
-    dbook_map[label] = db
-    print(f"    {label} : ratio={ratio:+.3f}  δ_book={db:+.4f}%")
+    db = round(-ALPHA_BOOK * ratio, 5)
+    book_rows.append({"tenor": label, "vega_net": round(vnet, 0),
+                      "vega_limit": limit, "ratio": round(ratio, 4),
+                      "delta_book_pct": db})
 
-ib.disconnect()
-print("\n[IB] Déconnecté")
+step(f"4/6  done — {len(fop_pos)} FOP positions")
 
-# ─────────────────────────────────────────────
-# COMBINAISON — σ_fair
-# ─────────────────────────────────────────────
+# ── Step 6 : Combine σ_fair ──
+step("5/6  combine σ_fair")
 
-print("\n" + "=" * 50)
-print("COMBINAISON — σ_fair")
-print("=" * 50)
+rv_map    = {r["tenor"]: r for r in rv_rows}
+garch_map = {r["tenor"]: r for r in garch_rows}
+book_map  = {r["tenor"]: r for r in book_rows}
 
-rows = []
+fair_rows = []
 for _, row in df_step1.iterrows():
     label = row["tenor_label"]
-
     sigma_mid = row["sigma_ATM_pct"]
-    rv        = rv_map.get(label, np.nan)
-    rp        = RISK_PREMIUM.get(label, 1.50)
-    ancre     = rv + rp if not np.isnan(rv) else np.nan
-    s_model   = model_map.get(label, np.nan)
-    db        = dbook_map.get(label, 0.0)
 
-    if np.isnan(ancre) or np.isnan(s_model):
-        sigma_fair = np.nan
-        ecart      = np.nan
-        signal     = "N/A"
-    else:
-        sigma_fair = round(W1 * ancre + W2 * s_model + db, 4)
-        ecart      = round(sigma_fair - sigma_mid, 4)
+    rv_data    = rv_map.get(label, {})
+    garch_data = garch_map.get(label, {})
+    book_data  = book_map.get(label, {})
 
-        if   ecart < -SIGNAL_THRESHOLD: signal = "CHEAP"
-        elif ecart > +SIGNAL_THRESHOLD: signal = "EXPENSIVE"
+    anchor  = rv_data.get("anchor_pct")
+    s_model = garch_data.get("sigma_model_pct")  # blended model
+    db      = book_data.get("delta_book_pct", 0.0)
+
+    if anchor is not None and s_model is not None:
+        sigma_fair = round(W1 * anchor + W2 * s_model + db, 4)
+        ecart = round(sigma_fair - sigma_mid, 4)
+        if   ecart > +SIGNAL_THRESHOLD: signal = "CHEAP"
+        elif ecart < -SIGNAL_THRESHOLD: signal = "EXPENSIVE"
         else:                           signal = "FAIR"
+    else:
+        sigma_fair, ecart, signal = None, None, "N/A"
 
-    rows.append({
+    fair_rows.append({
         "tenor_label":     label,
         "expiry":          row["expiry"],
         "dte":             row["dte"],
         "F":               row["F"],
         "sigma_mid_pct":   round(sigma_mid, 4),
-        "RV_pct":          round(rv, 4)        if not np.isnan(rv)      else None,
-        "RP_pct":          rp,
-        "ancre_pct":       round(ancre, 4)     if not np.isnan(ancre)   else None,
-        "sigma_model_pct": round(s_model, 4)   if not np.isnan(s_model) else None,
-        "w1":              W1,
-        "w2":              W2,
+        "RV_pct":          rv_data.get("RV_pct"),
+        "VRP_spot_pct":    rv_data.get("VRP_spot_pct"),
+        "RP_pct":          rv_data.get("RP_pct"),
+        "anchor_pct":      anchor,
+        "sigma_model_pct": s_model,
+        "w1":              round(W1, 4),
+        "w2":              round(W2, 4),
         "delta_book_pct":  db,
         "sigma_fair_pct":  sigma_fair,
         "ecart_pct":       ecart,
         "signal":          signal,
-        "RR25_pct":        row["RR25_pct"],
-        "BF25_pct":        row["BF25_pct"],
-        "iv_10dp_pct":     row["iv_10dp_pct"],
-        "iv_25dp_pct":     row["iv_25dp_pct"],
-        "iv_25dc_pct":     row["iv_25dc_pct"],
-        "iv_10dc_pct":     row["iv_10dc_pct"],
-        "strike_atm":      row["strike_atm"],
-        "strike_25dp":     row["strike_25dp"],
-        "strike_25dc":     row["strike_25dc"],
-        "strike_10dp":     row["strike_10dp"],
-        "strike_10dc":     row["strike_10dc"],
+        "RR25_pct":        row.get("RR25_pct"),
+        "BF25_pct":        row.get("BF25_pct"),
     })
 
-df_output = pd.DataFrame(rows)
+step("5/6  done")
 
-# ─────────────────────────────────────────────
-# OUTPUT
-# ─────────────────────────────────────────────
+# ── Step 7 : Output ──
+step("6/6  output")
+ib.disconnect()
 
+pd.set_option("display.max_columns", None)
+pd.set_option("display.width", 220)
 pd.set_option("display.float_format", "{:.4f}".format)
-pd.set_option("display.max_columns", 20)
-pd.set_option("display.width", 200)
 
-display_cols = [
-    "tenor_label", "dte", "F",
-    "sigma_mid_pct", "RV_pct", "RP_pct", "ancre_pct",
-    "sigma_model_pct", "delta_book_pct",
-    "sigma_fair_pct", "ecart_pct", "signal"
-]
+ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-print("\n" + "=" * 100)
-print("DATAFRAME VOL_FAIR")
-print("=" * 100)
-print(df_output[display_cols].to_string(index=False))
+# W1 adjustment info
+print(f"\n{'═' * 100}")
+print(f"  W1 ADJUSTMENT  —  RV_1M/RV_6M = {rv_ratio:.3f}" if rv_ratio else "  W1 ADJUSTMENT  —  no ratio")
+print(f"  W1_base={W1_BASE}  W1_adj={W1:.4f}  W2_adj={W2:.4f}")
+print(f"{'═' * 100}")
 
-print("\n" + "=" * 60)
-print("SIGNALS")
-print("=" * 60)
-for _, r in df_output.iterrows():
-    marker = {"CHEAP": "▲ BUY", "EXPENSIVE": "▼ SELL", "FAIR": "— FAIR"}.get(
-        r["signal"], r["signal"])
-    print(f"  {r['tenor_label']:4s}  "
-          f"σ_mid={r['sigma_mid_pct']:.2f}%  "
-          f"σ_fair={r['sigma_fair_pct']:.2f}%  "
-          f"écart={r['ecart_pct']:+.2f}%  {marker}")
+# Layer A — RV + dynamic RP
+print(f"\n{'═' * 100}")
+print(f"  LAYER A — Yang-Zhang RV + dynamic RP  —  {ts}")
+print(f"{'═' * 100}")
+df_rv = pd.DataFrame(rv_rows)
+print(df_rv.to_string(index=False))
 
-df_output.to_csv("vol_fair_output.csv", index=False, encoding="utf-8-sig")
-print(f"\n  >> vol_fair_output.csv écrit ({len(df_output)} tenors)")
+# Layer B — GARCH + empirical blend
+print(f"\n{'═' * 100}")
+print(f"  LAYER B — GARCH + empirical blend  —  vol_cur={vol_current:.2f}%  vol_LR={vol_lr:.2f}%  RV_full={rv_full:.2f}%")
+print(f"{'═' * 100}")
+df_garch = pd.DataFrame(garch_rows)
+print(df_garch.to_string(index=False))
+
+# Layer C — Book
+print(f"\n{'═' * 100}")
+print(f"  LAYER C — δ_book  (α={ALPHA_BOOK})")
+print(f"{'═' * 100}")
+df_book = pd.DataFrame(book_rows)
+print(df_book.to_string(index=False))
+
+# σ_fair + signal
+print(f"\n{'═' * 120}")
+print(f"  VOL_FAIR  —  {ts}  —  W1={W1:.4f}  W2={W2:.4f}  threshold={SIGNAL_THRESHOLD}%")
+print(f"{'═' * 120}")
+df_fair = pd.DataFrame(fair_rows)
+display_cols = ["tenor_label", "dte", "F", "sigma_mid_pct", "RV_pct", "VRP_spot_pct",
+                "RP_pct", "anchor_pct", "sigma_model_pct",
+                "delta_book_pct", "sigma_fair_pct", "ecart_pct", "signal"]
+print(df_fair[display_cols].to_string(index=False))
+
+# Signals
+print(f"\n{'═' * 80}")
+print(f"  SIGNALS")
+print(f"{'═' * 80}")
+for _, r in df_fair.iterrows():
+    marker = {"CHEAP": "▲ BUY", "EXPENSIVE": "▼ SELL", "FAIR": "— FAIR"}.get(r["signal"], r["signal"])
+    sf = f"{r['sigma_fair_pct']:.2f}" if r["sigma_fair_pct"] is not None else "N/A"
+    ec = f"{r['ecart_pct']:+.2f}" if r["ecart_pct"] is not None else "N/A"
+    print(f"  {r['tenor_label']:4s}  σ_mid={r['sigma_mid_pct']:.2f}%  σ_fair={sf}%  écart={ec}%  {marker}")
+
+print(f"{'═' * 80}")
+step("done")
+print()
+
+# ── CSV export ──
+df_fair.to_csv("vol_fair_output.csv", index=False, encoding="utf-8-sig")
