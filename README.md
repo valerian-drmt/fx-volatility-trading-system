@@ -108,7 +108,7 @@ IB_RUN_INTEGRATION=1 python -m pytest -m integration -rs
 ## Project Structure
 
 ```
-trading-ib/
+fx-options-desk/
 ├── app.py                              # Entry point (logging + asyncio/Qt setup)
 ├── src/
 │   ├── controller.py                   # App lifecycle, engine pool, signal wiring
