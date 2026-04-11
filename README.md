@@ -5,78 +5,68 @@
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![PyQt5](https://img.shields.io/badge/PyQt5-GUI-41CD52?logo=qt&logoColor=white)
 ![ib-insync](https://img.shields.io/badge/ib--insync-IBKR%20API-blue)
-![CI](https://img.shields.io/github/actions/workflow/status/valerian-drmt/trading-ib/tests.yml?label=CI)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Designed for FX options traders who need a single-screen view of **implied vol vs fair vol**, **portfolio greeks**, and **order execution** with real-time IB Gateway connectivity.
+Single-screen dashboard for FX options traders: **implied vol vs fair vol signals**, **real-time portfolio greeks**, **PnL simulation**, and **multi-instrument order execution** (Spot, Future, Option) with live IB Gateway connectivity.
 
 ---
 
-## Key Features
+## Features
 
-### Live Market Data & Execution
-- Real-time FX spot tick streaming with bid/ask chart (pyqtgraph)
-- **FX spot orders:** Market, Limit, and LMT bracket orders with TP/SL
-- **FX options orders:** Buy/Sell vanilla Call and Put on EUR CME futures options (FOP)
-- One-click cancel per order, portfolio snapshot, open orders & recent fills
-- Dynamic symbol switching with automatic stream restart
+### Market Data & Execution
+- Real-time FX spot tick chart with bid/ask (pyqtgraph, 200ms buckets)
+- **3 order types** in a single ticket: Spot (IDEALPRO), Future (6E CME), Option (EUU FOP CME)
+- Order preview with IB whatIf (margin, commission, greeks) before submission
+- Option delta-hedge: auto-computed future quantity for delta-neutral entry
+- Account summary with Net Liq, Cash, Unrealized PnL, currency balances
 
-### Volatility Analytics Engine (dedicated compute thread)
-- **Vol Scanner** — real-time table comparing market IV vs model fair vol per strike and tenor, with CHEAP/EXPENSIVE/FAIR signals and color-coded opportunities
-- **Term Structure** — IV market vs sigma_fair vs Realized Vol curves across tenors (1W to 2Y), with opportunity zone highlighting
-- **Smile Chart** — market smile vs fair smile by delta pillar (10Dp to 10Dc) per selected tenor
-- **Portfolio Greeks** — aggregated Delta, Vega, Gamma, Theta across all open FOP positions with delta hedge suggestion
+### Volatility Analytics
+- **Vol Scanner** -- market IV vs model fair vol per tenor, CHEAP/EXPENSIVE/FAIR signals
+- **Term Structure** -- IV market vs sigma fair vs Realized Vol across 6 tenors (1M-6M)
+- **Smile Chart** -- delta-space smile (10Dp, 25Dp, ATM, 25Dc, 10Dc) per tenor
+- **Greeks Summary** -- aggregated Delta, Vega, Gamma, Theta, PnL across all open positions
+- **PnL vs Spot** -- simulated portfolio PnL curve over +/-3% spot range (vectorized BS)
 
 ### Quantitative Models
-- **Implied Vol (Step 1)** — BS inversion on EUR CME futures options via IB tick 100, liquidity filtering, put-call parity mid IV, delta-pillar reconstruction (10D/25D/ATM), RR and BF derivation
-- **Fair Vol (Step 2)** — three-layer model combining Yang-Zhang realized vol + historical risk premium, GARCH(1,1) forward vol with mean-reversion, and portfolio-aware book adjustment (delta_book)
-- **Signal generation** — `sigma_fair(T) = W1*(RV+RP) + W2*sigma_GARCH + delta_book` vs market IV, thresholded at +/-20bps
+- **IV Surface (Step 1)** -- FOP chain scan, BS IV extraction via IB model greeks, PCHIP delta-space interpolation, RR/BF derivation, validation gates per tenor
+- **Fair Vol (Step 2)** -- Yang-Zhang realized vol + dynamic risk premium, GARCH(1,1) forward projection with mean-reversion blend, conditional W1 weighting, portfolio book adjustment
+- **Signal** -- `sigma_fair(T) - sigma_mid(T)` thresholded at +/-20bps
 
 ---
 
 ## Architecture
 
+### Threading Model -- Main + 3 Worker Threads
+
 ```
-IB Gateway / TWS
-       |
-       v
-  asyncio + Qt event loop (Thread 1)
-       |
-       +---> ib_client.py          IB API wrapper (single connection)
-       |        |
-       |        +---> MarketDataWorker    Tick polling (QTimer, 100ms)
-       |        +---> OrderWorker         Order execution (direct calls)
-       |        +---> Chart / Orders / Portfolio / Status panels
-       |
-       +---> queue.Queue ----------> Vol Engine (Thread 2)
-                                        |
-                                        +---> vol_mid.py      Step 1: IV collection + delta pillars
-                                        +---> vol_fair.py     Step 2: RV + GARCH + book = sigma_fair
-                                        +---> yang_zhang.py   Realized vol estimator
-                                        +---> garch.py        GARCH(1,1) calibration
-                                        +---> greeks.py       Portfolio greeks aggregation
-                                        |
-                                        +---> Vol Scanner / Term Structure / Smile / Greeks panels
+Main Thread (Qt)               Thread 1                Thread 2              Thread 3
+UI rendering                   MarketDataEngine        VolEngine             RiskEngine
+Order execution                IB ticks (100ms)        IV scan (180s)        Positions (10s)
+QTimer 50ms + 1s               Account (10s)           GARCH + RV            BS greeks (2s)
+                               Status snapshot         PCHIP interpolation   PnL chart (2s)
+
+IB client_id=1 (shared)        IB client_id=1          IB client_id=2        IB client_id=3
 ```
 
-**Thread 1 (main):** asyncio event loop integrated with Qt via `ib_insync.util.useQt()`. Handles all IB network I/O, UI rendering, and tick streaming. Single IB connection, zero locks.
+- **Thread 1** polls IB ticks and pushes to UI via queue. Writes spot to Thread 3.
+- **Thread 2** runs the full vol pipeline every 180s. Writes IV surface to Thread 3. Skipped if market is closed.
+- **Thread 3** fetches positions from IB, computes BS greeks and PnL chart on its own thread (no main thread bottleneck).
+- **Main Thread** only renders UI and handles order clicks. Zero scipy, zero BS computation.
 
-**Thread 2 (vol engine):** Dedicated `threading.Thread` for CPU-bound volatility calculations (Black-Scholes inversion, GARCH MLE, Yang-Zhang estimator). Communicates with Thread 1 via producer-consumer `queue.Queue`.
+Communication: `queue.Queue` (thread-safe) + atomic attribute writes (CPython GIL). No locks.
 
----
-
-## Tech Stack
+### Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Language | Python 3.11 |
 | GUI | PyQt5 + pyqtgraph |
-| IB connectivity | ib_insync (asyncio, single-threaded) |
-| Concurrency | asyncio (I/O) + threading.Thread (CPU-bound vol engine) |
-| Quant models | scipy (BS inversion), arch (GARCH), numpy |
-| Option pricing | QuantLib (available) |
-| Testing | pytest |
-| Linting / CI | ruff, GitHub Actions |
+| IB connectivity | ib_insync |
+| Concurrency | threading.Thread (3 workers) + QTimer (2 pollers) |
+| Vol models | scipy (PCHIP, norm.cdf), arch (GARCH), numpy |
+| Option pricing | Black-Scholes (custom bs_pricer.py) |
+| Testing | pytest (unit + integration) |
+| Linting | ruff |
 
 ---
 
@@ -86,43 +76,32 @@ IB Gateway / TWS
 
 ```bash
 python -m venv .venv
-```
-
-Activate:
-```bash
 source .venv/bin/activate          # macOS / Linux
-```
-```powershell
-.\.venv\Scripts\Activate.ps1       # Windows PowerShell
-```
+# .\.venv\Scripts\Activate.ps1     # Windows PowerShell
 
-Install and run:
-```bash
 pip install -r requirements.txt
 python app.py
 ```
 
+1. Click **Start** to connect to IB Gateway
+2. Click **Start Engine** to launch all 3 threads (ticks, vol scan, risk)
+3. Use the **Order Ticket** to trade Spot, Future, or Option
+
 ---
 
-## Tests
+## Testing
 
 ```bash
-# Full test suite
-python -m pytest
-
-# Single test file
-python -m pytest tests/test_order_worker.py -v
-
-# Lint
-python -m ruff check src tests app.py
+python -m pytest                                  # full suite
+python -m pytest tests/test_controller_settings.py -v  # single file
+python -m ruff check src tests app.py             # lint
+python -m compileall -q src app.py                # import check
 ```
 
 Integration tests (requires live IB Gateway):
 ```bash
-IB_RUN_INTEGRATION=1 IB_HOST=127.0.0.1 IB_PORT=4002 IB_CLIENT_ID=3 python -m pytest -rs
+IB_RUN_INTEGRATION=1 python -m pytest -m integration -rs
 ```
-
-**CI gates:** `compileall` import check, `ruff` linting, unit tests.
 
 ---
 
@@ -130,54 +109,65 @@ IB_RUN_INTEGRATION=1 IB_HOST=127.0.0.1 IB_PORT=4002 IB_CLIENT_ID=3 python -m pyt
 
 ```
 trading-ib/
-+-- app.py                          # Entry point (asyncio + Qt event loop)
-+-- src/
-|   +-- controller.py               # App lifecycle, service orchestration
-|   +-- services/
-|   |   +-- ib_client.py            # IB API wrapper
-|   |   +-- market_data_worker.py   # Tick polling (called by QTimer)
-|   |   +-- order_worker.py         # Order validation + execution
-|   |   +-- vol_engine.py           # Thread 2: vol calculation orchestrator
-|   +-- analytics/
-|   |   +-- vol_mid.py              # Step 1: IV collection + delta pillars
-|   |   +-- vol_fair.py             # Step 2: RV + GARCH + book -> sigma_fair
-|   |   +-- yang_zhang.py           # Yang-Zhang realized vol
-|   |   +-- garch.py                # GARCH(1,1) calibration
-|   |   +-- greeks.py               # Portfolio greeks aggregation
-|   +-- ui/
-|       +-- main_window.py          # Grid layout
-|       +-- panels/
-|           +-- status_panel.py     # Connection state, latency
-|           +-- chart_panel.py      # Live tick chart + symbol selector
-|           +-- order_ticket_panel.py
-|           +-- orders_panel.py     # Open orders + fills with cancel
-|           +-- portfolio_panel.py
-|           +-- logs_panel.py
-|           +-- vol_scanner_panel.py
-|           +-- term_structure_panel.py
-|           +-- smile_panel.py
-|           +-- greeks_panel.py
-+-- config/
-|   +-- status_panel_settings.json
-+-- docs/
-|   +-- vol_engine_implementation.md  # Detailed vol engine specs
-+-- tests/
-+-- vol_mid_step1.py                # Standalone Step 1 script
-+-- vol_fair_step2.py               # Standalone Step 2 script
+├── app.py                              # Entry point (logging + asyncio/Qt setup)
+├── src/
+│   ├── controller.py                   # App lifecycle, engine pool, signal wiring
+│   ├── services/
+│   │   ├── market_data_engine.py       # Thread 1: tick polling + account snapshots
+│   │   ├── vol_engine.py              # Thread 2: IV scan + GARCH + fair vol
+│   │   ├── risk_engine.py            # Thread 3: positions + greeks + PnL chart
+│   │   ├── order_executor.py          # Order preview + placement (Spot/Future/Option)
+│   │   ├── ib_client.py              # IB API wrapper
+│   │   └── bs_pricer.py              # Black-Scholes functions + IV interpolation
+│   └── ui/
+│       ├── main_window.py             # 3-column layout
+│       └── panels/
+│           ├── runtime_status_panel.py     # Connection + engine status
+│           ├── account_summary_panel.py    # Net Liq, Cash, currencies
+│           ├── logs_panel.py              # Filtered log viewer
+│           ├── tick_chart_panel.py         # Live bid/ask chart
+│           ├── term_structure_panel.py     # IV term structure
+│           ├── smile_chart_panel.py        # Smile per tenor
+│           ├── vol_scanner_panel.py        # Vol scanner table
+│           ├── book_panel.py              # Greeks summary + open positions
+│           ├── order_ticket_panel.py       # Spot/Future/Option order entry
+│           ├── pnl_chart_panel.py         # PnL vs Spot simulation
+│           └── settings_panel.py          # Config dialog (vol params)
+├── config/
+│   ├── status_panel_settings.json      # Connection + runtime settings
+│   ├── vol_config.json                # Vol engine parameters
+│   ├── fop_expiries.json             # Cached FOP expiry data
+│   └── fop_strikes.json              # Cached FOP strike data
+├── scripts/                            # Jupyter notebooks for standalone exploration
+│   ├── vol_mid.ipynb                  # IV surface extraction
+│   ├── vol_fair.ipynb                 # Fair vol model
+│   ├── option_booking.ipynb           # FOP order test
+│   ├── future_booking.ipynb           # Future order test
+│   ├── list_fop_strikes.ipynb         # Strike discovery
+│   └── list_fop_expiries.ipynb        # Expiry discovery
+├── docs/
+│   ├── THREADS.md                     # Threading architecture
+│   ├── UI.md                          # UI layout and panel specs
+│   ├── VOL_MODEL.md                   # Vol model math documentation
+│   ├── ORDER_EXECUTION.md             # Order flow and execution pipeline
+│   └── CONFIG.md                      # Configuration parameters reference
+└── tests/
 ```
 
 ---
 
-## Volatility Model Documentation
+## Documentation
 
-See [`docs/vol_engine_implementation.md`](vol_engine_implementation.md) for the complete implementation guide covering:
-- Step 1 & Step 2 data pipelines
-- IB API calls and data flow
-- Panel specifications and update frequencies
-- Threading architecture rationale
+| Document | Content |
+|---|---|
+| [docs/THREADS.md](docs/THREADS.md) | Threading architecture: 3 workers, engine pool, communication, lifecycle |
+| [docs/UI.md](docs/UI.md) | UI layout: 3-column grid, 11 panels, signal wiring, data flow |
+| [docs/VOL_MODEL.md](docs/VOL_MODEL.md) | Volatility model: PCHIP interpolation, Yang-Zhang RV, GARCH(1,1), signal generation, Greeks/PnL decomposition |
+| [docs/ORDER_EXECUTION.md](docs/ORDER_EXECUTION.md) | Order flow: Spot/Future/Option pipeline, preview, delta hedge, error handling |
+| [docs/CONFIG.md](docs/CONFIG.md) | Configuration parameters: vol engine, connection, risk limits, Settings dialog |
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT

@@ -957,14 +957,3 @@ In these regimes, σ\_mid lies *between* the two sources — the convex combinat
 | 0.20 | 7.200% | +0.400% | CHEAP (buy vol) |
 
 Here the signal **flips direction** between W₁ = 0.65 and W₁ = 0.20. This is the regime where an uncalibrated W₁ generates wrong trades.
-
-### Calibration Roadmap
-
-The proper calibration of W₁ belongs in **alpha-research v2** (Step 6 of the project roadmap):
-
-1. Collect historical daily data: Anchor(t), σ\_GARCH(t), σ\_realized(t+τ) for each tenor τ
-2. Walk-forward OOS regression: rolling 1Y train → 3M test, compute W₁\*(t) per window
-3. Analyze stability: if W₁\* is stable across windows (e.g., 0.55–0.70), the fixed-weight approach is validated. If W₁\* varies widely, implement regime-conditional weights
-4. Extend to regime-switching: W₁(t) = f(persistence\_t, VRP\_t, vol-of-vol\_t) where the weight itself is a function of market state
-
-Until this calibration is performed, W₁ = 0.65 is a reasonable but unvalidated prior.
