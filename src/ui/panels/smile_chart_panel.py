@@ -1,18 +1,19 @@
+from typing import Any
+
 import pyqtgraph as pg
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QGroupBox,
-    QHeaderView,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
-from typing import Any
 
 
 class SmileChartPanel(QWidget):
@@ -126,7 +127,7 @@ class SmileDetailsPanel(QWidget):
         skews = td.get("skew", [])
 
         self.table.setRowCount(len(labels))
-        for i, (dl, k, iv, sk) in enumerate(zip(labels, strikes, ivs, skews)):
+        for i, (dl, k, iv, sk) in enumerate(zip(labels, strikes, ivs, skews, strict=False)):
             items = [
                 QTableWidgetItem(dl),
                 QTableWidgetItem(f"{k:.5f}"),

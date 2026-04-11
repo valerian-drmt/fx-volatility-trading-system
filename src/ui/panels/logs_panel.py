@@ -4,14 +4,14 @@ from typing import Any
 
 from PyQt5.QtGui import QTextCursor
 from PyQt5.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGroupBox,
-    QLabel,
-    QTextEdit,
     QComboBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
     QLineEdit,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 

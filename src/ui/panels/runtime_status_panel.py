@@ -1,13 +1,15 @@
+from collections.abc import Callable
+from typing import Any
+
 from PyQt5.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
     QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
     QLabel,
     QPushButton,
-    QGroupBox,
+    QVBoxLayout,
+    QWidget,
 )
-from typing import Any, Callable
 
 
 class StatusPanel(QWidget):

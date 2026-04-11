@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 from arch import arch_model
-from ib_insync import Contract, IB
+from ib_insync import IB, Contract
 from scipy.interpolate import PchipInterpolator
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -44,6 +44,7 @@ PILLAR_TARGETS = {
     "10dp": 0.10, "25dp": 0.25, "atm": 0.50, "25dc": 0.75, "10dc": 0.90,
 }
 SUPPRESS_ERRORS = {10090, 10197, 10167, 200, 2119, 2104, 2108, 354}
+STARTUP_DELAY_S = 10
 TENOR_T = {"1M": 1/12, "2M": 2/12, "3M": 3/12,
            "4M": 4/12, "5M": 5/12, "6M": 6/12}
 
@@ -113,7 +114,7 @@ def pillars_to_smile_data(pillar_rows: list[dict]) -> dict[str, dict]:
         strike_values = []
         skew_values = []
         valid = True
-        for iv_key, k_key in zip(iv_keys, k_keys):
+        for iv_key, k_key in zip(iv_keys, k_keys, strict=False):
             iv = p.get(iv_key)
             k = p.get(k_key)
             if iv is None or k is None:
@@ -160,7 +161,7 @@ class VolEngine(threading.Thread):
     def run(self) -> None:
         asyncio.set_event_loop(asyncio.new_event_loop())
         logger.info("VolEngine thread started")
-        if self._stop_event.wait(timeout=10):
+        if self._stop_event.wait(timeout=STARTUP_DELAY_S):
             return
         while not self._stop_event.is_set():
             cfg1 = _load_vol_config("step1")

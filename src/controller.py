@@ -8,36 +8,33 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ib_insync import IB, Forex
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMessageBox
-from ib_insync import Forex, IB
 
-from services.market_data_engine import MarketDataEngine
-from services.vol_engine import VolEngine
-from services.risk_engine import RiskEngine
+from controller_settings import SettingsMixin
 from services.ib_client import IBClient
+from services.market_data_engine import MarketDataEngine
 from services.order_executor import OrderExecutor
+from services.risk_engine import RiskEngine
+from services.vol_engine import VolEngine
 from ui.main_window import MainWindow
 
 logger = logging.getLogger("controller")
 
 
-class Controller:
-    DEFAULT_STATUS_SETTINGS = {
-        "host": "127.0.0.1",
-        "port": 4002,
-        "client_id": 1,
-        "client_roles": {"market_data": 1, "vol_engine": 2, "risk_engine": 3},
-        "readonly": False,
-        "market_symbol": "EURUSD",
-    }
-    DEFAULT_RUNTIME_SETTINGS = {
-        "tick_interval_ms": 100,
-        "snapshot_interval_ms": 2000,
-    }
+UI_QUEUE_POLL_MS = 50
+ENGINE_POLL_MS = 1000
+ACCOUNT_SNAPSHOT_INTERVAL_S = 10.0
+THREAD_JOIN_TIMEOUT_S = 5.0
+FUT_MULTIPLIER = 125_000
 
-    # Initialize app state, services, and persisted settings.
+
+class Controller(SettingsMixin):
+    # Settings defaults inherited from SettingsMixin
+
     def __init__(self) -> None:
+        """Initialize app state, services, and persisted settings."""
         self._project_root = Path(__file__).resolve().parents[1]
         self._settings_path = self._resolve_settings_path()
         app_settings = self._load_app_settings()
@@ -89,16 +86,16 @@ class Controller:
         self._cash_balances_by_currency: dict[str, float] = {}
         self._ticket_funds_ok: bool | None = None
 
-    # Return connection state text.
     def _global_connection_state(self, connecting: bool = False) -> str:
+        """Return connection state text."""
         if self.ib_client.is_connected():
             return "connected"
         if connecting:
             return "connecting"
         return "disconnected"
 
-    # Disconnect the IB client and stop active subscriptions.
     def _disconnect_client(self) -> None:
+        """Disconnect the IB client and stop active subscriptions."""
         try:
             self.ib_client.stop_live_streaming()
         except Exception:
@@ -117,8 +114,8 @@ class Controller:
             self.window.portfolio_panel.reset()
             self._refresh_status(force=True)
 
-    # Connect the IB client and return (ok, error_message).
     def _connect_client(self) -> tuple[bool, str]:
+        """Connect the IB client and return (ok, error_message)."""
         if self.ib_client.is_connected():
             return True, ""
         ok = bool(self.ib_client.connect())
@@ -128,8 +125,8 @@ class Controller:
         self._disconnect_client()
         return False, reason
 
-    # Resolve settings path and migrate legacy location when needed.
     def _resolve_settings_path(self) -> Path:
+        """Resolve settings path and migrate legacy location when needed."""
         config_dir = self._project_root / "config"
         config_path = config_dir / "status_panel_settings.json"
         legacy_path = self._project_root / "status_panel_settings.json"
@@ -149,8 +146,8 @@ class Controller:
 
         return config_path
 
-    # Create and show the main dashboard window.
     def _create_window(self) -> None:
+        """Create and show the main dashboard window."""
         self.window = MainWindow.create_main_window(
             on_connect=self._start_connect,
             on_disconnect=self._disconnect_client,
@@ -173,8 +170,8 @@ class Controller:
         if self.window is not None:
             self.window.logs_panel.update({"message": message})
 
-    # Configure workers, signal wiring, and status timer.
     def _setup_services(self) -> None:
+        """Configure workers, signal wiring, and status timer."""
         if self.window is None:
             return
 
@@ -208,7 +205,7 @@ class Controller:
 
         # Single QTimer polling the UI queue — only PyQt timer in the controller
         self._ui_poll_timer = QTimer(self.window)
-        self._ui_poll_timer.setInterval(50)
+        self._ui_poll_timer.setInterval(UI_QUEUE_POLL_MS)
         self._ui_poll_timer.timeout.connect(self._drain_ui_queue)
         self._ui_poll_timer.start()
         logger.info("QTimer _ui_poll_timer started (50ms)")
@@ -233,19 +230,19 @@ class Controller:
             except Exception as exc:
                 logger.error("UI queue callback failed: %s", exc)
 
-    # Create the order worker (plain class, no thread).
     def _setup_order_worker(self) -> None:
+        """Create the order worker (plain class, no thread)."""
         if self._order_worker is not None:
             return
         self._order_worker = OrderExecutor(ib_client=self.ib_client)
         self._order_worker.start()
 
-    # Return True when the engine pool is active.
     def _is_market_worker_running(self) -> bool:
+        """Return True when the engine pool is active."""
         return self._market_engine is not None
 
-    # Stop order worker.
     def _stop_order_worker(self) -> None:
+        """Stop order worker."""
         if self._order_worker is not None:
             self._order_worker.stop()
         self._order_worker = None
@@ -262,7 +259,7 @@ class Controller:
             ib_client=self.ib_client,
             ui_queue_post=self._post_ui,
             interval_ms=self.tick_interval_ms,
-            snapshot_interval_s=10.0,
+            snapshot_interval_s=ACCOUNT_SNAPSHOT_INTERVAL_S,
         )
 
         # Thread 3: Risk Engine (client_id=3, own IB connection)
@@ -301,7 +298,7 @@ class Controller:
 
         # QTimer 1s polls Thread 2 & 3 output queues + status refresh
         self._engine_poll_timer = QTimer(self.window)
-        self._engine_poll_timer.setInterval(1000)
+        self._engine_poll_timer.setInterval(ENGINE_POLL_MS)
         self._engine_poll_timer.timeout.connect(self._poll_engine_queues)
         self._engine_poll_timer.start()
 
@@ -317,7 +314,7 @@ class Controller:
         for t in self._engine_pool:
             t.stop()
         for t in self._engine_pool:
-            t.join(timeout=5.0)
+            t.join(timeout=THREAD_JOIN_TIMEOUT_S)
         self._engine_pool.clear()
         self._market_engine = None
         self._vol_engine = None
@@ -411,14 +408,15 @@ class Controller:
             self.window.smile_chart_panel.update({"smiles": smile_data})
 
     def _get_mid_spot(self) -> float | None:
+        """Return mid spot price from cached bid/ask, or best available side."""
         bid = self._latest_bid
         ask = self._latest_ask
         if bid and ask and bid > 0 and ask > 0:
             return (bid + ask) / 2.0
         return bid or ask
 
-    # Route market payload slices to their corresponding UI panels.
     def _on_market_data_payload(self, payload: Any) -> None:
+        """Route market payload slices to their corresponding UI panels."""
         if self.window is None or not isinstance(payload, dict):
             return
 
@@ -449,8 +447,8 @@ class Controller:
             self._update_cash_balances_from_summary(portfolio_payload.get("summary"))
             self._refresh_order_ticket_market_context()
 
-    # Fetch account snapshot and update cash balances on connect.
     def _refresh_account_snapshots(self) -> None:
+        """Fetch account snapshot and update cash balances on connect."""
         if self.window is None or not self.ib_client.is_connected():
             return
         summary, _positions = self.ib_client.get_portfolio_snapshot()
@@ -458,23 +456,23 @@ class Controller:
         self._refresh_order_ticket_market_context()
 
     @staticmethod
-    # Parse numeric values from IB account snapshot fields.
     def _parse_float(value: Any) -> float | None:
+        """Parse numeric values from IB account snapshot fields."""
         try:
             return float(value)
         except (TypeError, ValueError):
             return None
 
     @staticmethod
-    # Split six-letter FX symbol into (base, quote) currencies.
     def _split_fx_symbol(symbol: str) -> tuple[str | None, str | None]:
+        """Split six-letter FX symbol into (base, quote) currencies."""
         normalized = str(symbol).strip().upper()
         if len(normalized) < 6:
             return None, None
         return normalized[:3], normalized[3:6]
 
-    # Update latest bid/ask cache from incoming tick payload list.
     def _update_latest_quote_from_ticks(self, ticks: list[Any]) -> None:
+        """Update latest bid/ask cache from incoming tick payload list."""
         latest_bid = None
         latest_ask = None
         for tick in reversed(ticks):
@@ -495,15 +493,15 @@ class Controller:
         if latest_ask is not None:
             self._latest_ask = latest_ask
 
-    # Update per-currency cash balances from account summary rows.
     def _update_cash_balances_from_summary(self, summary: Any) -> None:
+        """Update per-currency cash balances from account summary rows."""
         balances = self._extract_cash_balances(summary)
         if balances:
             self._cash_balances_by_currency = balances
 
     @staticmethod
-    # Extract best available per-currency cash balances from account summary rows.
     def _extract_cash_balances(summary: Any) -> dict[str, float]:
+        """Extract best available per-currency cash balances from account summary rows."""
         if not isinstance(summary, list):
             return {}
 
@@ -530,8 +528,8 @@ class Controller:
 
         return {currency: value for currency, (_priority, value) in balances.items()}
 
-    # Compute max buy/sell quantities from quote prices and cached cash balances.
     def _compute_max_quantities_for_symbol(self, symbol: str) -> tuple[int | None, int | None]:
+        """Compute max buy/sell quantities from quote prices and cached cash balances."""
         base_currency, quote_currency = self._split_fx_symbol(symbol)
         if base_currency is None or quote_currency is None:
             return None, None
@@ -549,8 +547,8 @@ class Controller:
 
         return max_buy_qty, max_sell_qty
 
-    # Build funding snapshot for current ticket request (required/requested/available).
     def _build_ticket_funding_snapshot(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Build funding snapshot for current ticket request (required/requested/available)."""
         symbol = str(request.get("symbol", "")).strip().upper()
         side = str(request.get("side", "")).strip().upper()
         order_type = str(request.get("order_type", "")).strip().upper()
@@ -558,7 +556,7 @@ class Controller:
             quantity = int(request.get("quantity", request.get("volume", 0)))
         except (TypeError, ValueError):
             quantity = 0
-        limit_price = self._parse_float(request.get("limit_price", None))
+        limit_price = self._parse_float(request.get("limit_price"))
         base_currency, quote_currency = self._split_fx_symbol(symbol)
 
         requested_volume = float(quantity) if quantity > 0 else None
@@ -607,13 +605,13 @@ class Controller:
             "funds_ok": funds_ok,
         }
 
-    # Resolve the quote price used to validate BUY-side funding.
     def _resolve_buy_price_for_funds(
         self,
         symbol: str,
         order_type: str,
         limit_price: float | None,
     ) -> tuple[float | None, str]:
+        """Resolve the quote price used to validate BUY-side funding."""
         normalized_type = str(order_type).strip().upper()
         if normalized_type == "LMT":
             if limit_price is None or limit_price <= 0:
@@ -638,8 +636,8 @@ class Controller:
                 return float(bid), ""
         return None, f"Cannot validate BUY funds for {symbol}: no live quote available."
 
-    # Validate that the portfolio has enough currency funds for the ticket request.
     def _validate_order_funds(self, request: dict[str, Any]) -> tuple[bool, str]:
+        """Validate that the portfolio has enough currency funds for the ticket request."""
         symbol = str(request.get("symbol", "")).strip().upper()
         side = str(request.get("side", "")).strip().upper()
         order_type = str(request.get("order_type", "")).strip().upper()
@@ -647,7 +645,7 @@ class Controller:
             quantity = int(request.get("quantity", 0))
         except (TypeError, ValueError):
             quantity = 0
-        limit_price = self._parse_float(request.get("limit_price", None))
+        limit_price = self._parse_float(request.get("limit_price"))
 
         base_currency, quote_currency = self._split_fx_symbol(symbol)
         if base_currency is None or quote_currency is None or side not in {"BUY", "SELL"} or quantity <= 0:
@@ -688,8 +686,8 @@ class Controller:
             )
         return True, ""
 
-    # Refresh order-ticket market context rows (quote and max quantities).
     def _refresh_order_ticket_market_context(self, *_: Any) -> None:
+        """Refresh order-ticket market context rows (quote and max quantities)."""
         if self.window is None:
             return
         order_ticket_panel = getattr(self.window, "order_ticket_panel", None)
@@ -753,15 +751,15 @@ class Controller:
         self._sync_order_ticket_action_buttons(connected=connected, order_thread_running=order_worker_running)
 
     @staticmethod
-    # Detect final no-tick warning that should auto-stop live streaming.
     def _should_auto_stop_live_stream(messages: list[Any]) -> bool:
+        """Detect final no-tick warning that should auto-stop live streaming."""
         return any(
             "[warn][market_data]" in str(item).lower() and "no ticks received (test 3/3)" in str(item).lower()
             for item in messages
         )
 
-    # Surface market worker failures to the log panel.
     def _on_market_data_failed(self, message: str) -> None:
+        """Surface market worker failures to the log panel."""
         if self.window is None:
             return
         self.window.logs_panel.update({"message": f"[WARN][market_data] worker error: {message}"})
@@ -828,9 +826,9 @@ class Controller:
                 return None, None
 
             delta_usd = float(delta_usd)
-            # Each future = spot × 125,000 USD delta
+            # Each future = spot x FUT_MULTIPLIER USD delta
             mid = self._get_mid_spot() or 1.0
-            fut_delta_per_contract = mid * 125_000
+            fut_delta_per_contract = mid * FUT_MULTIPLIER
             hedge_qty = round(abs(delta_usd) / fut_delta_per_contract)
             if hedge_qty < 1:
                 hedge_qty = 1
@@ -846,7 +844,7 @@ class Controller:
                 "order_type": "MKT",
                 "quantity": hedge_qty,
                 "volume": hedge_qty,
-                "multiplier": 125_000,
+                "multiplier": FUT_MULTIPLIER,
                 "limit_price": 0.0,
                 "reference_price": mid,
                 "use_bracket": False,
@@ -904,6 +902,7 @@ class Controller:
             self._log(f"[ERROR][order] {exc}")
 
     def _queue_order_from_ticket(self) -> None:
+        """Validate ticket input and queue order with user confirmation dialog."""
         if self.window is None or self._order_worker is None:
             return
         if self._order_worker is None or not self._order_worker._running:
@@ -959,8 +958,8 @@ class Controller:
         msg_box.buttonClicked.connect(_on_confirm)
         msg_box.show()
 
-    # Validate and enqueue an order preview request.
     def _preview_order_from_ticket(self) -> None:
+        """Validate and enqueue an order preview request."""
         if self.window is None or self._order_worker is None:
             return
         if self._order_worker is None or not self._order_worker._running:
@@ -982,8 +981,8 @@ class Controller:
         result = self._order_worker.preview_order(request)
         self._on_order_result(result)
 
-    # Cancel a single order from the orders panel.
     def _cancel_single_order(self, trade: Any) -> None:
+        """Cancel a single order from the orders panel."""
         if self.window is None:
             return
         if not self.ib_client.is_connected():
@@ -1016,8 +1015,8 @@ class Controller:
             error = self.ib_client.get_last_error_text() or "cancel failed"
             self.window.logs_panel.update({"message": f"[WARN][cancel] {error}"})
 
-    # Render order worker responses in ticket/log panels.
     def _on_order_result(self, payload: Any) -> None:
+        """Render order worker responses in ticket/log panels."""
         if self.window is None or not isinstance(payload, dict):
             return
 
@@ -1045,8 +1044,8 @@ class Controller:
         self.window.order_ticket_panel.update({"message": message, "level": level})
         self.window.logs_panel.update({"message": f"[{log_level}][{source}] {message}"})
 
-    # Sync preview/place button enabled state with connection/thread/funding checks.
     def _sync_order_ticket_action_buttons(self, connected: bool, order_thread_running: bool) -> None:
+        """Sync preview/place button enabled state with connection/thread/funding checks."""
         if self.window is None:
             return
         order_ticket_panel = getattr(self.window, "order_ticket_panel", None)
@@ -1060,24 +1059,24 @@ class Controller:
         if place_button is not None and hasattr(place_button, "setEnabled"):
             place_button.setEnabled(can_place)
 
-    # Render fatal order worker errors.
     def _on_order_failed(self, message: str) -> None:
+        """Render fatal order worker errors."""
         if self.window is None:
             return
         self.window.order_ticket_panel.update({"message": f"Order worker failure: {message}", "level": "error"})
         self.window.logs_panel.update({"message": f"[ERROR][execution] order worker failure: {message}"})
 
     @staticmethod
-    # Return True when value can be used as a finite market price.
     def _is_valid_market_price(value: Any) -> bool:
+        """Return True when value can be used as a finite market price."""
         if value is None:
             return False
         if not isinstance(value, (int, float)):
             return False
         return not math.isnan(float(value))
 
-    # Refresh LMT price from latest bid/ask according to selected side.
     def _update_limit_price_from_market(self) -> None:
+        """Refresh LMT price from latest bid/ask according to selected side."""
         if self.window is None:
             return
 
@@ -1133,8 +1132,8 @@ class Controller:
             }
         )
 
-    # Refresh status panel state and button availability.
     def _refresh_status(self, payload: dict[str, Any] | None = None, force: bool = False) -> None:
+        """Refresh status panel state and button availability."""
         if self.window is None:
             return
 
@@ -1179,8 +1178,8 @@ class Controller:
         if connected and (self._last_server_sync_sec is None or now_sec - self._last_server_sync_sec >= 10):
             self._start_server_time_sync()
 
-    # Start connection flow using current settings.
     def _start_connect(self) -> None:
+        """Start connection flow using current settings."""
         if self._connecting or self.window is None:
             return
         if self.ib_client.is_connected():
@@ -1211,8 +1210,8 @@ class Controller:
             error_message = str(exc)
         self._on_connect_result(connected, error_message)
 
-    # Handle connect worker completion payload.
     def _on_connect_result(self, connected: bool, error_message: str) -> None:
+        """Handle connect worker completion payload."""
         self._connecting = False
         self._last_connect_error = str(error_message or "").strip()
         if self.window is not None:
@@ -1226,8 +1225,8 @@ class Controller:
                 self.window.order_ticket_panel.update({"message": message, "level": "error"})
         self._refresh_status(force=True)
 
-    # Handle market symbol change — restart streaming if active.
     def _on_market_symbol_changed(self, symbol: str) -> None:
+        """Handle market symbol change — restart streaming if active."""
         normalized = str(symbol).strip().upper()
         if not normalized or normalized == self.market_symbol:
             return
@@ -1236,8 +1235,8 @@ class Controller:
             self._stop_live_streaming()
             self._start_live_streaming()
 
-    # Start IB live market stream and polling worker.
     def _start_live_streaming(self) -> None:
+        """Start IB live market stream and polling worker."""
         if self.window is None:
             return
         if self._is_market_worker_running():
@@ -1281,31 +1280,7 @@ class Controller:
         except Exception:
             return ""
 
-    def _open_settings(self) -> None:
-        from ui.panels.settings_panel import SettingsPanel
-        vol_path = self._project_root / "config" / "vol_config.json"
-        status_path = self._project_root / "config" / "status_panel_settings.json"
-        dialog = SettingsPanel(vol_config_path=vol_path, status_config_path=status_path, parent=None)
-        self._settings_dialog = dialog
-        dialog.accepted.connect(self._on_settings_saved)
-        dialog.finished.connect(lambda _: setattr(self, "_settings_dialog", None))
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
-
-    def _on_settings_saved(self) -> None:
-        """Reload connection settings from disk and update status panel labels."""
-        app_settings = self._load_app_settings()
-        s = app_settings.get("status", {})
-        self.host = str(s.get("host", self.host))
-        self.port = int(s.get("port", self.port))
-        self.client_id = int(s.get("client_id", self.client_id))
-        if self.window is not None:
-            panel = self.window.status_panel
-            panel.host_input.setText(self.host)
-            panel.port_input.setText(str(self.port))
-            panel.client_id_input.setText(str(self.client_id))
-        self._log("[INFO][settings] Settings saved — changes apply on next scan cycle")
+    # _open_settings, _on_settings_saved → SettingsMixin (controller_settings.py)
 
     def _discover_option_chains(self) -> None:
         """Discover FOP expiries/strikes on Connect. Saves 2 JSONs + populates Strike combo.
@@ -1316,6 +1291,7 @@ class Controller:
             return
         try:
             from datetime import date, datetime, timedelta
+
             from ib_insync import Contract
 
             # 1. Get all quarterly EUR futures
@@ -1403,8 +1379,8 @@ class Controller:
         except Exception as exc:
             self._log(f"[ERROR][options] Chain discovery failed: {exc}")
 
-    # Stop live stream subscription and market polling worker.
     def _stop_live_streaming(self) -> None:
+        """Stop live stream subscription and market polling worker."""
         self._stop_engine_pool()
         self.ib_client.stop_live_streaming()
         if self.window is not None:
@@ -1416,193 +1392,10 @@ class Controller:
         if self.window is not None:
             self.window.logs_panel.update({"message": "[INFO][market_data] live stream stopped"})
 
-    # Read status settings from UI controls (or current state fallback).
-    def _read_status_settings_from_panel(self) -> dict[str, Any]:
-        if self.window is None:
-            roles = dict(getattr(self, "client_roles", {"market_data": 1, "vol_engine": 2, "risk_engine": 3}))
-            return {
-                "host": self.host,
-                "port": self.port,
-                "client_id": self.client_id,
-                "client_roles": roles,
-                "readonly": False,
-                "market_symbol": self.market_symbol,
-            }
+    # Settings methods → SettingsMixin (controller_settings.py)
 
-        roles = dict(getattr(self, "client_roles", {"market_data": 1, "vol_engine": 2, "risk_engine": 3}))
-        return {
-            "host": self.host,
-            "port": self.port,
-            "client_id": self.client_id,
-            "client_roles": roles,
-            "readonly": False,
-            "market_symbol": self.window.chart_panel.market_symbol_input.currentText().strip().upper(),
-        }
-
-    # Apply validated status settings to controller and IB client.
-    def _apply_status_settings(self, settings: dict[str, Any]) -> None:
-        self.host = str(settings["host"])
-        self.port = int(settings["port"])
-        self.client_id = int(settings["client_id"])
-        self.client_roles = dict(settings.get("client_roles", {"market_data": 1, "vol_engine": 2, "risk_engine": 3}))
-        self.readonly = False
-        self.market_symbol = str(settings["market_symbol"]).upper()
-
-        self.ib_client.host = self.host
-        self.ib_client.port = self.port
-        self.ib_client.client_id = self.client_id
-        self.ib_client.readonly = False
-
-    # Load and validate persisted app settings with fallback defaults.
-    def _load_app_settings(self) -> dict[str, Any]:
-        defaults = self._default_app_settings()
-        if not self._settings_path.exists():
-            logger.info("Settings file missing, creating defaults at %s", self._settings_path)
-            self._write_full_app_settings(defaults)
-            return defaults
-
-        try:
-            raw = json.loads(self._settings_path.read_text(encoding="utf-8"))
-            validated = self._validate_app_settings(raw)
-            return validated
-        except Exception as exc:
-            logger.warning("Invalid settings (%s): %s — resetting to defaults", self._settings_path, exc)
-            self._write_full_app_settings(defaults)
-            return defaults
-
-    @staticmethod
-    # Validate whole app settings and normalize legacy payloads.
-    def _validate_app_settings(raw: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(raw, dict):
-            raise ValueError("Settings payload must be a JSON object")
-
-        status_payload = raw.get("status")
-        if isinstance(status_payload, dict):
-            normalized_status = dict(status_payload)
-        else:
-            normalized_status = dict(raw)
-
-        if "market_symbol" not in normalized_status:
-            legacy_streaming = raw.get("live_streaming")
-            if isinstance(legacy_streaming, dict):
-                normalized_status["market_symbol"] = legacy_streaming.get("market_symbol", "EURUSD")
-
-        runtime_payload = raw.get("runtime")
-        if runtime_payload is None:
-            runtime_payload = {}
-
-        return {
-            "status": Controller._validate_status_settings(normalized_status),
-            "runtime": Controller._validate_runtime_settings(runtime_payload),
-        }
-
-    @staticmethod
-    # Validate runtime timing settings and enforce safe bounds.
-    def _validate_runtime_settings(raw: dict[str, Any]) -> dict[str, int]:
-        if not isinstance(raw, dict):
-            raise ValueError("Runtime settings payload must be a JSON object")
-
-        tick_interval_ms = int(raw.get("tick_interval_ms", Controller.DEFAULT_RUNTIME_SETTINGS["tick_interval_ms"]))
-        snapshot_interval_ms = int(
-            raw.get("snapshot_interval_ms", Controller.DEFAULT_RUNTIME_SETTINGS["snapshot_interval_ms"])
-        )
-        if tick_interval_ms < 25:
-            raise ValueError("Runtime setting 'tick_interval_ms' must be >= 25")
-        if snapshot_interval_ms < 250:
-            raise ValueError("Runtime setting 'snapshot_interval_ms' must be >= 250")
-        if snapshot_interval_ms < tick_interval_ms:
-            raise ValueError("Runtime setting 'snapshot_interval_ms' must be >= tick_interval_ms")
-
-        return {
-            "tick_interval_ms": tick_interval_ms,
-            "snapshot_interval_ms": snapshot_interval_ms,
-        }
-
-    @staticmethod
-    # Validate status/connection settings and normalize fields.
-    def _validate_status_settings(raw: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(raw, dict):
-            raise ValueError("Settings payload must be a JSON object")
-
-        required = ("host", "port")
-        missing = [key for key in required if key not in raw]
-        if missing:
-            raise ValueError(f"Missing settings keys: {', '.join(missing)}")
-
-        host = str(raw["host"]).strip()
-        if not host:
-            raise ValueError("Settings 'host' cannot be empty")
-
-        symbol = str(raw.get("market_symbol", "EURUSD")).strip().upper()
-        if not symbol:
-            raise ValueError("Settings 'market_symbol' cannot be empty")
-
-        raw_roles = raw.get("client_roles")
-        default_roles = {"market_data": 1, "vol_engine": 2, "risk_engine": 3}
-        if isinstance(raw_roles, dict):
-            roles = {
-                "market_data": int(raw_roles.get("market_data", default_roles["market_data"])),
-                "vol_engine": int(raw_roles.get("vol_engine", default_roles["vol_engine"])),
-                "risk_engine": int(raw_roles.get("risk_engine", default_roles["risk_engine"])),
-            }
-        else:
-            roles = dict(default_roles)
-
-        ids = list(roles.values())
-        if len(set(ids)) != len(ids):
-            raise ValueError("Client role ids must be distinct (market_data, vol_engine, risk_engine).")
-
-        return {
-            "host": host,
-            "port": int(raw["port"]),
-            "client_id": int(roles["market_data"]),
-            "client_roles": roles,
-            "readonly": False,
-            "market_symbol": symbol,
-        }
-
-    # Persist current status and runtime settings to disk.
-    def _save_app_settings(self) -> None:
-        status_settings = self._validate_status_settings(self._read_status_settings_from_panel())
-        self._apply_status_settings(status_settings)
-        runtime_settings = self._validate_runtime_settings(
-            {
-                "tick_interval_ms": self.tick_interval_ms,
-                "snapshot_interval_ms": self.snapshot_interval_ms,
-            }
-        )
-        self._write_app_settings(status_settings, runtime_settings)
-
-    @staticmethod
-    # Return default app settings payload.
-    def _default_app_settings() -> dict[str, dict[str, Any]]:
-        status_defaults = dict(Controller.DEFAULT_STATUS_SETTINGS)
-        status_defaults["client_roles"] = dict({"market_data": 1, "vol_engine": 2, "risk_engine": 3})
-        return {
-            "status": status_defaults,
-            "runtime": dict(Controller.DEFAULT_RUNTIME_SETTINGS),
-        }
-
-    # Validate and write a full app settings payload.
-    def _write_full_app_settings(self, app_settings: dict[str, Any]) -> None:
-        validated = self._validate_app_settings(app_settings)
-        self._write_app_settings(validated["status"], validated["runtime"])
-
-    # Write split status/runtime settings payload to disk.
-    def _write_app_settings(self, status_settings: dict[str, Any], runtime_settings: dict[str, Any]) -> None:
-        app_settings = {
-            "status": status_settings,
-            "runtime": runtime_settings,
-        }
-        try:
-            self._settings_path.parent.mkdir(parents=True, exist_ok=True)
-            self._settings_path.write_text(json.dumps(app_settings, indent=2), encoding="utf-8")
-            logger.info("Saved settings to %s", self._settings_path)
-        except Exception as exc:
-            logger.error("Failed to save settings: %s", exc)
-
-    # Synchronize server time if supported (direct call, no thread).
     def _start_server_time_sync(self) -> None:
+        """Synchronize server time if supported (direct call, no thread)."""
         if not self.ib_client.supports_server_time():
             return
         time_text, latency_text = self.ib_client.get_server_time_and_latency()
@@ -1611,8 +1404,8 @@ class Controller:
         self._last_server_sync_sec = int(time.time())
         self._refresh_status(force=True)
 
-    # Stop workers, subscriptions, and IB connection on exit.
     def _shutdown_services(self) -> None:
+        """Stop workers, subscriptions, and IB connection on exit."""
         self._connecting = False
         self._stop_engine_pool()
         self._stop_order_worker()
@@ -1621,8 +1414,8 @@ class Controller:
             self._ui_poll_timer = None
         self._disconnect_client()
 
-    # Start the asyncio + Qt integrated event loop.
     def run(self) -> int:
+        """Start the asyncio + Qt integrated event loop."""
         self._create_window()
         self._setup_services()
         self.window.window_closed.connect(self._on_app_quit)
@@ -1634,8 +1427,8 @@ class Controller:
             self._shutdown_services()
         return 0
 
-    # Stop the asyncio event loop when the last window is closed.
     def _on_app_quit(self) -> None:
+        """Stop the asyncio event loop when the last window is closed."""
         self._shutdown_services()
         import asyncio
         loop = asyncio.get_event_loop()

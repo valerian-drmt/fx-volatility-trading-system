@@ -18,7 +18,12 @@ from ib_insync import IB
 from scipy.stats import norm
 
 from services.bs_pricer import (
-    bs_delta, bs_gamma, bs_price, bs_theta, bs_vega, interpolate_iv,
+    bs_delta,
+    bs_gamma,
+    bs_price,
+    bs_theta,
+    bs_vega,
+    interpolate_iv,
 )
 
 logger = logging.getLogger("risk_engine")
@@ -28,11 +33,30 @@ GREEKS_INTERVAL_S = 2.0
 POSITIONS_INTERVAL_S = 10.0
 PNL_CHART_POINTS = 31
 PNL_CHART_RANGE_PCT = 0.03
+FALLBACK_IV = 0.07
+GAMMA_PIP_SCALE = 0.0001
+FUT_MULTIPLIER_DEFAULT = 125_000
+STARTUP_DELAY_S = 15
 
 
 class RiskEngine(threading.Thread):
-    def __init__(self, output_queue: queue.Queue,
-                 host: str = "127.0.0.1", port: int = 4002, client_id: int = 3) -> None:
+    """Thread 3: fetches IB positions periodically and computes BS greeks + PnL."""
+
+    def __init__(
+        self,
+        output_queue: queue.Queue[dict[str, Any]],
+        host: str = "127.0.0.1",
+        port: int = 4002,
+        client_id: int = 3,
+    ) -> None:
+        """Initialize the risk engine.
+
+        Args:
+            output_queue: Queue to post computed greeks/PnL payloads for the UI thread.
+            host: IB Gateway hostname.
+            port: IB Gateway port.
+            client_id: IB client ID for the dedicated risk connection.
+        """
         super().__init__(name="RiskEngine", daemon=True)
         self._output_queue = output_queue
         self._host = host
@@ -45,15 +69,17 @@ class RiskEngine(threading.Thread):
         self.iv_surface: dict[str, Any] = {}
 
         # Internal state
-        self._positions: list[dict] = []
+        self._positions: list[dict[str, Any]] = []
 
     def stop(self) -> None:
+        """Signal the engine thread to stop."""
         self._stop_event.set()
 
     def run(self) -> None:
+        """Main loop: fetch positions and compute greeks/PnL on a fixed cadence."""
         asyncio.set_event_loop(asyncio.new_event_loop())
         logger.info("RiskEngine thread started")
-        if self._stop_event.wait(timeout=15):
+        if self._stop_event.wait(timeout=STARTUP_DELAY_S):
             return
         last_fetch = 0.0
         while not self._stop_event.is_set():
@@ -82,7 +108,7 @@ class RiskEngine(threading.Thread):
                 break
         logger.info("RiskEngine thread stopped")
 
-    def _static_positions(self) -> dict:
+    def _static_positions(self) -> dict[str, Any]:
         """Return positions with basic data only (no greeks, no PnL). Used when market is closed."""
         open_rows = []
         for pos in self._positions:
@@ -113,6 +139,7 @@ class RiskEngine(threading.Thread):
     # ── Position fetch (IB blocking, ~2.5s) ──
 
     def _fetch_positions(self) -> None:
+        """Connect to IB, fetch all open positions, and update internal state."""
         ib = IB()
         try:
             ib.connect(self._host, self._port, clientId=self._client_id, timeout=10)
@@ -177,7 +204,8 @@ class RiskEngine(threading.Thread):
 
     # ── Greeks + PnL computation ──
 
-    def _compute(self, F: float) -> dict:
+    def _compute(self, F: float) -> dict[str, Any]:
+        """Compute per-position BS greeks, aggregate summary, and PnL curve."""
         iv_surface = self.iv_surface  # atomic dict read
         open_rows = []
 
@@ -207,7 +235,7 @@ class RiskEngine(threading.Thread):
             elif sec_type == "FOP" and right in ("C", "P") and T > 0 and strike > 0:
                 iv = interpolate_iv(iv_surface, tenor, strike, F)
                 if iv is None or iv <= 0:
-                    iv = 0.07
+                    iv = FALLBACK_IV
 
                 price_now = bs_price(F, strike, T, iv, right)
                 d = bs_delta(F, strike, T, iv, right)
@@ -216,7 +244,7 @@ class RiskEngine(threading.Thread):
                 th = bs_theta(F, strike, T, iv, right)
 
                 delta_usd = d * qty * multiplier
-                gamma_usd = g * qty * multiplier * 0.0001
+                gamma_usd = g * qty * multiplier * GAMMA_PIP_SCALE
                 vega_usd = v * qty * multiplier
                 theta_usd = th * qty * multiplier
                 pnl = (price_now - cost_per_unit) * qty * multiplier
@@ -259,7 +287,8 @@ class RiskEngine(threading.Thread):
 
     # ── PnL chart (vectorized where possible) ──
 
-    def _compute_pnl_chart(self, F: float, iv_surface: dict) -> dict:
+    def _compute_pnl_chart(self, F: float, iv_surface: dict[str, Any]) -> dict[str, Any]:
+        """Build PnL curve over a spot range for the current portfolio."""
         lo = F * (1 - PNL_CHART_RANGE_PCT)
         hi = F * (1 + PNL_CHART_RANGE_PCT)
         spots = np.linspace(lo, hi, PNL_CHART_POINTS)
@@ -281,7 +310,7 @@ class RiskEngine(threading.Thread):
             elif sec_type == "FOP" and right in ("C", "P") and T > 0 and strike > 0:
                 iv = interpolate_iv(iv_surface, tenor, strike, F)
                 if iv is None or iv <= 0:
-                    iv = 0.07
+                    iv = FALLBACK_IV
                 # Vectorized BS price
                 prices = self._bs_price_vec(spots, strike, T, iv, right)
                 pnls += (prices - cost_per_unit) * qty * multiplier

@@ -1,7 +1,6 @@
 import math
 from typing import Any
 
-from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QFormLayout, QGroupBox, QLabel, QVBoxLayout, QWidget
 
 

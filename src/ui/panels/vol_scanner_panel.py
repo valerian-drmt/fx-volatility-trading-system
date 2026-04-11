@@ -1,3 +1,5 @@
+from typing import Any
+
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor
 from PyQt5.QtWidgets import (
@@ -9,7 +11,6 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from typing import Any
 
 COLUMNS = ["Tenor", "DTE", "σ Mid", "σ Fair", "Ecart", "Signal", "RV", "RR25", "BF25"]
 
