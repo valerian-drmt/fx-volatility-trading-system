@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import queue
 import sys
@@ -11,19 +12,22 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from ib_insync import Forex, IB
 
-from services.data_feed import MarketDataWorker
+from services.market_data_engine import MarketDataEngine
 from services.vol_engine import VolEngine
+from services.risk_engine import RiskEngine
 from services.ib_client import IBClient
 from services.order_executor import OrderExecutor
 from ui.main_window import MainWindow
+
+logger = logging.getLogger("controller")
 
 
 class Controller:
     DEFAULT_STATUS_SETTINGS = {
         "host": "127.0.0.1",
         "port": 4002,
-        "client_id": 3,
-        "client_roles": {"order_worker": 1, "market_data": 2, "dashboard": 3},
+        "client_id": 1,
+        "client_roles": {"market_data": 1, "vol_engine": 2, "risk_engine": 3},
         "readonly": False,
         "market_symbol": "EURUSD",
     }
@@ -43,7 +47,7 @@ class Controller:
         self.host = status_settings["host"]
         self.port = status_settings["port"]
         self.client_id = status_settings["client_id"]
-        self.client_roles = dict(status_settings.get("client_roles", {"order_worker": 1, "market_data": 2, "dashboard": 3}))
+        self.client_roles = dict(status_settings.get("client_roles", {"market_data": 1, "vol_engine": 2, "risk_engine": 3}))
         self.readonly = status_settings["readonly"]
         self.market_symbol = status_settings["market_symbol"]
         self.tick_interval_ms = runtime_settings["tick_interval_ms"]
@@ -63,16 +67,16 @@ class Controller:
         self.window: MainWindow | None = None
         self._ui_queue: queue.Queue = queue.Queue()
         self._ui_poll_timer: QTimer | None = None
-        self._market_data_worker: MarketDataWorker | None = None
-        self._market_data_thread: threading.Thread | None = None
-        self._market_data_stop: threading.Event = threading.Event()
         self._order_worker: OrderExecutor | None = None
+
+        # Engine pool (Thread 1, 2, 3)
+        self._market_engine: MarketDataEngine | None = None
         self._vol_engine: VolEngine | None = None
+        self._risk_engine: RiskEngine | None = None
         self._vol_output_queue: queue.Queue = queue.Queue()
-        self._vol_poll_thread: threading.Thread | None = None
-        self._vol_poll_stop: threading.Event = threading.Event()
-        self._status_thread: threading.Thread | None = None
-        self._status_stop: threading.Event = threading.Event()
+        self._risk_output_queue: queue.Queue = queue.Queue()
+        self._engine_pool: list[threading.Thread] = []
+        self._engine_poll_timer: QTimer | None = None
 
         self._last_status_sec = None
         self._last_server_sync_sec = None
@@ -137,10 +141,10 @@ class Controller:
             try:
                 config_dir.mkdir(parents=True, exist_ok=True)
                 config_path.write_text(legacy_path.read_text(encoding="utf-8"), encoding="utf-8")
-                print(f"Migrated settings to {config_path}")
+                logger.info("Migrated settings to %s", config_path)
                 return config_path
             except Exception as exc:
-                print(f"Settings migration warning ({legacy_path} -> {config_path}): {exc}")
+                logger.warning("Settings migration failed (%s -> %s): %s", legacy_path, config_path, exc)
                 return legacy_path
 
         return config_path
@@ -152,7 +156,7 @@ class Controller:
             on_disconnect=self._disconnect_client,
             on_start_engine=self._start_live_streaming,
             on_stop_engine=self._stop_live_streaming,
-            on_save_settings=self._save_app_settings,
+            on_save_settings=self._open_settings,
             status_defaults={
                 "host": self.host,
                 "port": self.port,
@@ -164,8 +168,8 @@ class Controller:
         self.window.show()
 
     def _log(self, message: str) -> None:
-        """Send a message to the logs panel and print to console."""
-        print(message)
+        """Send a message to the logs panel and logger."""
+        logger.info(message)
         if self.window is not None:
             self.window.logs_panel.update({"message": message})
 
@@ -183,7 +187,7 @@ class Controller:
                 limit_update_btn.clicked.connect(self._update_limit_price_from_market)
             except RuntimeError:
                 pass
-        self.window.orders_panel.cancel_order_requested.connect(self._cancel_single_order)
+        # pnl_spot_panel has no signals to connect
         symbol_input = getattr(self.window.order_ticket_panel, "symbol_input", None)
         if symbol_input is not None and hasattr(symbol_input, "currentTextChanged"):
             symbol_input.currentTextChanged.connect(self._refresh_order_ticket_market_context)
@@ -207,8 +211,8 @@ class Controller:
         self._ui_poll_timer.setInterval(50)
         self._ui_poll_timer.timeout.connect(self._drain_ui_queue)
         self._ui_poll_timer.start()
+        logger.info("QTimer _ui_poll_timer started (50ms)")
 
-        self._start_status_thread()
         self._refresh_status(force=True)
 
     # ── UI queue: single bridge from threads → main thread ──
@@ -227,28 +231,7 @@ class Controller:
             try:
                 callback()
             except Exception as exc:
-                print(f"[ERROR][ui_queue] callback failed: {exc}")
-
-    # ── Status thread ──
-
-    def _start_status_thread(self) -> None:
-        if self._status_thread is not None and self._status_thread.is_alive():
-            return
-        self._status_stop.clear()
-        self._status_thread = threading.Thread(
-            target=self._status_loop, name="StatusThread", daemon=True,
-        )
-        self._status_thread.start()
-
-    def _stop_status_thread(self) -> None:
-        self._status_stop.set()
-        if self._status_thread is not None:
-            self._status_thread.join(timeout=2.0)
-            self._status_thread = None
-
-    def _status_loop(self) -> None:
-        while not self._status_stop.wait(timeout=1.0):
-            self._post_ui(lambda: self._refresh_status())
+                logger.error("UI queue callback failed: %s", exc)
 
     # Create the order worker (plain class, no thread).
     def _setup_order_worker(self) -> None:
@@ -257,44 +240,9 @@ class Controller:
         self._order_worker = OrderExecutor(ib_client=self.ib_client)
         self._order_worker.start()
 
-    # Return True when the market worker is active.
+    # Return True when the engine pool is active.
     def _is_market_worker_running(self) -> bool:
-        return self._market_data_worker is not None
-
-    # Start market data polling in a background thread.
-    def _start_market_data_worker(self) -> None:
-        if self._market_data_worker is not None:
-            return
-        self._market_data_worker = MarketDataWorker(
-            ib_client=self.ib_client,
-            interval_ms=self.tick_interval_ms,
-            snapshot_interval_ms=self.snapshot_interval_ms,
-        )
-        self._market_data_stop.clear()
-        self._market_data_thread = threading.Thread(
-            target=self._market_data_loop, name="MarketDataPoll", daemon=True,
-        )
-        self._market_data_thread.start()
-
-    def _market_data_loop(self) -> None:
-        interval_s = self.tick_interval_ms / 1000.0
-        while not self._market_data_stop.wait(timeout=interval_s):
-            if self._market_data_worker is None:
-                break
-            try:
-                payload = self._market_data_worker.poll_once()
-                self._post_ui(lambda p=payload: self._on_market_data_payload(p))
-            except Exception as exc:
-                msg = str(exc)
-                self._post_ui(lambda m=msg: self._on_market_data_failed(m))
-
-    # Stop market data polling and clear worker.
-    def _stop_market_data_worker(self) -> None:
-        self._market_data_stop.set()
-        if self._market_data_thread is not None:
-            self._market_data_thread.join(timeout=2.0)
-            self._market_data_thread = None
-        self._market_data_worker = None
+        return self._market_engine is not None
 
     # Stop order worker.
     def _stop_order_worker(self) -> None:
@@ -302,82 +250,132 @@ class Controller:
             self._order_worker.stop()
         self._order_worker = None
 
-    # ── Vol Engine lifecycle ──
+    # ── Engine Pool (Thread 1 + 2 + 3) ──
 
-    def _setup_vol_engine(self) -> None:
+    def _start_engine_pool(self) -> None:
+        """Create and start all 3 worker threads."""
         self._vol_output_queue = queue.Queue()
+        self._risk_output_queue = queue.Queue()
 
-    def _start_vol_engine(self) -> None:
-        self._log("[VOL] Starting Thread 2 (VolEngine)...")
-        if self._vol_engine is None or not self._vol_engine.is_alive():
-            self._vol_output_queue = queue.Queue()
+        # Thread 1: Market Data (client_id=1, shared IB connection)
+        self._market_engine = MarketDataEngine(
+            ib_client=self.ib_client,
+            ui_queue_post=self._post_ui,
+            interval_ms=self.tick_interval_ms,
+            snapshot_interval_s=10.0,
+        )
+
+        # Thread 3: Risk Engine (client_id=3, own IB connection)
+        self._risk_engine = RiskEngine(
+            output_queue=self._risk_output_queue,
+            host=str(self.host), port=int(self.port), client_id=3,
+        )
+
+        # Thread 2: Vol Engine (client_id=2, own IB connection)
+        # Only start if market is open (spot > 0)
+        mid = self._get_mid_spot()
+        market_open = mid is not None and mid > 0
+        if market_open:
             self._vol_engine = VolEngine(
                 output_queue=self._vol_output_queue,
-                host=str(self.host),
-                port=int(self.port),
-                client_id=10,
+                host=str(self.host), port=int(self.port), client_id=2,
             )
-            self._vol_engine.start()
-            self._log(f"[VOL] Thread 2 started: alive={self._vol_engine.is_alive()}")
-
-        # Poll thread to read results from vol engine
-        self._vol_poll_stop.clear()
-        self._vol_poll_thread = threading.Thread(
-            target=self._vol_poll_loop, name="VolPoll", daemon=True,
-        )
-        self._vol_poll_thread.start()
-        self._log("[VOL] Poll thread started (500ms)")
-        self._refresh_status(force=True)
-
-    def _stop_vol_engine(self) -> None:
-        self._vol_poll_stop.set()
-        if self._vol_poll_thread is not None:
-            self._vol_poll_thread.join(timeout=2.0)
-            self._vol_poll_thread = None
-        if self._vol_engine is not None:
-            self._vol_engine.stop()
-            if self._vol_engine.is_alive():
-                self._vol_engine.join(timeout=5.0)
-            self._vol_engine = None
-        self._log("[VOL] Vol engine stopped")
-        self._refresh_status(force=True)
-
-    def _vol_poll_loop(self) -> None:
-        while not self._vol_poll_stop.wait(timeout=0.5):
-            self._post_ui(self._poll_vol_engine)
-
-    def _poll_vol_engine(self) -> None:
-        if self._vol_output_queue is None or self.window is None:
-            return
-        try:
-            result = self._vol_output_queue.get_nowait()
-        except queue.Empty:
-            return
-        error = result.get("error")
-        if error:
-            self._log(f"[VOL] engine error: {error}")
+            self._vol_engine.set_risk_engine(self._risk_engine)
         else:
-            rows = result.get("scanner_rows", [])
-            spot = result.get("spot", 0)
-            print(f"\n[VOL] Scanner — F={spot:.5f}")
-            print(f"  {'Tenor':<6} {'DTE':>4} {'σ Mid':>7} {'σ Fair':>7} {'Ecart':>7} {'Signal':>10} {'RV':>7} {'RR25':>7} {'BF25':>7}")
-            print(f"  {'─'*6} {'─'*4} {'─'*7} {'─'*7} {'─'*7} {'─'*10} {'─'*7} {'─'*7} {'─'*7}")
-            for r in rows:
-                def _f(v, fmt=".2f"):
-                    return f"{v:{fmt}}" if v is not None else "—"
-                t = r.get("tenor", "")
-                dte = str(r.get("dte", ""))
-                mid = _f(r.get("sigma_mid_pct"))
-                sf = _f(r.get("sigma_fair_pct"))
-                ec = _f(r.get("ecart_pct"), "+.2f") if r.get("ecart_pct") is not None else "—"
-                sig = r.get("signal", "—") or "—"
-                rv = _f(r.get("RV_pct"))
-                rr = _f(r.get("RR25_pct"), "+.2f") if r.get("RR25_pct") is not None else "—"
-                bf = _f(r.get("BF25_pct"), "+.2f") if r.get("BF25_pct") is not None else "—"
-                print(f"  {t:<6} {dte:>4} {mid:>7} {sf:>7} {ec:>7} {sig:>10} {rv:>7} {rr:>7} {bf:>7}")
+            self._vol_engine = None
+            self._log("[VOL] Market closed — Vol Engine not started")
+
+        # Wire shared data: Thread 1 writes spot into Thread 3
+        self._market_engine.set_risk_engine(self._risk_engine)
+
+        # Market engine dispatches payloads to controller
+        self._market_engine.on_payload = self._on_market_data_payload
+
+        # Start threads
+        self._engine_pool = [self._market_engine, self._risk_engine]
+        if self._vol_engine is not None:
+            self._engine_pool.append(self._vol_engine)
+        for t in self._engine_pool:
+            t.start()
+        logger.info("Engine pool started: %s", [t.name for t in self._engine_pool])
+
+        # QTimer 1s polls Thread 2 & 3 output queues + status refresh
+        self._engine_poll_timer = QTimer(self.window)
+        self._engine_poll_timer.setInterval(1000)
+        self._engine_poll_timer.timeout.connect(self._poll_engine_queues)
+        self._engine_poll_timer.start()
+
+    def _stop_engine_pool(self) -> None:
+        """Stop all worker threads and the poll timer. Idempotent."""
+        if not self._engine_pool:
+            return
+
+        if self._engine_poll_timer is not None:
+            self._engine_poll_timer.stop()
+            self._engine_poll_timer = None
+
+        for t in self._engine_pool:
+            t.stop()
+        for t in self._engine_pool:
+            t.join(timeout=5.0)
+        self._engine_pool.clear()
+        self._market_engine = None
+        self._vol_engine = None
+        self._risk_engine = None
+        logger.info("Engine pool stopped")
+
+    def _poll_engine_queues(self) -> None:
+        """Called by QTimer 1s. Drains vol + risk output queues, refreshes status."""
+        # Vol engine results
+        while True:
+            try:
+                result = self._vol_output_queue.get_nowait()
+            except queue.Empty:
+                break
+            error = result.get("error")
+            if error:
+                self._log(f"[VOL] engine error: {error}")
+            else:
+                self._on_vol_result(result)
+
+        # Risk engine results
+        while True:
+            try:
+                result = self._risk_output_queue.get_nowait()
+            except queue.Empty:
+                break
+            error = result.get("error")
+            if error:
+                self._log(f"[RISK] engine error: {error}")
+            else:
+                self._on_risk_result(result)
+
+        self._refresh_status()
+
+    # ── Engine result handlers ──
+
+    def _on_vol_result(self, result: dict) -> None:
+        """Handle vol engine output — update scanner, term structure, smile panels."""
+        if self.window is None:
+            return
+        rows = result.get("scanner_rows", [])
+        spot = result.get("spot", 0)
+        logger.info("Vol scan complete: F=%.5f, %d tenors", spot, len(rows))
         self.window.vol_scanner_panel.update(result)
         self._update_term_structure(result)
         self._update_smile_chart(result)
+
+    def _on_risk_result(self, result: dict) -> None:
+        """Handle risk engine output — update positions, greeks, PnL panels."""
+        if self.window is None:
+            return
+        self.window.open_positions_panel.update({"open_positions": result.get("open_positions", [])})
+        summary = result.get("summary", {})
+        self.window.book_panel.update({"summary": summary})
+
+        pnl_curve = result.get("pnl_curve")
+        if pnl_curve:
+            self.window.pnl_spot_panel.update(pnl_curve)
 
     def _update_term_structure(self, result: dict) -> None:
         """Build term structure payload from vol engine pillar_rows."""
@@ -445,81 +443,17 @@ class Controller:
                 else:
                     self._stop_live_streaming()
 
-        orders_payload = payload.get("orders_payload")
-        if isinstance(orders_payload, dict):
-            self.window.orders_panel.update(orders_payload)
-
         portfolio_payload = payload.get("portfolio_payload")
         if isinstance(portfolio_payload, dict):
             self.window.portfolio_panel.update(portfolio_payload)
             self._update_cash_balances_from_summary(portfolio_payload.get("summary"))
             self._refresh_order_ticket_market_context()
 
-    # Collect a best-effort open-orders list for account-level display.
-    def _collect_open_orders_for_panel(self, orders_client: Any) -> list[Any]:
-        open_orders: Any = []
-        request_all_open_orders = getattr(orders_client, "request_all_open_orders", None)
-        if callable(request_all_open_orders):
-            try:
-                open_orders = request_all_open_orders() or []
-            except Exception:
-                open_orders = []
-
-        if not isinstance(open_orders, list) or not open_orders:
-            get_open_orders_snapshot = getattr(orders_client, "get_open_orders_snapshot", None)
-            if callable(get_open_orders_snapshot):
-                try:
-                    open_orders = get_open_orders_snapshot() or []
-                except Exception:
-                    open_orders = []
-
-        return open_orders if isinstance(open_orders, list) else []
-
-    # Collect recent order activity for display (executions first, then fills).
-    def _collect_recent_orders_for_panel(self, orders_client: Any) -> list[Any]:
-        recent_orders: Any = []
-        get_recent_fills_snapshot = getattr(orders_client, "get_recent_fills_snapshot", None)
-        if callable(get_recent_fills_snapshot):
-            try:
-                recent_orders = get_recent_fills_snapshot() or []
-            except Exception:
-                recent_orders = []
-
-        if isinstance(recent_orders, list) and recent_orders:
-            return recent_orders
-
-        get_executions_snapshot = getattr(orders_client, "get_executions_snapshot", None)
-        if callable(get_executions_snapshot):
-            try:
-                recent_orders = get_executions_snapshot() or []
-            except Exception:
-                recent_orders = []
-
-        if not isinstance(recent_orders, list) or not recent_orders:
-            get_fills_snapshot = getattr(orders_client, "get_fills_snapshot", None)
-            if callable(get_fills_snapshot):
-                try:
-                    recent_orders = get_fills_snapshot() or []
-                except Exception:
-                    recent_orders = []
-
-        return recent_orders if isinstance(recent_orders, list) else []
-
-    # Fetch and render one-shot orders/portfolio snapshots for a connected session.
+    # Fetch account snapshot and update cash balances on connect.
     def _refresh_account_snapshots(self) -> None:
-        if self.window is None:
+        if self.window is None or not self.ib_client.is_connected():
             return
-
-        if not self.ib_client.is_connected():
-            return
-        orders_client = self.ib_client
-        portfolio_client = self.ib_client
-        open_orders = self._collect_open_orders_for_panel(orders_client)
-        fills = self._collect_recent_orders_for_panel(orders_client)
-        summary, positions = portfolio_client.get_portfolio_snapshot()
-
-        self.window.orders_panel.update({"open_orders": open_orders, "fills": fills})
-        self.window.portfolio_panel.update({"summary": summary, "positions": positions})
+        summary, _positions = self.ib_client.get_portfolio_snapshot()
         self._update_cash_balances_from_summary(summary)
         self._refresh_order_ticket_market_context()
 
@@ -1252,7 +1186,7 @@ class Controller:
         if self.ib_client.is_connected():
             return
 
-        self._stop_market_data_worker()
+        self._stop_engine_pool()
         self.ib_client.stop_live_streaming()
         self._disconnect_client()
 
@@ -1261,7 +1195,7 @@ class Controller:
             self._apply_status_settings(status_settings)
         except Exception as exc:
             self._last_connect_error = str(exc)
-            print(f"Invalid settings: {self._last_connect_error}")
+            logger.warning("Invalid settings: %s", self._last_connect_error)
             self._refresh_status(force=True)
             return
 
@@ -1310,32 +1244,26 @@ class Controller:
             return
 
         connected = self.ib_client.is_connected()
-        print(f"[DEBUG][streaming] all clients connected: {connected}")
         if not connected:
             self._refresh_status(force=True)
             return
 
         try:
             status_settings = self._validate_status_settings(self._read_status_settings_from_panel())
-            print(f"[DEBUG][streaming] settings validated: symbol={status_settings.get('market_symbol')}")
             self._apply_status_settings(status_settings)
         except Exception as exc:
             self._last_connect_error = str(exc)
-            print(f"[DEBUG][streaming] settings validation failed: {self._last_connect_error}")
+            logger.warning("Settings validation failed: %s", self._last_connect_error)
             self._refresh_status(force=True)
             return
 
-        print(f"[DEBUG][streaming] calling start_live_streaming({self.market_symbol!r}) on market client...")
         started = self.ib_client.start_live_streaming(self.market_symbol)
-        print(f"[DEBUG][streaming] start_live_streaming returned: {started}")
         if not started:
-            error_text = self.ib_client.get_last_error_text()
-            print(f"[DEBUG][streaming] start failed, last error: {error_text!r}")
+            logger.warning("Start streaming failed: %s", self.ib_client.get_last_error_text())
             self._refresh_status(force=True)
             return
 
-        self._start_market_data_worker()
-        self._start_vol_engine()
+        self._start_engine_pool()
         self._refresh_status(force=True)
         if self.window is not None:
             self.window.logs_panel.update(
@@ -1352,6 +1280,32 @@ class Controller:
             return data.get(tenor, "")
         except Exception:
             return ""
+
+    def _open_settings(self) -> None:
+        from ui.panels.settings_panel import SettingsPanel
+        vol_path = self._project_root / "config" / "vol_config.json"
+        status_path = self._project_root / "config" / "status_panel_settings.json"
+        dialog = SettingsPanel(vol_config_path=vol_path, status_config_path=status_path, parent=None)
+        self._settings_dialog = dialog
+        dialog.accepted.connect(self._on_settings_saved)
+        dialog.finished.connect(lambda _: setattr(self, "_settings_dialog", None))
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _on_settings_saved(self) -> None:
+        """Reload connection settings from disk and update status panel labels."""
+        app_settings = self._load_app_settings()
+        s = app_settings.get("status", {})
+        self.host = str(s.get("host", self.host))
+        self.port = int(s.get("port", self.port))
+        self.client_id = int(s.get("client_id", self.client_id))
+        if self.window is not None:
+            panel = self.window.status_panel
+            panel.host_input.setText(self.host)
+            panel.port_input.setText(str(self.port))
+            panel.client_id_input.setText(str(self.client_id))
+        self._log("[INFO][settings] Settings saved — changes apply on next scan cycle")
 
     def _discover_option_chains(self) -> None:
         """Discover FOP expiries/strikes on Connect. Saves 2 JSONs + populates Strike combo.
@@ -1451,8 +1405,7 @@ class Controller:
 
     # Stop live stream subscription and market polling worker.
     def _stop_live_streaming(self) -> None:
-        self._stop_vol_engine()
-        self._stop_market_data_worker()
+        self._stop_engine_pool()
         self.ib_client.stop_live_streaming()
         if self.window is not None:
             self.window.chart_panel.update({"clear": True})
@@ -1466,7 +1419,7 @@ class Controller:
     # Read status settings from UI controls (or current state fallback).
     def _read_status_settings_from_panel(self) -> dict[str, Any]:
         if self.window is None:
-            roles = dict(getattr(self, "client_roles", {"order_worker": 1, "market_data": 2, "dashboard": 3}))
+            roles = dict(getattr(self, "client_roles", {"market_data": 1, "vol_engine": 2, "risk_engine": 3}))
             return {
                 "host": self.host,
                 "port": self.port,
@@ -1476,13 +1429,11 @@ class Controller:
                 "market_symbol": self.market_symbol,
             }
 
-        panel = self.window.status_panel
-        roles = dict(getattr(self, "client_roles", {"order_worker": 1, "market_data": 2, "dashboard": 3}))
-        roles["dashboard"] = int(panel.client_id_input.value())
+        roles = dict(getattr(self, "client_roles", {"market_data": 1, "vol_engine": 2, "risk_engine": 3}))
         return {
-            "host": panel.host_input.text().strip(),
-            "port": int(panel.port_input.value()),
-            "client_id": int(roles["dashboard"]),
+            "host": self.host,
+            "port": self.port,
+            "client_id": self.client_id,
             "client_roles": roles,
             "readonly": False,
             "market_symbol": self.window.chart_panel.market_symbol_input.currentText().strip().upper(),
@@ -1493,7 +1444,7 @@ class Controller:
         self.host = str(settings["host"])
         self.port = int(settings["port"])
         self.client_id = int(settings["client_id"])
-        self.client_roles = dict(settings.get("client_roles", {"order_worker": 1, "market_data": 2, "dashboard": 3}))
+        self.client_roles = dict(settings.get("client_roles", {"market_data": 1, "vol_engine": 2, "risk_engine": 3}))
         self.readonly = False
         self.market_symbol = str(settings["market_symbol"]).upper()
 
@@ -1506,7 +1457,7 @@ class Controller:
     def _load_app_settings(self) -> dict[str, Any]:
         defaults = self._default_app_settings()
         if not self._settings_path.exists():
-            print(f"Settings file missing. Creating defaults at {self._settings_path}")
+            logger.info("Settings file missing, creating defaults at %s", self._settings_path)
             self._write_full_app_settings(defaults)
             return defaults
 
@@ -1515,8 +1466,7 @@ class Controller:
             validated = self._validate_app_settings(raw)
             return validated
         except Exception as exc:
-            print(f"Invalid settings detected ({self._settings_path}): {exc}")
-            print("Resetting to safe defaults.")
+            logger.warning("Invalid settings (%s): %s — resetting to defaults", self._settings_path, exc)
             self._write_full_app_settings(defaults)
             return defaults
 
@@ -1588,24 +1538,24 @@ class Controller:
             raise ValueError("Settings 'market_symbol' cannot be empty")
 
         raw_roles = raw.get("client_roles")
-        default_roles = {"order_worker": 1, "market_data": 2, "dashboard": 3}
+        default_roles = {"market_data": 1, "vol_engine": 2, "risk_engine": 3}
         if isinstance(raw_roles, dict):
             roles = {
-                "order_worker": int(raw_roles.get("order_worker", default_roles["order_worker"])),
                 "market_data": int(raw_roles.get("market_data", default_roles["market_data"])),
-                "dashboard": int(raw_roles.get("dashboard", raw.get("client_id", default_roles["dashboard"]))),
+                "vol_engine": int(raw_roles.get("vol_engine", default_roles["vol_engine"])),
+                "risk_engine": int(raw_roles.get("risk_engine", default_roles["risk_engine"])),
             }
         else:
             roles = dict(default_roles)
 
-        ids = [int(roles["order_worker"]), int(roles["market_data"]), int(roles["dashboard"])]
+        ids = list(roles.values())
         if len(set(ids)) != len(ids):
-            raise ValueError("Client role ids must be distinct (order_worker, market_data, dashboard).")
+            raise ValueError("Client role ids must be distinct (market_data, vol_engine, risk_engine).")
 
         return {
             "host": host,
             "port": int(raw["port"]),
-            "client_id": int(roles["dashboard"]),
+            "client_id": int(roles["market_data"]),
             "client_roles": roles,
             "readonly": False,
             "market_symbol": symbol,
@@ -1627,7 +1577,7 @@ class Controller:
     # Return default app settings payload.
     def _default_app_settings() -> dict[str, dict[str, Any]]:
         status_defaults = dict(Controller.DEFAULT_STATUS_SETTINGS)
-        status_defaults["client_roles"] = dict({"order_worker": 1, "market_data": 2, "dashboard": 3})
+        status_defaults["client_roles"] = dict({"market_data": 1, "vol_engine": 2, "risk_engine": 3})
         return {
             "status": status_defaults,
             "runtime": dict(Controller.DEFAULT_RUNTIME_SETTINGS),
@@ -1647,9 +1597,9 @@ class Controller:
         try:
             self._settings_path.parent.mkdir(parents=True, exist_ok=True)
             self._settings_path.write_text(json.dumps(app_settings, indent=2), encoding="utf-8")
-            print(f"Saved settings to {self._settings_path}")
+            logger.info("Saved settings to %s", self._settings_path)
         except Exception as exc:
-            print(f"Failed to save settings: {exc}")
+            logger.error("Failed to save settings: %s", exc)
 
     # Synchronize server time if supported (direct call, no thread).
     def _start_server_time_sync(self) -> None:
@@ -1664,9 +1614,7 @@ class Controller:
     # Stop workers, subscriptions, and IB connection on exit.
     def _shutdown_services(self) -> None:
         self._connecting = False
-        self._stop_status_thread()
-        self._stop_vol_engine()
-        self._stop_market_data_worker()
+        self._stop_engine_pool()
         self._stop_order_worker()
         if self._ui_poll_timer is not None:
             self._ui_poll_timer.stop()

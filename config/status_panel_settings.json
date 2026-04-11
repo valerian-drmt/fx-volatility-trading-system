@@ -2,11 +2,11 @@
   "status": {
     "host": "127.0.0.1",
     "port": 4002,
-    "client_id": 3,
+    "client_id": 1,
     "client_roles": {
-      "order_worker": 1,
-      "market_data": 2,
-      "dashboard": 3
+      "market_data": 1,
+      "vol_engine": 2,
+      "risk_engine": 3
     },
     "readonly": false,
     "market_symbol": "EURUSD"

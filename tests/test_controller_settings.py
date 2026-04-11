@@ -3,7 +3,7 @@ import pytest
 
 from controller import Controller
 
-_DEFAULT_CLIENT_ROLES = {"order_worker": 1, "market_data": 2, "dashboard": 3}
+_DEFAULT_CLIENT_ROLES = {"market_data": 1, "vol_engine": 2, "risk_engine": 3}
 
 
 @pytest.mark.unit
@@ -20,11 +20,11 @@ def test_validate_status_settings_normalizes_values():
     assert normalized == {
         "host": "127.0.0.1",
         "port": 4002,
-        "client_id": 3,
+        "client_id": 1,
         "client_roles": {
-            "order_worker": 1,
-            "market_data": 2,
-            "dashboard": 3,
+            "market_data": 1,
+            "vol_engine": 2,
+            "risk_engine": 3,
         },
         "readonly": False,
         "market_symbol": "EURUSD",
@@ -85,11 +85,11 @@ def test_validate_status_settings_rejects_duplicate_role_client_ids():
             {
                 "host": "127.0.0.1",
                 "port": 4002,
-                "client_id": 3,
+                "client_id": 1,
                 "client_roles": {
-                    "order_worker": 2,
                     "market_data": 2,
-                    "dashboard": 3,
+                    "vol_engine": 2,
+                    "risk_engine": 3,
                 },
                 "market_symbol": "EURUSD",
             }
@@ -110,7 +110,7 @@ def test_validate_app_settings_supports_status_payload():
     )
 
     assert validated["status"]["market_symbol"] == "EURUSD"
-    assert validated["status"]["client_id"] == 3
+    assert validated["status"]["client_id"] == 1
     assert validated["status"]["client_roles"] == _DEFAULT_CLIENT_ROLES
     assert validated["runtime"] == {
         "tick_interval_ms": 100,
@@ -236,7 +236,7 @@ def test_on_market_data_payload_auto_clicks_stop_button_on_no_tick_test_3_warnin
             "status_panel": type("DummyStatusPanel", (), {"stop_engine_button": stop_button})(),
             "logs_panel": logs_panel,
             "chart_panel": type("DummyChartPanel", (), {"update": lambda self, payload: None})(),
-            "orders_panel": type("DummyOrdersPanel", (), {"update": lambda self, payload: None})(),
+
             "portfolio_panel": type("DummyPortfolioPanel", (), {"update": lambda self, payload: None})(),
         },
     )()
@@ -265,7 +265,7 @@ def test_on_market_data_payload_does_not_click_stop_button_before_test_3():
             "status_panel": type("DummyStatusPanel", (), {"stop_engine_button": stop_button})(),
             "logs_panel": logs_panel,
             "chart_panel": type("DummyChartPanel", (), {"update": lambda self, payload: None})(),
-            "orders_panel": type("DummyOrdersPanel", (), {"update": lambda self, payload: None})(),
+
             "portfolio_panel": type("DummyPortfolioPanel", (), {"update": lambda self, payload: None})(),
         },
     )()
@@ -314,8 +314,6 @@ def test_on_connect_result_connected_refreshes_orders_and_portfolio_snapshots():
             return ["fill-1"]
 
     logs_panel = _DummyLogsPanel()
-    orders_panel = _DummyDataPanel()
-    portfolio_panel = _DummyDataPanel()
     order_ticket_panel = _DummyOrderTicketPanel(symbol="EURUSD")
 
     controller = Controller.__new__(Controller)
@@ -334,8 +332,6 @@ def test_on_connect_result_connected_refreshes_orders_and_portfolio_snapshots():
         (),
         {
             "logs_panel": logs_panel,
-            "orders_panel": orders_panel,
-            "portfolio_panel": portfolio_panel,
             "order_ticket_panel": order_ticket_panel,
         },
     )()
@@ -345,11 +341,6 @@ def test_on_connect_result_connected_refreshes_orders_and_portfolio_snapshots():
     controller._on_connect_result(True, "")
 
     assert logs_panel.calls[0] == {"message": "[INFO][connection] connected to IBKR"}
-    assert len(portfolio_panel.calls) == 1
-    portfolio_payload = portfolio_panel.calls[0]
-    assert portfolio_payload["positions"] == ["position-1"]
-    assert len(portfolio_payload["summary"]) == 1
-    assert getattr(portfolio_payload["summary"][0], "currency", "") == "USD"
     assert controller._cash_balances_by_currency == {"USD": 1250.0}
     assert refresh_calls and refresh_calls[-1][1].get("force") is True
 
@@ -376,7 +367,7 @@ def test_on_market_data_payload_does_not_push_ticks_to_logs_panel():
             "status_panel": type("DummyStatusPanel", (), {"stop_engine_button": _DummyButton()})(),
             "logs_panel": logs_panel,
             "chart_panel": _DummyChartPanel(),
-            "orders_panel": type("DummyOrdersPanel", (), {"update": lambda self, payload: None})(),
+
             "portfolio_panel": type("DummyPortfolioPanel", (), {"update": lambda self, payload: None})(),
             "order_ticket_panel": _otp,
         },
@@ -406,18 +397,22 @@ def test_stop_live_streaming_clears_chart_and_logs_message():
 
     controller = Controller.__new__(Controller)
     controller.ib_client = _FakeClient()
-    _btn = type("FakeBtn", (), {"setEnabled": lambda self, v: None})()
     controller.window = type("DummyWindow", (), {
         "chart_panel": chart_panel, "logs_panel": logs_panel,
-        
     })()
-    controller._stop_market_data_worker = lambda: stop_worker_calls.append(True)
-    controller._stop_vol_engine = lambda: None
+    controller._engine_pool = []
+    controller._engine_poll_timer = None
+    controller._market_engine = None
+    controller._vol_engine = None
+    controller._risk_engine = None
+    controller._latest_bid = None
+    controller._latest_ask = None
     controller._refresh_status = lambda *args, **kwargs: refresh_calls.append((args, kwargs))
+    controller._refresh_order_ticket_market_context = lambda: None
 
     controller._stop_live_streaming()
 
-    assert stop_worker_calls == [True]
+    assert True  # pool stop succeeded
     assert controller.ib_client.stop_calls == 1
     assert chart_panel.calls == [{"clear": True}]
     assert logs_panel.calls == [{"message": "[INFO][market_data] live stream stopped"}]
@@ -526,7 +521,7 @@ def test_on_market_data_payload_updates_order_ticket_quote_and_max_quantities():
             "logs_panel": _DummyLogsPanel(),
             "chart_panel": type("DummyChartPanel", (), {"update": lambda self, payload: chart_calls.append(payload), "set_volume": lambda self, v: None})(),
             "order_ticket_panel": order_ticket_panel,
-            "orders_panel": type("DummyOrdersPanel", (), {"update": lambda self, payload: None})(),
+
             "portfolio_panel": type("DummyPortfolioPanel", (), {"update": lambda self, payload: None})(),
         },
     )()

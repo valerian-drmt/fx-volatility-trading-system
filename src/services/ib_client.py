@@ -1,3 +1,4 @@
+import logging
 import math
 import time
 from typing import Any
@@ -182,8 +183,8 @@ class IBClient:
             return None
         quarterly.sort(key=lambda d: d.contract.lastTradeDateOrContractMonth)
         resolved = quarterly[0].contract
-        print(f"[INFO][ib_client] Streaming future: {resolved.localSymbol} "
-              f"exp={resolved.lastTradeDateOrContractMonth}")
+        logging.getLogger("ib_client").info(
+            "Streaming future: %s exp=%s", resolved.localSymbol, resolved.lastTradeDateOrContractMonth)
         return resolved
 
     # Detach listeners and stop current live market-data stream.

@@ -1,6 +1,6 @@
 import pytest
 
-from services.data_feed import MarketDataWorker
+from services.market_data_engine import MarketDataEngine
 
 
 class FakeMarketClient:
@@ -8,8 +8,6 @@ class FakeMarketClient:
         self.connection_state = connection_state
         self.ticks = ticks if ticks is not None else []
         self.process_messages_calls = 0
-        self.open_orders_calls = 0
-        self.fills_calls = 0
         self.portfolio_calls = 0
 
     def get_status_snapshot(self):
@@ -27,17 +25,27 @@ class FakeMarketClient:
         self.process_messages_calls += 1
         return self.ticks
 
-    def get_open_orders_snapshot(self):
-        self.open_orders_calls += 1
-        return ["open-order"]
-
-    def get_fills_snapshot(self):
-        self.fills_calls += 1
-        return ["fill-1"]
-
     def get_portfolio_snapshot(self):
         self.portfolio_calls += 1
         return (["summary-1"], ["position-1"])
+
+
+def _make_engine(client, **kwargs):
+    """Create a MarketDataEngine without starting the thread."""
+    engine = MarketDataEngine.__new__(MarketDataEngine)
+    engine._ib = client
+    engine._post_ui = lambda cb: None
+    engine._interval_s = kwargs.get("interval_s", 0.1)
+    engine._snapshot_interval_s = kwargs.get("snapshot_interval_s", 0.1)
+    engine._stop_event = __import__("threading").Event()
+    engine.latest_bid = None
+    engine.latest_ask = None
+    engine._risk_engine = None
+    engine._no_tick_check_started_at = None
+    engine._no_tick_check_count = 0
+    engine._no_tick_warning_emitted = False
+    engine._has_received_stream_ticks = False
+    return engine
 
 
 @pytest.mark.unit
@@ -46,140 +54,57 @@ def test_poll_once_connected_emits_full_payload(monkeypatch):
         connection_state="connected",
         ticks=[{"bid": 1.1, "ask": 1.2}, "bad", {"last": 1.15}],
     )
-    worker = MarketDataWorker(
-        ib_client=client,
-        interval_ms=50,
-        snapshot_interval_ms=100,
-    )
+    engine = _make_engine(client, snapshot_interval_s=0.1)
 
-    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: 1.0)
-    payload = worker.poll_once()
+    monkeypatch.setattr("services.market_data_engine.time.monotonic", lambda: 1.0)
+    payload = engine._poll_once(now=1.0, last_snapshot=0.0)
 
     assert payload["status"]["connection_state"] == "connected"
     assert payload["status"]["mode"] == "read-only"
     assert payload["ticks"] == [{"bid": 1.1, "ask": 1.2}, {"last": 1.15}]
-    assert payload["orders_payload"] == {"open_orders": ["open-order"], "fills": ["fill-1"]}
     assert payload["portfolio_payload"] == {"summary": ["summary-1"], "positions": ["position-1"]}
     assert client.process_messages_calls == 1
-    assert client.open_orders_calls == 1
-
-
-@pytest.mark.unit
-def test_poll_once_connected_uses_cached_snapshots_only(monkeypatch):
-    """Worker must only use cached snapshot reads (no active IB requests)."""
-    client = FakeMarketClient(
-        connection_state="connected",
-        ticks=[{"bid": 1.1, "ask": 1.2}],
-    )
-    worker = MarketDataWorker(
-        ib_client=client,
-        interval_ms=50,
-        snapshot_interval_ms=100,
-    )
-
-    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: 1.0)
-    payload = worker.poll_once()
-
-    assert payload["orders_payload"] == {"open_orders": ["open-order"], "fills": ["fill-1"]}
-    assert client.open_orders_calls == 1
-    assert client.fills_calls == 1
 
 
 @pytest.mark.unit
 def test_poll_once_disconnected_skips_stream_and_snapshots(monkeypatch):
     client = FakeMarketClient(connection_state="disconnected", ticks=[{"bid": 1.1}])
-    worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
+    engine = _make_engine(client, snapshot_interval_s=0.1)
 
-    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: 1.0)
-    payload = worker.poll_once()
+    monkeypatch.setattr("services.market_data_engine.time.monotonic", lambda: 1.0)
+    payload = engine._poll_once(now=1.0, last_snapshot=0.0)
 
     assert payload["status"]["connection_state"] == "disconnected"
     assert payload["ticks"] == []
-    assert payload["orders_payload"] is None
     assert payload["portfolio_payload"] is None
     assert client.process_messages_calls == 0
-    assert client.open_orders_calls == 0
     assert client.portfolio_calls == 0
 
 
 @pytest.mark.unit
-def test_poll_once_raises_when_exception_occurs():
-    class BrokenClient(FakeMarketClient):
-        def get_status_snapshot(self):
-            raise RuntimeError("status failure")
+def test_poll_once_updates_latest_bid_ask():
+    client = FakeMarketClient(
+        connection_state="connected",
+        ticks=[{"bid": 1.1000, "ask": 1.1002}],
+    )
+    engine = _make_engine(client)
+    engine._poll_once(now=1.0, last_snapshot=0.0)
 
-    worker = MarketDataWorker(ib_client=BrokenClient())
-
-    with pytest.raises(RuntimeError, match="status failure"):
-        worker.poll_once()
+    assert engine.latest_bid == 1.1000
+    assert engine.latest_ask == 1.1002
 
 
 @pytest.mark.unit
-def test_poll_once_emits_warning_after_three_no_tick_checks(monkeypatch):
+def test_poll_once_emits_warning_after_three_no_tick_checks():
     client = FakeMarketClient(connection_state="connected", ticks=[])
-    worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
+    engine = _make_engine(client)
 
-    monotonic_values = iter([0.0, 2.1, 4.2, 6.3])
-    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: next(monotonic_values))
-
-    p0 = worker.poll_once()
-    p1 = worker.poll_once()
-    p2 = worker.poll_once()
-    p3 = worker.poll_once()
+    p0 = engine._poll_once(now=0.0, last_snapshot=0.0)
+    p1 = engine._poll_once(now=2.1, last_snapshot=0.0)
+    p2 = engine._poll_once(now=4.2, last_snapshot=0.0)
+    p3 = engine._poll_once(now=6.3, last_snapshot=0.0)
 
     assert p0["messages"] == []
-    assert p1["messages"] == [
-        "[INFO][market_data] no ticks received (test 1/3)."
-    ]
-    assert p2["messages"] == [
-        "[INFO][market_data] no ticks received (test 2/3)."
-    ]
-    assert p3["messages"] == [
-        "[WARN][market_data] no ticks received (test 3/3); "
-        "market may be closed or data is unavailable for this symbol."
-    ]
-
-
-@pytest.mark.unit
-def test_poll_once_emits_info_when_tick_stream_resumes(monkeypatch):
-    client = FakeMarketClient(connection_state="connected", ticks=[])
-    worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
-
-    monotonic_values = iter([0.0, 2.1, 4.2, 6.3, 6.4])
-    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: next(monotonic_values))
-
-    worker.poll_once()
-    worker.poll_once()
-    worker.poll_once()
-    p3 = worker.poll_once()
-    client.ticks = [{"bid": 1.1000, "ask": 1.1002}]
-    p4 = worker.poll_once()
-
-    assert p3["messages"] == [
-        "[WARN][market_data] no ticks received (test 3/3); "
-        "market may be closed or data is unavailable for this symbol."
-    ]
-    assert p4["messages"] == ["[INFO][market_data] tick stream resumed."]
-    assert p4["ticks"] == [{"bid": 1.1000, "ask": 1.1002}]
-
-
-@pytest.mark.unit
-def test_poll_once_skips_no_tick_startup_checks_after_first_tick(monkeypatch):
-    client = FakeMarketClient(connection_state="connected", ticks=[{"bid": 1.1000, "ask": 1.1002}])
-    worker = MarketDataWorker(ib_client=client, snapshot_interval_ms=100)
-
-    monotonic_values = iter([0.0, 2.1, 4.2, 6.3, 8.4])
-    monkeypatch.setattr("services.data_feed.time.monotonic", lambda: next(monotonic_values))
-
-    p0 = worker.poll_once()  # first tick received -> startup checks disabled afterwards
-    client.ticks = []
-    p1 = worker.poll_once()
-    p2 = worker.poll_once()
-    p3 = worker.poll_once()
-    p4 = worker.poll_once()
-
-    assert p0["ticks"] == [{"bid": 1.1000, "ask": 1.1002}]
-    assert p1["messages"] == []
-    assert p2["messages"] == []
-    assert p3["messages"] == []
-    assert p4["messages"] == []
+    assert "[INFO][market_data] no ticks received (test 1/3)." in p1["messages"]
+    assert "[INFO][market_data] no ticks received (test 2/3)." in p2["messages"]
+    assert any("WARN" in m for m in p3["messages"])

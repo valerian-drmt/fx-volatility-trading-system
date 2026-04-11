@@ -8,13 +8,7 @@ from ib_insync import Contract, Forex, LimitOrder, MarketOrder, Order
 from services.ib_client import IBClient
 
 
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    _handler = logging.StreamHandler()
-    _handler.setFormatter(logging.Formatter("[%(levelname)s][order_executor] %(message)s"))
-    logger.addHandler(_handler)
-logger.setLevel(logging.DEBUG)
-logger.propagate = False
+logger = logging.getLogger("order_executor")
 
 
 class OrderExecutor:
@@ -198,25 +192,19 @@ class OrderExecutor:
 
     # Submit one order and return (ok, reason).
     def _submit_one(self, contract: Any, order: Any) -> tuple[bool, str]:
-        logger.debug("ib.placeOrder() request contract=%r order=%r", contract, order)
         self.ib_client.clear_last_error()
-        logger.debug("self.ib_client.clear_last_error() before ib.placeOrder()")
         trade = self.ib_client.place_order(contract, order)
         if trade is None:
-            logger.debug("ib.placeOrder() failure reason=%s", self.ib_client.get_last_error_text())
-            logger.debug("ib.placeOrder() returned None")
             return False, self.ib_client.get_last_error_text() or "Unknown IB error."
 
         trade_payload = self._trade_debug_payload(trade)
         trade_status = self._trade_status(trade)
-        logger.debug("order submission accepted ib_response=%r", trade_payload)
         if trade_status in self._REJECTED_STATUSES:
             return False, self.ib_client.get_last_error_text() or f"IB status={trade_status}"
         return True, ""
 
     # Execute a validated order request through the IB client.
     def place_order(self, request: Any) -> dict[str, Any]:
-        logger.debug("place_order received payload=%r", request)
         if not self._running:
             return {"ok": False, "kind": "order", "message": "Order worker is stopped."}
 
@@ -242,9 +230,7 @@ class OrderExecutor:
                 return {"ok": False, "kind": "order", "message": "Not connected to IBKR."}
 
             contract = Forex(symbol)
-            logger.debug("Forex() built contract=%r", contract)
             qualified_contract = contract
-            logger.debug("order_executor using direct Forex contract without qualification.")
 
             take_profit = None
             stop_loss = None
@@ -276,7 +262,6 @@ class OrderExecutor:
 
                 bracket_entry_price = float(entry_price)
                 self.ib_client.clear_last_error()
-                logger.debug("self.ib_client.clear_last_error() before build_bracket_orders()")
                 bracket_orders = self.ib_client.build_bracket_orders(
                     side=side,
                     quantity=quantity,
@@ -285,7 +270,6 @@ class OrderExecutor:
                     stop_loss_price=stop_loss,
                     parent_order_type=order_type,
                 )
-                logger.debug("order_executor build_bracket_orders() response=%r", bracket_orders)
                 if not bracket_orders:
                     reason = self.ib_client.get_last_error_text() or "Unknown IB error."
                     return {
@@ -298,7 +282,6 @@ class OrderExecutor:
                         }
 
                 for bracket_order in bracket_orders:
-                    logger.debug("order_executor bracket order built=%r", bracket_order)
                     ok, reason = self._submit_one(qualified_contract, bracket_order)
                     if not ok:
                         return {
@@ -311,7 +294,6 @@ class OrderExecutor:
                             }
             else:
                 order = self._build_order(side, order_type, quantity, limit_price)
-                logger.debug("order_executor single order built=%r", order)
                 ok, reason = self._submit_one(qualified_contract, order)
                 if not ok:
                     return {
@@ -429,7 +411,7 @@ class OrderExecutor:
                 "side": side,
                 "quantity": qty,
                 "notional": notional,
-                "delta": delta,
+                "delta_usd": delta,
                 "init_margin": getattr(what_if, "initMarginChange", "--"),
                 "maint_margin": getattr(what_if, "maintMarginChange", "--"),
                 "commission": getattr(what_if, "commission", "--"),
@@ -713,7 +695,6 @@ class OrderExecutor:
 
     # Run a what-if preview for a validated order request.
     def preview_order(self, request: Any) -> dict[str, Any]:
-        logger.debug("preview_order received payload=%r", request)
         if not self._running:
             return {"ok": False, "kind": "preview", "message": "Order worker is stopped."}
 
@@ -739,9 +720,7 @@ class OrderExecutor:
                 return {"ok": False, "kind": "preview", "message": "Not connected to IBKR."}
 
             contract = Forex(symbol)
-            logger.debug("preview_order built contract=%r", contract)
             self.ib_client.clear_last_error()
-            logger.debug("self.ib_client.clear_last_error() before qualify_contract() for preview")
             qualified_contract = self.ib_client.qualify_contract(contract)
             if qualified_contract is None:
                 reason = self.ib_client.get_last_error_text() or "Unable to qualify contract."
@@ -751,15 +730,11 @@ class OrderExecutor:
                         "kind": "preview",
                         "message": f"Preview failed for {side} {quantity} {symbol} {order_type} - {reason}",
                     }
-            logger.debug("preview_order using qualified contract=%r", qualified_contract)
             order = self._build_order(side, order_type, quantity, limit_price)
             self.ib_client.clear_last_error()
-            logger.debug("self.ib_client.clear_last_error() before ib.whatIfOrder()")
             what_if = self.ib_client.what_if_order(qualified_contract, order)
-            logger.debug("ib.whatIfOrder() response=%r", what_if)
             if what_if is None:
                 reason = self.ib_client.get_last_error_text() or "Unknown IB error."
-                logger.debug("ib.whatIfOrder() failure reason=%s", reason)
                 return {
                     
                         "ok": False,
@@ -784,7 +759,6 @@ class OrderExecutor:
                     tp_pct=float(tp_pct),
                     sl_pct=float(sl_pct),
                 )
-            logger.debug("preview_order ib_response=%r", self._what_if_debug_payload(what_if))
             init_margin = getattr(what_if, "initMarginChange", "--")
             maint_margin = getattr(what_if, "maintMarginChange", "--")
             commission = getattr(what_if, "commission", "--")
