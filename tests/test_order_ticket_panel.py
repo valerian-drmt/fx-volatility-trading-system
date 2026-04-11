@@ -1,6 +1,6 @@
 import pytest
 
-from ui.panels.order_ticket import OrderTicketPanel
+from ui.panels.order_ticket_panel import OrderTicketPanel
 
 
 @pytest.mark.unit
