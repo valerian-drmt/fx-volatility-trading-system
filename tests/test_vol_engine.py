@@ -3,17 +3,16 @@ import queue
 import pytest
 
 from services.vol_engine import (
+    PILLAR_TARGETS,
     VolEngine,
-    pillars_to_scanner_rows,
     _safe,
     _tenor_label,
-    PILLAR_TARGETS,
+    pillars_to_scanner_rows,
 )
 
 
 @pytest.mark.unit
 def test_safe_handles_nan():
-    import math
     assert _safe(None) is None
     assert _safe(float("nan")) is None
     assert _safe(1.5) == 1.5
