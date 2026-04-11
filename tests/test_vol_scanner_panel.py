@@ -1,6 +1,6 @@
 import pytest
 
-from ui.panels.vol_scanner import VolScannerPanel
+from ui.panels.vol_scanner_panel import VolScannerPanel
 
 
 @pytest.mark.unit

@@ -1,6 +1,6 @@
 import pytest
 
-from ui.panels.status import StatusPanel
+from ui.panels.runtime_status_panel import StatusPanel
 
 
 def _build_panel():

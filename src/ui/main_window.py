@@ -6,16 +6,16 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
-from ui.panels.tick_chart import ChartPanel
-from ui.panels.logs import LogsPanel
-from ui.panels.order_ticket import OrderTicketPanel
-from ui.panels.orders import OrdersPanel
-from ui.panels.vol_scanner import VolScannerPanel
-from ui.panels.term_structure import TermStructurePanel
-from ui.panels.book import BookPanel
-from ui.panels.smile_chart import SmileChartPanel
-from ui.panels.portfolio import PortfolioPanel
-from ui.panels.status import StatusPanel
+from ui.panels.tick_chart_panel import ChartPanel
+from ui.panels.logs_panel import LogsPanel
+from ui.panels.order_ticket_panel import OrderTicketPanel
+from ui.panels.vol_scanner_panel import VolScannerPanel
+from ui.panels.term_structure_panel import TermStructurePanel
+from ui.panels.book_panel import BookPanel, OpenPositionsPanel
+from ui.panels.smile_chart_panel import SmileChartPanel, SmileDetailsPanel
+from ui.panels.pnl_chart_panel import PnlSpotPanel
+from ui.panels.account_summary_panel import PortfolioPanel
+from ui.panels.runtime_status_panel import StatusPanel
 
 
 class MainWindow(QMainWindow):
@@ -60,13 +60,16 @@ class MainWindow(QMainWindow):
 
         self.chart_panel = self.create_chart_panel()
         self.logs_panel = self.create_logs_panel()
-        self.orders_panel = self.create_orders_panel()
         self.order_ticket_panel = self.create_order_ticket_panel()
         self.portfolio_panel = self.create_portfolio_panel()
         self.vol_scanner_panel = VolScannerPanel()
         self.term_structure_panel = TermStructurePanel()
         self.smile_chart_panel = SmileChartPanel()
+        self.smile_details_panel = SmileDetailsPanel()
+        self.smile_chart_panel.set_details_panel(self.smile_details_panel)
         self.book_panel = BookPanel()
+        self.pnl_spot_panel = PnlSpotPanel()
+        self.open_positions_panel = OpenPositionsPanel()
         self.status_panel = self.create_status_panel(
             on_connect,
             on_start_engine,
@@ -103,44 +106,58 @@ class MainWindow(QMainWindow):
         col1.addStretch(1)
         col1_widget = QWidget()
         col1_widget.setLayout(col1)
+        col1_widget.setFixedWidth(365)
 
         # ── Box 2 (center): Charts row on top + Vol Scanner below ──
         col2 = QVBoxLayout()
         col2.setContentsMargins(0, 0, 0, 0)
-        col2.setSpacing(6)
+        #col2.setSpacing(6)
 
         charts_row = QHBoxLayout()
         charts_row.setContentsMargins(0, 0, 0, 0)
-        charts_row.setSpacing(6)
-        chart_side = 340
-        for panel in (self.chart_panel, self.term_structure_panel, self.smile_chart_panel):
-            panel.setFixedSize(chart_side, chart_side)
-            charts_row.addWidget(panel)
-        charts_row.addStretch(1)
-        col2.addLayout(charts_row, 1)
+        charts_row.setSpacing(0)
+        charts_row.addWidget(self.chart_panel, 1)
+        charts_row.addWidget(self.term_structure_panel, 1)
+        charts_row.addWidget(self.smile_chart_panel, 1)
+        charts_row.addWidget(self.smile_details_panel, 1)
+        charts_row_widget = QWidget()
+        charts_row_widget.setLayout(charts_row)
+        charts_row_widget.setMaximumHeight(375)
+        col2.addWidget(charts_row_widget, 1)
 
-        col2.addWidget(self.vol_scanner_panel, 2)
+        col2.addWidget(self.vol_scanner_panel, 1)
+        col2.addWidget(self.open_positions_panel, 1)
         col2_widget = QWidget()
         col2_widget.setLayout(col2)
+        col2_widget.setFixedWidth(1500)
 
-        # ── Box 3 (right): Order Ticket + Book ──
+        # ── Box 3 (right): Order Ticket + Greeks Summary + PnL Chart ──
         col3 = QVBoxLayout()
         col3.setContentsMargins(0, 0, 0, 0)
         col3.setSpacing(6)
         col3.addWidget(self.order_ticket_panel, 0)
-        col3.addWidget(self.book_panel, 1)
+        col3.addWidget(self.book_panel, 0)
+        col3.addWidget(self.pnl_spot_panel, 1)
         col3_widget = QWidget()
         col3_widget.setLayout(col3)
+        col3_widget.setFixedWidth(450)
 
-        col1_widget.setMaximumWidth(345)
-        main_layout.addWidget(col1_widget, 0)
-        main_layout.addWidget(col2_widget, 3)
-        main_layout.addWidget(col3_widget, 2)
+        main_layout.addWidget(col1_widget)
+        main_layout.addWidget(col2_widget)
+        main_layout.addWidget(col3_widget)
 
         self.setCentralWidget(container)
-        self.resize(1920, 1080)
-        self.setFixedSize(self.size())
+        self.adjustSize()
+        self._center_on_screen()
         self._load_demo_data()
+
+    def _center_on_screen(self) -> None:
+        screen = self.screen()
+        if screen is not None:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2 + geo.x()
+            y = (geo.height() - self.height()) // 2 + geo.y()
+            self.move(x, y)
 
     def _load_demo_data(self) -> None:
         """No demo data — panels are populated by live IB data."""
@@ -154,10 +171,6 @@ class MainWindow(QMainWindow):
     # Create the log panel instance.
     def create_logs_panel(self) -> LogsPanel:
         return LogsPanel()
-
-    # Create the orders panel instance.
-    def create_orders_panel(self) -> OrdersPanel:
-        return OrdersPanel()
 
     # Create the order ticket panel instance.
     def create_order_ticket_panel(self) -> OrderTicketPanel:
