@@ -6,6 +6,7 @@ Own IB connection, loop every 3 minutes.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import queue
@@ -13,6 +14,7 @@ import threading
 import time
 import warnings
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 from arch import arch_model
@@ -20,50 +22,28 @@ from ib_insync import Contract, IB
 from scipy.interpolate import PchipInterpolator
 
 warnings.filterwarnings("ignore", category=FutureWarning)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("vol_engine")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Config
+# Config loader — reads config/vol_config.json at each scan cycle
 # ══════════════════════════════════════════════════════════════════════════════
 
-TARGET_DTES = [30, 60, 90, 120, 150, 180]
-WAIT_GREEKS = 8
-LOOP_INTERVAL_S = 180
+_CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "vol_config.json"
 
-PARAMS = {
-    "short": {"n_side": 20, "min_strikes": 5},
-    "long":  {"n_side": 30, "min_strikes": 7},
-}
 
+def _load_vol_config(section: str) -> dict:
+    try:
+        with open(_CONFIG_PATH, encoding="utf-8") as f:
+            return json.load(f).get(section, {})
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+# Fixed constants
 PILLAR_TARGETS = {
     "10dp": 0.10, "25dp": 0.25, "atm": 0.50, "25dc": 0.75, "10dc": 0.90,
 }
-
 SUPPRESS_ERRORS = {10090, 10197, 10167, 200, 2119, 2104, 2108, 354}
-
-# Step 2 config
-W1_BASE, W2_BASE = 0.65, 0.35
-ALPHA_BOOK = 0.20
-SIGNAL_THRESHOLD = 0.20
-
-# Dynamic RP
-RP_FLOOR = 0.20
-VRP_SHIFT = 0.50
-RP_FALLBACK = {"1M": 1.20, "2M": 1.35, "3M": 1.50,
-               "4M": 1.55, "5M": 1.58, "6M": 1.60}
-
-# Conditional W1
-W1_RATIO_THRESHOLD = 1.15
-W1_RATIO_SENSITIVITY = 0.10
-W1_FLOOR = 0.40
-
-# GARCH-empirical blend
-GARCH_EMPIRICAL_BLEND = 0.50
-EMPIRICAL_KAPPA = 2.0
-
-VEGA_LIMITS = {"1M": 150_000, "2M": 200_000, "3M": 300_000,
-               "4M": 350_000, "5M": 375_000, "6M": 400_000}
-
 TENOR_T = {"1M": 1/12, "2M": 2/12, "3M": 3/12,
            "4M": 4/12, "5M": 5/12, "6M": 6/12}
 
@@ -74,10 +54,6 @@ def _safe(val: object) -> float | None:
     if isinstance(val, float) and math.isnan(val):
         return None
     return float(val)
-
-
-def _get_params(dte: int) -> dict:
-    return PARAMS["short"] if dte <= 45 else PARAMS["long"]
 
 
 def _tenor_label(dte: int) -> str:
@@ -166,13 +142,17 @@ def pillars_to_smile_data(pillar_rows: list[dict]) -> dict[str, dict]:
 
 class VolEngine(threading.Thread):
     def __init__(self, output_queue: queue.Queue,
-                 host: str = "127.0.0.1", port: int = 4002, client_id: int = 10) -> None:
+                 host: str = "127.0.0.1", port: int = 4002, client_id: int = 2) -> None:
         super().__init__(name="VolEngine", daemon=True)
         self._output_queue = output_queue
         self._host = host
         self._port = port
         self._client_id = client_id
         self._stop_event = threading.Event()
+        self._risk_engine = None
+
+    def set_risk_engine(self, risk_engine) -> None:
+        self._risk_engine = risk_engine
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -180,27 +160,46 @@ class VolEngine(threading.Thread):
     def run(self) -> None:
         asyncio.set_event_loop(asyncio.new_event_loop())
         logger.info("VolEngine thread started")
-        # Wait 10s before first scan to let Thread 1 spot streaming stabilize
         if self._stop_event.wait(timeout=10):
             return
         while not self._stop_event.is_set():
+            cfg1 = _load_vol_config("step1")
+            loop_interval = cfg1.get("LOOP_INTERVAL_S", 180)
             try:
                 result = self._run_scan()
                 self._output_queue.put(result)
+                # Push IV surface to risk engine for greeks computation
+                if self._risk_engine is not None:
+                    pillar_rows = result.get("pillar_rows", [])
+                    if pillar_rows:
+                        self._risk_engine.iv_surface = {
+                            p["tenor_label"]: p for p in pillar_rows
+                        }
             except Exception as exc:
                 logger.exception("VolEngine scan failed")
                 self._output_queue.put({"type": "vol_result", "scanner_rows": [],
                                          "error": str(exc)})
-            if self._stop_event.wait(timeout=LOOP_INTERVAL_S):
+            if self._stop_event.wait(timeout=loop_interval):
                 break
         logger.info("VolEngine thread stopped")
 
     def _run_scan(self) -> dict:
+        # Load config at each scan cycle
+        cfg1 = _load_vol_config("step1")
+        cfg2 = _load_vol_config("step2")
+
+        wait_greeks = cfg1.get("WAIT_GREEKS", 8)
+        target_dtes = cfg1.get("TARGET_DTES", [30, 60, 90, 120, 150, 180])
+        params = {
+            "short": {"n_side": cfg1.get("n_side_short", 20), "min_strikes": 5},
+            "long": {"n_side": cfg1.get("n_side_long", 30), "min_strikes": 7},
+        }
+
         ib = IB()
         try:
             ib.connect(self._host, self._port, clientId=self._client_id, timeout=10)
             ib.errorEvent += lambda reqId, code, msg, contract: (
-                None if code in SUPPRESS_ERRORS else print(f"[VOL] IB Error {code}: {msg}"))
+                None if code in SUPPRESS_ERRORS else logger.warning("IB error %d: %s", code, msg))
             ib.reqMarketDataType(3)
 
             # ── Step 1: IV mid ──
@@ -208,38 +207,53 @@ class VolEngine(threading.Thread):
             if F is None:
                 return self._error("Cannot get forward price")
 
-            selected = self._discover_chains(ib)
+            selected = self._discover_chains(ib, target_dtes)
             if not selected:
                 return self._error("No EUU chains found")
 
-            qualified = self._qualify_contracts(ib, selected, F)
-            pillar_rows = self._scan_iv(ib, selected, qualified, F)
+            qualified = self._qualify_contracts(ib, selected, F, params)
+            pillar_rows = self._scan_iv(ib, selected, qualified, F, wait_greeks, params)
             if not pillar_rows:
                 return self._error("No pillars after IV scan")
 
-            # Build IV ATM lookup for dynamic RP
+            # Step 2 config values
+            w1_base = cfg2.get("W1", 0.65)
+            signal_threshold = cfg2.get("SIGNAL_THRESHOLD", 0.20)
+            alpha_book = cfg2.get("ALPHA_BOOK", 0.20)
+            rp_floor = cfg2.get("RP_FLOOR", 0.20)
+            vrp_shift = cfg2.get("VRP_SHIFT", 0.50)
+            rp_fallback = cfg2.get("RISK_PREMIUM", {})
+            w1_ratio_thresh = cfg2.get("W1_RATIO_THRESHOLD", 1.15)
+            w1_ratio_sens = cfg2.get("W1_RATIO_SENSITIVITY", 0.10)
+            w1_floor = cfg2.get("W1_FLOOR", 0.40)
+            garch_blend = cfg2.get("GARCH_EMPIRICAL_BLEND", 0.50)
+            emp_kappa = cfg2.get("EMPIRICAL_KAPPA", 2.0)
+            garch_duration = cfg2.get("GARCH_DURATION", "1 Y")
+
             iv_atm_by_tenor = {p["tenor_label"]: p.get("sigma_ATM_pct")
                                for p in pillar_rows}
 
             # ── Step 2A: Yang-Zhang RV + dynamic RP ──
-            rv_map, rv_full = self._compute_rv(ib, iv_atm_by_tenor)
+            rv_map, rv_full = self._compute_rv(
+                ib, iv_atm_by_tenor, rp_floor, vrp_shift, rp_fallback, garch_duration)
 
-            # ── Step 2B: GARCH(1,1) + empirical blend ──
-            garch_map = self._compute_garch(ib, rv_map, rv_full)
+            # ── Step 2B: GARCH + empirical blend ──
+            garch_map = self._compute_garch(
+                ib, rv_map, rv_full, garch_blend, emp_kappa, garch_duration)
 
             # ── Step 2C: Conditional W1 ──
             rv_1m = rv_map.get("1M", {}).get("RV_pct")
             rv_6m = rv_map.get("6M", {}).get("RV_pct")
             if rv_1m and rv_6m and rv_6m > 0:
                 rv_ratio = rv_1m / rv_6m
-                w1 = max(W1_FLOOR, W1_BASE - W1_RATIO_SENSITIVITY * (rv_ratio - 1.0)) \
-                    if rv_ratio > W1_RATIO_THRESHOLD else W1_BASE
+                w1 = max(w1_floor, w1_base - w1_ratio_sens * (rv_ratio - 1.0)) \
+                    if rv_ratio > w1_ratio_thresh else w1_base
             else:
-                w1 = W1_BASE
+                w1 = w1_base
             w2 = 1.0 - w1
 
-            # ── Step 2D: δ_book + combine σ_fair ──
-            book_map = self._compute_book(ib, pillar_rows)
+            # ── Step 2D: δ_book (placeholder — real δ_book from Thread 3) ──
+            book_map = self._compute_book(alpha_book)
 
             for p in pillar_rows:
                 label = p["tenor_label"]
@@ -255,9 +269,9 @@ class VolEngine(threading.Thread):
                 if anchor is not None and s_model is not None and sigma_mid is not None:
                     sigma_fair = round(w1 * anchor + w2 * s_model + db, 4)
                     ecart = round(sigma_fair - sigma_mid, 4)
-                    if ecart > +SIGNAL_THRESHOLD:
+                    if ecart > +signal_threshold:
                         signal = "CHEAP"
-                    elif ecart < -SIGNAL_THRESHOLD:
+                    elif ecart < -signal_threshold:
                         signal = "EXPENSIVE"
                     else:
                         signal = "FAIR"
@@ -268,6 +282,7 @@ class VolEngine(threading.Thread):
 
             scanner_rows = pillars_to_scanner_rows(pillar_rows)
             smile_data = pillars_to_smile_data(pillar_rows)
+
             return {
                 "type": "vol_result",
                 "timestamp": time.time(),
@@ -311,11 +326,13 @@ class VolEngine(threading.Thread):
         ib.cancelMktData(front)
         ib.sleep(0.5)
         if F and F > 0:
-            print(f"[VOL] Forward: {front.localSymbol} F={F:.5f}")
+            logger.info("Forward: %s F=%.5f", front.localSymbol, F)
         return F, front
 
     @staticmethod
-    def _discover_chains(ib: IB) -> list[dict]:
+    def _discover_chains(ib: IB, target_dtes: list[int] | None = None) -> list[dict]:
+        if target_dtes is None:
+            target_dtes = [30, 60, 90, 120, 150, 180]
         fut = Contract(symbol="EUR", secType="FUT", exchange="CME", currency="USD")
         details = ib.reqContractDetails(fut)
         now = datetime.now()
@@ -360,21 +377,25 @@ class VolEngine(threading.Thread):
         euu_chains.sort(key=lambda x: x["dte"])
 
         selected = []
-        for target in TARGET_DTES:
+        for target in target_dtes:
             best = min(euu_chains, key=lambda x: abs(x["dte"] - target))
             if best not in selected:
                 selected.append(best)
-        print(f"[VOL] {len(selected)} tenors: "
-              + ", ".join(f"{_tenor_label(ch['dte'])}({ch['expiry']})" for ch in selected))
+        logger.info("%d tenors: %s", len(selected),
+                    ", ".join(f"{_tenor_label(ch['dte'])}({ch['expiry']})" for ch in selected))
         return selected
 
     @staticmethod
-    def _qualify_contracts(ib: IB, selected: list[dict], F: float) -> dict:
+    def _qualify_contracts(ib: IB, selected: list[dict], F: float,
+                           params: dict | None = None) -> dict:
+        if params is None:
+            params = {"short": {"n_side": 20}, "long": {"n_side": 30}}
         qualified: dict[str, dict] = {}
         for ch in selected:
             strikes, expiry, dte = ch["strikes"], ch["expiry"], ch["dte"]
             multipliers = ch["multipliers"]
-            n_side = _get_params(dte)["n_side"]
+            p = params["short"] if dte <= 45 else params["long"]
+            n_side = p["n_side"]
             atm_idx = min(range(len(strikes)), key=lambda i: abs(strikes[i] - F))
             lo = max(0, atm_idx - n_side)
             hi = min(len(strikes) - 1, atm_idx + n_side)
@@ -394,15 +415,18 @@ class VolEngine(threading.Thread):
                             qualified[expiry][K][right] = det[0].contract
                             break
             n_ok = sum(1 for k_data in qualified[expiry].values() for _ in k_data.values())
-            print(f"[VOL] Qualify {expiry} DTE={dte}: {len(scan_strikes)} strikes → {n_ok} contracts")
+            logger.info("Qualify %s DTE=%d: %d strikes, %d contracts", expiry, dte, len(scan_strikes), n_ok)
         return qualified
 
     @staticmethod
-    def _scan_iv(ib: IB, selected: list[dict], qualified: dict, F: float) -> list[dict]:
+    def _scan_iv(ib: IB, selected: list[dict], qualified: dict, F: float,
+                 wait_greeks: int = 8, params: dict | None = None) -> list[dict]:
+        if params is None:
+            params = {"short": {"min_strikes": 5}, "long": {"min_strikes": 7}}
         pillar_rows = []
         for ch in selected:
             expiry, dte = ch["expiry"], ch["dte"]
-            p = _get_params(dte)
+            p = params["short"] if dte <= 45 else params["long"]
             contracts = qualified.get(expiry, {})
             if not contracts:
                 continue
@@ -411,7 +435,7 @@ class VolEngine(threading.Thread):
             for K, rights in contracts.items():
                 for right, contract in rights.items():
                     tickers[(K, right)] = (contract, ib.reqMktData(contract, "100", False, False))
-            ib.sleep(WAIT_GREEKS)
+            ib.sleep(wait_greeks)
 
             raw: dict[tuple, dict] = {}
             for (K, right), (contract, ticker) in tickers.items():
@@ -495,7 +519,7 @@ class VolEngine(threading.Thread):
                 "BF25_pct": bf25,
             })
             if iv_atm:
-                print(f"[VOL] {label}({expiry}) ATM={iv_atm*100:.2f}% K={k_atm:.5f}")
+                logger.info("%s(%s) ATM=%.2f%% K=%.5f", label, expiry, iv_atm * 100, k_atm)
         return pillar_rows
 
     # ── Step 2A: Yang-Zhang RV + dynamic RP ──
@@ -521,11 +545,11 @@ class VolEngine(threading.Thread):
         return float(np.sqrt(max(s2_yz, 0) * 252) * 100)
 
     @staticmethod
-    def _fetch_ohlc(ib: IB):
+    def _fetch_ohlc(ib: IB, duration: str = "1 Y"):
         import pandas as pd
         fut_cont = Contract(symbol="EUR", secType="CONTFUT", exchange="CME", currency="USD")
         bars = ib.reqHistoricalData(
-            fut_cont, endDateTime="", durationStr="1 Y",
+            fut_cont, endDateTime="", durationStr=duration,
             barSizeSetting="1 day", whatToShow="ADJUSTED_LAST",
             useRTH=True, formatDate=1,
         )
@@ -535,10 +559,15 @@ class VolEngine(threading.Thread):
                             "low": b.low, "close": b.close} for b in bars])
         return df.sort_values("date").reset_index(drop=True)
 
-    def _compute_rv(self, ib: IB, iv_atm_by_tenor: dict) -> tuple[dict[str, dict], float | None]:
-        df_ohlc = self._fetch_ohlc(ib)
+    def _compute_rv(self, ib: IB, iv_atm_by_tenor: dict,
+                    rp_floor: float = 0.20, vrp_shift: float = 0.50,
+                    rp_fallback: dict | None = None,
+                    garch_duration: str = "1 Y") -> tuple[dict[str, dict], float | None]:
+        if rp_fallback is None:
+            rp_fallback = {}
+        df_ohlc = self._fetch_ohlc(ib, garch_duration)
         if df_ohlc is None or len(df_ohlc) < 5:
-            print("[VOL] WARNING: no historical data for RV")
+            logger.warning("No historical data for RV")
             return {}, None
 
         rv_full = self._yang_zhang_rv(df_ohlc, len(df_ohlc) - 1)
@@ -555,24 +584,26 @@ class VolEngine(threading.Thread):
             iv_atm = iv_atm_by_tenor.get(label)
             if iv_atm is not None:
                 vrp_spot = iv_atm - rv
-                rp = max(RP_FLOOR, vrp_spot + VRP_SHIFT)
+                rp = max(rp_floor, vrp_spot + vrp_shift)
             else:
-                rp = RP_FALLBACK.get(label, 1.50)
+                rp = rp_fallback.get(label, 1.50)
 
             rv_map[label] = {
                 "RV_pct": round(rv, 4), "RP_pct": round(rp, 4),
                 "anchor_pct": round(rv + rp, 4),
             }
 
-        print("[VOL] RV: " + ", ".join(f"{k}={v['RV_pct']:.2f}%" for k, v in rv_map.items()))
+        logger.info("RV: %s", ", ".join(f"{k}={v['RV_pct']:.2f}%" for k, v in rv_map.items()))
         return rv_map, rv_full
 
     # ── Step 2B: GARCH(1,1) + empirical blend ──
 
-    def _compute_garch(self, ib: IB, rv_map: dict, rv_full: float | None) -> dict[str, dict]:
-        df_ohlc = self._fetch_ohlc(ib)
+    def _compute_garch(self, ib: IB, rv_map: dict, rv_full: float | None,
+                       garch_blend: float = 0.50, emp_kappa: float = 2.0,
+                       garch_duration: str = "1 Y") -> dict[str, dict]:
+        df_ohlc = self._fetch_ohlc(ib, garch_duration)
         if df_ohlc is None or len(df_ohlc) < 5:
-            print("[VOL] WARNING: no historical data for GARCH")
+            logger.warning("No historical data for GARCH")
             return {}
 
         closes = df_ohlc["close"].values
@@ -582,7 +613,7 @@ class VolEngine(threading.Thread):
             fit = arch_model(returns, vol="Garch", p=1, q=1,
                              mean="Constant", dist="normal").fit(disp="off")
         except Exception as exc:
-            print(f"[VOL] GARCH fit failed: {exc}")
+            logger.warning("GARCH fit failed: %s", exc)
             return {}
 
         omega = fit.params["omega"]
@@ -605,77 +636,24 @@ class VolEngine(threading.Thread):
             # Empirical mean-reversion: RV(tenor) → RV_full at speed EMPIRICAL_KAPPA
             rv_tenor = rv_map.get(label, {}).get("RV_pct")
             if rv_tenor is not None and rv_full is not None:
-                vol_empirical = rv_full + (rv_tenor - rv_full) * np.exp(-EMPIRICAL_KAPPA * T)
+                vol_empirical = rv_full + (rv_tenor - rv_full) * np.exp(-emp_kappa * T)
             else:
                 vol_empirical = vol_garch
 
             # Blend
-            vol_model = GARCH_EMPIRICAL_BLEND * vol_garch + (1 - GARCH_EMPIRICAL_BLEND) * vol_empirical
+            vol_model = garch_blend * vol_garch + (1 - garch_blend) * vol_empirical
 
             garch_map[label] = {"sigma_model_pct": round(vol_model, 4)}
 
-        print(f"[VOL] GARCH: α={alpha:.4f} β={beta:.4f} persist={persistence:.4f}")
+        logger.info("GARCH: a=%.4f b=%.4f persist=%.4f", alpha, beta, persistence)
         return garch_map
 
     # ── Step 2C: δ_book ──
 
     @staticmethod
-    def _compute_book(ib: IB, pillar_rows: list[dict]) -> dict[str, dict]:
-        now = datetime.now()
-        try:
-            positions = ib.reqPositions()
-            ib.sleep(2)
-        except Exception:
-            return {}
-
-        fop_pos = [p for p in positions
-                   if p.contract.symbol == "EUR"
-                   and p.contract.secType == "FOP"
-                   and p.position != 0]
-
-        if not fop_pos:
-            return {}
-
-        expiry_to_label = {p["expiry"]: p["tenor_label"] for p in pillar_rows}
-        target_dtes = {"1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180}
-        vega_by_tenor: dict[str, float] = {label: 0.0 for label in TENOR_T}
-
-        for pos in fop_pos:
-            c = pos.contract
-            c.exchange = "CME"
-            det = ib.reqContractDetails(c)
-            if det:
-                c = det[0].contract
-            ticker = ib.reqMktData(c, "100", False, False)
-            ib.sleep(3)
-            greeks = ticker.modelGreeks
-            vega = _safe(greeks.vega) if greeks else None
-            ib.cancelMktData(c)
-            if vega is None:
-                continue
-
-            exp_str = c.lastTradeDateOrContractMonth
-            if exp_str in expiry_to_label:
-                label = expiry_to_label[exp_str]
-            else:
-                try:
-                    exp_date = datetime.strptime(exp_str, "%Y%m%d")
-                    dte_pos = (exp_date - now).days
-                    label = min(target_dtes, key=lambda t: abs(target_dtes[t] - dte_pos))
-                except ValueError:
-                    label = "3M"
-            if label not in vega_by_tenor:
-                continue
-            contrib = vega * pos.position * float(c.multiplier or 125000) / 100.0
-            vega_by_tenor[label] += contrib
-
-        book_map = {}
-        for label, vnet in vega_by_tenor.items():
-            limit = VEGA_LIMITS.get(label, 300_000)
-            ratio = max(-1.0, min(1.0, vnet / limit)) if limit > 0 else 0.0
-            db = round(-ALPHA_BOOK * ratio, 5)
-            book_map[label] = {"delta_book_pct": db}
-        return book_map
+    def _compute_book(alpha_book: float = 0.20) -> dict[str, dict]:
+        """Return empty δ_book — positions are handled by PositionsEngine (Thread 3)."""
+        return {label: {"delta_book_pct": 0.0} for label in TENOR_T}
 
     @staticmethod
     def _error(msg: str) -> dict:

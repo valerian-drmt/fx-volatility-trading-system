@@ -1,0 +1,51 @@
+{
+  "step1": {
+    "WAIT_GREEKS": 8,
+    "LOOP_INTERVAL_S": 180,
+    "n_side_short": 20,
+    "n_side_long": 30,
+    "rr25_max_short": 10.0,
+    "rr25_max_long": 6.0,
+    "bf25_min_short": -6.0,
+    "bf25_min_long": -4.0,
+    "IV_ARB_THRESHOLD": 0.005,
+    "TARGET_DTES": [
+      30,
+      60,
+      90,
+      120,
+      150,
+      180
+    ]
+  },
+  "step2": {
+    "W1": 0.65,
+    "W2": 0.35,
+    "SIGNAL_THRESHOLD": 0.2,
+    "ALPHA_BOOK": 0.2,
+    "GARCH_DURATION": "1 Y",
+    "RP_FLOOR": 0.2,
+    "VRP_SHIFT": 0.5,
+    "W1_RATIO_THRESHOLD": 1.15,
+    "W1_RATIO_SENSITIVITY": 0.1,
+    "W1_FLOOR": 0.4,
+    "GARCH_EMPIRICAL_BLEND": 0.5,
+    "EMPIRICAL_KAPPA": 2.0,
+    "RISK_PREMIUM": {
+      "1M": 1.2,
+      "2M": 1.35,
+      "3M": 1.5,
+      "4M": 1.55,
+      "5M": 1.58,
+      "6M": 1.6
+    },
+    "VEGA_LIMITS": {
+      "1M": 150000,
+      "2M": 200000,
+      "3M": 300000,
+      "4M": 350000,
+      "5M": 375000,
+      "6M": 400000
+    }
+  }
+}

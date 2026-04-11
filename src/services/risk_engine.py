@@ -1,0 +1,303 @@
+"""
+Risk Engine — Thread 3.
+Fetches positions from IB (10s), computes BS greeks + PnL chart (2s).
+Own IB connection (client_id=3).
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import math
+import queue
+import threading
+from datetime import datetime
+from typing import Any
+
+import numpy as np
+from ib_insync import IB
+from scipy.stats import norm
+
+from services.bs_pricer import (
+    bs_delta, bs_gamma, bs_price, bs_theta, bs_vega, interpolate_iv,
+)
+
+logger = logging.getLogger("risk_engine")
+
+SUPPRESS_ERRORS = {10090, 10197, 10167, 200, 2119, 2104, 2108, 354}
+GREEKS_INTERVAL_S = 2.0
+POSITIONS_INTERVAL_S = 10.0
+PNL_CHART_POINTS = 31
+PNL_CHART_RANGE_PCT = 0.03
+
+
+class RiskEngine(threading.Thread):
+    def __init__(self, output_queue: queue.Queue,
+                 host: str = "127.0.0.1", port: int = 4002, client_id: int = 3) -> None:
+        super().__init__(name="RiskEngine", daemon=True)
+        self._output_queue = output_queue
+        self._host = host
+        self._port = port
+        self._client_id = client_id
+        self._stop_event = threading.Event()
+
+        # Shared inputs (written by other threads, read here)
+        self.spot: float = 0.0
+        self.iv_surface: dict[str, Any] = {}
+
+        # Internal state
+        self._positions: list[dict] = []
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def run(self) -> None:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        logger.info("RiskEngine thread started")
+        if self._stop_event.wait(timeout=15):
+            return
+        last_fetch = 0.0
+        while not self._stop_event.is_set():
+            try:
+                now = __import__("time").monotonic()
+
+                # Fetch positions from IB every POSITIONS_INTERVAL_S
+                if now - last_fetch >= POSITIONS_INTERVAL_S:
+                    self._fetch_positions()
+                    last_fetch = now
+
+                # Compute greeks + PnL (or static view if market closed)
+                F = self.spot
+                if self._positions and F > 0:
+                    result = self._compute(F)
+                    self._output_queue.put(result)
+                elif self._positions:
+                    result = self._static_positions()
+                    self._output_queue.put(result)
+
+            except Exception as exc:
+                logger.exception("RiskEngine cycle failed")
+                self._output_queue.put({"error": str(exc)})
+
+            if self._stop_event.wait(timeout=GREEKS_INTERVAL_S):
+                break
+        logger.info("RiskEngine thread stopped")
+
+    def _static_positions(self) -> dict:
+        """Return positions with basic data only (no greeks, no PnL). Used when market is closed."""
+        open_rows = []
+        for pos in self._positions:
+            abs_qty = pos.get("abs_qty", abs(pos.get("qty", 0)))
+            strike = pos.get("strike", 0)
+            right = pos.get("right", "")
+            tenor = pos.get("tenor", "—")
+            sec_type = pos.get("sec_type", "")
+            open_rows.append({
+                "symbol": pos.get("symbol", ""),
+                "side": pos.get("side", ""),
+                "qty": int(abs_qty),
+                "tenor": tenor if sec_type == "FOP" else "—",
+                "strike": f"{strike:.5f}" if strike and sec_type == "FOP" else "—",
+                "right": right if sec_type == "FOP" else sec_type,
+                "fill_price": pos.get("cost_per_unit", 0),
+                "iv_now_pct": None,
+                "delta": None, "vega": None, "gamma": None,
+                "theta": None, "pnl": None,
+            })
+        return {
+            "open_positions": open_rows,
+            "summary": {},
+            "pnl_curve": None,
+            "spot": 0,
+        }
+
+    # ── Position fetch (IB blocking, ~2.5s) ──
+
+    def _fetch_positions(self) -> None:
+        ib = IB()
+        try:
+            ib.connect(self._host, self._port, clientId=self._client_id, timeout=10)
+            ib.errorEvent += lambda reqId, code, msg, contract: None
+            positions = ib.reqPositions()
+            ib.sleep(2)
+
+            now = datetime.now()
+            pos_list = []
+            for pos in [p for p in positions if p.position != 0]:
+                c = pos.contract
+                qty = float(pos.position)
+                avg_cost = float(pos.avgCost)
+                multiplier = float(c.multiplier or 125000)
+
+                tenor = "—"
+                T = 0.0
+                if c.lastTradeDateOrContractMonth:
+                    try:
+                        exp_date = datetime.strptime(c.lastTradeDateOrContractMonth, "%Y%m%d")
+                        dte = (exp_date - now).days
+                        T = max(dte / 365.0, 0.001)
+                        if dte <= 45:
+                            tenor = "1M"
+                        elif dte <= 75:
+                            tenor = "2M"
+                        elif dte <= 105:
+                            tenor = "3M"
+                        elif dte <= 135:
+                            tenor = "4M"
+                        elif dte <= 165:
+                            tenor = "5M"
+                        else:
+                            tenor = "6M"
+                    except ValueError:
+                        pass
+
+                pos_list.append({
+                    "symbol": c.localSymbol or f"{c.symbol} {c.secType}",
+                    "sec_type": c.secType,
+                    "side": "BUY" if qty > 0 else "SELL",
+                    "qty": qty,
+                    "abs_qty": abs(qty),
+                    "strike": float(c.strike) if c.strike else 0.0,
+                    "right": c.right if c.right else "",
+                    "tenor": tenor,
+                    "T": T,
+                    "multiplier": multiplier,
+                    "avg_cost": avg_cost,
+                    "cost_per_unit": avg_cost / multiplier if multiplier > 0 else avg_cost,
+                })
+
+            self._positions = pos_list
+            logger.info("%d open positions fetched", len(pos_list))
+        except Exception as exc:
+            logger.warning(f"RiskEngine fetch failed: {exc}")
+        finally:
+            try:
+                ib.disconnect()
+            except Exception:
+                pass
+
+    # ── Greeks + PnL computation ──
+
+    def _compute(self, F: float) -> dict:
+        iv_surface = self.iv_surface  # atomic dict read
+        open_rows = []
+
+        for pos in self._positions:
+            sec_type = pos.get("sec_type", "")
+            qty = pos.get("qty", 0)
+            abs_qty = pos.get("abs_qty", abs(qty))
+            strike = pos.get("strike", 0)
+            right = pos.get("right", "")
+            tenor = pos.get("tenor", "—")
+            T = pos.get("T", 0)
+            multiplier = pos.get("multiplier", 125000)
+            cost_per_unit = pos.get("cost_per_unit", 0)
+
+            if sec_type == "FUT":
+                delta_usd = qty * F * multiplier
+                pnl = (F - cost_per_unit) * qty * multiplier
+                open_rows.append({
+                    "symbol": pos.get("symbol", ""), "side": pos.get("side", ""),
+                    "qty": int(abs_qty), "tenor": "—",
+                    "strike": f"F={F:.5f}", "right": "FUT",
+                    "fill_price": cost_per_unit, "iv_now_pct": None,
+                    "delta": round(delta_usd, 2), "vega": None,
+                    "gamma": None, "theta": None, "pnl": round(pnl, 2),
+                })
+
+            elif sec_type == "FOP" and right in ("C", "P") and T > 0 and strike > 0:
+                iv = interpolate_iv(iv_surface, tenor, strike, F)
+                if iv is None or iv <= 0:
+                    iv = 0.07
+
+                price_now = bs_price(F, strike, T, iv, right)
+                d = bs_delta(F, strike, T, iv, right)
+                g = bs_gamma(F, strike, T, iv)
+                v = bs_vega(F, strike, T, iv)
+                th = bs_theta(F, strike, T, iv, right)
+
+                delta_usd = d * qty * multiplier
+                gamma_usd = g * qty * multiplier * 0.0001
+                vega_usd = v * qty * multiplier
+                theta_usd = th * qty * multiplier
+                pnl = (price_now - cost_per_unit) * qty * multiplier
+
+                open_rows.append({
+                    "symbol": pos.get("symbol", ""), "side": pos.get("side", ""),
+                    "qty": int(abs_qty), "tenor": tenor,
+                    "strike": f"{strike:.5f}", "right": right,
+                    "fill_price": cost_per_unit, "iv_now_pct": round(iv * 100, 2),
+                    "delta": round(delta_usd, 2), "vega": round(vega_usd, 2),
+                    "gamma": round(gamma_usd, 2), "theta": round(theta_usd, 2),
+                    "pnl": round(pnl, 2),
+                })
+            else:
+                open_rows.append({
+                    "symbol": pos.get("symbol", ""), "side": pos.get("side", ""),
+                    "qty": int(abs_qty), "tenor": tenor,
+                    "strike": str(strike) if strike else "—", "right": right or "—",
+                    "fill_price": cost_per_unit, "iv_now_pct": None,
+                    "delta": None, "vega": None, "gamma": None,
+                    "theta": None, "pnl": None,
+                })
+
+        summary = {
+            "delta_net": round(sum(r.get("delta") or 0 for r in open_rows), 2),
+            "vega_net": round(sum(r.get("vega") or 0 for r in open_rows), 2),
+            "gamma_net": round(sum(r.get("gamma") or 0 for r in open_rows), 2),
+            "theta_net": round(sum(r.get("theta") or 0 for r in open_rows), 2),
+            "pnl_total": round(sum(r.get("pnl") or 0 for r in open_rows), 2),
+        }
+
+        pnl_curve = self._compute_pnl_chart(F, iv_surface)
+
+        return {
+            "open_positions": open_rows,
+            "summary": summary,
+            "pnl_curve": pnl_curve,
+            "spot": F,
+        }
+
+    # ── PnL chart (vectorized where possible) ──
+
+    def _compute_pnl_chart(self, F: float, iv_surface: dict) -> dict:
+        lo = F * (1 - PNL_CHART_RANGE_PCT)
+        hi = F * (1 + PNL_CHART_RANGE_PCT)
+        spots = np.linspace(lo, hi, PNL_CHART_POINTS)
+        pnls = np.zeros(PNL_CHART_POINTS)
+
+        for pos in self._positions:
+            sec_type = pos.get("sec_type", "")
+            qty = pos.get("qty", 0)
+            strike = pos.get("strike", 0)
+            right = pos.get("right", "")
+            T = pos.get("T", 0)
+            tenor = pos.get("tenor", "—")
+            multiplier = pos.get("multiplier", 125000)
+            cost_per_unit = pos.get("cost_per_unit", 0)
+
+            if sec_type == "FUT":
+                pnls += (spots - cost_per_unit) * qty * multiplier
+
+            elif sec_type == "FOP" and right in ("C", "P") and T > 0 and strike > 0:
+                iv = interpolate_iv(iv_surface, tenor, strike, F)
+                if iv is None or iv <= 0:
+                    iv = 0.07
+                # Vectorized BS price
+                prices = self._bs_price_vec(spots, strike, T, iv, right)
+                pnls += (prices - cost_per_unit) * qty * multiplier
+
+        return {"spots": spots.tolist(), "pnls": pnls.tolist(), "spot": F}
+
+    @staticmethod
+    def _bs_price_vec(F_arr: np.ndarray, K: float, T: float,
+                      sigma: float, right: str) -> np.ndarray:
+        """Vectorized BS price over an array of forwards."""
+        if sigma <= 0 or T <= 0 or K <= 0:
+            return np.zeros_like(F_arr)
+        sqrt_T = math.sqrt(T)
+        log_FK = np.log(F_arr / K)
+        d1 = (log_FK + 0.5 * sigma ** 2 * T) / (sigma * sqrt_T)
+        d2 = d1 - sigma * sqrt_T
+        if right == "C":
+            return F_arr * norm.cdf(d1) - K * norm.cdf(d2)
+        return K * norm.cdf(-d2) - F_arr * norm.cdf(-d1)
