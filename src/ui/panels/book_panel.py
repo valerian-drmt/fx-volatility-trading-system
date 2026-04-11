@@ -1,3 +1,5 @@
+from typing import Any
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
@@ -11,7 +13,6 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from typing import Any
 
 
 def _fmt_k(value: float | None) -> str:

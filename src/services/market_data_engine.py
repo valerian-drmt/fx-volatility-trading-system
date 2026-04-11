@@ -8,7 +8,8 @@ from __future__ import annotations
 import math
 import threading
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from services.ib_client import IBClient
 
@@ -20,10 +21,18 @@ class MarketDataEngine(threading.Thread):
     def __init__(
         self,
         ib_client: IBClient,
-        ui_queue_post: Callable[[Callable], None],
+        ui_queue_post: Callable[[Callable[[], None]], None],
         interval_ms: int = 100,
         snapshot_interval_s: float = 10.0,
     ) -> None:
+        """Initialize the market data engine.
+
+        Args:
+            ib_client: Shared IB client wrapper for market data connection.
+            ui_queue_post: Callback to schedule a callable on the Qt main thread.
+            interval_ms: Tick polling interval in milliseconds.
+            snapshot_interval_s: Seconds between account/portfolio snapshots.
+        """
         super().__init__(name="MarketDataEngine", daemon=True)
         self._ib = ib_client
         self._post_ui = ui_queue_post
@@ -45,12 +54,15 @@ class MarketDataEngine(threading.Thread):
         self._has_received_stream_ticks = False
 
     def set_risk_engine(self, risk_engine: Any) -> None:
+        """Set the risk engine reference for spot price sharing."""
         self._risk_engine = risk_engine
 
     def stop(self) -> None:
+        """Signal the engine thread to stop."""
         self._stop_event.set()
 
     def run(self) -> None:
+        """Main loop: poll ticks, snapshots, and post payloads to the UI thread."""
         last_snapshot = 0.0
         while not self._stop_event.wait(timeout=self._interval_s):
             try:
@@ -63,7 +75,7 @@ class MarketDataEngine(threading.Thread):
                 msg = str(exc)
                 self._post_ui(lambda m=msg: self.on_payload({"error": m}))
 
-    def _poll_once(self, now: float, last_snapshot: float) -> dict:
+    def _poll_once(self, now: float, last_snapshot: float) -> dict[str, Any]:
         messages: list[str] = []
         status = self._ib.get_status_snapshot()
         connection_state = self._ib.get_connection_state()
@@ -119,12 +131,14 @@ class MarketDataEngine(threading.Thread):
         }
 
     def _mid_spot(self) -> float | None:
+        """Compute mid-price from latest bid/ask, or return whichever is available."""
         b, a = self.latest_bid, self.latest_ask
         if b and a and b > 0 and a > 0:
             return (b + a) / 2.0
         return b or a
 
     def _check_no_ticks(self, now: float, has_ticks: bool) -> list[str]:
+        """Emit warnings if no ticks arrive within the startup grace period."""
         messages: list[str] = []
         if has_ticks:
             if self._no_tick_warning_emitted:
@@ -155,15 +169,17 @@ class MarketDataEngine(threading.Thread):
         return messages
 
     def _reset_no_tick_state(self) -> None:
+        """Reset no-tick warning counters."""
         self._no_tick_check_started_at = None
         self._no_tick_check_count = 0
         self._no_tick_warning_emitted = False
 
-    def on_payload(self, payload: dict) -> None:
+    def on_payload(self, payload: dict[str, Any]) -> None:
         """Callback set by controller to route market data to UI panels."""
 
     @staticmethod
     def _safe_float(value: Any) -> float | None:
+        """Convert value to positive float, returning None on NaN or non-positive."""
         if value is None:
             return None
         try:

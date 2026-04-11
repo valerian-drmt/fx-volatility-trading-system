@@ -3,11 +3,10 @@ import math
 import time
 from typing import Any
 
-from ib_insync import Contract, Forex, IB, LimitOrder, MarketOrder, StopOrder
+from ib_insync import IB, Contract, Forex, LimitOrder, MarketOrder, StopOrder
 
 
 class IBClient:
-    # Initialize IB connection parameters and cached runtime state.
     def __init__(
         self,
         ib: IB,
@@ -17,6 +16,16 @@ class IBClient:
         readonly: bool = False,
         ticker: Any = None,
     ) -> None:
+        """Initialize IB connection parameters and cached runtime state.
+
+        Args:
+            ib: The ib_insync IB instance to wrap.
+            host: IB Gateway/TWS hostname.
+            port: IB Gateway/TWS port.
+            client_id: Unique client identifier for this connection.
+            readonly: If True, disallow order placement.
+            ticker: Optional pre-existing ticker to attach.
+        """
         self.ib = ib
         self.host = host
         self.port = port
@@ -31,8 +40,8 @@ class IBClient:
         self._last_error_message = ""
 
     @staticmethod
-    # Build a stable identity tuple for snapshot objects returned by IB.
     def _snapshot_identity(item: Any) -> tuple[Any, ...]:
+        """Build a stable identity tuple for snapshot objects returned by IB."""
         if isinstance(item, dict):
             return (
                 item.get("execId"),
@@ -67,18 +76,18 @@ class IBClient:
             getattr(payload, "avg_price", None),
         )
 
-    # Reset the last recorded IB error context/message.
     def clear_last_error(self) -> None:
+        """Reset the last recorded IB error context/message."""
         self._last_error_context = ""
         self._last_error_message = ""
 
-    # Store a normalized context/message for the latest IB error.
     def _set_last_error(self, context: str, error: Any) -> None:
+        """Store a normalized context/message for the latest IB error."""
         self._last_error_context = str(context or "ib").strip() or "ib"
         self._last_error_message = str(error).strip()
 
-    # Return the latest IB error payload when present.
     def get_last_error(self) -> dict[str, str] | None:
+        """Return the latest IB error payload when present."""
         if not self._last_error_message:
             return None
         return {
@@ -86,15 +95,22 @@ class IBClient:
             "message": self._last_error_message,
         }
 
-    # Return the latest IB error as a compact display string.
     def get_last_error_text(self) -> str:
+        """Return the latest IB error as a compact display string."""
         payload = self.get_last_error()
         if payload is None:
             return ""
         return f"{payload['context']}: {payload['message']}"
 
-    # Connect to IB and optionally trigger account summary bootstrap.
     def connect(self, timeout: float = 1.0) -> bool:
+        """Connect to IB and optionally trigger account summary bootstrap.
+
+        Args:
+            timeout: Connection timeout in seconds.
+
+        Returns:
+            True if connected successfully.
+        """
         self.clear_last_error()
         if self.is_connected():
             return True
@@ -129,8 +145,15 @@ class IBClient:
         self._set_last_error("connect", f"Connection to {self.host}:{self.port} failed.")
         return False
 
-    # Subscribe to live market data for a ticker symbol.
     def start_live_streaming(self, ticker: str) -> bool:
+        """Subscribe to live market data for a ticker symbol.
+
+        Args:
+            ticker: The symbol to stream (e.g. ``"EURUSD"``).
+
+        Returns:
+            True if streaming was started successfully.
+        """
         if not self.is_connected():
             self._set_last_error("start_live_streaming", "Not connected to IBKR.")
             return False
@@ -187,8 +210,8 @@ class IBClient:
             "Streaming future: %s exp=%s", resolved.localSymbol, resolved.lastTradeDateOrContractMonth)
         return resolved
 
-    # Detach listeners and stop current live market-data stream.
     def stop_live_streaming(self) -> None:
+        """Detach listeners and stop current live market-data stream."""
         self._detach_ticker_listener()
 
         contract = None
@@ -202,8 +225,16 @@ class IBClient:
         self.last_bid = None
         self.last_ask = None
 
-    # Connect to IB and prepare a ticker stream when requested.
     def connect_and_prepare(self, ticker: str = "", timeout: float = 1.0) -> Any:
+        """Connect to IB and prepare a ticker stream when requested.
+
+        Args:
+            ticker: Symbol to stream after connecting. Falls back to front EUR future.
+            timeout: Connection timeout in seconds.
+
+        Returns:
+            The active ticker object, or None on failure.
+        """
         self.connect(timeout=timeout)
 
         if self.ticker is not None:
@@ -222,35 +253,39 @@ class IBClient:
             self._attach_ticker_listener()
         return self.ticker
 
-    # Return True when IB transport reports an active connection.
     def is_connected(self) -> bool:
+        """Return True when IB transport reports an active connection."""
         return bool(self.ib.isConnected())
 
-    # Return user-facing connection state text.
     def get_connection_state(self, connecting: bool = False) -> str:
+        """Return user-facing connection state text.
+
+        Args:
+            connecting: If True and not yet connected, return ``"connecting"``.
+        """
         if self.is_connected():
             return "connected"
         if connecting:
             return "connecting"
         return "disconnected"
 
-    # Process pending IB events and drain buffered tick updates.
     def process_messages(self) -> list[dict[str, Any]]:
+        """Process pending IB events and drain buffered tick updates."""
         try:
             self.ib.sleep(0)
         except Exception:
             pass
         return self.drain_received_ticks()
 
-    # Pump IB network queue without draining received tick buffer.
     def pump_network(self) -> None:
+        """Pump IB network queue without draining received tick buffer."""
         try:
             self.ib.sleep(0)
         except Exception:
             pass
 
-    # Attach local tick callback to the active ticker update event.
     def _attach_ticker_listener(self) -> None:
+        """Attach local tick callback to the active ticker update event."""
         ticker = self.ticker
         if ticker is None:
             return
@@ -269,8 +304,8 @@ class IBClient:
         except Exception:
             self._ticker_event_source = None
 
-    # Remove local tick callback from the previous ticker source.
     def _detach_ticker_listener(self) -> None:
+        """Remove local tick callback from the previous ticker source."""
         if self._ticker_event_source is None:
             return
 
@@ -286,8 +321,8 @@ class IBClient:
         self._ticker_event_source = None
 
     @staticmethod
-    # Normalize tick time payloads to display-friendly text.
     def _format_tick_time(raw_time: Any) -> str:
+        """Normalize tick time payloads to display-friendly text."""
         if raw_time is None:
             return "--"
         if hasattr(raw_time, "strftime"):
@@ -297,8 +332,8 @@ class IBClient:
                 return str(raw_time)
         return str(raw_time)
 
-    # Push incoming ticker updates into a drained tick buffer.
     def _on_ticker_update(self, ticker: Any = None, *_: Any) -> None:
+        """Push incoming ticker updates into a drained tick buffer."""
         source = ticker if ticker is not None else self.ticker
         if source is None:
             return
@@ -314,23 +349,23 @@ class IBClient:
             }
         )
 
-    # Return buffered ticks and clear the internal tick queue.
     def drain_received_ticks(self) -> list[dict[str, Any]]:
+        """Return buffered ticks and clear the internal tick queue."""
         ticks = self._received_ticks
         self._received_ticks = []
         return ticks
 
     @staticmethod
-    # Return True when the price value is usable.
     def _is_valid_price(value: Any) -> bool:
+        """Return True when the price value is usable (not None, not NaN)."""
         if value is None:
             return False
         if isinstance(value, (int, float)):
             return not math.isnan(value)
         return True
 
-    # Return latest valid bid/ask pair, reusing cached values when needed.
     def get_latest_bid_ask(self) -> tuple[Any, Any]:
+        """Return latest valid bid/ask pair, reusing cached values when needed."""
         if not self.is_connected() or self.ticker is None:
             return None, None
 
@@ -346,8 +381,8 @@ class IBClient:
             return None, None
         return self.last_bid, self.last_ask
 
-    # Return account summary and positions snapshots.
     def get_portfolio_snapshot(self) -> tuple[list[Any], list[Any]]:
+        """Return account summary and positions snapshots."""
         if not self.is_connected():
             return [], []
 
@@ -372,16 +407,24 @@ class IBClient:
                 positions = []
         return summary, positions
 
-    # Cancel account summary streaming if API support exists.
     def cancel_account_summary(self) -> None:
+        """Cancel account summary streaming if API support exists."""
         if hasattr(self.ib, "cancelAccountSummary"):
             try:
                 self.ib.cancelAccountSummary()
             except Exception:
                 pass
 
-    # Request account summary with compatibility fallback signatures.
     def request_account_summary(self, group_name: str = "All", tags: str = "NetLiquidation,AvailableFunds") -> bool:
+        """Request account summary with compatibility fallback signatures.
+
+        Args:
+            group_name: IB account group name.
+            tags: Comma-separated summary tags to request.
+
+        Returns:
+            True if the request was accepted.
+        """
         if not self.is_connected() or not hasattr(self.ib, "reqAccountSummary"):
             return False
         try:
@@ -396,24 +439,24 @@ class IBClient:
         except Exception:
             return False
 
-    # Return read-only/read-write mode inferred from IB client object.
     def get_connection_mode(self) -> str:
+        """Return read-only/read-write mode inferred from IB client object."""
         client = getattr(self.ib, "client", None)
         readonly = getattr(client, "readonly", None) if client is not None else None
         if readonly is None:
             return "unknown"
         return "read-only" if readonly else "read-write"
 
-    # Map configured port to paper/live environment labels.
     def get_environment(self) -> str:
+        """Map configured port to paper/live environment labels."""
         if self.port in (4002, 7497):
             return "paper"
         if self.port in (4001, 7496):
             return "live"
         return "unknown"
 
-    # Return first managed account identifier.
     def get_account(self) -> str:
+        """Return first managed account identifier."""
         accounts = []
         if hasattr(self.ib, "managedAccounts"):
             try:
@@ -422,12 +465,12 @@ class IBClient:
                 accounts = []
         return accounts[0] if accounts else "--"
 
-    # Return whether reqCurrentTime is supported by IB client object.
     def supports_server_time(self) -> bool:
+        """Return whether reqCurrentTime is supported by IB client object."""
         return hasattr(self.ib, "reqCurrentTime")
 
-    # Return server time text and measured request latency.
     def get_server_time_and_latency(self) -> tuple[str, str]:
+        """Return server time text and measured request latency."""
         if not self.supports_server_time():
             return "--", "--"
         try:
@@ -443,8 +486,16 @@ class IBClient:
         except Exception:
             return "--", "--"
 
-    # Request one-shot market snapshot fields for a contract.
     def get_market_snapshot(self, contract: Any, wait_seconds: float = 1.0) -> dict[str, Any]:
+        """Request one-shot market snapshot fields for a contract.
+
+        Args:
+            contract: IB contract to snapshot.
+            wait_seconds: Time to wait for data to arrive.
+
+        Returns:
+            Dict with bid, ask, last, close, volume, time fields.
+        """
         if not self.is_connected():
             return {}
         try:
@@ -464,7 +515,6 @@ class IBClient:
         except Exception:
             return {}
 
-    # Request market-data stream or snapshot for a contract.
     def request_market_data(
         self,
         contract: Any,
@@ -472,6 +522,17 @@ class IBClient:
         snapshot: bool = False,
         regulatory_snapshot: bool = False,
     ) -> Any:
+        """Request market-data stream or snapshot for a contract.
+
+        Args:
+            contract: IB contract to subscribe to.
+            generic_tick_list: Comma-separated generic tick type codes.
+            snapshot: If True, request a one-shot snapshot instead of streaming.
+            regulatory_snapshot: If True, request a regulatory snapshot.
+
+        Returns:
+            The ticker object, or None on failure.
+        """
         if not self.is_connected():
             self._set_last_error("request_market_data", "Not connected to IBKR.")
             return None
@@ -551,8 +612,8 @@ class IBClient:
                 except Exception:
                     pass
 
-    # Cancel market-data subscription for a contract.
     def cancel_market_data(self, contract: Any) -> bool:
+        """Cancel market-data subscription for a contract."""
         if not self.is_connected() or not hasattr(self.ib, "cancelMktData"):
             return False
         try:
@@ -561,7 +622,6 @@ class IBClient:
         except Exception:
             return False
 
-    # Request historical bars for a contract and time range.
     def get_historical_bars(
         self,
         contract: Any,
@@ -570,6 +630,18 @@ class IBClient:
         what_to_show: str = "MIDPOINT",
         use_rth: bool = False,
     ) -> list[Any]:
+        """Request historical bars for a contract and time range.
+
+        Args:
+            contract: IB contract to query.
+            duration: Duration string (e.g. ``"1 D"``, ``"1 W"``).
+            bar_size: Bar size setting (e.g. ``"1 min"``, ``"1 hour"``).
+            what_to_show: Data type (``"MIDPOINT"``, ``"TRADES"``, etc.).
+            use_rth: If True, restrict to regular trading hours.
+
+        Returns:
+            List of bar objects, or empty list on failure.
+        """
         if not self.is_connected():
             return []
         try:
@@ -587,8 +659,17 @@ class IBClient:
         except Exception:
             return []
 
-    # Request earliest historical timestamp available for a contract.
     def get_head_timestamp(self, contract: Any, what_to_show: str = "MIDPOINT", use_rth: bool = False) -> Any:
+        """Request earliest historical timestamp available for a contract.
+
+        Args:
+            contract: IB contract to query.
+            what_to_show: Data type to check.
+            use_rth: If True, restrict to regular trading hours.
+
+        Returns:
+            Timestamp object, or None on failure.
+        """
         if not self.is_connected():
             return None
         try:
@@ -601,8 +682,8 @@ class IBClient:
         except Exception:
             return None
 
-    # Qualify a contract through IB and return first qualified result.
     def qualify_contract(self, contract: Any) -> Any:
+        """Qualify a contract through IB and return first qualified result."""
         if not self.is_connected():
             self._set_last_error("qualify_contract", "Not connected to IBKR.")
             return None
@@ -621,8 +702,8 @@ class IBClient:
             self._set_last_error("qualify_contract", exc)
             return None
 
-    # Return contract details list for a contract request.
     def get_contract_details(self, contract: Any) -> list[Any]:
+        """Return contract details list for a contract request."""
         if not self.is_connected():
             return []
         try:
@@ -631,8 +712,8 @@ class IBClient:
         except Exception:
             return []
 
-    # Return account values snapshot.
     def get_account_values(self) -> list[Any]:
+        """Return account values snapshot."""
         if not self.is_connected():
             return []
         try:
@@ -643,8 +724,8 @@ class IBClient:
 
     _INACTIVE_STATUSES = {"cancelled", "inactive", "apicancelled", "filled", "pendingcancel"}
 
-    # Return currently open trades snapshot, excluding cancelled/filled.
     def get_open_orders_snapshot(self) -> list[Any]:
+        """Return currently open trades snapshot, excluding cancelled/filled."""
         if not self.is_connected():
             return []
         try:
@@ -660,8 +741,8 @@ class IBClient:
         except Exception:
             return []
 
-    # Request all open orders and return latest available snapshot.
     def request_all_open_orders(self) -> list[Any]:
+        """Request all open orders and return latest available snapshot."""
         if not self.is_connected():
             return []
         try:
@@ -674,8 +755,12 @@ class IBClient:
         except Exception:
             return []
 
-    # Request completed orders with compatibility fallback signatures.
     def request_completed_orders(self, api_only: bool = False) -> list[Any]:
+        """Request completed orders with compatibility fallback signatures.
+
+        Args:
+            api_only: If True, return only API-placed orders.
+        """
         if not self.is_connected() or not hasattr(self.ib, "reqCompletedOrders"):
             return []
         try:
@@ -690,8 +775,8 @@ class IBClient:
         except Exception:
             return []
 
-    # Return open trades snapshot.
     def get_open_trades_snapshot(self) -> list[Any]:
+        """Return open trades snapshot."""
         if not self.is_connected() or not hasattr(self.ib, "openTrades"):
             return []
         try:
@@ -700,8 +785,8 @@ class IBClient:
         except Exception:
             return []
 
-    # Return recent fills snapshot.
     def get_fills_snapshot(self) -> list[Any]:
+        """Return recent fills snapshot."""
         if not self.is_connected():
             return []
         try:
@@ -710,8 +795,8 @@ class IBClient:
         except Exception:
             return []
 
-    # Return recent fills merged from requested executions and local session cache.
     def get_recent_fills_snapshot(self) -> list[Any]:
+        """Return recent fills merged from requested executions and local session cache."""
         if not self.is_connected():
             return []
 
@@ -728,8 +813,16 @@ class IBClient:
                 merged.append(item)
         return merged
 
-    # Place an order and return the created trade object.
     def place_order(self, contract: Any, order: Any) -> Any:
+        """Place an order and return the created trade object.
+
+        Args:
+            contract: IB contract to trade.
+            order: IB order object (LimitOrder, MarketOrder, etc.).
+
+        Returns:
+            The trade object, or None on failure.
+        """
         if not self.is_connected() or not hasattr(self.ib, "placeOrder"):
             if not self.is_connected():
                 self._set_last_error("place_order", "Not connected to IBKR.")
@@ -781,7 +874,6 @@ class IBClient:
                 except Exception:
                     pass
 
-    # Build IB bracket orders for parent, take-profit, and stop-loss legs.
     def build_bracket_orders(
         self,
         side: str,
@@ -791,6 +883,19 @@ class IBClient:
         stop_loss_price: float,
         parent_order_type: str = "LMT",
     ) -> list[Any]:
+        """Build IB bracket orders for parent, take-profit, and stop-loss legs.
+
+        Args:
+            side: ``"BUY"`` or ``"SELL"``.
+            quantity: Number of units.
+            limit_price: Limit price for the parent order.
+            take_profit_price: Take-profit limit price.
+            stop_loss_price: Stop-loss trigger price.
+            parent_order_type: ``"LMT"`` or ``"MKT"`` for the parent leg.
+
+        Returns:
+            List of [parent, take_profit, stop_loss] order objects, or empty on failure.
+        """
         if not self.is_connected():
             if not self.is_connected():
                 self._set_last_error("build_bracket_orders", "Not connected to IBKR.")
@@ -861,12 +966,12 @@ class IBClient:
             self._set_last_error("build_bracket_orders", exc)
             return []
 
-    # Replace an existing order via placeOrder with an explicit order id.
     def replace_order(self, contract: Any, order_with_existing_order_id: Any) -> Any:
+        """Replace an existing order via placeOrder with an explicit order id."""
         return self.place_order(contract, order_with_existing_order_id)
 
-    # Cancel an order/trade object with fallback to nested order.
     def cancel_order(self, trade_or_order: Any) -> bool:
+        """Cancel an order/trade object with fallback to nested order."""
         if not self.is_connected() or not hasattr(self.ib, "cancelOrder"):
             if not self.is_connected():
                 self._set_last_error("cancel_order", "Not connected to IBKR.")
@@ -890,8 +995,16 @@ class IBClient:
                 self._set_last_error("cancel_order", second_exc)
                 return False
 
-    # Run IB What-If for an order and return margin/commission payload.
     def what_if_order(self, contract: Any, order: Any) -> Any:
+        """Run IB What-If for an order and return margin/commission payload.
+
+        Args:
+            contract: IB contract for the simulated order.
+            order: IB order object to simulate.
+
+        Returns:
+            What-If result payload, or None on failure.
+        """
         if not self.is_connected() or not hasattr(self.ib, "whatIfOrder"):
             if not self.is_connected():
                 self._set_last_error("what_if_order", "Not connected to IBKR.")
@@ -943,8 +1056,12 @@ class IBClient:
                 except Exception:
                     pass
 
-    # Cancel all currently open orders and return summary tuple.
     def cancel_all_open_orders(self) -> tuple[bool, int, str]:
+        """Cancel all currently open orders and return summary tuple.
+
+        Returns:
+            Tuple of (success, cancelled_count, message).
+        """
         if not self.is_connected():
             message = "Not connected to IBKR."
             self._set_last_error("cancel_all_open_orders", message)
@@ -981,8 +1098,8 @@ class IBClient:
         self.clear_last_error()
         return True, cancelled, f"Cancelled {cancelled} open orders."
 
-    # Return executions snapshot.
     def get_executions_snapshot(self) -> list[Any]:
+        """Return executions snapshot."""
         if not self.is_connected():
             return []
         try:
@@ -991,8 +1108,13 @@ class IBClient:
         except Exception:
             return []
 
-    # Request account-level PnL snapshot object.
     def get_pnl_snapshot(self, account: str, model_code: str = "") -> Any:
+        """Request account-level PnL snapshot object.
+
+        Args:
+            account: IB account identifier.
+            model_code: Optional model code filter.
+        """
         if not self.is_connected():
             return None
         try:
@@ -1002,8 +1124,14 @@ class IBClient:
         except Exception:
             return None
 
-    # Request contract-level PnL snapshot object.
     def get_pnl_single_snapshot(self, account: str, con_id: int, model_code: str = "") -> Any:
+        """Request contract-level PnL snapshot object.
+
+        Args:
+            account: IB account identifier.
+            con_id: Contract ID.
+            model_code: Optional model code filter.
+        """
         if not self.is_connected():
             return None
         try:
@@ -1013,13 +1141,22 @@ class IBClient:
         except Exception:
             return None
 
-    # Request level-2 market depth snapshot for a contract.
     def get_market_depth_snapshot(
         self,
         contract: Any,
         num_rows: int = 5,
         wait_seconds: float = 1.0,
     ) -> dict[str, list[dict[str, Any]]]:
+        """Request level-2 market depth snapshot for a contract.
+
+        Args:
+            contract: IB contract to query.
+            num_rows: Number of depth-of-book rows per side.
+            wait_seconds: Time to wait for data to arrive.
+
+        Returns:
+            Dict with ``"bids"`` and ``"asks"`` lists.
+        """
         if not self.is_connected():
             return {"bids": [], "asks": []}
         try:
@@ -1052,8 +1189,8 @@ class IBClient:
                 except Exception:
                     pass
 
-    # Return compact connection status payload for UI polling.
     def get_status_snapshot(self) -> dict[str, Any]:
+        """Return compact connection status payload for UI polling."""
         return {
             "connected": self.is_connected(),
             "mode": self.get_connection_mode(),

@@ -1,3 +1,5 @@
+from typing import Any
+
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QCheckBox,
@@ -14,7 +16,6 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from typing import Any
 
 
 class OrderConfirmDialog(QDialog):

@@ -7,42 +7,49 @@ from ib_insync import Contract, Forex, LimitOrder, MarketOrder, Order
 
 from services.ib_client import IBClient
 
-
 logger = logging.getLogger("order_executor")
+
+FILL_TIMEOUT_S = 10
+FILL_POLL_S = 0.2
+FUT_MULTIPLIER = 125_000
 
 
 class OrderExecutor:
     _REJECTED_STATUSES = {"APICANCELLED", "CANCELLED", "INACTIVE"}
 
-    # Initialize execution state.
     def __init__(self, ib_client: IBClient) -> None:
+        """Initialize execution state.
+
+        Args:
+            ib_client: IB client wrapper used for order placement and queries.
+        """
         self.ib_client = ib_client
         self._running = False
 
-    # Mark the worker as ready to process requests.
     def start(self) -> None:
+        """Mark the worker as ready to process requests."""
         self._running = True
 
-    # Mark the worker as stopped and reject new requests.
     def stop(self) -> None:
+        """Mark the worker as stopped and reject new requests."""
         self._running = False
 
     @staticmethod
-    # Normalize a symbol string to IB-friendly uppercase format.
     def _normalize_symbol(raw_symbol: str) -> str:
+        """Normalize a symbol string to IB-friendly uppercase format."""
         return str(raw_symbol).strip().upper().replace("/", "")
 
     @staticmethod
-    # Parse numeric field to float, returning default on conversion failure.
     def _parse_float(raw: Any, default: float = 0.0) -> float:
+        """Parse numeric field to float, returning default on conversion failure."""
         try:
             return float(raw)
         except (TypeError, ValueError):
             return float(default)
 
     @staticmethod
-    # Parse optional numeric field, returning None when missing/invalid/non-positive.
     def _parse_positive_optional(raw: Any) -> float | None:
+        """Return positive float or None when missing/invalid/non-positive."""
         if raw is None:
             return None
         try:
@@ -52,8 +59,8 @@ class OrderExecutor:
         return value if value > 0 else None
 
     @staticmethod
-    # Parse and sanitize an order request payload.
     def _normalize_request(request: Any) -> dict[str, Any] | None:
+        """Parse and sanitize an order request payload."""
         if not isinstance(request, dict):
             return None
 
@@ -86,8 +93,8 @@ class OrderExecutor:
         }
 
     @staticmethod
-    # Validate normalized order fields and return an error message when invalid.
     def _validate_request(normalized: dict[str, Any]) -> str | None:
+        """Validate normalized order fields and return an error message when invalid."""
         symbol = normalized["symbol"]
         side = normalized["side"]
         order_type = normalized["order_type"]
@@ -112,8 +119,8 @@ class OrderExecutor:
         return None
 
     @staticmethod
-    # Build an IB market or limit order object.
-    def _build_order(side: str, order_type: str, quantity: int, limit_price: float) -> Any:
+    def _build_order(side: str, order_type: str, quantity: int, limit_price: float) -> MarketOrder | LimitOrder:
+        """Build an IB market or limit order object."""
         if order_type == "MKT":
             order = MarketOrder(side, quantity)
             order.tif = "GTC"
@@ -123,16 +130,16 @@ class OrderExecutor:
         return order
 
     @staticmethod
-    # Resolve the entry price used to derive TP/SL bracket levels.
     def _resolve_entry_price(normalized: dict[str, Any]) -> float | None:
+        """Resolve the entry price used to derive TP/SL bracket levels."""
         order_type = normalized["order_type"]
         if order_type == "LMT":
             return float(normalized["limit_price"])
         return normalized["reference_price"]
 
     @staticmethod
-    # Convert TP/SL percentages into absolute prices from the entry price.
     def _derive_bracket_prices(side: str, entry_price: float, tp_pct: float, sl_pct: float) -> tuple[float, float]:
+        """Convert TP/SL percentages into absolute prices from the entry price."""
         tp_factor = float(tp_pct) / 100.0
         sl_factor = float(sl_pct) / 100.0
         if side == "BUY":
@@ -146,8 +153,8 @@ class OrderExecutor:
         return take_profit, stop_loss
 
     @staticmethod
-    # Extract compact trade metadata returned by IB Gateway.
     def _trade_debug_payload(trade: Any) -> dict[str, Any]:
+        """Extract compact trade metadata returned by IB Gateway."""
         order = getattr(trade, "order", None)
         order_status = getattr(trade, "orderStatus", None)
         contract = getattr(trade, "contract", None)
@@ -164,15 +171,15 @@ class OrderExecutor:
         }
 
     @staticmethod
-    # Return normalized IB order status text from a trade object.
     def _trade_status(trade: Any) -> str:
+        """Return normalized IB order status text from a trade object."""
         order_status = getattr(trade, "orderStatus", None)
         status = str(getattr(order_status, "status", "")).strip().upper()
         return status
 
     @staticmethod
-    # Extract what-if fields returned by IB Gateway.
     def _what_if_debug_payload(what_if: Any) -> dict[str, Any]:
+        """Extract what-if fields returned by IB Gateway."""
         keys = (
             "initMarginBefore",
             "initMarginChange",
@@ -190,21 +197,27 @@ class OrderExecutor:
         )
         return {key: getattr(what_if, key, "--") for key in keys}
 
-    # Submit one order and return (ok, reason).
     def _submit_one(self, contract: Any, order: Any) -> tuple[bool, str]:
+        """Submit one order and return (ok, reason)."""
         self.ib_client.clear_last_error()
         trade = self.ib_client.place_order(contract, order)
         if trade is None:
             return False, self.ib_client.get_last_error_text() or "Unknown IB error."
 
-        trade_payload = self._trade_debug_payload(trade)
         trade_status = self._trade_status(trade)
         if trade_status in self._REJECTED_STATUSES:
             return False, self.ib_client.get_last_error_text() or f"IB status={trade_status}"
         return True, ""
 
-    # Execute a validated order request through the IB client.
     def place_order(self, request: Any) -> dict[str, Any]:
+        """Execute a validated order request through the IB client.
+
+        Args:
+            request: Raw order payload dict with symbol, side, order_type, volume, etc.
+
+        Returns:
+            Result dict with 'ok' bool, 'kind', 'message', and order details on success.
+        """
         if not self._running:
             return {"ok": False, "kind": "order", "message": "Order worker is stopped."}
 
@@ -239,7 +252,7 @@ class OrderExecutor:
                 entry_price = self._resolve_entry_price(normalized)
                 if entry_price is None or entry_price <= 0:
                     return {
-                        
+
                             "ok": False,
                             "kind": "order",
                             "message": "Cannot derive bracket levels: invalid entry price.",
@@ -254,7 +267,7 @@ class OrderExecutor:
                     )
                 except Exception as exc:
                     return {
-                        
+
                             "ok": False,
                             "kind": "order",
                             "message": f"Cannot derive bracket levels - {exc}",
@@ -273,7 +286,7 @@ class OrderExecutor:
                 if not bracket_orders:
                     reason = self.ib_client.get_last_error_text() or "Unknown IB error."
                     return {
-                        
+
                             "ok": False,
                             "kind": "order",
                             "message": (
@@ -285,7 +298,7 @@ class OrderExecutor:
                     ok, reason = self._submit_one(qualified_contract, bracket_order)
                     if not ok:
                         return {
-                            
+
                                 "ok": False,
                                 "kind": "order",
                                 "message": (
@@ -297,7 +310,7 @@ class OrderExecutor:
                 ok, reason = self._submit_one(qualified_contract, order)
                 if not ok:
                     return {
-                        
+
                             "ok": False,
                             "kind": "order",
                             "message": f"Order rejected ({side} {quantity} {symbol} {order_type}) - {reason}",
@@ -311,7 +324,7 @@ class OrderExecutor:
                     f"TP={take_profit:.8f} ({tp_pct}%) SL={stop_loss:.8f} ({sl_pct}%)."
                 )
             return {
-                
+
                     "ok": True,
                     "kind": "order",
                     "message": message,
@@ -331,7 +344,7 @@ class OrderExecutor:
             logger.exception("place_order unexpected failure")
             raise
 
-    def _resolve_front_future(self, ib_symbol: str = "EUR") -> tuple[Any | None, str]:
+    def _resolve_front_future(self, ib_symbol: str = "EUR") -> tuple[Contract | None, str]:
         """Find the front quarterly future on CME. Returns (contract, error)."""
         from datetime import date, timedelta
 
@@ -363,7 +376,14 @@ class OrderExecutor:
         return qualified, ""
 
     def preview_future_order(self, request: dict[str, Any]) -> dict[str, Any]:
-        """What-if preview for a EUR future MKT order."""
+        """What-if preview for a EUR future MKT order.
+
+        Args:
+            request: Payload with side, quantity, fut_symbol, reference_price, multiplier.
+
+        Returns:
+            Result dict with margin, commission, notional, and delta estimates.
+        """
         logger.info("preview_future_order ENTER payload=%r", request)
         if not self._running:
             return {"ok": False, "kind": "preview", "message": "Order executor is stopped."}
@@ -398,7 +418,7 @@ class OrderExecutor:
             logger.info("preview_future_order what_if=%r", self._what_if_debug_payload(what_if))
 
             # Compute notional & delta from request
-            multiplier = int(request.get("multiplier", 125_000))
+            multiplier = int(request.get("multiplier", FUT_MULTIPLIER))
             ref_price = self._parse_float(request.get("reference_price"), default=0.0)
             sign = 1 if side == "BUY" else -1
             notional = ref_price * qty * multiplier if ref_price > 0 else None
@@ -424,7 +444,14 @@ class OrderExecutor:
             raise
 
     def place_future_order(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Place a EUR future MKT order on CME."""
+        """Place a EUR future MKT order on CME.
+
+        Args:
+            request: Payload with side, quantity, and optional fut_symbol.
+
+        Returns:
+            Result dict with fill status, message, and order metadata.
+        """
         logger.info("place_future_order ENTER payload=%r", request)
         if not self._running:
             return {"ok": False, "kind": "order", "message": "Order executor is stopped."}
@@ -458,15 +485,15 @@ class OrderExecutor:
                 return {"ok": False, "kind": "order", "message": f"Order rejected: {reason}"}
 
             # Wait for fill or rejection (up to 10s)
-            TIMEOUT_S = 10
+            TIMEOUT_S = FILL_TIMEOUT_S
             TERMINAL = {"FILLED", "CANCELLED", "APICANCELLED", "INACTIVE"}
             elapsed = 0.0
             while elapsed < TIMEOUT_S:
                 status = self._trade_status(trade)
                 if status in TERMINAL:
                     break
-                self.ib_client.ib.sleep(0.2)
-                elapsed += 0.2
+                self.ib_client.ib.sleep(FILL_POLL_S)
+                elapsed += FILL_POLL_S
 
             status = self._trade_status(trade)
             logger.info("place_future_order: final status=%s after %.1fs", status, elapsed)
@@ -498,7 +525,7 @@ class OrderExecutor:
 
     # ── Option (FOP) methods ──
 
-    def _resolve_fop_contract(self, request: dict[str, Any]) -> tuple[Any | None, str]:
+    def _resolve_fop_contract(self, request: dict[str, Any]) -> tuple[Contract | None, str]:
         """Resolve a FOP contract from order request fields."""
         right = str(request.get("right", "")).strip().upper()
         if right == "CALL":
@@ -516,7 +543,7 @@ class OrderExecutor:
         fop.lastTradeDateOrContractMonth = expiry
         fop.strike = strike
         fop.right = right
-        fop.multiplier = "125000"
+        fop.multiplier = str(FUT_MULTIPLIER)
         fop.tradingClass = "EUU"
 
         logger.info("_resolve_fop_contract: reqContractDetails %s K=%.5f exp=%s...",
@@ -534,7 +561,14 @@ class OrderExecutor:
         return resolved, ""
 
     def preview_option_order(self, request: dict[str, Any]) -> dict[str, Any]:
-        """What-if preview for a FOP option order."""
+        """What-if preview for a FOP option order.
+
+        Args:
+            request: Payload with side, quantity, right, strike, and expiry.
+
+        Returns:
+            Result dict with greeks (USD), margin, commission, and bid/ask data.
+        """
         logger.info("preview_option_order ENTER payload=%r", request)
         if not self._running:
             return {"ok": False, "kind": "preview", "message": "Order executor is stopped."}
@@ -580,7 +614,7 @@ class OrderExecutor:
             what_if = self.ib_client.what_if_order(qualified, order)
 
             # Compute USD values: greek × qty × multiplier
-            multiplier = 125_000
+            multiplier = FUT_MULTIPLIER
             mid = (bid + ask) / 2.0 if bid and ask else None
             sign = 1 if side == "BUY" else -1
             pos = sign * qty
@@ -622,7 +656,14 @@ class OrderExecutor:
             raise
 
     def place_option_order(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Place a FOP option MKT order on CME."""
+        """Place a FOP option MKT order on CME.
+
+        Args:
+            request: Payload with side, quantity, right, strike, and expiry.
+
+        Returns:
+            Result dict with fill status, message, and order metadata.
+        """
         logger.info("place_option_order ENTER payload=%r", request)
         if not self._running:
             return {"ok": False, "kind": "order", "message": "Order executor is stopped."}
@@ -655,15 +696,15 @@ class OrderExecutor:
                 return {"ok": False, "kind": "order", "message": f"Order rejected: {reason}"}
 
             # Wait for fill or rejection (up to 10s)
-            timeout_s = 10
+            timeout_s = FILL_TIMEOUT_S
             terminal = {"FILLED", "CANCELLED", "APICANCELLED", "INACTIVE"}
             elapsed = 0.0
             while elapsed < timeout_s:
                 status = self._trade_status(trade)
                 if status in terminal:
                     break
-                self.ib_client.ib.sleep(0.2)
-                elapsed += 0.2
+                self.ib_client.ib.sleep(FILL_POLL_S)
+                elapsed += FILL_POLL_S
 
             status = self._trade_status(trade)
             logger.info("place_option_order: final status=%s after %.1fs", status, elapsed)
@@ -693,8 +734,15 @@ class OrderExecutor:
             logger.exception("place_option_order unexpected failure")
             raise
 
-    # Run a what-if preview for a validated order request.
     def preview_order(self, request: Any) -> dict[str, Any]:
+        """Run a what-if preview for a validated Forex order request.
+
+        Args:
+            request: Raw order payload dict with symbol, side, order_type, volume, etc.
+
+        Returns:
+            Result dict with margin, commission, and bracket levels if applicable.
+        """
         if not self._running:
             return {"ok": False, "kind": "preview", "message": "Order worker is stopped."}
 
@@ -725,7 +773,7 @@ class OrderExecutor:
             if qualified_contract is None:
                 reason = self.ib_client.get_last_error_text() or "Unable to qualify contract."
                 return {
-                    
+
                         "ok": False,
                         "kind": "preview",
                         "message": f"Preview failed for {side} {quantity} {symbol} {order_type} - {reason}",
@@ -736,7 +784,7 @@ class OrderExecutor:
             if what_if is None:
                 reason = self.ib_client.get_last_error_text() or "Unknown IB error."
                 return {
-                    
+
                         "ok": False,
                         "kind": "preview",
                         "message": f"Preview failed for {side} {quantity} {symbol} {order_type} - {reason}",
@@ -748,7 +796,7 @@ class OrderExecutor:
                 entry_price = self._resolve_entry_price(normalized)
                 if entry_price is None or entry_price <= 0:
                     return {
-                        
+
                             "ok": False,
                             "kind": "preview",
                             "message": "Preview failed: invalid entry price for bracket levels.",
@@ -774,7 +822,7 @@ class OrderExecutor:
                 lines.append(f"Stop Loss: {stop_loss:.8f} ({sl_pct}%)")
             preview_message = "\n".join(lines)
             return {
-                
+
                     "ok": True,
                     "kind": "preview",
                     "message": preview_message,

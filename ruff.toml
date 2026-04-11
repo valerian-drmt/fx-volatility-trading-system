@@ -1,0 +1,33 @@
+target-version = "py311"
+line-length = 120
+
+[lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort (import sorting)
+    "UP",    # pyupgrade (modern syntax)
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "RUF",   # ruff-specific
+]
+ignore = [
+    "E501",   # line too long (handled by line-length)
+    "B008",   # function call in default arg (common in Qt)
+    "B023",   # function uses loop variable (Qt lambda patterns)
+    "SIM105", # suppressible-exception (contextlib.suppress less readable)
+    "SIM103", # needless-bool (readability)
+    "SIM108", # ternary instead of if/else (readability)
+    "RUF001", # ambiguous unicode (accented chars in French comments)
+    "RUF002", # ambiguous unicode in docstring
+    "RUF003", # ambiguous unicode in comment
+    "RUF012", # mutable class default (Qt pattern)
+    "UP038",  # non-pep604 isinstance (readability)
+]
+
+[lint.isort]
+known-first-party = ["services", "ui", "controller"]
+
+[lint.per-file-ignores]
+"tests/*" = ["B018"]  # useless expression (assert patterns)

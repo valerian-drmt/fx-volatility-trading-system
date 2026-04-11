@@ -1,8 +1,9 @@
+from typing import Any
+
 import numpy as np
 import pyqtgraph as pg
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QGroupBox, QVBoxLayout, QWidget
-from typing import Any
 
 
 class TermStructurePanel(QWidget):

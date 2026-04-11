@@ -1,27 +1,29 @@
-from typing import Callable
+from collections.abc import Callable
 
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (
-    QHBoxLayout, QMainWindow,
-    QVBoxLayout, QWidget,
+    QHBoxLayout,
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
 )
 
-from ui.panels.tick_chart_panel import ChartPanel
+from ui.panels.account_summary_panel import PortfolioPanel
+from ui.panels.book_panel import BookPanel, OpenPositionsPanel
 from ui.panels.logs_panel import LogsPanel
 from ui.panels.order_ticket_panel import OrderTicketPanel
-from ui.panels.vol_scanner_panel import VolScannerPanel
-from ui.panels.term_structure_panel import TermStructurePanel
-from ui.panels.book_panel import BookPanel, OpenPositionsPanel
-from ui.panels.smile_chart_panel import SmileChartPanel, SmileDetailsPanel
 from ui.panels.pnl_chart_panel import PnlSpotPanel
-from ui.panels.account_summary_panel import PortfolioPanel
 from ui.panels.runtime_status_panel import StatusPanel
+from ui.panels.smile_chart_panel import SmileChartPanel, SmileDetailsPanel
+from ui.panels.term_structure_panel import TermStructurePanel
+from ui.panels.tick_chart_panel import ChartPanel
+from ui.panels.vol_scanner_panel import VolScannerPanel
 
 
 class MainWindow(QMainWindow):
     window_closed = pyqtSignal()
 
-    def closeEvent(self, event):  # noqa: N802
+    def closeEvent(self, event):
         self.window_closed.emit()
         super().closeEvent(event)
 
