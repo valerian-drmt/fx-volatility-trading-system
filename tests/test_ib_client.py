@@ -256,7 +256,7 @@ def test_request_market_data_retries_with_delayed_mode_on_competing_session():
 
     assert ticker is not None
     assert ticker.req_calls == 2
-    assert ib.market_data_type_calls == [3]
+    assert ib.market_data_type_calls == [3, 1]
     assert ib.cancel_calls == ["EURUSD"]
     assert client.get_last_error_text() == ""
 
