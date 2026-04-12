@@ -62,7 +62,7 @@ def test_vol_engine_runs_scan():
     engine.stop()
     engine.join(timeout=5)
 
-    assert result["type"] == "step1_result"
+    assert result["type"] == "vol_result"
     if result.get("error"):
         pytest.skip(f"Vol engine error: {result['error']}")
     assert len(result["scanner_rows"]) > 0

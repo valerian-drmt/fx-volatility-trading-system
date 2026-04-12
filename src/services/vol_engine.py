@@ -206,7 +206,7 @@ class VolEngine(threading.Thread):
             # ── Step 1: IV mid ──
             F, _ = self._get_forward(ib)
             if F is None:
-                return self._error("Cannot get forward price")
+                return self._error("Market closed — no forward price available")
 
             selected = self._discover_chains(ib, target_dtes)
             if not selected:

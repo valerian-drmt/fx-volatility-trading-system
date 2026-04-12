@@ -92,15 +92,9 @@ python app.py
 ## Testing
 
 ```bash
-python -m pytest                                  # full suite
-python -m pytest tests/test_controller_settings.py -v  # single file
-python -m ruff check src tests app.py             # lint
-python -m compileall -q src app.py                # import check
-```
-
-Integration tests (requires live IB Gateway):
-```bash
-IB_RUN_INTEGRATION=1 python -m pytest -m integration -rs
+python -m pytest                                              # unit tests
+$env:IB_RUN_INTEGRATION=1; python -m pytest -m integration -rs # integration (requires IB Gateway)
+python -m ruff check src tests app.py                         # lint
 ```
 
 ---
