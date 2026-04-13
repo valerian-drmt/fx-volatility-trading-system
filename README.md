@@ -9,7 +9,7 @@
 
 Single-screen dashboard for FX options traders: **implied vol vs fair vol signals**, **real-time portfolio greeks**, **PnL simulation**, and **multi-instrument order execution** (Spot, Future, Option) with live IB Gateway connectivity.
 
-![Dashboard Screenshot](docs/screenshot.png)
+![Dashboard Screenshot](docs/screenshot_dashboard.png)
 
 ---
 
