@@ -167,6 +167,7 @@ class VolEngine(threading.Thread):
             cfg1 = _load_vol_config("step1")
             loop_interval = cfg1.get("LOOP_INTERVAL_S", 180)
             try:
+                self._output_queue.put({"type": "vol_status", "status": "computing"})
                 result = self._run_scan()
                 self._output_queue.put(result)
                 # Push IV surface to risk engine for greeks computation

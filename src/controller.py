@@ -201,6 +201,7 @@ class Controller(SettingsMixin):
         if limit_price_input is not None and hasattr(limit_price_input, "valueChanged"):
             limit_price_input.valueChanged.connect(self._refresh_order_ticket_market_context)
 
+        self.window.open_positions_panel.close_position_requested.connect(self._on_close_position)
         self.window.chart_panel.market_symbol_input.currentTextChanged.connect(self._on_market_symbol_changed)
 
         # Single QTimer polling the UI queue — only PyQt timer in the controller
@@ -269,18 +270,21 @@ class Controller(SettingsMixin):
         )
 
         # Thread 2: Vol Engine (client_id=2, own IB connection)
-        # Only start if market is open (spot > 0)
-        mid = self._get_mid_spot()
-        market_open = mid is not None and mid > 0
+        # Check market status via a spot snapshot before starting
+        market_open = self._check_market_open()
         if market_open:
             self._vol_engine = VolEngine(
                 output_queue=self._vol_output_queue,
                 host=str(self.host), port=int(self.port), client_id=2,
             )
             self._vol_engine.set_risk_engine(self._risk_engine)
+            if self.window:
+                self.window.vol_scanner_panel.set_status("computing")
         else:
             self._vol_engine = None
             self._log("[VOL] Market closed — Vol Engine not started")
+            if self.window:
+                self.window.vol_scanner_panel.set_status("market_closed")
 
         # Wire shared data: Thread 1 writes spot into Thread 3
         self._market_engine.set_risk_engine(self._risk_engine)
@@ -319,6 +323,8 @@ class Controller(SettingsMixin):
         self._market_engine = None
         self._vol_engine = None
         self._risk_engine = None
+        if self.window:
+            self.window.vol_scanner_panel.set_status("idle")
         logger.info("Engine pool stopped")
 
     def _poll_engine_queues(self) -> None:
@@ -329,9 +335,14 @@ class Controller(SettingsMixin):
                 result = self._vol_output_queue.get_nowait()
             except queue.Empty:
                 break
+            if result.get("type") == "vol_status" and self.window:
+                self.window.vol_scanner_panel.set_status(result["status"])
+                continue
             error = result.get("error")
             if error:
                 self._log(f"[VOL] engine error: {error}")
+                if self.window and "Market closed" in str(error):
+                    self.window.vol_scanner_panel.set_status("market_closed")
             else:
                 self._on_vol_result(result)
 
@@ -358,6 +369,7 @@ class Controller(SettingsMixin):
         rows = result.get("scanner_rows", [])
         spot = result.get("spot", 0)
         logger.info("Vol scan complete: F=%.5f, %d tenors", spot, len(rows))
+        self.window.vol_scanner_panel.set_status("ok")
         self.window.vol_scanner_panel.update(result)
         self._update_term_structure(result)
         self._update_smile_chart(result)
@@ -373,6 +385,7 @@ class Controller(SettingsMixin):
         pnl_curve = result.get("pnl_curve")
         if pnl_curve:
             self.window.pnl_spot_panel.update(pnl_curve)
+
 
     def _update_term_structure(self, result: dict) -> None:
         """Build term structure payload from vol engine pillar_rows."""
@@ -406,6 +419,33 @@ class Controller(SettingsMixin):
         smile_data = result.get("smile_data", {})
         if smile_data:
             self.window.smile_chart_panel.update({"smiles": smile_data})
+
+    def _check_market_open(self) -> bool:
+        """Stream EURUSD briefly to determine if the market is open."""
+        if not self.ib_client.is_connected():
+            return False
+        try:
+            contract = Forex("EURUSD")
+            ticker = self.ib_client.request_market_data(contract)
+            if ticker is None:
+                return False
+            # Poll for up to 3 seconds waiting for a valid price
+            for _ in range(6):
+                self.ib_client.ib.sleep(0.5)
+                bid = getattr(ticker, "bid", None)
+                ask = getattr(ticker, "ask", None)
+                valid_bid = bid is not None and isinstance(bid, (int, float)) and not math.isnan(bid) and bid > 0
+                valid_ask = ask is not None and isinstance(ask, (int, float)) and not math.isnan(ask) and ask > 0
+                if valid_bid or valid_ask:
+                    logger.info("Market open check: bid=%s, ask=%s", bid, ask)
+                    self.ib_client.ib.cancelMktData(contract)
+                    return True
+            logger.info("Market open check: no valid price after 3s (bid=%s, ask=%s)", bid, ask)
+            self.ib_client.ib.cancelMktData(contract)
+            return False
+        except Exception as exc:
+            logger.warning("Market open check failed: %s", exc)
+            return False
 
     def _get_mid_spot(self) -> float | None:
         """Return mid spot price from cached bid/ask, or best available side."""
@@ -900,6 +940,56 @@ class Controller(SettingsMixin):
         except Exception as exc:
             self.window.order_ticket_panel.set_feedback(str(exc), level="error")
             self._log(f"[ERROR][order] {exc}")
+
+    def _on_close_position(self, pos: dict) -> None:
+        """Close a position by placing a reverse MKT order."""
+        if self._order_worker is None or not self._order_worker._running:
+            self._log("[WARN][close] Order worker is not running.")
+            return
+        if not self.ib_client.is_connected():
+            self._log("[WARN][close] Not connected to IBKR.")
+            return
+
+        sec_type = pos.get("sec_type", "")
+        side = pos.get("side", "")
+        qty = pos.get("qty", 0)
+        close_side = "SELL" if side == "BUY" else "BUY"
+
+        try:
+            if sec_type == "FUT":
+                request = {"side": close_side, "quantity": qty, "expiry": pos.get("expiry", "")}
+                result = self._order_worker.place_future_order(request)
+            elif sec_type == "FOP":
+                strike_raw = pos.get("strike", "0")
+                try:
+                    strike_val = float(str(strike_raw).replace(",", ""))
+                except ValueError:
+                    strike_val = 0.0
+                request = {
+                    "side": close_side,
+                    "quantity": qty,
+                    "right": pos.get("right", ""),
+                    "strike": strike_val,
+                    "expiry": pos.get("expiry", ""),
+                }
+                result = self._order_worker.place_option_order(request)
+            else:
+                symbol = pos.get("symbol", "EURUSD")
+                request = {
+                    "symbol": symbol,
+                    "side": close_side,
+                    "quantity": qty,
+                    "order_type": "MKT",
+                }
+                result = self._order_worker.place_order(request)
+
+            ok = result.get("ok", False)
+            msg = result.get("message", "")
+            self._log(f"[{'OK' if ok else 'FAIL'}][close] {msg}")
+            if ok and self._risk_engine is not None:
+                self._risk_engine.request_refresh()
+        except Exception as exc:
+            self._log(f"[ERROR][close] {exc}")
 
     def _queue_order_from_ticket(self) -> None:
         """Validate ticket input and queue order with user confirmation dialog."""
