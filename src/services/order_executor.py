@@ -466,10 +466,24 @@ class OrderExecutor:
             return {"ok": False, "kind": "order", "message": "Quantity must be > 0."}
 
         try:
+            expiry = str(request.get("expiry", "")).strip()
             ib_symbol = str(request.get("fut_symbol", "EUR"))
-            qualified, err = self._resolve_front_future(ib_symbol)
-            if qualified is None:
-                return {"ok": False, "kind": "order", "message": err}
+            if expiry:
+                # Qualify exact contract by expiry
+                fut = Contract()
+                fut.symbol = ib_symbol
+                fut.secType = "FUT"
+                fut.exchange = "CME"
+                fut.currency = "USD"
+                fut.lastTradeDateOrContractMonth = expiry
+                details = self.ib_client.ib.reqContractDetails(fut)
+                if not details:
+                    return {"ok": False, "kind": "order", "message": f"No future found for expiry {expiry}."}
+                qualified = details[0].contract
+            else:
+                qualified, err = self._resolve_front_future(ib_symbol)
+                if qualified is None:
+                    return {"ok": False, "kind": "order", "message": err}
 
             order = Order()
             order.action = side

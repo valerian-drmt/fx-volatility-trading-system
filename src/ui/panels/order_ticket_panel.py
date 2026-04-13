@@ -172,7 +172,7 @@ class OrderTicketPanel(QWidget):
         "EURCHF", "AUDJPY",
     )
 
-    EXPIRIES = ("1W", "2W", "1M", "2M", "3M", "6M", "9M", "1Y")
+    EXPIRIES = ("1M", "2M", "3M", "4M", "5M", "6M")
 
     PRICE_UPDATE_INTERVAL_S = 2  # throttle mid price / notional / delta refresh
 
@@ -272,7 +272,9 @@ class OrderTicketPanel(QWidget):
         self.side_combo = QComboBox()
         self.side_combo.addItems(["BUY", "SELL"])
         self._fut_type_label = QLabel("MKT")
-        self._fut_contract_label = QLabel("6E - 125k")
+        self._fut_contract_combo = QComboBox()
+        self._fut_contract_combo.addItems(["6E - 125k", "M6E - 12.5k"])
+        self._fut_contract_combo.currentIndexChanged.connect(lambda _: self._on_fut_contract_changed())
         self.qty_input = QSpinBox()
         self.qty_input.setRange(0, 100_000)
         self.qty_input.setValue(0)
@@ -283,7 +285,7 @@ class OrderTicketPanel(QWidget):
         fut_form.addRow("Symbol:", self._fut_symbol_label)
         fut_form.addRow("Side:", self.side_combo)
         fut_form.addRow("Type:", self._fut_type_label)
-        fut_form.addRow("Contract:", self._fut_contract_label)
+        fut_form.addRow("Contract:", self._fut_contract_combo)
         fut_form.addRow("Quantity:", self.qty_input)
         fut_form.addRow("Notional (USD):", self.fut_notional_label)
         fut_form.addRow("Delta (USD):", self.fut_delta_label)
@@ -322,9 +324,6 @@ class OrderTicketPanel(QWidget):
         self.opt_qty_input.setRange(0, 100_000)
         self.opt_qty_input.setValue(0)
 
-        self.opt_delta_hedge_checkbox = QCheckBox("Delta hedge")
-        self.opt_delta_hedge_checkbox.setChecked(False)
-
         self._opt_strikes_by_tenor: dict[str, list[float]] = {}
         self._opt_atm_needed = True
 
@@ -335,7 +334,6 @@ class OrderTicketPanel(QWidget):
         opt_form.addRow("Strike:", self.opt_strike_combo)
         opt_form.addRow("Type:", self._opt_type_label)
         opt_form.addRow("Quantity:", self.opt_qty_input)
-        opt_form.addRow("", self.opt_delta_hedge_checkbox)
         opt_inner.addLayout(opt_form)
 
         self.opt_book_button = QPushButton("Book (Preview)")
@@ -399,8 +397,24 @@ class OrderTicketPanel(QWidget):
         # Wire option tenor change → update strikes
         self.opt_expiry_combo.currentTextChanged.connect(lambda _: self._update_strikes_for_tenor())
 
-    FUT_MULTIPLIER = 125_000
-    FUT_IB_SYMBOL = "EUR"
+    _FUT_CONTRACTS = {
+        "6E - 125k": ("EUR", 125_000),
+        "M6E - 12.5k": ("M6E", 12_500),
+    }
+
+    @property
+    def FUT_MULTIPLIER(self) -> int:
+        _, mult = self._FUT_CONTRACTS.get(self._fut_contract_combo.currentText(), ("EUR", 125_000))
+        return mult
+
+    @property
+    def FUT_IB_SYMBOL(self) -> str:
+        sym, _ = self._FUT_CONTRACTS.get(self._fut_contract_combo.currentText(), ("EUR", 125_000))
+        return sym
+
+    def _on_fut_contract_changed(self) -> None:
+        self._update_fut_notional()
+        self._update_fut_delta()
 
     def _get_mid_price(self) -> float | None:
         if self._current_bid is not None and self._current_ask is not None:
@@ -519,7 +533,7 @@ class OrderTicketPanel(QWidget):
             "quantity": int(self.opt_qty_input.value()),
             "limit_price": 0.0,
             "multiplier": self.FUT_MULTIPLIER,
-            "delta_hedge": self.opt_delta_hedge_checkbox.isChecked(),
+            "delta_hedge": False,
         }
 
     def set_option_chains(self, strikes_by_tenor: dict[str, list[float]]) -> None:
