@@ -2,6 +2,7 @@
 
 **Real-time FX volatility analytics and order execution platform** built on Interactive Brokers API.
 
+[![CI](https://github.com/valerian-drmt/fx-volatility-trading-system/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/valerian-drmt/fx-volatility-trading-system/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![PyQt5](https://img.shields.io/badge/PyQt5-GUI-41CD52?logo=qt&logoColor=white)
 ![ib-insync](https://img.shields.io/badge/ib--insync-IBKR%20API-blue)
