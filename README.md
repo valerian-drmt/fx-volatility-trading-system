@@ -101,6 +101,40 @@ python -m ruff check src tests app.py                         # lint
 
 ---
 
+## Contributing
+
+### Local CI reproduction
+
+The three commands below mirror exactly what `.github/workflows/ci.yml` runs on every push and pull request. Run them locally before pushing to avoid red CI:
+
+```bash
+# 1. Static import check
+python -m compileall -q src app.py
+
+# 2. Lint
+python -m ruff check src tests app.py
+
+# 3. Unit tests (integration excluded)
+$env:PYTHONPATH = "src"; $env:QT_QPA_PLATFORM = "offscreen"
+python -m pytest -m "not integration"
+```
+
+On macOS / Linux, replace the PowerShell env assignment with `PYTHONPATH=src QT_QPA_PLATFORM=offscreen python -m pytest -m "not integration"`.
+
+### Branching and merging
+
+- Trunk-based: `main` is always deployable. One short-lived feature branch per pull request.
+- Branch naming: `<type>/<release>-<slug>` (e.g. `feat/r3-redis-pubsub-ticks`, `fix/r4-websocket-reconnect`). Types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`, `perf`, `ci`.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) — see `releases/COMMIT_METHODOLOGY.md`.
+- Merge strategy: **Squash and merge** (linear history on `main`).
+- Branch protection rules for `main` are documented in [`docs/BRANCH_PROTECTION.md`](docs/BRANCH_PROTECTION.md).
+
+### Release workflow
+
+The migration from v1 (PyQt monolith) to v2 (distributed platform) is planned as a sequence of releases R0 → R8 targeting `v1.1.0` → `v2.0.0`. Each release is a GitHub milestone grouping several small PRs. See `releases/` for the roadmap (local, not tracked in git).
+
+---
+
 ## Project Structure
 
 ```
