@@ -7,7 +7,9 @@ services:
       POSTGRES_USER: fxvol
       POSTGRES_PASSWORD: ${DB_PASSWORD:-fxvol}
     ports:
-      - "5432:5432"
+      # Exposed on 5433 to avoid conflict with a native Postgres install that
+      # some developers run on 5432. Internally the container still listens on 5432.
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
