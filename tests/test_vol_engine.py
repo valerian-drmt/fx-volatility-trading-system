@@ -59,6 +59,8 @@ def test_vol_engine_runs_scan():
     engine.start()
 
     result = out_q.get(timeout=120)
+    while result.get("type") == "vol_status":
+        result = out_q.get(timeout=120)
     engine.stop()
     engine.join(timeout=5)
 
