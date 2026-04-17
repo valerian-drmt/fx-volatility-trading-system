@@ -7,3 +7,9 @@ numpy>=1.24
 scipy>=1.10
 pandas>=2.0
 arch>=6.0
+
+# Persistence (R1)
+SQLAlchemy>=2.0,<2.1
+asyncpg>=0.29,<0.30
+alembic>=1.13,<1.14
+psycopg2-binary>=2.9,<3.0
