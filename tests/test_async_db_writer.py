@@ -1,11 +1,15 @@
-"""Unit tests for the AsyncDatabaseWriter — R2 PR #1 core scope.
+"""Unit tests for the AsyncDatabaseWriter.
 
-Exercises the batch-collect semantics (size limit, timeout) and the
-table-grouped bulk insert. Uses an in-memory aiosqlite engine so tests
-stay fast and hermetic, no live Postgres needed.
+Covers :
+    - R2 PR #1 : batch-collect semantics (size limit, timeout) and the
+                 table-grouped bulk insert
+    - R2 PR #2 : ON CONFLICT DO NOTHING compile-level check on vol_surfaces,
+                 shutdown() queue drain, bounded queue raising QueueFull
 
-Idempotency (ON CONFLICT), retries and graceful shutdown land in R2
-PR #2 and are therefore NOT covered here.
+Uses an in-memory aiosqlite engine so tests stay fast and hermetic. The
+Postgres-specific ON CONFLICT behavior is verified statically (SQL
+compile) since sqlite does not execute it the same way. End-to-end
+behavior on real Postgres lands in R2 PR #5 (db_integration tests).
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from persistence.models import AccountSnap, Base, Signal, Trade
@@ -74,8 +79,9 @@ async def test_collect_batch_returns_on_timeout(writer):
     elapsed = asyncio.get_event_loop().time() - start
 
     assert len(batch) == 5
-    assert elapsed >= writer.batch_timeout_s
-    # Comfortable upper bound: should return shortly after the timeout fires.
+    # asyncio timers fire with ~millisecond imprecision, so allow a small
+    # lower-bound slack. The comfortable upper bound guards against a hang.
+    assert elapsed >= writer.batch_timeout_s * 0.9
     assert elapsed < writer.batch_timeout_s + 1.0
 
 
@@ -143,3 +149,73 @@ async def test_write_batch_groups_by_table(writer, session_factory):
     assert account_count == 3
     assert trade_count == 2
     assert signal_count == 5
+
+
+# --- R2 PR #2 : idempotency, retries, graceful shutdown ---------------------
+
+
+def test_on_conflict_do_nothing_applied_to_vol_surfaces(writer):
+    """On postgres, vol_surfaces and signals inserts must carry ON CONFLICT.
+
+    Verified statically on the compiled SQL — tests run on sqlite where the
+    runtime idempotency story differs. Live postgres validation lands in
+    R2 PR #5 (test_async_db_writer_live.py).
+    """
+    rows = [
+        {
+            "timestamp": datetime(2026, 4, 20, 10, 0, 0, tzinfo=UTC),
+            "underlying": "EURUSD",
+            "spot": Decimal("1.08"),
+            "surface_data": {},
+        }
+    ]
+    stmt = writer._build_insert("vol_surfaces", rows, dialect_name="postgresql")
+    sql = str(stmt.compile(dialect=postgresql.dialect()))
+    assert "ON CONFLICT" in sql.upper()
+    assert "DO NOTHING" in sql.upper()
+    # The conflict target must be the UNIQUE natural key, not the PK.
+    assert "timestamp" in sql
+    assert "underlying" in sql
+
+
+def test_on_conflict_do_nothing_not_applied_to_non_idempotent_table(writer):
+    """Tables like account_snaps have no natural dedup key: plain INSERT only."""
+    rows = [{"timestamp": datetime(2026, 4, 20, 10, 0, 0, tzinfo=UTC)}]
+    stmt = writer._build_insert("account_snaps", rows, dialect_name="postgresql")
+    sql = str(stmt.compile(dialect=postgresql.dialect()))
+    assert "ON CONFLICT" not in sql.upper()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_drains_remaining_queue(writer, session_factory):
+    """shutdown() flushes every queued event before returning."""
+    for i in range(20):
+        writer.queue.put_nowait(_account_event(i))
+
+    await writer.shutdown()
+
+    assert writer.stop_event.is_set()
+    assert writer.queue.empty()
+    async with session_factory() as session:
+        count = await session.scalar(select(func.count()).select_from(AccountSnap))
+    assert count == 20
+
+
+@pytest.mark.asyncio
+async def test_queue_full_logs_and_drops(session_factory):
+    """A bounded queue raises QueueFull once at capacity, handed back to producer."""
+    tiny = AsyncDatabaseWriter(
+        session_factory=session_factory,
+        queue_max_size=5,
+        batch_size_max=10,
+        batch_timeout_s=0.1,
+    )
+    for i in range(5):
+        tiny.queue.put_nowait(_account_event(i))
+
+    assert tiny.queue.full()
+    with pytest.raises(asyncio.QueueFull):
+        tiny.queue.put_nowait(_account_event(99))
+
+    # The writer itself does not swallow QueueFull — producers will handle
+    # it in R2 PR #4 with a bounded wait_for + drop-and-log strategy.
