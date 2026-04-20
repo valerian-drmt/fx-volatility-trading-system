@@ -72,6 +72,23 @@ html, body, #root {
 .data-table-empty { color: var(--muted); font-style: italic; text-align: center; padding: 12px; }
 
 .chart-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+.ticket-body { display: flex; flex-direction: column; gap: 10px; }
+.ticket-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ticket-row label { display: flex; flex-direction: column; font-size: 10px; color: var(--muted); gap: 2px; flex: 1; min-width: 70px; }
+.ticket-row input, .ticket-row select {
+  background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 3px; padding: 4px 6px; font-size: 12px;
+}
+.ticket-greeks { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.ticket-hint { color: var(--muted); font-size: 11px; font-style: italic; }
+.ticket-submit {
+  background: var(--accent); color: #fff; border: 0; border-radius: 3px;
+  padding: 6px 12px; font-weight: 600; cursor: pointer;
+}
+.ticket-submit:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+.book-subhead { margin: 8px 0 4px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .chart-empty { color: var(--muted); text-align: center; padding: 40px; font-style: italic; }
 
 [data-sign="neg"] { color: var(--neg); }
