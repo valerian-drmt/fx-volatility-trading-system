@@ -76,11 +76,11 @@ jobs:
           path: junit.xml
           retention-days: 14
 
-  db-integration:
-    name: alembic migrations + async writer live tests
+  live-integration:
+    name: alembic + writer + redis bus live tests
     runs-on: ubuntu-latest
     needs: quality
-    timeout-minutes: 7
+    timeout-minutes: 8
 
     services:
       postgres:
@@ -97,12 +97,29 @@ jobs:
           --health-timeout 3s
           --health-retries 10
 
+      redis:
+        # Plain redis:7-alpine (no hardened redis.conf mount).
+        # The hardened config in infrastructure/redis/redis.conf disables
+        # FLUSHDB / CONFIG for prod safety, but tests use per-key DELETE
+        # for cleanup so the defaults are fine here and keep the CI setup
+        # minimal (no bind-mount gymnastics).
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     env:
       PYTHONPATH: src
       QT_QPA_PLATFORM: offscreen
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
       DATABASE_URL: postgresql+asyncpg://fxvol:fxvol@localhost:5432/fxvol
       DB_RUN_INTEGRATION: "1"
+      REDIS_URL: redis://localhost:6379/0
+      REDIS_RUN_INTEGRATION: "1"
 
     steps:
       - name: Checkout
@@ -140,6 +157,9 @@ jobs:
 
       - name: Run db_integration tests
         run: python -m pytest -m db_integration -v
+
+      - name: Run redis_integration tests
+        run: python -m pytest -m redis_integration -v
 
   integration:
     name: IB paper integration tests (manual only)
