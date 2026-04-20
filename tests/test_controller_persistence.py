@@ -270,3 +270,55 @@ class TestPersistVolScan:
         # Missing market_symbol attribute → build_vol_surface_row raises.
         c._persist_vol_scan({"spot": 1.0, "pillar_rows": []})
         assert rec.calls == []
+
+
+@pytest.mark.unit
+class TestPersistRiskCycle:
+    @staticmethod
+    def _risk_result(n_positions: int = 2) -> dict:
+        rows = [{
+            "symbol": f"EUR.USD{i}", "side": "BUY", "qty": 1,
+            "strike": "1.08000", "right": "C", "sec_type": "FOP",
+            "expiry": "20260515", "fill_price": 0.005,
+            "delta": 500.0, "vega": 120.0, "gamma": 800.0, "theta": -15.0,
+            "pnl": 25.0, "iv_now_pct": 7.4,
+        } for i in range(n_positions)]
+        return {"open_positions": rows, "spot": 1.0857, "summary": {}, "pnl_curve": None}
+
+    def test_enqueues_one_position_and_one_snapshot_per_open_pos(self):
+        rec = _RecordingThread()
+        c = Controller.__new__(Controller)
+        c._db_writer_thread = rec
+        c._persist_risk_cycle(self._risk_result(3))
+
+        tables = [t for t, _ in rec.calls]
+        # 3 positions × (positions + position_snapshots) = 6 rows
+        assert tables.count("positions") == 3
+        assert tables.count("position_snapshots") == 3
+
+    def test_position_and_snapshot_share_the_same_id(self):
+        """Snapshots must reference the positions.id produced in the same cycle."""
+        rec = _RecordingThread()
+        c = Controller.__new__(Controller)
+        c._db_writer_thread = rec
+        c._persist_risk_cycle(self._risk_result(1))
+
+        pos_row = next(p for t, p in rec.calls if t == "positions")
+        snap_row = next(p for t, p in rec.calls if t == "position_snapshots")
+        assert pos_row["id"] == snap_row["position_id"]
+
+    def test_invalid_position_is_skipped(self):
+        rec = _RecordingThread()
+        c = Controller.__new__(Controller)
+        c._db_writer_thread = rec
+
+        r = self._risk_result(1)
+        r["open_positions"][0]["sec_type"] = "BOND"  # unknown
+        c._persist_risk_cycle(r)
+
+        assert rec.calls == []
+
+    def test_no_op_when_persistence_disabled(self):
+        c = Controller.__new__(Controller)
+        c._db_writer_thread = None
+        c._persist_risk_cycle(self._risk_result(5))  # must not raise
