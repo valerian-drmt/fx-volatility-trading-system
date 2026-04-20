@@ -110,48 +110,38 @@ Accept: application/json
 
 
 # ============================================================================
-# R4 PR #5 — portfolio + orders (TODO)
+# R4 PR #5 — portfolio (LIVE)  +  orders (TODO R4 PR #5b)
 # ============================================================================
 
-### Liste des positions ouvertes
-GET {{api}}/positions
+### Liste des positions (toutes, OPEN/CLOSED/EXPIRED)
+GET {{api}}/positions?limit=50
+
+### Positions OPEN seulement
+GET {{api}}/positions?status=OPEN&limit=50
 
 ### Detail d'une position par id
 GET {{api}}/positions/42
 
-### Greeks agreges du portefeuille (lit latest_greeks:portfolio dans Redis)
+### Greeks agreges (lit latest_greeks:portfolio dans Redis)
 GET {{api}}/risk
 
-### PnL curve 31 points (lit latest_pnl_curve dans Redis)
+### PnL curve (lit latest_pnl_curve dans Redis)
 GET {{api}}/pnl-curve
 
-### Historique des snapshots pour une position
-GET {{api}}/history?position_id=42&from=2026-04-01&to=2026-04-20
+### Historique des snapshots pour une position (oldest first, pret pour plot timeseries)
+GET {{api}}/history?position_id=42&limit=500
 
-### Preview d'un ordre (whatIf IB, pas d'execution)
-POST {{api}}/orders/preview
-Content-Type: application/json
 
-{
-  "symbol": "EURUSD",
-  "instrument": "Option",
-  "side": "BUY",
-  "quantity": 1,
-  "strike": 1.0900,
-  "expiry": "20260515",
-  "right": "CALL"
-}
-
-### Validation d'un ordre (sans l'envoyer)
-POST {{api}}/orders/validate
-Content-Type: application/json
-
-{
-  "symbol": "EURUSD",
-  "side": "BUY",
-  "quantity": 1,
-  "limit_price": 0.00520
-}
+# ---------- TODO PR #5b : orders preview/validate ---------------------------
+#
+### Preview d'un ordre (whatIf IB)
+# POST {{api}}/orders/preview
+# { "symbol": "EURUSD", "instrument": "Option", "side": "BUY",
+#   "quantity": 1, "strike": 1.0900, "expiry": "20260515", "right": "CALL" }
+#
+### Validation d'un ordre
+# POST {{api}}/orders/validate
+# { "symbol": "EURUSD", "side": "BUY", "quantity": 1, "limit_price": 0.00520 }
 
 
 # ============================================================================
