@@ -177,3 +177,96 @@ class TestControllerEnqueueDbEvent:
         c._db_writer_thread = FakeThread()
         c.enqueue_db_event("vol_surfaces", {"k": "v"})
         assert calls == [("vol_surfaces", {"k": "v"})]
+
+
+# --- 4. R2 PR #4 : engine callbacks forward DB events -----------------------
+
+
+class _RecordingThread:
+    """Fake DbWriterThread collecting enqueue() calls for assertions."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, dict]] = []
+
+    def enqueue(self, table_name, payload):
+        self.calls.append((table_name, payload))
+
+
+@pytest.mark.unit
+class TestPersistAccountSnap:
+    def test_builds_row_and_enqueues_to_account_snaps(self):
+        from types import SimpleNamespace
+
+        rec = _RecordingThread()
+        c = Controller.__new__(Controller)
+        c._db_writer_thread = rec
+        c._cash_balances_by_currency = {"USD": 100_000.0}
+
+        c._persist_account_snap({
+            "summary": [SimpleNamespace(tag="NetLiquidation", currency="USD", value="150000")],
+            "positions": [object(), object()],
+        })
+
+        assert len(rec.calls) == 1
+        table, payload = rec.calls[0]
+        assert table == "account_snaps"
+        assert payload["open_positions_count"] == 2
+        assert payload["cash_usd"] is not None
+
+    def test_no_op_when_persistence_disabled(self):
+        c = Controller.__new__(Controller)
+        c._db_writer_thread = None
+        # Must not even reach the payload builder (no attr needed).
+        c._persist_account_snap({"summary": [], "positions": []})
+
+    def test_malformed_portfolio_is_swallowed(self):
+        rec = _RecordingThread()
+        c = Controller.__new__(Controller)
+        c._db_writer_thread = rec
+        # Missing _cash_balances_by_currency attribute — builder will raise.
+        c._persist_account_snap({"summary": "not-a-list", "positions": None})
+        # Exception absorbed, no enqueue performed.
+        assert rec.calls == []
+
+
+@pytest.mark.unit
+class TestPersistVolScan:
+    def test_enqueues_one_surface_and_one_signal_per_tenor(self):
+        rec = _RecordingThread()
+        c = Controller.__new__(Controller)
+        c._db_writer_thread = rec
+        c.market_symbol = "EURUSD"
+        c._latest_bid = 1.17650
+        c._latest_ask = 1.17660
+
+        c._persist_vol_scan({
+            "spot": 1.17855,
+            "pillar_rows": [
+                {
+                    "tenor_label": "1M", "dte": 30,
+                    "sigma_ATM_pct": 7.5, "sigma_fair_pct": 7.4,
+                    "ecart_pct": 0.1, "signal": "CHEAP", "RV_pct": 7.6,
+                },
+                {
+                    "tenor_label": "3M", "dte": 90,
+                    "sigma_ATM_pct": 8.0, "sigma_fair_pct": 7.9,
+                    "ecart_pct": 0.1, "signal": "FAIR", "RV_pct": 8.1,
+                },
+            ],
+        })
+
+        tables = [t for t, _ in rec.calls]
+        assert tables == ["vol_surfaces", "signals", "signals"]
+
+    def test_no_op_when_persistence_disabled(self):
+        c = Controller.__new__(Controller)
+        c._db_writer_thread = None
+        c._persist_vol_scan({"spot": 1.0, "pillar_rows": []})
+
+    def test_exception_in_builder_does_not_propagate(self):
+        rec = _RecordingThread()
+        c = Controller.__new__(Controller)
+        c._db_writer_thread = rec
+        # Missing market_symbol attribute → build_vol_surface_row raises.
+        c._persist_vol_scan({"spot": 1.0, "pillar_rows": []})
+        assert rec.calls == []
