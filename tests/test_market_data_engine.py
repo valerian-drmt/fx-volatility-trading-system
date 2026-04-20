@@ -1,8 +1,12 @@
 """Unit tests for MarketDataEngine poll logic."""
+import asyncio
 import threading
+from unittest.mock import AsyncMock
 
 import pytest
+from redis import exceptions as redis_exc
 
+from bus.publisher import reset_throttle_for_tests
 from services.market_data_engine import MarketDataEngine
 
 
@@ -45,6 +49,10 @@ def _make_engine(client, **kw):
     e._no_tick_check_count = 0
     e._no_tick_warning_emitted = False
     e._has_received_stream_ticks = False
+    e._symbol = kw.get("symbol", "EURUSD")
+    e._redis_url = None
+    e._loop = None
+    e._redis_client = None
     return e
 
 
@@ -119,3 +127,84 @@ class TestNoTickWarnings:
         client._ticks = []
         p = e._poll_once(now=2.1, last_snapshot=0.0)
         assert p["messages"] == []
+
+
+# --- R3 PR #4 : Redis bus wiring -------------------------------------------
+
+
+def _engine_with_mock_redis():
+    """Return an engine with a mocked aioredis client and a real event loop."""
+    reset_throttle_for_tests()
+    e = _make_engine(_FakeIB(ticks=[{"bid": 1.0856, "ask": 1.0858}]))
+    e._redis_client = AsyncMock()
+    e._redis_client.set = AsyncMock(return_value=True)
+    e._redis_client.publish = AsyncMock(return_value=1)
+    e._loop = asyncio.new_event_loop()
+    e._symbol = "EURUSD"
+    return e
+
+
+@pytest.mark.unit
+class TestRedisBusWiring:
+    def test_market_data_engine_writes_to_redis(self):
+        """A single tick payload triggers SET×3 + PUBLISH×1 on the mock Redis."""
+        e = _engine_with_mock_redis()
+        try:
+            e._publish_ticks_to_redis({"ticks": [{"bid": 1.0856, "ask": 1.0858}]})
+        finally:
+            e._loop.close()
+
+        # 3 SET calls : latest_spot, latest_bid, latest_ask.
+        assert e._redis_client.set.call_count == 3
+        keys_written = [args[0] for args, _ in e._redis_client.set.call_args_list]
+        assert "latest_spot:EURUSD" in keys_written
+        assert "latest_bid:EURUSD" in keys_written
+        assert "latest_ask:EURUSD" in keys_written
+        # 1 PUBLISH on the ticks channel (throttle was reset, first call wins).
+        assert e._redis_client.publish.call_count == 1
+        channel = e._redis_client.publish.call_args[0][0]
+        assert channel == "ticks"
+
+    def test_market_data_engine_redis_unavailable_does_not_crash(self):
+        """A redis ConnectionError in publish_tick is swallowed by the helper."""
+        e = _engine_with_mock_redis()
+        e._redis_client.set = AsyncMock(
+            side_effect=redis_exc.ConnectionError("Connection reset by peer")
+        )
+        try:
+            # Must NOT raise even though every SET throws.
+            e._publish_ticks_to_redis({"ticks": [{"bid": 1.0856, "ask": 1.0858}]})
+        finally:
+            e._loop.close()
+
+    def test_publish_ticks_skips_when_no_redis_client(self):
+        """If the engine was started without REDIS_URL, the method is a no-op."""
+        e = _make_engine(_FakeIB())  # _redis_client stays None
+        # Should not raise, should not try to build anything.
+        e._publish_ticks_to_redis({"ticks": [{"bid": 1.0, "ask": 1.1}]})
+
+    def test_publish_account_writes_snapshot_and_publishes(self):
+        e = _engine_with_mock_redis()
+        payload = {
+            "portfolio_payload": {
+                "summary": [1, 2, 3, 4, 5],
+                "positions": ["pos_a", "pos_b"],
+            }
+        }
+        try:
+            e._publish_account_to_redis(payload)
+        finally:
+            e._loop.close()
+        assert e._redis_client.set.call_count == 1
+        assert e._redis_client.set.call_args[0][0] == "account_snapshot"
+        assert e._redis_client.publish.call_count == 1
+        assert e._redis_client.publish.call_args[0][0] == "account"
+
+    def test_heartbeat_writes_canonical_key(self):
+        e = _engine_with_mock_redis()
+        try:
+            e._set_heartbeat_to_redis()
+        finally:
+            e._loop.close()
+        assert e._redis_client.set.call_count == 1
+        assert e._redis_client.set.call_args[0][0] == "heartbeat:market_data"
