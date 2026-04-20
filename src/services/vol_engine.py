@@ -19,10 +19,23 @@ from pathlib import Path
 import numpy as np
 from arch import arch_model
 from ib_insync import IB, Contract
+from redis import asyncio as aioredis
+from redis import exceptions as redis_exc
 from scipy.interpolate import PchipInterpolator
+
+from bus import keys
+from bus.publisher import publish_vol_update, set_heartbeat
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 logger = logging.getLogger("vol_engine")
+
+_REDIS_SWALLOW: tuple[type[BaseException], ...] = (
+    redis_exc.ConnectionError,
+    redis_exc.TimeoutError,
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Config loader — reads config/vol_config.json at each scan cycle
@@ -143,7 +156,8 @@ def pillars_to_smile_data(pillar_rows: list[dict]) -> dict[str, dict]:
 
 class VolEngine(threading.Thread):
     def __init__(self, output_queue: queue.Queue,
-                 host: str = "127.0.0.1", port: int = 4002, client_id: int = 2) -> None:
+                 host: str = "127.0.0.1", port: int = 4002, client_id: int = 2,
+                 symbol: str = "EURUSD", redis_url: str | None = None) -> None:
         super().__init__(name="VolEngine", daemon=True)
         self._output_queue = output_queue
         self._host = host
@@ -151,6 +165,11 @@ class VolEngine(threading.Thread):
         self._client_id = client_id
         self._stop_event = threading.Event()
         self._risk_engine = None
+        self._symbol = symbol
+        self._redis_url = redis_url
+        # Redis bus state — populated in run() on this thread's loop.
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._redis_client: aioredis.Redis | None = None
 
     def set_risk_engine(self, risk_engine) -> None:
         self._risk_engine = risk_engine
@@ -159,31 +178,127 @@ class VolEngine(threading.Thread):
         self._stop_event.set()
 
     def run(self) -> None:
-        asyncio.set_event_loop(asyncio.new_event_loop())
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        self._init_redis_bus_if_configured()
         logger.info("VolEngine thread started")
         if self._stop_event.wait(timeout=STARTUP_DELAY_S):
+            self._teardown_redis_bus()
             return
-        while not self._stop_event.is_set():
-            cfg1 = _load_vol_config("step1")
-            loop_interval = cfg1.get("LOOP_INTERVAL_S", 180)
-            try:
-                self._output_queue.put({"type": "vol_status", "status": "computing"})
-                result = self._run_scan()
-                self._output_queue.put(result)
-                # Push IV surface to risk engine for greeks computation
-                if self._risk_engine is not None:
-                    pillar_rows = result.get("pillar_rows", [])
-                    if pillar_rows:
-                        self._risk_engine.iv_surface = {
-                            p["tenor_label"]: p for p in pillar_rows
-                        }
-            except Exception as exc:
-                logger.exception("VolEngine scan failed")
-                self._output_queue.put({"type": "vol_result", "scanner_rows": [],
-                                         "error": str(exc)})
-            if self._stop_event.wait(timeout=loop_interval):
-                break
+        try:
+            while not self._stop_event.is_set():
+                cfg1 = _load_vol_config("step1")
+                loop_interval = cfg1.get("LOOP_INTERVAL_S", 180)
+                try:
+                    self._output_queue.put({"type": "vol_status", "status": "computing"})
+                    result = self._run_scan()
+                    self._output_queue.put(result)
+                    # Push IV surface to risk engine for greeks computation
+                    if self._risk_engine is not None:
+                        pillar_rows = result.get("pillar_rows", [])
+                        if pillar_rows:
+                            self._risk_engine.iv_surface = {
+                                p["tenor_label"]: p for p in pillar_rows
+                            }
+                    # Redis bus — best-effort, never crash the engine
+                    self._publish_vol_to_redis(result)
+                    self._set_heartbeat_to_redis()
+                except Exception as exc:
+                    logger.exception("VolEngine scan failed")
+                    self._output_queue.put({"type": "vol_result", "scanner_rows": [],
+                                             "error": str(exc)})
+                if self._stop_event.wait(timeout=loop_interval):
+                    break
+        finally:
+            self._teardown_redis_bus()
         logger.info("VolEngine thread stopped")
+
+    # ── Redis bus wiring (R3 PR #5) ────────────────────────────────────────
+
+    def _init_redis_bus_if_configured(self) -> None:
+        if not self._redis_url:
+            return
+        try:
+            pool = aioredis.ConnectionPool.from_url(
+                self._redis_url, max_connections=10, decode_responses=True
+            )
+            self._redis_client = aioredis.Redis(connection_pool=pool)
+            logger.info("VolEngine connected to Redis at %s", self._redis_url)
+        except Exception:
+            logger.exception("VolEngine Redis init failed, bus disabled")
+            self._redis_client = None
+
+    def _teardown_redis_bus(self) -> None:
+        if self._loop is None:
+            return
+        try:
+            if self._redis_client is not None:
+                self._loop.run_until_complete(self._redis_client.aclose())
+            self._loop.run_until_complete(self._loop.shutdown_asyncgens())
+        except Exception:
+            logger.exception("VolEngine Redis teardown error")
+        finally:
+            # Do not close the loop here — VolEngine's internal code may
+            # still rely on it (ib_insync schedules coroutines on it).
+            self._redis_client = None
+
+    def _publish_vol_to_redis(self, result: dict) -> None:
+        if self._redis_client is None or self._loop is None:
+            return
+        if result.get("error"):
+            return
+        pillar_rows = result.get("pillar_rows") or []
+        if not pillar_rows:
+            return
+        # Compact payload : one entry per tenor with the fields consumers
+        # need (FastAPI term structure + smile endpoints in R4).
+        surface_data = {
+            p.get("tenor_label", f"idx_{i}"): {
+                "dte": p.get("dte"),
+                "sigma_atm_pct": p.get("sigma_ATM_pct"),
+                "sigma_fair_pct": p.get("sigma_fair_pct"),
+                "ecart_pct": p.get("ecart_pct"),
+                "rv_pct": p.get("RV_pct"),
+                "signal": p.get("signal"),
+            }
+            for i, p in enumerate(pillar_rows)
+        }
+        signals_data = [
+            {
+                "tenor": p.get("tenor_label"),
+                "signal": p.get("signal"),
+                "ecart_pct": p.get("ecart_pct"),
+                "sigma_atm_pct": p.get("sigma_ATM_pct"),
+                "sigma_fair_pct": p.get("sigma_fair_pct"),
+            }
+            for p in pillar_rows
+            if p.get("signal") in {"CHEAP", "EXPENSIVE", "FAIR"}
+        ]
+        try:
+            self._loop.run_until_complete(
+                publish_vol_update(
+                    self._redis_client,
+                    symbol=self._symbol,
+                    surface_data=surface_data,
+                    signals_data=signals_data,
+                )
+            )
+        except _REDIS_SWALLOW as e:
+            logger.warning("redis publish_vol_update failed (transient): %s", e)
+        except Exception:
+            logger.exception("redis publish_vol_update unexpected error")
+
+    def _set_heartbeat_to_redis(self) -> None:
+        if self._redis_client is None or self._loop is None:
+            return
+        try:
+            self._loop.run_until_complete(
+                set_heartbeat(self._redis_client, keys.ENGINE_VOL)
+            )
+        except _REDIS_SWALLOW as e:
+            logger.warning("redis heartbeat (vol) failed (transient): %s", e)
+        except Exception:
+            logger.exception("redis heartbeat (vol) unexpected error")
 
     def _run_scan(self) -> dict:
         # Load config at each scan cycle
