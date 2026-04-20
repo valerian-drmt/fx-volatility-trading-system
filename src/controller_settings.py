@@ -21,6 +21,12 @@ class SettingsMixin:
         "tick_interval_ms": 100,
         "snapshot_interval_ms": 2000,
     }
+    DEFAULT_PERSISTENCE_SETTINGS = {
+        # enabled=True : engine pool will start a DbWriterThread on connect.
+        # database_url=None : writer reads DATABASE_URL from the process env.
+        "enabled": True,
+        "database_url": None,
+    }
 
     def _read_status_settings_from_panel(self) -> dict[str, Any]:
         """Read status settings from UI controls (or current state fallback)."""
@@ -76,9 +82,11 @@ class SettingsMixin:
             if isinstance(legacy_streaming, dict):
                 normalized_status["market_symbol"] = legacy_streaming.get("market_symbol", "EURUSD")
         runtime_payload = raw.get("runtime") or {}
+        persistence_payload = raw.get("persistence") or {}
         return {
             "status": SettingsMixin._validate_status_settings(normalized_status),
             "runtime": SettingsMixin._validate_runtime_settings(runtime_payload),
+            "persistence": SettingsMixin._validate_persistence_settings(persistence_payload),
         }
 
     @staticmethod
@@ -95,6 +103,18 @@ class SettingsMixin:
         if snap < tick:
             raise ValueError("Runtime setting 'snapshot_interval_ms' must be >= tick_interval_ms")
         return {"tick_interval_ms": tick, "snapshot_interval_ms": snap}
+
+    @staticmethod
+    def _validate_persistence_settings(raw: dict[str, Any]) -> dict[str, Any]:
+        """Validate persistence settings and normalize falsy URL values."""
+        if not isinstance(raw, dict):
+            raise ValueError("Persistence settings payload must be a JSON object")
+        defaults = SettingsMixin.DEFAULT_PERSISTENCE_SETTINGS
+        enabled = bool(raw.get("enabled", defaults["enabled"]))
+        url = raw.get("database_url", defaults["database_url"])
+        if url is not None:
+            url = str(url).strip() or None
+        return {"enabled": enabled, "database_url": url}
 
     @staticmethod
     def _validate_status_settings(raw: dict[str, Any]) -> dict[str, Any]:
@@ -126,30 +146,49 @@ class SettingsMixin:
         }
 
     def _save_app_settings(self) -> None:
-        """Persist current status and runtime settings to disk."""
+        """Persist current status, runtime and persistence settings to disk."""
         status_settings = self._validate_status_settings(self._read_status_settings_from_panel())
         self._apply_status_settings(status_settings)
         runtime_settings = self._validate_runtime_settings({
             "tick_interval_ms": self.tick_interval_ms,
             "snapshot_interval_ms": self.snapshot_interval_ms,
         })
-        self._write_app_settings(status_settings, runtime_settings)
+        persistence_settings = self._validate_persistence_settings({
+            "enabled": getattr(self, "persistence_enabled", True),
+            "database_url": getattr(self, "persistence_database_url", None),
+        })
+        self._write_app_settings(status_settings, runtime_settings, persistence_settings)
 
     @staticmethod
     def _default_app_settings() -> dict[str, dict[str, Any]]:
         """Return default app settings payload."""
         status_defaults = dict(SettingsMixin.DEFAULT_STATUS_SETTINGS)
         status_defaults["client_roles"] = dict({"market_data": 1, "vol_engine": 2, "risk_engine": 3})
-        return {"status": status_defaults, "runtime": dict(SettingsMixin.DEFAULT_RUNTIME_SETTINGS)}
+        return {
+            "status": status_defaults,
+            "runtime": dict(SettingsMixin.DEFAULT_RUNTIME_SETTINGS),
+            "persistence": dict(SettingsMixin.DEFAULT_PERSISTENCE_SETTINGS),
+        }
 
     def _write_full_app_settings(self, app_settings: dict[str, Any]) -> None:
         """Validate and write a full app settings payload."""
         validated = self._validate_app_settings(app_settings)
-        self._write_app_settings(validated["status"], validated["runtime"])
+        self._write_app_settings(validated["status"], validated["runtime"], validated["persistence"])
 
-    def _write_app_settings(self, status_settings: dict[str, Any], runtime_settings: dict[str, Any]) -> None:
-        """Write split status/runtime settings payload to disk."""
-        app_settings = {"status": status_settings, "runtime": runtime_settings}
+    def _write_app_settings(
+        self,
+        status_settings: dict[str, Any],
+        runtime_settings: dict[str, Any],
+        persistence_settings: dict[str, Any] | None = None,
+    ) -> None:
+        """Write split status/runtime/persistence settings payload to disk."""
+        if persistence_settings is None:
+            persistence_settings = dict(SettingsMixin.DEFAULT_PERSISTENCE_SETTINGS)
+        app_settings = {
+            "status": status_settings,
+            "runtime": runtime_settings,
+            "persistence": persistence_settings,
+        }
         try:
             self._settings_path.parent.mkdir(parents=True, exist_ok=True)
             self._settings_path.write_text(json.dumps(app_settings, indent=2), encoding="utf-8")
