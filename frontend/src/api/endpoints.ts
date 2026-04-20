@@ -3,6 +3,7 @@
 // (or earlier by `npm run gen:api:check` in CI).
 import type { paths } from "./schema";
 import { apiGet, apiPost } from "./client";
+export { ApiError } from "./client";
 
 type Get<P extends keyof paths, S extends 200> = paths[P] extends {
   get: { responses: { [K in S]: { content: { "application/json": infer R } } } };
