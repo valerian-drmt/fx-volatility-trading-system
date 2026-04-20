@@ -124,6 +124,7 @@ class TestOnRiskResult:
                 calls[self._key].append(payload)
 
         c = Controller.__new__(Controller)
+        c._db_writer_thread = None
         c.window = type("W", (), {
             "open_positions_panel": FakePanel("positions"),
             "book_panel": FakePanel("book"),

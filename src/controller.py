@@ -6,6 +6,7 @@ import queue
 import sys
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ from PyQt5.QtWidgets import QApplication, QMessageBox
 from controller_settings import SettingsMixin
 from persistence.payloads import (
     build_account_snap_row,
+    build_position_row,
+    build_position_snapshot_row,
     build_signal_rows,
     build_vol_surface_row,
 )
@@ -441,6 +444,34 @@ class Controller(SettingsMixin):
         except Exception:
             logger.exception("failed to build vol_scan rows")
 
+    def _persist_risk_cycle(self, risk_result: dict) -> None:
+        """Enqueue one positions row (INSERT idempotent) + one position_snapshots
+        row per open position for the current risk cycle.
+
+        Positions use a deterministic id derived from the IB composite key
+        (see payloads.compute_position_id), so ON CONFLICT DO NOTHING on
+        positions.id gives us "first observation wins" semantics without
+        needing a sync read of the auto-generated PK from the DB.
+        """
+        if self._db_writer_thread is None:
+            return
+        try:
+            open_positions = risk_result.get("open_positions") or []
+            spot = risk_result.get("spot")
+            # Share a single timestamp across all rows of this cycle so
+            # analytics queries can group by (timestamp, underlying).
+            ts = datetime.now(UTC)
+            for pos in open_positions:
+                pos_row = build_position_row(pos, timestamp=ts)
+                if pos_row is None:
+                    continue
+                self.enqueue_db_event("positions", pos_row)
+                snap_row = build_position_snapshot_row(pos, spot=spot, timestamp=ts)
+                if snap_row is not None:
+                    self.enqueue_db_event("position_snapshots", snap_row)
+        except Exception:
+            logger.exception("failed to build risk cycle rows")
+
     def _mid_spot_from_latest(self) -> float | None:
         """Return the latest bid/ask midpoint held by the controller, or None."""
         bid = self._latest_bid
@@ -508,6 +539,8 @@ class Controller(SettingsMixin):
         pnl_curve = result.get("pnl_curve")
         if pnl_curve:
             self.window.pnl_spot_panel.update(pnl_curve)
+
+        self._persist_risk_cycle(result)
 
 
     def _update_term_structure(self, result: dict) -> None:

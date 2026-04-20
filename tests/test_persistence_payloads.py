@@ -6,7 +6,7 @@ no Controller, no IB.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -14,8 +14,11 @@ import pytest
 
 from persistence.payloads import (
     build_account_snap_row,
+    build_position_row,
+    build_position_snapshot_row,
     build_signal_rows,
     build_vol_surface_row,
+    compute_position_id,
 )
 
 
@@ -173,3 +176,126 @@ class TestBuildSignalRows:
     def test_no_pillars_returns_empty_list(self):
         assert build_signal_rows({"pillar_rows": []}, "EURUSD") == []
         assert build_signal_rows({}, "EURUSD") == []
+
+
+# --- positions + position_snapshots ---------------------------------------
+
+
+def _open_option_row(side: str = "BUY", strike: str = "1.08000") -> dict:
+    return {
+        "symbol": "EUR.USD", "side": side, "qty": 2,
+        "strike": strike, "right": "C", "sec_type": "FOP",
+        "expiry": "20260515", "fill_price": 0.00500,
+        "delta": 500.0, "vega": 120.0, "gamma": 800.0, "theta": -15.0,
+        "pnl": 25.0, "iv_now_pct": 7.40, "mark_price": 0.00520,
+    }
+
+
+def _open_future_row() -> dict:
+    return {
+        "symbol": "6E", "side": "BUY", "qty": 1,
+        "strike": "—", "right": "FUT", "sec_type": "FUT",
+        "expiry": "20260615", "fill_price": 1.08500,
+        "delta": None, "vega": None, "gamma": None, "theta": None,
+        "pnl": None, "iv_now_pct": None,
+    }
+
+
+@pytest.mark.unit
+class TestComputePositionId:
+    def test_is_deterministic(self):
+        kwargs = dict(symbol="EUR.USD", side="BUY", instrument_type="OPTION",
+                      strike=Decimal("1.08"), maturity=date(2026, 5, 15),
+                      option_type="CALL")
+        assert compute_position_id(**kwargs) == compute_position_id(**kwargs)
+
+    def test_fits_in_postgres_integer_range(self):
+        """Postgres INTEGER is signed 32-bit ; our ids stay non-negative 31-bit."""
+        pid = compute_position_id("X", "BUY", "OPTION", Decimal("1"), date(2030, 1, 1), "CALL")
+        assert 0 <= pid < 2**31
+
+    def test_different_sides_have_different_ids(self):
+        pid_buy = compute_position_id("EUR.USD", "BUY", "OPTION",
+                                      Decimal("1.08"), date(2026, 5, 15), "CALL")
+        pid_sell = compute_position_id("EUR.USD", "SELL", "OPTION",
+                                       Decimal("1.08"), date(2026, 5, 15), "CALL")
+        assert pid_buy != pid_sell
+
+    def test_different_strikes_have_different_ids(self):
+        kw = dict(symbol="EUR.USD", side="BUY", instrument_type="OPTION",
+                  maturity=date(2026, 5, 15), option_type="CALL")
+        assert compute_position_id(strike=Decimal("1.08"), **kw) != \
+               compute_position_id(strike=Decimal("1.09"), **kw)
+
+
+@pytest.mark.unit
+class TestBuildPositionRow:
+    def test_option_row_has_full_shape(self):
+        row = build_position_row(_open_option_row())
+        assert row is not None
+        assert row["symbol"] == "EUR.USD"
+        assert row["instrument_type"] == "OPTION"
+        assert row["option_type"] == "CALL"
+        assert row["side"] == "BUY"
+        assert row["quantity"] == Decimal("2")
+        assert row["strike"] == Decimal("1.08000")
+        assert row["maturity"] == date(2026, 5, 15)
+        assert row["entry_price"] == Decimal("0.00500")
+        assert row["status"] == "OPEN"
+        assert isinstance(row["id"], int) and row["id"] > 0
+
+    def test_future_row_has_no_strike_or_option_type(self):
+        row = build_position_row(_open_future_row())
+        assert row is not None
+        assert row["instrument_type"] == "FUTURE"
+        assert row["strike"] is None
+        assert row["option_type"] is None
+
+    def test_invalid_sec_type_returns_none(self):
+        pos = _open_option_row()
+        pos["sec_type"] = "BOND"
+        assert build_position_row(pos) is None
+
+    def test_missing_qty_returns_none(self):
+        pos = _open_option_row()
+        pos["qty"] = None
+        assert build_position_row(pos) is None
+
+    def test_dash_strike_is_dropped_on_future(self):
+        """A future row with strike='—' must map to strike=None, not raise."""
+        row = build_position_row(_open_future_row())
+        assert row is not None
+        assert row["strike"] is None
+
+    def test_id_matches_compute_position_id(self):
+        """The row id equals compute_position_id(same key) — needed for snapshots."""
+        pos = _open_option_row()
+        row = build_position_row(pos)
+        assert row is not None
+        snap = build_position_snapshot_row(pos, spot=1.0857)
+        assert snap is not None
+        assert row["id"] == snap["position_id"]
+
+
+@pytest.mark.unit
+class TestBuildPositionSnapshotRow:
+    def test_full_shape(self):
+        snap = build_position_snapshot_row(_open_option_row(), spot=1.0857)
+        assert snap is not None
+        assert snap["spot"] == Decimal("1.0857")
+        assert snap["iv"] == Decimal("7.40")
+        assert snap["delta_usd"] == Decimal("500.0")
+        assert snap["vega_usd"] == Decimal("120.0")
+        assert snap["pnl_usd"] == Decimal("25.0")
+
+    def test_keeps_null_greeks_when_market_closed(self):
+        snap = build_position_snapshot_row(_open_future_row(), spot=None)
+        assert snap is not None
+        assert snap["delta_usd"] is None
+        assert snap["pnl_usd"] is None
+        assert snap["spot"] is None
+
+    def test_invalid_pos_returns_none(self):
+        pos = _open_option_row()
+        pos["side"] = "XYZ"  # not BUY/SELL
+        assert build_position_snapshot_row(pos, spot=1.0) is None
