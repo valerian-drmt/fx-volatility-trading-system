@@ -14,5 +14,9 @@
   "runtime": {
     "tick_interval_ms": 100,
     "snapshot_interval_ms": 2000
+  },
+  "persistence": {
+    "enabled": true,
+    "database_url": null
   }
 }

@@ -97,6 +97,7 @@ class TestEnginePoolIdempotent:
         c._market_engine = None
         c._vol_engine = None
         c._risk_engine = None
+        c._db_writer_thread = None
         c._stop_engine_pool()  # should not raise
 
     def test_stop_twice_no_error(self):
@@ -106,6 +107,7 @@ class TestEnginePoolIdempotent:
         c._market_engine = None
         c._vol_engine = None
         c._risk_engine = None
+        c._db_writer_thread = None
         c._stop_engine_pool()
         c._stop_engine_pool()  # idempotent
 
