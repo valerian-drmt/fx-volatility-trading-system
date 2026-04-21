@@ -114,3 +114,13 @@ def test_ib_gateway_paper_trading_default():
     assert env["TRADING_MODE"] == "paper", (
         "default to paper trading — live mode must be an explicit prod override"
     )
+
+
+@pytest.mark.unit
+def test_ib_gateway_is_opt_in_via_profile():
+    """ib-gateway must not start on a plain `docker compose up` — it lives
+    behind the `ib` profile so the default stack boots without a 4002 bind."""
+    svc = _compose()["services"]["ib-gateway"]
+    assert svc.get("profiles") == ["ib"], (
+        "ib-gateway must be in the `ib` profile so it is opt-in"
+    )
