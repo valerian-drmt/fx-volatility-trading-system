@@ -10,7 +10,6 @@ independent of the frontend checkout being present.
 """
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -38,10 +37,10 @@ def _live_paths() -> set[str]:
     # dump_openapi.py writes "OpenAPI schema written to …" when given a path ;
     # when given "-" it still writes the file and prints the line — parse the
     # actual JSON by re-invoking create_app locally instead for robustness.
-    del dump  # noqa: F841 — we ignore the script stdout and import the app directly
+    del dump
     sys.path.insert(0, str(REPO_ROOT))
     sys.path.insert(0, str(REPO_ROOT / "src"))
-    from api.main import create_app  # noqa: E402
+    from api.main import create_app
 
     schema = create_app().openapi()
     return set(schema["paths"].keys())
