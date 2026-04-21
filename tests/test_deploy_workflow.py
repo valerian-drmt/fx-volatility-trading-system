@@ -354,3 +354,110 @@ def test_deployment_runbook_exists():
     body = runbook.read_text(encoding="utf-8")
     assert "Rollback" in body or "rollback" in body
     assert "deploy_sha" in body
+
+
+# ── R8 PR #6 : CodeQL + Trivy security scans ────────────────────────────
+
+CODEQL_WF = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "codeql.yml"
+TRIVY_WF = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "security-scan.yml"
+
+
+@pytest.fixture(scope="module")
+def codeql_wf() -> dict:
+    assert CODEQL_WF.exists(), f"missing {CODEQL_WF}"
+    return yaml.safe_load(CODEQL_WF.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def trivy_wf() -> dict:
+    assert TRIVY_WF.exists(), f"missing {TRIVY_WF}"
+    return yaml.safe_load(TRIVY_WF.read_text(encoding="utf-8"))
+
+
+@pytest.mark.unit
+def test_codeql_scans_python_and_javascript(codeql_wf: dict):
+    matrix = codeql_wf["jobs"]["analyze"]["strategy"]["matrix"]["include"]
+    languages = {leg["language"] for leg in matrix}
+    assert "python" in languages
+    assert "javascript-typescript" in languages
+
+
+@pytest.mark.unit
+def test_codeql_runs_on_pr_push_and_schedule(codeql_wf: dict):
+    on = codeql_wf.get(True, codeql_wf.get("on"))
+    assert "pull_request" in on
+    assert "push" in on
+    assert "schedule" in on
+
+
+@pytest.mark.unit
+def test_codeql_has_security_events_write_permission(codeql_wf: dict):
+    assert codeql_wf["permissions"]["security-events"] == "write"
+
+
+@pytest.mark.unit
+def test_codeql_uses_security_extended_queries(codeql_wf: dict):
+    steps = codeql_wf["jobs"]["analyze"]["steps"]
+    init = next(s for s in steps if s.get("uses", "").startswith("github/codeql-action/init"))
+    assert init["with"]["queries"] == "security-extended"
+
+
+@pytest.mark.unit
+def test_trivy_covers_all_six_production_images(trivy_wf: dict):
+    matrix = trivy_wf["jobs"]["trivy"]["strategy"]["matrix"]["image"]
+    expected = {
+        "fx-options-api",
+        "fx-options-frontend",
+        "fx-options-market-data",
+        "fx-options-vol-engine",
+        "fx-options-risk-engine",
+        "fx-options-db-writer",
+    }
+    assert set(matrix) == expected
+
+
+@pytest.mark.unit
+def test_trivy_fails_on_high_and_critical_only(trivy_wf: dict):
+    steps = trivy_wf["jobs"]["trivy"]["steps"]
+    scan = next(s for s in steps if s.get("uses", "").startswith("aquasecurity/trivy-action"))
+    assert scan["with"]["severity"] == "HIGH,CRITICAL"
+    assert scan["with"]["exit-code"] == "1"
+    assert scan["with"]["ignore-unfixed"] is True
+
+
+@pytest.mark.unit
+def test_trivy_runs_weekly_plus_manual_dispatch(trivy_wf: dict):
+    on = trivy_wf.get(True, trivy_wf.get("on"))
+    assert "schedule" in on
+    assert "workflow_dispatch" in on
+
+
+@pytest.mark.unit
+def test_trivy_uploads_sarif_even_on_failure(trivy_wf: dict):
+    steps = trivy_wf["jobs"]["trivy"]["steps"]
+    upload = next(
+        (s for s in steps if s.get("uses", "").startswith("github/codeql-action/upload-sarif")),
+        None,
+    )
+    assert upload is not None
+    assert upload.get("if") == "always()"
+
+
+@pytest.mark.unit
+def test_trivy_does_not_fail_fast_between_images(trivy_wf: dict):
+    """A failing image scan must NOT cancel the others — each finding
+    should be independently visible in the Security tab."""
+    assert trivy_wf["jobs"]["trivy"]["strategy"].get("fail-fast") is False
+
+
+@pytest.mark.unit
+def test_codeql_does_not_fail_fast_between_languages(codeql_wf: dict):
+    assert codeql_wf["jobs"]["analyze"]["strategy"].get("fail-fast") is False
+
+
+@pytest.mark.unit
+def test_security_scan_workflow_has_minimal_permissions(trivy_wf: dict):
+    perms = trivy_wf["permissions"]
+    assert perms["contents"] == "read"
+    assert perms["packages"] == "read"
+    assert perms["security-events"] == "write"
