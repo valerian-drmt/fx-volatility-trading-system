@@ -182,3 +182,64 @@ def test_ci_openapi_contract_job_was_folded_into_frontend(ci_wf: dict):
     """R8 PR #3 merges openapi-contract into the frontend job — the
     standalone job must no longer exist to avoid duplicate work."""
     assert "openapi-contract" not in ci_wf["jobs"]
+
+
+# ── R8 PR #4 : Playwright e2e against ephemeral docker-compose ──────────
+
+def _e2e_compose_steps(ci_wf: dict) -> list[dict]:
+    return ci_wf["jobs"]["frontend-e2e-compose"]["steps"]
+
+
+@pytest.mark.unit
+def test_ci_has_dedicated_compose_e2e_job(ci_wf: dict):
+    assert "frontend-e2e-compose" in ci_wf["jobs"]
+
+
+@pytest.mark.unit
+def test_ci_runs_playwright_against_localhost_through_nginx(ci_wf: dict):
+    env = ci_wf["jobs"]["frontend-e2e-compose"].get("env", {})
+    assert env.get("PLAYWRIGHT_BASE_URL") == "http://localhost"
+
+
+@pytest.mark.unit
+def test_ci_compose_e2e_boots_full_stack(ci_wf: dict):
+    steps = _e2e_compose_steps(ci_wf)
+    run_cmds = [s.get("run", "") for s in steps if "run" in s]
+    boot = any("docker compose up -d" in r for r in run_cmds)
+    teardown = any("docker compose down" in r for r in run_cmds)
+    assert boot, "compose up missing from e2e job"
+    assert teardown, "compose down missing — stack would leak between runs"
+
+
+@pytest.mark.unit
+def test_ci_compose_e2e_applies_alembic_migrations(ci_wf: dict):
+    run_cmds = [s.get("run", "") for s in _e2e_compose_steps(ci_wf) if "run" in s]
+    assert any("alembic" in r and "upgrade head" in r for r in run_cmds)
+
+
+@pytest.mark.unit
+def test_ci_compose_e2e_uploads_report_on_failure(ci_wf: dict):
+    steps = _e2e_compose_steps(ci_wf)
+    upload = next(
+        (s for s in steps if s.get("uses", "").startswith("actions/upload-artifact")),
+        None,
+    )
+    assert upload is not None
+    assert upload.get("if") == "failure()"
+    assert upload["with"]["name"] == "playwright-report-compose"
+
+
+@pytest.mark.unit
+def test_ib_stub_dockerfile_exists():
+    dockerfile = Path(__file__).resolve().parent.parent / "infrastructure" / "docker" / "Dockerfile.ib-stub"
+    assert dockerfile.exists(), "Dockerfile.ib-stub must ship for the CI stub IB service"
+    content = dockerfile.read_text(encoding="utf-8")
+    assert "EXPOSE 4002" in content
+
+
+@pytest.mark.unit
+def test_ib_stub_server_is_shipped():
+    server = Path(__file__).resolve().parent.parent / "infrastructure" / "docker" / "ib-stub" / "server.py"
+    assert server.exists()
+    code = server.read_text(encoding="utf-8")
+    assert "PORT = 4002" in code
