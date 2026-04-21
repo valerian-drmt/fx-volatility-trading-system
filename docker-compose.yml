@@ -135,6 +135,39 @@ services:
       retries: 3
       start_period: 240s
 
+  risk-engine:
+    build:
+      context: .
+      dockerfile: services/risk/Dockerfile
+    image: ${RISK_ENGINE_IMAGE:-fx-options-risk-engine:local}
+    container_name: fxvol-risk-engine
+    profiles: ["engines"]
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: risk_engine
+      IB_HOST: ib-gateway
+      IB_PORT: 4002
+      IB_CLIENT_ID: 3
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+      vol-engine:
+        condition: service_started
+      ib-gateway:
+        condition: service_started
+    networks:
+      - fxvol-internal
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "python -c \"import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:risk_engine'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 30) else 1)\""
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   frontend:
     build:
       context: .
