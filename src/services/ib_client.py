@@ -1,17 +1,33 @@
 import logging
 import math
+import os
 import time
 from typing import Any
 
 from ib_insync import IB, Contract, Forex, LimitOrder, MarketOrder, StopOrder
 
 
+def _default_ib_host() -> str:
+    """Resolve the default IB Gateway host.
+
+    Reads ``IB_HOST`` from the environment so the same code runs against a
+    local Gateway (``127.0.0.1``) and the containerised one (``ib-gateway``
+    service name inside the compose network).
+    """
+    return os.environ.get("IB_HOST") or "127.0.0.1"
+
+
+def _default_ib_port() -> int:
+    """Resolve the default IB Gateway port (``IB_PORT`` env, default 4002)."""
+    return int(os.environ.get("IB_PORT") or "4002")
+
+
 class IBClient:
     def __init__(
         self,
         ib: IB,
-        host: str = "127.0.0.1",
-        port: int = 4002,
+        host: str | None = None,
+        port: int | None = None,
         client_id: int = 1,
         readonly: bool = False,
         ticker: Any = None,
@@ -27,8 +43,8 @@ class IBClient:
             ticker: Optional pre-existing ticker to attach.
         """
         self.ib = ib
-        self.host = host
-        self.port = port
+        self.host = host if host is not None else _default_ib_host()
+        self.port = port if port is not None else _default_ib_port()
         self.client_id = client_id
         self.readonly = readonly
         self.ticker = ticker
