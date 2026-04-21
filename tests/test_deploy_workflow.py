@@ -243,3 +243,114 @@ def test_ib_stub_server_is_shipped():
     assert server.exists()
     code = server.read_text(encoding="utf-8")
     assert "PORT = 4002" in code
+
+
+# ── R8 PR #5 : deploy.yml workflow + EC2 provisioning scripts ───────────
+
+DEPLOY_WF = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "deploy.yml"
+
+
+@pytest.fixture(scope="module")
+def deploy_wf() -> dict:
+    assert DEPLOY_WF.exists(), f"missing {DEPLOY_WF}"
+    return yaml.safe_load(DEPLOY_WF.read_text(encoding="utf-8"))
+
+
+@pytest.mark.unit
+def test_deploy_yml_requires_tag_trigger(deploy_wf: dict):
+    on = deploy_wf.get(True, deploy_wf.get("on"))
+    assert "push" in on
+    assert on["push"]["tags"] == ["v*.*.*"]
+
+
+@pytest.mark.unit
+def test_deploy_yml_supports_manual_dispatch_for_rollback(deploy_wf: dict):
+    on = deploy_wf.get(True, deploy_wf.get("on"))
+    assert "workflow_dispatch" in on
+    assert "deploy_sha" in on["workflow_dispatch"]["inputs"]
+
+
+@pytest.mark.unit
+def test_deploy_uses_ghcr_images(deploy_wf: dict):
+    steps = deploy_wf["jobs"]["deploy"]["steps"]
+    run_cmds = " ".join(s.get("run", "") for s in steps if "run" in s)
+    for image in (
+        "fx-options-api",
+        "fx-options-frontend",
+        "fx-options-market-data",
+        "fx-options-vol-engine",
+        "fx-options-risk-engine",
+        "fx-options-db-writer",
+    ):
+        assert f"/{image}:" in run_cmds, f"{image} not referenced in deploy.yml"
+    assert "${{ env.REGISTRY }}" in run_cmds
+
+
+@pytest.mark.unit
+def test_deploy_applies_alembic_after_up(deploy_wf: dict):
+    run_cmds = "\n".join(
+        s.get("run", "") for s in deploy_wf["jobs"]["deploy"]["steps"] if "run" in s
+    )
+    assert "docker compose pull" in run_cmds
+    assert "docker compose up -d" in run_cmds
+    assert "upgrade head" in run_cmds
+    up_pos = run_cmds.find("docker compose up -d")
+    alembic_pos = run_cmds.find("upgrade head")
+    assert up_pos < alembic_pos, "alembic must run after docker compose up"
+
+
+@pytest.mark.unit
+def test_deploy_has_post_deploy_smoke(deploy_wf: dict):
+    names = [s.get("name", "") for s in deploy_wf["jobs"]["deploy"]["steps"]]
+    assert any("Smoke" in n for n in names)
+
+
+@pytest.mark.unit
+def test_deploy_permissions_scope_is_minimal(deploy_wf: dict):
+    perms = deploy_wf["permissions"]
+    assert perms["contents"] == "read"
+    assert perms["packages"] == "read"
+
+
+@pytest.mark.unit
+def test_deploy_targets_production_environment(deploy_wf: dict):
+    """Using the `production` GHA environment forces reviewer approval
+    when branch protection rules require it."""
+    assert deploy_wf["jobs"]["deploy"]["environment"] == "production"
+
+
+@pytest.mark.unit
+def test_ec2_setup_script_exists():
+    sh = Path(__file__).resolve().parent.parent / "infrastructure" / "ec2" / "setup.sh"
+    assert sh.exists()
+    body = sh.read_text(encoding="utf-8")
+    assert "docker compose" in body
+    assert "ufw" in body
+    assert "certbot" in body
+
+
+@pytest.mark.unit
+def test_ec2_load_secrets_script_exists():
+    sh = Path(__file__).resolve().parent.parent / "infrastructure" / "ec2" / "load_secrets.sh"
+    assert sh.exists()
+    body = sh.read_text(encoding="utf-8")
+    assert "secretsmanager" in body
+
+
+@pytest.mark.unit
+def test_systemd_unit_exists_for_compose():
+    unit = Path(__file__).resolve().parent.parent / "infrastructure" / "ec2" / "fxvol-compose.service"
+    assert unit.exists()
+    body = unit.read_text(encoding="utf-8")
+    assert "[Unit]" in body
+    assert "docker compose up -d" in body
+    assert "WorkingDirectory=/opt/fxvol" in body
+
+
+@pytest.mark.unit
+def test_deployment_runbook_exists():
+    runbook = Path(__file__).resolve().parent.parent / "docs" / "DEPLOYMENT.md"
+    assert runbook.exists()
+    body = runbook.read_text(encoding="utf-8")
+    assert "Rollback" in body or "rollback" in body
+    assert "deploy_sha" in body
