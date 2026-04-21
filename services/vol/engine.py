@@ -1,0 +1,170 @@
+"""Async VolEngine — standalone service version.
+
+One cycle roughly every three minutes :
+
+1. ``GET latest_spot:<symbol>`` on Redis. Skip if missing (market-data down).
+2. Call the injected ``fetch_fop_chain(F)`` to get (delta, iv, strike)
+   observations per tenor. Real impl reads IB FOP chain ; tests pass
+   a fixture.
+3. PCHIP-interpolate the smile via ``core.vol.pchip_smile``.
+4. Call the injected ``fetch_ohlc()`` to get OHLC closes, compute
+   ``yang_zhang_rv_pct`` + ``fit_and_project_garch`` from ``core.vol``.
+5. ``SET latest_vol_surface:<symbol>`` + ``PUBLISH vol_update`` via
+   ``bus.publisher.publish_vol_update``.
+6. Emit a heartbeat.
+
+All IB I/O stays behind callables so the engine is testable without
+``ib_insync``.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from typing import Any, Protocol
+
+from bus import keys, publisher
+from core.vol.garch import fit_and_project_garch
+from core.vol.pchip_smile import interpolate_delta_pillars
+from core.vol.yang_zhang import yang_zhang_rv_pct
+
+logger = logging.getLogger(__name__)
+
+CYCLE_SECONDS = 180.0  # three-minute vol scan cadence
+DEFAULT_TENOR_T = {"1W": 7 / 365, "1M": 1 / 12, "3M": 3 / 12, "1Y": 1.0}
+
+
+class _RedisLike(Protocol):
+    async def get(self, name: str) -> Any: ...
+    async def set(self, name: str, value: str, ex: int | None = ...) -> Any: ...
+    async def publish(self, channel: str, message: str) -> int: ...
+
+
+class _IBLike(Protocol):
+    def isConnected(self) -> bool: ...
+    async def connectAsync(self, host: str, port: int, clientId: int, timeout: float = ...) -> Any: ...
+    def disconnect(self) -> None: ...
+
+
+class VolEngine:
+    """Long-running async task : compute the vol surface, publish to Redis."""
+
+    def __init__(
+        self,
+        *,
+        ib: _IBLike,
+        redis: _RedisLike,
+        symbol: str,
+        ib_host: str,
+        ib_port: int,
+        client_id: int,
+        fetch_fop_chain: Any,
+        fetch_ohlc: Any,
+        tenor_t: dict[str, float] | None = None,
+    ) -> None:
+        self.ib = ib
+        self.redis = redis
+        self.symbol = symbol
+        self.ib_host = ib_host
+        self.ib_port = ib_port
+        self.client_id = client_id
+        # fetch_fop_chain : (F) -> {tenor -> [(delta, iv, strike)]}
+        # fetch_ohlc     : () -> pd.DataFrame | None / np.ndarray | None
+        self._fetch_fop_chain = fetch_fop_chain
+        self._fetch_ohlc = fetch_ohlc
+        self.tenor_t = tenor_t or DEFAULT_TENOR_T
+        self._stop = asyncio.Event()
+
+    def request_stop(self) -> None:
+        self._stop.set()
+
+    async def run(self) -> None:
+        from shared.ib_connection import connect_ib_with_backoff
+
+        await connect_ib_with_backoff(
+            self.ib, host=self.ib_host, port=self.ib_port, client_id=self.client_id
+        )
+        logger.info("vol_engine_started", extra={"symbol": self.symbol})
+
+        try:
+            while not self._stop.is_set():
+                await self.run_cycle()
+                try:
+                    await asyncio.wait_for(self._stop.wait(), timeout=CYCLE_SECONDS)
+                    break
+                except TimeoutError:
+                    continue
+        finally:
+            self._teardown()
+
+    async def run_cycle(self) -> bool:
+        """Single pass. Returns True if a vol_update was published."""
+        F = await self._read_spot()
+        if F is None:
+            logger.info("vol_cycle_skipped", extra={"reason": "no_spot"})
+            return False
+
+        surface = self._compute_surface(F)
+        if not surface:
+            logger.info("vol_cycle_skipped", extra={"reason": "no_surface"})
+            return False
+
+        try:
+            await publisher.publish_vol_update(
+                self.redis, symbol=self.symbol, surface_data=surface, signals_data=[]
+            )
+            await publisher.set_heartbeat(self.redis, keys.ENGINE_VOL)
+            return True
+        except Exception:
+            logger.exception("publish_vol_update_failed")
+            return False
+
+    async def _read_spot(self) -> float | None:
+        key = keys.LATEST_SPOT.format(symbol=self.symbol)
+        try:
+            raw = await self.redis.get(key)
+        except Exception:
+            logger.exception("redis_get_failed", extra={"key": key})
+            return None
+        if raw is None:
+            return None
+        try:
+            payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+            return float(payload.get("mid") or payload.get("bid"))
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    def _compute_surface(self, F: float) -> dict[str, Any]:
+        pillars_by_tenor = self._fetch_fop_chain(F) or {}
+        out: dict[str, Any] = {}
+        for tenor, obs in pillars_by_tenor.items():
+            pillars = interpolate_delta_pillars(obs)
+            out[tenor] = {
+                label: {"iv": p.iv, "strike": p.strike} for label, p in pillars.items()
+            }
+
+        ohlc = self._fetch_ohlc()
+        if ohlc is not None:
+            try:
+                rv_full = yang_zhang_rv_pct(ohlc, window=len(ohlc) - 1)
+            except Exception:
+                rv_full = None
+            if rv_full is not None:
+                out["_rv_full_pct"] = rv_full
+                try:
+                    closes = ohlc["close"].to_numpy() if hasattr(ohlc, "close") else None
+                    if closes is not None and len(closes) >= 5:
+                        out["_garch"] = fit_and_project_garch(
+                            closes, tenor_t=self.tenor_t, rv_full=rv_full
+                        )
+                except Exception:
+                    logger.exception("garch_projection_failed")
+        return out
+
+    def _teardown(self) -> None:
+        try:
+            if self.ib.isConnected():
+                self.ib.disconnect()
+        except Exception:
+            logger.exception("ib_disconnect_failed")
+        logger.info("vol_engine_stopped", extra={"symbol": self.symbol})
