@@ -73,3 +73,4 @@ TTL_PNL_CURVE: int = 30
 ENGINE_MARKET_DATA: str = "market_data"
 ENGINE_VOL: str = "vol_engine"
 ENGINE_RISK: str = "risk_engine"
+ENGINE_DB_WRITER: str = "db_writer"

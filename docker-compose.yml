@@ -168,6 +168,35 @@ services:
       retries: 3
       start_period: 30s
 
+  db-writer:
+    build:
+      context: .
+      dockerfile: services/db_writer/Dockerfile
+    image: ${DB_WRITER_IMAGE:-fx-options-db-writer:local}
+    container_name: fxvol-db-writer
+    profiles: ["engines"]
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: db_writer
+      DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fxvol-internal
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "python -c \"import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:db_writer'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 30) else 1)\""
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
   frontend:
     build:
       context: .
