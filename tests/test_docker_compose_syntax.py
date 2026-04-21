@@ -140,6 +140,58 @@ def test_dockerfile_api_ships_uvicorn():
 
 
 @pytest.mark.unit
+def test_frontend_service_build_context(compose: dict):
+    svc = compose["services"]["frontend"]
+    assert svc["build"]["context"] == "."
+    assert svc["build"]["dockerfile"] == "infrastructure/docker/Dockerfile.web"
+    assert svc["networks"] == ["fxvol-internal"], (
+        "frontend container serves the bundle on :8080 — only nginx needs to reach it"
+    )
+
+
+@pytest.mark.unit
+def test_nginx_service_exposes_80_and_443(compose: dict):
+    svc = compose["services"]["nginx"]
+    assert svc["image"] == "nginx:alpine"
+    # Public-facing : ports 80/443 mapped to the host.
+    port_strings = {str(p) for p in svc["ports"]}
+    assert "80:80" in port_strings
+    assert "443:443" in port_strings
+    # Straddles both public and internal networks — the bridge between
+    # the outside world and the application bus.
+    assert set(svc["networks"]) == {"fxvol-public", "fxvol-internal"}
+
+
+@pytest.mark.unit
+def test_nginx_mounts_the_reverse_proxy_conf(compose: dict):
+    mounts = compose["services"]["nginx"]["volumes"]
+    assert any(
+        "infrastructure/nginx/nginx-dev.conf" in str(m)
+        and "/etc/nginx/conf.d/default.conf" in str(m)
+        for m in mounts
+    ), "nginx must mount nginx-dev.conf as its default.conf"
+
+
+@pytest.mark.unit
+def test_nginx_waits_for_api_and_frontend_healthy(compose: dict):
+    deps = compose["services"]["nginx"]["depends_on"]
+    assert deps["api"]["condition"] == "service_healthy"
+    assert deps["frontend"]["condition"] == "service_healthy"
+
+
+@pytest.mark.unit
+def test_nginx_conf_routes_api_and_ws_to_api_service():
+    """The reverse-proxy conf must route /api/ and /ws/ to the api service
+    by compose DNS name — pointing at localhost or 127.0.0.1 would hit
+    nginx itself and break the whole stack."""
+    conf = (REPO_ROOT / "infrastructure" / "nginx" / "nginx-dev.conf").read_text()
+    assert "server api:8000" in conf
+    assert "server frontend:8080" in conf
+    assert "location /ws/" in conf
+    assert "Upgrade $http_upgrade" in conf
+
+
+@pytest.mark.unit
 def test_env_example_declares_r6_variables():
     env = (REPO_ROOT / ".env.example").read_text()
     assert "DB_PASSWORD=" in env
