@@ -1,7 +1,7 @@
-PyQt5==5.15.11
+# PyQt5 and pyqtgraph were removed in R8 PR #1 : the desktop app is
+# replaced by the React frontend + FastAPI + containerised engines.
 ib-insync==0.9.86
 pytest==9.0.2
-pyqtgraph==0.14.0
 ruff==0.11.2
 numpy>=1.24
 scipy>=1.10
