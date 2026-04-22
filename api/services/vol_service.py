@@ -70,14 +70,22 @@ async def get_term_structure(
 ) -> TermStructureResponse:
     """Derive term structure (tenor → ATM vol) from the latest Redis surface."""
     surface = await get_latest_surface(redis, symbol)
-    rows = [
-        TermStructureRow(
-            tenor=tenor,
-            dte=pillar.get("dte"),
-            sigma_atm_pct=pillar.get("sigma_atm_pct") or pillar.get("sigma_ATM_pct"),
+    rows: list[TermStructureRow] = []
+    for tenor, pillar in surface.surface.items():
+        # Skip engine-only aggregates that are not per-tenor pillars.
+        if tenor.startswith("_") or not isinstance(pillar, dict):
+            continue
+        # Two shapes supported :
+        #  1. {"sigma_atm_pct": 7.2, "dte": 7}                (legacy / DB)
+        #  2. {"atm": {"iv": 0.072, "strike": 1.17}, "25dc": ...}  (engine/Redis)
+        sigma_pct = pillar.get("sigma_atm_pct") or pillar.get("sigma_ATM_pct")
+        if sigma_pct is None:
+            atm = pillar.get("atm")
+            if isinstance(atm, dict) and isinstance(atm.get("iv"), (int, float)):
+                sigma_pct = float(atm["iv"]) * 100.0
+        rows.append(
+            TermStructureRow(tenor=tenor, dte=pillar.get("dte"), sigma_atm_pct=sigma_pct)
         )
-        for tenor, pillar in surface.surface.items()
-    ]
     return TermStructureResponse(
         symbol=surface.symbol, timestamp=surface.timestamp, pillars=rows
     )

@@ -8,11 +8,15 @@ from pydantic import BaseModel
 
 
 class SurfaceResponse(BaseModel):
-    """Latest vol surface for a symbol — pillars keyed by tenor label."""
+    """Latest vol surface for a symbol — pillars keyed by tenor label.
+
+    ``surface`` values can be either a per-tenor pillar dict, or an
+    engine-level aggregate (float / dict prefixed with ``_``).
+    """
 
     symbol: str
     timestamp: datetime
-    surface: dict[str, dict[str, Any]]
+    surface: dict[str, Any]
 
 
 class TermStructureRow(BaseModel):
