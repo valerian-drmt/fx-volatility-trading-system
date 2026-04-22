@@ -76,7 +76,7 @@ html, body, #root {
 .ticket-body { display: flex; flex-direction: column; gap: 10px; }
 .ticket-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .ticket-row label { display: flex; flex-direction: column; font-size: 10px; color: var(--muted); gap: 2px; flex: 1; min-width: 70px; }
-.ticket-row input, .ticket-row select {
+.ticket-row input, .ticket-row select, .panel-select {
   background: var(--bg); color: var(--fg); border: 1px solid var(--border);
   border-radius: 3px; padding: 4px 6px; font-size: 12px;
 }
