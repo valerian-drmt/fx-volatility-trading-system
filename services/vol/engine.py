@@ -128,8 +128,16 @@ class VolEngine:
             return None
         if raw is None:
             return None
+        # The publisher writes `str(mid)` (bus/publisher.py::publish_tick) so the
+        # payload is a plain float string. Fall back to the legacy dict shape
+        # `{"mid": x, "bid": y}` so callers that store JSON still work.
         try:
-            payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+            text = raw.decode() if isinstance(raw, bytes) else raw
+            return float(text)
+        except (ValueError, TypeError):
+            pass
+        try:
+            payload = json.loads(raw)
             return float(payload.get("mid") or payload.get("bid"))
         except (ValueError, TypeError, AttributeError):
             return None
