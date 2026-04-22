@@ -8,10 +8,22 @@ One cycle roughly every three minutes :
    a fixture.
 3. PCHIP-interpolate the smile via ``core.vol.pchip_smile``.
 4. Call the injected ``fetch_ohlc()`` to get OHLC closes, compute
-   ``yang_zhang_rv_pct`` + ``fit_and_project_garch`` from ``core.vol``.
-5. ``SET latest_vol_surface:<symbol>`` + ``PUBLISH vol_update`` via
+   ``yang_zhang_rv_pct`` + the selected P-measure estimator
+   (``core.vol.har_rv`` preferred, ``core.vol.garch`` legacy).
+5. Convert σ_fair^P to σ_fair^Q via ``core.vol.vrp.q_measure_from_p``.
+   Signals are always generated against the Q-measure value.
+6. ``SET latest_vol_surface:<symbol>`` + ``PUBLISH vol_update`` via
    ``bus.publisher.publish_vol_update``.
-6. Emit a heartbeat.
+7. Emit a heartbeat.
+
+Measure convention (refactor plan P0.3) :
+
+- Everything named ``rv_*`` / ``garch_*`` / ``har_*`` is under **P**
+  (physical, realised, what has / will happen on average).
+- Everything named ``iv_*`` / ``sigma_mid_*`` / ``sigma_fair_q_*`` is
+  under **Q** (risk-neutral, what options are priced to).
+- Comparing P to Q directly is **economically incorrect** — always go
+  via the VRP conversion before generating a signal.
 
 All IB I/O stays behind callables so the engine is testable without
 ``ib_insync``.
@@ -48,17 +60,80 @@ DTE_FROM_LABEL = {
 }
 
 
-def _derive_signals(surface: dict[str, Any], underlying: str) -> list[dict[str, Any]]:
-    """Turn the engine surface into a list of signal dicts, one per tenor.
+def _pick_sigma_fair_p(
+    surface: dict[str, Any], tenor: str, preferred_estimator: str,
+) -> float | None:
+    """Return σ_fair^P in percent for ``tenor`` using ``preferred_estimator``.
 
-    ``surface[tenor]["atm"]["iv"]`` is the market mid IV (decimal).
-    ``surface["_garch"][tenor]["sigma_model_pct"]`` is the GARCH fair IV
-    in percent. When both are present we compute ``ecart = mid - fair``
-    (vol points) and label CHEAP / EXPENSIVE / FAIR against
-    ``SIGNAL_ECART_THRESHOLD_PCT``. Tenors missing either side are
-    silently skipped.
+    Falls back to the other estimator if the preferred one is absent.
     """
+    har = surface.get("_har") or {}
     garch = surface.get("_garch") or {}
+    order = (har, garch) if preferred_estimator == "har" else (garch, har)
+    keys_order = (("sigma_har_pct", "sigma_model_pct"),)
+    for bucket in order:
+        node = bucket.get(tenor) if isinstance(bucket, dict) else None
+        if not isinstance(node, dict):
+            continue
+        for keys_set in keys_order:
+            for k in keys_set:
+                v = node.get(k)
+                if isinstance(v, (int, float)):
+                    return float(v)
+    return None
+
+
+def _build_fair_q(
+    surface: dict[str, Any], preferred_estimator: str,
+) -> dict[str, dict[str, float]]:
+    """Attach σ_fair^Q per tenor by adding VRP to the P-measure estimator.
+
+    Returns ``{tenor: {sigma_fair_p_pct, vrp_vol_pts, sigma_fair_q_pct,
+    regime}}``. Tenors missing the P estimator are skipped.
+    """
+    from core.vol.vrp import detect_regime, q_measure_from_p
+
+    # Rough regime inference from the surface itself.
+    rv_pct = surface.get("_rv_full_pct")
+    atm_1m = ((surface.get("1M") or {}).get("atm") or {}).get("iv")
+    atm_6m = ((surface.get("6M") or {}).get("atm") or {}).get("iv")
+    slope = None
+    if isinstance(atm_1m, (int, float)) and isinstance(atm_6m, (int, float)):
+        slope = (float(atm_6m) - float(atm_1m)) * 100.0
+    regime = detect_regime(
+        vol_level_pct=float(rv_pct) if isinstance(rv_pct, (int, float)) else None,
+        vol_of_vol_pct=None,
+        term_slope_pct=slope,
+    )
+    out: dict[str, dict[str, float]] = {}
+    for tenor in surface:
+        if tenor.startswith("_") or not isinstance(surface[tenor], dict):
+            continue
+        sigma_p = _pick_sigma_fair_p(surface, tenor, preferred_estimator)
+        if sigma_p is None:
+            continue
+        sigma_q, vrp = q_measure_from_p(sigma_p, tenor=tenor, regime=regime)
+        out[tenor] = {
+            "sigma_fair_p_pct": round(sigma_p, 4),
+            "vrp_vol_pts": round(vrp, 4),
+            "sigma_fair_q_pct": round(sigma_q, 4),
+            "regime": regime,
+        }
+    return out
+
+
+def _derive_signals(
+    surface: dict[str, Any], underlying: str,
+    threshold_vol_pts: float = SIGNAL_ECART_THRESHOLD_PCT,
+) -> list[dict[str, Any]]:
+    """Per-tenor signals : compare σ_mid (Q) to σ_fair^Q (Q), NOT to σ^P.
+
+    Uses ``surface['_fair_q'][tenor]['sigma_fair_q_pct']`` when present
+    (the refactor-plan P1 path) ; falls back to raw GARCH fair for
+    back-compat when ``_fair_q`` is absent (e.g. OHLC fetch failed).
+    """
+    fair_q = surface.get("_fair_q") or {}
+    legacy_garch = surface.get("_garch") or {}
     out: list[dict[str, Any]] = []
     for tenor, node in surface.items():
         if tenor.startswith("_") or not isinstance(node, dict):
@@ -67,15 +142,30 @@ def _derive_signals(surface: dict[str, Any], underlying: str) -> list[dict[str, 
         if not isinstance(atm_node, dict):
             continue
         iv_mid = atm_node.get("iv")
-        garch_node = garch.get(tenor)
-        sigma_fair_pct = (
-            garch_node.get("sigma_model_pct") if isinstance(garch_node, dict) else None
-        )
-        if iv_mid is None or sigma_fair_pct is None:
+        if iv_mid is None:
             continue
+        fair_q_node = fair_q.get(tenor)
+        if isinstance(fair_q_node, dict) and isinstance(
+            fair_q_node.get("sigma_fair_q_pct"), (int, float)
+        ):
+            sigma_fair_q = float(fair_q_node["sigma_fair_q_pct"])
+            sigma_fair_p = float(fair_q_node.get("sigma_fair_p_pct", sigma_fair_q))
+            vrp = float(fair_q_node.get("vrp_vol_pts", 0.0))
+        else:
+            # Back-compat : no _fair_q aggregate (OHLC missing). Fall back
+            # to the legacy GARCH value interpreted as if it were Q — same
+            # behaviour as R9 sandbox pre-VRP, still useful for smoke.
+            garch_node = legacy_garch.get(tenor)
+            if not isinstance(garch_node, dict) or not isinstance(
+                garch_node.get("sigma_model_pct"), (int, float)
+            ):
+                continue
+            sigma_fair_q = float(garch_node["sigma_model_pct"])
+            sigma_fair_p = sigma_fair_q
+            vrp = 0.0
         sigma_mid_pct = float(iv_mid) * 100.0
-        ecart = sigma_mid_pct - float(sigma_fair_pct)
-        if abs(ecart) <= SIGNAL_ECART_THRESHOLD_PCT:
+        ecart = sigma_mid_pct - sigma_fair_q
+        if abs(ecart) <= threshold_vol_pts:
             signal_type = "FAIR"
         elif ecart > 0:
             signal_type = "EXPENSIVE"
@@ -86,10 +176,14 @@ def _derive_signals(surface: dict[str, Any], underlying: str) -> list[dict[str, 
             "tenor": tenor,
             "dte": DTE_FROM_LABEL.get(tenor, 0),
             "sigma_mid": round(sigma_mid_pct, 4),
-            "sigma_fair": round(float(sigma_fair_pct), 4),
+            "sigma_fair": round(sigma_fair_q, 4),
             "ecart": round(ecart, 4),
             "signal_type": signal_type,
-            "rv": round(float(surface.get("_rv_full_pct")), 4) if surface.get("_rv_full_pct") else None,
+            "rv": round(float(surface.get("_rv_full_pct")), 4)
+            if isinstance(surface.get("_rv_full_pct"), (int, float))
+            else None,
+            "sigma_fair_p": round(sigma_fair_p, 4),
+            "vrp_vol_pts": round(vrp, 4),
         })
     return out
 
@@ -121,6 +215,8 @@ class VolEngine:
         fetch_fop_chain: Any,
         fetch_ohlc: Any,
         tenor_t: dict[str, float] | None = None,
+        signal_threshold_vol_pts: float | None = None,
+        signal_model_p: str = "har",
     ) -> None:
         self.ib = ib
         self.redis = redis
@@ -133,6 +229,12 @@ class VolEngine:
         self._fetch_fop_chain = fetch_fop_chain
         self._fetch_ohlc = fetch_ohlc
         self.tenor_t = tenor_t or DEFAULT_TENOR_T
+        self._signal_threshold = (
+            signal_threshold_vol_pts
+            if signal_threshold_vol_pts is not None
+            else SIGNAL_ECART_THRESHOLD_PCT
+        )
+        self._signal_model_p = signal_model_p  # 'har' or 'garch'
         self._stop = asyncio.Event()
 
     def request_stop(self) -> None:
@@ -169,7 +271,9 @@ class VolEngine:
             logger.info("vol_cycle_skipped", extra={"reason": "no_surface"})
             return False
 
-        signals = _derive_signals(surface, self.symbol)
+        signals = _derive_signals(
+            surface, self.symbol, threshold_vol_pts=self._signal_threshold,
+        )
         try:
             await publisher.publish_vol_update(
                 self.redis, symbol=self.symbol, surface_data=surface, signals_data=signals
@@ -255,15 +359,35 @@ class VolEngine:
             except Exception:
                 rv_full = None
             if rv_full is not None:
-                out["_rv_full_pct"] = rv_full
-                try:
-                    closes = ohlc["close"].to_numpy() if hasattr(ohlc, "close") else None
-                    if closes is not None and len(closes) >= 5:
+                out["_rv_full_pct"] = rv_full  # P-measure, percent
+                closes = ohlc["close"].to_numpy() if hasattr(ohlc, "close") else None
+                # Always compute GARCH for parity + legacy consumers.
+                if closes is not None and len(closes) >= 5:
+                    try:
                         out["_garch"] = fit_and_project_garch(
                             closes, tenor_t=self.tenor_t, rv_full=rv_full
                         )
+                    except Exception:
+                        logger.exception("garch_projection_failed")
+                # HAR-RV (preferred P-measure estimator, Corsi 2009).
+                if closes is not None and len(closes) >= 30:
+                    try:
+                        from core.vol.har_rv import fit_and_project_har
+
+                        tenor_days = {
+                            k: round(v * 365) for k, v in self.tenor_t.items()
+                        }
+                        out["_har"] = fit_and_project_har(closes, tenor_days)
+                    except Exception:
+                        logger.exception("har_projection_failed")
+                # Q-measure conversion : σ_fair^Q = σ_fair^P + VRP(tenor, regime).
+                try:
+                    out["_fair_q"] = _build_fair_q(
+                        surface=out,
+                        preferred_estimator=self._signal_model_p,
+                    )
                 except Exception:
-                    logger.exception("garch_projection_failed")
+                    logger.exception("q_measure_conversion_failed")
         return out
 
     def _teardown(self) -> None:

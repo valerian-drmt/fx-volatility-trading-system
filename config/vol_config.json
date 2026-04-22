@@ -1,4 +1,9 @@
 {
+  "signal": {
+    "THRESHOLD_VOL_PTS": 1.0,
+    "MODEL_P": "har",
+    "VRP_REGIME_OVERRIDE": null
+  },
   "step1": {
     "WAIT_GREEKS": 8,
     "LOOP_INTERVAL_S": 180,

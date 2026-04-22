@@ -56,6 +56,7 @@ async def run() -> None:
 
         return await historical_fetcher.fetch_daily_ohlc(ib, duration_str="1 Y")
 
+    signal_cfg = _load_signal_config()
     engine = VolEngine(
         ib=ib,
         redis=redis,
@@ -65,6 +66,8 @@ async def run() -> None:
         client_id=settings.IB_CLIENT_ID,
         fetch_fop_chain=_fop_real,
         fetch_ohlc=_ohlc_real,
+        signal_threshold_vol_pts=signal_cfg["threshold"],
+        signal_model_p=signal_cfg["model_p"],
     )
 
     loop = asyncio.get_running_loop()
@@ -75,6 +78,33 @@ async def run() -> None:
             signal.signal(sig, lambda _s, _f: engine.request_stop())
 
     await engine.run()
+
+
+def _load_signal_config() -> dict[str, Any]:
+    """Read ``config/vol_config.json`` section 'signal' with sane defaults.
+
+    Defaults back to threshold=1.0 / model='har' if the file or section
+    is missing. Docker mount path is ``/app/config`` ; dev runs against
+    the repo root.
+    """
+    import json
+    import os
+
+    default = {"threshold": 1.0, "model_p": "har"}
+    for candidate in ("/app/config/vol_config.json", "config/vol_config.json"):
+        if not os.path.exists(candidate):
+            continue
+        try:
+            with open(candidate, encoding="utf-8") as f:
+                cfg = json.load(f)
+            sig = cfg.get("signal") or {}
+            return {
+                "threshold": float(sig.get("THRESHOLD_VOL_PTS", default["threshold"])),
+                "model_p": str(sig.get("MODEL_P", default["model_p"])).lower(),
+            }
+        except Exception:
+            continue
+    return default
 
 
 def main() -> None:

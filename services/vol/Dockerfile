@@ -23,6 +23,7 @@ COPY shared/ ./shared/
 COPY core/ ./core/
 COPY src/ ./src/
 COPY services/vol/ ./services/vol/
+COPY config/ ./config/
 
 RUN useradd -m -u 1002 fxvol && chown -R fxvol:fxvol /app
 USER fxvol
