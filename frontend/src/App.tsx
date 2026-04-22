@@ -34,11 +34,11 @@ export default function App(): JSX.Element {
       }
       center={
         <Suspense fallback={LOADING}>
-          <div className="chart-row">
+          <div className="chart-row chart-row-top">
             <ChartPanel />
             <TermStructurePanel />
-            <SmileChartPanel />
           </div>
+          <SmileChartPanel />
           <VolScannerPanel />
         </Suspense>
       }
