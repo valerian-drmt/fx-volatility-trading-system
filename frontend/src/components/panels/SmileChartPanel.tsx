@@ -6,17 +6,25 @@ import { useSelectionStore } from "../../store/selectionStore";
 const TENORS = ["1M", "2M", "3M", "4M", "5M", "6M"] as const;
 
 type ApiPoint = { strike: number; iv_pct: number; delta_label: string };
+type Overlay = { sigma_fair_pct?: number | null; rv_pct?: number | null };
 
 export function SmileChartPanel(): JSX.Element {
   const symbol = useSelectionStore((s) => s.symbol);
   const tenor = useSelectionStore((s) => s.tenor);
   const setTenor = useSelectionStore((s) => s.setTenor);
   const [apiPoints, setApiPoints] = useState<ApiPoint[]>([]);
+  const [overlay, setOverlay] = useState<Overlay>({});
 
   useEffect(() => {
     fetchSmile(tenor, symbol)
-      .then((r) => setApiPoints(r.points))
-      .catch(() => setApiPoints([]));
+      .then((r) => {
+        setApiPoints(r.points);
+        setOverlay({ sigma_fair_pct: r.sigma_fair_pct ?? null, rv_pct: r.rv_pct ?? null });
+      })
+      .catch(() => {
+        setApiPoints([]);
+        setOverlay({});
+      });
   }, [symbol, tenor]);
 
   const chartPoints: SmilePoint[] = apiPoints.map((p) => ({
@@ -45,7 +53,12 @@ export function SmileChartPanel(): JSX.Element {
       </header>
       <div className="panel-body smile-body">
         <div className="smile-chart-wrap">
-          <SmileChart points={chartPoints} tenor={tenor} />
+          <SmileChart
+            points={chartPoints}
+            tenor={tenor}
+            fairVol={overlay.sigma_fair_pct ?? null}
+            rv={overlay.rv_pct ?? null}
+          />
         </div>
         <table className="smile-table" data-testid="smile-table">
           <thead>

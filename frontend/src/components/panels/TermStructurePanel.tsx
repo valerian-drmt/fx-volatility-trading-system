@@ -12,10 +12,13 @@ export function TermStructurePanel(): JSX.Element {
       .then((r) =>
         setPoints(
           r.pillars
-            .filter((p): p is { tenor: string; dte: number | null; sigma_atm_pct: number } =>
-              p.sigma_atm_pct !== null,
-            )
-            .map((p) => ({ tenor: p.tenor, atmVol: p.sigma_atm_pct })),
+            .filter((p) => p.sigma_atm_pct !== null)
+            .map((p) => ({
+              tenor: p.tenor,
+              atmVol: p.sigma_atm_pct as number,
+              fairVol: p.sigma_fair_pct ?? null,
+              rv: p.rv_pct ?? null,
+            })),
         ),
       )
       .catch(() => setPoints([]));

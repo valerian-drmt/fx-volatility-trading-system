@@ -675,6 +675,10 @@ export interface components {
             dte: number | null;
             /** Points */
             points: components["schemas"]["SmilePoint"][];
+            /** Sigma Fair Pct */
+            sigma_fair_pct?: number | null;
+            /** Rv Pct */
+            rv_pct?: number | null;
         };
         /**
          * SurfaceResponse
@@ -732,6 +736,10 @@ export interface components {
             dte: number | null;
             /** Sigma Atm Pct */
             sigma_atm_pct: number | null;
+            /** Sigma Fair Pct */
+            sigma_fair_pct?: number | null;
+            /** Rv Pct */
+            rv_pct?: number | null;
         };
         /** ValidationError */
         ValidationError: {
