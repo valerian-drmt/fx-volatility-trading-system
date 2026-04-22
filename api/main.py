@@ -67,6 +67,9 @@ def create_app() -> FastAPI:
         title="FXVol API",
         version="0.4.0",
         lifespan=lifespan,
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
     )
 
     limiter = build_limiter()
