@@ -244,7 +244,11 @@ class VolEngine:
                 label: {"iv": p.iv, "strike": p.strike} for label, p in pillars.items()
             }
 
+        import inspect
+
         ohlc = self._fetch_ohlc()
+        if inspect.isawaitable(ohlc):
+            ohlc = await ohlc
         if ohlc is not None:
             try:
                 rv_full = yang_zhang_rv_pct(ohlc, window=len(ohlc) - 1)

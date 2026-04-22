@@ -50,19 +50,11 @@ async def run() -> None:
             return {}
         return await chain_fetcher.scan_all_tenors_concurrent(ib, F, chains)
 
-    def _ohlc_sandbox() -> Any:
-        """Synthetic OHLC history (20 bars) seeded around a typical EURUSD level."""
-        import numpy as np
-        import pandas as pd
+    async def _ohlc_real() -> Any:
+        """Real IB daily bars for EUR CONTFUT — cached 30min inside the fetcher."""
+        from services.vol import historical_fetcher
 
-        rng = np.random.default_rng(seed=42)
-        n = 20
-        drift = rng.normal(0.0, 0.002, n).cumsum()
-        close = 1.17 + drift
-        open_ = close + rng.normal(0.0, 0.0006, n)
-        high = np.maximum(open_, close) + np.abs(rng.normal(0.0, 0.0008, n))
-        low = np.minimum(open_, close) - np.abs(rng.normal(0.0, 0.0008, n))
-        return pd.DataFrame({"open": open_, "high": high, "low": low, "close": close})
+        return await historical_fetcher.fetch_daily_ohlc(ib, duration_str="1 Y")
 
     engine = VolEngine(
         ib=ib,
@@ -72,7 +64,7 @@ async def run() -> None:
         ib_port=settings.IB_PORT,
         client_id=settings.IB_CLIENT_ID,
         fetch_fop_chain=_fop_real,
-        fetch_ohlc=_ohlc_sandbox,
+        fetch_ohlc=_ohlc_real,
     )
 
     loop = asyncio.get_running_loop()
