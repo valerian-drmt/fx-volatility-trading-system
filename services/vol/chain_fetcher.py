@@ -38,7 +38,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 DEFAULT_TARGET_DTES: tuple[int, ...] = (30, 60, 90, 120, 150, 180)
-DEFAULT_STRIKES_PER_SIDE: int = 12  # ATM ± 12 strikes per tenor
+DEFAULT_STRIKES_PER_SIDE: int = 18  # ATM ± 18 strikes per tenor
 DEFAULT_MAX_CONCURRENT: int = 3
 DEFAULT_GREEKS_WAIT_S: int = 12
 DEFAULT_CANCEL_PAUSE_S: float = 0.5
