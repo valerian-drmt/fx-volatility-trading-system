@@ -58,14 +58,18 @@ async def run() -> None:
     def _fetch_latest_tick() -> dict[str, Any] | None:
         return latest or None
 
+    async def _post_connect_subscribe() -> None:
+        await _subscribe_ib_ticks(ib, _on_ticker_update, settings.MARKET_SYMBOL)
+
     engine = MarketDataEngine(
         ib=ib,
         redis=redis,
-        symbol=settings.IB_HOST,  # symbol env is added in a later PR ; placeholder
+        symbol=settings.MARKET_SYMBOL,
         ib_host=settings.IB_HOST,
         ib_port=settings.IB_PORT,
         client_id=settings.IB_CLIENT_ID,
         fetch_latest_tick=_fetch_latest_tick,
+        post_connect_hook=_post_connect_subscribe,
     )
 
     loop = asyncio.get_running_loop()
@@ -76,16 +80,22 @@ async def run() -> None:
             # Windows asyncio loop does not implement add_signal_handler.
             signal.signal(sig, lambda _s, _f: engine.request_stop())
 
-    _subscribe_ib_ticks(ib, _on_ticker_update)
     await engine.run()
 
 
-def _subscribe_ib_ticks(ib: Any, on_update: Any) -> None:
-    """Stub — wiring the IB Forex ticker event is added in a later PR.
+async def _subscribe_ib_ticks(ib: Any, on_update: Any, symbol: str) -> None:
+    """Subscribe to the IB Forex ticker for ``symbol`` and fan ticks to ``on_update``.
 
-    Kept as a dedicated function so the unit tests can monkeypatch it out
-    entirely without pulling ib_insync into the test env.
+    Called once after ib is connected (via the engine's post_connect_hook).
+    Kept as a dedicated async function so tests can monkeypatch it without
+    pulling ib_insync into the test env.
     """
+    from ib_insync import Forex
+
+    contract = Forex(symbol)
+    await ib.qualifyContractsAsync(contract)
+    ticker = ib.reqMktData(contract, "", False, False)
+    ticker.updateEvent += on_update
 
 
 def main() -> None:

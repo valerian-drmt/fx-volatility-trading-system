@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     IB_PORT: int = Field(default=4002)
     IB_CLIENT_ID: int = Field(default=1)
 
+    # Market data symbol — spot FX pair that market-data subscribes to via
+    # reqMktData(Forex(...)). EURUSD matches the vol-engine's GARCH target.
+    MARKET_SYMBOL: str = Field(default="EURUSD")
+
     # Database (only db_writer needs this — other services keep the default).
     DATABASE_URL: str = Field(default="")
 

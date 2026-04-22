@@ -84,6 +84,7 @@ services:
       IB_HOST: ib-gateway
       IB_PORT: 4002
       IB_CLIENT_ID: 1
+      MARKET_SYMBOL: ${MARKET_SYMBOL:-EURUSD}
       REDIS_URL: redis://redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:

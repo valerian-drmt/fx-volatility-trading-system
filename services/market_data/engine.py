@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from bus import keys, publisher
@@ -51,6 +52,7 @@ class MarketDataEngine:
         ib_port: int,
         client_id: int,
         fetch_latest_tick: Any,
+        post_connect_hook: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.ib = ib
         self.redis = redis
@@ -61,6 +63,8 @@ class MarketDataEngine:
         # Injected callable so tests can substitute IB's ticker stream.
         # Signature : () -> dict | None with keys {bid, ask, mid, ts}.
         self._fetch_latest_tick = fetch_latest_tick
+        # Called once after IB is connected — use it to reqMktData etc.
+        self._post_connect_hook = post_connect_hook
         self._stop = asyncio.Event()
 
     def request_stop(self) -> None:
@@ -74,6 +78,11 @@ class MarketDataEngine:
         await connect_ib_with_backoff(
             self.ib, host=self.ib_host, port=self.ib_port, client_id=self.client_id
         )
+        if self._post_connect_hook is not None:
+            try:
+                await self._post_connect_hook()
+            except Exception:
+                logger.exception("post_connect_hook_failed")
         logger.info("market_data_engine_started", extra={"symbol": self.symbol})
 
         try:
