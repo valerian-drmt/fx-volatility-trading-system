@@ -138,15 +138,52 @@ async def get_smile(
     )
     rv_raw = surface_dict.get("_rv_full_pct")
     rv_pct = float(rv_raw) if isinstance(rv_raw, (int, float)) else None
+    points = list(_smile_points(pillar))
+    svi_curve = _fit_svi_if_possible(points, tenor, pillar, row.spot)
     return SmileResponse(
         symbol=row.underlying,
         timestamp=row.timestamp,
         tenor=tenor,
         dte=pillar.get("dte"),
-        points=list(_smile_points(pillar)),
+        points=points,
         sigma_fair_pct=sigma_fair,
         rv_pct=rv_pct,
+        svi_curve=svi_curve,
     )
+
+
+# Approximate year-fraction per tenor label — matches services.vol.engine.
+_TENOR_YEARS: dict[str, float] = {
+    "1W": 7 / 365, "1M": 1 / 12, "2M": 2 / 12,
+    "3M": 3 / 12, "4M": 4 / 12, "5M": 5 / 12, "6M": 6 / 12, "1Y": 1.0,
+}
+
+
+def _fit_svi_if_possible(
+    points: list[SmilePoint], tenor: str, pillar: dict[str, Any], spot: Any,
+) -> list[SmilePoint] | None:
+    """Run SVI fit on the observed points ; return a 40-point curve or None."""
+    if len(points) < 3 or spot is None:
+        return None
+    try:
+        from core.vol.svi import fit_svi, svi_curve
+    except ImportError:
+        return None
+    T = _TENOR_YEARS.get(tenor)
+    if T is None:
+        return None
+    strikes = [p.strike for p in points]
+    ivs = [p.iv_pct / 100.0 for p in points]
+    try:
+        forward = float(spot)
+    except (TypeError, ValueError):
+        return None
+    params = fit_svi(strikes, ivs, forward=forward, tenor_years=T)
+    if params is None:
+        return None
+    k_range = max(0.04, abs(max(ivs)) * 2.0)  # ±4% log-moneyness minimum
+    curve = svi_curve(forward, T, params, k_min=-k_range, k_max=k_range, n_points=40)
+    return [SmilePoint(strike=p["strike"], iv_pct=p["iv_pct"], delta_label="SVI") for p in curve]
 
 
 def _smile_points(pillar: dict[str, Any]):

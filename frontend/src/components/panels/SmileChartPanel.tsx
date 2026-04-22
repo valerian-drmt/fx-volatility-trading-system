@@ -6,7 +6,11 @@ import { useSelectionStore } from "../../store/selectionStore";
 const TENORS = ["1M", "2M", "3M", "4M", "5M", "6M"] as const;
 
 type ApiPoint = { strike: number; iv_pct: number; delta_label: string };
-type Overlay = { sigma_fair_pct?: number | null; rv_pct?: number | null };
+type Overlay = {
+  sigma_fair_pct?: number | null;
+  rv_pct?: number | null;
+  sviCurve?: SmilePoint[] | null;
+};
 
 export function SmileChartPanel(): JSX.Element {
   const symbol = useSelectionStore((s) => s.symbol);
@@ -19,7 +23,14 @@ export function SmileChartPanel(): JSX.Element {
     fetchSmile(tenor, symbol)
       .then((r) => {
         setApiPoints(r.points);
-        setOverlay({ sigma_fair_pct: r.sigma_fair_pct ?? null, rv_pct: r.rv_pct ?? null });
+        const svi: SmilePoint[] | null = r.svi_curve
+          ? r.svi_curve.map((p) => ({ strike: p.strike, vol: p.iv_pct }))
+          : null;
+        setOverlay({
+          sigma_fair_pct: r.sigma_fair_pct ?? null,
+          rv_pct: r.rv_pct ?? null,
+          sviCurve: svi,
+        });
       })
       .catch(() => {
         setApiPoints([]);
@@ -58,6 +69,7 @@ export function SmileChartPanel(): JSX.Element {
             tenor={tenor}
             fairVol={overlay.sigma_fair_pct ?? null}
             rv={overlay.rv_pct ?? null}
+            sviCurve={overlay.sviCurve ?? null}
           />
         </div>
         <table className="smile-table" data-testid="smile-table">

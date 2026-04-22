@@ -49,3 +49,4 @@ class SmileResponse(BaseModel):
     points: list[SmilePoint]
     sigma_fair_pct: float | None = None
     rv_pct: float | None = None
+    svi_curve: list[SmilePoint] | None = None

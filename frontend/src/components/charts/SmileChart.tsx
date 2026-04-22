@@ -12,6 +12,7 @@ export interface SmileChartProps {
   tenor: string;
   fairVol?: number | null;
   rv?: number | null;
+  sviCurve?: SmilePoint[] | null;
 }
 
 function horizontalRef(
@@ -34,12 +35,22 @@ function horizontalRef(
   };
 }
 
-export function SmileChart({ points, tenor, fairVol, rv }: SmileChartProps): JSX.Element {
+export function SmileChart({ points, tenor, fairVol, rv, sviCurve }: SmileChartProps): JSX.Element {
   if (points.length === 0) {
     return <div className="chart-empty">no smile data for {tenor}</div>;
   }
   const xs = points.map((p) => p.strike);
   const traces: Data[] = [smileTrace(points)];
+  if (sviCurve && sviCurve.length > 0) {
+    traces.push({
+      name: "SVI fit",
+      type: "scatter",
+      mode: "lines",
+      x: sviCurve.map((p) => p.strike),
+      y: sviCurve.map((p) => p.vol),
+      line: { color: "#a855f7", dash: "solid", width: 2, shape: "spline" },
+    });
+  }
   if (fairVol != null) traces.push(horizontalRef("σ fair (GARCH)", fairVol, xs, "#f59e0b", "dash"));
   if (rv != null) traces.push(horizontalRef("RV (Yang-Zhang)", rv, xs, "#94a3b8", "dot"));
   return (

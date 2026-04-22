@@ -679,6 +679,8 @@ export interface components {
             sigma_fair_pct?: number | null;
             /** Rv Pct */
             rv_pct?: number | null;
+            /** Svi Curve */
+            svi_curve?: components["schemas"]["SmilePoint"][] | null;
         };
         /**
          * SurfaceResponse
