@@ -1,10 +1,12 @@
 """Entrypoint for the vol-engine container.
 
-Wires shared/ helpers to the ``VolEngine`` class, installs signal
-handlers for graceful stop, runs until SIGTERM. The IB-side fetchers
-(``fetch_fop_chain`` and ``fetch_ohlc``) remain stubs in this PR — the
-full port of the monolith's FOP-chain traversal is deferred to a later
-R7 PR to keep the surface bite-sized.
+SANDBOX NOTE (sandbox/r9-pipeline-verif) : the original R7 code shipped
+empty stubs for ``fetch_fop_chain`` / ``fetch_ohlc`` with a comment
+"real traversal lands in a later PR". To validate the end-to-end pipe
+(vol-engine → Redis → API WS → frontend) without waiting for the real
+FOP chain implementation, the stubs here return **synthetic but
+realistic** data. Do NOT promote this file into an official PR — replace
+with the real FOP chain traversal before merging.
 """
 from __future__ import annotations
 
@@ -30,12 +32,42 @@ async def run() -> None:
     ib = IB()
     redis = get_async_redis()
 
-    def _fop_stub(_F: float) -> dict[str, list[tuple[float, float, float]]]:
-        # Real FOP chain traversal lands with PR "vol-engine-fop-chain" in R7.
-        return {}
+    def _fop_sandbox(F: float) -> dict[str, list[tuple[float, float, float]]]:
+        """Synthetic FX smile : realistic term structure + convex skew."""
+        # (delta, iv_offset_from_atm) — typical EURUSD smile shape.
+        points = [
+            (0.10, +0.010),   # 10dc — wing call
+            (0.25, +0.003),   # 25dc
+            (0.50, +0.000),   # atm
+            (0.75, +0.002),   # 25dp
+            (0.90, +0.008),   # 10dp — wing put
+        ]
+        # ATM vol per tenor (upward term structure — long-dated > short-dated).
+        atm_by_tenor = {"1W": 0.065, "1M": 0.072, "3M": 0.080}
+        out: dict[str, list[tuple[float, float, float]]] = {}
+        for tenor, atm_iv in atm_by_tenor.items():
+            obs: list[tuple[float, float, float]] = []
+            for delta, iv_bump in points:
+                iv = atm_iv + iv_bump
+                # Approximate strike : K = F * (1 + shift) where shift ~ (0.5 - delta) * iv.
+                strike = F * (1.0 + (0.5 - delta) * iv)
+                obs.append((delta, iv, strike))
+            out[tenor] = obs
+        return out
 
-    def _ohlc_stub() -> Any:
-        return None
+    def _ohlc_sandbox() -> Any:
+        """Synthetic OHLC history (20 bars) seeded around a typical EURUSD level."""
+        import numpy as np
+        import pandas as pd
+
+        rng = np.random.default_rng(seed=42)
+        n = 20
+        drift = rng.normal(0.0, 0.002, n).cumsum()
+        close = 1.17 + drift
+        open_ = close + rng.normal(0.0, 0.0006, n)
+        high = np.maximum(open_, close) + np.abs(rng.normal(0.0, 0.0008, n))
+        low = np.minimum(open_, close) - np.abs(rng.normal(0.0, 0.0008, n))
+        return pd.DataFrame({"open": open_, "high": high, "low": low, "close": close})
 
     engine = VolEngine(
         ib=ib,
@@ -44,8 +76,8 @@ async def run() -> None:
         ib_host=settings.IB_HOST,
         ib_port=settings.IB_PORT,
         client_id=settings.IB_CLIENT_ID,
-        fetch_fop_chain=_fop_stub,
-        fetch_ohlc=_ohlc_stub,
+        fetch_fop_chain=_fop_sandbox,
+        fetch_ohlc=_ohlc_sandbox,
     )
 
     loop = asyncio.get_running_loop()
