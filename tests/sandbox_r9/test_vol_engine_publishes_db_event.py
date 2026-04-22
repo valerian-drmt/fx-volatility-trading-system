@@ -49,15 +49,19 @@ async def test_run_cycle_publishes_db_event_with_vol_surfaces_table() -> None:
     ok = await engine.run_cycle()
     assert ok is True
 
-    # redis.publish was called several times (for the pub/sub fanout and for
-    # the db_events frame). Find the db_events one.
+    # redis.publish is called once per db_events frame — vol_surfaces plus
+    # one svi_params frame per tenor (and ssvi_params if surface-fit
+    # succeeded). Assert the vol_surfaces frame is present with the
+    # expected row ; don't pin the exact count.
     publish_calls = [call.args for call in redis.publish.await_args_list]
     db_calls = [args for args in publish_calls if args and args[0] == "db_events"]
-    assert len(db_calls) == 1, f"expected 1 db_events publish, got {db_calls}"
-    channel, frame = db_calls[0]
-    payload = json.loads(frame)
-    assert payload["table"] == "vol_surfaces"
-    row = payload["payload"]
+    assert len(db_calls) >= 1
+    vol_surface_frames = [
+        json.loads(frame) for _, frame in db_calls
+        if json.loads(frame).get("table") == "vol_surfaces"
+    ]
+    assert len(vol_surface_frames) == 1
+    row = vol_surface_frames[0]["payload"]
     assert row["underlying"] == "EURUSD"
     assert row["spot"] == pytest.approx(1.17)
     assert "surface_data" in row

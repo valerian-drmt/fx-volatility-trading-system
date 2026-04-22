@@ -122,6 +122,106 @@ def _build_fair_q(
     return out
 
 
+def _fit_svi_per_tenor(
+    surface: dict[str, Any], forward: float, tenor_years: dict[str, float],
+) -> dict[str, dict[str, float]]:
+    """Run SVI fit on each tenor's observed pillars + butterfly arb check.
+
+    Returns ``{tenor: {a, b, rho, m, sigma, rmse, butterfly_g_min}}``.
+    Log WARNING per tenor whose ``butterfly_g_min`` is negative — these
+    fits embed negative risk-neutral densities and must not drive
+    trade decisions.
+    """
+    from core.vol.svi import butterfly_g_min, fit_svi
+
+    out: dict[str, dict[str, float]] = {}
+    for tenor, pillar in surface.items():
+        if tenor.startswith("_") or not isinstance(pillar, dict):
+            continue
+        T = tenor_years.get(tenor)
+        if T is None:
+            continue
+        strikes: list[float] = []
+        ivs: list[float] = []
+        for label in ("10dp", "25dp", "atm", "25dc", "10dc"):
+            node = pillar.get(label)
+            if not isinstance(node, dict):
+                continue
+            iv = node.get("iv")
+            strike = node.get("strike")
+            if isinstance(iv, (int, float)) and isinstance(strike, (int, float)):
+                strikes.append(float(strike))
+                ivs.append(float(iv))
+        if len(strikes) < 3:
+            continue
+        params = fit_svi(strikes, ivs, forward=float(forward), tenor_years=T)
+        if params is None:
+            continue
+        # Residual RMSE on the observed pillars (total variance).
+        import numpy as np
+
+        k = np.log(np.asarray(strikes) / float(forward))
+        w_fit = params.a + params.b * (
+            params.rho * (k - params.m)
+            + np.sqrt((k - params.m) ** 2 + params.sigma**2)
+        )
+        w_obs = np.asarray(ivs) ** 2 * T
+        rmse = float(np.sqrt(np.mean((w_fit - w_obs) ** 2)))
+        g_min = butterfly_g_min(params)
+        if g_min < 0:
+            logger.warning(
+                "svi_butterfly_violation",
+                extra={"tenor": tenor, "g_min": g_min},
+            )
+        out[tenor] = {
+            "a": round(params.a, 6),
+            "b": round(params.b, 6),
+            "rho": round(params.rho, 6),
+            "m": round(params.m, 6),
+            "sigma": round(params.sigma, 6),
+            "rmse_fit": round(rmse, 6),
+            "butterfly_g_min": round(g_min, 6),
+        }
+    return out
+
+
+def _fit_ssvi_surface(
+    surface: dict[str, Any], forward: float, tenor_years: dict[str, float],
+) -> dict[str, float] | None:
+    """Fit SSVI (Gatheral-Jacquier 2014) across every available tenor.
+
+    Returns ``{eta, gamma, rho, rmse}`` or ``None`` if fewer than 2
+    tenors have usable data. Stored surface-wide (1 row, not per-tenor).
+    """
+    from core.vol.ssvi import fit_ssvi
+
+    observations: list[tuple[float, float, float]] = []
+    atm_by_tenor: dict[str, float] = {}
+    for tenor, pillar in surface.items():
+        if tenor.startswith("_") or not isinstance(pillar, dict):
+            continue
+        T = tenor_years.get(tenor)
+        if T is None:
+            continue
+        atm_node = pillar.get("atm") if isinstance(pillar, dict) else None
+        if isinstance(atm_node, dict) and isinstance(atm_node.get("iv"), (int, float)):
+            atm_by_tenor[tenor] = float(atm_node["iv"])
+        for label in ("10dp", "25dp", "atm", "25dc", "10dc"):
+            node = pillar.get(label)
+            if not isinstance(node, dict):
+                continue
+            iv = node.get("iv")
+            strike = node.get("strike")
+            if isinstance(iv, (int, float)) and isinstance(strike, (int, float)):
+                observations.append((T, float(strike), float(iv)))
+    if len(atm_by_tenor) < 2 or len(observations) < 5:
+        return None
+    result = fit_ssvi(observations, forward=float(forward), atm_iv_by_tenor_years={
+        tenor_years[t]: iv for t, iv in atm_by_tenor.items() if t in tenor_years
+    })
+    return result
+
+
 def _derive_signals(
     surface: dict[str, Any], underlying: str,
     threshold_vol_pts: float = SIGNAL_ECART_THRESHOLD_PCT,
@@ -307,6 +407,26 @@ class VolEngine:
                 await publish_db_event(
                     self.redis, table="signals", payload={**sig, "timestamp": ts_iso},
                 )
+            # SVI per-tenor params (P2.1).
+            svi_all = surface.get("_svi") or {}
+            for tenor, p in svi_all.items():
+                await publish_db_event(
+                    self.redis, table="svi_params",
+                    payload={
+                        "timestamp": ts_iso, "underlying": self.symbol,
+                        "tenor": tenor, **p,
+                    },
+                )
+            # SSVI surface-level (P2.2).
+            ssvi = surface.get("_ssvi")
+            if isinstance(ssvi, dict):
+                await publish_db_event(
+                    self.redis, table="ssvi_params",
+                    payload={
+                        "timestamp": ts_iso, "underlying": self.symbol,
+                        "spot": float(F), **ssvi,
+                    },
+                )
         except Exception:
             logger.exception("publish_db_event_failed")
         return True
@@ -388,6 +508,20 @@ class VolEngine:
                     )
                 except Exception:
                     logger.exception("q_measure_conversion_failed")
+        # SVI fit per tenor (Phase P2.1) + butterfly arbitrage health.
+        try:
+            out["_svi"] = _fit_svi_per_tenor(
+                surface=out, forward=F, tenor_years=self.tenor_t,
+            )
+        except Exception:
+            logger.exception("svi_fit_per_tenor_failed")
+        # SSVI surface-level fit (Phase P2.2).
+        try:
+            ssvi = _fit_ssvi_surface(surface=out, forward=F, tenor_years=self.tenor_t)
+            if ssvi is not None:
+                out["_ssvi"] = ssvi
+        except Exception:
+            logger.exception("ssvi_fit_failed")
         return out
 
     def _teardown(self) -> None:
