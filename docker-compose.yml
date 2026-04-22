@@ -219,7 +219,12 @@ services:
       start_period: 5s
 
   ib-gateway:
-    image: ghcr.io/unusualalpha/ib-gateway:stable
+    # Upstream unusualalpha publishes on ghcr.io but lags behind IB's
+    # mandatory version bumps (seen 2026-04-22 : :stable = 10.19.1j
+    # refused as obsolete). gnzsnz/ib-gateway is a drop-in fork that
+    # rebuilds monthly. For a pinned local build see
+    # `infrastructure/ib-gateway/README.md`.
+    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:latest}
     container_name: fxvol-ib-gateway
     # Opt-in : `docker compose --profile ib up -d` to include IB Gateway.
     # Keeps the default `docker compose up` light and avoids the 4002
@@ -231,11 +236,16 @@ services:
     environment:
       TWS_USERID: ${IB_USERID:-}
       TWS_PASSWORD: ${IB_PASSWORD:-}
-      TRADING_MODE: paper
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      READ_ONLY_API: ${READ_ONLY_API:-no}
       # IBC lifecycle : daily auto-logout at 23:59 Paris is cleaner than a
       # weekly one — IB sessions stale silently otherwise.
       TWS_SETTINGS_PATH: /home/ibgateway/Jts
       AUTO_RESTART_TIME: "11:59 PM"
+      # 2FA handling : give IBC 3 min for push validation, then restart
+      # instead of crash-looping on timeout.
+      TWOFA_TIMEOUT_ACTION: restart
+      BYPASS_WARNING: "yes"
       # VNC is only used when the ib profile is active — IBC demands a non-empty
       # password so we fall through to a dev default rather than erroring at
       # parse time on every `docker compose up` (profiles are evaluated later).

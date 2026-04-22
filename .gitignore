@@ -19,3 +19,7 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 frontend/playwright-report/
 frontend/test-results/
+
+# IB Gateway local build — installer binaries are licensed (no redistribute)
+# and the upstream/ clone is a third-party repo maintained separately.
+infrastructure/ib-gateway/upstream/
