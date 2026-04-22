@@ -25,6 +25,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -220,6 +221,51 @@ class Signal(Base):
     signal_type: Mapped[str] = mapped_column(String(15), nullable=False)
 
     rv: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
+
+
+class SviParam(Base):
+    """Per-tenor SVI fit parameters (Phase P2.1). One row per vol cycle per tenor."""
+
+    __tablename__ = "svi_params"
+    __table_args__ = (
+        UniqueConstraint(
+            "timestamp", "underlying", "tenor",
+            name="uq_svi_params_ts_underlying_tenor",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    underlying: Mapped[str] = mapped_column(String(20), nullable=False)
+    tenor: Mapped[str] = mapped_column(String(5), nullable=False)
+    a: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
+    b: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
+    rho: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
+    m: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
+    sigma: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
+    rmse_fit: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    butterfly_g_min: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+
+
+class SsviParam(Base):
+    """Surface-level SSVI fit parameters (Phase P2.2). One row per vol cycle."""
+
+    __tablename__ = "ssvi_params"
+    __table_args__ = (
+        UniqueConstraint(
+            "timestamp", "underlying", name="uq_ssvi_params_ts_underlying",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    underlying: Mapped[str] = mapped_column(String(20), nullable=False)
+    spot: Mapped[Decimal] = mapped_column(Numeric(15, 8), nullable=False)
+    eta: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
+    gamma: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
+    rho: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
+    rmse_fit: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
+    calendar_arb_free: Mapped[bool | None] = mapped_column(Boolean)
 
 
 class BacktestRun(Base):

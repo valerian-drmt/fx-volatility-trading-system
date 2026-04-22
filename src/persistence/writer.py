@@ -38,6 +38,8 @@ from persistence.models import (
     Position,
     PositionSnapshot,
     Signal,
+    SsviParam,
+    SviParam,
     Trade,
     VolSurface,
 )
@@ -58,6 +60,8 @@ TABLE_MODELS: dict[str, type[Base]] = {
     "positions": Position,
     "position_snapshots": PositionSnapshot,
     "signals": Signal,
+    "ssvi_params": SsviParam,
+    "svi_params": SviParam,
     "trades": Trade,
     "vol_surfaces": VolSurface,
 }
@@ -76,6 +80,8 @@ TABLE_MODELS: dict[str, type[Base]] = {
 IDEMPOTENT_TABLES: dict[str, list[str]] = {
     "vol_surfaces": ["timestamp", "underlying"],
     "signals": ["timestamp", "underlying", "tenor"],
+    "svi_params": ["timestamp", "underlying", "tenor"],
+    "ssvi_params": ["timestamp", "underlying"],
     "positions": ["id"],
 }
 
