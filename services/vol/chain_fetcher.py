@@ -130,17 +130,29 @@ async def discover_chains(
         euu.append(data)
     euu.sort(key=lambda x: x["dte"])
 
+    # Assign each target DTE to the closest chain. Each chain gets a stable
+    # ``label`` corresponding to the target it represents, which avoids the
+    # bucket-collision bug where two chains mapped to the same "NM" bucket
+    # (e.g. 106d and 134d both -> "4M") and overwrote each other in the
+    # final dict keyed by label.
     selected: list[dict[str, Any]] = []
+    used_expiries: set[str] = set()
     for target in target_dtes:
         if not euu:
             break
-        best = min(euu, key=lambda x: abs(x["dte"] - target))
-        if best not in selected:
-            selected.append(best)
+        label = f"{target // 30}M"
+        # Pick the closest chain that isn't already taken by a previous target.
+        remaining = [c for c in euu if c["expiry"] not in used_expiries]
+        if not remaining:
+            break
+        best = min(remaining, key=lambda x: abs(x["dte"] - target))
+        best = {**best, "label": label}
+        used_expiries.add(best["expiry"])
+        selected.append(best)
     logger.info(
         "discover_chains: selected %d tenors (%s)",
         len(selected),
-        ",".join(f"{tenor_label(c['dte'])}({c['dte']}d)" for c in selected),
+        ",".join(f"{c['label']}({c['dte']}d)" for c in selected),
     )
     return selected
 
@@ -260,7 +272,10 @@ async def scan_all_tenors_concurrent(
     async def _one(chain: dict[str, Any]) -> tuple[str, list[tuple[float, float, float]]]:
         async with sem:
             triples = await scan_one_tenor(ib, chain, F)
-            return tenor_label(chain["dte"]), triples
+            # Prefer the label assigned by discover_chains (guaranteed
+            # unique per target DTE) over re-bucketing by age.
+            label = chain.get("label") or tenor_label(chain["dte"])
+            return label, triples
 
     results = await asyncio.gather(*[_one(ch) for ch in chains])
     out: dict[str, list[tuple[float, float, float]]] = {}
