@@ -27,6 +27,7 @@ On Windows PowerShell replace the `export` with `$env:VAR = "value"`.
 | `db_drop_tables.py` | Drop all ORM tables. Inverse of `db_create_tables.py`. | R1 PR #3 |
 | `smoke_r1_p3_core_models.py` | End-to-end functional smoke test of the R1 PR #3 ORM models : CRUD on Position, cascade to PositionSnapshot, UNIQUE on Trade.ib_order_id, JSONB roundtrip on AccountSnap. | R1 PR #3 |
 | `smoke_r1_p4_vol_analytics.py` | End-to-end functional smoke test of the R1 PR #4 ORM models : nested JSONB roundtrip on VolSurface, Postgres `#>>` operator, UNIQUE (timestamp, underlying), CHECK on Signal.signal_type, JSONB arrays on BacktestRun, server_default on created_at. | R1 PR #4 |
+| `smoke_r1_p5_alembic.py` | Functional smoke test of the Alembic initial migration : `downgrade base` → `upgrade head` → `downgrade base` → `upgrade head` round-trip, then verifies ORM `Base.metadata` matches public tables in Postgres. | R1 PR #5 |
 
 ## Adding a new script
 
