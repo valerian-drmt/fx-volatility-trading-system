@@ -104,7 +104,7 @@ class VolEngine:
             logger.info("vol_cycle_skipped", extra={"reason": "no_spot"})
             return False
 
-        surface = self._compute_surface(F)
+        surface = await self._compute_surface(F)
         if not surface:
             logger.info("vol_cycle_skipped", extra={"reason": "no_surface"})
             return False
@@ -142,8 +142,13 @@ class VolEngine:
         except (ValueError, TypeError, AttributeError):
             return None
 
-    def _compute_surface(self, F: float) -> dict[str, Any]:
-        pillars_by_tenor = self._fetch_fop_chain(F) or {}
+    async def _compute_surface(self, F: float) -> dict[str, Any]:
+        import inspect
+
+        raw = self._fetch_fop_chain(F)
+        if inspect.isawaitable(raw):
+            raw = await raw
+        pillars_by_tenor = raw or {}
         out: dict[str, Any] = {}
         for tenor, obs in pillars_by_tenor.items():
             pillars = interpolate_delta_pillars(obs)

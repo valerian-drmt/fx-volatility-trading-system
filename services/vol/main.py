@@ -1,12 +1,10 @@
 """Entrypoint for the vol-engine container.
 
-SANDBOX NOTE (sandbox/r9-pipeline-verif) : the original R7 code shipped
-empty stubs for ``fetch_fop_chain`` / ``fetch_ohlc`` with a comment
-"real traversal lands in a later PR". To validate the end-to-end pipe
-(vol-engine → Redis → API WS → frontend) without waiting for the real
-FOP chain implementation, the stubs here return **synthetic but
-realistic** data. Do NOT promote this file into an official PR — replace
-with the real FOP chain traversal before merging.
+SANDBOX NOTE (sandbox/r9-pipeline-verif) : ``fetch_fop_chain`` now wires
+through ``services.vol.chain_fetcher.scan_all_tenors_concurrent``, a
+real async port of the monolith's FOP traversal with bounded
+parallelism (Semaphore). ``fetch_ohlc`` remains a synthetic stub until
+the historical bar fetch is ported.
 """
 from __future__ import annotations
 
@@ -32,28 +30,19 @@ async def run() -> None:
     ib = IB()
     redis = get_async_redis()
 
-    def _fop_sandbox(F: float) -> dict[str, list[tuple[float, float, float]]]:
-        """Synthetic FX smile : realistic term structure + convex skew."""
-        # (delta, iv_offset_from_atm) — typical EURUSD smile shape.
-        points = [
-            (0.10, +0.010),   # 10dc — wing call
-            (0.25, +0.003),   # 25dc
-            (0.50, +0.000),   # atm
-            (0.75, +0.002),   # 25dp
-            (0.90, +0.008),   # 10dp — wing put
-        ]
-        # ATM vol per tenor (upward term structure — long-dated > short-dated).
-        atm_by_tenor = {"1W": 0.065, "1M": 0.072, "3M": 0.080}
-        out: dict[str, list[tuple[float, float, float]]] = {}
-        for tenor, atm_iv in atm_by_tenor.items():
-            obs: list[tuple[float, float, float]] = []
-            for delta, iv_bump in points:
-                iv = atm_iv + iv_bump
-                # Approximate strike : K = F * (1 + shift) where shift ~ (0.5 - delta) * iv.
-                strike = F * (1.0 + (0.5 - delta) * iv)
-                obs.append((delta, iv, strike))
-            out[tenor] = obs
-        return out
+    # Cache the discovered chains — they only change when IB rolls expiries.
+    _chains_cache: dict[str, Any] = {"chains": None, "F": None}
+
+    async def _fop_real(F: float) -> dict[str, list[tuple[float, float, float]]]:
+        """Real FOP scan on IB : discover chains once, then scan in parallel."""
+        from services.vol import chain_fetcher
+
+        if _chains_cache["chains"] is None:
+            _chains_cache["chains"] = await chain_fetcher.discover_chains(ib)
+        chains = _chains_cache["chains"]
+        if not chains:
+            return {}
+        return await chain_fetcher.scan_all_tenors_concurrent(ib, F, chains)
 
     def _ohlc_sandbox() -> Any:
         """Synthetic OHLC history (20 bars) seeded around a typical EURUSD level."""
@@ -76,7 +65,7 @@ async def run() -> None:
         ib_host=settings.IB_HOST,
         ib_port=settings.IB_PORT,
         client_id=settings.IB_CLIENT_ID,
-        fetch_fop_chain=_fop_sandbox,
+        fetch_fop_chain=_fop_real,
         fetch_ohlc=_ohlc_sandbox,
     )
 
