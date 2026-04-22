@@ -70,21 +70,35 @@ async def get_term_structure(
 ) -> TermStructureResponse:
     """Derive term structure (tenor → ATM vol) from the latest Redis surface."""
     surface = await get_latest_surface(redis, symbol)
+    # Engine aggregates : per-tenor GARCH fair vol and full-window realised vol.
+    garch = surface.surface.get("_garch") or {}
+    rv_pct = surface.surface.get("_rv_full_pct")
+    rv_pct = float(rv_pct) if isinstance(rv_pct, (int, float)) else None
+
     rows: list[TermStructureRow] = []
     for tenor, pillar in surface.surface.items():
-        # Skip engine-only aggregates that are not per-tenor pillars.
         if tenor.startswith("_") or not isinstance(pillar, dict):
             continue
-        # Two shapes supported :
-        #  1. {"sigma_atm_pct": 7.2, "dte": 7}                (legacy / DB)
-        #  2. {"atm": {"iv": 0.072, "strike": 1.17}, "25dc": ...}  (engine/Redis)
         sigma_pct = pillar.get("sigma_atm_pct") or pillar.get("sigma_ATM_pct")
         if sigma_pct is None:
             atm = pillar.get("atm")
             if isinstance(atm, dict) and isinstance(atm.get("iv"), (int, float)):
                 sigma_pct = float(atm["iv"]) * 100.0
+        garch_node = garch.get(tenor)
+        sigma_fair = (
+            float(garch_node["sigma_model_pct"])
+            if isinstance(garch_node, dict)
+            and isinstance(garch_node.get("sigma_model_pct"), (int, float))
+            else None
+        )
         rows.append(
-            TermStructureRow(tenor=tenor, dte=pillar.get("dte"), sigma_atm_pct=sigma_pct)
+            TermStructureRow(
+                tenor=tenor,
+                dte=pillar.get("dte"),
+                sigma_atm_pct=sigma_pct,
+                sigma_fair_pct=sigma_fair,
+                rv_pct=rv_pct,
+            )
         )
     return TermStructureResponse(
         symbol=surface.symbol, timestamp=surface.timestamp, pillars=rows
@@ -112,12 +126,26 @@ async def get_smile(
     pillar = (row.surface_data or {}).get(tenor)
     if pillar is None:
         raise VolNotFound(f"Tenor {tenor} absent from latest surface for {symbol}")
+    # Engine aggregates sit alongside the tenor dicts in surface_data.
+    surface_dict = row.surface_data or {}
+    garch = surface_dict.get("_garch") or {}
+    garch_node = garch.get(tenor) if isinstance(garch, dict) else None
+    sigma_fair = (
+        float(garch_node["sigma_model_pct"])
+        if isinstance(garch_node, dict)
+        and isinstance(garch_node.get("sigma_model_pct"), (int, float))
+        else None
+    )
+    rv_raw = surface_dict.get("_rv_full_pct")
+    rv_pct = float(rv_raw) if isinstance(rv_raw, (int, float)) else None
     return SmileResponse(
         symbol=row.underlying,
         timestamp=row.timestamp,
         tenor=tenor,
         dte=pillar.get("dte"),
         points=list(_smile_points(pillar)),
+        sigma_fair_pct=sigma_fair,
+        rv_pct=rv_pct,
     )
 
 

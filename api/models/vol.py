@@ -23,6 +23,8 @@ class TermStructureRow(BaseModel):
     tenor: str
     dte: int | None
     sigma_atm_pct: float | None
+    sigma_fair_pct: float | None = None
+    rv_pct: float | None = None
 
 
 class TermStructureResponse(BaseModel):
@@ -45,3 +47,5 @@ class SmileResponse(BaseModel):
     tenor: str
     dte: int | None
     points: list[SmilePoint]
+    sigma_fair_pct: float | None = None
+    rv_pct: float | None = None
