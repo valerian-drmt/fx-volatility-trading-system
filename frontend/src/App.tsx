@@ -5,6 +5,10 @@ import { PortfolioPanel } from "./components/panels/PortfolioPanel";
 import { LogsPanel } from "./components/panels/LogsPanel";
 import { OrderTicketPanel } from "./components/panels/OrderTicketPanel";
 import { BookPanel } from "./components/panels/BookPanel";
+import { RegimeDetectorPanel } from "./components/panels/RegimeDetectorPanel";
+import { PCASignalPanel } from "./components/panels/PCASignalPanel";
+import { TradePreviewPanel } from "./components/panels/TradePreviewPanel";
+import { ModelHealthPanel } from "./components/panels/ModelHealthPanel";
 
 // Plotly bundle is ~380 kB gzip — lazy-load so the initial paint is fast.
 const ChartPanel = lazy(() =>
@@ -35,6 +39,10 @@ export default function App(): JSX.Element {
       center={
         <Suspense fallback={LOADING}>
           <div className="chart-row chart-row-top">
+            <RegimeDetectorPanel />
+            <PCASignalPanel />
+          </div>
+          <div className="chart-row chart-row-top">
             <ChartPanel />
             <TermStructurePanel />
           </div>
@@ -44,8 +52,10 @@ export default function App(): JSX.Element {
       }
       right={
         <>
+          <TradePreviewPanel />
           <OrderTicketPanel />
           <BookPanel />
+          <ModelHealthPanel />
         </>
       }
     />
