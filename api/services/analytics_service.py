@@ -42,8 +42,47 @@ async def list_signals(
     signal_type: str | None = None,
     since: datetime | None = None,
     limit: int = 200,
+    latest_per_tenor: bool = False,
 ) -> list[SignalRow]:
-    """Recent signals, most-recent first. All filters optional and combinable."""
+    """Recent signals, most-recent first. All filters optional and combinable.
+
+    When ``latest_per_tenor`` is true, return **one row per (underlying, tenor)**
+    — the most recent signal for each pair. Use this for the Vol Scanner
+    dashboard where duplicates across timestamps would just spam the table.
+    """
+    if latest_per_tenor:
+        # DISTINCT ON picks the first row per (underlying, tenor) after the
+        # matching ORDER BY. Works on PostgreSQL ; for sqlite tests the
+        # equivalent is the correlated-subquery pattern we keep for
+        # portability below.
+        from sqlalchemy import tuple_
+
+        sub = (
+            select(Signal.underlying, Signal.tenor, func.max(Signal.timestamp).label("ts"))
+            .group_by(Signal.underlying, Signal.tenor)
+        )
+        if underlying:
+            sub = sub.where(Signal.underlying == underlying)
+        if tenor:
+            sub = sub.where(Signal.tenor == tenor)
+        if signal_type:
+            sub = sub.where(Signal.signal_type == signal_type.upper())
+        if since:
+            sub = sub.where(Signal.timestamp >= since)
+        sub_q = sub.subquery()
+        stmt = (
+            select(Signal)
+            .join(
+                sub_q,
+                tuple_(Signal.underlying, Signal.tenor, Signal.timestamp)
+                == tuple_(sub_q.c.underlying, sub_q.c.tenor, sub_q.c.ts),
+            )
+            .order_by(desc(Signal.timestamp))
+            .limit(limit)
+        )
+        rows = (await db.execute(stmt)).scalars().all()
+        return [SignalRow.model_validate(r) for r in rows]
+
     stmt = select(Signal).order_by(desc(Signal.timestamp)).limit(limit)
     if underlying:
         stmt = stmt.where(Signal.underlying == underlying)

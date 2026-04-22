@@ -19,7 +19,7 @@ const COLUMNS: Column<Row>[] = [
 export function VolScannerPanel(): JSX.Element {
   const [rows, setRows] = useState<Signals>([]);
   useEffect(() => {
-    fetchSignals({ limit: 30 })
+    fetchSignals({ limit: 30, latest_per_tenor: true })
       .then(setRows)
       .catch(() => setRows([]));
   }, []);

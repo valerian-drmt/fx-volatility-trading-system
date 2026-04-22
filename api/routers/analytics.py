@@ -31,11 +31,19 @@ async def signals(
     signal_type: str | None = Query(None, pattern="^(CHEAP|EXPENSIVE|FAIR)$"),
     since: datetime | None = None,
     limit: int = Query(200, ge=1, le=2000),
+    latest_per_tenor: bool = Query(
+        False, description="Return only the most-recent signal per (underlying, tenor)."
+    ),
 ) -> list[SignalRow]:
-    """Recent signals, most-recent first. Filters combinable (underlying, tenor, type, since)."""
+    """Recent signals, most-recent first. Filters combinable (underlying, tenor, type, since).
+
+    Set ``latest_per_tenor=true`` to collapse duplicates — the dashboard
+    Vol Scanner uses this so one tenor yields one row, not one-per-cycle.
+    """
     return await svc.list_signals(
         db, underlying=underlying, tenor=tenor,
         signal_type=signal_type, since=since, limit=limit,
+        latest_per_tenor=latest_per_tenor,
     )
 
 

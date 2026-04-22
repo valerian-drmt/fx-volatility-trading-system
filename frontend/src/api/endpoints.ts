@@ -78,6 +78,7 @@ export const fetchSignals = (params?: {
   tenor?: string;
   signal_type?: string;
   limit?: number;
+  latest_per_tenor?: boolean;
 }) => apiGet<Signals>("/api/v1/signals", params ? { query: params } : {});
 
 export const fetchVolHistory = (symbol = "EURUSD", limit = 50) =>
