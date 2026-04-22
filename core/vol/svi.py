@@ -102,6 +102,41 @@ def fit_svi(
     return SviParams(a=result.x[0], b=result.x[1], rho=result.x[2], m=result.x[3], sigma=result.x[4])
 
 
+def butterfly_g_min(
+    params: SviParams,
+    k_min: float = -0.20,
+    k_max: float = 0.20,
+    n_grid: int = 400,
+) -> float:
+    """Butterfly-arbitrage density check : min of g(k) on the grid.
+
+    Gatheral's butterfly-free condition requires the "density function" :
+
+        g(k) = (1 - k w'(k) / (2 w(k)))^2
+             - (w'(k))^2 / 4 * (1 / w(k) + 1 / 4)
+             + w''(k) / 2
+
+    to be ≥ 0 for every log-moneyness ``k``. Negative g(k) means the
+    fitted smile implies a negative risk-neutral density around that
+    strike — bad news for any pricing based on this fit. The helper
+    returns the **min of g over the grid** ; callers log a WARNING
+    when this is < 0 and optionally drop the tenor from trade preview.
+    """
+    k = np.linspace(k_min, k_max, n_grid)
+    diff = k - params.m
+    sq = np.sqrt(diff * diff + params.sigma * params.sigma)
+    w = params.a + params.b * (params.rho * diff + sq)
+    w = np.maximum(w, _EPS)
+    # First and second derivatives (analytic).
+    w_p = params.b * (params.rho + diff / sq)
+    w_pp = params.b * (params.sigma * params.sigma) / (sq**3)
+    term1 = (1.0 - k * w_p / (2.0 * w)) ** 2
+    term2 = (w_p**2) / 4.0 * (1.0 / w + 0.25)
+    term3 = w_pp / 2.0
+    g = term1 - term2 + term3
+    return float(np.min(g))
+
+
 def svi_curve(
     forward: float,
     tenor_years: float,
