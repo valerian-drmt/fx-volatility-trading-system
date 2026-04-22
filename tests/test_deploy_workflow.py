@@ -461,3 +461,61 @@ def test_security_scan_workflow_has_minimal_permissions(trivy_wf: dict):
     assert perms["contents"] == "read"
     assert perms["packages"] == "read"
     assert perms["security-events"] == "write"
+
+
+# ── R8 PR #7 : post-deploy smoke + CHANGELOG v2.0.0 ─────────────────────
+
+@pytest.mark.unit
+def test_changelog_exists_and_pins_v2_0_0():
+    changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+    assert changelog.exists(), "CHANGELOG.md must ship with R8 PR #7"
+    body = changelog.read_text(encoding="utf-8")
+    assert "[2.0.0]" in body
+    assert "R8 release" in body
+    assert "Removed" in body
+    assert "app.py" in body
+
+
+@pytest.mark.unit
+def test_changelog_documents_breaking_change():
+    body = (Path(__file__).resolve().parent.parent / "CHANGELOG.md").read_text(
+        encoding="utf-8"
+    )
+    assert "breaking change" in body.lower()
+
+
+@pytest.mark.unit
+def test_post_deploy_smoke_tests_exist_and_are_gated():
+    smoke = Path(__file__).resolve().parent.parent / "tests" / "test_post_deploy_smoke.py"
+    assert smoke.exists()
+    body = smoke.read_text(encoding="utf-8")
+    assert 'os.environ.get("PROD_SMOKE")' in body
+    assert "/api/v1/health" in body
+    assert "/api/v1/health/extended" in body
+    assert "/openapi.json" in body
+    assert "/ws/ticks" in body
+
+
+@pytest.mark.unit
+def test_post_deploy_smoke_checks_openapi_drift_against_frontend():
+    smoke = (Path(__file__).resolve().parent.parent / "tests" / "test_post_deploy_smoke.py").read_text()
+    assert "schema.d.ts" in smoke
+    assert "live_paths" in smoke
+
+
+@pytest.mark.unit
+def test_post_deploy_smoke_validates_tls_certificate():
+    smoke = (Path(__file__).resolve().parent.parent / "tests" / "test_post_deploy_smoke.py").read_text()
+    assert "ssl.create_default_context" in smoke
+
+
+@pytest.mark.unit
+def test_ib_operations_doc_has_recovery_section():
+    doc = (
+        Path(__file__).resolve().parent.parent / "docs" / "IB_OPERATIONS.md"
+    ).read_text(encoding="utf-8")
+    assert "Recovery procedures" in doc
+    # Five scenarios documented (the `Sc\u00e9nario` spelling uses é —
+    # assert via unicode escape so the pytest output stays encoding-safe).
+    for i in range(1, 6):
+        assert f"Sc\u00e9nario {i}" in doc
