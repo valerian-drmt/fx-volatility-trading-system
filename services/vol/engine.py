@@ -114,10 +114,32 @@ class VolEngine:
                 self.redis, symbol=self.symbol, surface_data=surface, signals_data=[]
             )
             await publisher.set_heartbeat(self.redis, keys.ENGINE_VOL)
-            return True
         except Exception:
             logger.exception("publish_vol_update_failed")
             return False
+
+        # Also fan the surface to the db-writer via the db_events bus so
+        # the row lands in Postgres — required by /api/v1/vol/smile which
+        # reads from the vol_surfaces table.
+        try:
+            from datetime import UTC, datetime
+
+            from shared.db_queue import publish_db_event
+
+            await publish_db_event(
+                self.redis,
+                table="vol_surfaces",
+                payload={
+                    "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                    "underlying": self.symbol,
+                    "spot": float(F),
+                    "forward": float(F),
+                    "surface_data": surface,
+                },
+            )
+        except Exception:
+            logger.exception("publish_db_event_vol_surfaces_failed")
+        return True
 
     async def _read_spot(self) -> float | None:
         key = keys.LATEST_SPOT.format(symbol=self.symbol)
