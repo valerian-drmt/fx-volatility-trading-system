@@ -97,3 +97,65 @@ Ne jamais exposer 5900 au LAN (c'est déjà le cas, bindé 127.0.0.1).
 - En prod (R8), migrer sur AWS Secrets Manager ou Docker secrets.
 - Port 4002 (API) bindé `127.0.0.1` uniquement → pas d'exposition LAN.
 - Network `fxvol-external` isolé : l'IB Gateway peut joindre Internet pour parler à IB, mais un attaquant qui compromet IB Gateway ne voit pas `postgres` / `redis`.
+
+## Recovery procedures (R8)
+
+### Scénario 1 : IB Gateway container down, engines retry frénétiquement
+
+```bash
+ssh ubuntu@<EC2_HOST> && cd /opt/fxvol
+docker compose logs ib-gateway --tail=100
+```
+
+- **"Login failed"** → credentials invalides dans `.env`. Update secret + redeploy via GHA.
+- **"2FA required"** → compte IB en Secure Login. Connecter en VNC (tunnel SSH 127.0.0.1:5900) pour valider, OU demander exemption à IB.
+- **"Daily restart in progress"** → fenêtre 23:59-00:02 normale, engines backoff < 5 min.
+
+### Scénario 2 : Engine healthy mais Redis vide
+
+```bash
+docker compose exec redis redis-cli GET latest_spot:EURUSD
+docker compose exec redis redis-cli GET heartbeat:market_data
+docker compose logs market-data --tail=50
+```
+
+- Heartbeat présent + spot absent → subscribe au mauvais ticker ou `reqMktData` en erreur.
+- Heartbeat absent → engine stuck → `docker compose restart market-data`.
+- IB error 322 (request rejected) → collision client_id avec PyQt host → set `ENGINES_IN_PROCESS=false` côté host.
+
+### Scénario 3 : Rollback après deploy foireux
+
+```
+Actions → deploy-prod → Run workflow
+  deploy_sha: <last_known_good_commit>
+```
+
+~5 min pour revenir sur les images `sha-<commit>` précédentes. Si la DB a migré :
+```bash
+docker compose exec api python -m alembic downgrade -1
+# Ou restore depuis backup S3 :
+aws s3 cp s3://fxvol-backups/postgres/fxvol-<yyyymmdd>.dump /tmp/
+docker compose exec -T postgres pg_restore -U fxvol -d fxvol --clean < /tmp/fxvol-*.dump
+```
+
+### Scénario 4 : Cert Let's Encrypt expiré
+
+```bash
+sudo certbot renew --force-renewal
+docker compose exec nginx nginx -s reload
+```
+
+Cause : cron `/etc/cron.daily/fxvol-certbot-renew` a échoué. Check `/var/log/letsencrypt/letsencrypt.log`.
+
+### Scénario 5 : Post-deploy smoke échoue
+
+```bash
+PROD_SMOKE=1 PROD_HOST=https://valerian.dev pytest tests/test_post_deploy_smoke.py -v
+```
+
+Triage rapide :
+- `test_health_endpoint` fail → api down, `docker compose ps`
+- `test_health_extended` fail → redis/postgres down, check healthchecks
+- `test_openapi_schema_matches_committed_frontend_types` fail → **drift prod** → rollback immédiat
+- `test_tls_certificate` fail → voir Scénario 4
+- `test_websocket_ticks_route_accepts_upgrade` fail → Nginx `nginx.conf` manque `proxy_set_header Upgrade`
