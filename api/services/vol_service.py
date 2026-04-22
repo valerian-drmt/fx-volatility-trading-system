@@ -162,7 +162,15 @@ _TENOR_YEARS: dict[str, float] = {
 def _fit_svi_if_possible(
     points: list[SmilePoint], tenor: str, pillar: dict[str, Any], spot: Any,
 ) -> list[SmilePoint] | None:
-    """Run SVI fit on the observed points ; return a 40-point curve or None."""
+    """Run SVI fit on the observed points ; return a 40-point curve or None.
+
+    The curve is sampled between ``min(strike_obs)`` and ``max(strike_obs)``
+    so its endpoints sit exactly on the 10P and 10C pillars — no visual
+    extrapolation past the observed data, and every tenor's fit spans
+    the same observed range.
+    """
+    import math
+
     if len(points) < 3 or spot is None:
         return None
     try:
@@ -181,8 +189,11 @@ def _fit_svi_if_possible(
     params = fit_svi(strikes, ivs, forward=forward, tenor_years=T)
     if params is None:
         return None
-    k_range = max(0.04, abs(max(ivs)) * 2.0)  # ±4% log-moneyness minimum
-    curve = svi_curve(forward, T, params, k_min=-k_range, k_max=k_range, n_points=40)
+    # Sample the fit on the observed strike window so the first/last curve
+    # points land exactly on the 10P / 10C pillars.
+    k_min = math.log(min(strikes) / forward)
+    k_max = math.log(max(strikes) / forward)
+    curve = svi_curve(forward, T, params, k_min=k_min, k_max=k_max, n_points=40)
     return [SmilePoint(strike=p["strike"], iv_pct=p["iv_pct"], delta_label="SVI") for p in curve]
 
 
