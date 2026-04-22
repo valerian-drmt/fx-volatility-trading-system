@@ -64,9 +64,9 @@ describe("SmileChartPanel", () => {
     );
     // atm=6.0, wings 10P=7.3 (+130bp), 25P=6.4 (+40bp), 25C=6.1 (+10bp), 10C=7.0 (+100bp).
     expect(rows[2]).toEqual(["ATM", "1.1700", "6.00%", "—"]);
-    expect(rows[0][0]).toBe("10P");
-    expect(rows[0][3]).toBe("+130 bp");
-    expect(rows[4][0]).toBe("10C");
-    expect(rows[4][3]).toBe("+100 bp");
+    expect(rows[0]?.[0]).toBe("10P");
+    expect(rows[0]?.[3]).toBe("+130 bp");
+    expect(rows[4]?.[0]).toBe("10C");
+    expect(rows[4]?.[3]).toBe("+100 bp");
   });
 });
