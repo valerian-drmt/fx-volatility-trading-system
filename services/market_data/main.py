@@ -89,9 +89,18 @@ async def _subscribe_ib_ticks(ib: Any, on_update: Any, symbol: str) -> None:
     Called once after ib is connected (via the engine's post_connect_hook).
     Kept as a dedicated async function so tests can monkeypatch it without
     pulling ib_insync into the test env.
+
+    Uses delayed market data (type 3) so the subscription does not
+    conflict with a competing live session (Error 10197) elsewhere
+    (native IB Gateway, TWS, mobile app). Delayed data is ~20 min old
+    but sufficient for the pipeline smoke.
     """
     from ib_insync import Forex
 
+    try:
+        ib.reqMarketDataType(3)
+    except Exception:
+        pass  # non-fatal, fall through to real-time
     contract = Forex(symbol)
     await ib.qualifyContractsAsync(contract)
     ticker = ib.reqMktData(contract, "", False, False)
