@@ -31,7 +31,67 @@ from core.vol.yang_zhang import yang_zhang_rv_pct
 logger = logging.getLogger(__name__)
 
 CYCLE_SECONDS = 180.0  # three-minute vol scan cadence
-DEFAULT_TENOR_T = {"1W": 7 / 365, "1M": 1 / 12, "3M": 3 / 12, "1Y": 1.0}
+DEFAULT_TENOR_T = {
+    "1M": 1 / 12, "2M": 2 / 12, "3M": 3 / 12,
+    "4M": 4 / 12, "5M": 5 / 12, "6M": 6 / 12,
+}
+
+# Threshold on |sigma_mid - sigma_fair| for the CHEAP / EXPENSIVE verdict.
+# Unit : vol points (percent). 1.0 = 100 basis points.
+SIGNAL_ECART_THRESHOLD_PCT: float = 1.0
+
+# Approximate DTE per tenor label — used to populate the NOT NULL dte
+# column on the signals table when a more precise value is not carried by
+# the surface dict.
+DTE_FROM_LABEL = {
+    "1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180,
+}
+
+
+def _derive_signals(surface: dict[str, Any], underlying: str) -> list[dict[str, Any]]:
+    """Turn the engine surface into a list of signal dicts, one per tenor.
+
+    ``surface[tenor]["atm"]["iv"]`` is the market mid IV (decimal).
+    ``surface["_garch"][tenor]["sigma_model_pct"]`` is the GARCH fair IV
+    in percent. When both are present we compute ``ecart = mid - fair``
+    (vol points) and label CHEAP / EXPENSIVE / FAIR against
+    ``SIGNAL_ECART_THRESHOLD_PCT``. Tenors missing either side are
+    silently skipped.
+    """
+    garch = surface.get("_garch") or {}
+    out: list[dict[str, Any]] = []
+    for tenor, node in surface.items():
+        if tenor.startswith("_") or not isinstance(node, dict):
+            continue
+        atm_node = node.get("atm")
+        if not isinstance(atm_node, dict):
+            continue
+        iv_mid = atm_node.get("iv")
+        garch_node = garch.get(tenor)
+        sigma_fair_pct = (
+            garch_node.get("sigma_model_pct") if isinstance(garch_node, dict) else None
+        )
+        if iv_mid is None or sigma_fair_pct is None:
+            continue
+        sigma_mid_pct = float(iv_mid) * 100.0
+        ecart = sigma_mid_pct - float(sigma_fair_pct)
+        if abs(ecart) <= SIGNAL_ECART_THRESHOLD_PCT:
+            signal_type = "FAIR"
+        elif ecart > 0:
+            signal_type = "EXPENSIVE"
+        else:
+            signal_type = "CHEAP"
+        out.append({
+            "underlying": underlying,
+            "tenor": tenor,
+            "dte": DTE_FROM_LABEL.get(tenor, 0),
+            "sigma_mid": round(sigma_mid_pct, 4),
+            "sigma_fair": round(float(sigma_fair_pct), 4),
+            "ecart": round(ecart, 4),
+            "signal_type": signal_type,
+            "rv": round(float(surface.get("_rv_full_pct")), 4) if surface.get("_rv_full_pct") else None,
+        })
+    return out
 
 
 class _RedisLike(Protocol):
@@ -109,36 +169,42 @@ class VolEngine:
             logger.info("vol_cycle_skipped", extra={"reason": "no_surface"})
             return False
 
+        signals = _derive_signals(surface, self.symbol)
         try:
             await publisher.publish_vol_update(
-                self.redis, symbol=self.symbol, surface_data=surface, signals_data=[]
+                self.redis, symbol=self.symbol, surface_data=surface, signals_data=signals
             )
             await publisher.set_heartbeat(self.redis, keys.ENGINE_VOL)
         except Exception:
             logger.exception("publish_vol_update_failed")
             return False
 
-        # Also fan the surface to the db-writer via the db_events bus so
-        # the row lands in Postgres — required by /api/v1/vol/smile which
-        # reads from the vol_surfaces table.
+        # Also fan the surface + signals to the db-writer via db_events so
+        # rows land in Postgres — required by /api/v1/vol/smile (vol_surfaces)
+        # and /api/v1/analytics/signals (signals).
         try:
             from datetime import UTC, datetime
 
             from shared.db_queue import publish_db_event
 
+            ts_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
             await publish_db_event(
                 self.redis,
                 table="vol_surfaces",
                 payload={
-                    "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                    "timestamp": ts_iso,
                     "underlying": self.symbol,
                     "spot": float(F),
                     "forward": float(F),
                     "surface_data": surface,
                 },
             )
+            for sig in signals:
+                await publish_db_event(
+                    self.redis, table="signals", payload={**sig, "timestamp": ts_iso},
+                )
         except Exception:
-            logger.exception("publish_db_event_vol_surfaces_failed")
+            logger.exception("publish_db_event_failed")
         return True
 
     async def _read_spot(self) -> float | None:
