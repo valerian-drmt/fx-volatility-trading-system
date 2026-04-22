@@ -22,9 +22,13 @@ class SurfaceResponse(BaseModel):
 class TermStructureRow(BaseModel):
     tenor: str
     dte: int | None
-    sigma_atm_pct: float | None
-    sigma_fair_pct: float | None = None
-    rv_pct: float | None = None
+    sigma_atm_pct: float | None                    # Q-measure (implied)
+    sigma_fair_pct: float | None = None            # legacy — Q if _fair_q exists, else P (GARCH)
+    sigma_fair_p_pct: float | None = None          # P-measure (HAR or GARCH)
+    sigma_fair_q_pct: float | None = None          # Q-measure (P + VRP)
+    vrp_vol_pts: float | None = None               # spread added to P to obtain Q
+    regime: str | None = None                      # calm / stressed / pre_event
+    rv_pct: float | None = None                    # P-measure realised
 
 
 class TermStructureResponse(BaseModel):
