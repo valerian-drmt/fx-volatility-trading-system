@@ -74,6 +74,22 @@ html, body, #root {
 .chart-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 
 .ticket-body { display: flex; flex-direction: column; gap: 10px; }
+
+.smile-body { display: flex; gap: 12px; align-items: stretch; }
+.smile-chart-wrap { flex: 1; min-width: 0; }
+.smile-table {
+  font-size: 11px; border-collapse: collapse; min-width: 180px;
+  color: var(--fg); align-self: flex-start;
+}
+.smile-table th {
+  text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--border);
+  color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.smile-table td { padding: 3px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.smile-table tr:last-child td { border-bottom: 0; }
+.smile-table .skew-pos { color: #ef4444; }
+.smile-table .skew-neg { color: #22c55e; }
+
 .ticket-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .ticket-row label { display: flex; flex-direction: column; font-size: 10px; color: var(--muted); gap: 2px; flex: 1; min-width: 70px; }
 .ticket-row input, .ticket-row select, .panel-select {

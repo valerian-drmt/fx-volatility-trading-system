@@ -52,4 +52,21 @@ describe("SmileChartPanel", () => {
     await waitFor(() => expect(useSelectionStore.getState().tenor).toBe("3M"));
     expect((screen.getByTestId("smile-tenor-select") as HTMLSelectElement).value).toBe("3M");
   });
+
+  it("renders a skew table with one row per pillar and skew vs ATM in bp", async () => {
+    render(<SmileChartPanel />);
+    const table = await screen.findByTestId("smile-table");
+    // Wait for the API fetch to populate the rows.
+    await waitFor(() => expect(table.querySelectorAll("tbody tr").length).toBe(5));
+
+    const rows = Array.from(table.querySelectorAll("tbody tr")).map((tr) =>
+      Array.from(tr.querySelectorAll("td")).map((td) => td.textContent),
+    );
+    // atm=6.0, wings 10P=7.3 (+130bp), 25P=6.4 (+40bp), 25C=6.1 (+10bp), 10C=7.0 (+100bp).
+    expect(rows[2]).toEqual(["ATM", "1.1700", "6.00%", "—"]);
+    expect(rows[0][0]).toBe("10P");
+    expect(rows[0][3]).toBe("+130 bp");
+    expect(rows[4][0]).toBe("10C");
+    expect(rows[4][3]).toBe("+100 bp");
+  });
 });
