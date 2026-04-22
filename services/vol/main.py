@@ -31,12 +31,18 @@ async def run() -> None:
     redis = get_async_redis()
 
     # Cache the discovered chains — they only change when IB rolls expiries.
-    _chains_cache: dict[str, Any] = {"chains": None, "F": None}
+    _chains_cache: dict[str, Any] = {"chains": None, "delayed_enabled": False}
 
     async def _fop_real(F: float) -> dict[str, list[tuple[float, float, float]]]:
         """Real FOP scan on IB : discover chains once, then scan in parallel."""
         from services.vol import chain_fetcher
 
+        # Delayed market data (type 3) is required on paper accounts
+        # without a live CME entitlement — otherwise modelGreeks stays
+        # empty and every tenor drops with 0 usable strikes.
+        if not _chains_cache["delayed_enabled"]:
+            chain_fetcher.ensure_delayed_market_data(ib)
+            _chains_cache["delayed_enabled"] = True
         if _chains_cache["chains"] is None:
             _chains_cache["chains"] = await chain_fetcher.discover_chains(ib)
         chains = _chains_cache["chains"]

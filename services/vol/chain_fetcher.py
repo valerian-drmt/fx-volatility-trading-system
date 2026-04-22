@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TARGET_DTES: tuple[int, ...] = (30, 60, 90, 120, 150, 180)
 DEFAULT_STRIKES_PER_SIDE: int = 12  # ATM ± 12 strikes per tenor
 DEFAULT_MAX_CONCURRENT: int = 3
-DEFAULT_GREEKS_WAIT_S: int = 8
+DEFAULT_GREEKS_WAIT_S: int = 12
 DEFAULT_CANCEL_PAUSE_S: float = 0.5
 
 
@@ -67,6 +67,21 @@ def tenor_label(dte: int) -> str:
     if dte <= 165:
         return "5M"
     return "6M"
+
+
+def ensure_delayed_market_data(ib: Any) -> None:
+    """Force delayed market-data mode (type 3).
+
+    Without this, paper accounts without a CME Real-Time subscription
+    get no ``modelGreeks`` (tick type 100) — reqMktData returns only
+    bid/ask, and the IV pillars stay empty. Delayed (20-min) works on
+    every paper account and is sufficient for surface estimation.
+    """
+    try:
+        ib.reqMarketDataType(3)
+        logger.info("reqMarketDataType(3) — delayed market data enabled")
+    except Exception:
+        logger.exception("reqMarketDataType_failed")
 
 
 async def discover_chains(
@@ -219,16 +234,29 @@ async def scan_one_tenor(
     await asyncio.sleep(wait_greeks_s)
 
     raw: dict[tuple[float, str], dict[str, float | None]] = {}
+    n_with_bid = 0
+    n_with_greeks = 0
+    n_with_iv = 0
     for K, right, contract, ticker in active:
+        bid = _safe(getattr(ticker, "bid", None))
+        if bid is not None and bid > 0:
+            n_with_bid += 1
         greeks = getattr(ticker, "modelGreeks", None)
+        if greeks is not None:
+            n_with_greeks += 1
         iv = _safe(getattr(greeks, "impliedVol", None)) if greeks else None
         delta = _safe(getattr(greeks, "delta", None)) if greeks else None
         if iv and iv > 0:
+            n_with_iv += 1
             raw[(K, right)] = {"iv": iv, "delta": delta}
         try:
             ib.cancelMktData(contract)
         except Exception:
             logger.exception("cancelMktData_failed")
+    logger.info(
+        "scan_one_tenor %s : %d contracts / %d bid / %d greeks / %d iv>0",
+        chain["expiry"], len(active), n_with_bid, n_with_greeks, n_with_iv,
+    )
 
     await asyncio.sleep(DEFAULT_CANCEL_PAUSE_S)
 
