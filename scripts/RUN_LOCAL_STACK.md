@@ -1,228 +1,239 @@
-# Run the local stack — build & visualize
+# Run the local v2 stack
 
-Pas-à-pas pour builder et démarrer chaque brique du système en local sur Windows (PowerShell ou Git Bash). Cette branche (`feat/r5-dockerfile-web-schema-guard`) contient tout R1-R5 : Postgres + Alembic, Redis bus, FastAPI, frontend React, Nginx, Dockerfile.web.
+Windows / PowerShell. Deux façons de lancer : **tout d'un coup** ou **container par container**.
 
-## Pré-requis
-
-- Docker Desktop (Windows) — doit tourner avant toute commande `docker`
-- Node 20 LTS — pour le frontend dev server
-- Python 3.11 + venv activé (voir section 0)
+Stack : `postgres` + `redis` + `api` + `frontend` + `nginx` + `market-data` + `vol-engine` + `risk-engine` + `db-writer` + `ib-gateway`.
 
 ---
 
-## 0. Setup Python venv (une seule fois puis activation par session)
+## Quel compose utiliser ?
 
-### PowerShell
+Le repo contient **deux fichiers compose**, à usage exclusif l'un de l'autre :
+
+- **`docker-compose.yml`** — stack complet (10 services : nginx, api, frontend, engines, ib-gateway, postgres, redis). Seul `nginx` expose `80/443`. Postgres et Redis sont **isolés** sur le réseau `fxvol-internal` (pas de port host). → pour tester le système "prod-like" de bout en bout.
+- **`docker-compose.dev.yml`** — **Postgres + Redis uniquement**, exposés sur `127.0.0.1:5433` (postgres) et `127.0.0.1:6380` (redis). → pour dev local : brancher PyCharm Database, `psql`, ou l'app PyQt v1 du host directement sur la DB/Redis.
+
+**Règle** : tu en lances **un seul à la fois**. Les deux partagent le même volume `postgres_data` mais le container name diffère (`fxvol-postgres` vs `fxvol-postgres-dev`) — passer de l'un à l'autre sans `docker compose down` au préalable te laissera deux containers qui se marchent dessus.
+
+**Pour brancher PyCharm → Database** :
 ```powershell
-# Une seule fois (à la racine du repo)
+docker compose down                              # coupe le stack prod s'il tourne
+docker compose -f docker-compose.dev.yml up -d   # lance postgres+redis exposés
+```
+Puis dans PyCharm : host `localhost`, port `5433`, db `fxvol`, user `fxvol`, password `fxvol`.
+
+---
+
+## 0. Prérequis
+
+- Docker Desktop (WSL2 backend) lancé
+- Python 3.11 + venv activé
+- Node 20 (dev frontend uniquement)
+
+Setup venv (une fois) :
+```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+```
 
-# À chaque nouvelle session
+Env vars (chaque session) :
+```powershell
 .\.venv\Scripts\Activate.ps1
 $env:PYTHONPATH = "src"
-$env:DATABASE_URL = "postgresql+asyncpg://fxvol:fxvol@localhost:5433/fxvol"
+$env:DB_PASSWORD = "fxvol"
+$env:VNC_PASSWORD = "local-dev"
+$env:IB_USERID = ""
+$env:IB_PASSWORD = ""
 $env:REDIS_URL = "redis://localhost:6380/0"
+$env:DATABASE_URL = "postgresql+asyncpg://fxvol:fxvol@localhost:5433/fxvol"
 ```
 
 ---
 
-## 1. Postgres
+## 1. Lancer tous les containers d'un seul coup
 
-```bash
-docker compose -f docker-compose.dev.yml up -d postgres
-docker compose -f docker-compose.dev.yml ps
-# → fxvol-postgres-dev, state healthy, host port 5433 → container 5432
+Stack complet (10 containers, profiles `engines` + `ib` activés) :
+```powershell
+docker compose --profile engines --profile ib up -d --build
 ```
 
 Appliquer les migrations Alembic :
-```bash
-python -m alembic -c persistence/alembic.ini upgrade head
-# wrapper équivalent :
-python scripts/db_apply.py
+```powershell
+docker compose exec api python -m alembic -c persistence/alembic.ini upgrade head
 ```
 
-Autres wrappers :
-```bash
-python scripts/db_rollback.py                   # downgrade -1
-python scripts/db_reset.py                      # drop all + upgrade head (dev only)
+Vérifier l'état :
+```powershell
+docker compose ps
 ```
 
-Créer une nouvelle révision (autogenerate) — **ordre strict** :
-```bash
-# 1. La DB doit déjà être à head (sinon erreur "Target database is not up to date")
-python scripts/db_apply.py
-
-# 2. Modifier les models ORM dans src/persistence/models/
-
-# 3. Générer la révision
-python scripts/db_new_revision.py "add col X"
-
-# 4. Relire/éditer la migration dans persistence/migrations/versions/
-
-# 5. Appliquer
-python scripts/db_apply.py
+Smoke rapide :
+```powershell
+curl.exe -fsS http://localhost/api/v1/health
+curl.exe -I http://localhost/
 ```
 
-Vérifier :
-```bash
-docker compose -f docker-compose.dev.yml exec postgres psql -U fxvol -d fxvol -c "\dt"
-```
+Dashboard : **<http://localhost/>**
 
-Shutdown :
-```bash
-docker compose -f docker-compose.dev.yml down          # garde les volumes
-docker compose -f docker-compose.dev.yml down -v       # drop la data
+Arrêter :
+```powershell
+docker compose --profile engines --profile ib down
+# ou avec drop des volumes :
+docker compose --profile engines --profile ib down --volumes
 ```
 
 ---
 
-## 2. Redis
+## 2. Lancer les containers 1 par 1
 
-```bash
+### 2.1 Postgres
+```powershell
+docker compose up -d postgres
+docker compose exec postgres pg_isready -U fxvol -d fxvol
+```
+
+### 2.2 Redis
+```powershell
+docker compose up -d redis
+docker compose exec redis redis-cli PING
+```
+
+### 2.3 API (FastAPI)
+```powershell
+$env:DB_PASSWORD = "fxvol"; $env:VNC_PASSWORD = "local-dev"                         
+docker compose up -d --build --force-recreate api
+docker compose exec api python -m alembic -c persistence/alembic.ini upgrade head
+docker exec fxvol-api curl -fsS http://127.0.0.1:8000/api/v1/health
+```
+
+### 2.4 Frontend (bundle React + Nginx interne port 8080)
+```powershell
+docker compose up -d --build frontend
+```
+
+### 2.5 Nginx (reverse proxy public :80/:443)
+```powershell
+docker compose up -d nginx
+curl.exe -fsS http://localhost/
+curl.exe -fsS http://localhost/api/v1/health
+```
+
+### 2.6 IB Gateway (profile `ib`, requires `IB_USERID`/`IB_PASSWORD`)
+```powershell
+docker compose --profile ib up -d ib-gateway
+docker compose logs -f ib-gateway
+```
+
+### 2.7 Market Data engine
+```powershell
+docker compose --profile engines up -d --build market-data
+docker compose exec redis redis-cli GET heartbeat:market_data
+```
+
+### 2.8 Vol engine
+```powershell
+docker compose --profile engines up -d --build vol-engine
+docker compose exec redis redis-cli GET heartbeat:vol_engine
+```
+
+### 2.9 Risk engine
+```powershell
+docker compose --profile engines up -d --build risk-engine
+docker compose exec redis redis-cli GET heartbeat:risk_engine
+```
+
+### 2.10 DB Writer
+```powershell
+docker compose --profile engines up -d --build db-writer
+docker compose exec redis redis-cli GET heartbeat:db_writer
+```
+
+---
+
+## 3. URLs & endpoints utiles
+
+Une fois le stack up (§ 1 ou §§ 2.1 → 2.10), tout passe par le reverse proxy nginx (port 80). Postgres et Redis ne sont PAS exposés sur le host quand tu lances `docker-compose.yml` — il faut `docker-compose.dev.yml` pour les atteindre depuis le host.
+
+### Frontend (dashboard React)
+- **<http://localhost/>** — bundle React servi par nginx (proxy sur `frontend:8080` interne)
+
+### Backend API (FastAPI)
+- **<http://localhost/api/v1/health>** — liveness probe (renvoie `{"status":"ok"}`)
+- **<http://localhost/api/v1/health/extended>** — DB + Redis pings
+- **<http://localhost/api/docs>** — Swagger UI (OpenAPI interactive, tous les endpoints avec "Try it out")
+- **<http://localhost/api/redoc>** — Redoc (rendu statique, meilleur pour lecture)
+- **<http://localhost/api/openapi.json>** — spec OpenAPI brute (utilisée par le frontend pour codegen)
+
+### IB Gateway (profil `ib` uniquement)
+- **TWS API** : `127.0.0.1:4002` (pour un client ib_insync hors Docker, ex: PyQt v1 sur le host)
+- **VNC viewer** : `vnc://127.0.0.1:5900` (password = `$env:VNC_PASSWORD`, défaut `local-dev`) — utile pour voir l'écran Gateway et déverrouiller un prompt 2FA si besoin. Client VNC recommandé : TightVNC ou RealVNC.
+
+### Postgres (host accès direct)
+Seulement si tu lances le compose dev **à côté** :
+```powershell
+docker compose -f docker-compose.dev.yml up -d postgres
+# host port 5433 → container 5432
+psql -h localhost -p 5433 -U fxvol -d fxvol
+```
+Sinon depuis un conteneur du stack prod : `docker compose exec postgres psql -U fxvol -d fxvol`.
+
+### Redis (host accès direct)
+Idem, via le compose dev :
+```powershell
 docker compose -f docker-compose.dev.yml up -d redis
+# host port 6380 → container 6379
+redis-cli -h localhost -p 6380
 ```
+Sinon : `docker compose exec redis redis-cli`.
+
+### Postgres & Redis (stack prod uniquement)
+Pas de port exposé. Pour les atteindre il faut passer par un conteneur du réseau `fxvol-internal` :
+```powershell
+docker compose exec postgres psql -U fxvol -d fxvol -c "\dt"
+docker compose exec redis redis-cli KEYS 'heartbeat:*'
+docker compose exec redis redis-cli GET heartbeat:market_data
+```
+
+### Engines (heartbeats Redis)
+Pas d'UI, on interroge Redis :
+```powershell
+docker compose exec redis redis-cli GET heartbeat:market_data
+docker compose exec redis redis-cli GET heartbeat:vol_engine
+docker compose exec redis redis-cli GET heartbeat:risk_engine
+docker compose exec redis redis-cli GET heartbeat:db_writer
+```
+Chaque valeur est un timestamp Unix float ; un heartbeat "frais" = `now - ts < TTL` (60s pour market-data, 300s pour vol, 30s pour risk/writer — cf. healthchecks compose).
+
+### Docker Desktop
+- UI graphique : onglet "Containers" liste les 10 services, Stats, Logs, Exec intégré.
+- Nginx reçoit tout le trafic public (80/443), Postgres/Redis/engines restent invisibles à l'extérieur par design (réseau `fxvol-internal` isolé).
 
 ---
 
-## 3. FastAPI backend
+## 4. Nettoyage disque
 
-```bash
-$env:PYTHONPATH = "src" 
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+Après plusieurs `--build` le cache BuildKit gonfle vite (11+ GB possible). Les conteneurs running sont **épargnés** par les prune, c'est safe.
+
+Voir l'occupation courante :
+```powershell
+docker system df
+docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
 ```
 
-Endpoints utiles :
-- <http://localhost:8000/docs> — Swagger UI
-- <http://localhost:8000/openapi.json> — schéma OAS 3.1
-- <http://localhost:8000/metrics> — Prometheus
-- <http://localhost:8000/api/v1/health> — liveness
-- <http://localhost:8000/api/v1/health/extended> — DB + Redis + heartbeats
-
-### En container
-R6 ajoutera `Dockerfile.api`. En attendant, l'API tourne en process local contre le compose.
-
----
-
-## 4. Frontend React
-
-### Mode dev (HMR, Vite dev server) — usage quotidien
-```bash
-cd frontend
-npm ci                        # une seule fois
-npm run dev
-```
-→ <http://localhost:5173> (Vite proxy `/api` et `/ws` vers FastAPI :8000)
-
-### Container (Dockerfile.web + Nginx) — simuler la prod
-```bash
-docker build -f infrastructure/docker/Dockerfile.web -t fx-options-frontend:local .
-docker run --rm -d --name fxfrontend -p 8080:8080 fx-options-frontend:local
-# → http://localhost:8080 (Nginx sert index.html + assets hashés, SPA fallback actif)
-docker stop fxfrontend
+Purge courante (récupère typiquement 8-15 GB) :
+```powershell
+docker builder prune -f     # cache BuildKit (layers intermédiaires)
+docker image prune -f       # images dangling sans tag
 ```
 
-Régénérer les types TS depuis FastAPI (si le backend a changé) :
-```bash
-# FastAPI doit tourner (section 3)
-cd frontend
-npm run gen:api               # écrit src/api/schema.d.ts
-npm run gen:api:check         # exit 1 si drift
+Purge agressive (supprime aussi les images non utilisées par un conteneur running) :
+```powershell
+docker image prune -a -f
 ```
 
----
-
-## 5. Stack complet (3 terminaux — R6 livrera un compose orchestré)
-
-```bash
-# Terminal 1 — services
-docker compose -f docker-compose.dev.yml up -d
-python -m alembic -c persistence/alembic.ini upgrade head    # 1ère fois uniquement
-
-# Terminal 2 — API
-powershell scripts/run_api.ps1
-
-# Terminal 3 — frontend
-cd frontend && npm run dev
-```
-
-Navigateur → <http://localhost:5173>.
-
----
-
-## 6. Visualiser le frontend — checklist rapide
-
-| URL | Attendu | Si ça ne marche pas |
-|---|---|---|
-| <http://localhost:5173> | Dashboard React (header + 9 panels) | Vérifier que `npm run dev` tourne |
-| <http://localhost:5173/api/v1/health> | `{"status":"OK"}` (proxifié) | FastAPI arrêté → lancer `scripts/run_api.ps1` |
-| Dot statut en header | Vert `open` / Jaune `connecting|retry` / Rouge `closed` | FastAPI ou Redis down → `docker compose ps` |
-| `StatusPanel` Ticks count | S'incrémente à chaque `redis-cli PUBLISH ticks …` | Redis down ou bridge WS inactif |
-
-**Flux de démo type** (~30s) :
-```bash
-# T1
-docker compose -f docker-compose.dev.yml up -d
-python -m alembic -c persistence/alembic.ini upgrade head
-powershell scripts/run_api.ps1
-
-# T2
-cd frontend && npm run dev
-# → ouvrir http://localhost:5173
-
-# T3 — simuler un tick
-docker compose -f docker-compose.dev.yml exec redis redis-cli PUBLISH ticks '{"symbol":"EURUSD","bid":1.0849,"ask":1.0851,"mid":1.085}'
-# → StatusPanel Ticks: 1, Bid/Ask/Mid remplis
-```
-
----
-
-## 7. Tests
-
-### Backend Python
-```bash
-python -m pytest                                    # unit + fast
-WEB_RUN_INTEGRATION=1 python -m pytest tests/test_openapi_schema_stable.py   # drift guard
-```
-
-### Frontend Vitest (unit + composants)
-```bash
-cd frontend
-npm run test                                        # 56 tests vitest
-npm run test:coverage                               # rapport HTML dans coverage/
-```
-
-### Frontend Playwright (e2e, zero backend)
-```bash
-cd frontend
-npm run build
-npm run test:e2e                                    # 6 tests chromium en ~5s
-npx playwright test --ui                            # debug visuel interactif
-```
-
-### Nginx configs
-```bash
-python -m pytest tests/test_nginx_config_syntax.py  # 3 tests parse
-docker run --rm -v "$PWD/infrastructure/nginx:/conf:ro" nginx:alpine \
-  sh -c "printf 'events{}\nhttp{\n  include /conf/nginx-dev.conf;\n}\n' > /tmp/n.conf && nginx -t -c /tmp/n.conf"
-```
-
----
-
-## 8. Smoke notebooks
-
-```bash
-jupyter lab scripts/redis_bus_smoke.ipynb          # flux tick → Redis → WS
-jupyter lab scripts/fastapi_smoke.ipynb            # tous les endpoints REST
-```
-
----
-
-## 9. Cleanup complet
-
-```bash
-docker compose -f docker-compose.dev.yml down -v       # drop postgres + redis + volumes
-docker rmi fx-options-frontend:local                    # si image build localement
-rm -rf frontend/node_modules frontend/dist frontend/playwright-report
+Reset complet du stack (volumes inclus, **perte des données Postgres**) :
+```powershell
+docker compose --profile engines --profile ib down --volumes
+docker volume prune -f
 ```
