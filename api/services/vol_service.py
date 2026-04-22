@@ -122,10 +122,40 @@ async def get_smile(
 
 
 def _smile_points(pillar: dict[str, Any]):
-    """Yield SmilePoint for each delta available on this pillar."""
+    """Yield SmilePoint for each delta available on this pillar.
+
+    Supports two shapes :
+    - legacy flat : ``{sigma_ATM_pct, strike_atm, iv_25dc_pct, strike_25dc, ...}``
+    - engine nested : ``{atm: {iv, strike}, 25dc: {iv, strike}, 25dp: ..., 10dc: ..., 10dp: ...}``
+      (``iv`` is a decimal — converted × 100 to a percent for the response).
+    """
+    nested_map: tuple[tuple[str, str], ...] = (
+        ("10dp", "10P"),
+        ("25dp", "25P"),
+        ("atm", "ATM"),
+        ("25dc", "25C"),
+        ("10dc", "10C"),
+    )
+    # Try flat first to preserve back-compat.
+    flat_yielded = False
     for iv_key, strike_key, label in _SMILE_ORDER:
         iv = pillar.get(iv_key)
         strike = pillar.get(strike_key)
         if iv is None or strike is None:
             continue
+        flat_yielded = True
         yield SmilePoint(strike=strike, iv_pct=iv, delta_label=label)
+    if flat_yielded:
+        return
+    # Fall back to the nested engine shape.
+    for node_key, label in nested_map:
+        node = pillar.get(node_key)
+        if not isinstance(node, dict):
+            continue
+        iv = node.get("iv")
+        strike = node.get("strike")
+        if iv is None or strike is None:
+            continue
+        yield SmilePoint(
+            strike=float(strike), iv_pct=float(iv) * 100.0, delta_label=label,
+        )
