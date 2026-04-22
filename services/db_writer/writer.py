@@ -115,7 +115,35 @@ class DbWriterService:
         except (ValueError, TypeError, KeyError):
             logger.warning("db_events_malformed_frame", extra={"raw": str(raw)[:120]})
             return
+        payload = _coerce_datetime_fields(payload)
         try:
             self.writer.queue.put_nowait((table, payload))
         except asyncio.QueueFull:
             logger.warning("writer_queue_full_event_dropped", extra={"table": table})
+
+
+_DATETIME_FIELDS: tuple[str, ...] = ("timestamp", "opened_at", "closed_at", "ts")
+
+
+def _coerce_datetime_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    """Convert ISO-8601 strings on known datetime fields back to ``datetime``.
+
+    publish_db_event serialises datetimes via json.dumps(default=str) →
+    ISO strings. asyncpg refuses strings on ``DateTime(timezone=True)``
+    columns (\"expected datetime.datetime instance\"), so we round-trip
+    the known-named fields here. Unknown fields are left untouched.
+    """
+    from datetime import datetime
+
+    out = dict(payload)
+    for key in _DATETIME_FIELDS:
+        value = out.get(key)
+        if not isinstance(value, str):
+            continue
+        # Accept both `+00:00` and the trailing-Z form produced by R9 engines.
+        iso = value.replace("Z", "+00:00") if value.endswith("Z") else value
+        try:
+            out[key] = datetime.fromisoformat(iso)
+        except ValueError:
+            logger.warning("db_events_bad_datetime", extra={"key": key, "value": value[:40]})
+    return out
