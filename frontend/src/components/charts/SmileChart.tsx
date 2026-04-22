@@ -40,16 +40,25 @@ export function SmileChart({ points, tenor, fairVol, rv, sviCurve }: SmileChartP
     return <div className="chart-empty">no smile data for {tenor}</div>;
   }
   const xs = points.map((p) => p.strike);
+  // Clip every trace to the observed strike range so the SVI fit never
+  // extrapolates past the observed pillars and so the 5 data points sit
+  // at the same relative positions (leftmost = 10P, rightmost = 10C)
+  // regardless of the tenor — only the absolute strikes on the axis change.
+  const xMin = Math.min(...xs);
+  const xMax = Math.max(...xs);
   const traces: Data[] = [smileTrace(points)];
   if (sviCurve && sviCurve.length > 0) {
-    traces.push({
-      name: "SVI fit",
-      type: "scatter",
-      mode: "lines",
-      x: sviCurve.map((p) => p.strike),
-      y: sviCurve.map((p) => p.vol),
-      line: { color: "#a855f7", dash: "solid", width: 2, shape: "spline" },
-    });
+    const inRange = sviCurve.filter((p) => p.strike >= xMin && p.strike <= xMax);
+    if (inRange.length > 0) {
+      traces.push({
+        name: "SVI fit",
+        type: "scatter",
+        mode: "lines",
+        x: inRange.map((p) => p.strike),
+        y: inRange.map((p) => p.vol),
+        line: { color: "#a855f7", dash: "solid", width: 2, shape: "spline" },
+      });
+    }
   }
   if (fairVol != null) traces.push(horizontalRef("σ fair (GARCH)", fairVol, xs, "#f59e0b", "dash"));
   if (rv != null) traces.push(horizontalRef("RV (Yang-Zhang)", rv, xs, "#94a3b8", "dot"));
@@ -57,7 +66,7 @@ export function SmileChart({ points, tenor, fairVol, rv, sviCurve }: SmileChartP
     <PlotlyChart
       data={traces}
       layout={{
-        xaxis: { title: { text: "Strike" } },
+        xaxis: { title: { text: "Strike" }, range: [xMin, xMax] },
         yaxis: { title: { text: `σ (${tenor})` } },
         showlegend: true,
         legend: { orientation: "h", y: -0.2 },
