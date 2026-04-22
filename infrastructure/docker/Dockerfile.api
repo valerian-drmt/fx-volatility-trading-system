@@ -17,7 +17,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src:/app
 
 # Build deps required by asyncpg / psycopg2-binary / scipy / arch wheels.
 # libpq-dev is only required if psycopg2-binary does not ship a wheel for
@@ -41,6 +41,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 COPY src/ ./src/
 COPY api/ ./api/
 COPY persistence/ ./persistence/
+COPY core/ ./core/
 
 # uvicorn on port 8000. The image does NOT run --reload : that is a dev
 # concern and inflates the runtime with watchfiles observers.

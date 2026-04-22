@@ -91,6 +91,7 @@ services:
         condition: service_healthy
       ib-gateway:
         condition: service_started
+        required: false
     networks:
       - fxvol-internal
     healthcheck:
@@ -124,6 +125,7 @@ services:
         condition: service_started
       ib-gateway:
         condition: service_started
+        required: false
     networks:
       - fxvol-internal
     healthcheck:
@@ -157,6 +159,7 @@ services:
         condition: service_started
       ib-gateway:
         condition: service_started
+        required: false
     networks:
       - fxvol-internal
     healthcheck:
