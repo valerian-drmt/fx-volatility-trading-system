@@ -67,3 +67,20 @@ export async function apiPost<T>(
   if (!res.ok) throw new ApiError(res.status, url, body);
   return body as T;
 }
+
+export async function apiPut<T>(
+  path: string,
+  payload: unknown,
+  opts: RequestOptions = {},
+): Promise<T> {
+  const url = buildUrl(path, opts.query);
+  const init: RequestInit = {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  };
+  const res = await fetch(url, buildInit(init, opts.signal));
+  const body = await parseBody(res);
+  if (!res.ok) throw new ApiError(res.status, url, body);
+  return body as T;
+}
