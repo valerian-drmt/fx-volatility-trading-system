@@ -26,11 +26,17 @@ def qapp():
 
 
 def pytest_collection_modifyitems(config, items):
-    if os.environ.get("IB_RUN_INTEGRATION") == "1":
-        return
+    ib_enabled = os.environ.get("IB_RUN_INTEGRATION") == "1"
+    db_enabled = os.environ.get("DB_RUN_INTEGRATION") == "1"
+
     skip_integration = pytest.mark.skip(
         reason="integration tests require IB_RUN_INTEGRATION=1 and a live IB Gateway"
     )
+    skip_db = pytest.mark.skip(
+        reason="db_integration tests require DB_RUN_INTEGRATION=1 and a running Postgres"
+    )
     for item in items:
-        if "integration" in item.keywords:
+        if "integration" in item.keywords and not ib_enabled:
             item.add_marker(skip_integration)
+        if "db_integration" in item.keywords and not db_enabled:
+            item.add_marker(skip_db)
