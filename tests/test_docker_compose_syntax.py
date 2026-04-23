@@ -192,9 +192,11 @@ def test_nginx_conf_routes_api_and_ws_to_api_service():
 
 
 @pytest.mark.unit
-def test_env_example_declares_r6_variables():
-    env = (REPO_ROOT / ".env.example").read_text()
-    assert "DB_PASSWORD=" in env
-    assert "VNC_PASSWORD=" in env, ".env.example must document VNC_PASSWORD for PR #4"
-    assert "IB_USERID=" in env
-    assert "IB_PASSWORD=" in env
+def test_env_example_documents_ssm_sourced_variables():
+    """Since R9 commit #3, .env.example is doc-only : runtime secrets come
+    from AWS SSM via scripts/load_secrets.ps1/sh. The file must still
+    list every variable so onboarding devs know what load_secrets covers."""
+    env = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    for var in ("DB_PASSWORD", "VNC_PASSWORD", "IB_USERID", "IB_PASSWORD", "TRADING_MODE"):
+        assert var in env, f".env.example must document {var}"
+        assert f"/fxvol/prod/{var}" in env, f"{var} must reference its SSM path"

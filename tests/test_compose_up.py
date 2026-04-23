@@ -7,8 +7,10 @@ everything to become healthy. Only run it locally or in a dedicated
 CI job with Docker + the required env vars.
 
 Usage:
-    COMPOSE_RUN_INTEGRATION=1 DB_PASSWORD=fxvol VNC_PASSWORD=vncpass \\
-        python -m pytest tests/test_compose_up.py -v
+    # Load all 5 secrets from AWS SSM first (R9 commit #3) :
+    .\\scripts\\load_secrets.ps1
+    $env:COMPOSE_RUN_INTEGRATION = "1"
+    python -m pytest tests/test_compose_up.py -v
 """
 from __future__ import annotations
 
