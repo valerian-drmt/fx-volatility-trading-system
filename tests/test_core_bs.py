@@ -11,7 +11,6 @@ import math
 import pytest
 
 from core.pricing import bs
-from services import bs_pricer  # via the re-export shim
 
 # Fixed reference points. Values computed with the R6 implementation and
 # locked in — regenerate only if the pricing formula itself changes.
@@ -59,17 +58,6 @@ def test_degenerate_inputs_return_zero():
     assert bs.bs_price(1.0, 1.0, 30 / 365, 0.0, "C") == 0.0
     assert bs.bs_delta(1.0, 1.0, 30 / 365, -0.1, "C") == 0.0
     assert bs.bs_gamma(0.0, 1.0, 30 / 365, 0.1) == 0.0
-
-
-@pytest.mark.unit
-def test_reexport_shim_is_identical_to_core():
-    """services.bs_pricer must forward to core.pricing.bs — not fork."""
-    assert bs_pricer.bs_price is bs.bs_price
-    assert bs_pricer.bs_delta is bs.bs_delta
-    assert bs_pricer.bs_gamma is bs.bs_gamma
-    assert bs_pricer.bs_vega is bs.bs_vega
-    assert bs_pricer.bs_theta is bs.bs_theta
-    assert bs_pricer.interpolate_iv is bs.interpolate_iv
 
 
 @pytest.mark.unit

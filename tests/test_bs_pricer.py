@@ -2,7 +2,7 @@
 
 import pytest
 
-from services.bs_pricer import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega, interpolate_iv
+from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega, interpolate_iv
 
 # Reference values: F=1.10, K=1.10, T=0.25, sigma=0.08 (ATM, 3M, 8% vol)
 F, K, T, SIGMA = 1.10, 1.10, 0.25, 0.08
