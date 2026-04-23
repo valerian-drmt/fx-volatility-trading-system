@@ -236,7 +236,7 @@ jobs:
       - name: Apply Alembic migrations
         run: |
           docker compose exec -T api \
-            python -m alembic -c persistence/alembic.ini upgrade head
+            python -m alembic -c src/persistence/alembic.ini upgrade head
 
       - name: Wait for Nginx to serve the frontend
         run: |
@@ -377,7 +377,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run alembic upgrade head
-        run: python -m alembic -c persistence/alembic.ini upgrade head
+        run: python -m alembic -c src/persistence/alembic.ini upgrade head
 
       - name: Run db_integration tests
         run: python -m pytest -m db_integration -v

@@ -104,8 +104,8 @@ Si la DB a migré entre les 2 versions, le rollback peut échouer sur `alembic d
 # Depuis l'host EC2
 ssh ubuntu@<EC2_HOST>
 cd /opt/fxvol
-docker compose exec api python -m alembic -c persistence/alembic.ini history --verbose
-docker compose exec api python -m alembic -c persistence/alembic.ini downgrade -1
+docker compose exec api python -m alembic -c src/persistence/alembic.ini history --verbose
+docker compose exec api python -m alembic -c src/persistence/alembic.ini downgrade -1
 # Puis redeploy le sha voulu via GHA
 ```
 

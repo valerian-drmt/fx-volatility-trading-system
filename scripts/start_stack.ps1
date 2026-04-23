@@ -34,7 +34,7 @@ try {
     & docker @upArgs
 
     Write-Host "==> Alembic upgrade head" -ForegroundColor Cyan
-    docker compose exec -T api python -m alembic -c persistence/alembic.ini upgrade head
+    docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
 
     # nginx cache les IPs des upstreams au demarrage. Si l'api a ete
     # recreee apres nginx, il faut un restart pour refresh le DNS Docker.

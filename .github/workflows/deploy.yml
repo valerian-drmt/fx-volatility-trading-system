@@ -81,7 +81,7 @@ jobs:
           ssh -i ~/.ssh/ec2.pem "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
             "echo '${{ secrets.GITHUB_TOKEN }}' | sudo docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin && \
              sudo systemctl restart fxvol-compose && \
-             sudo docker compose -f /opt/fxvol/docker-compose.yml exec -T api python -m alembic -c persistence/alembic.ini upgrade head"
+             sudo docker compose -f /opt/fxvol/docker-compose.yml exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head"
 
       - name: "Smoke check /api/v1/health returns 200"
         run: |
