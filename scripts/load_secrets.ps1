@@ -41,17 +41,32 @@ if (-not $identity) {
 }
 Write-Host "==> AWS identity : $($identity.Arn)" -ForegroundColor DarkGray
 
-# 2. Fetch tous les parametres /fxvol/prod/* en une requete
-$json = aws ssm get-parameters-by-path `
-    --path /fxvol/prod `
+# 2. Fetch tous les parametres en une requete (get-parameters sur une liste
+# explicite : le path lui-meme n'a pas besoin d'etre permis en IAM,
+# seulement les feuilles arn:.../parameter/fxvol/prod/* -- ce qui matche
+# la policy actuelle de fxvol-dev).
+$names = @(
+    '/fxvol/prod/IB_USERID',
+    '/fxvol/prod/IB_PASSWORD',
+    '/fxvol/prod/DB_PASSWORD',
+    '/fxvol/prod/VNC_PASSWORD',
+    '/fxvol/prod/TRADING_MODE'
+)
+$json = aws ssm get-parameters `
+    --names $names `
     --with-decryption `
     --profile $Profile --region $Region `
     --output json
-if ($LASTEXITCODE -ne 0) { throw "ssm get-parameters-by-path failed" }
+if ($LASTEXITCODE -ne 0) { throw "ssm get-parameters failed" }
 
-$params = ($json | ConvertFrom-Json).Parameters
+$resp = $json | ConvertFrom-Json
+$params = $resp.Parameters
 if (-not $params -or $params.Count -eq 0) {
-    throw "No parameters found under /fxvol/prod/ - run put_secrets.ps1 first"
+    throw "No parameters returned - run put_secrets.ps1 first"
+}
+if ($resp.InvalidParameters -and $resp.InvalidParameters.Count -gt 0) {
+    Write-Host "==> WARNING : parametres introuvables dans SSM :" -ForegroundColor Yellow
+    $resp.InvalidParameters | ForEach-Object { Write-Host "      - $_" -ForegroundColor Yellow }
 }
 
 # 3. Export en $env:*
