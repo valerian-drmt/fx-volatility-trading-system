@@ -9,6 +9,7 @@ the historical bar fetch is ported.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import signal
 from typing import Any
@@ -16,6 +17,7 @@ from typing import Any
 from redis import asyncio as aioredis
 
 from bus.channels import CH_CONFIG_CHANGED
+from core.config import VolTradingConfig
 from shared.config import get_settings
 from shared.logging import configure_logging
 from shared.redis_client import get_async_redis
@@ -23,28 +25,16 @@ from shared.redis_client import get_async_redis
 logger = logging.getLogger(__name__)
 
 
-async def _load_config_from_db() -> Any | None:
-    """Fetch the latest VolTradingConfig from Postgres, or None on any error.
-
-    Non-fatal : when DATABASE_URL is unset or Postgres is unreachable the
-    vol-engine keeps the env-var defaults provided by pydantic-settings.
-    """
-    try:
-        from api.services import config_service
-        from persistence.db import get_session
-
-        async with get_session() as session:
-            record = await config_service.get_current(session)
-            return record.config
-    except Exception as exc:
-        logger.warning("vol_engine_db_config_unavailable reason=%s", exc)
-        return None
-
-
 async def _watch_config_changes(
     redis: aioredis.Redis, engine: Any, stop: asyncio.Event,
 ) -> None:
-    """Subscribe to CH_CONFIG_CHANGED and hot-reload the engine on each event."""
+    """Subscribe to CH_CONFIG_CHANGED and hot-reload the engine on each event.
+
+    Payload contract : JSON ``{"version": int, "config": {...VolTradingConfig}}``.
+    Self-contained -- no Postgres round-trip from the vol-engine, which
+    keeps sqlalchemy/asyncpg out of the engine image (R7 isolation rule :
+    only db-writer touches Postgres).
+    """
     try:
         pubsub = redis.pubsub()
         await pubsub.subscribe(CH_CONFIG_CHANGED)
@@ -63,9 +53,16 @@ async def _watch_config_changes(
                 continue
             if msg is None or msg.get("type") != "message":
                 continue
-            cfg = await _load_config_from_db()
-            if cfg is not None:
-                engine.apply_config(cfg)
+            data = msg.get("data")
+            if isinstance(data, bytes):
+                data = data.decode()
+            try:
+                payload = json.loads(data)
+                cfg = VolTradingConfig.model_validate(payload["config"])
+            except Exception as exc:
+                logger.warning("vol_engine_config_payload_parse_failed reason=%s", exc)
+                continue
+            engine.apply_config(cfg)
     finally:
         try:
             await pubsub.unsubscribe(CH_CONFIG_CHANGED)
@@ -126,10 +123,10 @@ async def run() -> None:
         signal_model_p=settings.MODEL_P,
     )
 
-    # Boot-time config load : DB wins over env vars when available.
-    db_cfg = await _load_config_from_db()
-    if db_cfg is not None:
-        engine.apply_config(db_cfg)
+    # Boot config comes from env vars (pydantic-settings) ; live updates
+    # flow in via CH_CONFIG_CHANGED. First-boot-after-PUT sees stale
+    # defaults until the next admin PUT -- acceptable tradeoff to keep
+    # sqlalchemy out of the engine image.
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):

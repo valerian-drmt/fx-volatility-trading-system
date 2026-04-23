@@ -9,6 +9,7 @@ SQLAlchemy does transaction boundary, Redis does fan-out.
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,6 +25,14 @@ from persistence.models import VolConfig
 
 # Re-exported for callers that imported the legacy constant name.
 CONFIG_CHANGED_CHANNEL = CH_CONFIG_CHANGED
+
+
+def _publish_payload(version: int, config: VolTradingConfig) -> str:
+    """Serialize the config change event ; keep the schema stable for consumers."""
+    return json.dumps(
+        {"version": version, "config": config.model_dump()},
+        default=str,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +118,7 @@ async def update(
     await session.commit()
     await session.refresh(row)
 
-    await redis.publish(CONFIG_CHANGED_CHANNEL, str(next_version))
+    await redis.publish(CONFIG_CHANGED_CHANNEL, _publish_payload(next_version, validated))
     return _row_to_record(row)
 
 
@@ -155,7 +164,8 @@ async def revert(
     await session.commit()
     await session.refresh(row)
 
-    await redis.publish(CONFIG_CHANGED_CHANNEL, str(next_version))
+    validated = VolTradingConfig.model_validate(target.config) if target.config else VolTradingConfig()
+    await redis.publish(CONFIG_CHANGED_CHANNEL, _publish_payload(next_version, validated))
     return _row_to_record(row)
 
 
