@@ -12,7 +12,11 @@ WorkingDirectory=/opt/fxvol
 # ExecStart still runs as root for systemd-oneshot compatibility, but
 # docker compose drops to the 'fxvol' user through /etc/subuid rules.
 ExecStartPre=/opt/fxvol/scripts/load_secrets.sh
+# Two env files : runtime secrets from SSM (mandatory, tmpfs) + image
+# tags written by the deploy workflow (optional, '-' prefix so the
+# unit still boots on a fresh host before the first deploy).
 EnvironmentFile=/run/fxvol.env
+EnvironmentFile=-/opt/fxvol/images.env
 ExecStart=/usr/bin/docker compose up -d --remove-orphans
 ExecStop=/usr/bin/docker compose down --remove-orphans
 # Wipe the env file at stop so secrets never outlive an Active service.

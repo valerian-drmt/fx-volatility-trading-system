@@ -1,16 +1,17 @@
 name: deploy-prod
 
 # Production deploy workflow. Triggers on a pushed semver tag (v*.*.*)
-# or manual workflow_dispatch. SSH to the EC2 host provided via repo
-# secrets, pull the tagged images from GHCR, apply Alembic migrations
-# inside the fresh api container, then `docker compose up -d` so the
-# outer Nginx drops the old containers with a brief 502 and swaps in
-# the new ones.
+# or manual workflow_dispatch. SSH to the EC2 host, ship docker-compose
+# + the non-secret image manifest, then `sudo systemctl restart
+# fxvol-compose` which triggers ExecStartPre=load_secrets.sh to pull
+# secrets from SSM via the instance IAM role.
 #
-# All credentials live in repo secrets : EC2_HOST, EC2_USER, EC2_SSH_KEY
-# (private key PEM), DB_PASSWORD, VNC_PASSWORD, IB_USERID, IB_PASSWORD.
+# Secrets used by this workflow (non-runtime -- only CI infra) :
+#   EC2_HOST, EC2_USER, EC2_SSH_KEY, GITHUB_TOKEN (implicit)
+# Runtime secrets (IB_USERID, IB_PASSWORD, DB_PASSWORD, VNC_PASSWORD)
+# live in AWS SSM /fxvol/prod/* and are never passed through GitHub.
 # The deploy_sha input lets operators redeploy an arbitrary commit
-# without tagging — useful for emergency rollbacks.
+# without tagging -- useful for emergency rollbacks.
 
 on:
   push:
@@ -47,8 +48,6 @@ jobs:
         run: |
           if [ -n "${{ inputs.deploy_sha }}" ]; then
             echo "image_tag=sha-${{ inputs.deploy_sha }}" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "image_tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
           else
             echo "image_tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
@@ -60,18 +59,15 @@ jobs:
           chmod 600 ~/.ssh/ec2.pem
           ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Ship compose + .env payloads to the host
+      - name: Ship compose + image manifest to the host
+        # images.env is non-secret : it only holds the GHCR image refs
+        # for this deploy. Runtime secrets come from SSM at ExecStartPre
+        # time, not from the CI job.
         run: |
           scp -i ~/.ssh/ec2.pem docker-compose.yml \
             "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/fxvol/docker-compose.yml"
-          # .env is rendered on the host from repo secrets, not shipped
-          # as a file (avoids writing secrets to a worktree on the runner).
           ssh -i ~/.ssh/ec2.pem "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
-            "umask 077 && cat > /opt/fxvol/.env" <<EOF
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-          VNC_PASSWORD=${{ secrets.VNC_PASSWORD }}
-          IB_USERID=${{ secrets.IB_USERID }}
-          IB_PASSWORD=${{ secrets.IB_PASSWORD }}
+            "umask 022 && cat > /opt/fxvol/images.env" <<EOF
           API_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-api:${{ steps.resolve.outputs.image_tag }}
           FRONTEND_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-frontend:${{ steps.resolve.outputs.image_tag }}
           MARKET_DATA_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-market-data:${{ steps.resolve.outputs.image_tag }}
@@ -80,14 +76,12 @@ jobs:
           DB_WRITER_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-db-writer:${{ steps.resolve.outputs.image_tag }}
           EOF
 
-      - name: Pull + restart stack on EC2
+      - name: Restart stack via systemd (triggers load_secrets.sh from SSM)
         run: |
           ssh -i ~/.ssh/ec2.pem "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
-            "cd /opt/fxvol && \
-             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin && \
-             docker compose pull && \
-             docker compose up -d --remove-orphans && \
-             docker compose exec -T api python -m alembic -c persistence/alembic.ini upgrade head"
+            "echo '${{ secrets.GITHUB_TOKEN }}' | sudo docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin && \
+             sudo systemctl restart fxvol-compose && \
+             sudo docker compose -f /opt/fxvol/docker-compose.yml exec -T api python -m alembic -c persistence/alembic.ini upgrade head"
 
       - name: "Smoke check /api/v1/health returns 200"
         run: |

@@ -62,6 +62,7 @@ RemainAfterExit=yes
 WorkingDirectory=/opt/fxvol
 ExecStartPre=/opt/fxvol/scripts/load_secrets.sh
 EnvironmentFile=/run/fxvol.env
+EnvironmentFile=-/opt/fxvol/images.env
 ExecStart=/usr/bin/docker compose up -d --remove-orphans
 ExecStop=/usr/bin/docker compose down --remove-orphans
 ExecStopPost=/bin/rm -f /run/fxvol.env
