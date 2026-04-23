@@ -17,6 +17,7 @@ from api.dependencies import set_redis_client
 from api.middleware.logging import AccessLogMiddleware, configure_logging
 from api.middleware.rate_limit import build_limiter, rate_limit_exceeded_handler
 from api.middleware.timing import TimingMiddleware
+from api.routers import admin as admin_router
 from api.routers import analytics as analytics_router
 from api.routers import cockpit as cockpit_router
 from api.routers import health as health_router
@@ -96,6 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(portfolio_router.router)
     app.include_router(analytics_router.router)
     app.include_router(cockpit_router.router)
+    app.include_router(admin_router.router)
     app.include_router(ws_router.router)
     # Remaining planned : orders router (PR #5b) — requires OrderExecutor wiring.
     return app
