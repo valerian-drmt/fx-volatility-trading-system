@@ -9,7 +9,7 @@ FROM ${PYTHON_IMAGE} AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app:/app/src
+    PYTHONPATH=/app/src
 
 WORKDIR /app
 
@@ -20,11 +20,9 @@ RUN apt-get update \
 COPY requirements/base.txt requirements/writer.txt ./requirements/
 RUN pip install --upgrade pip && pip install -r requirements/writer.txt
 
-COPY shared/ ./shared/
-COPY core/ ./core/
+# Post-R9 src-layout : all Python under src/ (shared, core, persistence,
+# services/db_writer).
 COPY src/ ./src/
-COPY persistence/ ./persistence/
-COPY services/db_writer/ ./services/db_writer/
 
 RUN useradd -m -u 1004 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

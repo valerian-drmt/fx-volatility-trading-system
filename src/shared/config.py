@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # Log level (structlog filtering).
     LOG_LEVEL: LogLevel = Field(default="INFO")
 
+    # Vol engine signal calibration. Were in config/vol_config.json until R9
+    # made the folder disappear -- now plain env vars, tuned per deployment.
+    THRESHOLD_VOL_PTS: float = Field(default=1.0)
+    MODEL_P: Literal["har", "garch", "ewma"] = Field(default="har")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

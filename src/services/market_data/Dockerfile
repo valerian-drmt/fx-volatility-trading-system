@@ -11,7 +11,7 @@ FROM ${PYTHON_IMAGE} AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app:/app/src
+    PYTHONPATH=/app/src
 
 WORKDIR /app
 
@@ -26,18 +26,9 @@ RUN apt-get update \
 COPY requirements/base.txt requirements/ib.txt ./requirements/
 RUN pip install --upgrade pip && pip install -r requirements/ib.txt
 
-# Shared code layer — changes less often than the service itself.
-COPY shared/ ./shared/
-COPY core/ ./core/
-# The service container still reuses bus/ + persistence helpers from the
-# monolith until the R7 migration is complete. Once the legacy engines
-# retire we can drop ``src/`` from the image.
+# Post-R9 src-layout : all Python (core/, bus/, persistence/, shared/,
+# services/*) lives under src/. One COPY covers everything.
 COPY src/ ./src/
-
-# Service code layer — invalidated on every engine.py / main.py edit.
-# services/ has no __init__.py : PEP 420 namespace package co-exists with
-# the legacy src/services/ until the migration is complete.
-COPY services/market_data/ ./services/market_data/
 
 # Non-root execution.
 RUN useradd -m -u 1001 fxvol && chown -R fxvol:fxvol /app

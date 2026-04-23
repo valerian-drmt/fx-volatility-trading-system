@@ -7,7 +7,7 @@ FROM ${PYTHON_IMAGE} AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app:/app/src
+    PYTHONPATH=/app/src
 
 WORKDIR /app
 
@@ -19,11 +19,10 @@ RUN apt-get update \
 COPY requirements/base.txt requirements/ib.txt requirements/quant.txt ./requirements/
 RUN pip install --upgrade pip && pip install -r requirements/quant.txt
 
-COPY shared/ ./shared/
-COPY core/ ./core/
+# Post-R9 src-layout : everything Python lives under src/. One COPY covers
+# core, bus, persistence, shared, services/vol (+ other services, unused
+# here but harmless -- same image size vs selective copy is negligible).
 COPY src/ ./src/
-COPY services/vol/ ./services/vol/
-COPY config/ ./config/
 
 RUN useradd -m -u 1002 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

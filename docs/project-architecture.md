@@ -30,7 +30,8 @@ fx-volatility-trading-system/
 ├── infrastructure/             # Dockerfiles, nginx, aws, ec2 configs
 ├── scripts/                    # operator scripts (start_stack, load_secrets, notebooks)
 ├── persistence/                # alembic config + migrations (paired with src/persistence)
-├── config/                     # runtime JSON configs (vol_config.json seul)
+# (no `config/` folder : vol_engine calibration thresholds now live in
+#  shared/config.py and docker-compose.yml env vars since R9 cleanup)
 ├── docs/                       # architecture + operator docs (this file lives here)
 └── releases/                   # gitignored : roadmap, status, interview prep
 ```
