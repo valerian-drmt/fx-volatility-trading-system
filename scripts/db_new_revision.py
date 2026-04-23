@@ -15,7 +15,7 @@ Typical workflow to ADD or REMOVE a table (or a column) :
     1. Edit src/persistence/models.py
     2. python scripts/db_apply.py                (DB at head)
     3. python scripts/db_new_revision.py "add notes column to positions"
-    4. Review persistence/migrations/versions/<new file>.py
+    4. Review src/persistence/migrations/versions/<new file>.py
     5. python scripts/db_apply.py                (run it)
     6. python scripts/db_rollback.py             (verify round-trip)
     7. python scripts/db_apply.py                (back to head)
@@ -44,7 +44,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ALEMBIC_INI = PROJECT_ROOT / "persistence" / "alembic.ini"
+ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
 
 
 def main() -> int:
@@ -69,7 +69,7 @@ def main() -> int:
     if rc == 0:
         print(
             "\nNext steps:\n"
-            "  1. Review the file in persistence/migrations/versions/\n"
+            "  1. Review the file in src/persistence/migrations/versions/\n"
             "  2. python scripts/db_apply.py\n"
             "  3. python scripts/db_rollback.py  (verify round-trip)\n"
             "  4. python scripts/db_apply.py     (back to head)"

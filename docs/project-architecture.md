@@ -182,15 +182,18 @@ carries the v1/v2 cohabitation that plagued the migration through
 R1–R8 (documented in the queued PRs R7 + R8 which are now partially
 redundant with this R9 sandbox kill).
 
-Remaining work before v2.0.0 :
-- Extract the R9 sandbox commits into clean PRs onto `main` (cleanup phase).
-- The R7/R8 refactor PRs in the push queue need re-scoping : most of
-  their v1-removal work has been done here, so they'll reduce to
-  "create services/<svc>/ v2 structure" (which already exists
-  top-level -- needs a `git mv` once `main` has absorbed this R9
-  cleanup).
-- Post-v2.0.0 : cosmetic commit `chore(structure): move api/, services/,
-  core/, persistence/, bus/, shared/ under src/` (currently at top-level
-  for the push queue's sake).
+The src-layout restructure was also completed in this same R9 batch
+(`api/`, `core/`, `services/`, `shared/`, `persistence/alembic.ini` +
+`persistence/migrations/` all moved under `src/`). Top-level no longer
+exposes any Python code tree -- everything that Python imports lives
+under `src/` and is resolved via `PYTHONPATH=src`. The two persistence
+folders collapsed into one under `src/persistence/`.
 
-This file will be updated after that final restructure.
+Remaining work before v2.0.0 :
+- Extract the R9 sandbox commits into clean PRs onto `main` (cleanup
+  phase). Given the magnitude of the kill-v1 + src-layout move, the
+  50+ queued R4-R8 PRs are no longer rebasable one-by-one -- they'll
+  be consolidated into a small number of large PRs (likely 2-3):
+  one for kill-v1, one for src-layout, one for the remaining R7/R8
+  items that still have independent value (CI workflows, systemd,
+  deploy workflow). Narrative tradeoff accepted by the author.

@@ -135,8 +135,7 @@ def test_dockerfile_api_ships_uvicorn():
     assert "FROM python:3.11-slim" in dockerfile or "${PYTHON_IMAGE}" in dockerfile
     assert "EXPOSE 8000" in dockerfile
     assert "uvicorn" in dockerfile
-    assert "COPY api/" in dockerfile
-    assert "COPY src/" in dockerfile
+    assert "COPY src/" in dockerfile  # post-R9 src-layout : api/, core/, persistence/ all live under src/
 
 
 @pytest.mark.unit
