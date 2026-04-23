@@ -8,27 +8,60 @@ Un seul compose : `docker-compose.yml`. Un override automatique `docker-compose.
 
 ---
 
+## Règle sécurité : zéro exposition des secrets en clair
+
+Les secrets (`IB_USERID`, `IB_PASSWORD`, `DB_PASSWORD`, `VNC_PASSWORD`) vivent
+dans AWS SSM Parameter Store et sont chargés en RAM par `load_secrets.ps1`.
+**Aucun `.env` n'est écrit sur disque** (depuis R9 commit #3).
+
+Règles opérationnelles :
+
+- **Jamais** `echo $env:IB_PASSWORD` ni équivalent — le secret apparaîtrait dans
+  le `PSReadLine` history (`Get-PSReadlineOption`.HistorySavePath) et dans le
+  scrollback de la fenêtre
+- **Jamais** `cat .env`, `Get-Content .env`, `printenv`, `Get-ChildItem Env:` —
+  ces commandes dumpent tous les secrets d'un coup
+- **Jamais** `aws ssm get-parameter ... --with-decryption` sans `--query` qui
+  exclut le champ `Value` (par défaut la valeur remonte dans la sortie JSON)
+
+Pour vérifier qu'un secret est chargé sans l'afficher :
+```powershell
+if ($env:IB_PASSWORD) { "set, $($env:IB_PASSWORD.Length) chars" } else { "MISSING" }
+```
+
+Pour vérifier qu'un paramètre SSM existe sans sa valeur :
+```powershell
+aws ssm get-parameter --name /fxvol/prod/IB_USERID `
+    --query 'Parameter.Name' --output text --profile fxvol-dev
+```
+
+Un hook Claude Code (`scripts/hooks/block_secrets.ps1`) bloque automatiquement
+ces commandes si elles sont tentées par un outil. Voir `.claude/settings.local.json`.
+
+Si un secret apparaît accidentellement dans un terminal ou un log :
+1. Rotation immédiate : `.\scripts\put_secrets.ps1 -Only <NAME>`
+2. Purge du `PSReadLine` history : `Clear-History; Remove-Item (Get-PSReadlineOption).HistorySavePath`
+3. Fermer toutes les fenêtres qui ont vu la valeur
+
+---
+
 ## 0. Prérequis
 
-Docker Desktop (WSL2 backend) + Python 3.11 + Node 20. Setup venv une fois :
+Docker Desktop (WSL2 backend) + Python 3.11 + Node 20. Bloc unique à exécuter à chaque session PowerShell (le `venv` + `pip install` ne sont utiles qu'à la première) :
 
 ```powershell
+cd "$HOME\Documents\Python Project\fx-volatility-trading-system"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-```
-
-Variables d'env à chaque session PowerShell :
-
-```powershell
-.\.venv\Scripts\Activate.ps1
 $env:PYTHONPATH = "src"
 $env:DB_PASSWORD = "fxvol"
 $env:VNC_PASSWORD = "local-dev"
-$env:IB_USERID = ""
-$env:IB_PASSWORD = ""
 $env:REDIS_URL = "redis://localhost:6380/0"
 $env:DATABASE_URL = "postgresql+asyncpg://fxvol:fxvol@localhost:5433/fxvol"
+# NOTE : ne PAS exporter IB_USERID / IB_PASSWORD ici. L'env shell surcharge
+# le .env lu par docker compose → s'ils sont vides, ib-gateway ne peut pas
+# se logguer et les engines timeout. Les valeurs reelles sont dans .env.
 ```
 
 Table des ports exposés sur l'host en dev :
@@ -45,7 +78,25 @@ API, engines, db-writer, frontend ne sont **pas** exposés sur l'host — ils so
 
 ---
 
-## 1. Lancer tout en un coup (option rapide)
+## 1. One-shot quotidien — `start_stack.ps1` (**workflow recommande**)
+
+Une seule commande qui : (1) build + lance les 10 containers, (2) joue `alembic upgrade head`, (3) ouvre Windows Terminal avec **un tab `logs -f` par service** (10 tabs).
+
+```powershell
+.\scripts\start_stack.ps1              # build + up + logs live
+.\scripts\start_stack.ps1 -NoBuild     # up + logs live, sans rebuild (plus rapide)
+```
+
+C'est le script a lancer chaque matin. Les tabs restent ouverts en streaming, `Ctrl+C` dans un tab stoppe juste le `logs -f` (le container continue).
+
+Pour arreter la stack a la fin de la journee :
+```powershell
+docker compose --profile engines --profile ib down
+```
+
+---
+
+## 1.bis Lancer tout en un coup (variante manuelle)
 
 ```powershell
 docker compose --profile engines --profile ib up -d --build
@@ -66,56 +117,84 @@ Pour la vérif pipeline détaillée, préférer la section § 2 (lancement servi
 
 ---
 
+## 1.ter Healthcheck global — tester tous les containers
+
+Commandes **read-only** uniquement. Rien ne build, rien ne modifie d'état. Chaque ligne a sa sortie attendue en commentaire.
+
+```powershell
+docker compose ps                                                                                   # 10 containers Up (healthy)/(running)
+docker compose exec postgres pg_isready -U fxvol -d fxvol                                           # accepting connections
+docker compose exec postgres psql -U fxvol -d fxvol -c "SELECT version_num FROM alembic_version;"   # hash Alembic
+docker compose exec redis redis-cli PING                                                            # PONG
+docker exec fxvol-api curl -fsS http://127.0.0.1:8000/api/v1/health                                 # {"status":"ok"}
+docker exec fxvol-frontend wget -qO- http://127.0.0.1:8080/ | Select-Object -First 5                # HTML <div id="root">
+curl.exe -I http://localhost/                                                                       # HTTP/1.1 200 OK
+curl.exe http://localhost/api/v1/health                                                             # {"status":"ok"}
+curl.exe http://localhost/api/v1/health/extended                                                    # {"status":"ok","database":"ok","redis":"ok"}
+Test-NetConnection 127.0.0.1 -Port 4002 | Select-Object TcpTestSucceeded                            # True
+docker compose exec redis redis-cli GET heartbeat:market_data                                       # timestamp Unix récent
+docker compose exec redis redis-cli GET heartbeat:vol_engine                                        # timestamp Unix récent
+docker compose exec redis redis-cli GET heartbeat:risk_engine                                       # timestamp Unix récent
+docker compose exec redis redis-cli GET heartbeat:db_writer                                         # timestamp Unix récent
+docker compose exec postgres psql -U fxvol -d fxvol -c "SELECT COUNT(*) FROM position_snapshots;"   # count > 0
+```
+
+---
+
 ## 2. Lancer + vérifier chaque container
+
+Chaque sous-section suit le **même triptyque** :
+1. **Lancer** — `up -d --build` (rebuild systématique) + ligne de vérif OK
+2. **Logs** — 3 variantes : live / 50 dernières lignes / tous les logs
+3. **Arrêter** — stop (sans supprimer) ou rm -sf (supprime le container)
+
+Les vérifs métier spécifiques (PyCharm, Alembic, endpoints, pub/sub, heartbeats) restent à la fin de chaque sous-section.
+
+---
 
 ### 2.1 Postgres
 
-**Lancer**
+**1) Lancer (rebuild + up + vérif)**
 ```powershell
-docker compose up -d postgres
+docker compose up -d --build postgres
 docker compose exec postgres pg_isready -U fxvol -d fxvol
 # attendu : "accepting connections"
 ```
 
-**Appliquer les migrations Alembic** (une fois le container sain)
+**2) Logs**
 ```powershell
-# depuis l'host via le venv :
+docker compose logs -f postgres             # live
+docker compose logs --tail=50 postgres      # 50 dernières lignes
+docker compose logs postgres                # tous les logs
+```
+À chercher : `database system is ready to accept connections`, pas de `FATAL`.
+
+**3) Arrêter**
+```powershell
+docker compose stop postgres                # arrête, garde le container + volume
+docker compose rm -sf postgres              # stop + supprime le container (volume conservé)
+```
+
+**Vérifs métier**
+
+Appliquer les migrations Alembic une fois postgres sain :
+```powershell
 python -m alembic -c persistence/alembic.ini upgrade head
-# OU depuis le container api s'il tourne :
+# ou depuis le container api s'il tourne :
 docker compose exec api python -m alembic -c persistence/alembic.ini upgrade head
 ```
 
-**Se connecter depuis PyCharm (Database panel)**
-1. `View → Tool Windows → Database` → `+` → `Data Source` → `PostgreSQL`
-2. Remplir :
-   - Host : `localhost`
-   - Port : `5433`
-   - Database : `fxvol`
-   - User : `fxvol`
-   - Password : `fxvol`
-   - URL auto : `jdbc:postgresql://localhost:5433/fxvol`
-3. Cliquer **Test Connection** (PyCharm télécharge le driver JDBC si absent)
-4. **OK** — le schéma `public` apparaît dans le panel
-
-**Vérifier les tables créées par Alembic**
+Vérifier les tables créées :
 ```powershell
 docker compose exec postgres psql -U fxvol -d fxvol -c "\dt"
 # attendu : 8 tables — positions, position_snapshots, signals, vol_surfaces,
 #           trades, account_snaps, backtest_runs, alembic_version
 docker compose exec postgres psql -U fxvol -d fxvol -c "SELECT version_num FROM alembic_version;"
-# attendu : hash Alembic de la dernière migration (ex: 254fc54bb36f)
 ```
 
-**Logs**
-```powershell
-docker compose logs postgres              # tous les logs
-docker compose logs -f postgres           # follow (live)
-docker compose logs --tail=50 postgres    # 50 dernières lignes
-```
+Se connecter depuis PyCharm (Database panel) : Host `localhost` · Port `5433` · DB `fxvol` · User `fxvol` · Password `fxvol` → Test Connection.
 
-À chercher : `database system is ready to accept connections`, pas d'erreur FATAL.
-
-**psql direct depuis l'host** (si `psql` est installé localement)
+psql direct depuis l'host (si installé) :
 ```powershell
 psql -h localhost -p 5433 -U fxvol -d fxvol
 ```
@@ -124,66 +203,81 @@ psql -h localhost -p 5433 -U fxvol -d fxvol
 
 ### 2.2 Redis
 
-**Lancer**
+**1) Lancer (rebuild + up + vérif)**
 ```powershell
-docker compose up -d redis
+docker compose up -d --build redis
 docker compose exec redis redis-cli PING
 # attendu : PONG
 ```
 
-**Se connecter depuis l'host** — `redis-cli` n'étant pas fourni sur Windows, deux options :
+**2) Logs**
+```powershell
+docker compose logs -f redis                # live
+docker compose logs --tail=50 redis         # 50 dernières lignes
+docker compose logs redis                   # tous les logs
+```
 
-1. **Préfixer par `docker compose exec redis`** (pas d'install) :
-   ```powershell
-   docker compose exec redis redis-cli -h localhost -p 6379 PING
-   ```
-2. **Créer un alias PowerShell** (à mettre dans `$PROFILE` pour être permanent) :
-   ```powershell
-   function redis-cli { docker compose exec redis redis-cli @args }
-   redis-cli PING                          # marche depuis l'host
-   redis-cli GET heartbeat:market_data
-   ```
+**3) Arrêter**
+```powershell
+docker compose stop redis
+docker compose rm -sf redis
+```
 
-Avec l'alias, toutes les commandes `redis-cli ...` du reste du doc fonctionnent directement.
+**Vérifs métier**
 
-**Inspecter les clés**
+Alias PowerShell pratique (à mettre dans `$PROFILE`) :
+```powershell
+function redis-cli { docker compose exec redis redis-cli @args }
+redis-cli PING
+```
+
+Inspecter les clés :
 ```powershell
 docker compose exec redis redis-cli KEYS '*'
 docker compose exec redis redis-cli KEYS 'heartbeat:*'
 docker compose exec redis redis-cli GET heartbeat:market_data
 ```
 
-**Suivre le pub/sub (preuve du bus)**
+Suivre le pub/sub (preuve du bus) :
 ```powershell
-# dans un terminal : abonnement
 docker compose exec redis redis-cli SUBSCRIBE ticks vol_update risk_update
-# dans un autre : publication test
+# dans un autre terminal :
 docker compose exec redis redis-cli PUBLISH ticks.EURUSD '{"bid":1.08,"ask":1.081}'
-```
-
-**Logs**
-```powershell
-docker compose logs -f redis
 ```
 
 ---
 
 ### 2.3 API (FastAPI)
 
-**Lancer**
+**1) Lancer (rebuild + up + vérif)**
 ```powershell
 docker compose up -d --build api
-# appliquer les migrations si pas déjà fait :
-docker compose exec api python -m alembic -c persistence/alembic.ini upgrade head
-```
-
-**Vérifier que l'API répond (depuis le container, avant nginx)**
-```powershell
 docker exec fxvol-api curl -fsS http://127.0.0.1:8000/api/v1/health
 # attendu : {"status":"ok"}
 ```
 
-**Endpoints clés (à tester via nginx une fois § 2.5 lancé, sinon via `docker exec` comme ci-dessus)**
+**2) Logs**
+```powershell
+docker compose logs -f api                  # live
+docker compose logs --tail=50 api           # 50 dernières lignes
+docker compose logs api                     # tous les logs
+```
+À chercher : `Application startup complete`, `Uvicorn running on http://0.0.0.0:8000`.
+
+**3) Arrêter**
+```powershell
+docker compose stop api
+docker compose rm -sf api
+```
+
+**Vérifs métier**
+
+Migrations Alembic depuis le container :
+```powershell
+docker compose exec api python -m alembic -c persistence/alembic.ini upgrade head
+```
+
+Endpoints clés (via nginx une fois § 2.5 lancé, sinon via `docker exec`) :
 
 | Endpoint | Ce qu'il fait | Comment tester |
 |---|---|---|
@@ -197,191 +291,222 @@ docker exec fxvol-api curl -fsS http://127.0.0.1:8000/api/v1/health
 | `GET /api/v1/portfolio/positions` | Positions depuis Postgres | idem |
 | `WS /api/v1/ws/ticks` | WebSocket ticks | voir § 3.4 |
 
-**Swagger** — le meilleur outil pour tester tous les endpoints sans écrire de curl : <http://localhost/api/docs>, chaque route a un bouton "Try it out".
-
-**Logs**
+Lien API ↔ Postgres ↔ Redis :
 ```powershell
-docker compose logs -f api
-# à chercher :
-# - "Application startup complete" au démarrage
-# - "Uvicorn running on http://0.0.0.0:8000"
-# - Les lignes des requêtes entrantes
-```
-
-**Lien API ↔ Postgres**
-```powershell
-# endpoint dédié qui PING la DB :
 curl.exe http://localhost/api/v1/health/extended
 # attendu : {"status":"ok","database":"ok","redis":"ok"}
-# si database = "error" → API ne parle plus à postgres (vérif DATABASE_URL + alembic)
 ```
-
-**Lien API ↔ Redis** : même endpoint `/health/extended` ci-dessus (champ `redis`).
 
 ---
 
 ### 2.4 Frontend (React bundle)
 
-**Lancer**
+**1) Lancer (rebuild + up + vérif)**
 ```powershell
 docker compose up -d --build frontend
-```
-
-**Vérifier le bundle servi**
-```powershell
 docker exec fxvol-frontend wget -qO- http://127.0.0.1:8080/ | Select-Object -First 20
 # attendu : HTML avec <div id="root">
 ```
+Le frontend écoute en **interne** sur 8080 — joignable depuis le navigateur uniquement via nginx (§ 2.5).
 
-Le frontend écoute en **interne** sur le port 8080 — il n'est joignable depuis le navigateur qu'après le proxy nginx (§ 2.5).
-
-**Logs**
+**2) Logs**
 ```powershell
-docker compose logs -f frontend
+docker compose logs -f frontend             # live
+docker compose logs --tail=50 frontend      # 50 dernières lignes
+docker compose logs frontend                # tous les logs
+```
+
+**3) Arrêter**
+```powershell
+docker compose stop frontend
+docker compose rm -sf frontend
 ```
 
 ---
 
 ### 2.5 Nginx (reverse proxy public :80)
 
-**Lancer**
+**1) Lancer (rebuild + up + vérif)**
 ```powershell
-docker compose up -d nginx
-```
-
-**Tester la route frontend**
-```powershell
+docker compose up -d --build nginx
 curl.exe -I http://localhost/
 # attendu : HTTP/1.1 200 OK, Content-Type: text/html
-```
-
-**Tester la route API via nginx (proxy)**
-```powershell
 curl.exe http://localhost/api/v1/health
 # attendu : {"status":"ok"}
 ```
+Dashboard complet : **<http://localhost/>**
 
-Dashboard complet dans le navigateur : **<http://localhost/>**
-
-**Logs**
+**2) Logs**
 ```powershell
-docker compose logs -f nginx
-# chaque ligne = une requête HTTP proxyée
+docker compose logs -f nginx                # live (chaque ligne = une requête proxyée)
+docker compose logs --tail=50 nginx         # 50 dernières lignes
+docker compose logs nginx                   # tous les logs
+```
+
+**3) Arrêter**
+```powershell
+docker compose stop nginx
+docker compose rm -sf nginx
 ```
 
 ---
 
 ### 2.6 IB Gateway (profile `ib`, credentials requis)
 
-**Lancer** — ne démarre qu'avec `IB_USERID` + `IB_PASSWORD` non vides dans `.env`
-```powershell
-docker compose --profile ib up -d ib-gateway
-docker compose logs -f ib-gateway
-```
+Ne démarre qu'avec `IB_USERID` + `IB_PASSWORD` non vides dans `.env`.
 
-**Vérifier que le port TWS API est ouvert**
+**1) Lancer (rebuild + up + vérif)**
 ```powershell
+docker compose --profile ib up -d --build ib-gateway
 Test-NetConnection 127.0.0.1 -Port 4002
 # attendu : TcpTestSucceeded : True
 ```
 
-**Voir l'écran du Gateway via VNC**
+**2) Logs**
+```powershell
+docker compose logs -f ib-gateway           # live
+docker compose logs --tail=50 ib-gateway    # 50 dernières lignes
+docker compose logs ib-gateway              # tous les logs
+```
+
+**3) Arrêter**
+```powershell
+docker compose stop ib-gateway
+docker compose rm -sf ib-gateway
+```
+
+**Vérifs métier**
+
+Voir l'écran du Gateway via VNC (diagnostic si login bloque — pas de 2FA en paper) :
 ```
 VNC viewer → vnc://127.0.0.1:5900
 Password : valeur de $env:VNC_PASSWORD (défaut local-dev)
 ```
 
-Utile pour déverrouiller un prompt 2FA ou diagnostiquer un login bloqué.
-
 ---
 
 ### 2.7 Market Data engine (profile `engines`)
 
-**Lancer**
+**1) Lancer (rebuild + up + vérif)**
 ```powershell
 docker compose --profile engines up -d --build market-data
-```
-
-**Vérifier le heartbeat (preuve du lien engine ↔ Redis)**
-```powershell
 docker compose exec redis redis-cli GET heartbeat:market_data
 # attendu : timestamp Unix récent (now - value < 60s)
 ```
 
-**Vérifier que les ticks sont publiés (preuve du pipeline market-data → Redis)**
+**2) Logs**
 ```powershell
-docker compose exec redis redis-cli SUBSCRIBE ticks
-# laisser tourner → des messages {bid, ask, mid, ts} apparaissent si IB Gateway est connecté
+docker compose logs -f market-data          # live
+docker compose logs --tail=50 market-data   # 50 dernières lignes
+docker compose logs market-data             # tous les logs
+```
+À chercher : `Connected to IB gateway`, `Publishing tick for EURUSD`, heartbeat cyclique.
+
+**3) Arrêter**
+```powershell
+docker compose stop market-data
+docker compose rm -sf market-data
 ```
 
-**Logs**
+**Vérifs métier**
+
+Preuve du pipeline market-data → Redis :
 ```powershell
-docker compose logs -f market-data
-# à chercher :
-# - "Connected to IB gateway"
-# - "Publishing tick for EURUSD"
-# - heartbeat cyclique
+docker compose exec redis redis-cli SUBSCRIBE ticks
+# messages {bid, ask, mid, ts} apparaissent si IB Gateway est connecté
 ```
 
 ---
 
 ### 2.8 Vol engine (profile `engines`)
 
-**Lancer**
+**1) Lancer (rebuild + up + vérif)**
 ```powershell
 docker compose --profile engines up -d --build vol-engine
-```
-
-**Heartbeat**
-```powershell
 docker compose exec redis redis-cli GET heartbeat:vol_engine
+# attendu : timestamp Unix récent
 ```
 
-**Lien vol-engine → Redis (publication surface vol)**
+**2) Logs**
+```powershell
+docker compose logs -f vol-engine           # live
+docker compose logs --tail=50 vol-engine    # 50 dernières lignes
+docker compose logs vol-engine              # tous les logs
+```
+À chercher : `GARCH fit`, `BS inversion for 80 strikes`, heartbeat.
+
+**3) Arrêter**
+```powershell
+docker compose stop vol-engine
+docker compose rm -sf vol-engine
+```
+
+**Vérifs métier**
+
+Lien vol-engine → Redis (publication surface vol) :
 ```powershell
 docker compose exec redis redis-cli SUBSCRIBE vol_update
 # attendu : messages vol.surface, vol.term_structure toutes les 30s
-```
-
-**Logs**
-```powershell
-docker compose logs -f vol-engine
-# à chercher : "GARCH fit", "BS inversion for 80 strikes", heartbeat
 ```
 
 ---
 
 ### 2.9 Risk engine (profile `engines`)
 
+**1) Lancer (rebuild + up + vérif)**
 ```powershell
 docker compose --profile engines up -d --build risk-engine
 docker compose exec redis redis-cli GET heartbeat:risk_engine
-docker compose logs -f risk-engine
+# attendu : timestamp Unix récent
 ```
 
-**Lien risk → Redis + Postgres** : risk publie sur `risk_update` et insère des positions via le db-writer.
+**2) Logs**
+```powershell
+docker compose logs -f risk-engine          # live
+docker compose logs --tail=50 risk-engine   # 50 dernières lignes
+docker compose logs risk-engine             # tous les logs
+```
+
+**3) Arrêter**
+```powershell
+docker compose stop risk-engine
+docker compose rm -sf risk-engine
+```
+
+**Vérifs métier** — risk publie sur `risk_update` et insère des positions via le db-writer.
 
 ---
 
 ### 2.10 DB Writer (profile `engines`)
 
-**Lancer**
+**1) Lancer (rebuild + up + vérif)**
 ```powershell
 docker compose --profile engines up -d --build db-writer
 docker compose exec redis redis-cli GET heartbeat:db_writer
+# attendu : timestamp Unix récent
 ```
 
-**Preuve du lien writer ↔ Postgres**
+**2) Logs**
 ```powershell
-# attendre une minute que l'engine ait écrit des snapshots, puis :
+docker compose logs -f db-writer            # live
+docker compose logs --tail=50 db-writer     # 50 dernières lignes
+docker compose logs db-writer               # tous les logs
+```
+À chercher : `batch inserted N rows`, heartbeat.
+
+**3) Arrêter**
+```powershell
+docker compose stop db-writer
+docker compose rm -sf db-writer
+```
+
+**Vérifs métier**
+
+Preuve du lien writer ↔ Postgres :
+```powershell
+# attendre ~1 min que l'engine ait écrit des snapshots, puis :
 docker compose exec postgres psql -U fxvol -d fxvol -c "SELECT COUNT(*) FROM position_snapshots;"
 # attendu : count > 0 qui augmente au cours du temps
-```
-
-**Logs**
-```powershell
-docker compose logs -f db-writer
-# à chercher : "batch inserted N rows", heartbeat
 ```
 
 ---
