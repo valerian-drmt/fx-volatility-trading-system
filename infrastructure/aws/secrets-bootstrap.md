@@ -233,7 +233,12 @@ aws iam add-role-to-instance-profile \
   --role-name fxvol-ec2-secrets-role
 ```
 
-### 4.4 Attacher à l'EC2 existante
+### 4.4 Attacher à l'EC2 — **différé à R8** (2026-05-12)
+
+Aucune EC2 n'est déployée pendant R9. Le role et l'instance profile
+restent dormants jusqu'à la release R8 ("Deploy prod EC2"). À ce moment,
+exécuter ci-dessous avec un profil admin (pas `fxvol-dev`, qui n'a pas
+`ec2:AssociateIamInstanceProfile`) :
 
 ```bash
 # Récupérer l'instance id (ou depuis la console)
@@ -241,19 +246,21 @@ aws ec2 describe-instances \
   --filters "Name=tag:Project,Values=fxvol" \
   --query "Reservations[].Instances[].InstanceId" \
   --output text \
-  --region eu-west-1
+  --region eu-west-1 \
+  --profile admin
 
 aws ec2 associate-iam-instance-profile \
   --instance-id <i-xxxxxxx> \
   --iam-instance-profile Name=fxvol-ec2-instance-profile \
-  --region eu-west-1
+  --region eu-west-1 \
+  --profile admin
 ```
 
-**Vérification depuis l'EC2** (SSH dedans) :
+**Vérification depuis l'EC2** (SSH dedans, post-attach) :
 ```bash
 aws sts get-caller-identity
 # doit renvoyer un ARN du type :
-# arn:aws:sts::<ACCOUNT_ID>:assumed-role/fxvol-ec2-secrets-role/i-xxxxx
+# arn:aws:sts::552269855056:assumed-role/fxvol-ec2-secrets-role/i-xxxxx
 # SI tu vois un IAM user arn:aws:iam::.../user/..., l'instance profile n'est pas attaché
 ```
 
@@ -298,21 +305,43 @@ le fichier est `0600`).
 
 ---
 
-## 6. Checklist avant de passer au commit #2
+## 6. Ressources existantes (compte 552269855056, eu-west-1)
 
-- [ ] CMK `alias/fxvol-secrets` créée, rotation activée
-- [ ] 5 paramètres SSM `/fxvol/prod/*` existent (placeholders)
-- [ ] IAM user `fxvol-dev` créé avec policy `fxvol-dev-ssm-rw`
-- [ ] MFA activée sur `fxvol-dev` (ou SSO en place)
-- [ ] IAM role `fxvol-ec2-secrets-role` + instance profile créés
-- [ ] Instance profile attaché à l'EC2 fxvol
-- [ ] `aws sso login --profile fxvol-dev` fonctionne sur Windows
-- [ ] `aws sts get-caller-identity` depuis EC2 renvoie bien l'ARN du role
-- [ ] `aws ssm get-parameter --name /fxvol/prod/TRADING_MODE --profile fxvol-dev`
-      renvoie `paper`
+État au 2026-04-23.
 
-Une fois toutes les cases cochées : passer au commit #2 (`scripts/load_secrets.ps1`
-+ `scripts/put_secrets.ps1` pour pousser les vraies valeurs des 4 SecureString).
+| Ressource | Identifiant / ARN |
+|---|---|
+| CMK KMS | `alias/fxvol-secrets` — KeyId `bbc7ef4a-0b3e-4019-a7db-4502c4662f30`, rotation annuelle ON |
+| SSM params `/fxvol/prod/*` | `IB_USERID`, `IB_PASSWORD`, `DB_PASSWORD`, `VNC_PASSWORD` (SecureString), `TRADING_MODE` (String=`paper`) |
+| IAM user dev | `fxvol-dev` + inline policy `fxvol-dev-ssm-rw` (SSM rw + KMS Decrypt/GenerateDataKey) |
+| IAM role EC2 | `fxvol-ec2-secrets-role` — `arn:aws:iam::552269855056:role/fxvol-ec2-secrets-role` (RoleId `AROAYBFOZHFIM6KA3IZAY`) |
+| Role policy | Inline `fxvol-ec2-ssm-read` (SSM Get* + KMS Decrypt, **read-only**) |
+| Instance profile | `fxvol-ec2-instance-profile` — `arn:aws:iam::552269855056:instance-profile/fxvol-ec2-instance-profile` (Id `AIPAYBFOZHFIB46B5H7H5`) |
+
+Vérifications `aws iam simulate-principal-policy` exécutées le 2026-04-23 :
+
+- `ssm:GetParameter` sur `/fxvol/prod/IB_USERID` → **allowed** ✓
+- `kms:Decrypt` sur la CMK `fxvol-secrets` → **allowed** ✓
+- `ssm:PutParameter` sur `/fxvol/prod/IB_USERID` → **implicitDeny** ✓ (read-only confirmé)
+- `ssm:GetParameter` sur `/other/something` → **implicitDeny** ✓ (wildcard scopé correctement)
+
+---
+
+## 7. Checklist bootstrap
+
+- [x] CMK `alias/fxvol-secrets` créée, rotation activée
+- [x] 5 paramètres SSM `/fxvol/prod/*` existent (vraies valeurs poussées via `put_secrets.ps1`)
+- [x] IAM user `fxvol-dev` créé avec policy `fxvol-dev-ssm-rw`
+- [ ] MFA activée sur `fxvol-dev` (décision en attente)
+- [x] IAM role `fxvol-ec2-secrets-role` + instance profile créés (simulate-principal-policy OK)
+- [ ] Instance profile attaché à l'EC2 fxvol — **différé à R8** (pas d'EC2 déployée)
+- [x] `aws sts get-caller-identity --profile fxvol-dev` renvoie l'ARN du user (access keys, SSO non utilisé)
+- [ ] `aws sts get-caller-identity` depuis EC2 renvoie l'ARN du role — **différé à R8**
+- [x] `aws ssm get-parameter --name /fxvol/prod/TRADING_MODE --profile fxvol-dev` renvoie `paper`
+
+**Cases cochables en R9** : toutes sauf les 3 différées (MFA, EC2 attach, EC2 sts).
+Étape 4 **clôturée** du point de vue capitalisation code. Le jour du déploiement
+R8 (~2026-05-12), exécuter § 4.4 ci-dessus et cocher les 2 dernières cases.
 
 ---
 
