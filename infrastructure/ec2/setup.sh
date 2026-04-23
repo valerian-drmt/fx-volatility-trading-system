@@ -16,7 +16,7 @@ echo "[setup] apt update + base packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
-    ca-certificates curl gnupg git ufw cron \
+    ca-certificates curl gnupg git ufw cron jq \
     python3 python3-pip awscli certbot
 
 echo "[setup] install docker + compose v2 if missing"
@@ -60,8 +60,11 @@ After=docker.service network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/fxvol
+ExecStartPre=/opt/fxvol/scripts/load_secrets.sh
+EnvironmentFile=/run/fxvol.env
 ExecStart=/usr/bin/docker compose up -d --remove-orphans
 ExecStop=/usr/bin/docker compose down --remove-orphans
+ExecStopPost=/bin/rm -f /run/fxvol.env
 
 [Install]
 WantedBy=multi-user.target
@@ -79,9 +82,12 @@ echo "[setup] nightly Postgres backup to S3 (SSE-S3)"
 install -m 0755 /dev/stdin /etc/cron.daily/fxvol-postgres-backup <<'CRON'
 #!/bin/sh
 set -eu
-# Expect AWS_REGION / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / BACKUP_BUCKET
-# to be sourced from /etc/fxvol/backup.env (provisioned out of band).
-. /etc/fxvol/backup.env
+# Auth via the EC2 instance profile (IAM role fxvol-ec2-secrets-role
+# extended with s3:PutObject on the backup bucket). No static AWS keys
+# on disk. BACKUP_BUCKET is the only config read from /etc/fxvol/backup.conf.
+. /etc/fxvol/backup.conf
+AWS_REGION=$(curl -fsS -m 2 http://169.254.169.254/latest/meta-data/placement/region)
+export AWS_REGION
 ts=$(date -u +%Y%m%dT%H%M%SZ)
 docker compose -f /opt/fxvol/docker-compose.yml exec -T postgres \
     pg_dump -U fxvol -Fc fxvol > "/tmp/fxvol-$ts.dump"
@@ -91,6 +97,10 @@ rm -f "/tmp/fxvol-$ts.dump"
 CRON
 
 echo "[setup] done. Next steps :"
-echo "  1. scp the .env file (DB_PASSWORD + IB creds) to $APP_DIR/.env"
-echo "  2. certbot --nginx -d <your-domain>"
-echo "  3. systemctl start fxvol-compose.service"
+echo "  1. Attach the IAM instance profile 'fxvol-ec2-instance-profile' to this EC2"
+echo "     (required: ssm:GetParameters + kms:Decrypt on /fxvol/prod/* and the CMK)."
+echo "     Verify: aws sts get-caller-identity should return the role ARN, not a user."
+echo "  2. git clone the repo into $APP_DIR and ensure scripts/load_secrets.sh is +x."
+echo "  3. echo 'BACKUP_BUCKET=<your-bucket>' > /etc/fxvol/backup.conf  (for the daily backup)."
+echo "  4. certbot --nginx -d <your-domain>"
+echo "  5. systemctl start fxvol-compose.service  (runs ExecStartPre=load_secrets.sh first)"
