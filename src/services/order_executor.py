@@ -1,11 +1,26 @@
+"""OrderExecutor — v1 PyQt order placement via the shared IB connection.
+
+DEPRECATED — v1 legacy module, pending removal in R7 (refactor/r7-core-extraction)
+and R8 (refactor/r8-remove-pyqt). Only imported by its own unit tests ; no
+v2 equivalent yet (execution layer is scheduled to surface in services/
+as part of the Phase 5 vol-trading structures + delta hedger work).
+See CLAUDE.md § Architecture for v1/v2 cohabitation.
+"""
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any
 
 from ib_insync import Contract, Forex, LimitOrder, MarketOrder, Order
 
 from services.ib_client import IBClient
+
+warnings.warn(
+    "src/services/order_executor.py is a v1 legacy module pending R7/R8 removal",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = logging.getLogger("order_executor")
 

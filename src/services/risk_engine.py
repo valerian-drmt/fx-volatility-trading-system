@@ -1,7 +1,11 @@
-"""
-Risk Engine — Thread 3.
-Fetches positions from IB (10s), computes BS greeks + PnL chart (2s).
-Own IB connection (client_id=3).
+"""Risk Engine — Thread 3. Positions + BS greeks + PnL aggregation on v1.
+
+DEPRECATED — v1 legacy module, pending removal in R7 (refactor/r7-core-extraction)
+and R8 (refactor/r8-remove-pyqt). New work goes to ``services/risk/engine.py``
+(async service-oriented). See CLAUDE.md § Architecture for v1/v2 cohabitation.
+
+Historical : fetches positions from IB (10s), computes BS greeks + PnL chart
+(2s). Owns its own IB connection (client_id=3).
 """
 from __future__ import annotations
 
@@ -10,6 +14,7 @@ import logging
 import math
 import queue
 import threading
+import warnings
 from datetime import datetime
 from typing import Any
 
@@ -28,6 +33,13 @@ from services.bs_pricer import (
     bs_theta,
     bs_vega,
     interpolate_iv,
+)
+
+warnings.warn(
+    "src/services/risk_engine.py is a v1 legacy module pending R7/R8 removal ; "
+    "use services/risk/ for new work",
+    DeprecationWarning,
+    stacklevel=2,
 )
 
 logger = logging.getLogger("risk_engine")

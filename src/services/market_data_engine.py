@@ -1,13 +1,17 @@
-"""
-Market Data Engine — Thread 1.
-Polls IB tick stream (100ms), status snapshot, and account summary (10s).
-Uses shared IB connection (client_id=1).
+"""Market Data Engine — Thread 1. Polls IB tick stream + account summary.
 
-Optional Redis bus (R3) : when ``redis_url`` is provided, the engine spawns
-its own asyncio event loop in the thread and drives the async publishers
-(``publish_tick``, ``publish_account``, ``set_heartbeat``) through it.
-Each Redis call is wrapped in try/except so a Redis outage degrades to
-warn-log without crashing the engine.
+DEPRECATED — v1 legacy module, pending removal in R7 (refactor/r7-core-extraction)
+and R8 (refactor/r8-remove-pyqt). New work goes to ``services/market_data/engine.py``
+(async service-oriented). See CLAUDE.md § Architecture for v1/v2 cohabitation.
+
+Historical notes (pre-DEPRECATED) :
+ - uses the shared IB connection (client_id=1), polls tick stream (100ms) +
+   status snapshot + account summary (10s)
+ - optional Redis bus (R3) : when ``redis_url`` is provided, the engine
+   spawns its own asyncio event loop in the thread and drives the async
+   publishers ``publish_tick`` / ``publish_account`` / ``set_heartbeat``.
+   Each Redis call is wrapped in try/except so a Redis outage degrades to
+   warn-log without crashing the engine.
 """
 from __future__ import annotations
 
@@ -16,6 +20,7 @@ import logging
 import math
 import threading
 import time
+import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -25,6 +30,13 @@ from redis import exceptions as redis_exc
 from bus import keys
 from bus.publisher import publish_account, publish_tick, set_heartbeat
 from services.ib_client import IBClient
+
+warnings.warn(
+    "src/services/market_data_engine.py is a v1 legacy module pending R7/R8 removal ; "
+    "use services/market_data/ for new work",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = logging.getLogger("market_data_engine")
 

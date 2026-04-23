@@ -1,10 +1,28 @@
+"""IBClient wrapper — v1 PyQt shared IB connection façade.
+
+DEPRECATED — v1 legacy module, pending removal in R7 (refactor/r7-core-extraction)
+and R8 (refactor/r8-remove-pyqt). Only imported by the other v1 engines
+(market_data_engine, order_executor, risk_engine) and their tests ; not used
+by any v2 service. v2 code uses ``ib_insync`` directly inside each async
+service. See CLAUDE.md § Architecture for v1/v2 cohabitation.
+"""
+from __future__ import annotations
+
 import logging
 import math
 import os
 import time
+import warnings
 from typing import Any
 
 from ib_insync import IB, Contract, Forex, LimitOrder, MarketOrder, StopOrder
+
+warnings.warn(
+    "src/services/ib_client.py is a v1 legacy module pending R7/R8 removal ; "
+    "v2 services use ib_insync directly",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 def _default_ib_host() -> str:

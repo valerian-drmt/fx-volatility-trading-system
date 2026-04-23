@@ -1,7 +1,8 @@
-"""
-Vol Engine — Thread 2.
-Runs the full vol pipeline: Step 1 (IV mid) + Step 2 (σ_fair).
-Own IB connection, loop every 3 minutes.
+"""Vol Engine — Thread 2. Runs the full vol pipeline on the v1 PyQt app.
+
+DEPRECATED — v1 legacy module, pending removal in R7 (refactor/r7-core-extraction)
+and R8 (refactor/r8-remove-pyqt). New work goes to ``services/vol/engine.py``
+(async service-oriented). See CLAUDE.md § Architecture for v1/v2 cohabitation.
 """
 from __future__ import annotations
 
@@ -26,6 +27,12 @@ from scipy.interpolate import PchipInterpolator
 from bus import keys
 from bus.publisher import publish_vol_update, set_heartbeat
 
+warnings.warn(
+    "src/services/vol_engine.py is a v1 legacy module pending R7/R8 removal ; "
+    "use services/vol/ for new work",
+    DeprecationWarning,
+    stacklevel=2,
+)
 warnings.filterwarnings("ignore", category=FutureWarning)
 logger = logging.getLogger("vol_engine")
 
