@@ -5,9 +5,9 @@ points target_metadata at persistence.models.Base so autogenerate compares
 ORM definitions against the live DB schema.
 
 Run migrations with:
-    alembic -c persistence/alembic.ini upgrade head
-    alembic -c persistence/alembic.ini downgrade base
-    alembic -c persistence/alembic.ini revision --autogenerate -m "..."
+    alembic -c src/persistence/alembic.ini upgrade head
+    alembic -c src/persistence/alembic.ini downgrade base
+    alembic -c src/persistence/alembic.ini revision --autogenerate -m "..."
 """
 
 from __future__ import annotations
@@ -23,7 +23,9 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-_SRC = Path(__file__).resolve().parents[2] / "src"
+# env.py lives at src/persistence/migrations/env.py post-R9 src-layout.
+# parents[0]=migrations, parents[1]=persistence, parents[2]=src.
+_SRC = Path(__file__).resolve().parents[2]
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
