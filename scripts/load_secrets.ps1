@@ -51,7 +51,7 @@ if ($LASTEXITCODE -ne 0) { throw "ssm get-parameters-by-path failed" }
 
 $params = ($json | ConvertFrom-Json).Parameters
 if (-not $params -or $params.Count -eq 0) {
-    throw "No parameters found under /fxvol/prod/ — run put_secrets.ps1 first"
+    throw "No parameters found under /fxvol/prod/ - run put_secrets.ps1 first"
 }
 
 # 3. Export en $env:*
