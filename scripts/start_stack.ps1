@@ -22,10 +22,11 @@ $projectDir = Split-Path -Parent $PSScriptRoot
 
 Push-Location $projectDir
 try {
-    # Les creds IB doivent venir du .env, pas du shell. Un env shell vide
-    # surchargerait le .env et empecherait ib-gateway de se logguer.
-    Write-Host "==> Clearing shell IB env vars (so .env wins)" -ForegroundColor Cyan
-    Remove-Item Env:IB_USERID, Env:IB_PASSWORD -ErrorAction SilentlyContinue
+    # Source unique de verite : AWS SSM. Charge les 5 secrets en RAM pour la
+    # session courante -- aucun .env lu ni ecrit. docker compose heritera de
+    # ces env vars du shell parent pour resoudre les ${VAR:?} strict.
+    Write-Host "==> Loading secrets from SSM" -ForegroundColor Cyan
+    & "$PSScriptRoot\load_secrets.ps1"
 
     Write-Host "==> docker compose up (build=$(-not $NoBuild))" -ForegroundColor Cyan
     $upArgs = @('compose', '--profile', 'engines', '--profile', 'ib', 'up', '-d')
@@ -45,14 +46,13 @@ try {
 
 function Get-TabInit {
     param([string]$ProjectDir)
+    # Chaque tab est un process PS frais (n'herite pas des env vars du shell
+    # parent) ; on re-charge SSM pour que `docker compose` puisse resoudre les
+    # ${VAR:?} au parse du compose.yml dans ce tab.
     return @"
 Set-Location '$ProjectDir'
 if (Test-Path .\.venv\Scripts\Activate.ps1) { .\.venv\Scripts\Activate.ps1 }
-`$env:PYTHONPATH='src'
-`$env:DB_PASSWORD='fxvol'
-`$env:VNC_PASSWORD='local-dev'
-`$env:REDIS_URL='redis://localhost:6380/0'
-`$env:DATABASE_URL='postgresql+asyncpg://fxvol:fxvol@localhost:5433/fxvol'
+& .\scripts\load_secrets.ps1 | Out-Null
 "@
 }
 

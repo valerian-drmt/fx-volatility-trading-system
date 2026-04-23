@@ -235,8 +235,8 @@ services:
     profiles: ["ib"]
     restart: unless-stopped
     environment:
-      TWS_USERID: ${IB_USERID:-}
-      TWS_PASSWORD: ${IB_PASSWORD:-}
+      TWS_USERID: ${IB_USERID:?IB_USERID is required (load via scripts/load_secrets.ps1)}
+      TWS_PASSWORD: ${IB_PASSWORD:?IB_PASSWORD is required (load via scripts/load_secrets.ps1)}
       TRADING_MODE: ${TRADING_MODE:-paper}
       READ_ONLY_API: ${READ_ONLY_API:-no}
       # IBC lifecycle : daily auto-logout at 23:59 Paris is cleaner than a
@@ -247,10 +247,9 @@ services:
       # instead of crash-looping on timeout.
       TWOFA_TIMEOUT_ACTION: restart
       BYPASS_WARNING: "yes"
-      # VNC is only used when the ib profile is active — IBC demands a non-empty
-      # password so we fall through to a dev default rather than erroring at
-      # parse time on every `docker compose up` (profiles are evaluated later).
-      VNC_SERVER_PASSWORD: ${VNC_PASSWORD:-change-me-in-dotenv}
+      # VNC password loaded from SSM via scripts/load_secrets.ps1 — strict
+      # check (every `docker compose up` must have the var set, no fallback).
+      VNC_SERVER_PASSWORD: ${VNC_PASSWORD:?VNC_PASSWORD is required (load via scripts/load_secrets.ps1)}
     ports:
       # Bind IB Gateway API port and VNC to 127.0.0.1 only — the PyQt v1
       # app on the host still needs to reach the gateway on localhost:4002,

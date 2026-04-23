@@ -47,22 +47,61 @@ Si un secret apparaît accidentellement dans un terminal ou un log :
 
 ## 0. Prérequis
 
-Docker Desktop (WSL2 backend) + Python 3.11 + Node 20. Bloc unique à exécuter à chaque session PowerShell (le `venv` + `pip install` ne sont utiles qu'à la première) :
+### 0.a Setup AWS CLI (une seule fois)
+
+Les secrets (`IB_USERID`, `IB_PASSWORD`, `DB_PASSWORD`, `VNC_PASSWORD`,
+`TRADING_MODE`) vivent dans AWS SSM Parameter Store (`/fxvol/prod/*`) et sont
+chargés en RAM par `scripts/load_secrets.ps1`. **Aucun `.env` sur disque.**
+
+Bootstrap AWS (compte, KMS CMK, IAM user, SSM params) : voir
+`infrastructure/aws/secrets-bootstrap.md`. Une fois fait, configurer le profil
+`fxvol-dev` avec les access keys IAM :
+
+```powershell
+aws configure --profile fxvol-dev
+# AWS Access Key ID     : <fourni lors de la création de l'IAM user>
+# AWS Secret Access Key : <idem>
+# Default region        : eu-west-1
+# Default output format : json
+```
+
+Premier push des vraies valeurs dans SSM (une fois aussi, ou pour rotation) :
+
+```powershell
+.\scripts\put_secrets.ps1     # prompt SecureString pour IB_USERID/IB_PASSWORD/DB_PASSWORD/VNC_PASSWORD
+```
+
+Vérifier le round-trip **sans révéler la valeur** :
+```powershell
+aws ssm get-parameter --name /fxvol/prod/IB_USERID --with-decryption `
+    --profile fxvol-dev --region eu-west-1 `
+    --query 'length(Parameter.Value)' --output text
+# → sortie : la longueur de la valeur (prouve déchiffrement + présence)
+```
+
+### 0.b Session quotidienne
+
+Docker Desktop (WSL2 backend) + Python 3.11 + Node 20. Bloc unique à exécuter à
+chaque session PowerShell (le `venv` + `pip install` ne sont utiles qu'à la
+première) :
 
 ```powershell
 cd "$HOME\Documents\Python Project\fx-volatility-trading-system"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-$env:PYTHONPATH = "src"
-$env:DB_PASSWORD = "fxvol"
-$env:VNC_PASSWORD = "local-dev"
-$env:REDIS_URL = "redis://localhost:6380/0"
-$env:DATABASE_URL = "postgresql+asyncpg://fxvol:fxvol@localhost:5433/fxvol"
-# NOTE : ne PAS exporter IB_USERID / IB_PASSWORD ici. L'env shell surcharge
-# le .env lu par docker compose → s'ils sont vides, ib-gateway ne peut pas
-# se logguer et les engines timeout. Les valeurs reelles sont dans .env.
+.\scripts\load_secrets.ps1    # fetch SSM → $env:IB_USERID/IB_PASSWORD/DB_PASSWORD/VNC_PASSWORD/TRADING_MODE
+                              # + dérive DATABASE_URL, REDIS_URL, PYTHONPATH
 ```
+
+`load_secrets.ps1` affiche `Loaded 5 secrets from SSM into shell env` si tout
+va bien. Si un SSM param est encore à la valeur `PLACEHOLDER_TO_REPLACE`, il
+le signale : relancer `put_secrets.ps1`. Si le profil AWS n'est pas utilisable
+(access keys révoquées, SSO expiré), il affiche l'action corrective et `throw`.
+
+Les secrets vivent **uniquement dans la session PowerShell courante**. Fermer
+la fenêtre = les secrets quittent la RAM. La fenêtre suivante doit relancer
+`load_secrets.ps1` (ou lancer `start_stack.ps1` qui le fait automatiquement).
 
 Table des ports exposés sur l'host en dev :
 
