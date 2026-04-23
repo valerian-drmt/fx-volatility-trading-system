@@ -18,10 +18,12 @@ from redis import asyncio as aioredis
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bus.channels import CH_CONFIG_CHANGED
 from core.config import VolTradingConfig
 from persistence.models import VolConfig
 
-CONFIG_CHANGED_CHANNEL = "config:changed"
+# Re-exported for callers that imported the legacy constant name.
+CONFIG_CHANGED_CHANNEL = CH_CONFIG_CHANGED
 
 
 @dataclass(frozen=True, slots=True)

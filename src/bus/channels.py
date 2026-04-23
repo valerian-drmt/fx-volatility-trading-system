@@ -23,3 +23,8 @@ CH_RISK_UPDATE: str = "risk_update"
 
 # Any engine publishes errors/warnings worth surfacing in the UI.
 CH_SYSTEM_ALERTS: str = "system_alerts"
+
+# Admin endpoint publishes the new version number (as string) whenever
+# /api/v1/admin/config accepts a PUT or POST revert. Engines subscribe
+# to hot-reload their Pydantic config without a restart.
+CH_CONFIG_CHANGED: str = "config:changed"

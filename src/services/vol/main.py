@@ -9,12 +9,69 @@ the historical bar fetch is ported.
 from __future__ import annotations
 
 import asyncio
+import logging
 import signal
 from typing import Any
 
+from redis import asyncio as aioredis
+
+from bus.channels import CH_CONFIG_CHANGED
 from shared.config import get_settings
 from shared.logging import configure_logging
 from shared.redis_client import get_async_redis
+
+logger = logging.getLogger(__name__)
+
+
+async def _load_config_from_db() -> Any | None:
+    """Fetch the latest VolTradingConfig from Postgres, or None on any error.
+
+    Non-fatal : when DATABASE_URL is unset or Postgres is unreachable the
+    vol-engine keeps the env-var defaults provided by pydantic-settings.
+    """
+    try:
+        from api.services import config_service
+        from persistence.db import get_session
+
+        async with get_session() as session:
+            record = await config_service.get_current(session)
+            return record.config
+    except Exception as exc:
+        logger.warning("vol_engine_db_config_unavailable reason=%s", exc)
+        return None
+
+
+async def _watch_config_changes(
+    redis: aioredis.Redis, engine: Any, stop: asyncio.Event,
+) -> None:
+    """Subscribe to CH_CONFIG_CHANGED and hot-reload the engine on each event."""
+    try:
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(CH_CONFIG_CHANGED)
+    except Exception as exc:
+        logger.warning("vol_engine_config_watcher_subscribe_failed reason=%s", exc)
+        return
+
+    try:
+        while not stop.is_set():
+            try:
+                msg = await asyncio.wait_for(
+                    pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0),
+                    timeout=2.0,
+                )
+            except TimeoutError:
+                continue
+            if msg is None or msg.get("type") != "message":
+                continue
+            cfg = await _load_config_from_db()
+            if cfg is not None:
+                engine.apply_config(cfg)
+    finally:
+        try:
+            await pubsub.unsubscribe(CH_CONFIG_CHANGED)
+            await pubsub.close()
+        except Exception:
+            pass
 
 
 async def run() -> None:
@@ -69,6 +126,11 @@ async def run() -> None:
         signal_model_p=settings.MODEL_P,
     )
 
+    # Boot-time config load : DB wins over env vars when available.
+    db_cfg = await _load_config_from_db()
+    if db_cfg is not None:
+        engine.apply_config(db_cfg)
+
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
@@ -76,7 +138,15 @@ async def run() -> None:
         except NotImplementedError:
             signal.signal(sig, lambda _s, _f: engine.request_stop())
 
-    await engine.run()
+    watcher = asyncio.create_task(_watch_config_changes(redis, engine, engine._stop))
+    try:
+        await engine.run()
+    finally:
+        watcher.cancel()
+        try:
+            await watcher
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 def main() -> None:

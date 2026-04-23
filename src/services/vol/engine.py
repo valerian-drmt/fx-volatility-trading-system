@@ -337,6 +337,21 @@ class VolEngine:
         self._signal_model_p = signal_model_p  # 'har' or 'garch'
         self._stop = asyncio.Event()
 
+    def apply_config(self, config: Any) -> None:
+        """Hot-reload signal thresholds from a VolTradingConfig instance.
+
+        Called by the config watcher when ``config:changed`` is published
+        on Redis. Only fields actually consumed by the engine today
+        (threshold, model_p) are applied -- future fields land here as
+        their phases go live.
+        """
+        self._signal_threshold = float(config.signal.threshold_vol_pts)
+        self._signal_model_p = str(config.signal.model_p)
+        logger.info(
+            "vol_engine_config_reloaded threshold=%.3f model=%s",
+            self._signal_threshold, self._signal_model_p,
+        )
+
     def request_stop(self) -> None:
         self._stop.set()
 
