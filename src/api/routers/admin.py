@@ -13,6 +13,7 @@ multiple users, wrap the PUT / POST routes in a ``Depends(require_admin)``.
 """
 from __future__ import annotations
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -60,9 +61,15 @@ async def update_config(
             db, redis, patch=req.patch, user=req.user, comment=req.comment,
         )
     except ValidationError as e:
+        # e.errors() keeps raw ValueError objects in 'ctx', not JSON-serializable.
+        # e.json() is Pydantic's canonical serializer -- re-parse it to a clean
+        # list of dicts so FastAPI can emit it as the 422 body.
         raise HTTPException(
             status_code=422,
-            detail={"message": "patch violates vol_config schema", "errors": e.errors()},
+            detail={
+                "message": "patch violates vol_config schema",
+                "errors": json.loads(e.json()),
+            },
         ) from e
     return _to_response(record)
 
