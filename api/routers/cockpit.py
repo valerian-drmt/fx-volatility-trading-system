@@ -16,7 +16,7 @@ from redis import asyncio as aioredis
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.deps import get_db_session, get_redis
+from api.dependencies import get_db_session, get_redis
 from api.services import vol_service
 
 router = APIRouter(prefix="/api/v1/vol", tags=["cockpit"])
