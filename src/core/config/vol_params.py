@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Panel 1 — Regime Detector
@@ -67,21 +67,13 @@ class SignalConfig(BaseModel):
     pca_rolling_months: int = Field(default=3, ge=1, le=12)
     variance_explained_min: float = Field(default=0.85, ge=0.6, le=0.99)
 
-    @field_validator("z_threshold_strong")
-    @classmethod
-    def _strong_above_arm(cls, v: float, info) -> float:
-        arm = info.data.get("z_threshold_arm")
-        if arm is not None and v <= arm:
+    @model_validator(mode="after")
+    def _z_thresholds_monotonic(self) -> SignalConfig:
+        if self.z_threshold_strong <= self.z_threshold_arm:
             raise ValueError("z_threshold_strong must be > z_threshold_arm")
-        return v
-
-    @field_validator("z_threshold_extreme")
-    @classmethod
-    def _extreme_above_strong(cls, v: float, info) -> float:
-        strong = info.data.get("z_threshold_strong")
-        if strong is not None and v <= strong:
+        if self.z_threshold_extreme <= self.z_threshold_strong:
             raise ValueError("z_threshold_extreme must be > z_threshold_strong")
-        return v
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -168,13 +160,11 @@ class CalibrationConfig(BaseModel):
     har_components: tuple[int, int, int] = (1, 5, 22)
     ewma_lambda_fair_smile: float = Field(default=0.94, ge=0.5, le=0.999)
 
-    @field_validator("w1_clip_max")
-    @classmethod
-    def _clip_max_above_min(cls, v: float, info) -> float:
-        mn = info.data.get("w1_clip_min")
-        if mn is not None and v <= mn:
+    @model_validator(mode="after")
+    def _w1_clip_range_ordered(self) -> CalibrationConfig:
+        if self.w1_clip_max <= self.w1_clip_min:
             raise ValueError("w1_clip_max must be > w1_clip_min")
-        return v
+        return self
 
 
 # ---------------------------------------------------------------------------
