@@ -1,6 +1,7 @@
 import json
 import logging
 import math
+import os
 import queue
 import sys
 import threading
@@ -13,6 +14,7 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
 from controller_settings import SettingsMixin
+from persistence.writer_thread import DbWriterThread
 from services.ib_client import IBClient
 from services.market_data_engine import MarketDataEngine
 from services.order_executor import OrderExecutor
@@ -40,6 +42,7 @@ class Controller(SettingsMixin):
         app_settings = self._load_app_settings()
         status_settings = app_settings["status"]
         runtime_settings = app_settings["runtime"]
+        persistence_settings = app_settings["persistence"]
 
         self.host = status_settings["host"]
         self.port = status_settings["port"]
@@ -49,6 +52,8 @@ class Controller(SettingsMixin):
         self.market_symbol = status_settings["market_symbol"]
         self.tick_interval_ms = runtime_settings["tick_interval_ms"]
         self.snapshot_interval_ms = runtime_settings["snapshot_interval_ms"]
+        self.persistence_enabled = persistence_settings["enabled"]
+        self.persistence_database_url = persistence_settings["database_url"]
 
         self.app = QApplication(sys.argv)
         self.ib = IB()
@@ -74,6 +79,7 @@ class Controller(SettingsMixin):
         self._risk_output_queue: queue.Queue = queue.Queue()
         self._engine_pool: list[threading.Thread] = []
         self._engine_poll_timer: QTimer | None = None
+        self._db_writer_thread: DbWriterThread | None = None
 
         self._last_status_sec = None
         self._last_server_sync_sec = None
@@ -251,9 +257,11 @@ class Controller(SettingsMixin):
     # ── Engine Pool (Thread 1 + 2 + 3) ──
 
     def _start_engine_pool(self) -> None:
-        """Create and start all 3 worker threads."""
+        """Create and start all 3 worker threads plus the optional DB writer."""
         self._vol_output_queue = queue.Queue()
         self._risk_output_queue = queue.Queue()
+
+        self._start_db_writer_thread()
 
         # Thread 1: Market Data (client_id=1, shared IB connection)
         self._market_engine = MarketDataEngine(
@@ -307,8 +315,19 @@ class Controller(SettingsMixin):
         self._engine_poll_timer.start()
 
     def _stop_engine_pool(self) -> None:
-        """Stop all worker threads and the poll timer. Idempotent."""
+        """Stop all worker threads and the poll timer. Idempotent.
+
+        Ordering matters: engines must stop FIRST so they stop producing
+        events. Only then do we tear down the DB writer — its graceful
+        shutdown will drain the final burst of events that engines pushed
+        during their own stop sequence. Stopping the writer first would
+        silently drop those trailing events (enqueue_db_event becomes a
+        no-op once ``self._db_writer_thread = None``).
+        """
         if not self._engine_pool:
+            # No engines running, but the writer might still be up if it
+            # was started through some other path. Tear it down anyway.
+            self._stop_db_writer_thread()
             return
 
         if self._engine_poll_timer is not None:
@@ -320,12 +339,64 @@ class Controller(SettingsMixin):
         for t in self._engine_pool:
             t.join(timeout=THREAD_JOIN_TIMEOUT_S)
         self._engine_pool.clear()
+
+        # Engines are done producing → drain what they just pushed.
+        self._stop_db_writer_thread()
+
         self._market_engine = None
         self._vol_engine = None
         self._risk_engine = None
         if self.window:
             self.window.vol_scanner_panel.set_status("idle")
         logger.info("Engine pool stopped")
+
+    def _start_db_writer_thread(self) -> None:
+        """Spawn the DbWriterThread if persistence is enabled and a URL is available.
+
+        If no DATABASE_URL can be resolved, persistence is silently disabled
+        for this session — the app stays usable, the writer is simply a
+        no-op. Never raises : a DB config problem should never prevent the
+        user from using the PyQt UI.
+        """
+        if not self.persistence_enabled:
+            logger.info("persistence disabled in settings, skipping DbWriterThread")
+            self._db_writer_thread = None
+            return
+        url = self.persistence_database_url or os.environ.get("DATABASE_URL")
+        if not url:
+            logger.warning(
+                "persistence enabled but no DATABASE_URL (settings or env), "
+                "disabling writer for this session"
+            )
+            self._db_writer_thread = None
+            return
+        thread = DbWriterThread(database_url=url)
+        thread.start()
+        if not thread.wait_until_ready():
+            logger.error("DbWriterThread failed to become ready, disabling persistence")
+            thread.stop()
+            self._db_writer_thread = None
+            return
+        self._db_writer_thread = thread
+        logger.info("DbWriterThread started")
+
+    def _stop_db_writer_thread(self) -> None:
+        """Gracefully stop the DbWriterThread if running. Idempotent."""
+        if self._db_writer_thread is None:
+            return
+        self._db_writer_thread.stop()
+        self._db_writer_thread = None
+
+    def enqueue_db_event(self, table_name: str, payload: dict) -> None:
+        """Forward an event to the async DB writer. No-op if persistence is off.
+
+        Safe to call from any thread (engines, UI, order worker). The writer
+        thread's ``enqueue`` is itself thread-safe via ``call_soon_threadsafe``,
+        so no extra locking here.
+        """
+        if self._db_writer_thread is None:
+            return
+        self._db_writer_thread.enqueue(table_name, payload)
 
     def _poll_engine_queues(self) -> None:
         """Called by QTimer 1s. Drains vol + risk output queues, refreshes status."""
