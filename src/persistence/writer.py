@@ -66,11 +66,17 @@ TABLE_MODELS: dict[str, type[Base]] = {
 # vol_surfaces and signals both have a UNIQUE constraint (see models.py),
 # and the engines can re-emit the same (timestamp, underlying[, tenor]) on
 # a retry : we want the first write to win and the second to be a no-op.
+# positions uses the primary key ``id`` (a deterministic hash of the IB
+# composite key — see payloads.compute_position_id) : re-observing the
+# same open position on every risk cycle must be idempotent so that only
+# the first sighting creates the row ; subsequent observations land as
+# position_snapshots only.
 # Other tables (trades, position_snapshots, account_snaps) have no natural
 # dedup key, duplicates there are real data and must not be silenced.
 IDEMPOTENT_TABLES: dict[str, list[str]] = {
     "vol_surfaces": ["timestamp", "underlying"],
     "signals": ["timestamp", "underlying", "tenor"],
+    "positions": ["id"],
 }
 
 

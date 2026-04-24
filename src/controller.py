@@ -6,6 +6,7 @@ import queue
 import sys
 import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,13 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMessageBox
 
 from controller_settings import SettingsMixin
+from persistence.payloads import (
+    build_account_snap_row,
+    build_position_row,
+    build_position_snapshot_row,
+    build_signal_rows,
+    build_vol_surface_row,
+)
 from persistence.writer_thread import DbWriterThread
 from services.ib_client import IBClient
 from services.market_data_engine import MarketDataEngine
@@ -398,6 +406,80 @@ class Controller(SettingsMixin):
             return
         self._db_writer_thread.enqueue(table_name, payload)
 
+    def _persist_account_snap(self, portfolio_payload: dict) -> None:
+        """Build an account_snaps row from the IB portfolio and enqueue it.
+
+        Called at every successful portfolio snapshot (every 10s by default
+        through MarketDataEngine). No-op if persistence is off — the
+        enqueue call itself short-circuits, so the extra dict build here
+        is wasted work but cheap. Wrapped in try/except so any schema drift
+        on IB's side never crashes the UI thread.
+        """
+        if self._db_writer_thread is None:
+            return
+        try:
+            row = build_account_snap_row(
+                summary=portfolio_payload.get("summary"),
+                positions=portfolio_payload.get("positions"),
+                cash_balances=self._cash_balances_by_currency,
+            )
+            self.enqueue_db_event("account_snaps", row)
+        except Exception:
+            logger.exception("failed to build account_snap row")
+
+    def _persist_vol_scan(self, vol_result: dict) -> None:
+        """Enqueue a vol_surface row + one signal row per enriched tenor."""
+        if self._db_writer_thread is None:
+            return
+        try:
+            spot = self._mid_spot_from_latest()
+            surface_row = build_vol_surface_row(
+                vol_result=vol_result,
+                underlying=self.market_symbol,
+                spot=spot,
+            )
+            self.enqueue_db_event("vol_surfaces", surface_row)
+            for signal_row in build_signal_rows(vol_result, self.market_symbol):
+                self.enqueue_db_event("signals", signal_row)
+        except Exception:
+            logger.exception("failed to build vol_scan rows")
+
+    def _persist_risk_cycle(self, risk_result: dict) -> None:
+        """Enqueue one positions row (INSERT idempotent) + one position_snapshots
+        row per open position for the current risk cycle.
+
+        Positions use a deterministic id derived from the IB composite key
+        (see payloads.compute_position_id), so ON CONFLICT DO NOTHING on
+        positions.id gives us "first observation wins" semantics without
+        needing a sync read of the auto-generated PK from the DB.
+        """
+        if self._db_writer_thread is None:
+            return
+        try:
+            open_positions = risk_result.get("open_positions") or []
+            spot = risk_result.get("spot")
+            # Share a single timestamp across all rows of this cycle so
+            # analytics queries can group by (timestamp, underlying).
+            ts = datetime.now(UTC)
+            for pos in open_positions:
+                pos_row = build_position_row(pos, timestamp=ts)
+                if pos_row is None:
+                    continue
+                self.enqueue_db_event("positions", pos_row)
+                snap_row = build_position_snapshot_row(pos, spot=spot, timestamp=ts)
+                if snap_row is not None:
+                    self.enqueue_db_event("position_snapshots", snap_row)
+        except Exception:
+            logger.exception("failed to build risk cycle rows")
+
+    def _mid_spot_from_latest(self) -> float | None:
+        """Return the latest bid/ask midpoint held by the controller, or None."""
+        bid = self._latest_bid
+        ask = self._latest_ask
+        if bid and ask and bid > 0 and ask > 0:
+            return (bid + ask) / 2.0
+        return bid or ask
+
     def _poll_engine_queues(self) -> None:
         """Called by QTimer 1s. Drains vol + risk output queues, refreshes status."""
         # Vol engine results
@@ -444,6 +526,7 @@ class Controller(SettingsMixin):
         self.window.vol_scanner_panel.update(result)
         self._update_term_structure(result)
         self._update_smile_chart(result)
+        self._persist_vol_scan(result)
 
     def _on_risk_result(self, result: dict) -> None:
         """Handle risk engine output — update positions, greeks, PnL panels."""
@@ -456,6 +539,8 @@ class Controller(SettingsMixin):
         pnl_curve = result.get("pnl_curve")
         if pnl_curve:
             self.window.pnl_spot_panel.update(pnl_curve)
+
+        self._persist_risk_cycle(result)
 
 
     def _update_term_structure(self, result: dict) -> None:
@@ -557,6 +642,7 @@ class Controller(SettingsMixin):
             self.window.portfolio_panel.update(portfolio_payload)
             self._update_cash_balances_from_summary(portfolio_payload.get("summary"))
             self._refresh_order_ticket_market_context()
+            self._persist_account_snap(portfolio_payload)
 
     def _refresh_account_snapshots(self) -> None:
         """Fetch account snapshot and update cash balances on connect."""
