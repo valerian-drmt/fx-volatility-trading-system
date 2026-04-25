@@ -76,11 +76,11 @@ jobs:
           path: junit.xml
           retention-days: 14
 
-  db-migrations:
-    name: alembic upgrade head + db_integration tests
+  db-integration:
+    name: alembic migrations + async writer live tests
     runs-on: ubuntu-latest
     needs: quality
-    timeout-minutes: 5
+    timeout-minutes: 7
 
     services:
       postgres:
