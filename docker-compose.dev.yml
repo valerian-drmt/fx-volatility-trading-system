@@ -18,5 +18,24 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: fxvol-redis-dev
+    ports:
+      # Exposed on 6380 to avoid conflict with a native Redis install that
+      # some developers run on 6379. Internally the container still listens
+      # on 6379 (see redis.conf `port 6379`).
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+      - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
 volumes:
   postgres_data:
+  redis_data:
