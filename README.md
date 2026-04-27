@@ -185,9 +185,14 @@ cd frontend
 npm test                                              # vitest
 npm run test:e2e                                      # playwright
 
-# Re-runnable smoke notebooks (manual validation per surface)
-jupyter lab scripts/admin_config_smoke.ipynb         # admin config round-trip
-jupyter lab scripts/redis_bus_smoke.ipynb             # Redis pub/sub wiring
+# Re-runnable smoke notebooks (manual validation per container — see scripts/<service>/)
+jupyter lab scripts/postgresql/02_setup.ipynb         # apply migrations + seed vol_config v1
+jupyter lab scripts/postgresql/03_test_crud.ipynb     # CRUD per table
+jupyter lab scripts/api/01_test_endpoints.ipynb       # 30 REST/WS endpoints (incl. admin config)
+jupyter lab scripts/nginx/01_test_routes.ipynb        # reverse proxy routes + WS upgrade
+jupyter lab scripts/redis/01_test_pubsub.ipynb        # cache + pub/sub
+jupyter lab scripts/db-writer/01_test_writer.ipynb    # AsyncDatabaseWriter end-to-end
+jupyter lab scripts/redis/02_test_bus_package.ipynb   # bus Python wrapper (throttle, TTL, fail-fast)
 ```
 
 ---
