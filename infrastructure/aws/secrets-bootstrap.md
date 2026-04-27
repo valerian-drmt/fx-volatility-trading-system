@@ -63,7 +63,10 @@ aws kms describe-key --key-id alias/fxvol-secrets --region eu-west-1
 ## 2. Créer les 5 paramètres SSM (valeurs placeholder)
 
 On crée les paramètres **vides** (ou placeholder) ici. Les vraies valeurs
-seront poussées plus tard via `scripts/put_secrets.ps1` (commit #2).
+seront poussées plus tard via la console AWS (cf. `SETUP.md` § 7).
+**Note historique** : ce document mentionnait initialement un script
+`put_secrets.ps1`, supprimé au 28/04/2026 — décision : édition des secrets
+via console uniquement pour éviter les fausses manipulations CLI.
 
 ```bash
 for NAME in IB_USERID IB_PASSWORD DB_PASSWORD VNC_PASSWORD; do
@@ -330,7 +333,7 @@ Vérifications `aws iam simulate-principal-policy` exécutées le 2026-04-23 :
 ## 7. Checklist bootstrap
 
 - [x] CMK `alias/fxvol-secrets` créée, rotation activée
-- [x] 5 paramètres SSM `/fxvol/prod/*` existent (vraies valeurs poussées via `put_secrets.ps1`)
+- [x] 5 paramètres SSM `/fxvol/prod/*` existent (vraies valeurs poussées via console AWS)
 - [x] IAM user `fxvol-dev` créé avec policy `fxvol-dev-ssm-rw`
 - [ ] MFA activée sur `fxvol-dev` (décision en attente)
 - [x] IAM role `fxvol-ec2-secrets-role` + instance profile créés (simulate-principal-policy OK)

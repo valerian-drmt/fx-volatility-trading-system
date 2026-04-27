@@ -89,8 +89,9 @@ Account <ID>
 ```
 
 `itadmin` crée la CMK + les params SSM + les policies (phases 2-4 ci-dessous).
-`fxvol-dev` consomme au quotidien via les scripts `load_secrets.ps1` /
-`put_secrets.ps1` (phase 5+).
+`fxvol-dev` consomme au quotidien via le script `load_secrets.ps1` (phase 5+).
+**Édition des valeurs SSM = via la console AWS uniquement** (pas de script
+CLI fourni — pour éviter les fausses manipulations sur les secrets).
 
 ---
 
@@ -304,43 +305,52 @@ fonctionne, ton ARN visible est `arn:aws:iam::<ACCOUNT_ID>:user/fxvol-dev`.
 
 ---
 
-## 7. Phase 6 — Pousser les vrais secrets
+## 7. Phase 6 — Pousser les vrais secrets (via console AWS)
 
-> Cette étape requiert que les scripts `load_secrets.ps1` / `put_secrets.ps1`
-> existent. Ils sont **prévus dans la sandbox R9** mais **pas encore commités**
-> sur main. Deux options :
+> **Décision projet** : aucune écriture de secrets en CLI. Toutes les
+> modifications de valeurs SSM passent par la **console AWS**. C'est plus lent
+> mais zéro risque de fausse manipulation (typo en clair dans le shell history,
+> oubli de `--type SecureString`, oubli de `--key-id`...).
 
-### Option A — Tu fais ça maintenant en CLI direct
+### Procédure console (pour chaque secret)
 
-Pour chaque secret, en PowerShell (le `Read-Host -AsSecureString` masque la
-saisie) :
+1. Aller sur https://eu-west-1.console.aws.amazon.com/systems-manager/parameters
+2. Login en `fxvol-dev` (ou `itadmin` pour first-time setup avant que la
+   policy `fxvol-dev-ssm` soit attachée).
+3. Cliquer sur le paramètre (ex: `/fxvol/prod/IB_USERID`).
+4. Bouton **Edit** en haut à droite.
+5. **Tier** : Standard (laisser tel quel)
+6. **Type** : SecureString (pour les 4 secrets) ou String (pour `TRADING_MODE`)
+7. **KMS key source** : `My current account` → `alias/fxvol-secrets`
+8. **Value** : coller la nouvelle valeur. La saisie est masquée par défaut sur
+   les SecureString, et le champ n'apparaît jamais en clair après save.
+9. **Save changes**.
+
+À répéter pour : `IB_USERID`, `IB_PASSWORD`, `DB_PASSWORD`, `VNC_PASSWORD`.
+Pour `TRADING_MODE`, laisser `paper` jusqu'au passage en `live` (décision
+explicite, pas avant).
+
+### Vérification post-modif (sans exposer la valeur)
 
 ```powershell
-$secure = Read-Host -Prompt "IB_USERID" -AsSecureString
-$plain = [System.Net.NetworkCredential]::new('', $secure).Password
-aws ssm put-parameter --name /fxvol/prod/IB_USERID `
-    --value $plain --type SecureString --overwrite `
-    --key-id alias/fxvol-secrets `
-    --profile fxvol-dev `
-    --query 'Version' --output text
-$plain = $null  # purge mémoire
-Remove-Variable secure, plain
+# Confirme que la version a été incrémentée + nouveau LastModifiedDate
+aws ssm get-parameter --name /fxvol/prod/IB_USERID `
+    --query '{Name:Parameter.Name,Version:Parameter.Version,Modified:Parameter.LastModifiedDate,Length:length(Parameter.Value)}' `
+    --with-decryption --profile fxvol-dev
 ```
 
-Répète pour : `IB_PASSWORD`, `DB_PASSWORD`, `VNC_PASSWORD`. Pour `TRADING_MODE`,
-laisse `paper` (déjà set).
+→ `Length` = nombre de caractères, pas la valeur. Permet de vérifier que la
+nouvelle valeur n'est pas vide / pas trop courte sans la révéler.
 
-### Option B — Tu attends les scripts R9 (recommandé)
+### Recharger les secrets dans la session shell après modif
 
-Quand la sandbox R9 secrets-ssm sera transformée en PRs (probablement après
-R3-R6), tu utiliseras :
 ```powershell
-.\scripts\put_secrets.ps1 -Profile fxvol-dev
+.\scripts\load_secrets.ps1
 ```
-Le script fait la même chose en boucle propre, avec validation et logs.
 
-➡️ **Recommandation** : laisse les placeholders en SSM jusqu'à ce que les
-scripts R9 arrivent. Ça évite de manipuler les vrais secrets à la main.
+Re-fetch SSM → `$env:*` mis à jour pour la session courante. Les containers
+docker démarrés AVANT cet appel gardent l'ancienne valeur jusqu'au prochain
+`docker compose up -d` qui relit `$env:*`.
 
 ---
 
