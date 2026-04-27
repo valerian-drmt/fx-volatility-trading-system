@@ -277,6 +277,10 @@ class Controller(SettingsMixin):
             ui_queue_post=self._post_ui,
             interval_ms=self.tick_interval_ms,
             snapshot_interval_s=ACCOUNT_SNAPSHOT_INTERVAL_S,
+            symbol=self.market_symbol,
+            # R3 PR #4 : engine publishes to Redis if REDIS_URL is in env.
+            # No URL = bus disabled, engine keeps running normally.
+            redis_url=os.environ.get("REDIS_URL"),
         )
 
         # Thread 3: Risk Engine (client_id=3, own IB connection)
