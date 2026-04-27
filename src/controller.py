@@ -287,6 +287,7 @@ class Controller(SettingsMixin):
         self._risk_engine = RiskEngine(
             output_queue=self._risk_output_queue,
             host=str(self.host), port=int(self.port), client_id=3,
+            redis_url=os.environ.get("REDIS_URL"),
         )
 
         # Thread 2: Vol Engine (client_id=2, own IB connection)
@@ -296,6 +297,8 @@ class Controller(SettingsMixin):
             self._vol_engine = VolEngine(
                 output_queue=self._vol_output_queue,
                 host=str(self.host), port=int(self.port), client_id=2,
+                symbol=self.market_symbol,
+                redis_url=os.environ.get("REDIS_URL"),
             )
             self._vol_engine.set_risk_engine(self._risk_engine)
             if self.window:

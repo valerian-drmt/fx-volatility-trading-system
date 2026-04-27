@@ -15,8 +15,12 @@ from typing import Any
 
 import numpy as np
 from ib_insync import IB
+from redis import asyncio as aioredis
+from redis import exceptions as redis_exc
 from scipy.stats import norm
 
+from bus import keys
+from bus.publisher import publish_risk_update, set_heartbeat
 from services.bs_pricer import (
     bs_delta,
     bs_gamma,
@@ -27,6 +31,14 @@ from services.bs_pricer import (
 )
 
 logger = logging.getLogger("risk_engine")
+
+_REDIS_SWALLOW: tuple[type[BaseException], ...] = (
+    redis_exc.ConnectionError,
+    redis_exc.TimeoutError,
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
 
 SUPPRESS_ERRORS = {10090, 10197, 10167, 200, 2119, 2104, 2108, 354}
 GREEKS_INTERVAL_S = 2.0
@@ -48,6 +60,7 @@ class RiskEngine(threading.Thread):
         host: str = "127.0.0.1",
         port: int = 4002,
         client_id: int = 3,
+        redis_url: str | None = None,
     ) -> None:
         """Initialize the risk engine.
 
@@ -56,6 +69,8 @@ class RiskEngine(threading.Thread):
             host: IB Gateway hostname.
             port: IB Gateway port.
             client_id: IB client ID for the dedicated risk connection.
+            redis_url: Optional Redis URL. When set, each cycle publishes
+                greeks + pnl curve to the bus and refreshes heartbeat:risk_engine.
         """
         super().__init__(name="RiskEngine", daemon=True)
         self._output_queue = output_queue
@@ -72,6 +87,11 @@ class RiskEngine(threading.Thread):
         # Internal state
         self._positions: list[dict[str, Any]] = []
 
+        # Redis bus (R3 PR #5) — initialized inside run() on this thread's loop.
+        self._redis_url = redis_url
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._redis_client: aioredis.Redis | None = None
+
     def stop(self) -> None:
         """Signal the engine thread to stop."""
         self._stop_event.set()
@@ -82,9 +102,12 @@ class RiskEngine(threading.Thread):
 
     def run(self) -> None:
         """Main loop: fetch positions and compute greeks/PnL on a fixed cadence."""
-        asyncio.set_event_loop(asyncio.new_event_loop())
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        self._init_redis_bus_if_configured()
         logger.info("RiskEngine thread started")
         if self._stop_event.wait(timeout=STARTUP_DELAY_S):
+            self._teardown_redis_bus()
             return
         last_fetch = 0.0
         while not self._stop_event.is_set():
@@ -99,12 +122,19 @@ class RiskEngine(threading.Thread):
 
                 # Compute greeks + PnL (or static view if market closed)
                 F = self.spot
+                result: dict[str, Any] | None = None
                 if self._positions and F > 0:
                     result = self._compute(F)
                     self._output_queue.put(result)
                 elif self._positions:
                     result = self._static_positions()
                     self._output_queue.put(result)
+
+                # Redis bus — heartbeat every cycle, risk update when we
+                # actually have a result to publish.
+                if result is not None:
+                    self._publish_risk_to_redis(result)
+                self._set_heartbeat_to_redis()
 
             except Exception as exc:
                 logger.exception("RiskEngine cycle failed")
@@ -120,7 +150,65 @@ class RiskEngine(threading.Thread):
                 self._stop_event.wait(timeout=1)
             if self._stop_event.is_set():
                 break
+        self._teardown_redis_bus()
         logger.info("RiskEngine thread stopped")
+
+    # ── Redis bus wiring (R3 PR #5) ────────────────────────────────────────
+
+    def _init_redis_bus_if_configured(self) -> None:
+        if not self._redis_url:
+            return
+        try:
+            pool = aioredis.ConnectionPool.from_url(
+                self._redis_url, max_connections=10, decode_responses=True
+            )
+            self._redis_client = aioredis.Redis(connection_pool=pool)
+            logger.info("RiskEngine connected to Redis at %s", self._redis_url)
+        except Exception:
+            logger.exception("RiskEngine Redis init failed, bus disabled")
+            self._redis_client = None
+
+    def _teardown_redis_bus(self) -> None:
+        if self._loop is None:
+            return
+        try:
+            if self._redis_client is not None:
+                self._loop.run_until_complete(self._redis_client.aclose())
+            self._loop.run_until_complete(self._loop.shutdown_asyncgens())
+        except Exception:
+            logger.exception("RiskEngine Redis teardown error")
+        finally:
+            self._redis_client = None
+
+    def _publish_risk_to_redis(self, result: dict[str, Any]) -> None:
+        if self._redis_client is None or self._loop is None:
+            return
+        summary = result.get("summary") or {}
+        if not summary:
+            return
+        pnl_curve = result.get("pnl_curve") or None
+        try:
+            self._loop.run_until_complete(
+                publish_risk_update(
+                    self._redis_client, greeks=dict(summary), pnl_curve=pnl_curve
+                )
+            )
+        except _REDIS_SWALLOW as e:
+            logger.warning("redis publish_risk_update failed (transient): %s", e)
+        except Exception:
+            logger.exception("redis publish_risk_update unexpected error")
+
+    def _set_heartbeat_to_redis(self) -> None:
+        if self._redis_client is None or self._loop is None:
+            return
+        try:
+            self._loop.run_until_complete(
+                set_heartbeat(self._redis_client, keys.ENGINE_RISK)
+            )
+        except _REDIS_SWALLOW as e:
+            logger.warning("redis heartbeat (risk) failed (transient): %s", e)
+        except Exception:
+            logger.exception("redis heartbeat (risk) unexpected error")
 
     def _static_positions(self) -> dict[str, Any]:
         """Return positions with basic data only (no greeks, no PnL). Used when market is closed."""
