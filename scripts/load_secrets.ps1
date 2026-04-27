@@ -62,7 +62,7 @@ if ($LASTEXITCODE -ne 0) { throw "ssm get-parameters failed" }
 $resp = $json | ConvertFrom-Json
 $params = $resp.Parameters
 if (-not $params -or $params.Count -eq 0) {
-    throw "No parameters returned - run put_secrets.ps1 first"
+    throw "No parameters returned - create them via AWS console : https://eu-west-1.console.aws.amazon.com/systems-manager/parameters"
 }
 if ($resp.InvalidParameters -and $resp.InvalidParameters.Count -gt 0) {
     Write-Host "==> WARNING : parametres introuvables dans SSM :" -ForegroundColor Yellow
@@ -87,5 +87,6 @@ Write-Host "==> Loaded $($params.Count) secrets from SSM into shell env" -Foregr
 if ($placeholders.Count -gt 0) {
     Write-Host "==> WARNING : $($placeholders.Count) parametre(s) ont encore la valeur PLACEHOLDER_TO_REPLACE :" -ForegroundColor Yellow
     $placeholders | ForEach-Object { Write-Host "      - $_" -ForegroundColor Yellow }
-    Write-Host "    Executer .\scripts\put_secrets.ps1 pour pousser les vraies valeurs." -ForegroundColor Yellow
+    Write-Host "    Editer la valeur via la console AWS :" -ForegroundColor Yellow
+    Write-Host "    https://eu-west-1.console.aws.amazon.com/systems-manager/parameters" -ForegroundColor Yellow
 }

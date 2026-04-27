@@ -8,7 +8,6 @@ CLAUDE.md
 .env
 .env.local
 releases
-
 # frontend
 frontend/node_modules/
 frontend/dist/

@@ -1,128 +1,210 @@
 <#
 .SYNOPSIS
-  Build + demarre la stack fx-vol et ouvre Windows Terminal avec un tab `logs -f` par service.
+  Commande UNIQUE pour orchestrer la stack fx-vol locale (Windows / PowerShell).
+
+.DESCRIPTION
+  Une seule entree pour tout faire :
+    1. Verifier les prereqs (docker, aws, python)
+    2. git pull (sauf -NoPull)
+    3. Creer le .venv si absent + pip install
+    4. Charger les secrets depuis AWS SSM
+    5. docker compose up -d --build (sauf -NoBuild)
+    6. Attendre Postgres healthy
+    7. Alembic upgrade head
+    8. Restart nginx (refresh DNS upstreams)
+    9. Ouvrir Windows Terminal : 1 tab par service + 1 tab healthcheck
+
+  Sous-mode -Down arrete tout (et droppe les volumes si -DropVolumes).
+
+.PARAMETER Down
+  Arrete la stack et sort (au lieu du pipeline up).
+
+.PARAMETER NoPull
+  Skip le git pull.
 
 .PARAMETER NoBuild
-  Saute le --build (plus rapide si aucune image n'a change).
+  Skip le --build (plus rapide si aucune image n'a change).
+
+.PARAMETER NoTabs
+  Skip l'ouverture des Windows Terminal tabs (utile pour CI / scripting).
+
+.PARAMETER DropVolumes
+  Avec -Down : docker compose down --volumes (drop postgres data + redis cache).
+
+.PARAMETER RecreateVenv
+  Force la recreation du .venv (sinon reutilise l'existant).
 
 .EXAMPLE
-  .\scripts\start_stack.ps1
-  .\scripts\start_stack.ps1 -NoBuild
+  .\scripts\start_stack.ps1                 # full pipeline up
+  .\scripts\start_stack.ps1 -NoPull -NoBuild  # demarrage rapide
+  .\scripts\start_stack.ps1 -Down           # stop
+  .\scripts\start_stack.ps1 -Down -DropVolumes  # stop + wipe data
 #>
-param([switch]$NoBuild)
+param(
+    [switch]$Down,
+    [switch]$NoPull,
+    [switch]$NoBuild,
+    [switch]$NoTabs,
+    [switch]$DropVolumes,
+    [switch]$RecreateVenv
+)
 
 $ErrorActionPreference = 'Stop'
+$projectDir = Split-Path -Parent $PSScriptRoot
+Push-Location $projectDir
+
+function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
+function Write-Ok($msg)   { Write-Host "    [OK] $msg" -ForegroundColor Green }
+function Write-Warn($msg) { Write-Host "    [!]  $msg" -ForegroundColor Yellow }
+
+try {
+    # ---------- Sous-mode -Down : stop & exit ----------
+    if ($Down) {
+        Write-Step "Stopping stack$(if ($DropVolumes) { ' (DROPPING VOLUMES)' })"
+        $args = @('compose', 'down', '--remove-orphans')
+        if ($DropVolumes) { $args += '--volumes' }
+        & docker @args
+        Write-Ok "Stack stopped"
+        exit 0
+    }
+
+    # ---------- 1. Prereqs ----------
+    Write-Step "Checking prerequisites"
+    foreach ($cmd in @('docker', 'aws', 'python', 'git')) {
+        if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
+            throw "Missing required tool : '$cmd'. Install it and re-run."
+        }
+    }
+    if (-not (docker info 2>$null)) {
+        throw "Docker daemon not reachable. Start Docker Desktop and re-run."
+    }
+    Write-Ok "docker, aws, python, git all available"
+
+    # ---------- 2. git pull ----------
+    if (-not $NoPull) {
+        Write-Step "git pull"
+        $branch = (& git rev-parse --abbrev-ref HEAD).Trim()
+        if ($branch -eq 'main') {
+            & git pull --ff-only origin main
+        } else {
+            Write-Warn "Branch '$branch' (not main) -> skip auto-pull, use -NoPull to silence"
+        }
+    }
+
+    # ---------- 3. .venv ----------
+    $venvPath = Join-Path $projectDir '.venv'
+    if ($RecreateVenv -and (Test-Path $venvPath)) {
+        Write-Step "Removing existing .venv (-RecreateVenv)"
+        Remove-Item -Recurse -Force $venvPath
+    }
+    if (-not (Test-Path $venvPath)) {
+        Write-Step "Creating .venv"
+        & python -m venv .venv
+        Write-Ok ".venv created"
+        Write-Step "pip install -r requirements.txt (one-shot, ~2 min)"
+        & "$venvPath\Scripts\python.exe" -m pip install --upgrade pip --quiet
+        & "$venvPath\Scripts\python.exe" -m pip install -r requirements.txt --quiet
+        Write-Ok "Dependencies installed"
+    } else {
+        Write-Ok ".venv already present (use -RecreateVenv to rebuild)"
+    }
+    & "$venvPath\Scripts\Activate.ps1"
+
+    # ---------- 4. Secrets from SSM ----------
+    Write-Step "Loading secrets from AWS SSM"
+    & "$PSScriptRoot\load_secrets.ps1"
+
+    # ---------- 5. docker compose up ----------
+    Write-Step "docker compose up -d$(if (-not $NoBuild) { ' --build' })"
+    $upArgs = @('compose', '--profile', 'engines', '--profile', 'ib', 'up', '-d')
+    if (-not $NoBuild) { $upArgs += '--build' }
+    & docker @upArgs
+
+    # ---------- 6. Wait postgres healthy ----------
+    Write-Step "Waiting for Postgres healthy (max 60s)"
+    $healthy = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        $state = (docker inspect -f '{{.State.Health.Status}}' fxvol-postgres 2>$null)
+        if ($state -eq 'healthy') { $healthy = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (-not $healthy) { throw "Postgres did not become healthy within 60s" }
+    Write-Ok "Postgres healthy"
+
+    # ---------- 7. Alembic ----------
+    Write-Step "Alembic upgrade head"
+    docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
+
+    # ---------- 8. Restart nginx ----------
+    Write-Step "Restart nginx (refresh upstream DNS)"
+    docker compose restart nginx | Out-Null
+
+    Write-Ok "Stack up at http://localhost/"
+} finally {
+    Pop-Location
+}
+
+# ---------- 9. Windows Terminal tabs ----------
+if ($NoTabs) { return }
+if (-not (Get-Command wt -ErrorAction SilentlyContinue)) {
+    Write-Warn "Windows Terminal (wt.exe) not found -> skip tabs. Install from Microsoft Store."
+    return
+}
 
 $services = @(
     'postgres', 'redis', 'api', 'db-writer', 'frontend', 'nginx',
     'market-data', 'vol-engine', 'risk-engine', 'ib-gateway'
 )
 
-$projectDir = Split-Path -Parent $PSScriptRoot
-
-Push-Location $projectDir
-try {
-    # Source unique de verite : AWS SSM. Charge les 5 secrets en RAM pour la
-    # session courante -- aucun .env lu ni ecrit. docker compose heritera de
-    # ces env vars du shell parent pour resoudre les ${VAR:?} strict.
-    Write-Host "==> Loading secrets from SSM" -ForegroundColor Cyan
-    & "$PSScriptRoot\load_secrets.ps1"
-
-    Write-Host "==> docker compose up (build=$(-not $NoBuild))" -ForegroundColor Cyan
-    $upArgs = @('compose', '--profile', 'engines', '--profile', 'ib', 'up', '-d')
-    if (-not $NoBuild) { $upArgs += '--build' }
-    & docker @upArgs
-
-    Write-Host "==> Alembic upgrade head" -ForegroundColor Cyan
-    docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
-
-    # nginx cache les IPs des upstreams au demarrage. Si l'api a ete
-    # recreee apres nginx, il faut un restart pour refresh le DNS Docker.
-    Write-Host "==> Restarting nginx (refresh upstream DNS)" -ForegroundColor Cyan
-    docker compose restart nginx | Out-Null
-} finally {
-    Pop-Location
-}
-
-function Get-TabInit {
-    param([string]$ProjectDir)
-    # Chaque tab est un process PS frais (n'herite pas des env vars du shell
-    # parent) ; on re-charge SSM pour que `docker compose` puisse resoudre les
-    # ${VAR:?} au parse du compose.yml dans ce tab.
+function Get-TabInit($projectDir) {
+    # Each tab is a fresh PS process (no env inheritance) -> re-load SSM so
+    # docker compose can resolve ${VAR:?} when parsing compose.yml.
     return @"
-Set-Location '$ProjectDir'
+Set-Location '$projectDir'
 if (Test-Path .\.venv\Scripts\Activate.ps1) { .\.venv\Scripts\Activate.ps1 }
 & .\scripts\load_secrets.ps1 | Out-Null
 "@
 }
 
-function New-LogsTabCommand {
-    param([string]$Service, [string]$ProjectDir)
-    $init = Get-TabInit $ProjectDir
-    $script = @"
-$init
-Write-Host '==> logs -f $Service' -ForegroundColor Cyan
-docker compose logs -f $Service
-"@
+function New-LogsTab($svc, $projectDir) {
+    $script = "$(Get-TabInit $projectDir)`nWrite-Host '==> logs -f $svc' -ForegroundColor Cyan`ndocker compose logs -f $svc"
     return [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
 }
 
-function New-HealthcheckTabCommand {
-    param([string]$ProjectDir, [int]$WaitSeconds = 20)
-    $init = Get-TabInit $ProjectDir
-    $script = @"
-$init
-Write-Host '==> Healthcheck : attente $WaitSeconds s que les containers soient prets...' -ForegroundColor Yellow
-Start-Sleep -Seconds $WaitSeconds
-Write-Host '==> docker compose ps' -ForegroundColor Cyan
-docker compose ps
-Write-Host '==> pg_isready' -ForegroundColor Cyan
-docker compose exec postgres pg_isready -U fxvol -d fxvol
-Write-Host '==> alembic_version' -ForegroundColor Cyan
-docker compose exec postgres psql -U fxvol -d fxvol -c 'SELECT version_num FROM alembic_version;'
-Write-Host '==> redis PING' -ForegroundColor Cyan
-docker compose exec redis redis-cli PING
-Write-Host '==> api /health (interne)' -ForegroundColor Cyan
-docker exec fxvol-api curl -fsS http://127.0.0.1:8000/api/v1/health
+function New-HealthcheckTab($projectDir) {
+    $body = @"
+$(Get-TabInit $projectDir)
+Write-Host '==> Waiting 20s for containers to settle...' -ForegroundColor Yellow
+Start-Sleep -Seconds 20
+Write-Host '==> docker compose ps' -ForegroundColor Cyan ; docker compose ps
+Write-Host '==> pg_isready' -ForegroundColor Cyan ; docker compose exec postgres pg_isready -U fxvol -d fxvol
+Write-Host '==> redis PING' -ForegroundColor Cyan ; docker compose exec redis redis-cli PING
+Write-Host '==> /api/v1/health' -ForegroundColor Cyan ; curl.exe http://localhost/api/v1/health
 Write-Host ''
-Write-Host '==> frontend bundle' -ForegroundColor Cyan
-docker exec fxvol-frontend wget -qO- http://127.0.0.1:8080/ | Select-Object -First 5
-Write-Host '==> nginx / (public)' -ForegroundColor Cyan
-curl.exe -I http://localhost/
-Write-Host '==> nginx /api/v1/health' -ForegroundColor Cyan
-curl.exe http://localhost/api/v1/health
+Write-Host '==> /api/v1/health/extended' -ForegroundColor Cyan ; curl.exe http://localhost/api/v1/health/extended
 Write-Host ''
-Write-Host '==> /api/v1/health/extended (lien DB+Redis+engines)' -ForegroundColor Cyan
-curl.exe http://localhost/api/v1/health/extended
-Write-Host ''
-Write-Host '==> IB Gateway port 4002' -ForegroundColor Cyan
-Test-NetConnection 127.0.0.1 -Port 4002 | Select-Object TcpTestSucceeded
-Write-Host '==> Heartbeats engines' -ForegroundColor Cyan
+Write-Host '==> Engine heartbeats' -ForegroundColor Cyan
 foreach (`$hb in 'market_data','vol_engine','risk_engine','db_writer') {
     `$v = docker compose exec redis redis-cli GET "heartbeat:`$hb"
-    Write-Host ("  heartbeat:{0,-13} -> {1}" -f `$hb, `$v)
+    Write-Host ("    {0,-13} -> {1}" -f `$hb, `$v)
 }
-Write-Host '==> position_snapshots count' -ForegroundColor Cyan
-docker compose exec postgres psql -U fxvol -d fxvol -c 'SELECT COUNT(*) FROM position_snapshots;'
-Write-Host ''
-Write-Host '==> Healthcheck termine.' -ForegroundColor Green
+Write-Host '==> IB Gateway port 4002' -ForegroundColor Cyan
+Test-NetConnection 127.0.0.1 -Port 4002 | Select-Object TcpTestSucceeded
+Write-Host '==> Healthcheck done.' -ForegroundColor Green
 "@
-    return [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+    return [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($body))
 }
 
-Write-Host "==> Opening Windows Terminal tabs" -ForegroundColor Cyan
-$shell = 'powershell.exe'
+Write-Step "Opening Windows Terminal : $($services.Count) logs tabs + 1 healthcheck"
 $wtArgs = @()
 for ($i = 0; $i -lt $services.Count; $i++) {
-    $svc = $services[$i]
-    $encoded = New-LogsTabCommand -Service $svc -ProjectDir $projectDir
     if ($i -gt 0) { $wtArgs += ';' }
-    $wtArgs += @('new-tab', '--title', $svc, $shell, '-NoExit', '-EncodedCommand', $encoded)
+    $wtArgs += @('new-tab', '--title', $services[$i], 'powershell.exe', '-NoExit',
+                 '-EncodedCommand', (New-LogsTab $services[$i] $projectDir))
 }
-# Tab final : healthcheck global (attend 20s que tout soit up puis lance les 15 probes)
 $wtArgs += ';'
-$wtArgs += @('new-tab', '--title', 'healthcheck', $shell, '-NoExit', '-EncodedCommand',
-    (New-HealthcheckTabCommand -ProjectDir $projectDir -WaitSeconds 20))
+$wtArgs += @('new-tab', '--title', 'healthcheck', 'powershell.exe', '-NoExit',
+             '-EncodedCommand', (New-HealthcheckTab $projectDir))
 & wt @wtArgs
 
-Write-Host "==> Done. 10 tabs logs + 1 tab healthcheck ouverts." -ForegroundColor Green
+Write-Ok "Done. UI : http://localhost/    API : http://localhost/api/v1/health"
