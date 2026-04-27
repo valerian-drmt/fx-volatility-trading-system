@@ -1,8 +1,12 @@
 """Unit tests for RiskEngine computation logic."""
+import asyncio
 import queue
+import threading
+from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
+from redis import exceptions as redis_exc
 
 from services.risk_engine import PNL_CHART_POINTS, RiskEngine
 
@@ -150,3 +154,77 @@ class TestPnlChart:
         for i, s in enumerate(spots):
             scalar = bs_price(s, 1.10, 0.25, 0.08, "C")
             assert abs(vec[i] - scalar) < 1e-10
+
+
+# --- R3 PR #5 : Redis bus wiring --------------------------------------------
+
+def _risk_engine_with_mock_redis():
+    e = RiskEngine.__new__(RiskEngine)
+    e._output_queue = queue.Queue()
+    e._host = "127.0.0.1"
+    e._port = 4002
+    e._client_id = 3
+    e._stop_event = threading.Event()
+    e._refresh_event = threading.Event()
+    e.spot = 0.0
+    e.iv_surface = {}
+    e._positions = []
+    e._redis_url = None
+    e._loop = asyncio.new_event_loop()
+    e._redis_client = AsyncMock()
+    e._redis_client.set = AsyncMock(return_value=True)
+    e._redis_client.publish = AsyncMock(return_value=1)
+    return e
+
+
+def _risk_result_sample():
+    return {
+        "open_positions": [{"symbol": "6EM5"}],
+        "summary": {"delta_net": 1200, "vega_net": 500, "pnl_total": 250},
+        "pnl_curve": {"spots": [1.08, 1.09], "pnls": [0, 100]},
+        "spot": 1.0857,
+    }
+
+
+class TestRiskEngineRedisWiring:
+    def test_risk_engine_writes_greeks_and_pnl_and_publishes(self):
+        e = _risk_engine_with_mock_redis()
+        try:
+            e._publish_risk_to_redis(_risk_result_sample())
+        finally:
+            e._loop.close()
+
+        # 2 SET : latest_greeks:portfolio + latest_pnl_curve.
+        assert e._redis_client.set.call_count == 2
+        keys_written = [args[0] for args, _ in e._redis_client.set.call_args_list]
+        assert "latest_greeks:portfolio" in keys_written
+        assert "latest_pnl_curve" in keys_written
+        # 1 PUBLISH on risk_update.
+        assert e._redis_client.publish.call_count == 1
+        assert e._redis_client.publish.call_args[0][0] == "risk_update"
+
+    def test_risk_engine_redis_unavailable_does_not_crash(self):
+        e = _risk_engine_with_mock_redis()
+        e._redis_client.set = AsyncMock(
+            side_effect=redis_exc.ConnectionError("down")
+        )
+        try:
+            e._publish_risk_to_redis(_risk_result_sample())
+        finally:
+            e._loop.close()
+
+    def test_risk_engine_skips_empty_summary(self):
+        e = _risk_engine_with_mock_redis()
+        try:
+            e._publish_risk_to_redis({"summary": {}, "pnl_curve": None})
+        finally:
+            e._loop.close()
+        assert e._redis_client.set.call_count == 0
+
+    def test_risk_engine_heartbeat_writes_canonical_key(self):
+        e = _risk_engine_with_mock_redis()
+        try:
+            e._set_heartbeat_to_redis()
+        finally:
+            e._loop.close()
+        assert e._redis_client.set.call_args[0][0] == "heartbeat:risk_engine"
