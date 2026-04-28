@@ -262,6 +262,25 @@ services:
     networks:
       - fxvol-internal
       - fxvol-external
+    volumes:
+      # Persist Gateway runtime settings across container recreates.
+      # The .ibgzenc encrypted file in $TWS_SETTINGS_PATH/<userid_hash>/
+      # is where the GUI Save Settings writes the API config (Trusted
+      # IPs, "Allow connections from localhost only", etc.). IBC enforces
+      # `TrustedIPs=127.0.0.1` in jts.ini at every boot via its hardcoded
+      # SettingsFileEnsurer Java class, but Gateway runtime reads from
+      # the .ibgzenc — which we control via this volume.
+      #
+      # Initial setup (one-shot after first compose up): connect to VNC
+      # on 127.0.0.1:5900, Configure → Settings → API → Settings:
+      #   - uncheck "Allow connections from localhost only"
+      #   - Trusted IPs : 127.0.0.1, 172.19.0.0/24
+      #     (CIDR couvre tous les containers de fxvol-internal :
+      #     market-data, vol-engine, risk-engine, etc.)
+      #   - OK + File → Save Settings
+      # Subsequent boots reload these settings from the volume — pas
+      # besoin de retoucher la GUI.
+      - ib_gateway_jts:/home/ibgateway/Jts
     healthcheck:
       # tcp probe — gnzsnz/ib-gateway is minimal (no nc, netstat, curl,
       # python3, no bash net-redirections). socat is shipped (used by
@@ -315,3 +334,5 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  # IB Gateway settings persistence — see § ib-gateway above.
+  ib_gateway_jts:
