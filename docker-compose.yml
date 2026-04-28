@@ -263,8 +263,12 @@ services:
       - fxvol-internal
       - fxvol-external
     healthcheck:
-      # tcp probe — IB Gateway does not ship a cheap HTTP endpoint.
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 4002 || exit 1"]
+      # tcp probe — gnzsnz/ib-gateway is minimal (no nc, netstat, curl,
+      # python3, no bash net-redirections). socat is shipped (used by
+      # IBC's VNC bridge) and gives a real TCP probe equivalent to the
+      # original `nc -z` intent, catching both JVM death AND the
+      # dead-socket-but-live-process state.
+      test: ["CMD-SHELL", "socat /dev/null TCP:127.0.0.1:4002,connect-timeout=2 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
