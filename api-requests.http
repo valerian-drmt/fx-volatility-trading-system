@@ -28,14 +28,17 @@ GET {{host}}/metrics
 
 
 # ============================================================================
-# R4 PR #2 — health + monitoring (TODO)
+# R4 PR #2 — health + monitoring (LIVE)
 # ============================================================================
 
-### /health basique — 200 si l'app tourne
+### /health basique — 200 si l'app tourne (liveness probe)
 GET {{api}}/health
+Accept: application/json
 
-### /health/extended — check Redis + Postgres + heartbeats engines
+### /health/extended — readiness : check Redis + Postgres + 3 heartbeats engines
+# Reponse : {"status": "OK"|"DEGRADED", "components": {redis, database, engines{...}}}
 GET {{api}}/health/extended
+Accept: application/json
 
 
 # ============================================================================
