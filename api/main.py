@@ -17,6 +17,7 @@ from api.middleware.logging import AccessLogMiddleware, configure_logging
 from api.middleware.rate_limit import build_limiter, rate_limit_exceeded_handler
 from api.middleware.timing import TimingMiddleware
 from api.routers import health as health_router
+from api.routers import pricing as pricing_router
 
 
 @asynccontextmanager
@@ -65,7 +66,8 @@ def create_app() -> FastAPI:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     app.include_router(health_router.router)
-    # Next routers : pricing (#3), vol (#4), portfolio (#5), analytics (#6)
+    app.include_router(pricing_router.router)
+    # Next routers : vol (#4), portfolio (#5), analytics (#6)
     return app
 
 
