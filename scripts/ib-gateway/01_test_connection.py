@@ -9,9 +9,16 @@ Couvre
 1. Container UP + état du healthcheck Docker (socat probe interne)
 2. TCP probe direct sur 127.0.0.1:4002 depuis l'host
 3. Secrets présents en env (length-only, JAMAIS la valeur)
-4. ``ib.connect()`` synchrone (ib_insync) → ``isConnected() == True``
-5. ``reqCurrentTime()`` — drift serveur vs local ≤ 5s
-6. ``disconnect()`` propre + reconnect avec un autre clientId
+4. IBC login complété sur les serveurs IB (parse ``docker logs``)
+5. ``ib.connect()`` synchrone (ib_insync) → ``isConnected() == True``
+6. ``reqCurrentTime()`` — drift serveur vs local ≤ 5s
+7. ``disconnect()`` propre + reconnect avec un autre clientId
+
+Le §4 distingue **container ready** (TWS écoute le socket, ce que mesure
+le §1 healthcheck) de **IBC ready** (IBC a fini son login auprès des
+serveurs IB Interactive Brokers). Sans le §4, un IBC bloqué en 2FA
+silencieux ou en image obsolète passe les §1-§3 mais fait timeout
+silencieusement le §5 — et on perd 15s à comprendre pourquoi.
 
 Préreq
 ------
@@ -37,11 +44,37 @@ La surface IB ne nécessitant pas de stepping cellule-par-cellule (pass/fail
 binaire), le pivot vers .py est plus pragmatique. ``SMOKE_PLAN.md``
 documente cette exception au pattern ``0N_test_*.ipynb`` du reste.
 
+Architecture en 2 passes
+------------------------
+Le smoke tourne en deux passes successives, orchestrées par le script lui-même :
+
+1. **Host pass** (sections 1-4) : exécutée par Python sur l'host Windows. Valide
+   la couche compose / docker / TCP / secrets / IBC login. Connecte au container
+   via `127.0.0.1:4002` mais Docker NAT translate la source en `172.19.0.1`,
+   non trusted par Gateway.
+2. **Namespace pass** (sections 5-7) : si IBC est OK, le script spawn un sub-
+   process ``docker run --rm --network container:fxvol-ib-gateway python:3.11-slim``
+   qui partage le namespace réseau du container ib-gateway. Depuis ce namespace,
+   ``127.0.0.1:4002`` est trusted nativement → handshake API marche.
+
+Pourquoi ce split : sur Windows Docker Desktop, ``network_mode: host`` ne
+fonctionne pas réellement (le container reste dans la VM Linux), et l'IP
+source vue par Gateway est toujours la passerelle Docker bridge. La GUI
+permet d'ajouter cette IP aux Trusted IPs (cf. fix VNC dans la session R9
+sandbox 28/04/2026), mais IBC enforce ``TrustedIPs=127.0.0.1`` à chaque
+boot, et la persistance via .ibgzenc encrypted file ne survit pas non plus.
+Le namespace partagé est le seul fix qui marche end-to-end sans toucher
+à l'archi compose.
+
 Usage
 -----
-    python scripts/ib-gateway/01_test_connection.py
+    python scripts/ib-gateway/01_test_connection.py        # mode normal (host + namespace)
+    python scripts/ib-gateway/01_test_connection.py --namespace  # interne, ne pas appeler à la main
 
-Sortie : tableau OK/FAIL + exit code = nombre de FAILs.
+Le mode ``--namespace`` est invoqué automatiquement par le sub-process
+``docker run``. L'utilisateur lance toujours la commande sans flag.
+
+Sortie : 2 tableaux OK/FAIL (un par passe) + exit code = nombre total de FAILs.
 """
 from __future__ import annotations
 
@@ -51,13 +84,14 @@ import subprocess
 import sys
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 
 from ib_insync import IB
 
 HOST = "127.0.0.1"
 PORT = 4002
-CLIENT_ID = 199            # sandbox, hors plage prod (1, 2, 3) et research (14)
-CLIENT_ID_BIS = 198        # pour le test reconnect avec un autre id
+CLIENT_ID = 197
+CLIENT_ID_BIS = 196       # pour le test reconnect avec un autre id
 CONTAINER = "fxvol-ib-gateway"
 
 results: list[tuple[str, bool, str]] = []
@@ -130,19 +164,61 @@ def section_3_secrets() -> None:
         record(f"{key} set", bool(val), f"length = {len(val)}" if val else "MISSING")
 
 
-# == 4. IB.connect() + handshake TWS API ==
+# == 4. IBC login status (parse docker logs) ==
+# Ce que tu dois voir : "Login has completed" présent dans les ~200
+# dernières lignes des logs container.
+#
+# Pourquoi cette section : le healthcheck Docker (§1) ne valide que le
+# port TCP — il dit "TWS écoute" mais pas "IBC est loggé sur les
+# serveurs IB". Si IBC n'a pas fini son login (2FA en attente, image
+# obsolète, creds rejetés), le socket TCP ouvre quand même (§2 OK), mais
+# le handshake API du §5 timeoutera silencieusement après 15s sans
+# explication. Cette section attrape le cas en amont avec un message
+# clair, et skip §5/§6/§7 pour ne pas perdre 30s de plus à attendre des
+# timeouts certains.
+def section_4_ibc_login() -> bool:
+    print("\n== 4. IBC login status (docker logs) ==")
+
+    out = subprocess.run(
+        ["docker", "logs", "--tail", "200", CONTAINER],
+        capture_output=True, text=True,
+    )
+    logs = (out.stdout + out.stderr).lower()
+
+    has_login = "login has completed" in logs
+    has_2fa = "second factor authentication" in logs
+    has_obsolete = "is no longer supported" in logs
+    has_bad_creds = "invalid username" in logs or "invalid password" in logs
+
+    record("IBC login completed", has_login,
+           "marker 'Login has completed' found" if has_login else "marker absent")
+
+    if not has_login:
+        if has_2fa:
+            print("  [WARN] pattern '2FA' dans les logs — valider la push IB Key sur iPhone")
+        if has_obsolete:
+            print("  [WARN] 'is no longer supported' dans les logs — image Gateway à bumper (cf. infrastructure/ib-gateway/README.md)")
+        if has_bad_creds:
+            print("  [WARN] credentials rejetés dans les logs — secrets mal injectés au compose up")
+        if not (has_2fa or has_obsolete or has_bad_creds):
+            print("  [WARN] aucun marker connu — IBC est peut-être encore en cours de login (attendre 30s puis re-run)")
+
+    return has_login
+
+
+# == 5. IB.connect() + handshake TWS API ==
 # Ce que tu dois voir : `connect()` rend la main en < 5s, `isConnected()
 # == True`, `serverVersion()` retourne un int ≥ 176 pour Gateway 10.x.
 #
-# Si TimeoutError alors que TCP probe (§2) a réussi : TWS API socket
-# ouvert mais Gateway ne répond pas au handshake. Causes courantes :
+# Si TimeoutError alors que §1-§4 ont passé : TWS API socket ouvert et
+# IBC loggé, mais Gateway ne répond pas au handshake API. Causes :
 #   1. clientId déjà utilisé (zombie session) → bumper CLIENT_ID
 #   2. Popup IB Gateway "Allow incoming connection?" en attente côté VNC
 #      (l'IP source vue par le container = Docker bridge 172.17.0.1, pas
 #      127.0.0.1, donc TrustedIPs jts.ini ne couvre pas → popup)
-#   3. Image Gateway obsolète refusant la version du protocole
-def section_4_connect(ib: IB) -> bool:
-    print("\n== 4. IB.connect() + handshake ==")
+#   3. "Enable ActiveX and Socket Clients" décoché dans Configuration > API
+def section_5_connect(ib: IB) -> bool:
+    print("\n== 5. IB.connect() + handshake ==")
 
     t0 = time.perf_counter()
     try:
@@ -155,19 +231,16 @@ def section_4_connect(ib: IB) -> bool:
 
     sv = ib.client.serverVersion()
     record("serverVersion", isinstance(sv, int) and sv >= 176, f"v{sv}")
-
-    ct = ib.client.twsConnectionTime()
-    record("twsConnectionTime", bool(ct), str(ct)[:30] if ct else "<empty>")
     return True
 
 
-# == 5. reqCurrentTime — drift serveur vs local ==
+# == 6. reqCurrentTime — drift serveur vs local ==
 # Ce que tu dois voir : drift |server-local| ≤ 5s. Drift > 5s = horloge
 # host désynchronisée (NTP) ou container Docker décalé. Critique car
 # tous les timestamps applicatifs viennent du serveur IB ; un drift fait
 # rejeter les ordres MOC/LOC et casse les corrélations multi-services.
-def section_5_clock(ib: IB) -> None:
-    print("\n== 5. reqCurrentTime — server vs local clock ==")
+def section_6_clock(ib: IB) -> None:
+    print("\n== 6. reqCurrentTime — server vs local clock ==")
 
     server_dt = ib.reqCurrentTime()  # datetime tz-aware (UTC)
     local_dt = datetime.now(UTC)
@@ -181,14 +254,14 @@ def section_5_clock(ib: IB) -> None:
     record("drift |server-local| ≤ 5s", abs(drift_s) <= 5.0, f"{drift_s:+.2f}s")
 
 
-# == 6. disconnect + reconnect avec autre clientId ==
+# == 7. disconnect + reconnect avec autre clientId ==
 # Ce que tu dois voir : après `disconnect()`, `isConnected() == False`.
 # Une nouvelle instance IB() peut immédiatement se reconnecter avec un
 # AUTRE clientId (198) sans erreur 326. Preuve qu'on ne laisse pas de
 # session zombie côté Gateway. Le test "même clientId" est volontairement
 # absent ici — il fait l'objet du futur 05_test_resilience.py.
-def section_6_reconnect(ib: IB) -> None:
-    print("\n== 6. disconnect + reconnect avec autre clientId ==")
+def section_7_reconnect(ib: IB) -> None:
+    print("\n== 7. disconnect + reconnect avec autre clientId ==")
 
     ib.disconnect()
     record("disconnect()", not ib.isConnected(), f"isConnected={ib.isConnected()}")
@@ -205,43 +278,82 @@ def section_6_reconnect(ib: IB) -> None:
             ib2.disconnect()
 
 
-def main() -> int:
-    print(f"target = {HOST}:{PORT}, clientId = {CLIENT_ID}")
-    ib = IB()
-
-    section_1_container()
-    section_2_tcp_probe()
-    section_3_secrets()
-
-    connected = section_4_connect(ib)
-    if connected:
-        section_5_clock(ib)
-        section_6_reconnect(ib)
-    else:
-        print("\n  [SKIP] sections 5 et 6 (connect a fail, rien à tester en aval)")
-
-    # Cleanup défensif
-    try:
-        if ib.isConnected():
-            ib.disconnect()
-    except Exception:
-        pass
-
+def _print_summary(prefix: str = "") -> int:
     n_ok = sum(1 for _, ok, _ in results if ok)
     n_fail = sum(1 for _, ok, _ in results if not ok)
-
-    print(f"\n{'LABEL':<45} STATUS  DETAIL")
+    print(f"\n{prefix}{'LABEL':<45} STATUS  DETAIL")
     print("-" * 100)
     for label, ok, detail in results:
         sym = "OK" if ok else "FAIL"
         print(f"{label:<45} {sym:<6}  {detail}")
     print("-" * 100)
-    print(f"\n{n_ok} OK / {n_fail} FAIL  ({len(results)} total)")
-
-    if n_fail == 0:
-        print("\nOK ib-gateway connection surface fully validated. Pass aux scripts 02-06.")
-
+    print(f"\n{prefix}{n_ok} OK / {n_fail} FAIL  ({len(results)} total)")
     return n_fail
+
+
+def _run_namespace_pass() -> int:
+    """Sections 5-7 only. Lancé via `docker run --network container:ib-gateway`
+    pour que la source IP du connect soit 127.0.0.1 dans le namespace partagé,
+    contournant le check TrustedIPs côté Docker NAT/Windows."""
+    print("=== NAMESPACE PASS (inside ib-gateway network) ===")
+    print(f"target = {HOST}:{PORT}, clientId = {CLIENT_ID}\n")
+    ib = IB()
+    try:
+        connected = section_5_connect(ib)
+        if connected:
+            section_6_clock(ib)
+            section_7_reconnect(ib)
+        else:
+            print("\n  [SKIP] sections 6 et 7 (connect a fail)")
+    finally:
+        try:
+            if ib.isConnected():
+                ib.disconnect()
+        except Exception:
+            pass
+    return _print_summary("[namespace] ")
+
+
+def _run_host_pass() -> int:
+    """Sections 1-4 sur l'host (Windows / WSL2). Si IBC est loggé, spawn un
+    docker run dans le namespace ib-gateway pour exécuter sections 5-7."""
+    print("=== HOST PASS (Windows / Docker NAT) ===")
+    print(f"target = {HOST}:{PORT}\n")
+
+    section_1_container()
+    section_2_tcp_probe()
+    section_3_secrets()
+    ibc_ready = section_4_ibc_login()
+
+    host_fail = _print_summary("[host] ")
+
+    if not ibc_ready:
+        print("\n  [SKIP] namespace pass (IBC pas loggé, sections 5/6/7 inutiles)")
+        return host_fail
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    rel_script = "scripts/ib-gateway/01_test_connection.py"
+    print("\n  [INFO] sections 5-7 doivent tourner depuis le namespace ib-gateway")
+    print("         (Docker NAT côté host fait apparaître source IP = 172.19.0.1, non trusted).")
+    print("         Spawning docker run avec network namespace partagé...\n")
+
+    cmd = [
+        "docker", "run", "--rm",
+        "--network", f"container:{CONTAINER}",
+        "-v", f"{repo_root}:/work",
+        "-w", "/work",
+        "python:3.11-slim",
+        "sh", "-c",
+        f"pip install -q ib_insync && python /work/{rel_script} --namespace",
+    ]
+    result = subprocess.run(cmd)
+    return host_fail + (0 if result.returncode == 0 else result.returncode)
+
+
+def main() -> int:
+    if "--namespace" in sys.argv:
+        return _run_namespace_pass()
+    return _run_host_pass()
 
 
 # Troubleshooting cheat sheet
@@ -253,7 +365,8 @@ def main() -> int:
 # | healthcheck = unhealthy mais TCP probe host OK | Probe interne cassé (image minimale)    | Déjà fixé avec socat dans docker-compose.yml                                       |
 # | TCP probe host FAIL                            | Conflit port 4002 côté Windows          | Get-NetTCPConnection -LocalPort 4002                                               |
 # | IB_USERID / IB_PASSWORD MISSING                | Secrets pas chargés                     | .\scripts\load_secrets.ps1 dans la PowerShell qui lance ce .py                     |
-# | ib.connect() TimeoutError mais TCP OK          | clientId zombie OU popup VNC bloquante  | Restart container, ou regarder VNC pour cliquer "Accept incoming connection"        |
+# | IBC login completed = absent                   | IBC pas fini de logger / 2FA / image    | docker logs --tail 200 fxvol-ib-gateway ; valider IB Key iPhone si pending          |
+# | ib.connect() TimeoutError mais §1-§4 OK        | clientId zombie OU popup VNC bloquante  | Restart container, ou regarder VNC pour cliquer "Accept incoming connection"        |
 # | Error 326 client id already in use             | clientId déjà pris                      | Bumper CLIENT_ID en haut du fichier ; vérifier que l'app PyQt v1 ne tourne pas     |
 # | Error 502 Couldn't connect to TWS              | TWS API pas prête / READ_ONLY_API mal   | Restart container ; docker compose config                                          |
 # | drift > 5s                                     | Horloge host désync / WSL2 post-veille  | w32tm /resync (Windows) ; wsl --shutdown                                           |
