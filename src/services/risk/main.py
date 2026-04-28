@@ -1,4 +1,4 @@
-"""Entrypoint for the risk-engine container."""
+"""Entrypoint for the risk container."""
 from __future__ import annotations
 
 import asyncio

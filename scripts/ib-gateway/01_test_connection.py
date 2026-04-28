@@ -98,7 +98,7 @@ CONTAINER = "fxvol-ib-gateway"
 # `ib-gateway` depuis l'intérieur du réseau fxvol-internal — ainsi la
 # source IP est `172.19.0.X` (l'IP du container test sur le subnet),
 # qui matche `172.19.0.0/24` dans Trusted IPs. Path identique à celui
-# qu'utilisent market-data, vol-engine, risk-engine en prod.
+# qu'utilisent market-data, vol-engine, risk en prod.
 HOST_FROM_HOST = "127.0.0.1"
 HOST_FROM_DOCKER = "ib-gateway"
 
@@ -310,7 +310,7 @@ def _run_namespace_pass() -> int:
     `172.19.0.X` (l'IP du container test sur le subnet), couverte par
     `TrustedIPs=127.0.0.1,172.19.0.0/24` configuré dans la GUI Gateway
     et persisté via le volume `ib_gateway_jts`. Path identique à
-    market-data, vol-engine, risk-engine en prod."""
+    market-data, vol-engine, risk en prod."""
     print("=== BRIDGE PASS (inside fxvol-internal Docker network) ===")
     print(f"target = {HOST_FROM_DOCKER}:{PORT}, clientId = {CLIENT_ID}\n")
     ib = IB()
@@ -334,7 +334,7 @@ def _run_host_pass() -> int:
     """Sections 1-4 sur l'host (Windows / WSL2). Si IBC est loggé, spawn un
     docker run sur le bridge network fxvol-internal pour exécuter sections
     5-7 — source IP = IP container test sur 172.19.0.0/24, exactement le
-    path de market-data/vol-engine/risk-engine en prod."""
+    path de market-data/vol-engine/risk en prod."""
     print("=== HOST PASS (Windows / Docker NAT) ===")
     print(f"target = {HOST_FROM_HOST}:{PORT}\n")
 

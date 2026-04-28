@@ -153,7 +153,7 @@ if (-not (Get-Command wt -ErrorAction SilentlyContinue)) {
 
 $services = @(
     'postgres', 'redis', 'api', 'db-writer', 'frontend', 'nginx',
-    'market-data', 'vol-engine', 'risk-engine', 'ib-gateway'
+    'market-data', 'vol-engine', 'risk', 'ib-gateway'
 )
 
 function Get-TabInit($projectDir) {

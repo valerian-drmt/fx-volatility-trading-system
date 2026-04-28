@@ -1,5 +1,5 @@
 """Shared utilities consumed by every R7 service container (market-data,
-vol-engine, risk-engine, db-writer) and — transitionally — by the legacy
+vol-engine, risk, db-writer) and — transitionally — by the legacy
 PyQt Controller.
 
 What belongs here vs. where :

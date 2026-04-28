@@ -8,7 +8,7 @@ deux faces de la "surface de sécurité" du container :
 2. **Order placement réel sur paper** — la chaîne `placeOrder` →
    callbacks IB → `cancelOrder` fonctionne bout-à-bout pour FUT et FOP,
    ce qui valide la même surface que vont utiliser vol-engine et
-   risk-engine en prod.
+   risk en prod.
 
 Couvre
 ------

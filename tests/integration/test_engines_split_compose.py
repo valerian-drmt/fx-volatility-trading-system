@@ -34,7 +34,7 @@ pytestmark = pytest.mark.skipif(
     reason="Set ENGINES_RUN_INTEGRATION=1 to run the engines-split compose suite.",
 )
 
-SERVICES = ("market-data", "vol-engine", "risk-engine", "db-writer")
+SERVICES = ("market-data", "vol-engine", "risk", "db-writer")
 COMPOSE_ENV = {
     **os.environ,
     "DB_PASSWORD": os.environ.get("DB_PASSWORD", "fxvol"),
@@ -167,16 +167,16 @@ def test_graceful_restart_of_db_writer_leaves_others_running():
 
 
 def test_market_data_crash_does_not_kill_vol_or_risk():
-    """kill market-data → vol-engine and risk-engine containers stay up."""
+    """kill market-data → vol-engine and risk containers stay up."""
     assert _container_state("fxvol-vol-engine") == "running"
-    assert _container_state("fxvol-risk-engine") == "running"
+    assert _container_state("fxvol-risk") == "running"
 
     kill = _run(["docker", "compose", "kill", "market-data"], timeout=30)
     assert kill.returncode == 0, kill.stderr
 
     time.sleep(3)
     vol_after = _container_state("fxvol-vol-engine")
-    risk_after = _container_state("fxvol-risk-engine")
+    risk_after = _container_state("fxvol-risk")
 
     assert vol_after == "running", f"vol died with market-data : {vol_after}"
     assert risk_after == "running", f"risk died with market-data : {risk_after}"

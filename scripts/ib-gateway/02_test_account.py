@@ -251,7 +251,7 @@ def section_6_paper_guard(ib: IB) -> None:
 # == 7. reqPositions — l'API positions répond ==
 # Ce que tu dois voir : la liste des positions est rendue (peut être
 # vide). On valide juste que l'endpoint répond — le contenu sera testé
-# en intégration plus tard quand le risk-engine commencera à snapshotter.
+# en intégration plus tard quand le risk commencera à snapshotter.
 def section_7_positions(ib: IB) -> None:
     print("\n== 7. reqPositions ==")
     try:

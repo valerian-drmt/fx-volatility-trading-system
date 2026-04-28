@@ -1,5 +1,5 @@
 # Base deps shared by every R7 service container (market-data, vol-engine,
-# risk-engine, db-writer). Pinned to the same ranges as the monolith
+# risk, db-writer). Pinned to the same ranges as the monolith
 # requirements.txt so the R7 split is a packaging change, not a dep bump.
 
 numpy>=1.24

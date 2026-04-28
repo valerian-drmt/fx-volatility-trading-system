@@ -2,7 +2,7 @@
 
 The scalar closed-form lives in :mod:`core.pricing.bs` — this module mirrors
 the same maths but over a ``numpy`` array of forwards, which is the hot path
-inside the risk-engine PnL chart (N≈200 spots × M positions).
+inside the risk PnL chart (N≈200 spots × M positions).
 """
 from __future__ import annotations
 

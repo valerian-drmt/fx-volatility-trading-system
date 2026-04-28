@@ -2,7 +2,7 @@
 
 Every write produces a new row in ``vol_config`` (append-only) and
 publishes ``config:changed`` on Redis so consuming services
-(vol-engine, risk-engine, ...) hot-reload without a restart.
+(vol-engine, risk, ...) hot-reload without a restart.
 
 The service is deliberately thin : Pydantic does schema validation,
 SQLAlchemy does transaction boundary, Redis does fan-out.

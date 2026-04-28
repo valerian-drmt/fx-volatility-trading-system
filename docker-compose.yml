@@ -153,7 +153,7 @@ services:
       context: .
       dockerfile: src/services/risk/Dockerfile
     image: ${RISK_ENGINE_IMAGE:-fx-options-risk-engine:local}
-    container_name: fxvol-risk-engine
+    container_name: fxvol-risk
     profiles: ["engines"]
     restart: unless-stopped
     environment:
@@ -285,7 +285,7 @@ services:
       #   - uncheck "Allow connections from localhost only"
       #   - Trusted IPs : 127.0.0.1, 172.19.0.0/24
       #     (CIDR couvre tous les containers de fxvol-internal :
-      #     market-data, vol-engine, risk-engine, etc.)
+      #     market-data, vol-engine, risk, etc.)
       #   - OK + File → Save Settings
       # Subsequent boots reload these settings from the volume — pas
       # besoin de retoucher la GUI.

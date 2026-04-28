@@ -111,7 +111,7 @@ jobs:
             dockerfile: services/market_data/Dockerfile
           - image: vol-engine
             dockerfile: services/vol/Dockerfile
-          - image: risk-engine
+          - image: risk
             dockerfile: services/risk/Dockerfile
           - image: db-writer
             dockerfile: services/db_writer/Dockerfile

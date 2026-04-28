@@ -25,7 +25,7 @@ CI_WORKFLOW = (
 EXPECTED_ENGINE_IMAGES = {
     "market-data": "services/market_data/Dockerfile",
     "vol-engine": "services/vol/Dockerfile",
-    "risk-engine": "services/risk/Dockerfile",
+    "risk": "services/risk/Dockerfile",
     "db-writer": "services/db_writer/Dockerfile",
 }
 
@@ -279,7 +279,7 @@ def test_deploy_uses_ghcr_images(deploy_wf: dict):
         "fx-options-frontend",
         "fx-options-market-data",
         "fx-options-vol-engine",
-        "fx-options-risk-engine",
+        "fx-options-risk",
         "fx-options-db-writer",
     ):
         assert f"/{image}:" in run_cmds, f"{image} not referenced in deploy.yml"
@@ -410,7 +410,7 @@ def test_trivy_covers_all_six_production_images(trivy_wf: dict):
         "fx-options-frontend",
         "fx-options-market-data",
         "fx-options-vol-engine",
-        "fx-options-risk-engine",
+        "fx-options-risk",
         "fx-options-db-writer",
     }
     assert set(matrix) == expected

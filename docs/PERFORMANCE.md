@@ -21,7 +21,7 @@ Commande pour valider en prod :
 docker compose --profile engines --profile ib up -d
 # Attendre 3-5 min (cycle vol initial)
 docker stats --no-stream --format "table {{.Container}}\t{{.MemUsage}}\t{{.CPUPerc}}" \
-  fxvol-market-data fxvol-vol-engine fxvol-risk-engine fxvol-db-writer
+  fxvol-market-data fxvol-vol-engine fxvol-risk fxvol-db-writer
 ```
 
 Résultats attendus (ordre de grandeur) :
