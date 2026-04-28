@@ -1,0 +1,70 @@
+"""FastAPI entrypoint — wires middleware, lifespan, and (later) routers."""
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
+import structlog
+from fastapi import FastAPI
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from redis import asyncio as aioredis
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import Response
+
+from api.config import get_settings
+from api.dependencies import set_redis_client
+from api.middleware.logging import AccessLogMiddleware, configure_logging
+from api.middleware.rate_limit import build_limiter, rate_limit_exceeded_handler
+from api.middleware.timing import TimingMiddleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Open Redis pool at startup, dispose on shutdown."""
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    log = structlog.get_logger("api.lifespan")
+
+    client = aioredis.from_url(
+        settings.redis_url, max_connections=50, decode_responses=True
+    )
+    set_redis_client(client)
+    log.info("api_startup", redis_url=settings.redis_url)
+    try:
+        yield
+    finally:
+        await client.aclose()
+        log.info("api_shutdown")
+
+
+def create_app() -> FastAPI:
+    """Factory — used by uvicorn + by tests (no side effect at import)."""
+    settings = get_settings()
+    app = FastAPI(
+        title="FXVol API",
+        version="0.4.0",
+        lifespan=lifespan,
+    )
+
+    limiter = build_limiter()
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.add_middleware(TimingMiddleware)
+    app.add_middleware(AccessLogMiddleware)
+
+    @app.get("/metrics", include_in_schema=False)
+    def metrics() -> Response:
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+    # Routers land in subsequent R4 PRs (#2 health, #3 pricing, ...)
+    return app
+
+
+app = create_app()
