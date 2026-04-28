@@ -16,6 +16,7 @@ from api.dependencies import set_redis_client
 from api.middleware.logging import AccessLogMiddleware, configure_logging
 from api.middleware.rate_limit import build_limiter, rate_limit_exceeded_handler
 from api.middleware.timing import TimingMiddleware
+from api.routers import health as health_router
 
 
 @asynccontextmanager
@@ -63,7 +64,8 @@ def create_app() -> FastAPI:
     def metrics() -> Response:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
-    # Routers land in subsequent R4 PRs (#2 health, #3 pricing, ...)
+    app.include_router(health_router.router)
+    # Next routers : pricing (#3), vol (#4), portfolio (#5), analytics (#6)
     return app
 
 
