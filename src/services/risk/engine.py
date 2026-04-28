@@ -118,13 +118,33 @@ class RiskEngine:
             return False
 
     async def _read_spot(self) -> float | None:
+        """Lit le spot depuis Redis. Accepte les deux formats produits par
+        les engines en upstream :
+
+        - **plain float string** (ex: ``"1.17052"``) — c'est ce que
+          ``bus.publisher.publish_tick`` écrit via ``str(mid)`` (cf.
+          ``src/bus/publisher.py:83-85``). Format actuel de market-data.
+        - **dict JSON** (ex: ``{"mid": 1.17, "bid": 1.169, ...}``) —
+          format alternatif possiblement utilisé ailleurs.
+
+        Le tolerant des deux formes évite un mismatch de contrat bus
+        entre market-data (writer) et risk-engine (reader). Bug R9
+        sandbox 28/04/2026 : le mismatch entraînait ``risk_cycle_skipped``
+        en boucle alors que la valeur était bien dans Redis.
+        """
         key = keys.LATEST_SPOT.format(symbol=self.symbol)
         raw = await self.redis.get(key)
         if raw is None:
             return None
         try:
             payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
-            return float(payload.get("mid") or payload.get("bid"))
+            # Plain numeric (str(mid) côté market-data) → cast direct.
+            if isinstance(payload, (int, float)):
+                return float(payload)
+            # Dict avec "mid" / "bid" → fallback historique.
+            if isinstance(payload, dict):
+                return float(payload.get("mid") or payload.get("bid"))
+            return None
         except (ValueError, TypeError, AttributeError):
             return None
 
