@@ -88,11 +88,24 @@ from pathlib import Path
 
 from ib_insync import IB
 
-HOST = "127.0.0.1"
 PORT = 4002
 CLIENT_ID = 197
 CLIENT_ID_BIS = 196       # pour le test reconnect avec un autre id
 CONTAINER = "fxvol-ib-gateway"
+
+# Host pass (sections 1-4) tape sur 127.0.0.1 (port-forward Docker NAT
+# côté Windows). Namespace pass (sections 5-7) tape sur le DNS Docker
+# `ib-gateway` depuis l'intérieur du réseau fxvol-internal — ainsi la
+# source IP est `172.19.0.X` (l'IP du container test sur le subnet),
+# qui matche `172.19.0.0/24` dans Trusted IPs. Path identique à celui
+# qu'utilisent market-data, vol-engine, risk-engine en prod.
+HOST_FROM_HOST = "127.0.0.1"
+HOST_FROM_DOCKER = "ib-gateway"
+
+# Network Docker du compose. Préfixé automatiquement par le nom du
+# projet (= nom du dossier racine). Si tu renommes le dossier, mets à
+# jour ici.
+DOCKER_NETWORK = "fx-volatility-trading-system_fxvol-internal"
 
 results: list[tuple[str, bool, str]] = []
 
@@ -143,7 +156,7 @@ def section_2_tcp_probe() -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(2.0)
     try:
-        sock.connect((HOST, PORT))
+        sock.connect((HOST_FROM_HOST, PORT))
         dt_ms = (time.perf_counter() - t0) * 1000
         record("TCP connect 127.0.0.1:4002", True, f"{dt_ms:.1f} ms")
     except (TimeoutError, ConnectionRefusedError, OSError) as e:
@@ -222,7 +235,7 @@ def section_5_connect(ib: IB) -> bool:
 
     t0 = time.perf_counter()
     try:
-        ib.connect(HOST, PORT, clientId=CLIENT_ID, timeout=15)
+        ib.connect(HOST_FROM_DOCKER, PORT, clientId=CLIENT_ID, timeout=15)
         dt = time.perf_counter() - t0
         record("ib.connect()", ib.isConnected(), f"{dt*1000:.0f} ms")
     except Exception as e:
@@ -268,7 +281,7 @@ def section_7_reconnect(ib: IB) -> None:
 
     ib2 = IB()
     try:
-        ib2.connect(HOST, PORT, clientId=CLIENT_ID_BIS, timeout=15)
+        ib2.connect(HOST_FROM_DOCKER, PORT, clientId=CLIENT_ID_BIS, timeout=15)
         record(f"reconnect avec clientId={CLIENT_ID_BIS}", ib2.isConnected(),
                f"serverVersion=v{ib2.client.serverVersion()}")
     except Exception as e:
@@ -292,11 +305,14 @@ def _print_summary(prefix: str = "") -> int:
 
 
 def _run_namespace_pass() -> int:
-    """Sections 5-7 only. Lancé via `docker run --network container:ib-gateway`
-    pour que la source IP du connect soit 127.0.0.1 dans le namespace partagé,
-    contournant le check TrustedIPs côté Docker NAT/Windows."""
-    print("=== NAMESPACE PASS (inside ib-gateway network) ===")
-    print(f"target = {HOST}:{PORT}, clientId = {CLIENT_ID}\n")
+    """Sections 5-7 only. Lancé via `docker run --network <fxvol-internal>`
+    sur le réseau bridge Docker du compose. Source IP côté Gateway =
+    `172.19.0.X` (l'IP du container test sur le subnet), couverte par
+    `TrustedIPs=127.0.0.1,172.19.0.0/24` configuré dans la GUI Gateway
+    et persisté via le volume `ib_gateway_jts`. Path identique à
+    market-data, vol-engine, risk-engine en prod."""
+    print("=== BRIDGE PASS (inside fxvol-internal Docker network) ===")
+    print(f"target = {HOST_FROM_DOCKER}:{PORT}, clientId = {CLIENT_ID}\n")
     ib = IB()
     try:
         connected = section_5_connect(ib)
@@ -316,9 +332,11 @@ def _run_namespace_pass() -> int:
 
 def _run_host_pass() -> int:
     """Sections 1-4 sur l'host (Windows / WSL2). Si IBC est loggé, spawn un
-    docker run dans le namespace ib-gateway pour exécuter sections 5-7."""
+    docker run sur le bridge network fxvol-internal pour exécuter sections
+    5-7 — source IP = IP container test sur 172.19.0.0/24, exactement le
+    path de market-data/vol-engine/risk-engine en prod."""
     print("=== HOST PASS (Windows / Docker NAT) ===")
-    print(f"target = {HOST}:{PORT}\n")
+    print(f"target = {HOST_FROM_HOST}:{PORT}\n")
 
     section_1_container()
     section_2_tcp_probe()
@@ -328,23 +346,23 @@ def _run_host_pass() -> int:
     host_fail = _print_summary("[host] ")
 
     if not ibc_ready:
-        print("\n  [SKIP] namespace pass (IBC pas loggé, sections 5/6/7 inutiles)")
+        print("\n  [SKIP] bridge pass (IBC pas loggé, sections 5/6/7 inutiles)")
         return host_fail
 
     repo_root = Path(__file__).resolve().parent.parent.parent
     rel_script = "scripts/ib-gateway/01_test_connection.py"
-    print("\n  [INFO] sections 5-7 doivent tourner depuis le namespace ib-gateway")
-    print("         (Docker NAT côté host fait apparaître source IP = 172.19.0.1, non trusted).")
-    print("         Spawning docker run avec network namespace partagé...\n")
+    print(f"\n  [INFO] sections 5-7 tournent sur le réseau {DOCKER_NETWORK}")
+    print("         (même path que les engines de prod ; source IP dans 172.19.0.0/24)")
+    print("         Spawning docker run...\n")
 
     cmd = [
         "docker", "run", "--rm",
-        "--network", f"container:{CONTAINER}",
+        "--network", DOCKER_NETWORK,
         "-v", f"{repo_root}:/work",
         "-w", "/work",
         "python:3.11-slim",
         "sh", "-c",
-        f"pip install -q ib_insync && python /work/{rel_script} --namespace",
+        f"pip install -q ib_insync tzdata && python /work/{rel_script} --namespace",
     ]
     result = subprocess.run(cmd)
     return host_fail + (0 if result.returncode == 0 else result.returncode)

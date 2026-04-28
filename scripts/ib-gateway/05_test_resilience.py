@@ -57,9 +57,16 @@ from pathlib import Path
 
 from ib_insync import IB
 
-HOST = "127.0.0.1"
 PORT = 4002
 CONTAINER = "fxvol-ib-gateway"
+
+# Host pass tape sur 127.0.0.1 (port-forward Docker NAT). Bridge pass
+# tape sur DNS `ib-gateway` depuis fxvol-internal — source IP = 172.19.0.X
+# (couvert par TrustedIPs=127.0.0.1,172.19.0.0/24 persisté dans volume
+# ib_gateway_jts). Path identique aux engines de prod.
+HOST_FROM_HOST = "127.0.0.1"
+HOST_FROM_DOCKER = "ib-gateway"
+DOCKER_NETWORK = "fx-volatility-trading-system_fxvol-internal"
 
 # clientIds dédiés à ce smoke. Tous distincts des prod (1, 2, 3),
 # research (14), et autres smokes (197, 195, 193, 191).
@@ -113,7 +120,7 @@ def section_2_tcp_probe() -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(2.0)
     try:
-        sock.connect((HOST, PORT))
+        sock.connect((HOST_FROM_HOST, PORT))
         record("TCP connect 127.0.0.1:4002", True, f"{(time.perf_counter() - t0) * 1000:.1f} ms")
     except (TimeoutError, ConnectionRefusedError, OSError) as e:
         record("TCP connect 127.0.0.1:4002", False, f"{type(e).__name__}: {e}")
@@ -153,7 +160,7 @@ def section_5_concurrent() -> None:
     try:
         for cid in CONCURRENT_IDS:
             c = IB()
-            c.connect(HOST, PORT, clientId=cid, timeout=15)
+            c.connect(HOST_FROM_DOCKER, PORT, clientId=cid, timeout=15)
             clients.append((cid, c))
 
         all_connected = all(c.isConnected() for _, c in clients)
@@ -188,7 +195,7 @@ def section_6_reconnect() -> None:
     print(f"\n== 6. reconnect même clientId={RECONNECT_ID} ==")
     c1 = IB()
     try:
-        c1.connect(HOST, PORT, clientId=RECONNECT_ID, timeout=15)
+        c1.connect(HOST_FROM_DOCKER, PORT, clientId=RECONNECT_ID, timeout=15)
         record("première connexion", c1.isConnected(),
                f"clientId={RECONNECT_ID} connecté")
         c1.disconnect()
@@ -206,7 +213,7 @@ def section_6_reconnect() -> None:
         attempts += 1
         c2 = IB()
         try:
-            c2.connect(HOST, PORT, clientId=RECONNECT_ID, timeout=8)
+            c2.connect(HOST_FROM_DOCKER, PORT, clientId=RECONNECT_ID, timeout=8)
             reconnect_ok = c2.isConnected()
             safe_disconnect(c2)
             break
@@ -232,13 +239,13 @@ def section_7_collision() -> None:
     c1 = IB()
     c2 = IB()
     try:
-        c1.connect(HOST, PORT, clientId=COLLISION_ID, timeout=15)
+        c1.connect(HOST_FROM_DOCKER, PORT, clientId=COLLISION_ID, timeout=15)
         record("c1 première connexion", c1.isConnected(),
                f"clientId={COLLISION_ID} en place")
 
         # Tentative de collision — peut raise ou retourner avec c2 connecté
         try:
-            c2.connect(HOST, PORT, clientId=COLLISION_ID, timeout=10)
+            c2.connect(HOST_FROM_DOCKER, PORT, clientId=COLLISION_ID, timeout=10)
         except Exception as e:
             print(f"  [INFO] c2.connect a raise : {type(e).__name__}: {e}")
 
@@ -275,24 +282,24 @@ def _print_summary(prefix: str = "") -> int:
 
 
 def _run_namespace_pass() -> int:
-    print("=== NAMESPACE PASS (inside ib-gateway network) ===")
-    print(f"target = {HOST}:{PORT}\n")
+    print("=== BRIDGE PASS (inside fxvol-internal Docker network) ===")
+    print(f"target = {HOST_FROM_DOCKER}:{PORT}\n")
     print(f"  reserved clientIds: concurrent={CONCURRENT_IDS}, "
           f"reconnect={RECONNECT_ID}, collision={COLLISION_ID}\n")
 
     # Pas de marker connection ici — chaque section gère sa propre
-    # connexion. Si la connectivité namespace est cassée, la section 5
+    # connexion. Si la connectivité bridge est cassée, la section 5
     # le verra et on aura un FAIL clair sur le premier connect.
     section_5_concurrent()
     section_6_reconnect()
     section_7_collision()
 
-    return _print_summary("[namespace] ")
+    return _print_summary("[bridge] ")
 
 
 def _run_host_pass() -> int:
     print("=== HOST PASS (Windows / Docker NAT) ===")
-    print(f"target = {HOST}:{PORT}\n")
+    print(f"target = {HOST_FROM_HOST}:{PORT}\n")
 
     section_1_container()
     section_2_tcp_probe()
@@ -302,22 +309,23 @@ def _run_host_pass() -> int:
     host_fail = _print_summary("[host] ")
 
     if not ibc_ready:
-        print("\n  [SKIP] namespace pass (IBC pas loggé)")
+        print("\n  [SKIP] bridge pass (IBC pas loggé)")
         return host_fail
 
     repo_root = Path(__file__).resolve().parent.parent.parent
     rel_script = "scripts/ib-gateway/05_test_resilience.py"
-    print("\n  [INFO] sections 5-7 doivent tourner depuis le namespace ib-gateway")
-    print("         Spawning docker run avec network namespace partagé...\n")
+    print(f"\n  [INFO] sections 5-7 tournent sur le réseau {DOCKER_NETWORK}")
+    print("         (même path que les engines de prod ; source IP dans 172.19.0.0/24)")
+    print("         Spawning docker run...\n")
 
     cmd = [
         "docker", "run", "--rm",
-        "--network", f"container:{CONTAINER}",
+        "--network", DOCKER_NETWORK,
         "-v", f"{repo_root}:/work",
         "-w", "/work",
         "python:3.11-slim",
         "sh", "-c",
-        f"pip install -q ib_insync && python /work/{rel_script} --namespace",
+        f"pip install -q ib_insync tzdata && python /work/{rel_script} --namespace",
     ]
     result = subprocess.run(cmd)
     return host_fail + (0 if result.returncode == 0 else result.returncode)

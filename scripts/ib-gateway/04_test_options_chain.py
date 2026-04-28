@@ -60,10 +60,17 @@ from pathlib import Path
 
 from ib_insync import IB, Contract
 
-HOST = "127.0.0.1"
 PORT = 4002
 CLIENT_ID = 191            # sandbox, distinct des autres scripts (01=197, 02=195, 03=193)
 CONTAINER = "fxvol-ib-gateway"
+
+# Host pass tape sur 127.0.0.1 (port-forward Docker NAT). Bridge pass
+# tape sur DNS `ib-gateway` depuis fxvol-internal — source IP = 172.19.0.X
+# (couvert par TrustedIPs=127.0.0.1,172.19.0.0/24 persisté dans volume
+# ib_gateway_jts). Path identique aux engines de prod.
+HOST_FROM_HOST = "127.0.0.1"
+HOST_FROM_DOCKER = "ib-gateway"
+DOCKER_NETWORK = "fx-volatility-trading-system_fxvol-internal"
 
 # Trading class à filtrer dans la chaîne d'options. EUU = options
 # weekly + standard sur le contrat full-size EUR/USD (cf. notebooks
@@ -121,7 +128,7 @@ def section_2_tcp_probe() -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(2.0)
     try:
-        sock.connect((HOST, PORT))
+        sock.connect((HOST_FROM_HOST, PORT))
         record("TCP connect 127.0.0.1:4002", True, f"{(time.perf_counter() - t0) * 1000:.1f} ms")
     except (TimeoutError, ConnectionRefusedError, OSError) as e:
         record("TCP connect 127.0.0.1:4002", False, f"{type(e).__name__}: {e}")
@@ -385,16 +392,16 @@ def _print_summary(prefix: str = "") -> int:
 
 
 def _run_namespace_pass() -> int:
-    print("=== NAMESPACE PASS (inside ib-gateway network) ===")
-    print(f"target = {HOST}:{PORT}, clientId = {CLIENT_ID}\n")
+    print("=== BRIDGE PASS (inside fxvol-internal Docker network) ===")
+    print(f"target = {HOST_FROM_DOCKER}:{PORT}, clientId = {CLIENT_ID}\n")
     ib = IB()
     try:
-        ib.connect(HOST, PORT, clientId=CLIENT_ID, timeout=15)
+        ib.connect(HOST_FROM_DOCKER, PORT, clientId=CLIENT_ID, timeout=15)
         record("ib.connect()", ib.isConnected(),
                f"serverVersion=v{ib.client.serverVersion()}")
     except Exception as e:
         record("ib.connect()", False, f"{type(e).__name__}: {e}")
-        return _print_summary("[namespace] ")
+        return _print_summary("[bridge] ")
 
     try:
         front_fut = section_5_front_future(ib)
@@ -417,12 +424,12 @@ def _run_namespace_pass() -> int:
         except Exception:
             pass
 
-    return _print_summary("[namespace] ")
+    return _print_summary("[bridge] ")
 
 
 def _run_host_pass() -> int:
     print("=== HOST PASS (Windows / Docker NAT) ===")
-    print(f"target = {HOST}:{PORT}\n")
+    print(f"target = {HOST_FROM_HOST}:{PORT}\n")
 
     section_1_container()
     section_2_tcp_probe()
@@ -432,22 +439,23 @@ def _run_host_pass() -> int:
     host_fail = _print_summary("[host] ")
 
     if not ibc_ready:
-        print("\n  [SKIP] namespace pass (IBC pas loggé)")
+        print("\n  [SKIP] bridge pass (IBC pas loggé)")
         return host_fail
 
     repo_root = Path(__file__).resolve().parent.parent.parent
     rel_script = "scripts/ib-gateway/04_test_options_chain.py"
-    print("\n  [INFO] sections 5-8 doivent tourner depuis le namespace ib-gateway")
-    print("         Spawning docker run avec network namespace partagé...\n")
+    print(f"\n  [INFO] sections 5-8 tournent sur le réseau {DOCKER_NETWORK}")
+    print("         (même path que les engines de prod ; source IP dans 172.19.0.0/24)")
+    print("         Spawning docker run...\n")
 
     cmd = [
         "docker", "run", "--rm",
-        "--network", f"container:{CONTAINER}",
+        "--network", DOCKER_NETWORK,
         "-v", f"{repo_root}:/work",
         "-w", "/work",
         "python:3.11-slim",
         "sh", "-c",
-        f"pip install -q ib_insync && python /work/{rel_script} --namespace",
+        f"pip install -q ib_insync tzdata && python /work/{rel_script} --namespace",
     ]
     result = subprocess.run(cmd)
     return host_fail + (0 if result.returncode == 0 else result.returncode)
