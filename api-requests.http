@@ -42,10 +42,12 @@ Accept: application/json
 
 
 # ============================================================================
-# R4 PR #3 — pricing (TODO)
+# R4 PR #3 — pricing (LIVE)
 # ============================================================================
+# volatility = decimal form : 0.0750 = 7.5% annualise
+# option_type = "CALL" | "PUT"
 
-### Black-Scholes price d'une option
+### Black-Scholes price (delegue a src/services/bs_pricer.py)
 POST {{api}}/price
 Content-Type: application/json
 
@@ -54,11 +56,10 @@ Content-Type: application/json
   "strike": 1.0900,
   "maturity_days": 30,
   "volatility": 0.0750,
-  "risk_free_rate": 0.045,
   "option_type": "CALL"
 }
 
-### Greeks complets (delta, gamma, vega, theta)
+### Greeks complets — price + delta + gamma + vega + theta en un seul appel
 POST {{api}}/greeks
 Content-Type: application/json
 
@@ -70,7 +71,8 @@ Content-Type: application/json
   "option_type": "CALL"
 }
 
-### Inverser la vol a partir du prix marche
+### Implied vol — inversion BS via scipy.optimize.brentq sur [1e-6, 5.0]
+# Renvoie 422 si market_price est hors bracket (pas de sigma solution)
 POST {{api}}/iv
 Content-Type: application/json
 
