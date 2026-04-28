@@ -8,26 +8,30 @@ Compose unique `docker-compose.yml`, override automatique `docker-compose.overri
 
 ---
 
-## Prérequis (one-shot)
+## Commandes essentielles
 
-1. **Docker Desktop** — démarré, WSL2 backend.
-2. **AWS CLI v2** — `aws --version` ≥ 2.15.
-3. **Profil AWS `fxvol-dev`** configuré (cf. `infrastructure/aws/SETUP.md` § 5-6) :
-   ```powershell
-   aws configure --profile fxvol-dev      # access key fxvol-dev
-   aws sts get-caller-identity --profile fxvol-dev
-   ```
-4. **Secrets en SSM** (cf. `infrastructure/aws/STATE.md` § 1.4) — déjà fait au 27/04. Pour modifier une valeur, passer **par la console AWS** : https://eu-west-1.console.aws.amazon.com/systems-manager/parameters → cliquer sur le paramètre → Edit → entrer la nouvelle valeur (chiffrement KMS automatique). Évite les fausses manipulations CLI sur les secrets.
-5. **Python 3.11** sur PATH (le script crée le `.venv` tout seul).
-6. **Windows Terminal** (`wt.exe`) — pour les tabs auto. Optionnel, sans lui le script saute juste l'étape 9.
+Vérifier le profil AWS (one-shot, après une nouvelle machine ou des access keys expirées) :
 
----
+```powershell
+aws configure --profile fxvol-dev
+aws sts get-caller-identity --profile fxvol-dev
+```
 
-## La commande UNIQUE
+Lancer la stack :
 
 ```powershell
 .\scripts\start_stack.ps1
 ```
+
+Tout nettoyer :
+
+```powershell
+.\scripts\start_stack.ps1 -Down              # stop tout (data preservée)
+```
+
+---
+
+## Détail de `start_stack.ps1`
 
 Ce que ça fait, dans l'ordre :
 
@@ -52,12 +56,9 @@ Durée typique :
 ## Variantes courantes
 
 ```powershell
-.\scripts\start_stack.ps1                    # full pipeline (recommandé)
 .\scripts\start_stack.ps1 -NoPull -NoBuild   # quick restart (~30s)
 .\scripts\start_stack.ps1 -RecreateVenv      # rebuild venv (après requirements.txt change)
 .\scripts\start_stack.ps1 -NoTabs            # CI / scripting / pas de WT
-.\scripts\start_stack.ps1 -Down              # stop tout (data preservée)
-.\scripts\start_stack.ps1 -Down -DropVolumes # stop + wipe Postgres + Redis (reset)
 ```
 
 ---
