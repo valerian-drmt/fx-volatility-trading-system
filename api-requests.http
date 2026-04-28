@@ -1,0 +1,173 @@
+# FXVol API — HTTP requests playbook
+#
+# PyCharm HTTP Client format. Clic le bouton Run a cote de chaque `###` block.
+# Chaque bloc est un endpoint REST ou WebSocket. Les sections sont commentees
+# "(R4 PR #N — TODO)" jusqu'a ce que la PR correspondante soit livree.
+#
+# Prereqs :
+#   uvicorn api.main:app --reload       (ou `bash scripts/run_api.sh`)
+#   docker compose -f docker-compose.dev.yml up -d redis postgres  (pour R4 PR #2+)
+
+@host = http://localhost:8000
+@api = {{host}}/api/v1
+
+
+# ============================================================================
+# R4 PR #1 — scaffold (LIVE)
+# ============================================================================
+
+### Swagger UI (HTML)
+GET {{host}}/docs
+
+### OpenAPI spec (JSON, utile pour generer les clients TypeScript en R5)
+GET {{host}}/openapi.json
+Accept: application/json
+
+### Prometheus metrics — histogram fxvol_http_request_duration_seconds
+GET {{host}}/metrics
+
+
+# ============================================================================
+# R4 PR #2 — health + monitoring (TODO)
+# ============================================================================
+
+### /health basique — 200 si l'app tourne
+GET {{api}}/health
+
+### /health/extended — check Redis + Postgres + heartbeats engines
+GET {{api}}/health/extended
+
+
+# ============================================================================
+# R4 PR #3 — pricing (TODO)
+# ============================================================================
+
+### Black-Scholes price d'une option
+POST {{api}}/price
+Content-Type: application/json
+
+{
+  "spot": 1.0857,
+  "strike": 1.0900,
+  "maturity_days": 30,
+  "volatility": 0.0750,
+  "risk_free_rate": 0.045,
+  "option_type": "CALL"
+}
+
+### Greeks complets (delta, gamma, vega, theta)
+POST {{api}}/greeks
+Content-Type: application/json
+
+{
+  "spot": 1.0857,
+  "strike": 1.0900,
+  "maturity_days": 30,
+  "volatility": 0.0750,
+  "option_type": "CALL"
+}
+
+### Inverser la vol a partir du prix marche
+POST {{api}}/iv
+Content-Type: application/json
+
+{
+  "spot": 1.0857,
+  "strike": 1.0900,
+  "maturity_days": 30,
+  "market_price": 0.00520,
+  "option_type": "CALL"
+}
+
+
+# ============================================================================
+# R4 PR #4 — vol (TODO)
+# ============================================================================
+
+### Vol surface courante (lit latest_vol_surface:EURUSD dans Redis)
+GET {{api}}/vol/surface?symbol=EURUSD
+
+### Vol surface a un timestamp specifique (lit Postgres)
+GET {{api}}/vol/surface/at/2026-04-20T15:24:00Z?symbol=EURUSD
+
+### Term structure (tenor -> sigma_ATM)
+GET {{api}}/vol/term-structure?symbol=EURUSD
+
+### Smile a un tenor donne (strike -> IV)
+GET {{api}}/vol/smile/1M?symbol=EURUSD
+
+
+# ============================================================================
+# R4 PR #5 — portfolio + orders (TODO)
+# ============================================================================
+
+### Liste des positions ouvertes
+GET {{api}}/positions
+
+### Detail d'une position par id
+GET {{api}}/positions/42
+
+### Greeks agreges du portefeuille (lit latest_greeks:portfolio dans Redis)
+GET {{api}}/risk
+
+### PnL curve 31 points (lit latest_pnl_curve dans Redis)
+GET {{api}}/pnl-curve
+
+### Historique des snapshots pour une position
+GET {{api}}/history?position_id=42&from=2026-04-01&to=2026-04-20
+
+### Preview d'un ordre (whatIf IB, pas d'execution)
+POST {{api}}/orders/preview
+Content-Type: application/json
+
+{
+  "symbol": "EURUSD",
+  "instrument": "Option",
+  "side": "BUY",
+  "quantity": 1,
+  "strike": 1.0900,
+  "expiry": "20260515",
+  "right": "CALL"
+}
+
+### Validation d'un ordre (sans l'envoyer)
+POST {{api}}/orders/validate
+Content-Type: application/json
+
+{
+  "symbol": "EURUSD",
+  "side": "BUY",
+  "quantity": 1,
+  "limit_price": 0.00520
+}
+
+
+# ============================================================================
+# R4 PR #6 — analytics (TODO)
+# ============================================================================
+
+### Signals recents filtres
+GET {{api}}/signals?underlying=EURUSD&tenor=1M&since=2026-04-20T00:00:00Z
+
+### Historique vol surface (N dernieres)
+GET {{api}}/vol-history?symbol=EURUSD&limit=50
+
+### Liste des backtest runs
+GET {{api}}/backtest?strategy_name=vol_arb
+
+### Stats systeme (row counts, uptime engines)
+GET {{api}}/system-stats
+
+
+# ============================================================================
+# R4 PR #7 + #8 — WebSocket (TODO)
+# ============================================================================
+#
+# PyCharm HTTP Client ne gere pas les WS natifs. Utiliser un client externe :
+#   websocat ws://localhost:8000/ws/ticks
+#   wscat -c ws://localhost:8000/ws/ticks
+#
+# Endpoints prevus :
+#   /ws/ticks   — broadcast des ticks (throttle 200ms)
+#   /ws/vol     — broadcast des vol_update
+#   /ws/risk    — broadcast des risk_update
