@@ -23,6 +23,12 @@ Lancer la stack :
 .\scripts\start_stack.ps1
 ```
 
+Recharger les secrets dans la session courante (utile si tu ouvres une nouvelle PowerShell sans relancer la stack — pour faire tourner `python scripts/ib-gateway/0N_test_*.py`, `psql`, `redis-cli`, etc.) :
+
+```powershell
+.\scripts\load_secrets.ps1
+```
+
 Tout nettoyer :
 
 ```powershell
