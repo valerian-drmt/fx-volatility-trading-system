@@ -98,7 +98,11 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - "python -c \"import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:market_data'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 60) else 1)\""
+        # Heartbeat est écrit en ISO-8601 par bus.publisher.set_heartbeat
+        # (cf. src/bus/publisher.py). float(ts) sur une string ISO crash —
+        # on parse via datetime.fromisoformat. Max age 60s = 60× la cadence
+        # de push (~1s).
+        - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:market_data'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 60 else 1)\""
       interval: 30s
       timeout: 5s
       retries: 3
@@ -135,7 +139,10 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - "python -c \"import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:vol_engine'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 300) else 1)\""
+        # Heartbeat ISO-8601 — cf. healthcheck market-data ci-dessus.
+        # Max age 300s parce que vol-engine cycle = 30s + 2-5s de calc
+        # GARCH/SVI = ~5min toléré sans push.
+        - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:vol_engine'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 300 else 1)\""
       interval: 60s
       timeout: 5s
       retries: 3
@@ -169,7 +176,8 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - "python -c \"import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:risk_engine'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 30) else 1)\""
+        # Heartbeat ISO-8601 — cf. healthcheck market-data ci-dessus.
+        - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:risk_engine'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 30 else 1)\""
       interval: 15s
       timeout: 5s
       retries: 3
@@ -198,7 +206,8 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - "python -c \"import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:db_writer'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 30) else 1)\""
+        # Heartbeat ISO-8601 — cf. healthcheck market-data ci-dessus.
+        - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:db_writer'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 30 else 1)\""
       interval: 15s
       timeout: 5s
       retries: 3
