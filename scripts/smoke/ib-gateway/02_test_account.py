@@ -321,7 +321,7 @@ def _run_host_pass() -> int:
         return host_fail
 
     repo_root = Path(__file__).resolve().parent.parent.parent
-    rel_script = "scripts/ib-gateway/02_test_account.py"
+    rel_script = "scripts/smoke/ib-gateway/02_test_account.py"
     print(f"\n  [INFO] sections 5-7 tournent sur le réseau {DOCKER_NETWORK}")
     print("         (même path que les engines de prod ; source IP dans 172.19.0.0/24)")
     print("         Spawning docker run...\n")

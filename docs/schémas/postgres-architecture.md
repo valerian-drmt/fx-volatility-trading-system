@@ -2,7 +2,7 @@
 
 > Source de vérité : `src/persistence/models.py` + migrations `src/persistence/migrations/versions/`.
 > Diagramme éditable : [`postgres-architecture.drawio`](./postgres-architecture.drawio) (ouvre dans <https://app.diagrams.net> ou l'extension VS Code "Draw.io Integration").
-> **Outils opérationnels** : `scripts/postgresql/01_reset.ipynb` (TRUNCATE/DROP), `02_setup.ipynb` (Alembic + seed `vol_config` v1), `03_test_crud.ipynb` (CRUD smoke par table).
+> **Outils opérationnels** : `scripts/smoke/postgresql/01_reset.ipynb` (TRUNCATE/DROP), `02_setup.ipynb` (Alembic + seed `vol_config` v1), `03_test_crud.ipynb` (CRUD smoke par table).
 
 ---
 
@@ -285,7 +285,7 @@ LIMIT 20;
 
 ---
 
-## 6.ter Outils opérationnels — `scripts/postgresql/`
+## 6.ter Outils opérationnels — `scripts/smoke/postgresql/`
 
 Trois notebooks Jupyter, à utiliser dans cet ordre selon le besoin :
 

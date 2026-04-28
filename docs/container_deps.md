@@ -119,12 +119,12 @@ Bottom-up, du plus indépendant au plus intégré :
 
 | # | Container | Notebook | Statut |
 |---|---|---|---|
-| 1 | `postgres` | `scripts/postgresql/02_setup` + `03_test_crud` | ✅ |
-| 2 | `api` | `scripts/api/01_test_endpoints` | ✅ |
-| 3 | `nginx` | `scripts/nginx/01_test_routes` | ✅ |
-| 4 | `redis` | `scripts/redis/01_test_pubsub` | ✅ (ce ticket) |
-| 5 | `db-writer` | `scripts/db-writer/01_test_writer` (à venir) | ⏳ |
-| 6 | `ib-gateway` (vrai) | `scripts/ib-gateway/01_test_gateway` (à venir, requiert compte IB) | ⏳ |
+| 1 | `postgres` | `scripts/smoke/postgresql/02_setup` + `03_test_crud` | ✅ |
+| 2 | `api` | `scripts/smoke/api/01_test_endpoints` | ✅ |
+| 3 | `nginx` | `scripts/smoke/nginx/01_test_routes` | ✅ |
+| 4 | `redis` | `scripts/smoke/redis/01_test_pubsub` | ✅ (ce ticket) |
+| 5 | `db-writer` | `scripts/smoke/db-writer/01_test_writer` (à venir) | ⏳ |
+| 6 | `ib-gateway` (vrai) | `scripts/smoke/ib-gateway/01_test_gateway` (à venir, requiert compte IB) | ⏳ |
 | 7 | `market-data` | `scripts/engines/01_test_market_data` (avec ib-stub) | ⏳ |
 | 8 | `vol-engine` | `scripts/engines/02_test_vol_engine` (avec ib-stub) | ⏳ |
 | 9 | `risk-engine` | `scripts/engines/03_test_risk_engine` (avec ib-stub) | ⏳ |
@@ -158,4 +158,4 @@ Inconvénient :
 - Architecture : [`schémas/containers-overview.md`](./schémas/containers-overview.md) + [`.drawio`](./schémas/containers-overview.drawio)
 - DB schema : [`schémas/postgres-architecture.md`](./schémas/postgres-architecture.md)
 - API endpoints : [`API_ENDPOINTS.md`](./API_ENDPOINTS.md)
-- Notebooks de test existants : `scripts/postgresql/`, `scripts/api/`, `scripts/nginx/`, `scripts/redis/`
+- Notebooks de test existants : `scripts/smoke/postgresql/`, `scripts/smoke/api/`, `scripts/smoke/nginx/`, `scripts/smoke/redis/`
