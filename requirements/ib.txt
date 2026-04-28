@@ -1,6 +1,16 @@
-# Market-data, vol-engine and risk-engine services.
+# Market-data, vol-engine and risk services.
 # Adds ib_insync on top of the shared base.
 
 -r base.txt
 
 ib-insync==0.9.86
+
+# tzdata requis par ib_insync.parseIBDatetime qui utilise
+# ZoneInfo("US/Central") pour décoder les timestamps des callbacks
+# execDetails. python:3.11-slim n'a pas tzdata système, donc on
+# installe le package Python tzdata qui bundle les données IANA.
+# Sans ça, quand un engine se connecte à IB sur un compte avec
+# historique d'exécutions, le wrapper crash en sync et plus aucun
+# callback ne fire — heartbeats s'arrêtent, healthchecks unhealthy,
+# alors qu'IB est techniquement connecté. Vu sandbox R9 28/04/2026.
+tzdata>=2024.1
