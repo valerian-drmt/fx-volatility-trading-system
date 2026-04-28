@@ -56,16 +56,33 @@ Distinction clé à garder en tête : un smoke ib-gateway prouve que le
 ordres, options chain). Il ne prouve **pas** que les calculs financiers
 sont corrects.
 
-### À créer (smoke tests, format aligné avec les autres containers)
+### À créer (smoke tests, **format `.py` — exception au pattern `.ipynb`**)
 
 | # | Fichier | Couvre | Dépendances de run |
 |---|---|---|---|
-| 01 | `01_test_connection.ipynb` | Container UP, TCP probe, login IBC réussi, `IB.connect()` qui rend `isConnected() == True`, `reqCurrentTime()` qui renvoie un timestamp serveur cohérent (±5s vs local), `disconnect()` propre. | `--profile ib up -d ib-gateway` + secrets chargés |
-| 02 | `02_test_account.ipynb` | `reqAccountSummary()` renvoie les tags clés (`NetLiquidation`, `BuyingPower`, `AvailableFunds`, devise = `USD`), compte = paper (préfixe `DU`), `reqPositions()` rend une liste (vide acceptable). | idem 01 |
-| 03 | `03_test_market_data.ipynb` | `reqContractDetails(EUR FUT CME)` rend ≥ 1 contrat, `reqMktData(front_fut)` avec `reqMarketDataType(3)` (delayed) renvoie bid/ask/last cohérents en < 5s, `cancelMktData()` propre. Optionnel : tester live data si entitlement actif. | idem 01 |
-| 04 | `04_test_options_chain.ipynb` | `reqSecDefOptParams()` sur EUR/CME rend une chaîne EUU avec ≥ 6 expiries futures, `reqContractDetails(FOP)` qualifie un strike ATM, `reqMktData(..., genericTickList="100")` renvoie `modelGreeks` avec `impliedVol > 0` et `delta` ∈ ]−1, 1[. | idem 01 |
-| 05 | `05_test_resilience.ipynb` | Concurrence : 3 `IB()` clients avec IDs distincts coexistent (réplique du modèle 3-threads de l'app PyQt v1). Reconnexion : `disconnect()` puis `connect()` immédiat → OK. Bad client ID : connect avec un ID déjà pris → erreur attendue (code 326). Stale session : container restart → premier `connect()` post-restart < 90s (start_period). | idem 01 |
-| 06 | `06_test_security_surface.ipynb` | `READ_ONLY_API=no` autorise placement d'ordre paper sur **les deux surfaces** : (a) FUT EUR/CME `placeOrder` MKT 1 lot + `cancelOrder` (reprise de `future_booking.ipynb`), (b) FOP EUR/CME ATM 1 lot `placeOrder` LMT loin du marché + `cancelOrder` (reprise de `option_booking.ipynb`). Bascule `READ_ONLY_API=yes` → les deux `placeOrder` rejetés (code 201/202). VNC port `5900` bind sur `127.0.0.1` uniquement (pas de LAN exposure). | idem 01 + restart container avec env modifié |
+| 01 | `01_test_connection.py` | Container UP, healthcheck Docker, TCP probe host, secrets en env (length-only), `ib.connect()` + handshake (serverVersion, twsConnectionTime), `reqCurrentTime()` drift ≤ 5s, `disconnect()` + reconnect avec autre clientId. | `--profile ib up -d ib-gateway` + secrets chargés |
+| 02 | `02_test_account.py` | `reqAccountSummary()` renvoie les tags clés (`NetLiquidation`, `BuyingPower`, `AvailableFunds`, devise = `USD`), compte = paper (préfixe `DU`), `reqPositions()` rend une liste (vide acceptable). | idem 01 |
+| 03 | `03_test_market_data.py` | `reqContractDetails(EUR FUT CME)` rend ≥ 1 contrat, `reqMktData(front_fut)` avec `reqMarketDataType(3)` (delayed) renvoie bid/ask/last cohérents en < 5s, `cancelMktData()` propre. Optionnel : tester live data si entitlement actif. | idem 01 |
+| 04 | `04_test_options_chain.py` | `reqSecDefOptParams()` sur EUR/CME rend une chaîne EUU avec ≥ 6 expiries futures, `reqContractDetails(FOP)` qualifie un strike ATM, `reqMktData(..., genericTickList="100")` renvoie `modelGreeks` avec `impliedVol > 0` et `delta` ∈ ]−1, 1[. | idem 01 |
+| 05 | `05_test_resilience.py` | Concurrence : 3 `IB()` clients avec IDs distincts coexistent (réplique du modèle 3-threads de l'app PyQt v1). Reconnexion : `disconnect()` puis `connect()` immédiat → OK. Bad client ID : connect avec un ID déjà pris → erreur attendue (code 326). Stale session : container restart → premier `connect()` post-restart < 90s (start_period). | idem 01 |
+| 06 | `06_test_security_surface.py` | `READ_ONLY_API=no` autorise placement d'ordre paper sur **les deux surfaces** : (a) FUT EUR/CME `placeOrder` MKT 1 lot + `cancelOrder` (reprise de `future_booking.ipynb` legacy), (b) FOP EUR/CME ATM 1 lot `placeOrder` LMT loin du marché + `cancelOrder` (reprise de `option_booking.ipynb` legacy). Bascule `READ_ONLY_API=yes` → les deux `placeOrder` rejetés (code 201/202). VNC port `5900` bind sur `127.0.0.1` uniquement (pas de LAN exposure). | idem 01 + restart container avec env modifié |
+
+### Exception au pattern `.ipynb` du reste — pourquoi des `.py` ici ?
+
+Tous les autres dossiers (`redis/`, `api/`, `db-writer/`, `nginx/`, `postgresql/`) utilisent des notebooks Jupyter. **`ib-gateway/` est la seule exception**, pour une raison purement technique :
+
+`ib_insync.IB.connect()` fait en interne `loop.run_until_complete(connectAsync())`. Or `ipykernel` (le kernel Jupyter) maintient un **context asyncio strict** qui refuse les `run_until_complete` re-entrants — symptôme : `RuntimeError: cannot enter context ... is already entered` suivi d'un `TimeoutError` sur le handshake API. `nest_asyncio`, `util.startLoop()` et `util.patchAsyncio()` (les fixes officiels) **aggravent** le problème dans les versions récentes de Jupyter (test sandbox R9 — 28/04/2026, plusieurs heures de debug pour aboutir à ce diagnostic).
+
+Bascule en `await ib.connectAsync(...)` direct ne suffit pas non plus : l'event loop d'ipykernel et celui d'ib_insync entrent en conflit dès qu'une cellule async est ré-évaluée.
+
+**Trade-off retenu** :
+- ✅ surface IB testée pass/fail binaire en `.py` natifs, plus de bruit Jupyter
+- ✅ stack trace propre quand un test fail (pas de `Task was destroyed but it is pending!` etc.)
+- ✅ exit code = nombre de FAILs, intégrable trivialement dans CI plus tard
+- ❌ pas de stepping cellule-par-cellule, mais peu utile pour des smoke tests (run all bout-à-bout suffit)
+- ❌ les explications "Ce que tu dois tester" passent en commentaires Python au lieu de markdown rendu
+
+Convention dans les `.py` ib-gateway : chaque section est introduite par un bloc commentaire `# == N. <titre> ==` suivi du commentaire "Ce que tu dois tester", puis du code. Mêmes records `record(label, ok, detail)` que les notebooks, mêmes troubleshooting cheat sheets en commentaires de fin. Lancement : `python scripts/ib-gateway/0N_test_*.py`.
 
 > **Pourquoi 6 notebooks et pas 1 monolithique** : alignement strict avec le
 > pattern existant (`postgresql/` a 3 notebooks, `redis/` 2, etc.). Surtout :
