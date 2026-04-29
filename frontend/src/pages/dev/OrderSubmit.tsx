@@ -15,8 +15,11 @@
  */
 import { useEffect, useState } from "react";
 
-const FUT_EXPIRY = "20260615";   // EUR June 2026 (3rd Wed area, ajuster si IB rejette)
-const FOP_EXPIRY = "20260615";   // FOP EUU même expiry (à ajuster si nécessaire)
+// Expiries connues OK avec IB paper (cf. vol-engine smoke logs) :
+//   FUT EUR  → 20260615 (June 2026, 3rd Wed minus 2 days)
+//   FOP EUU  → 20260605 (June 2026 monthly options, 1st Fri)
+const FUT_EXPIRY = "20260615";
+const FOP_EXPIRY = "20260605";
 const TRADING_CLASS_FOP = "EUU";
 
 const PRESETS = {
@@ -35,20 +38,6 @@ const PRESETS = {
       symbol: "EUR", sec_type: "FOP", side: "BUY", qty: 1, limit_price: 0.001,
       expiry: FOP_EXPIRY, strike: 1.18, right: "C", trading_class: TRADING_CLASS_FOP,
     }],
-  },
-  complex: {
-    label: "🔗 Trade complexe (Straddle ATM)",
-    desc: "2 ordres simultanés : CALL 1.17 + PUT 1.17, BUY @ 0.001 chacun (loin du marché)",
-    payloads: [
-      {
-        symbol: "EUR", sec_type: "FOP", side: "BUY", qty: 1, limit_price: 0.001,
-        expiry: FOP_EXPIRY, strike: 1.17, right: "C", trading_class: TRADING_CLASS_FOP,
-      },
-      {
-        symbol: "EUR", sec_type: "FOP", side: "BUY", qty: 1, limit_price: 0.001,
-        expiry: FOP_EXPIRY, strike: 1.17, right: "P", trading_class: TRADING_CLASS_FOP,
-      },
-    ],
   },
 } as const;
 
@@ -173,7 +162,7 @@ export function OrderSubmit(): JSX.Element {
       </div>
 
       {/* 3 panels figés */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginBottom: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginBottom: 16 }}>
         {(Object.keys(PRESETS) as (keyof typeof PRESETS)[]).map((key) => (
           <PresetPanel
             key={key}
