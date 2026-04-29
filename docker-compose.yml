@@ -94,7 +94,8 @@ services:
         condition: service_started
         required: false
     networks:
-      - fxvol-internal
+      fxvol-internal:
+        ipv4_address: 172.20.0.10
     healthcheck:
       test:
         - CMD-SHELL
@@ -135,7 +136,8 @@ services:
         condition: service_started
         required: false
     networks:
-      - fxvol-internal
+      fxvol-internal:
+        ipv4_address: 172.20.0.11
     healthcheck:
       test:
         - CMD-SHELL
@@ -172,7 +174,8 @@ services:
         condition: service_started
         required: false
     networks:
-      - fxvol-internal
+      fxvol-internal:
+        ipv4_address: 172.20.0.12
     healthcheck:
       test:
         - CMD-SHELL
@@ -283,12 +286,15 @@ services:
       # Initial setup (one-shot after first compose up): connect to VNC
       # on 127.0.0.1:5900, Configure → Settings → API → Settings:
       #   - uncheck "Allow connections from localhost only"
-      #   - Trusted IPs : 127.0.0.1, 172.19.0.0/24
-      #     (CIDR couvre tous les containers de fxvol-internal :
-      #     market-data, vol-engine, risk, etc.)
+      #   - Trusted IPs (1 par 1, le GUI refuse les CIDR) :
+      #       127.0.0.1     (loopback, IBC le ré-ajoute toujours)
+      #       172.20.0.10   (market-data, IP statique pinnée compose)
+      #       172.20.0.11   (vol-engine,  IP statique pinnée compose)
+      #       172.20.0.12   (risk-engine, IP statique pinnée compose)
       #   - OK + File → Save Settings
       # Subsequent boots reload these settings from the volume — pas
-      # besoin de retoucher la GUI.
+      # besoin de retoucher la GUI tant que les IPs ne bougent pas
+      # (et elles ne bougent plus, cf. ipam.config.subnet ci-dessous).
       - ib_gateway_jts:/home/ibgateway/Jts
     healthcheck:
       # tcp probe — gnzsnz/ib-gateway is minimal (no nc, netstat, curl,
@@ -335,6 +341,13 @@ networks:
   fxvol-internal:
     driver: bridge
     internal: false
+    # Subnet pinné pour que les engines aient des IPs stables, lisibles
+    # et trustables une seule fois côté IB Gateway. Sans ça Docker pioche
+    # un range au hasard dans 172.17-31, et chaque `compose down` peut
+    # changer le subnet → TrustedIPs whitelist obsolète.
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
   # Outbound-only lane for IB Gateway — lets it reach IB servers while
   # keeping the rest of the stack isolated from the wider internet.
   fxvol-external:
