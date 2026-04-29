@@ -7,23 +7,22 @@ export function Header(): JSX.Element {
   return (
     <header className="app-header" data-testid="app-header">
       <h1>FX Vol Dashboard</h1>
-      <nav style={{ display: "flex", gap: 4, marginLeft: 24 }}>
-        <a href="/" style={navStyle(!isDev)}>Live</a>
-        <a href="/dev" style={navStyle(isDev)}>Dev</a>
-      </nav>
+      <a
+        href={isDev ? "/" : "/dev"}
+        style={{
+          marginLeft: 24,
+          padding: "4px 12px",
+          color: "#fff",
+          background: "#2a4a6a",
+          textDecoration: "none",
+          borderRadius: 3,
+          fontSize: 13,
+          fontWeight: 500,
+        }}
+      >
+        {isDev ? "← Live" : "Dev →"}
+      </a>
       <StatusBadge />
     </header>
   );
-}
-
-function navStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: "4px 12px",
-    color: active ? "#fff" : "#aaa",
-    background: active ? "#2a4a6a" : "transparent",
-    textDecoration: "none",
-    borderRadius: 3,
-    fontSize: 13,
-    fontWeight: 500,
-  };
 }
