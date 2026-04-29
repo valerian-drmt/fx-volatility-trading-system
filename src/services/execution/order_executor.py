@@ -89,6 +89,19 @@ class OrderExecutor:
         trades = ib.openTrades()
         return [_trade_to_dict(t) for t in trades]
 
+    # Tags conservés dans `by_currency` — sélection scale projet perso :
+    # cash + valorisation + P&L. Les ~50 autres (Billable, FundValue,
+    # MutualFundValue, IndianStockHaircut, ColumnPrio, etc.) sont du noise
+    # IB pour notre cas d'usage et sont droppés.
+    _CURRENCY_TAGS_KEEP: tuple[str, ...] = (
+        "CashBalance",
+        "NetLiquidationByCurrency",
+        "UnrealizedPnL",
+        "RealizedPnL",
+        "FuturesPNL",
+        "ExchangeRate",
+    )
+
     async def account_summary(self) -> dict[str, Any]:
         """Return tous les tags numériques du compte IB, agrégés par tag.
 
@@ -98,8 +111,8 @@ class OrderExecutor:
           1. BASE (= currency native du compte, agrégat propre)
           2. USD
           3. autre currency
-        `by_currency` retourne le détail sans la clé BASE (qui est
-        l'agrégat global, redondant avec les colonnes top-level).
+        `by_currency` retourne un summary (6 tags clés) par currency réelle,
+        sans BASE (= agrégat global, redondant avec les colonnes top-level).
         """
         ib = self._ensure()
         # Indexe les valeurs par tag puis par currency, pour pouvoir
@@ -128,8 +141,15 @@ class OrderExecutor:
             else:
                 out[tag] = next(iter(cur_to_val.values()))
 
-        # by_currency expose seulement les currencies réelles (drop BASE).
-        out["by_currency"] = {c: vs for c, vs in by_cur.items() if c != "BASE"}
+        # by_currency : pour chaque currency réelle (≠ BASE), on filtre aux
+        # tags pertinents et on drop les currencies sans aucun tag retenu.
+        out["by_currency"] = {}
+        for cur, vs in by_cur.items():
+            if cur == "BASE":
+                continue
+            kept = {tag: vs[tag] for tag in self._CURRENCY_TAGS_KEEP if tag in vs}
+            if kept:
+                out["by_currency"][cur] = kept
         return out
 
     async def list_positions(self) -> list[dict[str, Any]]:
