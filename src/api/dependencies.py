@@ -25,6 +25,13 @@ def get_redis() -> aioredis.Redis:
     return _redis_client
 
 
+def get_redis_client_or_none() -> aioredis.Redis | None:
+    """Like `get_redis` but returns None at boot — utile pour les background
+    tasks qui peuvent vivre sans Redis (ex: position_sync_loop reads optional
+    spot/IV pour enrichir les snapshots)."""
+    return _redis_client
+
+
 async def get_db_session() -> AsyncIterator[AsyncSession]:
     """Yield an async DB session inside a transaction (commit on exit, rollback on error)."""
     async with get_sessionmaker()() as session:
