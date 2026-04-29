@@ -146,9 +146,9 @@ export function Pricing(): JSX.Element {
               <div style={subTitleStyle}>Response</div>
               <pre style={preStyle}>{response ? JSON.stringify(response, null, 2) : "(submit to see)"}</pre>
             </div>
-            {mode === "greeks" && response && typeof response === "object" && response !== null && (
-              <GreeksSummary g={response as Record<string, number>} />
-            )}
+            {mode === "greeks" && response && typeof response === "object"
+              ? <GreeksSummary g={response as Record<string, number>} />
+              : null}
           </div>
         </section>
       </div>
@@ -168,13 +168,16 @@ function GreeksSummary({ g }: { g: Record<string, number> }): JSX.Element {
     <table style={{ ...tableStyle, marginTop: 12 }}>
       <thead><tr><th style={th}>Field</th><th style={th}>Value</th><th style={th}>Hint</th></tr></thead>
       <tbody>
-        {fields.map((f) => (
-          <tr key={f.key}>
-            <td style={td}><code>{f.key}</code></td>
-            <td style={td}>{typeof g[f.key] === "number" ? g[f.key].toFixed(6) : "—"}</td>
-            <td style={{ ...td, color: "#888" }}>{f.hint}</td>
-          </tr>
-        ))}
+        {fields.map((f) => {
+          const v = g[f.key];
+          return (
+            <tr key={f.key}>
+              <td style={td}><code>{f.key}</code></td>
+              <td style={td}>{typeof v === "number" ? v.toFixed(6) : "—"}</td>
+              <td style={{ ...td, color: "#888" }}>{f.hint}</td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
