@@ -382,30 +382,30 @@ async def sync_trades_from_ib(db: AsyncSession, executor: OrderExecutor) -> dict
 
 
 async def insert_account_snap(db: AsyncSession, executor: OrderExecutor) -> bool:
-    """Insert un row dans account_snaps avec NetLiq/Cash/BP/PnL et un dict
-    by_currency en JSONB. Cadence plus lente que les positions (l'état du
-    compte n'évolue pas en sub-seconde)."""
+    """Insert un row dans account_snaps. Pour chaque colonne on essaie
+    plusieurs tags IB (alias) — paper et live retournent parfois des
+    noms différents. Si aucun ne match, la colonne reste null.
+    """
     if not executor.is_connected():
         return False
     summary = await executor.account_summary()
     if not summary:
         return False
 
-    # Compte les positions OPEN locales (= ce qu'on tracke)
     open_count = (await db.execute(
         select(Position).where(Position.status == "OPEN")
     )).scalars().all()
 
     snap = AccountSnap(
         timestamp=datetime.now(UTC),
-        net_liq_usd=_dec(summary.get("NetLiquidation")),
-        cash_usd=_dec(summary.get("TotalCashValue")),
-        buying_power_usd=_dec(summary.get("BuyingPower")),
-        available_usd=_dec(summary.get("AvailableFunds")),
-        unrealized_pnl_usd=_dec(summary.get("UnrealizedPnL")),
-        realized_pnl_usd=_dec(summary.get("RealizedPnL")),
-        gross_position_value_usd=_dec(summary.get("GrossPositionValue")),
-        currencies=summary.get("by_currency") or None,
+        net_liq_usd=_pick(summary, ["NetLiquidation", "NetLiquidationByCurrency"]),
+        cash_usd=_pick(summary, ["TotalCashValue", "TotalCashBalance", "CashBalance"]),
+        buying_power_usd=_pick(summary, ["BuyingPower"]),
+        available_usd=_pick(summary, ["AvailableFunds", "ExcessLiquidity"]),
+        unrealized_pnl_usd=_pick(summary, ["UnrealizedPnL"]),
+        realized_pnl_usd=_pick(summary, ["RealizedPnL"]),
+        gross_position_value_usd=_pick(summary, ["GrossPositionValue", "GrossPositionValue-S"]),
+        currencies=summary.get("by_currency") or {},
         open_positions_count=len(open_count),
     )
     db.add(snap)
@@ -413,13 +413,16 @@ async def insert_account_snap(db: AsyncSession, executor: OrderExecutor) -> bool
     return True
 
 
-def _dec(v: float | None) -> Decimal | None:
-    if v is None:
-        return None
-    try:
-        return Decimal(str(round(float(v), 2)))
-    except (ValueError, TypeError):
-        return None
+def _pick(summary: dict, aliases: list[str]) -> Decimal | None:
+    """Try each alias in order, return first non-None mapped to Decimal."""
+    for tag in aliases:
+        v = summary.get(tag)
+        if v is not None:
+            try:
+                return Decimal(str(round(float(v), 2)))
+            except (ValueError, TypeError):
+                continue
+    return None
 
 
 async def position_sync_loop(

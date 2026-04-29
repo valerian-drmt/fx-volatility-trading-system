@@ -90,12 +90,12 @@ class OrderExecutor:
         return [_trade_to_dict(t) for t in trades]
 
     async def account_summary(self) -> dict[str, Any]:
-        """Return un dict des tags clés du compte IB (NetLiq, Cash, BP, etc.).
+        """Return tous les tags numériques du compte IB.
 
-        Tags utilisés pour `account_snaps` :
-          NetLiquidation, TotalCashValue, BuyingPower, AvailableFunds,
-          UnrealizedPnL, RealizedPnL, GrossPositionValue.
-        Plus `by_currency` : {USD: {tag: val, ...}, EUR: {...}, ...}.
+        Le snapshot DB pioche les valeurs via `pick(out, [aliases])` —
+        certains tags ont des variantes selon le type de compte (commodities
+        vs securities, paper vs live). On normalise les currencies "" en
+        "BASE" pour qu'aucun tag ne soit perdu.
         """
         ib = self._ensure()
         out: dict[str, Any] = {"by_currency": {}, "account": None}
@@ -105,7 +105,9 @@ class OrderExecutor:
             except (ValueError, TypeError):
                 continue
             cur = v.currency or "BASE"
-            if cur in ("USD", "BASE"):
+            # Tag de premier niveau : on prend la valeur USD/BASE si dispo,
+            # sinon on tombe sur l'autre (paper IB renvoie souvent BASE).
+            if v.tag not in out and cur in ("USD", "BASE"):
                 out[v.tag] = val
             out["by_currency"].setdefault(cur, {})[v.tag] = val
             if out["account"] is None and v.account:
