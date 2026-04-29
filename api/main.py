@@ -16,6 +16,7 @@ from api.dependencies import set_redis_client
 from api.middleware.logging import AccessLogMiddleware, configure_logging
 from api.middleware.rate_limit import build_limiter, rate_limit_exceeded_handler
 from api.middleware.timing import TimingMiddleware
+from api.routers import analytics as analytics_router
 from api.routers import health as health_router
 from api.routers import portfolio as portfolio_router
 from api.routers import pricing as pricing_router
@@ -71,7 +72,8 @@ def create_app() -> FastAPI:
     app.include_router(pricing_router.router)
     app.include_router(vol_router.router)
     app.include_router(portfolio_router.router)
-    # Next routers : orders (#5b), analytics (#6)
+    app.include_router(analytics_router.router)
+    # Next routers : orders (#5b), WebSocket (#7 + #8)
     return app
 
 

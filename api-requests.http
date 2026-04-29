@@ -145,19 +145,28 @@ GET {{api}}/history?position_id=42&limit=500
 
 
 # ============================================================================
-# R4 PR #6 — analytics (TODO)
+# R4 PR #6 — analytics (LIVE)
 # ============================================================================
 
-### Signals recents filtres
-GET {{api}}/signals?underlying=EURUSD&tenor=1M&since=2026-04-20T00:00:00Z
+### Signals recents — filtres tous optionnels + combinables
+GET {{api}}/signals?limit=20
 
-### Historique vol surface (N dernieres)
+### Filtre par underlying + tenor + type
+GET {{api}}/signals?underlying=EURUSD&tenor=1M&signal_type=CHEAP&limit=50
+
+### Filtre "derniere 24h" via `since`
+GET {{api}}/signals?since=2026-04-19T00:00:00Z&limit=200
+
+### Vol history — headline fields (timestamp, spot, forward) sans JSONB
 GET {{api}}/vol-history?symbol=EURUSD&limit=50
 
-### Liste des backtest runs
-GET {{api}}/backtest?strategy_name=vol_arb
+### Backtest runs — order by created_at DESC
+GET {{api}}/backtest?limit=20
 
-### Stats systeme (row counts, uptime engines)
+### Backtest filtre par strategy_name
+GET {{api}}/backtest?strategy_name=vol_arb&limit=10
+
+### System stats — PG row counts + engine heartbeats (Redis)
 GET {{api}}/system-stats
 
 
