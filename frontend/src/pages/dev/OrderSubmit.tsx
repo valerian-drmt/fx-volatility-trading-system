@@ -1,250 +1,321 @@
 /**
- * Order Submit — 3 modes de tickets (Futures / Options / Multi-leg) en
- * **dry-run only** : aucune requête sortante, le payload est validé puis
- * un order_id mock est retourné côté frontend.
+ * Order Submit — vrai trading via /api/v1/orders + tables Orders / Positions
+ * avec actions Cancel / Close.
  *
- * Le but est de valider :
- *   - les forms se remplissent correctement
- *   - les payloads JSON respectent ce qu'attendrait POST /api/v1/orders
- *   - on peut prévisualiser sans toucher IB
+ * ⚠ Compte paper IB par défaut (TRADING_MODE=paper). À blinder avant prod
+ * (auth, qty cap, confirmation modale plus stricte).
  *
- * Le vrai endpoint /api/v1/orders viendra dans une PR séparée avec
- * confirmation explicite + intégration tests IB. Pour l'instant ce tab
- * est purement client-side.
+ * Layout :
+ *   ┌─ Banner LIVE TRADING + dernière action ──────────────┐
+ *   ├─ Form (BUY/SELL FUT/FOP) ─── Submit Result ──────────┤
+ *   ├─ Open orders [Refresh]   ─── actions Cancel ─────────┤
+ *   └─ Live positions [Refresh] ─── actions Close ─────────┘
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-type Mode = "futures" | "options" | "multi";
-
+type SecType = "FUT" | "FOP";
 type Side = "BUY" | "SELL";
-type Right = "CALL" | "PUT";
+type Right = "C" | "P";
 
-const TENORS = ["1M", "2M", "3M", "4M", "5M", "6M"] as const;
-const STRUCTURES = ["StraddleATM", "RiskReversal25d", "Butterfly25d", "CalendarSpread"] as const;
-
-const MODES: Record<Mode, string> = {
-  futures: "📊 Futures",
-  options: "📉 Options vanilla",
-  multi:   "🔗 Multi-leg",
-};
-
-interface FuturesForm {
+interface PlaceOrderForm {
   symbol: string;
+  sec_type: SecType;
   side: Side;
   qty: number;
   limit_price: number;
-}
-
-interface OptionsForm {
-  symbol: string;
-  right: Right;
+  expiry: string;       // YYYYMMDD
   strike: number;
-  tenor: (typeof TENORS)[number];
-  side: Side;
-  qty: number;
-  limit_price: number;
+  right: Right;
+  trading_class: string;
 }
 
-interface MultiForm {
-  structure: (typeof STRUCTURES)[number];
-  tenor: (typeof TENORS)[number];
-  side: Side;
+interface OrderRow {
+  order_id: number;
+  symbol: string;
+  sec_type: string;
+  expiry: string | null;
+  strike: number | null;
+  right: string | null;
+  side: string;
   qty: number;
+  limit_price: number | null;
+  status: string;
+  filled: number;
+  remaining: number;
+  avg_fill_price: number | null;
 }
 
-const DEFAULTS = {
-  futures: { symbol: "6E", side: "BUY", qty: 1, limit_price: 1.17 } as FuturesForm,
-  options: { symbol: "EUU", right: "CALL", strike: 1.17, tenor: "3M", side: "BUY", qty: 1, limit_price: 0.0040 } as OptionsForm,
-  multi:   { structure: "StraddleATM", tenor: "3M", side: "BUY", qty: 10 } as MultiForm,
+interface PositionRow {
+  account: string;
+  symbol: string;
+  sec_type: string;
+  expiry: string | null;
+  strike: number | null;
+  right: string | null;
+  local_symbol: string;
+  con_id: number;
+  position: number;
+  avg_cost: number;
+}
+
+const DEFAULT_FORM: PlaceOrderForm = {
+  symbol: "EUR",
+  sec_type: "FUT",
+  side: "BUY",
+  qty: 1,
+  limit_price: 1.17,
+  expiry: "",
+  strike: 1.17,
+  right: "C",
+  trading_class: "",
 };
-
-interface SubmitResult {
-  order_id: string;
-  payload: unknown;
-  validated_at: string;
-  warnings: string[];
-}
 
 export function OrderSubmit(): JSX.Element {
-  const [mode, setMode] = useState<Mode>("futures");
-  const [futures, setFutures] = useState<FuturesForm>(DEFAULTS.futures);
-  const [options, setOptions] = useState<OptionsForm>(DEFAULTS.options);
-  const [multi, setMulti] = useState<MultiForm>(DEFAULTS.multi);
-  const [result, setResult] = useState<SubmitResult | null>(null);
+  const [form, setForm] = useState<PlaceOrderForm>(DEFAULT_FORM);
+  const [submitResult, setSubmitResult] = useState<unknown>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = () => {
-    let payload: unknown;
-    const warnings: string[] = [];
-    if (mode === "futures") {
-      payload = { type: "FUT", ...futures };
-      if (futures.qty <= 0) warnings.push("qty <= 0");
-      if (futures.limit_price <= 0) warnings.push("limit_price <= 0");
-    } else if (mode === "options") {
-      payload = { type: "OPT", ...options };
-      if (options.strike <= 0) warnings.push("strike <= 0");
-      if (options.qty <= 0) warnings.push("qty <= 0");
-    } else {
-      payload = { type: "MULTI_LEG", ...multi };
-      if (multi.qty <= 0) warnings.push("qty <= 0");
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [positions, setPositions] = useState<PositionRow[]>([]);
+  const [positionsError, setPositionsError] = useState<string | null>(null);
+
+  const set = <K extends keyof PlaceOrderForm>(k: K, v: PlaceOrderForm[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  const buildPayload = (): Record<string, unknown> => {
+    const body: Record<string, unknown> = {
+      symbol: form.symbol,
+      sec_type: form.sec_type,
+      side: form.side,
+      qty: form.qty,
+      limit_price: form.limit_price,
+      expiry: form.expiry || null,
+    };
+    if (form.sec_type === "FOP") {
+      body.strike = form.strike;
+      body.right = form.right;
+      if (form.trading_class) body.trading_class = form.trading_class;
     }
-    setResult({
-      order_id: `MOCK-${Date.now().toString(36).toUpperCase()}`,
-      payload,
-      validated_at: new Date().toISOString(),
-      warnings,
-    });
+    return body;
   };
 
-  const reset = () => setResult(null);
+  const submit = async () => {
+    if (!confirm(`Vraiment ${form.side} ${form.qty} ${form.sec_type} ${form.symbol} @ ${form.limit_price} ?`)) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    setSubmitResult(null);
+    try {
+      const r = await fetch("/api/v1/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload()),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
+      setSubmitResult(j);
+      void refreshOrders();
+      void refreshPositions();
+    } catch (e) {
+      setSubmitError(String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const refreshOrders = async () => {
+    setOrdersError(null);
+    try {
+      const r = await fetch("/api/v1/orders");
+      const j = await r.json();
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
+      setOrders(j.orders);
+    } catch (e) {
+      setOrdersError(String(e));
+    }
+  };
+
+  const refreshPositions = async () => {
+    setPositionsError(null);
+    try {
+      const r = await fetch("/api/v1/positions/live");
+      const j = await r.json();
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
+      setPositions(j.positions);
+    } catch (e) {
+      setPositionsError(String(e));
+    }
+  };
+
+  const cancelOrder = async (id: number) => {
+    if (!confirm(`Cancel order ${id} ?`)) return;
+    try {
+      const r = await fetch(`/api/v1/orders/${id}`, { method: "DELETE" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
+      void refreshOrders();
+    } catch (e) {
+      alert(`Cancel failed: ${e}`);
+    }
+  };
+
+  const closePosition = async (p: PositionRow) => {
+    const lp = window.prompt(`Limit price for closing ${p.local_symbol} (qty ${p.position}) ?`, "1.17");
+    if (!lp) return;
+    const limit_price = Number(lp);
+    if (!Number.isFinite(limit_price) || limit_price <= 0) {
+      alert("Invalid limit price");
+      return;
+    }
+    if (!confirm(`Close ${p.local_symbol} qty ${p.position} @ ${limit_price} ?`)) return;
+    try {
+      const r = await fetch(`/api/v1/positions/${p.con_id}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit_price }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
+      void refreshOrders();
+      void refreshPositions();
+    } catch (e) {
+      alert(`Close failed: ${e}`);
+    }
+  };
+
+  useEffect(() => {
+    void refreshOrders();
+    void refreshPositions();
+  }, []);
 
   return (
     <div style={{ padding: 16 }}>
-      {/* Banner d'avertissement */}
-      <div style={{
-        background: "#3a2a00", border: "1px solid #cc6", color: "#cc6",
-        padding: "8px 12px", borderRadius: 4, fontSize: 13, marginBottom: 12,
-      }}>
-        ⚠ <strong>DRY-RUN ONLY</strong> — ce tab ne fait aucune requête sortante.
-        Le payload est validé localement puis un <code>order_id</code> mock est retourné.
-        Le vrai endpoint <code>POST /api/v1/orders</code> arrivera dans une PR séparée
-        avec confirmation explicite + tests IB.
+      <div style={liveBannerStyle}>
+        🔴 <strong>LIVE TRADING</strong> — chaque submit envoie un vrai ordre via IB Gateway
+        (account paper si <code>TRADING_MODE=paper</code>). Cancel / close = idem.
       </div>
 
-      {/* Mode picker */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
-        {(Object.keys(MODES) as Mode[]).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => { setMode(m); reset(); }}
-            style={{
-              padding: "6px 14px",
-              background: m === mode ? "#2a4a6a" : "transparent",
-              color: m === mode ? "#fff" : "#aaa",
-              border: "1px solid #333",
-              borderRadius: 3,
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
-            {MODES[m]}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16 }}>
-        {/* Form */}
+      {/* Form + Submit Result */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, marginBottom: 16 }}>
         <section className="panel">
-          <header className="panel-header"><h2 style={{ fontSize: 13 }}>Form — {MODES[mode]}</h2></header>
+          <header className="panel-header"><h2 style={{ fontSize: 13 }}>Place order — POST /api/v1/orders</h2></header>
           <div className="panel-body" style={{ padding: 12 }}>
-            {mode === "futures" && <FuturesFormView f={futures} set={setFutures} />}
-            {mode === "options" && <OptionsFormView f={options} set={setOptions} />}
-            {mode === "multi" && <MultiFormView f={multi} set={setMulti} />}
-            <button onClick={submit} style={{ ...btnStyle, marginTop: 12, width: "100%" }}>
-              Validate (dry-run) ▶
+            <Row label="Sec type">
+              <select value={form.sec_type} onChange={(e) => set("sec_type", e.target.value as SecType)} style={inputStyle}>
+                <option>FUT</option><option>FOP</option>
+              </select>
+            </Row>
+            <Row label="Symbol"><input value={form.symbol} onChange={(e) => set("symbol", e.target.value.toUpperCase())} style={inputStyle} /></Row>
+            <Row label="Expiry (YYYYMMDD)"><input value={form.expiry} onChange={(e) => set("expiry", e.target.value)} placeholder="20260619" style={inputStyle} /></Row>
+            {form.sec_type === "FOP" && (
+              <>
+                <Row label="Strike"><input type="number" step={0.0001} value={form.strike} onChange={(e) => set("strike", Number(e.target.value) || 0)} style={inputStyle} /></Row>
+                <Row label="Right">
+                  <select value={form.right} onChange={(e) => set("right", e.target.value as Right)} style={inputStyle}>
+                    <option value="C">C (CALL)</option><option value="P">P (PUT)</option>
+                  </select>
+                </Row>
+                <Row label="Trading class"><input value={form.trading_class} onChange={(e) => set("trading_class", e.target.value)} placeholder="EUU" style={inputStyle} /></Row>
+              </>
+            )}
+            <Row label="Side">
+              <select value={form.side} onChange={(e) => set("side", e.target.value as Side)} style={inputStyle}>
+                <option>BUY</option><option>SELL</option>
+              </select>
+            </Row>
+            <Row label="Qty"><input type="number" min={1} value={form.qty} onChange={(e) => set("qty", parseInt(e.target.value || "0", 10))} style={inputStyle} /></Row>
+            <Row label="Limit price"><input type="number" step={0.00001} value={form.limit_price} onChange={(e) => set("limit_price", Number(e.target.value) || 0)} style={inputStyle} /></Row>
+            <button onClick={submit} disabled={submitting} style={{ ...submitBtnStyle, marginTop: 12, width: "100%" }}>
+              {submitting ? "…" : "🔴 Submit ▶"}
             </button>
           </div>
         </section>
 
-        {/* Result */}
         <section className="panel">
-          <header className="panel-header"><h2 style={{ fontSize: 13 }}>Result (mock)</h2></header>
+          <header className="panel-header"><h2 style={{ fontSize: 13 }}>Last submit result</h2></header>
           <div className="panel-body" style={{ padding: 12 }}>
-            {result ? (
-              <>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                  <span style={{ color: "#7af", fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>
-                    Order ID
-                  </span>
-                  <code style={{ fontSize: 14, color: "#fff" }}>{result.order_id}</code>
-                </div>
-                <div style={{ fontSize: 12, color: "#aaa", marginBottom: 8 }}>
-                  validated at {result.validated_at}
-                </div>
-                {result.warnings.length > 0 && (
-                  <div style={{ background: "#3a2a00", color: "#cc6", padding: "6px 10px", borderRadius: 3, fontSize: 12, marginBottom: 8 }}>
-                    ⚠ {result.warnings.length} warning(s) :{" "}
-                    {result.warnings.join(", ")}
-                  </div>
-                )}
-                <div style={subTitleStyle}>Payload (would be POST'd to /api/v1/orders)</div>
-                <pre style={preStyle}>{JSON.stringify(result.payload, null, 2)}</pre>
-              </>
-            ) : (
-              <div style={{ color: "#666", fontSize: 12 }}>(submit pour voir le payload mock)</div>
-            )}
+            {submitError && <div style={{ color: "#e66", marginBottom: 8 }}>{submitError}</div>}
+            {submitResult ? (
+              <pre style={preStyle}>{JSON.stringify(submitResult, null, 2)}</pre>
+            ) : !submitError ? (
+              <div style={{ color: "#666", fontSize: 12 }}>(submit pour voir le Trade IB renvoyé)</div>
+            ) : null}
           </div>
         </section>
       </div>
+
+      {/* Open orders table */}
+      <section className="panel" style={{ marginBottom: 16 }}>
+        <header className="panel-header" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <h2 style={{ fontSize: 13, flex: 1 }}>Open orders ({orders.length}) — GET /api/v1/orders</h2>
+          <button onClick={refreshOrders} style={btnStyle}>Refresh</button>
+        </header>
+        <div className="panel-body" style={{ padding: 12 }}>
+          {ordersError && <div style={{ color: "#e66", marginBottom: 8 }}>{ordersError}</div>}
+          {!ordersError && orders.length === 0 && <div style={{ color: "#666", fontSize: 12 }}>(no open orders)</div>}
+          {orders.length > 0 && (
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={th}>ID</th><th style={th}>Symbol</th><th style={th}>Type</th>
+                  <th style={th}>Side</th><th style={th}>Qty</th><th style={th}>Limit</th>
+                  <th style={th}>Status</th><th style={th}>Filled</th><th style={th}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr key={o.order_id} style={{ borderTop: "1px solid #222" }}>
+                    <td style={td}>{o.order_id}</td>
+                    <td style={td}>{o.symbol} {o.expiry ?? ""} {o.strike ?? ""} {o.right ?? ""}</td>
+                    <td style={td}>{o.sec_type}</td>
+                    <td style={td}>{o.side}</td>
+                    <td style={td}>{o.qty}</td>
+                    <td style={td}>{o.limit_price?.toFixed(5) ?? "—"}</td>
+                    <td style={td}>{o.status}</td>
+                    <td style={td}>{o.filled} / {o.qty}</td>
+                    <td style={td}><button onClick={() => cancelOrder(o.order_id)} style={dangerBtnStyle}>Cancel</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+
+      {/* Live positions table */}
+      <section className="panel">
+        <header className="panel-header" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <h2 style={{ fontSize: 13, flex: 1 }}>Live positions ({positions.length}) — GET /api/v1/positions/live</h2>
+          <button onClick={refreshPositions} style={btnStyle}>Refresh</button>
+        </header>
+        <div className="panel-body" style={{ padding: 12 }}>
+          {positionsError && <div style={{ color: "#e66", marginBottom: 8 }}>{positionsError}</div>}
+          {!positionsError && positions.length === 0 && <div style={{ color: "#666", fontSize: 12 }}>(no live positions)</div>}
+          {positions.length > 0 && (
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={th}>conId</th><th style={th}>Local symbol</th>
+                  <th style={th}>Position</th><th style={th}>Avg cost</th><th style={th}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {positions.map((p) => (
+                  <tr key={p.con_id} style={{ borderTop: "1px solid #222" }}>
+                    <td style={td}>{p.con_id}</td>
+                    <td style={td}>{p.local_symbol}</td>
+                    <td style={{ ...td, color: p.position > 0 ? "#6c6" : "#e66" }}>{p.position}</td>
+                    <td style={td}>{p.avg_cost.toFixed(5)}</td>
+                    <td style={td}><button onClick={() => closePosition(p)} style={dangerBtnStyle}>Close</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
     </div>
-  );
-}
-
-function FuturesFormView({ f, set }: { f: FuturesForm; set: (v: FuturesForm) => void }): JSX.Element {
-  return (
-    <>
-      <Row label="Symbol"><input value={f.symbol} onChange={(e) => set({ ...f, symbol: e.target.value.toUpperCase() })} style={inputStyle} /></Row>
-      <Row label="Side">
-        <select value={f.side} onChange={(e) => set({ ...f, side: e.target.value as Side })} style={inputStyle}>
-          <option>BUY</option><option>SELL</option>
-        </select>
-      </Row>
-      <Row label="Qty"><input type="number" min={1} value={f.qty} onChange={(e) => set({ ...f, qty: parseInt(e.target.value || "0", 10) })} style={inputStyle} /></Row>
-      <Row label="Limit price"><input type="number" step={0.0001} value={f.limit_price} onChange={(e) => set({ ...f, limit_price: Number(e.target.value) || 0 })} style={inputStyle} /></Row>
-    </>
-  );
-}
-
-function OptionsFormView({ f, set }: { f: OptionsForm; set: (v: OptionsForm) => void }): JSX.Element {
-  return (
-    <>
-      <Row label="Symbol"><input value={f.symbol} onChange={(e) => set({ ...f, symbol: e.target.value.toUpperCase() })} style={inputStyle} /></Row>
-      <Row label="Right">
-        <select value={f.right} onChange={(e) => set({ ...f, right: e.target.value as Right })} style={inputStyle}>
-          <option>CALL</option><option>PUT</option>
-        </select>
-      </Row>
-      <Row label="Strike"><input type="number" step={0.0001} value={f.strike} onChange={(e) => set({ ...f, strike: Number(e.target.value) || 0 })} style={inputStyle} /></Row>
-      <Row label="Tenor">
-        <select value={f.tenor} onChange={(e) => set({ ...f, tenor: e.target.value as OptionsForm["tenor"] })} style={inputStyle}>
-          {TENORS.map((t) => <option key={t}>{t}</option>)}
-        </select>
-      </Row>
-      <Row label="Side">
-        <select value={f.side} onChange={(e) => set({ ...f, side: e.target.value as Side })} style={inputStyle}>
-          <option>BUY</option><option>SELL</option>
-        </select>
-      </Row>
-      <Row label="Qty"><input type="number" min={1} value={f.qty} onChange={(e) => set({ ...f, qty: parseInt(e.target.value || "0", 10) })} style={inputStyle} /></Row>
-      <Row label="Limit price"><input type="number" step={0.00001} value={f.limit_price} onChange={(e) => set({ ...f, limit_price: Number(e.target.value) || 0 })} style={inputStyle} /></Row>
-    </>
-  );
-}
-
-function MultiFormView({ f, set }: { f: MultiForm; set: (v: MultiForm) => void }): JSX.Element {
-  return (
-    <>
-      <Row label="Structure">
-        <select value={f.structure} onChange={(e) => set({ ...f, structure: e.target.value as MultiForm["structure"] })} style={inputStyle}>
-          {STRUCTURES.map((s) => <option key={s}>{s}</option>)}
-        </select>
-      </Row>
-      <Row label="Tenor">
-        <select value={f.tenor} onChange={(e) => set({ ...f, tenor: e.target.value as MultiForm["tenor"] })} style={inputStyle}>
-          {TENORS.map((t) => <option key={t}>{t}</option>)}
-        </select>
-      </Row>
-      <Row label="Side">
-        <select value={f.side} onChange={(e) => set({ ...f, side: e.target.value as Side })} style={inputStyle}>
-          <option>BUY</option><option>SELL</option>
-        </select>
-      </Row>
-      <Row label="Qty"><input type="number" min={1} value={f.qty} onChange={(e) => set({ ...f, qty: parseInt(e.target.value || "0", 10) })} style={inputStyle} /></Row>
-      <div style={{ fontSize: 11, color: "#888", marginTop: 8 }}>
-        Note : un multi-leg ne crée pas N orders ; il pousse un seul payload type-strategy
-        au backend qui décompose en legs (cf. /vol/trade-preview pour la logique).
-      </div>
-    </>
   );
 }
 
@@ -257,35 +328,36 @@ function Row({ label, children }: { label: string; children: React.ReactNode }):
   );
 }
 
-const inputStyle = {
-  background: "#1a1a1a",
-  color: "#ddd",
-  border: "1px solid #333",
-  borderRadius: 3,
-  padding: "4px 8px",
+const liveBannerStyle = {
+  background: "#3a0000",
+  border: "1px solid #e66",
+  color: "#e66",
+  padding: "8px 12px",
+  borderRadius: 4,
   fontSize: 13,
-  width: "100%",
-  boxSizing: "border-box" as const,
+  marginBottom: 12,
+};
+const inputStyle = {
+  background: "#1a1a1a", color: "#ddd", border: "1px solid #333", borderRadius: 3,
+  padding: "4px 8px", fontSize: 13, width: "100%", boxSizing: "border-box" as const,
 };
 const btnStyle = {
-  padding: "6px 12px",
-  background: "#2a4a6a",
-  color: "#fff",
-  border: "none",
-  borderRadius: 3,
-  cursor: "pointer",
-  fontSize: 13,
+  padding: "4px 12px", background: "#2a4a6a", color: "#fff", border: "none",
+  borderRadius: 3, cursor: "pointer", fontSize: 12,
 };
-const subTitleStyle = { color: "#7af", fontSize: 11, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 4 };
+const submitBtnStyle = {
+  padding: "8px 12px", background: "#7a1a1a", color: "#fff", border: "none",
+  borderRadius: 3, cursor: "pointer", fontSize: 13, fontWeight: 600,
+};
+const dangerBtnStyle = {
+  padding: "2px 8px", background: "#5a1a1a", color: "#fff", border: "1px solid #7a3a3a",
+  borderRadius: 3, cursor: "pointer", fontSize: 11,
+};
+const tableStyle = { borderCollapse: "collapse" as const, fontSize: 12, fontFamily: "Consolas, monospace", width: "100%" };
+const th = { padding: "4px 12px", textAlign: "left" as const, color: "#888", borderBottom: "1px solid #333" };
+const td = { padding: "3px 12px", borderBottom: "1px solid #222", whiteSpace: "nowrap" as const };
 const preStyle = {
-  margin: 0,
-  padding: 10,
-  background: "#000",
-  color: "#cdc",
-  fontSize: 12,
-  fontFamily: "Consolas, monospace",
-  overflow: "auto" as const,
-  maxHeight: "40vh",
-  whiteSpace: "pre-wrap" as const,
-  wordBreak: "break-all" as const,
+  margin: 0, padding: 10, background: "#000", color: "#cdc", fontSize: 12,
+  fontFamily: "Consolas, monospace", overflow: "auto" as const, maxHeight: "40vh",
+  whiteSpace: "pre-wrap" as const, wordBreak: "break-all" as const,
 };

@@ -55,13 +55,25 @@ services:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
       REDIS_URL: redis://redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # IB connection pour le router /orders (place/cancel/close).
+      # ClientId 4 = différent des engines (1 market-data, 2 vol, 3 risk).
+      # IB_REQUIRED=false → l'api boot même si Gateway DOWN, les endpoints
+      # /orders renvoient 503 dans ce cas. Optionnel pour la dev.
+      IB_HOST: ib-gateway
+      IB_PORT: 4002
+      IB_CLIENT_ID: 4
+      IB_REQUIRED: ${IB_REQUIRED:-false}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ib-gateway:
+        condition: service_started
+        required: false
     networks:
-      - fxvol-internal
+      fxvol-internal:
+        ipv4_address: 172.20.0.13
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health"]
       interval: 15s

@@ -22,10 +22,12 @@ from api.routers import analytics as analytics_router
 from api.routers import cockpit as cockpit_router
 from api.routers import dev as dev_router
 from api.routers import health as health_router
+from api.routers import orders as orders_router
 from api.routers import portfolio as portfolio_router
 from api.routers import pricing as pricing_router
 from api.routers import vol as vol_router
 from api.routers import ws as ws_router
+from api.services.order_executor import OrderExecutor
 from api.ws.connection_manager import ConnectionManager
 from api.ws.redis_bridge import redis_to_ws_bridge
 
@@ -46,10 +48,25 @@ async def lifespan(app: FastAPI):
     app.state.ws_manager = manager
     bridge_task = asyncio.create_task(redis_to_ws_bridge(client, manager))
 
-    log.info("api_startup", redis_url=settings.redis_url)
+    # IB connection pour le router /orders. Best-effort : si ib-gateway est
+    # DOWN, l'api boot quand même (les endpoints /orders renvoient 503).
+    import os
+    executor = OrderExecutor(
+        host=os.getenv("IB_HOST", "ib-gateway"),
+        port=int(os.getenv("IB_PORT", "4002")),
+        client_id=int(os.getenv("IB_CLIENT_ID", "4")),
+    )
+    try:
+        await executor.connect(timeout=5.0)
+    except Exception:
+        log.exception("ib_connect_failed_at_startup")
+    app.state.order_executor = executor
+
+    log.info("api_startup", redis_url=settings.redis_url, ib_connected=executor.is_connected())
     try:
         yield
     finally:
+        await executor.disconnect()
         bridge_task.cancel()
         # Await the task so its cleanup (pubsub.aclose) runs. CancelledError
         # is expected and swallowed — any other exception would be logged.
@@ -100,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(cockpit_router.router)
     app.include_router(admin_router.router)
     app.include_router(dev_router.router)
+    app.include_router(orders_router.router)
     app.include_router(ws_router.router)
     # Remaining planned : orders router (PR #5b) — requires OrderExecutor wiring.
     return app
