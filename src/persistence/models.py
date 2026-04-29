@@ -79,8 +79,6 @@ class Position(Base):
     entry_timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    exit_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
-    exit_timestamp: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="OPEN")
 

@@ -134,8 +134,6 @@ async def sync_positions_from_ib(
     db_by_key = {_db_position_key(p): p for p in db_rows}
 
     now = datetime.now(UTC)
-    spot = await _read_spot_from_redis(redis)
-
     opened = 0
     unchanged = 0
     for key, ib_pos in ib_by_key.items():
@@ -167,15 +165,13 @@ async def sync_positions_from_ib(
             db.add(row)
             opened += 1
 
-    # Close DB rows that no longer have an IB counterpart.
+    # Close DB rows that no longer have an IB counterpart. Le timestamp et
+    # le price de fermeture sont disponibles dans le dernier trade lié à
+    # cette position (cf. table `trades`).
     closed = 0
     for key, db_row in db_by_key.items():
         if key not in ib_by_key:
             db_row.status = "CLOSED"
-            db_row.exit_timestamp = now
-            # Best-effort exit_price : spot courant (heuristique pour audit).
-            if spot is not None:
-                db_row.exit_price = Decimal(str(spot))
             closed += 1
 
     await db.commit()

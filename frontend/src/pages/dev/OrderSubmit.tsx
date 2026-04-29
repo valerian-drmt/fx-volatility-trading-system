@@ -1,33 +1,56 @@
 /**
- * Order Submit — vrai trading via /api/v1/orders + tables Orders / Positions
- * avec actions Cancel / Close.
+ * Order Submit — 3 panels avec payloads **figés** (objectif : valider la
+ * propagation aux 4 tables, pas paramétrer un trade).
  *
- * ⚠ Compte paper IB par défaut (TRADING_MODE=paper). À blinder avant prod
- * (auth, qty cap, confirmation modale plus stricte).
+ *   Panel 1 — Futures   : 1 FUT EUR loin du marché (BUY @ 1.10)
+ *   Panel 2 — Option    : 1 FOP EUU CALL strike 1.18 loin (BUY @ 0.001)
+ *   Panel 3 — Complex   : Straddle ATM = 2 orders (CALL + PUT même strike)
  *
- * Layout :
- *   ┌─ Banner LIVE TRADING + dernière action ──────────────┐
- *   ├─ Form (BUY/SELL FUT/FOP) ─── Submit Result ──────────┤
- *   ├─ Open orders [Refresh]   ─── actions Cancel ─────────┤
- *   └─ Live positions [Refresh] ─── actions Close ─────────┘
+ * Toutes les valeurs sont hardcodées → click Send → POST /api/v1/orders.
+ * Les ordres sont volontairement loin du marché ⇒ ne fillent pas, restent
+ * pending, observables dans les tables.
+ *
+ * 4 tables affichées en dessous (orders / trades / positions / snapshots
+ * via /api/v1/dev/tables/*) avec refresh + actions Cancel/Close.
  */
 import { useEffect, useState } from "react";
 
-type SecType = "FUT" | "FOP";
-type Side = "BUY" | "SELL";
-type Right = "C" | "P";
+const FUT_EXPIRY = "20260615";   // EUR June 2026 (3rd Wed area, ajuster si IB rejette)
+const FOP_EXPIRY = "20260615";   // FOP EUU même expiry (à ajuster si nécessaire)
+const TRADING_CLASS_FOP = "EUU";
 
-interface PlaceOrderForm {
-  symbol: string;
-  sec_type: SecType;
-  side: Side;
-  qty: number;
-  limit_price: number;
-  expiry: string;       // YYYYMMDD
-  strike: number;
-  right: Right;
-  trading_class: string;
-}
+const PRESETS = {
+  futures: {
+    label: "📊 Futures",
+    desc: "1 FUT EUR (June 2026), BUY @ 1.10 — loin du marché, ne fillera pas",
+    payloads: [{
+      symbol: "EUR", sec_type: "FUT", side: "BUY", qty: 1, limit_price: 1.10,
+      expiry: FUT_EXPIRY,
+    }],
+  },
+  option: {
+    label: "📉 Option simple",
+    desc: "1 FOP EUU CALL strike 1.18, BUY @ 0.001 — loin du marché",
+    payloads: [{
+      symbol: "EUR", sec_type: "FOP", side: "BUY", qty: 1, limit_price: 0.001,
+      expiry: FOP_EXPIRY, strike: 1.18, right: "C", trading_class: TRADING_CLASS_FOP,
+    }],
+  },
+  complex: {
+    label: "🔗 Trade complexe (Straddle ATM)",
+    desc: "2 ordres simultanés : CALL 1.17 + PUT 1.17, BUY @ 0.001 chacun (loin du marché)",
+    payloads: [
+      {
+        symbol: "EUR", sec_type: "FOP", side: "BUY", qty: 1, limit_price: 0.001,
+        expiry: FOP_EXPIRY, strike: 1.17, right: "C", trading_class: TRADING_CLASS_FOP,
+      },
+      {
+        symbol: "EUR", sec_type: "FOP", side: "BUY", qty: 1, limit_price: 0.001,
+        expiry: FOP_EXPIRY, strike: 1.17, right: "P", trading_class: TRADING_CLASS_FOP,
+      },
+    ],
+  },
+} as const;
 
 interface OrderRow {
   order_id: number;
@@ -42,132 +65,91 @@ interface OrderRow {
   status: string;
   filled: number;
   remaining: number;
-  avg_fill_price: number | null;
 }
-
 interface PositionRow {
-  account: string;
-  symbol: string;
-  sec_type: string;
-  expiry: string | null;
-  strike: number | null;
-  right: string | null;
-  local_symbol: string;
   con_id: number;
+  local_symbol: string;
   position: number;
   avg_cost: number;
 }
-
-const DEFAULT_FORM: PlaceOrderForm = {
-  symbol: "EUR",
-  sec_type: "FUT",
-  side: "BUY",
-  qty: 1,
-  limit_price: 1.17,
-  expiry: "",
-  strike: 1.17,
-  right: "C",
-  trading_class: "",
-};
+interface TableRow { [k: string]: unknown }
 
 export function OrderSubmit(): JSX.Element {
-  const [form, setForm] = useState<PlaceOrderForm>(DEFAULT_FORM);
-  const [submitResult, setSubmitResult] = useState<unknown>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [results, setResults] = useState<Record<string, unknown>>({});
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [ordersError, setOrdersError] = useState<string | null>(null);
   const [positions, setPositions] = useState<PositionRow[]>([]);
-  const [positionsError, setPositionsError] = useState<string | null>(null);
+  const [trades, setTrades] = useState<TableRow[]>([]);
+  const [snapshots, setSnapshots] = useState<TableRow[]>([]);
 
-  const set = <K extends keyof PlaceOrderForm>(k: K, v: PlaceOrderForm[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
-
-  const buildPayload = (): Record<string, unknown> => {
-    const body: Record<string, unknown> = {
-      symbol: form.symbol,
-      sec_type: form.sec_type,
-      side: form.side,
-      qty: form.qty,
-      limit_price: form.limit_price,
-      expiry: form.expiry || null,
-    };
-    if (form.sec_type === "FOP") {
-      body.strike = form.strike;
-      body.right = form.right;
-      if (form.trading_class) body.trading_class = form.trading_class;
+  const sendPreset = async (key: keyof typeof PRESETS) => {
+    if (!confirm(`Envoyer ${PRESETS[key].payloads.length} ordre(s) — ${PRESETS[key].label} ?`)) return;
+    setSubmitting((s) => ({ ...s, [key]: true }));
+    setErrors((e) => ({ ...e, [key]: null }));
+    const responses: unknown[] = [];
+    try {
+      for (const payload of PRESETS[key].payloads) {
+        const r = await fetch("/api/v1/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
+        responses.push(j);
+      }
+      setResults((rs) => ({ ...rs, [key]: responses }));
+      void refreshAll();
+    } catch (e) {
+      setErrors((er) => ({ ...er, [key]: String(e) }));
+    } finally {
+      setSubmitting((s) => ({ ...s, [key]: false }));
     }
-    return body;
   };
 
-  const submit = async () => {
-    if (!confirm(`Vraiment ${form.side} ${form.qty} ${form.sec_type} ${form.symbol} @ ${form.limit_price} ?`)) return;
-    setSubmitting(true);
-    setSubmitError(null);
-    setSubmitResult(null);
-    try {
-      const r = await fetch("/api/v1/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildPayload()),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
-      setSubmitResult(j);
-      void refreshOrders();
-      void refreshPositions();
-    } catch (e) {
-      setSubmitError(String(e));
-    } finally {
-      setSubmitting(false);
-    }
+  const fetchTable = async <T,>(url: string): Promise<T[]> => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    return (j.rows ?? j.orders ?? j.positions ?? []) as T[];
   };
 
   const refreshOrders = async () => {
-    setOrdersError(null);
-    try {
-      const r = await fetch("/api/v1/orders");
-      const j = await r.json();
-      if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
-      setOrders(j.orders);
-    } catch (e) {
-      setOrdersError(String(e));
-    }
+    try { setOrders(await fetchTable<OrderRow>("/api/v1/orders")); }
+    catch (e) { console.error(e); }
   };
-
   const refreshPositions = async () => {
-    setPositionsError(null);
-    try {
-      const r = await fetch("/api/v1/exec/positions");
-      const j = await r.json();
-      if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
-      setPositions(j.positions);
-    } catch (e) {
-      setPositionsError(String(e));
-    }
+    try { setPositions(await fetchTable<PositionRow>("/api/v1/exec/positions")); }
+    catch (e) { console.error(e); }
+  };
+  const refreshTrades = async () => {
+    try { setTrades(await fetchTable<TableRow>("/api/v1/dev/tables/trades?limit=20")); }
+    catch (e) { console.error(e); }
+  };
+  const refreshSnapshots = async () => {
+    try { setSnapshots(await fetchTable<TableRow>("/api/v1/dev/tables/position_snapshots?limit=20")); }
+    catch (e) { console.error(e); }
+  };
+  const refreshAll = async () => {
+    await Promise.all([refreshOrders(), refreshPositions(), refreshTrades(), refreshSnapshots()]);
   };
 
   const cancelOrder = async (id: number) => {
     if (!confirm(`Cancel order ${id} ?`)) return;
     try {
       const r = await fetch(`/api/v1/orders/${id}`, { method: "DELETE" });
-      const j = await r.json();
-      if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
-      void refreshOrders();
-    } catch (e) {
-      alert(`Cancel failed: ${e}`);
-    }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await refreshOrders();
+    } catch (e) { alert(`Cancel failed: ${e}`); }
   };
 
   const closePosition = async (p: PositionRow) => {
-    const lp = window.prompt(`Limit price for closing ${p.local_symbol} (qty ${p.position}) ?`, "1.17");
+    const lp = window.prompt(`Limit price pour close ${p.local_symbol} (qty ${p.position}) ?`, "1.17");
     if (!lp) return;
     const limit_price = Number(lp);
-    if (!Number.isFinite(limit_price) || limit_price <= 0) {
-      alert("Invalid limit price");
-      return;
-    }
+    if (!Number.isFinite(limit_price) || limit_price <= 0) { alert("Invalid"); return; }
     if (!confirm(`Close ${p.local_symbol} qty ${p.position} @ ${limit_price} ?`)) return;
     try {
       const r = await fetch(`/api/v1/exec/positions/${p.con_id}/close`, {
@@ -175,181 +157,173 @@ export function OrderSubmit(): JSX.Element {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ limit_price }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
-      void refreshOrders();
-      void refreshPositions();
-    } catch (e) {
-      alert(`Close failed: ${e}`);
-    }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await refreshAll();
+    } catch (e) { alert(`Close failed: ${e}`); }
   };
 
-  useEffect(() => {
-    void refreshOrders();
-    void refreshPositions();
-  }, []);
+  useEffect(() => { void refreshAll(); }, []);
 
   return (
     <div style={{ padding: 16 }}>
       <div style={liveBannerStyle}>
-        🔴 <strong>LIVE TRADING</strong> — chaque submit envoie un vrai ordre via IB Gateway
-        (account paper si <code>TRADING_MODE=paper</code>). Cancel / close = idem.
+        🔴 <strong>LIVE TRADING</strong> — chaque bouton envoie un vrai ordre via IB Gateway
+        (account paper si <code>TRADING_MODE=paper</code>). Les payloads sont figés et loin du
+        marché → ils restent pending et observables dans les 4 tables.
       </div>
 
-      {/* Form + Submit Result */}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, marginBottom: 16 }}>
-        <section className="panel">
-          <header className="panel-header"><h2 style={{ fontSize: 13 }}>Place order — POST /api/v1/orders</h2></header>
-          <div className="panel-body" style={{ padding: 12 }}>
-            <Row label="Sec type">
-              <select value={form.sec_type} onChange={(e) => set("sec_type", e.target.value as SecType)} style={inputStyle}>
-                <option>FUT</option><option>FOP</option>
-              </select>
-            </Row>
-            <Row label="Symbol"><input value={form.symbol} onChange={(e) => set("symbol", e.target.value.toUpperCase())} style={inputStyle} /></Row>
-            <Row label="Expiry (YYYYMMDD)"><input value={form.expiry} onChange={(e) => set("expiry", e.target.value)} placeholder="20260619" style={inputStyle} /></Row>
-            {form.sec_type === "FOP" && (
-              <>
-                <Row label="Strike"><input type="number" step={0.0001} value={form.strike} onChange={(e) => set("strike", Number(e.target.value) || 0)} style={inputStyle} /></Row>
-                <Row label="Right">
-                  <select value={form.right} onChange={(e) => set("right", e.target.value as Right)} style={inputStyle}>
-                    <option value="C">C (CALL)</option><option value="P">P (PUT)</option>
-                  </select>
-                </Row>
-                <Row label="Trading class"><input value={form.trading_class} onChange={(e) => set("trading_class", e.target.value)} placeholder="EUU" style={inputStyle} /></Row>
-              </>
-            )}
-            <Row label="Side">
-              <select value={form.side} onChange={(e) => set("side", e.target.value as Side)} style={inputStyle}>
-                <option>BUY</option><option>SELL</option>
-              </select>
-            </Row>
-            <Row label="Qty"><input type="number" min={1} value={form.qty} onChange={(e) => set("qty", parseInt(e.target.value || "0", 10))} style={inputStyle} /></Row>
-            <Row label="Limit price"><input type="number" step={0.00001} value={form.limit_price} onChange={(e) => set("limit_price", Number(e.target.value) || 0)} style={inputStyle} /></Row>
-            <button onClick={submit} disabled={submitting} style={{ ...submitBtnStyle, marginTop: 12, width: "100%" }}>
-              {submitting ? "…" : "🔴 Submit ▶"}
-            </button>
-          </div>
-        </section>
-
-        <section className="panel">
-          <header className="panel-header"><h2 style={{ fontSize: 13 }}>Last submit result</h2></header>
-          <div className="panel-body" style={{ padding: 12 }}>
-            {submitError && <div style={{ color: "#e66", marginBottom: 8 }}>{submitError}</div>}
-            {submitResult ? (
-              <pre style={preStyle}>{JSON.stringify(submitResult, null, 2)}</pre>
-            ) : !submitError ? (
-              <div style={{ color: "#666", fontSize: 12 }}>(submit pour voir le Trade IB renvoyé)</div>
-            ) : null}
-          </div>
-        </section>
+      {/* 3 panels figés */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginBottom: 16 }}>
+        {(Object.keys(PRESETS) as (keyof typeof PRESETS)[]).map((key) => (
+          <PresetPanel
+            key={key}
+            id={key}
+            label={PRESETS[key].label}
+            desc={PRESETS[key].desc}
+            payloads={PRESETS[key].payloads}
+            onSend={() => sendPreset(key)}
+            submitting={!!submitting[key]}
+            error={errors[key] ?? null}
+            result={results[key]}
+          />
+        ))}
       </div>
 
-      {/* Open orders table */}
-      <section className="panel" style={{ marginBottom: 16 }}>
-        <header className="panel-header" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h2 style={{ fontSize: 13, flex: 1 }}>Open orders ({orders.length}) — GET /api/v1/orders</h2>
-          <button onClick={refreshOrders} style={btnStyle}>Refresh</button>
-        </header>
-        <div className="panel-body" style={{ padding: 12 }}>
-          {ordersError && <div style={{ color: "#e66", marginBottom: 8 }}>{ordersError}</div>}
-          {!ordersError && orders.length === 0 && <div style={{ color: "#666", fontSize: 12 }}>(no open orders)</div>}
-          {orders.length > 0 && (
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={th}>ID</th><th style={th}>Symbol</th><th style={th}>Type</th>
-                  <th style={th}>Side</th><th style={th}>Qty</th><th style={th}>Limit</th>
-                  <th style={th}>Status</th><th style={th}>Filled</th><th style={th}>Action</th>
+      {/* 4 tables : orders / trades / positions (live) / snapshots */}
+      <TableSection title={`Open orders (${orders.length}) — GET /api/v1/orders`} onRefresh={refreshOrders}>
+        {orders.length === 0 ? <Empty /> : (
+          <table style={tableStyle}>
+            <thead>
+              <tr><th style={th}>ID</th><th style={th}>Symbol</th><th style={th}>Type</th><th style={th}>Side</th>
+                  <th style={th}>Qty</th><th style={th}>Limit</th><th style={th}>Status</th><th style={th}>Filled</th><th style={th}>Action</th></tr>
+            </thead>
+            <tbody>
+              {orders.map((o) => (
+                <tr key={o.order_id}>
+                  <td style={td}>{o.order_id}</td>
+                  <td style={td}>{o.symbol} {o.expiry ?? ""} {o.strike ?? ""} {o.right ?? ""}</td>
+                  <td style={td}>{o.sec_type}</td><td style={td}>{o.side}</td>
+                  <td style={td}>{o.qty}</td>
+                  <td style={td}>{o.limit_price?.toFixed(5) ?? "—"}</td>
+                  <td style={td}>{o.status}</td>
+                  <td style={td}>{o.filled}/{o.qty}</td>
+                  <td style={td}><button onClick={() => cancelOrder(o.order_id)} style={dangerBtn}>Cancel</button></td>
                 </tr>
-              </thead>
-              <tbody>
-                {orders.map((o) => (
-                  <tr key={o.order_id} style={{ borderTop: "1px solid #222" }}>
-                    <td style={td}>{o.order_id}</td>
-                    <td style={td}>{o.symbol} {o.expiry ?? ""} {o.strike ?? ""} {o.right ?? ""}</td>
-                    <td style={td}>{o.sec_type}</td>
-                    <td style={td}>{o.side}</td>
-                    <td style={td}>{o.qty}</td>
-                    <td style={td}>{o.limit_price?.toFixed(5) ?? "—"}</td>
-                    <td style={td}>{o.status}</td>
-                    <td style={td}>{o.filled} / {o.qty}</td>
-                    <td style={td}><button onClick={() => cancelOrder(o.order_id)} style={dangerBtnStyle}>Cancel</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </TableSection>
 
-      {/* Live positions table */}
-      <section className="panel">
-        <header className="panel-header" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h2 style={{ fontSize: 13, flex: 1 }}>Live positions ({positions.length}) — GET /api/v1/exec/positions</h2>
-          <button onClick={refreshPositions} style={btnStyle}>Refresh</button>
-        </header>
-        <div className="panel-body" style={{ padding: 12 }}>
-          {positionsError && <div style={{ color: "#e66", marginBottom: 8 }}>{positionsError}</div>}
-          {!positionsError && positions.length === 0 && <div style={{ color: "#666", fontSize: 12 }}>(no live positions)</div>}
-          {positions.length > 0 && (
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={th}>conId</th><th style={th}>Local symbol</th>
-                  <th style={th}>Position</th><th style={th}>Avg cost</th><th style={th}>Action</th>
+      <TableSection title={`Trades (${trades.length}) — GET /api/v1/dev/tables/trades`} onRefresh={refreshTrades}>
+        <GenericTable rows={trades} cols={["id", "position_id", "ib_order_id", "side", "quantity", "price", "commission", "timestamp"]} />
+      </TableSection>
+
+      <TableSection title={`Live positions (${positions.length}) — GET /api/v1/exec/positions`} onRefresh={refreshPositions}>
+        {positions.length === 0 ? <Empty /> : (
+          <table style={tableStyle}>
+            <thead><tr><th style={th}>conId</th><th style={th}>Local symbol</th><th style={th}>Position</th><th style={th}>Avg cost</th><th style={th}>Action</th></tr></thead>
+            <tbody>
+              {positions.map((p) => (
+                <tr key={p.con_id}>
+                  <td style={td}>{p.con_id}</td><td style={td}>{p.local_symbol}</td>
+                  <td style={{ ...td, color: p.position > 0 ? "#6c6" : "#e66" }}>{p.position}</td>
+                  <td style={td}>{p.avg_cost.toFixed(5)}</td>
+                  <td style={td}><button onClick={() => closePosition(p)} style={dangerBtn}>Close</button></td>
                 </tr>
-              </thead>
-              <tbody>
-                {positions.map((p) => (
-                  <tr key={p.con_id} style={{ borderTop: "1px solid #222" }}>
-                    <td style={td}>{p.con_id}</td>
-                    <td style={td}>{p.local_symbol}</td>
-                    <td style={{ ...td, color: p.position > 0 ? "#6c6" : "#e66" }}>{p.position}</td>
-                    <td style={td}>{p.avg_cost.toFixed(5)}</td>
-                    <td style={td}><button onClick={() => closePosition(p)} style={dangerBtnStyle}>Close</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </TableSection>
+
+      <TableSection title={`Position snapshots (${snapshots.length}) — GET /api/v1/dev/tables/position_snapshots`} onRefresh={refreshSnapshots}>
+        <GenericTable rows={snapshots} cols={["id", "position_id", "timestamp", "spot", "iv", "delta_usd", "gamma_usd", "vega_usd", "theta_usd", "pnl_usd"]} />
+      </TableSection>
     </div>
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
+function PresetPanel({
+  label, desc, payloads, onSend, submitting, error, result,
+}: {
+  id: string; label: string; desc: string; payloads: readonly object[];
+  onSend: () => void; submitting: boolean; error: string | null; result: unknown;
+}): JSX.Element {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", gap: 8 }}>
-      <span style={{ color: "#aaa", fontSize: 13 }}>{label}</span>
-      <div style={{ flex: 1, maxWidth: 180 }}>{children}</div>
+    <section className="panel">
+      <header className="panel-header"><h2 style={{ fontSize: 13 }}>{label}</h2></header>
+      <div className="panel-body" style={{ padding: 12 }}>
+        <div style={{ fontSize: 12, color: "#aaa", marginBottom: 8 }}>{desc}</div>
+        <pre style={{ ...preStyle, maxHeight: 120 }}>{JSON.stringify(payloads, null, 2)}</pre>
+        <button onClick={onSend} disabled={submitting} style={{ ...submitBtn, marginTop: 8, width: "100%" }}>
+          {submitting ? "…" : "🔴 Send ▶"}
+        </button>
+        {error && <div style={{ color: "#e66", fontSize: 12, marginTop: 6, wordBreak: "break-all" }}>{error}</div>}
+        {!!result && (
+          <details style={{ marginTop: 6 }}>
+            <summary style={{ color: "#aaa", fontSize: 11, cursor: "pointer" }}>Last response</summary>
+            <pre style={{ ...preStyle, maxHeight: 200 }}>{JSON.stringify(result, null, 2)}</pre>
+          </details>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TableSection({
+  title, onRefresh, children,
+}: { title: string; onRefresh: () => void | Promise<void>; children: React.ReactNode }): JSX.Element {
+  return (
+    <section className="panel" style={{ marginBottom: 12 }}>
+      <header className="panel-header" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <h2 style={{ fontSize: 13, flex: 1 }}>{title}</h2>
+        <button onClick={() => void onRefresh()} style={btnSmall}>Refresh</button>
+      </header>
+      <div className="panel-body" style={{ padding: 12 }}>{children}</div>
+    </section>
+  );
+}
+
+function GenericTable({ rows, cols }: { rows: TableRow[]; cols: string[] }): JSX.Element {
+  if (rows.length === 0) return <Empty />;
+  return (
+    <div style={{ overflow: "auto", maxHeight: 250 }}>
+      <table style={tableStyle}>
+        <thead><tr>{cols.map((c) => <th key={c} style={th}>{c}</th>)}</tr></thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>{cols.map((c) => <td key={c} style={td}>{fmt(r[c])}</td>)}</tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
+}
+
+function fmt(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+function Empty(): JSX.Element {
+  return <div style={{ color: "#666", fontSize: 12 }}>(no rows)</div>;
 }
 
 const liveBannerStyle = {
-  background: "#3a0000",
-  border: "1px solid #e66",
-  color: "#e66",
-  padding: "8px 12px",
-  borderRadius: 4,
-  fontSize: 13,
-  marginBottom: 12,
+  background: "#3a0000", border: "1px solid #e66", color: "#e66",
+  padding: "8px 12px", borderRadius: 4, fontSize: 13, marginBottom: 12,
 };
-const inputStyle = {
-  background: "#1a1a1a", color: "#ddd", border: "1px solid #333", borderRadius: 3,
-  padding: "4px 8px", fontSize: 13, width: "100%", boxSizing: "border-box" as const,
-};
-const btnStyle = {
-  padding: "4px 12px", background: "#2a4a6a", color: "#fff", border: "none",
-  borderRadius: 3, cursor: "pointer", fontSize: 12,
-};
-const submitBtnStyle = {
+const submitBtn = {
   padding: "8px 12px", background: "#7a1a1a", color: "#fff", border: "none",
   borderRadius: 3, cursor: "pointer", fontSize: 13, fontWeight: 600,
 };
-const dangerBtnStyle = {
+const btnSmall = {
+  padding: "3px 10px", background: "#2a4a6a", color: "#fff", border: "none",
+  borderRadius: 3, cursor: "pointer", fontSize: 11,
+};
+const dangerBtn = {
   padding: "2px 8px", background: "#5a1a1a", color: "#fff", border: "1px solid #7a3a3a",
   borderRadius: 3, cursor: "pointer", fontSize: 11,
 };
@@ -357,7 +331,7 @@ const tableStyle = { borderCollapse: "collapse" as const, fontSize: 12, fontFami
 const th = { padding: "4px 12px", textAlign: "left" as const, color: "#888", borderBottom: "1px solid #333" };
 const td = { padding: "3px 12px", borderBottom: "1px solid #222", whiteSpace: "nowrap" as const };
 const preStyle = {
-  margin: 0, padding: 10, background: "#000", color: "#cdc", fontSize: 12,
-  fontFamily: "Consolas, monospace", overflow: "auto" as const, maxHeight: "40vh",
+  margin: 0, padding: 8, background: "#000", color: "#cdc", fontSize: 11,
+  fontFamily: "Consolas, monospace", overflow: "auto" as const,
   whiteSpace: "pre-wrap" as const, wordBreak: "break-all" as const,
 };
