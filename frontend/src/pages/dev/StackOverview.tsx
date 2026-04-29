@@ -219,8 +219,8 @@ function Arrow({
   const tcx = to.x + BOX_W / 2;
   const tcy = to.y + BOX_H / 2;
   // Compute clipping aux bords des box (rectangles).
-  const start = clipToBox(fcx, fcy, tcx, tcy, from);
-  const end = clipToBox(tcx, tcy, fcx, fcy, to);
+  const start = clipToBox(fcx, fcy, tcx, tcy);
+  const end = clipToBox(tcx, tcy, fcx, fcy);
   return (
     <line
       x1={start.x}
@@ -235,18 +235,15 @@ function Arrow({
 }
 
 /**
- * Clip a line from (cx, cy) toward (tx, ty) so it stops at the rectangle's edge.
- * Box origin = (box.x, box.y), size = (BOX_W, BOX_H).
+ * Clip une ligne partant de (cx, cy) — supposé être le centre d'une box BOX_W
+ * × BOX_H — en direction de (tx, ty) pour qu'elle s'arrête au bord du rect.
  */
-function clipToBox(cx: number, cy: number, tx: number, ty: number, box: { x: number; y: number }): { x: number; y: number } {
+function clipToBox(cx: number, cy: number, tx: number, ty: number): { x: number; y: number } {
   const dx = tx - cx;
   const dy = ty - cy;
   if (dx === 0 && dy === 0) return { x: cx, y: cy };
-  // Half-extents
   const hw = BOX_W / 2;
   const hh = BOX_H / 2;
-  // Center of box (cx, cy is already box center thanks to caller).
-  // Find scale t in (0, 1] such that we hit a vertical or horizontal edge.
   const tx_ = dx !== 0 ? hw / Math.abs(dx) : Infinity;
   const ty_ = dy !== 0 ? hh / Math.abs(dy) : Infinity;
   const t = Math.min(tx_, ty_);
