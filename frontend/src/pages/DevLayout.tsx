@@ -10,6 +10,7 @@
 import type { CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DevPlaceholder } from "./dev/DevPlaceholder";
+import { EngineHealth } from "./dev/EngineHealth";
 import { RedisInspector } from "./dev/RedisInspector";
 import { WsMonitor } from "./dev/WsMonitor";
 
@@ -53,6 +54,7 @@ function TabContent({ tab }: { tab: string }): JSX.Element {
   // Onglets codés (étape par étape) — sinon fallback DevPlaceholder.
   if (tab === "redis") return <RedisInspector />;
   if (tab === "ws") return <WsMonitor />;
+  if (tab === "health") return <EngineHealth />;
   return <DevPlaceholder name={def.label} />;
 }
 

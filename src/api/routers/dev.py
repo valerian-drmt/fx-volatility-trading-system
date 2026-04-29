@@ -1,4 +1,4 @@
-"""Dev console endpoints — read-only inspection of Redis (and later DB, engines).
+"""Dev console endpoints — read-only inspection of Redis, engines, IB.
 
 R9 sandbox spike. **NOT prod-ready** : no auth, hardcoded key whitelist, etc.
 A feature flag (`VITE_DEV_TABS=false` côté frontend, allow-list `/dev/*` bloqué
@@ -6,6 +6,7 @@ côté nginx) sera ajoutée avant le déploiement EC2.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -78,6 +79,72 @@ async def redis_keys(
             "age_s": age_s,
         })
     return {"keys": out}
+
+
+# Per-engine config : (heartbeat key, primary output key, stale threshold sec).
+# Threshold matche le compose healthcheck (max age avant unhealthy).
+ENGINES_CONFIG: list[dict[str, Any]] = [
+    {"name": "market_data",  "hb": "heartbeat:market_data",  "out": "latest_spot:EURUSD",          "stale_s": 60},
+    {"name": "vol_engine",   "hb": "heartbeat:vol_engine",   "out": "latest_vol_surface:EURUSD",   "stale_s": 300},
+    {"name": "risk_engine",  "hb": "heartbeat:risk_engine",  "out": "latest_greeks:portfolio",     "stale_s": 30},
+    {"name": "db_writer",    "hb": "heartbeat:db_writer",    "out": None,                          "stale_s": 30},
+]
+
+
+@router.get("/engines")
+async def engines_status(
+    redis: Annotated[aioredis.Redis, Depends(get_redis)],
+) -> dict[str, Any]:
+    """Aggregate health for each of the 4 engines + IB Gateway TCP probe."""
+    now = datetime.now(UTC)
+    engines_out: list[dict[str, Any]] = []
+    for cfg in ENGINES_CONFIG:
+        hb_age = await _key_age(redis, cfg["hb"], now)
+        hb_ttl = await redis.ttl(cfg["hb"])
+        out_age = await _key_age(redis, cfg["out"], now) if cfg["out"] else None
+        # status : OK si HB existe et < stale_s, STALE si trop vieux, DOWN sinon
+        if hb_age is None:
+            status = "DOWN"
+        elif hb_age < cfg["stale_s"]:
+            status = "OK"
+        else:
+            status = "STALE"
+        engines_out.append({
+            "name": cfg["name"],
+            "status": status,
+            "hb_age_s": hb_age,
+            "hb_ttl_s": hb_ttl if hb_ttl != -2 else None,
+            "stale_threshold_s": cfg["stale_s"],
+            "out_key": cfg["out"],
+            "out_age_s": out_age,
+        })
+
+    ib = await _ib_probe()
+    return {"engines": engines_out, "ib_gateway": ib, "timestamp": now.isoformat().replace("+00:00", "Z")}
+
+
+async def _key_age(redis: aioredis.Redis, key: str, now: datetime) -> float | None:
+    raw = await redis.get(key)
+    if raw is None:
+        return None
+    raw_str = raw.decode() if isinstance(raw, bytes) else raw
+    return _parse_age(raw_str, now)
+
+
+async def _ib_probe(host: str = "ib-gateway", port: int = 4002, timeout_s: float = 2.0) -> dict[str, Any]:
+    """TCP probe sur le port API IB Gateway. Same intent que socat dans le compose
+    healthcheck : OK si TCP connect, DOWN sinon. Pas de handshake API ici.
+    """
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout_s)
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+        return {"status": "OK", "host": host, "port": port}
+    except (TimeoutError, OSError, asyncio.TimeoutError) as e:
+        return {"status": "DOWN", "host": host, "port": port, "error": str(e)[:80]}
 
 
 @router.get("/redis/value")
