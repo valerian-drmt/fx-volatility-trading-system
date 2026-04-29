@@ -90,28 +90,46 @@ class OrderExecutor:
         return [_trade_to_dict(t) for t in trades]
 
     async def account_summary(self) -> dict[str, Any]:
-        """Return tous les tags numériques du compte IB.
+        """Return tous les tags numériques du compte IB, agrégés par tag.
 
-        Le snapshot DB pioche les valeurs via `pick(out, [aliases])` —
-        certains tags ont des variantes selon le type de compte (commodities
-        vs securities, paper vs live). On normalise les currencies "" en
-        "BASE" pour qu'aucun tag ne soit perdu.
+        Beaucoup de tags ne sont exposés que dans la currency de base du
+        compte (souvent EUR ou USD selon le compte) — on prend donc la
+        valeur disponible dans cet ordre :
+          1. BASE (= currency native du compte, agrégat propre)
+          2. USD
+          3. autre currency
+        `by_currency` retourne le détail sans la clé BASE (qui est
+        l'agrégat global, redondant avec les colonnes top-level).
         """
         ib = self._ensure()
-        out: dict[str, Any] = {"by_currency": {}, "account": None}
+        # Indexe les valeurs par tag puis par currency, pour pouvoir
+        # appliquer la priorité BASE > USD > autres au moment du pick.
+        by_tag: dict[str, dict[str, float]] = {}
+        by_cur: dict[str, dict[str, float]] = {}
+        account: str | None = None
         for v in ib.accountValues():
             try:
                 val = float(v.value)
             except (ValueError, TypeError):
                 continue
             cur = v.currency or "BASE"
-            # Tag de premier niveau : on prend la valeur USD/BASE si dispo,
-            # sinon on tombe sur l'autre (paper IB renvoie souvent BASE).
-            if v.tag not in out and cur in ("USD", "BASE"):
-                out[v.tag] = val
-            out["by_currency"].setdefault(cur, {})[v.tag] = val
-            if out["account"] is None and v.account:
-                out["account"] = v.account
+            by_tag.setdefault(v.tag, {})[cur] = val
+            by_cur.setdefault(cur, {})[v.tag] = val
+            if account is None and v.account:
+                account = v.account
+
+        # Aplatit by_tag en out[tag] selon priorité.
+        out: dict[str, Any] = {"account": account}
+        for tag, cur_to_val in by_tag.items():
+            for preferred in ("BASE", "USD"):
+                if preferred in cur_to_val:
+                    out[tag] = cur_to_val[preferred]
+                    break
+            else:
+                out[tag] = next(iter(cur_to_val.values()))
+
+        # by_currency expose seulement les currencies réelles (drop BASE).
+        out["by_currency"] = {c: vs for c, vs in by_cur.items() if c != "BASE"}
         return out
 
     async def list_positions(self) -> list[dict[str, Any]]:
