@@ -28,6 +28,7 @@ from api.routers import pricing as pricing_router
 from api.routers import vol as vol_router
 from api.routers import ws as ws_router
 from api.services.order_executor import OrderExecutor
+from api.services.position_sync import position_sync_loop
 from api.ws.connection_manager import ConnectionManager
 from api.ws.redis_bridge import redis_to_ws_bridge
 
@@ -62,10 +63,20 @@ async def lifespan(app: FastAPI):
         log.exception("ib_connect_failed_at_startup")
     app.state.order_executor = executor
 
+    # Background : sync IB positions → DB + snapshots toutes les 30s. Démarre
+    # même si IB est DOWN (le loop se contente de logger ib_not_connected).
+    from persistence.db import get_sessionmaker
+    sync_task = asyncio.create_task(position_sync_loop(get_sessionmaker(), executor))
+
     log.info("api_startup", redis_url=settings.redis_url, ib_connected=executor.is_connected())
     try:
         yield
     finally:
+        sync_task.cancel()
+        try:
+            await sync_task
+        except asyncio.CancelledError:
+            pass
         await executor.disconnect()
         bridge_task.cancel()
         # Await the task so its cleanup (pubsub.aclose) runs. CancelledError
