@@ -73,21 +73,28 @@ export function useRedisInspector(): RedisInspectorState {
     }
   };
 
-  useEffect(() => { void fetchKeys(); }, []);
+  // Auto-refresh 3s : re-fetch keys + re-fetch value (si une est sélectionnée).
+  useEffect(() => {
+    void fetchKeys();
+    const id = window.setInterval(() => {
+      void fetchKeys();
+      if (selected) void fetchValue(selected);
+    }, 3_000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
 
   return { keys, selected, value, error, loading, fetchKeys, fetchValue };
 }
 
 
 export function RedisKeysPanel({ state }: { state: RedisInspectorState }): JSX.Element {
-  const { keys, selected, loading, fetchKeys, fetchValue } = state;
+  const { keys, selected, fetchValue } = state;
   return (
     <section className="panel" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <header className="panel-header">
         <h2>Redis keys</h2>
-        <button onClick={fetchKeys} disabled={loading} style={btnStyle}>
-          {loading ? "..." : "Refresh"}
-        </button>
+        <span style={{ color: "#666", fontSize: 11 }}>auto 3s</span>
       </header>
       <div className="panel-body" style={{ padding: 0, overflow: "auto", flex: 1 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -159,10 +166,6 @@ export function RedisInspector(): JSX.Element {
 }
 
 const cellStyle = { padding: "5px 10px", verticalAlign: "top" as const };
-const btnStyle = {
-  padding: "4px 12px", background: "#2a4a6a", color: "#fff", border: "none",
-  borderRadius: 3, cursor: "pointer", fontSize: 12,
-};
 const preStyle = {
   margin: 0, padding: 10, background: "#000", color: "#cdc", fontSize: 12,
   overflow: "auto" as const, whiteSpace: "pre-wrap" as const,

@@ -27,12 +27,11 @@ interface Resp {
   timestamp: string;
 }
 
-const POLL_MS = 5_000;
+const POLL_MS = 3_000;
 
 export function EngineHealth(): JSX.Element {
   const [data, setData] = useState<Resp | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const timerRef = useRef<number | null>(null);
 
   const fetchData = async () => {
@@ -47,33 +46,20 @@ export function EngineHealth(): JSX.Element {
   };
 
   useEffect(() => {
-    fetchData();
-    if (!autoRefresh) return;
+    void fetchData();
     timerRef.current = window.setInterval(fetchData, POLL_MS);
     return () => {
       if (timerRef.current) window.clearInterval(timerRef.current);
     };
-  }, [autoRefresh]);
+  }, []);
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
-        <button onClick={fetchData} style={btnStyle}>Refresh</button>
-        <label style={{ color: "#aaa", fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={autoRefresh}
-            onChange={(e) => setAutoRefresh(e.target.checked)}
-            style={{ marginRight: 6 }}
-          />
-          Auto-refresh ({POLL_MS / 1000}s)
-        </label>
-        {data && (
-          <span style={{ color: "#666", fontSize: 12, marginLeft: "auto" }}>
-            last fetch: {new Date(data.timestamp).toLocaleTimeString()}
-          </span>
-        )}
-      </div>
+    <div style={{ padding: 12 }}>
+      {data && (
+        <div style={{ color: "#666", fontSize: 11, marginBottom: 8 }}>
+          last: {new Date(data.timestamp).toLocaleTimeString()} · auto {POLL_MS / 1000}s
+        </div>
+      )}
 
       {error && <div style={{ color: "#e66", marginBottom: 16 }}>{error}</div>}
 
@@ -146,12 +132,3 @@ function fmtAge(s: number | null): string {
   return `${(s / 3600).toFixed(1)}h`;
 }
 
-const btnStyle = {
-  padding: "4px 12px",
-  background: "#2a4a6a",
-  color: "#fff",
-  border: "none",
-  borderRadius: 3,
-  cursor: "pointer",
-  fontSize: 13,
-};

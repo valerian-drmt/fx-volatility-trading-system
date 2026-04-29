@@ -26,7 +26,7 @@ interface StackResp {
   timestamp: string;
 }
 
-const POLL_MS = 5_000;
+const POLL_MS = 3_000;
 
 // Coordonnées (x, y) en unités SVG. ViewBox "0 0 W H".
 const BOX_W = 150;
@@ -45,8 +45,9 @@ const POSITIONS: Record<string, { x: number; y: number }> = {
   "vol-engine":  { x: 220, y: 180 },
   "risk-engine": { x: 410, y: 180 },
   "db-writer":   { x: 600, y: 180 },
-  // Row 3 (api)
-  "api":         { x: 375, y: 330 },
+  // Row 3 (api + execution)
+  "api":         { x: 260, y: 330 },
+  "execution":   { x: 490, y: 330 },
   // Row 4 (edge)
   "nginx":       { x: 280, y: 450 },
   "frontend":    { x: 470, y: 450 },
@@ -63,10 +64,14 @@ const EDGES: { from: string; to: string }[] = [
   { from: "ib-gateway", to: "market-data" },
   { from: "ib-gateway", to: "vol-engine" },
   { from: "ib-gateway", to: "risk-engine" },
-  // data → api
+  // data → api / execution
   { from: "redis",    to: "api" },
   { from: "postgres", to: "api" },
-  // edges → api
+  { from: "postgres", to: "execution" },
+  { from: "ib-gateway", to: "execution" },
+  // api → execution (proxy forward)
+  { from: "api",      to: "execution" },
+  // → nginx (edge)
   { from: "api",      to: "nginx" },
   { from: "frontend", to: "nginx" },
 ];
@@ -74,7 +79,6 @@ const EDGES: { from: string; to: string }[] = [
 export function StackOverview(): JSX.Element {
   const [data, setData] = useState<StackResp | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const timerRef = useRef<number | null>(null);
 
   const fetchData = async () => {
@@ -89,30 +93,20 @@ export function StackOverview(): JSX.Element {
   };
 
   useEffect(() => {
-    fetchData();
-    if (!autoRefresh) return;
+    void fetchData();
     timerRef.current = window.setInterval(fetchData, POLL_MS);
     return () => {
       if (timerRef.current) window.clearInterval(timerRef.current);
     };
-  }, [autoRefresh]);
+  }, []);
 
   const containerByName: Record<string, Container> = {};
   if (data) for (const c of data.containers) containerByName[c.name] = c;
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-        <button onClick={fetchData} style={btnStyle}>Refresh</button>
-        <label style={{ color: "#aaa", fontSize: 13 }}>
-          <input
-            type="checkbox"
-            checked={autoRefresh}
-            onChange={(e) => setAutoRefresh(e.target.checked)}
-            style={{ marginRight: 6 }}
-          />
-          Auto-refresh ({POLL_MS / 1000}s)
-        </label>
+    <div style={{ padding: 12 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <span style={{ color: "#666", fontSize: 11 }}>auto {POLL_MS / 1000}s</span>
         {data && (
           <span style={{ color: "#666", fontSize: 12, marginLeft: "auto" }}>
             last: {new Date(data.timestamp).toLocaleTimeString()}
@@ -253,12 +247,3 @@ const layerLabelSvg = {
   letterSpacing: 1.5,
 } as const;
 
-const btnStyle = {
-  padding: "4px 12px",
-  background: "#2a4a6a",
-  color: "#fff",
-  border: "none",
-  borderRadius: 3,
-  cursor: "pointer",
-  fontSize: 13,
-};

@@ -18,15 +18,17 @@ export function StackCombined(): JSX.Element {
     <div
       style={{
         display: "grid",
-        gridTemplateRows: "minmax(0, 1fr) minmax(0, 1fr)",
+        // Row 1 = "auto" → s'étire pour afficher le SVG entier sans overflow.
+        // Row 2 = remplit le reste de la fenêtre (avec un min de 250px pour
+        // garder Redis utilisable même sur petit écran).
+        gridTemplateRows: "auto minmax(250px, 1fr)",
         gap: 8,
         padding: 8,
-        height: "calc(100vh - 80px)",
         boxSizing: "border-box",
       }}
     >
       {/* Row 1 : Engine Health (33%) + Stack schema (66%) */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8, minHeight: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8 }}>
         <Cell title="🩺 Engine Health">
           <EngineHealth />
         </Cell>
