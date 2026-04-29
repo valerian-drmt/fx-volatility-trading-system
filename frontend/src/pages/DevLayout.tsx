@@ -11,6 +11,7 @@ import type { CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DevPlaceholder } from "./dev/DevPlaceholder";
 import { RedisInspector } from "./dev/RedisInspector";
+import { WsMonitor } from "./dev/WsMonitor";
 
 interface TabDef {
   path: string;
@@ -51,6 +52,7 @@ function TabContent({ tab }: { tab: string }): JSX.Element {
   }
   // Onglets codés (étape par étape) — sinon fallback DevPlaceholder.
   if (tab === "redis") return <RedisInspector />;
+  if (tab === "ws") return <WsMonitor />;
   return <DevPlaceholder name={def.label} />;
 }
 
