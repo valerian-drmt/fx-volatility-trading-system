@@ -31,7 +31,7 @@ const TABS: TabDef[] = [
 function currentTab(): string {
   if (typeof window === "undefined") return "";
   const m = window.location.pathname.match(/^\/dev\/([^/?#]+)/);
-  return m ? m[1] : "";
+  return m?.[1] ?? "";
 }
 
 function TabContent({ tab }: { tab: string }): JSX.Element {
