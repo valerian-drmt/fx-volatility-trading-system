@@ -86,20 +86,27 @@ Content-Type: application/json
 
 
 # ============================================================================
-# R4 PR #4 — vol (TODO)
+# R4 PR #4 — vol (LIVE)
 # ============================================================================
+# Necessite : Redis up (latest_vol_surface:{symbol}) + Postgres up (vol_surfaces)
+# Pour avoir des donnees : lancer app.py + Connect + Start Engine, attendre ~3min
+# pour le 1er scan vol.
 
-### Vol surface courante (lit latest_vol_surface:EURUSD dans Redis)
+### Latest vol surface (Redis cache, TTL 600s) — 404 si pas encore de scan
 GET {{api}}/vol/surface?symbol=EURUSD
+Accept: application/json
 
-### Vol surface a un timestamp specifique (lit Postgres)
+### Historical surface a un timestamp exact (Postgres) — 404 si pas de row a cet instant
 GET {{api}}/vol/surface/at/2026-04-20T15:24:00Z?symbol=EURUSD
+Accept: application/json
 
-### Term structure (tenor -> sigma_ATM)
+### Term structure — tenor -> sigma_ATM (derive de la surface Redis)
 GET {{api}}/vol/term-structure?symbol=EURUSD
+Accept: application/json
 
-### Smile a un tenor donne (strike -> IV)
+### Smile 5 points (10P/25P/ATM/25C/10C) d'un tenor (latest Postgres row)
 GET {{api}}/vol/smile/1M?symbol=EURUSD
+Accept: application/json
 
 
 # ============================================================================
