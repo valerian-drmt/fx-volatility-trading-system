@@ -69,9 +69,9 @@ export function VolSurface(): JSX.Element {
     setError(null);
     try {
       const [s, t, sm] = await Promise.all([
-        fetch(`/api/v1/vol/surface?symbol=${symbol}`).then(asJson),
-        fetch(`/api/v1/vol/term-structure?symbol=${symbol}`).then(asJson),
-        fetch(`/api/v1/vol/smile/${tenor}?symbol=${symbol}`).then(asJson),
+        fetch(`/api/v1/vol/surface?symbol=${symbol}`).then((r) => asJson<SurfacePayload>(r)),
+        fetch(`/api/v1/vol/term-structure?symbol=${symbol}`).then((r) => asJson<TermStructure>(r)),
+        fetch(`/api/v1/vol/smile/${tenor}?symbol=${symbol}`).then((r) => asJson<SmileResp>(r)),
       ]);
       setSurface(s);
       setTerms(t);
