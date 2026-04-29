@@ -22,6 +22,7 @@ import { EngineHealth } from "./dev/EngineHealth";
 import { Pricing } from "./dev/Pricing";
 import { RedisInspector } from "./dev/RedisInspector";
 import { StackOverview } from "./dev/StackOverview";
+import { TradePreview } from "./dev/TradePreview";
 import { VolSurface } from "./dev/VolSurface";
 import { WsMonitor } from "./dev/WsMonitor";
 
@@ -39,8 +40,8 @@ const TABS: TabDef[] = [
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
   { id: "vol", label: "🌊 Vol Surface", Component: VolSurface },
   { id: "pricing", label: "💲 Pricing", Component: Pricing },
-  // Les prochaines sections (Trade Preview / Signals / Orders) seront
-  // ajoutées ici au fur et à mesure.
+  { id: "trade-preview", label: "📦 Trade Preview", Component: TradePreview },
+  // Les prochaines sections (Signals / Orders) seront ajoutées ici.
 ];
 
 export function DevLayout(): JSX.Element {
