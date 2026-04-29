@@ -32,26 +32,45 @@ KNOWN_KEYS: list[str] = [
 ]
 
 
+def _parse_age(raw_str: str, now: datetime) -> float | None:
+    """Try to extract a timestamp from `raw_str` (ISO bare or JSON with `timestamp`)
+    and compute age vs `now`. Returns None if neither shape applies.
+    """
+    # Heartbeat keys store a bare ISO-8601 string.
+    try:
+        ts = datetime.fromisoformat(raw_str.replace("Z", "+00:00"))
+        return round((now - ts).total_seconds(), 2)
+    except ValueError:
+        pass
+    # latest_* keys store JSON with a top-level `timestamp` field.
+    try:
+        payload = json.loads(raw_str)
+        if isinstance(payload, dict):
+            ts_str = payload.get("timestamp")
+            if isinstance(ts_str, str):
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                return round((now - ts).total_seconds(), 2)
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        pass
+    return None
+
+
 @router.get("/redis/keys")
 async def redis_keys(
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> dict[str, Any]:
-    """Return the whitelist of known keys with TTL + age (for heartbeats)."""
+    """Return the whitelist of known keys with TTL + age (parsed from value)."""
     out: list[dict[str, Any]] = []
     now = datetime.now(UTC)
     for key in KNOWN_KEYS:
         ttl = await redis.ttl(key)  # -2 = missing, -1 = no expire
         exists = ttl != -2
         age_s: float | None = None
-        if exists and key.startswith("heartbeat:"):
+        if exists:
             raw = await redis.get(key)
             if raw is not None:
-                try:
-                    raw_str = raw.decode() if isinstance(raw, bytes) else raw
-                    ts = datetime.fromisoformat(raw_str.replace("Z", "+00:00"))
-                    age_s = round((now - ts).total_seconds(), 2)
-                except (ValueError, AttributeError):
-                    pass
+                raw_str = raw.decode() if isinstance(raw, bytes) else raw
+                age_s = _parse_age(raw_str, now)
         out.append({
             "key": key,
             "exists": exists,

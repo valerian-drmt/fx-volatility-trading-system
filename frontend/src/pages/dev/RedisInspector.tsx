@@ -80,7 +80,10 @@ export function RedisInspector(): JSX.Element {
             <tbody>
               {keys.map((k) => {
                 const isActive = k.key === selected;
-                const status = !k.exists ? "✗ MISSING" : k.age_s === null ? "—" : "✓";
+                // ✓ dès que la clé existe (TTL > -2) ; ✗ MISSING sinon.
+                // age_s reste null seulement si la valeur n'est ni un ISO
+                // bare ni un JSON avec `timestamp` — pas un fail status.
+                const status = !k.exists ? "✗ MISSING" : "✓";
                 const statusColor = !k.exists ? "#e66" : "#6c6";
                 return (
                   <tr
