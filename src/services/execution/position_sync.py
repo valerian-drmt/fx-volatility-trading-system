@@ -407,10 +407,18 @@ async def position_sync_loop(
                 snaps = await insert_snapshots(db, executor, redis)
                 orders = await sync_orders_from_ib(db, executor)
                 trades = await sync_trades_from_ib(db, executor)
-                logger.info(
-                    "position_sync_tick sync=%s snapshots=%s orders=%s trades=%s",
-                    sync, snaps, orders, trades,
-                )
+            # Heartbeat → Redis (TTL 300s). Visible dans EngineHealth /
+            # /dev/engines comme les 4 autres engines.
+            if redis is not None:
+                try:
+                    ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+                    await redis.set("heartbeat:execution", ts, ex=300)
+                except Exception:
+                    logger.exception("heartbeat_write_failed")
+            logger.info(
+                "position_sync_tick sync=%s snapshots=%s orders=%s trades=%s",
+                sync, snaps, orders, trades,
+            )
         except asyncio.CancelledError:
             logger.info("position_sync_loop_cancelled")
             raise

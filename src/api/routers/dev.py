@@ -91,6 +91,7 @@ ENGINES_CONFIG: list[dict[str, Any]] = [
     {"name": "vol_engine",   "hb": "heartbeat:vol_engine",   "out": "latest_vol_surface:EURUSD",   "stale_s": 300},
     {"name": "risk_engine",  "hb": "heartbeat:risk_engine",  "out": "latest_greeks:portfolio",     "stale_s": 30},
     {"name": "db_writer",    "hb": "heartbeat:db_writer",    "out": None,                          "stale_s": 30},
+    {"name": "execution",    "hb": "heartbeat:execution",    "out": None,                          "stale_s": 10},
 ]
 
 
