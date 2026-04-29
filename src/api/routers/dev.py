@@ -154,24 +154,26 @@ async def _ib_probe(host: str = "ib-gateway", port: int = 4002, timeout_s: float
 
 # Whitelist hardcodée. Évite SQL injection : le nom est validé par membership
 # dans cette liste avant interpolation. Pas d'autres requêtes que SELECT.
-ALLOWED_TABLES: tuple[str, ...] = (
-    "positions",
-    "position_snapshots",
-    "trades",
-    "account_snaps",
-    "vol_surfaces",
-    "signals",
-    "svi_params",
-    "ssvi_params",
-    "backtest_runs",
-    "vol_config",
-)
+# Value = colonne pour ORDER BY DESC (PK la plupart du temps, mais pas toujours
+# `id` — vol_config utilise `version`).
+ALLOWED_TABLES: dict[str, str] = {
+    "positions": "id",
+    "position_snapshots": "id",
+    "trades": "id",
+    "account_snaps": "id",
+    "vol_surfaces": "id",
+    "signals": "id",
+    "svi_params": "id",
+    "ssvi_params": "id",
+    "backtest_runs": "id",
+    "vol_config": "version",
+}
 
 
 @router.get("/tables")
 async def list_tables() -> dict[str, Any]:
     """Return the static whitelist of tables that DB Explorer can read."""
-    return {"tables": list(ALLOWED_TABLES)}
+    return {"tables": list(ALLOWED_TABLES.keys())}
 
 
 @router.get("/tables/{name}")
@@ -181,21 +183,22 @@ async def read_table(
     limit: int = 50,
     offset: int = 0,
 ) -> dict[str, Any]:
-    """Read N rows from `name` (whitelisted), ordered by id DESC.
+    """Read N rows from `name` (whitelisted), ordered DESC by its PK column.
 
     JSONB / datetime / Decimal sont sérialisés via FastAPI's jsonable_encoder.
     """
-    if name not in ALLOWED_TABLES:
+    order_col = ALLOWED_TABLES.get(name)
+    if order_col is None:
         raise HTTPException(status_code=404, detail=f"table {name!r} not in whitelist")
     if not 1 <= limit <= 1000:
         raise HTTPException(status_code=400, detail="limit must be in [1, 1000]")
     if offset < 0:
         raise HTTPException(status_code=400, detail="offset must be >= 0")
 
-    # Tous les modèles ORM ont une PK `id`. Si une table le perd un jour, le
-    # SELECT échouera explicitement — facile à diagnostiquer.
+    # `name` et `order_col` sont validés via la whitelist (pas user input
+    # libre), donc l'interpolation est safe.
     rows_res = await db.execute(
-        text(f"SELECT * FROM {name} ORDER BY id DESC LIMIT :lim OFFSET :off"),  # noqa: S608
+        text(f"SELECT * FROM {name} ORDER BY {order_col} DESC LIMIT :lim OFFSET :off"),  # noqa: S608
         {"lim": limit, "off": offset},
     )
     rows = [dict(r) for r in rows_res.mappings().all()]
