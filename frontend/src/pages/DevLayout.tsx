@@ -18,8 +18,8 @@
 import { useState, type CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
-import { DevPlaceholder } from "./dev/DevPlaceholder";
 import { EngineHealth } from "./dev/EngineHealth";
+import { OrderSubmit } from "./dev/OrderSubmit";
 import { Pricing } from "./dev/Pricing";
 import { RedisInspector } from "./dev/RedisInspector";
 import { Signals } from "./dev/Signals";
@@ -44,7 +44,7 @@ const TABS: TabDef[] = [
   { id: "pricing", label: "💲 Pricing", Component: Pricing },
   { id: "trade-preview", label: "📦 Trade Preview", Component: TradePreview },
   { id: "signals", label: "📈 Signals", Component: Signals },
-  { id: "orders",  label: "📝 Orders",  Component: () => <DevPlaceholder name="Order Submit" /> },
+  { id: "orders",  label: "📝 Orders",  Component: OrderSubmit },
 ];
 
 export function DevLayout(): JSX.Element {
