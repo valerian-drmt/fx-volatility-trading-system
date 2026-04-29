@@ -59,7 +59,7 @@ export function RedisInspector(): JSX.Element {
   }, []);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, padding: 16 }}>
+    <div style={{ display: "grid", gridTemplateRows: "auto 1fr", gap: 12, padding: 12 }}>
       <section className="panel">
         <header className="panel-header">
           <h2>Redis keys</h2>

@@ -18,12 +18,10 @@
 import { useState, type CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
-import { EngineHealth } from "./dev/EngineHealth";
 import { OrderSubmit } from "./dev/OrderSubmit";
 import { Pricing } from "./dev/Pricing";
-import { RedisInspector } from "./dev/RedisInspector";
 import { Signals } from "./dev/Signals";
-import { StackOverview } from "./dev/StackOverview";
+import { StackCombined } from "./dev/StackCombined";
 import { TradePreview } from "./dev/TradePreview";
 import { VolSurface } from "./dev/VolSurface";
 import { WsMonitor } from "./dev/WsMonitor";
@@ -35,9 +33,7 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { id: "stack", label: "🐳 Stack", Component: StackOverview },
-  { id: "health", label: "🩺 Engine Health", Component: EngineHealth },
-  { id: "redis", label: "🔴 Redis Inspector", Component: RedisInspector },
+  { id: "stack", label: "🐳 Stack · Health · Redis", Component: StackCombined },
   { id: "ws", label: "📡 WS Monitor", Component: WsMonitor },
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
   { id: "vol", label: "🌊 Vol Surface", Component: VolSurface },
