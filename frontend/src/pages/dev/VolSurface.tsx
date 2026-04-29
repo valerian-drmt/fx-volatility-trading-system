@@ -210,45 +210,46 @@ function SurfaceSummary({ payload }: { payload: SurfacePayload }): JSX.Element {
 }
 
 function TermStructureView({ terms }: { terms: TermStructureResp }): JSX.Element {
-  // Map to the chart's TermPoint shape (atmVol/fairVol in pct units).
   const chartPoints = terms.pillars.map((p) => ({
     tenor: p.tenor,
     atmVol: p.sigma_atm_pct ?? 0,
     fairVol: p.sigma_fair_pct ?? null,
   }));
   return (
-    <div>
-      <div style={{ height: 300, marginBottom: 12 }}>
+    <div style={twoColStyle}>
+      <div>
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={th}>Tenor</th>
+              <th style={th}>DTE</th>
+              <th style={th}>σ ATM (Q)</th>
+              <th style={th}>σ fair (P)</th>
+              <th style={th}>σ fair (Q)</th>
+              <th style={th}>VRP</th>
+              <th style={th}>Regime</th>
+            </tr>
+          </thead>
+          <tbody>
+            {terms.pillars.map((p) => (
+              <tr key={p.tenor}>
+                <td style={td}>{p.tenor}</td>
+                <td style={td}>{p.dte ?? "—"}</td>
+                <td style={td}>{fmtPct(p.sigma_atm_pct)}</td>
+                <td style={td}>{fmtPct(p.sigma_fair_p_pct)}</td>
+                <td style={td}>{fmtPct(p.sigma_fair_q_pct)}</td>
+                <td style={td}>{p.vrp_vol_pts != null ? p.vrp_vol_pts.toFixed(3) : "—"}</td>
+                <td style={td}>{p.regime ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={chartColStyle}>
         <Suspense fallback={CHART_LOADING}>
           <TermStructureChart points={chartPoints} />
         </Suspense>
       </div>
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={th}>Tenor</th>
-            <th style={th}>DTE</th>
-            <th style={th}>σ ATM (Q)</th>
-            <th style={th}>σ fair (P)</th>
-            <th style={th}>σ fair (Q)</th>
-            <th style={th}>VRP</th>
-            <th style={th}>Regime</th>
-          </tr>
-        </thead>
-        <tbody>
-          {terms.pillars.map((p) => (
-            <tr key={p.tenor}>
-              <td style={td}>{p.tenor}</td>
-              <td style={td}>{p.dte ?? "—"}</td>
-              <td style={td}>{fmtPct(p.sigma_atm_pct)}</td>
-              <td style={td}>{fmtPct(p.sigma_fair_p_pct)}</td>
-              <td style={td}>{fmtPct(p.sigma_fair_q_pct)}</td>
-              <td style={td}>{p.vrp_vol_pts != null ? p.vrp_vol_pts.toFixed(3) : "—"}</td>
-              <td style={td}>{p.regime ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
@@ -259,8 +260,26 @@ function SmileView({ smile }: { smile: SmileResp }): JSX.Element {
     ? smile.svi_curve.map((p) => ({ strike: p.strike, vol: p.iv_pct }))
     : null;
   return (
-    <div>
-      <div style={{ height: 300, marginBottom: 12 }}>
+    <div style={twoColStyle}>
+      <div>
+        <div style={{ fontSize: 12, color: "#aaa", marginBottom: 6 }}>
+          DTE: {smile.dte ?? "—"} · {smile.points.length} pillars · σ fair:{" "}
+          {fmtPct(smile.sigma_fair_pct)} · RV: {fmtPct(smile.rv_pct)}
+        </div>
+        <table style={tableStyle}>
+          <thead><tr><th style={th}>Delta</th><th style={th}>Strike</th><th style={th}>IV</th></tr></thead>
+          <tbody>
+            {smile.points.map((p, i) => (
+              <tr key={i}>
+                <td style={td}>{p.delta_label}</td>
+                <td style={td}>{p.strike.toFixed(5)}</td>
+                <td style={td}>{p.iv_pct.toFixed(3)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={chartColStyle}>
         <Suspense fallback={CHART_LOADING}>
           <SmileChart
             points={chartPoints}
@@ -271,22 +290,6 @@ function SmileView({ smile }: { smile: SmileResp }): JSX.Element {
           />
         </Suspense>
       </div>
-      <div style={{ fontSize: 12, color: "#aaa", marginBottom: 6 }}>
-        DTE: {smile.dte ?? "—"} · {smile.points.length} pillars · σ fair:{" "}
-        {fmtPct(smile.sigma_fair_pct)} · RV: {fmtPct(smile.rv_pct)}
-      </div>
-      <table style={tableStyle}>
-        <thead><tr><th style={th}>Delta</th><th style={th}>Strike</th><th style={th}>IV</th></tr></thead>
-        <tbody>
-          {smile.points.map((p, i) => (
-            <tr key={i}>
-              <td style={td}>{p.delta_label}</td>
-              <td style={td}>{p.strike.toFixed(5)}</td>
-              <td style={td}>{p.iv_pct.toFixed(3)}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
@@ -376,6 +379,8 @@ const btnStyle = {
   cursor: "pointer",
   fontSize: 13,
 };
+const twoColStyle = { display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16, alignItems: "start" };
+const chartColStyle = { height: 300, minWidth: 0 };
 const tableStyle = { borderCollapse: "collapse" as const, fontSize: 12, fontFamily: "Consolas, monospace" };
 const th = { padding: "4px 12px", textAlign: "left" as const, color: "#888", borderBottom: "1px solid #333" };
 const td = { padding: "3px 12px", borderBottom: "1px solid #222" };

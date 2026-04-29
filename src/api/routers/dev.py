@@ -150,6 +150,114 @@ async def _ib_probe(host: str = "ib-gateway", port: int = 4002, timeout_s: float
         return {"status": "DOWN", "host": host, "port": port, "error": str(e)[:80]}
 
 
+async def _tcp_probe(host: str, port: int, timeout_s: float = 2.0) -> str:
+    """Generic TCP probe → 'OK' / 'DOWN'."""
+    try:
+        _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout_s)
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+        return "OK"
+    except Exception:
+        return "DOWN"
+
+
+# Static metadata for the 10 containers de la stack — known at compose time.
+# `image` est le tag attendu, `layer` groupe la viz, `desc` est un one-liner.
+STACK_LAYOUT: list[dict[str, Any]] = [
+    {"name": "frontend",    "image": "fx-options-frontend:local",   "layer": "edge",    "desc": "React SPA (nginx static)"},
+    {"name": "nginx",       "image": "nginx:alpine",                "layer": "edge",    "desc": "Reverse proxy (80/443)"},
+    {"name": "api",         "image": "fx-options-api:local",        "layer": "app",     "desc": "FastAPI REST + WS bridge"},
+    {"name": "redis",       "image": "redis:7-alpine",              "layer": "data",    "desc": "Pub/sub + cache"},
+    {"name": "postgres",    "image": "postgres:16-alpine",          "layer": "data",    "desc": "Persistence (10 tables)"},
+    {"name": "ib-gateway",  "image": "ghcr.io/gnzsnz/ib-gateway",   "layer": "external","desc": "IB API gateway (4002)"},
+    {"name": "market-data", "image": "fx-options-market-data:local","layer": "engines", "desc": "Tick stream → Redis"},
+    {"name": "vol-engine",  "image": "fx-options-vol-engine:local", "layer": "engines", "desc": "SVI/SSVI fit + signals"},
+    {"name": "risk-engine", "image": "fx-options-risk-engine:local","layer": "engines", "desc": "Greeks + P&L curve"},
+    {"name": "db-writer",   "image": "fx-options-db-writer:local",  "layer": "engines", "desc": "Redis events → Postgres"},
+]
+
+
+@router.get("/stack")
+async def stack_overview(
+    redis: Annotated[aioredis.Redis, Depends(get_redis)],
+) -> dict[str, Any]:
+    """Aggregate status pour les 10 containers, dérivé de probes + heartbeats.
+
+    On ne lit pas le Docker socket (api n'a pas accès, et c'est mieux comme ça).
+    Statuses dérivés :
+      - postgres / redis / ib-gateway   : TCP probe ou ping
+      - frontend                        : HTTP probe http://frontend:8080/
+      - nginx / api                     : implicite (la requête arrive via eux)
+      - 4 engines                       : heartbeat Redis + age vs threshold
+    """
+    now = datetime.now(UTC)
+
+    # 1. Probes data sources
+    redis_ok = "DOWN"
+    try:
+        redis_ok = "OK" if await redis.ping() else "DOWN"
+    except Exception:
+        redis_ok = "DOWN"
+
+    pg_status = await _tcp_probe("postgres", 5432)
+    ib_status = (await _ib_probe()).get("status", "DOWN")
+    fe_status = await _tcp_probe("frontend", 8080)
+
+    # 2. Engines : reuse the per-engine config from /engines
+    engines_status: dict[str, str] = {}
+    for cfg in ENGINES_CONFIG:
+        hb_age = await _key_age(redis, cfg["hb"], now)
+        if hb_age is None:
+            engines_status[cfg["name"]] = "DOWN"
+        elif hb_age < cfg["stale_s"]:
+            engines_status[cfg["name"]] = "OK"
+        else:
+            engines_status[cfg["name"]] = "STALE"
+
+    # 3. Compose final status par container
+    container_status = {
+        "frontend":   fe_status,
+        "nginx":      "OK",                  # implicite
+        "api":        "OK",                  # implicite (we're in it)
+        "redis":      redis_ok,
+        "postgres":   pg_status,
+        "ib-gateway": ib_status,
+        "market-data": engines_status.get("market_data", "DOWN"),
+        "vol-engine":  engines_status.get("vol_engine", "DOWN"),
+        "risk-engine": engines_status.get("risk_engine", "DOWN"),
+        "db-writer":   engines_status.get("db_writer", "DOWN"),
+    }
+
+    out = []
+    for entry in STACK_LAYOUT:
+        out.append({**entry, "status": container_status[entry["name"]]})
+
+    # Edges = relations cf. docs/container_deps.md (A → B = B dépend de A).
+    edges = [
+        {"from": "postgres",    "to": "api"},
+        {"from": "redis",       "to": "api"},
+        {"from": "postgres",    "to": "db-writer"},
+        {"from": "redis",       "to": "db-writer"},
+        {"from": "redis",       "to": "market-data"},
+        {"from": "ib-gateway",  "to": "market-data"},
+        {"from": "redis",       "to": "vol-engine"},
+        {"from": "ib-gateway",  "to": "vol-engine"},
+        {"from": "redis",       "to": "risk-engine"},
+        {"from": "ib-gateway",  "to": "risk-engine"},
+        {"from": "api",         "to": "nginx"},
+        {"from": "frontend",    "to": "nginx"},
+    ]
+
+    return {
+        "containers": out,
+        "edges": edges,
+        "timestamp": now.isoformat().replace("+00:00", "Z"),
+    }
+
+
 # --- DB Explorer ------------------------------------------------------------
 
 # Whitelist hardcodée. Évite SQL injection : le nom est validé par membership
