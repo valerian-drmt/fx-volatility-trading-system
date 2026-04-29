@@ -19,6 +19,7 @@ import { useState, type CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
 import { EngineHealth } from "./dev/EngineHealth";
+import { Pricing } from "./dev/Pricing";
 import { RedisInspector } from "./dev/RedisInspector";
 import { StackOverview } from "./dev/StackOverview";
 import { VolSurface } from "./dev/VolSurface";
@@ -37,8 +38,9 @@ const TABS: TabDef[] = [
   { id: "ws", label: "📡 WS Monitor", Component: WsMonitor },
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
   { id: "vol", label: "🌊 Vol Surface", Component: VolSurface },
-  // Les prochaines sections (Pricing / Trade Preview / Signals / Orders)
-  // seront ajoutées ici au fur et à mesure.
+  { id: "pricing", label: "💲 Pricing", Component: Pricing },
+  // Les prochaines sections (Trade Preview / Signals / Orders) seront
+  // ajoutées ici au fur et à mesure.
 ];
 
 export function DevLayout(): JSX.Element {

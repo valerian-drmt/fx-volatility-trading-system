@@ -161,10 +161,6 @@ export function StackOverview(): JSX.Element {
         </svg>
       </div>
 
-      <div style={{ marginTop: 12, fontSize: 12, color: "#666", textAlign: "center" }}>
-        Flèches : <code>A → B</code> signifie « <strong>B utilise A</strong> ».
-        Cf. <code>docs/container_deps.md</code> pour le graphe complet (incluant les edges secondaires).
-      </div>
     </div>
   );
 }
