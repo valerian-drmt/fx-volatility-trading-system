@@ -191,6 +191,32 @@ class Order(Base):
     )
 
 
+class OrderEvent(Base):
+    """Audit log : 1 row par action utilisateur envoyée à IB.
+
+    Append-only. Permet de retrouver qui a demandé quoi, quand, et la
+    réponse IB exacte (success/failure, message d'erreur).
+    """
+    __tablename__ = "order_events"
+    __table_args__ = (
+        CheckConstraint(
+            "action_type IN ('SUBMIT', 'CANCEL', 'CLOSE_POSITION')",
+            name="ck_order_events_action_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"))
+    action_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    request_payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
+    response_payload: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(String(500))
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class AccountSnap(Base):
     __tablename__ = "account_snaps"
 

@@ -55,22 +55,14 @@ services:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
       REDIS_URL: redis://redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # IB connection pour le router /orders (place/cancel/close).
-      # ClientId 4 = différent des engines (1 market-data, 2 vol, 3 risk).
-      # IB_REQUIRED=false → l'api boot même si Gateway DOWN, les endpoints
-      # /orders renvoient 503 dans ce cas. Optionnel pour la dev.
-      IB_HOST: ib-gateway
-      IB_PORT: 4002
-      IB_CLIENT_ID: 4
-      IB_REQUIRED: ${IB_REQUIRED:-false}
+      # URL interne du nouveau container execution-engine. L'api forward
+      # les actions /orders / /exec/positions vers ce service.
+      EXECUTION_URL: http://execution-engine:8001
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ib-gateway:
-        condition: service_started
-        required: false
     networks:
       fxvol-internal:
         ipv4_address: 172.20.0.13
@@ -227,6 +219,43 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  execution-engine:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.execution
+    image: ${EXECUTION_IMAGE:-fx-options-execution:local}
+    container_name: fxvol-execution
+    profiles: ["engines"]
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: execution
+      DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # IB connection — clientId 5 (≠ 1 market-data, 2 vol, 3 risk, 4 réservé api legacy).
+      IB_HOST: ib-gateway
+      IB_PORT: 4002
+      IB_CLIENT_ID: 5
+      # Cycle de sync IB → Postgres pour orders/trades/positions/snapshots.
+      SYNC_INTERVAL_S: ${EXECUTION_SYNC_INTERVAL_S:-1.0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ib-gateway:
+        condition: service_started
+        required: false
+    networks:
+      fxvol-internal:
+        ipv4_address: 172.20.0.14
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8001/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
 
   frontend:
     build:

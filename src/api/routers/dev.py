@@ -171,12 +171,13 @@ STACK_LAYOUT: list[dict[str, Any]] = [
     {"name": "nginx",       "image": "nginx:alpine",                "layer": "edge",    "desc": "Reverse proxy (80/443)"},
     {"name": "api",         "image": "fx-options-api:local",        "layer": "app",     "desc": "FastAPI REST + WS bridge"},
     {"name": "redis",       "image": "redis:7-alpine",              "layer": "data",    "desc": "Pub/sub + cache"},
-    {"name": "postgres",    "image": "postgres:16-alpine",          "layer": "data",    "desc": "Persistence (10 tables)"},
+    {"name": "postgres",    "image": "postgres:16-alpine",          "layer": "data",    "desc": "Persistence (12 tables)"},
     {"name": "ib-gateway",  "image": "ghcr.io/gnzsnz/ib-gateway",   "layer": "external","desc": "IB API gateway (4002)"},
     {"name": "market-data", "image": "fx-options-market-data:local","layer": "engines", "desc": "Tick stream → Redis"},
     {"name": "vol-engine",  "image": "fx-options-vol-engine:local", "layer": "engines", "desc": "SVI/SSVI fit + signals"},
     {"name": "risk-engine", "image": "fx-options-risk-engine:local","layer": "engines", "desc": "Greeks + P&L curve"},
     {"name": "db-writer",   "image": "fx-options-db-writer:local",  "layer": "engines", "desc": "Redis events → Postgres"},
+    {"name": "execution",   "image": "fx-options-execution:local",  "layer": "engines", "desc": "Orders/positions IB → DB (1s)"},
 ]
 
 
@@ -205,6 +206,7 @@ async def stack_overview(
     pg_status = await _tcp_probe("postgres", 5432)
     ib_status = (await _ib_probe()).get("status", "DOWN")
     fe_status = await _tcp_probe("frontend", 8080)
+    exec_status = await _tcp_probe("execution-engine", 8001)
 
     # 2. Engines : reuse the per-engine config from /engines
     engines_status: dict[str, str] = {}
@@ -229,6 +231,7 @@ async def stack_overview(
         "vol-engine":  engines_status.get("vol_engine", "DOWN"),
         "risk-engine": engines_status.get("risk_engine", "DOWN"),
         "db-writer":   engines_status.get("db_writer", "DOWN"),
+        "execution":  exec_status,
     }
 
     out = []
@@ -265,6 +268,7 @@ async def stack_overview(
 # Value = colonne pour ORDER BY DESC (PK la plupart du temps, mais pas toujours
 # `id` — vol_config utilise `version`).
 ALLOWED_TABLES: dict[str, str] = {
+    "order_events": "id",
     "orders": "id",
     "trades": "id",
     "positions": "id",

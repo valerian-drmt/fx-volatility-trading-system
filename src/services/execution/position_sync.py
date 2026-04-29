@@ -22,8 +22,7 @@ from redis import asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from api.dependencies import get_redis_client_or_none
-from api.services.order_executor import OrderExecutor
+from services.execution.order_executor import OrderExecutor
 from core.pricing.bs import bs_delta, bs_gamma, bs_theta, bs_vega
 from persistence.models import Order, Position, PositionSnapshot, Trade
 
@@ -385,11 +384,11 @@ async def sync_trades_from_ib(db: AsyncSession, executor: OrderExecutor) -> dict
 async def position_sync_loop(
     session_maker: async_sessionmaker[AsyncSession],
     executor: OrderExecutor,
+    redis: aioredis.Redis | None = None,
     interval_s: float = SNAPSHOT_INTERVAL_S,
 ) -> None:
     """Background asyncio task : sync + snapshot toutes les `interval_s` secondes."""
     logger.info("position_sync_loop_started interval=%.1fs", interval_s)
-    redis = get_redis_client_or_none()
 
     try:
         async with session_maker() as db:

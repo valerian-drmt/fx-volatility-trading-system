@@ -72,6 +72,7 @@ export function OrderSubmit(): JSX.Element {
   const [positions, setPositions] = useState<PositionRow[]>([]);
   const [trades, setTrades] = useState<TableRow[]>([]);
   const [snapshots, setSnapshots] = useState<TableRow[]>([]);
+  const [events, setEvents] = useState<TableRow[]>([]);
 
   const sendPreset = async (key: keyof typeof PRESETS) => {
     if (!confirm(`Envoyer ${PRESETS[key].payloads.length} ordre(s) — ${PRESETS[key].label} ?`)) return;
@@ -121,8 +122,12 @@ export function OrderSubmit(): JSX.Element {
     try { setSnapshots(await fetchTable<TableRow>("/api/v1/dev/tables/position_snapshots?limit=20")); }
     catch (e) { console.error(e); }
   };
+  const refreshEvents = async () => {
+    try { setEvents(await fetchTable<TableRow>("/api/v1/dev/tables/order_events?limit=20")); }
+    catch (e) { console.error(e); }
+  };
   const refreshAll = async () => {
-    await Promise.all([refreshOrders(), refreshPositions(), refreshTrades(), refreshSnapshots()]);
+    await Promise.all([refreshEvents(), refreshOrders(), refreshPositions(), refreshTrades(), refreshSnapshots()]);
   };
 
   const cancelOrder = async (id: number) => {
@@ -178,7 +183,11 @@ export function OrderSubmit(): JSX.Element {
         ))}
       </div>
 
-      {/* 4 tables : orders / trades / positions (live) / snapshots */}
+      {/* 5 tables : order_events / orders / trades / positions / snapshots */}
+      <TableSection title={`Order events (${events.length}) — audit log user → IB`} onRefresh={refreshEvents}>
+        <GenericTable rows={events} cols={["id", "timestamp", "action_type", "order_id", "success", "error_message", "request_payload"]} />
+      </TableSection>
+
       <TableSection title={`Open orders (${orders.length}) — GET /api/v1/orders`} onRefresh={refreshOrders}>
         {orders.length === 0 ? <Empty /> : (
           <table style={tableStyle}>

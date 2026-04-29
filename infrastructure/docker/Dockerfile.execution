@@ -1,0 +1,36 @@
+# Execution engine — IB-connected microservice qui owns le lifecycle des
+# orders/trades/positions/snapshots/order_events. L'api forward les requêtes
+# REST utilisateur vers ce service via HTTP interne.
+#
+# R9 sandbox : split de l'api pour que celle-ci redevienne pure stateless.
+#
+#   docker build -f infrastructure/docker/Dockerfile.execution -t fx-options-execution .
+
+ARG PYTHON_IMAGE=python:3.11-slim
+
+FROM ${PYTHON_IMAGE} AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app/src
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements.txt ./
+RUN pip install --upgrade pip && pip install -r requirements.txt
+COPY src/ ./src/
+
+EXPOSE 8001
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=30s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8001/health || exit 1
+
+CMD ["uvicorn", "services.execution.main:app", "--host", "0.0.0.0", "--port", "8001", "--proxy-headers"]
