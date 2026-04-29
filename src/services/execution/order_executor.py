@@ -89,6 +89,29 @@ class OrderExecutor:
         trades = ib.openTrades()
         return [_trade_to_dict(t) for t in trades]
 
+    async def account_summary(self) -> dict[str, Any]:
+        """Return un dict des tags clés du compte IB (NetLiq, Cash, BP, etc.).
+
+        Tags utilisés pour `account_snaps` :
+          NetLiquidation, TotalCashValue, BuyingPower, AvailableFunds,
+          UnrealizedPnL, RealizedPnL, GrossPositionValue.
+        Plus `by_currency` : {USD: {tag: val, ...}, EUR: {...}, ...}.
+        """
+        ib = self._ensure()
+        out: dict[str, Any] = {"by_currency": {}, "account": None}
+        for v in ib.accountValues():
+            try:
+                val = float(v.value)
+            except (ValueError, TypeError):
+                continue
+            cur = v.currency or "BASE"
+            if cur in ("USD", "BASE"):
+                out[v.tag] = val
+            out["by_currency"].setdefault(cur, {})[v.tag] = val
+            if out["account"] is None and v.account:
+                out["account"] = v.account
+        return out
+
     async def list_positions(self) -> list[dict[str, Any]]:
         """Return live positions from IB (= broker truth, not our DB cache)."""
         ib = self._ensure()

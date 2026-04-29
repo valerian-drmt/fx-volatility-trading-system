@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from services.execution.order_executor import OrderExecutor
 from core.pricing.bs import bs_delta, bs_gamma, bs_theta, bs_vega
-from persistence.models import Order, Position, PositionSnapshot, Trade
+from persistence.models import AccountSnap, Order, Position, PositionSnapshot, Trade
 
 logger = logging.getLogger(__name__)
 
@@ -381,6 +381,47 @@ async def sync_trades_from_ib(db: AsyncSession, executor: OrderExecutor) -> dict
     return {"synced": len(trades), "inserted": inserted}
 
 
+async def insert_account_snap(db: AsyncSession, executor: OrderExecutor) -> bool:
+    """Insert un row dans account_snaps avec NetLiq/Cash/BP/PnL et un dict
+    by_currency en JSONB. Cadence plus lente que les positions (l'état du
+    compte n'évolue pas en sub-seconde)."""
+    if not executor.is_connected():
+        return False
+    summary = await executor.account_summary()
+    if not summary:
+        return False
+
+    # Compte les positions OPEN locales (= ce qu'on tracke)
+    open_count = (await db.execute(
+        select(Position).where(Position.status == "OPEN")
+    )).scalars().all()
+
+    snap = AccountSnap(
+        timestamp=datetime.now(UTC),
+        net_liq_usd=_dec(summary.get("NetLiquidation")),
+        cash_usd=_dec(summary.get("TotalCashValue")),
+        buying_power_usd=_dec(summary.get("BuyingPower")),
+        available_usd=_dec(summary.get("AvailableFunds")),
+        unrealized_pnl_usd=_dec(summary.get("UnrealizedPnL")),
+        realized_pnl_usd=_dec(summary.get("RealizedPnL")),
+        gross_position_value_usd=_dec(summary.get("GrossPositionValue")),
+        currencies=summary.get("by_currency") or None,
+        open_positions_count=len(open_count),
+    )
+    db.add(snap)
+    await db.commit()
+    return True
+
+
+def _dec(v: float | None) -> Decimal | None:
+    if v is None:
+        return None
+    try:
+        return Decimal(str(round(float(v), 2)))
+    except (ValueError, TypeError):
+        return None
+
+
 async def position_sync_loop(
     session_maker: async_sessionmaker[AsyncSession],
     executor: OrderExecutor,
@@ -399,14 +440,21 @@ async def position_sync_loop(
     except Exception:
         logger.exception("position_sync_initial_failed")
 
+    tick = 0
     while True:
         try:
             await asyncio.sleep(interval_s)
+            tick += 1
             async with session_maker() as db:
                 sync = await sync_positions_from_ib(db, executor, redis)
                 snaps = await insert_snapshots(db, executor, redis)
                 orders = await sync_orders_from_ib(db, executor)
                 trades = await sync_trades_from_ib(db, executor)
+                # Account snap : 1 row toutes les 5 ticks (= ~5s à
+                # interval_s=1.0). L'état du compte évolue lentement.
+                acct = False
+                if tick % 5 == 0:
+                    acct = await insert_account_snap(db, executor)
             # Heartbeat → Redis (TTL 300s). Visible dans EngineHealth /
             # /dev/engines comme les 4 autres engines.
             if redis is not None:
@@ -416,8 +464,8 @@ async def position_sync_loop(
                 except Exception:
                     logger.exception("heartbeat_write_failed")
             logger.info(
-                "position_sync_tick sync=%s snapshots=%s orders=%s trades=%s",
-                sync, snaps, orders, trades,
+                "position_sync_tick sync=%s snapshots=%s orders=%s trades=%s acct=%s",
+                sync, snaps, orders, trades, acct,
             )
         except asyncio.CancelledError:
             logger.info("position_sync_loop_cancelled")
