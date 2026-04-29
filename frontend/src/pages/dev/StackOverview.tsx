@@ -1,42 +1,74 @@
 /**
- * Stack Overview — schéma des 10 containers de la stack (cf. docs/schémas/
- * containers-overview.drawio) avec leur status (image attendue / OK / DOWN /
- * STALE) et leurs dépendances. Auto-refresh 5s.
+ * Stack Overview — schéma SVG type draw.io des 10 containers + flèches de
+ * dépendance, status live coloré (cf. docs/schémas/containers-overview.drawio
+ * pour la version source). Auto-refresh 5s.
  *
- * Layout = 4 layers verticales empilées top-down :
- *   Edge layer     : frontend, nginx
- *   App layer      : api
- *   Data layer     : redis, postgres, ib-gateway
- *   Engines layer  : market-data, vol-engine, risk-engine, db-writer
+ * Layout 4 rangées :
+ *   Row 1 (data)    : redis · postgres · ib-gateway
+ *   Row 2 (engines) : market-data · vol-engine · risk-engine · db-writer
+ *   Row 3 (server)  : api
+ *   Row 4 (edge)    : nginx · frontend
  *
- * Pas de SVG arrows pour rester simple — les flux sont implicites via la
- * disposition (top → bottom = dépendant → dépendances) + un descriptif
- * sous chaque box.
+ * Arrow convention : A → B veut dire "B utilise A" (cf. container_deps.md).
+ * Les engines sont au milieu parce qu'ils sont la couche métier centrale.
  */
 import { useEffect, useRef, useState } from "react";
 
 interface Container {
   name: string;
   image: string;
-  layer: "edge" | "app" | "data" | "external" | "engines";
-  desc: string;
   status: "OK" | "DOWN" | "STALE";
+  desc: string;
 }
 
 interface StackResp {
   containers: Container[];
-  edges: { from: string; to: string }[];
   timestamp: string;
 }
 
 const POLL_MS = 5_000;
 
-const LAYERS: { key: Container["layer"]; label: string }[] = [
-  { key: "edge", label: "Edge — entry point" },
-  { key: "app", label: "App — REST/WS" },
-  { key: "data", label: "Data sources" },
-  { key: "external", label: "External" },
-  { key: "engines", label: "Engines — pipeline workers" },
+// Coordonnées (x, y) en unités SVG. ViewBox "0 0 W H".
+const BOX_W = 150;
+const BOX_H = 60;
+const SVG_W = 900;
+const SVG_H = 540;
+
+// Position de chaque box (centre top-left). 4 colonnes × 4 rangées.
+const POSITIONS: Record<string, { x: number; y: number }> = {
+  // Row 1 (data sources)
+  "redis":      { x: 100, y: 30 },
+  "postgres":   { x: 375, y: 30 },
+  "ib-gateway": { x: 650, y: 30 },
+  // Row 2 (engines)
+  "market-data": { x: 30,  y: 180 },
+  "vol-engine":  { x: 220, y: 180 },
+  "risk-engine": { x: 410, y: 180 },
+  "db-writer":   { x: 600, y: 180 },
+  // Row 3 (api)
+  "api":         { x: 375, y: 330 },
+  // Row 4 (edge)
+  "nginx":       { x: 280, y: 450 },
+  "frontend":    { x: 470, y: 450 },
+};
+
+// Edges = (from, to). "from" est utilisé par "to" (ex: redis → api = api utilise redis).
+const EDGES: { from: string; to: string }[] = [
+  // data → engines
+  { from: "redis",      to: "market-data" },
+  { from: "redis",      to: "vol-engine" },
+  { from: "redis",      to: "risk-engine" },
+  { from: "redis",      to: "db-writer" },
+  { from: "postgres",   to: "db-writer" },
+  { from: "ib-gateway", to: "market-data" },
+  { from: "ib-gateway", to: "vol-engine" },
+  { from: "ib-gateway", to: "risk-engine" },
+  // data → api
+  { from: "redis",    to: "api" },
+  { from: "postgres", to: "api" },
+  // edges → api
+  { from: "api",      to: "nginx" },
+  { from: "frontend", to: "nginx" },
 ];
 
 export function StackOverview(): JSX.Element {
@@ -65,9 +97,12 @@ export function StackOverview(): JSX.Element {
     };
   }, [autoRefresh]);
 
+  const containerByName: Record<string, Container> = {};
+  if (data) for (const c of data.containers) containerByName[c.name] = c;
+
   return (
     <div style={{ padding: 16 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
         <button onClick={fetchData} style={btnStyle}>Refresh</button>
         <label style={{ color: "#aaa", fontSize: 13 }}>
           <input
@@ -87,79 +122,143 @@ export function StackOverview(): JSX.Element {
 
       {error && <div style={{ color: "#e66", marginBottom: 12 }}>{error}</div>}
 
-      {data && (
-        <div>
-          {LAYERS.map((layer) => {
-            const containers = data.containers.filter((c) => c.layer === layer.key);
-            if (containers.length === 0) return null;
-            return (
-              <div key={layer.key} style={{ marginBottom: 24 }}>
-                <div style={layerLabelStyle}>{layer.label}</div>
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  {containers.map((c) => <ContainerBox key={c.name} c={c} />)}
-                </div>
-                <div style={arrowStyle}>↓</div>
-              </div>
-            );
-          })}
+      <div style={{ background: "#0a0a0a", border: "1px solid #222", borderRadius: 4, padding: 12 }}>
+        <svg
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          style={{ width: "100%", maxWidth: 1100, height: "auto", display: "block", margin: "0 auto" }}
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          {/* Marker for arrowheads */}
+          <defs>
+            <marker
+              id="arrow"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#666" />
+            </marker>
+          </defs>
 
-          <div style={{ marginTop: 24, fontSize: 12, color: "#888" }}>
-            <strong style={{ color: "#7af" }}>Flux des données</strong> (lecture top → bottom = dépendances) :
-            <ul style={{ marginTop: 6, paddingLeft: 18 }}>
-              {data.edges.map((e, i) => (
-                <li key={i}><code>{e.from}</code> → <code>{e.to}</code></li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
+          {/* Layer labels */}
+          <text x="20" y="18" style={layerLabelSvg}>DATA</text>
+          <text x="20" y="168" style={layerLabelSvg}>ENGINES</text>
+          <text x="20" y="318" style={layerLabelSvg}>API</text>
+          <text x="20" y="438" style={layerLabelSvg}>EDGE</text>
+
+          {/* Edges (drawn first so boxes overlay them) */}
+          {EDGES.map((e, i) => (
+            <Arrow key={i} from={POSITIONS[e.from]} to={POSITIONS[e.to]} />
+          ))}
+
+          {/* Boxes */}
+          {Object.entries(POSITIONS).map(([name, pos]) => (
+            <Box key={name} pos={pos} container={containerByName[name]} name={name} />
+          ))}
+        </svg>
+      </div>
+
+      <div style={{ marginTop: 12, fontSize: 12, color: "#666", textAlign: "center" }}>
+        Flèches : <code>A → B</code> signifie « <strong>B utilise A</strong> ».
+        Cf. <code>docs/container_deps.md</code> pour le graphe complet (incluant les edges secondaires).
+      </div>
     </div>
   );
 }
 
-function ContainerBox({ c }: { c: Container }): JSX.Element {
-  const color =
-    c.status === "OK" ? "#6c6" :
-    c.status === "STALE" ? "#cc6" : "#e66";
-
+function Box({
+  pos, container, name,
+}: {
+  pos: { x: number; y: number };
+  container: Container | undefined;
+  name: string;
+}): JSX.Element {
+  const status = container?.status ?? "DOWN";
+  const stroke =
+    status === "OK" ? "#6c6" :
+    status === "STALE" ? "#cc6" : "#e66";
   return (
-    <div
-      style={{
-        flex: "1 1 200px",
-        minWidth: 200,
-        maxWidth: 280,
-        background: "#1a1a1a",
-        border: `2px solid ${color}`,
-        borderRadius: 4,
-        padding: "10px 12px",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <strong style={{ fontSize: 13, color: "#fff" }}>{c.name}</strong>
-        <span style={{ color, fontSize: 12, fontWeight: 600 }}>● {c.status}</span>
-      </div>
-      <div style={{ fontSize: 11, color: "#888", fontFamily: "Consolas, monospace", marginBottom: 4, wordBreak: "break-all" }}>
-        {c.image}
-      </div>
-      <div style={{ fontSize: 11, color: "#aaa" }}>{c.desc}</div>
-    </div>
+    <g>
+      <rect
+        x={pos.x}
+        y={pos.y}
+        width={BOX_W}
+        height={BOX_H}
+        rx={4}
+        fill="#1a1a1a"
+        stroke={stroke}
+        strokeWidth={2}
+      />
+      <text x={pos.x + BOX_W / 2} y={pos.y + 22} textAnchor="middle" fill="#fff" fontSize="13" fontWeight="600">
+        {name}
+      </text>
+      <text x={pos.x + BOX_W / 2} y={pos.y + 38} textAnchor="middle" fill="#888" fontSize="10" fontFamily="Consolas, monospace">
+        {(container?.image ?? "—").split("/").pop()}
+      </text>
+      <text x={pos.x + BOX_W / 2} y={pos.y + 53} textAnchor="middle" fill={stroke} fontSize="11" fontWeight="600">
+        ● {status}
+      </text>
+    </g>
   );
 }
 
-const layerLabelStyle = {
-  fontSize: 11,
-  color: "#7af",
-  textTransform: "uppercase" as const,
-  letterSpacing: 1,
-  marginBottom: 6,
-};
+function Arrow({
+  from, to,
+}: {
+  from: { x: number; y: number } | undefined;
+  to: { x: number; y: number } | undefined;
+}): JSX.Element | null {
+  if (!from || !to) return null;
+  // Arrow va du bord bas/haut de la box source au bord haut/bas de la cible.
+  // On calcule les centres et on raccourcit pour ne pas chevaucher la box.
+  const fcx = from.x + BOX_W / 2;
+  const fcy = from.y + BOX_H / 2;
+  const tcx = to.x + BOX_W / 2;
+  const tcy = to.y + BOX_H / 2;
+  // Compute clipping aux bords des box (rectangles).
+  const start = clipToBox(fcx, fcy, tcx, tcy, from);
+  const end = clipToBox(tcx, tcy, fcx, fcy, to);
+  return (
+    <line
+      x1={start.x}
+      y1={start.y}
+      x2={end.x}
+      y2={end.y}
+      stroke="#555"
+      strokeWidth={1.2}
+      markerEnd="url(#arrow)"
+    />
+  );
+}
 
-const arrowStyle = {
-  textAlign: "center" as const,
-  fontSize: 18,
-  color: "#444",
-  margin: "8px 0",
-};
+/**
+ * Clip a line from (cx, cy) toward (tx, ty) so it stops at the rectangle's edge.
+ * Box origin = (box.x, box.y), size = (BOX_W, BOX_H).
+ */
+function clipToBox(cx: number, cy: number, tx: number, ty: number, box: { x: number; y: number }): { x: number; y: number } {
+  const dx = tx - cx;
+  const dy = ty - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  // Half-extents
+  const hw = BOX_W / 2;
+  const hh = BOX_H / 2;
+  // Center of box (cx, cy is already box center thanks to caller).
+  // Find scale t in (0, 1] such that we hit a vertical or horizontal edge.
+  const tx_ = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+  const ty_ = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+  const t = Math.min(tx_, ty_);
+  return { x: cx + dx * t, y: cy + dy * t };
+}
+
+const layerLabelSvg = {
+  fill: "#7af",
+  fontSize: 10,
+  fontFamily: "system-ui, sans-serif",
+  letterSpacing: 1.5,
+} as const;
 
 const btnStyle = {
   padding: "4px 12px",
