@@ -265,9 +265,10 @@ async def stack_overview(
 # Value = colonne pour ORDER BY DESC (PK la plupart du temps, mais pas toujours
 # `id` — vol_config utilise `version`).
 ALLOWED_TABLES: dict[str, str] = {
+    "orders": "id",
+    "trades": "id",
     "positions": "id",
     "position_snapshots": "id",
-    "trades": "id",
     "account_snaps": "id",
     "vol_surfaces": "id",
     "signals": "id",

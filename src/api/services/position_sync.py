@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from api.dependencies import get_redis_client_or_none
 from api.services.order_executor import OrderExecutor
 from core.pricing.bs import bs_delta, bs_gamma, bs_theta, bs_vega
-from persistence.models import Position, PositionSnapshot
+from persistence.models import Order, Position, PositionSnapshot, Trade
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +274,118 @@ async def insert_snapshots(
     return inserted
 
 
+async def sync_orders_from_ib(db: AsyncSession, executor: OrderExecutor) -> dict:
+    """Upsert tous les Trade IB (= orders côté nous) dans la table orders.
+
+    Match par `ib_perm_id` (identifiant IB stable cross-session).
+    Les statuses suivent IB : PendingSubmit / Submitted / Filled / Cancelled / etc.
+    """
+    if not executor.is_connected():
+        return {"synced": 0, "upserted": 0, "error": "ib_not_connected"}
+    ib = executor._ib  # type: ignore[attr-defined]
+    trades = ib.trades() if ib else []
+
+    upserted = 0
+    for t in trades:
+        o = t.order
+        c = t.contract
+        s = t.orderStatus
+        if not o.permId:
+            continue  # nouveau ordre pas encore acked par IB
+        existing = (await db.execute(
+            select(Order).where(Order.ib_perm_id == o.permId)
+        )).scalar_one_or_none()
+        fields = {
+            "ib_order_id": o.orderId,
+            "symbol": c.symbol or "",
+            "sec_type": c.secType or "",
+            "expiry": c.lastTradeDateOrContractMonth or None,
+            "strike": Decimal(str(c.strike)) if c.strike else None,
+            "right": c.right or None,
+            "side": o.action,
+            "quantity": Decimal(str(o.totalQuantity)),
+            "limit_price": Decimal(str(o.lmtPrice)) if o.lmtPrice else None,
+            "status": s.status,
+            "filled_qty": Decimal(str(s.filled)),
+            "avg_fill_price": Decimal(str(s.avgFillPrice)) if s.avgFillPrice else None,
+        }
+        if existing is None:
+            db.add(Order(ib_perm_id=o.permId, **fields))
+        else:
+            for k, v in fields.items():
+                setattr(existing, k, v)
+        upserted += 1
+    await db.commit()
+    return {"synced": len(trades), "upserted": upserted}
+
+
+async def sync_trades_from_ib(db: AsyncSession, executor: OrderExecutor) -> dict:
+    """Insert one Trade row per IB fill (filled order).
+
+    Schema : 1 row par IB Trade qui a fillé. UNIQUE sur ib_order_id (str).
+    On link au position_id via le tuple (symbol, instrument_type, strike,
+    maturity, option_type) — best-effort, peut être None si la position a
+    déjà été fermée.
+    """
+    if not executor.is_connected():
+        return {"synced": 0, "inserted": 0, "error": "ib_not_connected"}
+    ib = executor._ib  # type: ignore[attr-defined]
+    trades = ib.trades() if ib else []
+
+    # Index OPEN positions par tuple pour le matching position_id.
+    pos_rows = (await db.execute(
+        select(Position).where(Position.status == "OPEN")
+    )).scalars().all()
+    pos_by_key = {_db_position_key(p): p for p in pos_rows}
+
+    inserted = 0
+    for t in trades:
+        s = t.orderStatus
+        if s.status != "Filled" or s.filled <= 0:
+            continue
+        o = t.order
+        c = t.contract
+        ib_order_id = str(o.permId or o.orderId)
+        existing = (await db.execute(
+            select(Trade).where(Trade.ib_order_id == ib_order_id)
+        )).scalar_one_or_none()
+        if existing is not None:
+            continue  # déjà insert
+
+        # Match position par tuple
+        key = (
+            c.symbol,
+            _sec_type_to_instrument_type(c.secType),
+            Decimal(str(c.strike)) if c.strike else None,
+            _expiry_to_date(c.lastTradeDateOrContractMonth),
+            _right_to_option_type(c.right),
+        )
+        position = pos_by_key.get(key)
+
+        # Timestamp du dernier fill connu, sinon maintenant.
+        ts = max((f.time for f in t.fills), default=datetime.now(UTC)) if t.fills else datetime.now(UTC)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        # Commission cumulée
+        commission = sum(
+            (Decimal(str(f.commissionReport.commission)) for f in t.fills if f.commissionReport),
+            Decimal("0"),
+        )
+
+        db.add(Trade(
+            position_id=position.id if position else None,
+            ib_order_id=ib_order_id,
+            side=o.action,
+            quantity=Decimal(str(s.filled)),
+            price=Decimal(str(s.avgFillPrice)) if s.avgFillPrice else Decimal("0"),
+            commission=commission if commission else None,
+            timestamp=ts,
+        ))
+        inserted += 1
+    await db.commit()
+    return {"synced": len(trades), "inserted": inserted}
+
+
 async def position_sync_loop(
     session_maker: async_sessionmaker[AsyncSession],
     executor: OrderExecutor,
@@ -286,7 +398,9 @@ async def position_sync_loop(
     try:
         async with session_maker() as db:
             sync = await sync_positions_from_ib(db, executor, redis)
-            logger.info("position_sync_initial %s", sync)
+            orders = await sync_orders_from_ib(db, executor)
+            trades = await sync_trades_from_ib(db, executor)
+            logger.info("position_sync_initial sync=%s orders=%s trades=%s", sync, orders, trades)
     except Exception:
         logger.exception("position_sync_initial_failed")
 
@@ -296,7 +410,12 @@ async def position_sync_loop(
             async with session_maker() as db:
                 sync = await sync_positions_from_ib(db, executor, redis)
                 snaps = await insert_snapshots(db, executor, redis)
-                logger.info("position_sync_tick sync=%s snapshots=%s", sync, snaps)
+                orders = await sync_orders_from_ib(db, executor)
+                trades = await sync_trades_from_ib(db, executor)
+                logger.info(
+                    "position_sync_tick sync=%s snapshots=%s orders=%s trades=%s",
+                    sync, snaps, orders, trades,
+                )
         except asyncio.CancelledError:
             logger.info("position_sync_loop_cancelled")
             raise

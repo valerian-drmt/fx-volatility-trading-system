@@ -25,6 +25,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -150,6 +151,46 @@ class Trade(Base):
     iv_at_execution: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
 
     position: Mapped[Position | None] = relationship(back_populates="trades")
+
+
+class Order(Base):
+    """IB order lifecycle row. 1 row par order envoyé à IB, status évolue
+    selon la lifecycle (PendingSubmit → Submitted → Filled / Cancelled).
+    """
+    __tablename__ = "orders"
+    __table_args__ = (
+        UniqueConstraint("ib_perm_id", name="uq_orders_ib_perm_id"),
+        CheckConstraint("side IN ('BUY', 'SELL')", name="ck_orders_side"),
+        CheckConstraint(
+            "sec_type IN ('FUT', 'FOP', 'STK', 'OPT', 'CONTFUT')",
+            name="ck_orders_sec_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ib_perm_id: Mapped[int | None] = mapped_column(BigInteger)
+    ib_order_id: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    sec_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    expiry: Mapped[str | None] = mapped_column(String(10))
+    strike: Mapped[Decimal | None] = mapped_column(Numeric(10, 5))
+    right: Mapped[str | None] = mapped_column(String(2))
+
+    side: Mapped[str] = mapped_column(String(4), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    limit_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
+
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    filled_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False, default=Decimal("0"))
+    avg_fill_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
+
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
 
 class AccountSnap(Base):
