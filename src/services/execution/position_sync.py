@@ -440,21 +440,17 @@ async def position_sync_loop(
     except Exception:
         logger.exception("position_sync_initial_failed")
 
-    tick = 0
     while True:
         try:
             await asyncio.sleep(interval_s)
-            tick += 1
             async with session_maker() as db:
                 sync = await sync_positions_from_ib(db, executor, redis)
                 snaps = await insert_snapshots(db, executor, redis)
                 orders = await sync_orders_from_ib(db, executor)
                 trades = await sync_trades_from_ib(db, executor)
-                # Account snap : 1 row toutes les 5 ticks (= ~5s à
-                # interval_s=1.0). L'état du compte évolue lentement.
-                acct = False
-                if tick % 5 == 0:
-                    acct = await insert_account_snap(db, executor)
+                # Account snap : 1 row par tick (cohérent avec les autres
+                # tables, alimente account_snaps à 1s).
+                acct = await insert_account_snap(db, executor)
             # Heartbeat → Redis (TTL 300s). Visible dans EngineHealth /
             # /dev/engines comme les 4 autres engines.
             if redis is not None:
