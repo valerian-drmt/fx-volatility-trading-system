@@ -50,6 +50,34 @@ async def lifespan(app: FastAPI):
     # R9 : api redevient pure stateless. L'IB connection + le sync loop
     # vivent désormais dans le container `execution-engine` (cf. routers/
     # orders.py qui forwarde via httpx).
+
+    # One-shot seed : si vol_config n'a que la row initiale (version=1,
+    # config={}), pousse une version 2 avec le dump complet des defaults.
+    # Permet de voir les params dans la table au lieu d'avoir un JSONB
+    # vide qui force la lecture côté code.
+    try:
+        from sqlalchemy import text
+        from core.config import VolTradingConfig
+        from persistence.db import get_sessionmaker
+        from api.services.config_service import get_current, update
+        async with get_sessionmaker()() as db:
+            current = await get_current(db)
+            if current.version <= 1 and current.config.model_dump() == VolTradingConfig().model_dump():
+                # Seed only if still on the initial empty placeholder row.
+                empty_check_row = (await db.execute(
+                    text("SELECT config FROM vol_config WHERE version=1")
+                )).scalar_one_or_none()
+                if empty_check_row in (None, {}, "{}"):
+                    await update(
+                        db, client,
+                        patch=VolTradingConfig().model_dump(),
+                        user="system",
+                        comment="default config seed (api lifespan)",
+                    )
+                    log.info("vol_config_seeded version=2 with full defaults")
+    except Exception:
+        log.exception("vol_config_seed_failed")
+
     log.info("api_startup", redis_url=settings.redis_url)
     try:
         yield
