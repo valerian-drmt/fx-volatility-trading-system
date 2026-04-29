@@ -91,6 +91,8 @@ const navBarStyle = {
   background: "#222",
   borderBottom: "1px solid #333",
   fontSize: 13,
+  flexWrap: "wrap" as const,
+  overflowX: "auto" as const,
 };
 
 function tabBtnStyle(active: boolean): CSSProperties {
