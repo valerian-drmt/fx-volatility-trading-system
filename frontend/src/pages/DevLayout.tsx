@@ -1,99 +1,88 @@
 /**
- * Dev console layout (R9 sandbox).
+ * Dev console — page unique. Tous les panels de validation sont stackés
+ * verticalement et tournent en parallèle au mount. Pas de sub-tabs : un
+ * seul URL `/dev` qui montre tout. Permet de voir d'un coup d'œil l'état
+ * de chaque interaction stack ↔ UI.
  *
- * - Top bar (Live / Dev) → vit dans Header.tsx (partagé avec App.tsx)
- * - Sub-tabs (9 surfaces de validation) → barre horizontale ici
- * - Content → DevPlaceholder tant que l'onglet n'est pas codé
+ * Au mount :
+ *   - RedisInspector fetch /api/v1/dev/redis/keys
+ *   - WsMonitor ouvre 3 WS (/ws/ticks, /ws/vol, /ws/risk)
+ *   - EngineHealth fetch /api/v1/dev/engines + auto-refresh 5s
+ *   - (les futures sections feront pareil)
  *
- * Routing path-based (cf. main.tsx) : dispatche selon /dev/<tool>.
+ * Header reste partagé (Header.tsx) avec le bouton "← Live".
  */
-import type { CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
-import { DevPlaceholder } from "./dev/DevPlaceholder";
 import { EngineHealth } from "./dev/EngineHealth";
 import { RedisInspector } from "./dev/RedisInspector";
 import { WsMonitor } from "./dev/WsMonitor";
 
-interface TabDef {
-  path: string;
-  label: string;
+interface SectionDef {
+  id: string;
+  title: string;
+  Component: () => JSX.Element;
 }
 
-const TABS: TabDef[] = [
-  { path: "redis", label: "🔴 Redis" },
-  { path: "ws", label: "📡 WS Monitor" },
-  { path: "health", label: "🩺 Health" },
-  { path: "db", label: "🗃 DB" },
-  { path: "vol", label: "🌊 Vol Surface" },
-  { path: "pricing", label: "💲 Pricing" },
-  { path: "trade-preview", label: "📦 Trade Preview" },
-  { path: "signals", label: "📈 Signals" },
-  { path: "orders", label: "📝 Orders" },
+const SECTIONS: SectionDef[] = [
+  { id: "health", title: "🩺 Engine Health", Component: EngineHealth },
+  { id: "redis", title: "🔴 Redis Inspector", Component: RedisInspector },
+  { id: "ws", title: "📡 WS Monitor", Component: WsMonitor },
+  // Les prochaines sections (DB / Vol / Pricing / Trade Preview / Signals
+  // / Orders) seront ajoutées ici au fur et à mesure des étapes.
 ];
 
-function currentTab(): string {
-  if (typeof window === "undefined") return "";
-  const m = window.location.pathname.match(/^\/dev\/([^/?#]+)/);
-  return m?.[1] ?? "";
-}
-
-function TabContent({ tab }: { tab: string }): JSX.Element {
-  const def = TABS.find((t) => t.path === tab);
-  if (!def) {
-    return (
-      <section className="panel" style={{ margin: 16 }}>
-        <header className="panel-header"><h2>fxvol — dev console</h2></header>
-        <div className="panel-body" style={{ padding: 16 }}>
-          Pick a tab dans la barre ci-dessus. Tous les onglets sont des stubs
-          (TODO) jusqu'à ce qu'ils soient codés un par un. Cf.{" "}
-          <code>releases/r9-frontend-validation-today-plan.md</code>.
-        </div>
-      </section>
-    );
-  }
-  // Onglets codés (étape par étape) — sinon fallback DevPlaceholder.
-  if (tab === "redis") return <RedisInspector />;
-  if (tab === "ws") return <WsMonitor />;
-  if (tab === "health") return <EngineHealth />;
-  return <DevPlaceholder name={def.label} />;
-}
-
 export function DevLayout(): JSX.Element {
-  const tab = currentTab();
   return (
     <div className="app-shell" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Header />
-      <nav
-        style={{
-          display: "flex",
-          gap: 2,
-          padding: "6px 12px",
-          background: "#222",
-          borderBottom: "1px solid #333",
-          overflowX: "auto",
-          fontSize: 13,
-        }}
-      >
-        {TABS.map((t) => (
-          <a key={t.path} href={`/dev/${t.path}`} style={subTabStyle(t.path === tab)}>
-            {t.label}
+      <nav style={navBarStyle}>
+        {SECTIONS.map((s) => (
+          <a key={s.id} href={`#${s.id}`} style={navLinkStyle}>
+            {s.title}
           </a>
         ))}
       </nav>
       <main style={{ flex: 1, overflow: "auto", background: "#0e0e0e", color: "#ddd" }}>
-        <TabContent tab={tab} />
+        {SECTIONS.map((s) => (
+          <section key={s.id} id={s.id} style={sectionStyle}>
+            <h2 style={sectionTitleStyle}>{s.title}</h2>
+            <s.Component />
+          </section>
+        ))}
       </main>
     </div>
   );
 }
 
-function subTabStyle(active: boolean): CSSProperties {
-  return {
-    padding: "6px 12px",
-    color: active ? "#fff" : "#999",
-    background: active ? "#2a4a6a" : "transparent",
-    textDecoration: "none",
-    borderRadius: 3,
-    whiteSpace: "nowrap",
-  };
-}
+const navBarStyle = {
+  display: "flex",
+  gap: 4,
+  padding: "6px 12px",
+  background: "#222",
+  borderBottom: "1px solid #333",
+  fontSize: 13,
+  position: "sticky" as const,
+  top: 0,
+  zIndex: 10,
+};
+
+const navLinkStyle = {
+  padding: "4px 12px",
+  color: "#aaa",
+  textDecoration: "none",
+  borderRadius: 3,
+};
+
+const sectionStyle = {
+  borderTop: "2px solid #2a4a6a",
+  paddingTop: 4,
+};
+
+const sectionTitleStyle = {
+  margin: 0,
+  padding: "10px 16px 6px",
+  fontSize: 14,
+  color: "#7af",
+  background: "#1a1a1a",
+  borderBottom: "1px solid #333",
+};
