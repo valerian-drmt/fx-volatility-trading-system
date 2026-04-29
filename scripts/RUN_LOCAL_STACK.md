@@ -15,6 +15,8 @@ Vérifier le profil AWS (one-shot, après une nouvelle machine ou des access key
 ```powershell
 aws configure --profile fxvol-dev
 aws sts get-caller-identity --profile fxvol-dev
+cd .\Documents\'Python Project'\fx-volatility-trading-system
+.\scripts\start_stack.ps1
 ```
 
 Lancer la stack :
@@ -23,7 +25,7 @@ Lancer la stack :
 .\scripts\start_stack.ps1
 ```
 
-Recharger les secrets dans la session courante (utile si tu ouvres une nouvelle PowerShell sans relancer la stack — pour faire tourner `python scripts/smoke/ib-gateway/0N_test_*.py`, `psql`, `redis-cli`, etc.) :
+Recharger les secrets dans la session courante:
 
 ```powershell
 .\scripts\load_secrets.ps1
