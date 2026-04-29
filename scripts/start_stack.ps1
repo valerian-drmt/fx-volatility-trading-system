@@ -61,7 +61,7 @@ try {
     # ---------- Sous-mode -Down : stop & exit ----------
     if ($Down) {
         Write-Step "Stopping stack$(if ($DropVolumes) { ' (DROPPING VOLUMES)' })"
-        $args = @('compose', 'down', '--remove-orphans')
+        $args = @('compose', '--profile', '*', 'down', '--remove-orphans')
         if ($DropVolumes) { $args += '--volumes' }
         & docker @args
         Write-Ok "Stack stopped"
@@ -199,11 +199,13 @@ Write-Step "Opening Windows Terminal : $($services.Count) logs tabs + 1 healthch
 $wtArgs = @()
 for ($i = 0; $i -lt $services.Count; $i++) {
     if ($i -gt 0) { $wtArgs += ';' }
-    $wtArgs += @('new-tab', '--title', $services[$i], 'powershell.exe', '-NoExit',
+    $wtArgs += @('new-tab', '--suppressApplicationTitle', '--title', $services[$i],
+                 'powershell.exe', '-NoExit',
                  '-EncodedCommand', (New-LogsTab $services[$i] $projectDir))
 }
 $wtArgs += ';'
-$wtArgs += @('new-tab', '--title', 'healthcheck', 'powershell.exe', '-NoExit',
+$wtArgs += @('new-tab', '--suppressApplicationTitle', '--title', 'healthcheck',
+             'powershell.exe', '-NoExit',
              '-EncodedCommand', (New-HealthcheckTab $projectDir))
 & wt @wtArgs
 
