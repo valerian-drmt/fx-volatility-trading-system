@@ -10,6 +10,7 @@
 import type { CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DevPlaceholder } from "./dev/DevPlaceholder";
+import { RedisInspector } from "./dev/RedisInspector";
 
 interface TabDef {
   path: string;
@@ -48,6 +49,8 @@ function TabContent({ tab }: { tab: string }): JSX.Element {
       </section>
     );
   }
+  // Onglets codés (étape par étape) — sinon fallback DevPlaceholder.
+  if (tab === "redis") return <RedisInspector />;
   return <DevPlaceholder name={def.label} />;
 }
 
