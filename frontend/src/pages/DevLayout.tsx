@@ -7,6 +7,7 @@
  *
  * Routing path-based (cf. main.tsx) : dispatche selon /dev/<tool>.
  */
+import type { CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DevPlaceholder } from "./dev/DevPlaceholder";
 
@@ -79,7 +80,7 @@ export function DevLayout(): JSX.Element {
   );
 }
 
-function subTabStyle(active: boolean): React.CSSProperties {
+function subTabStyle(active: boolean): CSSProperties {
   return {
     padding: "6px 12px",
     color: active ? "#fff" : "#999",
