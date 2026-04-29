@@ -22,6 +22,7 @@ import { DevPlaceholder } from "./dev/DevPlaceholder";
 import { EngineHealth } from "./dev/EngineHealth";
 import { Pricing } from "./dev/Pricing";
 import { RedisInspector } from "./dev/RedisInspector";
+import { Signals } from "./dev/Signals";
 import { StackOverview } from "./dev/StackOverview";
 import { TradePreview } from "./dev/TradePreview";
 import { VolSurface } from "./dev/VolSurface";
@@ -42,7 +43,7 @@ const TABS: TabDef[] = [
   { id: "vol", label: "🌊 Vol Surface", Component: VolSurface },
   { id: "pricing", label: "💲 Pricing", Component: Pricing },
   { id: "trade-preview", label: "📦 Trade Preview", Component: TradePreview },
-  { id: "signals", label: "📈 Signals", Component: () => <DevPlaceholder name="Signals" /> },
+  { id: "signals", label: "📈 Signals", Component: Signals },
   { id: "orders",  label: "📝 Orders",  Component: () => <DevPlaceholder name="Order Submit" /> },
 ];
 
