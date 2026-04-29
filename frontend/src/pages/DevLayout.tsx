@@ -20,6 +20,7 @@ import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
 import { EngineHealth } from "./dev/EngineHealth";
 import { RedisInspector } from "./dev/RedisInspector";
+import { VolSurface } from "./dev/VolSurface";
 import { WsMonitor } from "./dev/WsMonitor";
 
 interface TabDef {
@@ -33,8 +34,9 @@ const TABS: TabDef[] = [
   { id: "redis", label: "🔴 Redis Inspector", Component: RedisInspector },
   { id: "ws", label: "📡 WS Monitor", Component: WsMonitor },
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
-  // Les prochaines sections (Vol / Pricing / Trade Preview / Signals /
-  // Orders) seront ajoutées ici au fur et à mesure.
+  { id: "vol", label: "🌊 Vol Surface", Component: VolSurface },
+  // Les prochaines sections (Pricing / Trade Preview / Signals / Orders)
+  // seront ajoutées ici au fur et à mesure.
 ];
 
 export function DevLayout(): JSX.Element {
