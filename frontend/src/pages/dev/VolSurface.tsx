@@ -1,19 +1,23 @@
 /**
- * Vol Surface — exercise les 4 endpoints /api/v1/vol/* de manière isolée.
- * 4 sections empilées (pas de Plotly pour rester sobre, on est un dev tool) :
+ * Vol Surface — exercise les 4 endpoints /api/v1/vol/* avec **les mêmes
+ * charts que la prod** (SmileChart, TermStructureChart). Le but est que
+ * ce qui est validé ici puisse être copié-collé dans le dashboard prod
+ * sans modif.
  *
- *   1. Surface raw          → /vol/surface?symbol=...
- *      JSON brut + summary (tenors présents, flags _har/_garch/_svi/_ssvi)
- *   2. Term structure       → /vol/term-structure?symbol=...
- *      Table tenor → ATM IV
- *   3. Smile par tenor      → /vol/smile/{tenor}?symbol=...
- *      Picker tenor + table 5 pillars (delta, strike, iv)
- *   4. No-arb health        → extrait de surface._svi[*]
- *      Table par tenor : RMSE, butterfly_g_min, ✓ / ⚠
- *
- * Cf. docs/VOL_TRADING_USER_GUIDE.md § Panel 5 — Surface Diagnostic.
+ * 4 sections empilées (cf. docs/VOL_TRADING_USER_GUIDE.md § Panel 5) :
+ *   1. Surface — top-level shape : flags présence + raw JSON
+ *   2. Term structure — table + TermStructureChart (ATM vs fair)
+ *   3. Smile @ tenor — table + SmileChart (observed + SVI fit + refs)
+ *   4. No-arb health — table par tenor : RMSE, butterfly_g_min, status
  */
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
+
+const SmileChart = lazy(() =>
+  import("../../components/charts/SmileChart").then((m) => ({ default: m.SmileChart })),
+);
+const TermStructureChart = lazy(() =>
+  import("../../components/charts/TermStructureChart").then((m) => ({ default: m.TermStructureChart })),
+);
 
 const DEFAULT_SYMBOL = "EURUSD";
 const TENORS = ["1M", "2M", "3M", "4M", "5M", "6M"];
@@ -24,16 +28,27 @@ interface SurfacePayload {
   surface: Record<string, unknown>;
 }
 
-interface TermStructure {
-  symbol: string;
-  timestamp: string;
-  pillars: { tenor: string; atm_iv: number; dte: number | null }[];
+interface TermRow {
+  tenor: string;
+  dte: number | null;
+  sigma_atm_pct: number | null;
+  sigma_fair_pct: number | null;
+  sigma_fair_p_pct: number | null;
+  sigma_fair_q_pct: number | null;
+  vrp_vol_pts: number | null;
+  regime: string | null;
 }
 
-interface SmilePoint {
-  delta: string;
+interface TermStructureResp {
+  symbol: string;
+  timestamp: string;
+  pillars: TermRow[];
+}
+
+interface ApiSmilePoint {
   strike: number;
-  iv: number;
+  iv_pct: number;
+  delta_label: string;
 }
 
 interface SmileResp {
@@ -41,7 +56,10 @@ interface SmileResp {
   timestamp: string;
   tenor: string;
   dte: number | null;
-  points: SmilePoint[];
+  points: ApiSmilePoint[];
+  sigma_fair_pct: number | null;
+  rv_pct: number | null;
+  svi_curve: ApiSmilePoint[] | null;
 }
 
 interface SviParams {
@@ -54,12 +72,14 @@ interface SviParams {
   butterfly_g_min: number;
 }
 
+const CHART_LOADING = <div style={{ color: "#666", fontSize: 12 }}>loading chart…</div>;
+
 export function VolSurface(): JSX.Element {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
   const [tenor, setTenor] = useState("3M");
 
   const [surface, setSurface] = useState<SurfacePayload | null>(null);
-  const [terms, setTerms] = useState<TermStructure | null>(null);
+  const [terms, setTerms] = useState<TermStructureResp | null>(null);
   const [smile, setSmile] = useState<SmileResp | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -70,7 +90,7 @@ export function VolSurface(): JSX.Element {
     try {
       const [s, t, sm] = await Promise.all([
         fetch(`/api/v1/vol/surface?symbol=${symbol}`).then((r) => asJson<SurfacePayload>(r)),
-        fetch(`/api/v1/vol/term-structure?symbol=${symbol}`).then((r) => asJson<TermStructure>(r)),
+        fetch(`/api/v1/vol/term-structure?symbol=${symbol}`).then((r) => asJson<TermStructureResp>(r)),
         fetch(`/api/v1/vol/smile/${tenor}?symbol=${symbol}`).then((r) => asJson<SmileResp>(r)),
       ]);
       setSurface(s);
@@ -122,14 +142,14 @@ export function VolSurface(): JSX.Element {
         {surface ? <SurfaceSummary payload={surface} /> : <Empty />}
       </Section>
 
-      {/* 2. Term structure */}
+      {/* 2. Term structure — table + chart */}
       <Section title="2. Term structure (ATM IV per tenor)">
-        {terms ? <TermStructureTable terms={terms} /> : <Empty />}
+        {terms ? <TermStructureView terms={terms} /> : <Empty />}
       </Section>
 
-      {/* 3. Smile par tenor */}
-      <Section title={`3. Smile @ ${tenor} — observed pillars`}>
-        {smile ? <SmileTable smile={smile} /> : <Empty />}
+      {/* 3. Smile par tenor — table + chart */}
+      <Section title={`3. Smile @ ${tenor} — observed pillars + SVI fit`}>
+        {smile ? <SmileView smile={smile} /> : <Empty />}
       </Section>
 
       {/* 4. No-arb health */}
@@ -158,11 +178,11 @@ function SurfaceSummary({ payload }: { payload: SurfacePayload }): JSX.Element {
   const publicTenors = Object.keys(surface).filter((k) => !k.startsWith("_"));
   const flags: { name: string; present: boolean; detail?: string }[] = [
     { name: "_rv_full_pct", present: typeof surface["_rv_full_pct"] === "number", detail: String(surface["_rv_full_pct"] ?? "—") },
-    { name: "_har", present: !!surface["_har"] && Object.keys(surface["_har"] as object).length > 0 },
-    { name: "_garch", present: !!surface["_garch"] && Object.keys(surface["_garch"] as object).length > 0 },
-    { name: "_fair_q", present: !!surface["_fair_q"] && Object.keys(surface["_fair_q"] as object).length > 0 },
-    { name: "_svi", present: !!surface["_svi"] && Object.keys(surface["_svi"] as object).length > 0 },
-    { name: "_ssvi", present: !!surface["_ssvi"] && Object.keys(surface["_ssvi"] as object).length > 0 },
+    { name: "_har", present: hasKeys(surface["_har"]) },
+    { name: "_garch", present: hasKeys(surface["_garch"]) },
+    { name: "_fair_q", present: hasKeys(surface["_fair_q"]) },
+    { name: "_svi", present: hasKeys(surface["_svi"]) },
+    { name: "_ssvi", present: hasKeys(surface["_ssvi"]) },
   ];
   return (
     <div>
@@ -189,37 +209,80 @@ function SurfaceSummary({ payload }: { payload: SurfacePayload }): JSX.Element {
   );
 }
 
-function TermStructureTable({ terms }: { terms: TermStructure }): JSX.Element {
+function TermStructureView({ terms }: { terms: TermStructureResp }): JSX.Element {
+  // Map to the chart's TermPoint shape (atmVol/fairVol in pct units).
+  const chartPoints = terms.pillars.map((p) => ({
+    tenor: p.tenor,
+    atmVol: p.sigma_atm_pct ?? 0,
+    fairVol: p.sigma_fair_pct ?? null,
+  }));
   return (
-    <table style={tableStyle}>
-      <thead><tr><th style={th}>Tenor</th><th style={th}>DTE</th><th style={th}>ATM IV</th></tr></thead>
-      <tbody>
-        {terms.pillars.map((p) => (
-          <tr key={p.tenor}>
-            <td style={td}>{p.tenor}</td>
-            <td style={td}>{p.dte ?? "—"}</td>
-            <td style={td}>{(p.atm_iv * 100).toFixed(3)}%</td>
+    <div>
+      <div style={{ height: 300, marginBottom: 12 }}>
+        <Suspense fallback={CHART_LOADING}>
+          <TermStructureChart points={chartPoints} />
+        </Suspense>
+      </div>
+      <table style={tableStyle}>
+        <thead>
+          <tr>
+            <th style={th}>Tenor</th>
+            <th style={th}>DTE</th>
+            <th style={th}>σ ATM (Q)</th>
+            <th style={th}>σ fair (P)</th>
+            <th style={th}>σ fair (Q)</th>
+            <th style={th}>VRP</th>
+            <th style={th}>Regime</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {terms.pillars.map((p) => (
+            <tr key={p.tenor}>
+              <td style={td}>{p.tenor}</td>
+              <td style={td}>{p.dte ?? "—"}</td>
+              <td style={td}>{fmtPct(p.sigma_atm_pct)}</td>
+              <td style={td}>{fmtPct(p.sigma_fair_p_pct)}</td>
+              <td style={td}>{fmtPct(p.sigma_fair_q_pct)}</td>
+              <td style={td}>{p.vrp_vol_pts != null ? p.vrp_vol_pts.toFixed(3) : "—"}</td>
+              <td style={td}>{p.regime ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-function SmileTable({ smile }: { smile: SmileResp }): JSX.Element {
+function SmileView({ smile }: { smile: SmileResp }): JSX.Element {
+  const chartPoints = smile.points.map((p) => ({ strike: p.strike, vol: p.iv_pct }));
+  const sviCurve = smile.svi_curve
+    ? smile.svi_curve.map((p) => ({ strike: p.strike, vol: p.iv_pct }))
+    : null;
   return (
     <div>
+      <div style={{ height: 300, marginBottom: 12 }}>
+        <Suspense fallback={CHART_LOADING}>
+          <SmileChart
+            points={chartPoints}
+            tenor={smile.tenor}
+            sviCurve={sviCurve}
+            fairVol={smile.sigma_fair_pct ?? null}
+            rv={smile.rv_pct ?? null}
+          />
+        </Suspense>
+      </div>
       <div style={{ fontSize: 12, color: "#aaa", marginBottom: 6 }}>
-        DTE: {smile.dte ?? "—"} · {smile.points.length} pillars
+        DTE: {smile.dte ?? "—"} · {smile.points.length} pillars · σ fair:{" "}
+        {fmtPct(smile.sigma_fair_pct)} · RV: {fmtPct(smile.rv_pct)}
       </div>
       <table style={tableStyle}>
         <thead><tr><th style={th}>Delta</th><th style={th}>Strike</th><th style={th}>IV</th></tr></thead>
         <tbody>
           {smile.points.map((p, i) => (
             <tr key={i}>
-              <td style={td}>{p.delta}</td>
+              <td style={td}>{p.delta_label}</td>
               <td style={td}>{p.strike.toFixed(5)}</td>
-              <td style={td}>{(p.iv * 100).toFixed(3)}%</td>
+              <td style={td}>{p.iv_pct.toFixed(3)}%</td>
             </tr>
           ))}
         </tbody>
@@ -280,6 +343,14 @@ function NoArbTable({ surface }: { surface: SurfacePayload }): JSX.Element {
       )}
     </div>
   );
+}
+
+function hasKeys(v: unknown): boolean {
+  return !!v && typeof v === "object" && Object.keys(v as object).length > 0;
+}
+
+function fmtPct(v: number | null | undefined): string {
+  return v == null ? "—" : `${v.toFixed(3)}%`;
 }
 
 async function asJson<T>(r: Response): Promise<T> {
