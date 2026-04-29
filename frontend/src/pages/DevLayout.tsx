@@ -18,6 +18,7 @@
 import { useState, type CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
+import { DevPlaceholder } from "./dev/DevPlaceholder";
 import { EngineHealth } from "./dev/EngineHealth";
 import { Pricing } from "./dev/Pricing";
 import { RedisInspector } from "./dev/RedisInspector";
@@ -41,7 +42,8 @@ const TABS: TabDef[] = [
   { id: "vol", label: "🌊 Vol Surface", Component: VolSurface },
   { id: "pricing", label: "💲 Pricing", Component: Pricing },
   { id: "trade-preview", label: "📦 Trade Preview", Component: TradePreview },
-  // Les prochaines sections (Signals / Orders) seront ajoutées ici.
+  { id: "signals", label: "📈 Signals", Component: () => <DevPlaceholder name="Signals" /> },
+  { id: "orders",  label: "📝 Orders",  Component: () => <DevPlaceholder name="Order Submit" /> },
 ];
 
 export function DevLayout(): JSX.Element {
