@@ -139,7 +139,7 @@ export function OrderSubmit(): JSX.Element {
   const refreshPositions = async () => {
     setPositionsError(null);
     try {
-      const r = await fetch("/api/v1/positions/live");
+      const r = await fetch("/api/v1/exec/positions");
       const j = await r.json();
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${JSON.stringify(j)}`);
       setPositions(j.positions);
@@ -170,7 +170,7 @@ export function OrderSubmit(): JSX.Element {
     }
     if (!confirm(`Close ${p.local_symbol} qty ${p.position} @ ${limit_price} ?`)) return;
     try {
-      const r = await fetch(`/api/v1/positions/${p.con_id}/close`, {
+      const r = await fetch(`/api/v1/exec/positions/${p.con_id}/close`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ limit_price }),
@@ -286,7 +286,7 @@ export function OrderSubmit(): JSX.Element {
       {/* Live positions table */}
       <section className="panel">
         <header className="panel-header" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h2 style={{ fontSize: 13, flex: 1 }}>Live positions ({positions.length}) — GET /api/v1/positions/live</h2>
+          <h2 style={{ fontSize: 13, flex: 1 }}>Live positions ({positions.length}) — GET /api/v1/exec/positions</h2>
           <button onClick={refreshPositions} style={btnStyle}>Refresh</button>
         </header>
         <div className="panel-body" style={{ padding: 12 }}>

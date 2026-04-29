@@ -1,11 +1,12 @@
 """Orders router — place / cancel / list + positions live + close.
 
-Endpoints (R9 sandbox) :
-  - GET    /api/v1/orders               → openOrders côté IB
-  - POST   /api/v1/orders                → place a LimitOrder
-  - DELETE /api/v1/orders/{id}           → cancel an open order
-  - GET    /api/v1/positions/live        → positions côté IB (live)
-  - POST   /api/v1/positions/{con_id}/close   → reverse limit order
+Endpoints (R9 sandbox) — préfixés `/exec/` pour éviter la collision avec
+`portfolio_router /positions/{id}` qui catcherait `/positions/live` :
+  - GET    /api/v1/orders                            → openOrders côté IB
+  - POST   /api/v1/orders                             → place a LimitOrder
+  - DELETE /api/v1/orders/{id}                        → cancel an open order
+  - GET    /api/v1/exec/positions                     → positions live IB
+  - POST   /api/v1/exec/positions/{con_id}/close      → reverse limit order
 
 Toutes les routes renvoient 503 si la connexion IB est DOWN.
 
@@ -109,7 +110,7 @@ async def cancel_order(order_id: int, request: Request) -> dict[str, Any]:
     return result
 
 
-@router.get("/positions/live")
+@router.get("/exec/positions")
 async def live_positions(request: Request) -> dict[str, Any]:
     ex = _executor(request)
     try:
@@ -119,7 +120,7 @@ async def live_positions(request: Request) -> dict[str, Any]:
     return {"positions": positions, "count": len(positions)}
 
 
-@router.post("/positions/{con_id}/close")
+@router.post("/exec/positions/{con_id}/close")
 async def close_position(con_id: int, body: ClosePositionRequest, request: Request) -> dict[str, Any]:
     ex = _executor(request)
     try:
