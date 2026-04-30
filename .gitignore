@@ -5,9 +5,15 @@ __pycache__/
 CLAUDE.md
 .claude
 .idea
-releases
 .env
 .env.local
-docs/interview
+releases
 
-
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts

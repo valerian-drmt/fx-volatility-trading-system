@@ -1,0 +1,49 @@
+:root {
+  --bg: #0f1115;
+  --surface: #181b22;
+  --fg: #e6e8ee;
+  --muted: #8a90a0;
+  --accent: #4f9dff;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.app-shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 24px;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-bottom: 1px solid var(--surface);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+}
+
+.app-header h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.app-version {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app-placeholder {
+  color: var(--muted);
+  font-size: 14px;
+}
