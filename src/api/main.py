@@ -25,6 +25,8 @@ from api.routers import health as health_router
 from api.routers import orders as orders_router
 from api.routers import portfolio as portfolio_router
 from api.routers import pricing as pricing_router
+from api.routers import regime as regime_router
+from api.routers import signals as signals_router
 from api.routers import vol as vol_router
 from api.routers import ws as ws_router
 from api.ws.connection_manager import ConnectionManager
@@ -46,6 +48,9 @@ async def lifespan(app: FastAPI):
     manager = ConnectionManager()
     app.state.ws_manager = manager
     bridge_task = asyncio.create_task(redis_to_ws_bridge(client, manager))
+    events_scheduler = _build_events_scheduler()
+    await events_scheduler.start()
+    app.state.events_scheduler = events_scheduler
 
     # R9 : api redevient pure stateless. L'IB connection + le sync loop
     # vivent désormais dans le container `execution-engine` (cf. routers/
@@ -57,9 +62,10 @@ async def lifespan(app: FastAPI):
     # vide qui force la lecture côté code.
     try:
         from sqlalchemy import text
+
+        from api.services.config_service import get_current, update
         from core.config import VolTradingConfig
         from persistence.db import get_sessionmaker
-        from api.services.config_service import get_current, update
         async with get_sessionmaker()() as db:
             current = await get_current(db)
             if current.version <= 1 and current.config.model_dump() == VolTradingConfig().model_dump():
@@ -83,8 +89,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         bridge_task.cancel()
-        # Await the task so its cleanup (pubsub.aclose) runs. CancelledError
-        # is expected and swallowed — any other exception would be logged.
+        await events_scheduler.stop()
         try:
             await bridge_task
         except asyncio.CancelledError:
@@ -93,6 +98,43 @@ async def lifespan(app: FastAPI):
             log.exception("bridge_task_crashed_on_shutdown")
         await client.aclose()
         log.info("api_shutdown")
+
+
+def _build_events_scheduler():
+    """Wire the events pipeline (cf. docs/.../events_pipeline_spec.md §5).
+
+    FRED only is implemented today (covers ~60% of high-impact events).
+    The 6 other sources are stubbed in ``sources/stubs.py`` and contribute
+    0 events with a NotImplementedError caught by the scheduler — they will
+    be enabled one by one as their parsers are written.
+    """
+    import os as _os
+
+    from api.services.events.deduplicator import EventDeduplicator
+    from api.services.events.repository import EventsRepository
+    from api.services.events.scheduler import EventsScheduler
+    from api.services.events.sources.boe import BoESource
+    from api.services.events.sources.ecb import ECBSource
+    from api.services.events.sources.eurostat import EurostatSource
+    from api.services.events.sources.fomc import FOMCSource
+    from api.services.events.sources.fred import FREDSource
+    from api.services.events.sources.ons import ONSSource
+    from persistence.db import get_sessionmaker
+
+    sources: list = []
+    fred_key = _os.environ.get("FRED_API_KEY") or ""
+    if fred_key:
+        sources.append(FREDSource(api_key=fred_key))
+    sources.extend([
+        ECBSource(), BoESource(), FOMCSource(),
+        EurostatSource(), ONSSource(),
+    ])
+
+    return EventsScheduler(
+        sources=sources,
+        repository=EventsRepository(get_sessionmaker()),
+        deduplicator=EventDeduplicator(),
+    )
 
 
 def create_app() -> FastAPI:
@@ -133,6 +175,8 @@ def create_app() -> FastAPI:
     app.include_router(admin_router.router)
     app.include_router(dev_router.router)
     app.include_router(orders_router.router)
+    app.include_router(regime_router.router)
+    app.include_router(signals_router.router)
     app.include_router(ws_router.router)
     # Remaining planned : orders router (PR #5b) — requires OrderExecutor wiring.
     return app

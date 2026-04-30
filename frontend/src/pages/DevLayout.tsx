@@ -22,8 +22,9 @@ import { OrderSubmit } from "./dev/OrderSubmit";
 import { Pricing } from "./dev/Pricing";
 import { Signals } from "./dev/Signals";
 import { StackCombined } from "./dev/StackCombined";
+import { Step1Regime } from "./dev/Step1Regime";
+import { Step2Pca } from "./dev/Step2Pca";
 import { TradePreview } from "./dev/TradePreview";
-import { VolDashboard } from "./dev/VolDashboard";
 import { WsMonitor } from "./dev/WsMonitor";
 
 interface TabDef {
@@ -36,7 +37,8 @@ const TABS: TabDef[] = [
   { id: "stack", label: "🐳 Stack · Health · Redis", Component: StackCombined },
   { id: "ws", label: "📡 WS Monitor", Component: WsMonitor },
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
-  { id: "vol", label: "🌊 Vol", Component: VolDashboard },
+  { id: "step1", label: "🚦 Step 1 · Regime", Component: Step1Regime },
+  { id: "step2", label: "📊 Step 2 · PCA Signals", Component: Step2Pca },
   { id: "pricing", label: "💲 Pricing", Component: Pricing },
   { id: "trade-preview", label: "📦 Trade Preview", Component: TradePreview },
   { id: "signals", label: "📈 Signals", Component: Signals },
