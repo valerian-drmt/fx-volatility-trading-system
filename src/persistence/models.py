@@ -259,8 +259,6 @@ class VolSurface(Base):
     forward: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
 
     surface_data: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
-    fair_vol_data: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
-    rv_data: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
 
     scan_duration_s: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
 
@@ -286,11 +284,13 @@ class Signal(Base):
     dte: Mapped[int] = mapped_column(Integer, nullable=False)
 
     sigma_mid: Mapped[Decimal] = mapped_column(Numeric(8, 5), nullable=False)
-    sigma_fair: Mapped[Decimal] = mapped_column(Numeric(8, 5), nullable=False)
+    sigma_fair: Mapped[Decimal] = mapped_column(Numeric(8, 5), nullable=False)  # Q-measure
     ecart: Mapped[Decimal] = mapped_column(Numeric(8, 5), nullable=False)
     signal_type: Mapped[str] = mapped_column(String(15), nullable=False)
 
     rv: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
+    sigma_fair_p: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))     # P-measure (HAR/GARCH)
+    vrp_vol_pts: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))      # Q − P spread
 
 
 class SviParam(Base):
