@@ -50,7 +50,8 @@ $names = @(
     '/fxvol/prod/IB_PASSWORD',
     '/fxvol/prod/DB_PASSWORD',
     '/fxvol/prod/VNC_PASSWORD',
-    '/fxvol/prod/TRADING_MODE'
+    '/fxvol/prod/TRADING_MODE',
+    '/fxvol/prod/FRED_API_KEY'
 )
 $json = aws ssm get-parameters `
     --names $names `

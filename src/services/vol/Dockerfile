@@ -23,6 +23,8 @@ RUN pip install --upgrade pip && pip install -r requirements/quant.txt
 # core, bus, persistence, shared, services/vol (+ other services, unused
 # here but harmless -- same image size vs selective copy is negligible).
 COPY src/ ./src/
+# Backfill scripts (one-shot data seeding, e.g. backfill_iv_history_for_gmm.py).
+COPY scripts/ ./scripts/
 
 RUN useradd -m -u 1002 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

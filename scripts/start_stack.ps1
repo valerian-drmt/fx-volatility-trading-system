@@ -119,6 +119,9 @@ try {
     $upArgs = @('compose', '--profile', 'engines', '--profile', 'ib', 'up', '-d')
     if (-not $NoBuild) { $upArgs += '--build' }
     & docker @upArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "docker compose up failed (exit $LASTEXITCODE). Run with --build manually to see the error : docker compose --profile engines --profile ib up -d --build"
+    }
 
     # ---------- 6. Wait postgres healthy ----------
     Write-Step "Waiting for Postgres healthy (max 60s)"

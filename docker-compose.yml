@@ -58,6 +58,12 @@ services:
       # URL interne du nouveau container execution-engine. L'api forward
       # les actions /orders / /exec/positions vers ce service.
       EXECUTION_URL: http://execution-engine:8001
+      # FRED API key for the multi-source events pipeline. Free signup at
+      # https://fredaccount.stlouisfed.org/apikeys (~30s). Without it, the
+      # FRED source is skipped and only the stub sources run (= no events
+      # collected automatically — fallback is scripts/seed_events_manual.py).
+      # Cf. docs/vol_trading_pca/events_pipeline_spec.md §8.
+      FRED_API_KEY: ${FRED_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,12 +133,17 @@ services:
       IB_PORT: 4002
       IB_CLIENT_ID: 2
       REDIS_URL: redis://redis:6379/0
+      # Step 1 regime gating : vol-engine reads feature_history / events /
+      # vrp_table_default at each cycle (cf. STEP1 §7).
+      DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Signal calibration (ex config/vol_config.json, R9 inline en env).
       THRESHOLD_VOL_PTS: ${THRESHOLD_VOL_PTS:-1.0}
       MODEL_P: ${MODEL_P:-har}
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
       market-data:
         condition: service_started
