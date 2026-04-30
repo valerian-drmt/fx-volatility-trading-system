@@ -22,6 +22,7 @@ from api.routers import health as health_router
 from api.routers import portfolio as portfolio_router
 from api.routers import pricing as pricing_router
 from api.routers import vol as vol_router
+from api.routers import ws as ws_router
 from api.ws.connection_manager import ConnectionManager
 from api.ws.redis_bridge import redis_to_ws_bridge
 
@@ -90,7 +91,8 @@ def create_app() -> FastAPI:
     app.include_router(vol_router.router)
     app.include_router(portfolio_router.router)
     app.include_router(analytics_router.router)
-    # Next routers : orders (#5b), WebSocket (#7 + #8)
+    app.include_router(ws_router.router)
+    # Remaining planned : orders router (PR #5b) — requires OrderExecutor wiring.
     return app
 
 
