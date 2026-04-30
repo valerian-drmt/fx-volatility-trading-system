@@ -35,10 +35,14 @@ from sqlalchemy.ext.asyncio import (
 from persistence.models import (
     AccountSnap,
     Base,
+    FeatureHistory,
+    PcaSignal,
     Position,
     PositionSnapshot,
+    RegimeSnapshot,
     Signal,
     SsviParam,
+    SurfaceSnapshotHourly,
     SviParam,
     Trade,
     VolSurface,
@@ -57,10 +61,14 @@ SHUTDOWN_TIMEOUT_S: float = 30.0
 # The writer rejects any event targeting a table not in this map.
 TABLE_MODELS: dict[str, type[Base]] = {
     "account_snaps": AccountSnap,
+    "feature_history": FeatureHistory,
+    "pca_signals": PcaSignal,
     "positions": Position,
     "position_snapshots": PositionSnapshot,
+    "regime_snapshots": RegimeSnapshot,
     "signals": Signal,
     "ssvi_params": SsviParam,
+    "surface_snapshots_hourly": SurfaceSnapshotHourly,
     "svi_params": SviParam,
     "trades": Trade,
     "vol_surfaces": VolSurface,
@@ -83,6 +91,9 @@ IDEMPOTENT_TABLES: dict[str, list[str]] = {
     "svi_params": ["timestamp", "underlying", "tenor"],
     "ssvi_params": ["timestamp", "underlying"],
     "positions": ["id"],
+    "feature_history": ["symbol", "timestamp"],
+    "surface_snapshots_hourly": ["symbol", "timestamp"],
+    "pca_signals": ["symbol", "timestamp", "pca_model_id", "pc_id"],
 }
 
 

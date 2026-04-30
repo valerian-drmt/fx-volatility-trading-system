@@ -281,6 +281,16 @@ ALLOWED_TABLES: dict[str, str] = {
     "ssvi_params": "id",
     "backtest_runs": "id",
     "vol_config": "version",
+    # Step 1 — regime gating
+    "regime_snapshots": "id",
+    "feature_history": "id",
+    "events": "id",
+    "vrp_table_default": "id",
+    # Step 2 — PCA factor model
+    "surface_snapshots_hourly": "id",
+    "pca_models": "id",
+    "pca_signals": "id",
+    "signal_recommendations_map": "id",
 }
 
 
