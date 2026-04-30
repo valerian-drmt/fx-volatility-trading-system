@@ -1,6 +1,7 @@
-"""FastAPI entrypoint — wires middleware, lifespan, and (later) routers."""
+"""FastAPI entrypoint — wires middleware, lifespan, routers, WebSocket bridge."""
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 import structlog
@@ -21,11 +22,13 @@ from api.routers import health as health_router
 from api.routers import portfolio as portfolio_router
 from api.routers import pricing as pricing_router
 from api.routers import vol as vol_router
+from api.ws.connection_manager import ConnectionManager
+from api.ws.redis_bridge import redis_to_ws_bridge
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Open Redis pool at startup, dispose on shutdown."""
+    """Open Redis pool + ws bridge at startup, cancel + dispose on shutdown."""
     settings = get_settings()
     configure_logging(settings.log_level)
     log = structlog.get_logger("api.lifespan")
@@ -34,10 +37,24 @@ async def lifespan(app: FastAPI):
         settings.redis_url, max_connections=50, decode_responses=True
     )
     set_redis_client(client)
+
+    manager = ConnectionManager()
+    app.state.ws_manager = manager
+    bridge_task = asyncio.create_task(redis_to_ws_bridge(client, manager))
+
     log.info("api_startup", redis_url=settings.redis_url)
     try:
         yield
     finally:
+        bridge_task.cancel()
+        # Await the task so its cleanup (pubsub.aclose) runs. CancelledError
+        # is expected and swallowed — any other exception would be logged.
+        try:
+            await bridge_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.exception("bridge_task_crashed_on_shutdown")
         await client.aclose()
         log.info("api_shutdown")
 
