@@ -1,0 +1,41 @@
+{
+  "realtime_start": "2026-04-30",
+  "realtime_end": "2026-10-27",
+  "order_by": "release_date",
+  "sort_order": "asc",
+  "count": 6,
+  "offset": 0,
+  "limit": 10000,
+  "release_dates": [
+    {
+      "release_id": 10,
+      "release_name": "Consumer Price Index",
+      "date": "2026-05-13"
+    },
+    {
+      "release_id": 50,
+      "release_name": "Employment Situation",
+      "date": "2026-05-02"
+    },
+    {
+      "release_id": 53,
+      "release_name": "Gross Domestic Product",
+      "date": "2026-05-29"
+    },
+    {
+      "release_id": 101,
+      "release_name": "Selected Interest Rates",
+      "date": "2026-05-14"
+    },
+    {
+      "release_id": 999,
+      "release_name": "Some unrelated release",
+      "date": "2026-05-15"
+    },
+    {
+      "release_id": 175,
+      "release_name": "Advance Monthly Retail Sales",
+      "date": "2026-05-15"
+    }
+  ]
+}
