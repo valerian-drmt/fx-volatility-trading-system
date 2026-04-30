@@ -288,6 +288,30 @@ def _derive_signals(
     return out
 
 
+def _atm_pct_helper(surface: dict[str, Any], tenor: str) -> float | None:
+    """Re-implementation of regime_engine._atm_pct (avoid private import)."""
+    node = surface.get(tenor)
+    if not isinstance(node, dict):
+        return None
+    atm = node.get("atm")
+    if not isinstance(atm, dict):
+        return None
+    iv = atm.get("iv")
+    if not isinstance(iv, (int, float)):
+        return None
+    return round(float(iv) * 100.0, 4)
+
+
+def _any_butterfly_violation(surface: dict[str, Any]) -> bool:
+    svi = surface.get("_svi") or {}
+    for tenor_node in svi.values():
+        if isinstance(tenor_node, dict):
+            g = tenor_node.get("butterfly_g_min")
+            if isinstance(g, (int, float)) and g < 0:
+                return True
+    return False
+
+
 class _RedisLike(Protocol):
     async def get(self, name: str) -> Any: ...
     async def set(self, name: str, value: str, ex: int | None = ...) -> Any: ...
@@ -389,6 +413,19 @@ class VolEngine:
         signals = _derive_signals(
             surface, self.symbol, threshold_vol_pts=self._signal_threshold,
         )
+        # Step 1 — regime gating : compute _regime payload + persist via db_events.
+        regime_rows = await self._compute_regime(surface)
+        if regime_rows is not None:
+            surface["_regime"] = regime_rows["payload"]
+
+        # Step 2 — PCA signals : project surface on active model, generate signals.
+        pca_rows = await self._compute_pca_signals(surface)
+        if pca_rows is not None:
+            surface["_pca_signals"] = pca_rows["payload"]
+
+        # Step 2 — hourly snapshot for PCA fit history.
+        hourly_snapshot = await self._maybe_collect_hourly_snapshot(surface, F)
+
         try:
             await publisher.publish_vol_update(
                 self.redis, symbol=self.symbol, surface_data=surface, signals_data=signals
@@ -441,6 +478,28 @@ class VolEngine:
                         "timestamp": ts_iso, "underlying": self.symbol,
                         "spot": float(F), **ssvi,
                     },
+                )
+            # Step 1 : persist regime_snapshots + feature_history.
+            if regime_rows is not None:
+                await publish_db_event(
+                    self.redis, table="regime_snapshots",
+                    payload={**regime_rows["snapshot_row"], "timestamp": ts_iso},
+                )
+                await publish_db_event(
+                    self.redis, table="feature_history",
+                    payload={**regime_rows["feature_row"], "timestamp": ts_iso},
+                )
+            # Step 2 : persist pca_signals (1 row per PC) + hourly snapshot.
+            if pca_rows is not None:
+                for sig_row in pca_rows["signal_rows"]:
+                    await publish_db_event(
+                        self.redis, table="pca_signals",
+                        payload={**sig_row, "timestamp": ts_iso},
+                    )
+            if hourly_snapshot is not None:
+                await publish_db_event(
+                    self.redis, table="surface_snapshots_hourly",
+                    payload=hourly_snapshot,
                 )
         except Exception:
             logger.exception("publish_db_event_failed")
@@ -538,6 +597,386 @@ class VolEngine:
         except Exception:
             logger.exception("ssvi_fit_failed")
         return out
+
+    async def _compute_regime(self, surface: dict[str, Any]) -> dict[str, Any] | None:
+        """Read history from Postgres + compute Step 1 regime payload.
+
+        Best-effort : returns None on any DB error so the cycle still publishes
+        the surface. The first ~30 cycles will have null vol_of_vol/z-scores
+        while feature_history fills up (cf. STEP1 §9 bootstrap).
+        """
+        try:
+            from datetime import UTC, datetime, timedelta
+
+            from sqlalchemy import select
+
+            from persistence.db import get_sessionmaker
+            from persistence.models import (
+                Event,
+                FeatureHistory,
+                VrpTableDefault,
+            )
+
+            surface["_symbol"] = self.symbol
+            now = datetime.now(UTC)
+            async with get_sessionmaker()() as session:
+                cutoff_30d = now - timedelta(days=30)
+                cutoff_90d = now - timedelta(days=90)
+                iv_3m_rows = (await session.execute(
+                    select(FeatureHistory.iv_atm_3m_pct)
+                    .where(FeatureHistory.symbol == self.symbol)
+                    .where(FeatureHistory.timestamp > cutoff_30d)
+                    .order_by(FeatureHistory.timestamp)
+                )).scalars().all()
+                iv_3m_history = [float(x) for x in iv_3m_rows if x is not None]
+
+                hist_rows = (await session.execute(
+                    select(
+                        FeatureHistory.iv_atm_3m_pct,
+                        FeatureHistory.vol_of_vol_30d_pct,
+                        FeatureHistory.term_slope_pct,
+                    )
+                    .where(FeatureHistory.symbol == self.symbol)
+                    .where(FeatureHistory.timestamp > cutoff_90d)
+                    .order_by(FeatureHistory.timestamp)
+                )).all()
+                feature_history_rows = [
+                    {
+                        "vol_level": float(r[0]) if r[0] is not None else None,
+                        "vol_of_vol": float(r[1]) if r[1] is not None else None,
+                        "term_slope": float(r[2]) if r[2] is not None else None,
+                    } for r in hist_rows
+                ]
+
+                next_event_obj = (await session.execute(
+                    select(Event)
+                    .where(Event.impact == "high")
+                    .where(Event.region.in_(["EU", "US"]))
+                    .where(Event.scheduled_at > now)
+                    .order_by(Event.scheduled_at)
+                    .limit(1)
+                )).scalar_one_or_none()
+                next_event = None
+                if next_event_obj is not None:
+                    days = (next_event_obj.scheduled_at - now).total_seconds() / 86400.0
+                    next_event = {
+                        "event_type": next_event_obj.event_type,
+                        "scheduled_at_iso": next_event_obj.scheduled_at.isoformat().replace("+00:00", "Z"),
+                        "days_remaining": round(days, 4),
+                    }
+
+                vrp_rows = (await session.execute(
+                    select(VrpTableDefault.regime, VrpTableDefault.tenor, VrpTableDefault.vrp_vol_pts)
+                )).all()
+                vrp_lookup = {(r[0], r[1]): float(r[2]) for r in vrp_rows}
+
+            from core.vol.regime_engine import compute_regime_snapshot
+
+            # GMM proba inference (Step 1 §3 zone 2). Fits on 2 features
+            # (vol_level, vol_of_vol) using the entire feature_history we
+            # already pulled. Returns None if < MIN_OBS or features missing.
+            gmm_probas = self._fit_and_infer_gmm(
+                feature_history_rows=feature_history_rows,
+                vol_level_pct=_atm_pct_helper(surface, "3M"),
+                vov_pct_live=None,  # computed inside compute_regime_snapshot
+                iv_3m_history_pct=iv_3m_history,
+            )
+
+            result = compute_regime_snapshot(
+                surface=surface,
+                iv_3m_history_pct=iv_3m_history,
+                feature_history_rows=feature_history_rows,
+                next_event=next_event,
+                vrp_lookup=vrp_lookup,
+                now_utc_iso=now.isoformat().replace("+00:00", "Z"),
+                gmm_probabilities=gmm_probas,
+            )
+            # Fetch last 2 labels to project the gate decision for audit.
+            payload = result["payload"]
+            label_now = payload.get("label")
+            from sqlalchemy import desc as _desc
+
+            from core.vol.regime_engine import gate_decision
+            from persistence.models import RegimeSnapshot
+            async with get_sessionmaker()() as session:
+                last_labels = (await session.execute(
+                    select(RegimeSnapshot.label)
+                    .where(RegimeSnapshot.symbol == self.symbol)
+                    .order_by(_desc(RegimeSnapshot.timestamp))
+                    .limit(2)
+                )).scalars().all()
+            history_labels = [label_now, *last_labels]  # [t, t-1, t-2]
+            gate = gate_decision(
+                label_now or "calm",
+                payload.get("event_dampener", False),
+                history_labels,
+            )
+
+            # Structured per-cycle log (cf. STEP1 §12 acceptance).
+            logger.info(
+                "regime_cycle symbol=%s label=%s method=%s event_dampener=%s "
+                "next_event_type=%s days_to_event=%s "
+                "vol_level=%s vol_of_vol=%s term_slope=%s "
+                "gmm_active=%s n_feature_history=%d "
+                "gate_authorized=%s gate_reason=%s gate_size_mult=%.2f",
+                self.symbol,
+                payload.get("label"),
+                payload.get("method"),
+                payload.get("event_dampener"),
+                (payload.get("next_event") or {}).get("type"),
+                (payload.get("next_event") or {}).get("days_remaining"),
+                (payload.get("features") or {}).get("vol_level", {}).get("value"),
+                (payload.get("features") or {}).get("vol_of_vol", {}).get("value"),
+                (payload.get("features") or {}).get("term_slope", {}).get("value"),
+                gmm_probas is not None,
+                len(feature_history_rows),
+                gate.authorized, gate.reason, gate.size_mult,
+            )
+            return result
+        except Exception:
+            logger.exception("compute_regime_failed")
+            return None
+
+    def _fit_and_infer_gmm(
+        self, *,
+        feature_history_rows: list[dict[str, float | None]],
+        vol_level_pct: float | None,
+        vov_pct_live: float | None,
+        iv_3m_history_pct: list[float],
+    ) -> dict[str, float] | None:
+        """Fit a 3-component GMM on (vol_level, vol_of_vol) historical pairs
+        and project the live observation. Returns ``{calm, stressed, pre_event}``
+        probas, or None if insufficient data.
+
+        We only use 2 of the 3 features because :term_slope is mostly NULL
+        in feature_history during bootstrap (single-tenor IV index from the
+        IB historical backfill). The 2D model still cleanly separates calm
+        (low vol+low vov) from stressed (high vol+high vov), with pre_event
+        falling in the middle of the vol_level distribution.
+        """
+        try:
+            import numpy as np
+
+            from core.vol.gmm_regime import MIN_OBS_GMM, fit_gmm, infer_proba
+
+            # Build training matrix from history rows that have both features.
+            train: list[tuple[float, float]] = [
+                (r["vol_level"], r["vol_of_vol"])
+                for r in feature_history_rows
+                if r.get("vol_level") is not None and r.get("vol_of_vol") is not None
+            ]
+            if len(train) < MIN_OBS_GMM:
+                return None
+            X = np.asarray(train, dtype=float)
+
+            # Live obs : need a vov estimate. If not passed, compute on the fly.
+            if vov_pct_live is None and len(iv_3m_history_pct) >= 20:
+                arr = np.asarray(iv_3m_history_pct, dtype=float)
+                vov_pct_live = float(arr.std(ddof=1))
+            if vol_level_pct is None or vov_pct_live is None:
+                return None
+
+            gmm, fit = fit_gmm(X)
+            if gmm is None or fit is None or not fit.converged:
+                return None
+
+            x = np.asarray([vol_level_pct, vov_pct_live], dtype=float)
+            res = infer_proba(gmm, x, fit)
+            return {
+                "calm": res.p_calm,
+                "stressed": res.p_stressed,
+                "pre_event": res.p_pre_event,
+            }
+        except Exception:
+            logger.exception("gmm_inference_failed")
+            return None
+
+    async def _compute_pca_signals(self, surface: dict[str, Any]) -> dict[str, Any] | None:
+        """Project surface on active PCA model + emit 3 signals.
+
+        Returns None on no active model (bootstrap), incomplete surface, or
+        DB error. The frontend shows a 'bootstrap' state when payload absent.
+        """
+        try:
+            from datetime import UTC, datetime, timedelta
+
+            import numpy as np
+            from sqlalchemy import desc, select
+
+            from core.vol.pca_engine import (
+                actionable_check,
+                check_coherence,
+                classify_label,
+                feature_vector_from_surface,
+                is_persistent,
+                project,
+                zscore_against,
+            )
+            from persistence.db import get_sessionmaker
+            from persistence.models import (
+                PcaModel,
+                PcaSignal,
+                SignalRecommendationsMap,
+            )
+
+            x = feature_vector_from_surface(surface)
+            if x is None:
+                return None
+
+            now = datetime.now(UTC)
+            async with get_sessionmaker()() as session:
+                model = (await session.execute(
+                    select(PcaModel).where(PcaModel.is_active.is_(True)).limit(1)
+                )).scalar_one_or_none()
+                if model is None:
+                    return {
+                        "payload": {
+                            "model_version": None, "state": "bootstrap",
+                            "signals": {}, "diagnostics": {"reason": "no_active_pca_model"},
+                        },
+                        "signal_rows": [],
+                    }
+
+                means = np.asarray(model.means, dtype=float)
+                stds = np.asarray(model.stds, dtype=float)
+                loadings = np.asarray(model.loadings, dtype=float)
+                var_ratio = list(model.variance_explained_ratio or [])
+                raw_scores = project(x, means, stds, loadings)
+
+                # History per PC for z-score + persistence.
+                cutoff = now - timedelta(days=90)
+                hist_rows = (await session.execute(
+                    select(PcaSignal.pc_id, PcaSignal.raw_score, PcaSignal.z_score, PcaSignal.timestamp)
+                    .where(PcaSignal.pca_model_id == model.id)
+                    .where(PcaSignal.timestamp > cutoff)
+                    .order_by(desc(PcaSignal.timestamp))
+                )).all()
+                hist_raw: dict[int, list[float]] = {1: [], 2: [], 3: []}
+                hist_z: dict[int, list[float]] = {1: [], 2: [], 3: []}
+                for r in hist_rows:
+                    if r[0] in hist_raw:
+                        hist_raw[r[0]].append(float(r[1]))
+                        hist_z[r[0]].append(float(r[2]))
+
+                rec_rows = (await session.execute(
+                    select(
+                        SignalRecommendationsMap.pc_id, SignalRecommendationsMap.signal_label,
+                        SignalRecommendationsMap.recommended_structure,
+                        SignalRecommendationsMap.default_tenor,
+                    ).where(SignalRecommendationsMap.is_active.is_(True))
+                )).all()
+                rec_map = {(r[0], r[1]): f"{r[2]}_{r[3]}" for r in rec_rows}
+
+            signals_payload: dict[str, dict] = {}
+            signal_rows: list[dict] = []
+            for pc_id in (1, 2, 3):
+                idx = pc_id - 1
+                raw = float(raw_scores[idx]) if idx < len(raw_scores) else 0.0
+                z = zscore_against(raw, hist_raw[pc_id])
+                label = classify_label(z)
+                # Stability proxy : cosine_sim_pcN vs previous fit.
+                cos_sim = getattr(model, f"cosine_similarity_pc{pc_id}", None)
+                cos_sim_f = float(cos_sim) if cos_sim is not None else 1.0
+                stable = cos_sim_f >= 0.85
+                ve = float(var_ratio[idx]) if idx < len(var_ratio) else 0.0
+                persistent = is_persistent([z, *hist_z[pc_id]])
+                flag = actionable_check(
+                    pc_id=pc_id, z_score=z, label=label,
+                    loadings_stable=stable, variance_explained=ve,
+                    persistent=persistent,
+                )
+                rec = rec_map.get((pc_id, label)) if label != "FAIR" and flag.actionable else None
+                node = {
+                    "z_score": round(z, 2),
+                    "raw_score": round(raw, 4),
+                    "label": label,
+                    "actionable": flag.actionable,
+                    "actionable_reason": flag.reason,
+                    "recommended_structure": rec,
+                }
+                signals_payload[f"pc{pc_id}"] = node
+                signal_rows.append({
+                    "symbol": self.symbol, "pca_model_id": int(model.id),
+                    "pc_id": pc_id, "raw_score": raw, "z_score": z,
+                    "label": label, "actionable": flag.actionable,
+                    "actionable_reason": flag.reason,
+                    "recommended_structure": rec, "sub_signals": None,
+                })
+
+            payload = {
+                "model_version": model.version,
+                "fit_timestamp": model.fit_timestamp.isoformat().replace("+00:00", "Z"),
+                "fit_window_start": model.fit_window_start.isoformat().replace("+00:00", "Z"),
+                "fit_window_end": model.fit_window_end.isoformat().replace("+00:00", "Z"),
+                "n_obs_in_fit": model.n_obs_used,
+                "state": "stable" if all(
+                    (getattr(model, f"cosine_similarity_pc{i}", None) is None)
+                    or (float(getattr(model, f"cosine_similarity_pc{i}")) >= 0.85)
+                    for i in (1, 2, 3)
+                ) else "unstable",
+                "variance_explained": {
+                    "pc1": round(var_ratio[0], 3) if len(var_ratio) > 0 else 0.0,
+                    "pc2": round(var_ratio[1], 3) if len(var_ratio) > 1 else 0.0,
+                    "pc3": round(var_ratio[2], 3) if len(var_ratio) > 2 else 0.0,
+                    "cumulative": round(sum(var_ratio[:3]), 3) if var_ratio else 0.0,
+                },
+                "loadings_stable": {
+                    f"pc{i}": (
+                        getattr(model, f"cosine_similarity_pc{i}", None) is None
+                        or float(getattr(model, f"cosine_similarity_pc{i}")) >= 0.85
+                    ) for i in (1, 2, 3)
+                },
+                "signals": signals_payload,
+                "coherence": check_coherence(signals_payload),
+            }
+            return {"payload": payload, "signal_rows": signal_rows}
+        except Exception:
+            logger.exception("compute_pca_signals_failed")
+            return None
+
+    async def _maybe_collect_hourly_snapshot(
+        self, surface: dict[str, Any], spot: float,
+    ) -> dict[str, Any] | None:
+        """If the last snapshot is older than 1 hour, build a new 30-dim row."""
+        try:
+            from datetime import UTC, datetime, timedelta
+
+            from sqlalchemy import desc, select
+
+            from core.vol.pca_engine import DELTAS, TENORS, feature_vector_from_surface
+            from persistence.db import get_sessionmaker
+            from persistence.models import SurfaceSnapshotHourly
+
+            x = feature_vector_from_surface(surface)
+            if x is None:
+                return None
+            now = datetime.now(UTC)
+            async with get_sessionmaker()() as session:
+                last = (await session.execute(
+                    select(SurfaceSnapshotHourly.timestamp)
+                    .where(SurfaceSnapshotHourly.symbol == self.symbol)
+                    .order_by(desc(SurfaceSnapshotHourly.timestamp))
+                    .limit(1)
+                )).scalar_one_or_none()
+            if last is not None and (now - last) < timedelta(minutes=55):
+                return None  # not yet time
+
+            row: dict[str, Any] = {
+                "timestamp": now.isoformat().replace("+00:00", "Z"),
+                "symbol": self.symbol, "source": "live_engine",
+                "spot_at_snapshot": float(spot),
+                "n_strikes_present": len(x),
+                "has_no_arb_violation": _any_butterfly_violation(surface),
+            }
+            i = 0
+            for t in TENORS:
+                for d in DELTAS:
+                    row[f"iv_{t.lower()}_{d}"] = float(x[i])
+                    i += 1
+            return row
+        except Exception:
+            logger.exception("maybe_collect_hourly_snapshot_failed")
+            return None
 
     def _teardown(self) -> None:
         try:
