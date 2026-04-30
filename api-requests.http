@@ -171,14 +171,24 @@ GET {{api}}/system-stats
 
 
 # ============================================================================
-# R4 PR #7 + #8 — WebSocket (TODO)
+# R4 PR #7 + #8 — WebSocket (LIVE)
 # ============================================================================
 #
 # PyCharm HTTP Client ne gere pas les WS natifs. Utiliser un client externe :
 #   websocat ws://localhost:8000/ws/ticks
 #   wscat -c ws://localhost:8000/ws/ticks
 #
-# Endpoints prevus :
-#   /ws/ticks   — broadcast des ticks (throttle 200ms)
-#   /ws/vol     — broadcast des vol_update
-#   /ws/risk    — broadcast des risk_update
+# Endpoints LIVE :
+#   /ws/ticks   — broadcast des ticks (throttle 200ms) → channel Redis `ticks`
+#   /ws/vol     — broadcast des vol_update             → channel Redis `vol_update`
+#   /ws/risk    — broadcast des risk_update            → channel Redis `risk_update`
+#
+# Exemple bout-en-bout (2 terminaux) :
+#   Term 1 : wscat -c ws://localhost:8000/ws/ticks
+#   Term 2 : docker compose exec redis redis-cli PUBLISH ticks '{"symbol":"EURUSD","mid":1.08}'
+#   → Term 1 doit afficher le JSON.
+#
+# Verifier qu'ils sont absents du schema OpenAPI (intentionnel) :
+### OpenAPI — ne doit PAS lister /ws/*
+GET {{host}}/openapi.json
+Accept: application/json
