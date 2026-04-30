@@ -23,7 +23,7 @@ import { Pricing } from "./dev/Pricing";
 import { Signals } from "./dev/Signals";
 import { StackCombined } from "./dev/StackCombined";
 import { TradePreview } from "./dev/TradePreview";
-import { VolSurface } from "./dev/VolSurface";
+import { VolDashboard } from "./dev/VolDashboard";
 import { WsMonitor } from "./dev/WsMonitor";
 
 interface TabDef {
@@ -36,7 +36,7 @@ const TABS: TabDef[] = [
   { id: "stack", label: "🐳 Stack · Health · Redis", Component: StackCombined },
   { id: "ws", label: "📡 WS Monitor", Component: WsMonitor },
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
-  { id: "vol", label: "🌊 Vol Surface", Component: VolSurface },
+  { id: "vol", label: "🌊 Vol", Component: VolDashboard },
   { id: "pricing", label: "💲 Pricing", Component: Pricing },
   { id: "trade-preview", label: "📦 Trade Preview", Component: TradePreview },
   { id: "signals", label: "📈 Signals", Component: Signals },
