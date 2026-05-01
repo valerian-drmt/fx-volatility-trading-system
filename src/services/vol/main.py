@@ -20,7 +20,7 @@ from bus.channels import CH_CONFIG_CHANGED
 from core.config import VolTradingConfig
 from shared.config import get_settings
 from shared.logging import configure_logging
-from shared.redis_client import get_async_redis
+from bus import get_async_redis
 
 logger = logging.getLogger(__name__)
 

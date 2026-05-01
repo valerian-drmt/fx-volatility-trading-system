@@ -1,23 +1,22 @@
-"""Redis client factories — async for engines/FastAPI, sync for PyQt threads.
+"""Process-wide Redis client factories — async and sync.
 
 Two clients serve two worlds :
 
-    get_redis()      -> redis.asyncio.Redis
-        Used by the async engines and the FastAPI app. Non-blocking,
-        single process-level ConnectionPool shared between callers.
+    get_async_redis() -> redis.asyncio.Redis
+        For engines, FastAPI, and any async consumer. Single
+        process-level ConnectionPool shared between callers.
 
-    get_sync_redis() -> redis.Redis
-        Used by PyQt thread-pool callers that cannot await. Same
-        URL, separate pool (mixing sync/async clients on the same
-        connection object is not safe).
+    get_sync_redis()  -> redis.Redis
+        For sync callers (Jupyter smoke notebooks, scripts).
+        Same URL, separate pool — mixing sync/async clients on the
+        same connection object is not safe.
 
-Both read ``REDIS_URL`` lazily on first call and cache the instance
-for the rest of the process lifetime. ``reset_clients_for_tests()``
-clears the caches when a test monkeypatches the URL.
+Both read ``REDIS_URL`` lazily on first call and cache the instance for
+the rest of the process lifetime. ``reset_clients_for_tests()`` clears
+the caches when a test monkeypatches the URL.
 
-The pool is sized at ``max_connections=50`` which matches ``09-redis.md``
-and is well above the expected steady-state (3 engines + FastAPI ~4
-workers = ~10 concurrent consumers).
+Pool size : ``max_connections=50``, well above the steady-state load
+(5 engines + ~4 FastAPI workers ≈ 10 concurrent consumers).
 """
 
 from __future__ import annotations
@@ -43,7 +42,7 @@ def _redis_url() -> str:
     return url
 
 
-def get_redis() -> aioredis.Redis:
+def get_async_redis() -> aioredis.Redis:
     """Return the process-level async Redis client (lazy init)."""
     global _async_client
     if _async_client is None:
@@ -59,9 +58,8 @@ def get_redis() -> aioredis.Redis:
 def get_sync_redis() -> redis.Redis:
     """Return the process-level sync Redis client (lazy init).
 
-    For callers stuck in a sync context (PyQt thread-pool tasks that
-    cannot be awaited). Do NOT use from an async function — the sync
-    client blocks the event loop.
+    Do NOT use from an async function — the sync client blocks the
+    event loop. Reserved for Jupyter notebooks and one-shot scripts.
     """
     global _sync_client
     if _sync_client is None:
@@ -75,11 +73,12 @@ def get_sync_redis() -> redis.Redis:
 
 
 def reset_clients_for_tests() -> None:
-    """Drop both cached clients so the next call reads REDIS_URL again.
-
-    Call from tests that ``monkeypatch.setenv(REDIS_URL, ...)`` after
-    the module was already imported.
-    """
+    """Drop both cached clients so the next call reads REDIS_URL again."""
     global _async_client, _sync_client
     _async_client = None
     _sync_client = None
+
+
+# Back-compat alias — historical name used by bus.publisher and a smoke
+# notebook. New code should call get_async_redis() directly.
+get_redis = get_async_redis

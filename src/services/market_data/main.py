@@ -8,7 +8,7 @@ Wires together the pieces :
 
 - ``shared.config.get_settings`` → env-driven config
 - ``shared.logging.configure_logging`` → JSON logs with service_name
-- ``shared.redis_client.get_async_redis`` → process-wide Redis pool
+- ``bus.get_async_redis`` → process-wide Redis pool
 - ``ib_insync.IB`` → one connection per service (client_id injected)
 - ``services.market_data.engine.MarketDataEngine`` → the actual loop
 
@@ -24,7 +24,7 @@ from typing import Any
 
 from shared.config import get_settings
 from shared.logging import configure_logging
-from shared.redis_client import get_async_redis
+from bus import get_async_redis
 
 
 async def run() -> None:

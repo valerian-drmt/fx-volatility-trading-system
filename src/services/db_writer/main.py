@@ -13,7 +13,7 @@ from persistence.writer import AsyncDatabaseWriter
 from services.db_writer.writer import DbWriterService
 from shared.config import get_settings
 from shared.logging import configure_logging
-from shared.redis_client import get_async_redis
+from bus import get_async_redis
 
 
 async def run() -> None:

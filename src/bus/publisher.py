@@ -12,7 +12,7 @@ throttled : they always reflect the most recent tick because cache
 reads are sparse and TTL refresh is cheap.
 
 All helpers are :
-    - async (use ``bus.get_redis()`` in production)
+    - async (use ``bus.get_async_redis()`` in production)
     - single-call : one argument set -> one consistent write
     - resilient to redis down : the caller catches
       ``redis.ConnectionError`` / ``TimeoutError`` and logs, the
