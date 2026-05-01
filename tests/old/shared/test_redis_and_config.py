@@ -14,7 +14,6 @@ import pytest
 from shared.config import Settings, get_settings, reset_settings_cache
 from shared.db_events import DB_EVENTS_CHANNEL, publish_db_event
 
-
 # ── config / settings ─────────────────────────────────────────────────
 
 @pytest.mark.unit

@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from api.services import config_service
+from api.orchestration import config_service
 from api.orchestration.config_service import CONFIG_CHANGED_CHANNEL
 from core.config import VolTradingConfig
 from persistence.models import Base

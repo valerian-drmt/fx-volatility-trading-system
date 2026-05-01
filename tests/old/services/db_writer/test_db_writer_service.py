@@ -15,9 +15,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from engines.db_writer.service import DbWriterService
 from persistence.models import AccountSnap, Base
 from persistence.writer import AsyncDatabaseWriter
-from engines.db_writer.service import DbWriterService
 from shared.db_events import DB_EVENTS_CHANNEL
 
 
