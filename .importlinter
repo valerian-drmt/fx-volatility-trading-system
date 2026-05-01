@@ -1,0 +1,93 @@
+[importlinter]
+root_packages =
+    api
+    bus
+    core
+    engines
+    persistence
+    shared
+include_external_packages = False
+
+# ────────────────────────────────────────────────────────────────────
+# Contract 1 — core is pure
+#
+# Domain code (vol models, pricing, greeks) must not depend on any
+# infrastructure (DB, Redis bus) nor on any presentation layer (api,
+# engines). It is the only layer with no imports from this project.
+# ────────────────────────────────────────────────────────────────────
+[importlinter:contract:1]
+name = core is pure (no I/O, no presentation)
+type = forbidden
+source_modules =
+    core
+forbidden_modules =
+    api
+    engines
+    bus
+    persistence
+
+# ────────────────────────────────────────────────────────────────────
+# Contract 2 — bus is an adapter
+#
+# The Redis adapter package may use core types but must never import
+# from a presentation layer.
+# ────────────────────────────────────────────────────────────────────
+[importlinter:contract:2]
+name = bus does not depend on api or engines
+type = forbidden
+source_modules =
+    bus
+forbidden_modules =
+    api
+    engines
+
+# ────────────────────────────────────────────────────────────────────
+# Contract 3 — persistence is an adapter
+#
+# The DB adapter (ORM + writer + migrations) may use core types but
+# must never import from a presentation layer.
+# ────────────────────────────────────────────────────────────────────
+[importlinter:contract:3]
+name = persistence does not depend on api or engines
+type = forbidden
+source_modules =
+    persistence
+forbidden_modules =
+    api
+    engines
+
+# ────────────────────────────────────────────────────────────────────
+# Contract 4 — engines do not depend on api
+#
+# Long-running services (market_data, vol, risk, db_writer, execution)
+# publish to Redis and read from the DB ; they never call the FastAPI
+# app. This rules out subtle service-back-into-api loops.
+# ────────────────────────────────────────────────────────────────────
+[importlinter:contract:4]
+name = engines do not depend on api
+type = forbidden
+source_modules =
+    engines
+forbidden_modules =
+    api
+
+# ────────────────────────────────────────────────────────────────────
+# Contract 5 — api does not depend on engine internals
+#
+# The api may *route* to engines via HTTP (execution-engine on :8001)
+# but must not Python-import their internals. The ONE documented
+# exception is engines.execution.structures — pure data classes
+# describing option structures (StraddleATM, RiskReversal25d, …) that
+# api/routers/cockpit.py uses to serialize previews. The right fix is
+# to promote those to core/structures.py ; until then this one path
+# is whitelisted.
+# ────────────────────────────────────────────────────────────────────
+[importlinter:contract:5]
+name = api does not depend on engines (except documented data classes)
+type = forbidden
+source_modules =
+    api
+forbidden_modules =
+    engines
+ignore_imports =
+    api.routers.cockpit -> engines.execution.structures

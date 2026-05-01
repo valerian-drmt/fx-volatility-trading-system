@@ -70,13 +70,15 @@ writer = [
 # ── Tooling extras ─────────────────────────────────────────────────────
 
 # Sole local + CI dev set : lint, type-check, test runner, async test
-# helpers, and the in-memory SQLite driver used by the writer's unit tests.
+# helpers, the in-memory SQLite driver used by the writer's unit tests,
+# and the architecture lint (import-linter, contracts in .importlinter).
 dev = [
     "ruff>=0.11,<0.12",
     "mypy>=1.10",
     "pytest>=9.0,<10.0",
     "pytest-asyncio>=0.23,<0.25",
     "aiosqlite>=0.19,<0.21",
+    "import-linter>=2.0,<3.0",
 ]
 
 # ─────────────────────────────────────────────────────────────────────

@@ -55,6 +55,9 @@ jobs:
       - name: Lint (ruff)
         run: python -m ruff check src tests
 
+      - name: Architecture lint (import-linter contracts)
+        run: PYTHONPATH=src lint-imports
+
       - name: Run tests (pytest, excluding integration)
         run: python -m pytest -m "not integration and not db_integration and not redis_integration" --junitxml=junit.xml
 
