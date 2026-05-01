@@ -1,8 +1,9 @@
 # `tests/` — structure et conventions
 
 > Doc de référence pour savoir **où mettre un test** et **comment exécuter**.
-> Posée 28/04/2026 (R9 sandbox), pré-migration des anciens tests qui sont
-> dans `tests/old/` en attendant d'être triés.
+> Posée 28/04/2026 (R9 sandbox), mise à jour post-refactor 01/05/2026
+> (services → engines, api/services → api/orchestration, api/models →
+> api/schemas).
 
 ---
 
@@ -10,7 +11,6 @@
 
 ```
 tests/
-├── conftest.py             # fixtures globales, sys.path, Qt offscreen
 ├── fixtures/               # builders réutilisables (factories de positions, vol surfaces, etc.)
 │
 ├── unit/                   # in-process, no I/O, < 100ms par test
@@ -20,6 +20,8 @@ tests/
 │   └── pipeline_<sub-system>/
 │
 └── old/                    # tests historiques en attente de triage (pré-R9)
+                            # NON collectés par pytest depuis Step 17 :
+                            # testpaths = ["tests/unit","tests/integration"]
 ```
 
 Le **3e étage de la pyramide (smoke / e2e)** vit hors de `tests/` :
@@ -45,11 +47,15 @@ Cette répartition reflète la nature des tests :
 ```
 src/                            tests/unit/
 ├── api/                  →     ├── api/
+│   ├── orchestration/    →     │   ├── orchestration/
+│   ├── schemas/          →     │   └── (schemas/ — Pydantic, no logic to test)
+│   ├── routers/          →     │   └── (routers/ — covered by integration)
 ├── bus/                  →     ├── bus/
 ├── core/                 →     ├── core/
 ├── persistence/          →     ├── persistence/
-├── services/             →     ├── services/
+├── engines/              →     ├── engines/
 │   ├── db_writer/        →     │   ├── db_writer/
+│   ├── execution/        →     │   ├── execution/
 │   ├── market_data/      →     │   ├── market_data/
 │   ├── risk/             →     │   ├── risk/
 │   └── vol/              →     │   └── vol/
@@ -195,5 +201,5 @@ A : Les smoke tests du projet sont **interactifs** (notebooks avec OK/FAIL en so
 **Q : Que faire si un test est unit ET integration ?**
 A : Probablement deux tests distincts. La couche unit mock les I/O ; la couche integration les exerce vraiment. Si tu peux pas séparer, classe en integration (le filet de sécurité plus large l'emporte).
 
-**Q : `tests/unit/services/` est obligatoire ou je peux flatter en `tests/unit/{db_writer,market_data,risk,vol}/` ?**
-A : Reflète `src/`. `src/services/` existe pour grouper les 4 engines, donc `tests/unit/services/` aussi. Cohérence du mapping path-to-path > économie de profondeur.
+**Q : `tests/unit/engines/` est obligatoire ou je peux flatter en `tests/unit/{db_writer,market_data,risk,vol}/` ?**
+A : Reflète `src/`. `src/engines/` existe pour grouper les 5 engines, donc `tests/unit/engines/` aussi. Cohérence du mapping path-to-path > économie de profondeur.
