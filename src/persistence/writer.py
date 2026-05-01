@@ -1,16 +1,16 @@
-"""Async database writer — consumes events from an in-process queue and
-bulk-inserts them into PostgreSQL.
+"""``AsyncDatabaseWriter`` — bulk-INSERT engine for PostgreSQL.
 
-Scope delivered so far :
-    - R2 PR #1 : queue, batch collection, table dispatch, bulk INSERT, run()
-    - R2 PR #2 : ON CONFLICT DO NOTHING on vol_surfaces / signals, exponential
-                 retries on transient DB errors, graceful shutdown that drains
-                 the queue and disposes the engine
+Reusable infrastructure : a process-local ``asyncio.Queue`` of
+``(table, row_dict)`` items, a batched flush loop with idempotency
+(ON CONFLICT DO NOTHING on tables with a UNIQUE key) and exponential
+retries on transient DB errors. Disposing drains the queue and closes
+the engine cleanly.
 
-Not yet implemented :
-    - R2 PR #3 : Controller integration + thread wiring via run_coroutine_threadsafe
-    - R2 PR #4 : Engine producers (MarketData, Vol, Risk, Order)
-    - R2 PR #5 : CI postgres service + live integration tests
+Composition site : ``src/services/db_writer/service.py`` wraps an
+instance with a Redis pub/sub subscriber loop (the ``DbWriterService``)
+to make the long-running container ; the smoke notebook uses the writer
+directly without Redis. Both code paths exercise the same batching
+core.
 
 Reference : releases/architecture_finale_project/07-async-db-writer.md
 """

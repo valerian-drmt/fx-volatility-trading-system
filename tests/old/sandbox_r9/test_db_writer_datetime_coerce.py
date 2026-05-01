@@ -1,4 +1,4 @@
-"""Tests for services.db_writer.writer._coerce_datetime_fields.
+"""Tests for services.db_writer.service._coerce_datetime_fields.
 
 publish_db_event serialises datetime objects to ISO strings via
 json.dumps(default=str). asyncpg then refuses them on
@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 
 
 def test_coerce_timestamp_iso_with_plus_offset() -> None:
-    from services.db_writer.writer import _coerce_datetime_fields
+    from services.db_writer.service import _coerce_datetime_fields
 
     out = _coerce_datetime_fields({"timestamp": "2026-04-22T14:00:00+00:00", "underlying": "EURUSD"})
     assert isinstance(out["timestamp"], datetime)
@@ -21,7 +21,7 @@ def test_coerce_timestamp_iso_with_plus_offset() -> None:
 
 
 def test_coerce_timestamp_iso_with_z_suffix() -> None:
-    from services.db_writer.writer import _coerce_datetime_fields
+    from services.db_writer.service import _coerce_datetime_fields
 
     out = _coerce_datetime_fields({"timestamp": "2026-04-22T14:00:00Z"})
     assert isinstance(out["timestamp"], datetime)
@@ -29,7 +29,7 @@ def test_coerce_timestamp_iso_with_z_suffix() -> None:
 
 
 def test_coerce_skips_unknown_keys() -> None:
-    from services.db_writer.writer import _coerce_datetime_fields
+    from services.db_writer.service import _coerce_datetime_fields
 
     out = _coerce_datetime_fields({
         "timestamp": "2026-04-22T14:00:00Z",
@@ -43,7 +43,7 @@ def test_coerce_skips_unknown_keys() -> None:
 
 
 def test_coerce_multiple_datetime_fields() -> None:
-    from services.db_writer.writer import _coerce_datetime_fields
+    from services.db_writer.service import _coerce_datetime_fields
 
     out = _coerce_datetime_fields({
         "timestamp": "2026-04-22T14:00:00Z",
@@ -54,7 +54,7 @@ def test_coerce_multiple_datetime_fields() -> None:
 
 
 def test_coerce_garbage_string_is_left_untouched() -> None:
-    from services.db_writer.writer import _coerce_datetime_fields
+    from services.db_writer.service import _coerce_datetime_fields
 
     out = _coerce_datetime_fields({"timestamp": "not-a-date", "underlying": "EURUSD"})
     # Garbage stays as-is ; the INSERT will fail downstream but the warning
@@ -63,7 +63,7 @@ def test_coerce_garbage_string_is_left_untouched() -> None:
 
 
 def test_coerce_missing_fields_no_op() -> None:
-    from services.db_writer.writer import _coerce_datetime_fields
+    from services.db_writer.service import _coerce_datetime_fields
 
     out = _coerce_datetime_fields({"underlying": "EURUSD", "spot": 1.17})
     assert out == {"underlying": "EURUSD", "spot": 1.17}
