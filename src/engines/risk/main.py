@@ -4,9 +4,9 @@ from __future__ import annotations
 import asyncio
 import signal
 
+from bus import get_async_redis
 from shared.config import get_settings
 from shared.logging import configure_logging
-from bus import get_async_redis
 
 
 async def run() -> None:

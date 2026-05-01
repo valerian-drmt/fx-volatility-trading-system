@@ -16,11 +16,11 @@ from typing import Any
 
 from redis import asyncio as aioredis
 
+from bus import get_async_redis
 from bus.channels import CH_CONFIG_CHANGED
 from core.config import VolTradingConfig
 from shared.config import get_settings
 from shared.logging import configure_logging
-from bus import get_async_redis
 
 logger = logging.getLogger(__name__)
 

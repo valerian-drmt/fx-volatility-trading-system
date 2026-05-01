@@ -147,7 +147,7 @@ async def _ib_probe(host: str = "ib-gateway", port: int = 4002, timeout_s: float
         except Exception:
             pass
         return {"status": "OK", "host": host, "port": port}
-    except (TimeoutError, OSError, asyncio.TimeoutError) as e:
+    except (TimeoutError, OSError) as e:
         return {"status": "DOWN", "host": host, "port": port, "error": str(e)[:80]}
 
 
@@ -322,12 +322,12 @@ async def read_table(
     # `name` et `order_col` sont validés via la whitelist (pas user input
     # libre), donc l'interpolation est safe.
     rows_res = await db.execute(
-        text(f"SELECT * FROM {name} ORDER BY {order_col} DESC LIMIT :lim OFFSET :off"),  # noqa: S608
+        text(f"SELECT * FROM {name} ORDER BY {order_col} DESC LIMIT :lim OFFSET :off"),
         {"lim": limit, "off": offset},
     )
     rows = [dict(r) for r in rows_res.mappings().all()]
 
-    count_res = await db.execute(text(f"SELECT COUNT(*) AS n FROM {name}"))  # noqa: S608
+    count_res = await db.execute(text(f"SELECT COUNT(*) AS n FROM {name}"))
     total = int(count_res.scalar_one())
 
     columns = list(rows[0].keys()) if rows else []

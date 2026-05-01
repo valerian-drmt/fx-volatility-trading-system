@@ -9,11 +9,11 @@ from __future__ import annotations
 import asyncio
 import signal
 
-from persistence.writer import AsyncDatabaseWriter
+from bus import get_async_redis
 from engines.db_writer.service import DbWriterService
+from persistence.writer import AsyncDatabaseWriter
 from shared.config import get_settings
 from shared.logging import configure_logging
-from bus import get_async_redis
 
 
 async def run() -> None:

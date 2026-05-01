@@ -22,8 +22,8 @@ from redis import asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from engines.execution.order_executor import OrderExecutor
 from core.pricing.bs import bs_delta, bs_gamma, bs_theta, bs_vega
+from engines.execution.order_executor import OrderExecutor
 from persistence.models import AccountSnap, Order, Position, PositionSnapshot, Trade
 
 logger = logging.getLogger(__name__)

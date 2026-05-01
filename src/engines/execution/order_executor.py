@@ -60,7 +60,7 @@ class OrderExecutor:
                     ib.connectAsync(self.host, self.port, clientId=self.client_id),
                     timeout=timeout,
                 )
-            except (TimeoutError, asyncio.TimeoutError, OSError) as e:
+            except (TimeoutError, OSError) as e:
                 logger.warning("ib_connect_failed: %s", e)
                 self._ib = None
                 return

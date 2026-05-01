@@ -12,7 +12,6 @@ http://execution-engine:8001 sur le réseau interne fxvol-internal.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -24,14 +23,14 @@ from pydantic import BaseModel, Field
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from persistence.db import get_sessionmaker
-from persistence.models import OrderEvent
 from engines.execution.order_executor import (
     OrderExecutor,
     OrderExecutorUnavailable,
     OrderRequest,
 )
 from engines.execution.position_sync import position_sync_loop
+from persistence.db import get_sessionmaker
+from persistence.models import OrderEvent
 
 logger = logging.getLogger("execution")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
