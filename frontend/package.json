@@ -10,15 +10,17 @@
     "lint": "eslint src --max-warnings 0",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write src",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gen:api": "openapi-typescript http://localhost:8000/openapi.json -o src/api/schema.d.ts",
+    "gen:api:check": "openapi-typescript http://localhost:8000/openapi.json -o /tmp/schema.d.ts && diff -q src/api/schema.d.ts /tmp/schema.d.ts"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/react": "^18.3.3",
     "@types/node": "^20.14.2",
+    "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
@@ -27,6 +29,7 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.7",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.3.2",
     "typescript": "^5.4.5",
     "vite": "^5.3.1"
