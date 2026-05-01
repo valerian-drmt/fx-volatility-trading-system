@@ -1,9 +1,19 @@
-"""Pydantic Settings shared by every R7 service container.
+"""Single source of truth for the project's env-var schema.
 
-Each service reads the same env-var schema (REDIS_URL, IB_HOST, IB_PORT,
-IB_CLIENT_ID, LOG_LEVEL, DATABASE_URL, SERVICE_NAME). Missing required
-vars fail fast at startup rather than surfacing as obscure connection
-errors later.
+Every service container reads the same env-var schema (REDIS_URL,
+IB_HOST, IB_PORT, IB_CLIENT_ID, LOG_LEVEL, DATABASE_URL, SERVICE_NAME,
+MARKET_SYMBOL, THRESHOLD_VOL_PTS, MODEL_P). Missing required vars fail
+fast at startup rather than surfacing as obscure connection errors
+later.
+
+Field names are UPPERCASE — they match the env-var names verbatim and
+follow the "Python module-level constant" convention used by engine
+code (``settings.IB_HOST``, ``settings.REDIS_URL``).
+
+The API (``src/api/config.py``) extends this class with HTTP-only
+fields (CORS, rate limits) and exposes lowercase aliases for FastAPI
+ergonomics. Engines never inherit ; they instantiate ``Settings``
+directly via ``get_settings()``.
 
 Usage :
     from shared.config import get_settings
