@@ -11,7 +11,7 @@ WorkingDirectory=/opt/fxvol
 # (tmpfs, root:fxvol 0640). Runs as root so it can chown ; the main
 # ExecStart still runs as root for systemd-oneshot compatibility, but
 # docker compose drops to the 'fxvol' user through /etc/subuid rules.
-ExecStartPre=/opt/fxvol/scripts/load_secrets.sh
+ExecStartPre=/opt/fxvol/scripts/ops/load_secrets.sh
 # Two env files : runtime secrets from SSM (mandatory, tmpfs) + image
 # tags written by the deploy workflow (optional, '-' prefix so the
 # unit still boots on a fresh host before the first deploy).

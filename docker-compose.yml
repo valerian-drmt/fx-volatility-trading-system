@@ -61,7 +61,7 @@ services:
       # FRED API key for the multi-source events pipeline. Free signup at
       # https://fredaccount.stlouisfed.org/apikeys (~30s). Without it, the
       # FRED source is skipped and only the stub sources run (= no events
-      # collected automatically — fallback is scripts/seed_events_manual.py).
+      # collected automatically — fallback is scripts/migrations/seed_events_manual.py).
       # Cf. docs/vol_trading_pca/events_pipeline_spec.md §8.
       FRED_API_KEY: ${FRED_API_KEY:-}
     depends_on:
@@ -302,8 +302,8 @@ services:
     profiles: ["ib"]
     restart: unless-stopped
     environment:
-      TWS_USERID: ${IB_USERID:?IB_USERID is required (load via scripts/load_secrets.ps1)}
-      TWS_PASSWORD: ${IB_PASSWORD:?IB_PASSWORD is required (load via scripts/load_secrets.ps1)}
+      TWS_USERID: ${IB_USERID:?IB_USERID is required (load via scripts/ops/load_secrets.ps1)}
+      TWS_PASSWORD: ${IB_PASSWORD:?IB_PASSWORD is required (load via scripts/ops/load_secrets.ps1)}
       TRADING_MODE: ${TRADING_MODE:-paper}
       READ_ONLY_API: ${READ_ONLY_API:-no}
       # IBC lifecycle : daily auto-logout at 23:59 Paris is cleaner than a
@@ -314,9 +314,9 @@ services:
       # instead of crash-looping on timeout.
       TWOFA_TIMEOUT_ACTION: restart
       BYPASS_WARNING: "yes"
-      # VNC password loaded from SSM via scripts/load_secrets.ps1 — strict
+      # VNC password loaded from SSM via scripts/ops/load_secrets.ps1 — strict
       # check (every `docker compose up` must have the var set, no fallback).
-      VNC_SERVER_PASSWORD: ${VNC_PASSWORD:?VNC_PASSWORD is required (load via scripts/load_secrets.ps1)}
+      VNC_SERVER_PASSWORD: ${VNC_PASSWORD:?VNC_PASSWORD is required (load via scripts/ops/load_secrets.ps1)}
     ports:
       # Bind IB Gateway API port and VNC to 127.0.0.1 only — the PyQt v1
       # app on the host still needs to reach the gateway on localhost:4002,

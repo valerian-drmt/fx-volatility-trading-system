@@ -1,6 +1,6 @@
 # Run the local v2 stack
 
-> **TL;DR** — `.\scripts\start_stack.ps1` lance tout. Une seule commande.
+> **TL;DR** — `.\scripts\ops\start_stack.ps1` lance tout. Une seule commande.
 
 Stack 10 containers : `postgres` · `redis` · `api` · `db-writer` · `market-data` · `vol-engine` · `risk-engine` · `frontend` · `nginx` · `ib-gateway`.
 
@@ -16,25 +16,25 @@ Vérifier le profil AWS (one-shot, après une nouvelle machine ou des access key
 aws configure --profile fxvol-dev
 aws sts get-caller-identity --profile fxvol-dev
 cd .\Documents\'Python Project'\fx-volatility-trading-system
-.\scripts\start_stack.ps1
+.\scripts\ops\start_stack.ps1
 ```
 
 Lancer la stack :
 
 ```powershell
-.\scripts\start_stack.ps1
+.\scripts\ops\start_stack.ps1
 ```
 
 Recharger les secrets dans la session courante:
 
 ```powershell
-.\scripts\load_secrets.ps1
+.\scripts\ops\load_secrets.ps1
 ```
 
 Tout nettoyer :
 
 ```powershell
-.\scripts\start_stack.ps1 -Down              # stop tout (data preservée)
+.\scripts\ops\start_stack.ps1 -Down              # stop tout (data preservée)
 ```
 
 ---
@@ -64,9 +64,9 @@ Durée typique :
 ## Variantes courantes
 
 ```powershell
-.\scripts\start_stack.ps1 -NoPull -NoBuild   # quick restart (~30s)
-.\scripts\start_stack.ps1 -RecreateVenv      # rebuild venv (après requirements.txt change)
-.\scripts\start_stack.ps1 -NoTabs            # CI / scripting / pas de WT
+.\scripts\ops\start_stack.ps1 -NoPull -NoBuild   # quick restart (~30s)
+.\scripts\ops\start_stack.ps1 -RecreateVenv      # rebuild venv (après requirements.txt change)
+.\scripts\ops\start_stack.ps1 -NoTabs            # CI / scripting / pas de WT
 ```
 
 ---
@@ -123,7 +123,7 @@ Si un secret apparaît accidentellement quelque part :
 | `Missing required tool : 'aws'` | AWS CLI v2 absent | `winget install -e --id Amazon.AWSCLI` |
 | `Docker daemon not reachable` | Docker Desktop pas lancé | démarrer Docker Desktop, attendre l'icône verte |
 | `AWS profile 'fxvol-dev' not usable` | Access keys expirées / absentes | `aws configure --profile fxvol-dev` puis re-tester |
-| `Postgres did not become healthy within 60s` | Image PG corrompue ou volume orphelin | `.\scripts\start_stack.ps1 -Down -DropVolumes` puis re-lancer |
+| `Postgres did not become healthy within 60s` | Image PG corrompue ou volume orphelin | `.\scripts\ops\start_stack.ps1 -Down -DropVolumes` puis re-lancer |
 | `nginx` 502 sur `/api/...` | API container pas prêt au boot de nginx | déjà géré par le restart auto étape 8 ; sinon `docker compose restart nginx` |
 | Heartbeats `<nil>` dans le healthcheck | engines crashent au boot | `docker compose logs vol-engine` (tab dédié auto) |
 | WT tabs ne s'ouvrent pas | `wt.exe` absent | installer Windows Terminal (Microsoft Store) |

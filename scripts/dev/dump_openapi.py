@@ -5,7 +5,7 @@ Used by CI to feed ``openapi-typescript`` for the frontend drift check
 directly).
 
 Usage:
-    python scripts/dump_openapi.py path/to/openapi.json
+    python scripts/dev/dump_openapi.py path/to/openapi.json
 """
 from __future__ import annotations
 

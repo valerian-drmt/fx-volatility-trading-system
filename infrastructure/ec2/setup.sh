@@ -60,7 +60,7 @@ After=docker.service network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/fxvol
-ExecStartPre=/opt/fxvol/scripts/load_secrets.sh
+ExecStartPre=/opt/fxvol/scripts/ops/load_secrets.sh
 EnvironmentFile=/run/fxvol.env
 EnvironmentFile=-/opt/fxvol/images.env
 ExecStart=/usr/bin/docker compose up -d --remove-orphans
@@ -101,7 +101,7 @@ echo "[setup] done. Next steps :"
 echo "  1. Attach the IAM instance profile 'fxvol-ec2-instance-profile' to this EC2"
 echo "     (required: ssm:GetParameters + kms:Decrypt on /fxvol/prod/* and the CMK)."
 echo "     Verify: aws sts get-caller-identity should return the role ARN, not a user."
-echo "  2. git clone the repo into $APP_DIR and ensure scripts/load_secrets.sh is +x."
+echo "  2. git clone the repo into $APP_DIR and ensure scripts/ops/load_secrets.sh is +x."
 echo "  3. echo 'BACKUP_BUCKET=<your-bucket>' > /etc/fxvol/backup.conf  (for the daily backup)."
 echo "  4. certbot --nginx -d <your-domain>"
 echo "  5. systemctl start fxvol-compose.service  (runs ExecStartPre=load_secrets.sh first)"

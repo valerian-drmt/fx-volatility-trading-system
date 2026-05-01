@@ -13,7 +13,7 @@ Then walks through the Bayes posterior step by step so you can see why
 ``predict_proba`` produced the final percentages.
 
 Run :
-    docker exec -it fxvol-vol-engine python scripts/gmm_diagnostic.py
+    docker exec -it fxvol-vol-engine python scripts/dev/gmm_diagnostic.py
 """
 from __future__ import annotations
 

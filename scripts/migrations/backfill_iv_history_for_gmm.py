@@ -36,7 +36,7 @@ What it does
 
 Run from inside the ``fxvol-vol-engine`` container :
 
-    docker exec -it fxvol-vol-engine python scripts/backfill_iv_history_for_gmm.py
+    docker exec -it fxvol-vol-engine python scripts/migrations/backfill_iv_history_for_gmm.py
 
 Expected runtime : ~10s (1 IB call + 1 batch INSERT). Re-run is idempotent.
 """

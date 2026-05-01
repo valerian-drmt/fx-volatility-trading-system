@@ -196,7 +196,7 @@ sudo systemctl enable --now fxvol-compose
 ```
 
 **Ce que fait le service `fxvol-compose`** (cf. `infrastructure/ec2/fxvol-compose.service`) :
-1. `ExecStartPre=/opt/fxvol/scripts/load_secrets.sh` — fetch SSM via le IAM role, écrit `/run/fxvol.env` (tmpfs, root:fxvol 0640).
+1. `ExecStartPre=/opt/fxvol/scripts/ops/load_secrets.sh` — fetch SSM via le IAM role, écrit `/run/fxvol.env` (tmpfs, root:fxvol 0640).
 2. `EnvironmentFile=/run/fxvol.env` + `EnvironmentFile=-/opt/fxvol/images.env` (image tags écrits par le workflow `deploy.yml`).
 3. `ExecStart=/usr/bin/docker compose up -d --remove-orphans` — utilise `docker-compose.yml` du repo. **Pas de `-f docker-compose.prod.yml`** : le projet a un seul compose de prod (`docker-compose.yml`) + un override pour dev (`docker-compose.override.yml`) qui n'est pas présent en prod. Vérifier que `docker-compose.override.yml` est dans `.dockerignore` ou qu'il a été retiré du clone côté prod (sinon docker-compose le merge automatiquement).
 4. `ExecStopPost=/bin/rm -f /run/fxvol.env` — wipe le fichier de secrets quand le service stoppe.

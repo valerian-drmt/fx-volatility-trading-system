@@ -12,10 +12,10 @@ research-grade vol signals, web cockpit, and Interactive Brokers execution.**
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-6-panel React cockpit on top of 4 async Python services :
-live IB tick stream → vol surface fit (SVI/SSVI, GARCH, HAR-RV) → PCA signal
-z-scores → trade structures with delta hedge → versioned audit trail in
-Postgres.
+15-panel React cockpit on top of 5 async Python services :
+live IB tick stream → vol surface fit (SVI/SSVI, GARCH, HAR-RV) → GMM regime
++ PCA signal z-scores → order submission with delta hedge → versioned audit
+trail in Postgres.
 
 ---
 
@@ -46,7 +46,7 @@ Postgres.
 - Versioned vol config in Postgres (`vol_config` append-only table), edited
   via `/settings` React page, hot-reloaded into services via Redis pub/sub
 - Secrets in AWS SSM Parameter Store (KMS-encrypted), never on disk, loaded
-  per-session by `scripts/load_secrets.ps1` (Windows) or IAM role (EC2)
+  per-session by `scripts/ops/load_secrets.ps1` (Windows) or IAM role (EC2)
 - Structured JSON logs (structlog), Prometheus metrics at `/metrics`,
   extended health probe exercising DB + Redis + engine heartbeats
 
@@ -54,7 +54,7 @@ Postgres.
 
 ## Architecture
 
-**10 containers, 5 that ship our Python code.**
+**10 containers, 6 that ship our Python code.**
 
 ```
                           ┌────────────────┐
@@ -62,61 +62,67 @@ Postgres.
                           │   (frontend)   │
                           └────────┬───────┘
                                    │ HTTP + WS
-                                   ▼
-                          ┌────────────────┐
-                          │     nginx      │ 80/443
+                          ┌────────▼───────┐
+                          │     nginx      │  reverse proxy (80/443)
                           └────────┬───────┘
                                    │
                           ┌────────▼───────┐
-                          │    FastAPI     │
-                          │  (api, 8000)   │───┐
-                          └────────┬───────┘   │
-                                   │           │
-            ┌──────────────────────┼───────────┼──────────┐
-            │                      │           │          │
-            ▼                      ▼           ▼          ▼
-     ┌─────────────┐  ┌─────────────────────────┐   ┌────────────┐
-     │  Postgres   │  │        Redis bus        │   │ ib-gateway │
-     │   (R1)      │  │ pub/sub + cache (R3)    │   │  (IB API)  │
-     └──────┬──────┘  └──┬──────┬──────┬───────┘   └──────┬─────┘
-            │            │      │      │                  │
-            ▼            │      │      │                  │
-     ┌─────────────┐     │      │      │                  │
-     │  db-writer  │◄────┘      │      │                  │
-     │   (R7)      │            │      │                  │
-     └─────────────┘            │      │                  │
-                           ┌────▼────┐ │                  │
-                           │market   │◄┼──────────────────┤
-                           │data (R7)│ │                  │
-                           └────┬────┘ │                  │
-                                │      │                  │
-                           ┌────▼────┐ │                  │
-                           │vol eng. │◄┘                  │
-                           │  (R7)   │◄───────────────────┤
-                           └────┬────┘                    │
-                                │                         │
-                           ┌────▼────┐                    │
-                           │risk eng.│◄───────────────────┘
-                           │  (R7)   │
-                           └─────────┘
+                          │    FastAPI     │  REST + WS bridge (8000)
+                          │     (api)      │
+                          └─┬────────────┬─┘
+                            │            │
+            ┌───────────────┘            └──────────────────┐
+            ▼                                               ▼
+    ┌─────────────┐                                ┌────────────────┐
+    │  Postgres   │◄───── db-writer ─────┐         │     Redis      │
+    │   (16)      │  (Redis → DB sink)   │         │ pub/sub + cache│
+    └─────────────┘                      │         └─┬────┬──┬───┬──┘
+                                         │           │    │  │   │
+                                         └───────────┤    │  │   │
+                                                     │    │  │   │
+       ┌────────────┐  ticks/bars     ┌──────────────▼┐   │  │   │
+       │ ib-gateway │◄────────────────│ market-data    │───┘  │   │
+       │  (IB API)  │  (clientID 1)   │   engine       │      │   │
+       └─────┬──────┘                 └────────────────┘      │   │
+             │                                                │   │
+             │     option chains + IV history                 │   │
+             │     (clientID 2)        ┌────────────────┐     │   │
+             ├────────────────────────►│   vol-engine   │─────┘   │
+             │                         │ SVI/SSVI/GARCH │         │
+             │                         │ HAR/PCA/GMM    │         │
+             │                         └────────────────┘         │
+             │                                                    │
+             │     positions + greeks  ┌────────────────┐         │
+             │     (clientID 3)        │   risk-engine  │─────────┘
+             ├────────────────────────►│ Δ/Γ/V aggreg.  │
+             │                         └────────────────┘
+             │
+             │     order submission    ┌────────────────┐
+             │     (clientID 5)        │ execution-eng. │  HTTP server
+             └────────────────────────►│ orders+hedger  │  (port 8001)
+                                       └────────────────┘
 ```
 
-| Container | Runs | Source | Image |
+| Container | Runs | Source | Image / Dockerfile |
 |---|---|---|---|
-| `postgres` | DB | — | `postgres:16-alpine` |
+| `postgres` | DB 16 | — | `postgres:16-alpine` |
 | `redis` | Bus + cache | — | `redis:7-alpine` |
 | `nginx` | Reverse proxy | `infrastructure/nginx/` | `nginx:alpine` |
 | `ib-gateway` | IB API | — | `gnzsnz/ib-gateway:latest` |
-| `frontend` | React SPA | `frontend/` | custom (`Dockerfile.web`) |
-| **`api`** | FastAPI REST + WS | `src/api/` + `src/core/` + `src/persistence/` + `src/bus/` | custom |
-| **`market-data`** | IB ticks → Redis | `src/services/market_data/` | custom (ib.txt) |
-| **`vol-engine`** | SVI + GARCH + signals | `src/services/vol/` | custom (quant.txt) |
-| **`risk-engine`** | Greeks + P&L | `src/services/risk/` | custom (ib.txt) |
-| **`db-writer`** | Redis → Postgres | `src/services/db_writer/` | custom (writer.txt) |
+| `frontend` | React SPA | `frontend/` | `Dockerfile.web` |
+| **`api`** | FastAPI REST + WS | `src/api/` + `src/core/` + `src/persistence/` + `src/bus/` | `Dockerfile.api` |
+| **`market-data`** | IB ticks → Redis (clientID 1) | `src/services/market_data/` | `Dockerfile.engines` |
+| **`vol-engine`** | SVI/SSVI/GARCH/HAR/PCA/GMM (clientID 2) | `src/services/vol/` | `Dockerfile.engines` |
+| **`risk-engine`** | Greeks + delta hedge (clientID 3) | `src/services/risk/` | `Dockerfile.engines` |
+| **`db-writer`** | Redis → Postgres async sink | `src/services/db_writer/` | `Dockerfile.engines` |
+| **`execution-engine`** | Order submission HTTP (clientID 5, :8001) | `src/services/execution/` | `Dockerfile.execution` |
 
-Shared Python libs (not containers) : `src/core/` (pricing + vol + risk algos),
-`src/persistence/` (SQLAlchemy ORM + Alembic), `src/bus/` (Redis helpers),
-`src/shared/` (config + logging + secrets).
+Networks : `fxvol-public` (nginx), `fxvol-internal` (services), `fxvol-external` (IB outbound). The 5 Python engines live behind the `engines` compose profile (opt-in : `docker compose --profile engines up -d`).
+
+Shared Python libs (not containers) : `src/core/` (pure-Python pricing + vol +
+risk algos, no I/O), `src/persistence/` (SQLAlchemy 2 ORM in `models.py` —
+20 classes — + 18 Alembic revisions), `src/bus/` (Redis pub/sub helpers +
+channel/key constants), `src/shared/` (config, logging, secrets).
 
 **Full details** : see [`docs/project-architecture.md`](docs/project-architecture.md).
 
@@ -208,17 +214,33 @@ fx-volatility-trading-system/
 ├── .github/workflows/               (ci.yml + deploy.yml)
 ├── src/                             (PyPA src-layout, all Python)
 │   ├── api/                         → container fxvol-api
-│   │   ├── main.py, routers/, services/, models/, middleware/, ws/
+│   │   ├── main.py                  FastAPI app + lifespan (events scheduler, WS bridge)
+│   │   ├── routers/                 12 routers : health, admin, analytics, cockpit,
+│   │   │                              dev, orders, portfolio, pricing, regime,
+│   │   │                              signals, vol, ws
+│   │   ├── ws/                      connection_manager + redis_bridge
+│   │   ├── middleware/              logging (structlog) + rate_limit + timing
+│   │   ├── models/                  Pydantic v2 schemas
+│   │   └── services/                thin orchestration + events/ pipeline
 │   ├── services/
-│   │   ├── market_data/             → fxvol-market-data
-│   │   ├── vol/                     → fxvol-vol-engine
-│   │   ├── risk/                    → fxvol-risk-engine
+│   │   ├── market_data/             → fxvol-market-data (clientID 1)
+│   │   ├── vol/                     → fxvol-vol-engine    (clientID 2)
+│   │   ├── risk/                    → fxvol-risk-engine   (clientID 3)
 │   │   ├── db_writer/               → fxvol-db-writer
-│   │   └── execution/               (lib: structures + delta hedger)
-│   ├── core/                        (pricing, vol, risk algos)
-│   ├── persistence/                 (SQLAlchemy + Alembic)
-│   ├── bus/                         (Redis helpers)
-│   └── shared/                      (config, logging, secrets)
+│   │   └── execution/               → fxvol-execution-engine (clientID 5, :8001)
+│   ├── core/                        pure-Python algos
+│   │   ├── vol/                     garch, har_rv, svi, ssvi, pchip_smile,
+│   │   │                              fair_smile, gmm_regime, regime_engine,
+│   │   │                              pca_engine, surface_pca, calibration,
+│   │   │                              vrp, yang_zhang
+│   │   ├── pricing/bs.py            Black-Scholes for FX options
+│   │   └── risk/greeks.py           Δ/Γ/V analytics
+│   ├── persistence/
+│   │   ├── models.py                20 ORM classes (single file)
+│   │   ├── alembic.ini
+│   │   └── migrations/versions/     18 revisions
+│   ├── bus/                         publisher, channels, keys, redis_client
+│   └── shared/                      config, logging, secrets, ib_connection
 ├── frontend/                        (React + TS + Vite)
 ├── infrastructure/
 │   ├── docker/                      (Dockerfile.{api,engines,web,ib-stub})
