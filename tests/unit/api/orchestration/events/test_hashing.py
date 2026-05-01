@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from api.services.events.deduplicator import EventDeduplicator
-from api.services.events.hashing import event_hash
-from api.services.events.sources.base import RawEvent
+from api.orchestration.events.deduplicator import EventDeduplicator
+from api.orchestration.events.hashing import event_hash
+from api.orchestration.events.sources.base import RawEvent
 
 
 def _ev(event_type="NFP", region="US", ts=None, secs=0) -> RawEvent:

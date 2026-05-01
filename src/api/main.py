@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
     try:
         from sqlalchemy import text
 
-        from api.services.config_service import get_current, update
+        from api.orchestration.config_service import get_current, update
         from core.config import VolTradingConfig
         from persistence.db import get_sessionmaker
         async with get_sessionmaker()() as db:
@@ -110,15 +110,15 @@ def _build_events_scheduler():
     """
     import os as _os
 
-    from api.services.events.deduplicator import EventDeduplicator
-    from api.services.events.repository import EventsRepository
-    from api.services.events.scheduler import EventsScheduler
-    from api.services.events.sources.boe import BoESource
-    from api.services.events.sources.ecb import ECBSource
-    from api.services.events.sources.eurostat import EurostatSource
-    from api.services.events.sources.fomc import FOMCSource
-    from api.services.events.sources.fred import FREDSource
-    from api.services.events.sources.ons import ONSSource
+    from api.orchestration.events.deduplicator import EventDeduplicator
+    from api.orchestration.events.repository import EventsRepository
+    from api.orchestration.events.scheduler import EventsScheduler
+    from api.orchestration.events.sources.boe import BoESource
+    from api.orchestration.events.sources.ecb import ECBSource
+    from api.orchestration.events.sources.eurostat import EurostatSource
+    from api.orchestration.events.sources.fomc import FOMCSource
+    from api.orchestration.events.sources.fred import FREDSource
+    from api.orchestration.events.sources.ons import ONSSource
     from persistence.db import get_sessionmaker
 
     sources: list = []

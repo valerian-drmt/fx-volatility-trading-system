@@ -1,7 +1,7 @@
 """One module per economic-events data source.
 
 Each module exports a single class implementing
-:class:`api.services.events.sources.base.EventSource`.
+:class:`api.orchestration.events.sources.base.EventSource`.
 
 Tier 1 (primary, full coverage) :
     fred.py        — FRED /releases/dates       (US, all official releases)

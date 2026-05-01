@@ -7,7 +7,7 @@ shows drift over 30 days in production).
 """
 from __future__ import annotations
 
-from api.services.events.sources.base import EventSource, RawEvent
+from api.orchestration.events.sources.base import EventSource, RawEvent
 
 
 class BLSSource(EventSource):

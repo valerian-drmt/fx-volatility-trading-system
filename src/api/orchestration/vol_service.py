@@ -9,7 +9,7 @@ from redis import asyncio as aioredis
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.models.vol import (
+from api.schemas.vol import (
     SmilePoint,
     SmileResponse,
     SurfaceResponse,

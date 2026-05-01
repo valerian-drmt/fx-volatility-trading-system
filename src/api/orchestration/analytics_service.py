@@ -7,7 +7,7 @@ from redis import asyncio as aioredis
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.models.analytics import (
+from api.schemas.analytics import (
     BacktestRunRow,
     EngineStats,
     SignalRow,

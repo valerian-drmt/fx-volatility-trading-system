@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from api.services.events.sources.base import EventSource, RawEvent
+from api.orchestration.events.sources.base import EventSource, RawEvent
 
 # Decision announcement at 12:00 UK time. Cf. BoE upcoming MPC page (2026-04 snap).
 MPC_DATES: list[str] = [

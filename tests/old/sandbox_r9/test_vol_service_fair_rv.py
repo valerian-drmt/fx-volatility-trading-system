@@ -38,7 +38,7 @@ def _surface_payload(atm_by_tenor, fair_by_tenor, rv=2.87):
 
 @pytest.mark.asyncio
 async def test_term_structure_propagates_fair_and_rv_per_tenor() -> None:
-    from api.services.vol_service import get_term_structure
+    from api.orchestration.vol_service import get_term_structure
 
     redis = _redis_surface(
         _surface_payload(
@@ -58,7 +58,7 @@ async def test_term_structure_propagates_fair_and_rv_per_tenor() -> None:
 
 @pytest.mark.asyncio
 async def test_term_structure_returns_none_when_no_garch_for_tenor() -> None:
-    from api.services.vol_service import get_term_structure
+    from api.orchestration.vol_service import get_term_structure
 
     # Only 1M has a GARCH fair ; 3M is missing from _garch.
     redis = _redis_surface(
@@ -79,7 +79,7 @@ async def test_term_structure_returns_none_when_no_garch_for_tenor() -> None:
 
 @pytest.mark.asyncio
 async def test_term_structure_handles_surface_without_garch_or_rv() -> None:
-    from api.services.vol_service import get_term_structure
+    from api.orchestration.vol_service import get_term_structure
 
     # Strip both aggregate keys — legacy surface shape.
     payload = _surface_payload({"1M": 0.06}, {"1M": 2.3})

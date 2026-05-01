@@ -1,4 +1,4 @@
-"""Unit tests for api.services.config_service : versioning, merge, pub/sub."""
+"""Unit tests for api.orchestration.config_service : versioning, merge, pub/sub."""
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from api.services import config_service
-from api.services.config_service import CONFIG_CHANGED_CHANNEL
+from api.orchestration.config_service import CONFIG_CHANGED_CHANNEL
 from core.config import VolTradingConfig
 from persistence.models import Base
 
@@ -109,7 +109,7 @@ def test_export_json_schema_has_all_sections():
 
 
 def test_deep_merge_nested_dicts():
-    from api.services.config_service import _deep_merge
+    from api.orchestration.config_service import _deep_merge
     base = {"a": {"x": 1, "y": 2}, "b": 0}
     patch = {"a": {"y": 20, "z": 3}}
     assert _deep_merge(base, patch) == {"a": {"x": 1, "y": 20, "z": 3}, "b": 0}

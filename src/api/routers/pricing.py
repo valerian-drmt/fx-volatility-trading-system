@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from api.models.pricing import (
+from api.schemas.pricing import (
     GreeksRequest,
     GreeksResponse,
     ImpliedVolRequest,
@@ -11,7 +11,7 @@ from api.models.pricing import (
     PriceRequest,
     PriceResponse,
 )
-from api.services.pricing_service import (
+from api.orchestration.pricing_service import (
     compute_greeks,
     compute_implied_vol,
     compute_price,

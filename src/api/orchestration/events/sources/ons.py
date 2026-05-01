@@ -15,7 +15,7 @@ import calendar
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from api.services.events.sources.base import EventSource, RawEvent
+from api.orchestration.events.sources.base import EventSource, RawEvent
 
 TZ_LONDON = ZoneInfo("Europe/London")
 RELEASE_HOUR_LOCAL = 7

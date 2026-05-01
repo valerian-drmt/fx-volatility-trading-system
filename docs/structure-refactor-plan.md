@@ -245,9 +245,9 @@ matches what the reader expects to find inside*.
 
 | Before | After | Reason |
 |---|---|---|
-| `src/services/` | `src/engines/` | the rest of the project (compose service names, docs, READMEs) already calls them "engines". Eliminates collision with `src/api/services/`. |
-| `src/api/services/` | `src/api/orchestration/` | "services" was overloaded ; "orchestration" describes the actual role (composes domain + persistence + bus). |
-| `src/api/models/` | `src/api/schemas/` | "models" collides with `persistence/models.py` (ORM). "schemas" is FastAPI's own term for Pydantic. |
+| `src/services/` | `src/engines/` | the rest of the project (compose service names, docs, READMEs) already calls them "engines". Eliminates collision with `src/api/orchestration/`. |
+| `src/api/orchestration/` | `src/api/orchestration/` | "services" was overloaded ; "orchestration" describes the actual role (composes domain + persistence + bus). |
+| `src/api/schemas/` | `src/api/schemas/` | "models" collides with `persistence/models.py` (ORM). "schemas" is FastAPI's own term for Pydantic. |
 | `src/persistence/payloads.py` | `src/api/schemas/types.py` (or `src/core/types/`) | DTOs are not part of persistence. |
 | `src/persistence/writer.py` | merged into `src/engines/db_writer/` | the writer *is* a service. Move the logic there ; persistence keeps only ORM + session. |
 | `src/shared/redis_client.py` + `src/bus/redis_client.py` | single `src/bus/client.py` | one redis adapter, one place. |
@@ -338,7 +338,7 @@ branches, each step maps cleanly to one PR.
 - **Validation** : all CI jobs green ; full compose `up -d --profile engines`
   smoke locally.
 
-**Step 9 — Rename `src/api/services/` → `src/api/orchestration/` + `src/api/models/` → `src/api/schemas/`**
+**Step 9 — Rename `src/api/orchestration/` → `src/api/orchestration/` + `src/api/schemas/` → `src/api/schemas/`**
 - Two `git mv` + import rewrites.
 - Update FastAPI router imports.
 - **Validation** : openapi-drift CI green ; vitest green ; `frontend/src/api/schema.d.ts` regenerated.

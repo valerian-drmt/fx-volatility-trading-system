@@ -1,4 +1,4 @@
-"""Tests for api.services.analytics_service.list_signals(latest_per_tenor=True).
+"""Tests for api.orchestration.analytics_service.list_signals(latest_per_tenor=True).
 
 Each vol-engine cycle emits one Signal row per tenor, so over time the
 table stacks dozens of duplicates. The scanner dashboard wants only
@@ -35,7 +35,7 @@ async def _seed_and_session(rows):
 
 @pytest.mark.asyncio
 async def test_latest_per_tenor_collapses_duplicates() -> None:
-    from api.services.analytics_service import list_signals
+    from api.orchestration.analytics_service import list_signals
 
     base = datetime(2026, 4, 22, 14, 0, tzinfo=UTC)
     rows = []
@@ -67,7 +67,7 @@ async def test_latest_per_tenor_collapses_duplicates() -> None:
 
 @pytest.mark.asyncio
 async def test_latest_per_tenor_respects_filters() -> None:
-    from api.services.analytics_service import list_signals
+    from api.orchestration.analytics_service import list_signals
 
     base = datetime(2026, 4, 22, 14, 0, tzinfo=UTC)
     rows = [

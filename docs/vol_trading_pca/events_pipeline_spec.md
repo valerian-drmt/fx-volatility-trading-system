@@ -58,7 +58,7 @@ Contraintes :
 
 ### Interface
 
-Fichier : `src/api/services/events/sources/base.py`
+Fichier : `src/api/orchestration/events/sources/base.py`
 
 ```python
 from abc import ABC, abstractmethod
@@ -131,7 +131,7 @@ def test_parser_extracts_all_events(payload):
 
 ## 2. Scheduler isolant (livraison 2)
 
-Fichier : `src/api/services/events/scheduler.py`
+Fichier : `src/api/orchestration/events/scheduler.py`
 
 ```python
 import asyncio
@@ -299,7 +299,7 @@ Pourquoi tronquer à la minute :
 - évite les doublons quand 2 sources se chevauchent (FRED + BLS donnent le même CPI)
 
 ```python
-# src/api/services/events/hashing.py
+# src/api/orchestration/events/hashing.py
 import hashlib
 from .sources.base import RawEvent
 
@@ -313,7 +313,7 @@ def event_hash(e: RawEvent) -> str:
 ### Deduplicator
 
 ```python
-# src/api/services/events/deduplicator.py
+# src/api/orchestration/events/deduplicator.py
 from .sources.base import RawEvent
 from .hashing import event_hash
 
@@ -354,7 +354,7 @@ CREATE INDEX idx_events_hash ON events(event_hash);
 ### Repository
 
 ```python
-# src/api/services/events/repository.py
+# src/api/orchestration/events/repository.py
 from sqlalchemy import text
 from .sources.base import RawEvent
 

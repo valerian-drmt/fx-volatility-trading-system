@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import hashlib
 
-from api.services.events.sources.base import RawEvent
+from api.orchestration.events.sources.base import RawEvent
 
 
 def event_hash(e: RawEvent) -> str:

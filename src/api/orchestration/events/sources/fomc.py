@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from api.services.events.sources.base import EventSource, RawEvent
+from api.orchestration.events.sources.base import EventSource, RawEvent
 
 # 2-day FOMC meetings; the rate decision lands at 14:00 ET on day 2.
 # Format : (meeting_day_2_iso). Minutes = day_2 + 21 days at 14:00 ET.

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from scipy.optimize import brentq
 
-from api.models.pricing import (
+from api.schemas.pricing import (
     GreeksRequest,
     GreeksResponse,
     ImpliedVolRequest,

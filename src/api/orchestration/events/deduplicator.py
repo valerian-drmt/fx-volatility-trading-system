@@ -4,8 +4,8 @@ Inter-cycle dedup = contrainte UNIQUE en DB (cf. migration 012).
 """
 from __future__ import annotations
 
-from api.services.events.hashing import event_hash
-from api.services.events.sources.base import RawEvent
+from api.orchestration.events.hashing import event_hash
+from api.orchestration.events.sources.base import RawEvent
 
 
 class EventDeduplicator:

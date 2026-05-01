@@ -1,4 +1,4 @@
-"""Tests for api.services.vol_service._smile_points — schema tolerance.
+"""Tests for api.orchestration.vol_service._smile_points — schema tolerance.
 
 get_smile reads the full pillar from vol_surfaces.surface_data. Two
 shapes exist in the wild : the legacy flat one (iv_ATM_pct + strike_atm
@@ -12,7 +12,7 @@ import pytest
 
 
 def test_smile_points_from_flat_legacy_shape() -> None:
-    from api.services.vol_service import _smile_points
+    from api.orchestration.vol_service import _smile_points
 
     pillar = {
         "sigma_ATM_pct": 6.5, "strike_atm": 1.17,
@@ -31,7 +31,7 @@ def test_smile_points_from_flat_legacy_shape() -> None:
 
 
 def test_smile_points_from_nested_engine_shape_converts_iv_to_pct() -> None:
-    from api.services.vol_service import _smile_points
+    from api.orchestration.vol_service import _smile_points
 
     pillar = {
         "atm": {"iv": 0.065, "strike": 1.17},
@@ -51,7 +51,7 @@ def test_smile_points_from_nested_engine_shape_converts_iv_to_pct() -> None:
 
 def test_smile_points_drops_partial_nested() -> None:
     """Nested pillar with iv=null / strike=null entries must be skipped."""
-    from api.services.vol_service import _smile_points
+    from api.orchestration.vol_service import _smile_points
 
     pillar = {
         "atm": {"iv": 0.065, "strike": 1.17},
@@ -63,7 +63,7 @@ def test_smile_points_drops_partial_nested() -> None:
 
 
 def test_smile_points_empty_pillar_yields_nothing() -> None:
-    from api.services.vol_service import _smile_points
+    from api.orchestration.vol_service import _smile_points
 
     assert list(_smile_points({})) == []
     assert list(_smile_points({"dte": 30, "_rv": 0.05})) == []

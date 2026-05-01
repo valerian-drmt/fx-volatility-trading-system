@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.services.events.sources.base import RawEvent
+from api.orchestration.events.sources.base import RawEvent
 from persistence.models import Event
 
 SessionFactory = Callable[[], Awaitable[AsyncSession]]

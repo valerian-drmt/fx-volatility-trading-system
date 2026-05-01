@@ -431,7 +431,7 @@ class Event(Base):
     """Economic calendar — drives event_dampener flag + Panel 1 zone 4.
 
     ``event_hash`` is the stable identity for inter-cycle / inter-source dedup.
-    It is computed by ``api.services.events.hashing.event_hash`` and enforced
+    It is computed by ``api.orchestration.events.hashing.event_hash`` and enforced
     UNIQUE at the DB level (cf. migration 012).
     """
 

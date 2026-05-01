@@ -19,7 +19,7 @@ import calendar
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from api.services.events.sources.base import EventSource, RawEvent
+from api.orchestration.events.sources.base import EventSource, RawEvent
 
 TZ_BRUSSELS = ZoneInfo("Europe/Brussels")
 RELEASE_HOUR_LOCAL = 11

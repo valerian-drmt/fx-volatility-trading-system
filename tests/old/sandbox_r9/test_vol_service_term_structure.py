@@ -1,4 +1,4 @@
-"""Tests for api.services.vol_service.get_term_structure — schema tolerance.
+"""Tests for api.orchestration.vol_service.get_term_structure — schema tolerance.
 
 The vol-engine publishes surfaces in the shape ``{tenor: {atm: {iv, strike}}}``
 while the API used to expect ``{tenor: {sigma_atm_pct, dte}}``. The fix
@@ -23,7 +23,7 @@ def _redis_returning(payload: dict) -> AsyncMock:
 
 @pytest.mark.asyncio
 async def test_engine_shape_extracts_atm_iv_in_percent() -> None:
-    from api.services.vol_service import get_term_structure
+    from api.orchestration.vol_service import get_term_structure
 
     surface = {
         "symbol": "EURUSD",
@@ -50,7 +50,7 @@ async def test_engine_shape_extracts_atm_iv_in_percent() -> None:
 
 @pytest.mark.asyncio
 async def test_legacy_sigma_atm_pct_shape_still_works() -> None:
-    from api.services.vol_service import get_term_structure
+    from api.orchestration.vol_service import get_term_structure
 
     surface = {
         "symbol": "EURUSD",
@@ -69,7 +69,7 @@ async def test_legacy_sigma_atm_pct_shape_still_works() -> None:
 
 @pytest.mark.asyncio
 async def test_missing_atm_returns_none_sigma() -> None:
-    from api.services.vol_service import get_term_structure
+    from api.orchestration.vol_service import get_term_structure
 
     surface = {
         "symbol": "EURUSD",

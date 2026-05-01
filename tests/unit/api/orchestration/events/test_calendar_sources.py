@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from api.services.events.sources.boe import BoESource
-from api.services.events.sources.ecb import ECBSource
-from api.services.events.sources.eurostat import EurostatSource
-from api.services.events.sources.fomc import FOMCSource
-from api.services.events.sources.ons import ONSSource
+from api.orchestration.events.sources.boe import BoESource
+from api.orchestration.events.sources.ecb import ECBSource
+from api.orchestration.events.sources.eurostat import EurostatSource
+from api.orchestration.events.sources.fomc import FOMCSource
+from api.orchestration.events.sources.ons import ONSSource
 
 
 @pytest.mark.asyncio

@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from api.services.events.sources.base import EventSource, Impact, RawEvent
+from api.orchestration.events.sources.base import EventSource, Impact, RawEvent
 
 # Whitelist of FRED release_id → (event_type, impact). Verified via
 # GET /fred/releases?api_key=KEY&order_by=popularity. Update if FRED

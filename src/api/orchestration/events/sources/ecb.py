@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from api.services.events.sources.base import EventSource, RawEvent
+from api.orchestration.events.sources.base import EventSource, RawEvent
 
 # Confirmed monetary policy meeting dates. Decision released 14:15 CET / 14:15 CEST,
 # press conference at 14:45. Cf. ECB calendar (consulted 2026-04).

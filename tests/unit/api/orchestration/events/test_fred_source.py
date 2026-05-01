@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from api.services.events.sources.fred import (
+from api.orchestration.events.sources.fred import (
     FRED_HIGH_IMPACT_RELEASES,
     FREDSource,
 )

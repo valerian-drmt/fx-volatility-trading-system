@@ -12,9 +12,9 @@ import asyncio
 import logging
 import random
 
-from api.services.events.deduplicator import EventDeduplicator
-from api.services.events.repository import EventsRepository
-from api.services.events.sources.base import EventSource, RawEvent
+from api.orchestration.events.deduplicator import EventDeduplicator
+from api.orchestration.events.repository import EventsRepository
+from api.orchestration.events.sources.base import EventSource, RawEvent
 
 logger = logging.getLogger(__name__)
 

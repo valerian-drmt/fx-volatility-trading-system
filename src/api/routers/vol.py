@@ -9,7 +9,7 @@ from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis
-from api.models.vol import SmileResponse, SurfaceResponse, TermStructureResponse
+from api.schemas.vol import SmileResponse, SurfaceResponse, TermStructureResponse
 from api.services import vol_service
 
 router = APIRouter(prefix="/api/v1/vol", tags=["vol"])

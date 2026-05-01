@@ -8,7 +8,7 @@ from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis
-from api.models.portfolio import (
+from api.schemas.portfolio import (
     GreeksAggregated,
     HistoryResponse,
     PnLCurve,

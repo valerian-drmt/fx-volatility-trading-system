@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from api.services.events.deduplicator import EventDeduplicator
-from api.services.events.scheduler import EventsScheduler
-from api.services.events.sources.base import EventSource, RawEvent
+from api.orchestration.events.deduplicator import EventDeduplicator
+from api.orchestration.events.scheduler import EventsScheduler
+from api.orchestration.events.sources.base import EventSource, RawEvent
 
 
 class FakeSource(EventSource):
