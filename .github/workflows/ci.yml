@@ -300,7 +300,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: infrastructure/docker/Dockerfile.web
+          file: infrastructure/docker/web.Dockerfile
           push: false
           tags: fx-options-frontend:ci
           cache-from: type=gha

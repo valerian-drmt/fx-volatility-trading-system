@@ -4,7 +4,7 @@
 #
 # R9 sandbox : split de l'api pour que celle-ci redevienne pure stateless.
 #
-#   docker build -f infrastructure/docker/Dockerfile.execution -t fx-options-execution .
+#   docker build -f infrastructure/docker/execution.Dockerfile -t fx-options-execution .
 
 ARG PYTHON_IMAGE=python:3.11-slim
 

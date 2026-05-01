@@ -47,7 +47,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: infrastructure/docker/Dockerfile.api
+      dockerfile: infrastructure/docker/api.Dockerfile
     image: ${API_IMAGE:-fx-options-api:local}
     container_name: fxvol-api
     restart: unless-stopped
@@ -234,7 +234,7 @@ services:
   execution-engine:
     build:
       context: .
-      dockerfile: infrastructure/docker/Dockerfile.execution
+      dockerfile: infrastructure/docker/execution.Dockerfile
     image: ${EXECUTION_IMAGE:-fx-options-execution:local}
     container_name: fxvol-execution
     profiles: ["engines"]
@@ -271,7 +271,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: infrastructure/docker/Dockerfile.web
+      dockerfile: infrastructure/docker/web.Dockerfile
     image: ${FRONTEND_IMAGE:-fx-options-frontend:local}
     container_name: fxvol-frontend
     restart: unless-stopped

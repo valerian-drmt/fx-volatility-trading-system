@@ -5,7 +5,7 @@
 # The image ships requirements.txt as-is for R6 ; R7 will swap for
 # requirements/base.txt + uvicorn when the per-service split is in place.
 #
-#   docker build -f infrastructure/docker/Dockerfile.api -t fx-options-api .
+#   docker build -f infrastructure/docker/api.Dockerfile -t fx-options-api .
 
 ARG PYTHON_IMAGE=python:3.11-slim
 
