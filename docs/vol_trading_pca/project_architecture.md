@@ -4,7 +4,7 @@ Vue topologique du projet **tel qu'il sera v1.0** (MVP backtest validé + 5 step
 Source de vérité : code actuel + `docs/finale_project/STEP*_*.md` + `BACKTEST_WALK_FORWARD.md`.
 
 > ⚠️ Le README de ce dossier liste encore `execution-engine` et `position-monitor` comme « à créer ».
-> En réalité (état au 2026-04-30) `execution-engine` **existe** déjà (cf. `src/services/execution/`).
+> En réalité (état au 2026-04-30) `execution-engine` **existe** déjà (cf. `src/engines/execution/`).
 > `position-monitor` n'a pas de container dédié — la logique vivra dans `risk` (déjà présent) +
 > extensions de `execution-engine` pour les exit rules. Voir tableau ci-dessous.
 

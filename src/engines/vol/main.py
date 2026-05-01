@@ -1,7 +1,7 @@
 """Entrypoint for the vol-engine container.
 
 SANDBOX NOTE (sandbox/r9-pipeline-verif) : ``fetch_fop_chain`` now wires
-through ``services.vol.chain_fetcher.scan_all_tenors_concurrent``, a
+through ``engines.vol.chain_fetcher.scan_all_tenors_concurrent``, a
 real async port of the monolith's FOP traversal with bounded
 parallelism (Semaphore). ``fetch_ohlc`` remains a synthetic stub until
 the historical bar fetch is ported.
@@ -79,7 +79,7 @@ async def run() -> None:
 
     from ib_insync import IB
 
-    from services.vol.engine import VolEngine
+    from engines.vol.engine import VolEngine
 
     ib = IB()
     redis = get_async_redis()
@@ -89,7 +89,7 @@ async def run() -> None:
 
     async def _fop_real(F: float) -> dict[str, list[tuple[float, float, float]]]:
         """Real FOP scan on IB : discover chains once, then scan in parallel."""
-        from services.vol import chain_fetcher
+        from engines.vol import chain_fetcher
 
         # Delayed market data (type 3) is required on paper accounts
         # without a live CME entitlement — otherwise modelGreeks stays
@@ -106,7 +106,7 @@ async def run() -> None:
 
     async def _ohlc_real() -> Any:
         """Real IB daily bars for EUR CONTFUT — cached 30min inside the fetcher."""
-        from services.vol import historical_fetcher
+        from engines.vol import historical_fetcher
 
         return await historical_fetcher.fetch_daily_ohlc(ib, duration_str="1 Y")
 

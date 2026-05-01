@@ -556,7 +556,7 @@ Sidecar:
 Nouveau service `execution-engine` distinct de `vol-engine`. Communique avec IB via `ib_insync` (Python). Souscrit à 4 streams IB :
 
 ```python
-# src/services/execution_engine/main.py
+# src/engines/execution_engine/main.py
 class ExecutionEngine:
     def __init__(self):
         self.ib = IB()  # ib_insync client
@@ -585,7 +585,7 @@ class ExecutionEngine:
 ### 7.2 Submit flow (synchrone, < 2s)
 
 ```python
-# src/services/execution_engine/submit.py
+# src/engines/execution_engine/submit.py
 async def handle_submit_request(preview_id: str) -> SubmitResult:
     # Lock pour éviter double-submit du même preview
     lock_key = f"submit_lock:{preview_id}"
@@ -692,7 +692,7 @@ async def handle_submit_request(preview_id: str) -> SubmitResult:
 ### 7.3 Fill tracking handlers (asynchrone, event-driven)
 
 ```python
-# src/services/execution_engine/handlers.py
+# src/engines/execution_engine/handlers.py
 
 async def _on_order_status(self, trade: Trade):
     """IB callback : order state change."""

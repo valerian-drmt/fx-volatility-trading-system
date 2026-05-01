@@ -1,4 +1,4 @@
-"""Unit tests for ``services.db_writer.service.DbWriterService``.
+"""Unit tests for ``engines.db_writer.service.DbWriterService``.
 
 No real Redis, no real Postgres. The Redis client is a mock with a
 controllable async-generator pubsub ; the AsyncDatabaseWriter is
@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from persistence.models import AccountSnap, Base
 from persistence.writer import AsyncDatabaseWriter
-from services.db_writer.service import DbWriterService
+from engines.db_writer.service import DbWriterService
 from shared.db_events import DB_EVENTS_CHANNEL
 
 

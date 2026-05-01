@@ -341,7 +341,7 @@ CREATE INDEX ix_gate_decisions_timestamp ON gate_decisions (timestamp DESC);
 
 ## 7. Pipeline backend par étape de cycle
 
-À ajouter dans `src/services/vol/engine.py` après le step `_fair_q` :
+À ajouter dans `src/engines/vol/engine.py` après le step `_fair_q` :
 
 ```python
 def _step_regime_snapshot(self, surface_partial: dict, db: Session) -> dict:

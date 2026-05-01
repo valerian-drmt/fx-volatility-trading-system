@@ -111,11 +111,11 @@ trail in Postgres.
 | `ib-gateway` | IB API | — | `gnzsnz/ib-gateway:latest` |
 | `frontend` | React SPA | `frontend/` | `Dockerfile.web` |
 | **`api`** | FastAPI REST + WS | `src/api/` + `src/core/` + `src/persistence/` + `src/bus/` | `Dockerfile.api` |
-| **`market-data`** | IB ticks → Redis (clientID 1) | `src/services/market_data/` | `Dockerfile.engines` |
-| **`vol-engine`** | SVI/SSVI/GARCH/HAR/PCA/GMM (clientID 2) | `src/services/vol/` | `Dockerfile.engines` |
-| **`risk-engine`** | Greeks + delta hedge (clientID 3) | `src/services/risk/` | `Dockerfile.engines` |
-| **`db-writer`** | Redis → Postgres async sink | `src/services/db_writer/` | `Dockerfile.engines` |
-| **`execution-engine`** | Order submission HTTP (clientID 5, :8001) | `src/services/execution/` | `Dockerfile.execution` |
+| **`market-data`** | IB ticks → Redis (clientID 1) | `src/engines/market_data/` | `Dockerfile.engines` |
+| **`vol-engine`** | SVI/SSVI/GARCH/HAR/PCA/GMM (clientID 2) | `src/engines/vol/` | `Dockerfile.engines` |
+| **`risk-engine`** | Greeks + delta hedge (clientID 3) | `src/engines/risk/` | `Dockerfile.engines` |
+| **`db-writer`** | Redis → Postgres async sink | `src/engines/db_writer/` | `Dockerfile.engines` |
+| **`execution-engine`** | Order submission HTTP (clientID 5, :8001) | `src/engines/execution/` | `Dockerfile.execution` |
 
 Networks : `fxvol-public` (nginx), `fxvol-internal` (services), `fxvol-external` (IB outbound). The 5 Python engines live behind the `engines` compose profile (opt-in : `docker compose --profile engines up -d`).
 

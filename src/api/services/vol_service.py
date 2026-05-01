@@ -177,7 +177,7 @@ async def get_smile(
     )
 
 
-# Approximate year-fraction per tenor label — matches services.vol.engine.
+# Approximate year-fraction per tenor label — matches engines.vol.engine.
 _TENOR_YEARS: dict[str, float] = {
     "1W": 7 / 365, "1M": 1 / 12, "2M": 2 / 12,
     "3M": 3 / 12, "4M": 4 / 12, "5M": 5 / 12, "6M": 6 / 12, "1Y": 1.0,

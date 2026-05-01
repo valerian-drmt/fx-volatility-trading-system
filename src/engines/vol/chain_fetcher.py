@@ -1,6 +1,6 @@
 """Async port of the monolith's FOP chain traversal with bounded parallelism.
 
-Replaces the synthetic sandbox stub in ``services.vol.main`` by a real
+Replaces the synthetic sandbox stub in ``engines.vol.main`` by a real
 call into IB :
 
 - ``discover_chains(ib, target_dtes)`` picks the closest EUU (EUR futures
@@ -14,7 +14,7 @@ call into IB :
   ``scan_one_tenor`` on each chain in parallel behind a semaphore to
   stay within IB's live-subscription cap (paper = ~100 concurrent).
 
-Ported from ``src/services/vol_engine.py`` (monolith v1) :
+Ported from ``src/engines/vol_engine.py`` (monolith v1) :
 ``_discover_chains`` / ``_qualify_contracts`` / ``_scan_iv``. Key async
 wins over the monolith :
 

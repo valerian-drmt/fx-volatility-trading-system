@@ -1,4 +1,4 @@
-"""Unit tests for services.vol.chain_fetcher — tenor_label + concurrent gather.
+"""Unit tests for engines.vol.chain_fetcher — tenor_label + concurrent gather.
 
 The IB-side calls (reqContractDetailsAsync, reqSecDefOptParamsAsync,
 reqMktData) are heavily mocked — integration is tested manually via
@@ -15,7 +15,7 @@ pytest.importorskip("pytest_asyncio")
 
 
 def test_tenor_label_buckets() -> None:
-    from services.vol.chain_fetcher import tenor_label
+    from engines.vol.chain_fetcher import tenor_label
 
     assert tenor_label(30) == "1M"
     assert tenor_label(45) == "1M"
@@ -31,7 +31,7 @@ def test_tenor_label_buckets() -> None:
 @pytest.mark.asyncio
 async def test_scan_all_tenors_semaphore_bounds_concurrency() -> None:
     """Semaphore(2) means max 2 scan_one_tenor coroutines in flight."""
-    from services.vol import chain_fetcher
+    from engines.vol import chain_fetcher
 
     in_flight = 0
     peak = 0
@@ -57,7 +57,7 @@ async def test_scan_all_tenors_semaphore_bounds_concurrency() -> None:
 @pytest.mark.asyncio
 async def test_scan_all_tenors_drops_empty_results() -> None:
     """If a tenor returns no triples it should NOT appear in the output."""
-    from services.vol import chain_fetcher
+    from engines.vol import chain_fetcher
 
     async def half_empty(_ib, chain, _F, **_kwargs):
         # Odd dtes return nothing.
@@ -76,7 +76,7 @@ async def test_scan_all_tenors_drops_empty_results() -> None:
 
 
 def test_safe_float_handles_nan_and_none() -> None:
-    from services.vol.chain_fetcher import _safe
+    from engines.vol.chain_fetcher import _safe
 
     assert _safe(None) is None
     assert _safe(float("nan")) is None
@@ -88,7 +88,7 @@ def test_safe_float_handles_nan_and_none() -> None:
 @pytest.mark.asyncio
 async def test_engine_compute_surface_awaits_coroutine_fetch() -> None:
     """_compute_surface must await fetch_fop_chain if it's a coroutine."""
-    from services.vol.engine import VolEngine
+    from engines.vol.engine import VolEngine
 
     async def async_fetch(F):
         return {"1M": [(0.25, 0.08, 1.18), (0.50, 0.07, 1.10), (0.75, 0.075, 1.05)]}
@@ -109,7 +109,7 @@ async def test_engine_compute_surface_awaits_coroutine_fetch() -> None:
 @pytest.mark.asyncio
 async def test_engine_compute_surface_still_accepts_sync_fetch() -> None:
     """Back-compat : sync callable should still work."""
-    from services.vol.engine import VolEngine
+    from engines.vol.engine import VolEngine
 
     def sync_fetch(F):
         return {"1M": [(0.25, 0.08, 1.18), (0.50, 0.07, 1.10), (0.75, 0.075, 1.05)]}

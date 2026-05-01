@@ -14,7 +14,7 @@ pytest.importorskip("pytest_asyncio")
 
 
 def _engine_with_redis(redis_mock):
-    from services.vol.engine import VolEngine
+    from engines.vol.engine import VolEngine
 
     return VolEngine(
         ib=MagicMock(),

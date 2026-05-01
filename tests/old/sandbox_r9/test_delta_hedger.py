@@ -1,15 +1,15 @@
-"""Tests for services.execution.delta_hedger — hedge decision logic."""
+"""Tests for engines.execution.delta_hedger — hedge decision logic."""
 from __future__ import annotations
 
 
 def test_static_mode_never_hedges_after_entry() -> None:
-    from services.execution.delta_hedger import decide_hedge
+    from engines.execution.delta_hedger import decide_hedge
 
     assert decide_hedge(net_delta=2.5, mode="static").should_hedge is False
 
 
 def test_threshold_mode_hedges_when_exceeded() -> None:
-    from services.execution.delta_hedger import decide_hedge
+    from engines.execution.delta_hedger import decide_hedge
 
     d = decide_hedge(net_delta=0.15, mode="threshold", threshold=0.05)
     assert d.should_hedge is True
@@ -21,7 +21,7 @@ def test_threshold_mode_hedges_when_exceeded() -> None:
 
 
 def test_threshold_mode_stays_flat_below_threshold() -> None:
-    from services.execution.delta_hedger import decide_hedge
+    from engines.execution.delta_hedger import decide_hedge
 
     d = decide_hedge(net_delta=0.01, mode="threshold", threshold=0.05)
     assert d.should_hedge is False
@@ -29,7 +29,7 @@ def test_threshold_mode_stays_flat_below_threshold() -> None:
 
 
 def test_scheduled_mode_waits_for_elapsed_time() -> None:
-    from services.execution.delta_hedger import decide_hedge
+    from engines.execution.delta_hedger import decide_hedge
 
     too_soon = decide_hedge(
         net_delta=1.0, mode="scheduled",
@@ -45,7 +45,7 @@ def test_scheduled_mode_waits_for_elapsed_time() -> None:
 
 
 def test_split_hedge_pnl_separates_option_and_hedge_components() -> None:
-    from services.execution.delta_hedger import split_hedge_pnl
+    from engines.execution.delta_hedger import split_hedge_pnl
 
     pnl = split_hedge_pnl(
         option_mtm_change=1500.0, hedge_qty=-3, spot_change=0.002, fut_multiplier=125000.0,

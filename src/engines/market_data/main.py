@@ -2,7 +2,7 @@
 
 Usage :
     IB_HOST=ib-gateway IB_PORT=4002 IB_CLIENT_ID=1 REDIS_URL=redis://redis:6379/0 \\
-        python -m services.market_data.main
+        python -m engines.market_data.main
 
 Wires together the pieces :
 
@@ -10,7 +10,7 @@ Wires together the pieces :
 - ``shared.logging.configure_logging`` → JSON logs with service_name
 - ``bus.get_async_redis`` → process-wide Redis pool
 - ``ib_insync.IB`` → one connection per service (client_id injected)
-- ``services.market_data.engine.MarketDataEngine`` → the actual loop
+- ``engines.market_data.engine.MarketDataEngine`` → the actual loop
 
 Handles SIGTERM gracefully : signals the engine to stop, lets ``run()``
 finalise (publish pending heartbeat, disconnect IB), then exits 0. The
@@ -37,7 +37,7 @@ async def run() -> None:
     ib = IB()
     redis = get_async_redis()
 
-    from services.market_data.engine import MarketDataEngine
+    from engines.market_data.engine import MarketDataEngine
 
     # In the monolith, the engine pulled ticks from a ``Ticker`` event queue ;
     # here we delegate that plumbing to a small helper defined below so the

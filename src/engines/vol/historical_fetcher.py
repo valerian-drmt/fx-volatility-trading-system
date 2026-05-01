@@ -1,7 +1,7 @@
 """Async port of the monolith's _fetch_ohlc : daily bars for EUR FUT.
 
 Yang-Zhang RV and GARCH both need a clean OHLC series to converge to
-realistic values. The monolith (src/services/vol_engine.py::_fetch_ohlc)
+realistic values. The monolith (src/engines/vol_engine.py::_fetch_ohlc)
 pulled ~1 year of daily bars on the continuous EUR FUT contract via
 ``reqHistoricalData``. R7 services/vol shipped with a sandbox stub
 returning 20 synthetic random-walk bars, which made RV and GARCH come

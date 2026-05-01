@@ -17,7 +17,7 @@ pytest.importorskip("pytest_asyncio")
 
 @pytest.mark.asyncio
 async def test_run_cycle_publishes_db_event_with_vol_surfaces_table() -> None:
-    from services.vol.engine import VolEngine
+    from engines.vol.engine import VolEngine
 
     # Capture what redis.publish was called with.
     redis = AsyncMock()

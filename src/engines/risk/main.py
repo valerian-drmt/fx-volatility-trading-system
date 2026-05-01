@@ -17,7 +17,7 @@ async def run() -> None:
 
     from ib_insync import IB
 
-    from services.risk.engine import RiskEngine
+    from engines.risk.engine import RiskEngine
 
     ib = IB()
     redis = get_async_redis()

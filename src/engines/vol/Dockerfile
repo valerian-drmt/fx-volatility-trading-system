@@ -32,4 +32,4 @@ USER fxvol
 HEALTHCHECK --interval=60s --timeout=5s --start-period=240s --retries=3 \
     CMD python -c "import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:vol_engine'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 300) else 1)"
 
-CMD ["python", "-m", "services.vol.main"]
+CMD ["python", "-m", "engines.vol.main"]

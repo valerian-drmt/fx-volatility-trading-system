@@ -28,7 +28,7 @@ def _surface_with_fair_q(atm, fair_p, vrp, regime="calm"):
 
 
 def test_signal_uses_sigma_fair_q_when_present() -> None:
-    from services.vol.engine import _derive_signals
+    from engines.vol.engine import _derive_signals
 
     # mid 6.0, fair_p 5.0, VRP 0.6 → fair_q 5.6 → ecart +0.4 → FAIR (< 1.0).
     # Without VRP : ecart = 6.0 - 5.0 = +1.0 → at threshold (would be EXPENSIVE).
@@ -45,7 +45,7 @@ def test_signal_uses_sigma_fair_q_when_present() -> None:
 
 
 def test_signal_cheap_only_if_below_fair_q() -> None:
-    from services.vol.engine import _derive_signals
+    from engines.vol.engine import _derive_signals
 
     # mid 4.2, fair_p 5.0, VRP 0.6 → fair_q 5.6 → ecart -1.4 → CHEAP.
     sig = _derive_signals(
@@ -57,7 +57,7 @@ def test_signal_cheap_only_if_below_fair_q() -> None:
 
 
 def test_fallback_to_garch_when_fair_q_missing() -> None:
-    from services.vol.engine import _derive_signals
+    from engines.vol.engine import _derive_signals
 
     # No _fair_q — legacy path treats GARCH as Q. Same behaviour as
     # R9 sandbox pre-P1.
@@ -74,7 +74,7 @@ def test_fallback_to_garch_when_fair_q_missing() -> None:
 
 
 def test_threshold_override_tightens_classification() -> None:
-    from services.vol.engine import _derive_signals
+    from engines.vol.engine import _derive_signals
 
     # With default threshold 1.0, ecart = +0.8 → FAIR. With threshold
     # 0.5 it becomes EXPENSIVE.

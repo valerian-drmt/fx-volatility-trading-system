@@ -1,4 +1,4 @@
-"""Tests for services.vol.historical_fetcher.fetch_daily_ohlc.
+"""Tests for engines.vol.historical_fetcher.fetch_daily_ohlc.
 
 IB API is mocked — we only assert the contract definition, the DataFrame
 shape, the cache behaviour and the graceful fallback on empty/errored
@@ -34,7 +34,7 @@ FAKE_BARS = [
 
 @pytest.fixture(autouse=True)
 def _reset_cache():
-    from services.vol.historical_fetcher import reset_cache
+    from engines.vol.historical_fetcher import reset_cache
 
     reset_cache()
     yield
@@ -43,7 +43,7 @@ def _reset_cache():
 
 @pytest.mark.asyncio
 async def test_returns_dataframe_sorted_by_date() -> None:
-    from services.vol.historical_fetcher import fetch_daily_ohlc
+    from engines.vol.historical_fetcher import fetch_daily_ohlc
 
     ib = MagicMock()
     # Emit the bars in reverse order — fetcher must sort ascending.
@@ -57,7 +57,7 @@ async def test_returns_dataframe_sorted_by_date() -> None:
 
 @pytest.mark.asyncio
 async def test_requests_contfut_contract_with_expected_params() -> None:
-    from services.vol.historical_fetcher import fetch_daily_ohlc
+    from engines.vol.historical_fetcher import fetch_daily_ohlc
 
     ib = MagicMock()
     ib.reqHistoricalDataAsync = AsyncMock(return_value=FAKE_BARS)
@@ -77,7 +77,7 @@ async def test_requests_contfut_contract_with_expected_params() -> None:
 
 @pytest.mark.asyncio
 async def test_second_call_within_ttl_hits_cache_and_skips_ib() -> None:
-    from services.vol.historical_fetcher import fetch_daily_ohlc
+    from engines.vol.historical_fetcher import fetch_daily_ohlc
 
     ib = MagicMock()
     ib.reqHistoricalDataAsync = AsyncMock(return_value=FAKE_BARS)
@@ -90,7 +90,7 @@ async def test_second_call_within_ttl_hits_cache_and_skips_ib() -> None:
 
 @pytest.mark.asyncio
 async def test_returns_none_when_ib_returns_empty_list() -> None:
-    from services.vol.historical_fetcher import fetch_daily_ohlc
+    from engines.vol.historical_fetcher import fetch_daily_ohlc
 
     ib = MagicMock()
     ib.reqHistoricalDataAsync = AsyncMock(return_value=[])
@@ -100,7 +100,7 @@ async def test_returns_none_when_ib_returns_empty_list() -> None:
 
 @pytest.mark.asyncio
 async def test_returns_none_on_reqHistoricalData_exception() -> None:
-    from services.vol.historical_fetcher import fetch_daily_ohlc
+    from engines.vol.historical_fetcher import fetch_daily_ohlc
 
     ib = MagicMock()
     ib.reqHistoricalDataAsync = AsyncMock(side_effect=RuntimeError("no data farm"))

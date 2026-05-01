@@ -26,7 +26,7 @@ def test_market_symbol_default_is_eurusd() -> None:
 
 @pytest.mark.asyncio
 async def test_engine_calls_post_connect_hook_once() -> None:
-    from services.market_data.engine import MarketDataEngine
+    from engines.market_data.engine import MarketDataEngine
 
     ib = MagicMock()
     ib.isConnected = MagicMock(side_effect=[False, True])
@@ -66,7 +66,7 @@ async def test_engine_calls_post_connect_hook_once() -> None:
 @pytest.mark.asyncio
 async def test_subscribe_ib_ticks_qualifies_and_subscribes() -> None:
     # Late import so the test collection does not require ib_insync.
-    from services.market_data import main as md_main
+    from engines.market_data import main as md_main
 
     ib = MagicMock()
     ib.qualifyContractsAsync = AsyncMock()

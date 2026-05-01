@@ -217,7 +217,7 @@ async def trade_preview(
     body: TradePreviewRequest,
     redis: RedisDep,
 ) -> TradePreviewResponse:
-    from services.execution import structures as S
+    from engines.execution import structures as S
 
     try:
         surface = await vol_service.get_latest_surface(redis, "EURUSD")

@@ -1,6 +1,6 @@
 """Async MarketDataEngine — standalone service version.
 
-Equivalent to the threaded ``src/services/market_data_engine.py`` of the
+Equivalent to the threaded ``src/engines/market_data_engine.py`` of the
 monolith, but :
 
 - 100% asyncio (no ``threading.Thread``, no ``queue.Queue``)
@@ -9,7 +9,7 @@ monolith, but :
 - Reconnects via ``shared.ib_connection.connect_ib_with_backoff``
 
 The engine does not own Redis / IB singletons — they are injected from
-``services.market_data.main`` so the unit tests pass in stubs.
+``engines.market_data.main`` so the unit tests pass in stubs.
 """
 from __future__ import annotations
 

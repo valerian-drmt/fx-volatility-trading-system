@@ -26,12 +26,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from persistence.db import get_sessionmaker
 from persistence.models import OrderEvent
-from services.execution.order_executor import (
+from engines.execution.order_executor import (
     OrderExecutor,
     OrderExecutorUnavailable,
     OrderRequest,
 )
-from services.execution.position_sync import position_sync_loop
+from engines.execution.position_sync import position_sync_loop
 
 logger = logging.getLogger("execution")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())

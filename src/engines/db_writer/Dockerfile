@@ -30,4 +30,4 @@ USER fxvol
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c "import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:db_writer'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 30) else 1)"
 
-CMD ["python", "-m", "services.db_writer.main"]
+CMD ["python", "-m", "engines.db_writer.main"]

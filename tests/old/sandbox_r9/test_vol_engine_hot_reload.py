@@ -4,7 +4,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from core.config import VolTradingConfig
-from services.vol.engine import VolEngine
+from engines.vol.engine import VolEngine
 
 
 def _make_engine() -> VolEngine:

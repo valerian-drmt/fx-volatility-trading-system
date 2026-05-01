@@ -6,7 +6,7 @@ Reusable infrastructure : a process-local ``asyncio.Queue`` of
 retries on transient DB errors. Disposing drains the queue and closes
 the engine cleanly.
 
-Composition site : ``src/services/db_writer/service.py`` wraps an
+Composition site : ``src/engines/db_writer/service.py`` wraps an
 instance with a Redis pub/sub subscriber loop (the ``DbWriterService``)
 to make the long-running container ; the smoke notebook uses the writer
 directly without Redis. Both code paths exercise the same batching

@@ -574,7 +574,7 @@ def compute_stability_verdict(cos_sim, sign_flipped, var_change_pct):
 
 ### 7.2 Cycle vol-engine : projection snapshot courant + signal generation
 
-À ajouter dans `src/services/vol/engine.py` après le step `_step_regime_snapshot` :
+À ajouter dans `src/engines/vol/engine.py` après le step `_step_regime_snapshot` :
 
 ```python
 def _step_pca_signals(self, surface: dict, db: Session) -> dict:

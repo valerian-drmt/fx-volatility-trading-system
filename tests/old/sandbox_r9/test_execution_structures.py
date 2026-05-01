@@ -1,4 +1,4 @@
-"""Tests for services.execution.structures — BS pricing + legs + net greeks."""
+"""Tests for engines.execution.structures — BS pricing + legs + net greeks."""
 from __future__ import annotations
 
 import pytest
@@ -22,7 +22,7 @@ def _surface():
 
 
 def test_bs_price_call_put_parity() -> None:
-    from services.execution.structures import bs_price
+    from engines.execution.structures import bs_price
 
     F, K, T, sigma = 1.17, 1.17, 1 / 12, 0.06
     c = bs_price(F, K, T, sigma, "CALL")
@@ -32,7 +32,7 @@ def test_bs_price_call_put_parity() -> None:
 
 
 def test_bs_greeks_atm_call_has_positive_vega_gamma_and_negative_theta() -> None:
-    from services.execution.structures import bs_greeks
+    from engines.execution.structures import bs_greeks
 
     g = bs_greeks(1.17, 1.17, 1 / 12, 0.06, "CALL")
     assert g["vega"] > 0
@@ -42,7 +42,7 @@ def test_bs_greeks_atm_call_has_positive_vega_gamma_and_negative_theta() -> None
 
 
 def test_straddle_atm_has_zero_delta() -> None:
-    from services.execution.structures import StraddleATM
+    from engines.execution.structures import StraddleATM
 
     s = StraddleATM(tenor="1M", qty=10)
     legs = s.legs(1.17, _surface())
@@ -55,7 +55,7 @@ def test_straddle_atm_has_zero_delta() -> None:
 
 
 def test_risk_reversal_long_call_has_positive_delta() -> None:
-    from services.execution.structures import RiskReversal25d
+    from engines.execution.structures import RiskReversal25d
 
     rr = RiskReversal25d(tenor="1M", direction="LONG_CALL", qty=10)
     net = rr.net_greeks(1.17, _surface())
@@ -63,7 +63,7 @@ def test_risk_reversal_long_call_has_positive_delta() -> None:
 
 
 def test_butterfly_has_lower_vega_magnitude_than_atm_alone() -> None:
-    from services.execution.structures import Butterfly25d, StraddleATM
+    from engines.execution.structures import Butterfly25d, StraddleATM
 
     bf = Butterfly25d(tenor="1M", qty=10)
     straddle = StraddleATM(tenor="1M", qty=10)
@@ -73,7 +73,7 @@ def test_butterfly_has_lower_vega_magnitude_than_atm_alone() -> None:
 
 
 def test_calendar_spread_goes_long_far_short_near_when_buy() -> None:
-    from services.execution.structures import CalendarSpread
+    from engines.execution.structures import CalendarSpread
 
     cal = CalendarSpread(tenor_near="1M", tenor_far="3M", side="BUY", qty=10)
     legs = cal.legs(1.17, _surface())
@@ -85,7 +85,7 @@ def test_calendar_spread_goes_long_far_short_near_when_buy() -> None:
 
 
 def test_signal_to_structure_maps_pc_labels_to_structures() -> None:
-    from services.execution.structures import (
+    from engines.execution.structures import (
         Butterfly25d,
         CalendarSpread,
         RiskReversal25d,
@@ -101,7 +101,7 @@ def test_signal_to_structure_maps_pc_labels_to_structures() -> None:
 
 
 def test_signal_to_structure_direction_flips_side() -> None:
-    from services.execution.structures import signal_to_structure
+    from engines.execution.structures import signal_to_structure
 
     buy_s = signal_to_structure("level", "1M", direction="CHEAP")
     sell_s = signal_to_structure("level", "1M", direction="EXPENSIVE")
