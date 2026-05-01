@@ -16,7 +16,7 @@ from typing import Any, Protocol
 
 from bus import keys, publisher
 from persistence.writer import AsyncDatabaseWriter
-from shared.db_queue import DB_EVENTS_CHANNEL
+from shared.db_events import DB_EVENTS_CHANNEL
 
 HEARTBEAT_INTERVAL_S = 5.0
 

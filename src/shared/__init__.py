@@ -15,7 +15,7 @@ Importing between two ``services/<name>/`` packages is explicitly banned
 ``shared/`` or ``core/``.
 """
 from shared.config import Settings, get_settings
-from shared.db_queue import publish_db_event
+from shared.db_events import publish_db_event
 from shared.ib_connection import connect_ib_with_backoff, next_backoff_seconds
 from shared.logging import configure_logging
 from shared.redis_client import get_async_redis, reset_for_tests

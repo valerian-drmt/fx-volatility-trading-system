@@ -1,5 +1,5 @@
 """Smoke tests for ``shared.redis_client``, ``shared.config`` and
-``shared.db_queue``.
+``shared.db_events``.
 
 The Redis client itself is covered by the bus package tests — here we
 only verify the shim delegates correctly and that ``reset_for_tests``
@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from shared.config import Settings, get_settings, reset_settings_cache
-from shared.db_queue import DB_EVENTS_CHANNEL, publish_db_event
+from shared.db_events import DB_EVENTS_CHANNEL, publish_db_event
 
 # ── redis client shim ─────────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ def test_settings_defaults_when_env_unset(monkeypatch):
     assert s.LOG_LEVEL == "INFO"
 
 
-# ── db_queue publisher ────────────────────────────────────────────────
+# ── db_events publisher ───────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_publish_db_event_frames_json_with_table_and_payload():

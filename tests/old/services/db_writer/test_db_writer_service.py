@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from persistence.models import AccountSnap, Base
 from persistence.writer import AsyncDatabaseWriter
 from services.db_writer.writer import DbWriterService
-from shared.db_queue import DB_EVENTS_CHANNEL
+from shared.db_events import DB_EVENTS_CHANNEL
 
 
 async def _build_memory_writer(batch_timeout_s: float = 0.1) -> AsyncDatabaseWriter:

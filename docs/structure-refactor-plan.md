@@ -156,7 +156,7 @@ fx-volatility-trading-system/
 │       ├── config.py             # base Settings (loaded by api/config + engines)
 │       ├── logging.py            # structlog setup
 │       └── ib_connection.py      # IB sync wrapper
-│       # ❌ db_queue.py (deleted — dead code)
+│       # 🔄 db_queue.py renamed to db_events.py (misnomer fix — pub/sub, not queue)
 │       # ❌ redis_client.py (moved into bus/)
 │
 ├── frontend/                     # TypeScript SPA (intentionally outside src/)
@@ -252,7 +252,7 @@ matches what the reader expects to find inside*.
 | `src/persistence/writer.py` | merged into `src/engines/db_writer/` | the writer *is* a service. Move the logic there ; persistence keeps only ORM + session. |
 | `src/shared/redis_client.py` + `src/bus/redis_client.py` | single `src/bus/client.py` | one redis adapter, one place. |
 | `src/shared/config.py` + `src/api/config.py` | `src/shared/config.py` (base) + `src/api/config.py` (api-specific extension) | clear inheritance, not duplication. |
-| `src/shared/db_queue.py` | deleted | dead code, confirmed unused. |
+| `src/shared/db_queue.py` | renamed `src/shared/db_events.py` | misnomer fix : the file is the Redis pub/sub publisher (`DB_EVENTS_CHANNEL`), not a queue. |
 | `Dockerfile.api`, `Dockerfile.web` | `api.Dockerfile`, `web.Dockerfile` | extension-first naming sorts cleanly in `ls` and is the convention used by Docker docs. |
 | `tests/old/` | deleted | Qt era ; git keeps the history, that is its job. |
 | `requirements.txt` + `requirements/*.txt` | `pyproject.toml` + `uv.lock` | one source of truth. |

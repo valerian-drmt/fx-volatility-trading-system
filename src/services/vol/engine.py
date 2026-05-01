@@ -441,7 +441,7 @@ class VolEngine:
         try:
             from datetime import UTC, datetime
 
-            from shared.db_queue import publish_db_event
+            from shared.db_events import publish_db_event
 
             ts_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
             await publish_db_event(
