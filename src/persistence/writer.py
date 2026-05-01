@@ -79,7 +79,7 @@ TABLE_MODELS: dict[str, type[Base]] = {
 # and the engines can re-emit the same (timestamp, underlying[, tenor]) on
 # a retry : we want the first write to win and the second to be a no-op.
 # positions uses the primary key ``id`` (a deterministic hash of the IB
-# composite key — see payloads.compute_position_id) : re-observing the
+# composite key — see core.payloads.compute_position_id) : re-observing the
 # same open position on every risk cycle must be idempotent so that only
 # the first sighting creates the row ; subsequent observations land as
 # position_snapshots only.

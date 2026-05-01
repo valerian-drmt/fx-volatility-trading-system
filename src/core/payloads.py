@@ -1,21 +1,22 @@
-"""Build DB row payloads from engine outputs.
+"""Pure transformations : engine output dict → DB row dict.
 
-Pure transformations: engine-native dict → DB table dict ready to enqueue.
-No state, no IO — all testable in isolation. The Controller wires these
-into its result-handling callbacks (``_on_market_data_payload``,
-``_on_vol_result``) and passes the output to ``enqueue_db_event``.
+Lives in ``core/`` because the logic is pure (no I/O, no SQLAlchemy)
+and reusable across engines. Each function maps one engine-native dict
+shape (or list of them) to a dict ready to enqueue on the db-events
+Redis channel.
 
-Scope of R2 PR #4 :
+Status : these helpers were authored in R2 for the PyQt Controller
+that was removed in R8. The R9 engines currently build dict payloads
+inline. They are kept here as a reference implementation for when
+a future cleanup unifies the engines' dict-building under a single
+typed surface.
+
+Scope :
     - account_snaps      (from MarketDataEngine portfolio_payload)
     - vol_surfaces       (from VolEngine result)
     - signals            (from VolEngine pillar_rows)
-    - positions          (from RiskEngine open_positions, INSERT-only via ON CONFLICT)
+    - positions          (from RiskEngine open_positions)
     - position_snapshots (from RiskEngine open_positions, every cycle)
-
-Not yet handled :
-    - trades (OrderExecutor fills) — needs OrderExecutor.place_*
-      to surface avgFillPrice and orderId in its return dict ; deferred
-      to a follow-up that touches the order return contract.
 
 Reference : releases/architecture_finale_project/08-postgresql.md
 """
