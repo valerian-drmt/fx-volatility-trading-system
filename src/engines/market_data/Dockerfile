@@ -1,8 +1,7 @@
-# Market-data service — standalone async IB tick publisher.
+# Market-data service — async IB tick publisher.
 #
-# Multi-stage pattern shared by the 3 engine containers (market_data,
-# vol_engine, risk_engine). Only the requirements file and CMD differ
-# between them. Images land around ~450 MB each.
+# Installs the [ib] extra (ib-insync + tzdata + base runtime). Multi-
+# stage pattern shared with risk-engine ; only the CMD differs.
 
 ARG PYTHON_IMAGE=python:3.11-slim
 
@@ -15,22 +14,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Minimal apt layer — ib_insync is pure Python, numpy / scipy wheels are
-# available on PyPI so build-essential is not needed at runtime.
+# Minimal apt — ib_insync is pure Python, numpy/scipy wheels exist for
+# manylinux so build-essential is not needed at runtime.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Dependency layer — cached as long as requirements/ib.txt (and its parent
-# base.txt) do not change.
-COPY requirements/base.txt requirements/ib.txt ./requirements/
-RUN pip install --upgrade pip && pip install -r requirements/ib.txt
-
-# Post-R9 src-layout : all Python (core/, bus/, persistence/, shared/,
-# services/*) lives under src/. One COPY covers everything.
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+RUN pip install --upgrade pip && pip install ".[ib]"
 
-# Non-root execution.
 RUN useradd -m -u 1001 fxvol && chown -R fxvol:fxvol /app
 USER fxvol
 

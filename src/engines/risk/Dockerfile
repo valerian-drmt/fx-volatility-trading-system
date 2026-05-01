@@ -1,4 +1,5 @@
-# Risk-engine service. Uses requirements/ib.txt (base + ib_insync, no GARCH).
+# Risk-engine service — installs the [ib] extra (ib-insync + base
+# runtime, no GARCH).
 
 ARG PYTHON_IMAGE=python:3.11-slim
 
@@ -15,11 +16,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements/base.txt requirements/ib.txt ./requirements/
-RUN pip install --upgrade pip && pip install -r requirements/ib.txt
-
-# Post-R9 src-layout : all Python under src/, one COPY.
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+RUN pip install --upgrade pip && pip install ".[ib]"
 
 RUN useradd -m -u 1003 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

@@ -1,9 +1,9 @@
-# FastAPI backend image.
+# FastAPI backend image — pyproject-driven (PEP 621).
 #
-# Builds the uvicorn-served API surface. Post-R9 src-layout : everything
-# under src/ (api, core, persistence, bus, shared, services/execution).
-# The image ships requirements.txt as-is for R6 ; R7 will swap for
-# requirements/base.txt + uvicorn when the per-service split is in place.
+# Installs the [api] extra of the fxvol project — fastapi + uvicorn +
+# slowapi + prometheus + httpx, on top of the base runtime (numpy /
+# scipy / pandas / redis / structlog / pydantic / SQLAlchemy / asyncpg
+# / alembic). No ib_insync, no arch — the api is pure stateless.
 #
 #   docker build -f infrastructure/docker/api.Dockerfile -t fx-options-api .
 
@@ -17,9 +17,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONPATH=/app/src
 
-# Build deps required by asyncpg / psycopg2-binary / scipy / arch wheels.
-# libpq-dev is only required if psycopg2-binary does not ship a wheel for
-# the architecture — kept here as a belt-and-braces.
+# Build deps required by asyncpg / scipy wheels on slim.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
@@ -29,24 +27,18 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Dependency layer is cached as long as requirements.txt does not change —
-# iterating on /app/api source rebuilds in ~2s.
-COPY requirements.txt ./
-RUN pip install --upgrade pip && pip install -r requirements.txt
-
-# Application source. Post-R9 : api/, core/, persistence/, bus/, shared/,
-# services/execution/ all live under src/ (PyPA src-layout). The single
-# COPY is enough -- no more fragmented copies.
+# pyproject.toml + src/ are needed together because PEP 517 build
+# resolves the package layout from src/ when installing fxvol[api].
+# Cache breaks on any src/ change ; if dep iteration becomes a concern,
+# split into a deps-only first stage with a stub src/ tree.
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+RUN pip install --upgrade pip && pip install ".[api]"
+
 COPY scripts/ ./scripts/
 
-# uvicorn on port 8000. The image does NOT run --reload : that is a dev
-# concern and inflates the runtime with watchfiles observers.
 EXPOSE 8000
 
-# Healthcheck hits /api/v1/health which returns 200 as long as the process
-# is up. Extended healthcheck (DB + Redis ping) lives behind /health/extended
-# but we keep the liveness probe cheap.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8000/api/v1/health || exit 1
 

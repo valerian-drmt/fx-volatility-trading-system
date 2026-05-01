@@ -1,6 +1,6 @@
-# db-writer service. Uses requirements/writer.txt — base + SQLAlchemy +
-# asyncpg + alembic. Deliberately does NOT pull ib_insync, making this
-# image ~150 MB lighter than the engine containers.
+# db-writer service — installs the [writer] extra (psycopg2-binary on
+# top of base runtime). Deliberately does NOT pull ib-insync, making
+# this image ~150 MB lighter than the engine containers.
 
 ARG PYTHON_IMAGE=python:3.11-slim
 
@@ -17,12 +17,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements/base.txt requirements/writer.txt ./requirements/
-RUN pip install --upgrade pip && pip install -r requirements/writer.txt
-
-# Post-R9 src-layout : all Python under src/ (shared, core, persistence,
-# services/db_writer).
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+RUN pip install --upgrade pip && pip install ".[writer]"
 
 RUN useradd -m -u 1004 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

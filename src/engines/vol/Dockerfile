@@ -1,4 +1,6 @@
-# Vol-engine service. Uses requirements/quant.txt (base + ib + arch for GARCH).
+# Vol-engine service — installs the [quant] extra (transitively pulls
+# [ib]) for GARCH (arch) + GMM regime detection (scikit-learn) on top
+# of the IB stack.
 
 ARG PYTHON_IMAGE=python:3.11-slim
 
@@ -11,18 +13,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# arch ships manylinux wheels for 3.11 ; build-essential is a belt.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# arch ships wheels for 3.11 on manylinux → build-essential is a belt.
-COPY requirements/base.txt requirements/ib.txt requirements/quant.txt ./requirements/
-RUN pip install --upgrade pip && pip install -r requirements/quant.txt
-
-# Post-R9 src-layout : everything Python lives under src/. One COPY covers
-# core, bus, persistence, shared, services/vol (+ other services, unused
-# here but harmless -- same image size vs selective copy is negligible).
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+RUN pip install --upgrade pip && pip install ".[quant]"
+
 # Backfill scripts (one-shot data seeding, e.g. backfill_iv_history_for_gmm.py).
 COPY scripts/ ./scripts/
 
