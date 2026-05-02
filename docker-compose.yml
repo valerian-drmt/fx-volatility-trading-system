@@ -54,7 +54,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
       REDIS_URL: redis://redis:6379/0
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # URL interne du nouveau container execution-engine. L'api forward
       # les actions /orders / /exec/positions vers ce service.
       EXECUTION_URL: http://execution-engine:8001

@@ -50,7 +50,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$projectDir = Split-Path -Parent $PSScriptRoot
+$projectDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Push-Location $projectDir
 
 function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
@@ -165,7 +165,7 @@ function Get-TabInit($projectDir) {
     return @"
 Set-Location '$projectDir'
 if (Test-Path .\.venv\Scripts\Activate.ps1) { .\.venv\Scripts\Activate.ps1 }
-& .\scripts\load_secrets.ps1 | Out-Null
+& .\scripts\ops\load_secrets.ps1 | Out-Null
 "@
 }
 

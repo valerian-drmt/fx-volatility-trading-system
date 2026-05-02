@@ -18,8 +18,8 @@
   Region AWS. Defaut : eu-west-1.
 
 .EXAMPLE
-  .\scripts\load_secrets.ps1
-  .\scripts\load_secrets.ps1 -Profile fxvol-dev
+  .\scripts\ops\load_secrets.ps1
+  .\scripts\ops\load_secrets.ps1 -Profile fxvol-dev
 #>
 param(
     [string]$Profile = 'fxvol-dev',

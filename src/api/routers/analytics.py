@@ -15,7 +15,7 @@ from api.schemas.analytics import (
     SystemStats,
     VolHistoryRow,
 )
-from api.services import analytics_service as svc
+from api.orchestration import analytics_service as svc
 
 router = APIRouter(prefix="/api/v1", tags=["analytics"])
 

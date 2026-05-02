@@ -14,7 +14,7 @@ from api.schemas.portfolio import (
     PnLCurve,
     PositionView,
 )
-from api.services import portfolio_service as svc
+from api.orchestration import portfolio_service as svc
 
 router = APIRouter(prefix="/api/v1", tags=["portfolio"])
 
