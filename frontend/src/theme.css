@@ -71,6 +71,9 @@ html, body, #root {
 .data-table th { color: var(--muted); font-weight: 500; }
 .data-table-empty { color: var(--muted); font-style: italic; text-align: center; padding: 12px; }
 
+.chart-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.chart-empty { color: var(--muted); text-align: center; padding: 40px; font-style: italic; }
+
 [data-sign="neg"] { color: var(--neg); }
 [data-sign="pos"] { color: var(--pos); }
 [data-severity="ERROR"] { color: var(--neg); }
