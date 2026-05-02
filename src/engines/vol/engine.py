@@ -804,11 +804,14 @@ class VolEngine:
             from sqlalchemy import desc, select
 
             from core.vol.pca_engine import (
+                DELTAS,
+                TENORS,
                 actionable_check,
                 check_coherence,
                 classify_label,
                 feature_vector_from_surface,
                 is_persistent,
+                pc3_sub_metrics,
                 project,
                 zscore_against,
             )
@@ -817,6 +820,7 @@ class VolEngine:
                 PcaModel,
                 PcaSignal,
                 SignalRecommendationsMap,
+                SurfaceSnapshotHourly,
             )
 
             x = feature_vector_from_surface(surface)
@@ -867,6 +871,36 @@ class VolEngine:
                 )).all()
                 rec_map = {(r[0], r[1]): f"{r[2]}_{r[3]}" for r in rec_rows}
 
+                # PC3 sub-signals : skew + convex history from snapshot_hourly.
+                # We cap at 200 latest rows — rolling z-score window, not the
+                # PCA fit window. Cheap : 200 × 30 floats.
+                snap_iv_cols = [
+                    f"iv_{t.lower()}_{d}" for t in TENORS for d in DELTAS
+                ]
+                snap_rows = (await session.execute(
+                    select(SurfaceSnapshotHourly)
+                    .where(SurfaceSnapshotHourly.symbol == self.symbol)
+                    .order_by(desc(SurfaceSnapshotHourly.timestamp))
+                    .limit(200)
+                )).scalars().all()
+                hist_skew: list[float] = []
+                hist_convex: list[float] = []
+                for r in snap_rows:
+                    vec = [getattr(r, c) for c in snap_iv_cols]
+                    if any(v is None for v in vec):
+                        continue
+                    xv = np.asarray([float(v) for v in vec])
+                    s, c = pc3_sub_metrics(xv)
+                    hist_skew.append(s)
+                    hist_convex.append(c)
+                cur_skew, cur_convex = pc3_sub_metrics(x)
+                skew_z = zscore_against(cur_skew, hist_skew)
+                convex_z = zscore_against(cur_convex, hist_convex)
+                pc3_sub = {
+                    "skew_z": round(skew_z, 2),
+                    "convex_z": round(convex_z, 2),
+                }
+
             signals_payload: dict[str, dict] = {}
             signal_rows: list[dict] = []
             for pc_id in (1, 2, 3):
@@ -880,12 +914,18 @@ class VolEngine:
                 stable = cos_sim_f >= 0.85
                 ve = float(var_ratio[idx]) if idx < len(var_ratio) else 0.0
                 persistent = is_persistent([z, *hist_z[pc_id]])
+                cum_var = float(sum(var_ratio[:3])) if var_ratio else 0.0
+                n_obs = int(model.n_obs_used)
                 flag = actionable_check(
                     pc_id=pc_id, z_score=z, label=label,
                     loadings_stable=stable, variance_explained=ve,
                     persistent=persistent,
+                    n_obs=n_obs, cumulative_variance=cum_var,
                 )
-                rec = rec_map.get((pc_id, label)) if label != "FAIR" and flag.actionable else None
+                # Always compute the would-be recommended structure so the
+                # UI shows it greyed-out when not actionable.
+                rec = rec_map.get((pc_id, label))
+                sub = pc3_sub if pc_id == 3 else None
                 node = {
                     "z_score": round(z, 2),
                     "raw_score": round(raw, 4),
@@ -894,13 +934,15 @@ class VolEngine:
                     "actionable_reason": flag.reason,
                     "recommended_structure": rec,
                 }
+                if sub is not None:
+                    node["sub_signals"] = sub
                 signals_payload[f"pc{pc_id}"] = node
                 signal_rows.append({
                     "symbol": self.symbol, "pca_model_id": int(model.id),
                     "pc_id": pc_id, "raw_score": raw, "z_score": z,
                     "label": label, "actionable": flag.actionable,
                     "actionable_reason": flag.reason,
-                    "recommended_structure": rec, "sub_signals": None,
+                    "recommended_structure": rec, "sub_signals": sub,
                 })
 
             payload = {

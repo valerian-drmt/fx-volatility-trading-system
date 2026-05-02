@@ -18,12 +18,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.dependencies import get_db_session
 from core.vol.pca_engine import (
     N_FEATURES,
+    actionable_check,
+    check_coherence,
+    classify_label,
     fit_pca_svd,
+    is_persistent,
+    pc3_sub_metrics,
+    reason_category,
     sign_correct_loadings,
 )
 from persistence.models import (
     PcaModel,
     PcaSignal,
+    SignalRecommendationsMap,
     SurfaceSnapshotHourly,
 )
 
@@ -37,12 +44,24 @@ N_COMPONENTS = 6
 
 @router.get("/signals/pca/state")
 async def state(
-    db: DbDep, symbol: str = Query("EURUSD", min_length=3, max_length=20),
+    db: DbDep,
+    symbol: str = Query("EURUSD", min_length=3, max_length=20),
+    scenario: str | None = Query(
+        None, description="if set, returns the named PcaModel.version instead "
+        "of the active one (fixture mode for UI testing)",
+    ),
 ) -> dict[str, Any]:
-    """Latest 3 signals (1 per PC) under the active PCA model."""
-    model = (await db.execute(
-        select(PcaModel).where(PcaModel.is_active.is_(True)).limit(1)
-    )).scalar_one_or_none()
+    """Latest 3 signals (1 per PC) under the active PCA model — or, if
+    ``?scenario=...`` is passed, under the model whose ``version`` matches
+    the scenario tag (fixture mode)."""
+    if scenario:
+        model = (await db.execute(
+            select(PcaModel).where(PcaModel.version == f"scenario_{scenario}").limit(1)
+        )).scalar_one_or_none()
+    else:
+        model = (await db.execute(
+            select(PcaModel).where(PcaModel.is_active.is_(True)).limit(1)
+        )).scalar_one_or_none()
     if model is None:
         return {"state": "bootstrap", "model_version": None, "signals": {}}
 
@@ -61,16 +80,55 @@ async def state(
             rows.append(row)
 
     if not rows:
+        # Active model exists but the vol-engine hasn't projected any cycle
+        # yet (typical right after a refit, or with markets closed). Stay in
+        # "stable" so the UI shows the active model + 3 empty PC cards rather
+        # than the misleading "Pas de modèle PCA actif" bootstrap layout.
+        var = list(model.variance_explained_ratio or [])
         return {
-            "state": "bootstrap", "model_version": model.version,
-            "signals": {}, "diagnostics": {"reason": "no_signals_yet"},
+            "state": "stable", "model_version": model.version,
+            "n_obs_in_fit": model.n_obs_used,
+            "fit_window_start": model.fit_window_start,
+            "fit_window_end": model.fit_window_end,
+            "variance_explained": {
+                "pc1": float(var[0]) if len(var) > 0 else 0.0,
+                "pc2": float(var[1]) if len(var) > 1 else 0.0,
+                "pc3": float(var[2]) if len(var) > 2 else 0.0,
+                "cumulative": float(sum(var[:3])) if var else 0.0,
+            },
+            "loadings_stable": {
+                f"pc{i}": (
+                    getattr(model, f"cosine_similarity_pc{i}", None) is None
+                    or float(getattr(model, f"cosine_similarity_pc{i}")) >= 0.85
+                ) for i in (1, 2, 3)
+            },
+            "signals": {}, "coherence": {"all_coherent": True, "contradictions": []},
+            "diagnostics": {"reason": "no_signals_yet"},
         }
     var = list(model.variance_explained_ratio or [])
+    signals_payload = {
+        f"pc{r.pc_id}": {
+            "z_score": float(r.z_score), "raw_score": float(r.raw_score),
+            "label": r.label, "actionable": r.actionable,
+            "actionable_reason": r.actionable_reason,
+            "reason_category": reason_category(r.actionable_reason),
+            "recommended_structure": r.recommended_structure,
+            "sub_signals": r.sub_signals,
+        } for r in rows
+    }
+    # Loadings reshaped to (n_pcs, 6 tenors, 5 deltas) for the UI heatmap.
+    loadings_arr = np.asarray(model.loadings or [], dtype=float)
+    loadings_grid = (
+        loadings_arr.reshape(loadings_arr.shape[0], 6, 5).tolist()
+        if loadings_arr.size and loadings_arr.shape[1] == N_FEATURES
+        else []
+    )
     return {
         "state": "stable",
         "timestamp": max(r.timestamp for r in rows),
         "model_version": model.version,
         "n_obs_in_fit": model.n_obs_used,
+        "fit_timestamp": model.fit_timestamp,
         "fit_window_start": model.fit_window_start,
         "fit_window_end": model.fit_window_end,
         "variance_explained": {
@@ -85,14 +143,9 @@ async def state(
                 or float(getattr(model, f"cosine_similarity_pc{i}")) >= 0.85
             ) for i in (1, 2, 3)
         },
-        "signals": {
-            f"pc{r.pc_id}": {
-                "z_score": float(r.z_score), "raw_score": float(r.raw_score),
-                "label": r.label, "actionable": r.actionable,
-                "actionable_reason": r.actionable_reason,
-                "recommended_structure": r.recommended_structure,
-            } for r in rows
-        },
+        "loadings_grid": loadings_grid,        # (3, 6, 5) for heatmap
+        "signals": signals_payload,
+        "coherence": check_coherence(signals_payload),
     }
 
 
@@ -142,13 +195,12 @@ async def active_model(db: DbDep) -> dict[str, Any]:
     }
 
 
-@router.post("/admin/pca/refit")
-async def refit(db: DbDep, symbol: str = Query("EURUSD")) -> dict[str, Any]:
-    """Refit PCA on the available surface_snapshots_hourly (MVP : manual trigger).
+async def perform_refit(db: AsyncSession, symbol: str = "EURUSD") -> dict[str, Any]:
+    """Core refit logic — usable from the HTTP route AND the background scheduler.
 
-    In production this would be a cron job in `pca-fitter` container ; for the
-    MVP we expose it as an admin endpoint so it can be called manually once
-    enough hourly snapshots have accumulated.
+    Reads surface_snapshots_hourly, fits PCA via SVD, sign-corrects vs prev
+    active model, demotes prev, promotes new (in that order to honour the
+    partial unique index ix_pca_models_active_unique).
     """
     rows = (await db.execute(
         select(SurfaceSnapshotHourly)
@@ -196,7 +248,7 @@ async def refit(db: DbDep, symbol: str = Query("EURUSD")) -> dict[str, Any]:
         loadings=corrected.tolist(),
         eigenvalues=fit.eigenvalues.tolist(),
         variance_explained_ratio=fit.variance_explained_ratio.tolist(),
-        n_components_kept=N_COMPONENTS, is_active=True,
+        n_components_kept=N_COMPONENTS, is_active=False,  # flipped to True after demoting prev
         cosine_similarity_pc1=_finite_or_none(cos_sims[0] if len(cos_sims) > 0 else None),
         cosine_similarity_pc2=_finite_or_none(cos_sims[1] if len(cos_sims) > 1 else None),
         cosine_similarity_pc3=_finite_or_none(cos_sims[2] if len(cos_sims) > 2 else None),
@@ -206,12 +258,32 @@ async def refit(db: DbDep, symbol: str = Query("EURUSD")) -> dict[str, Any]:
     )
     db.add(new)
     await db.flush()
+    # Demote prev before promoting new : the partial unique index
+    # ix_pca_models_active_unique (WHERE is_active=true) forbids two active rows.
     if prev is not None:
         await db.execute(
             update(PcaModel).where(PcaModel.id == prev.id).values(
                 is_active=False, superseded_by=new.id,
             )
         )
+        await db.flush()
+    await db.execute(
+        update(PcaModel).where(PcaModel.id == new.id).values(is_active=True)
+    )
+
+    # Project the fit snapshots through the new loadings + persist as
+    # pca_signals so the panel cards aren't empty after each refit.
+    # Without this, every scheduler refit would orphan the previous
+    # signals and the UI would flicker to "(no signal yet)" until the
+    # vol-engine cycle catches up — which never happens with markets
+    # closed (incomplete surface).
+    await _backfill_signals_from_fit(
+        db=db, model=new, X=X, snapshot_timestamps=[r.timestamp for r in rows
+                                                     if all(getattr(r, c) is not None
+                                                            for c in iv_cols)],
+        symbol=symbol,
+    )
+
     await db.commit()
     await db.refresh(new)
     return {
@@ -224,6 +296,98 @@ async def refit(db: DbDep, symbol: str = Query("EURUSD")) -> dict[str, Any]:
         ],
         "previous_version": prev.version if prev else None,
     }
+
+
+@router.post("/admin/pca/refit")
+async def refit(db: DbDep, symbol: str = Query("EURUSD")) -> dict[str, Any]:
+    """Manual refit (kept alongside the background scheduler so the user can
+    force a refit after seeding new data or tweaking thresholds)."""
+    return await perform_refit(db, symbol)
+
+
+async def _backfill_signals_from_fit(
+    *, db: AsyncSession, model: PcaModel, X: np.ndarray,
+    snapshot_timestamps: list[datetime], symbol: str,
+) -> None:
+    """Project each row of the fit window X through the new loadings, compute
+    z-scores per PC across the full history, and INSERT one PcaSignal per
+    (snapshot, pc_id ∈ {1,2,3}) so the panel has data immediately.
+    """
+    means = np.asarray(model.means, dtype=float)
+    stds = np.asarray(model.stds, dtype=float)
+    loadings = np.asarray(model.loadings, dtype=float)
+    var_ratio = list(model.variance_explained_ratio or [])
+    cum_var = float(sum(var_ratio[:3])) if var_ratio else 0.0
+    n_obs = int(model.n_obs_used)
+
+    X_std = (X - means) / stds
+    raw = X_std @ loadings.T  # (T, n_components)
+
+    mu = raw.mean(axis=0)
+    sigma = raw.std(axis=0, ddof=1)
+    sigma = np.where(sigma <= 0, 1.0, sigma)
+    z = (raw - mu) / sigma
+
+    # Recommendation lookup
+    rec_rows = (await db.execute(
+        select(
+            SignalRecommendationsMap.pc_id,
+            SignalRecommendationsMap.signal_label,
+            SignalRecommendationsMap.recommended_structure,
+            SignalRecommendationsMap.default_tenor,
+        ).where(SignalRecommendationsMap.is_active.is_(True))
+    )).all()
+    rec_map = {(r[0], r[1]): f"{r[2]}_{r[3]}" for r in rec_rows}
+
+    T = X.shape[0]
+    rows_to_add: list[PcaSignal] = []
+    for t in range(T):
+        for pc_id in (1, 2, 3):
+            idx = pc_id - 1
+            z_t = float(z[t, idx])
+            raw_t = float(raw[t, idx])
+            label = classify_label(z_t)
+
+            cos_sim = getattr(model, f"cosine_similarity_pc{pc_id}", None)
+            stable = cos_sim is None or float(cos_sim) >= 0.85
+            ve = float(var_ratio[idx]) if idx < len(var_ratio) else 0.0
+
+            # persistence : last 3 z's most-recent-first
+            z_history = [float(z[k, idx]) for k in range(t, max(-1, t - 3), -1)]
+            persistent = is_persistent(z_history)
+
+            flag = actionable_check(
+                pc_id=pc_id, z_score=z_t, label=label,
+                loadings_stable=stable, variance_explained=ve,
+                persistent=persistent,
+                n_obs=n_obs, cumulative_variance=cum_var,
+            )
+            # Always compute the would-be recommended structure so the UI
+            # can show it greyed-out when not actionable (post-MVP critique).
+            rec = rec_map.get((pc_id, label))
+
+            sub = None
+            if pc_id == 3:
+                s, c = pc3_sub_metrics(X[t])
+                # z over the column distribution
+                skew_col = np.array([pc3_sub_metrics(X[k])[0] for k in range(T)])
+                conv_col = np.array([pc3_sub_metrics(X[k])[1] for k in range(T)])
+                skew_sigma = float(skew_col.std(ddof=1)) or 1.0
+                conv_sigma = float(conv_col.std(ddof=1)) or 1.0
+                sub = {
+                    "skew_z": float((s - skew_col.mean()) / skew_sigma),
+                    "convex_z": float((c - conv_col.mean()) / conv_sigma),
+                }
+
+            rows_to_add.append(PcaSignal(
+                timestamp=snapshot_timestamps[t], symbol=symbol,
+                pca_model_id=int(model.id), pc_id=pc_id,
+                raw_score=raw_t, z_score=z_t, label=label,
+                actionable=flag.actionable, actionable_reason=flag.reason,
+                sub_signals=sub, recommended_structure=rec,
+            ))
+    db.add_all(rows_to_add)
+    await db.flush()
 
 
 def _finite_or_none(x: float | None) -> float | None:

@@ -17,7 +17,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis
-from api.services import vol_service
+from api.orchestration import vol_service
 
 router = APIRouter(prefix="/api/v1/vol", tags=["cockpit"])
 
@@ -82,100 +82,6 @@ async def regime(
         event_dampener=False,
         bootstrap=True,   # GMM calibration not live yet
     )
-
-
-# ────────────────────────────────────────────────────────────────
-# P6.2 — PCA Signal Dashboard
-# ────────────────────────────────────────────────────────────────
-
-
-class PcSignalItem(BaseModel):
-    pc: int
-    label: str
-    z_score: float
-    current: float
-    mean: float
-    std: float
-    bootstrap: bool
-    recommended_structure: str | None
-    recommended_tenor: str | None
-
-
-class PcaSignalsResponse(BaseModel):
-    timestamp: datetime | None
-    signals: list[PcSignalItem]
-    explained_variance: list[float]
-    n_samples_trained: int
-    bootstrap: bool
-
-
-@router.get("/pca-signals", response_model=PcaSignalsResponse)
-async def pca_signals(
-    db: DbDep,
-    symbol: str = Query("EURUSD", min_length=3, max_length=20),
-    lookback_hours: int = Query(24, ge=1, le=720),
-) -> PcaSignalsResponse:
-    """Fit PCA on recent vol_surfaces and project the latest snapshot.
-
-    When fewer than 50 surfaces are available in the lookback window,
-    returns a bootstrap response with z-scores of 0 so the dashboard
-    renders 'accumulating history' rather than a spurious alarm.
-    """
-    from core.vol.surface_pca import (
-        compute_pc_signals,
-        fit_pca,
-        label_pc,
-        project_surface,
-    )
-    from persistence.models import VolSurface
-
-    stmt = (
-        select(VolSurface).where(VolSurface.underlying == symbol)
-        .order_by(desc(VolSurface.timestamp)).limit(500)
-    )
-    rows = (await db.execute(stmt)).scalars().all()
-    if not rows:
-        return PcaSignalsResponse(
-            timestamp=None, signals=[], explained_variance=[],
-            n_samples_trained=0, bootstrap=True,
-        )
-    surfaces = [r.surface_data for r in rows if isinstance(r.surface_data, dict)]
-    model = fit_pca(surfaces[-500:], n_components=3)
-    if model is None:
-        return PcaSignalsResponse(
-            timestamp=rows[0].timestamp, signals=[], explained_variance=[],
-            n_samples_trained=0, bootstrap=True,
-        )
-    current_surface = surfaces[0]
-    current_scores = project_surface(current_surface, model)
-    hist_scores = [project_surface(s, model) for s in surfaces[1:]]
-    sigs = compute_pc_signals(current_scores, hist_scores, model)
-    labels = label_pc(model)
-
-    items: list[PcSignalItem] = []
-    for s in sigs:
-        reco_structure = _structure_name_for(labels[s.pc - 1] if s.pc - 1 < len(labels) else "other")
-        items.append(PcSignalItem(
-            pc=s.pc, label=s.label, z_score=s.z, current=s.current,
-            mean=s.mean, std=s.std, bootstrap=s.bootstrap,
-            recommended_structure=reco_structure,
-            recommended_tenor="3M" if reco_structure else None,
-        ))
-    return PcaSignalsResponse(
-        timestamp=rows[0].timestamp, signals=items,
-        explained_variance=[float(v) for v in model.explained_variance_ratio],
-        n_samples_trained=model.n_samples_trained,
-        bootstrap=model.bootstrap,
-    )
-
-
-def _structure_name_for(label: str) -> str | None:
-    return {
-        "level": "StraddleATM",
-        "term_slope": "CalendarSpread",
-        "smile": "Butterfly25d",
-        "skew": "RiskReversal25d",
-    }.get(label)
 
 
 # ────────────────────────────────────────────────────────────────

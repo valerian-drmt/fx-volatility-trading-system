@@ -9,24 +9,36 @@ export interface RegimeResponse {
   bootstrap: boolean;
 }
 
-export interface PcSignalItem {
-  pc: number;
-  label: string;
+export type PcaState = "stable" | "bootstrap" | "unstable" | "refit_in_progress";
+
+export interface PcaSignalNode {
   z_score: number;
-  current: number;
-  mean: number;
-  std: number;
-  bootstrap: boolean;
+  raw_score: number;
+  label: "CHEAP" | "FAIR" | "EXPENSIVE";
+  actionable: boolean;
+  actionable_reason: string | null;
   recommended_structure: string | null;
-  recommended_tenor: string | null;
 }
 
-export interface PcaSignalsResponse {
-  timestamp: string | null;
-  signals: PcSignalItem[];
-  explained_variance: number[];
-  n_samples_trained: number;
-  bootstrap: boolean;
+export interface PcaCoherence {
+  all_coherent: boolean;
+  contradictions: [string, string][];
+}
+
+export interface PcaStateResponse {
+  state: PcaState;
+  timestamp?: string | null;
+  model_version: string | null;
+  n_obs_in_fit?: number;
+  fit_window_start?: string | null;
+  fit_window_end?: string | null;
+  variance_explained?: {
+    pc1: number; pc2: number; pc3: number; cumulative: number;
+  };
+  loadings_stable?: { pc1: boolean; pc2: boolean; pc3: boolean };
+  signals: Partial<Record<"pc1" | "pc2" | "pc3", PcaSignalNode>>;
+  coherence?: PcaCoherence;
+  diagnostics?: { reason?: string };
 }
 
 export interface LegItem {
@@ -63,8 +75,8 @@ export interface ModelHealthResponse {
 
 export const fetchRegime = () => apiGet<RegimeResponse>("/api/v1/vol/regime");
 
-export const fetchPcaSignals = () =>
-  apiGet<PcaSignalsResponse>("/api/v1/vol/pca-signals");
+export const fetchPcaState = () =>
+  apiGet<PcaStateResponse>("/api/v1/signals/pca/state");
 
 export const fetchModelHealth = () =>
   apiGet<ModelHealthResponse>("/api/v1/vol/model-health");

@@ -5,7 +5,11 @@ import numpy as np
 import pytest
 
 from core.vol.pca_engine import (
+    DELTAS,
+    MIN_CUMULATIVE_VARIANCE,
+    MIN_N_OBS_HARD,
     N_FEATURES,
+    TENORS,
     actionable_check,
     check_coherence,
     classify_label,
@@ -13,7 +17,9 @@ from core.vol.pca_engine import (
     feature_vector_from_surface,
     fit_pca_svd,
     is_persistent,
+    pc3_sub_metrics,
     project,
+    reason_category,
     sign_correct_loadings,
     zscore_against,
 )
@@ -174,3 +180,93 @@ def test_feature_vector_from_surface_full():
 def test_feature_vector_from_surface_incomplete_returns_none():
     surface = {"1M": {"atm": {"iv": 0.06}}}  # missing tenors / deltas
     assert feature_vector_from_surface(surface) is None
+
+
+def test_pc3_sub_metrics_flat_smile_zero():
+    """Flat surface (constant IV) → skew = 0 and convex = 0."""
+    x = np.full(N_FEATURES, 7.0)
+    skew, convex = pc3_sub_metrics(x)
+    assert skew == pytest.approx(0.0, abs=1e-12)
+    assert convex == pytest.approx(0.0, abs=1e-12)
+
+
+def test_pc3_sub_metrics_positive_risk_reversal():
+    """25dc > 25dp → skew > 0."""
+    x = np.zeros(N_FEATURES)
+    for ti in range(len(TENORS)):
+        x[ti * len(DELTAS) + DELTAS.index("25dp")] = 5.0
+        x[ti * len(DELTAS) + DELTAS.index("25dc")] = 7.0  # 25dc - 25dp = +2
+        x[ti * len(DELTAS) + DELTAS.index("atm")] = 6.0
+        x[ti * len(DELTAS) + DELTAS.index("10dp")] = 5.5
+        x[ti * len(DELTAS) + DELTAS.index("10dc")] = 6.5
+    skew, _ = pc3_sub_metrics(x)
+    assert skew == pytest.approx(2.0)
+
+
+def test_pc3_sub_metrics_butterfly_convexity():
+    """Wings rich (10dp + 10dc > 2·atm) → convex > 0."""
+    x = np.zeros(N_FEATURES)
+    for ti in range(len(TENORS)):
+        x[ti * len(DELTAS) + DELTAS.index("10dp")] = 8.0
+        x[ti * len(DELTAS) + DELTAS.index("25dp")] = 7.0
+        x[ti * len(DELTAS) + DELTAS.index("atm")] = 6.0  # 10dp + 10dc - 2*atm = 8+8-12 = 4
+        x[ti * len(DELTAS) + DELTAS.index("25dc")] = 7.0
+        x[ti * len(DELTAS) + DELTAS.index("10dc")] = 8.0
+    _, convex = pc3_sub_metrics(x)
+    assert convex == pytest.approx(4.0)
+
+
+def test_pc3_sub_metrics_wrong_shape_raises():
+    with pytest.raises(ValueError):
+        pc3_sub_metrics(np.zeros(29))
+
+
+def test_actionable_blocks_low_n_obs():
+    """n_obs < MIN_N_OBS_HARD → blocked even if all other gates green."""
+    f = actionable_check(
+        pc_id=1, z_score=2.0, label="EXPENSIVE",
+        loadings_stable=True, variance_explained=0.7, persistent=True,
+        n_obs=MIN_N_OBS_HARD - 1, cumulative_variance=0.95,
+    )
+    assert not f.actionable
+    assert f.reason == "low_n_obs"
+
+
+def test_actionable_blocks_low_total_variance():
+    """cumulative_variance < MIN_CUMULATIVE_VARIANCE → blocked (noise floor)."""
+    f = actionable_check(
+        pc_id=1, z_score=2.0, label="EXPENSIVE",
+        loadings_stable=True, variance_explained=0.7, persistent=True,
+        n_obs=200, cumulative_variance=MIN_CUMULATIVE_VARIANCE - 0.01,
+    )
+    assert not f.actionable
+    assert f.reason == "low_total_variance"
+
+
+def test_actionable_n_obs_gate_takes_precedence():
+    """When n_obs is low AND variance is low, n_obs is the reported reason
+    (n_obs gate runs first — failing fits dominate)."""
+    f = actionable_check(
+        pc_id=2, z_score=2.0, label="EXPENSIVE",
+        loadings_stable=False, variance_explained=0.05, persistent=False,
+        n_obs=10, cumulative_variance=0.40,
+    )
+    assert not f.actionable
+    assert f.reason == "low_n_obs"
+
+
+def test_reason_category_known():
+    assert reason_category("low_variance_pc1") == "variance"
+    assert reason_category("loadings_unstable_pc2") == "stability"
+    assert reason_category("signal_below_threshold") == "magnitude"
+    assert reason_category("signal_not_persistent") == "persistence"
+    assert reason_category("low_n_obs") == "n_obs"
+    assert reason_category("low_total_variance") == "variance"
+
+
+def test_reason_category_none():
+    assert reason_category(None) is None
+
+
+def test_reason_category_unknown_falls_to_other():
+    assert reason_category("totally_made_up") == "other"

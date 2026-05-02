@@ -30,6 +30,29 @@ N_FEATURES = len(TENORS) * len(DELTAS)  # 30
 MIN_VARIANCE_EXPLAINED = {1: 0.60, 2: 0.15, 3: 0.05}
 THRESHOLDS = {"weak": 1.0, "moderate": 1.5, "strong": 2.0, "extreme": 3.0}
 
+# Hard gates introduced post-MVP per STEP2 critique. Sandbox-friendly defaults
+# (kept low so the synthetic seed of 35 obs passes) but production should
+# bump these — see spec §1 invariants (T ≥ 300 obs idéal, 100 minimum).
+MIN_N_OBS_HARD = 30                  # block actionable below this
+MIN_CUMULATIVE_VARIANCE = 0.85       # block if PC1+2+3 explains < 85%
+
+# Reason categories — used by the UI to colour-code actionable_reason
+# blocks. Stays in core because the categorisation is pure logic, not pure
+# styling.
+REASON_CATEGORY: dict[str, str] = {
+    "loadings_unstable_pc1": "stability",
+    "loadings_unstable_pc2": "stability",
+    "loadings_unstable_pc3": "stability",
+    "low_variance_pc1": "variance",
+    "low_variance_pc2": "variance",
+    "low_variance_pc3": "variance",
+    "low_total_variance": "variance",
+    "signal_below_threshold": "magnitude",
+    "label_fair": "magnitude",
+    "signal_not_persistent": "persistence",
+    "low_n_obs": "n_obs",
+}
+
 
 @dataclass(frozen=True)
 class PcaFitResult:
@@ -174,8 +197,15 @@ def actionable_check(
     pc_id: int, z_score: float, label: str,
     loadings_stable: bool, variance_explained: float,
     persistent: bool,
+    n_obs: int = 1000,
+    cumulative_variance: float = 1.0,
 ) -> ActionableFlag:
-    """5 gates from STEP2 §2."""
+    """7 gates — original 5 from STEP2 §2 + 2 added per the post-MVP critique
+    (n_obs sufficient + cumulative variance above noise floor)."""
+    if n_obs < MIN_N_OBS_HARD:
+        return ActionableFlag(False, "low_n_obs", None)
+    if cumulative_variance < MIN_CUMULATIVE_VARIANCE:
+        return ActionableFlag(False, "low_total_variance", None)
     if not loadings_stable:
         return ActionableFlag(False, f"loadings_unstable_pc{pc_id}", None)
     min_var = MIN_VARIANCE_EXPLAINED.get(pc_id, 0.0)
@@ -190,6 +220,13 @@ def actionable_check(
     return ActionableFlag(True, None, classify_strength(abs(z_score)))
 
 
+def reason_category(reason: str | None) -> str | None:
+    """Map an actionable_reason to a category for UI colour-coding."""
+    if reason is None:
+        return None
+    return REASON_CATEGORY.get(reason, "other")
+
+
 def check_coherence(signals: dict[str, dict]) -> dict:
     """PC1/PC2 disagreement on direction → contradiction (informational, not blocking)."""
     pc1 = signals.get("pc1") or {}
@@ -200,6 +237,27 @@ def check_coherence(signals: dict[str, dict]) -> dict:
         if {a, b} == {"CHEAP", "EXPENSIVE"}:
             contras.append(("pc1", "pc2"))
     return {"all_coherent": not contras, "contradictions": contras}
+
+
+def pc3_sub_metrics(x: np.ndarray) -> tuple[float, float]:
+    """Compute (skew, convex) sub-signals for PC3 from a 30-dim IV vector.
+
+    The 30-dim layout is (tenor outer, delta inner) :
+      x[i*5 + j] where i ∈ 0..5 (TENORS) and j ∈ 0..4 (DELTAS=10dp,25dp,atm,25dc,10dc).
+
+    skew   = mean over tenors of (iv_25dc - iv_25dp)        — risk-reversal slope
+    convex = mean over tenors of (iv_10dp + iv_10dc - 2·iv_atm) — butterfly width
+
+    These two are linear in x but NOT collinear with PC3 loadings — they
+    describe the smile shape independently of the PCA decomposition. Used
+    for the Panel 2 ``sub_signals`` block (cf. STEP2 §4).
+    """
+    if x.shape != (N_FEATURES,):
+        raise ValueError(f"x must be ({N_FEATURES},), got {x.shape}")
+    mat = x.reshape(len(TENORS), len(DELTAS))  # (6, 5)
+    skew = float((mat[:, 3] - mat[:, 1]).mean())
+    convex = float((mat[:, 0] + mat[:, 4] - 2.0 * mat[:, 2]).mean())
+    return skew, convex
 
 
 def is_persistent(z_history: list[float], threshold: float = THRESHOLDS["weak"], n_cycles: int = 3) -> bool:
