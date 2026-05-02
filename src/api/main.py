@@ -27,6 +27,7 @@ from api.routers import portfolio as portfolio_router
 from api.routers import pricing as pricing_router
 from api.routers import regime as regime_router
 from api.routers import signals as signals_router
+from api.routers import trade as trade_router
 from api.routers import vol as vol_router
 from api.routers import ws as ws_router
 from api.ws.connection_manager import ConnectionManager
@@ -51,6 +52,16 @@ async def lifespan(app: FastAPI):
     events_scheduler = _build_events_scheduler()
     await events_scheduler.start()
     app.state.events_scheduler = events_scheduler
+
+    from api.orchestration.pca_refit_scheduler import build_pca_refit_scheduler
+    pca_scheduler = build_pca_refit_scheduler()
+    await pca_scheduler.start()
+    app.state.pca_refit_scheduler = pca_scheduler
+
+    from api.orchestration.trade_preview_expirer import build_trade_preview_expirer
+    tp_expirer = build_trade_preview_expirer()
+    await tp_expirer.start()
+    app.state.trade_preview_expirer = tp_expirer
 
     # R9 : api redevient pure stateless. L'IB connection + le sync loop
     # vivent désormais dans le container `execution-engine` (cf. routers/
@@ -90,6 +101,8 @@ async def lifespan(app: FastAPI):
     finally:
         bridge_task.cancel()
         await events_scheduler.stop()
+        await pca_scheduler.stop()
+        await tp_expirer.stop()
         try:
             await bridge_task
         except asyncio.CancelledError:
@@ -177,6 +190,7 @@ def create_app() -> FastAPI:
     app.include_router(orders_router.router)
     app.include_router(regime_router.router)
     app.include_router(signals_router.router)
+    app.include_router(trade_router.router)
     app.include_router(ws_router.router)
     # Remaining planned : orders router (PR #5b) — requires OrderExecutor wiring.
     return app
