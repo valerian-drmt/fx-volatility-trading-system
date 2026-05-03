@@ -9,13 +9,13 @@ from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis
+from api.orchestration import analytics_service as svc
 from api.schemas.analytics import (
     BacktestRunRow,
     SignalRow,
     SystemStats,
     VolHistoryRow,
 )
-from api.orchestration import analytics_service as svc
 
 router = APIRouter(prefix="/api/v1", tags=["analytics"])
 

@@ -8,13 +8,13 @@ from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis
+from api.orchestration import portfolio_service as svc
 from api.schemas.portfolio import (
     GreeksAggregated,
     HistoryResponse,
     PnLCurve,
     PositionView,
 )
-from api.orchestration import portfolio_service as svc
 
 router = APIRouter(prefix="/api/v1", tags=["portfolio"])
 
