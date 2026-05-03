@@ -774,11 +774,16 @@ class StructureOrder(Base):
             name="ck_structure_orders_state",
         ),
         CheckConstraint("side IN ('BUY','SELL')", name="ck_structure_orders_side"),
+        CheckConstraint(
+            "order_role IN ('entry','closing','unwind','hedge')",
+            name="ck_structure_orders_order_role",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structures.id"), nullable=False)
     leg_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    order_role: Mapped[str] = mapped_column(String(20), nullable=False, default="entry")
     ib_order_id: Mapped[str | None] = mapped_column(String(40))
     ib_perm_id: Mapped[str | None] = mapped_column(String(40))
     contract_symbol: Mapped[str] = mapped_column(String(10), nullable=False, default="EUR")
@@ -860,6 +865,39 @@ class TradePosition(Base):
     exit_total_cost_usd: Mapped[float | None] = mapped_column(Float)
     gross_pnl_usd: Mapped[float | None] = mapped_column(Float)
     net_pnl_usd: Mapped[float | None] = mapped_column(Float)
+
+
+class IbConnectionState(Base):
+    """Singleton broker connectivity row. UPDATE in place ; never INSERT a new
+    row past the migration seed. Heartbeat loop in execution-engine populates."""
+
+    __tablename__ = "ib_connection_state"
+    __table_args__ = (
+        CheckConstraint(
+            "account_type IS NULL OR account_type IN ('paper','live')",
+            name="ck_ib_connection_account_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    broker: Mapped[str] = mapped_column(String(20), nullable=False, unique=True, default="IB")
+    is_connected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_heartbeat: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    account_id: Mapped[str | None] = mapped_column(String(40))
+    account_type: Mapped[str | None] = mapped_column(String(20))
+    available_funds_usd: Mapped[float | None] = mapped_column(Float)
+    buying_power_usd: Mapped[float | None] = mapped_column(Float)
+    margin_used_usd: Mapped[float | None] = mapped_column(Float)
+    gateway_version: Mapped[str | None] = mapped_column(String(40))
+    api_version: Mapped[str | None] = mapped_column(String(40))
+    last_disconnect_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    n_disconnects_24h: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
 
 
 class ExecutionAuditLog(Base):

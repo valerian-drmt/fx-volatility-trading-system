@@ -19,6 +19,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
+from core.execution.revalidation import revalidate_preview
 from core.trade_preview import (
     build_structure,
     compute_legs_greeks,
@@ -453,10 +454,64 @@ async def submit_preview(
     )).scalar_one_or_none()
     if preview is None:
         raise HTTPException(404, "preview not found")
-    if preview.expires_at < datetime.now(UTC):
-        raise HTTPException(400, "preview_expired")
-    if preview.user_action is not None:
-        raise HTTPException(400, f"preview already actioned: {preview.user_action}")
+
+    # Defense-in-depth revalidation. Mirror gates that may have flipped between
+    # Arm and Submit (preview can sit ~120s). Surface freshness and signal-
+    # actionability are checked against current PCA state.
+    payload_for_revalidation = preview.structure_full_payload or {}
+    armed_z_revalidate: float | None = None
+    current_z_revalidate: float | None = None
+    if preview.armed_z_score is not None:
+        armed_z_revalidate = float(preview.armed_z_score)
+        if preview.pca_signal_id is not None:
+            latest = (await db.execute(
+                select(PcaSignal)
+                .where(PcaSignal.id == preview.pca_signal_id)
+                .limit(1)
+            )).scalar_one_or_none()
+            if latest is not None:
+                latest_for_pc = (await db.execute(
+                    select(PcaSignal)
+                    .where(PcaSignal.pca_model_id == latest.pca_model_id)
+                    .where(PcaSignal.pc_id == latest.pc_id)
+                    .order_by(desc(PcaSignal.timestamp))
+                    .limit(1)
+                )).scalar_one_or_none()
+                if latest_for_pc is not None:
+                    current_z_revalidate = float(latest_for_pc.z_score)
+        if current_z_revalidate is None:
+            current_z_revalidate = armed_z_revalidate
+    surface_age = float(payload_for_revalidation.get("surface_age_seconds") or 0.0)
+    limits_for_revalidation = await _load_limits(db)
+    revalidation = revalidate_preview(
+        preview_state=preview.state,
+        preview_user_action=preview.user_action,
+        preview_expires_at=preview.expires_at,
+        now=datetime.now(UTC),
+        armed_z=armed_z_revalidate,
+        current_z=current_z_revalidate,
+        z_threshold_min=limits_for_revalidation.get("z_threshold_min", 1.5),
+        surface_age_seconds=surface_age,
+        max_iv_age_seconds=limits_for_revalidation.get("max_iv_data_age_seconds", 120.0),
+        current_regime=None,
+    )
+    if not revalidation.passed:
+        # Audit-log the block + return structured error (status 400 — not 422 —
+        # since the client already passed body validation, the issue is state).
+        db.add(ExecutionAuditLog(
+            structure_id=None, event_type="submission_blocked",
+            severity="warning", message=f"revalidation_failed: {revalidation.reason}",
+            payload=revalidation.details,
+        ))
+        await db.commit()
+        raise HTTPException(
+            400,
+            detail={
+                "error": "revalidation_failed",
+                "reason": revalidation.reason,
+                "details": revalidation.details,
+            },
+        )
 
     payload = preview.structure_full_payload or {}
     legs = (payload.get("structure") or {}).get("legs") or []
