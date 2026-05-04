@@ -161,10 +161,12 @@ def upgrade() -> None:
          "Exit any open position if regime becomes pre_event"),
     ]
     for name, priority, params, desc in seed_rules:
+        # Explicit ``::jsonb`` cast — asyncpg sends the string as VARCHAR
+        # otherwise and PG rejects the implicit conversion (DatatypeMismatchError).
         op.execute(
             sa.text(
                 "INSERT INTO exit_rules_config (rule_name, priority, params, description) "
-                "VALUES (:n, :p, :params, :d)"
+                "VALUES (:n, :p, CAST(:params AS jsonb), :d)"
             ).bindparams(n=name, p=priority, params=json.dumps(params), d=desc)
         )
 
