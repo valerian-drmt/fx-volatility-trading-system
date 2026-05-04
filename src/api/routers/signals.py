@@ -38,8 +38,11 @@ router = APIRouter(prefix="/api/v1", tags=["signals"])
 
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
 
-MIN_OBS_FOR_FIT = 30  # MVP : keep low so first refit possible after ~30h
 N_COMPONENTS = 6
+# = N_COMPONENTS — strict mathematical minimum for SVD to extract 6 principal
+# components. The Step 1 panel surfaces n_obs explicitly, so we don't gate
+# Step 2 PCA when the fit is technically possible.
+MIN_OBS_FOR_FIT = N_COMPONENTS
 
 
 @router.get("/signals/pca/state")
