@@ -34,18 +34,39 @@ class VolNotFound(Exception):
 
 
 async def get_latest_surface(
-    redis: aioredis.Redis, symbol: str
+    redis: aioredis.Redis, symbol: str,
+    db: AsyncSession | None = None,
 ) -> SurfaceResponse:
-    """Read ``latest_vol_surface:{symbol}`` from Redis — 404 if empty."""
+    """Read latest vol surface — Redis first (TTL 600 s), DB fallback.
+
+    Markets-closed sandbox commonly has the Redis key expired or empty while
+    the ``vol_surfaces`` table still holds the last good row. When ``db`` is
+    passed and Redis is dry, we fall back to ``ORDER BY timestamp DESC LIMIT 1``.
+    Raises ``VolNotFound`` only when both sources are empty.
+    """
     raw = await redis.get(keys.LATEST_VOL_SURFACE.format(symbol=symbol))
-    if not raw:
-        raise VolNotFound(f"No latest vol surface for symbol={symbol}")
-    payload = json.loads(raw)
-    return SurfaceResponse(
-        symbol=payload.get("symbol", symbol),
-        timestamp=payload["timestamp"],
-        surface=payload.get("surface", {}),
-    )
+    if raw:
+        payload = json.loads(raw)
+        return SurfaceResponse(
+            symbol=payload.get("symbol", symbol),
+            timestamp=payload["timestamp"],
+            surface=payload.get("surface", {}),
+        )
+    if db is not None:
+        stmt = (
+            select(VolSurface)
+            .where(VolSurface.underlying == symbol)
+            .order_by(VolSurface.timestamp.desc())
+            .limit(1)
+        )
+        row = (await db.execute(stmt)).scalar_one_or_none()
+        if row is not None:
+            return SurfaceResponse(
+                symbol=row.underlying,
+                timestamp=row.timestamp,
+                surface=dict(row.surface_data or {}),
+            )
+    raise VolNotFound(f"No latest vol surface for symbol={symbol}")
 
 
 async def get_surface_at(

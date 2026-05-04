@@ -137,6 +137,9 @@ export function Step3Trade(): JSX.Element {
   const [reviewing, setReviewing] = useState(false);
   const [booking, setBooking] = useState(false);
   const [bookResult, setBookResult] = useState<{ success: boolean; structure_id?: number; position_id?: number; message?: string } | null>(null);
+  // Live order events from /ws/orders/{structure_id} after a live submit.
+  const [orderEvents, setOrderEvents] = useState<Array<{ ts: string; event_type: string; state?: string; detail?: string }>>([]);
+  const [executionMode, setExecutionMode] = useState<"mock" | "live">("mock");
   const [error, setError] = useState<string | null>(null);
 
   const structureType = STRUCTURE_MAP[product][side];
@@ -221,22 +224,68 @@ export function Step3Trade(): JSX.Element {
   const onBook = async () => {
     if (!preview) return;
     setBooking(true); setError(null); setBookResult(null);
+    setOrderEvents([]);
     try {
       const r = await fetch("/api/v1/trade/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preview_id: preview.preview_id }),
+        body: JSON.stringify({
+          preview_id: preview.preview_id,
+          execution_mode: executionMode,
+        }),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.detail ?? `HTTP ${r.status}`);
+      if (!r.ok) {
+        const detail = typeof j.detail === "object"
+          ? JSON.stringify(j.detail) : (j.detail ?? `HTTP ${r.status}`);
+        throw new Error(detail);
+      }
+      const msg = executionMode === "live"
+        ? `live submit · waiting for fills (see WS feed below)`
+        : `mock fill : premium=${j.total_premium_paid_usd ?? 0}, commission=${j.total_commission_usd ?? 0}`;
       setBookResult({
-        success: true, structure_id: j.structure_id, position_id: j.position_id,
-        message: `mock fill : ${j.execution_mode}, premium=${j.total_premium_paid_usd ?? 0}, commission=${j.total_commission_usd ?? 0}`,
+        success: true, structure_id: j.structure_id,
+        position_id: j.position_id ?? undefined,
+        message: msg,
       });
     } catch (e) {
       setBookResult({ success: false, message: String(e) });
     } finally { setBooking(false); }
   };
+
+  // Subscribe to per-structure order events once we have a structure_id.
+  // No-op when running in mock mode (server already returned the final state).
+  useEffect(() => {
+    if (!bookResult?.success || !bookResult.structure_id) return;
+    const proto = window.location.protocol === "https:" ? "wss" : "ws";
+    const url = `${proto}://${window.location.host}/ws/orders/${bookResult.structure_id}`;
+    let ws: WebSocket | null = null;
+    try {
+      ws = new WebSocket(url);
+    } catch {
+      return;
+    }
+    const sock = ws;
+    sock.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        setOrderEvents((prev) => [
+          ...prev,
+          {
+            ts: new Date().toISOString().slice(11, 19),
+            event_type: String(msg.event_type ?? "event"),
+            state: msg.state,
+            detail: msg.avg_fill_price != null
+              ? `qty=${msg.qty_filled ?? "?"} avg=${Number(msg.avg_fill_price).toFixed(5)}`
+              : msg.ib_status,
+          },
+        ]);
+      } catch {
+        /* ignore malformed payload */
+      }
+    };
+    return () => { try { sock.close(); } catch { /* nop */ } };
+  }, [bookResult?.success, bookResult?.structure_id]);
 
   const onReview = async () => {
     setReviewing(true); setError(null); setPreview(null);
@@ -371,6 +420,13 @@ export function Step3Trade(): JSX.Element {
                 style={{ ...btnPrimary, opacity: reviewing ? 0.5 : 1 }}>
           {reviewing ? "Reviewing…" : "Review"}
         </button>
+        <select value={executionMode}
+                onChange={(e) => setExecutionMode(e.target.value as "mock" | "live")}
+                style={{ ...selectStyle, width: 80 }}
+                title="mock = synthetic fills, live = ib_insync via execution-engine">
+          <option value="mock">mock</option>
+          <option value="live">live</option>
+        </select>
         <button type="button" onClick={onBook}
                 disabled={!preview || booking}
                 style={{
@@ -381,8 +437,8 @@ export function Step3Trade(): JSX.Element {
                   opacity: preview && !booking ? 1 : 0.5,
                   borderColor: preview && !booking ? "#22c55e" : "#444",
                 }}
-                title={preview ? "Mock execution — creates structure + position in DB (no IB call)" : "Run Review first"}>
-          {booking ? "Booking…" : "Book (mock)"}
+                title={preview ? `Submit (${executionMode})` : "Run Review first"}>
+          {booking ? "Booking…" : `Book (${executionMode})`}
         </button>
       </div>
 
@@ -394,8 +450,31 @@ export function Step3Trade(): JSX.Element {
           color: bookResult.success ? "#cfc" : "#fcc",
         }}>
           {bookResult.success
-            ? <>✓ booked · structure #{bookResult.structure_id} · position #{bookResult.position_id} · {bookResult.message}</>
+            ? <>✓ booked · structure #{bookResult.structure_id}{bookResult.position_id ? ` · position #${bookResult.position_id}` : ""} · {bookResult.message}</>
             : <>✗ {bookResult.message}</>}
+        </div>
+      )}
+
+      {orderEvents.length > 0 && (
+        <div style={{
+          padding: 8, borderRadius: 3, fontSize: 11, fontFamily: "Consolas, monospace",
+          background: "#0a1a2a", border: "1px solid #2a4a6a", color: "#cde",
+          maxHeight: 160, overflowY: "auto",
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 4, color: "#aef" }}>
+            live order events (/ws/orders/{bookResult?.structure_id})
+          </div>
+          {orderEvents.map((e, i) => (
+            <div key={i} style={{ opacity: 0.95 }}>
+              {e.ts} · <span style={{
+                color: e.event_type.includes("rejected") ? "#fcc"
+                  : e.event_type.includes("filled") ? "#cfc"
+                  : "#cde",
+              }}>{e.event_type}</span>
+              {e.state ? ` · state=${e.state}` : ""}
+              {e.detail ? ` · ${e.detail}` : ""}
+            </div>
+          ))}
         </div>
       )}
 

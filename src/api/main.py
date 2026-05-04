@@ -69,6 +69,11 @@ async def lifespan(app: FastAPI):
     await position_monitor.start()
     app.state.position_monitor = position_monitor
 
+    from api.orchestration.baseline_scheduler import build_baseline_scheduler
+    baseline_scheduler = build_baseline_scheduler()
+    await baseline_scheduler.start()
+    app.state.baseline_scheduler = baseline_scheduler
+
     # R9 : api redevient pure stateless. L'IB connection + le sync loop
     # vivent désormais dans le container `execution-engine` (cf. routers/
     # orders.py qui forwarde via httpx).
@@ -110,6 +115,7 @@ async def lifespan(app: FastAPI):
         await pca_scheduler.stop()
         await tp_expirer.stop()
         await position_monitor.stop()
+        await baseline_scheduler.stop()
         try:
             await bridge_task
         except asyncio.CancelledError:

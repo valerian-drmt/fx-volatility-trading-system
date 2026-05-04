@@ -20,11 +20,17 @@ DbDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 @router.get("/surface", response_model=SurfaceResponse)
 async def latest_surface(
-    redis: RedisDep, symbol: str = Query("EURUSD", min_length=3, max_length=20)
+    redis: RedisDep, db: DbDep,
+    symbol: str = Query("EURUSD", min_length=3, max_length=20),
 ) -> SurfaceResponse:
-    """Latest volatility surface for ``symbol`` — reads Redis cache (TTL 600s)."""
+    """Latest volatility surface for ``symbol``.
+
+    Reads Redis cache first (TTL 600 s). Falls back to the most recent
+    ``vol_surfaces`` row by ``timestamp DESC`` when Redis is empty —
+    markets-closed sandbox keeps the surface available off the DB.
+    """
     try:
-        return await vol_service.get_latest_surface(redis, symbol)
+        return await vol_service.get_latest_surface(redis, symbol, db=db)
     except vol_service.VolNotFound as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 

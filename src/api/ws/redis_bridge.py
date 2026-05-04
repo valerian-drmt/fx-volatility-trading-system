@@ -22,6 +22,15 @@ _FORWARDED: tuple[str, ...] = (
     channels.CH_VOL_UPDATE,
     channels.CH_RISK_UPDATE,
     channels.CH_SYSTEM_ALERTS,
+    channels.CH_POSITIONS,
+    channels.CH_EXIT_ALERTS,
+)
+
+# Pattern subscriptions — fanned out by the Redis-WS bridge below. We
+# rebroadcast pattern messages on the *concrete* channel name they were
+# published to, so ConnectionManager keying stays straightforward.
+_FORWARDED_PATTERNS: tuple[str, ...] = (
+    channels.CH_ORDERS_PATTERN,
 )
 
 _RECONNECT_BACKOFF_S: float = 2.0
@@ -40,10 +49,22 @@ async def redis_to_ws_bridge(
         pubsub = redis.pubsub()
         try:
             await pubsub.subscribe(*_FORWARDED)
-            logger.info("ws_bridge_subscribed", extra={"channels": list(_FORWARDED)})
+            if _FORWARDED_PATTERNS:
+                await pubsub.psubscribe(*_FORWARDED_PATTERNS)
+            logger.info(
+                "ws_bridge_subscribed",
+                extra={
+                    "channels": list(_FORWARDED),
+                    "patterns": list(_FORWARDED_PATTERNS),
+                },
+            )
             async for msg in pubsub.listen():
-                if msg.get("type") != "message":
-                    continue   # ignore subscribe/unsubscribe confirmations
+                msg_type = msg.get("type")
+                # Both ``message`` (subscribe) and ``pmessage`` (psubscribe)
+                # carry a payload — we rebroadcast on the concrete channel
+                # so ConnectionManager keying is uniform.
+                if msg_type not in ("message", "pmessage"):
+                    continue
                 channel = msg["channel"]
                 await manager.broadcast(channel, msg["data"])
         except asyncio.CancelledError:

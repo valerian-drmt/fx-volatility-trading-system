@@ -635,6 +635,9 @@ class VolEngine:
                         FeatureHistory.iv_atm_3m_pct,
                         FeatureHistory.vol_of_vol_30d_pct,
                         FeatureHistory.term_slope_pct,
+                        FeatureHistory.vol_level_z90,
+                        FeatureHistory.vol_of_vol_z90,
+                        FeatureHistory.term_slope_z90,
                     )
                     .where(FeatureHistory.symbol == self.symbol)
                     .where(FeatureHistory.timestamp > cutoff_90d)
@@ -647,6 +650,18 @@ class VolEngine:
                         "term_slope": float(r[2]) if r[2] is not None else None,
                     } for r in hist_rows
                 ]
+                # E3 enrichment inputs : value-history (for pct) and
+                # z-history (for bucket).
+                value_history_for_pct = {
+                    "vol_level": [float(r[0]) for r in hist_rows if r[0] is not None],
+                    "vol_of_vol": [float(r[1]) for r in hist_rows if r[1] is not None],
+                    "term_slope": [float(r[2]) for r in hist_rows if r[2] is not None],
+                }
+                z_history_for_bucket = {
+                    "vol_level": [float(r[3]) for r in hist_rows if r[3] is not None],
+                    "vol_of_vol": [float(r[4]) for r in hist_rows if r[4] is not None],
+                    "term_slope": [float(r[5]) for r in hist_rows if r[5] is not None],
+                }
 
                 next_event_obj = (await session.execute(
                     select(Event)
@@ -690,6 +705,33 @@ class VolEngine:
                 vrp_lookup=vrp_lookup,
                 now_utc_iso=now.isoformat().replace("+00:00", "Z"),
                 gmm_probabilities=gmm_probas,
+            )
+            # E3 enrichment : load last-hour regime_snapshots z-scores per
+            # feature for the OLS slope, then stamp bucket/pct/signal/Δz on
+            # the snapshot_row before persisting.
+            from core.vol.feature_enrichment_stamp import stamp_enrichment
+            from persistence.models import RegimeSnapshot as _RS
+            cutoff_1h = now - timedelta(hours=1)
+            async with get_sessionmaker()() as session2:
+                recent_rows = (await session2.execute(
+                    select(
+                        _RS.timestamp, _RS.vol_level_z, _RS.vol_of_vol_z, _RS.term_slope_z,
+                    )
+                    .where(_RS.symbol == self.symbol)
+                    .where(_RS.timestamp >= cutoff_1h)
+                    .order_by(_RS.timestamp)
+                )).all()
+            recent_z_for_slope = {
+                "vol_level": [(r[0], float(r[1])) for r in recent_rows if r[1] is not None],
+                "vol_of_vol": [(r[0], float(r[2])) for r in recent_rows if r[2] is not None],
+                "term_slope": [(r[0], float(r[3])) for r in recent_rows if r[3] is not None],
+            }
+            result["snapshot_row"] = stamp_enrichment(
+                result["snapshot_row"],
+                z_history=z_history_for_bucket,
+                value_history=value_history_for_pct,
+                recent_z=recent_z_for_slope,
+                now=now,
             )
             # Fetch last 2 labels to project the gate decision for audit.
             payload = result["payload"]

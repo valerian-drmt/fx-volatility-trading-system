@@ -23,12 +23,21 @@ from pydantic import BaseModel, Field
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from engines.execution.hedge_executor import HedgeSubmitError, submit_hedge_order
+from engines.execution.ib_heartbeat import (
+    heartbeat_loop,
+    mark_disconnected,
+    stuck_order_watcher_loop,
+)
+from engines.execution.live_submit import LiveSubmitError, submit_structure_live
 from engines.execution.order_executor import (
     OrderExecutor,
     OrderExecutorUnavailable,
     OrderRequest,
 )
 from engines.execution.position_sync import position_sync_loop
+from engines.execution.redis_state import set_client as set_redis_client
+from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
 from persistence.models import OrderEvent
 
@@ -36,12 +45,16 @@ logger = logging.getLogger("execution")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
 SYNC_INTERVAL_S = float(os.getenv("SYNC_INTERVAL_S", "1.0"))
+HEARTBEAT_INTERVAL_S = float(os.getenv("HEARTBEAT_INTERVAL_S", "10.0"))
+STUCK_WATCH_INTERVAL_S = float(os.getenv("STUCK_WATCH_INTERVAL_S", "60.0"))
+STUCK_AFTER_S = float(os.getenv("STUCK_AFTER_S", "600.0"))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     redis = aioredis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=False)
     app.state.redis = redis
+    set_redis_client(redis)
 
     executor = OrderExecutor(
         host=os.getenv("IB_HOST", "ib-gateway"),
@@ -60,16 +73,38 @@ async def lifespan(app: FastAPI):
     sync_task = asyncio.create_task(
         position_sync_loop(sm, executor, redis=redis, interval_s=SYNC_INTERVAL_S)
     )
-    logger.info("execution_startup ib_connected=%s sync_interval=%.1fs",
-                executor.is_connected(), SYNC_INTERVAL_S)
+    heartbeat_task = asyncio.create_task(
+        heartbeat_loop(sm, executor, interval_s=HEARTBEAT_INTERVAL_S),
+        name="ib_heartbeat_loop",
+    )
+    stuck_task = asyncio.create_task(
+        stuck_order_watcher_loop(
+            sm,
+            interval_s=STUCK_WATCH_INTERVAL_S,
+            stuck_after_seconds=STUCK_AFTER_S,
+        ),
+        name="stuck_order_watcher_loop",
+    )
+    logger.info(
+        "execution_startup ib_connected=%s sync_interval=%.1fs heartbeat=%.1fs",
+        executor.is_connected(), SYNC_INTERVAL_S, HEARTBEAT_INTERVAL_S,
+    )
     try:
         yield
     finally:
-        sync_task.cancel()
+        for task in (sync_task, heartbeat_task, stuck_task):
+            task.cancel()
+        for task in (sync_task, heartbeat_task, stuck_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         try:
-            await sync_task
-        except asyncio.CancelledError:
-            pass
+            async with sm() as db:
+                await mark_disconnected(db, datetime.now(UTC))
+                await db.commit()
+        except Exception:
+            logger.exception("mark_disconnected_failed")
         await executor.disconnect()
         await redis.aclose()
         logger.info("execution_shutdown")
@@ -217,6 +252,77 @@ async def close_position(
     except (OrderExecutorUnavailable, ValueError) as e:
         await _log_event(sm, action_type="CLOSE_POSITION", request_payload=payload,
                          response_payload=None, success=False, error_message=str(e)[:500])
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+# ---- Structure-level endpoints (Step 4 phase 2) -------------------------
+
+class SubmitStructureBody(BaseModel):
+    structure_id: int = Field(gt=0)
+
+
+class RollbackStructureBody(BaseModel):
+    structure_id: int = Field(gt=0)
+
+
+class HedgeOrderBody(BaseModel):
+    hedge_order_id: int = Field(gt=0)
+    front_month_expiry: str | None = Field(None, pattern=r"^\d{6,8}$")
+    limit_price: float | None = Field(None, gt=0)
+
+
+@router.post("/structure/submit")
+async def submit_structure(
+    body: SubmitStructureBody,
+    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Live-submit all entry orders of a previously-persisted structure.
+
+    Called by ``api.routers.trade.submit_preview`` when ``execution_mode='live'``.
+    The structure + structure_orders rows are already in the DB (state='pending').
+    """
+    try:
+        return await submit_structure_live(
+            sessionmaker_factory=sm, executor=ex,
+            structure_id=body.structure_id,
+        )
+    except LiveSubmitError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/structure/rollback")
+async def rollback_structure(
+    body: RollbackStructureBody,
+    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Cancel + unwind a structure (called by api after a rejection or
+    user-triggered abort)."""
+    try:
+        return await run_rollback(
+            sessionmaker_factory=sm, executor=ex, structure_id=body.structure_id,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+
+@router.post("/hedge")
+async def submit_hedge(
+    body: HedgeOrderBody,
+    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Submit a delta-hedge HedgeOrder row (state='pending') as an EUR FUT
+    LMT order. Position-monitor calls this after creating the row."""
+    try:
+        return await submit_hedge_order(
+            sessionmaker_factory=sm, executor=ex,
+            hedge_order_id=body.hedge_order_id,
+            front_month_expiry=body.front_month_expiry,
+            limit_price=body.limit_price,
+        )
+    except HedgeSubmitError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 

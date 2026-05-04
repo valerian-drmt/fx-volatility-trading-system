@@ -48,3 +48,22 @@ async def ws_vol(ws: WebSocket) -> None:
 async def ws_risk(ws: WebSocket) -> None:
     """Subscribe to ``risk_update`` — emitted at the end of each risk cycle (~2s)."""
     await _serve(channels.CH_RISK_UPDATE, ws)
+
+
+@router.websocket("/ws/orders/{structure_id}")
+async def ws_orders(ws: WebSocket, structure_id: int) -> None:
+    """Subscribe to ``orders:<structure_id>`` — emitted by execution-engine
+    on each order_status / fill / rejection / cancel / unwind event."""
+    await _serve(channels.orders_channel(structure_id), ws)
+
+
+@router.websocket("/ws/positions")
+async def ws_positions(ws: WebSocket) -> None:
+    """Subscribe to ``positions`` — one MTM snapshot per monitor cycle."""
+    await _serve(channels.CH_POSITIONS, ws)
+
+
+@router.websocket("/ws/exit_alerts")
+async def ws_exit_alerts(ws: WebSocket) -> None:
+    """Subscribe to ``exit_alerts`` — one row per ExitAlert that fires."""
+    await _serve(channels.CH_EXIT_ALERTS, ws)

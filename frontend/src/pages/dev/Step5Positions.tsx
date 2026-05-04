@@ -10,7 +10,7 @@
  *  B. Open structures table with current MTM + signal status
  *  C. Click on a row → detail strip : MTM history sparkline + alerts + hedges
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface ActivePosition {
   id: number;
@@ -81,6 +81,7 @@ export function Step5Positions(): JSX.Element {
   const [agg, setAgg] = useState<Aggregate | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const selectedIdRef = useRef<number | null>(null);
   const [alerts, setAlerts] = useState<ExitAlert[]>([]);
   const [mtmHist, setMtmHist] = useState<MtmRow[]>([]);
   const [running, setRunning] = useState(false);
@@ -118,11 +119,47 @@ export function Step5Positions(): JSX.Element {
 
   useEffect(() => {
     void load();
+    // 5 s poll = fallback when WS is down (or for the aggregate panel which
+    // depends on the REST endpoint). The WS subscription below trickles
+    // in finer-grained updates between polls.
     const id = window.setInterval(() => void load(), 5_000);
     return () => window.clearInterval(id);
   }, []);
 
+  // Live position_update + exit_alert feed. Failures fall back silently to
+  // the 5 s poll above.
   useEffect(() => {
+    const proto = window.location.protocol === "https:" ? "wss" : "ws";
+    const sockets: WebSocket[] = [];
+    try {
+      const wsPos = new WebSocket(`${proto}://${window.location.host}/ws/positions`);
+      wsPos.onmessage = () => {
+        // Refresh aggregates + active list on every push. Cheap REST call ;
+        // the WS payload itself is per-position, but recomputing aggregate
+        // server-side is more reliable than diffing on the client.
+        void load();
+      };
+      sockets.push(wsPos);
+      const wsAlerts = new WebSocket(`${proto}://${window.location.host}/ws/exit_alerts`);
+      wsAlerts.onmessage = (ev) => {
+        try {
+          const a = JSON.parse(ev.data);
+          const sel = selectedIdRef.current;
+          if (sel != null && a.position_id === sel) {
+            void loadDetail(sel);
+          }
+        } catch { /* nop */ }
+      };
+      sockets.push(wsAlerts);
+    } catch { /* nop : poll fallback handles it */ }
+    return () => { sockets.forEach((s) => { try { s.close(); } catch { /* nop */ } }); };
+    // selectedId intentionally not in deps : we want a single subscription
+    // for the page lifetime ; the alerts handler reads selectedId at fire time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
     if (selectedId !== null) void loadDetail(selectedId);
   }, [selectedId]);
 

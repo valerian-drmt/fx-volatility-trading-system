@@ -18,8 +18,10 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db_session
+from api.dependencies import get_db_session, get_redis_client_or_none
+from api.orchestration.book_state_refresh import refresh_book_state
 from core.execution.revalidation import revalidate_preview
+from core.execution.slippage import compute_limit_price
 from core.trade_preview import (
     build_structure,
     compute_legs_greeks,
@@ -31,10 +33,13 @@ from core.trade_preview import (
     run_pre_submit_checks,
     simulate_scenarios,
 )
+from core.trade_preview_regime import apply_regime_to_limits, regime_label
 from persistence.models import (
     BookStateSnapshot,
     ExecutionAuditLog,
+    IbConnectionState,
     PcaSignal,
+    RegimeSnapshot,
     RiskLimit,
     StructureDefinition,
     StructureFill,
@@ -87,6 +92,91 @@ async def _load_book(db: AsyncSession, symbol: str, capital_default: float) -> B
         notional_engaged_usd=0.0, capital_total_usd=capital_default,
         margin_used_usd=0.0, is_current=True,
     )
+
+
+async def _load_regime(
+    db: AsyncSession, symbol: str = "EURUSD",
+) -> dict[str, Any] | None:
+    """Latest regime snapshot, normalised for trade_preview/sizing helpers.
+
+    Returns ``None`` when no regime row exists yet (e.g. fresh DB) so the
+    pre-submit regime gate evaluates as ``calm`` (the fallback used by
+    ``run_pre_submit_checks``).
+    """
+    row = (await db.execute(
+        select(RegimeSnapshot)
+        .where(RegimeSnapshot.symbol == symbol)
+        .order_by(desc(RegimeSnapshot.timestamp))
+        .limit(1)
+    )).scalar_one_or_none()
+    if row is None:
+        return None
+    return {"label": row.label, "event_dampener": bool(row.event_dampener)}
+
+
+async def _fetch_ib_connected(db: AsyncSession) -> bool:
+    """Read latest cached value of ``ib_connection_state.is_connected``.
+
+    Heartbeat loop in execution-engine refreshes this row every 10 s.
+    Used as pre-condition for /trade/submit when execution_mode='live'.
+    """
+    row = (await db.execute(
+        select(IbConnectionState).where(IbConnectionState.broker == "IB").limit(1)
+    )).scalar_one_or_none()
+    return bool(row.is_connected) if row is not None else False
+
+
+async def _acquire_preview_lock(preview_id: str, ttl_s: int = 10) -> bool:
+    """Best-effort Redis lock keyed by preview_id (cf. STEP4 §7.2 decision 6).
+
+    Returns True if the lock was acquired (caller proceeds to submit), False
+    if another concurrent submit holds it. Falls back to True if Redis is
+    unavailable — lock is defense-in-depth, not the only safeguard
+    (`preview.user_action` is updated under DB transaction).
+    """
+    client = get_redis_client_or_none()
+    if client is None:
+        return True
+    key = f"trade:submit_lock:{preview_id}"
+    try:
+        ok = await client.set(key, b"1", ex=ttl_s, nx=True)
+        return bool(ok)
+    except Exception:
+        return True
+
+
+async def _post_execution_engine(path: str, body: dict[str, Any]) -> dict[str, Any]:
+    """HTTP POST to execution-engine on the internal Docker network.
+
+    URL via ``EXECUTION_ENGINE_URL`` (default ``http://execution-engine:8001``).
+    Failures bubble up as 502 — the structure rows are already persisted, so
+    operator inspects + retries via ``POST /internal/structure/submit``.
+    """
+    import os
+
+    import httpx
+    base = os.environ.get("EXECUTION_ENGINE_URL", "http://execution-engine:8001")
+    url = f"{base.rstrip('/')}{path}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, json=body)
+        if resp.status_code >= 400:
+            raise HTTPException(
+                502,
+                detail={
+                    "error": "execution_engine_failed",
+                    "status": resp.status_code,
+                    "body": resp.text[:500],
+                },
+            )
+        return resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            502,
+            detail={"error": "execution_engine_unreachable", "exception": str(e)[:300]},
+        ) from e
 
 
 async def _read_surface_redis(symbol: str = "EURUSD") -> tuple[dict[str, Any] | None, float]:
@@ -184,8 +274,13 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         if not signal.recommended_structure:
             raise HTTPException(400, "signal has no recommended_structure")
 
-    # 2. Limits + book + surface
-    limits = await _load_limits(db)
+    # 2. Limits + book + surface + regime. Regime conditions both the
+    #    sizing multiplier (compute_sizing) and the *limits* themselves
+    #    (apply_regime_to_limits → tightens max_book_vega in stressed,
+    #    collapses to zero in pre_event).
+    raw_limits = await _load_limits(db)
+    regime = await _load_regime(db, symbol=symbol)
+    limits = apply_regime_to_limits(raw_limits, regime)
     book = await _load_book(db, symbol, limits.get("starting_capital_usd", 100000.0))
     surface, surface_age_s = await _read_surface_redis(symbol)
     if surface is None:
@@ -232,7 +327,7 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
             threshold_min=limits.get("z_threshold_min", 1.5),
             max_z_multiplier=1.0,                        # cap at 1
             book_alpha=0.0,
-            regime=None,
+            regime=regime,
             qty_override=base_qty_eff,                   # force exact qty
         )
     else:
@@ -246,7 +341,7 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
             threshold_min=limits.get("z_threshold_min", 1.5),
             max_z_multiplier=limits.get("max_z_multiplier", 2.0),
             book_alpha=limits.get("book_alpha", 0.3),
-            regime=None,
+            regime=regime,
             qty_override=req.override_qty,
         )
 
@@ -277,7 +372,7 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         current_z = float(latest.z_score) if latest else armed_z_for_check
 
     checks = run_pre_submit_checks(
-        regime=None,
+        regime=regime,
         armed_z=armed_z_for_check, current_z=current_z,
         threshold_min=limits.get("z_threshold_min", 1.5),
         max_loss_usd=sized_max_loss,
@@ -449,11 +544,37 @@ async def submit_preview(
     if not preview_id:
         raise HTTPException(400, "preview_id required")
 
+    # execution_mode : 'mock' (default — synthetic fills, no IB) or 'live'
+    # ('live' currently no-ops past the gating check ; real ib_insync wiring
+    # arrives in Passe B). The gate on `is_connected` is enforced for live.
+    execution_mode = str(body.get("execution_mode", "mock")).lower()
+    if execution_mode not in ("mock", "live"):
+        raise HTTPException(400, f"invalid execution_mode: {execution_mode}")
+
+    # Defense-in-depth lock to prevent double-submit (e.g. user double-clicks
+    # or retry mid-network). DB-level guard (preview.user_action) is the
+    # source of truth — this just short-circuits the duplicate request faster.
+    if not await _acquire_preview_lock(preview_id):
+        raise HTTPException(409, "submit already in progress for this preview")
+
     preview = (await db.execute(
         select(TradePreviewRow).where(TradePreviewRow.preview_id == preview_id).limit(1)
     )).scalar_one_or_none()
     if preview is None:
         raise HTTPException(404, "preview not found")
+
+    # Live mode requires IB Gateway up. Mock mode skips the gate.
+    if execution_mode == "live" and not await _fetch_ib_connected(db):
+        db.add(ExecutionAuditLog(
+            structure_id=None, event_type="submission_blocked",
+            severity="warning", message="ib_disconnected_at_submit",
+            payload={"preview_id": preview_id},
+        ))
+        await db.commit()
+        raise HTTPException(503, detail={
+            "error": "ib_disconnected",
+            "reason": "IB Gateway not connected — heartbeat stale",
+        })
 
     # Defense-in-depth revalidation. Mirror gates that may have flipped between
     # Arm and Submit (preview can sit ~120s). Surface freshness and signal-
@@ -483,6 +604,7 @@ async def submit_preview(
             current_z_revalidate = armed_z_revalidate
     surface_age = float(payload_for_revalidation.get("surface_age_seconds") or 0.0)
     limits_for_revalidation = await _load_limits(db)
+    regime_for_revalidation = await _load_regime(db)
     revalidation = revalidate_preview(
         preview_state=preview.state,
         preview_user_action=preview.user_action,
@@ -493,7 +615,7 @@ async def submit_preview(
         z_threshold_min=limits_for_revalidation.get("z_threshold_min", 1.5),
         surface_age_seconds=surface_age,
         max_iv_age_seconds=limits_for_revalidation.get("max_iv_data_age_seconds", 120.0),
-        current_regime=None,
+        current_regime=regime_label(regime_for_revalidation) if regime_for_revalidation else None,
     )
     if not revalidation.passed:
         # Audit-log the block + return structured error (status 400 — not 422 —
@@ -520,7 +642,11 @@ async def submit_preview(
 
     sizing = payload.get("sizing") or {}
     base_qty = int(sizing.get("base_qty", 1))
-    commission_per_contract = (await _load_limits(db)).get("commission_per_contract_usd", 2.0)
+    limits_for_submit = await _load_limits(db)
+    commission_per_contract = limits_for_submit.get("commission_per_contract_usd", 2.0)
+    slippage_tolerance_pct = float(
+        limits_for_submit.get("slippage_tolerance_pct", 0.5)
+    )
 
     # Pick the first non-null expiry across legs as structure expiry.
     expiry_iso: str | None = next(
@@ -545,19 +671,79 @@ async def submit_preview(
         expiry_date=expiry_d,
         base_qty=base_qty,
         state="submitted",
-        execution_mode="mock",
+        execution_mode=execution_mode,
     )
     db.add(structure)
     await db.flush()
 
     db.add(ExecutionAuditLog(
         structure_id=structure.id, event_type="submission_attempt",
-        severity="info", message=f"mock submit for preview {preview_id}",
+        severity="info",
+        message=f"{execution_mode} submit for preview {preview_id}",
     ))
 
+    now = datetime.now(UTC)
+
+    # ── LIVE PATH ──────────────────────────────────────────────────────
+    # Persist orders in 'pending' state, then call execution-engine which
+    # places them via ib_insync and wires fills handlers. The cascade to
+    # state='filled' / 'fully_filled' / trade_positions arrives via events.
+    if execution_mode == "live":
+        for i, leg in enumerate(legs):
+            qty = int(leg.get("qty", 0))
+            preview_price = float(leg.get("entry_price_per_contract_usd") or 0.0)
+            side = leg.get("side", "BUY")
+            contract_type = leg.get("contract_type", "call")
+            contract_strike = leg.get("strike")
+            contract_expiry: date | None = None
+            if leg.get("expiry"):
+                try:
+                    contract_expiry = date.fromisoformat(leg["expiry"])
+                except ValueError:
+                    pass
+            try:
+                limit_price = compute_limit_price(
+                    preview_price=preview_price, side=side,
+                    slippage_tolerance_pct=slippage_tolerance_pct,
+                )
+            except ValueError:
+                limit_price = preview_price
+            db.add(StructureOrder(
+                structure_id=structure.id, leg_idx=i, order_role="entry",
+                contract_type=contract_type, contract_expiry=contract_expiry,
+                contract_strike=float(contract_strike)
+                                 if isinstance(contract_strike, (int, float)) else None,
+                side=side, qty=qty,
+                order_type="LMT", limit_price=limit_price,
+                preview_iv_pct=leg.get("entry_iv_pct"),
+                preview_price=preview_price,
+                state="pending",
+            ))
+        preview.user_action = "submitted"
+        preview.user_action_at = now
+        preview.state = "submitted"
+        await db.commit()
+
+        # Fire-and-forget HTTP call to execution-engine. Failure here does
+        # not roll the structure back automatically — operator decides.
+        ee_result = await _post_execution_engine(
+            "/internal/structure/submit",
+            {"structure_id": structure.id},
+        )
+        return {
+            "success": True,
+            "structure_id": structure.id,
+            "position_id": None,                   # arrives via fill cascade
+            "n_orders_submitted": len(legs),
+            "execution_mode": "live",
+            "state": "submitted",
+            "execution_engine": ee_result,
+            "fully_filled_at": None,
+        }
+
+    # ── MOCK PATH ──────────────────────────────────────────────────────
     # 2. Create one structure_orders row per leg + one structure_fills with
     #    synthetic price (= preview price, no slippage).
-    now = datetime.now(UTC)
     total_premium = 0.0
     total_commission = 0.0
     total_slippage = 0.0
@@ -574,6 +760,19 @@ async def submit_preview(
             except ValueError:
                 pass
 
+        # Limit price = preview_price ± slippage tolerance (BUY caps above,
+        # SELL floors below). Helper compute_limit_price is pure (cf. spec
+        # §13 decision 7). Used in both mock and live — in mock the synthetic
+        # fill still happens at preview_price (zero slippage), but the limit
+        # we'd send to IB is logged.
+        try:
+            limit_price = compute_limit_price(
+                preview_price=preview_price, side=side,
+                slippage_tolerance_pct=slippage_tolerance_pct,
+            )
+        except ValueError:
+            limit_price = preview_price
+
         order = StructureOrder(
             structure_id=structure.id, leg_idx=i,
             ib_order_id=f"mock_{structure.id}_{i}",
@@ -582,7 +781,7 @@ async def submit_preview(
             contract_expiry=contract_expiry,
             contract_strike=float(contract_strike) if isinstance(contract_strike, (int, float)) else None,
             side=side, qty=qty,
-            order_type="LMT", limit_price=preview_price,
+            order_type="LMT", limit_price=limit_price,
             preview_iv_pct=leg.get("entry_iv_pct"),
             preview_price=preview_price,
             state="filled",
@@ -645,6 +844,10 @@ async def submit_preview(
         payload={"position_id": position.id, "premium_usd": structure.total_premium_paid_usd},
     ))
 
+    # Refresh the singleton book_state row so the next sizing call sees an
+    # up-to-date total_vega (book_alpha penalty otherwise stays dead at 0).
+    await refresh_book_state(db)
+
     await db.commit()
 
     return {
@@ -652,7 +855,7 @@ async def submit_preview(
         "structure_id": structure.id,
         "position_id": position.id,
         "n_orders_submitted": len(legs),
-        "execution_mode": "mock",
+        "execution_mode": execution_mode,
         "state": structure.state,
         "total_premium_paid_usd": structure.total_premium_paid_usd,
         "total_commission_usd": structure.total_commission_usd,

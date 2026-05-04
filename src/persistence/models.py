@@ -405,6 +405,72 @@ class RegimeSnapshot(Base):
     days_to_next_event: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     next_event_type: Mapped[str | None] = mapped_column(String(40))
 
+    # ── Step 2 features-enrichment columns (migration 018, populated by E3) ──
+    bucket_vol_level: Mapped[str | None] = mapped_column(String(4))
+    delta_z_1h_vol_level: Mapped[float | None] = mapped_column(Float)
+    pct_vol_level: Mapped[int | None] = mapped_column(Integer)
+    signal_vol_level: Mapped[str | None] = mapped_column(String(8))
+
+    bucket_vol_of_vol: Mapped[str | None] = mapped_column(String(4))
+    delta_z_1h_vol_of_vol: Mapped[float | None] = mapped_column(Float)
+    pct_vol_of_vol: Mapped[int | None] = mapped_column(Integer)
+    signal_vol_of_vol: Mapped[str | None] = mapped_column(String(8))
+
+    bucket_term_slope: Mapped[str | None] = mapped_column(String(4))
+    delta_z_1h_term_slope: Mapped[float | None] = mapped_column(Float)
+    pct_term_slope: Mapped[int | None] = mapped_column(Integer)
+    signal_term_slope: Mapped[str | None] = mapped_column(String(8))
+
+
+class RegimeLookup(Base):
+    """Joint-pattern → regime mapping (15 base patterns × 5-bucket expansion).
+
+    Patterns shape : ``"(<bucket_vol_level>,<bucket_vol_of_vol>,<bucket_term_slope>)"``
+    e.g. ``"(0,0,+)"`` or ``"(--,+,++)"``. Unmapped tail-extreme combinations
+    fall back to the seeded ``unmapped_extreme`` row.
+    """
+
+    __tablename__ = "regime_lookup_table"
+
+    pattern: Mapped[str] = mapped_column(String(20), primary_key=True)
+    regime_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    regime_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    family: Mapped[str] = mapped_column(String(40), nullable=False)
+    action_default: Mapped[str] = mapped_column(String(80), nullable=False)
+    asymmetry_note: Mapped[str | None] = mapped_column(String(120))
+    intensity_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+
+
+class VolFeaturesContextBaseline(Base):
+    """μ ± σ baseline for a (feature, event_type, days_bucket, tod_bucket).
+
+    Populated by the weekly batch in E3 ; consumed by ``/api/v1/regime/features``
+    to compute ``vs_expected``. ``status='insufficient'`` when ``n_obs<20``.
+    """
+
+    __tablename__ = "vol_features_context_baseline"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('valid','insufficient','stale')",
+            name="ck_vol_features_context_baseline_status",
+        ),
+    )
+
+    feature: Mapped[str] = mapped_column(String(20), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(20), primary_key=True)
+    days_bucket: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tod_bucket: Mapped[str] = mapped_column(String(20), primary_key=True)
+    mu: Mapped[float] = mapped_column(Float, nullable=False)
+    sigma: Mapped[float] = mapped_column(Float, nullable=False)
+    n_obs: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(15), nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+
 
 class FeatureHistory(Base):
     """Wide-format timeseries of features — feeds rolling z-scores & vol_of_vol."""
@@ -768,7 +834,10 @@ class StructureOrder(Base):
 
     __tablename__ = "structure_orders"
     __table_args__ = (
-        UniqueConstraint("structure_id", "leg_idx", name="uq_structure_orders_structure_leg"),
+        UniqueConstraint(
+            "structure_id", "leg_idx", "order_role",
+            name="uq_structure_orders_structure_leg_role",
+        ),
         CheckConstraint(
             "state IN ('pending','submitted','acknowledged','partially_filled','filled','rejected','cancelled','expired')",
             name="ck_structure_orders_state",

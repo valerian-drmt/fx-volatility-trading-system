@@ -17,6 +17,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
+from api.orchestration.regime_features import build_features_payload
 from core.vol.regime_engine import gate_decision
 from persistence.models import Event, RegimeSnapshot
 
@@ -116,6 +117,33 @@ async def state(
             else None
         ),
     )
+
+
+@router.post("/baseline/run-once")
+async def baseline_run_once(request: Request) -> dict[str, Any]:
+    """Manually trigger ``BaselineScheduler.run_once`` (recompute the baseline now)."""
+    sched = getattr(request.app.state, "baseline_scheduler", None)
+    if sched is None:
+        raise HTTPException(503, "baseline_scheduler not running")
+    report = await sched.run_once()
+    if report is None:
+        raise HTTPException(500, "baseline recompute failed (see logs)")
+    return report
+
+
+@router.get("/features")
+async def features(
+    db: DbDep,
+    symbol: str = Query("EURUSD", min_length=3, max_length=20),
+) -> dict[str, Any]:
+    """Step 2 dashboard feed : 3 features × 8 columns + synthesis row.
+
+    Cf. ``api.orchestration.regime_features.build_features_payload``.
+    """
+    payload = await build_features_payload(db, symbol=symbol)
+    if payload is None:
+        raise HTTPException(404, f"no regime_snapshot for symbol={symbol}")
+    return payload
 
 
 async def _fetch_next_events(

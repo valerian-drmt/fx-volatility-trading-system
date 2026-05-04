@@ -194,6 +194,46 @@ async def set_heartbeat(
     )
 
 
+async def publish_order_event(
+    redis: Redis,
+    structure_id: int,
+    event: dict[str, Any],
+    timestamp: datetime | float | None = None,
+) -> None:
+    """PUBLISH on ``orders:<structure_id>`` (no cache : event-driven only).
+
+    Caller passes a typed event dict with at minimum ``event_type``,
+    ``order_id``, ``state``. Kept loose-schema so the frontend can ignore
+    unknown fields without breaking. Cf. STEP4 spec §4.2.
+    """
+    body = dict(event)
+    body.setdefault("structure_id", structure_id)
+    body.setdefault("timestamp", _iso_utc(timestamp))
+    await redis.publish(channels.orders_channel(structure_id), _dumps(body))
+
+
+async def publish_position_update(
+    redis: Redis,
+    payload: dict[str, Any],
+    timestamp: datetime | float | None = None,
+) -> None:
+    """PUBLISH on ``positions`` (single channel, payload includes position_id)."""
+    body = dict(payload)
+    body.setdefault("timestamp", _iso_utc(timestamp))
+    await redis.publish(channels.CH_POSITIONS, _dumps(body))
+
+
+async def publish_exit_alert(
+    redis: Redis,
+    payload: dict[str, Any],
+    timestamp: datetime | float | None = None,
+) -> None:
+    """PUBLISH on ``exit_alerts``. One message per fired ExitAlert."""
+    body = dict(payload)
+    body.setdefault("timestamp", _iso_utc(timestamp))
+    await redis.publish(channels.CH_EXIT_ALERTS, _dumps(body))
+
+
 def reset_throttle_for_tests() -> None:
     """Clear the per-symbol tick throttle state — only for tests."""
     _tick_last_publish_ms.clear()
