@@ -184,6 +184,28 @@ jobs:
           path: frontend/playwright-report
           retention-days: 7
 
+  frontend-image:
+    name: build frontend docker image
+    runs-on: ubuntu-latest
+    needs: frontend
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build fx-options-frontend (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.web
+          push: false
+          tags: fx-options-frontend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   openapi-contract:
     name: openapi schema drift (frontend vs FastAPI)
     runs-on: ubuntu-latest
