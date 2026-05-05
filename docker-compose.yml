@@ -1,0 +1,63 @@
+# Production-like compose file. Ships the full v2 stack across three
+# networks (public / internal / external) so downstream PRs can just
+# attach new services (api, frontend, nginx, ib-gateway) without
+# reworking the topology.
+#
+# Dev quick-iter continues to live in docker-compose.dev.yml — that one
+# only exposes postgres + redis on host ports so the app code can run
+# on the host with uvicorn / vite dev-server. Prefer this file when you
+# want a stack that mirrors prod (no host port exposure by default).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fxvol-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fxvol
+      POSTGRES_USER: fxvol
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    networks:
+      - fxvol-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fxvol -d fxvol"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: fxvol-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+      - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    networks:
+      - fxvol-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+networks:
+  # Exposed to the public internet — only nginx lives here (R6 PR #3).
+  fxvol-public:
+    driver: bridge
+  # Back-of-house services that only talk to each other (api, postgres,
+  # redis, frontend bundle server, ib-gateway).
+  fxvol-internal:
+    driver: bridge
+    internal: false
+  # Outbound-only lane for IB Gateway — lets it reach IB servers while
+  # keeping the rest of the stack isolated from the wider internet.
+  fxvol-external:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
