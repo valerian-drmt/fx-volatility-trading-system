@@ -87,6 +87,36 @@ services:
       retries: 3
       start_period: 5s
 
+  ib-gateway:
+    image: ghcr.io/unusualalpha/ib-gateway:stable
+    container_name: fxvol-ib-gateway
+    restart: unless-stopped
+    environment:
+      TWS_USERID: ${IB_USERID:-}
+      TWS_PASSWORD: ${IB_PASSWORD:-}
+      TRADING_MODE: paper
+      # IBC lifecycle : daily auto-logout at 23:59 Paris is cleaner than a
+      # weekly one — IB sessions stale silently otherwise.
+      TWS_SETTINGS_PATH: /home/ibgateway/Jts
+      AUTO_RESTART_TIME: "11:59 PM"
+      VNC_SERVER_PASSWORD: ${VNC_PASSWORD:?VNC_PASSWORD is required}
+    ports:
+      # Bind IB Gateway API port and VNC to 127.0.0.1 only — the PyQt v1
+      # app on the host still needs to reach the gateway on localhost:4002,
+      # but we do NOT want to expose either port to the LAN.
+      - "127.0.0.1:4002:4002"
+      - "127.0.0.1:5900:5900"
+    networks:
+      - fxvol-internal
+      - fxvol-external
+    healthcheck:
+      # tcp probe — IB Gateway does not ship a cheap HTTP endpoint.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 4002 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
   nginx:
     image: nginx:alpine
     container_name: fxvol-nginx
