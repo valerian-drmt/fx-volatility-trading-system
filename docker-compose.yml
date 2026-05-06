@@ -90,6 +90,12 @@ services:
   ib-gateway:
     image: ghcr.io/unusualalpha/ib-gateway:stable
     container_name: fxvol-ib-gateway
+    # Opt-in : `docker compose --profile ib up -d` to include IB Gateway.
+    # Keeps the default `docker compose up` light and avoids the 4002
+    # port-bind when another service (or a Windows reserved range) already
+    # owns it. The PyQt v1 app continues to connect to localhost:4002,
+    # so it must be started explicitly when needed.
+    profiles: ["ib"]
     restart: unless-stopped
     environment:
       TWS_USERID: ${IB_USERID:-}
@@ -99,7 +105,10 @@ services:
       # weekly one — IB sessions stale silently otherwise.
       TWS_SETTINGS_PATH: /home/ibgateway/Jts
       AUTO_RESTART_TIME: "11:59 PM"
-      VNC_SERVER_PASSWORD: ${VNC_PASSWORD:?VNC_PASSWORD is required}
+      # VNC is only used when the ib profile is active — IBC demands a non-empty
+      # password so we fall through to a dev default rather than erroring at
+      # parse time on every `docker compose up` (profiles are evaluated later).
+      VNC_SERVER_PASSWORD: ${VNC_PASSWORD:-change-me-in-dotenv}
     ports:
       # Bind IB Gateway API port and VNC to 127.0.0.1 only — the PyQt v1
       # app on the host still needs to reach the gateway on localhost:4002,
