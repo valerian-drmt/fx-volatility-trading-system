@@ -1,0 +1,101 @@
+"""Parse-level gates for ``.github/workflows/build.yml``.
+
+Running the workflow in CI requires actually pushing to ``main``. This
+test captures the invariants we care about — image names, GHCR registry,
+sha + latest tags, cache configuration — so a refactor can't silently
+break the registry publication contract.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import yaml
+
+WORKFLOW = (
+    Path(__file__).resolve().parent.parent / ".github" / "workflows" / "build.yml"
+)
+
+
+@pytest.fixture(scope="module")
+def wf() -> dict:
+    assert WORKFLOW.exists(), f"missing {WORKFLOW}"
+    return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+
+@pytest.mark.unit
+def test_workflow_fires_on_main_push(wf: dict):
+    # YAML `on:` is parsed as boolean True by PyYAML — the key becomes True.
+    on = wf.get(True, wf.get("on"))
+    assert "push" in on
+    assert on["push"]["branches"] == ["main"]
+    assert "workflow_dispatch" in on
+
+
+@pytest.mark.unit
+def test_packages_write_permission(wf: dict):
+    assert wf["permissions"]["packages"] == "write", (
+        "GHCR push needs packages: write permission"
+    )
+
+
+@pytest.mark.unit
+def test_both_images_are_built(wf: dict):
+    jobs = wf["jobs"]
+    assert "build-api" in jobs
+    assert "build-frontend" in jobs
+
+
+@pytest.mark.unit
+def test_api_job_pushes_sha_and_latest_tags(wf: dict):
+    steps = wf["jobs"]["build-api"]["steps"]
+    push_step = next(s for s in steps if s.get("uses", "").startswith("docker/build-push-action"))
+    tags = push_step["with"]["tags"]
+    assert "fx-options-api:sha-${{ github.sha }}" in tags
+    assert "fx-options-api:latest" in tags
+    assert push_step["with"]["file"] == "infrastructure/docker/Dockerfile.api"
+    assert push_step["with"]["push"] is True
+
+
+@pytest.mark.unit
+def test_frontend_job_pushes_sha_and_latest_tags(wf: dict):
+    steps = wf["jobs"]["build-frontend"]["steps"]
+    push_step = next(s for s in steps if s.get("uses", "").startswith("docker/build-push-action"))
+    tags = push_step["with"]["tags"]
+    assert "fx-options-frontend:sha-${{ github.sha }}" in tags
+    assert "fx-options-frontend:latest" in tags
+    assert push_step["with"]["file"] == "infrastructure/docker/Dockerfile.web"
+
+
+@pytest.mark.unit
+def test_frontend_job_primes_npm_cache(wf: dict):
+    """The setup-node step with `cache: npm` halves the cold build time."""
+    steps = wf["jobs"]["build-frontend"]["steps"]
+    node_step = next(s for s in steps if s.get("uses", "").startswith("actions/setup-node"))
+    assert node_step["with"]["cache"] == "npm"
+    assert node_step["with"]["cache-dependency-path"] == "frontend/package-lock.json"
+
+
+@pytest.mark.unit
+def test_both_jobs_log_in_to_ghcr(wf: dict):
+    for job_name in ("build-api", "build-frontend"):
+        steps = wf["jobs"][job_name]["steps"]
+        login = next((s for s in steps if s.get("uses", "").startswith("docker/login-action")), None)
+        assert login is not None, f"{job_name} must log in to GHCR before pushing"
+        assert "ghcr.io" in login["with"]["registry"] or login["with"]["registry"] == "${{ env.REGISTRY }}"
+
+
+@pytest.mark.unit
+def test_buildx_cache_uses_distinct_scopes(wf: dict):
+    """api and frontend must not share a buildx cache scope — their layer
+    shapes differ and mixing the caches causes thrash."""
+    api = next(
+        s for s in wf["jobs"]["build-api"]["steps"]
+        if s.get("uses", "").startswith("docker/build-push-action")
+    )
+    fe = next(
+        s for s in wf["jobs"]["build-frontend"]["steps"]
+        if s.get("uses", "").startswith("docker/build-push-action")
+    )
+    assert "scope=api" in api["with"]["cache-from"]
+    assert "scope=frontend" in fe["with"]["cache-from"]
