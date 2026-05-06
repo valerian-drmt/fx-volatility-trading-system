@@ -44,6 +44,31 @@ services:
       timeout: 3s
       retries: 3
 
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.api
+    image: ${API_IMAGE:-fx-options-api:local}
+    container_name: fxvol-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - fxvol-internal
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+
 networks:
   # Exposed to the public internet — only nginx lives here (R6 PR #3).
   fxvol-public:

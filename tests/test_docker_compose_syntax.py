@@ -96,6 +96,50 @@ def test_init_sql_declares_extensions():
 
 
 @pytest.mark.unit
+def test_api_service_present_and_built_locally(compose: dict):
+    svc = compose["services"]["api"]
+    assert svc["build"]["context"] == "."
+    assert svc["build"]["dockerfile"] == "infrastructure/docker/Dockerfile.api"
+    assert svc["networks"] == ["fxvol-internal"]
+    assert svc.get("restart") == "unless-stopped"
+    # Must wait for postgres AND redis healthy before starting — otherwise
+    # the async engine factory crashes on the first query.
+    deps = svc["depends_on"]
+    assert deps["postgres"]["condition"] == "service_healthy"
+    assert deps["redis"]["condition"] == "service_healthy"
+
+
+@pytest.mark.unit
+def test_api_uses_internal_dns_not_localhost(compose: dict):
+    env = compose["services"]["api"]["environment"]
+    # Inside the compose network, postgres and redis are reachable by service
+    # name, NOT by localhost — a stale `localhost` URL is a classic mistake
+    # that wedges the api on startup.
+    assert "@postgres:" in env["DATABASE_URL"]
+    assert "redis://redis:" in env["REDIS_URL"]
+
+
+@pytest.mark.unit
+def test_api_has_http_healthcheck(compose: dict):
+    hc = compose["services"]["api"]["healthcheck"]
+    test_cmd = " ".join(hc["test"]) if isinstance(hc["test"], list) else hc["test"]
+    assert "/api/v1/health" in test_cmd
+    # Start-period buys uvicorn time to bind before failing — without it the
+    # container is restarted mid-boot in noisy networks.
+    assert hc.get("start_period")
+
+
+@pytest.mark.unit
+def test_dockerfile_api_ships_uvicorn():
+    dockerfile = (REPO_ROOT / "infrastructure" / "docker" / "Dockerfile.api").read_text()
+    assert "FROM python:3.11-slim" in dockerfile or "${PYTHON_IMAGE}" in dockerfile
+    assert "EXPOSE 8000" in dockerfile
+    assert "uvicorn" in dockerfile
+    assert "COPY api/" in dockerfile
+    assert "COPY src/" in dockerfile
+
+
+@pytest.mark.unit
 def test_env_example_declares_r6_variables():
     env = (REPO_ROOT / ".env.example").read_text()
     assert "DB_PASSWORD=" in env

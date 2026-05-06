@@ -1,0 +1,55 @@
+# FastAPI backend image.
+#
+# Builds the uvicorn-served API surface (api/ + src/ + persistence/). The
+# image re-uses requirements.txt as-is for R6 — it inherits a few desktop
+# libs (PyQt5, pyqtgraph) that the API does not need. R7 will split the
+# requirements into api-only and engines-only layers so the API image
+# drops to ~300 MB ; for now we prioritise "one source of truth" over
+# size and ship ~900 MB.
+#
+#   docker build -f infrastructure/docker/Dockerfile.api -t fx-options-api .
+
+ARG PYTHON_IMAGE=python:3.11-slim
+
+FROM ${PYTHON_IMAGE} AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app/src
+
+# Build deps required by asyncpg / psycopg2-binary / scipy / arch wheels.
+# libpq-dev is only required if psycopg2-binary does not ship a wheel for
+# the architecture — kept here as a belt-and-braces.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Dependency layer is cached as long as requirements.txt does not change —
+# iterating on /app/api source rebuilds in ~2s.
+COPY requirements.txt ./
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Application source. Keep copies minimal and explicit so we do not ship
+# notebooks, tests, docs.
+COPY src/ ./src/
+COPY api/ ./api/
+COPY persistence/ ./persistence/
+
+# uvicorn on port 8000. The image does NOT run --reload : that is a dev
+# concern and inflates the runtime with watchfiles observers.
+EXPOSE 8000
+
+# Healthcheck hits /api/v1/health which returns 200 as long as the process
+# is up. Extended healthcheck (DB + Redis ping) lives behind /health/extended
+# but we keep the liveness probe cheap.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8000/api/v1/health || exit 1
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
