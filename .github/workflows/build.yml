@@ -1,0 +1,95 @@
+name: build-and-push
+
+# Build + push the two application images (fx-options-api and
+# fx-options-frontend) to the repo's GitHub Container Registry namespace.
+# Runs on every push to main (post-merge) and can be triggered manually.
+# No deploy side-effect — R8 will layer a deploy job on top of a new tag
+# once the EC2 target is provisioned.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write   # needed for ghcr.io push via GITHUB_TOKEN
+
+env:
+  REGISTRY: ghcr.io
+  # Images live under ghcr.io/<owner>/<name>. github.repository_owner is
+  # always lowercase-safe (unlike github.actor which can be MixedCase).
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  build-api:
+    name: build + push fx-options-api
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (api)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.api
+          push: true
+          # `sha-<short>` for traceability + `latest` for convenience pulls.
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-api:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+  build-frontend:
+    name: build + push fx-options-frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # setup-node with npm cache accelerates the multi-stage build — the
+      # Dockerfile.web `npm ci` layer is already cached by buildx but the
+      # hash hit on the action runner itself avoids re-downloading
+      # ~200 MB of tarballs when buildx cold-starts.
+      - name: Set up Node 20 with npm cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (frontend)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.web
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-frontend:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
