@@ -11,8 +11,11 @@ pytest_plugins = ["pytester"]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
+# R7 introduces top-level packages (core/, shared/, services/) alongside
+# src/. Both paths must resolve for legacy + new imports.
+for _extra in (SRC_DIR, PROJECT_ROOT):
+    if str(_extra) not in sys.path:
+        sys.path.insert(0, str(_extra))
 
 from PyQt5.QtWidgets import QApplication
 
