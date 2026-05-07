@@ -102,6 +102,39 @@ services:
       retries: 3
       start_period: 30s
 
+  vol-engine:
+    build:
+      context: .
+      dockerfile: services/vol/Dockerfile
+    image: ${VOL_ENGINE_IMAGE:-fx-options-vol-engine:local}
+    container_name: fxvol-vol-engine
+    profiles: ["engines"]
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: vol_engine
+      IB_HOST: ib-gateway
+      IB_PORT: 4002
+      IB_CLIENT_ID: 2
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+      market-data:
+        condition: service_started
+      ib-gateway:
+        condition: service_started
+    networks:
+      - fxvol-internal
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "python -c \"import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:vol_engine'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 300) else 1)\""
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 240s
+
   frontend:
     build:
       context: .
