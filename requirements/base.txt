@@ -1,0 +1,11 @@
+# Base deps shared by every R7 service container (market-data, vol-engine,
+# risk-engine, db-writer). Pinned to the same ranges as the monolith
+# requirements.txt so the R7 split is a packaging change, not a dep bump.
+
+numpy>=1.24
+scipy>=1.10
+pandas>=2.0
+redis>=5.0,<6.0
+structlog>=24.1,<25.0
+pydantic>=2.0,<3.0
+pydantic-settings>=2.0,<3.0
