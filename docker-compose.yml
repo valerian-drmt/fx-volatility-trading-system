@@ -69,6 +69,39 @@ services:
       retries: 3
       start_period: 20s
 
+  market-data:
+    build:
+      context: .
+      dockerfile: services/market_data/Dockerfile
+    image: ${MARKET_DATA_IMAGE:-fx-options-market-data:local}
+    container_name: fxvol-market-data
+    # Opt-in with the ``engines`` profile so a plain ``docker compose up``
+    # (api demo) does not spin up a live IB connection.
+    profiles: ["engines"]
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: market_data
+      IB_HOST: ib-gateway
+      IB_PORT: 4002
+      IB_CLIENT_ID: 1
+      REDIS_URL: redis://redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+      ib-gateway:
+        condition: service_started
+    networks:
+      - fxvol-internal
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "python -c \"import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:market_data'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 60) else 1)\""
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   frontend:
     build:
       context: .
