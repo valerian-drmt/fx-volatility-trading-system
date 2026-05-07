@@ -1,0 +1,6 @@
+# Market-data, vol-engine and risk-engine services.
+# Adds ib_insync on top of the shared base.
+
+-r base.txt
+
+ib-insync==0.9.86
