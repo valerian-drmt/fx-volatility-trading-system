@@ -32,6 +32,11 @@ const DARK_3D_LAYOUT: Partial<Layout> = {
     camera: { eye: { x: 1.7, y: 1.7, z: 1.0 } },
     aspectmode: "manual" as const,
     aspectratio: { x: 1.4, y: 1.0, z: 0.7 },
+    // `uirevision` is part of Plotly's Scene API but missing from @types/plotly.js
+    // — cast widens it. While the string stays constant, Plotly preserves the
+    // user's camera/zoom across data refreshes (the plot would otherwise snap
+    // back to default `camera` every 10 s when new `z` lands).
+    ...({ uirevision: "vol-surface-3d" } as Record<string, unknown>),
   },
 };
 

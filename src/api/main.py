@@ -69,11 +69,6 @@ async def lifespan(app: FastAPI):
     await position_monitor.start()
     app.state.position_monitor = position_monitor
 
-    from api.orchestration.baseline_scheduler import build_baseline_scheduler
-    baseline_scheduler = build_baseline_scheduler()
-    await baseline_scheduler.start()
-    app.state.baseline_scheduler = baseline_scheduler
-
     # R9 : api redevient pure stateless. L'IB connection + le sync loop
     # vivent désormais dans le container `execution-engine` (cf. routers/
     # orders.py qui forwarde via httpx).
@@ -93,7 +88,7 @@ async def lifespan(app: FastAPI):
             if current.version <= 1 and current.config.model_dump() == VolTradingConfig().model_dump():
                 # Seed only if still on the initial empty placeholder row.
                 empty_check_row = (await db.execute(
-                    text("SELECT config FROM vol_config WHERE version=1")
+                    text("SELECT config FROM vol_engine_config WHERE version=1")
                 )).scalar_one_or_none()
                 if empty_check_row in (None, {}, "{}"):
                     await update(
@@ -115,7 +110,6 @@ async def lifespan(app: FastAPI):
         await pca_scheduler.stop()
         await tp_expirer.stop()
         await position_monitor.stop()
-        await baseline_scheduler.stop()
         try:
             await bridge_task
         except asyncio.CancelledError:

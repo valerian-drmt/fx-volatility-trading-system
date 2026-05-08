@@ -11,7 +11,7 @@ export function RegimeDetectorPanel(): JSX.Element {
   const [data, setData] = useState<RegimeResponse | null>(null);
 
   useEffect(() => {
-    const load = () => fetchRegime().then(setData).catch(() => setData(null));
+    const load = () => fetchRegime().then(setData).catch(() => { /* keep last good */ });
     load();
     const id = setInterval(load, 30_000);
     return () => clearInterval(id);

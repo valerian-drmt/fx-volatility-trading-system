@@ -275,22 +275,18 @@ ALLOWED_TABLES: dict[str, str] = {
     "positions": "id",
     "position_snapshots": "id",
     "account_snaps": "id",
-    "vol_surfaces": "id",
-    "signals": "id",
-    "svi_params": "id",
-    "ssvi_params": "id",
-    "backtest_runs": "id",
-    "vol_config": "version",
+    "vol_surface_snapshot": "id",
+    "vol_engine_config": "version",
     # Step 1 — regime gating
-    "regime_snapshots": "id",
-    "feature_history": "id",
-    "events": "id",
-    "vrp_table_default": "id",
+    "regime_feature_snapshot": "id",
+    "feature_history_30d": "id",
+    "macro_event": "id",
+    "vrp_default_curve": "id",
     # Step 2 — PCA factor model
     "surface_snapshots_hourly": "id",
-    "pca_models": "id",
-    "pca_signals": "id",
-    "signal_recommendations_map": "id",
+    "pca_model": "id",
+    "pca_projection_snapshot": "id",
+    "pca_structure_recommendation": "id",
 }
 
 
@@ -314,8 +310,8 @@ async def read_table(
     order_col = ALLOWED_TABLES.get(name)
     if order_col is None:
         raise HTTPException(status_code=404, detail=f"table {name!r} not in whitelist")
-    if not 1 <= limit <= 1000:
-        raise HTTPException(status_code=400, detail="limit must be in [1, 1000]")
+    if not 1 <= limit <= 10000:
+        raise HTTPException(status_code=400, detail="limit must be in [1, 10000]")
     if offset < 0:
         raise HTTPException(status_code=400, detail="offset must be >= 0")
 
@@ -358,3 +354,38 @@ async def redis_value(
         return {"key": key, "value": parsed, "raw": text, "is_json": True}
     except json.JSONDecodeError:
         return {"key": key, "value": text, "raw": text, "is_json": False}
+
+
+# --- Cycle progress ---------------------------------------------------------
+# The vol-engine writes per-stage / per-task progress to the Redis hash
+# ``cycle_progress:vol_engine`` as the cycle walks through its 5 pipelines.
+# This endpoint surfaces that hash so the dev panel can render real progress
+# (vs the time-based fake we used pre-instrumentation).
+
+@router.get("/cycle-progress")
+async def cycle_progress(
+    redis: Annotated[aioredis.Redis, Depends(get_redis)],
+) -> dict[str, Any]:
+    """Return the vol-engine's current cycle stage + task and the list of
+    completed (stage, task) pairs in this cycle."""
+    raw = await redis.hgetall("cycle_progress:vol_engine")
+    if not raw:
+        return {
+            "cycle_started_at": None,
+            "stage": None,
+            "task": None,
+            "completed": [],
+        }
+    decoded = {
+        (k.decode() if isinstance(k, bytes) else k):
+            (v.decode() if isinstance(v, bytes) else v)
+        for k, v in raw.items()
+    }
+    completed_csv = decoded.get("completed", "")
+    completed_list = [s for s in completed_csv.split(",") if s]
+    return {
+        "cycle_started_at": decoded.get("cycle_started_at") or None,
+        "stage": decoded.get("stage") or None,
+        "task": decoded.get("task") or None,
+        "completed": completed_list,
+    }

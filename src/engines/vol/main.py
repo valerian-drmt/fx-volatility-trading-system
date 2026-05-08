@@ -104,12 +104,6 @@ async def run() -> None:
             return {}
         return await chain_fetcher.scan_all_tenors_concurrent(ib, F, chains)
 
-    async def _ohlc_real() -> Any:
-        """Real IB daily bars for EUR CONTFUT — cached 30min inside the fetcher."""
-        from engines.vol import historical_fetcher
-
-        return await historical_fetcher.fetch_daily_ohlc(ib, duration_str="1 Y")
-
     engine = VolEngine(
         ib=ib,
         redis=redis,
@@ -118,9 +112,6 @@ async def run() -> None:
         ib_port=settings.IB_PORT,
         client_id=settings.IB_CLIENT_ID,
         fetch_fop_chain=_fop_real,
-        fetch_ohlc=_ohlc_real,
-        signal_threshold_vol_pts=settings.THRESHOLD_VOL_PTS,
-        signal_model_p=settings.MODEL_P,
     )
 
     # Boot config comes from env vars (pydantic-settings) ; live updates

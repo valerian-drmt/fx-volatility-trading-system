@@ -1,4 +1,10 @@
-"""Analytics endpoint helpers — signals, vol history, backtests, system stats."""
+"""Analytics endpoint helpers — vol history + system stats.
+
+Per-tenor pricing signals (CHEAP / FAIR / EXPENSIVE) and the associated
+``vol_pricing_signal_snapshot`` table were dropped in R9 once the trading
+strategy switched to PCA-only — the matching ``list_signals`` helper +
+``/api/v1/analytics/signals`` route went with them.
+"""
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -8,92 +14,25 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.analytics import (
-    BacktestRunRow,
     EngineStats,
-    SignalRow,
     SystemStats,
     VolHistoryRow,
 )
 from bus import keys
 from persistence.models import (
-    BacktestRun,
     PositionSnapshot,
-    Signal,
     VolSurface,
 )
 
 # Tables reported in /system-stats — tuple keeps order stable.
 _COUNTED_TABLES: tuple[tuple[str, type], ...] = (
-    ("signals", Signal),
-    ("vol_surfaces", VolSurface),
+    ("vol_surface_snapshot", VolSurface),
     ("position_snapshots", PositionSnapshot),
-    ("backtest_runs", BacktestRun),
 )
 
 _MONITORED_ENGINES: tuple[str, ...] = (
     keys.ENGINE_MARKET_DATA, keys.ENGINE_VOL, keys.ENGINE_RISK,
 )
-
-
-async def list_signals(
-    db: AsyncSession,
-    underlying: str | None = None,
-    tenor: str | None = None,
-    signal_type: str | None = None,
-    since: datetime | None = None,
-    limit: int = 200,
-    latest_per_tenor: bool = False,
-) -> list[SignalRow]:
-    """Recent signals, most-recent first. All filters optional and combinable.
-
-    When ``latest_per_tenor`` is true, return **one row per (underlying, tenor)**
-    — the most recent signal for each pair. Use this for the Vol Scanner
-    dashboard where duplicates across timestamps would just spam the table.
-    """
-    if latest_per_tenor:
-        # DISTINCT ON picks the first row per (underlying, tenor) after the
-        # matching ORDER BY. Works on PostgreSQL ; for sqlite tests the
-        # equivalent is the correlated-subquery pattern we keep for
-        # portability below.
-        from sqlalchemy import tuple_
-
-        sub = (
-            select(Signal.underlying, Signal.tenor, func.max(Signal.timestamp).label("ts"))
-            .group_by(Signal.underlying, Signal.tenor)
-        )
-        if underlying:
-            sub = sub.where(Signal.underlying == underlying)
-        if tenor:
-            sub = sub.where(Signal.tenor == tenor)
-        if signal_type:
-            sub = sub.where(Signal.signal_type == signal_type.upper())
-        if since:
-            sub = sub.where(Signal.timestamp >= since)
-        sub_q = sub.subquery()
-        stmt = (
-            select(Signal)
-            .join(
-                sub_q,
-                tuple_(Signal.underlying, Signal.tenor, Signal.timestamp)
-                == tuple_(sub_q.c.underlying, sub_q.c.tenor, sub_q.c.ts),
-            )
-            .order_by(desc(Signal.timestamp))
-            .limit(limit)
-        )
-        rows = (await db.execute(stmt)).scalars().all()
-        return [SignalRow.model_validate(r) for r in rows]
-
-    stmt = select(Signal).order_by(desc(Signal.timestamp)).limit(limit)
-    if underlying:
-        stmt = stmt.where(Signal.underlying == underlying)
-    if tenor:
-        stmt = stmt.where(Signal.tenor == tenor)
-    if signal_type:
-        stmt = stmt.where(Signal.signal_type == signal_type.upper())
-    if since:
-        stmt = stmt.where(Signal.timestamp >= since)
-    rows = (await db.execute(stmt)).scalars().all()
-    return [SignalRow.model_validate(r) for r in rows]
 
 
 async def vol_history(
@@ -108,16 +47,6 @@ async def vol_history(
     )
     rows = (await db.execute(stmt)).scalars().all()
     return [VolHistoryRow.model_validate(r) for r in rows]
-
-
-async def list_backtests(
-    db: AsyncSession, strategy_name: str | None = None, limit: int = 50
-) -> list[BacktestRunRow]:
-    stmt = select(BacktestRun).order_by(desc(BacktestRun.created_at)).limit(limit)
-    if strategy_name:
-        stmt = stmt.where(BacktestRun.strategy_name == strategy_name)
-    rows = (await db.execute(stmt)).scalars().all()
-    return [BacktestRunRow.model_validate(r) for r in rows]
 
 
 async def system_stats(

@@ -89,15 +89,14 @@ async def get_surface_at(
 async def get_term_structure(
     redis: aioredis.Redis, symbol: str
 ) -> TermStructureResponse:
-    """Derive term structure (tenor → ATM vol) from the latest Redis surface."""
+    """Derive term structure (tenor → ATM vol) from the latest Redis surface.
+
+    Post-R9 the per-tenor pricing-signal pipeline (HAR/GARCH/fair_q) is gone,
+    so the response carries only the ATM IV per tenor. The deprecated fields
+    (sigma_fair_pct, sigma_fair_p_pct, sigma_fair_q_pct, vrp_vol_pts, regime,
+    rv_pct) are returned as ``None`` for back-compat with the old schema.
+    """
     surface = await get_latest_surface(redis, symbol)
-    # Engine aggregates : _fair_q (Q-measure per tenor), _har + _garch
-    # (P-measure per tenor), and _rv_full_pct (P-measure aggregate).
-    fair_q_all = surface.surface.get("_fair_q") or {}
-    har = surface.surface.get("_har") or {}
-    garch = surface.surface.get("_garch") or {}
-    rv_pct = surface.surface.get("_rv_full_pct")
-    rv_pct = float(rv_pct) if isinstance(rv_pct, (int, float)) else None
 
     rows: list[TermStructureRow] = []
     for tenor, pillar in surface.surface.items():
@@ -108,47 +107,22 @@ async def get_term_structure(
             atm = pillar.get("atm")
             if isinstance(atm, dict) and isinstance(atm.get("iv"), (int, float)):
                 sigma_pct = float(atm["iv"]) * 100.0
-        # P-measure : prefer HAR, fall back to GARCH.
-        sigma_fair_p = None
-        for bucket, key in ((har, "sigma_har_pct"), (garch, "sigma_model_pct")):
-            node = bucket.get(tenor) if isinstance(bucket, dict) else None
-            if isinstance(node, dict) and isinstance(node.get(key), (int, float)):
-                sigma_fair_p = float(node[key])
-                break
-        # Q-measure : authoritative _fair_q, else fall back to P.
-        fair_q_node = fair_q_all.get(tenor) if isinstance(fair_q_all, dict) else None
-        if isinstance(fair_q_node, dict):
-            sigma_fair_q = _float_or_none(fair_q_node.get("sigma_fair_q_pct"))
-            vrp = _float_or_none(fair_q_node.get("vrp_vol_pts"))
-            regime = fair_q_node.get("regime")
-        else:
-            sigma_fair_q = sigma_fair_p
-            vrp = None
-            regime = None
-        # Legacy ``sigma_fair_pct`` : keep the previous semantics (Q if we
-        # have one, else whatever P estimator is available). Lets old
-        # frontends keep rendering.
-        sigma_fair_legacy = sigma_fair_q if sigma_fair_q is not None else sigma_fair_p
         rows.append(
             TermStructureRow(
                 tenor=tenor,
                 dte=pillar.get("dte"),
                 sigma_atm_pct=sigma_pct,
-                sigma_fair_pct=sigma_fair_legacy,
-                sigma_fair_p_pct=sigma_fair_p,
-                sigma_fair_q_pct=sigma_fair_q,
-                vrp_vol_pts=vrp,
-                regime=str(regime) if regime else None,
-                rv_pct=rv_pct,
+                sigma_fair_pct=None,
+                sigma_fair_p_pct=None,
+                sigma_fair_q_pct=None,
+                vrp_vol_pts=None,
+                regime=None,
+                rv_pct=None,
             )
         )
     return TermStructureResponse(
         symbol=surface.symbol, timestamp=surface.timestamp, pillars=rows
     )
-
-
-def _float_or_none(x: Any) -> float | None:
-    return float(x) if isinstance(x, (int, float)) else None
 
 
 async def get_smile(

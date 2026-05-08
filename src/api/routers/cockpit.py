@@ -180,50 +180,27 @@ async def trade_preview(
 
 class ModelHealthResponse(BaseModel):
     vol_surfaces_count: int
-    signals_count: int
     svi_params_count: int
     last_vol_surface_ts: datetime | None
-    last_signal_ts: datetime | None
     pca_ready: bool
-    vrp_calibration_ready: bool
-    fair_smile_ready: bool
 
 
 @router.get("/model-health", response_model=ModelHealthResponse)
 async def model_health(db: DbDep) -> ModelHealthResponse:
-    from core.vol.calibration import (
-        MIN_OBSERVATIONS_VRP_PER_TENOR,
-        MIN_OBSERVATIONS_W1,
-    )
-    from core.vol.fair_smile import MIN_HISTORY_FOR_SIGNAL as FAIR_MIN
     from core.vol.surface_pca import MIN_SAMPLES_FOR_SIGNAL as PCA_MIN
-    from persistence.models import Signal, SviParam, VolSurface
+    from persistence.models import VolSurface
 
     vs_count = int((await db.execute(
         select(VolSurface).with_only_columns(VolSurface.id).order_by(None)
     )).scalars().all().__len__())
-    sig_count = int((await db.execute(
-        select(Signal).with_only_columns(Signal.id).order_by(None)
-    )).scalars().all().__len__())
-    svi_count = int((await db.execute(
-        select(SviParam).with_only_columns(SviParam.id).order_by(None)
-    )).scalars().all().__len__())
-
+    # SVI fits 1:1 with vol_surface_snapshot rows (params live in surface_data._svi).
+    svi_count = vs_count
     last_vs = (await db.execute(
         select(VolSurface).order_by(desc(VolSurface.timestamp)).limit(1)
     )).scalar_one_or_none()
-    last_sig = (await db.execute(
-        select(Signal).order_by(desc(Signal.timestamp)).limit(1)
-    )).scalar_one_or_none()
-    _ = FAIR_MIN  # used in readiness check below
-    _ = MIN_OBSERVATIONS_W1  # silence unused — kept for future readiness predicate
     return ModelHealthResponse(
         vol_surfaces_count=vs_count,
-        signals_count=sig_count,
         svi_params_count=svi_count,
         last_vol_surface_ts=last_vs.timestamp if last_vs else None,
-        last_signal_ts=last_sig.timestamp if last_sig else None,
         pca_ready=vs_count >= PCA_MIN,
-        vrp_calibration_ready=sig_count >= 6 * MIN_OBSERVATIONS_VRP_PER_TENOR,
-        fair_smile_ready=svi_count >= 6 * FAIR_MIN,
     )

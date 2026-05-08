@@ -119,18 +119,6 @@ async def state(
     )
 
 
-@router.post("/baseline/run-once")
-async def baseline_run_once(request: Request) -> dict[str, Any]:
-    """Manually trigger ``BaselineScheduler.run_once`` (recompute the baseline now)."""
-    sched = getattr(request.app.state, "baseline_scheduler", None)
-    if sched is None:
-        raise HTTPException(503, "baseline_scheduler not running")
-    report = await sched.run_once()
-    if report is None:
-        raise HTTPException(500, "baseline recompute failed (see logs)")
-    return report
-
-
 @router.get("/features")
 async def features(
     db: DbDep,

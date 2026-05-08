@@ -246,7 +246,7 @@ class AccountSnap(Base):
 
 
 class VolSurface(Base):
-    __tablename__ = "vol_surfaces"
+    __tablename__ = "vol_surface_snapshot"
     __table_args__ = (
         UniqueConstraint("timestamp", "underlying", name="uq_vol_surfaces_ts_underlying"),
     )
@@ -261,121 +261,11 @@ class VolSurface(Base):
 
     surface_data: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
 
-    scan_duration_s: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
-
-
-class Signal(Base):
-    __tablename__ = "signals"
-    __table_args__ = (
-        UniqueConstraint(
-            "timestamp", "underlying", "tenor", name="uq_signals_ts_underlying_tenor"
-        ),
-        CheckConstraint(
-            "signal_type IN ('CHEAP', 'EXPENSIVE', 'FAIR')",
-            name="ck_signals_signal_type",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    underlying: Mapped[str] = mapped_column(String(20), nullable=False)
-    tenor: Mapped[str] = mapped_column(String(5), nullable=False)
-    dte: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    sigma_mid: Mapped[Decimal] = mapped_column(Numeric(8, 5), nullable=False)
-    sigma_fair: Mapped[Decimal] = mapped_column(Numeric(8, 5), nullable=False)  # Q-measure
-    ecart: Mapped[Decimal] = mapped_column(Numeric(8, 5), nullable=False)
-    signal_type: Mapped[str] = mapped_column(String(15), nullable=False)
-
-    rv: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
-    sigma_fair_p: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))     # P-measure (HAR/GARCH)
-    vrp_vol_pts: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))      # Q − P spread
-
-
-class SviParam(Base):
-    """Per-tenor SVI fit parameters (Phase P2.1). One row per vol cycle per tenor."""
-
-    __tablename__ = "svi_params"
-    __table_args__ = (
-        UniqueConstraint(
-            "timestamp", "underlying", "tenor",
-            name="uq_svi_params_ts_underlying_tenor",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    underlying: Mapped[str] = mapped_column(String(20), nullable=False)
-    tenor: Mapped[str] = mapped_column(String(5), nullable=False)
-    a: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    b: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    rho: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    m: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    sigma: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    rmse_fit: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
-    butterfly_g_min: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
-
-
-class SsviParam(Base):
-    """Surface-level SSVI fit parameters (Phase P2.2). One row per vol cycle."""
-
-    __tablename__ = "ssvi_params"
-    __table_args__ = (
-        UniqueConstraint(
-            "timestamp", "underlying", name="uq_ssvi_params_ts_underlying",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    underlying: Mapped[str] = mapped_column(String(20), nullable=False)
-    spot: Mapped[Decimal] = mapped_column(Numeric(15, 8), nullable=False)
-    eta: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    gamma: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    rho: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    rmse_fit: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
-    calendar_arb_free: Mapped[bool | None] = mapped_column(Boolean)
-
-
-class BacktestRun(Base):
-    __tablename__ = "backtest_runs"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-
-    strategy_name: Mapped[str] = mapped_column(String(50), nullable=False)
-    parameters: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
-
-    start_date: Mapped[date] = mapped_column(Date, nullable=False)
-    end_date: Mapped[date] = mapped_column(Date, nullable=False)
-
-    sharpe_ratio: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
-    sortino_ratio: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
-    max_drawdown_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
-    max_drawdown_duration_days: Mapped[int | None] = mapped_column(Integer)
-    hit_rate: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
-    total_return_pct: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    annualized_return_pct: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    annualized_vol_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
-    n_trades: Mapped[int | None] = mapped_column(Integer)
-    avg_holding_period_days: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
-    profit_factor: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
-
-    equity_curve: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
-    trades_log: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
-
 
 class RegimeSnapshot(Base):
     """One row per vol-engine cycle — Panel 1 audit + stability gate input."""
 
-    __tablename__ = "regime_snapshots"
+    __tablename__ = "regime_feature_snapshot"
     __table_args__ = (
         CheckConstraint(
             "label IN ('calm','stressed','pre_event')",
@@ -430,7 +320,7 @@ class RegimeLookup(Base):
     fall back to the seeded ``unmapped_extreme`` row.
     """
 
-    __tablename__ = "regime_lookup_table"
+    __tablename__ = "regime_pattern_dict"
 
     pattern: Mapped[str] = mapped_column(String(20), primary_key=True)
     regime_id: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -444,38 +334,10 @@ class RegimeLookup(Base):
     )
 
 
-class VolFeaturesContextBaseline(Base):
-    """μ ± σ baseline for a (feature, event_type, days_bucket, tod_bucket).
-
-    Populated by the weekly batch in E3 ; consumed by ``/api/v1/regime/features``
-    to compute ``vs_expected``. ``status='insufficient'`` when ``n_obs<20``.
-    """
-
-    __tablename__ = "vol_features_context_baseline"
-    __table_args__ = (
-        CheckConstraint(
-            "status IN ('valid','insufficient','stale')",
-            name="ck_vol_features_context_baseline_status",
-        ),
-    )
-
-    feature: Mapped[str] = mapped_column(String(20), primary_key=True)
-    event_type: Mapped[str] = mapped_column(String(20), primary_key=True)
-    days_bucket: Mapped[int] = mapped_column(Integer, primary_key=True)
-    tod_bucket: Mapped[str] = mapped_column(String(20), primary_key=True)
-    mu: Mapped[float] = mapped_column(Float, nullable=False)
-    sigma: Mapped[float] = mapped_column(Float, nullable=False)
-    n_obs: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[str] = mapped_column(String(15), nullable=False)
-    computed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(),
-    )
-
-
 class FeatureHistory(Base):
     """Wide-format timeseries of features — feeds rolling z-scores & vol_of_vol."""
 
-    __tablename__ = "feature_history"
+    __tablename__ = "feature_history_30d"
     __table_args__ = (
         UniqueConstraint("symbol", "timestamp", name="uq_feature_history_symbol_ts"),
     )
@@ -502,7 +364,7 @@ class Event(Base):
     UNIQUE at the DB level (cf. migration 012).
     """
 
-    __tablename__ = "events"
+    __tablename__ = "macro_event"
     __table_args__ = (
         CheckConstraint("impact IN ('high','medium','low')", name="ck_events_impact"),
         UniqueConstraint("event_hash", name="uq_events_event_hash"),
@@ -525,7 +387,7 @@ class Event(Base):
 class VrpTableDefault(Base):
     """Hardcoded VRP placeholder by (regime, tenor) — 18 rows seeded by migration 010."""
 
-    __tablename__ = "vrp_table_default"
+    __tablename__ = "vrp_default_curve"
     __table_args__ = (
         UniqueConstraint("regime", "tenor", name="uq_vrp_table_default_regime_tenor"),
         CheckConstraint(
@@ -560,7 +422,7 @@ class VolConfig(Base):
     Pydantic field does NOT require an Alembic migration.
     """
 
-    __tablename__ = "vol_config"
+    __tablename__ = "vol_engine_config"
 
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
     config: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
@@ -610,7 +472,7 @@ for _t in _TENORS:
 class PcaModel(Base):
     """Versioned PCA model — JSONB means/stds/loadings (schema-less for dim flex)."""
 
-    __tablename__ = "pca_models"
+    __tablename__ = "pca_model"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     version: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
@@ -629,7 +491,7 @@ class PcaModel(Base):
 
     n_components_kept: Mapped[int] = mapped_column(Integer, nullable=False, default=6)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    superseded_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_models.id"))
+    superseded_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_model.id"))
 
     cosine_similarity_pc1: Mapped[Decimal | None] = mapped_column(Numeric(8, 6))
     cosine_similarity_pc2: Mapped[Decimal | None] = mapped_column(Numeric(8, 6))
@@ -643,7 +505,7 @@ class PcaModel(Base):
 class PcaSignal(Base):
     """1 row per PC per vol-engine cycle. Feed Panel 2 + history charts."""
 
-    __tablename__ = "pca_signals"
+    __tablename__ = "pca_projection_snapshot"
     __table_args__ = (
         UniqueConstraint(
             "symbol", "timestamp", "pca_model_id", "pc_id",
@@ -659,7 +521,7 @@ class PcaSignal(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     symbol: Mapped[str] = mapped_column(String(20), nullable=False, default="EURUSD")
     pca_model_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("pca_models.id"), nullable=False,
+        BigInteger, ForeignKey("pca_model.id"), nullable=False,
     )
     pc_id: Mapped[int] = mapped_column(Integer, nullable=False)
     raw_score: Mapped[Decimal] = mapped_column(Numeric(15, 8), nullable=False)
@@ -674,7 +536,7 @@ class PcaSignal(Base):
 class SignalRecommendationsMap(Base):
     """Lookup PC × CHEAP/EXPENSIVE → structure recommandée (6 rows seed)."""
 
-    __tablename__ = "signal_recommendations_map"
+    __tablename__ = "pca_structure_recommendation"
     __table_args__ = (
         UniqueConstraint(
             "pc_id", "signal_label", "is_active",
@@ -736,7 +598,7 @@ class TradePreviewRow(Base):
     preview_id: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_signals.id"))
+    pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_projection_snapshot.id"))
     triggering_pc: Mapped[int | None] = mapped_column(Integer)
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     armed_signal_label: Mapped[str | None] = mapped_column(String(15))
@@ -807,7 +669,7 @@ class TradeStructure(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     preview_id: Mapped[str | None] = mapped_column(String(40), ForeignKey("trade_previews.preview_id"))
-    pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_signals.id"))
+    pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_projection_snapshot.id"))
     triggering_pc: Mapped[int | None] = mapped_column(Integer)
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     armed_signal_label: Mapped[str | None] = mapped_column(String(15))

@@ -20,9 +20,7 @@ import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
 import { OrderSubmit } from "./dev/OrderSubmit";
 import { Pricing } from "./dev/Pricing";
-import { Signals } from "./dev/Signals";
 import { StackCombined } from "./dev/StackCombined";
-import { Step1Regime } from "./dev/Step1Regime";
 import { Step2Pca } from "./dev/Step2Pca";
 import { Step3Trade } from "./dev/Step3Trade";
 import { Step4Trades } from "./dev/Step4Trades";
@@ -40,14 +38,12 @@ const TABS: TabDef[] = [
   { id: "stack", label: "🐳 Stack · Health · Redis", Component: StackCombined },
   { id: "ws", label: "📡 WS Monitor", Component: WsMonitor },
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
-  { id: "step1", label: "🚦 Step 1 · Regime", Component: Step1Regime },
   { id: "step2", label: "📊 Step 2 · PCA Signals", Component: Step2Pca },
   { id: "step3", label: "🎯 Step 3 · Trade Preview", Component: Step3Trade },
   { id: "step4", label: "📒 Step 4 · Trades (mock)", Component: Step4Trades },
   { id: "step5", label: "🩺 Step 5 · Active Positions", Component: Step5Positions },
   { id: "pricing", label: "💲 Pricing", Component: Pricing },
   { id: "trade-preview", label: "📦 Trade Preview (legacy)", Component: TradePreview },
-  { id: "signals", label: "📈 Signals", Component: Signals },
   { id: "orders",  label: "📝 Orders",  Component: OrderSubmit },
 ];
 

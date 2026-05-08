@@ -45,12 +45,12 @@ const SAMPLE: FeaturesPayload = {
 };
 
 describe("FeaturesLivePanel", () => {
-  it("renders 8 column headers + 3 feature rows", () => {
+  it("renders 7 column headers + 3 feature rows", () => {
     const { container } = render(<FeaturesLivePanel payload={SAMPLE} />);
     const headers = Array.from(container.querySelectorAll("thead th"))
       .map((el) => el.textContent?.trim() ?? "");
     expect(headers).toEqual([
-      "feature", "value", "z (90d)", "bucket", "Δz / 1h", "pct", "signal", "expected_z context",
+      "feature", "value", "z (90d)", "bucket", "Δz / 1h", "signal", "expected_z context",
     ]);
     expect(screen.getByTestId("feature-row-vol_level")).toBeInTheDocument();
     expect(screen.getByTestId("feature-row-vol_of_vol")).toBeInTheDocument();
@@ -68,14 +68,13 @@ describe("FeaturesLivePanel", () => {
     expect(screen.getByTestId("badge-tail")).toBeInTheDocument();
   });
 
-  it("renders the synthesis row with action and dominant", () => {
+  it("renders the synthesis row with regime, dominant, and vs_expected", () => {
     render(<FeaturesLivePanel payload={SAMPLE} />);
     const synth = screen.getByTestId("synthesis-row");
     expect(synth).toHaveTextContent("(0,-,--)");
     expect(synth).toHaveTextContent("stress_local_naissant");
     expect(synth).toHaveTextContent("term_slope");
     expect(synth).toHaveTextContent("underpriced");
-    expect(screen.getByTestId("synthesis-action")).toHaveTextContent("size × 1.0 + asymmetric calendar");
   });
 
   it("renders the empty fallback when payload is null", () => {

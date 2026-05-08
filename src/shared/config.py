@@ -2,9 +2,8 @@
 
 Every service container reads the same env-var schema (REDIS_URL,
 IB_HOST, IB_PORT, IB_CLIENT_ID, LOG_LEVEL, DATABASE_URL, SERVICE_NAME,
-MARKET_SYMBOL, THRESHOLD_VOL_PTS, MODEL_P). Missing required vars fail
-fast at startup rather than surfacing as obscure connection errors
-later.
+MARKET_SYMBOL). Missing required vars fail fast at startup rather than
+surfacing as obscure connection errors later.
 
 Field names are UPPERCASE — they match the env-var names verbatim and
 follow the "Python module-level constant" convention used by engine
@@ -57,11 +56,6 @@ class Settings(BaseSettings):
 
     # Log level (structlog filtering).
     LOG_LEVEL: LogLevel = Field(default="INFO")
-
-    # Vol engine signal calibration. Were in config/vol_config.json until R9
-    # made the folder disappear -- now plain env vars, tuned per deployment.
-    THRESHOLD_VOL_PTS: float = Field(default=1.0)
-    MODEL_P: Literal["har", "garch", "ewma"] = Field(default="har")
 
 
 @lru_cache(maxsize=1)

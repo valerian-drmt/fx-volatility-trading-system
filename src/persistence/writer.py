@@ -40,10 +40,7 @@ from persistence.models import (
     Position,
     PositionSnapshot,
     RegimeSnapshot,
-    Signal,
-    SsviParam,
     SurfaceSnapshotHourly,
-    SviParam,
     Trade,
     VolSurface,
 )
@@ -61,17 +58,14 @@ SHUTDOWN_TIMEOUT_S: float = 30.0
 # The writer rejects any event targeting a table not in this map.
 TABLE_MODELS: dict[str, type[Base]] = {
     "account_snaps": AccountSnap,
-    "feature_history": FeatureHistory,
-    "pca_signals": PcaSignal,
+    "feature_history_30d": FeatureHistory,
+    "pca_projection_snapshot": PcaSignal,
     "positions": Position,
     "position_snapshots": PositionSnapshot,
-    "regime_snapshots": RegimeSnapshot,
-    "signals": Signal,
-    "ssvi_params": SsviParam,
+    "regime_feature_snapshot": RegimeSnapshot,
     "surface_snapshots_hourly": SurfaceSnapshotHourly,
-    "svi_params": SviParam,
     "trades": Trade,
-    "vol_surfaces": VolSurface,
+    "vol_surface_snapshot": VolSurface,
 }
 
 # Tables where duplicates on the natural key are safe to drop silently.
@@ -86,14 +80,11 @@ TABLE_MODELS: dict[str, type[Base]] = {
 # Other tables (trades, position_snapshots, account_snaps) have no natural
 # dedup key, duplicates there are real data and must not be silenced.
 IDEMPOTENT_TABLES: dict[str, list[str]] = {
-    "vol_surfaces": ["timestamp", "underlying"],
-    "signals": ["timestamp", "underlying", "tenor"],
-    "svi_params": ["timestamp", "underlying", "tenor"],
-    "ssvi_params": ["timestamp", "underlying"],
+    "vol_surface_snapshot": ["timestamp", "underlying"],
     "positions": ["id"],
-    "feature_history": ["symbol", "timestamp"],
+    "feature_history_30d": ["symbol", "timestamp"],
     "surface_snapshots_hourly": ["symbol", "timestamp"],
-    "pca_signals": ["symbol", "timestamp", "pca_model_id", "pc_id"],
+    "pca_projection_snapshot": ["symbol", "timestamp", "pca_model_id", "pc_id"],
 }
 
 

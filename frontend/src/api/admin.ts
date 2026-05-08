@@ -6,18 +6,11 @@
 // types can replace these hand-written ones.
 import { apiGet, apiPost, apiPut } from "./client";
 
-// Minimal subset mirroring src/core/config/vol_params.py. Kept as plain
-// `Record<string, unknown>` at the nested level because T1 only exposes
-// threshold_vol_pts + model_p in the UI ; RJSF will take over the rest.
-export interface SignalConfig {
-  threshold_vol_pts: number;
-  model_p: "har" | "garch" | "ewma";
-  // Other fields exist but the T1 form doesn't render them yet.
-  [key: string]: unknown;
-}
-
+// Top-level shape mirrors src/core/config/vol_params.py. Each nested section
+// is left as a generic record because the /config editor walks the JSON
+// schema at runtime — no need to mirror every field in TypeScript.
 export interface VolTradingConfig {
-  signal: SignalConfig;
+  signal: Record<string, unknown>;
   regime: Record<string, unknown>;
   sizing: Record<string, unknown>;
   exit_rules: Record<string, unknown>;

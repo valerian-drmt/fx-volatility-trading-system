@@ -5,7 +5,7 @@ export function ModelHealthPanel(): JSX.Element {
   const [data, setData] = useState<ModelHealthResponse | null>(null);
 
   useEffect(() => {
-    const load = () => fetchModelHealth().then(setData).catch(() => setData(null));
+    const load = () => fetchModelHealth().then(setData).catch(() => { /* keep last good */ });
     load();
     const id = setInterval(load, 60_000);
     return () => clearInterval(id);
@@ -39,9 +39,8 @@ export function ModelHealthPanel(): JSX.Element {
         </div>
         <table className="smile-table" style={{ width: "100%" }}>
           <tbody>
-            <tr><td>vol_surfaces</td><td>{data.vol_surfaces_count}</td></tr>
-            <tr><td>signals</td><td>{data.signals_count}</td></tr>
-            <tr><td>svi_params</td><td>{data.svi_params_count}</td></tr>
+            <tr><td>vol_surface_snapshot</td><td>{data.vol_surfaces_count}</td></tr>
+            <tr><td>svi_params (in JSONB)</td><td>{data.svi_params_count}</td></tr>
           </tbody>
         </table>
         <div style={{ margin: "10px 0 6px", fontSize: 11, color: "var(--muted)" }}>
@@ -49,13 +48,11 @@ export function ModelHealthPanel(): JSX.Element {
         </div>
         <table className="smile-table" style={{ width: "100%" }}>
           <tbody>
-            {check(data.pca_ready, "PCA loadings", "≥50 vol_surfaces")}
-            {check(data.fair_smile_ready, "Fair smile EWMA", "≥30 svi_params per tenor")}
-            {check(data.vrp_calibration_ready, "VRP empirical", "≥60 signals per tenor")}
+            {check(data.pca_ready, "PCA loadings", "≥50 vol surfaces")}
           </tbody>
         </table>
         <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 8 }}>
-          last vol_surface: {data.last_vol_surface_ts ? new Date(data.last_vol_surface_ts).toLocaleTimeString() : "—"}
+          last vol surface: {data.last_vol_surface_ts ? new Date(data.last_vol_surface_ts).toLocaleTimeString() : "—"}
         </div>
       </div>
     </section>

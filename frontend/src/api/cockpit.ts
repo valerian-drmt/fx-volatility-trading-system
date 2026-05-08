@@ -64,13 +64,9 @@ export interface TradePreviewResponse {
 
 export interface ModelHealthResponse {
   vol_surfaces_count: number;
-  signals_count: number;
   svi_params_count: number;
   last_vol_surface_ts: string | null;
-  last_signal_ts: string | null;
   pca_ready: boolean;
-  vrp_calibration_ready: boolean;
-  fair_smile_ready: boolean;
 }
 
 export const fetchRegime = () => apiGet<RegimeResponse>("/api/v1/vol/regime");

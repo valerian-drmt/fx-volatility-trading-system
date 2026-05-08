@@ -45,15 +45,18 @@ async def run() -> None:
     latest: dict[str, Any] = {}
 
     def _on_ticker_update(tick: Any) -> None:
-        latest.update(
-            {
-                "bid": getattr(tick, "bid", None),
-                "ask": getattr(tick, "ask", None),
-                "mid": (getattr(tick, "bid", 0) + getattr(tick, "ask", 0)) / 2
-                if getattr(tick, "bid", None) and getattr(tick, "ask", None)
-                else None,
-            }
-        )
+        # IB returns ``-1`` for both bid and ask when the market is closed or
+        # there's no quote available. Treat anything ≤ 0 as missing — refusing
+        # to publish keeps ``latest_spot:<symbol>`` stale (engines that read it
+        # see "no data" and skip the cycle) instead of seeding the DB with
+        # rows that carry ``spot=-1``.
+        bid = getattr(tick, "bid", None)
+        ask = getattr(tick, "ask", None)
+        bid_ok = isinstance(bid, (int, float)) and bid > 0
+        ask_ok = isinstance(ask, (int, float)) and ask > 0
+        if not (bid_ok and ask_ok):
+            return  # do not overwrite the last good tick with a sentinel
+        latest.update({"bid": bid, "ask": ask, "mid": (bid + ask) / 2})
 
     def _fetch_latest_tick() -> dict[str, Any] | None:
         return latest or None

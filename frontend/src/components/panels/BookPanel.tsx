@@ -29,7 +29,7 @@ export function BookPanel(): JSX.Element {
   useEffect(() => {
     fetchPositions({ limit: 200 })
       .then(setRows)
-      .catch(() => setRows([]));
+      .catch(() => { /* keep last good */ });
   }, []);
 
   const { open, closed } = useMemo(() => {

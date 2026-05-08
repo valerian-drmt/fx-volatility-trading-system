@@ -30,7 +30,7 @@ RegimeLabel = Literal["calm", "stressed", "pre_event"]
 class RegimeConfig(BaseModel):
     """Features + thresholds for the GMM-based regime detector."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     gmm_components: int = Field(default=3, ge=2, le=6)
     regime_labels: tuple[RegimeLabel, RegimeLabel, RegimeLabel] = (
@@ -49,14 +49,9 @@ class RegimeConfig(BaseModel):
 
 
 class SignalConfig(BaseModel):
-    """z-score thresholds + model selection for the PCA signal panel."""
+    """z-score thresholds for the PCA signal panel."""
 
-    model_config = ConfigDict(extra="forbid")
-
-    # Scalar signal (Panel 2 arm-trade decisions).
-    threshold_vol_pts: float = Field(default=1.0, ge=0.1, le=10.0)
-    model_p: Literal["har", "garch", "ewma"] = "har"
-    vrp_regime_override: float | None = Field(default=None, ge=-5.0, le=5.0)
+    model_config = ConfigDict(extra="ignore")
 
     # z-score cutoffs mapped to UX badges (WAIT / ARM / STRONG / EXTREME).
     z_threshold_arm: float = Field(default=1.5, ge=0.5, le=3.0)
@@ -84,7 +79,7 @@ class SignalConfig(BaseModel):
 class SizingConfig(BaseModel):
     """Position sizing formula : base × conviction × book_penalty × event."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     base_size: int = Field(default=10, ge=1, le=1000)
     alpha_book: float = Field(default=0.2, ge=0.0, le=1.0)
@@ -101,7 +96,7 @@ class SizingConfig(BaseModel):
 class ExitRulesConfig(BaseModel):
     """Thresholds that trigger systematic exits on open structures."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     z_flip_exit_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
     time_remaining_min_ratio: float = Field(default=0.3, ge=0.1, le=0.5)
@@ -117,7 +112,7 @@ class ExitRulesConfig(BaseModel):
 class SurfaceConfig(BaseModel):
     """Tenor grid, fit diagnostics, no-arb tolerances."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     tenors_days: list[int] = Field(default_factory=lambda: [30, 60, 90, 120, 150, 180])
     delta_pillars: list[int] = Field(default_factory=lambda: [10, 25, 50, 75, 90])
@@ -148,7 +143,7 @@ class SurfaceConfig(BaseModel):
 class CalibrationConfig(BaseModel):
     """Walk-forward + backtest calibration hyperparameters."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     w1_walk_forward_months: int = Field(default=12, ge=3, le=36)
     w1_clip_min: float = Field(default=0.0, ge=0.0, le=0.5)
@@ -175,7 +170,7 @@ class CalibrationConfig(BaseModel):
 class DeltaHedgeConfig(BaseModel):
     """Delta hedging behavior : static / threshold / scheduled."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     mode: Literal["static", "threshold", "scheduled"] = "threshold"
     threshold_delta: float = Field(default=0.05, ge=0.01, le=0.5)
@@ -197,7 +192,7 @@ StructureKind = Literal[
 class TradeStructuresConfig(BaseModel):
     """Which structure is generated for each signal origin."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     pc1_structure: StructureKind = "straddle_atm"
     pc2_structure: StructureKind = "calendar_spread"
@@ -224,7 +219,7 @@ class VolTradingConfig(BaseModel):
     generates the form from this schema's JSON Schema export.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     regime: RegimeConfig = Field(default_factory=RegimeConfig)
     signal: SignalConfig = Field(default_factory=SignalConfig)

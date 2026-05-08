@@ -21,7 +21,7 @@ export function TermStructurePanel(): JSX.Element {
             })),
         ),
       )
-      .catch(() => setPoints([]));
+      .catch(() => { /* keep last good */ });
   }, [symbol]);
 
   return (

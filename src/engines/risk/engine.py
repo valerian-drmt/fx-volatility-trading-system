@@ -83,6 +83,7 @@ class RiskEngine:
         logger.info("risk_engine_started", extra={"symbol": self.symbol})
         try:
             while not self._stop.is_set():
+                await publisher.set_heartbeat(self.redis, keys.ENGINE_RISK)
                 await self.run_cycle()
                 try:
                     await asyncio.wait_for(self._stop.wait(), timeout=CYCLE_SECONDS)

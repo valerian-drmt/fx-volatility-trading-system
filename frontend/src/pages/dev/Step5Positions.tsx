@@ -109,12 +109,10 @@ export function Step5Positions(): JSX.Element {
         fetch(`/api/v1/positions/${id}/alerts?limit=20`),
         fetch(`/api/v1/positions/${id}/mtm-history?hours=24&limit=200`),
       ]);
-      setAlerts(r1.ok ? await r1.json() : []);
-      setMtmHist(r2.ok ? await r2.json() : []);
-    } catch {
-      setAlerts([]);
-      setMtmHist([]);
-    }
+      // Only overwrite on actual fresh data — keep last good on transient errors.
+      if (r1.ok) setAlerts(await r1.json());
+      if (r2.ok) setMtmHist(await r2.json());
+    } catch { /* keep last good */ }
   };
 
   useEffect(() => {

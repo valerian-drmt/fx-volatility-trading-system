@@ -40,7 +40,6 @@ from persistence.models import (
     Event,
     RegimeLookup,
     RegimeSnapshot,
-    VolFeaturesContextBaseline,
 )
 
 logger = logging.getLogger(__name__)
@@ -137,9 +136,10 @@ async def _build_feature_row(
             zs_clean = [v if v is not None else 0.0 for v in zs]
             dz = compute_delta_z_1h(t_min, zs_clean)
 
-    expected = await _lookup_baseline(db, feature, latest)
+    expected = _lookup_baseline(feature, latest, history)
     vs_expected_label = None
-    if z is not None and expected and expected["status"] == "valid":
+    if z is not None and expected and expected["status"] in ("valid", "approx") \
+            and expected.get("mu") is not None:
         vs_expected_label = interpret_delta(feature, z - expected["mu"])
 
     return {
@@ -188,7 +188,8 @@ async def _build_synthesis(
         dom_row = by_name[dominant]
         z = dom_row["z"]
         exp = dom_row["expected_z"]
-        if z is not None and exp and exp["status"] == "valid":
+        if z is not None and exp and exp.get("status") in ("valid", "approx") \
+                and exp.get("mu") is not None:
             delta = float(z) - exp["mu"]
             label = interpret_delta(dominant, delta)
             vs_expected_payload = {
@@ -287,31 +288,82 @@ def _tod_bucket(ts: datetime) -> str:
     return "asia"
 
 
-async def _lookup_baseline(
-    db: AsyncSession, feature: str, latest: RegimeSnapshot,
+_MIN_OBS_VALID: int = 20  # threshold for "valid" baseline status
+
+
+def _lookup_baseline(
+    feature: str,
+    latest: RegimeSnapshot,
+    history: list[RegimeSnapshot],
 ) -> dict[str, Any] | None:
+    """Return ``{mu, sigma, n_obs, status, context, relaxation}`` for ``feature``.
+
+    Computes μ/σ live from ``history`` with progressive context relaxation :
+    ``exact`` -> ``event_days`` -> ``event`` -> ``unconditional``. Status
+    ``valid`` requires ≥ 20 obs ; below that we still return the computed
+    values with status ``approx`` so downstream gets a number instead of "—".
+    Unconditional level always has plenty of obs (≈ 90d worth of snapshots)
+    so we never hand back an empty baseline.
+    """
     event_type = (latest.next_event_type or "none").upper() if latest.next_event_type else "none"
     days_bucket = _days_bucket(_f(latest.days_to_next_event))
     tod_bucket = _tod_bucket(latest.timestamp)
-    row = (await db.execute(
-        select(VolFeaturesContextBaseline)
-        .where(VolFeaturesContextBaseline.feature == feature)
-        .where(VolFeaturesContextBaseline.event_type == event_type)
-        .where(VolFeaturesContextBaseline.days_bucket == days_bucket)
-        .where(VolFeaturesContextBaseline.tod_bucket == tod_bucket)
-        .limit(1)
-    )).scalar_one_or_none()
-    if row is None:
-        return {
-            "mu": None, "sigma": None, "n_obs": 0, "status": "insufficient",
-            "context": {"event_type": event_type, "days_bucket": days_bucket, "tod_bucket": tod_bucket},
-        }
+    base_context = {
+        "event_type": event_type,
+        "days_bucket": days_bucket,
+        "tod_bucket": tod_bucket,
+    }
+
+    # Live computation : progressive relaxation across context dimensions.
+    # The pre-computed baseline table (vol_features_context_baseline) was
+    # dropped in R9 — its weekly batch never shipped and the relaxation below
+    # covers the same use cases without an extra table.
+    z_attr = f"{feature}_z"
+
+    def _z_values(filt: list[str]) -> list[float]:
+        out: list[float] = []
+        for r in history:
+            if "event_type" in filt:
+                r_event = (r.next_event_type or "none").upper() if r.next_event_type else "none"
+                if r_event != event_type:
+                    continue
+            if "days_bucket" in filt and _days_bucket(_f(r.days_to_next_event)) != days_bucket:
+                continue
+            if "tod_bucket" in filt and _tod_bucket(r.timestamp) != tod_bucket:
+                continue
+            v = _f(getattr(r, z_attr, None))
+            if v is not None:
+                out.append(v)
+        return out
+
+    levels: list[tuple[str, list[str]]] = [
+        ("exact",          ["event_type", "days_bucket", "tod_bucket"]),
+        ("event_days",     ["event_type", "days_bucket"]),
+        ("event",          ["event_type"]),
+        ("unconditional",  []),
+    ]
+    for label, filt in levels:
+        zs = _z_values(filt)
+        n = len(zs)
+        if n == 0:
+            continue
+        mean = sum(zs) / n
+        var = sum((v - mean) ** 2 for v in zs) / n if n > 1 else 0.0
+        std = var ** 0.5
+        if n >= _MIN_OBS_VALID or label == "unconditional":
+            return {
+                "mu": float(mean),
+                "sigma": float(std),
+                "n_obs": int(n),
+                "status": "valid" if n >= _MIN_OBS_VALID else "approx",
+                "context": base_context,
+                "relaxation": label,
+            }
+
+    # 3. Not even unconditional history — degenerate (cold-start).
     return {
-        "mu": float(row.mu),
-        "sigma": float(row.sigma),
-        "n_obs": int(row.n_obs),
-        "status": row.status,
-        "context": {"event_type": event_type, "days_bucket": days_bucket, "tod_bucket": tod_bucket},
+        "mu": 0.0, "sigma": 1.0, "n_obs": 0, "status": "approx",
+        "context": base_context, "relaxation": "cold_start",
     }
 
 

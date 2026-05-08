@@ -1,86 +1,31 @@
-"""Variance Risk Premium (VRP) — Q-measure conversion for fair vol.
+"""Variance Risk Premium (VRP) tables + heuristic regime classifier.
 
-The physical-measure estimator (HAR-RV or GARCH) answers "what will the
-realised vol be on average ?". That is NOT what an option is priced to —
-IV contains a structural premium that buyers pay to sellers for
-gamma/vega insurance.
+Two surviving public symbols, both consumed by the regime-features pipeline :
 
-    σ_fair^Q(T)  =  σ_fair^P(T)  +  VRP(T, regime)
+- ``VRP_DEFAULTS_VOL_PTS`` : tabulated VRP per (regime, tenor). Used by
+  cockpit health metrics and the alembic seed for ``vrp_default_curve``.
+- ``detect_regime(vol_level_pct, vol_of_vol_pct, term_slope_pct)`` : 3-regime
+  classifier (calm / stressed / pre_event) consumed by ``regime_engine``.
 
-This module exposes :
-
-- ``compute_realized_vrp(iv_history, rv_history, horizon)`` : ex-post
-  realised VRP = σ_IV_t − σ_RV_{t→t+T}. Feeds future empirical
-  calibration once ≥6 months of history is in Postgres.
-- ``predict_vrp(tenor, regime)`` : returns the best estimate of the
-  VRP at the selected tenor. Currently a **literature-backed constant
-  per tenor per regime** — the fallback mentioned in the refactor plan
-  P1.2 while we accumulate history. Logs WARNING on use so monitoring
-  surfaces the gap.
-- ``detect_regime(features)`` : stub returning ``"calm"`` by default.
-  The GMM-clustered version (P1.1) lands once the ``surface_features``
-  table has ~6 months of data.
-
-Literature anchors (Bollerslev-Tauchen-Zhou 2009, Bekaert-Hoerova 2014,
-Carr-Wu 2009) : for FX G10 calm regime, realised VRP sits around
-+0.3% to +1.5% annualised σ on 1M-3M tenors, tapering mildly with
-tenor. Stressed and pre-event regimes shift higher (+1% to +3%).
+The Q-measure conversion (``q_measure_from_p``, ``predict_vrp``) and ex-post
+``compute_realized_vrp`` were retired in R9 alongside the per-tenor pricing
+signal pipeline — no live consumers remained.
 """
 from __future__ import annotations
 
-import logging
-from dataclasses import dataclass
 from typing import Literal
-
-logger = logging.getLogger(__name__)
 
 Regime = Literal["calm", "stressed", "pre_event"]
 
 
-# ── Empirical defaults (constants) ────────────────────────────────────
-# Tabulated from G10 FX literature — EUR/USD in particular. Positive
-# values = market demands premium to sell vol, so σ_IV > σ_RV on
-# average. These are the fallback values used until a live estimator
-# based on history tables is calibrated.
+# Tabulated from G10 FX literature — EUR/USD in particular. Positive values =
+# market demands premium to sell vol, so σ_IV > σ_RV on average. Used by
+# cockpit (read-only health) and alembic 010 seed for vrp_default_curve.
 VRP_DEFAULTS_VOL_PTS: dict[Regime, dict[str, float]] = {
     "calm":      {"1M": 0.6, "2M": 0.7, "3M": 0.8, "4M": 0.9, "5M": 1.0, "6M": 1.1},
     "stressed":  {"1M": 1.5, "2M": 1.6, "3M": 1.8, "4M": 1.9, "5M": 2.0, "6M": 2.1},
     "pre_event": {"1M": 2.5, "2M": 2.2, "3M": 2.0, "4M": 1.9, "5M": 1.8, "6M": 1.8},
 }
-
-
-@dataclass(frozen=True)
-class VrpEstimate:
-    tenor: str
-    regime: Regime
-    value_vol_pts: float
-    source: str  # 'empirical' once the history-calibrated model is live, 'default' otherwise
-
-
-def predict_vrp(tenor: str, regime: Regime = "calm") -> VrpEstimate:
-    """Return the VRP at ``tenor`` for ``regime`` (in vol points, e.g. 0.6 for +60bp).
-
-    Currently always returns the tabulated default — empirical calibration
-    requires the ``signals`` + ``vol_surfaces`` tables to hold ≥6 months
-    of history, which sandbox/r9 does not yet have.
-    """
-    bucket = VRP_DEFAULTS_VOL_PTS.get(regime, VRP_DEFAULTS_VOL_PTS["calm"])
-    value = bucket.get(tenor)
-    if value is None:
-        logger.warning("predict_vrp: unknown tenor %r, defaulting to 0.8", tenor)
-        value = 0.8
-    return VrpEstimate(tenor=tenor, regime=regime, value_vol_pts=value, source="default")
-
-
-def q_measure_from_p(
-    sigma_p_pct: float, tenor: str, regime: Regime = "calm",
-) -> tuple[float, float]:
-    """Convert σ_fair^P (percent) to σ_fair^Q by adding the VRP at the tenor.
-
-    Returns ``(sigma_q_pct, vrp_value_pts)`` so the caller can log both.
-    """
-    vrp = predict_vrp(tenor, regime)
-    return sigma_p_pct + vrp.value_vol_pts, vrp.value_vol_pts
 
 
 def detect_regime(
@@ -97,20 +42,11 @@ def detect_regime(
                     precedes high-impact macro releases
       - calm      : neither condition met
 
-    Why drop the previous ``abs(term_slope) > 2 AND vol_level > 7`` rule for
-    pre_event : empirically EUR/USD term_slope rarely exceeds ±1pp and
-    vol_level rarely exceeds 7pp outside crises, so the rule was dead code.
-    The new rule (vol_of_vol > 0.4pp) aligns with both the spec test
-    ``test_regime_label_pre_event_high_vov`` and observed empirical ranges
-    (vov 0.78-2.32pp during Apr 2025 → Apr 2026 calm period — pre_event
-    will trigger on real stress days going forward).
-
-    ``term_slope_pct`` is currently unused in classification — kept in the
-    signature for backward compat ; it will resurface in Step 4 when
-    term-structure-based regimes get a dedicated branch.
-
-    Any ``None`` feature is ignored ; default = "calm".
+    Any ``None`` feature is ignored ; default = "calm". ``term_slope_pct`` is
+    currently unused in classification — kept in the signature for backward
+    compat with the regime_engine call site.
     """
+    del term_slope_pct  # unused : reserved for future term-structure regime
     if vol_level_pct is not None and vol_level_pct > 10.0:
         return "stressed"
     if vol_of_vol_pct is not None and vol_of_vol_pct > 1.0:
@@ -118,42 +54,3 @@ def detect_regime(
     if vol_of_vol_pct is not None and vol_of_vol_pct > 0.4:
         return "pre_event"
     return "calm"
-
-
-def compute_realized_vrp(
-    iv_history: list[tuple[float, float]],
-    rv_history: list[tuple[float, float]],
-    horizon_days: int,
-) -> list[tuple[float, float]]:
-    """Ex-post realised VRP per date — placeholder until history tables exist.
-
-    Each input is a list of ``(epoch_timestamp, vol_pct)`` tuples.
-    Returns pairs ``(epoch_timestamp_of_entry, vrp_vol_pts)`` where
-    vrp = σ_IV_t − σ_RV_{t → t+horizon}. Drops entries whose forward
-    window falls outside rv_history.
-
-    This function is implemented but unused in the sandbox live path —
-    it will fire once the analytics layer has a query returning IV and
-    RV time series aligned on timestamps.
-    """
-    if not iv_history or not rv_history:
-        return []
-    rv_by_ts = dict(rv_history)
-    rv_ts_sorted = sorted(rv_by_ts.keys())
-    out: list[tuple[float, float]] = []
-    seconds_per_day = 86400.0
-    for ts, iv in iv_history:
-        target = ts + horizon_days * seconds_per_day
-        fwd = _closest_after(rv_ts_sorted, target)
-        if fwd is None:
-            continue
-        rv = rv_by_ts[fwd]
-        out.append((ts, iv - rv))
-    return out
-
-
-def _closest_after(sorted_ts: list[float], target: float) -> float | None:
-    for t in sorted_ts:
-        if t >= target:
-            return t
-    return None

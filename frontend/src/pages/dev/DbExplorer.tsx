@@ -75,9 +75,9 @@ export function DbExplorer(): JSX.Element {
           <input
             type="number"
             min={1}
-            max={1000}
+            max={10000}
             value={limit}
-            onChange={(e) => setLimit(Math.max(1, Math.min(1000, Number(e.target.value) || 50)))}
+            onChange={(e) => setLimit(Math.max(1, Math.min(10000, Number(e.target.value) || 50)))}
             style={{ ...inputStyle, width: 80 }}
           />
         </label>
