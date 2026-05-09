@@ -37,6 +37,7 @@ from typing import Any, Protocol
 
 from bus import keys, publisher
 from core.vol.pchip_smile import interpolate_delta_pillars
+from shared.market_hours import is_fx_market_open, market_gate_active
 
 logger = logging.getLogger(__name__)
 
@@ -470,6 +471,9 @@ class VolEngine:
     async def run_cycle(self) -> bool:
         """Single pass. Returns True if a vol_update was published."""
         await self._reset_progress()
+        if market_gate_active() and not is_fx_market_open():
+            logger.info("vol_cycle_skipped", extra={"reason": "market_closed"})
+            return False
         F = await self._read_spot()
         if F is None:
             logger.info("vol_cycle_skipped", extra={"reason": "no_spot"})
