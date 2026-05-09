@@ -19,6 +19,7 @@ import { useState, type CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
 import { OrderSubmit } from "./dev/OrderSubmit";
+import { Portfolio } from "./dev/Portfolio";
 import { Pricing } from "./dev/Pricing";
 import { StackCombined } from "./dev/StackCombined";
 import { Step2Pca } from "./dev/Step2Pca";
@@ -42,6 +43,7 @@ const TABS: TabDef[] = [
   { id: "step3", label: "🎯 Step 3 · Trade Preview", Component: Step3Trade },
   { id: "step4", label: "📒 Step 4 · Trades (mock)", Component: Step4Trades },
   { id: "step5", label: "🩺 Step 5 · Active Positions", Component: Step5Positions },
+  { id: "portfolio", label: "💼 Portfolio", Component: Portfolio },
   { id: "pricing", label: "💲 Pricing", Component: Pricing },
   { id: "trade-preview", label: "📦 Trade Preview (legacy)", Component: TradePreview },
   { id: "orders",  label: "📝 Orders",  Component: OrderSubmit },
