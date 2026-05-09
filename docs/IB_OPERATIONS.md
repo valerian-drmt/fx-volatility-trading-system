@@ -1,5 +1,36 @@
 # IB Gateway operations
 
+## Règle absolue : un seul set d'engines connecté à IB (R7)
+
+IB Gateway supporte ~8 clientIds simultanés par session MAIS **refuse** deux connexions qui utilisent le même clientId. Depuis R7, deux sets d'engines peuvent vouloir se connecter :
+
+1. **PyQt v1 in-process** — `Controller._start_engine_pool()` lance MarketData (clientId=1), VolEngine (clientId=2), RiskEngine (clientId=3) dans le process PyQt.
+2. **Containers R7 standalone** — `services/market_data/` (clientId=1), `services/vol/` (clientId=2), `services/risk/` (clientId=3) dans `docker-compose --profile engines`.
+
+Les deux utilisent les **mêmes clientIds**. Les démarrer en parallèle = collisions IB garanties → 2e connexion rejetée, 1er set affecté aléatoirement.
+
+### Contrôle via `ENGINES_IN_PROCESS`
+
+R7 PR #8 ajoute un flag `ENGINES_IN_PROCESS` (env var) sur le Controller :
+
+- **`ENGINES_IN_PROCESS=true`** (défaut, backwards compat) : PyQt lance ses 3 engines in-process → ne PAS démarrer `docker compose --profile engines` en parallèle.
+- **`ENGINES_IN_PROCESS=false`** : PyQt **ne démarre aucun** engine thread, consomme les données via Redis (produits par les containers R7). **Requis** si `docker compose --profile engines up`.
+
+```bash
+# Mode legacy : PyQt tout-en-un (dev)
+python app.py
+# → MarketData / Vol / Risk dans le process PyQt
+
+# Mode R7 : PyQt en mode consumer, engines dans des containers
+docker compose --profile engines --profile ib up -d
+ENGINES_IN_PROCESS=false python app.py
+# → PyQt lit Redis, containers IB-connected
+```
+
+Fail-safe : oublier de set `ENGINES_IN_PROCESS=false` en mode R7 → les 3 engines PyQt essayent de se connecter à IB Gateway, IB rejette la 2e tentative par clientId, logs d'erreur évidents dans le terminal PyQt.
+
+---
+
 ## Modes de deploiement
 
 Deux chemins de connexion à IB coexistent pendant la transition v1 → v2.
