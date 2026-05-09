@@ -21,30 +21,219 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db_session
+from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
 from persistence.models import (
     DeltaHedgeConfig,
     ExitAlert,
     ExitRulesConfig,
     HedgeOrder,
+    Position,
     PositionMtmHistory,
     PositionSignalTracking,
+    PositionSnapshot,
     TradePosition,
     TradeStructure,
 )
+from shared.contracts import multiplier_for, parse_local_symbol
 
 router = APIRouter(prefix="/api/v1/positions", tags=["positions"])
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
+def _ib_sync_status(reconciled_at: datetime | None) -> str:
+    """fresh < 5 min ; stale 5 min–1 h ; missing ≥ 1 h or never."""
+    if reconciled_at is None:
+        return "missing"
+    age = datetime.now(UTC) - reconciled_at
+    if age < timedelta(minutes=5):
+        return "fresh"
+    if age < timedelta(hours=1):
+        return "stale"
+    return "missing"
+
+
+_FUT_MONTH_CODES = "FGHJKMNQUVXZ"  # Jan→Dec, IB convention
+
+
+def _tenor_bucket(maturity: Any) -> str | None:
+    """Closest FX OTC tenor pillar (1W / 2W / 1M / 2M / 3M / 6M / 1Y / 2Y).
+    Returns None if maturity is unset."""
+    if maturity is None:
+        return None
+    today = datetime.now(UTC).date()
+    try:
+        days = (maturity - today).days
+    except TypeError:
+        return None
+    if days < 0:
+        return "expired"
+    if days <= 10:
+        return "1W"
+    if days <= 21:
+        return "2W"
+    if days <= 45:
+        return "1M"
+    if days <= 75:
+        return "2M"
+    if days <= 105:
+        return "3M"
+    if days <= 165:
+        return "6M"
+    if days <= 270:
+        return "9M"
+    if days <= 460:
+        return "1Y"
+    return "2Y+"
+
+# Trading-class prefix per ``positions.symbol``. Used to rebuild the IB
+# ``localSymbol`` for display when not persisted to DB.
+_TRADING_CLASS = {
+    "EUR": "6E",
+    "M6E": "M6E",
+}
+
+
+def _ib_local_symbol(symbol: str | None, maturity: Any) -> str | None:
+    """Return the IB-style localSymbol like ``6EM6`` / ``M6EM6`` / ``6EK6``.
+    Returns None if the inputs aren't enough to build it."""
+    if not symbol or not maturity:
+        return None
+    cls = _TRADING_CLASS.get(symbol, symbol)
+    try:
+        month_letter = _FUT_MONTH_CODES[maturity.month - 1]
+        year_digit = str(maturity.year)[-1]
+    except (AttributeError, IndexError):
+        return None
+    return f"{cls}{month_letter}{year_digit}"
+
+
+async def _read_contract_marks(redis: Any) -> dict[int, float]:
+    """Read the Redis hash ``contract_marks:EUR`` populated by execution-engine.
+    Returns ``{position_id: marketPrice}`` for ALL contract types — the
+    futures price for FUT rows, the option premium per unit for OPTIONs.
+    """
+    if redis is None:
+        return {}
+    try:
+        raw = await redis.hgetall("contract_marks:EUR")
+    except Exception:
+        return {}
+    if not raw:
+        return {}
+    out: dict[int, float] = {}
+    for k, v in raw.items():
+        key = k.decode() if isinstance(k, bytes) else k
+        val = v.decode() if isinstance(v, bytes) else v
+        try:
+            out[int(key)] = float(val)
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
+def _serialize_ib_position(
+    pos: Position, snap: PositionSnapshot | None, contract_mark: float | None = None,
+) -> dict[str, Any]:
+    """Serialise an IB-synced row from `positions` table for Step 5 display.
+
+    Same shape as :func:`_serialize_position` but with ``source='ib_live'``
+    and most ``trade_position``-specific fields (signal, structure type,
+    booking metadata) left null.
+
+    ``contract_mark`` (when provided) is the live IB ``marketPrice`` per
+    unit fetched from Redis ; used as the market price for all rows
+    (futures price for FUT, option premium for OPT). Falls back to spot
+    when missing — useful at boot before the first sync cycle.
+    """
+    expiry = pos.expiry.isoformat() if pos.expiry else None
+    tenor = _tenor_bucket(pos.expiry)
+    structure_label = pos.structure or "—"
+    spec = parse_local_symbol(pos.structure)
+    # All live fields now live on the ``positions`` row itself (UPDATEd by
+    # risk-engine each cycle). We read them directly — no snapshot lookup.
+    pnl   = float(pos.current_pnl_usd) if pos.current_pnl_usd is not None else None
+    delta = float(pos.delta_usd)       if pos.delta_usd       is not None else None
+    gamma = float(pos.gamma_usd)       if pos.gamma_usd       is not None else None
+    vega  = float(pos.vega_usd)        if pos.vega_usd        is not None else None
+    theta = float(pos.theta_usd)       if pos.theta_usd       is not None else None
+    iv_v  = float(pos.iv)              if pos.iv              is not None else None
+    vanna = float(pos.vanna_usd)       if pos.vanna_usd       is not None else None
+    volga = float(pos.volga_usd)       if pos.volga_usd       is not None else None
+    pos_mark = float(pos.market_price) if pos.market_price    is not None else None
+    qty_abs = float(pos.quantity) if pos.quantity is not None else 0.0
+    signed_qty = qty_abs if pos.side == "BUY" else -qty_abs
+    mult = float(spec.multiplier) if spec else multiplier_for(None)
+    contract_price_entry = (
+        float(pos.contract_price_entry) if pos.contract_price_entry is not None else None
+    )
+    nominal_eur = float(pos.nominal_eur) if pos.nominal_eur is not None else None
+    # Market price priority : positions row (UPDATEd by risk-engine each
+    # cycle) → Redis hash (boot fallback) → None.
+    contract_price_market = pos_mark if pos_mark is not None else contract_mark
+    sym = spec.symbol if spec else None
+    instr = spec.instrument_type if spec else None
+    opt_type = spec.option_type if spec else None
+    strike = spec.strike if spec else None
+    entry_premium_usd = (
+        contract_price_entry * mult if contract_price_entry is not None else None
+    )
+    return {
+        "id": pos.id,
+        "source": "ib_live",
+        "structure_id": None,
+        "structure_type": structure_label,
+        "reference_tenor": None,
+        "expiry_date": expiry,
+        "tenor": tenor,
+        "symbol": sym,
+        "instrument_type": instr,
+        "side": pos.side,
+        "quantity": signed_qty,
+        "strike": strike,
+        "option_type": opt_type,
+        "triggering_pc": None,
+        "armed_z_score": None,
+        "armed_signal_label": None,
+        "opened_at": pos.entry_timestamp.isoformat() if pos.entry_timestamp else None,
+        "state": "open",  # only OPEN rows live in `positions` after migration 028
+        "entry_premium_usd": entry_premium_usd,
+        "entry_total_cost_usd": None,
+        "entry_vega_usd_per_volpt": None,
+        "entry_gamma_usd_per_pip2": None,
+        "entry_theta_usd_per_day": None,
+        "entry_spot": None, "entry_iv_avg": None,
+        "current_pnl_gross_usd": pnl,
+        "current_pnl_net_usd": pnl,
+        "vega_pnl_usd": None, "gamma_pnl_usd": None, "theta_pnl_usd": None,
+        "current_vega_usd_per_volpt": vega,
+        "current_gamma_usd_per_pip2": gamma,
+        "current_theta_usd_per_day": theta,
+        "current_delta_unhedged": delta,
+        "last_mtm_at": pos.updated_at.isoformat() if pos.updated_at else None,
+        "ib_reconciled_at": pos.updated_at.isoformat() if pos.updated_at else None,
+        "ib_qty_total": round(signed_qty) if pos.quantity is not None else None,
+        "ib_qty_diff": 0,
+        "ib_sync_status": _ib_sync_status(pos.updated_at),
+        "nominal_eur": nominal_eur,
+        "contract_price_entry": contract_price_entry,
+        "contract_price_market": contract_price_market,
+        "iv": iv_v,
+        "vanna_usd": vanna,
+        "volga_usd": volga,
+    }
+
+
 def _serialize_position(pos: TradePosition, struct: TradeStructure | None,
                         latest_mtm: PositionMtmHistory | None) -> dict[str, Any]:
     return {
-        "id": pos.id, "structure_id": pos.structure_id,
+        "id": pos.id,
+        "source": "booked",
+        "structure_id": pos.structure_id,
         "structure_type": struct.structure_type if struct else None,
         "reference_tenor": struct.reference_tenor if struct else None,
         "expiry_date": struct.expiry_date.isoformat() if struct and struct.expiry_date else None,
+        "tenor": _tenor_bucket(struct.expiry_date) if struct else None,
         "triggering_pc": struct.triggering_pc if struct else None,
         "armed_z_score": float(struct.armed_z_score) if struct and struct.armed_z_score is not None else None,
         "armed_signal_label": struct.armed_signal_label if struct else None,
@@ -62,19 +251,34 @@ def _serialize_position(pos: TradePosition, struct: TradeStructure | None,
         "gamma_pnl_usd": latest_mtm.gamma_pnl_usd if latest_mtm else None,
         "theta_pnl_usd": latest_mtm.theta_pnl_usd if latest_mtm else None,
         "current_vega_usd_per_volpt": latest_mtm.current_vega_usd_per_volpt if latest_mtm else None,
+        "current_gamma_usd_per_pip2": latest_mtm.current_gamma_usd_per_pip2 if latest_mtm else None,
+        "current_theta_usd_per_day": latest_mtm.current_theta_usd_per_day if latest_mtm else None,
         "current_delta_unhedged": latest_mtm.current_delta_unhedged if latest_mtm else None,
         "last_mtm_at": latest_mtm.timestamp.isoformat() if latest_mtm else None,
+        "ib_reconciled_at": pos.ib_reconciled_at.isoformat() if pos.ib_reconciled_at else None,
+        "ib_qty_total": pos.ib_qty_total,
+        "ib_qty_diff": pos.ib_qty_diff,
+        "ib_sync_status": _ib_sync_status(pos.ib_reconciled_at),
+        # Multi-leg structures don't have a single unit price ; left null
+        # for booked rows. Computed only on the IB-live serializer.
+        "nominal_eur": None,
+        "contract_price_entry": None,
+        "contract_price_market": None,
     }
 
 
 @router.get("/active")
 async def list_active(db: DbDep) -> list[dict[str, Any]]:
-    rows = (await db.execute(
+    """Union of booked structures (`trade_positions`) and live IB rows
+    (`positions`). The frontend distinguishes via the ``source`` field
+    so both lists render in a single Step 5 table."""
+    out: list[dict[str, Any]] = []
+
+    booked = (await db.execute(
         select(TradePosition).where(TradePosition.state == "open")
         .order_by(desc(TradePosition.opened_at))
     )).scalars().all()
-    out: list[dict[str, Any]] = []
-    for pos in rows:
+    for pos in booked:
         struct = (await db.execute(
             select(TradeStructure).where(TradeStructure.id == pos.structure_id).limit(1)
         )).scalar_one_or_none()
@@ -83,6 +287,18 @@ async def list_active(db: DbDep) -> list[dict[str, Any]]:
             .order_by(desc(PositionMtmHistory.timestamp)).limit(1)
         )).scalar_one_or_none()
         out.append(_serialize_position(pos, struct, latest))
+
+    ib_rows = (await db.execute(
+        select(Position).order_by(desc(Position.entry_timestamp))
+    )).scalars().all()
+    contract_marks = await _read_contract_marks(get_redis_client_or_none())
+    # Live values (mark, P&L, greeks) live directly on each ``Position`` row
+    # since migration 026 — no snapshot lookup needed.
+    for ib_pos in ib_rows:
+        out.append(_serialize_ib_position(
+            ib_pos, snap=None, contract_mark=contract_marks.get(ib_pos.id),
+        ))
+
     return out
 
 

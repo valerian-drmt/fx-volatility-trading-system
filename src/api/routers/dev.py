@@ -287,6 +287,10 @@ ALLOWED_TABLES: dict[str, str] = {
     "pca_model": "id",
     "pca_projection_snapshot": "id",
     "pca_structure_recommendation": "id",
+    # Step 5 — position monitoring & hedging
+    "hedge_orders": "id",
+    "exit_alerts": "id",
+    "position_mtm_history": "id",
 }
 
 
