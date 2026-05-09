@@ -18,13 +18,11 @@ async def run() -> None:
     from ib_insync import IB
 
     from engines.risk.engine import RiskEngine
+    from persistence.db import get_sessionmaker
 
     ib = IB()
     redis = get_async_redis()
-
-    def _positions_stub() -> list[dict]:
-        # Real position fetch (IB account + local book) lands in a later R7 PR.
-        return []
+    sessionmaker = get_sessionmaker()
 
     engine = RiskEngine(
         ib=ib,
@@ -33,7 +31,7 @@ async def run() -> None:
         ib_host=settings.IB_HOST,
         ib_port=settings.IB_PORT,
         client_id=settings.IB_CLIENT_ID,
-        fetch_positions=_positions_stub,
+        sessionmaker=sessionmaker,
     )
 
     loop = asyncio.get_running_loop()

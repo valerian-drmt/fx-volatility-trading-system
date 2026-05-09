@@ -1,33 +1,62 @@
 """Async RiskEngine — standalone service (R7 PR #5).
 
-One cycle every two seconds :
+One cycle every two seconds (configurable via ``LIVE_LOOP_INTERVAL_S``) :
 
 1. ``GET latest_spot:<symbol>`` on Redis. Skip if missing (market-data down).
 2. ``GET latest_vol_surface:<symbol>``. Skip if missing (vol-engine cold).
-3. Evaluate the current position book via the injected ``fetch_positions``
-   callable → list of dicts ({qty, strike, option_type, T, tenor, ...}).
+3. Read OPEN positions from Postgres (replaces the stub ``fetch_positions``).
 4. Aggregate Greeks (delta, gamma, vega, theta) at the current spot using
    scalar BS from ``core.pricing.bs``.
-5. Build an optional PnL curve over a spot range using the vectorised
+5. Persist a per-position row in ``position_snapshots`` (greeks columns) —
+   single ownership of greeks compute, cf. ``container_risk.md`` and the
+   PORTFOLIO_PANEL_LIVE.md L1 spec.
+6. Build an optional PnL curve over a spot range using the vectorised
    ``bs_price_vec`` from ``core.risk.greeks`` — skipped when the book is
    empty to keep the cycle snappy.
-6. ``publisher.publish_risk_update(...)`` + ``set_heartbeat("risk_engine")``.
-
-All IB I/O stays behind callables so the engine has no ``ib_insync``
-import and can be unit-tested with pure dicts.
+7. ``publisher.publish_risk_update(...)`` + ``set_heartbeat("risk_engine")``.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any, Protocol
 
 import numpy as np
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys, publisher
-from core.pricing.bs import bs_delta, bs_gamma, bs_theta, bs_vega
+from core.pricing.bs import (
+    bs_delta,
+    bs_gamma,
+    bs_implied_vol,
+    bs_price,
+    bs_theta,
+    bs_vanna,
+    bs_vega,
+    bs_volga,
+)
 from core.risk.greeks import bs_price_vec
+from persistence.models import Position, PositionSnapshot
+from shared.contracts import multiplier_for, parse_local_symbol
+
+
+def _days_to_tenor_bucket(days: int) -> str:
+    """Pick the closest pillar tenor for surface IV lookup."""
+    if days <= 30:
+        return "1M"
+    if days <= 60:
+        return "2M"
+    if days <= 90:
+        return "3M"
+    if days <= 120:
+        return "4M"
+    if days <= 150:
+        return "5M"
+    return "6M"
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +88,8 @@ class RiskEngine:
         ib_host: str,
         ib_port: int,
         client_id: int,
-        fetch_positions: Any,
+        fetch_positions: Any | None = None,
+        sessionmaker: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
         self.ib = ib
         self.redis = redis
@@ -67,8 +97,11 @@ class RiskEngine:
         self.ib_host = ib_host
         self.ib_port = ib_port
         self.client_id = client_id
-        # fetch_positions : () -> list[dict]
+        # ``fetch_positions`` (legacy callable injection — still honoured for
+        # unit tests). When None and ``sessionmaker`` is provided, positions
+        # are loaded from the DB at each cycle.
         self._fetch_positions = fetch_positions
+        self._sessionmaker = sessionmaker
         self._stop = asyncio.Event()
 
     def request_stop(self) -> None:
@@ -96,17 +129,36 @@ class RiskEngine:
     async def run_cycle(self) -> bool:
         F = await self._read_spot()
         if F is None:
-            logger.debug("risk_cycle_skipped", extra={"reason": "no_spot"})
-            return False
+            # Redis ticker may be empty when IB market-data subscription is
+            # broken (Error 1100 / weekend). Fall back to the EUR FUTURE
+            # ``marketPrice`` from this engine's own ``ib.portfolio()`` —
+            # same trick as execution-engine.position_sync.
+            F = self._spot_from_portfolio()
+            if F is None:
+                logger.debug("risk_cycle_skipped", extra={"reason": "no_spot"})
+                return False
+            logger.info("risk_spot_fallback_from_portfolio", extra={"spot": F})
 
         surface = await self._read_surface()
         if surface is None:
-            logger.debug("risk_cycle_skipped", extra={"reason": "no_surface"})
-            return False
+            # Surface empty (weekend / vol-engine gated) — keep going. The
+            # persist path falls back to implied vol via ``option_marks``,
+            # and the aggregate path uses ``FALLBACK_IV`` per ``_iv_for``.
+            surface = {}
+            logger.debug("risk_cycle_no_surface_using_fallback")
 
-        positions = self._fetch_positions() or []
+        positions = await self._load_positions()
         greeks = self._aggregate_greeks(positions, F, surface)
         pnl_curve = self._compute_pnl_curve(positions, F, surface) if positions else None
+
+        # Persist per-position greeks to DB (single source of truth, cf.
+        # container_risk.md and PORTFOLIO_PANEL_LIVE.md L1).
+        if positions and self._sessionmaker is not None:
+            try:
+                n = await self._persist_position_snapshots(positions, F, surface)
+                logger.debug("risk_persisted_snapshots", extra={"n": n})
+            except Exception:
+                logger.exception("persist_position_snapshots_failed")
 
         try:
             await publisher.publish_risk_update(
@@ -117,6 +169,240 @@ class RiskEngine:
         except Exception:
             logger.exception("publish_risk_update_failed")
             return False
+
+    async def _load_positions(self) -> list[dict]:
+        """Read OPEN positions from DB and shape them for the BS compute path.
+
+        Falls back to the injected ``fetch_positions`` callable for unit
+        tests (no DB session). Returns ``[]`` when neither path is wired.
+        """
+        if self._sessionmaker is not None:
+            return await self._load_positions_from_db()
+        if self._fetch_positions is not None:
+            return self._fetch_positions() or []
+        return []
+
+    async def _load_positions_from_db(self) -> list[dict]:
+        today = datetime.now(UTC).date()
+        async with self._sessionmaker() as db:  # type: ignore[misc]
+            rows = (await db.execute(
+                select(Position)
+            )).scalars().all()
+        out: list[dict] = []
+        for p in rows:
+            spec = parse_local_symbol(p.structure)
+            if spec is None:
+                continue  # unparseable localSymbol — skip rather than mislead the BS path
+            qty = float(p.quantity) if p.quantity is not None else 0.0
+            signed_qty = qty if p.side == "BUY" else -qty
+            right: str | None
+            if spec.option_type == "CALL":
+                right = "C"
+            elif spec.option_type == "PUT":
+                right = "P"
+            else:
+                right = None
+            dte_days = (p.expiry - today).days if p.expiry else 0
+            T = max(dte_days, 0) / 365.0
+            cost_per_unit = (
+                float(p.contract_price_entry)
+                if p.contract_price_entry is not None else 0.0
+            )
+            out.append({
+                "id": p.id,
+                "symbol": spec.symbol,
+                "instrument_type": spec.instrument_type,
+                "quantity": signed_qty,
+                "strike": spec.strike,
+                "option_type": right,
+                "T": T,
+                "tenor": _days_to_tenor_bucket(dte_days),
+                "cost_per_unit": cost_per_unit,
+                "multiplier": spec.multiplier,
+            })
+        return out
+
+    async def _persist_position_snapshots(
+        self, positions: list[dict], F: float, surface: dict
+    ) -> int:
+        """One ``position_snapshots`` row per OPEN position, greeks computed
+        at current spot/IV. ``pnl_usd`` left None here — execution-engine
+        owns the canonical ``unrealizedPNL`` from IB ``updatePortfolio``.
+
+        IV resolution order :
+          1. Surface ATM at the position's tenor pillar (preferred).
+          2. ``bs_implied_vol`` inversion of the option's mark price, read
+             from the Redis hash ``option_marks:<symbol>`` populated by
+             execution-engine. Saves us when the surface is empty (weekend
+             / vol-engine gated).
+        """
+        if not positions or self._sessionmaker is None:
+            return 0
+        # One Redis HGETALL up-front avoids N round-trips inside the loop.
+        option_marks = await self._read_option_marks()
+        contract_marks = await self._read_contract_marks()
+        unrealized_pnl = await self._read_unrealized_pnl()
+        now = datetime.now(UTC)
+        inserted = 0
+        async with self._sessionmaker() as db:
+            for pos in positions:
+                qty = float(pos.get("quantity") or 0.0)
+                instr = pos.get("instrument_type")
+                K = float(pos.get("strike") or 0.0)
+                T = float(pos.get("T") or 0.0)
+                right = pos.get("option_type")
+                tenor = pos.get("tenor", "1M")
+                cost = float(pos.get("cost_per_unit") or 0.0)
+
+                iv: float | None = None
+                delta = gamma = vega = theta = pnl = None
+                mult = float(pos.get("multiplier") or multiplier_for(pos.get("symbol")))
+
+                vanna = volga = None
+                if instr == "FUTURE":
+                    delta = qty * mult
+                    gamma = 0.0
+                    vega = 0.0
+                    theta = 0.0
+                    vanna = 0.0
+                    volga = 0.0
+                    pnl = (F - cost) * qty * mult if cost else None
+                elif right in ("C", "P") and K > 0 and T > 0:
+                    iv = self._iv_for(surface, tenor, K)
+                    if iv == FALLBACK_IV or iv is None:
+                        # Surface missing / pillar absent → invert BS on the
+                        # option's market mark for an exact implied vol.
+                        mark = option_marks.get(int(pos["id"]))
+                        if mark is not None:
+                            implied = bs_implied_vol(
+                                price=mark, F=F, K=K, T=T, right=right,
+                            )
+                            if implied is not None:
+                                iv = implied
+                    delta = qty * bs_delta(F, K, T, iv, right) * mult
+                    # Γ in $/pip = (∂²P/∂F²) × qty × mult × 10⁻⁴ — answers
+                    # "how much does Δ ($) move when spot moves by 1 pip".
+                    gamma = qty * bs_gamma(F, K, T, iv) * mult * 1e-4
+                    # bs_vega is per 1.0 abs vol → /100 for per 1 vol pt.
+                    vega = qty * bs_vega(F, K, T, iv) * mult * 0.01
+                    theta = qty * bs_theta(F, K, T, iv, right) * mult
+                    # Vanna in $/volpt = ∂Δ/∂σ × qty × mult × 0.01.
+                    vanna = qty * bs_vanna(F, K, T, iv) * mult * 0.01
+                    # Volga in $/volpt² = ∂²P/∂σ² × qty × mult × (0.01)².
+                    volga = qty * bs_volga(F, K, T, iv) * mult * (0.01 ** 2)
+                    mark_bs = bs_price(F, K, T, iv, right)
+                    pnl = (mark_bs - cost) * qty * mult if cost else None
+
+                # IB-canonical PnL beats our BS recompute when both available.
+                ib_pnl = unrealized_pnl.get(int(pos["id"]))
+                if ib_pnl is not None:
+                    pnl = ib_pnl
+                # Market price = the contract's own mark (futures price for
+                # FUT, option premium for OPT). Falls back to spot if Redis
+                # hash is empty (boot / sync gap).
+                mark = contract_marks.get(int(pos["id"]), F)
+
+                # Encoded once for both UPDATE (live row) and INSERT (snapshot copy).
+                delta_dec = Decimal(str(round(delta, 2))) if delta is not None else None
+                gamma_dec = Decimal(str(round(gamma, 2))) if gamma is not None else None
+                vega_dec = Decimal(str(round(vega, 2))) if vega is not None else None
+                theta_dec = Decimal(str(round(theta, 2))) if theta is not None else None
+                vanna_dec = Decimal(str(round(vanna, 2))) if vanna is not None else None
+                volga_dec = Decimal(str(round(volga, 2))) if volga is not None else None
+                pnl_dec = Decimal(str(round(pnl, 2))) if pnl is not None else None
+                mark_dec = Decimal(str(round(mark, 8))) if mark is not None else None
+                iv_dec = Decimal(str(round(iv, 5))) if iv is not None else None
+
+                # 1. UPDATE the live row on ``positions`` so the API can read
+                #    everything from a single row (mirror of panel E).
+                live_pos = await db.get(Position, int(pos["id"]))
+                if live_pos is None:
+                    continue
+                live_pos.market_price = mark_dec
+                live_pos.current_pnl_usd = pnl_dec
+                live_pos.delta_usd = delta_dec
+                live_pos.gamma_usd = gamma_dec
+                live_pos.vega_usd = vega_dec
+                live_pos.theta_usd = theta_dec
+                live_pos.iv = iv_dec
+                live_pos.vanna_usd = vanna_dec
+                live_pos.volga_usd = volga_dec
+
+                # 2. Snapshot = literal copy of every panel-E column at this
+                #    timestamp. Same shape as ``positions``.
+                snap = PositionSnapshot(
+                    position_id=live_pos.id,
+                    timestamp=now,
+                    structure=live_pos.structure,
+                    side=live_pos.side,
+                    tenor=live_pos.tenor,
+                    expiry=live_pos.expiry,
+                    quantity=live_pos.quantity,
+                    nominal_eur=live_pos.nominal_eur,
+                    contract_price_entry=live_pos.contract_price_entry,
+                    market_price=mark_dec,
+                    current_pnl_usd=pnl_dec,
+                    delta_usd=delta_dec,
+                    gamma_usd=gamma_dec,
+                    vega_usd=vega_dec,
+                    theta_usd=theta_dec,
+                    iv=iv_dec,
+                    vanna_usd=vanna_dec,
+                    volga_usd=volga_dec,
+                )
+                db.add(snap)
+
+                inserted += 1
+            await db.commit()
+        return inserted
+
+    def _spot_from_portfolio(self) -> float | None:
+        """Pick an EUR FUTURE ``marketPrice`` from ``ib.portfolio()`` as a
+        spot proxy when Redis is empty. Returns None if no EUR future is
+        held or the IB session is silent."""
+        try:
+            for p in (self.ib.portfolio() if hasattr(self.ib, "portfolio") else []):
+                c = getattr(p, "contract", None)
+                if c is None:
+                    continue
+                if getattr(c, "symbol", None) != "EUR":
+                    continue
+                if getattr(c, "secType", None) not in ("FUT", "CONTFUT"):
+                    continue
+                mp = getattr(p, "marketPrice", None)
+                if mp:
+                    return float(mp)
+        except Exception:
+            logger.exception("spot_from_portfolio_failed")
+        return None
+
+    async def _read_option_marks(self) -> dict[int, float]:
+        return await self._read_redis_hash_floats("option_marks:EUR")
+
+    async def _read_contract_marks(self) -> dict[int, float]:
+        return await self._read_redis_hash_floats("contract_marks:EUR")
+
+    async def _read_unrealized_pnl(self) -> dict[int, float]:
+        return await self._read_redis_hash_floats("unrealized_pnl:EUR")
+
+    async def _read_redis_hash_floats(self, key: str) -> dict[int, float]:
+        """Read a Redis hash of ``{position_id: float_string}`` populated by
+        execution-engine. Returns ``{}`` if absent / Redis errors."""
+        try:
+            raw = await self.redis.hgetall(key)
+        except Exception:
+            return {}
+        if not raw:
+            return {}
+        out: dict[int, float] = {}
+        for k, v in raw.items():
+            kk = k.decode() if isinstance(k, bytes) else k
+            vv = v.decode() if isinstance(v, bytes) else v
+            try:
+                out[int(kk)] = float(vv)
+            except (ValueError, TypeError):
+                continue
+        return out
 
     async def _read_spot(self) -> float | None:
         """Lit le spot depuis Redis. Accepte les deux formats produits par
