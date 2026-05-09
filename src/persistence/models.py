@@ -49,44 +49,39 @@ class Base(DeclarativeBase):
 
 
 class Position(Base):
+    """Open position book — one row per IB contract held.
+
+    Schema mirrors Portfolio panel section E. The IB ``localSymbol`` is the
+    single canonical key (engines parse it via
+    ``shared.contracts.parse_local_symbol`` when they need contract specs).
+    """
+
     __tablename__ = "positions"
     __table_args__ = (
-        CheckConstraint(
-            "instrument_type IN ('SPOT', 'FUTURE', 'OPTION')",
-            name="ck_positions_instrument_type",
-        ),
         CheckConstraint("side IN ('BUY', 'SELL')", name="ck_positions_side"),
-        CheckConstraint(
-            "option_type IS NULL OR option_type IN ('CALL', 'PUT')",
-            name="ck_positions_option_type",
-        ),
-        CheckConstraint(
-            "status IN ('OPEN', 'CLOSED', 'EXPIRED')",
-            name="ck_positions_status",
-        ),
     )
 
+    # Column order here mirrors the physical schema after migration 028 :
+    # exactly panel E columns + entry_timestamp + updated_at, nothing else.
     id: Mapped[int] = mapped_column(primary_key=True)
-    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
-    instrument_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    structure: Mapped[str] = mapped_column(String(20), nullable=False)
     side: Mapped[str] = mapped_column(String(4), nullable=False)
+    tenor: Mapped[str | None] = mapped_column(String(10))
+    expiry: Mapped[date | None] = mapped_column(Date)
     quantity: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
-
-    strike: Mapped[Decimal | None] = mapped_column(Numeric(10, 5))
-    maturity: Mapped[date | None] = mapped_column(Date)
-    option_type: Mapped[str | None] = mapped_column(String(4))
-
-    entry_price: Mapped[Decimal] = mapped_column(Numeric(15, 8), nullable=False)
+    nominal_eur: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    contract_price_entry: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
+    market_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
+    current_pnl_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    delta_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    gamma_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    vega_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    theta_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    iv: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
+    vanna_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    volga_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     entry_timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
-    )
-
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="OPEN")
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -104,23 +99,31 @@ class Position(Base):
 class PositionSnapshot(Base):
     __tablename__ = "position_snapshots"
 
+    # Schema mirrors ``positions`` (panel E columns) + position_id + timestamp.
+    # risk-engine writes one row per OPEN position per cycle.
     id: Mapped[int] = mapped_column(primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        ForeignKey("positions.id"), nullable=False
+        ForeignKey("positions.id", ondelete="CASCADE"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-
-    spot: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
-    iv: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
-
+    structure: Mapped[str] = mapped_column(String(20), nullable=False)
+    side: Mapped[str] = mapped_column(String(4), nullable=False)
+    tenor: Mapped[str | None] = mapped_column(String(10))
+    expiry: Mapped[date | None] = mapped_column(Date)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    nominal_eur: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    contract_price_entry: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
+    market_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
+    current_pnl_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     delta_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
-    vega_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     gamma_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    vega_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     theta_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
-
-    pnl_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    iv: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
+    vanna_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    volga_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
 
     position: Mapped[Position] = relationship(back_populates="snapshots")
 
@@ -796,6 +799,10 @@ class TradePosition(Base):
     exit_total_cost_usd: Mapped[float | None] = mapped_column(Float)
     gross_pnl_usd: Mapped[float | None] = mapped_column(Float)
     net_pnl_usd: Mapped[float | None] = mapped_column(Float)
+    # IB reconciliation (filled by execution-engine.position_sync each 30 s).
+    ib_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ib_qty_total: Mapped[int | None] = mapped_column(Integer)
+    ib_qty_diff: Mapped[int | None] = mapped_column(Integer)
 
 
 class IbConnectionState(Base):
