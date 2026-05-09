@@ -1,20 +1,20 @@
 /**
- * Step 5 — Active positions monitoring panel.
+ * Step 5 — Active positions monitor.
  *
- * Reads /api/v1/positions/active + /aggregate every 5s. No live data when
- * markets are closed — values come from the api position_monitor scheduler
- * which fills in zeroes for delta/iv when Redis surface is empty.
+ * Phase 1 (current) : single table of open positions with live P&L + greeks.
+ *  - REST /api/v1/positions/active polled every 5s.
+ *  - WS /ws/positions pushes per-cycle updates between polls.
+ *  - When markets are closed, P&L / greeks columns stay on their last
+ *    persisted MTM snapshot (or "—" if none yet).
  *
- * Layout (cf. STEP5 §5) :
- *  A. Aggregate greeks bar (top)
- *  B. Open structures table with current MTM + signal status
- *  C. Click on a row → detail strip : MTM history sparkline + alerts + hedges
+ * Aggregate strip, detail drawer, exit alerts, MTM sparkline have been
+ * deferred — they will come back in phase 2 once the table is stable.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 interface ActivePosition {
   id: number;
-  structure_id: number;
+  source: "booked" | "ib_live";
   structure_type: string | null;
   reference_tenor: string | null;
   expiry_date: string | null;
@@ -24,10 +24,6 @@ interface ActivePosition {
   opened_at: string | null;
   state: string;
   entry_premium_usd: number;
-  entry_total_cost_usd: number;
-  entry_vega_usd_per_volpt: number | null;
-  entry_gamma_usd_per_pip2: number | null;
-  entry_theta_usd_per_day: number | null;
   current_pnl_gross_usd: number | null;
   current_pnl_net_usd: number | null;
   vega_pnl_usd: number | null;
@@ -36,40 +32,17 @@ interface ActivePosition {
   current_vega_usd_per_volpt: number | null;
   current_delta_unhedged: number | null;
   last_mtm_at: string | null;
+  ib_reconciled_at: string | null;
+  ib_qty_total: number | null;
+  ib_qty_diff: number | null;
+  ib_sync_status: "fresh" | "stale" | "missing";
 }
 
-interface Aggregate {
-  n_open_positions: number;
-  total_vega_usd_per_volpt: number;
-  total_gamma_usd_per_pip2: number;
-  total_theta_usd_per_day: number;
-  total_delta_unhedged: number;
-}
-
-interface ExitAlert {
-  id: number;
-  timestamp: string;
-  rule_triggered: string;
-  action_recommended: string;
-  priority: number;
-  rule_detail: Record<string, unknown>;
-  auto_executed: boolean;
-  execution_status: string | null;
-  closing_structure_id: number | null;
-}
-
-interface MtmRow {
-  timestamp: string;
-  spot: number;
-  iv_avg_legs_pct: number | null;
-  pnl_gross_usd: number;
-  pnl_net_usd: number;
-  vega_pnl_usd: number | null;
-  gamma_pnl_usd: number | null;
-  theta_pnl_usd: number | null;
-  other_pnl_usd: number | null;
-  vega_usd_per_volpt: number | null;
-}
+const IB_BADGE: Record<ActivePosition["ib_sync_status"], { bg: string; fg: string; label: string }> = {
+  fresh:   { bg: "#1f7a3a", fg: "#fff", label: "fresh" },
+  stale:   { bg: "#c08a1a", fg: "#fff", label: "stale" },
+  missing: { bg: "#a8332a", fg: "#fff", label: "missing" },
+};
 
 const fmtUsd = (n: number | null | undefined): string =>
   n === null || n === undefined ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(0)}$`;
@@ -78,155 +51,45 @@ const fmtNum = (n: number | null | undefined, d = 2): string =>
 
 export function Step5Positions(): JSX.Element {
   const [positions, setPositions] = useState<ActivePosition[]>([]);
-  const [agg, setAgg] = useState<Aggregate | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const selectedIdRef = useRef<number | null>(null);
-  const [alerts, setAlerts] = useState<ExitAlert[]>([]);
-  const [mtmHist, setMtmHist] = useState<MtmRow[]>([]);
-  const [running, setRunning] = useState(false);
 
   const load = async () => {
     try {
-      const [r1, r2] = await Promise.all([
-        fetch("/api/v1/positions/active"),
-        fetch("/api/v1/positions/aggregate"),
-      ]);
-      if (!r1.ok || !r2.ok) throw new Error(`HTTP ${r1.status}/${r2.status}`);
-      const list = (await r1.json()) as ActivePosition[];
-      const a = (await r2.json()) as Aggregate;
+      const r = await fetch("/api/v1/positions/active");
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const list = (await r.json()) as ActivePosition[];
       setPositions(Array.isArray(list) ? list : []);
-      setAgg(a);
       setError(null);
     } catch (e) {
       setError(String(e));
     }
   };
 
-  const loadDetail = async (id: number) => {
-    try {
-      const [r1, r2] = await Promise.all([
-        fetch(`/api/v1/positions/${id}/alerts?limit=20`),
-        fetch(`/api/v1/positions/${id}/mtm-history?hours=24&limit=200`),
-      ]);
-      // Only overwrite on actual fresh data — keep last good on transient errors.
-      if (r1.ok) setAlerts(await r1.json());
-      if (r2.ok) setMtmHist(await r2.json());
-    } catch { /* keep last good */ }
-  };
-
   useEffect(() => {
     void load();
-    // 5 s poll = fallback when WS is down (or for the aggregate panel which
-    // depends on the REST endpoint). The WS subscription below trickles
-    // in finer-grained updates between polls.
     const id = window.setInterval(() => void load(), 5_000);
     return () => window.clearInterval(id);
   }, []);
 
-  // Live position_update + exit_alert feed. Failures fall back silently to
-  // the 5 s poll above.
   useEffect(() => {
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const sockets: WebSocket[] = [];
+    let ws: WebSocket | null = null;
     try {
-      const wsPos = new WebSocket(`${proto}://${window.location.host}/ws/positions`);
-      wsPos.onmessage = () => {
-        // Refresh aggregates + active list on every push. Cheap REST call ;
-        // the WS payload itself is per-position, but recomputing aggregate
-        // server-side is more reliable than diffing on the client.
-        void load();
-      };
-      sockets.push(wsPos);
-      const wsAlerts = new WebSocket(`${proto}://${window.location.host}/ws/exit_alerts`);
-      wsAlerts.onmessage = (ev) => {
-        try {
-          const a = JSON.parse(ev.data);
-          const sel = selectedIdRef.current;
-          if (sel != null && a.position_id === sel) {
-            void loadDetail(sel);
-          }
-        } catch { /* nop */ }
-      };
-      sockets.push(wsAlerts);
-    } catch { /* nop : poll fallback handles it */ }
-    return () => { sockets.forEach((s) => { try { s.close(); } catch { /* nop */ } }); };
-    // selectedId intentionally not in deps : we want a single subscription
-    // for the page lifetime ; the alerts handler reads selectedId at fire time.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      ws = new WebSocket(`${proto}://${window.location.host}/ws/positions`);
+      ws.onmessage = () => void load();
+    } catch { /* poll fallback */ }
+    return () => { try { ws?.close(); } catch { /* nop */ } };
   }, []);
-
-  useEffect(() => {
-    selectedIdRef.current = selectedId;
-    if (selectedId !== null) void loadDetail(selectedId);
-  }, [selectedId]);
-
-  const triggerCycle = async () => {
-    setRunning(true);
-    try {
-      const r = await fetch("/api/v1/positions/monitor/run-once", { method: "POST" });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      await load();
-      if (selectedId) await loadDetail(selectedId);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  const closeManual = async (id: number) => {
-    if (!window.confirm(`Mark position ${id} for manual close (mock)?`)) return;
-    try {
-      const r = await fetch(`/api/v1/positions/${id}/close-manual`, { method: "POST" });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      await load();
-    } catch (e) {
-      setError(String(e));
-    }
-  };
 
   return (
     <div style={{ padding: 16, fontFamily: "system-ui, sans-serif" }}>
       <h2>Step 5 — Active positions monitor</h2>
-      {error && <div style={{ color: "crimson", marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: "crimson", marginBottom: 8 }}>Error: {error}</div>}
 
-      {/* Section A : aggregate greeks */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(5, 1fr)",
-          gap: 12,
-          padding: 12,
-          background: "#f4f4f8",
-          borderRadius: 8,
-          marginBottom: 16,
-        }}
-      >
-        <Stat label="Open positions" value={agg ? String(agg.n_open_positions) : "—"} />
-        <Stat label="Σ Vega ($/volpt)" value={fmtNum(agg?.total_vega_usd_per_volpt, 0)} />
-        <Stat label="Σ Gamma ($/pip²)" value={fmtNum(agg?.total_gamma_usd_per_pip2, 3)} />
-        <Stat label="Σ Theta ($/day)" value={fmtNum(agg?.total_theta_usd_per_day, 0)} />
-        <Stat label="Σ Delta (unhedged)" value={fmtNum(agg?.total_delta_unhedged, 3)} />
-      </div>
-
-      <div style={{ marginBottom: 12 }}>
-        <button
-          onClick={() => void triggerCycle()}
-          disabled={running}
-          style={{ padding: "6px 12px", marginRight: 8 }}
-        >
-          {running ? "Running…" : "Run monitor cycle now"}
-        </button>
-        <span style={{ color: "#666", fontSize: 12 }}>
-          Background loop runs every 60s. Manual trigger for ad-hoc refresh.
-        </span>
-      </div>
-
-      {/* Section B : positions table */}
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
         <thead style={{ background: "#e8e8ec" }}>
           <tr>
+            <th style={th}>Source</th>
             <th style={th}>ID</th>
             <th style={th}>Structure</th>
             <th style={th}>Tenor</th>
@@ -236,15 +99,18 @@ export function Step5Positions(): JSX.Element {
             <th style={th}>vega P&L</th>
             <th style={th}>gamma P&L</th>
             <th style={th}>theta P&L</th>
+            <th style={th}>Vega ($/volpt)</th>
             <th style={th}>Δ unhedged</th>
             <th style={th}>State</th>
-            <th style={th}>Actions</th>
+            <th style={th}>IB qty</th>
+            <th style={th}>IB sync</th>
+            <th style={th}>Last MTM</th>
           </tr>
         </thead>
         <tbody>
           {positions.length === 0 && (
             <tr>
-              <td colSpan={12} style={{ padding: 12, textAlign: "center", color: "#999" }}>
+              <td colSpan={16} style={{ padding: 12, textAlign: "center", color: "#999" }}>
                 No open positions. Submit a trade in Step 3 to see one here.
               </td>
             </tr>
@@ -257,15 +123,21 @@ export function Step5Positions(): JSX.Element {
                 ? "#0a7a0a"
                 : "#c83232";
             return (
-              <tr
-                key={p.id}
-                onClick={() => setSelectedId(p.id)}
-                style={{
-                  borderTop: "1px solid #ddd",
-                  cursor: "pointer",
-                  background: selectedId === p.id ? "#f9f5e0" : undefined,
-                }}
-              >
+              <tr key={`${p.source}-${p.id}`} style={{ borderTop: "1px solid #ddd" }}>
+                <td style={td}>
+                  <span
+                    style={{
+                      background: p.source === "booked" ? "#3a5a8a" : "#5a3a8a",
+                      color: "#fff",
+                      padding: "1px 6px",
+                      borderRadius: 3,
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {p.source === "booked" ? "Step3" : "IB"}
+                  </span>
+                </td>
                 <td style={td}>{p.id}</td>
                 <td style={td}>{p.structure_type ?? "—"}</td>
                 <td style={td}>{p.reference_tenor ?? "—"}</td>
@@ -284,72 +156,44 @@ export function Step5Positions(): JSX.Element {
                 <td style={td}>{fmtUsd(p.vega_pnl_usd)}</td>
                 <td style={td}>{fmtUsd(p.gamma_pnl_usd)}</td>
                 <td style={td}>{fmtUsd(p.theta_pnl_usd)}</td>
+                <td style={td}>{fmtNum(p.current_vega_usd_per_volpt, 0)}</td>
                 <td style={td}>{fmtNum(p.current_delta_unhedged, 3)}</td>
                 <td style={td}>{p.state}</td>
                 <td style={td}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void closeManual(p.id);
+                  {p.ib_qty_total ?? "—"}
+                  {p.ib_qty_diff != null && p.ib_qty_diff !== 0 && (
+                    <span style={{ color: "#c83232", marginLeft: 4 }}>
+                      (Δ{p.ib_qty_diff > 0 ? "+" : ""}{p.ib_qty_diff})
+                    </span>
+                  )}
+                </td>
+                <td style={td}>
+                  <span
+                    style={{
+                      background: IB_BADGE[p.ib_sync_status].bg,
+                      color: IB_BADGE[p.ib_sync_status].fg,
+                      padding: "1px 6px",
+                      borderRadius: 3,
+                      fontSize: 11,
+                      fontWeight: 600,
                     }}
-                    style={{ fontSize: 11, padding: "2px 6px" }}
-                    disabled={p.state !== "open"}
+                    title={
+                      p.ib_reconciled_at
+                        ? `last reconcile: ${new Date(p.ib_reconciled_at).toLocaleString()}`
+                        : "never reconciled — execution-engine offline?"
+                    }
                   >
-                    Close
-                  </button>
+                    {IB_BADGE[p.ib_sync_status].label}
+                  </span>
+                </td>
+                <td style={td}>
+                  {p.last_mtm_at ? new Date(p.last_mtm_at).toLocaleTimeString() : "—"}
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-
-      {/* Section C : detail panel for the selected position */}
-      {selectedId !== null && (
-        <div
-          style={{
-            marginTop: 24,
-            padding: 12,
-            background: "#fafafa",
-            borderRadius: 8,
-            border: "1px solid #ddd",
-          }}
-        >
-          <h3 style={{ margin: "0 0 8px 0" }}>Detail — position #{selectedId}</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <div>
-              <h4 style={{ margin: "8px 0" }}>Exit alerts</h4>
-              {alerts.length === 0 && <div style={{ color: "#999" }}>No alerts.</div>}
-              {alerts.map((a) => (
-                <div
-                  key={a.id}
-                  style={{
-                    padding: "4px 6px",
-                    marginBottom: 4,
-                    background:
-                      a.action_recommended === "EXIT" ? "#fde6e6" : "#fdf6d3",
-                    fontSize: 12,
-                  }}
-                >
-                  <b>{a.rule_triggered}</b> → {a.action_recommended} (p={a.priority}) ·{" "}
-                  {new Date(a.timestamp).toLocaleString()} ·{" "}
-                  {a.execution_status ?? "no action"}
-                </div>
-              ))}
-            </div>
-            <div>
-              <h4 style={{ margin: "8px 0" }}>MTM history (last {mtmHist.length} pts)</h4>
-              <Sparkline points={mtmHist.map((m) => m.pnl_gross_usd)} />
-              <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>
-                P&L gross min ={" "}
-                {fmtUsd(mtmHist.length ? Math.min(...mtmHist.map((m) => m.pnl_gross_usd)) : null)}
-                {" · max = "}
-                {fmtUsd(mtmHist.length ? Math.max(...mtmHist.map((m) => m.pnl_gross_usd)) : null)}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -365,36 +209,3 @@ const td: React.CSSProperties = {
   padding: "4px 8px",
   fontFamily: "ui-monospace, monospace",
 };
-
-function Stat({ label, value }: { label: string; value: string }): JSX.Element {
-  return (
-    <div>
-      <div style={{ fontSize: 11, color: "#666", textTransform: "uppercase" }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 600 }}>{value}</div>
-    </div>
-  );
-}
-
-function Sparkline({ points }: { points: number[] }): JSX.Element {
-  if (points.length < 2) {
-    return <div style={{ fontSize: 12, color: "#999" }}>Need ≥2 points to draw.</div>;
-  }
-  const w = 320;
-  const h = 60;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const range = max - min || 1;
-  const xs = (i: number) => (i / (points.length - 1)) * w;
-  const ys = (v: number) => h - ((v - min) / range) * h;
-  const path = points.map((v, i) => `${i === 0 ? "M" : "L"}${xs(i).toFixed(1)},${ys(v).toFixed(1)}`).join(" ");
-  // Zero line
-  const zeroY = max < 0 || min > 0 ? null : ys(0);
-  return (
-    <svg width={w} height={h} style={{ background: "#fff", border: "1px solid #ddd" }}>
-      {zeroY !== null && (
-        <line x1={0} y1={zeroY} x2={w} y2={zeroY} stroke="#ccc" strokeDasharray="2 2" />
-      )}
-      <path d={path} stroke="#3060c0" strokeWidth={1.5} fill="none" />
-    </svg>
-  );
-}
