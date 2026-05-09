@@ -33,6 +33,18 @@ from ui.main_window import MainWindow
 logger = logging.getLogger("controller")
 
 
+def _engines_in_process_enabled() -> bool:
+    """Return True unless ``ENGINES_IN_PROCESS`` is explicitly set to false.
+
+    Default True preserves the legacy PyQt behaviour — R7 introduces the
+    opt-out so operators who migrated to the standalone engine containers
+    can tell the Controller to stop launching duplicate in-process engines
+    (which would collide on IB clientIds).
+    """
+    val = os.environ.get("ENGINES_IN_PROCESS", "true").strip().lower()
+    return val not in ("0", "false", "no", "off")
+
+
 UI_QUEUE_POLL_MS = 50
 ENGINE_POLL_MS = 1000
 ACCOUNT_SNAPSHOT_INTERVAL_S = 10.0
@@ -265,7 +277,21 @@ class Controller(SettingsMixin):
     # ── Engine Pool (Thread 1 + 2 + 3) ──
 
     def _start_engine_pool(self) -> None:
-        """Create and start all 3 worker threads plus the optional DB writer."""
+        """Create and start all 3 worker threads plus the optional DB writer.
+
+        R7 : when ``ENGINES_IN_PROCESS`` is set to ``"false"`` (any case), the
+        Controller **skips** the in-process engines entirely — ticks / vol /
+        risk are expected to come from the standalone R7 containers via
+        Redis. The UI consumes the same Redis keys it already reads on the
+        read path, so no extra wiring is needed here.
+        """
+        if not _engines_in_process_enabled():
+            self._log(
+                "[R7] ENGINES_IN_PROCESS=false — engine threads disabled, "
+                "consuming ticks / vol / risk from Redis (standalone services)."
+            )
+            return
+
         self._vol_output_queue = queue.Queue()
         self._risk_output_queue = queue.Queue()
 
