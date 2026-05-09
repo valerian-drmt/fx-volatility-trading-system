@@ -1,31 +1,20 @@
-# ruff: noqa: E402
 import os
 import sys
 from pathlib import Path
 
 import pytest
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
 pytest_plugins = ["pytester"]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 # R7 introduces top-level packages (core/, shared/, services/) alongside
-# src/. Both paths must resolve for legacy + new imports.
+# src/. Both paths must resolve for legacy + new imports. PyQt5 was
+# dropped in R8 PR #1 so the qapp fixture and QT_QPA_PLATFORM setup
+# are no longer needed.
 for _extra in (SRC_DIR, PROJECT_ROOT):
     if str(_extra) not in sys.path:
         sys.path.insert(0, str(_extra))
-
-from PyQt5.QtWidgets import QApplication
-
-
-@pytest.fixture(scope="session")
-def qapp():
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication([])
-    return app
 
 
 def pytest_collection_modifyitems(config, items):
