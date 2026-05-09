@@ -4,9 +4,10 @@ Pipeline :
   - **sync_positions_from_ib** : fait l'upsert IB → DB. Match par tuple
     (symbol, instrument_type, strike, maturity, option_type) — pas besoin
     d'ajouter une colonne con_id à Position.
-  - **insert_snapshots** : pour chaque OPEN position, insère un row dans
-    position_snapshots avec spot, iv, greeks (BSM pour OPT, lin pour FUT),
-    et P&L unrealized.
+  - **publish_portfolio_to_redis** : pour chaque OPEN position, publie sur
+    Redis hashes (contract_marks / option_marks / unrealized_pnl) les
+    données IB-canoniques. Aucune écriture DB ici — risk-engine est le seul
+    writer de ``position_snapshots`` (cf. PORTFOLIO_PANEL_LIVE.md).
 
 Lance au startup api + via un loop périodique (30s).
 """
@@ -15,16 +16,23 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from redis import asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from core.pricing.bs import bs_delta, bs_gamma, bs_theta, bs_vega
 from engines.execution.order_executor import OrderExecutor
-from persistence.models import AccountSnap, Order, Position, PositionSnapshot, Trade
+from persistence.models import (
+    AccountSnap,
+    Order,
+    Position,
+    StructureOrder,
+    Trade,
+    TradePosition,
+)
+from shared.contracts import multiplier_for, parse_local_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -54,18 +62,43 @@ def _expiry_to_date(s: str | None) -> date | None:
         return None
 
 
-def _ib_position_key(p: dict) -> tuple:
-    return (
-        p.get("symbol"),
-        _sec_type_to_instrument_type(p.get("sec_type", "")),
-        Decimal(str(p["strike"])) if p.get("strike") else None,
-        _expiry_to_date(p.get("expiry")),
-        _right_to_option_type(p.get("right")),
-    )
+def _tenor_bucket(maturity: date | None) -> str | None:
+    """Closest FX OTC tenor pillar for ``maturity`` (1W / 2W / 1M / ... / 2Y+).
+    Mirrors the same bucketing used by the API's ``_tenor_bucket`` so the
+    persisted column matches what the panel computes on the fly."""
+    if maturity is None:
+        return None
+    today = datetime.now(UTC).date()
+    days = (maturity - today).days
+    if days < 0:
+        return "expired"
+    if days <= 10:
+        return "1W"
+    if days <= 21:
+        return "2W"
+    if days <= 45:
+        return "1M"
+    if days <= 75:
+        return "2M"
+    if days <= 105:
+        return "3M"
+    if days <= 165:
+        return "6M"
+    if days <= 270:
+        return "9M"
+    if days <= 460:
+        return "1Y"
+    return "2Y+"
 
 
-def _db_position_key(p: Position) -> tuple:
-    return (p.symbol, p.instrument_type, p.strike, p.maturity, p.option_type)
+def _ib_position_key(p: dict) -> str | None:
+    """Single canonical key = IB ``localSymbol`` (e.g. "6EM6", "EUUN6 C1170")."""
+    ls = p.get("local_symbol")
+    return ls if ls else None
+
+
+def _db_position_key(p: Position) -> str | None:
+    return p.structure
 
 
 async def _read_spot_from_redis(redis: aioredis.Redis | None, symbol: str = "EURUSD") -> float | None:
@@ -88,32 +121,6 @@ async def _read_spot_from_redis(redis: aioredis.Redis | None, symbol: str = "EUR
             return None
 
 
-async def _read_atm_iv_from_redis(redis: aioredis.Redis | None, tenor_days: int) -> float | None:
-    """Closest ATM IV from latest_vol_surface (best-effort, retourne None
-    si surface absente ou tenor pas trouvé). IV en décimal (0.06 = 6%)."""
-    if redis is None:
-        return None
-    try:
-        raw = await redis.get("latest_vol_surface:EURUSD")
-    except Exception:
-        return None
-    if raw is None:
-        return None
-    try:
-        payload = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
-        surface = payload.get("surface", {})
-    except (ValueError, TypeError):
-        return None
-    # Pick closest tenor by DTE.
-    tenor_to_days = {"1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180}
-    best_tenor = min(tenor_to_days.keys(), key=lambda t: abs(tenor_to_days[t] - tenor_days))
-    pillar = surface.get(best_tenor) or {}
-    atm = pillar.get("atm") if isinstance(pillar, dict) else None
-    if isinstance(atm, dict) and isinstance(atm.get("iv"), (int, float)):
-        return float(atm["iv"])
-    return None
-
-
 async def sync_positions_from_ib(
     db: AsyncSession,
     executor: OrderExecutor,
@@ -125,148 +132,151 @@ async def sync_positions_from_ib(
 
     ib_positions_raw = await executor.list_positions()
     ib_active = [p for p in ib_positions_raw if abs(p.get("position", 0)) > 0]
-    ib_by_key = {_ib_position_key(p): p for p in ib_active}
+    # Single canonical key — IB ``localSymbol``. We skip rows where IB didn't
+    # send a localSymbol (defensive ; should not happen in practice).
+    ib_by_key: dict[str, dict] = {}
+    for p in ib_active:
+        k = _ib_position_key(p)
+        if k:
+            ib_by_key[k] = p
 
     db_rows = (await db.execute(
-        select(Position).where(Position.status == "OPEN")
+        select(Position)
     )).scalars().all()
-    db_by_key = {_db_position_key(p): p for p in db_rows}
+    db_by_key: dict[str, Position] = {}
+    for p in db_rows:
+        k = _db_position_key(p)
+        if k:
+            db_by_key[k] = p
 
     now = datetime.now(UTC)
     opened = 0
     unchanged = 0
-    for key, ib_pos in ib_by_key.items():
+    for local_sym, ib_pos in ib_by_key.items():
         qty = abs(Decimal(str(ib_pos["position"])))
         side = "BUY" if ib_pos["position"] > 0 else "SELL"
         avg_cost = Decimal(str(ib_pos.get("avg_cost", 0)))
-        if key in db_by_key:
-            row = db_by_key[key]
+        # Spec resolved from the IB localSymbol — single source of truth for
+        # multiplier / strike / option_type. Fallback : raw IB dict fields if
+        # the localSymbol doesn't match the known patterns.
+        spec = parse_local_symbol(local_sym)
+        if spec is not None:
+            mult = spec.multiplier
+        else:
+            mult = multiplier_for(ib_pos.get("symbol"))
+        maturity = _expiry_to_date(ib_pos.get("expiry"))
+        nominal = qty * Decimal(str(mult))
+        cp_entry = (avg_cost / Decimal(str(mult))) if avg_cost else None
+        tenor = _tenor_bucket(maturity)
+        if local_sym in db_by_key:
+            row = db_by_key[local_sym]
             if row.quantity != qty or row.side != side:
                 row.quantity = qty
                 row.side = side
-                row.entry_price = avg_cost
             else:
                 unchanged += 1
+            row.expiry = maturity
+            row.tenor = tenor
+            row.nominal_eur = nominal
+            row.contract_price_entry = cp_entry
         else:
-            symbol, instrument_type, strike, maturity, option_type = key
             row = Position(
-                symbol=symbol or "",
-                instrument_type=instrument_type,
+                structure=local_sym,
                 side=side,
+                tenor=tenor,
                 quantity=qty,
-                strike=strike,
-                maturity=maturity,
-                option_type=option_type,
-                entry_price=avg_cost,
+                expiry=maturity,
+                nominal_eur=nominal,
+                contract_price_entry=cp_entry,
                 entry_timestamp=now,
-                status="OPEN",
             )
             db.add(row)
             opened += 1
 
-    # Close DB rows that no longer have an IB counterpart. Le timestamp et
-    # le price de fermeture sont disponibles dans le dernier trade lié à
-    # cette position (cf. table `trades`).
+    # Closed positions = simply DELETE the row. The audit trail lives in
+    # ``trades`` (fills) and ``position_snapshots`` (history).
     closed = 0
     for key, db_row in db_by_key.items():
         if key not in ib_by_key:
-            db_row.status = "CLOSED"
+            await db.delete(db_row)
             closed += 1
 
     await db.commit()
     return {"synced": len(ib_active), "opened": opened, "closed": closed, "unchanged": unchanged}
 
 
-def _compute_position_metrics(
-    pos: Position,
-    spot: float | None,
-    iv: float | None,
-) -> dict:
-    """Calcule spot/iv/greeks/pnl pour un Position. Retourne dict de Decimals."""
-    out: dict = {"spot": None, "iv": None, "delta_usd": None, "vega_usd": None,
-                 "gamma_usd": None, "theta_usd": None, "pnl_usd": None}
-    if spot is None:
-        return out
-    out["spot"] = Decimal(str(spot))
-
-    qty = float(pos.quantity)
-    sign = 1.0 if pos.side == "BUY" else -1.0
-    mult = float(EUR_MULTIPLIER)
-    # entry_price stocke avg_cost = unit_price × multiplier ⇒ unit_price = entry_price / mult.
-    unit_entry = float(pos.entry_price) / mult if pos.entry_price else 0.0
-
-    if pos.instrument_type == "FUTURE":
-        # Future : delta = ±1 par contrat, gamma/vega/theta = 0.
-        out["delta_usd"] = Decimal(str(round(sign * qty * mult, 2)))
-        out["gamma_usd"] = Decimal("0")
-        out["vega_usd"] = Decimal("0")
-        out["theta_usd"] = Decimal("0")
-        pnl = (spot - unit_entry) * qty * mult * sign
-        out["pnl_usd"] = Decimal(str(round(pnl, 2)))
-        return out
-
-    if pos.instrument_type == "OPTION" and iv is not None and pos.strike and pos.maturity:
-        K = float(pos.strike)
-        right = "C" if pos.option_type == "CALL" else "P"
-        T = max(0.001, (pos.maturity - datetime.now(UTC).date()).days / 365.0)
-        F = spot
-        d = bs_delta(F, K, T, iv, right)
-        g = bs_gamma(F, K, T, iv)
-        v = bs_vega(F, K, T, iv)
-        th = bs_theta(F, K, T, iv, right)
-        out["iv"] = Decimal(str(round(iv, 5)))
-        out["delta_usd"] = Decimal(str(round(d * sign * qty * mult, 2)))
-        out["gamma_usd"] = Decimal(str(round(g * sign * qty * mult, 2)))
-        # bs_vega est par 1.0 abs vol → diviser par 100 pour avoir par 1 vol pt.
-        out["vega_usd"] = Decimal(str(round(v * sign * qty * mult * 0.01, 2)))
-        out["theta_usd"] = Decimal(str(round(th * sign * qty * mult, 2)))
-        # Pnl unrealized : mark BS courant − unit_entry, le tout × qty × mult × sign.
-        from core.pricing.bs import bs_price
-        mark = bs_price(F, K, T, iv, right)
-        pnl = (mark - unit_entry) * qty * mult * sign
-        out["pnl_usd"] = Decimal(str(round(pnl, 2)))
-    return out
-
-
-async def insert_snapshots(
+async def publish_portfolio_to_redis(
     db: AsyncSession,
     executor: OrderExecutor,
     redis: aioredis.Redis | None = None,
-) -> int:
-    """Insert one PositionSnapshot per OPEN position with full metrics."""
-    if not executor.is_connected():
-        return 0
+) -> dict:
+    """Read ``ib.portfolio()`` and publish per-contract data on Redis hashes :
+
+      contract_marks:EUR     → {position_id: marketPrice}    (universal)
+      option_marks:EUR       → {position_id: marketPrice}    (OPTIONs only, for BS implied vol)
+      unrealized_pnl:EUR     → {position_id: unrealizedPNL}  (IB-canonical PnL)
+
+    No DB writes — that's risk-engine's job. The hashes are TTL'd to 600 s so
+    a stuck publisher is caught by the API freshness badge.
+    """
+    if not executor.is_connected() or redis is None:
+        return {"published": 0, "error": "ib_not_connected"}
     db_rows = (await db.execute(
-        select(Position).where(Position.status == "OPEN")
+        select(Position)
     )).scalars().all()
     if not db_rows:
-        return 0
+        return {"published": 0}
 
-    spot = await _read_spot_from_redis(redis)
-    now = datetime.now(UTC)
-    inserted = 0
-    for row in db_rows:
-        # Pour les options, lookup ATM IV au tenor le plus proche.
-        iv = None
-        if row.instrument_type == "OPTION" and row.maturity:
-            dte = max(1, (row.maturity - now.date()).days)
-            iv = await _read_atm_iv_from_redis(redis, dte)
-        m = _compute_position_metrics(row, spot, iv)
-        snap = PositionSnapshot(
-            position_id=row.id,
-            timestamp=now,
-            spot=m["spot"],
-            iv=m["iv"],
-            delta_usd=m["delta_usd"],
-            vega_usd=m["vega_usd"],
-            gamma_usd=m["gamma_usd"],
-            theta_usd=m["theta_usd"],
-            pnl_usd=m["pnl_usd"],
-        )
-        db.add(snap)
-        inserted += 1
-    await db.commit()
-    return inserted
+    # Key by IB ``localSymbol`` — same canonical id as DB ``positions.structure``.
+    portfolio_by_key: dict[str, dict] = {}
+    try:
+        ib = executor._ib  # type: ignore[attr-defined]
+        for p in (ib.portfolio() if ib else []):
+            ls = getattr(p.contract, "localSymbol", None)
+            if not ls:
+                continue
+            portfolio_by_key[ls] = {
+                "marketPrice": float(p.marketPrice) if p.marketPrice else None,
+                "unrealizedPNL": float(p.unrealizedPNL) if p.unrealizedPNL else None,
+            }
+    except Exception:
+        logger.exception("portfolio_lookup_failed")
+        return {"published": 0, "error": "portfolio_lookup_failed"}
+
+    contract_marks: dict[str, str] = {}
+    option_marks: dict[str, str] = {}
+    unrealized_pnl: dict[str, str] = {}
+    for db_pos in db_rows:
+        pf = portfolio_by_key.get(db_pos.structure or "")
+        if not pf:
+            continue
+        if pf.get("marketPrice") is not None:
+            contract_marks[str(db_pos.id)] = str(pf["marketPrice"])
+            spec = parse_local_symbol(db_pos.structure)
+            if spec is not None and spec.instrument_type == "OPTION":
+                option_marks[str(db_pos.id)] = str(pf["marketPrice"])
+        if pf.get("unrealizedPNL") is not None:
+            unrealized_pnl[str(db_pos.id)] = str(pf["unrealizedPNL"])
+
+    try:
+        if contract_marks:
+            await redis.hset("contract_marks:EUR", mapping=contract_marks)
+            await redis.expire("contract_marks:EUR", 600)
+        if option_marks:
+            await redis.hset("option_marks:EUR", mapping=option_marks)
+            await redis.expire("option_marks:EUR", 600)
+        if unrealized_pnl:
+            await redis.hset("unrealized_pnl:EUR", mapping=unrealized_pnl)
+            await redis.expire("unrealized_pnl:EUR", 600)
+    except Exception:
+        logger.exception("portfolio_redis_publish_failed")
+        return {"published": 0, "error": "redis_publish_failed"}
+
+    return {
+        "published": len(contract_marks),
+        "options": len(option_marks),
+        "pnls": len(unrealized_pnl),
+    }
 
 
 async def sync_orders_from_ib(db: AsyncSession, executor: OrderExecutor) -> dict:
@@ -318,20 +328,18 @@ async def sync_trades_from_ib(db: AsyncSession, executor: OrderExecutor) -> dict
     """Insert one Trade row per IB fill (filled order).
 
     Schema : 1 row par IB Trade qui a fillé. UNIQUE sur ib_order_id (str).
-    On link au position_id via le tuple (symbol, instrument_type, strike,
-    maturity, option_type) — best-effort, peut être None si la position a
-    déjà été fermée.
+    Match sur ``c.localSymbol`` (canonical key, same as ``positions.structure``).
     """
     if not executor.is_connected():
         return {"synced": 0, "inserted": 0, "error": "ib_not_connected"}
     ib = executor._ib  # type: ignore[attr-defined]
     trades = ib.trades() if ib else []
 
-    # Index OPEN positions par tuple pour le matching position_id.
+    # Index OPEN positions par localSymbol.
     pos_rows = (await db.execute(
-        select(Position).where(Position.status == "OPEN")
+        select(Position)
     )).scalars().all()
-    pos_by_key = {_db_position_key(p): p for p in pos_rows}
+    pos_by_key: dict[str, Position] = {p.structure: p for p in pos_rows if p.structure}
 
     inserted = 0
     for t in trades:
@@ -347,15 +355,7 @@ async def sync_trades_from_ib(db: AsyncSession, executor: OrderExecutor) -> dict
         if existing is not None:
             continue  # déjà insert
 
-        # Match position par tuple
-        key = (
-            c.symbol,
-            _sec_type_to_instrument_type(c.secType),
-            Decimal(str(c.strike)) if c.strike else None,
-            _expiry_to_date(c.lastTradeDateOrContractMonth),
-            _right_to_option_type(c.right),
-        )
-        position = pos_by_key.get(key)
+        position = pos_by_key.get(getattr(c, "localSymbol", "") or "")
 
         # Timestamp du dernier fill connu, sinon maintenant.
         ts = max((f.time for f in t.fills), default=datetime.now(UTC)) if t.fills else datetime.now(UTC)
@@ -393,7 +393,7 @@ async def insert_account_snap(db: AsyncSession, executor: OrderExecutor) -> bool
         return False
 
     open_count = (await db.execute(
-        select(Position).where(Position.status == "OPEN")
+        select(Position)
     )).scalars().all()
 
     snap = AccountSnap(
@@ -427,6 +427,95 @@ def _pick(summary: dict, aliases: list[str]) -> Decimal | None:
     return None
 
 
+def _structure_order_to_ib_key(leg: StructureOrder) -> str | None:
+    """Same canonical key as :func:`_ib_position_key` — IB ``localSymbol`` —
+    so a leg booked via Step 3 can be matched to the IB-synced position row.
+
+    Reconstructs the localSymbol from the leg's contract attributes ; relies
+    on ``shared.contracts`` patterns (6E/M6E for futures, EUU for options).
+    """
+    if not leg.contract_expiry:
+        return None
+    try:
+        month_letter = "FGHJKMNQUVXZ"[leg.contract_expiry.month - 1]
+        year_digit = str(leg.contract_expiry.year)[-1]
+    except (AttributeError, IndexError):
+        return None
+    contract_type = (leg.contract_type or "").lower()
+    if contract_type == "future":
+        cls = "M6E" if leg.contract_symbol == "M6E" else "6E"
+        return f"{cls}{month_letter}{year_digit}"
+    if contract_type in ("call", "put") and leg.contract_strike:
+        right = "C" if contract_type == "call" else "P"
+        strike_code = f"{int(float(leg.contract_strike) * 1000):04d}"
+        return f"EUU{month_letter}{year_digit} {right}{strike_code}"
+    return None
+
+
+async def reconcile_trade_positions(
+    db: AsyncSession,
+    executor: OrderExecutor,
+) -> dict:
+    """Match each open `trade_position` leg to IB positions and persist
+    ``ib_reconciled_at`` / ``ib_qty_total`` / ``ib_qty_diff``.
+
+    Matching is keyed on the contract tuple
+    ``(symbol, instrument_type, strike, maturity, option_type)``.
+
+    A booked structure (e.g. straddle = 2 legs) reconciles to the SUM of
+    abs(qty) across IB rows that match any of its legs. ``ib_qty_diff``
+    is ``booked − ib_total`` (positive ⇒ IB short of expected).
+
+    Skips silently if IB is offline (leaves ``ib_reconciled_at`` untouched
+    so the frontend can colour the badge "stale" / "missing").
+    """
+    if not executor.is_connected():
+        return {"reconciled": 0, "error": "ib_not_connected"}
+
+    ib_positions_raw = await executor.list_positions()
+    ib_active = [p for p in ib_positions_raw if abs(p.get("position", 0)) > 0]
+    ib_qty_by_key: dict[str, int] = {}
+    for p in ib_active:
+        key = _ib_position_key(p)
+        if key is None:
+            continue
+        ib_qty_by_key[key] = ib_qty_by_key.get(key, 0) + abs(int(p["position"]))
+
+    open_trade_positions = (await db.execute(
+        select(TradePosition).where(TradePosition.state == "open")
+    )).scalars().all()
+
+    now = datetime.now(UTC)
+    reconciled = 0
+    for tp in open_trade_positions:
+        legs = (await db.execute(
+            select(StructureOrder).where(
+                StructureOrder.structure_id == tp.structure_id,
+                StructureOrder.order_role == "entry",
+            )
+        )).scalars().all()
+        if not legs:
+            continue
+        booked_qty_total = sum(int(leg.qty_filled or leg.qty or 0) for leg in legs)
+        ib_qty_total = 0
+        for leg in legs:
+            key = _structure_order_to_ib_key(leg)
+            if key is not None:
+                ib_qty_total += ib_qty_by_key.get(key, 0)
+        tp.ib_reconciled_at = now
+        tp.ib_qty_total = ib_qty_total
+        tp.ib_qty_diff = booked_qty_total - ib_qty_total
+        reconciled += 1
+        if ib_qty_total == 0 and tp.opened_at < now - timedelta(hours=1):
+            logger.warning(
+                "trade_position_unreconciled id=%d opened_at=%s booked_qty=%d",
+                tp.id, tp.opened_at.isoformat(), booked_qty_total,
+            )
+
+    await db.commit()
+    return {"reconciled": reconciled}
+
+
 async def position_sync_loop(
     session_maker: async_sessionmaker[AsyncSession],
     executor: OrderExecutor,
@@ -441,7 +530,11 @@ async def position_sync_loop(
             sync = await sync_positions_from_ib(db, executor, redis)
             orders = await sync_orders_from_ib(db, executor)
             trades = await sync_trades_from_ib(db, executor)
-            logger.info("position_sync_initial sync=%s orders=%s trades=%s", sync, orders, trades)
+            recon = await reconcile_trade_positions(db, executor)
+            logger.info(
+                "position_sync_initial sync=%s orders=%s trades=%s recon=%s",
+                sync, orders, trades, recon,
+            )
     except Exception:
         logger.exception("position_sync_initial_failed")
 
@@ -450,9 +543,10 @@ async def position_sync_loop(
             await asyncio.sleep(interval_s)
             async with session_maker() as db:
                 sync = await sync_positions_from_ib(db, executor, redis)
-                snaps = await insert_snapshots(db, executor, redis)
+                snaps = await publish_portfolio_to_redis(db, executor, redis)
                 orders = await sync_orders_from_ib(db, executor)
                 trades = await sync_trades_from_ib(db, executor)
+                recon = await reconcile_trade_positions(db, executor)
                 # Account snap : 1 row par tick (cohérent avec les autres
                 # tables, alimente account_snaps à 1s).
                 acct = await insert_account_snap(db, executor)
@@ -465,8 +559,8 @@ async def position_sync_loop(
                 except Exception:
                     logger.exception("heartbeat_write_failed")
             logger.info(
-                "position_sync_tick sync=%s snapshots=%s orders=%s trades=%s acct=%s",
-                sync, snaps, orders, trades, acct,
+                "position_sync_tick sync=%s snapshots=%s orders=%s trades=%s recon=%s acct=%s",
+                sync, snaps, orders, trades, recon, acct,
             )
         except asyncio.CancelledError:
             logger.info("position_sync_loop_cancelled")

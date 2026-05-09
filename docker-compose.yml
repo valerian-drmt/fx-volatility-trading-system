@@ -179,9 +179,12 @@ services:
       IB_PORT: 4002
       IB_CLIENT_ID: 3
       REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
       vol-engine:
         condition: service_started
