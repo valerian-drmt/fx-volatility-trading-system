@@ -39,6 +39,80 @@ Tout nettoyer :
 
 ---
 
+## Nettoyage Docker (libérer la RAM)
+
+Docker Desktop sur Windows accumule vite plusieurs Go entre les images de
+build / les volumes anonymes / les buildx caches. Quand le ventilateur du
+laptop devient bruyant, stack arrêtée, lancer le bloc ci-dessous.
+
+> ⚠️ **Ne PAS lancer `docker image prune -af`** sans avoir d'abord rebuild
+> `fxvol-ib-gateway:local` ensuite — c'est une image locale (pas pull-able
+> depuis un registry), `prune -af` la supprime et au prochain `up` compose
+> retombe sur l'image upstream `gnzsnz/ib-gateway:latest` régulièrement
+> cassée. Cf. `infrastructure/ib-gateway/README.md` pour le rebuild.
+
+```powershell
+.\scripts\ops\start_stack.ps1 -Down       # stop stack, data preservée
+docker container prune -f                 # containers exited / dead
+docker image prune -f                     # dangling images uniquement (PAS -a)
+docker volume prune -f                    # volumes anonymes orphelins
+docker network prune -f                   # networks non rattachés
+docker builder prune -af                  # tout le cache buildx (5-15 Go)
+wsl --shutdown                            # rend la RAM réservée par WSL2 à Windows
+```
+
+### Limiter la RAM allouée à Docker Desktop (réglage permanent)
+
+Docker Desktop → Settings → Resources → **Memory : 6 Go** suffit largement
+pour les 10 containers (postgres + redis légers, `api` ~400 Mo, chaque
+engine 200-300 Mo). Au-delà de 8 Go, c'est du gâchis pour ce projet.
+
+### `vmmemWSL` qui squatte 3 Go en idle
+
+Symptôme : Task Manager affiche `Vmmem` ou `vmmemWSL` à 2-4 Go alors qu'il
+n'y a aucun container actif. Cause : WSL2 (le backend Linux de Docker
+Desktop sur Windows) **réserve jusqu'à 50 % de la RAM host par défaut**
+et ne rend pas la mémoire à Windows même quand Docker est arrêté — son
+kernel garde du cache et ne fait pas de balloon-back automatique.
+
+**Fix permanent** : créer `%UserProfile%\.wslconfig` (Windows path :
+`C:\Users\<toi>\.wslconfig`) avec un cap explicite :
+
+```ini
+[wsl2]
+memory=4GB
+processors=4
+swap=2GB
+
+# Permet à WSL2 de rendre la RAM à Windows quand inactive
+# (Windows 11 22H2+ / WSL 1.0+ uniquement).
+autoMemoryReclaim=gradual
+```
+
+Puis appliquer :
+
+```powershell
+wsl --shutdown            # tue la VM WSL → RAM rendue immédiatement
+# Docker Desktop redémarre auto au prochain `docker` ou via l'icône.
+```
+
+**Fix ponctuel** (sans toucher au config) : `wsl --shutdown` libère les
+3 Go instantanément. À refaire chaque fois que Docker reste idle longtemps.
+
+**Quitter Docker Desktop complètement** : icône systray → Quit Docker
+Desktop. WSL reste vivant tant qu'une distro tourne (Ubuntu / docker-
+desktop-data) — le `wsl --shutdown` ci-dessus est nécessaire.
+
+### Diagnostic — qui mange la RAM/disque ?
+
+```powershell
+docker system df -v                # taille images / containers / volumes / build cache
+docker stats --no-stream           # snapshot CPU/RAM par container actif
+wsl --list --running               # distros WSL en vie (= sources du Vmmem)
+```
+
+---
+
 ## Détail de `start_stack.ps1`
 
 Ce que ça fait, dans l'ordre :

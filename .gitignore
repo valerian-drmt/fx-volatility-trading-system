@@ -24,3 +24,4 @@ frontend/test-results/
 infrastructure/ib-gateway/upstream/
 market-data.log
 *.log
+docs/vol_pipeline_pca*.ipynb
