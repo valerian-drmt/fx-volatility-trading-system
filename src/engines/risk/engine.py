@@ -298,9 +298,11 @@ class RiskEngine:
                 if ib_pnl is not None:
                     pnl = ib_pnl
                 # Market price = the contract's own mark (futures price for
-                # FUT, option premium for OPT). Falls back to spot if Redis
-                # hash is empty (boot / sync gap).
-                mark = contract_marks.get(int(pos["id"]), F)
+                # FUT, option premium for OPT). Stays None until position_sync
+                # has published the IB ``marketPrice`` to ``contract_marks:EUR``
+                # — falling back to spot would mislead panel E (option premium
+                # ≠ spot, near-dated FUT ≈ spot but not equal).
+                mark = contract_marks.get(int(pos["id"]))
 
                 # Encoded once for both UPDATE (live row) and INSERT (snapshot copy).
                 delta_dec = Decimal(str(round(delta, 2))) if delta is not None else None
