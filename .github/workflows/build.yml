@@ -93,3 +93,52 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-frontend:latest
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+  # R8 PR #2 : build + push the four standalone engine containers introduced
+  # in R7. A matrix factorises the four identical jobs (only the service
+  # name, Dockerfile path and buildx cache scope differ). Each one publishes
+  # two tags — `sha-<commit>` for reproducible prod pulls and `latest` for
+  # convenience — under the same ghcr.io namespace as api + frontend.
+  build-engines:
+    name: build + push fx-options-${{ matrix.service.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - image: market-data
+            dockerfile: services/market_data/Dockerfile
+          - image: vol-engine
+            dockerfile: services/vol/Dockerfile
+          - image: risk-engine
+            dockerfile: services/risk/Dockerfile
+          - image: db-writer
+            dockerfile: services/db_writer/Dockerfile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (${{ matrix.service.image }})
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ matrix.service.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-${{ matrix.service.image }}:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-${{ matrix.service.image }}:latest
+          # Distinct buildx scope per service so the four parallel matrix
+          # jobs never thrash each other's layer cache.
+          cache-from: type=gha,scope=engines-${{ matrix.service.image }}
+          cache-to: type=gha,mode=max,scope=engines-${{ matrix.service.image }}
