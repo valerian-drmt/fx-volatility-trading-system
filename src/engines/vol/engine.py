@@ -472,45 +472,66 @@ class VolEngine:
             logger.debug("publish_cycle_done_failed", exc_info=True)
 
     async def run_cycle(self) -> bool:
-        """Single pass. Returns True if a vol_update was published."""
+        """Single pass. Returns True if a vol_update was published.
+
+        P2 obs : each stage wrapped in a child OTel span so the flame
+        graph in Grafana shows fetch_spot → compute_surface → compute_regime
+        → compute_pca → publish breakdown with per-stage duration and
+        attributes (n_strikes, n_pillars, etc.).
+        """
+        from opentelemetry import trace as _otel
+        tracer = _otel.get_tracer(__name__)
+
         await self._reset_progress()
         if market_gate_active() and not is_fx_market_open():
             logger.info("vol_cycle_skipped", extra={"reason": "market_closed"})
             return False
-        F = await self._read_spot()
+
+        with tracer.start_as_current_span("vol_read_spot") as span:
+            F = await self._read_spot()
+            span.set_attribute("spot", F if F is not None else -1)
         if F is None:
             logger.info("vol_cycle_skipped", extra={"reason": "no_spot"})
             return False
 
-        surface = await self._compute_surface(F)
+        with tracer.start_as_current_span("vol_compute_surface") as span:
+            surface = await self._compute_surface(F)
+            span.set_attribute("n_pillars", len(surface) if surface else 0)
         if not surface:
             logger.info("vol_cycle_skipped", extra={"reason": "no_surface"})
             return False
 
         # Step 1 — regime gating : compute _regime payload + persist via db_events.
-        regime_rows = await self._compute_regime(surface)
-        if regime_rows is not None:
-            surface["_regime"] = regime_rows["payload"]
+        with tracer.start_as_current_span("vol_compute_regime") as span:
+            regime_rows = await self._compute_regime(surface)
+            if regime_rows is not None:
+                surface["_regime"] = regime_rows["payload"]
+                span.set_attribute("regime_label", regime_rows["payload"].get("label", "?"))
 
         # Step 2 — PCA signals : project surface on active model, generate signals.
-        pca_rows = await self._compute_pca_signals(surface)
-        if pca_rows is not None:
-            surface["_pca_signals"] = pca_rows["payload"]
+        with tracer.start_as_current_span("vol_compute_pca") as span:
+            pca_rows = await self._compute_pca_signals(surface)
+            if pca_rows is not None:
+                surface["_pca_signals"] = pca_rows["payload"]
+                signals = pca_rows["payload"].get("signals", [])
+                span.set_attribute("n_signals", len(signals))
 
         # Step 2 — hourly snapshot for PCA fit history.
         hourly_snapshot = await self._maybe_collect_hourly_snapshot(surface, F)
 
         await self._publish_progress("publish", "redis_set")
-        try:
-            await publisher.publish_vol_update(
-                self.redis, symbol=self.symbol, surface_data=surface, signals_data=[],
-            )
-            await self._publish_progress("publish", "pubsub")
-            await publisher.set_heartbeat(self.redis, keys.ENGINE_VOL)
-            await self._publish_progress("publish", "heartbeat")
-        except Exception:
-            logger.exception("publish_vol_update_failed")
-            return False
+        with tracer.start_as_current_span("vol_redis_publish") as span:
+            try:
+                await publisher.publish_vol_update(
+                    self.redis, symbol=self.symbol, surface_data=surface, signals_data=[],
+                )
+                await self._publish_progress("publish", "pubsub")
+                await publisher.set_heartbeat(self.redis, keys.ENGINE_VOL)
+                await self._publish_progress("publish", "heartbeat")
+                span.set_attribute("symbol", self.symbol)
+            except Exception:
+                logger.exception("publish_vol_update_failed")
+                return False
 
         # Fan the surface + step1/step2 outputs to the db-writer via db_events.
         try:
