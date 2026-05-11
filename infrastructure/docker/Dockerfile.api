@@ -37,10 +37,11 @@ COPY requirements.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # Application source. Keep copies minimal and explicit so we do not ship
-# notebooks, tests, docs.
+# notebooks, tests, docs. R8 cleanup : the legacy api/ and persistence/
+# at the repo root shadowed the new src/api/ and src/persistence/ via
+# PYTHONPATH-less cwd resolution → uvicorn imported the old api/main and
+# blew up on `import core`. Only the src-layout is canonical now.
 COPY src/ ./src/
-COPY api/ ./api/
-COPY persistence/ ./persistence/
 
 # uvicorn on port 8000. The image does NOT run --reload : that is a dev
 # concern and inflates the runtime with watchfiles observers.
