@@ -1,0 +1,24 @@
+# Minimal IB Gateway stand-in for CI-only Playwright e2e. Accepts TCP
+# connections on 4002 so the engines' connectAsync doesn't reject
+# outright, but never speaks the IB wire protocol. The engines will
+# quickly disconnect and retry — that's fine, we're only validating
+# the frontend stack boots and Nginx routes correctly.
+#
+#   docker build -f infrastructure/docker/Dockerfile.ib-stub -t fx-options-ib-stub .
+
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY infrastructure/docker/ib-stub/server.py ./server.py
+
+EXPOSE 4002 5900
+
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD python -c "import socket,sys; s=socket.socket(); s.settimeout(1); \
+        sys.exit(0 if s.connect_ex(('127.0.0.1', 4002)) == 0 else 1)"
+
+CMD ["python", "server.py"]
