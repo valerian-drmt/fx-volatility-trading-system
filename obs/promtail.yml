@@ -32,7 +32,9 @@ scrape_configs:
       - source_labels: ['__meta_docker_container_log_stream']
         target_label: 'stream'
     pipeline_stages:
-      # Parse the JSON line emitted by structlog (configure_logging).
+      # Try JSON first (engines + api + nginx access + postgres jsonlog).
+      # `drop_malformed: false` (default) → non-JSON lines just fall
+      # through to the next stage without dropping.
       - json:
           expressions:
             level: level
@@ -40,6 +42,57 @@ scrape_configs:
             cycle_id: cycle_id
             trace_id: trace_id
             timestamp: timestamp
+
+      # T3 fallback : redis logs prefixed by severity char :
+      #   `#` warning, `!` panic, `M`/`S`/`C` master/slave/child (info).
+      # Match lines that haven't already extracted level via JSON.
+      - match:
+          selector: '{engine="redis"}'
+          stages:
+            - regex:
+                expression: '^[0-9:]+ (?P<sev>[\*#\-!\.MSC])'
+            - template:
+                source: level
+                template: |-
+                  {{- if eq .sev "#" -}}warning
+                  {{- else if eq .sev "!" -}}error
+                  {{- else if eq .sev "*" -}}notice
+                  {{- else -}}info
+                  {{- end -}}
+
+      # T3 mapping : postgres plain text logs follow the pattern
+      #   `YYYY-MM-DD HH:MM:SS.mmm UTC [pid] SEVERITY:  message`
+      # where SEVERITY ∈ {DEBUG1-5, LOG, INFO, NOTICE, WARNING, ERROR,
+      # FATAL, PANIC}. jsonlog destination would route to a file (not
+      # stdout) so we stick with the default plain text + regex extract.
+      - match:
+          selector: '{engine="postgres"}'
+          stages:
+            - regex:
+                expression: '\] (?P<severity_raw>DEBUG[1-5]|LOG|INFO|NOTICE|WARNING|ERROR|FATAL|PANIC):'
+            - template:
+                source: level
+                template: '{{- if .severity_raw -}}{{ .severity_raw | lower }}{{- end -}}'
+
+      # T3 fallback : ib-gateway IBC log lines :
+      #   `[severity] msg` patterns (info, warn, error).
+      # Template guard : only set level when regex actually matched.
+      - match:
+          selector: '{engine="ib-gateway"}'
+          stages:
+            - regex:
+                expression: '\[(?P<level_raw>error|warn|info)\]'
+            - template:
+                source: level
+                template: '{{- if .level_raw -}}{{ .level_raw }}{{- end -}}'
+
+      # Fill unknown for lines where level extraction failed entirely
+      # (non-JSON + not redis/ib-gateway). Better than Loki indexing
+      # the special `<no value>` label which clutters the labels API.
+      - template:
+          source: level
+          template: '{{- if .level -}}{{ .level }}{{- else -}}unknown{{- end -}}'
+
       # Promote level to a low-cardinality label for fast querying.
       # cycle_id / trace_id stay in the message body (high-cardinality
       # forbidden as labels per CONVENTIONS.md § Labels interdits).

@@ -252,17 +252,15 @@
         "defaults": {
           "color": {"mode": "thresholds"},
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {"color": "green", "value": null},
-              {"color": "orange", "value": 0.7},
-              {"color": "red", "value": 0.9}
-            ]
-          },
-          "unit": "percentunit"
+          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]},
+          "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "ingest bytes/s"},
+            "properties": [{"id": "unit", "value": "Bps"}]
+          }
+        ]
       },
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 26},
       "id": 7,

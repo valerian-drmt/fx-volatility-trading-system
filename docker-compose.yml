@@ -17,6 +17,10 @@ services:
       POSTGRES_DB: fxvol
       POSTGRES_USER: fxvol
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    # NOTE : jsonlog destination would write to a file, not stdout —
+    # Docker stdout stays plain text by design in postgres:16-alpine.
+    # Level extraction is done downstream in obs/promtail.yml via a
+    # regex stage matching the `[pid] SEVERITY:` pattern.
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
@@ -387,6 +391,9 @@ services:
       - "80:80"
       - "443:443"
     volumes:
+      # T2 logs unification : JSON access log format loaded first via
+      # alpha-ordered include (00-* before default.conf).
+      - ./infrastructure/nginx/log-format-json.conf:/etc/nginx/conf.d/00-log-format.conf:ro
       - ./infrastructure/nginx/nginx-dev.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       api:

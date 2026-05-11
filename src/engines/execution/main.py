@@ -40,11 +40,15 @@ from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
 from persistence.models import OrderEvent
+from shared.logging import configure_logging
 from shared.observability import start_metrics_server
 from shared.tracing import init_tracing
 
+# T1 logs unification : structlog JSON output like the other engines.
+# Replaces logging.basicConfig (which produced console-format lines that
+# Promtail couldn't parse to extract `level` for Loki).
+configure_logging(service_name="execution_engine", level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("execution")
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
 # P0 obs : Prometheus /metrics endpoint port. Spec § Phase 0 step 3.
 _METRICS_PORT = 9104
