@@ -17,6 +17,9 @@ import yaml
 WORKFLOW = (
     Path(__file__).resolve().parent.parent / ".github" / "workflows" / "build.yml"
 )
+CI_WORKFLOW = (
+    Path(__file__).resolve().parent.parent / ".github" / "workflows" / "ci.yml"
+)
 
 # Each entry : (matrix image name, expected Dockerfile path).
 EXPECTED_ENGINE_IMAGES = {
@@ -109,3 +112,73 @@ def test_original_api_and_frontend_jobs_still_present(wf: dict):
 def test_workflow_permissions_allow_ghcr_push(wf: dict):
     assert wf["permissions"]["packages"] == "write"
     assert wf["permissions"]["contents"] == "read"
+
+
+# ── R8 PR #3 : frontend pipeline extensions on ci.yml ────────────────────
+
+@pytest.fixture(scope="module")
+def ci_wf() -> dict:
+    assert CI_WORKFLOW.exists(), f"missing {CI_WORKFLOW}"
+    return yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))
+
+
+def _frontend_steps(ci_wf: dict) -> list[dict]:
+    return ci_wf["jobs"]["frontend"]["steps"]
+
+
+def _step_names(steps: list[dict]) -> list[str]:
+    return [s.get("name", "") for s in steps]
+
+
+@pytest.mark.unit
+def test_ci_runs_openapi_typescript_check(ci_wf: dict):
+    """Frontend job must dump the live FastAPI schema and diff it against
+    the committed schema.d.ts so any drift fails CI immediately."""
+    names = _step_names(_frontend_steps(ci_wf))
+    assert any("Dump live OpenAPI schema" in n for n in names)
+    assert any("OpenAPI drift check" in n for n in names)
+
+
+@pytest.mark.unit
+def test_ci_runs_frontend_lint_and_typecheck(ci_wf: dict):
+    names = _step_names(_frontend_steps(ci_wf))
+    assert any("Lint" in n for n in names)
+    assert any("Typecheck" in n for n in names)
+
+
+@pytest.mark.unit
+def test_ci_runs_vitest_with_coverage(ci_wf: dict):
+    names = _step_names(_frontend_steps(ci_wf))
+    assert any("coverage" in n.lower() for n in names), (
+        "frontend job must run vitest with the coverage threshold"
+    )
+
+
+@pytest.mark.unit
+def test_ci_uploads_frontend_dist_artifact(ci_wf: dict):
+    steps = _frontend_steps(ci_wf)
+    upload = next(
+        (s for s in steps if s.get("uses", "").startswith("actions/upload-artifact")),
+        None,
+    )
+    assert upload is not None, "frontend job must upload frontend/dist as artefact"
+    assert upload["with"]["path"] == "frontend/dist"
+    assert "frontend" in upload["with"]["name"]
+
+
+@pytest.mark.unit
+def test_vitest_config_declares_coverage_threshold():
+    """The 70% line threshold lives in vitest.config.ts so local
+    ``npm run test:coverage`` enforces the same gate as CI."""
+    vitest_cfg = (
+        Path(__file__).resolve().parent.parent / "frontend" / "vitest.config.ts"
+    ).read_text(encoding="utf-8")
+    assert "thresholds" in vitest_cfg
+    assert "lines: 70" in vitest_cfg or "lines:70" in vitest_cfg.replace(" ", "")
+
+
+@pytest.mark.unit
+def test_ci_openapi_contract_job_was_folded_into_frontend(ci_wf: dict):
+    """R8 PR #3 merges openapi-contract into the frontend job — the
+    standalone job must no longer exist to avoid duplicate work."""
+    assert "openapi-contract" not in ci_wf["jobs"]
