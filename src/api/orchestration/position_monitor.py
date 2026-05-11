@@ -40,7 +40,7 @@ from core.positions.exit_rules import (
 from core.positions.mtm import attribute_pnl, compute_mtm
 from core.positions.position_pricing import LegSpec, PositionMark, price_position
 from persistence.models import (
-    DeltaHedgeConfig,
+    AppConfigScalar,  # replaces DeltaHedgeConfig (migration 024)
     ExitAlert,
     HedgeOrder,
     PcaSignal,
@@ -552,7 +552,11 @@ class PositionMonitorScheduler:
         return out
 
     async def _load_hedge_config(self, db: AsyncSession) -> dict[str, float]:
-        rows = (await db.execute(select(DeltaHedgeConfig))).scalars().all()
+        # Theme 4 migration 024 : delta_hedge_config folded into
+        # app_config_scalar with namespace='delta_hedge'.
+        rows = (await db.execute(
+            select(AppConfigScalar).where(AppConfigScalar.namespace == "delta_hedge")
+        )).scalars().all()
         defaults = {
             "rebalance_threshold_delta": 0.05,
             "min_hedge_qty": 1.0,
@@ -561,7 +565,7 @@ class PositionMonitorScheduler:
         }
         out = dict(defaults)
         for r in rows:
-            out[r.config_name] = r.config_value
+            out[r.name] = r.value
         return out
 
     async def _recent_alert_exists(

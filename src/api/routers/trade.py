@@ -35,12 +35,12 @@ from core.trade_preview import (
 )
 from core.trade_preview_regime import apply_regime_to_limits, regime_label
 from persistence.models import (
+    AppConfigScalar,  # replaces RiskLimit (migration 024)
     BookStateSnapshot,
     ExecutionAuditLog,
     IbConnectionState,
     PcaSignal,
     RegimeSnapshot,
-    RiskLimit,
     StructureDefinition,
     StructureFill,
     StructureOrder,
@@ -69,10 +69,14 @@ class PreviewRequest(BaseModel):
 
 
 async def _load_limits(db: AsyncSession) -> dict[str, float]:
+    # Theme 4 migration 024 : risk_limits folded into app_config_scalar
+    # with namespace='risk'. Same dict[name, value] return shape.
     rows = (await db.execute(
-        select(RiskLimit).where(RiskLimit.is_active.is_(True))
-    )).scalars().all()
-    return {r.limit_name: float(r.limit_value) for r in rows}
+        select(AppConfigScalar.name, AppConfigScalar.value)
+        .where(AppConfigScalar.namespace == "risk")
+        .where(AppConfigScalar.is_active.is_(True))
+    )).all()
+    return {name: float(value) for name, value in rows}
 
 
 async def _load_book(db: AsyncSession, symbol: str, capital_default: float) -> BookStateSnapshot:
@@ -225,8 +229,17 @@ async def list_structures(db: DbDep) -> list[dict[str, Any]]:
 
 @router.get("/limits")
 async def list_limits(db: DbDep) -> dict[str, dict[str, Any]]:
-    rows = (await db.execute(select(RiskLimit).where(RiskLimit.is_active.is_(True)))).scalars().all()
-    return {r.limit_name: {"value": float(r.limit_value), "unit": r.unit, "description": r.description} for r in rows}
+    # Theme 4 migration 024 : risk_limits folded into app_config_scalar
+    # (namespace='risk'). Same response shape preserved.
+    rows = (await db.execute(
+        select(AppConfigScalar)
+        .where(AppConfigScalar.namespace == "risk")
+        .where(AppConfigScalar.is_active.is_(True))
+    )).scalars().all()
+    return {
+        r.name: {"value": float(r.value), "unit": r.unit, "description": r.description}
+        for r in rows
+    }
 
 
 @router.get("/book")

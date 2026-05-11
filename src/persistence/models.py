@@ -644,18 +644,45 @@ class BookStateSnapshot(Base):
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
-class RiskLimit(Base):
-    """Hot-reloadable risk parameters (cf. STEP3 §5.5)."""
+# RiskLimit + DeltaHedgeConfig folded into `app_config_scalar` in migration 024
+# (Theme 4). Schemas were strictly identical (name/value(FLOAT)/unit/description/
+# is_active) so they're unified under a `namespace` discriminator. Access via
+# `AppConfigScalar` with `namespace='risk'` / `namespace='delta_hedge'`.
 
-    __tablename__ = "risk_limits"
+
+class AppConfigScalar(Base):
+    """Unified scalar config table — fold of risk_limits + delta_hedge_config.
+
+    Each row is one tunable parameter scoped by ``namespace`` :
+      - namespace='risk'        → former risk_limits rows
+      - namespace='delta_hedge' → former delta_hedge_config rows
+
+    Read patterns :
+      - `select(...).where(namespace == 'risk', is_active == True)` for
+        the trade preview gating (cf. api/routers/trade._load_limits).
+      - `select(...).where(namespace == 'delta_hedge')` for delta-hedge
+        loop config (cf. api/routers/positions delta-hedge-config endpoint).
+
+    Hot-reloadable : UPDATE in-place. No append-only history — the
+    versioned config story lives on ``vol_engine_config`` (which keeps
+    its specialised shape because of Pydantic schema + admin UI).
+    """
+
+    __tablename__ = "app_config_scalar"
+    __table_args__ = (
+        UniqueConstraint("namespace", "name", name="uq_app_config_scalar_ns_name"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    limit_name: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
-    limit_value: Mapped[float] = mapped_column(Float, nullable=False)
-    unit: Mapped[str] = mapped_column(String(20), nullable=False)
+    namespace: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(60), nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str | None] = mapped_column(String(20))
     description: Mapped[str | None] = mapped_column(String(300))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     updated_by: Mapped[str | None] = mapped_column(String(40))
 
 
@@ -815,7 +842,7 @@ class IbConnectionState(Base):
     """Singleton broker connectivity row. UPDATE in place ; never INSERT a new
     row past the migration seed. Heartbeat loop in execution-engine populates."""
 
-    __tablename__ = "ib_connection_state"
+    __tablename__ = "ib_session_state"  # renamed in migration 024 (state semantics)
     __table_args__ = (
         CheckConstraint(
             "account_type IS NULL OR account_type IN ('paper','live')",
@@ -986,19 +1013,7 @@ class ExitRulesConfig(Base):
     updated_by: Mapped[str | None] = mapped_column(String(40))
 
 
-class DeltaHedgeConfig(Base):
-    """Hot-reloadable delta-hedge params."""
-
-    __tablename__ = "delta_hedge_config"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    config_name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
-    config_value: Mapped[float] = mapped_column(Float, nullable=False)
-    unit: Mapped[str] = mapped_column(String(20), nullable=False)
-    description: Mapped[str | None] = mapped_column(String(300))
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(),
-    )
+# DeltaHedgeConfig folded into AppConfigScalar (Theme 4 migration 024).
 
 
 class ExecutionAuditLog(Base):

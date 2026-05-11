@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
 from persistence.models import (
-    DeltaHedgeConfig,
+    AppConfigScalar,  # replaces DeltaHedgeConfig (migration 024)
     ExitAlert,
     ExitRulesConfig,
     HedgeOrder,
@@ -348,9 +348,13 @@ async def list_exit_rules_config(db: DbDep) -> list[dict[str, Any]]:
 
 @router.get("/delta-hedge-config")
 async def list_delta_hedge_config(db: DbDep) -> list[dict[str, Any]]:
-    rows = (await db.execute(select(DeltaHedgeConfig))).scalars().all()
+    # Theme 4 migration 024 : delta_hedge_config folded into app_config_scalar
+    # with namespace='delta_hedge'. Response shape preserved for API stability.
+    rows = (await db.execute(
+        select(AppConfigScalar).where(AppConfigScalar.namespace == "delta_hedge")
+    )).scalars().all()
     return [
-        {"config_name": r.config_name, "config_value": r.config_value,
+        {"config_name": r.name, "config_value": r.value,
          "unit": r.unit, "description": r.description}
         for r in rows
     ]

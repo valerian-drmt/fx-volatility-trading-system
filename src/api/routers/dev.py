@@ -291,6 +291,10 @@ ALLOWED_TABLES: dict[str, str] = {
     "hedge_orders": "id",
     "exit_alerts": "id",
     "position_mtm_history": "id",
+    # Theme 4 — config + state (migration 024)
+    "app_config_scalar": "id",                  # folded from delta_hedge_config + risk_limits
+    "exit_rules_config": "id",                  # kept distinct (JSONB params + CHECK priority)
+    "ib_session_state": "id",                   # renamed from ib_connection_state
 }
 
 
