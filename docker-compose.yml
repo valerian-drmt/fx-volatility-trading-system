@@ -403,6 +403,109 @@ services:
       retries: 3
       start_period: 5s
 
+  # ── P1 obs — LGTM stack (Loki + Grafana + Tempo + Mimir/Prom) ────────
+  # Opt-in via `docker compose --profile obs up -d`. All 4 services live
+  # on fxvol-internal so Prometheus reaches the engine /metrics ports
+  # without any host-side mapping. Grafana also gets fxvol-public for
+  # browser access. Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 1.
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: fxvol-prometheus
+    profiles: ["obs"]
+    restart: unless-stopped
+    volumes:
+      - ./obs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=2GB'
+      - '--web.enable-lifecycle'
+    networks:
+      - fxvol-internal
+    expose:
+      - "9090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  loki:
+    image: grafana/loki:3.2.0
+    container_name: fxvol-loki
+    profiles: ["obs"]
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./obs/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - fxvol-internal
+    expose:
+      - "3100"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    container_name: fxvol-promtail
+    profiles: ["obs"]
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./obs/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - fxvol-internal
+
+  grafana:
+    image: grafana/grafana-oss:11.3.0
+    container_name: fxvol-grafana
+    profiles: ["obs"]
+    restart: unless-stopped
+    environment:
+      # Dev-only : anonymous admin. EC2 prod doit désactiver
+      # GF_AUTH_ANONYMOUS_ENABLED et configurer basic auth ou OAuth
+      # (cf. spec § Phase 1 anti-patterns).
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_SECURITY_COOKIE_SAMESITE: "lax"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./obs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./obs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    networks:
+      - fxvol-internal
+    # Host port 3000 mapping pour ouverture browser directe en dev.
+    # En EC2 prod, retirer ce mapping et passer par nginx reverse-proxy.
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
 networks:
   # Exposed to the public internet — only nginx lives here (R6 PR #3).
   fxvol-public:
@@ -429,3 +532,7 @@ volumes:
   redis_data:
   # IB Gateway settings persistence — see § ib-gateway above.
   ib_gateway_jts:
+  # P1 obs — LGTM stack persistent storage.
+  prom_data:
+  loki_data:
+  grafana_data:

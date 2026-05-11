@@ -58,13 +58,28 @@ async def connect_ib_with_backoff(
     (``None`` = retry forever, the normal prod behaviour since IB Gateway
     eventually comes back from the nightly restart).
     """
+    # P0/P1 obs : mirror IB session state into the Prometheus gauge so the
+    # Grafana "IB session uptime" panel shows UP/DOWN per clientId. Set
+    # to 0 at the start of every reconnect cycle ; flip to 1 once
+    # isConnected() returns True. Best-effort — never crashes if metric
+    # isn't available (e.g. unit test that doesn't import observability).
+    try:
+        from shared.observability import ib_session_connected
+        ib_session_connected.labels(client_id=str(client_id)).set(0)
+    except Exception:
+        ib_session_connected = None  # type: ignore[assignment]
+
     attempt = 0
     while True:
         if ib.isConnected():
+            if ib_session_connected is not None:
+                ib_session_connected.labels(client_id=str(client_id)).set(1)
             return
         try:
             await ib.connectAsync(host, port, clientId=client_id, timeout=timeout)
             if ib.isConnected():
+                if ib_session_connected is not None:
+                    ib_session_connected.labels(client_id=str(client_id)).set(1)
                 logger.info(
                     "ib_connected",
                     extra={"host": host, "port": port, "client_id": client_id, "attempt": attempt},

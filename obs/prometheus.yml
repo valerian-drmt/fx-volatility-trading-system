@@ -1,0 +1,30 @@
+# Prometheus config — P1 obs.
+# Single-binary scrape config for the 5 engine /metrics endpoints.
+# Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 1.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: dev
+
+scrape_configs:
+  - job_name: 'engines'
+    static_configs:
+      - targets:
+          - 'market-data:9101'
+          - 'vol-engine:9102'
+          - 'risk-engine:9103'
+          - 'execution-engine:9104'
+          - 'db-writer:9105'
+
+  # Self-scrape (Prometheus health + tsdb size).
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Loki self-metrics — surfaces ingest rate + storage to the disk
+  # usage panel (durcissement panel #7 du dashboard engines-overview).
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
