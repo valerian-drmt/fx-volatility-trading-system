@@ -543,7 +543,7 @@ class VolEngine:
             await self._publish_progress("publish", "db_events")
             await publish_db_event(
                 self.redis,
-                table="vol_surface_snapshot",
+                table="vol_surface_history",  # renamed in migration 023
                 payload={
                     "timestamp": ts_iso,
                     "underlying": self.symbol,
@@ -552,30 +552,30 @@ class VolEngine:
                     "surface_data": surface,
                 },
             )
-            # SVI / SSVI params live in vol_surface_snapshot.surface_data
+            # SVI / SSVI params live in vol_surface_history.surface_data
             # (_svi / _ssvi). Dedicated svi_params / ssvi_params dropped (R9).
             # Per-tenor pricing signals dropped — vol_pricing_signal_snapshot
             # table removed when CHEAP/FAIR/EXPENSIVE was retired in R9.
-            # Step 1 : persist regime_feature_snapshot + feature_history_30d.
+            # Step 1 : persist regime_snapshot + feature_history.
             if regime_rows is not None:
                 await publish_db_event(
-                    self.redis, table="regime_feature_snapshot",
+                    self.redis, table="regime_snapshot",  # renamed in migration 023
                     payload={**regime_rows["snapshot_row"], "timestamp": ts_iso},
                 )
                 await publish_db_event(
-                    self.redis, table="feature_history_30d",
+                    self.redis, table="feature_history",  # renamed in migration 023
                     payload={**regime_rows["feature_row"], "timestamp": ts_iso},
                 )
-            # Step 2 : persist pca_projection_snapshot (1 row per PC) + hourly snapshot.
+            # Step 2 : persist pca_signal_history (1 row per PC) + hourly snapshot.
             if pca_rows is not None:
                 for sig_row in pca_rows["signal_rows"]:
                     await publish_db_event(
-                        self.redis, table="pca_projection_snapshot",
+                        self.redis, table="pca_signal_history",  # renamed in migration 023
                         payload={**sig_row, "timestamp": ts_iso},
                     )
             if hourly_snapshot is not None:
                 await publish_db_event(
-                    self.redis, table="surface_snapshots_hourly",
+                    self.redis, table="surface_pca_snapshot_history",  # renamed in migration 023
                     payload=hourly_snapshot,
                 )
         except Exception:

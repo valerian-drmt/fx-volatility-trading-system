@@ -58,14 +58,14 @@ SHUTDOWN_TIMEOUT_S: float = 30.0
 # The writer rejects any event targeting a table not in this map.
 TABLE_MODELS: dict[str, type[Base]] = {
     "account_snaps": AccountSnap,
-    "feature_history_30d": FeatureHistory,
-    "pca_projection_snapshot": PcaSignal,
+    "feature_history": FeatureHistory,                       # renamed in migration 023
+    "pca_signal_history": PcaSignal,                          # renamed in migration 023
     "positions": Position,
     "position_snapshots": PositionSnapshot,
-    "regime_feature_snapshot": RegimeSnapshot,
-    "surface_snapshots_hourly": SurfaceSnapshotHourly,
+    "regime_snapshot": RegimeSnapshot,                        # renamed in migration 023
+    "surface_pca_snapshot_history": SurfaceSnapshotHourly,    # renamed in migration 023
     "trades": Trade,
-    "vol_surface_snapshot": VolSurface,
+    "vol_surface_history": VolSurface,                        # renamed in migration 023
 }
 
 # Tables where duplicates on the natural key are safe to drop silently.
@@ -80,11 +80,11 @@ TABLE_MODELS: dict[str, type[Base]] = {
 # Other tables (trades, position_snapshots, account_snaps) have no natural
 # dedup key, duplicates there are real data and must not be silenced.
 IDEMPOTENT_TABLES: dict[str, list[str]] = {
-    "vol_surface_snapshot": ["timestamp", "underlying"],
+    "vol_surface_history": ["timestamp", "underlying"],                                   # renamed
     "positions": ["id"],
-    "feature_history_30d": ["symbol", "timestamp"],
-    "surface_snapshots_hourly": ["symbol", "timestamp"],
-    "pca_projection_snapshot": ["symbol", "timestamp", "pca_model_id", "pc_id"],
+    "feature_history": ["symbol", "timestamp"],                                           # renamed
+    "surface_pca_snapshot_history": ["symbol", "timestamp"],                              # renamed
+    "pca_signal_history": ["symbol", "timestamp", "pca_model_id", "pc_id"],               # renamed
 }
 
 

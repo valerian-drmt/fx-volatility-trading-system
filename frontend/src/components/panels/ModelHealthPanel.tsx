@@ -39,7 +39,7 @@ export function ModelHealthPanel(): JSX.Element {
         </div>
         <table className="smile-table" style={{ width: "100%" }}>
           <tbody>
-            <tr><td>vol_surface_snapshot</td><td>{data.vol_surfaces_count}</td></tr>
+            <tr><td>vol_surface_history</td><td>{data.vol_surfaces_count}</td></tr>
             <tr><td>svi_params (in JSONB)</td><td>{data.svi_params_count}</td></tr>
           </tbody>
         </table>

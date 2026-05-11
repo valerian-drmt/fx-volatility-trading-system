@@ -275,17 +275,17 @@ ALLOWED_TABLES: dict[str, str] = {
     "positions": "id",
     "position_snapshots": "id",
     "account_snaps": "id",
-    "vol_surface_snapshot": "id",
+    "vol_surface_history": "id",                # renamed in migration 023
     "vol_engine_config": "version",
     # Step 1 — regime gating
-    "regime_feature_snapshot": "id",
-    "feature_history_30d": "id",
-    "macro_event": "id",
-    "vrp_default_curve": "id",
+    "regime_snapshot": "id",                    # renamed in migration 023
+    "feature_history": "id",                    # renamed in migration 023
+    "event_calendar": "id",                     # renamed in migration 023
+    "vrp_default_curve": "id",                  # read by vol-engine cycle (NOT dropped)
     # Step 2 — PCA factor model
-    "surface_snapshots_hourly": "id",
+    "surface_pca_snapshot_history": "id",       # renamed in migration 023
     "pca_model": "id",
-    "pca_projection_snapshot": "id",
+    "pca_signal_history": "id",                 # renamed in migration 023
     "pca_structure_recommendation": "id",
     # Step 5 — position monitoring & hedging
     "hedge_orders": "id",

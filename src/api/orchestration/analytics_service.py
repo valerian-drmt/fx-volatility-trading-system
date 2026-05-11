@@ -26,7 +26,7 @@ from persistence.models import (
 
 # Tables reported in /system-stats — tuple keeps order stable.
 _COUNTED_TABLES: tuple[tuple[str, type], ...] = (
-    ("vol_surface_snapshot", VolSurface),
+    ("vol_surface_history", VolSurface),  # renamed in migration 023
     ("position_snapshots", PositionSnapshot),
 )
 
