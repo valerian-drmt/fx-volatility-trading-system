@@ -37,10 +37,15 @@ COPY requirements.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # Application source. Keep copies minimal and explicit so we do not ship
-# notebooks, tests, docs.
+# notebooks, tests, docs. R8 cleanup: core/ at repo root was missing
+# from the image, causing src/services/bs_pricer.py → from core.pricing.bs
+# to fail at import time (sys.path resolution found the empty namespace
+# package in /app/src/core/ but no real bs.py module). Surfaced by the
+# new Playwright e2e against ephemeral docker-compose stack job.
 COPY src/ ./src/
 COPY api/ ./api/
 COPY persistence/ ./persistence/
+COPY core/ ./core/
 
 # uvicorn on port 8000. The image does NOT run --reload : that is a dev
 # concern and inflates the runtime with watchfiles observers.
