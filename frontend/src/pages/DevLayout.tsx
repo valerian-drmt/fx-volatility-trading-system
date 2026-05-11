@@ -25,7 +25,6 @@ import { StackCombined } from "./dev/StackCombined";
 import { Step2Pca } from "./dev/Step2Pca";
 import { Step3Trade } from "./dev/Step3Trade";
 import { Step4Trades } from "./dev/Step4Trades";
-import { Step5Positions } from "./dev/Step5Positions";
 import { TradePreview } from "./dev/TradePreview";
 import { WsMonitor } from "./dev/WsMonitor";
 
@@ -42,7 +41,6 @@ const TABS: TabDef[] = [
   { id: "step2", label: "📊 Step 2 · PCA Signals", Component: Step2Pca },
   { id: "step3", label: "🎯 Step 3 · Trade Preview", Component: Step3Trade },
   { id: "step4", label: "📒 Step 4 · Trades (mock)", Component: Step4Trades },
-  { id: "step5", label: "🩺 Step 5 · Active Positions", Component: Step5Positions },
   { id: "portfolio", label: "💼 Portfolio", Component: Portfolio },
   { id: "pricing", label: "💲 Pricing", Component: Pricing },
   { id: "trade-preview", label: "📦 Trade Preview (legacy)", Component: TradePreview },
