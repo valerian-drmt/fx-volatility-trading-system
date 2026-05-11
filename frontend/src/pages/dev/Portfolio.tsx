@@ -4,9 +4,7 @@
  * P1 scope (this file) :
  *  A. Account header  : NetLiq / Cash / Margin / Cushion / # positions
  *  E. Open positions  : reuses /api/v1/positions/active (booked + IB live)
- *  F. Open orders     : /api/v1/orders
  *  G. Trades / fills  : /api/v1/dev/tables/trades
- *  I. Position snaps  : /api/v1/dev/tables/position_snapshots
  *
  * Phase 2 will add B (equity curve), C (aggregate greeks), D (vega per
  * tenor). Phase 3 adds H (hedge log + multi-window cumul).
@@ -83,12 +81,12 @@ interface GreeksLadderPayload {
   rows: GreeksLadderRow[];
   n_positions?: number;
 }
-
-interface HedgeWindow { n_hedges: number; cum_cost_usd: number }
-interface HedgeSummary {
-  today: HedgeWindow; wtd: HedgeWindow; mtd: HedgeWindow;
-  ytd: HedgeWindow; rolling_7d: HedgeWindow; rolling_30d: HedgeWindow;
-  computed_at: string;
+interface VegaTenorRow {
+  bucket: string;
+  dte_lo: number;
+  dte_hi: number;
+  vega_usd: number;
+  n_positions: number;
 }
 
 interface ActivePosition {
@@ -111,24 +109,19 @@ interface ActivePosition {
   iv: number | null;
   vanna_usd: number | null;
   volga_usd: number | null;
+  // Returned by the API serializer for IB-live rows. Used by panel J
+  // (pin risk grid) to filter near-expiry options + render strike/right.
+  strike?: number | null;
+  option_type?: string | null;     // "C" / "P" / null for futures
+  instrument_type?: string | null; // "OPTION" / "FUTURE"
+  symbol?: string | null;
+  // Greek P&L decomposition (panel G). Populated for booked structures
+  // via PositionMtmHistory. Stays null on IB-live rows until a t-1
+  // state-store is wired (cf. risk_dashboard_spec.md § G).
+  gamma_pnl_usd?: number | null;
+  vega_pnl_usd?: number | null;
+  theta_pnl_usd?: number | null;
 }
-interface OrderRow {
-  id?: number;
-  order_id?: number;
-  symbol: string;
-  sec_type?: string;
-  expiry: string | null;
-  strike: number | null;
-  right: string | null;
-  side: string;
-  qty?: number;
-  quantity?: number;
-  limit_price: number | null;
-  status: string;
-  filled?: number;
-  filled_qty?: number;
-}
-interface TableRow { [k: string]: unknown }
 
 const fmtUsdAbs = (n: number | null | undefined): string =>
   n === null || n === undefined ? "—" : `${Math.round(n).toLocaleString()}$`;
@@ -173,12 +166,8 @@ export function Portfolio(): JSX.Element {
   const [account, setAccount] = useState<AccountResponse | null>(null);
   const [stress, setStress] = useState<StressGridPayload | null>(null);
   const [ladder, setLadder] = useState<GreeksLadderPayload | null>(null);
+  const [vegaTenor, setVegaTenor] = useState<VegaTenorRow[]>([]);
   const [positions, setPositions] = useState<ActivePosition[]>([]);
-  const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [trades, setTrades] = useState<TableRow[]>([]);
-  const [snapshots, setSnapshots] = useState<TableRow[]>([]);
-  const [hedgeSummary, setHedgeSummary] = useState<HedgeSummary | null>(null);
-  const [hedgeOrders, setHedgeOrders] = useState<TableRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const fetchJson = async <T,>(url: string): Promise<T> => {
@@ -193,26 +182,9 @@ export function Portfolio(): JSX.Element {
     setStress(await fetchJson<StressGridPayload>("/api/v1/portfolio/stress-grid"));
   const refreshLadder     = async () =>
     setLadder(await fetchJson<GreeksLadderPayload>("/api/v1/portfolio/greeks-ladder"));
+  const refreshVegaTenor  = async () =>
+    setVegaTenor(await fetchJson<VegaTenorRow[]>("/api/v1/portfolio/vega-per-tenor"));
   const refreshPositions  = async () => setPositions(await fetchJson<ActivePosition[]>("/api/v1/positions/active"));
-  const refreshOrders     = async () => {
-    const j = await fetchJson<{ orders?: OrderRow[]; rows?: OrderRow[] } | OrderRow[]>("/api/v1/orders");
-    const list = Array.isArray(j) ? j : (j.orders ?? j.rows ?? []);
-    setOrders(list);
-  };
-  const refreshTrades     = async () => {
-    const j = await fetchJson<{ rows?: TableRow[] } | TableRow[]>("/api/v1/dev/tables/trades?limit=50");
-    setTrades(Array.isArray(j) ? j : (j.rows ?? []));
-  };
-  const refreshSnapshots  = async () => {
-    const j = await fetchJson<{ rows?: TableRow[] } | TableRow[]>("/api/v1/dev/tables/position_snapshots?limit=100");
-    setSnapshots(Array.isArray(j) ? j : (j.rows ?? []));
-  };
-  const refreshHedgeSummary = async () =>
-    setHedgeSummary(await fetchJson<HedgeSummary>("/api/v1/portfolio/hedge-summary"));
-  const refreshHedgeOrders  = async () => {
-    const j = await fetchJson<{ rows?: TableRow[] } | TableRow[]>("/api/v1/dev/tables/hedge_orders?limit=100");
-    setHedgeOrders(Array.isArray(j) ? j : (j.rows ?? []));
-  };
 
   const inFlightRef = useRef(false);
   const refreshAll = async () => {
@@ -221,10 +193,8 @@ export function Portfolio(): JSX.Element {
     try {
       await Promise.all([
         refreshHeader(), refreshAccount(),
-        refreshStress(), refreshLadder(),
-        refreshPositions(), refreshOrders(),
-        refreshTrades(), refreshSnapshots(),
-        refreshHedgeSummary(), refreshHedgeOrders(),
+        refreshStress(), refreshLadder(), refreshVegaTenor(),
+        refreshPositions(),
       ]);
       setError(null);
     } catch (e) { setError(String(e)); }
@@ -318,16 +288,22 @@ export function Portfolio(): JSX.Element {
         </div>
       </Section>
 
-      {/* SECTIONS B + H side-by-side. B = Spot × IV stress P&L grid (spec § F).
-          H = Greeks ladder per spot bucket (spec § H). */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
-                    marginBottom: 14 }}>
-        <Section title={`B · Spot × IV stress P&L (${stress?.n_positions ?? 0} positions, spot=${stress?.current_spot ?? "—"})`}>
+      {/* SECTION F + I + H — three squares 1/3 each. Letter labels
+          follow risk_dashboard_spec.md (F = Spot×Vol P&L grid,
+          I = Vega bucket per tenor, H = Greeks ladder). Each cell is
+          a strict square (panel + table). Grid takes full page width
+          → each square ≈ pageWidth / 3. */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12,
+                    marginBottom: 14, width: "100%" }}>
+        <SquareCell title={`F · Spot × Vol P&L (${stress?.n_positions ?? 0} positions, spot=${stress?.current_spot ?? "—"})`}>
           <StressGrid grid={stress} />
-        </Section>
-        <Section title={`H · Greeks ladder (${ladder?.n_positions ?? 0} positions, spot=${ladder?.current_spot ?? "—"})`}>
+        </SquareCell>
+        <SquareCell title={`I · Vega bucket par tenor (${vegaTenor.reduce((s, r) => s + r.n_positions, 0)} positions)`}>
+          <VegaPerTenor rows={vegaTenor} />
+        </SquareCell>
+        <SquareCell title={`H · Greeks ladder (${ladder?.n_positions ?? 0} positions, spot=${ladder?.current_spot ?? "—"})`}>
           <GreeksLadder ladder={ladder} />
-        </Section>
+        </SquareCell>
       </div>
 
       {/* SECTION E — open positions (réutilise endpoint Step 5) */}
@@ -390,108 +366,54 @@ export function Portfolio(): JSX.Element {
         )}
       </Section>
 
-      {/* SECTION F — open orders */}
-      <Section title={`F · Open orders (${orders.length})`}>
-        {orders.length === 0 ? <Empty /> : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>ID</th><th style={th}>Symbol</th><th style={th}>Type</th>
-                <th style={th}>Side</th><th style={th}>Qty</th><th style={th}>Limit</th>
-                <th style={th}>Status</th><th style={th}>Filled</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => {
-                const id  = o.id ?? o.order_id ?? "?";
-                const qty = o.qty ?? o.quantity ?? 0;
-                const fil = o.filled ?? o.filled_qty ?? 0;
-                return (
-                  <tr key={String(id)}>
-                    <td style={td}>{id}</td>
-                    <td style={td}>{o.symbol} {o.expiry ?? ""} {o.strike ?? ""} {o.right ?? ""}</td>
-                    <td style={td}>{o.sec_type ?? "—"}</td>
-                    <td style={td}>{o.side}</td>
-                    <td style={td}>{qty}</td>
-                    <td style={td}>{o.limit_price?.toFixed(5) ?? "—"}</td>
-                    <td style={td}>{o.status}</td>
-                    <td style={td}>{fil}/{qty}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+      {/* SECTION G — P&L attribution daily (greeks decomposition).
+          Cf. risk_dashboard_spec.md § G. Backend support partial : the
+          per-greek P&L breakdown lives on `position_mtm_history` for
+          booked structures, but is None on IB-live rows until a t-1
+          state-store is wired. Cells display "—" when the breakdown
+          is not available. */}
+      <Section title={`G · P&L attribution daily (${positions.length} positions)`}>
+        <PnlAttribution positions={positions} />
       </Section>
 
-      {/* SECTION G — trades / fills */}
-      <Section title={`G · Trades / fills (${trades.length})`}>
-        <GenericTable rows={trades} cols={[
-          "id", "position_id", "ib_order_id", "side",
-          "quantity", "price", "commission", "timestamp",
-        ]} />
-      </Section>
+      {/* SECTIONS K + J side-by-side (50/50). K left = Margin/SPAN
+          utilization (spec § K). J right = Pin risk grid (spec § J). */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <MarginUtilization account={account?.latest ?? null} header={header} />
+        <PinRiskSection positions={positions} spot={stress?.current_spot ?? ladder?.current_spot ?? null} />
+      </div>
 
-      {/* SECTION H — hedge log + multi-window cumul */}
-      <Section title={`H · Hedges (${hedgeOrders.length})`}>
-        <div style={{
-          display: "grid", gridTemplateColumns: "repeat(6, 1fr)",
-          gap: 6, marginBottom: 8,
-        }}>
-          <HedgeStat label="Today"      w={hedgeSummary?.today} />
-          <HedgeStat label="WTD"        w={hedgeSummary?.wtd} />
-          <HedgeStat label="MTD"        w={hedgeSummary?.mtd} />
-          <HedgeStat label="YTD"        w={hedgeSummary?.ytd} />
-          <HedgeStat label="Rolling 7d"  w={hedgeSummary?.rolling_7d} />
-          <HedgeStat label="Rolling 30d" w={hedgeSummary?.rolling_30d} />
-        </div>
-        <GenericTable rows={hedgeOrders} cols={[
-          "id", "position_id", "triggered_at", "side", "hedge_qty",
-          "delta_imbalance_at_trigger", "fill_price", "total_cost_usd", "state",
-        ]} />
-      </Section>
-
-      {/* SECTION I — position snapshots */}
-      <Section title={`I · Position snapshots (${snapshots.length})`}>
-        <GenericTable rows={snapshots} cols={[
-          "id", "position_id", "timestamp", "structure", "side", "tenor",
-          "expiry", "quantity", "nominal_eur", "contract_price_entry",
-          "market_price", "current_pnl_usd", "delta_usd", "gamma_usd",
-          "vega_usd", "theta_usd", "iv", "vanna_usd", "volga_usd",
-        ]} />
-      </Section>
     </div>
   );
 }
 
 function StressGrid({ grid }: { grid: StressGridPayload | null }): JSX.Element {
+  const fsCell = 15;
+  const fsHdr = 15;
   if (!grid || grid.grid.length === 0) {
     return <div style={{ color: "#666", fontSize: 12, fontStyle: "italic" }}>
       no positions or current spot — grid skipped
     </div>;
   }
-  // Symmetric colour intensity vs the absolute max P&L on the grid.
-  const flat = grid.grid.flat();
-  const maxAbs = Math.max(1, ...flat.map(Math.abs));
-  const cellBg = (v: number): string => {
-    const t = Math.min(1, Math.abs(v) / maxAbs);
-    // alpha-blend a green/red over the dark theme.
-    if (v > 0) return `rgba(58, 167, 99, ${0.10 + 0.55 * t})`;
-    if (v < 0) return `rgba(180, 70, 70, ${0.10 + 0.55 * t})`;
-    return "transparent";
-  };
+  // Sign-only colouring : red if < 0, green if > 0, white if 0.
   const cellFg = (v: number): string =>
-    v > 0 ? "#9f9" : v < 0 ? "#fcc" : "#aaa";
+    v > 0 ? "#9f9" : v < 0 ? "#fcc" : "#fff";
+  const bigHeader: CSSProperties = {
+    ...stressHeader, padding: "6px 8px", fontSize: fsHdr,
+    textAlign: "center",
+  };
   return (
+    <div style={{ width: "100%", height: "100%" }}>
     <table style={{
-      width: "100%", borderCollapse: "collapse",
-      fontFamily: "Consolas, monospace", fontSize: 12,
+      width: "100%", height: "100%", borderCollapse: "collapse",
+      tableLayout: "fixed",
+      fontFamily: "Consolas, monospace", fontSize: fsCell,
     }}>
       <thead>
         <tr>
-          <th style={{ ...stressHeader, textAlign: "left" }}>ΔIV \ ΔSpot</th>
+          <th style={{ ...bigHeader, textAlign: "left" }}>ΔIV \ ΔSpot</th>
           {grid.spot_bins_bps.map((b) => (
-            <th key={b} style={stressHeader}>
+            <th key={b} style={bigHeader}>
               {b > 0 ? "+" : ""}{b}bp
             </th>
           ))}
@@ -502,7 +424,7 @@ function StressGrid({ grid }: { grid: StressGridPayload | null }): JSX.Element {
           const dvol = grid.vol_bins_vps[i] ?? 0;
           return (
           <tr key={dvol}>
-            <th style={{ ...stressHeader, textAlign: "left" }}>
+            <th style={{ ...bigHeader, textAlign: "left" }}>
               {dvol > 0 ? "+" : ""}{dvol}vp
             </th>
             {row.map((v, j) => {
@@ -512,11 +434,12 @@ function StressGrid({ grid }: { grid: StressGridPayload | null }): JSX.Element {
                 <td
                   key={j}
                   style={{
-                    padding: "6px 10px",
-                    textAlign: "right",
-                    background: isCenter ? "#222" : cellBg(v),
-                    color: isCenter ? "#fff" : cellFg(v),
+                    padding: "6px 8px",
+                    textAlign: "center",
+                    background: isCenter ? "#222" : "transparent",
+                    color: cellFg(v),
                     fontWeight: isCenter ? 700 : 600,
+                    fontSize: fsCell,
                     border: "1px solid #1a1a1a",
                   }}
                   title={`${v.toLocaleString(undefined, { maximumFractionDigits: 0 })} $`}
@@ -530,46 +453,57 @@ function StressGrid({ grid }: { grid: StressGridPayload | null }): JSX.Element {
         })}
       </tbody>
     </table>
+    </div>
   );
 }
 
 function GreeksLadder({ ladder }: { ladder: GreeksLadderPayload | null }): JSX.Element {
+  const fsCell = 15;
+  const fsHdr = 15;
+  const fsSub = 13;
   if (!ladder || ladder.rows.length === 0) {
     return <div style={{ color: "#666", fontSize: 12, fontStyle: "italic" }}>
       no positions or current spot — ladder skipped
     </div>;
   }
+  const bigHeader: CSSProperties = {
+    ...stressHeader, padding: "6px 8px", fontSize: fsHdr,
+    textAlign: "center",
+  };
   return (
+    <div style={{ width: "100%", height: "100%" }}>
     <table style={{
-      width: "100%", borderCollapse: "collapse",
-      fontFamily: "Consolas, monospace", fontSize: 12,
+      width: "100%", height: "100%", borderCollapse: "collapse",
+      tableLayout: "fixed",
+      fontFamily: "Consolas, monospace", fontSize: fsCell,
     }}>
       <thead>
         <tr>
-          <th style={stressHeader}>Spot</th>
-          <th style={stressHeader}>P&L</th>
-          <th style={stressHeader}>Δ ($)</th>
-          <th style={stressHeader}>Γ ($/pip)</th>
-          <th style={stressHeader}>Vega ($/vp)</th>
-          <th style={stressHeader}>Hedge Δ</th>
+          <th style={bigHeader}>Spot</th>
+          <th style={bigHeader}>P&L</th>
+          <th style={bigHeader}>Δ ($)</th>
+          <th style={bigHeader}>Γ ($/pip)</th>
+          <th style={bigHeader}>Vega ($/vp)</th>
+          <th style={bigHeader}>Hedge Δ</th>
         </tr>
       </thead>
       <tbody>
         {ladder.rows.map((r) => {
           const isCenter = r.dspot_bps === 0;
           const baseStyle: CSSProperties = {
-            padding: "6px 10px",
-            textAlign: "right",
+            padding: "6px 8px",
+            textAlign: "center",
             border: "1px solid #1a1a1a",
             background: isCenter ? "#222" : "transparent",
             color: isCenter ? "#fff" : "#ddd",
             fontWeight: isCenter ? 700 : 600,
+            fontSize: fsCell,
           };
           return (
             <tr key={r.dspot_bps}>
-              <th style={{ ...stressHeader, textAlign: "left" }}>
+              <th style={{ ...bigHeader, textAlign: "left" }}>
                 {r.spot.toFixed(5)}
-                <span style={{ color: "#666", marginLeft: 4, fontSize: 10 }}>
+                <span style={{ color: "#666", marginLeft: 4, fontSize: fsSub }}>
                   ({r.dspot_bps > 0 ? "+" : ""}{r.dspot_bps}bp)
                 </span>
               </th>
@@ -589,6 +523,465 @@ function GreeksLadder({ ladder }: { ladder: GreeksLadderPayload | null }): JSX.E
         })}
       </tbody>
     </table>
+    </div>
+  );
+}
+
+function VegaPerTenor({ rows }: { rows: VegaTenorRow[] }): JSX.Element {
+  const fsCell = 15;
+  const fsHdr = 15;
+  const fsSub = 13;
+  if (!rows || rows.length === 0) {
+    return <div style={{ color: "#666", fontSize: 12, fontStyle: "italic" }}>
+      no positions — vega buckets skipped
+    </div>;
+  }
+  const totalAbs = rows.reduce((s, r) => s + Math.abs(r.vega_usd), 0) || 1;
+  const totalVega = rows.reduce((s, r) => s + r.vega_usd, 0);
+  const totalN = rows.reduce((s, r) => s + r.n_positions, 0);
+  const bigHeader: CSSProperties = {
+    ...stressHeader, padding: "6px 8px", fontSize: fsHdr,
+    textAlign: "center",
+  };
+  const baseCell: CSSProperties = {
+    padding: "6px 8px",
+    textAlign: "center",
+    border: "1px solid #1a1a1a",
+    fontSize: fsCell,
+    fontWeight: 600,
+    color: "#ddd",
+  };
+  return (
+    <div style={{ width: "100%", height: "100%" }}>
+    <table style={{
+      width: "100%", height: "100%", borderCollapse: "collapse",
+      tableLayout: "fixed",
+      fontFamily: "Consolas, monospace", fontSize: fsCell,
+    }}>
+      <thead>
+        <tr>
+          <th style={{ ...bigHeader, textAlign: "left" }}>Bucket</th>
+          <th style={bigHeader}>Vega ($/vp)</th>
+          <th style={bigHeader}>% total</th>
+          <th style={bigHeader}># pos</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => {
+          const pct = (Math.abs(r.vega_usd) / totalAbs) * 100;
+          return (
+            <tr key={r.bucket}>
+              <th style={{ ...bigHeader, textAlign: "left" }}>
+                {r.bucket}
+                <span style={{ color: "#666", marginLeft: 4, fontSize: fsSub }}>
+                  ({r.dte_lo}-{r.dte_hi}d)
+                </span>
+              </th>
+              <td style={{ ...baseCell,
+                          color: r.vega_usd > 0 ? "#9f9"
+                               : r.vega_usd < 0 ? "#fcc" : "#888" }}>
+                {fmtCompactSigned(r.vega_usd)}
+              </td>
+              <td style={baseCell}>{pct.toFixed(0)}%</td>
+              <td style={baseCell}>{r.n_positions}</td>
+            </tr>
+          );
+        })}
+        <tr>
+          <th style={{ ...bigHeader, textAlign: "left", background: "#222", color: "#fff" }}>
+            TOTAL
+          </th>
+          <td style={{ ...baseCell, background: "#222", color: "#fff", fontWeight: 700 }}>
+            {fmtCompactSigned(totalVega)}
+          </td>
+          <td style={{ ...baseCell, background: "#222", color: "#fff", fontWeight: 700 }}>
+            100%
+          </td>
+          <td style={{ ...baseCell, background: "#222", color: "#fff", fontWeight: 700 }}>
+            {totalN}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+  );
+}
+
+// Panel G — P&L attribution daily.
+// Sources le même `positions` array que panel E (endpoint
+// `/api/v1/positions/active`). Les greeks affichés sont les
+// sensibilités courantes de chaque position (mêmes valeurs que E).
+function PnlAttribution({ positions }: { positions: ActivePosition[] }): JSX.Element {
+  if (!positions || positions.length === 0) {
+    return <Empty />;
+  }
+  type Source = {
+    label: string;
+    pick: (p: ActivePosition) => number | null | undefined;
+  };
+  const sources: Source[] = [
+    { label: "Δ ($)",          pick: (p) => p.current_delta_unhedged },
+    { label: "Γ ($/pip)",      pick: (p) => p.current_gamma_usd_per_pip2 },
+    { label: "Vega ($/vp)",    pick: (p) => p.current_vega_usd_per_volpt },
+    { label: "Θ ($/day)",      pick: (p) => p.current_theta_usd_per_day },
+    { label: "Vanna ($/vp)",   pick: (p) => p.vanna_usd },
+    { label: "Volga ($/vp²)",  pick: (p) => p.volga_usd },
+    { label: "P&L pending",    pick: (p) => p.current_pnl_gross_usd },
+  ];
+  const cellColor = (v: number | null | undefined): string =>
+    v == null ? "#888" : v > 0 ? "#9f9" : v < 0 ? "#fcc" : "#fff";
+  const cellTxt = (v: number | null | undefined): string =>
+    v == null ? "—" : fmtCompactSigned(v, "$");
+  const colLabel = (p: ActivePosition): string =>
+    `${p.structure_type ?? p.id} (${p.side ?? "?"})`;
+  return (
+    <table style={{ ...tableStyle, fontFamily: "Consolas, monospace" }}>
+      <thead>
+        <tr>
+          <th style={{ ...th, textAlign: "left", verticalAlign: "middle" }}>Source</th>
+          {positions.map((p) => (
+            <th key={`${p.source}-${p.id}`}
+                style={{ ...th, textAlign: "center", verticalAlign: "middle" }}>
+              {colLabel(p)}
+            </th>
+          ))}
+          <th style={{ ...th, textAlign: "center", verticalAlign: "middle" }}>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {sources.map((s) => {
+          const vals = positions.map((p) => s.pick(p));
+          const known = vals.filter((v): v is number => typeof v === "number");
+          const total = known.length > 0 ? known.reduce((a, b) => a + b, 0) : null;
+          const isTotalRow = s.label === "P&L pending";
+          return (
+            <tr key={s.label} style={isTotalRow ? { background: "#1a1a1a" } : undefined}>
+              <th style={{ ...th, textAlign: "left", verticalAlign: "middle",
+                          fontWeight: isTotalRow ? 700 : 600,
+                          color: isTotalRow ? "#fff" : "#7af" }}>
+                {s.label}
+              </th>
+              {vals.map((v, i) => (
+                <td key={i} style={{ ...td,
+                                     textAlign: "center", verticalAlign: "middle",
+                                     color: cellColor(v),
+                                     fontWeight: isTotalRow ? 700 : 500 }}>
+                  {cellTxt(v)}
+                </td>
+              ))}
+              <td style={{ ...td,
+                           textAlign: "center", verticalAlign: "middle",
+                           color: cellColor(total),
+                           fontWeight: 700 }}>
+                {cellTxt(total)}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+// Panel K — Margin / SPAN utilization. Cf. risk_dashboard_spec.md § K.
+// Initial / Maintenance margin + excess liquidity sourced from the
+// /api/v1/portfolio/account snap (IB reqAccountSummary). SPAN
+// scenarios (worst-case futures/options/combined) need IB
+// RiskNavigator API and are not wired yet — those rows are flagged
+// explicitly "TODO: IB RiskNavigator" rather than silent "—".
+// Greek exposure ratios (Δ/Vega vs NetLiq) added below the margin
+// rows : surface concentration risk early (the user spotted
+// Δ=930k$ on NetLiq=995k$ = 93% in the current book).
+function MarginUtilization({
+  account, header,
+}: { account: AccountSnap | null; header: HeaderSummary | null }): JSX.Element {
+  const netLiq = account?.net_liq_usd ?? null;
+  const initMargin = account?.init_margin_req ?? null;
+  const maintMargin = account?.maint_margin_req ?? null;
+  const excess = account?.excess_liquidity ?? null;
+  const cushion = account?.cushion ?? null;
+  const deltaUsd = header?.greeks.delta_usd ?? null;
+  const vegaUsd = header?.greeks.vega_usd ?? null;
+  const gammaUsd = header?.greeks.gamma_usd ?? null;
+  const thetaUsd = header?.greeks.theta_usd ?? null;
+
+  const utilPct = (used: number | null, limit: number | null): number | null => {
+    if (used == null || limit == null || limit <= 0) return null;
+    return Math.abs(used) / limit;
+  };
+  const utilColor = (pct: number | null): string => {
+    if (pct == null) return "#888";
+    if (pct >= 0.90) return "#fcc";
+    if (pct >= 0.75) return "#fc6";
+    return "#9f9";
+  };
+  const fmtPctLocal = (pct: number | null): string =>
+    pct == null ? "—" : `${(pct * 100).toFixed(1)}%`;
+
+  type Row = {
+    label: string;
+    value: number | null;
+    valueFmt?: (v: number) => string;
+    limit: number | null;
+    pct: number | null;
+    todo?: boolean;
+    section?: string;
+  };
+  const rows: Row[] = [
+    // ── Margin (live from IB reqAccountSummary) ──
+    {
+      label: "Total margin used",
+      value: initMargin, limit: netLiq,
+      pct: utilPct(initMargin, netLiq),
+      section: "margin",
+    },
+    {
+      label: "Maintenance margin",
+      value: maintMargin, limit: netLiq,
+      pct: utilPct(maintMargin, netLiq),
+      section: "margin",
+    },
+    {
+      label: "Initial margin",
+      value: initMargin, limit: netLiq,
+      pct: utilPct(initMargin, netLiq),
+      section: "margin",
+    },
+    // ── Greek exposure vs NetLiq ──
+    {
+      label: "Δ exposure ($)",
+      value: deltaUsd, limit: netLiq,
+      pct: utilPct(deltaUsd, netLiq),
+      section: "exposure",
+    },
+    {
+      label: "Vega exposure ($/vp)",
+      value: vegaUsd, limit: netLiq,
+      pct: utilPct(vegaUsd, netLiq),
+      section: "exposure",
+    },
+    {
+      label: "Γ exposure ($/pip)",
+      value: gammaUsd, limit: netLiq,
+      pct: utilPct(gammaUsd, netLiq),
+      section: "exposure",
+    },
+    {
+      label: "Θ exposure ($/day)",
+      value: thetaUsd, limit: netLiq,
+      pct: utilPct(thetaUsd, netLiq),
+      section: "exposure",
+    },
+    // ── SPAN scenarios (not wired — needs IB RiskNavigator) ──
+    {
+      label: "SPAN scenario worst (futures)",
+      value: null, limit: null, pct: null, todo: true,
+      section: "span",
+    },
+    {
+      label: "SPAN scenario worst (options)",
+      value: null, limit: null, pct: null, todo: true,
+      section: "span",
+    },
+    {
+      label: "Combined worst case",
+      value: null, limit: null, pct: null, todo: true,
+      section: "span",
+    },
+    // ── Buffer ──
+    {
+      label: "Excess liquidity",
+      value: excess, limit: null, pct: null,
+      section: "buffer",
+    },
+    {
+      label: "Liquidation buffer (cushion)",
+      value: cushion != null && netLiq != null ? cushion * netLiq : null,
+      valueFmt: (v) => `${fmtUsdAbs(v)} (${cushion != null ? (cushion * 100).toFixed(1) : "—"}%)`,
+      limit: null, pct: null,
+      section: "buffer",
+    },
+  ];
+
+  // Section divider rows go before the first row of each section change.
+  const sectionLabel: Record<string, string> = {
+    margin:   "─ Margin (IB reqAccountSummary) ──────────────",
+    exposure: "─ Greek exposure vs NetLiq ──────────────────",
+    span:     "─ SPAN scenarios (TODO: IB RiskNavigator) ───",
+    buffer:   "─ Buffer ───────────────────────────────────",
+  };
+
+  const trs: JSX.Element[] = [];
+  let prevSection: string | undefined;
+  for (const r of rows) {
+    if (r.section && r.section !== prevSection) {
+      trs.push(
+        <tr key={`divider-${r.section}`}>
+          <td colSpan={4} style={{
+            padding: "8px 10px 2px 10px",
+            color: "#555", fontSize: 10,
+            fontFamily: "Consolas, monospace",
+            letterSpacing: 0.5,
+          }}>
+            {sectionLabel[r.section]}
+          </td>
+        </tr>
+      );
+      prevSection = r.section;
+    }
+    const labelColor = r.todo ? "#666" : "#7af";
+    const labelStyle: CSSProperties = r.todo ? { fontStyle: "italic" } : {};
+    trs.push(
+      <tr key={r.label}>
+        <th style={{ ...th, textAlign: "left", color: labelColor, ...labelStyle }}>
+          {r.label}
+          {r.todo && <span style={{ marginLeft: 6, fontSize: 9, color: "#a77" }}>
+            [not wired]
+          </span>}
+        </th>
+        <td style={{ ...td, textAlign: "center",
+                    color: r.todo ? "#555" : "#ddd" }}>
+          {r.value == null
+            ? (r.todo ? "TODO" : "—")
+            : (r.valueFmt ? r.valueFmt(r.value) : fmtUsdAbs(r.value))}
+        </td>
+        <td style={{ ...td, textAlign: "center", color: "#888" }}>
+          {r.limit == null ? "—" : fmtUsdAbs(r.limit)}
+        </td>
+        <td style={{ ...td, textAlign: "center", color: utilColor(r.pct),
+                    fontWeight: r.pct != null && r.pct >= 0.75 ? 700 : 500 }}>
+          {fmtPctLocal(r.pct)}
+        </td>
+      </tr>
+    );
+  }
+  return (
+    <Section title={`K · Margin / SPAN utilization (NetLiq ${fmtUsdAbs(netLiq)})`}>
+      <table style={{ ...tableStyle, fontFamily: "Consolas, monospace" }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: "left" }}>Métrique</th>
+            <th style={{ ...th, textAlign: "center" }}>Valeur</th>
+            <th style={{ ...th, textAlign: "center" }}>Limite</th>
+            <th style={{ ...th, textAlign: "center" }}>% util</th>
+          </tr>
+        </thead>
+        <tbody>{trs}</tbody>
+      </table>
+      <div style={{ fontSize: 10, color: "#666", marginTop: 8, lineHeight: 1.5 }}>
+        <div>Alerts : <span style={{ color: "#9f9" }}>vert</span> &lt; 75%, <span style={{ color: "#fc6" }}>ambre</span> 75-90%, <span style={{ color: "#fcc" }}>rouge</span> ≥ 90%. Liquidation buffer &lt; 10% NAV = critique.</div>
+        <div style={{ color: "#555", marginTop: 2 }}>
+          SPAN rows require IB RiskNavigator integration (backlog post-obs v1.0).
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+// Panel J — pin risk grid. Spec § J recommends DTE < 7d as the trigger,
+// but we list every open option here for dev visibility ; the operator
+// can eyeball pin risk regardless of tenor.
+function PinRiskSection({
+  positions, spot,
+}: { positions: ActivePosition[]; spot: number | null }): JSX.Element {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
+  const rows = positions
+    .filter((p) => p.option_type === "CALL" || p.option_type === "PUT")
+    .map((p) => {
+      const exp = p.expiry_date ? new Date(p.expiry_date) : null;
+      const dte = exp
+        ? Math.round((exp.getTime() - today.getTime()) / 86_400_000)
+        : null;
+      return { p, dte };
+    })
+    .filter((r): r is { p: ActivePosition; dte: number } => r.dte !== null);
+
+  if (rows.length === 0) {
+    return (
+      <Section title="J · Pin risk grid (0 options)">
+        <div style={{ color: "#666", fontSize: 12, fontStyle: "italic",
+                      padding: "10px 4px" }}>
+          no open options.
+        </div>
+      </Section>
+    );
+  }
+
+  const distancePips = (strike: number | null | undefined): number | null => {
+    if (!strike || spot == null) return null;
+    return Math.round((spot - strike) * 10_000);
+  };
+  const cellColor = (v: number | null): string =>
+    v == null ? "#888" : v > 0 ? "#9f9" : v < 0 ? "#fcc" : "#fff";
+  const cellTxt = (v: number | null): string =>
+    v == null ? "—" : fmtCompactSigned(v, "$");
+
+  return (
+    <Section title={`J · Pin risk grid (${rows.length} option${rows.length > 1 ? "s" : ""}, spot=${spot ?? "—"})`}>
+      <table style={{ ...tableStyle, fontFamily: "Consolas, monospace" }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: "left" }}>Option</th>
+            <th style={{ ...th, textAlign: "center" }}>DTE</th>
+            <th style={{ ...th, textAlign: "center" }}>Strike</th>
+            <th style={{ ...th, textAlign: "center" }}>Spot</th>
+            <th style={{ ...th, textAlign: "center" }}>Distance (pips)</th>
+            <th style={{ ...th, textAlign: "center" }}>Δ ($)</th>
+            <th style={{ ...th, textAlign: "center" }}>P&L now</th>
+            <th style={{ ...th, textAlign: "center" }}>P&L if pin (ΔS=0)</th>
+            <th style={{ ...th, textAlign: "center" }}>P&L if breach (ΔS=±50bp)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ p, dte }) => {
+            const dist = distancePips(p.strike);
+            const pnlNow = p.current_pnl_gross_usd ?? null;
+            // Breach proxy via Greeks (Δ × ΔS + ½ Γ × ΔS²) for ±50 bp.
+            // Γ from API is in $/pip — for 50 pips squared use the
+            // simple linearisation × pips. Pin estimate keeps current
+            // P&L (ΔS = 0). Replace with full reval when backend pricer
+            // exposes it (spec § J ‘pricing engine + tick stream’).
+            const delta = p.current_delta_unhedged ?? null;
+            const breach50 = delta != null
+              ? delta * 50 / 10_000  // delta is $/unit-spot-move; here 50 bp = 0.5%
+              : null;
+            const optLabel = `${p.option_type ?? "?"} ${p.strike ?? "?"} × ${p.ib_qty_total ?? "?"}`;
+            return (
+              <tr key={`${p.source}-${p.id}`}>
+                <th style={{ ...th, textAlign: "left", color: "#7af" }}>
+                  {optLabel}
+                </th>
+                <td style={{ ...td, textAlign: "center" }}>{dte}d</td>
+                <td style={{ ...td, textAlign: "center" }}>
+                  {p.strike != null ? p.strike.toFixed(5) : "—"}
+                </td>
+                <td style={{ ...td, textAlign: "center" }}>
+                  {spot != null ? spot.toFixed(5) : "—"}
+                </td>
+                <td style={{ ...td, textAlign: "center",
+                            color: dist == null ? "#888" : dist === 0 ? "#fff" : "#ddd" }}>
+                  {dist == null ? "—" : `${dist > 0 ? "+" : ""}${dist}`}
+                </td>
+                <td style={{ ...td, textAlign: "center", color: cellColor(delta) }}>
+                  {cellTxt(delta)}
+                </td>
+                <td style={{ ...td, textAlign: "center", color: cellColor(pnlNow) }}>
+                  {cellTxt(pnlNow)}
+                </td>
+                <td style={{ ...td, textAlign: "center", color: cellColor(pnlNow) }}>
+                  {cellTxt(pnlNow)}
+                </td>
+                <td style={{ ...td, textAlign: "center", color: cellColor(breach50) }}>
+                  {cellTxt(breach50)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Section>
   );
 }
 
@@ -604,29 +997,6 @@ const stressHeader: CSSProperties = {
   textAlign: "right",
 };
 
-function HedgeStat({
-  label, w,
-}: { label: string; w: HedgeWindow | undefined }): JSX.Element {
-  const cost = w?.cum_cost_usd ?? null;
-  const color = cost === null ? "#888"
-              : cost < 0 ? "#e66" : cost > 0 ? "#6c6" : "#ddd";
-  return (
-    <div style={{
-      padding: "5px 8px", background: "#0e0e0e",
-      border: "1px solid #222", borderRadius: 3,
-    }}>
-      <div style={{ fontSize: 10, color: "#888", textTransform: "uppercase",
-                    letterSpacing: 0.3 }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 600, color }}>
-        {cost === null ? "—" : `${cost >= 0 ? "+" : ""}${Math.round(cost).toLocaleString()}$`}
-      </div>
-      <div style={{ fontSize: 10, color: "#666" }}>
-        {w?.n_hedges ?? 0} hedges
-      </div>
-    </div>
-  );
-}
-
 function Section({
   title, children,
 }: { title: string; children: React.ReactNode }): JSX.Element {
@@ -640,6 +1010,32 @@ function Section({
       </header>
       <div style={{ padding: 10 }}>{children}</div>
     </section>
+  );
+}
+
+// Square-aspect Section variant — outer panel is forced to width=height
+// via aspectRatio on the grid child wrapper, inner content fills the
+// available area below the title bar (flex column).
+function SquareCell({
+  title, children,
+}: { title: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <div style={{ aspectRatio: "1 / 1" }}>
+      <section style={{
+        height: "100%", display: "flex", flexDirection: "column",
+        border: "1px solid #333", borderRadius: 4, overflow: "hidden",
+      }}>
+        <header style={{
+          padding: "6px 10px", background: "#1a1a1a", borderBottom: "1px solid #333",
+        }}>
+          <h3 style={{ margin: 0, fontSize: 13, color: "#7af",
+                       fontWeight: 600, letterSpacing: 0.5 }}>{title}</h3>
+        </header>
+        <div style={{ padding: 10, flex: 1, minHeight: 0, overflow: "hidden" }}>
+          {children}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -711,29 +1107,7 @@ function fmtCcyValue(v: number | string | null | undefined): string {
   return String(v);
 }
 
-function GenericTable({ rows, cols }: { rows: TableRow[]; cols: string[] }): JSX.Element {
-  if (rows.length === 0) return <Empty />;
-  return (
-    <div style={{ overflow: "auto", maxHeight: 280 }}>
-      <table style={tableStyle}>
-        <thead><tr>{cols.map((c) => <th key={c} style={th}>{c}</th>)}</tr></thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              {cols.map((c) => <td key={c} style={td}>{fmt(r[c])}</td>)}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
-function fmt(v: unknown): string {
-  if (v === null || v === undefined) return "—";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
 function Empty(): JSX.Element {
   return <div style={{ color: "#666", fontSize: 12, fontStyle: "italic" }}>(no rows)</div>;
 }
