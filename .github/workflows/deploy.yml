@@ -1,0 +1,100 @@
+name: deploy-prod
+
+# Production deploy workflow. Triggers on a pushed semver tag (v*.*.*)
+# or manual workflow_dispatch. SSH to the EC2 host provided via repo
+# secrets, pull the tagged images from GHCR, apply Alembic migrations
+# inside the fresh api container, then `docker compose up -d` so the
+# outer Nginx drops the old containers with a brief 502 and swaps in
+# the new ones.
+#
+# All credentials live in repo secrets : EC2_HOST, EC2_USER, EC2_SSH_KEY
+# (private key PEM), DB_PASSWORD, VNC_PASSWORD, IB_USERID, IB_PASSWORD.
+# The deploy_sha input lets operators redeploy an arbitrary commit
+# without tagging — useful for emergency rollbacks.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      deploy_sha:
+        description: "Commit SHA to deploy (defaults to the current ref)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  deploy:
+    name: deploy ${{ github.ref_name }} to EC2
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag to deploy
+        id: resolve
+        run: |
+          if [ -n "${{ inputs.deploy_sha }}" ]; then
+            echo "image_tag=sha-${{ inputs.deploy_sha }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "image_tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure SSH for EC2
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2.pem
+          chmod 600 ~/.ssh/ec2.pem
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Ship compose + .env payloads to the host
+        run: |
+          scp -i ~/.ssh/ec2.pem docker-compose.yml \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/fxvol/docker-compose.yml"
+          # .env is rendered on the host from repo secrets, not shipped
+          # as a file (avoids writing secrets to a worktree on the runner).
+          ssh -i ~/.ssh/ec2.pem "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            "umask 077 && cat > /opt/fxvol/.env" <<EOF
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          VNC_PASSWORD=${{ secrets.VNC_PASSWORD }}
+          IB_USERID=${{ secrets.IB_USERID }}
+          IB_PASSWORD=${{ secrets.IB_PASSWORD }}
+          API_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-api:${{ steps.resolve.outputs.image_tag }}
+          FRONTEND_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-frontend:${{ steps.resolve.outputs.image_tag }}
+          MARKET_DATA_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-market-data:${{ steps.resolve.outputs.image_tag }}
+          VOL_ENGINE_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-vol-engine:${{ steps.resolve.outputs.image_tag }}
+          RISK_ENGINE_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-risk-engine:${{ steps.resolve.outputs.image_tag }}
+          DB_WRITER_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-db-writer:${{ steps.resolve.outputs.image_tag }}
+          EOF
+
+      - name: Pull + restart stack on EC2
+        run: |
+          ssh -i ~/.ssh/ec2.pem "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            "cd /opt/fxvol && \
+             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin && \
+             docker compose pull && \
+             docker compose up -d --remove-orphans && \
+             docker compose exec -T api python -m alembic -c persistence/alembic.ini upgrade head"
+
+      - name: "Smoke check /api/v1/health returns 200"
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" https://${{ secrets.EC2_HOST }}/api/v1/health || true)
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 3
+          done
+          echo "Post-deploy smoke failed — /api/v1/health did not return 200"
+          exit 1
