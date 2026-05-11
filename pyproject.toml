@@ -26,6 +26,8 @@ dependencies = [
     "SQLAlchemy>=2.0,<2.1",
     "asyncpg>=0.29,<0.30",
     "alembic>=1.13,<1.14",
+    # P0 observability — every container ships /metrics. Tiny (<200 KB).
+    "prometheus-client>=0.19,<0.21",
 ]
 
 # Optional dependency groups — one per container archetype, plus tooling.
@@ -38,7 +40,8 @@ api = [
     "fastapi>=0.110,<0.112",
     "uvicorn[standard]>=0.27,<0.29",
     "slowapi>=0.1.9,<0.2",
-    "prometheus-client>=0.19,<0.21",
+    # prometheus-client now in base deps (P0 obs) — kept here historically
+    # for clarity, can be dropped once docs confirm base import.
     "httpx>=0.27,<0.28",
 ]
 

@@ -538,18 +538,23 @@ async def position_sync_loop(
     except Exception:
         logger.exception("position_sync_initial_failed")
 
+    from shared.observability import observed_cycle
+
     while True:
         try:
             await asyncio.sleep(interval_s)
-            async with session_maker() as db:
-                sync = await sync_positions_from_ib(db, executor, redis)
-                snaps = await publish_portfolio_to_redis(db, executor, redis)
-                orders = await sync_orders_from_ib(db, executor)
-                trades = await sync_trades_from_ib(db, executor)
-                recon = await reconcile_trade_positions(db, executor)
-                # Account snap : 1 row par tick (cohérent avec les autres
-                # tables, alimente account_snaps à 1s).
-                acct = await insert_account_snap(db, executor)
+            # P0 obs : each position_sync tick = one cycle. cycle_id bound to
+            # structlog, metrics emitted on engine_cycles_total{engine="execution_engine"}.
+            with observed_cycle("execution_engine"):
+                async with session_maker() as db:
+                    sync = await sync_positions_from_ib(db, executor, redis)
+                    snaps = await publish_portfolio_to_redis(db, executor, redis)
+                    orders = await sync_orders_from_ib(db, executor)
+                    trades = await sync_trades_from_ib(db, executor)
+                    recon = await reconcile_trade_positions(db, executor)
+                    # Account snap : 1 row par tick (cohérent avec les autres
+                    # tables, alimente account_snaps à 1s).
+                    acct = await insert_account_snap(db, executor)
             # Heartbeat → Redis (TTL 300s). Visible dans EngineHealth /
             # /dev/engines comme les 4 autres engines.
             if redis is not None:

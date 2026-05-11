@@ -106,6 +106,10 @@ services:
     networks:
       fxvol-internal:
         ipv4_address: 172.20.0.10
+    # P0 obs : Prometheus /metrics endpoint, scraped by Prometheus from
+    # within fxvol-internal in P1. Spec § Phase 0 step 3.
+    expose:
+      - "9101"
     healthcheck:
       test:
         - CMD-SHELL
@@ -153,6 +157,9 @@ services:
     networks:
       fxvol-internal:
         ipv4_address: 172.20.0.11
+    # P0 obs : Prometheus /metrics endpoint. Spec § Phase 0 step 3.
+    expose:
+      - "9102"
     healthcheck:
       test:
         - CMD-SHELL
@@ -194,6 +201,9 @@ services:
     networks:
       fxvol-internal:
         ipv4_address: 172.20.0.12
+    # P0 obs : Prometheus /metrics endpoint. Spec § Phase 0 step 3.
+    expose:
+      - "9103"
     healthcheck:
       test:
         - CMD-SHELL
@@ -224,6 +234,9 @@ services:
         condition: service_healthy
     networks:
       - fxvol-internal
+    # P0 obs : Prometheus /metrics endpoint. Spec § Phase 0 step 3.
+    expose:
+      - "9105"
     healthcheck:
       test:
         - CMD-SHELL
@@ -264,6 +277,9 @@ services:
     networks:
       fxvol-internal:
         ipv4_address: 172.20.0.14
+    # P0 obs : Prometheus /metrics endpoint. Spec § Phase 0 step 3.
+    expose:
+      - "9104"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8001/health"]
       interval: 15s

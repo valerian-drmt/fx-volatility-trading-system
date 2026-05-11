@@ -71,11 +71,19 @@ class DbWriterService:
 
     async def _heartbeat_loop(self) -> None:
         """Fire a Redis heartbeat every HEARTBEAT_INTERVAL_S seconds."""
+        from shared.observability import observed_cycle
+
         while not self._stop.is_set():
-            try:
-                await publisher.set_heartbeat(self.redis, keys.ENGINE_DB_WRITER)
-            except Exception:
-                logger.warning("heartbeat_publish_failed")
+            # P0 obs : one heartbeat tick = one cycle for the db-writer
+            # engine. Granularity isn't per-batch (which would mix with the
+            # shared persistence.writer lib used by api too), but per liveness
+            # ping — sufficient to detect a hung service via the
+            # engine_last_cycle_timestamp_seconds gauge.
+            with observed_cycle("db_writer"):
+                try:
+                    await publisher.set_heartbeat(self.redis, keys.ENGINE_DB_WRITER)
+                except Exception:
+                    logger.warning("heartbeat_publish_failed")
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=HEARTBEAT_INTERVAL_S)
                 break
