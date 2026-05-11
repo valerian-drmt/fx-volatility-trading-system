@@ -130,7 +130,13 @@ class RiskEngine:
             self._teardown()
 
     async def run_cycle(self) -> bool:
-        F = await self._read_spot()
+        """P2 obs : child spans per stage. service.name=risk_engine."""
+        from opentelemetry import trace as _otel
+        tracer = _otel.get_tracer(__name__)
+
+        with tracer.start_as_current_span("risk_read_spot") as span:
+            F = await self._read_spot()
+            span.set_attribute("spot", F if F is not None else -1)
         if F is None:
             # Redis ticker may be empty when IB market-data subscription is
             # broken (Error 1100 / weekend). Fall back to the EUR FUTURE
@@ -142,36 +148,38 @@ class RiskEngine:
                 return False
             logger.info("risk_spot_fallback_from_portfolio", extra={"spot": F})
 
-        surface = await self._read_surface()
-        if surface is None:
-            # Surface empty (weekend / vol-engine gated) — keep going. The
-            # persist path falls back to implied vol via ``option_marks``,
-            # and the aggregate path uses ``FALLBACK_IV`` per ``_iv_for``.
-            surface = {}
-            logger.debug("risk_cycle_no_surface_using_fallback")
+        with tracer.start_as_current_span("risk_read_surface") as span:
+            surface = await self._read_surface()
+            if surface is None:
+                surface = {}
+                logger.debug("risk_cycle_no_surface_using_fallback")
+            span.set_attribute("n_pillars", len(surface))
 
-        positions = await self._load_positions()
-        greeks = self._aggregate_greeks(positions, F, surface)
-        pnl_curve = self._compute_pnl_curve(positions, F, surface) if positions else None
+        with tracer.start_as_current_span("risk_compute_greeks") as span:
+            positions = await self._load_positions()
+            greeks = self._aggregate_greeks(positions, F, surface)
+            pnl_curve = self._compute_pnl_curve(positions, F, surface) if positions else None
+            span.set_attribute("n_positions", len(positions))
 
-        # Persist per-position greeks to DB (single source of truth, cf.
-        # container_risk.md and PORTFOLIO_PANEL_LIVE.md L1).
+        # Persist per-position greeks to DB.
         if positions and self._sessionmaker is not None:
-            try:
-                n = await self._persist_position_snapshots(positions, F, surface)
-                logger.debug("risk_persisted_snapshots", extra={"n": n})
-            except Exception:
-                logger.exception("persist_position_snapshots_failed")
+            with tracer.start_as_current_span("risk_persist_snapshots") as span:
+                try:
+                    n = await self._persist_position_snapshots(positions, F, surface)
+                    span.set_attribute("n_rows", n or 0)
+                except Exception:
+                    logger.exception("persist_position_snapshots_failed")
 
-        try:
-            await publisher.publish_risk_update(
-                self.redis, greeks=greeks, pnl_curve=pnl_curve
-            )
-            await publisher.set_heartbeat(self.redis, keys.ENGINE_RISK)
-            return True
-        except Exception:
-            logger.exception("publish_risk_update_failed")
-            return False
+        with tracer.start_as_current_span("risk_redis_publish"):
+            try:
+                await publisher.publish_risk_update(
+                    self.redis, greeks=greeks, pnl_curve=pnl_curve
+                )
+                await publisher.set_heartbeat(self.redis, keys.ENGINE_RISK)
+                return True
+            except Exception:
+                logger.exception("publish_risk_update_failed")
+                return False
 
     async def _load_positions(self) -> list[dict]:
         """Read OPEN positions from DB and shape them for the BS compute path.

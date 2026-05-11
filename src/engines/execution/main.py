@@ -41,6 +41,7 @@ from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
 from persistence.models import OrderEvent
 from shared.observability import start_metrics_server
+from shared.tracing import init_tracing
 
 logger = logging.getLogger("execution")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
@@ -59,6 +60,8 @@ async def lifespan(app: FastAPI):
     # P0 obs : start the Prometheus /metrics HTTP server first thing so the
     # endpoint is reachable even during the rest of startup.
     start_metrics_server(_METRICS_PORT)
+    # P2 obs : OTel tracer init (post P2.1 validation).
+    init_tracing(service_name="execution_engine")
 
     redis = aioredis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=False)
     app.state.redis = redis

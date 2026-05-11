@@ -26,6 +26,7 @@ from bus import get_async_redis
 from shared.config import get_settings
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
+from shared.tracing import init_tracing
 
 # P0 obs : Prometheus /metrics endpoint port. Spec § Phase 0 step 3.
 _METRICS_PORT = 9101
@@ -35,6 +36,8 @@ async def run() -> None:
     settings = get_settings()
     configure_logging(service_name=settings.SERVICE_NAME or "market_data", level=settings.LOG_LEVEL)
     start_metrics_server(_METRICS_PORT)
+    # P2 obs : OTel tracer (rollout post P2.1 validation).
+    init_tracing(service_name=settings.SERVICE_NAME or "market_data")
 
     # ib_insync import is deferred so the unit tests don't need the dep tree.
     from ib_insync import IB
