@@ -59,7 +59,7 @@ STUCK_AFTER_S = float(os.getenv("STUCK_AFTER_S", "600.0"))
 async def lifespan(app: FastAPI):
     # P0 obs : start the Prometheus /metrics HTTP server first thing so the
     # endpoint is reachable even during the rest of startup.
-    start_metrics_server(_METRICS_PORT)
+    start_metrics_server(_METRICS_PORT, engine="execution_engine")
     # P2 obs : OTel tracer init (post P2.1 validation).
     init_tracing(service_name="execution_engine")
 

@@ -26,7 +26,7 @@ async def run() -> None:
     configure_logging(
         service_name=settings.SERVICE_NAME or "db_writer", level=settings.LOG_LEVEL
     )
-    start_metrics_server(_METRICS_PORT)
+    start_metrics_server(_METRICS_PORT, engine="db_writer")
     # P2 obs : OTel tracer (rollout post P2.1 validation).
     init_tracing(service_name=settings.SERVICE_NAME or "db_writer")
 
