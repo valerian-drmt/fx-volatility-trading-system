@@ -36,10 +36,10 @@ from core.execution.fills import (
 )
 from engines.execution.redis_state import get_client as _get_redis
 from persistence.models import (
-    ExecutionAuditLog,
     StructureFill,
     StructureOrder,
-    TradePosition,
+    TradeEvent,
+    BookedPosition,
     TradeStructure,
 )
 
@@ -298,21 +298,21 @@ async def maybe_complete_structure(
             # Idempotent : skip if a position row already exists.
             existing = (await db.execute(
                 select(func.count())
-                .select_from(TradePosition)
-                .where(TradePosition.structure_id == structure_id)
+                .select_from(BookedPosition)
+                .where(BookedPosition.structure_id == structure_id)
             )).scalar_one()
             if existing == 0:
-                db.add(TradePosition(
+                db.add(BookedPosition(
                     structure_id=structure_id,
                     opened_at=now,
                     entry_premium_usd=struct.total_premium_paid_usd or 0.0,
                     entry_total_cost_usd=struct.total_entry_cost_usd or 0.0,
                     state="open",
                 ))
-            db.add(ExecutionAuditLog(
+            db.add(TradeEvent(
                 structure_id=structure_id,
                 event_type="structure_filled", severity="info",
-                message="all entry legs filled, position created",
+                description="all entry legs filled, position created",
                 payload={"premium_usd": struct.total_premium_paid_usd},
             ))
             await db.commit()
@@ -323,10 +323,10 @@ async def maybe_complete_structure(
         else:
             # Closing structure : audit the fully_filled then delegate to
             # api.orchestration.position_close which flips trade_positions.
-            db.add(ExecutionAuditLog(
+            db.add(TradeEvent(
                 structure_id=structure_id,
                 event_type="closing_structure_filled", severity="info",
-                message="all closing legs filled",
+                description="all closing legs filled",
                 payload={"premium_usd": struct.total_premium_paid_usd},
             ))
             await db.commit()
@@ -355,12 +355,12 @@ def _audit(
     db: AsyncSession, order: StructureOrder, event_type: str,
     severity: str, message: str, payload: dict[str, Any],
 ) -> None:
-    db.add(ExecutionAuditLog(
+    db.add(TradeEvent(
         structure_id=order.structure_id,
         order_id=order.id,
         event_type=event_type,
         severity=severity,
-        message=message[:500],
+        description=message[:500],
         payload=payload,
     ))
 

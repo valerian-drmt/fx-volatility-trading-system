@@ -15,7 +15,7 @@ from api.schemas.portfolio import (
     PositionView,
 )
 from bus import keys
-from persistence.models import Position, PositionSnapshot
+from persistence.models import Position, PositionMetricHistory
 
 
 class NotFoundInPortfolio(Exception):
@@ -70,9 +70,9 @@ async def get_history(
     if await db.get(Position, position_id) is None:
         raise NotFoundInPortfolio(f"Position {position_id} not found")
     stmt = (
-        select(PositionSnapshot)
-        .where(PositionSnapshot.position_id == position_id)
-        .order_by(asc(PositionSnapshot.timestamp))
+        select(PositionMetricHistory)
+        .where(PositionMetricHistory.position_id == position_id)
+        .order_by(asc(PositionMetricHistory.timestamp))
         .limit(limit)
     )
     rows = (await db.execute(stmt)).scalars().all()

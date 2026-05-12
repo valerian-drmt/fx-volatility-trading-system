@@ -154,7 +154,7 @@ async def _seed_structure_with_orders(maker, *, configs):
 async def test_run_rollback_cancels_pending_and_unwinds_partial(monkeypatch):
     _install_ibinsync_stub(monkeypatch)
     from engines.execution.rollback_runner import run_rollback
-    from persistence.models import ExecutionAuditLog, StructureOrder
+    from persistence.models import StructureOrder, TradeEvent
 
     maker, engine = await _make_session()
     try:
@@ -201,8 +201,8 @@ async def test_run_rollback_cancels_pending_and_unwinds_partial(monkeypatch):
                 .where(StructureOrder.order_role == "unwind")
             )).scalars().all()
             audit = (await db.execute(
-                select(ExecutionAuditLog)
-                .where(ExecutionAuditLog.structure_id == struct_id)
+                select(TradeEvent)
+                .where(TradeEvent.structure_id == struct_id)
             )).scalars().all()
         assert len(unwind_orders) == 1
         assert unwind_orders[0].side == "SELL"

@@ -29,7 +29,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from persistence.models import ExecutionAuditLog, IbConnectionState, StructureOrder
+from persistence.models import IbConnectionState, StructureOrder, TradeEvent
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +135,10 @@ async def _already_alerted_recently(
     """Avoid spamming audit log : one alert per order per dedup_window."""
     cutoff = now - timedelta(seconds=dedup_window_s)
     existing = (await db.execute(
-        select(ExecutionAuditLog.id)
-        .where(ExecutionAuditLog.event_type == _STUCK_AUDIT_EVENT)
-        .where(ExecutionAuditLog.order_id == order_id)
-        .where(ExecutionAuditLog.timestamp >= cutoff)
+        select(TradeEvent.id)
+        .where(TradeEvent.event_type == _STUCK_AUDIT_EVENT)
+        .where(TradeEvent.order_id == order_id)
+        .where(TradeEvent.ts >= cutoff)
         .limit(1)
     )).scalar_one_or_none()
     return existing is not None
@@ -164,12 +164,12 @@ async def stuck_order_watcher_loop(
                     ):
                         continue
                     age_s = (now - order.submitted_at).total_seconds() if order.submitted_at else 0.0
-                    db.add(ExecutionAuditLog(
+                    db.add(TradeEvent(
                         structure_id=order.structure_id,
                         order_id=order.id,
                         event_type=_STUCK_AUDIT_EVENT,
                         severity="critical",
-                        message=(
+                        description=(
                             f"order {order.id} stuck in {order.state} "
                             f"for {age_s:.0f}s (>{stuck_after_seconds:.0f}s)"
                         ),

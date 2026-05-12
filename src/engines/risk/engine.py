@@ -40,7 +40,7 @@ from core.pricing.bs import (
     bs_volga,
 )
 from core.risk.greeks import bs_price_vec
-from persistence.models import Position, PositionSnapshot
+from persistence.models import Position, PositionMetricHistory
 from shared.contracts import multiplier_for, parse_local_symbol
 
 
@@ -343,7 +343,7 @@ class RiskEngine:
 
                 # 2. Snapshot = literal copy of every panel-E column at this
                 #    timestamp. Same shape as ``positions``.
-                snap = PositionSnapshot(
+                snap = PositionMetricHistory(
                     position_id=live_pos.id,
                     timestamp=now,
                     structure=live_pos.structure,

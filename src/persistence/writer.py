@@ -33,15 +33,14 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from persistence.models import (
-    AccountSnap,
+    AccountHistory,
     Base,
     FeatureHistory,
     PcaSignal,
     Position,
-    PositionSnapshot,
+    PositionMetricHistory,
     RegimeSnapshot,
     SurfaceSnapshotHourly,
-    Trade,
     VolSurface,
 )
 
@@ -57,14 +56,13 @@ SHUTDOWN_TIMEOUT_S: float = 30.0
 # Dispatcher : event table_name -> ORM model class.
 # The writer rejects any event targeting a table not in this map.
 TABLE_MODELS: dict[str, type[Base]] = {
-    "account_snaps": AccountSnap,
-    "feature_history": FeatureHistory,                       # renamed in migration 023
+    "account_history": AccountHistory,                        # renamed in migration 026 (Theme 2)
+    "feature_history": FeatureHistory,                        # renamed in migration 023
     "pca_signal_history": PcaSignal,                          # renamed in migration 023
-    "positions": Position,
-    "position_snapshots": PositionSnapshot,
+    "position": Position,                                     # renamed in migration 026 (Theme 2)
+    "position_metric_history": PositionMetricHistory,         # renamed in migration 026 (Theme 2)
     "regime_snapshot": RegimeSnapshot,                        # renamed in migration 023
     "surface_pca_snapshot_history": SurfaceSnapshotHourly,    # renamed in migration 023
-    "trades": Trade,
     "vol_surface_history": VolSurface,                        # renamed in migration 023
 }
 
@@ -72,16 +70,16 @@ TABLE_MODELS: dict[str, type[Base]] = {
 # vol_surfaces and signals both have a UNIQUE constraint (see models.py),
 # and the engines can re-emit the same (timestamp, underlying[, tenor]) on
 # a retry : we want the first write to win and the second to be a no-op.
-# positions uses the primary key ``id`` (a deterministic hash of the IB
+# `position` uses the primary key ``id`` (a deterministic hash of the IB
 # composite key — see core.payloads.compute_position_id) : re-observing the
 # same open position on every risk cycle must be idempotent so that only
 # the first sighting creates the row ; subsequent observations land as
-# position_snapshots only.
-# Other tables (trades, position_snapshots, account_snaps) have no natural
+# position_metric_history rows only.
+# Other tables (position_metric_history, account_history) have no natural
 # dedup key, duplicates there are real data and must not be silenced.
 IDEMPOTENT_TABLES: dict[str, list[str]] = {
     "vol_surface_history": ["timestamp", "underlying"],                                   # renamed
-    "positions": ["id"],
+    "position": ["id"],                                                                   # renamed in 026
     "feature_history": ["symbol", "timestamp"],                                           # renamed
     "surface_pca_snapshot_history": ["symbol", "timestamp"],                              # renamed
     "pca_signal_history": ["symbol", "timestamp", "pca_model_id", "pc_id"],               # renamed

@@ -176,7 +176,7 @@ async def test_full_fill_creates_position_and_marks_structure():
     structure flips to fully_filled, premium aggregated correctly."""
     from engines.execution.fills_handler import _on_execution
     from persistence.models import (
-        TradePosition,
+        BookedPosition,
         TradeStructure,
     )
 
@@ -195,7 +195,7 @@ async def test_full_fill_creates_position_and_marks_structure():
             from sqlalchemy import select
             struct = await db.get(TradeStructure, struct_id)
             pos = (await db.execute(
-                select(TradePosition).where(TradePosition.structure_id == struct_id)
+                select(BookedPosition).where(BookedPosition.structure_id == struct_id)
             )).scalar_one_or_none()
         assert struct.state == "fully_filled"
         assert struct.total_commission_usd == pytest.approx(2.0)

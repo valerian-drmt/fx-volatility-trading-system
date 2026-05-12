@@ -269,12 +269,13 @@ async def stack_overview(
 # Value = colonne pour ORDER BY DESC (PK la plupart du temps, mais pas toujours
 # `id` — vol_config utilise `version`).
 ALLOWED_TABLES: dict[str, str] = {
-    "order_events": "id",
-    "orders": "id",
-    "trades": "id",
-    "positions": "id",
-    "position_snapshots": "id",
-    "account_snaps": "id",
+    # Theme 2 — Portfolio refactor (migration 026)
+    "position": "id",                                # renamed from positions
+    "position_metric_history": "id",                 # renamed from position_snapshots
+    "booked_position": "id",                         # renamed from trade_positions
+    "booked_position_metric_history": "id",          # renamed from position_mtm_history + signal fold
+    "account_history": "id",                         # renamed from account_snaps
+    "book_state_snapshot": "id",                     # renamed from book_state_snapshots (singular)
     "vol_surface_history": "id",                # renamed in migration 023
     "vol_engine_config": "version",
     # Step 1 — regime gating
@@ -287,10 +288,15 @@ ALLOWED_TABLES: dict[str, str] = {
     "pca_model": "id",
     "pca_signal_history": "id",                 # renamed in migration 023
     "pca_structure_recommendation": "id",
-    # Step 5 — position monitoring & hedging
-    "hedge_orders": "id",
-    "exit_alerts": "id",
-    "position_mtm_history": "id",
+    # Theme 3 — Trade/Order refactor (migration 025)
+    "trade_preview": "id",                      # renamed from trade_previews
+    "trade_structure": "id",                    # renamed from trade_structures
+    "trade_order": "id",                        # renamed from structure_orders
+    "trade_fill": "id",                         # renamed from structure_fills
+    "trade_event": "id",                        # folded from execution_audit_log
+    "structure_definition_ref": "id",           # renamed from structure_definitions
+    "hedge_order": "id",                        # renamed from hedge_orders
+    "exit_alert": "id",                         # renamed from exit_alerts
     # Theme 4 — config + state (migration 024)
     "app_config_scalar": "id",                  # folded from delta_hedge_config + risk_limits
     "exit_rules_config": "id",                  # kept distinct (JSONB params + CHECK priority)

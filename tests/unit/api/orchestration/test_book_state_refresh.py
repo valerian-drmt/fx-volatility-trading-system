@@ -43,7 +43,7 @@ async def test_refresh_sums_open_position_greeks():
     from api.orchestration.book_state_refresh import refresh_book_state
     from persistence.models import (
         BookStateSnapshot,
-        TradePosition,
+        BookedPosition,
         TradeStructure,
     )
 
@@ -68,7 +68,7 @@ async def test_refresh_sums_open_position_greeks():
                 )
                 db.add(struct)
                 await db.flush()
-                db.add(TradePosition(
+                db.add(BookedPosition(
                     id=i + 1,
                     structure_id=struct.id, opened_at=now,
                     entry_premium_usd=1000.0 + i * 100,
@@ -86,7 +86,7 @@ async def test_refresh_sums_open_position_greeks():
             )
             db.add(struct_c)
             await db.flush()
-            db.add(TradePosition(
+            db.add(BookedPosition(
                 id=99, structure_id=struct_c.id, opened_at=now,
                 entry_premium_usd=500.0, entry_total_cost_usd=10.0,
                 state="closed",

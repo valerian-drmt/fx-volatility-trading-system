@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_vega
-from persistence.models import AccountSnap, Position, PositionSnapshot  # noqa: F401
+from persistence.models import AccountHistory, Position, PositionMetricHistory  # noqa: F401
 from shared.contracts import parse_local_symbol
 
 router = APIRouter(prefix="/api/v1/portfolio", tags=["portfolio-panel"])
@@ -49,7 +49,7 @@ _TENOR_BUCKETS = [
 ]
 
 
-def _serialize_snap(s: AccountSnap | None) -> dict[str, Any] | None:
+def _serialize_snap(s: AccountHistory | None) -> dict[str, Any] | None:
     if s is None:
         return None
     return {
@@ -87,15 +87,15 @@ async def get_account(db: DbDep) -> dict[str, Any]:
     Returns ``latest=None`` if the table is empty (execution-engine never ran).
     """
     latest = (await db.execute(
-        select(AccountSnap).order_by(desc(AccountSnap.timestamp)).limit(1)
+        select(AccountHistory).order_by(desc(AccountHistory.timestamp)).limit(1)
     )).scalar_one_or_none()
 
-    prev: AccountSnap | None = None
+    prev: AccountHistory | None = None
     if latest is not None:
         cutoff = latest.timestamp - timedelta(hours=24)
         prev = (await db.execute(
-            select(AccountSnap).where(AccountSnap.timestamp <= cutoff)
-            .order_by(desc(AccountSnap.timestamp)).limit(1)
+            select(AccountHistory).where(AccountHistory.timestamp <= cutoff)
+            .order_by(desc(AccountHistory.timestamp)).limit(1)
         )).scalar_one_or_none()
 
     return {
@@ -119,14 +119,14 @@ async def header_summary(db: DbDep) -> dict[str, Any]:
     Frontend can render the whole panel-A strip from one fetch.
     """
     latest = (await db.execute(
-        select(AccountSnap).order_by(desc(AccountSnap.timestamp)).limit(1)
+        select(AccountHistory).order_by(desc(AccountHistory.timestamp)).limit(1)
     )).scalar_one_or_none()
-    prev: AccountSnap | None = None
+    prev: AccountHistory | None = None
     if latest is not None:
         cutoff = latest.timestamp - timedelta(hours=24)
         prev = (await db.execute(
-            select(AccountSnap).where(AccountSnap.timestamp <= cutoff)
-            .order_by(desc(AccountSnap.timestamp)).limit(1)
+            select(AccountHistory).where(AccountHistory.timestamp <= cutoff)
+            .order_by(desc(AccountHistory.timestamp)).limit(1)
         )).scalar_one_or_none()
 
     # Aggregate greeks — single SUM scan on the denormalised positions row.
@@ -138,7 +138,7 @@ async def header_summary(db: DbDep) -> dict[str, Any]:
           COALESCE(SUM(vega_usd),  0)         AS sum_vega,
           COALESCE(SUM(theta_usd), 0)         AS sum_theta,
           COALESCE(SUM(current_pnl_usd), 0)   AS sum_pnl
-        FROM positions
+        FROM position
     """)
     g = (await db.execute(greeks_sql)).one()
 
@@ -150,7 +150,7 @@ async def header_summary(db: DbDep) -> dict[str, Any]:
           SELECT DISTINCT ON (date_trunc('day', timestamp))
                  date_trunc('day', timestamp) AS day,
                  net_liq_usd
-            FROM account_snaps
+            FROM account_history
            WHERE timestamp >= NOW() - INTERVAL '60 days'
              AND net_liq_usd IS NOT NULL
            ORDER BY date_trunc('day', timestamp), timestamp DESC
@@ -231,7 +231,7 @@ async def equity_curve(
                        AT TIME ZONE 'UTC' AS bucket_ts,
                    net_liq_usd,
                    timestamp
-              FROM account_snaps
+              FROM account_history
              WHERE timestamp >= :cutoff
              ORDER BY bucket_ts, timestamp DESC
           ) sub
@@ -280,7 +280,7 @@ async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
           COALESCE(SUM(vega_usd),  0)           AS sum_vega,
           COALESCE(SUM(theta_usd), 0)           AS sum_theta,
           MAX(updated_at)                       AS last_ts
-        FROM positions
+        FROM position
     """)
     row = (await db.execute(sql)).one()
     return {
@@ -302,7 +302,7 @@ async def vega_per_tenor(db: DbDep) -> list[dict[str, Any]]:
         SELECT
           GREATEST(0, (expiry - CURRENT_DATE))::int  AS dte,
           vega_usd
-        FROM positions
+        FROM position
         WHERE structure LIKE 'EUU%'   -- option contracts on EUR FOP
           AND expiry IS NOT NULL
           AND expiry >= CURRENT_DATE
@@ -355,7 +355,7 @@ async def hedge_summary(db: DbDep) -> dict[str, Any]:
           COALESCE(SUM(total_cost_usd) FILTER (WHERE triggered_at >= :r7d_start), 0)    AS cost_r7d,
           COUNT(*) FILTER (WHERE triggered_at >= :r30d_start)         AS n_r30d,
           COALESCE(SUM(total_cost_usd) FILTER (WHERE triggered_at >= :r30d_start), 0)   AS cost_r30d
-        FROM hedge_orders
+        FROM hedge_order
         WHERE state = 'filled'
     """)
     now = datetime.now(UTC)

@@ -37,14 +37,14 @@ from core.trade_preview_regime import apply_regime_to_limits, regime_label
 from persistence.models import (
     AppConfigScalar,  # replaces RiskLimit (migration 024)
     BookStateSnapshot,
-    ExecutionAuditLog,
     IbConnectionState,
     PcaSignal,
     RegimeSnapshot,
     StructureDefinition,
     StructureFill,
     StructureOrder,
-    TradePosition,
+    TradeEvent,  # replaces ExecutionAuditLog (migration 025)
+    BookedPosition,
     TradePreviewRow,
     TradeStructure,
 )
@@ -578,9 +578,9 @@ async def submit_preview(
 
     # Live mode requires IB Gateway up. Mock mode skips the gate.
     if execution_mode == "live" and not await _fetch_ib_connected(db):
-        db.add(ExecutionAuditLog(
+        db.add(TradeEvent(
             structure_id=None, event_type="submission_blocked",
-            severity="warning", message="ib_disconnected_at_submit",
+            severity="warning", description="ib_disconnected_at_submit",
             payload={"preview_id": preview_id},
         ))
         await db.commit()
@@ -633,9 +633,9 @@ async def submit_preview(
     if not revalidation.passed:
         # Audit-log the block + return structured error (status 400 — not 422 —
         # since the client already passed body validation, the issue is state).
-        db.add(ExecutionAuditLog(
+        db.add(TradeEvent(
             structure_id=None, event_type="submission_blocked",
-            severity="warning", message=f"revalidation_failed: {revalidation.reason}",
+            severity="warning", description=f"revalidation_failed: {revalidation.reason}",
             payload=revalidation.details,
         ))
         await db.commit()
@@ -689,10 +689,10 @@ async def submit_preview(
     db.add(structure)
     await db.flush()
 
-    db.add(ExecutionAuditLog(
+    db.add(TradeEvent(
         structure_id=structure.id, event_type="submission_attempt",
         severity="info",
-        message=f"{execution_mode} submit for preview {preview_id}",
+        description=f"{execution_mode} submit for preview {preview_id}",
     ))
 
     now = datetime.now(UTC)
@@ -833,7 +833,7 @@ async def submit_preview(
 
     # 4. Create position record (consumed by Step 5)
     greeks = payload.get("greeks_net") or {}
-    position = TradePosition(
+    position = BookedPosition(
         structure_id=structure.id,
         opened_at=now,
         entry_premium_usd=structure.total_premium_paid_usd or 0.0,
@@ -851,9 +851,9 @@ async def submit_preview(
     preview.user_action_at = now
     preview.state = "submitted"
 
-    db.add(ExecutionAuditLog(
+    db.add(TradeEvent(
         structure_id=structure.id, event_type="structure_filled",
-        severity="info", message="mock fully_filled, position created",
+        severity="info", description="mock fully_filled, position created",
         payload={"position_id": position.id, "premium_usd": structure.total_premium_paid_usd},
     ))
 
@@ -888,7 +888,7 @@ async def list_submitted_structures(
     out: list[dict[str, Any]] = []
     for s in rows:
         position = (await db.execute(
-            select(TradePosition).where(TradePosition.structure_id == s.id).limit(1)
+            select(BookedPosition).where(BookedPosition.structure_id == s.id).limit(1)
         )).scalar_one_or_none()
         out.append({
             "id": s.id, "created_at": s.created_at, "structure_type": s.structure_type,

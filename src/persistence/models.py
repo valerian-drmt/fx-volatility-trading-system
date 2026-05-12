@@ -56,7 +56,7 @@ class Position(Base):
     ``shared.contracts.parse_local_symbol`` when they need contract specs).
     """
 
-    __tablename__ = "positions"
+    __tablename__ = "position"  # renamed in migration 026 (Theme 2)
     __table_args__ = (
         CheckConstraint("side IN ('BUY', 'SELL')", name="ck_positions_side"),
     )
@@ -90,20 +90,24 @@ class Position(Base):
         onupdate=func.now(),
     )
 
-    snapshots: Mapped[list[PositionSnapshot]] = relationship(
+    metric_history: Mapped[list[PositionMetricHistory]] = relationship(
         back_populates="position", cascade="all, delete-orphan"
     )
-    trades: Mapped[list[Trade]] = relationship(back_populates="position")
+    # Note: `trades` relationship removed — Trade ORM dropped in migration 025
+    # (Theme 3). Legacy R7 fills journal had zero R9 writers.
 
 
-class PositionSnapshot(Base):
-    __tablename__ = "position_snapshots"
+class PositionMetricHistory(Base):
+    """Greeks + pnl + iv time series per IB-leg position (renamed from
+    PositionSnapshot in migration 026 Theme 2). Sole writer = risk-engine.
+    One row per OPEN position per 2s cycle."""
 
-    # Schema mirrors ``positions`` (panel E columns) + position_id + timestamp.
-    # risk-engine writes one row per OPEN position per cycle.
+    __tablename__ = "position_metric_history"  # renamed in migration 026
+
+    # Schema mirrors ``position`` (panel E columns) + position_id + timestamp.
     id: Mapped[int] = mapped_column(primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        ForeignKey("positions.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("position.id", ondelete="CASCADE"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -125,104 +129,24 @@ class PositionSnapshot(Base):
     vanna_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     volga_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
 
-    position: Mapped[Position] = relationship(back_populates="snapshots")
+    position: Mapped[Position] = relationship(back_populates="metric_history")
 
 
-class Trade(Base):
-    __tablename__ = "trades"
-    __table_args__ = (
-        UniqueConstraint("ib_order_id", name="uq_trades_ib_order_id"),
-        CheckConstraint("side IN ('BUY', 'SELL')", name="ck_trades_side"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    position_id: Mapped[int | None] = mapped_column(ForeignKey("positions.id"))
-
-    ib_order_id: Mapped[str | None] = mapped_column(String(50))
-
-    side: Mapped[str] = mapped_column(String(4), nullable=False)
-    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
-    price: Mapped[Decimal] = mapped_column(Numeric(15, 8), nullable=False)
-    commission: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-
-    spot_at_execution: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
-    iv_at_execution: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
-
-    position: Mapped[Position | None] = relationship(back_populates="trades")
+# Trade, Order, OrderEvent ORM classes deleted in migration 025 (Theme 3).
+# All three were dead code in R9 (zero writers, no readers in execution-engine
+# or api routers). Their roles are now covered by:
+#   - trade_fill (formerly structure_fills) — fills journal
+#   - trade_order (formerly structure_orders) — active IB orders
+#   - trade_event (event_type='audit') — order action audit log
+# See docs/db-schema-theme3-plan.md.
 
 
-class Order(Base):
-    """IB order lifecycle row. 1 row par order envoyé à IB, status évolue
-    selon la lifecycle (PendingSubmit → Submitted → Filled / Cancelled).
-    """
-    __tablename__ = "orders"
-    __table_args__ = (
-        UniqueConstraint("ib_perm_id", name="uq_orders_ib_perm_id"),
-        CheckConstraint("side IN ('BUY', 'SELL')", name="ck_orders_side"),
-        CheckConstraint(
-            "sec_type IN ('FUT', 'FOP', 'STK', 'OPT', 'CONTFUT')",
-            name="ck_orders_sec_type",
-        ),
-    )
+class AccountHistory(Base):
+    """Renamed from AccountSnap in migration 026 (Theme 2). Snapshot time
+    series of the IB broker account (NetLiq, cash, margin, cushion).
+    Writer = execution-engine every 30s."""
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    ib_perm_id: Mapped[int | None] = mapped_column(BigInteger)
-    ib_order_id: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
-    sec_type: Mapped[str] = mapped_column(String(10), nullable=False)
-    expiry: Mapped[str | None] = mapped_column(String(10))
-    strike: Mapped[Decimal | None] = mapped_column(Numeric(10, 5))
-    right: Mapped[str | None] = mapped_column(String(2))
-
-    side: Mapped[str] = mapped_column(String(4), nullable=False)
-    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
-    limit_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
-
-    status: Mapped[str] = mapped_column(String(30), nullable=False)
-    filled_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False, default=Decimal("0"))
-    avg_fill_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
-
-    submitted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-
-class OrderEvent(Base):
-    """Audit log : 1 row par action utilisateur envoyée à IB.
-
-    Append-only. Permet de retrouver qui a demandé quoi, quand, et la
-    réponse IB exacte (success/failure, message d'erreur).
-    """
-    __tablename__ = "order_events"
-    __table_args__ = (
-        CheckConstraint(
-            "action_type IN ('SUBMIT', 'CANCEL', 'CLOSE_POSITION')",
-            name="ck_order_events_action_type",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"))
-    action_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    request_payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
-    response_payload: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
-    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    error_message: Mapped[str | None] = mapped_column(String(500))
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-
-
-class AccountSnap(Base):
-    __tablename__ = "account_snaps"
+    __tablename__ = "account_history"  # renamed in migration 026
 
     id: Mapped[int] = mapped_column(primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(
@@ -575,7 +499,7 @@ class SignalRecommendationsMap(Base):
 class StructureDefinition(Base):
     """Catalogue des structures supportées (6 rows seed)."""
 
-    __tablename__ = "structure_definitions"
+    __tablename__ = "structure_definition_ref"  # renamed in migration 025
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     structure_type: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
@@ -595,7 +519,7 @@ class StructureDefinition(Base):
 class TradePreviewRow(Base):
     """Audit log : 1 row par Arm trade."""
 
-    __tablename__ = "trade_previews"
+    __tablename__ = "trade_preview"  # renamed in migration 025
     __table_args__ = (
         CheckConstraint(
             "state IN ('valid_for_submit','blocked','expired','submitted','cancelled')",
@@ -625,7 +549,7 @@ class TradePreviewRow(Base):
 class BookStateSnapshot(Base):
     """État aggregé du book (1 row is_current=true par symbol + history)."""
 
-    __tablename__ = "book_state_snapshots"
+    __tablename__ = "book_state_snapshot"  # renamed in migration 026 (Theme 2)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -694,7 +618,7 @@ class AppConfigScalar(Base):
 class TradeStructure(Base):
     """Multi-leg trade : 1 row per Submit (new STEP3/STEP4 workflow)."""
 
-    __tablename__ = "trade_structures"
+    __tablename__ = "trade_structure"  # renamed in migration 025
     __table_args__ = (
         CheckConstraint(
             "state IN ('submitted','partial_fill','fully_filled','partial_fail','fully_failed','closed')",
@@ -704,7 +628,7 @@ class TradeStructure(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    preview_id: Mapped[str | None] = mapped_column(String(40), ForeignKey("trade_previews.preview_id"))
+    preview_id: Mapped[str | None] = mapped_column(String(40), ForeignKey("trade_preview.preview_id"))
     pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_signal_history.id"))
     triggering_pc: Mapped[int | None] = mapped_column(Integer)
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
@@ -730,7 +654,7 @@ class TradeStructure(Base):
 class StructureOrder(Base):
     """One leg of a multi-leg trade structure."""
 
-    __tablename__ = "structure_orders"
+    __tablename__ = "trade_order"  # renamed in migration 025
     __table_args__ = (
         UniqueConstraint(
             "structure_id", "leg_idx", "order_role",
@@ -748,7 +672,7 @@ class StructureOrder(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structures.id"), nullable=False)
+    structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structure.id"), nullable=False)
     leg_idx: Mapped[int] = mapped_column(Integer, nullable=False)
     order_role: Mapped[str] = mapped_column(String(20), nullable=False, default="entry")
     ib_order_id: Mapped[str | None] = mapped_column(String(40))
@@ -784,10 +708,10 @@ class StructureOrder(Base):
 class StructureFill(Base):
     """One execution event on a leg."""
 
-    __tablename__ = "structure_fills"
+    __tablename__ = "trade_fill"  # renamed in migration 025
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("structure_orders.id"), nullable=False)
+    order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_order.id"), nullable=False)
     ib_execution_id: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -802,10 +726,16 @@ class StructureFill(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
-class TradePosition(Base):
-    """Position created when a structure is fully_filled. Consumed by Step 5."""
+class BookedPosition(Base):
+    """Position created when a TradeStructure is fully_filled (renamed from
+    TradePosition in migration 026 Theme 2). Distinct from `Position` which
+    mirrors the live IB book.
 
-    __tablename__ = "trade_positions"
+    A BookedPosition is the trade-level entity backed by 1..N Position rows
+    (multi-leg structures). It carries entry costs, state machine (open →
+    closing → closed/expired), exit costs, and final pnl. Step-5 consumer."""
+
+    __tablename__ = "booked_position"  # renamed in migration 026
     __table_args__ = (
         CheckConstraint(
             "state IN ('open','closing','closed','expired')",
@@ -814,7 +744,7 @@ class TradePosition(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structures.id"), nullable=False, unique=True)
+    structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structure.id"), nullable=False, unique=True)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     entry_premium_usd: Mapped[float] = mapped_column(Float, nullable=False)
     entry_total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
@@ -875,18 +805,27 @@ class IbConnectionState(Base):
 # ──────────────────────────────────────────────────────────────────────
 
 
-class PositionMtmHistory(Base):
-    """1 row per monitoring cycle per open position. Series for equity curve
-    + P&L attribution + drawdown analysis."""
+class BookedPositionMetricHistory(Base):
+    """Per-cycle MTM + signal tracking for each open BookedPosition (renamed
+    from PositionMtmHistory in migration 026 Theme 2 — also folded the
+    former ``position_signal_tracking`` table into the 8 trailing signal_*
+    columns).
 
-    __tablename__ = "position_mtm_history"
+    Writer = position_monitor every 60s. Signal columns are NULL for
+    positions that were not opened via a triggering PCA signal."""
+
+    __tablename__ = "booked_position_metric_history"  # renamed + folded migration 026
     __table_args__ = (
         UniqueConstraint("position_id", "timestamp", name="uq_mtm_position_ts"),
+        CheckConstraint(
+            "signal_status IS NULL OR signal_status IN ('HOLD','TRIM','EXIT')",
+            name="ck_signal_track_status",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+        BigInteger, ForeignKey("booked_position.id"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     spot: Mapped[float] = mapped_column(Float, nullable=False)
@@ -902,35 +841,28 @@ class PositionMtmHistory(Base):
     current_theta_usd_per_day: Mapped[float | None] = mapped_column(Float)
     current_delta_unhedged: Mapped[float | None] = mapped_column(Float)
 
-
-class PositionSignalTracking(Base):
-    """Signal-vs-entry comparison snapshot (1 / cycle / position)."""
-
-    __tablename__ = "position_signal_tracking"
-    __table_args__ = (
-        UniqueConstraint("position_id", "timestamp", name="uq_signal_track_position_ts"),
-        CheckConstraint("status IN ('HOLD','TRIM','EXIT')", name="ck_signal_track_status"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    position_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("trade_positions.id"), nullable=False
-    )
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    triggering_pc: Mapped[int] = mapped_column(Integer, nullable=False)
-    current_z_score: Mapped[float] = mapped_column(Float, nullable=False)
-    current_label: Mapped[str] = mapped_column(String(15), nullable=False)
-    entry_z_score: Mapped[float] = mapped_column(Float, nullable=False)
-    entry_label: Mapped[str] = mapped_column(String(15), nullable=False)
+    # Signal tracking cols (folded from former position_signal_tracking).
+    # All nullable: positions not opened via PCA signal keep these NULL.
+    triggering_pc: Mapped[int | None] = mapped_column(Integer)
+    current_z_score: Mapped[float | None] = mapped_column(Float)
+    current_label: Mapped[str | None] = mapped_column(String(15))
+    entry_z_score: Mapped[float | None] = mapped_column(Float)
+    entry_label: Mapped[str | None] = mapped_column(String(15))
     weakening_ratio: Mapped[float | None] = mapped_column(Float)
-    sign_flipped: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    sign_flipped: Mapped[bool | None] = mapped_column(Boolean)
+    signal_status: Mapped[str | None] = mapped_column(String(10))
+
+
+# PositionSignalTracking ORM class deleted in migration 026 (Theme 2).
+# Its rows were folded into BookedPositionMetricHistory via a JOIN on
+# (position_id, timestamp). Query pattern post-fold:
+#   select(BookedPositionMetricHistory).where(triggering_pc.is_not(None))
 
 
 class HedgeOrder(Base):
     """Delta-rebalancing future order on an open position."""
 
-    __tablename__ = "hedge_orders"
+    __tablename__ = "hedge_order"  # renamed in migration 025
     __table_args__ = (
         CheckConstraint("side IN ('BUY','SELL')", name="ck_hedge_orders_side"),
         CheckConstraint(
@@ -941,7 +873,7 @@ class HedgeOrder(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+        BigInteger, ForeignKey("booked_position.id"), nullable=False
     )
     triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -961,7 +893,7 @@ class HedgeOrder(Base):
 class ExitAlert(Base):
     """1 row per exit-rule trigger. Acted on or not."""
 
-    __tablename__ = "exit_alerts"
+    __tablename__ = "exit_alert"  # renamed in migration 025
     __table_args__ = (
         CheckConstraint(
             "action_recommended IN ('EXIT','TRIM','ALERT_ONLY')",
@@ -976,7 +908,7 @@ class ExitAlert(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+        BigInteger, ForeignKey("booked_position.id"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
@@ -988,7 +920,7 @@ class ExitAlert(Base):
     auto_executed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     execution_status: Mapped[str | None] = mapped_column(String(20))
     closing_structure_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("trade_structures.id")
+        BigInteger, ForeignKey("trade_structure.id")
     )
     notes: Mapped[str | None] = mapped_column(String(500))
 
@@ -1016,22 +948,41 @@ class ExitRulesConfig(Base):
 # DeltaHedgeConfig folded into AppConfigScalar (Theme 4 migration 024).
 
 
-class ExecutionAuditLog(Base):
-    """Granular event log for execution debugging / post-mortem."""
+class TradeEvent(Base):
+    """Unified trade event journal — append-only (migration 025 Theme 3).
 
-    __tablename__ = "execution_audit_log"
+    Replaces ``execution_audit_log``. ``event_type`` is the discriminator —
+    legacy values from ExecutionAuditLog are preserved verbatim (e.g.
+    ``structure_filled``, ``submission_blocked``, ``order_cancelled``,
+    ``position_close_initiated``, ``unwind_order_created``). New event
+    families add new event_type values without schema churn.
+
+    ``description`` carries the human-readable summary, ``payload`` the
+    structured context. ``severity`` follows the standard 5-level scale.
+    """
+
+    __tablename__ = "trade_event"
     __table_args__ = (
         CheckConstraint(
             "severity IN ('debug','info','warning','error','critical')",
-            name="ck_audit_severity",
+            name="ck_trade_event_severity",
         ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    structure_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("trade_structures.id"))
-    order_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("structure_orders.id"))
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
     event_type: Mapped[str] = mapped_column(String(40), nullable=False)
     severity: Mapped[str] = mapped_column(String(15), nullable=False, default="info")
-    message: Mapped[str] = mapped_column(String(500), nullable=False)
-    payload: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
+    structure_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("trade_structure.id")
+    )
+    order_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("trade_order.id")
+    )
+    position_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("booked_position.id")
+    )
+    description: Mapped[str | None] = mapped_column(String(500))
+    payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False, default=dict)

@@ -20,14 +20,14 @@ from api.schemas.analytics import (
 )
 from bus import keys
 from persistence.models import (
-    PositionSnapshot,
+    PositionMetricHistory,
     VolSurface,
 )
 
 # Tables reported in /system-stats — tuple keeps order stable.
 _COUNTED_TABLES: tuple[tuple[str, type], ...] = (
     ("vol_surface_history", VolSurface),  # renamed in migration 023
-    ("position_snapshots", PositionSnapshot),
+    ("position_snapshots", PositionMetricHistory),
 )
 
 _MONITORED_ENGINES: tuple[str, ...] = (

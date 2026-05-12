@@ -39,7 +39,7 @@ from engines.execution.position_sync import position_sync_loop
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
-from persistence.models import OrderEvent
+from persistence.models import TradeEvent
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
 from shared.tracing import init_tracing
@@ -151,13 +151,16 @@ async def _log_event(
 ) -> None:
     try:
         async with sessionmaker() as db:
-            db.add(OrderEvent(
-                action_type=action_type,
-                request_payload=request_payload,
-                response_payload=response_payload,
-                success=success,
-                error_message=error_message,
-                timestamp=datetime.now(UTC),
+            db.add(TradeEvent(
+                event_type=f"order_action_{action_type.lower()}",
+                severity="info" if success else "error",
+                description=error_message[:500] if error_message else None,
+                payload={
+                    "action_type": action_type,
+                    "request_payload": request_payload,
+                    "response_payload": response_payload,
+                    "success": success,
+                },
             ))
             await db.commit()
     except Exception:

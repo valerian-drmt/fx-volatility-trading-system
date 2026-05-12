@@ -29,10 +29,9 @@ from persistence.models import (
     ExitRulesConfig,
     HedgeOrder,
     Position,
-    PositionMtmHistory,
-    PositionSignalTracking,
-    PositionSnapshot,
-    TradePosition,
+    BookedPositionMetricHistory,
+    PositionMetricHistory,
+    BookedPosition,
     TradeStructure,
 )
 from shared.contracts import multiplier_for, parse_local_symbol
@@ -133,7 +132,7 @@ async def _read_contract_marks(redis: Any) -> dict[int, float]:
 
 
 def _serialize_ib_position(
-    pos: Position, snap: PositionSnapshot | None, contract_mark: float | None = None,
+    pos: Position, snap: PositionMetricHistory | None, contract_mark: float | None = None,
 ) -> dict[str, Any]:
     """Serialise an IB-synced row from `positions` table for Step 5 display.
 
@@ -224,8 +223,8 @@ def _serialize_ib_position(
     }
 
 
-def _serialize_position(pos: TradePosition, struct: TradeStructure | None,
-                        latest_mtm: PositionMtmHistory | None) -> dict[str, Any]:
+def _serialize_position(pos: BookedPosition, struct: TradeStructure | None,
+                        latest_mtm: BookedPositionMetricHistory | None) -> dict[str, Any]:
     return {
         "id": pos.id,
         "source": "booked",
@@ -275,16 +274,16 @@ async def list_active(db: DbDep) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
 
     booked = (await db.execute(
-        select(TradePosition).where(TradePosition.state == "open")
-        .order_by(desc(TradePosition.opened_at))
+        select(BookedPosition).where(BookedPosition.state == "open")
+        .order_by(desc(BookedPosition.opened_at))
     )).scalars().all()
     for pos in booked:
         struct = (await db.execute(
             select(TradeStructure).where(TradeStructure.id == pos.structure_id).limit(1)
         )).scalar_one_or_none()
         latest = (await db.execute(
-            select(PositionMtmHistory).where(PositionMtmHistory.position_id == pos.id)
-            .order_by(desc(PositionMtmHistory.timestamp)).limit(1)
+            select(BookedPositionMetricHistory).where(BookedPositionMetricHistory.position_id == pos.id)
+            .order_by(desc(BookedPositionMetricHistory.timestamp)).limit(1)
         )).scalar_one_or_none()
         out.append(_serialize_position(pos, struct, latest))
 
@@ -306,14 +305,14 @@ async def list_active(db: DbDep) -> list[dict[str, Any]]:
 async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
     """Sum of current greeks across all open positions (for Panel 4 zone B)."""
     rows = (await db.execute(
-        select(TradePosition).where(TradePosition.state == "open")
+        select(BookedPosition).where(BookedPosition.state == "open")
     )).scalars().all()
     total_vega = total_gamma = total_theta = total_delta = 0.0
     n = 0
     for pos in rows:
         latest = (await db.execute(
-            select(PositionMtmHistory).where(PositionMtmHistory.position_id == pos.id)
-            .order_by(desc(PositionMtmHistory.timestamp)).limit(1)
+            select(BookedPositionMetricHistory).where(BookedPositionMetricHistory.position_id == pos.id)
+            .order_by(desc(BookedPositionMetricHistory.timestamp)).limit(1)
         )).scalar_one_or_none()
         if latest:
             total_vega += latest.current_vega_usd_per_volpt or 0.0
@@ -363,7 +362,7 @@ async def list_delta_hedge_config(db: DbDep) -> list[dict[str, Any]]:
 @router.get("/{position_id}")
 async def get_position(position_id: int, db: DbDep) -> dict[str, Any]:
     pos = (await db.execute(
-        select(TradePosition).where(TradePosition.id == position_id).limit(1)
+        select(BookedPosition).where(BookedPosition.id == position_id).limit(1)
     )).scalar_one_or_none()
     if pos is None:
         raise HTTPException(404, "position not found")
@@ -371,8 +370,8 @@ async def get_position(position_id: int, db: DbDep) -> dict[str, Any]:
         select(TradeStructure).where(TradeStructure.id == pos.structure_id).limit(1)
     )).scalar_one_or_none()
     latest = (await db.execute(
-        select(PositionMtmHistory).where(PositionMtmHistory.position_id == pos.id)
-        .order_by(desc(PositionMtmHistory.timestamp)).limit(1)
+        select(BookedPositionMetricHistory).where(BookedPositionMetricHistory.position_id == pos.id)
+        .order_by(desc(BookedPositionMetricHistory.timestamp)).limit(1)
     )).scalar_one_or_none()
     return _serialize_position(pos, struct, latest)
 
@@ -384,9 +383,9 @@ async def mtm_history(
 ) -> list[dict[str, Any]]:
     cutoff = datetime.now(UTC) - timedelta(hours=hours)
     rows = (await db.execute(
-        select(PositionMtmHistory).where(PositionMtmHistory.position_id == position_id)
-        .where(PositionMtmHistory.timestamp >= cutoff)
-        .order_by(PositionMtmHistory.timestamp).limit(limit)
+        select(BookedPositionMetricHistory).where(BookedPositionMetricHistory.position_id == position_id)
+        .where(BookedPositionMetricHistory.timestamp >= cutoff)
+        .order_by(BookedPositionMetricHistory.timestamp).limit(limit)
     )).scalars().all()
     return [
         {
@@ -444,9 +443,14 @@ async def position_hedges(
 async def signal_tracking(
     position_id: int, db: DbDep, limit: int = Query(200, ge=1, le=2000),
 ) -> list[dict[str, Any]]:
+    """Signal drift history. Reads from BookedPositionMetricHistory rows where
+    triggering_pc is set (signal-driven positions only). Folded into mtm rows
+    in migration 026 (Theme 2)."""
     rows = (await db.execute(
-        select(PositionSignalTracking).where(PositionSignalTracking.position_id == position_id)
-        .order_by(desc(PositionSignalTracking.timestamp)).limit(limit)
+        select(BookedPositionMetricHistory)
+        .where(BookedPositionMetricHistory.position_id == position_id)
+        .where(BookedPositionMetricHistory.triggering_pc.is_not(None))
+        .order_by(desc(BookedPositionMetricHistory.timestamp)).limit(limit)
     )).scalars().all()
     return [
         {
@@ -458,7 +462,7 @@ async def signal_tracking(
             "entry_label": r.entry_label,
             "weakening_ratio": r.weakening_ratio,
             "sign_flipped": r.sign_flipped,
-            "status": r.status,
+            "status": r.signal_status,
         } for r in rows
     ]
 
@@ -471,7 +475,7 @@ async def close_manual(position_id: int, db: DbDep) -> dict[str, Any]:
     phase lands (cf. MARKETS_OPEN_TODO.md). For now we record an audit alert.
     """
     pos = (await db.execute(
-        select(TradePosition).where(TradePosition.id == position_id).limit(1)
+        select(BookedPosition).where(BookedPosition.id == position_id).limit(1)
     )).scalar_one_or_none()
     if pos is None:
         raise HTTPException(404, "position not found")

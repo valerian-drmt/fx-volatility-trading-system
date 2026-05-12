@@ -33,8 +33,8 @@ from core.execution.contract_builder import (
 )
 from engines.execution.fills_handler import attach_fill_handlers
 from persistence.models import (
-    ExecutionAuditLog,
     StructureOrder,
+    TradeEvent,
     TradeStructure,
 )
 
@@ -87,10 +87,10 @@ async def submit_structure_live(
             for o in orders
         ]
         combo_eligible = can_use_combo(legs_meta)
-        db.add(ExecutionAuditLog(
+        db.add(TradeEvent(
             structure_id=structure_id,
             event_type="live_submit_attempt", severity="info",
-            message=f"live submit ; combo_eligible={combo_eligible}",
+            description=f"live submit ; combo_eligible={combo_eligible}",
             payload={"n_orders": len(orders), "combo_eligible": combo_eligible},
         ))
 
