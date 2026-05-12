@@ -58,7 +58,7 @@ class TestHealthBasic:
 
     def test_health_appears_in_openapi_schema(self, client_with_mocks):
         client, _ = client_with_mocks
-        schema = client.get("/openapi.json").json()
+        schema = client.get("/api/openapi.json").json()
         assert "/api/v1/health" in schema["paths"]
 
 

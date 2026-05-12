@@ -17,7 +17,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src:/app
 
 # Build deps required by asyncpg / psycopg2-binary / scipy / arch wheels.
 # libpq-dev is only required if psycopg2-binary does not ship a wheel for

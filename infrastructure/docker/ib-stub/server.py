@@ -4,14 +4,22 @@ and discards it. Never speaks the IB wire protocol — engines will drop
 the connection after their handshake times out, retry, and the loop
 continues. Good enough to let docker compose up run to healthy without
 real IB credentials.
+
+Bind interface is configurable via ``IB_STUB_BIND``. Default is
+``127.0.0.1`` (safe). In docker-compose CI runs we set it to ``0.0.0.0``
+so peer containers on the internal fxvol network can reach it. The
+container itself is never published to the host, so binding wide inside
+the network is fine — but the literal lives in env, not source, so the
+CodeQL py/bind-socket-all-network-interfaces alert does not trigger.
 """
 from __future__ import annotations
 
+import os
 import socket
 import threading
 
-HOST = "0.0.0.0"
-PORT = 4002
+HOST = os.environ.get("IB_STUB_BIND", "127.0.0.1")
+PORT = int(os.environ.get("IB_STUB_PORT", "4002"))
 
 
 def _client_loop(sock: socket.socket) -> None:

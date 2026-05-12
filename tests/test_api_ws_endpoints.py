@@ -68,7 +68,7 @@ class TestWebSocketEndpoints:
 
     def test_endpoints_hidden_from_openapi_schema(self, client):
         """FastAPI exposes WS routes in OpenAPI only as a note — websockets stay out."""
-        schema = client.get("/openapi.json").json()
+        schema = client.get("/api/openapi.json").json()
         # WS endpoints do not appear in the paths dict (FastAPI design).
         assert "/ws/ticks" not in schema["paths"]
         assert "/ws/vol" not in schema["paths"]

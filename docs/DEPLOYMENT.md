@@ -67,8 +67,8 @@ sudo certbot --nginx -d valerian.dev
 ```bash
 # Sur ton poste dev, après merge sur main :
 git pull origin main
-git tag -a v2.0.0 -m "R8 — deprecation PyQt + deploy prod"
-git push origin v2.0.0
+git tag -a v1.9.0 -m "R8 — deprecation PyQt + deploy prod"
+git push origin v1.9.0
 ```
 
 GitHub Actions :

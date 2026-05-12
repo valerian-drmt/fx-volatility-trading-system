@@ -78,11 +78,19 @@ def test_frontend_job_primes_npm_cache(wf: dict):
 
 @pytest.mark.unit
 def test_both_jobs_log_in_to_ghcr(wf: dict):
+    # Exact-match against the small set of accepted registry literals.
+    # A substring check (e.g. `"ghcr.io" in registry`) would accept malicious
+    # values like `evil.example.com/ghcr.io/foo` — flagged by CodeQL
+    # py/incomplete-url-substring-sanitization.
+    allowed_registries = {"ghcr.io", "${{ env.REGISTRY }}"}
     for job_name in ("build-api", "build-frontend"):
         steps = wf["jobs"][job_name]["steps"]
         login = next((s for s in steps if s.get("uses", "").startswith("docker/login-action")), None)
         assert login is not None, f"{job_name} must log in to GHCR before pushing"
-        assert "ghcr.io" in login["with"]["registry"] or login["with"]["registry"] == "${{ env.REGISTRY }}"
+        registry = login["with"]["registry"]
+        assert registry in allowed_registries, (
+            f"{job_name} must log in to GHCR (got {registry!r})"
+        )
 
 
 @pytest.mark.unit

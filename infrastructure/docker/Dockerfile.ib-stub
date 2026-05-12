@@ -17,6 +17,12 @@ COPY infrastructure/docker/ib-stub/server.py ./server.py
 
 EXPOSE 4002 5900
 
+# Bind on all interfaces so peer containers on the internal fxvol-internal
+# network can reach this stub. The container is never published to the
+# host (no `ports:` in compose) so this stays within the docker network.
+ENV IB_STUB_BIND=0.0.0.0 \
+    IB_STUB_PORT=4002
+
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
     CMD python -c "import socket,sys; s=socket.socket(); s.settimeout(1); \
         sys.exit(0 if s.connect_ex(('127.0.0.1', 4002)) == 0 else 1)"
