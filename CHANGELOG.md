@@ -4,14 +4,15 @@ All notable changes to this project are documented in this file. The
 format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [2.0.0] — R8 release (deploy prod + deprecation PyQt)
+## [1.9.0] — R8 release (deploy prod + deprecation PyQt)
 
 ### Headline — breaking change
 
 The desktop PyQt app (`app.py`, `src/controller.py`, `src/ui/`) is
-**removed**. The supported surface from v2 onwards is the FastAPI
-backend + React frontend + containerised engines stack, deployable via
-`docker compose up` or the new `deploy-prod` GitHub Actions workflow.
+**removed**. The supported surface from this release onwards is the
+FastAPI backend + React frontend + containerised engines stack,
+deployable via `docker compose up` or the new `deploy-prod` GitHub
+Actions workflow.
 
 ### Added
 

@@ -91,7 +91,7 @@ def test_hashed_assets_carry_immutable_cache_control():
 
 
 def test_openapi_schema_is_served():
-    status, _, body = _get("/openapi.json")
+    status, _, body = _get("/api/openapi.json")
     assert status == 200
     schema = json.loads(body)
     assert "paths" in schema
@@ -103,7 +103,7 @@ def test_openapi_schema_matches_committed_frontend_types():
     """The shape of /openapi.json's paths must still align with the
     frontend's committed schema.d.ts — drift here means the deploy
     shipped a newer backend than the bundled frontend expects."""
-    _, _, body = _get("/openapi.json")
+    _, _, body = _get("/api/openapi.json")
     live_paths = set(json.loads(body)["paths"])
 
     schema_ts = (

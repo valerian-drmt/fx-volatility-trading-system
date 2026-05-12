@@ -242,7 +242,12 @@ def test_ib_stub_server_is_shipped():
     server = Path(__file__).resolve().parent.parent / "infrastructure" / "docker" / "ib-stub" / "server.py"
     assert server.exists()
     code = server.read_text(encoding="utf-8")
-    assert "PORT = 4002" in code
+    # PORT/HOST sourced from env (IB_STUB_PORT/IB_STUB_BIND) since v1.9.0
+    # hardening — Dockerfile.ib-stub sets them to 4002 / 0.0.0.0 for the
+    # docker network. Source no longer carries the literal 0.0.0.0 (CodeQL
+    # py/bind-socket-all-network-interfaces).
+    assert "IB_STUB_PORT" in code and "4002" in code
+    assert "IB_STUB_BIND" in code
 
 
 # ── R8 PR #5 : deploy.yml workflow + EC2 provisioning scripts ───────────
@@ -466,11 +471,11 @@ def test_security_scan_workflow_has_minimal_permissions(trivy_wf: dict):
 # ── R8 PR #7 : post-deploy smoke + CHANGELOG v2.0.0 ─────────────────────
 
 @pytest.mark.unit
-def test_changelog_exists_and_pins_v2_0_0():
+def test_changelog_exists_and_pins_v1_9_0():
     changelog = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
     assert changelog.exists(), "CHANGELOG.md must ship with R8 PR #7"
     body = changelog.read_text(encoding="utf-8")
-    assert "[2.0.0]" in body
+    assert "[1.9.0]" in body
     assert "R8 release" in body
     assert "Removed" in body
     assert "app.py" in body
@@ -492,7 +497,7 @@ def test_post_deploy_smoke_tests_exist_and_are_gated():
     assert 'os.environ.get("PROD_SMOKE")' in body
     assert "/api/v1/health" in body
     assert "/api/v1/health/extended" in body
-    assert "/openapi.json" in body
+    assert "/api/openapi.json" in body
     assert "/ws/ticks" in body
 
 

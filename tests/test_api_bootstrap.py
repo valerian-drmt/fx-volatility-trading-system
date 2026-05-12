@@ -22,12 +22,14 @@ def client():
 @pytest.mark.unit
 class TestAppBootstrap:
     def test_openapi_schema_available(self, client):
-        r = client.get("/openapi.json")
+        # OpenAPI surface moved under /api/* for nginx reverse-proxy
+        # alignment (r8 PYTHONPATH+routes fix).
+        r = client.get("/api/openapi.json")
         assert r.status_code == 200
         assert r.json()["info"]["title"] == "FXVol API"
 
     def test_docs_endpoint_available(self, client):
-        assert client.get("/docs").status_code == 200
+        assert client.get("/api/docs").status_code == 200
 
     def test_metrics_endpoint_returns_prometheus_text(self, client):
         r = client.get("/metrics")
@@ -38,7 +40,7 @@ class TestAppBootstrap:
 
     def test_cors_preflight_allowed_origin(self, client):
         r = client.options(
-            "/openapi.json",
+            "/api/openapi.json",
             headers={
                 "Origin": "http://localhost:3000",
                 "Access-Control-Request-Method": "GET",
