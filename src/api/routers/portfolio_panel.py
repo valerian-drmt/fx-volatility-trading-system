@@ -21,7 +21,7 @@ from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
-from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_vega
+from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
 from persistence.models import AccountHistory, Position, PositionMetricHistory  # noqa: F401
 from shared.contracts import parse_local_symbol
 
@@ -599,5 +599,446 @@ async def greeks_ladder(db: DbDep) -> dict[str, Any]:
         "current_spot": round(current_spot, 5),
         "spot_bins_bps": _LADDER_SPOT_BPS,
         "rows": rows,
+        "n_positions": len(positions_resolved),
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Panel G — P&L attribution over a lookback window
+# ──────────────────────────────────────────────────────────────────────
+
+
+@router.get("/pnl-attribution")
+async def pnl_attribution(
+    db: DbDep,
+    lookback_hours: int = Query(24, ge=1, le=168),  # 1h..7d
+) -> dict[str, Any]:
+    """Decompose realized P&L into greek contributions over the window.
+
+    Per-position Taylor expansion :
+        actual_pnl  = (pnl_now - pnl_then)
+        delta_pnl   = δ_now × (spot_now - spot_then)
+        gamma_pnl   = 0.5 × Γ_now × (spot_now - spot_then) ** 2
+        vega_pnl    = V_now × (iv_now - iv_then)      [vol points]
+        theta_pnl   = Θ_now × Δt_days
+        residual    = actual_pnl - (delta + gamma + vega + theta)
+
+    Frozen-greeks approximation (uses current greeks for both endpoints) —
+    fine for short windows ≤ 1 day, less accurate over a week. The
+    ``residual`` row captures the un-attributed drift so the operator can
+    spot when the Taylor expansion stops being valid.
+
+    Sources :
+      - IB-live positions (``position`` table) : t-1 row in
+        ``position_metric_history`` closest to ``now - lookback_hours``.
+        Spot comes from the snapshot's ``market_price`` for the
+        underlying FUT contract on the same symbol.
+      - Booked positions (``booked_position``) : t-1 row in
+        ``booked_position_metric_history``. Spot stored on the snapshot.
+    """
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(hours=lookback_hours)
+
+    # 1. IB-live positions : current state from ``position`` + t-1 from
+    #    ``position_metric_history``. Use a CTE that picks the row whose
+    #    timestamp is the latest one still ≤ cutoff (closest from below).
+    ib_sql = text("""
+        WITH t1 AS (
+          SELECT DISTINCT ON (position_id)
+                 position_id,
+                 timestamp,
+                 market_price,
+                 current_pnl_usd,
+                 iv,
+                 delta_usd, gamma_usd, vega_usd, theta_usd
+            FROM position_metric_history
+           WHERE timestamp <= :cutoff
+           ORDER BY position_id, timestamp DESC
+        )
+        SELECT p.id, p.structure, p.product_label, p.side,
+               p.current_pnl_usd AS pnl_now,
+               p.market_price    AS spot_now,
+               p.iv              AS iv_now,
+               p.delta_usd       AS delta_now,
+               p.gamma_usd       AS gamma_now,
+               p.vega_usd        AS vega_now,
+               p.theta_usd       AS theta_now,
+               t1.current_pnl_usd AS pnl_then,
+               t1.market_price    AS spot_then,
+               t1.iv              AS iv_then,
+               t1.timestamp       AS t_then
+          FROM position p
+          LEFT JOIN t1 ON t1.position_id = p.id
+    """)
+    ib_rows = (await db.execute(ib_sql, {"cutoff": cutoff})).all()
+
+    # 2. Booked positions : current state from latest metric_history row +
+    #    t-1 from earlier row.
+    booked_sql = text("""
+        WITH latest AS (
+          SELECT DISTINCT ON (position_id)
+                 position_id, timestamp,
+                 spot, iv_avg_legs_pct,
+                 current_pnl_gross_usd, current_pnl_net_usd,
+                 current_vega_usd_per_volpt,
+                 current_gamma_usd_per_pip2,
+                 current_theta_usd_per_day,
+                 current_delta_unhedged
+            FROM booked_position_metric_history
+           ORDER BY position_id, timestamp DESC
+        ),
+        t1 AS (
+          SELECT DISTINCT ON (position_id)
+                 position_id, timestamp,
+                 spot, iv_avg_legs_pct,
+                 current_pnl_gross_usd
+            FROM booked_position_metric_history
+           WHERE timestamp <= :cutoff
+           ORDER BY position_id, timestamp DESC
+        )
+        SELECT bp.id, bp.state,
+               ts.product_label AS product_label,
+               latest.current_pnl_gross_usd AS pnl_now,
+               latest.spot                  AS spot_now,
+               latest.iv_avg_legs_pct       AS iv_now,
+               latest.current_delta_unhedged AS delta_now,
+               latest.current_gamma_usd_per_pip2 AS gamma_now,
+               latest.current_vega_usd_per_volpt AS vega_now,
+               latest.current_theta_usd_per_day  AS theta_now,
+               t1.current_pnl_gross_usd AS pnl_then,
+               t1.spot                  AS spot_then,
+               t1.iv_avg_legs_pct       AS iv_then,
+               t1.timestamp             AS t_then
+          FROM booked_position bp
+          LEFT JOIN trade_structure ts ON ts.id = bp.structure_id
+          LEFT JOIN latest ON latest.position_id = bp.id
+          LEFT JOIN t1     ON t1.position_id     = bp.id
+         WHERE bp.state = 'open'
+    """)
+    booked_rows = (await db.execute(booked_sql, {"cutoff": cutoff})).all()
+
+    # 3. Decompose each row. None on any input → return Nones (caller
+    #    displays "—") so partial data doesn't poison aggregates.
+    def _decompose(
+        pnl_now: float | None, pnl_then: float | None,
+        spot_now: float | None, spot_then: float | None,
+        iv_now: float | None, iv_then: float | None,
+        delta: float | None, gamma: float | None,
+        vega: float | None, theta: float | None,
+        t_then: datetime | None,
+    ) -> dict[str, float | None]:
+        actual = (pnl_now - pnl_then) if (pnl_now is not None and pnl_then is not None) else None
+        dspot = (spot_now - spot_then) if (spot_now is not None and spot_then is not None) else None
+        div_pts = (iv_now - iv_then) if (iv_now is not None and iv_then is not None) else None
+        dt_days = ((now - t_then).total_seconds() / 86400.0) if t_then is not None else None
+
+        delta_pnl = (delta * dspot) if (delta is not None and dspot is not None) else None
+        gamma_pnl = (0.5 * gamma * dspot * dspot) if (gamma is not None and dspot is not None) else None
+        vega_pnl = (vega * div_pts) if (vega is not None and div_pts is not None) else None
+        theta_pnl = (theta * dt_days) if (theta is not None and dt_days is not None) else None
+
+        explained: float | None
+        if None in (delta_pnl, gamma_pnl, vega_pnl, theta_pnl):
+            explained = None
+        else:
+            explained = float(delta_pnl) + float(gamma_pnl) + float(vega_pnl) + float(theta_pnl)
+        residual = (actual - explained) if (actual is not None and explained is not None) else None
+
+        return {
+            "actual_pnl_usd": round(actual, 2) if actual is not None else None,
+            "delta_pnl_usd": round(delta_pnl, 2) if delta_pnl is not None else None,
+            "gamma_pnl_usd": round(gamma_pnl, 2) if gamma_pnl is not None else None,
+            "vega_pnl_usd": round(vega_pnl, 2) if vega_pnl is not None else None,
+            "theta_pnl_usd": round(theta_pnl, 2) if theta_pnl is not None else None,
+            "residual_usd": round(residual, 2) if residual is not None else None,
+        }
+
+    per_position: list[dict[str, Any]] = []
+    for r in ib_rows:
+        decomp = _decompose(
+            pnl_now=float(r.pnl_now) if r.pnl_now is not None else None,
+            pnl_then=float(r.pnl_then) if r.pnl_then is not None else None,
+            spot_now=float(r.spot_now) if r.spot_now is not None else None,
+            spot_then=float(r.spot_then) if r.spot_then is not None else None,
+            iv_now=float(r.iv_now) if r.iv_now is not None else None,
+            iv_then=float(r.iv_then) if r.iv_then is not None else None,
+            delta=float(r.delta_now) if r.delta_now is not None else None,
+            gamma=float(r.gamma_now) if r.gamma_now is not None else None,
+            vega=float(r.vega_now) if r.vega_now is not None else None,
+            theta=float(r.theta_now) if r.theta_now is not None else None,
+            t_then=r.t_then,
+        )
+        per_position.append({
+            "id": int(r.id), "source": "ib_live",
+            "structure": r.structure, "product_label": r.product_label,
+            "side": r.side,
+            **decomp,
+        })
+    for r in booked_rows:
+        decomp = _decompose(
+            pnl_now=float(r.pnl_now) if r.pnl_now is not None else None,
+            pnl_then=float(r.pnl_then) if r.pnl_then is not None else None,
+            spot_now=float(r.spot_now) if r.spot_now is not None else None,
+            spot_then=float(r.spot_then) if r.spot_then is not None else None,
+            iv_now=float(r.iv_now) if r.iv_now is not None else None,
+            iv_then=float(r.iv_then) if r.iv_then is not None else None,
+            delta=float(r.delta_now) if r.delta_now is not None else None,
+            gamma=float(r.gamma_now) if r.gamma_now is not None else None,
+            vega=float(r.vega_now) if r.vega_now is not None else None,
+            theta=float(r.theta_now) if r.theta_now is not None else None,
+            t_then=r.t_then,
+        )
+        per_position.append({
+            "id": int(r.id), "source": "booked",
+            "structure": None, "product_label": r.product_label,
+            "side": None,
+            **decomp,
+        })
+
+    # 4. Aggregate. Sum across positions where the term is not None.
+    def _sum(key: str) -> float | None:
+        vals = [row[key] for row in per_position if row[key] is not None]
+        return round(sum(vals), 2) if vals else None
+
+    return {
+        "lookback_hours": lookback_hours,
+        "computed_at": now.isoformat(),
+        "totals": {
+            "actual_pnl_usd": _sum("actual_pnl_usd"),
+            "delta_pnl_usd": _sum("delta_pnl_usd"),
+            "gamma_pnl_usd": _sum("gamma_pnl_usd"),
+            "vega_pnl_usd": _sum("vega_pnl_usd"),
+            "theta_pnl_usd": _sum("theta_pnl_usd"),
+            "residual_usd": _sum("residual_usd"),
+        },
+        "per_position": per_position,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Panel J — Pin risk grid (full BS revaluation at strike ± breach)
+# ──────────────────────────────────────────────────────────────────────
+
+
+_BREACH_BPS = 50  # ±50 bp around the strike
+
+
+@router.get("/pin-risk")
+async def pin_risk(db: DbDep) -> dict[str, Any]:
+    """Full BS revaluation per option at strike (pin) and strike ± 50 bp.
+
+    The frontend's old linearised approximation (Δ × ΔS) was a poor
+    proxy near expiry where Γ dominates. Here we do the proper reval:
+
+      pnl_at_pin       = NPV(spot=K) - NPV(spot=now)
+      pnl_at_breach_up = NPV(spot=K + 50bp) - NPV(spot=now)
+      pnl_at_breach_dn = NPV(spot=K - 50bp) - NPV(spot=now)
+
+    All computed at the position's current T and IV (no time decay, no
+    vol shock — operator can run those via the stress-grid panel).
+    Futures are ignored (no pin risk — payoff is linear in spot).
+    """
+    open_positions = (await db.execute(select(Position))).scalars().all()
+    if not open_positions:
+        return {"current_spot": None, "rows": [], "n_options": 0}
+
+    # Same spot proxy as stress-grid (most reliable from a held FUTURE).
+    current_spot: float | None = None
+    for p in open_positions:
+        spec = parse_local_symbol(p.structure)
+        if spec and spec.instrument_type == "FUTURE" and p.market_price:
+            current_spot = float(p.market_price)
+            break
+    if current_spot is None:
+        for p in open_positions:
+            spec = parse_local_symbol(p.structure)
+            if spec and spec.option_type and spec.strike and p.market_price:
+                current_spot = float(spec.strike)
+                break
+    if current_spot is None:
+        return {"current_spot": None, "rows": [], "n_options": 0}
+
+    today = datetime.now(UTC).date()
+    rows: list[dict[str, Any]] = []
+    for p in open_positions:
+        spec = parse_local_symbol(p.structure)
+        if spec is None or not spec.option_type or not spec.strike:
+            continue  # skip futures + malformed
+        if not p.expiry or not p.iv:
+            continue  # need T + IV for BS reval
+        dte = (p.expiry - today).days
+        T = max(0.001, dte / 365.0)
+        iv_dec = float(p.iv)
+        right = "C" if spec.option_type == "CALL" else "P"
+        K = float(spec.strike)
+        qty_signed = float(p.quantity) * (1.0 if p.side == "BUY" else -1.0)
+        mult = spec.multiplier
+        notional = qty_signed * mult
+        breach_step = K * _BREACH_BPS / 10_000.0  # 50 bp of strike in spot units
+
+        try:
+            npv_now = bs_price(current_spot, K, T, iv_dec, right) * notional
+            npv_pin = bs_price(K, K, T, iv_dec, right) * notional
+            npv_up  = bs_price(K + breach_step, K, T, iv_dec, right) * notional
+            npv_dn  = bs_price(K - breach_step, K, T, iv_dec, right) * notional
+        except Exception:
+            continue  # bad BS input — skip rather than 500
+
+        rows.append({
+            "id": int(p.id),
+            "structure": p.structure,
+            "product_label": p.product_label,
+            "side": p.side,
+            "option_type": spec.option_type,
+            "strike": K,
+            "expiry": p.expiry.isoformat(),
+            "dte_days": dte,
+            "qty": float(p.quantity),
+            "distance_pips": round((current_spot - K) * 10_000, 1),
+            "pnl_now_usd": float(p.current_pnl_usd) if p.current_pnl_usd is not None else None,
+            "delta_usd": float(p.delta_usd) if p.delta_usd is not None else None,
+            "pnl_at_pin_usd": round(npv_pin - npv_now, 2),
+            "pnl_at_breach_up_usd": round(npv_up - npv_now, 2),
+            "pnl_at_breach_dn_usd": round(npv_dn - npv_now, 2),
+        })
+    rows.sort(key=lambda r: r["dte_days"])  # most-urgent first
+    return {
+        "current_spot": round(current_spot, 5),
+        "breach_bps": _BREACH_BPS,
+        "rows": rows,
+        "n_options": len(rows),
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Panel — Scenarios (5 charts : PnL vs spot + Δ/Γ/Vega/Θ vs spot or vol)
+# ──────────────────────────────────────────────────────────────────────
+
+
+_SCENARIO_SPOT_STEPS_PCT: list[float] = [
+    -5.0, -4.0, -3.0, -2.0, -1.5, -1.0, -0.5, -0.25,
+    0.0, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0,
+]
+_SCENARIO_IV_STEPS_VOLPT: list[float] = [
+    -5.0, -4.0, -3.0, -2.0, -1.0, -0.5,
+    0.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0,
+]
+
+
+@router.get("/scenarios")
+async def scenarios(db: DbDep) -> dict[str, Any]:
+    """Two-axis full-reval scenario surface for the live book.
+
+    Axis 1 (spot shocks, fixed IV) : revalue every position at
+    ``spot × (1 + step/100)``. Returns one row per spot step with PnL +
+    4 net greeks. Used by the 5-chart Portfolio scenarios panel.
+
+    Axis 2 (IV shocks, fixed spot) : shift each option's IV by ``step``
+    vol-points, recompute price + greeks. Futures contribute 0 (no IV
+    exposure).
+    """
+    open_positions = (await db.execute(select(Position))).scalars().all()
+    base_payload: dict[str, Any] = {
+        "current_spot": None, "current_iv_avg_pct": None,
+        "spot_steps_pct": _SCENARIO_SPOT_STEPS_PCT,
+        "iv_steps_volpt": _SCENARIO_IV_STEPS_VOLPT,
+        "by_spot": [], "by_iv": [], "n_positions": 0,
+    }
+    if not open_positions:
+        return base_payload
+
+    # Spot proxy : prefer a FUT marketPrice, fallback to an option strike.
+    current_spot: float | None = None
+    for p in open_positions:
+        spec = parse_local_symbol(p.structure)
+        if spec and spec.instrument_type == "FUTURE" and p.market_price:
+            current_spot = float(p.market_price)
+            break
+    if current_spot is None:
+        for p in open_positions:
+            spec = parse_local_symbol(p.structure)
+            if spec and spec.option_type and spec.strike and p.market_price:
+                current_spot = float(spec.strike)
+                break
+    if current_spot is None:
+        return base_payload
+
+    today = datetime.now(UTC).date()
+    positions_resolved: list[dict[str, Any]] = []
+    iv_sum = 0.0
+    iv_count = 0
+    for p in open_positions:
+        spec = parse_local_symbol(p.structure)
+        if spec is None:
+            continue
+        qty_signed = float(p.quantity) * (1.0 if p.side == "BUY" else -1.0)
+        mult = spec.multiplier
+        if spec.instrument_type == "FUTURE":
+            positions_resolved.append({
+                "type": "FUTURE", "qty_signed": qty_signed, "mult": mult,
+                "npv_base": qty_signed * mult * current_spot,
+            })
+        elif spec.option_type and spec.strike and p.expiry and p.iv:
+            T = max(0.001, (p.expiry - today).days / 365.0)
+            iv_dec = float(p.iv)
+            iv_sum += iv_dec
+            iv_count += 1
+            right = "C" if spec.option_type == "CALL" else "P"
+            base_price = bs_price(current_spot, spec.strike, T, iv_dec, right)
+            positions_resolved.append({
+                "type": "OPTION", "qty_signed": qty_signed, "mult": mult,
+                "K": float(spec.strike), "T": T, "iv": iv_dec, "right": right,
+                "npv_base": qty_signed * mult * base_price,
+            })
+
+    current_iv_avg_pct = (iv_sum / iv_count * 100.0) if iv_count > 0 else None
+
+    def _aggregate(spot_now: float, iv_shift_dec: float) -> dict[str, float]:
+        """Revalue all positions at shocked (spot, iv) ; return totals."""
+        pnl = delta = gamma = vega = theta = 0.0
+        for pos in positions_resolved:
+            if pos["type"] == "FUTURE":
+                npv = pos["qty_signed"] * pos["mult"] * spot_now
+                delta += pos["qty_signed"] * pos["mult"]
+                pnl += npv - pos["npv_base"]
+                continue
+            K, T = pos["K"], pos["T"]
+            sigma = max(0.001, pos["iv"] + iv_shift_dec)
+            right = pos["right"]
+            price = bs_price(spot_now, K, T, sigma, right)
+            npv = pos["qty_signed"] * pos["mult"] * price
+            pnl += npv - pos["npv_base"]
+            n_mult = pos["qty_signed"] * pos["mult"]
+            delta += n_mult * bs_delta(spot_now, K, T, sigma, right)
+            gamma += n_mult * bs_gamma(spot_now, K, T, sigma) * 1e-4   # $/pip
+            vega  += n_mult * bs_vega(spot_now, K, T, sigma) * 0.01    # $/vol-pt
+            theta += n_mult * bs_theta(spot_now, K, T, sigma, right) / 365.0
+        return {
+            "pnl_usd": round(pnl, 2),
+            "delta_usd": round(delta, 2),
+            "gamma_usd_per_pip": round(gamma, 2),
+            "vega_usd_per_volpt": round(vega, 2),
+            "theta_usd_per_day": round(theta, 2),
+        }
+
+    by_spot: list[dict[str, Any]] = []
+    for step_pct in _SCENARIO_SPOT_STEPS_PCT:
+        shocked = current_spot * (1.0 + step_pct / 100.0)
+        agg = _aggregate(spot_now=shocked, iv_shift_dec=0.0)
+        by_spot.append({"step_pct": step_pct, "spot": round(shocked, 5), **agg})
+
+    by_iv: list[dict[str, Any]] = []
+    for step_vp in _SCENARIO_IV_STEPS_VOLPT:
+        agg = _aggregate(spot_now=current_spot, iv_shift_dec=step_vp / 100.0)
+        by_iv.append({"step_vp": step_vp, **agg})
+
+    return {
+        "current_spot": round(current_spot, 5),
+        "current_iv_avg_pct": (round(current_iv_avg_pct, 2)
+                               if current_iv_avg_pct is not None else None),
+        "spot_steps_pct": _SCENARIO_SPOT_STEPS_PCT,
+        "iv_steps_volpt": _SCENARIO_IV_STEPS_VOLPT,
+        "by_spot": by_spot,
+        "by_iv": by_iv,
         "n_positions": len(positions_resolved),
     }
