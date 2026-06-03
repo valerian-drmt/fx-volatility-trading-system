@@ -15,7 +15,9 @@ import { useEffect, useState } from "react";
 interface ActivePosition {
   id: number;
   source: "booked" | "ib_live";
+  structure: string | null;
   structure_type: string | null;
+  product_label: string | null;
   reference_tenor: string | null;
   expiry_date: string | null;
   triggering_pc: number | null;
@@ -91,7 +93,8 @@ export function Step5Positions(): JSX.Element {
           <tr>
             <th style={th}>Source</th>
             <th style={th}>ID</th>
-            <th style={th}>Structure</th>
+            <th style={th}>Structure (IB)</th>
+            <th style={th}>Product</th>
             <th style={th}>Tenor</th>
             <th style={th}>Expiry</th>
             <th style={th}>Entry signal</th>
@@ -139,7 +142,8 @@ export function Step5Positions(): JSX.Element {
                   </span>
                 </td>
                 <td style={td}>{p.id}</td>
-                <td style={td}>{p.structure_type ?? "—"}</td>
+                <td style={td}>{p.structure ?? p.structure_type ?? "—"}</td>
+                <td style={td}>{p.product_label ?? "—"}</td>
                 <td style={td}>{p.reference_tenor ?? "—"}</td>
                 <td style={td}>{p.expiry_date ?? "—"}</td>
                 <td style={td}>

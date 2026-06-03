@@ -10,6 +10,7 @@ interface Submitted {
   id: number;
   created_at: string;
   structure_type: string;
+  product_label: string | null;
   reference_tenor: string;
   base_qty: number;
   state: string;
@@ -65,6 +66,7 @@ export function Step4Trades(): JSX.Element {
                   <th style={thStyle}>id</th>
                   <th style={thStyle}>created_at</th>
                   <th style={thStyle}>structure</th>
+                  <th style={thStyle}>product</th>
                   <th style={thStyle}>tenor</th>
                   <th style={thStyle}>qty</th>
                   <th style={thStyle}>state</th>
@@ -81,6 +83,7 @@ export function Step4Trades(): JSX.Element {
                     <td style={tdStyle}>{r.id}</td>
                     <td style={tdStyle}>{r.created_at?.replace("T", " ").slice(0, 19) ?? "—"}</td>
                     <td style={tdStyle}>{r.structure_type}</td>
+                    <td style={tdStyle}>{r.product_label ?? "—"}</td>
                     <td style={tdStyle}>{r.reference_tenor}</td>
                     <td style={tdStyle}>{r.base_qty}</td>
                     <td style={{ ...tdStyle, color: r.state === "fully_filled" ? "#6c6" : r.state === "submitted" ? "#fc6" : "#e66" }}>
