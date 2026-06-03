@@ -41,7 +41,7 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ALEMBIC_INI = PROJECT_ROOT / "persistence" / "alembic.ini"
+ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
 
 
 def _assert_localhost(url: str) -> None:

@@ -81,7 +81,7 @@ def _stack():
     _wait_healthy(timeout=120)
     _run([
         "docker", "compose", "exec", "-T", "api",
-        "python", "-m", "alembic", "-c", "persistence/alembic.ini", "upgrade", "head",
+        "python", "-m", "alembic", "-c", "src/persistence/alembic.ini", "upgrade", "head",
     ])
     yield
     _run(["docker", "compose", "down", "--remove-orphans"])
@@ -118,7 +118,7 @@ def test_api_reachable_through_nginx():
 def test_alembic_migrations_apply_in_compose():
     r = _run([
         "docker", "compose", "exec", "-T", "api",
-        "python", "-m", "alembic", "-c", "persistence/alembic.ini", "current",
+        "python", "-m", "alembic", "-c", "src/persistence/alembic.ini", "current",
     ])
     assert r.returncode == 0, f"alembic current failed:\n{r.stderr}"
     # When at head, the alembic output includes " (head)".

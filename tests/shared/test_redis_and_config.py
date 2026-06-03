@@ -1,9 +1,9 @@
-"""Smoke tests for ``shared.redis_client``, ``shared.config`` and
-``shared.db_queue``.
+"""Smoke tests for ``shared.config`` and ``shared.db_events``.
 
-The Redis client itself is covered by the bus package tests — here we
-only verify the shim delegates correctly and that ``reset_for_tests``
-plumbs through.
+The Redis client itself is covered by the bus package tests. The old
+``shared.redis_client`` shim was retired in R9 (engines now import
+``bus.get_async_redis`` directly), so the shim-delegation tests were
+dropped here.
 """
 from __future__ import annotations
 
@@ -13,36 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from shared.config import Settings, get_settings, reset_settings_cache
-from shared.db_queue import DB_EVENTS_CHANNEL, publish_db_event
-
-# ── redis client shim ─────────────────────────────────────────────────
-
-@pytest.mark.unit
-def test_get_async_redis_delegates_to_bus(monkeypatch):
-    import shared.redis_client as sut
-
-    sentinel = object()
-
-    def fake_get_redis():
-        return sentinel
-
-    monkeypatch.setattr(sut._bus_redis, "get_redis", fake_get_redis)
-    assert sut.get_async_redis() is sentinel
-
-
-@pytest.mark.unit
-def test_reset_for_tests_clears_bus_cache(monkeypatch):
-    import shared.redis_client as sut
-
-    calls: list[bool] = []
-
-    def fake_reset() -> None:
-        calls.append(True)
-
-    monkeypatch.setattr(sut._bus_redis, "reset_clients_for_tests", fake_reset)
-    sut.reset_for_tests()
-    assert calls == [True]
-
+from shared.db_events import DB_EVENTS_CHANNEL, publish_db_event
 
 # ── config / settings ─────────────────────────────────────────────────
 

@@ -15,6 +15,10 @@ Reference : releases/architecture_finale_project/09-redis.md
 
 from __future__ import annotations
 
-from bus.redis_client import get_redis, get_sync_redis
+from bus.client import get_redis, get_sync_redis, reset_clients_for_tests
 
-__all__ = ["get_redis", "get_sync_redis"]
+# ``get_async_redis`` is the canonical name engines import — kept as an alias
+# of ``get_redis`` after the R7 ``shared.redis_client`` shim was retired.
+get_async_redis = get_redis
+
+__all__ = ["get_async_redis", "get_redis", "get_sync_redis", "reset_clients_for_tests"]

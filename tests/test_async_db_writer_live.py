@@ -40,7 +40,7 @@ pytestmark = pytest.mark.db_integration
 _TEST_TABLES = ("vol_surfaces", "signals")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ALEMBIC_INI = PROJECT_ROOT / "persistence" / "alembic.ini"
+ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
 
 
 @pytest.fixture(autouse=True, scope="module")

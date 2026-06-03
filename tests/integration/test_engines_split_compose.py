@@ -77,7 +77,7 @@ def _compose_stack():
     # Apply alembic migrations (db-writer will INSERT into these tables).
     _run(
         ["docker", "compose", "exec", "-T", "api",
-         "python", "-m", "alembic", "-c", "persistence/alembic.ini", "upgrade", "head"],
+         "python", "-m", "alembic", "-c", "src/persistence/alembic.ini", "upgrade", "head"],
     )
 
     yield

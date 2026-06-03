@@ -14,10 +14,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-for p in (REPO_ROOT, REPO_ROOT / "src"):
-    sp = str(p)
-    if sp not in sys.path:
-        sys.path.insert(0, sp)
+# R9 src-layout: every package lives under src/.
+sp = str(REPO_ROOT / "src")
+if sp not in sys.path:
+    sys.path.insert(0, sp)
 
 from api.main import create_app  # noqa: E402
 

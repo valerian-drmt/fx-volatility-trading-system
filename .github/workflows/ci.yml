@@ -50,10 +50,10 @@ jobs:
           pip install -r requirements.txt
 
       - name: Static import check (compileall)
-        run: python -m compileall -q src api core shared services
+        run: python -m compileall -q src
 
       - name: Lint (ruff)
-        run: python -m ruff check src tests api core shared services
+        run: python -m ruff check src tests
 
       - name: Run tests (pytest, excluding integration)
         run: python -m pytest -m "not integration" --junitxml=junit.xml
@@ -239,7 +239,7 @@ jobs:
       - name: Apply Alembic migrations
         run: |
           docker compose exec -T api \
-            python -m alembic -c persistence/alembic.ini upgrade head
+            python -m alembic -c src/persistence/alembic.ini upgrade head
 
       - name: Wait for Nginx to serve the frontend
         run: |
@@ -380,7 +380,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run alembic upgrade head
-        run: python -m alembic -c persistence/alembic.ini upgrade head
+        run: python -m alembic -c src/persistence/alembic.ini upgrade head
 
       - name: Run db_integration tests
         run: python -m pytest -m db_integration -v

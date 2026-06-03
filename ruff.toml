@@ -27,7 +27,7 @@ ignore = [
 ]
 
 [lint.isort]
-known-first-party = ["services", "ui", "controller"]
+known-first-party = ["api", "bus", "core", "engines", "persistence", "shared"]
 
 [lint.per-file-ignores]
 "tests/*" = ["B018"]  # useless expression (assert patterns)

@@ -26,7 +26,7 @@ from sqlalchemy import create_engine, text
 pytestmark = pytest.mark.db_integration
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ALEMBIC_INI = PROJECT_ROOT / "persistence" / "alembic.ini"
+ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
 
 EXPECTED_TABLES = {
     "positions",
@@ -49,7 +49,7 @@ EXPECTED_INDICES: set[str] = set()
 
 
 def _alembic(command: str) -> None:
-    """Run `alembic -c persistence/alembic.ini <command>` from the repo root.
+    """Run `alembic -c src/persistence/alembic.ini <command>` from the repo root.
 
     Shelling out instead of importing Alembic's Python API keeps the test
     identical to what a developer (or the CI step) would type by hand and
