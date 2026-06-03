@@ -8,11 +8,13 @@
     2. git pull (sauf -NoPull)
     3. Creer le .venv si absent + pip install
     4. Charger les secrets depuis AWS SSM
-    5. docker compose up -d --build (sauf -NoBuild)
+    5. docker compose up -d --build (sauf -NoBuild) sur TOUS les profils
+       (engines + ib + obs) pour batir tous les containers du projet
+       (api, frontend, nginx, 5 engines, ib-gateway, prometheus, loki,
+        promtail, tempo, otel-collector, grafana).
     6. Attendre Postgres healthy
     7. Alembic upgrade head
     8. Restart nginx (refresh DNS upstreams)
-    9. Ouvrir Windows Terminal : 1 tab par service + 1 tab healthcheck
 
   Sous-mode -Down arrete tout (et droppe les volumes si -DropVolumes).
 
@@ -24,9 +26,6 @@
 
 .PARAMETER NoBuild
   Skip le --build (plus rapide si aucune image n'a change).
-
-.PARAMETER NoTabs
-  Skip l'ouverture des Windows Terminal tabs (utile pour CI / scripting).
 
 .PARAMETER DropVolumes
   Avec -Down : docker compose down --volumes (drop postgres data + redis cache).
@@ -44,7 +43,6 @@ param(
     [switch]$Down,
     [switch]$NoPull,
     [switch]$NoBuild,
-    [switch]$NoTabs,
     [switch]$DropVolumes,
     [switch]$RecreateVenv
 )
@@ -61,7 +59,7 @@ try {
     # ---------- Sous-mode -Down : stop & exit ----------
     if ($Down) {
         Write-Step "Stopping stack$(if ($DropVolumes) { ' (DROPPING VOLUMES)' })"
-        $args = @('compose', '--profile', '*', 'down', '--remove-orphans')
+        $args = @('compose', '--profile', 'engines', '--profile', 'ib', '--profile', 'obs', 'down', '--remove-orphans')
         if ($DropVolumes) { $args += '--volumes' }
         & docker @args
         Write-Ok "Stack stopped"
@@ -114,13 +112,13 @@ try {
     Write-Step "Loading secrets from AWS SSM"
     & "$PSScriptRoot\load_secrets.ps1"
 
-    # ---------- 5. docker compose up ----------
-    Write-Step "docker compose up -d$(if (-not $NoBuild) { ' --build' })"
-    $upArgs = @('compose', '--profile', 'engines', '--profile', 'ib', 'up', '-d')
+    # ---------- 5. docker compose up (all profiles : engines + ib + obs) ----------
+    Write-Step "docker compose up -d$(if (-not $NoBuild) { ' --build' }) (profiles: engines, ib, obs)"
+    $upArgs = @('compose', '--profile', 'engines', '--profile', 'ib', '--profile', 'obs', 'up', '-d')
     if (-not $NoBuild) { $upArgs += '--build' }
     & docker @upArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "docker compose up failed (exit $LASTEXITCODE). Run with --build manually to see the error : docker compose --profile engines --profile ib up -d --build"
+        throw "docker compose up failed (exit $LASTEXITCODE). Run with --build manually to see the error : docker compose --profile engines --profile ib --profile obs up -d --build"
     }
 
     # ---------- 6. Wait postgres healthy ----------
@@ -143,73 +141,7 @@ try {
     docker compose restart nginx | Out-Null
 
     Write-Ok "Stack up at http://localhost/"
+    Write-Ok "Done. UI : http://localhost/    API : http://localhost/api/v1/health    Grafana : http://localhost:3000/"
 } finally {
     Pop-Location
 }
-
-# ---------- 9. Windows Terminal tabs ----------
-if ($NoTabs) { return }
-if (-not (Get-Command wt -ErrorAction SilentlyContinue)) {
-    Write-Warn "Windows Terminal (wt.exe) not found -> skip tabs. Install from Microsoft Store."
-    return
-}
-
-$services = @(
-    'postgres', 'redis', 'api', 'db-writer', 'frontend', 'nginx',
-    'market-data', 'vol-engine', 'risk', 'ib-gateway'
-)
-
-function Get-TabInit($projectDir) {
-    # Each tab is a fresh PS process (no env inheritance) -> re-load SSM so
-    # docker compose can resolve ${VAR:?} when parsing compose.yml.
-    return @"
-Set-Location '$projectDir'
-if (Test-Path .\.venv\Scripts\Activate.ps1) { .\.venv\Scripts\Activate.ps1 }
-& .\scripts\ops\load_secrets.ps1 | Out-Null
-"@
-}
-
-function New-LogsTab($svc, $projectDir) {
-    $script = "$(Get-TabInit $projectDir)`nWrite-Host '==> logs -f $svc' -ForegroundColor Cyan`ndocker compose logs -f $svc"
-    return [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
-}
-
-function New-HealthcheckTab($projectDir) {
-    $body = @"
-$(Get-TabInit $projectDir)
-Write-Host '==> Waiting 20s for containers to settle...' -ForegroundColor Yellow
-Start-Sleep -Seconds 20
-Write-Host '==> docker compose ps' -ForegroundColor Cyan ; docker compose ps
-Write-Host '==> pg_isready' -ForegroundColor Cyan ; docker compose exec postgres pg_isready -U fxvol -d fxvol
-Write-Host '==> redis PING' -ForegroundColor Cyan ; docker compose exec redis redis-cli PING
-Write-Host '==> /api/v1/health' -ForegroundColor Cyan ; curl.exe http://localhost/api/v1/health
-Write-Host ''
-Write-Host '==> /api/v1/health/extended' -ForegroundColor Cyan ; curl.exe http://localhost/api/v1/health/extended
-Write-Host ''
-Write-Host '==> Engine heartbeats' -ForegroundColor Cyan
-foreach (`$hb in 'market_data','vol_engine','risk_engine','db_writer') {
-    `$v = docker compose exec redis redis-cli GET "heartbeat:`$hb"
-    Write-Host ("    {0,-13} -> {1}" -f `$hb, `$v)
-}
-Write-Host '==> IB Gateway port 4002' -ForegroundColor Cyan
-Test-NetConnection 127.0.0.1 -Port 4002 | Select-Object TcpTestSucceeded
-Write-Host '==> Healthcheck done.' -ForegroundColor Green
-"@
-    return [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($body))
-}
-
-Write-Step "Opening Windows Terminal : $($services.Count) logs tabs + 1 healthcheck"
-$wtArgs = @()
-for ($i = 0; $i -lt $services.Count; $i++) {
-    if ($i -gt 0) { $wtArgs += ';' }
-    $wtArgs += @('new-tab', '--suppressApplicationTitle', '--title', $services[$i],
-                 'powershell.exe', '-NoExit',
-                 '-EncodedCommand', (New-LogsTab $services[$i] $projectDir))
-}
-$wtArgs += ';'
-$wtArgs += @('new-tab', '--suppressApplicationTitle', '--title', 'healthcheck',
-             'powershell.exe', '-NoExit',
-             '-EncodedCommand', (New-HealthcheckTab $projectDir))
-& wt @wtArgs
-
-Write-Ok "Done. UI : http://localhost/    API : http://localhost/api/v1/health"
