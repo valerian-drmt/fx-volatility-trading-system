@@ -87,7 +87,24 @@ class OrderExecutor:
         """Return all currently-open trades (orders not yet filled/cancelled)."""
         ib = self._ensure()
         trades = ib.openTrades()
-        return [_trade_to_dict(t) for t in trades]
+        return [trade_to_dict(t) for t in trades]
+
+    async def list_all_trades(self) -> list[dict[str, Any]]:
+        """Return every trade visible in this IB session (open + done).
+
+        Used by the diagnostic endpoint when an order has disappeared
+        from ``openTrades()`` and we need to know why — rejected /
+        cancelled / filled. ``log[-1].message`` carries IB's reason
+        string when the order was rejected.
+        """
+        ib = self._ensure()
+        out: list[dict[str, Any]] = []
+        for t in ib.trades():
+            d = trade_to_dict(t)
+            d["status"] = getattr(t.orderStatus, "status", None)
+            d["last_log"] = (t.log[-1].message if t.log else None)
+            out.append(d)
+        return out
 
     # Tags conservés dans `by_currency` — sélection scale projet perso :
     # cash + valorisation + P&L. Les ~50 autres (Billable, FundValue,
@@ -205,14 +222,14 @@ class OrderExecutor:
         order = LimitOrder(req.side, req.qty, req.limit_price)
         trade = ib.placeOrder(contract, order)
         # Don't wait for fill — return immediately. UI peut poll openOrders.
-        return _trade_to_dict(trade)
+        return trade_to_dict(trade)
 
     async def cancel_order(self, order_id: int) -> dict[str, Any] | None:
         ib = self._ensure()
         for t in ib.openTrades():
             if t.order.orderId == order_id:
                 ib.cancelOrder(t.order)
-                return _trade_to_dict(t)
+                return trade_to_dict(t)
         return None
 
     async def close_position(self, con_id: int, limit_price: float) -> dict[str, Any]:
@@ -230,10 +247,76 @@ class OrderExecutor:
         side = "SELL" if target.position > 0 else "BUY"
         order = LimitOrder(side, qty, limit_price)
         trade = ib.placeOrder(target.contract, order)
-        return _trade_to_dict(trade)
+        return trade_to_dict(trade)
+
+    async def close_position_by_symbol(
+        self,
+        local_symbol: str,
+        qty: int | None,
+        limit_price: float | None = None,
+    ) -> Any:
+        """Submit a reverse order closing ``qty`` contracts of the live
+        IB position matching ``local_symbol``.
+
+        Resolution key = ``contract.localSymbol`` — same canonical id used
+        by ``position_sync.py``. Lets the API tier close partial qty
+        without knowing the IB ``conId``.
+
+        Order type :
+            - ``limit_price=None`` → **MarketOrder** (default for closes — fill
+              immediately at touch, no price game).
+            - ``limit_price=<float>`` → LimitOrder at that price (operator
+              override, e.g. cleanup of a stuck close).
+
+        ``qty=None`` means close the full open quantity.
+
+        Returns the raw ``ib_insync`` ``Trade`` object so the caller can
+        both serialize it (``trade_to_dict``) AND attach fills_handler
+        callbacks (status / fill events → DB ``trade_order`` updates).
+        """
+        from ib_insync import LimitOrder, MarketOrder
+
+        ib = self._ensure()
+        positions = ib.positions()
+        target = next(
+            (p for p in positions if p.contract.localSymbol == local_symbol),
+            None,
+        )
+        if target is None:
+            raise ValueError(f"No live position with localSymbol={local_symbol!r}")
+        open_qty = abs(float(target.position))
+        if open_qty == 0:
+            raise ValueError("Position quantity is zero — nothing to close")
+        # Default = full close. Otherwise validate the requested partial qty.
+        close_qty = open_qty if qty is None else float(qty)
+        if close_qty <= 0:
+            raise ValueError(f"close qty must be > 0 (got {qty})")
+        if close_qty > open_qty:
+            raise ValueError(
+                f"close qty {close_qty} exceeds open qty {open_qty} for {local_symbol}"
+            )
+        side = "SELL" if target.position > 0 else "BUY"
+        # ``ib.positions()`` returns contracts that may be missing routing
+        # fields (notably ``exchange``) — IB rejects the order with
+        # ``Error 321 : Missing order exchange`` if we place it as-is.
+        # Re-qualify the contract so IB fills in exchange / conId / etc.
+        # before routing the close.
+        contract = target.contract
+        if not contract.exchange:
+            qualified = await ib.qualifyContractsAsync(contract)
+            if not qualified:
+                raise ValueError(
+                    f"Contract could not be qualified for close : {local_symbol!r}",
+                )
+            contract = qualified[0]
+        if limit_price is None:
+            order = MarketOrder(side, close_qty)
+        else:
+            order = LimitOrder(side, close_qty, limit_price)
+        return ib.placeOrder(contract, order)
 
 
-def _trade_to_dict(trade: Any) -> dict[str, Any]:
+def trade_to_dict(trade: Any) -> dict[str, Any]:
     """Sérialise un Trade ib_insync en dict JSON-safe."""
     o = trade.order
     c = trade.contract

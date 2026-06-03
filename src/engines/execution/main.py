@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from engines.execution.fills_handler import attach_fill_handlers
 from engines.execution.hedge_executor import HedgeSubmitError, submit_hedge_order
 from engines.execution.ib_heartbeat import (
     heartbeat_loop,
@@ -34,8 +35,9 @@ from engines.execution.order_executor import (
     OrderExecutor,
     OrderExecutorUnavailable,
     OrderRequest,
+    trade_to_dict,
 )
-from engines.execution.position_sync import position_sync_loop
+from engines.execution.position_sync import position_sync_loop, sync_positions_from_ib
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
@@ -143,7 +145,7 @@ async def health(request: Request) -> dict[str, Any]:
 async def _log_event(
     sessionmaker: async_sessionmaker[AsyncSession],
     *,
-    action_type: Literal["SUBMIT", "CANCEL", "CLOSE_POSITION"],
+    action_type: Literal["SUBMIT", "CANCEL", "CLOSE_POSITION", "CLOSE_POSITION_BY_SYMBOL", "SYNC_POSITIONS"],
     request_payload: dict,
     response_payload: dict | None,
     success: bool,
@@ -201,6 +203,19 @@ class ClosePositionBody(BaseModel):
     limit_price: float = Field(gt=0)
 
 
+class ClosePositionBySymbolBody(BaseModel):
+    local_symbol: str = Field(min_length=1, max_length=20)
+    qty: int | None = Field(default=None, gt=0)  # None = close full open qty
+    # limit_price=None ⇒ MarketOrder (default for closes). Explicit value
+    # ⇒ LimitOrder (operator override).
+    limit_price: float | None = Field(default=None, gt=0)
+    # Optional DB ``trade_order.id`` so the execution-engine can wire
+    # fills_handler callbacks (status / execution events → DB updates).
+    # When omitted, the close still goes through to IB but qty_filled
+    # won't be reflected in the DB row.
+    db_order_id: int | None = Field(default=None, gt=0)
+
+
 @router.post("/orders")
 async def place_order(
     body: PlaceOrderBody,
@@ -248,6 +263,18 @@ async def list_orders(ex: Annotated[OrderExecutor, Depends(_executor_dep)]) -> d
     return {"orders": orders, "count": len(orders)}
 
 
+@router.get("/trades")
+async def list_trades(ex: Annotated[OrderExecutor, Depends(_executor_dep)]) -> dict[str, Any]:
+    """All trades in the current IB session (open + done + rejected).
+
+    Diagnostic endpoint : when an order disappears from ``/orders`` it
+    can mean filled, cancelled or rejected. Each row here carries
+    ``status`` + ``last_log`` which contains IB's reject reason.
+    """
+    trades = await ex.list_all_trades()
+    return {"trades": trades, "count": len(trades)}
+
+
 @router.get("/positions")
 async def live_positions(ex: Annotated[OrderExecutor, Depends(_executor_dep)]) -> dict[str, Any]:
     positions = await ex.list_positions()
@@ -271,6 +298,96 @@ async def close_position(
         await _log_event(sm, action_type="CLOSE_POSITION", request_payload=payload,
                          response_payload=None, success=False, error_message=str(e)[:500])
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/positions/close-by-symbol")
+async def close_position_by_symbol(
+    body: ClosePositionBySymbolBody,
+    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Partial / full close keyed on IB ``localSymbol`` (no con_id needed).
+
+    Called by the API ``POST /api/v1/positions/{id}/close`` so the
+    operator can close from the DB ``position.id`` without round-tripping
+    to IB to resolve a ``conId``.
+
+    After submitting the reverse LimitOrder, immediately runs one
+    ``sync_positions_from_ib`` cycle so a fill that lands instantly
+    (paper / marketable orders) is reflected on the DB row without
+    waiting for the next 30 s background tick. If IB hasn't filled
+    yet, the row is unchanged ; the background loop continues to
+    poll and will pick up the fill when it occurs.
+    """
+    payload = {
+        "local_symbol": body.local_symbol,
+        "qty": body.qty,
+        "limit_price": body.limit_price,
+        "db_order_id": body.db_order_id,
+    }
+    try:
+        trade = await ex.close_position_by_symbol(
+            local_symbol=body.local_symbol,
+            qty=body.qty,
+            limit_price=body.limit_price,
+        )
+        # Wire fills_handler so IB status / execution events flow back
+        # to the DB ``trade_order`` row — keeps qty_filled / state in sync.
+        if body.db_order_id is not None:
+            attach_fill_handlers(
+                trade=trade,
+                order_id=body.db_order_id,
+                sessionmaker_factory=sm,
+            )
+        result = trade_to_dict(trade)
+        await _log_event(sm, action_type="CLOSE_POSITION_BY_SYMBOL",
+                         request_payload=payload,
+                         response_payload=result, success=True)
+    except (OrderExecutorUnavailable, ValueError) as e:
+        await _log_event(sm, action_type="CLOSE_POSITION_BY_SYMBOL",
+                         request_payload=payload, response_payload=None,
+                         success=False, error_message=str(e)[:500])
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # Best-effort immediate sync — never blocks the close response on
+    # failure. Errors are logged but don't fail the caller : the order
+    # is already in flight at IB.
+    sync_summary: dict[str, Any] = {"synced": False}
+    try:
+        async with sm() as db:
+            sync_summary = await sync_positions_from_ib(db, ex)
+            sync_summary["synced"] = True
+    except Exception as e:
+        logger.exception("post_close_sync_failed local_symbol=%s", body.local_symbol)
+        sync_summary = {"synced": False, "error": str(e)[:300]}
+    return {**result, "post_close_sync": sync_summary}
+
+
+@router.post("/positions/sync")
+async def trigger_position_sync(
+    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Run one ``sync_positions_from_ib`` cycle on demand.
+
+    Convenience for the dev UI / operator. The same function runs
+    every 30 s in the background, so calling this is only useful
+    when you need a fresh snapshot right now (e.g. after a manual
+    close that hasn't yet bubbled through the background loop).
+    """
+    try:
+        async with sm() as db:
+            result = await sync_positions_from_ib(db, ex)
+        await _log_event(sm, action_type="SYNC_POSITIONS",
+                         request_payload={}, response_payload=result, success=True)
+        return result
+    except OrderExecutorUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except Exception as e:
+        await _log_event(sm, action_type="SYNC_POSITIONS",
+                         request_payload={}, response_payload=None,
+                         success=False, error_message=str(e)[:500])
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ---- Structure-level endpoints (Step 4 phase 2) -------------------------
@@ -299,14 +416,45 @@ async def submit_structure(
 
     Called by ``api.routers.trade.submit_preview`` when ``execution_mode='live'``.
     The structure + structure_orders rows are already in the DB (state='pending').
+    All failures are logged with event=``live_submit_failed`` so Grafana /
+    Loki picks them up (``{container="fxvol-execution"} |= "live_submit_failed"``).
     """
+    logger.info(
+        "live_submit_received structure_id=%s ib_connected=%s",
+        body.structure_id, ex.is_connected(),
+    )
     try:
-        return await submit_structure_live(
+        result = await submit_structure_live(
             sessionmaker_factory=sm, executor=ex,
             structure_id=body.structure_id,
         )
+        logger.info(
+            "live_submit_ok structure_id=%s body=%s",
+            body.structure_id, str(result)[:300],
+        )
+        return result
     except LiveSubmitError as e:
+        logger.error(
+            "live_submit_failed structure_id=%s reason=%s",
+            body.structure_id, str(e)[:300],
+        )
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        import traceback as _tb
+        tb = _tb.format_exc()
+        logger.error(
+            "live_submit_failed structure_id=%s exc_type=%s exc=%s\n%s",
+            body.structure_id, type(e).__name__, str(e)[:300], tb,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "live_submit_unhandled_exception",
+                "exception_type": type(e).__name__,
+                "message": str(e)[:500],
+                "traceback_tail": tb.strip().splitlines()[-5:],
+            },
+        ) from e
 
 
 @router.post("/structure/rollback")
