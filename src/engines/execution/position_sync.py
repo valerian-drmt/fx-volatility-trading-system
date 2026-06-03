@@ -23,12 +23,14 @@ from redis import asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from core.products import product_label_from_symbol
 from engines.execution.order_executor import OrderExecutor
 from persistence.models import (
     AccountHistory,
+    BookedPosition,
     Position,
     StructureOrder,
-    BookedPosition,
+    TradeStructure,
 )
 from shared.contracts import multiplier_for, parse_local_symbol
 
@@ -147,6 +149,13 @@ async def sync_positions_from_ib(
         if k:
             db_by_key[k] = p
 
+    # Map IB symbol → parent ``trade_structure.structure_type`` so a leg
+    # of a multi-leg booking (straddle, strangle, …) carries its parent's
+    # product label, not the per-leg vanilla call/put one. Built once
+    # per sync cycle ; structures created after this snapshot will be
+    # picked up on the next cycle.
+    parent_st_by_symbol = await _build_leg_to_structure_type_map(db)
+
     now = datetime.now(UTC)
     opened = 0
     unchanged = 0
@@ -166,6 +175,12 @@ async def sync_positions_from_ib(
         nominal = qty * Decimal(str(mult))
         cp_entry = (avg_cost / Decimal(str(mult))) if avg_cost else None
         tenor = _tenor_bucket(maturity)
+        # Migration 032 : prefer the parent structure_type (so a leg of
+        # a straddle reads "Straddle") and fall back to symbol-parse for
+        # standalone IB-live positions.
+        product_label = product_label_from_symbol(
+            local_sym, parent_st_by_symbol.get(local_sym),
+        )
         if local_sym in db_by_key:
             row = db_by_key[local_sym]
             if row.quantity != qty or row.side != side:
@@ -177,9 +192,11 @@ async def sync_positions_from_ib(
             row.tenor = tenor
             row.nominal_eur = nominal
             row.contract_price_entry = cp_entry
+            row.product_label = product_label
         else:
             row = Position(
                 structure=local_sym,
+                product_label=product_label,
                 side=side,
                 tenor=tenor,
                 quantity=qty,
@@ -331,6 +348,41 @@ def _pick(summary: dict, aliases: list[str]) -> Decimal | None:
     return None
 
 
+_PARENT_LIVE_STATES = ("submitted", "partial_fill", "fully_filled", "partial_fail")
+
+
+async def _build_leg_to_structure_type_map(
+    db: AsyncSession,
+) -> dict[str, str]:
+    """Map ``IB localSymbol → parent trade_structure.structure_type`` for
+    every entry leg of every still-live ``trade_structure``.
+
+    Used by ``sync_positions_from_ib`` to label IB-live Position rows
+    with the booking-level product (e.g. straddle) rather than the
+    per-leg call/put. When the same IB symbol is reused across multiple
+    open structures, the most recently created structure wins — good
+    enough for the UI label, and operationally rare.
+    """
+    structures = (await db.execute(
+        select(TradeStructure)
+        .where(TradeStructure.state.in_(_PARENT_LIVE_STATES))
+        .order_by(TradeStructure.created_at)
+    )).scalars().all()
+    out: dict[str, str] = {}
+    for ts in structures:
+        legs = (await db.execute(
+            select(StructureOrder).where(
+                StructureOrder.structure_id == ts.id,
+                StructureOrder.order_role == "entry",
+            )
+        )).scalars().all()
+        for leg in legs:
+            key = _structure_order_to_ib_key(leg)
+            if key is not None:
+                out[key] = ts.structure_type  # later (newer) wins
+    return out
+
+
 def _structure_order_to_ib_key(leg: StructureOrder) -> str | None:
     """Same canonical key as :func:`_ib_position_key` — IB ``localSymbol`` —
     so a leg booked via Step 3 can be matched to the IB-synced position row.
@@ -440,8 +492,9 @@ async def position_sync_loop(
     except Exception:
         logger.exception("position_sync_initial_failed")
 
-    from shared.observability import observed_cycle
     from opentelemetry import trace as _otel
+
+    from shared.observability import observed_cycle
     tracer = _otel.get_tracer(__name__)
 
     while True:

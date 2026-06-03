@@ -26,11 +26,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.positions.closing import EntryLegSnapshot, build_closing_legs
+from core.products import product_label_from_symbol
 from persistence.models import (
+    BookedPosition,
     ExitAlert,
     StructureOrder,
     TradeEvent,
-    BookedPosition,
     TradeStructure,
 )
 
@@ -93,8 +94,12 @@ async def initiate_position_close(
         parent_struct = await db.get(TradeStructure, pos.structure_id)
         # Build a new TradeStructure for the close — links back to position
         # via ExitAlert.closing_structure_id (set below).
+        closing_struct_type = (
+            parent_struct.structure_type if parent_struct else "close"
+        )
         closing_struct = TradeStructure(
-            structure_type=(parent_struct.structure_type if parent_struct else "close"),
+            structure_type=closing_struct_type,
+            product_label=product_label_from_symbol(None, closing_struct_type),
             reference_tenor=(parent_struct.reference_tenor if parent_struct else "3M"),
             expiry_date=(parent_struct.expiry_date if parent_struct else None),
             base_qty=1,

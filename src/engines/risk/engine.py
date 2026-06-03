@@ -347,6 +347,7 @@ class RiskEngine:
                     position_id=live_pos.id,
                     timestamp=now,
                     structure=live_pos.structure,
+                    product_label=live_pos.product_label,
                     side=live_pos.side,
                     tenor=live_pos.tenor,
                     expiry=live_pos.expiry,
