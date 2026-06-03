@@ -18,14 +18,13 @@
 import { useState, type CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
-import { OrderSubmit } from "./dev/OrderSubmit";
 import { Portfolio } from "./dev/Portfolio";
-import { Pricing } from "./dev/Pricing";
 import { StackCombined } from "./dev/StackCombined";
 import { Step2Pca } from "./dev/Step2Pca";
 import { Step3Trade } from "./dev/Step3Trade";
-import { Step4Trades } from "./dev/Step4Trades";
-import { TradePreview } from "./dev/TradePreview";
+// Step4Trades / TradePreview / OrderSubmit were folded into Step3Trade
+// (unified "Trade · pre/post" tab). Their source files remain on disk
+// for cherry-picking history but are no longer imported.
 import { WsMonitor } from "./dev/WsMonitor";
 
 interface TabDef {
@@ -38,13 +37,9 @@ const TABS: TabDef[] = [
   { id: "stack", label: "🐳 Stack · Health · Redis", Component: StackCombined },
   { id: "ws", label: "📡 WS Monitor", Component: WsMonitor },
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
-  { id: "step2", label: "📊 Step 2 · PCA Signals", Component: Step2Pca },
-  { id: "step3", label: "🎯 Step 3 · Trade Preview", Component: Step3Trade },
-  { id: "step4", label: "📒 Step 4 · Trades (mock)", Component: Step4Trades },
+  { id: "step2", label: "📊 PCA Signals", Component: Step2Pca },
+  { id: "step3", label: "🎯 Trade · pre/post", Component: Step3Trade },
   { id: "portfolio", label: "💼 Portfolio", Component: Portfolio },
-  { id: "pricing", label: "💲 Pricing", Component: Pricing },
-  { id: "trade-preview", label: "📦 Trade Preview (legacy)", Component: TradePreview },
-  { id: "orders",  label: "📝 Orders",  Component: OrderSubmit },
 ];
 
 export function DevLayout(): JSX.Element {
