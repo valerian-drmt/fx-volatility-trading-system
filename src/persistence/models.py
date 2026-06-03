@@ -65,6 +65,11 @@ class Position(Base):
     # exactly panel E columns + entry_timestamp + updated_at, nothing else.
     id: Mapped[int] = mapped_column(primary_key=True)
     structure: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Migration 032 : user-friendly twin of ``structure``. One of the
+    # 8 labels in ``core.products.PRODUCT_LABELS``. Nullable for now ;
+    # backfilled by 032 and computed by writers going forward. Promoted
+    # to NOT NULL in a follow-up migration once writer coverage is proven.
+    product_label: Mapped[str | None] = mapped_column(String(40))
     side: Mapped[str] = mapped_column(String(4), nullable=False)
     tenor: Mapped[str | None] = mapped_column(String(10))
     expiry: Mapped[date | None] = mapped_column(Date)
@@ -113,6 +118,8 @@ class PositionMetricHistory(Base):
         DateTime(timezone=True), nullable=False
     )
     structure: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Mirror of Position.product_label (migration 032). See Position class.
+    product_label: Mapped[str | None] = mapped_column(String(40))
     side: Mapped[str] = mapped_column(String(4), nullable=False)
     tenor: Mapped[str | None] = mapped_column(String(10))
     expiry: Mapped[date | None] = mapped_column(Date)
@@ -536,6 +543,8 @@ class TradePreviewRow(Base):
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     armed_signal_label: Mapped[str | None] = mapped_column(String(15))
     structure_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    # Mirror of Position.product_label (migration 032). See Position class.
+    product_label: Mapped[str | None] = mapped_column(String(40))
     reference_tenor: Mapped[str] = mapped_column(String(10), nullable=False)
     structure_full_payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
     state: Mapped[str] = mapped_column(String(25), nullable=False)
@@ -634,6 +643,8 @@ class TradeStructure(Base):
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     armed_signal_label: Mapped[str | None] = mapped_column(String(15))
     structure_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    # Mirror of Position.product_label (migration 032). See Position class.
+    product_label: Mapped[str | None] = mapped_column(String(40))
     reference_tenor: Mapped[str] = mapped_column(String(10), nullable=False)
     expiry_date: Mapped[date | None] = mapped_column(Date)
     base_qty: Mapped[int] = mapped_column(Integer, nullable=False)

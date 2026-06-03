@@ -17,6 +17,7 @@ class PositionView(BaseModel):
 
     id: int
     structure: str
+    product_label: str | None
     side: str
     tenor: str | None
     expiry: date | None
@@ -44,6 +45,7 @@ class PositionSnapshotView(BaseModel):
 
     timestamp: datetime
     structure: str
+    product_label: str | None
     side: str
     tenor: str | None
     expiry: date | None
