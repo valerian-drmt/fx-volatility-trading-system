@@ -33,7 +33,7 @@ for ($i = 0; $i -lt 30; $i++) {
 }
 
 Write-Host "[up.ps1] Applying Alembic migrations ..." -ForegroundColor Cyan
-docker compose exec -T api python -m alembic -c persistence/alembic.ini upgrade head
+docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
 
 Write-Host "[up.ps1] Stack is up — http://localhost/" -ForegroundColor Green
 docker compose ps

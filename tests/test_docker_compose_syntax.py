@@ -135,7 +135,8 @@ def test_dockerfile_api_ships_uvicorn():
     assert "FROM python:3.11-slim" in dockerfile or "${PYTHON_IMAGE}" in dockerfile
     assert "EXPOSE 8000" in dockerfile
     assert "uvicorn" in dockerfile
-    assert "COPY api/" in dockerfile
+    # R9 src-layout: every package (api, bus, core, engines, persistence,
+    # shared) lives under src/, so the image ships a single ``COPY src/``.
     assert "COPY src/" in dockerfile
 
 

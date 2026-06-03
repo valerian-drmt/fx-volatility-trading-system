@@ -1,4 +1,4 @@
-"""Unit tests for persistence.payloads — R2 PR #4 mapping layer.
+"""Unit tests for core.payloads — R2 PR #4 mapping layer.
 
 Pure-function tests : engine-native dict in, DB row dict out. No DB,
 no Controller, no IB.
@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from persistence.payloads import (
+from core.payloads import (
     build_account_snap_row,
     build_position_row,
     build_position_snapshot_row,

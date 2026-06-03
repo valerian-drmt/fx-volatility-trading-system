@@ -1,4 +1,4 @@
-"""Unit tests for ``services.market_data.engine.MarketDataEngine``.
+"""Unit tests for ``engines.market_data.engine.MarketDataEngine``.
 
 All I/O is mocked — no real IB Gateway, no real Redis. Stop-conditions
 are driven by the injected ``fetch_latest_tick`` callable so the tests
@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from services.market_data.engine import HEARTBEAT_EVERY_N_POLLS, MarketDataEngine
+from engines.market_data.engine import HEARTBEAT_EVERY_N_POLLS, MarketDataEngine
 
 
 def _fake_ib(connected: bool = True) -> MagicMock:

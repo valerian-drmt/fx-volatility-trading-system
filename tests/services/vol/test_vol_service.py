@@ -1,4 +1,4 @@
-"""Unit tests for ``services.vol.engine.VolEngine``.
+"""Unit tests for ``engines.vol.engine.VolEngine``.
 
 All IB/Redis calls are mocked. ``run_cycle()`` is exercised directly so
 we don't have to fight the 180-second sleep.
@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from services.vol.engine import VolEngine
+from engines.vol.engine import VolEngine
 
 
 def _fake_redis(spot_payload: dict | None = None) -> MagicMock:

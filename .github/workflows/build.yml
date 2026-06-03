@@ -108,13 +108,13 @@ jobs:
       matrix:
         service:
           - image: market-data
-            dockerfile: services/market_data/Dockerfile
+            dockerfile: src/engines/market_data/Dockerfile
           - image: vol-engine
-            dockerfile: services/vol/Dockerfile
+            dockerfile: src/engines/vol/Dockerfile
           - image: risk-engine
-            dockerfile: services/risk/Dockerfile
+            dockerfile: src/engines/risk/Dockerfile
           - image: db-writer
-            dockerfile: services/db_writer/Dockerfile
+            dockerfile: src/engines/db_writer/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4

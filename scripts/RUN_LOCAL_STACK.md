@@ -60,7 +60,7 @@ docker compose --profile engines --profile ib up -d --build
 
 Appliquer les migrations Alembic :
 ```powershell
-docker compose exec api python -m alembic -c persistence/alembic.ini upgrade head
+docker compose exec api python -m alembic -c src/persistence/alembic.ini upgrade head
 ```
 
 Vérifier l'état :
@@ -103,7 +103,7 @@ docker compose exec redis redis-cli PING
 ```powershell
 $env:DB_PASSWORD = "fxvol"; $env:VNC_PASSWORD = "local-dev"                         
 docker compose up -d --build --force-recreate api
-docker compose exec api python -m alembic -c persistence/alembic.ini upgrade head
+docker compose exec api python -m alembic -c src/persistence/alembic.ini upgrade head
 docker exec fxvol-api curl -fsS http://127.0.0.1:8000/api/v1/health
 ```
 

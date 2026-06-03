@@ -23,10 +23,10 @@ CI_WORKFLOW = (
 
 # Each entry : (matrix image name, expected Dockerfile path).
 EXPECTED_ENGINE_IMAGES = {
-    "market-data": "services/market_data/Dockerfile",
-    "vol-engine": "services/vol/Dockerfile",
-    "risk-engine": "services/risk/Dockerfile",
-    "db-writer": "services/db_writer/Dockerfile",
+    "market-data": "src/engines/market_data/Dockerfile",
+    "vol-engine": "src/engines/vol/Dockerfile",
+    "risk-engine": "src/engines/risk/Dockerfile",
+    "db-writer": "src/engines/db_writer/Dockerfile",
 }
 
 

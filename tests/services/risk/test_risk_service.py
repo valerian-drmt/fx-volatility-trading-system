@@ -1,4 +1,4 @@
-"""Unit tests for ``services.risk.engine.RiskEngine``."""
+"""Unit tests for ``engines.risk.engine.RiskEngine``."""
 from __future__ import annotations
 
 import json
@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from services.risk.engine import RiskEngine
+from engines.risk.engine import RiskEngine
 
 
 def _fake_redis(

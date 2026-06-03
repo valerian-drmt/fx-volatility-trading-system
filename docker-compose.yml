@@ -72,7 +72,7 @@ services:
   market-data:
     build:
       context: .
-      dockerfile: services/market_data/Dockerfile
+      dockerfile: src/engines/market_data/Dockerfile
     image: ${MARKET_DATA_IMAGE:-fx-options-market-data:local}
     container_name: fxvol-market-data
     # Opt-in with the ``engines`` profile so a plain ``docker compose up``
@@ -106,7 +106,7 @@ services:
   vol-engine:
     build:
       context: .
-      dockerfile: services/vol/Dockerfile
+      dockerfile: src/engines/vol/Dockerfile
     image: ${VOL_ENGINE_IMAGE:-fx-options-vol-engine:local}
     container_name: fxvol-vol-engine
     profiles: ["engines"]
@@ -140,7 +140,7 @@ services:
   risk-engine:
     build:
       context: .
-      dockerfile: services/risk/Dockerfile
+      dockerfile: src/engines/risk/Dockerfile
     image: ${RISK_ENGINE_IMAGE:-fx-options-risk-engine:local}
     container_name: fxvol-risk-engine
     profiles: ["engines"]
@@ -174,7 +174,7 @@ services:
   db-writer:
     build:
       context: .
-      dockerfile: services/db_writer/Dockerfile
+      dockerfile: src/engines/db_writer/Dockerfile
     image: ${DB_WRITER_IMAGE:-fx-options-db-writer:local}
     container_name: fxvol-db-writer
     profiles: ["engines"]

@@ -38,7 +38,7 @@ for _ in $(seq 1 30); do
 done
 
 echo "[up.sh] Applying Alembic migrations …"
-docker compose exec -T api python -m alembic -c persistence/alembic.ini upgrade head
+docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
 
 echo "[up.sh] Stack is up — http://localhost/"
 docker compose ps

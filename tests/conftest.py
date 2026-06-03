@@ -8,13 +8,12 @@ pytest_plugins = ["pytester"]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
-# R7 introduces top-level packages (core/, shared/, services/) alongside
-# src/. Both paths must resolve for legacy + new imports. PyQt5 was
-# dropped in R8 PR #1 so the qapp fixture and QT_QPA_PLATFORM setup
-# are no longer needed.
-for _extra in (SRC_DIR, PROJECT_ROOT):
-    if str(_extra) not in sys.path:
-        sys.path.insert(0, str(_extra))
+# R9 consolidates every package under src/ (PyPA src-layout): api, bus,
+# core, engines, persistence, shared all import relative to src/. Only
+# that single path needs to be on sys.path. PyQt5 was dropped in R8 PR #1
+# so the qapp fixture and QT_QPA_PLATFORM setup are no longer needed.
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 
 def pytest_collection_modifyitems(config, items):

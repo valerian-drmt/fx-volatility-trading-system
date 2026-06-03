@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Scan these roots — everything else (notebooks, release docs, build
 # artefacts) is out of scope.
-SCAN_ROOTS = ("src", "tests", "api", "core", "shared", "services", "persistence")
+SCAN_ROOTS = ("src", "tests")
 
 FORBIDDEN_TOP_LEVEL_NAMES = {"PyQt5", "pyqtgraph"}
 
