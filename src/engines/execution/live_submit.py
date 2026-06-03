@@ -58,7 +58,7 @@ async def submit_structure_live(
     if not executor.is_connected():
         raise LiveSubmitError("IB Gateway not connected")
 
-    from ib_insync import Contract, LimitOrder
+    from ib_insync import Contract, LimitOrder, MarketOrder
 
     sm = sessionmaker_factory
     async with sm() as db:
@@ -97,34 +97,74 @@ async def submit_structure_live(
         ib = executor._ensure()
         placed: list[dict[str, Any]] = []
         for order in orders:
-            if order.contract_strike is None or order.contract_expiry is None:
+            is_future = order.contract_type.lower() == "future"
+            is_market = (order.order_type or "LMT").upper() == "MKT"
+            if order.contract_expiry is None:
                 raise LiveSubmitError(
-                    f"order {order.id} missing strike/expiry — cannot build contract"
+                    f"order {order.id} missing expiry — cannot build contract"
                 )
-            if order.limit_price is None:
+            if not is_future and order.contract_strike is None:
+                raise LiveSubmitError(
+                    f"order {order.id} missing strike — cannot build option contract"
+                )
+            if not is_market and order.limit_price is None:
                 raise LiveSubmitError(f"order {order.id} missing limit_price")
 
             ck = build_contract_kwargs(
                 contract_type=order.contract_type,
                 expiry=order.contract_expiry,
-                strike=float(order.contract_strike),
+                strike=float(order.contract_strike) if order.contract_strike is not None else None,
                 symbol=order.contract_symbol,
                 exchange=order.contract_exchange,
                 currency=order.contract_currency,
             )
+            logger.info(
+                "live_submit_build_contract order=%s kwargs=%s",
+                order.id, ck,
+            )
             contract = Contract(**ck)
             qualified = await ib.qualifyContractsAsync(contract)
+            logger.info(
+                "live_submit_qualify_result order=%s n_qualified=%s contracts=%s",
+                order.id, len(qualified),
+                [{"conId": c.conId, "localSymbol": c.localSymbol,
+                  "exchange": c.exchange, "tradingClass": c.tradingClass}
+                 for c in qualified[:3]],
+            )
             if not qualified:
-                raise LiveSubmitError(f"contract not qualified for order {order.id}")
+                # Fallback : if FUT failed with exchange='CME', retry with
+                # 'GLOBEX' (legacy alias still recognised by some accounts).
+                if is_future and ck.get("exchange") == "CME":
+                    ck_retry = {**ck, "exchange": "GLOBEX"}
+                    logger.info(
+                        "live_submit_retry_globex order=%s kwargs=%s",
+                        order.id, ck_retry,
+                    )
+                    qualified = await ib.qualifyContractsAsync(Contract(**ck_retry))
+                    logger.info(
+                        "live_submit_qualify_retry order=%s n_qualified=%s",
+                        order.id, len(qualified),
+                    )
+                if not qualified:
+                    raise LiveSubmitError(
+                        f"contract not qualified for order {order.id} "
+                        f"(sent: {ck})"
+                    )
             contract = qualified[0]
 
-            ok = build_order_kwargs(
-                side=order.side, qty=order.qty,
-                limit_price=float(order.limit_price),
-                time_in_force=order.time_in_force or "DAY",
-            )
-            ib_order = LimitOrder(ok["action"], ok["totalQuantity"], ok["lmtPrice"])
-            ib_order.tif = ok["tif"]
+            tif = order.time_in_force or "DAY"
+            if is_market:
+                # MarketOrder takes only (action, totalQuantity).
+                ib_order = MarketOrder(order.side, int(order.qty))
+                ib_order.tif = tif
+            else:
+                ok = build_order_kwargs(
+                    side=order.side, qty=order.qty,
+                    limit_price=float(order.limit_price),
+                    time_in_force=tif,
+                )
+                ib_order = LimitOrder(ok["action"], ok["totalQuantity"], ok["lmtPrice"])
+                ib_order.tif = ok["tif"]
 
             trade = ib.placeOrder(contract, ib_order)
             attach_fill_handlers(
