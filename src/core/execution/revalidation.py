@@ -82,12 +82,11 @@ def revalidate_preview(
                 {"armed_z": armed_z, "current_z": current_z},
             )
 
-    if surface_age_seconds > max_iv_age_seconds:
-        return RevalidationResult(
-            False,
-            "surface_stale",
-            {"age_seconds": surface_age_seconds, "limit": max_iv_age_seconds},
-        )
+    # surface_stale check dropped on request (mirrors the same drop on
+    # the pre-submit ``iv_data_fresh`` gate). Surface freshness is shown
+    # in the YELLOW block of the trade panel so the operator can see it
+    # and decide; we no longer block at the orchestrator level.
+    _ = (surface_age_seconds, max_iv_age_seconds)  # silence unused
 
     if current_regime == "pre_event":
         return RevalidationResult(

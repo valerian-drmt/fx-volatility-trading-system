@@ -61,9 +61,12 @@ def test_skips_signal_gate_in_manual_mode():
     assert r.passed
 
 
-def test_blocks_stale_surface():
+def test_does_not_block_on_stale_surface():
+    # surface_stale check was dropped on request — mirror of the
+    # iv_data_fresh pre-submit gate removal. Operator decides based on
+    # the YELLOW block freshness display.
     r = _ok(surface_age_seconds=300.0, max_iv_age_seconds=120.0)
-    assert not r.passed and r.reason == "surface_stale"
+    assert r.passed
 
 
 def test_blocks_pre_event_regime():
