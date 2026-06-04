@@ -18,6 +18,11 @@
  */
 import { useEffect, useState } from "react";
 
+import {
+  OpenPositionsTable,
+  type OpenPositionRow,
+} from "../../components/panels/OpenPositionsTable";
+
 type Product = "future" | "butterfly" | "straddle" | "strangle" | "calendar" | "vanilla_call" | "vanilla_put";
 type Side = "buy" | "sell";
 type Pillar = "10dp" | "25dp" | "atm" | "25dc" | "10dc";
@@ -536,17 +541,10 @@ export function Step3Trade(): JSX.Element {
 
       </div>{/* end A + Order row */}
 
-      {/* ── B · Current positions ────────────────────────────────────── */}
-      <DbTablePanel
-        label="B · Current positions (position)"
-        table="position"
-        limit={50}
-        columns={["id", "structure", "product_label", "side", "tenor", "expiry", "quantity",
-                  "market_price", "current_pnl_usd",
-                  "delta_usd", "gamma_usd", "vega_usd", "theta_usd",
-                  "updated_at"]}
-        stateColumn={null}
-      />
+      {/* ── B · Open positions (same panel as Portfolio Panel E,
+              backed by ``open_position`` after migration 033) ──── */}
+      <OpenPositionsSection />
+
 
       {/* ── C · Previews (trade_preview) ─────────────────────────────── */}
       <DbTablePanel
@@ -625,6 +623,55 @@ interface DbTableResponse {
   columns: string[];
   rows: Record<string, unknown>[];
 }
+
+
+// ──────────────────────────────────────────────────────────────────────
+// OpenPositionsSection — Panel B of the Trade Pre/Post tab. Same shape
+// as Portfolio Panel E ; fetches /api/v1/positions/active and renders
+// via the shared <OpenPositionsTable> component so the columns stay
+// aligned across the two pages. Backed by ``open_position`` since
+// migration 033.
+// ──────────────────────────────────────────────────────────────────────
+
+function OpenPositionsSection(): JSX.Element {
+  const [positions, setPositions] = useState<OpenPositionRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const r = await fetch("/api/v1/positions/open");
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const j = await r.json();
+        setPositions(Array.isArray(j) ? (j as OpenPositionRow[]) : []);
+        setError(null);
+      } catch (e) { setError(String(e)); }
+    };
+    void load();
+    const id = window.setInterval(load, 5_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <section style={{
+      background: "#0a0a0a", border: "1px solid #222", borderRadius: 4,
+      overflow: "hidden",
+    }}>
+      <div style={{
+        padding: "5px 12px", background: "#1a1a1a", borderBottom: "1px solid #333",
+        color: "#7af", fontSize: 11, fontWeight: 600, letterSpacing: 1,
+        textTransform: "uppercase",
+      }}>
+        Open positions ({positions.length})
+      </div>
+      <div style={{ padding: 8 }}>
+        {error && <div style={{ color: "#fcc", marginBottom: 6, fontSize: 11 }}>✗ {error}</div>}
+        <OpenPositionsTable positions={positions} />
+      </div>
+    </section>
+  );
+}
+
 
 function DbTablePanel({
   label, table, limit, columns, stateColumn,
@@ -1029,13 +1076,16 @@ function OrderRow({ label, value, mono }: {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// ClosePanel — pick a Position id + integer qty. The before/after
+// ClosePanel — pick an open position + integer qty. The before/after
 // "Risk summary" recomputes automatically on every change. The Close
-// button mirrors the Book button visually (green primary) and submits
+// button mirrors the Book button (green primary) and submits
 // POST /api/v1/positions/{id}/close with body { qty }. The API tier
 // resolves the IB localSymbol from the DB row + a marketable limit
-// price from the latest mark, then forwards to execution-engine which
-// submits a reverse LimitOrder for the requested qty.
+// (MKT during RTH, LMT-5bps fallback otherwise), then forwards to
+// execution-engine which submits a reverse order for the requested qty.
+//
+// Data source : /api/v1/positions/open (canonical endpoint backed by
+// the open_position table + identity stack — package / trade / contract).
 // ──────────────────────────────────────────────────────────────────────
 
 interface HeaderSummary {
@@ -1045,22 +1095,13 @@ interface HeaderSummary {
   var_1d_99: { usd: number | null; n_days: number; method: string };
 }
 
-interface ClosePosition {
-  id: number;
-  structure: string | null;
-  product_label: string | null;
-  side: string;
-  quantity: number;
-  delta_usd: number | null;
-  gamma_usd: number | null;
-  vega_usd: number | null;
-  theta_usd: number | null;
-  current_pnl_usd: number | null;
-}
+type CloseMode = "contract" | "trade";
 
 function ClosePanel(): JSX.Element {
-  const [positions, setPositions] = useState<ClosePosition[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [positions, setPositions] = useState<OpenPositionRow[]>([]);
+  const [mode, setMode] = useState<CloseMode>("contract");
+  const [selectedContractDbId, setSelectedContractDbId] = useState<number | null>(null);
+  const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [qty, setQty] = useState<number>(0);
   const [header, setHeader] = useState<HeaderSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1072,30 +1113,20 @@ function ClosePanel(): JSX.Element {
     order_id?: number | undefined;
   } | null>(null);
 
-  // Positions list — polled every 10s like the DbTable panels.
+  // Positions list — polled every 5s, same cadence as the Open
+  // Positions panel just above so the dropdown stays in sync.
   useEffect(() => {
     const load = async () => {
       try {
-        const r = await fetch("/api/v1/dev/tables/position?limit=200");
+        const r = await fetch("/api/v1/positions/open");
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const j: DbTableResponse = await r.json();
-        const rows: ClosePosition[] = j.rows.map((row) => ({
-          id: row.id as number,
-          structure: (row.structure as string | null) ?? null,
-          product_label: (row.product_label as string | null) ?? null,
-          side: String(row.side ?? ""),
-          quantity: Number(row.quantity ?? 0),
-          delta_usd: row.delta_usd === null || row.delta_usd === undefined ? null : Number(row.delta_usd),
-          gamma_usd: row.gamma_usd === null || row.gamma_usd === undefined ? null : Number(row.gamma_usd),
-          vega_usd:  row.vega_usd  === null || row.vega_usd  === undefined ? null : Number(row.vega_usd),
-          theta_usd: row.theta_usd === null || row.theta_usd === undefined ? null : Number(row.theta_usd),
-          current_pnl_usd: row.current_pnl_usd === null || row.current_pnl_usd === undefined ? null : Number(row.current_pnl_usd),
-        }));
-        setPositions(rows);
+        const j = await r.json();
+        setPositions(Array.isArray(j) ? (j as OpenPositionRow[]) : []);
+        setError(null);
       } catch (e) { setError(String(e)); }
     };
     void load();
-    const id = window.setInterval(load, 10_000);
+    const id = window.setInterval(load, 5_000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -1113,65 +1144,157 @@ function ClosePanel(): JSX.Element {
     return () => window.clearInterval(id);
   }, []);
 
-  const selected = positions.find((p) => p.id === selectedId) ?? null;
-  const maxQty = selected ? Math.floor(Math.abs(selected.quantity)) : 0;
-  const qtyValid = qty > 0 && qty <= maxQty;
+  // ── Mode-dependent target derivation ──
+  // Contract mode : pick 1 position by its open_position.id.
+  // Trade mode    : pick all positions sharing the same trade_id ;
+  //                 close every leg at full qty (a trade is atomic).
+  const selectedContract = mode === "contract"
+    ? positions.find((p) => p.id === selectedContractDbId) ?? null
+    : null;
+  const tradeLegs = mode === "trade" && selectedTradeId != null
+    ? positions.filter((p) => p.trade_id === selectedTradeId)
+    : [];
 
-  // Auto-preview : recomputed on every (selected, qty, header) change.
-  // Null when the inputs aren't a valid close request.
-  const after: HeaderSummary | null = (header && selected && qtyValid) ? {
+  const tradeIdsAvailable = Array.from(
+    new Set(positions.map((p) => p.trade_id).filter((t): t is number => t != null)),
+  ).sort((a, b) => a - b);
+
+  // Risk contribution to subtract from header :
+  //   - contract mode : selected.greeks × (qty / open_qty)
+  //   - trade mode    : sum of every leg's full greeks (close whole trade)
+  const contribution = (() => {
+    if (mode === "contract" && selectedContract) {
+      const open = Math.floor(Math.abs(selectedContract.quantity));
+      if (open === 0 || qty <= 0 || qty > open) return null;
+      const f = qty / open;
+      return {
+        pnl:   (selectedContract.current_pnl_usd ?? 0) * f,
+        delta: (selectedContract.delta_usd ?? 0) * f,
+        gamma: (selectedContract.gamma_usd ?? 0) * f,
+        vega:  (selectedContract.vega_usd  ?? 0) * f,
+        theta: (selectedContract.theta_usd ?? 0) * f,
+      };
+    }
+    if (mode === "trade" && tradeLegs.length > 0) {
+      return tradeLegs.reduce(
+        (acc, p) => ({
+          pnl:   acc.pnl   + (p.current_pnl_usd ?? 0),
+          delta: acc.delta + (p.delta_usd ?? 0),
+          gamma: acc.gamma + (p.gamma_usd ?? 0),
+          vega:  acc.vega  + (p.vega_usd  ?? 0),
+          theta: acc.theta + (p.theta_usd ?? 0),
+        }),
+        { pnl: 0, delta: 0, gamma: 0, vega: 0, theta: 0 },
+      );
+    }
+    return null;
+  })();
+
+  const after: HeaderSummary | null = (header && contribution) ? {
     ...header,
     pnl: {
       total_24h_usd: header.pnl.total_24h_usd,
-      open_unrealized_usd: header.pnl.open_unrealized_usd
-        - (selected.current_pnl_usd ?? 0) * (qty / maxQty),
+      open_unrealized_usd: header.pnl.open_unrealized_usd - contribution.pnl,
     },
     greeks: {
-      delta_usd: header.greeks.delta_usd - (selected.delta_usd ?? 0) * (qty / maxQty),
-      gamma_usd: header.greeks.gamma_usd - (selected.gamma_usd ?? 0) * (qty / maxQty),
-      vega_usd:  header.greeks.vega_usd  - (selected.vega_usd  ?? 0) * (qty / maxQty),
-      theta_usd: header.greeks.theta_usd - (selected.theta_usd ?? 0) * (qty / maxQty),
+      delta_usd: header.greeks.delta_usd - contribution.delta,
+      gamma_usd: header.greeks.gamma_usd - contribution.gamma,
+      vega_usd:  header.greeks.vega_usd  - contribution.vega,
+      theta_usd: header.greeks.theta_usd - contribution.theta,
     },
-    // VaR : non-linear, can't be scaled trivially. Render "n/a" on After.
     var_1d_99: header.var_1d_99,
   } : null;
 
-  const onChangeSel = (v: string): void => {
-    setSelectedId(v ? Number(v) : null);
+  // Close enable rules (mirrors the after-preview enable rules)
+  const canClose = (() => {
+    if (closing) return false;
+    if (mode === "contract") {
+      if (!selectedContract) return false;
+      const open = Math.floor(Math.abs(selectedContract.quantity));
+      return qty > 0 && qty <= open;
+    }
+    return tradeLegs.length > 0;  // trade mode : just need a non-empty leg set
+  })();
+
+  const onChangeMode = (m: CloseMode): void => {
+    setMode(m);
     setQty(0);
     setCloseResult(null);
   };
-  // Integer-only qty input — parseInt drops decimals, clamp to [0, maxQty].
+  const onChangeContract = (v: string): void => {
+    setSelectedContractDbId(v ? Number(v) : null);
+    setQty(0);
+    setCloseResult(null);
+  };
+  const onChangeTrade = (v: string): void => {
+    setSelectedTradeId(v ? Number(v) : null);
+    setCloseResult(null);
+  };
   const onChangeQty = (v: string): void => {
     setCloseResult(null);
     if (v === "") { setQty(0); return; }
     const n = Math.floor(Number(v));
     if (!Number.isFinite(n) || n <= 0) { setQty(0); return; }
-    setQty(maxQty > 0 ? Math.min(n, maxQty) : n);
+    const cap = selectedContract ? Math.floor(Math.abs(selectedContract.quantity)) : Infinity;
+    setQty(Math.min(n, cap));
+  };
+
+  // Close one position via the API. Returns the parsed JSON + ok flag.
+  const closeOne = async (positionId: number, legQty: number) => {
+    const r = await fetch(`/api/v1/positions/${positionId}/close`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qty: legQty }),
+    });
+    const j = await r.json().catch(() => ({} as Record<string, unknown>));
+    return { ok: r.ok, status: r.status, body: j };
   };
 
   const onClose = async (): Promise<void> => {
-    if (!selected || !qtyValid) return;
+    if (!canClose) return;
     setClosing(true);
     setCloseResult(null);
     try {
-      const r = await fetch(`/api/v1/positions/${selected.id}/close`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ qty }),
-      });
-      const j = await r.json().catch(() => ({} as Record<string, unknown>));
-      if (r.ok) {
-        const ot = (j.order_type as string | undefined) ?? "MKT";
-        const lp = j.limit_price as number | null | undefined;
-        const priceTag = lp != null ? ` @${lp.toFixed(5)}` : "";
-        setCloseResult({ success: true,
-          structure_id: j.structure_id as number | undefined,
-          order_id: j.order_id as number | undefined,
-          message: `closed ${qty}/${maxQty} on position #${selected.id} (${ot}${priceTag})` });
+      if (mode === "contract") {
+        const sel = selectedContract!;
+        const res = await closeOne(sel.id, qty);
+        if (res.ok) {
+          const ot = (res.body.order_type as string | undefined) ?? "MKT";
+          setCloseResult({ success: true,
+            structure_id: res.body.structure_id as number | undefined,
+            order_id: res.body.order_id as number | undefined,
+            message: `closed ${qty}× contract #${sel.contract_id ?? sel.id} (${ot})` });
+        } else {
+          const detail = (res.body as { detail?: string }).detail;
+          setCloseResult({ success: false, message: detail ?? `HTTP ${res.status}` });
+        }
       } else {
-        const detail = (j as { detail?: string }).detail;
-        setCloseResult({ success: false, message: detail ?? `HTTP ${r.status}` });
+        // Trade mode : 1 server-side call that loops through every
+        // leg in a single transaction-scoped DB session. Returns an
+        // aggregated result with per-leg success/failure.
+        const r = await fetch(`/api/v1/trades/${selectedTradeId}/close`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        const j = await r.json().catch(() => ({} as Record<string, unknown>));
+        if (r.ok) {
+          const total  = (j.total_legs  as number | undefined) ?? 0;
+          const closed = (j.closed_legs as number | undefined) ?? 0;
+          const failed = (j.failed_legs as number | undefined) ?? 0;
+          if (failed === 0) {
+            setCloseResult({ success: true,
+              message: `closed ${closed}/${total} legs of trade #${selectedTradeId}` });
+          } else {
+            const results = (j.results as Array<{ ok: boolean; error?: string | null }> | undefined) ?? [];
+            const firstError = results.find((x) => !x.ok)?.error ?? "?";
+            setCloseResult({ success: false,
+              message: `${closed}/${total} closed, ${failed} failed on trade #${selectedTradeId} (first: ${firstError})` });
+          }
+        } else {
+          const detail = (j as { detail?: string }).detail;
+          setCloseResult({ success: false, message: detail ?? `HTTP ${r.status}` });
+        }
       }
     } catch (e) {
       setCloseResult({ success: false, message: String(e) });
@@ -1192,28 +1315,115 @@ function ClosePanel(): JSX.Element {
 
       <table style={kvTableStyle}>
         <tbody>
-          <Row name="Position" value={
-            <select value={selectedId ?? ""} onChange={(e) => onChangeSel(e.target.value)}
-                    style={{ ...selectStyle, minWidth: 180 }}>
-              <option value="">— pick an open position —</option>
-              {positions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  #{p.id} {p.product_label ?? p.structure ?? "?"} {p.side} ×{p.quantity}
-                </option>
-              ))}
+          {/* Listbox : Contract vs Trade. Contract = 1 row in
+              open_position. Trade = all legs sharing a trade_id. */}
+          <Row name="Type" value={
+            <select value={mode} onChange={(e) => onChangeMode(e.target.value as CloseMode)}
+                    style={{ ...selectStyle, minWidth: 220 }}>
+              <option value="contract">Contract (1 leg)</option>
+              <option value="trade">Trade (all legs)</option>
             </select>
           } />
-          <Row name="Qty to close" value={
-            <input type="number" min={1} max={maxQty || undefined} step={1}
-                   value={qty || ""} onChange={(e) => onChangeQty(e.target.value)}
-                   onKeyDown={(e) => {
-                     // Block decimal separators outright — qty is an integer.
-                     if (e.key === "." || e.key === "," || e.key === "e") e.preventDefault();
-                   }}
-                   style={inputStyle} />
+          {/* Contract dropdown — active only in contract mode. */}
+          <Row name="Contract number" value={
+            <select value={selectedContractDbId ?? ""}
+                    onChange={(e) => onChangeContract(e.target.value)}
+                    disabled={mode !== "contract"}
+                    style={{ ...selectStyle, minWidth: 220,
+                             opacity: mode === "contract" ? 1 : 0.4 }}>
+              <option value="">— pick a contract —</option>
+              {[...positions].sort((a, b) =>
+                (a.package_id ?? Number.MAX_SAFE_INTEGER) - (b.package_id ?? Number.MAX_SAFE_INTEGER)
+                || (a.trade_id ?? Number.MAX_SAFE_INTEGER) - (b.trade_id ?? Number.MAX_SAFE_INTEGER)
+                || a.id - b.id
+              ).map((p) => {
+                const tradeTag = p.trade_id != null ? ` · trade #${p.trade_id}` : "";
+                return (
+                  <option key={p.id} value={p.id}>
+                    #{p.id} {p.product_label ?? p.structure} {p.side} ×{Math.abs(p.quantity)}{tradeTag}
+                  </option>
+                );
+              })}
+            </select>
           } />
+          {/* Trade dropdown — active only in trade mode. */}
+          <Row name="Trade number" value={
+            <select value={selectedTradeId ?? ""}
+                    onChange={(e) => onChangeTrade(e.target.value)}
+                    disabled={mode !== "trade"}
+                    style={{ ...selectStyle, minWidth: 220,
+                             opacity: mode === "trade" ? 1 : 0.4 }}>
+              <option value="">— pick a trade —</option>
+              {tradeIdsAvailable.map((tid) => {
+                const legs = positions.filter((p) => p.trade_id === tid);
+                const product = legs[0]?.product_label ?? "?";
+                return (
+                  <option key={tid} value={tid}>
+                    trade #{tid} · {product} · {legs.length} leg{legs.length > 1 ? "s" : ""}
+                  </option>
+                );
+              })}
+            </select>
+          } />
+          {/* Qty input — only meaningful for contract mode (a trade
+              closes atomically at full qty across all its legs). */}
+          {mode === "contract" && (
+            <Row name="Qty to close" value={
+              <input type="number" min={1}
+                     max={selectedContract ? Math.floor(Math.abs(selectedContract.quantity)) : undefined}
+                     step={1}
+                     value={qty || ""} onChange={(e) => onChangeQty(e.target.value)}
+                     onKeyDown={(e) => {
+                       if (e.key === "." || e.key === "," || e.key === "e") e.preventDefault();
+                     }}
+                     style={inputStyle} />
+            } />
+          )}
         </tbody>
       </table>
+
+      {/* Identity breakdown for the selected target.
+            - contract : pkg / trade / contract / structure / mark for 1 row.
+            - trade    : leg count + IB symbols. */}
+      {mode === "contract" && selectedContract && (
+        <div style={{
+          marginTop: 8, padding: "6px 8px", background: "#0a0a0a",
+          border: "1px solid #1f2937", borderRadius: 3,
+          fontSize: 10, fontFamily: "Consolas, monospace", color: "#888",
+        }}>
+          <span style={{ color: selectedContract.package_id != null ? "#fc6" : "#666" }}>
+            pkg {selectedContract.package_id != null ? `#${selectedContract.package_id}` : "—"}
+          </span>
+          {" │ "}
+          <span style={{ color: selectedContract.trade_id != null ? "#7af" : "#666" }}>
+            trade {selectedContract.trade_id != null ? `#${selectedContract.trade_id}` : "—"}
+          </span>
+          {" │ "}
+          <span>contract {selectedContract.contract_id ?? "—"}</span>
+          {" │ "}
+          <span style={{ color: "#ddd" }}>{selectedContract.structure}</span>
+          {" │ "}
+          <span style={{ color: "#bbb" }}>
+            mark {selectedContract.market_price != null ? selectedContract.market_price.toFixed(5) : "—"}
+          </span>
+        </div>
+      )}
+      {mode === "trade" && tradeLegs.length > 0 && (
+        <div style={{
+          marginTop: 8, padding: "6px 8px", background: "#0a0a0a",
+          border: "1px solid #1f2937", borderRadius: 3,
+          fontSize: 10, fontFamily: "Consolas, monospace", color: "#888",
+        }}>
+          <div style={{ color: "#7af", fontWeight: 600 }}>
+            trade #{selectedTradeId} — {tradeLegs.length} leg{tradeLegs.length > 1 ? "s" : ""}
+          </div>
+          {tradeLegs.map((p) => (
+            <div key={p.id} style={{ color: "#bbb" }}>
+              · #{p.id} {p.structure} {p.side} ×{Math.abs(p.quantity)}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Before / After Risk summary — auto-recomputed on every input change. */}
       <div style={{ marginTop: 12 }}>
@@ -1225,7 +1435,7 @@ function ClosePanel(): JSX.Element {
           after a successful close so the operator can't double-fire. */}
       {(() => {
         const isClosed = closeResult?.success === true;
-        const dis = !qtyValid || closing || isClosed;
+        const dis = !canClose || isClosed;
         return (
           <div style={{ marginTop: 10 }}>
             <button type="button" onClick={() => void onClose()}

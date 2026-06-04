@@ -3,7 +3,7 @@
  *
  * P1 scope (this file) :
  *  A. Account header  : NetLiq / Cash / Margin / Cushion / # positions
- *  E. Open positions  : reuses /api/v1/positions/active (booked + IB live)
+ *  E. Open positions  : /api/v1/positions/open (raw open_position table)
  *  G. Trades / fills  : /api/v1/dev/tables/trades
  *
  * Phase 2 will add B (equity curve), C (aggregate greeks), D (vega per
@@ -13,6 +13,10 @@ import type Plotly from "plotly.js";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { PlotlyChart } from "../../components/charts/PlotlyChart";
+import {
+  OpenPositionsTable,
+  type OpenPositionRow,
+} from "../../components/panels/OpenPositionsTable";
 
 interface AccountSnap {
   timestamp: string | null;
@@ -100,6 +104,12 @@ interface EquityPoint {
 
 type EquityWindow = "1d" | "7d" | "30d" | "1y" | "all";
 
+// Panel B (Equity curve) — cap on the number of points rendered to keep
+// the chart responsive. The server already downsamples via SQL bucketing
+// but the larger windows ("1y" / "all") can still return ~2k samples ;
+// we keep the most recent N to stay snappy.
+const EQUITY_MAX_POINTS = 1500;
+
 interface PnlAttribRow {
   id: number;
   source: "booked" | "ib_live";
@@ -182,49 +192,10 @@ interface ScenariosPayload {
   n_positions: number;
 }
 
-interface ActivePosition {
-  id: number;
-  source: "booked" | "ib_live";
-  side: string | null;
-  structure: string | null;
-  structure_type: string | null;
-  product_label: string | null;
-  expiry_date: string | null;
-  tenor: string | null;
-  state: string;
-  current_pnl_gross_usd: number | null;
-  current_vega_usd_per_volpt: number | null;
-  current_gamma_usd_per_pip2: number | null;
-  current_theta_usd_per_day: number | null;
-  current_delta_unhedged: number | null;
-  ib_qty_total: number | null;
-  nominal_eur: number | null;
-  contract_price_entry: number | null;
-  contract_price_market: number | null;
-  iv: number | null;
-  vanna_usd: number | null;
-  volga_usd: number | null;
-  // Returned by the API serializer for IB-live rows. Used by panel J
-  // (pin risk grid) to filter near-expiry options + render strike/right.
-  strike?: number | null;
-  option_type?: string | null;     // "C" / "P" / null for futures
-  instrument_type?: string | null; // "OPTION" / "FUTURE"
-  symbol?: string | null;
-  // Greek P&L decomposition (panel G). Populated for booked structures
-  // via PositionMtmHistory. Stays null on IB-live rows until a t-1
-  // state-store is wired (cf. risk_dashboard_spec.md § G).
-  gamma_pnl_usd?: number | null;
-  vega_pnl_usd?: number | null;
-  theta_pnl_usd?: number | null;
-}
-
 const fmtUsdAbs = (n: number | null | undefined): string =>
   n === null || n === undefined ? "—" : `${Math.round(n).toLocaleString()}$`;
 const fmtPct = (n: number | null | undefined, d = 2): string =>
   n === null || n === undefined ? "—" : `${(n * 100).toFixed(d)}%`;
-const fmtNum = (n: number | null | undefined, d = 2): string =>
-  n === null || n === undefined ? "—" : n.toFixed(d);
-
 const fmtCompactSigned = (
   n: number | null | undefined, suffix = "",
 ): string => {
@@ -237,22 +208,6 @@ const fmtCompactSigned = (
   return `${sign}${abs.toFixed(2)}${suffix}`;
 };
 
-/** Compact magnitude formatter for big numbers in dense tables / cards.
- *  Examples : 1_509_953 → "+1.51M", -417_201 → "-417k", 4369 → "+4.37k", -3 → "-3.00".
- *  Switching from raw thousand-separated to magnitude makes greeks columns
- *  fit visually without changing the order-of-magnitude readability.
- */
-const fmtCompact = (
-  n: number | null | undefined, d = 2, withSign = true,
-): string => {
-  if (n === null || n === undefined) return "—";
-  const sign = withSign ? (n >= 0 ? "+" : "-") : (n < 0 ? "-" : "");
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return `${sign}${(abs / 1e9).toFixed(d)}B`;
-  if (abs >= 1e6) return `${sign}${(abs / 1e6).toFixed(d)}M`;
-  if (abs >= 1e3) return `${sign}${(abs / 1e3).toFixed(d)}k`;
-  return `${sign}${abs.toFixed(d)}`;
-};
 const delta = (cur: number | null, prev: number | null): number | null =>
   cur === null || prev === null ? null : cur - prev;
 
@@ -262,7 +217,7 @@ export function Portfolio(): JSX.Element {
   const [stress, setStress] = useState<StressGridPayload | null>(null);
   const [ladder, setLadder] = useState<GreeksLadderPayload | null>(null);
   const [vegaTenor, setVegaTenor] = useState<VegaTenorRow[]>([]);
-  const [positions, setPositions] = useState<ActivePosition[]>([]);
+  const [positions, setPositions] = useState<OpenPositionRow[]>([]);
   const [equity, setEquity] = useState<EquityPoint[]>([]);
   const [equityWindow, setEquityWindow] = useState<EquityWindow>("30d");
   const [attrib, setAttrib] = useState<PnlAttribution | null>(null);
@@ -285,7 +240,7 @@ export function Portfolio(): JSX.Element {
     setLadder(await fetchJson<GreeksLadderPayload>("/api/v1/portfolio/greeks-ladder"));
   const refreshVegaTenor  = async () =>
     setVegaTenor(await fetchJson<VegaTenorRow[]>("/api/v1/portfolio/vega-per-tenor"));
-  const refreshPositions  = async () => setPositions(await fetchJson<ActivePosition[]>("/api/v1/positions/active"));
+  const refreshPositions  = async () => setPositions(await fetchJson<OpenPositionRow[]>("/api/v1/positions/open"));
   const refreshEquity     = async (w: EquityWindow) =>
     setEquity(await fetchJson<EquityPoint[]>(`/api/v1/portfolio/equity-curve?window=${w}`));
   const refreshAttrib     = async (h: AttribWindow) =>
@@ -401,10 +356,11 @@ export function Portfolio(): JSX.Element {
 
       {/* SECTION B — Equity curve (NetLiq series). Window selector
           (1d/7d/30d/1y/all) drives the lookback + downsampling.
-          Server-side bucketing keeps the payload ≤ 2k points. */}
-      <Section title={`B · Equity curve (${equity.length} points, window=${equityWindow})`}>
+          Server-side bucketing keeps the payload ≤ 2k points ; we
+          further cap at EQUITY_MAX_POINTS (most recent) for render speed. */}
+      <Section title={`B · Equity curve (${Math.min(equity.length, EQUITY_MAX_POINTS)} / ${equity.length} points, window=${equityWindow})`}>
         <EquityCurve
-          points={equity}
+          points={equity.slice(-EQUITY_MAX_POINTS)}
           window={equityWindow}
           onWindowChange={setEquityWindow}
         />
@@ -428,66 +384,11 @@ export function Portfolio(): JSX.Element {
         </SquareCell>
       </div>
 
-      {/* SECTION E — open positions (réutilise endpoint Step 5) */}
-      <Section title={`E · Open positions (${positions.length})`}>
-        {positions.length === 0 ? <Empty /> : (
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={th}>ID</th>
-                <th style={th}>Structure (IB)</th>
-                <th style={th}>Product</th>
-                <th style={th}>Side</th>
-                <th style={th}>Tenor</th>
-                <th style={th}>Expiry</th>
-                <th style={th}>Qty</th>
-                <th style={th}>Nominal (EUR)</th>
-                <th style={th}>Contract price</th>
-                <th style={th}>Market price</th>
-                <th style={th}>P&L (pending)</th>
-                <th style={th}>Δ ($)</th>
-                <th style={th}>Γ ($/pip)</th>
-                <th style={th}>Vega ($/volpt)</th>
-                <th style={th}>Θ ($/day)</th>
-                <th style={th}>IV (%)</th>
-                <th style={th}>Vanna ($/vp)</th>
-                <th style={th}>Volga ($/vp²)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {positions.map((p) => (
-                <tr key={`${p.source}-${p.id}`}>
-                  <td style={td}>{p.id}</td>
-                  <td style={td}>{p.structure ?? p.structure_type ?? "—"}</td>
-                  <td style={td}>{p.product_label ?? "—"}</td>
-                  <td style={{ ...td, fontWeight: 600,
-                              color: p.side === "BUY" ? "#6c6"
-                                   : p.side === "SELL" ? "#e66" : "#888" }}>
-                    {p.side ?? "—"}
-                  </td>
-                  <td style={td}>{p.tenor ?? "—"}</td>
-                  <td style={td}>{p.expiry_date ?? "—"}</td>
-                  <td style={td}>
-                    {p.ib_qty_total != null ? Math.abs(p.ib_qty_total) : "—"}
-                  </td>
-                  <td style={td}>{fmtCompact(p.nominal_eur, 2, false)} €</td>
-                  <td style={td}>{fmtNum(p.contract_price_entry, 5)}</td>
-                  <td style={td}>{fmtNum(p.contract_price_market, 5)}</td>
-                  <td style={{ ...td, color: (p.current_pnl_gross_usd ?? 0) >= 0 ? "#6c6" : "#e66" }}>
-                    {fmtCompact(p.current_pnl_gross_usd)}$
-                  </td>
-                  <td style={td}>{fmtCompact(p.current_delta_unhedged)}</td>
-                  <td style={td}>{fmtCompact(p.current_gamma_usd_per_pip2)}</td>
-                  <td style={td}>{fmtCompact(p.current_vega_usd_per_volpt)}</td>
-                  <td style={td}>{fmtCompact(p.current_theta_usd_per_day)}</td>
-                  <td style={td}>{p.iv != null ? `${(p.iv * 100).toFixed(2)}%` : "—"}</td>
-                  <td style={td}>{fmtCompact(p.vanna_usd)}</td>
-                  <td style={td}>{fmtCompact(p.volga_usd)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      {/* SECTION E — open positions (shared component, also mounted in
+          Trade Pre/Post Panel B). Backed by ``open_position`` /
+          ``open_position_history`` after migration 033. */}
+      <Section title={`Open positions (${positions.length})`}>
+        <OpenPositionsTable positions={positions} />
       </Section>
 
       {/* SECTION Scenarios — 5 charts : PnL vs spot (always)
