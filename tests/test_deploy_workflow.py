@@ -88,8 +88,11 @@ def test_build_engines_pushes_to_ghcr(wf: dict):
     login = next((s for s in steps if s.get("uses", "").startswith("docker/login-action")), None)
     assert login is not None, "matrix job must log in to GHCR before pushing"
     assert login["with"]["registry"] == "${{ env.REGISTRY }}"
+    # Login + push are gated on a manual run (workflow_dispatch) so ghcr.io
+    # token-endpoint timeouts can't red a plain push-to-main; see build.yml.
+    assert login["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
     push = next(s for s in steps if s.get("uses", "").startswith("docker/build-push-action"))
-    assert push["with"]["push"] is True
+    assert push["with"]["push"] == "${{ env.PUSH }}"
 
 
 @pytest.mark.unit
