@@ -1,4 +1,4 @@
-# Risk-engine service. Uses requirements/ib.txt (base + ib_insync, no GARCH).
+# Risk-engine service — installs the [ib] extra (base + ib_insync, no GARCH).
 
 ARG PYTHON_IMAGE=python:3.11-slim
 
@@ -15,11 +15,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements/base.txt requirements/ib.txt ./requirements/
-RUN pip install --upgrade pip && pip install -r requirements/ib.txt
-
-# R9 src-layout: every package lives under src/.
+# pyproject.toml + src/ are needed together because PEP 517 resolves the
+# package layout from src/ when installing fxvol[ib].
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+RUN pip install --upgrade pip && pip install ".[ib]"
 
 RUN useradd -m -u 1003 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

@@ -1,6 +1,7 @@
-# db-writer service. Uses requirements/writer.txt — base + SQLAlchemy +
-# asyncpg + alembic. Deliberately does NOT pull ib_insync, making this
-# image ~150 MB lighter than the engine containers.
+# db-writer service — installs the [writer] extra (psycopg2-binary on top
+# of the base runtime, which already carries SQLAlchemy + asyncpg + alembic).
+# Deliberately does NOT pull ib_insync, making this image ~150 MB lighter
+# than the engine containers.
 
 ARG PYTHON_IMAGE=python:3.11-slim
 
@@ -17,12 +18,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements/base.txt requirements/writer.txt ./requirements/
-RUN pip install --upgrade pip && pip install -r requirements/writer.txt
-
-# R9 src-layout: every package (bus, core, engines, persistence, shared)
-# lives under src/, so a single copy ships the whole runtime.
+# pyproject.toml + src/ are needed together because PEP 517 resolves the
+# package layout from src/ when installing fxvol[writer]. R9 src-layout:
+# every package (bus, core, engines, persistence, shared) lives under src/,
+# so a single copy ships the whole runtime.
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+RUN pip install --upgrade pip && pip install ".[writer]"
 
 RUN useradd -m -u 1004 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

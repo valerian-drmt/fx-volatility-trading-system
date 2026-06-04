@@ -68,10 +68,14 @@ def test_no_pyqt_or_pyqtgraph_imports_in_source_tree():
 
 @pytest.mark.unit
 def test_requirements_does_not_ship_pyqt_or_pyqtgraph():
-    req = (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
+    # R9 folded all dependency declarations into pyproject.toml (PEP 621) —
+    # requirements.txt + requirements/ were removed. Assert the consolidated
+    # dependency surface (base deps + every optional-dependencies extra) still
+    # carries no PyQt/pyqtgraph.
+    req = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     for banned in ("PyQt5", "pyqt5", "pyqtgraph"):
-        # Accept occurrences inside comments (the README/context lines
-        # explaining the removal) but not as actual pip dependencies.
+        # Accept occurrences inside comments (context lines explaining the
+        # removal) but not as actual declared dependencies.
         for line in req.splitlines():
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):

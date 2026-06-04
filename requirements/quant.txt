@@ -1,7 +1,0 @@
-# Vol-engine only. Adds arch (GARCH(1,1)) on top of the IB stack.
-# Kept separate because arch pulls ~40 MB of stats deps that the other
-# services never import.
-
--r ib.txt
-
-arch>=6.0

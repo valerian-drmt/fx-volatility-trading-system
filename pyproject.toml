@@ -1,0 +1,167 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fxvol"
+version = "0.1.0"
+description = "FX Volatility Trading System — microservices pipeline + research-grade vol signals + React cockpit + IB execution"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11,<3.12"
+authors = [{ name = "Valérian Darmenté" }]
+
+# Base runtime — every service container needs these.
+# Aligned 1-to-1 with the legacy requirements/base.txt + the persistence
+# block of requirements.txt. Engines + db-writer + api all install at
+# minimum this set.
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "redis>=5.0,<6.0",
+    "structlog>=24.1,<25.0",
+    "pydantic>=2.0,<3.0",
+    "pydantic-settings>=2.0,<3.0",
+    "SQLAlchemy>=2.0,<2.1",
+    "asyncpg>=0.29,<0.30",
+    "alembic>=1.13,<1.14",
+]
+
+# Optional dependency groups — one per container archetype, plus tooling.
+# Engines pin only what they truly use ; the FastAPI extras keep the api
+# container slim ; the dev set is for local + CI.
+[project.optional-dependencies]
+
+# ── Container-shaped extras ────────────────────────────────────────────
+api = [
+    "fastapi>=0.110,<0.112",
+    "uvicorn[standard]>=0.27,<0.29",
+    "slowapi>=0.1.9,<0.2",
+    "prometheus-client>=0.19,<0.21",
+    "httpx>=0.27,<0.28",
+]
+
+# market-data + risk-engine + execution-engine talk to Interactive Brokers.
+ib = [
+    "ib-insync==0.9.86",
+    # Required by ib_insync.parseIBDatetime which uses ZoneInfo('US/Central').
+    # python:3.11-slim does NOT ship system tzdata ; without this, IB callbacks
+    # crash silently on accounts with execution history. Documented incident
+    # 28/04/2026 (sandbox R9).
+    "tzdata>=2024.1",
+]
+
+# vol-engine — IB + GARCH + DB read-side for Step 1 regime gating.
+quant = [
+    "fxvol[ib]",
+    "arch>=6.0",
+    # Step 1 §3 zone 2 — GMM 3-component over (vol_level, vol_of_vol,
+    # term_slope) → P(regime=calm/stressed/pre_event). Replaces the
+    # threshold heuristic once feature_history has accumulated enough obs.
+    "scikit-learn>=1.4,<1.7",
+]
+
+# db-writer — never imports ib_insync (smaller image + smaller attack surface).
+writer = [
+    "psycopg2-binary>=2.9,<3.0",
+]
+
+# ── Tooling extras ─────────────────────────────────────────────────────
+
+# Sole local + CI dev set : lint, type-check, test runner, async test
+# helpers, the in-memory SQLite driver used by the writer's unit tests,
+# and the architecture lint (import-linter, contracts in .importlinter).
+dev = [
+    "ruff>=0.11,<0.12",
+    "mypy>=1.10",
+    "pytest>=9.0,<10.0",
+    # pytest-asyncio must be >=1.0 to run under pytest 9 (older 0.23/0.24
+    # reference FixtureDef.unittest, removed in pytest 9). Matches the
+    # legacy requirements.txt pin (>=1.0,<2.0).
+    "pytest-asyncio>=1.0,<2.0",
+    "aiosqlite>=0.19,<0.21",
+    "import-linter>=2.0,<3.0",
+]
+
+# ─────────────────────────────────────────────────────────────────────
+# Tool config — single source of truth (replaces ruff.toml, pytest.ini).
+# ─────────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "SIM",   # flake8-simplify
+    "RUF",   # ruff-specific
+]
+ignore = [
+    "E501",   # line too long (handled by line-length)
+    "B008",   # function call in default arg (common in FastAPI Depends)
+    "B023",   # function uses loop variable (asyncio lambda patterns)
+    "SIM105", # suppressible-exception (contextlib.suppress less readable)
+    "SIM103", # needless-bool (readability)
+    "SIM108", # ternary instead of if/else (readability)
+    "RUF001", # ambiguous unicode (accented chars in French comments)
+    "RUF002", # ambiguous unicode in docstring
+    "RUF003", # ambiguous unicode in comment
+    "RUF012", # mutable class default (FastAPI Field default factory)
+    "UP038",  # non-pep604 isinstance (readability)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "bus", "core", "engines", "persistence", "shared"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B018"]  # useless expression (assert patterns)
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+# This branch carries the flat tests/ layout that origin/main still ships
+# (tests/test_*.py + tests/services/ + tests/shared/ + tests/integration/).
+# The tests/unit + tests/integration + tests/old restructure is a separate
+# refactor that lands later ; once it does, pin this to
+# ["tests/unit", "tests/integration"] to keep tests/old/ out of CI.
+testpaths = ["tests"]
+addopts = "-q --strict-markers --maxfail=1"
+asyncio_mode = "auto"
+markers = [
+    "unit: Fast isolated tests with mocks only.",
+    "integration: Tests requiring a running IB Gateway/TWS instance.",
+    "db_integration: Tests requiring a running PostgreSQL instance and DATABASE_URL.",
+    "redis_integration: Tests requiring a running Redis instance and REDIS_URL.",
+]
+
+[tool.mypy]
+python_version = "3.11"
+# Start permissive. Group F Step 19 will tighten to strict mode incrementally.
+ignore_missing_imports = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "src"
+files = ["src"]
+
+# ─────────────────────────────────────────────────────────────────────
+# uv-specific config — only kicks in when uv is the runner.
+# ─────────────────────────────────────────────────────────────────────
+
+[tool.uv]
+# Pin the lock to a single Python version line so the lockfile stays
+# small. CI matrix pins 3.11 today ; 3.12 will be a deliberate bump.
+dev-dependencies = []
+
+# ─────────────────────────────────────────────────────────────────────
+# setuptools — find packages under src/ (PyPA src-layout).
+# ─────────────────────────────────────────────────────────────────────
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["api*", "bus*", "core*", "engines*", "persistence*", "shared*"]

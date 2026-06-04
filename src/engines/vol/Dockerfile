@@ -1,4 +1,5 @@
-# Vol-engine service. Uses requirements/quant.txt (base + ib + arch for GARCH).
+# Vol-engine service — installs the [quant] extra (transitively pulls [ib])
+# for GARCH (arch) + GMM regime detection (scikit-learn) on top of the IB stack.
 
 ARG PYTHON_IMAGE=python:3.11-slim
 
@@ -16,11 +17,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # arch ships wheels for 3.11 on manylinux → build-essential is a belt.
-COPY requirements/base.txt requirements/ib.txt requirements/quant.txt ./requirements/
-RUN pip install --upgrade pip && pip install -r requirements/quant.txt
-
-# R9 src-layout: every package lives under src/.
+# pyproject.toml + src/ are needed together because PEP 517 resolves the
+# package layout from src/ when installing fxvol[quant].
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+RUN pip install --upgrade pip && pip install ".[quant]"
 
 RUN useradd -m -u 1002 fxvol && chown -R fxvol:fxvol /app
 USER fxvol
