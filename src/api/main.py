@@ -30,6 +30,7 @@ from api.routers import pricing as pricing_router
 from api.routers import regime as regime_router
 from api.routers import signals as signals_router
 from api.routers import trade as trade_router
+from api.routers import trades as trades_router
 from api.routers import vol as vol_router
 from api.routers import ws as ws_router
 from api.ws.connection_manager import ConnectionManager
@@ -201,6 +202,7 @@ def create_app() -> FastAPI:
     app.include_router(regime_router.router)
     app.include_router(signals_router.router)
     app.include_router(trade_router.router)
+    app.include_router(trades_router.router)
     app.include_router(ws_router.router)
     # Remaining planned : orders router (PR #5b) — requires OrderExecutor wiring.
     return app
