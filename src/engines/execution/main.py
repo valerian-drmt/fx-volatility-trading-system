@@ -480,7 +480,7 @@ async def submit_hedge(
     sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
 ) -> dict[str, Any]:
     """Submit a delta-hedge HedgeOrder row (state='pending') as an EUR FUT
-    LMT order. Position-monitor calls this after creating the row."""
+    LMT order. OpenPosition-monitor calls this after creating the row."""
     try:
         return await submit_hedge_order(
             sessionmaker_factory=sm, executor=ex,

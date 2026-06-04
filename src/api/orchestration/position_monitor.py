@@ -41,13 +41,13 @@ from core.positions.mtm import attribute_pnl, compute_mtm
 from core.positions.position_pricing import LegSpec, PositionMark, price_position
 from persistence.models import (
     AppConfigScalar,  # replaces DeltaHedgeConfig (migration 024)
+    BookedPosition,
+    BookedPositionMetricHistory,
     ExitAlert,
     HedgeOrder,
     PcaSignal,
-    BookedPositionMetricHistory,
     RegimeSnapshot,
     StructureOrder,
-    BookedPosition,
     TradeStructure,
 )
 

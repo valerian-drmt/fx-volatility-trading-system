@@ -3,7 +3,7 @@
 Pipeline :
   - **sync_positions_from_ib** : fait l'upsert IB → DB. Match par tuple
     (symbol, instrument_type, strike, maturity, option_type) — pas besoin
-    d'ajouter une colonne con_id à Position.
+    d'ajouter une colonne con_id à OpenPosition.
   - **publish_portfolio_to_redis** : pour chaque OPEN position, publie sur
     Redis hashes (contract_marks / option_marks / unrealized_pnl) les
     données IB-canoniques. Aucune écriture DB ici — risk-engine est le seul
@@ -28,7 +28,7 @@ from engines.execution.order_executor import OrderExecutor
 from persistence.models import (
     AccountHistory,
     BookedPosition,
-    Position,
+    OpenPosition,
     StructureOrder,
     TradeStructure,
 )
@@ -36,7 +36,10 @@ from shared.contracts import multiplier_for, parse_local_symbol
 
 logger = logging.getLogger(__name__)
 
-SNAPSHOT_INTERVAL_S = 30.0
+# Fallback cycle when ``position_sync_loop`` is called without an explicit
+# ``interval_s`` (tests / scripts). Production runs override this via the
+# ``SYNC_INTERVAL_S`` env var read in ``engines.execution.main``.
+SNAPSHOT_INTERVAL_S = 5.0
 
 # Multiplier hardcodé pour EUR FX futures + options (CME). Une vraie impl
 # utiliserait `ib.qualifyContractsAsync` pour lire contract.multiplier.
@@ -97,7 +100,7 @@ def _ib_position_key(p: dict) -> str | None:
     return ls if ls else None
 
 
-def _db_position_key(p: Position) -> str | None:
+def _db_position_key(p: OpenPosition) -> str | None:
     return p.structure
 
 
@@ -141,20 +144,20 @@ async def sync_positions_from_ib(
             ib_by_key[k] = p
 
     db_rows = (await db.execute(
-        select(Position)
+        select(OpenPosition)
     )).scalars().all()
-    db_by_key: dict[str, Position] = {}
+    db_by_key: dict[str, OpenPosition] = {}
     for p in db_rows:
         k = _db_position_key(p)
         if k:
             db_by_key[k] = p
 
-    # Map IB symbol → parent ``trade_structure.structure_type`` so a leg
-    # of a multi-leg booking (straddle, strangle, …) carries its parent's
-    # product label, not the per-leg vanilla call/put one. Built once
-    # per sync cycle ; structures created after this snapshot will be
-    # picked up on the next cycle.
-    parent_st_by_symbol = await _build_leg_to_structure_type_map(db)
+    # Map IB symbol → (structure_type, trade_id, package_id) — Murex
+    # identity stack flowed onto each OpenPosition row. Built once per
+    # sync cycle ; structures created after this snapshot get picked up
+    # on the next cycle. Symbol candidates absorb the calibrated-strike
+    # vs IB-rounded-strike mismatch.
+    leg_to_trade = await _build_leg_to_trade_map(db)
 
     now = datetime.now(UTC)
     opened = 0
@@ -175,12 +178,16 @@ async def sync_positions_from_ib(
         nominal = qty * Decimal(str(mult))
         cp_entry = (avg_cost / Decimal(str(mult))) if avg_cost else None
         tenor = _tenor_bucket(maturity)
-        # Migration 032 : prefer the parent structure_type (so a leg of
-        # a straddle reads "Straddle") and fall back to symbol-parse for
+        # Migration 032 + 034 : prefer the parent structure_type (so a
+        # leg of a straddle reads "Straddle") and resolve the trade /
+        # package ids ; fall back to symbol-parse + NULL ids for
         # standalone IB-live positions.
-        product_label = product_label_from_symbol(
-            local_sym, parent_st_by_symbol.get(local_sym),
-        )
+        trade_link = leg_to_trade.get(local_sym)
+        parent_structure_type = trade_link[0] if trade_link else None
+        trade_id = trade_link[1] if trade_link else None
+        package_id = trade_link[2] if trade_link else None
+        product_label = product_label_from_symbol(local_sym, parent_structure_type)
+        con_id = ib_pos.get("con_id")
         if local_sym in db_by_key:
             row = db_by_key[local_sym]
             if row.quantity != qty or row.side != side:
@@ -193,10 +200,16 @@ async def sync_positions_from_ib(
             row.nominal_eur = nominal
             row.contract_price_entry = cp_entry
             row.product_label = product_label
+            row.contract_id = con_id
+            row.trade_id = trade_id
+            row.package_id = package_id
         else:
-            row = Position(
+            row = OpenPosition(
                 structure=local_sym,
                 product_label=product_label,
+                contract_id=con_id,
+                trade_id=trade_id,
+                package_id=package_id,
                 side=side,
                 tenor=tenor,
                 quantity=qty,
@@ -237,7 +250,7 @@ async def publish_portfolio_to_redis(
     if not executor.is_connected() or redis is None:
         return {"published": 0, "error": "ib_not_connected"}
     db_rows = (await db.execute(
-        select(Position)
+        select(OpenPosition)
     )).scalars().all()
     if not db_rows:
         return {"published": 0}
@@ -314,7 +327,7 @@ async def insert_account_snap(db: AsyncSession, executor: OrderExecutor) -> bool
         return False
 
     open_count = (await db.execute(
-        select(Position)
+        select(OpenPosition)
     )).scalars().all()
 
     snap = AccountHistory(
@@ -351,24 +364,33 @@ def _pick(summary: dict, aliases: list[str]) -> Decimal | None:
 _PARENT_LIVE_STATES = ("submitted", "partial_fill", "fully_filled", "partial_fail")
 
 
-async def _build_leg_to_structure_type_map(
+async def _build_leg_to_trade_map(
     db: AsyncSession,
-) -> dict[str, str]:
-    """Map ``IB localSymbol → parent trade_structure.structure_type`` for
-    every entry leg of every still-live ``trade_structure``.
+) -> dict[str, tuple[str, int, int | None]]:
+    """Map ``IB localSymbol → (structure_type, trade_id, package_id)``
+    for every entry leg of every still-live ``trade_structure``.
 
-    Used by ``sync_positions_from_ib`` to label IB-live Position rows
-    with the booking-level product (e.g. straddle) rather than the
-    per-leg call/put. When the same IB symbol is reused across multiple
-    open structures, the most recently created structure wins — good
-    enough for the UI label, and operationally rare.
+    Resolution priority per leg :
+
+      1. ``leg.ib_local_symbol`` (set by fills_handler on first fill).
+         Exact match — no rounding, no ambiguity. Always preferred.
+      2. Fallback : :func:`_structure_order_to_ib_key` reconstruction
+         from the leg's calibrated contract fields. Used only for legs
+         that haven't filled yet (and therefore don't have an actual
+         IB contract to match against).
+
+    Legs with no resolvable key are silently ignored.
+
+    When the same IB symbol matches multiple still-live structures, the
+    most recently created one wins — operationally rare and only happens
+    when an exact IB symbol was reused across overlapping trades.
     """
     structures = (await db.execute(
         select(TradeStructure)
         .where(TradeStructure.state.in_(_PARENT_LIVE_STATES))
         .order_by(TradeStructure.created_at)
     )).scalars().all()
-    out: dict[str, str] = {}
+    out: dict[str, tuple[str, int, int | None]] = {}
     for ts in structures:
         legs = (await db.execute(
             select(StructureOrder).where(
@@ -377,18 +399,20 @@ async def _build_leg_to_structure_type_map(
             )
         )).scalars().all()
         for leg in legs:
-            key = _structure_order_to_ib_key(leg)
+            key = leg.ib_local_symbol or _structure_order_to_ib_key(leg)
             if key is not None:
-                out[key] = ts.structure_type  # later (newer) wins
+                out[key] = (ts.structure_type, ts.id, ts.package_id)
     return out
 
 
 def _structure_order_to_ib_key(leg: StructureOrder) -> str | None:
-    """Same canonical key as :func:`_ib_position_key` — IB ``localSymbol`` —
-    so a leg booked via Step 3 can be matched to the IB-synced position row.
+    """Best-guess IB ``localSymbol`` rebuilt from a leg's contract fields.
 
-    Reconstructs the localSymbol from the leg's contract attributes ; relies
-    on ``shared.contracts`` patterns (6E/M6E for futures, EUU for options).
+    Used only as the **fallback** when ``leg.ib_local_symbol`` hasn't
+    been filled in yet (pre-fill legs). The reconstruction may miss
+    when the calibrated strike rounds to a different IB tick than what
+    IB picked, but a miss is better than the multi-candidate over-claim
+    of the previous implementation.
     """
     if not leg.contract_expiry:
         return None

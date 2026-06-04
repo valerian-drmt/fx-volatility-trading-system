@@ -36,9 +36,9 @@ from persistence.models import (
     AccountHistory,
     Base,
     FeatureHistory,
+    OpenPosition,
+    OpenPositionHistory,
     PcaSignal,
-    Position,
-    PositionMetricHistory,
     RegimeSnapshot,
     SurfaceSnapshotHourly,
     VolSurface,
@@ -59,8 +59,8 @@ TABLE_MODELS: dict[str, type[Base]] = {
     "account_history": AccountHistory,                        # renamed in migration 026 (Theme 2)
     "feature_history": FeatureHistory,                        # renamed in migration 023
     "pca_signal_history": PcaSignal,                          # renamed in migration 023
-    "position": Position,                                     # renamed in migration 026 (Theme 2)
-    "position_metric_history": PositionMetricHistory,         # renamed in migration 026 (Theme 2)
+    "open_position": OpenPosition,                                # renamed in migration 033
+    "open_position_history": OpenPositionHistory,           # renamed in migration 033
     "regime_snapshot": RegimeSnapshot,                        # renamed in migration 023
     "surface_pca_snapshot_history": SurfaceSnapshotHourly,    # renamed in migration 023
     "vol_surface_history": VolSurface,                        # renamed in migration 023
@@ -79,7 +79,7 @@ TABLE_MODELS: dict[str, type[Base]] = {
 # dedup key, duplicates there are real data and must not be silenced.
 IDEMPOTENT_TABLES: dict[str, list[str]] = {
     "vol_surface_history": ["timestamp", "underlying"],                                   # renamed
-    "position": ["id"],                                                                   # renamed in 026
+    "open_position": ["id"],                                                              # renamed in 033
     "feature_history": ["symbol", "timestamp"],                                           # renamed
     "surface_pca_snapshot_history": ["symbol", "timestamp"],                              # renamed
     "pca_signal_history": ["symbol", "timestamp", "pca_model_id", "pc_id"],               # renamed

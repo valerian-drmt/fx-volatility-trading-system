@@ -95,13 +95,13 @@ class TestEdgeCases:
 
 
 class TestParentStructureWinsOverSymbolForMultiLegProducts:
-    """When a Position is a leg of a multi-leg booking, sync_positions
+    """When a OpenPosition is a leg of a multi-leg booking, sync_positions
     passes parent.structure_type to the helper so the per-leg call/put
     name doesn't leak into the UI label. Lock that behaviour for every
     multi-leg product."""
 
     # (parent.structure_type, leg IB symbol, expected leg label).
-    # Each row simulates one ``Position`` row inserted by
+    # Each row simulates one ``OpenPosition`` row inserted by
     # ``sync_positions_from_ib`` for a leg of the parent structure.
     @pytest.mark.parametrize("parent_st,leg_sym,expected", [
         # ── Straddle (2 legs : ATM call + ATM put on the same expiry).

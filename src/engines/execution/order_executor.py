@@ -243,7 +243,7 @@ class OrderExecutor:
             raise ValueError(f"No live position with conId={con_id}")
         qty = abs(float(target.position))
         if qty == 0:
-            raise ValueError("Position quantity is zero — nothing to close")
+            raise ValueError("OpenPosition quantity is zero — nothing to close")
         side = "SELL" if target.position > 0 else "BUY"
         order = LimitOrder(side, qty, limit_price)
         trade = ib.placeOrder(target.contract, order)
@@ -286,7 +286,7 @@ class OrderExecutor:
             raise ValueError(f"No live position with localSymbol={local_symbol!r}")
         open_qty = abs(float(target.position))
         if open_qty == 0:
-            raise ValueError("Position quantity is zero — nothing to close")
+            raise ValueError("OpenPosition quantity is zero — nothing to close")
         # Default = full close. Otherwise validate the requested partial qty.
         close_qty = open_qty if qty is None else float(qty)
         if close_qty <= 0:

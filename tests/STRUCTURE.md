@@ -115,10 +115,10 @@ Pour éviter de dupliquer les setup data dans chaque test :
 
 ```python
 # tests/fixtures/positions.py
-from persistence.models import Position
+from persistence.models import OpenPosition
 
 def make_long_call(strike=1.17, qty=1, ...):
-    return Position(
+    return OpenPosition(
         symbol="EURUSD", instrument_type="FOP",
         right="C", strike=strike, quantity=qty, ...
     )

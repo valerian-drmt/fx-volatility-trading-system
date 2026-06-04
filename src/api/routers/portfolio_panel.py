@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
-from persistence.models import AccountHistory, Position, PositionMetricHistory  # noqa: F401
+from persistence.models import AccountHistory, OpenPosition, OpenPositionHistory  # noqa: F401
 from shared.contracts import parse_local_symbol
 
 router = APIRouter(prefix="/api/v1/portfolio", tags=["portfolio-panel"])
@@ -138,7 +138,7 @@ async def header_summary(db: DbDep) -> dict[str, Any]:
           COALESCE(SUM(vega_usd),  0)         AS sum_vega,
           COALESCE(SUM(theta_usd), 0)         AS sum_theta,
           COALESCE(SUM(current_pnl_usd), 0)   AS sum_pnl
-        FROM position
+        FROM open_position
     """)
     g = (await db.execute(greeks_sql)).one()
 
@@ -279,8 +279,8 @@ async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
           COALESCE(SUM(gamma_usd), 0)           AS sum_gamma,
           COALESCE(SUM(vega_usd),  0)           AS sum_vega,
           COALESCE(SUM(theta_usd), 0)           AS sum_theta,
-          MAX(updated_at)                       AS last_ts
-        FROM position
+          MAX(timestamp)                        AS last_ts
+        FROM open_position
     """)
     row = (await db.execute(sql)).one()
     return {
@@ -302,7 +302,7 @@ async def vega_per_tenor(db: DbDep) -> list[dict[str, Any]]:
         SELECT
           GREATEST(0, (expiry - CURRENT_DATE))::int  AS dte,
           vega_usd
-        FROM position
+        FROM open_position
         WHERE structure LIKE 'EUU%'   -- option contracts on EUR FOP
           AND expiry IS NOT NULL
           AND expiry >= CURRENT_DATE
@@ -402,7 +402,7 @@ async def stress_grid(db: DbDep) -> dict[str, Any]:
     futures. Baseline = current ``market_price`` for futures, BS at current
     ``iv`` for options. Matches spec ``risk_dashboard_spec.md § F``.
     """
-    open_positions = (await db.execute(select(Position))).scalars().all()
+    open_positions = (await db.execute(select(OpenPosition))).scalars().all()
     if not open_positions:
         return {
             "current_spot": None,
@@ -508,7 +508,7 @@ async def greeks_ladder(db: DbDep) -> dict[str, Any]:
     P&L vs current. ``hedge_delta_usd`` = ``-delta_usd`` (qty of $ Δ to
     short/long via futures to be delta-neutral at that spot).
     """
-    open_positions = (await db.execute(select(Position))).scalars().all()
+    open_positions = (await db.execute(select(OpenPosition))).scalars().all()
     if not open_positions:
         return {
             "current_spot": None,
@@ -651,7 +651,7 @@ async def pnl_attribution(
                  current_pnl_usd,
                  iv,
                  delta_usd, gamma_usd, vega_usd, theta_usd
-            FROM position_metric_history
+            FROM open_position_history
            WHERE timestamp <= :cutoff
            ORDER BY position_id, timestamp DESC
         )
@@ -667,7 +667,7 @@ async def pnl_attribution(
                t1.market_price    AS spot_then,
                t1.iv              AS iv_then,
                t1.timestamp       AS t_then
-          FROM position p
+          FROM open_position p
           LEFT JOIN t1 ON t1.position_id = p.id
     """)
     ib_rows = (await db.execute(ib_sql, {"cutoff": cutoff})).all()
@@ -838,7 +838,7 @@ async def pin_risk(db: DbDep) -> dict[str, Any]:
     vol shock — operator can run those via the stress-grid panel).
     Futures are ignored (no pin risk — payoff is linear in spot).
     """
-    open_positions = (await db.execute(select(Position))).scalars().all()
+    open_positions = (await db.execute(select(OpenPosition))).scalars().all()
     if not open_positions:
         return {"current_spot": None, "rows": [], "n_options": 0}
 
@@ -937,7 +937,7 @@ async def scenarios(db: DbDep) -> dict[str, Any]:
     vol-points, recompute price + greeks. Futures contribute 0 (no IV
     exposure).
     """
-    open_positions = (await db.execute(select(Position))).scalars().all()
+    open_positions = (await db.execute(select(OpenPosition))).scalars().all()
     base_payload: dict[str, Any] = {
         "current_spot": None, "current_iv_avg_pct": None,
         "spot_steps_pct": _SCENARIO_SPOT_STEPS_PCT,

@@ -127,7 +127,7 @@ async def initiate_position_close(
                 state="pending",
             ))
 
-        # Position transitions to 'closing' immediately ; final flip to
+        # OpenPosition transitions to 'closing' immediately ; final flip to
         # 'closed' happens inside the fills cascade.
         pos.state = "closing"
 

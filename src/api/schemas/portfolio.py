@@ -9,8 +9,10 @@ from pydantic import BaseModel, ConfigDict
 
 
 class PositionView(BaseModel):
-    """A single position row — mirrors ``persistence.models.Position`` after
-    migration 028. Field order = panel E + entry_timestamp + updated_at.
+    """A single position row — mirrors ``persistence.models.OpenPosition``
+    (table ``open_position`` after migration 033). Same shape as
+    ``PositionSnapshotView`` below ; the only difference is the
+    ``open_position_history`` table also carries a ``position_id`` FK.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -34,7 +36,7 @@ class PositionView(BaseModel):
     vanna_usd: Decimal | None
     volga_usd: Decimal | None
     entry_timestamp: datetime
-    updated_at: datetime
+    timestamp: datetime
 
 
 class PositionSnapshotView(BaseModel):

@@ -36,10 +36,10 @@ from core.execution.fills import (
 )
 from engines.execution.redis_state import get_client as _get_redis
 from persistence.models import (
+    BookedPosition,
     StructureFill,
     StructureOrder,
     TradeEvent,
-    BookedPosition,
     TradeStructure,
 )
 
@@ -182,6 +182,13 @@ async def _on_execution(
             if order is None:
                 await db.commit()
                 return
+            # Migration 035 : record the IB ``localSymbol`` of the filled
+            # contract on first fill. position_sync uses this as the
+            # exact leg→trade key (avoids fuzzy strike rounding).
+            if order.ib_local_symbol is None:
+                ls = getattr(trade.contract, "localSymbol", None)
+                if ls:
+                    order.ib_local_symbol = str(ls)[:20]
             all_fills = (await db.execute(
                 select(StructureFill).where(StructureFill.order_id == order_id)
             )).scalars().all()

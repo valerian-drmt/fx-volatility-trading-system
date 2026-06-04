@@ -48,7 +48,7 @@ class Base(DeclarativeBase):
     """Declarative base shared by every persistence model."""
 
 
-class Position(Base):
+class OpenPosition(Base):
     """Open position book — one row per IB contract held.
 
     Schema mirrors Portfolio panel section E. The IB ``localSymbol`` is the
@@ -56,7 +56,7 @@ class Position(Base):
     ``shared.contracts.parse_local_symbol`` when they need contract specs).
     """
 
-    __tablename__ = "position"  # renamed in migration 026 (Theme 2)
+    __tablename__ = "open_position"  # renamed in migration 033 (was 'position')
     __table_args__ = (
         CheckConstraint("side IN ('BUY', 'SELL')", name="ck_positions_side"),
     )
@@ -70,6 +70,24 @@ class Position(Base):
     # backfilled by 032 and computed by writers going forward. Promoted
     # to NOT NULL in a follow-up migration once writer coverage is proven.
     product_label: Mapped[str | None] = mapped_column(String(40))
+    # Migration 034 : Murex-aligned identity stack.
+    #   contract_id = IB ``conId`` (atomic instrument id).
+    #   trade_id    = FK to ``trade_structure.id`` (the strategy / structure
+    #                 grouping the contracts ; 2 legs of a straddle share
+    #                 one trade_id).
+    #   package_id  = FK to ``package.id`` (denormalised from
+    #                 trade_structure.package_id ; lets the UI sort /
+    #                 filter without a JOIN).
+    # All 3 are nullable : a position came from a direct IB order
+    # outside the booking pipeline has trade_id=NULL (and therefore
+    # package_id=NULL too).
+    contract_id: Mapped[int | None] = mapped_column(BigInteger)
+    trade_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("trade_structure.id", ondelete="SET NULL"),
+    )
+    package_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("package.id", ondelete="SET NULL"),
+    )
     side: Mapped[str] = mapped_column(String(4), nullable=False)
     tenor: Mapped[str | None] = mapped_column(String(10))
     expiry: Mapped[date | None] = mapped_column(Date)
@@ -88,38 +106,49 @@ class Position(Base):
     entry_timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    updated_at: Mapped[datetime] = mapped_column(
+    # Migration 033 : renamed from ``updated_at``. Aligns with the
+    # ``open_position_history.timestamp`` column so both tables expose
+    # the same temporal anchor.
+    timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
     )
 
-    metric_history: Mapped[list[PositionMetricHistory]] = relationship(
+    metric_history: Mapped[list[OpenPositionHistory]] = relationship(
         back_populates="position", cascade="all, delete-orphan"
     )
     # Note: `trades` relationship removed — Trade ORM dropped in migration 025
     # (Theme 3). Legacy R7 fills journal had zero R9 writers.
 
 
-class PositionMetricHistory(Base):
+class OpenPositionHistory(Base):
     """Greeks + pnl + iv time series per IB-leg position (renamed from
     PositionSnapshot in migration 026 Theme 2). Sole writer = risk-engine.
     One row per OPEN position per 2s cycle."""
 
-    __tablename__ = "position_metric_history"  # renamed in migration 026
+    __tablename__ = "open_position_history"  # renamed in migration 033
 
-    # Schema mirrors ``position`` (panel E columns) + position_id + timestamp.
+    # Schema mirrors ``open_position`` 1-to-1 plus position_id + timestamp.
     id: Mapped[int] = mapped_column(primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        ForeignKey("position.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("open_position.id", ondelete="CASCADE"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
     structure: Mapped[str] = mapped_column(String(20), nullable=False)
-    # Mirror of Position.product_label (migration 032). See Position class.
+    # Mirror of OpenPosition.product_label (migration 032). See OpenPosition class.
     product_label: Mapped[str | None] = mapped_column(String(40))
+    # Mirror of OpenPosition.contract_id / trade_id / package_id (migration 034).
+    contract_id: Mapped[int | None] = mapped_column(BigInteger)
+    trade_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("trade_structure.id", ondelete="SET NULL"),
+    )
+    package_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("package.id", ondelete="SET NULL"),
+    )
     side: Mapped[str] = mapped_column(String(4), nullable=False)
     tenor: Mapped[str | None] = mapped_column(String(10))
     expiry: Mapped[date | None] = mapped_column(Date)
@@ -136,7 +165,7 @@ class PositionMetricHistory(Base):
     vanna_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     volga_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
 
-    position: Mapped[Position] = relationship(back_populates="metric_history")
+    position: Mapped[OpenPosition] = relationship(back_populates="metric_history")
 
 
 # Trade, Order, OrderEvent ORM classes deleted in migration 025 (Theme 3).
@@ -543,7 +572,7 @@ class TradePreviewRow(Base):
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     armed_signal_label: Mapped[str | None] = mapped_column(String(15))
     structure_type: Mapped[str] = mapped_column(String(40), nullable=False)
-    # Mirror of Position.product_label (migration 032). See Position class.
+    # Mirror of OpenPosition.product_label (migration 032). See OpenPosition class.
     product_label: Mapped[str | None] = mapped_column(String(40))
     reference_tenor: Mapped[str] = mapped_column(String(10), nullable=False)
     structure_full_payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
@@ -624,6 +653,27 @@ class AppConfigScalar(Base):
 # ──────────────────────────────────────────────────────────────────────
 
 
+class Package(Base):
+    """Operational grouping of multiple ``TradeStructure`` (= trades)
+    into a single envelope — Murex's "package" concept.
+
+    Empty by default in this project ; populated when the operator wants
+    to bundle several straddles / butterflies under a single risk or
+    funding key. ``trade_structure.package_id`` is the join column.
+
+    Added in migration 034.
+    """
+
+    __tablename__ = "package"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    label: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(300))
+
+
 class TradeStructure(Base):
     """Multi-leg trade : 1 row per Submit (new STEP3/STEP4 workflow)."""
 
@@ -643,8 +693,13 @@ class TradeStructure(Base):
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     armed_signal_label: Mapped[str | None] = mapped_column(String(15))
     structure_type: Mapped[str] = mapped_column(String(40), nullable=False)
-    # Mirror of Position.product_label (migration 032). See Position class.
+    # Mirror of OpenPosition.product_label (migration 032). See OpenPosition class.
     product_label: Mapped[str | None] = mapped_column(String(40))
+    # Migration 034 : optional grouping of multiple trades under one
+    # operational package. NULL when the trade isn't part of a package.
+    package_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("package.id", ondelete="SET NULL"),
+    )
     reference_tenor: Mapped[str] = mapped_column(String(10), nullable=False)
     expiry_date: Mapped[date | None] = mapped_column(Date)
     base_qty: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -688,6 +743,10 @@ class StructureOrder(Base):
     order_role: Mapped[str] = mapped_column(String(20), nullable=False, default="entry")
     ib_order_id: Mapped[str | None] = mapped_column(String(40))
     ib_perm_id: Mapped[str | None] = mapped_column(String(40))
+    # Migration 035 : actual IB ``localSymbol`` of the filled contract.
+    # Populated by fills_handler on first fill ; exact match key for the
+    # leg→trade resolution in position_sync (avoids fuzzy strike rounding).
+    ib_local_symbol: Mapped[str | None] = mapped_column(String(20))
     contract_symbol: Mapped[str] = mapped_column(String(10), nullable=False, default="EUR")
     contract_type: Mapped[str] = mapped_column(String(10), nullable=False)
     contract_expiry: Mapped[date | None] = mapped_column(Date)
@@ -738,11 +797,11 @@ class StructureFill(Base):
 
 
 class BookedPosition(Base):
-    """Position created when a TradeStructure is fully_filled (renamed from
-    TradePosition in migration 026 Theme 2). Distinct from `Position` which
+    """OpenPosition created when a TradeStructure is fully_filled (renamed from
+    TradePosition in migration 026 Theme 2). Distinct from `OpenPosition` which
     mirrors the live IB book.
 
-    A BookedPosition is the trade-level entity backed by 1..N Position rows
+    A BookedPosition is the trade-level entity backed by 1..N OpenPosition rows
     (multi-leg structures). It carries entry costs, state machine (open →
     closing → closed/expired), exit costs, and final pnl. Step-5 consumer."""
 

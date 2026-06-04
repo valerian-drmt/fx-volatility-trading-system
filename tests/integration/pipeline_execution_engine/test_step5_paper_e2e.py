@@ -46,7 +46,7 @@ def test_attribution_reconciles_to_total():
 def test_signal_reverse_triggers_exit_in_paper():
     """Spec §12 test 3.
 
-    Position armed on PCA z=2.0. Seed an opposite signal z=-1 via
+    OpenPosition armed on PCA z=2.0. Seed an opposite signal z=-1 via
     ``POST /api/v1/signals/seed``. Expect within one cycle : ExitAlert
     rule_triggered='signal_reverse' ; in phase 3 also a closing structure
     that flips the position to state='closed'.

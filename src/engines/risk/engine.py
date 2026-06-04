@@ -40,7 +40,7 @@ from core.pricing.bs import (
     bs_volga,
 )
 from core.risk.greeks import bs_price_vec
-from persistence.models import Position, PositionMetricHistory
+from persistence.models import OpenPosition, OpenPositionHistory
 from shared.contracts import multiplier_for, parse_local_symbol
 
 
@@ -197,7 +197,7 @@ class RiskEngine:
         today = datetime.now(UTC).date()
         async with self._sessionmaker() as db:  # type: ignore[misc]
             rows = (await db.execute(
-                select(Position)
+                select(OpenPosition)
             )).scalars().all()
         out: list[dict] = []
         for p in rows:
@@ -328,7 +328,7 @@ class RiskEngine:
 
                 # 1. UPDATE the live row on ``positions`` so the API can read
                 #    everything from a single row (mirror of panel E).
-                live_pos = await db.get(Position, int(pos["id"]))
+                live_pos = await db.get(OpenPosition, int(pos["id"]))
                 if live_pos is None:
                     continue
                 live_pos.market_price = mark_dec
@@ -343,11 +343,14 @@ class RiskEngine:
 
                 # 2. Snapshot = literal copy of every panel-E column at this
                 #    timestamp. Same shape as ``positions``.
-                snap = PositionMetricHistory(
+                snap = OpenPositionHistory(
                     position_id=live_pos.id,
                     timestamp=now,
                     structure=live_pos.structure,
                     product_label=live_pos.product_label,
+                    contract_id=live_pos.contract_id,
+                    trade_id=live_pos.trade_id,
+                    package_id=live_pos.package_id,
                     side=live_pos.side,
                     tenor=live_pos.tenor,
                     expiry=live_pos.expiry,

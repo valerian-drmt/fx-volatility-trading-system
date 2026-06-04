@@ -77,7 +77,7 @@ class SignalConfig(BaseModel):
 
 
 class SizingConfig(BaseModel):
-    """Position sizing formula : base × conviction × book_penalty × event."""
+    """OpenPosition sizing formula : base × conviction × book_penalty × event."""
 
     model_config = ConfigDict(extra="ignore")
 
