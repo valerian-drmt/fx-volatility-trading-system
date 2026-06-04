@@ -1,11 +1,9 @@
-# FastAPI backend image.
+# FastAPI backend image — pyproject-driven (PEP 621).
 #
-# Builds the uvicorn-served API surface (api/ + src/ + persistence/). The
-# image re-uses requirements.txt as-is for R6 — it inherits a few desktop
-# libs (PyQt5, pyqtgraph) that the API does not need. R7 will split the
-# requirements into api-only and engines-only layers so the API image
-# drops to ~300 MB ; for now we prioritise "one source of truth" over
-# size and ship ~900 MB.
+# Installs the [api] extra of the fxvol project — fastapi + uvicorn +
+# slowapi + prometheus + httpx, on top of the base runtime (numpy /
+# scipy / pandas / redis / structlog / pydantic / SQLAlchemy / asyncpg
+# / alembic). No ib_insync, no arch — the api is pure stateless.
 #
 #   docker build -f infrastructure/docker/Dockerfile.api -t fx-options-api .
 
@@ -31,15 +29,14 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Dependency layer is cached as long as requirements.txt does not change —
-# iterating on /app/api source rebuilds in ~2s.
-COPY requirements.txt ./
-RUN pip install --upgrade pip && pip install -r requirements.txt
-
-# Application source. R9 src-layout: api, bus, core, engines, persistence
-# and shared all live under src/, so a single copy ships the whole runtime.
-# Keep it explicit (not COPY . .) so we do not ship notebooks, tests, docs.
+# pyproject.toml + src/ are needed together because PEP 517 build resolves
+# the package layout from src/ when installing fxvol[api]. R9 src-layout:
+# api, bus, core, engines, persistence and shared all live under src/, so a
+# single copy ships the whole runtime. Keep src/ explicit (not COPY . .) so
+# we do not ship notebooks, tests, docs.
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+RUN pip install --upgrade pip && pip install ".[api]"
 
 # uvicorn on port 8000. The image does NOT run --reload : that is a dev
 # concern and inflates the runtime with watchfiles observers.

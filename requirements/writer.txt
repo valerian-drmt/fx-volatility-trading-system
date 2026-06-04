@@ -1,9 +1,0 @@
-# db-writer service. Subscribes Redis, batches INSERT into Postgres.
-# Notably does NOT inherit from ib.txt — db-writer never talks to IB,
-# so ib_insync stays out of its image (smaller + smaller attack surface).
-
--r base.txt
-
-SQLAlchemy>=2.0,<2.1
-asyncpg>=0.29,<0.30
-alembic>=1.13,<1.14

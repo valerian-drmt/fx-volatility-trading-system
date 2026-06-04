@@ -21,14 +21,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Dependency layer — cached as long as requirements/ib.txt (and its parent
-# base.txt) do not change.
-COPY requirements/base.txt requirements/ib.txt ./requirements/
-RUN pip install --upgrade pip && pip install -r requirements/ib.txt
-
-# R9 src-layout: every package (bus, core, engines, persistence, shared)
-# lives under src/, so a single copy ships the whole runtime.
+# pyproject.toml + src/ are needed together because PEP 517 resolves the
+# package layout from src/ when installing fxvol[ib]. R9 src-layout: every
+# package (bus, core, engines, persistence, shared) lives under src/, so a
+# single copy ships the whole runtime.
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
+RUN pip install --upgrade pip && pip install ".[ib]"
 
 # Non-root execution.
 RUN useradd -m -u 1001 fxvol && chown -R fxvol:fxvol /app
