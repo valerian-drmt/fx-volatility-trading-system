@@ -269,9 +269,9 @@ async def stack_overview(
 # Value = colonne pour ORDER BY DESC (PK la plupart du temps, mais pas toujours
 # `id` — vol_config utilise `version`).
 ALLOWED_TABLES: dict[str, str] = {
-    # Theme 2 — Portfolio refactor (migration 026)
-    "position": "id",                                # renamed from positions
-    "position_metric_history": "id",                 # renamed from position_snapshots
+    # Theme 2 — Portfolio refactor (migration 026, 033)
+    "open_position": "id",                           # renamed in migration 033
+    "open_position_history": "id",                   # renamed in migration 033
     "booked_position": "id",                         # renamed from trade_positions
     "booked_position_metric_history": "id",          # renamed from position_mtm_history + signal fold
     "account_history": "id",                         # renamed from account_snaps
@@ -310,6 +310,55 @@ async def list_tables() -> dict[str, Any]:
     return {"tables": list(ALLOWED_TABLES.keys())}
 
 
+# Per-table logical column order — overrides the physical Postgres
+# column order returned by ``SELECT *``. Useful when migrations have
+# appended columns in chronological order rather than logical order.
+# Tables not in this map keep their physical order.
+PREFERRED_COLUMN_ORDER: dict[str, list[str]] = {
+    # Open positions : identity → spec → P&L → main greeks → secondary
+    # greeks → metadata (cf. /api/v1/positions/open).
+    "open_position": [
+        "id", "package_id", "trade_id", "contract_id",
+        "product_label", "structure", "side",
+        "quantity", "tenor", "expiry",
+        "current_pnl_usd", "market_price", "contract_price_entry", "nominal_eur",
+        "delta_usd", "gamma_usd", "vega_usd", "theta_usd", "iv",
+        "vanna_usd", "volga_usd",
+        "timestamp", "entry_timestamp",
+    ],
+    "open_position_history": [
+        # History adds position_id (FK) + timestamp upfront, no
+        # entry_timestamp on history rows.
+        "id", "position_id", "timestamp",
+        "package_id", "trade_id", "contract_id",
+        "product_label", "structure", "side",
+        "quantity", "tenor", "expiry",
+        "current_pnl_usd", "market_price", "contract_price_entry", "nominal_eur",
+        "delta_usd", "gamma_usd", "vega_usd", "theta_usd", "iv",
+        "vanna_usd", "volga_usd",
+    ],
+}
+
+
+def _reorder_columns(table: str, row: dict[str, Any]) -> dict[str, Any]:
+    """Re-emit ``row`` with the preferred column order for ``table``.
+    Unknown / extra columns land at the end, in their original order.
+    """
+    preferred = PREFERRED_COLUMN_ORDER.get(table)
+    if not preferred:
+        return row
+    out: dict[str, Any] = {}
+    seen: set[str] = set()
+    for c in preferred:
+        if c in row:
+            out[c] = row[c]
+            seen.add(c)
+    for c, v in row.items():
+        if c not in seen:
+            out[c] = v
+    return out
+
+
 @router.get("/tables/{name}")
 async def read_table(
     name: str,
@@ -318,6 +367,10 @@ async def read_table(
     offset: int = 0,
 ) -> dict[str, Any]:
     """Read N rows from `name` (whitelisted), ordered DESC by its PK column.
+
+    Columns are remapped via ``PREFERRED_COLUMN_ORDER`` when an override
+    exists for ``name`` (e.g. ``open_position``) — otherwise physical
+    Postgres order is preserved.
 
     JSONB / datetime / Decimal sont sérialisés via FastAPI's jsonable_encoder.
     """
@@ -335,7 +388,7 @@ async def read_table(
         text(f"SELECT * FROM {name} ORDER BY {order_col} DESC LIMIT :lim OFFSET :off"),
         {"lim": limit, "off": offset},
     )
-    rows = [dict(r) for r in rows_res.mappings().all()]
+    rows = [_reorder_columns(name, dict(r)) for r in rows_res.mappings().all()]
 
     count_res = await db.execute(text(f"SELECT COUNT(*) AS n FROM {name}"))
     total = int(count_res.scalar_one())
