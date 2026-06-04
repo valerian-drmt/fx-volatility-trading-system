@@ -269,7 +269,9 @@ services:
       IB_PORT: 4002
       IB_CLIENT_ID: 5
       # Cycle de sync IB → Postgres pour orders/trades/positions/snapshots.
-      SYNC_INTERVAL_S: ${EXECUTION_SYNC_INTERVAL_S:-1.0}
+      # 5 s = compromis : UI poll à 5 s côté front, charge IB modérée
+      # (12 calls/min). Surchargeable via la var d'env EXECUTION_SYNC_INTERVAL_S.
+      SYNC_INTERVAL_S: ${EXECUTION_SYNC_INTERVAL_S:-5.0}
     depends_on:
       postgres:
         condition: service_healthy
