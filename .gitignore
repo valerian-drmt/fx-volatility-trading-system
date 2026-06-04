@@ -2,6 +2,8 @@
 .pytest_cache/
 __pycache__/
 *.py[cod]
+*.egg-info/
+src/*.egg-info/
 CLAUDE.md
 .claude
 .idea
