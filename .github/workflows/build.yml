@@ -1,10 +1,13 @@
 name: build-and-push
 
-# Build + push the two application images (fx-options-api and
-# fx-options-frontend) to the repo's GitHub Container Registry namespace.
-# Runs on every push to main (post-merge) and can be triggered manually.
-# No deploy side-effect — R8 will layer a deploy job on top of a new tag
-# once the EC2 target is provisioned.
+# Builds the application + engine images on every push to main to prove they
+# still build (this is the CI signal we care about post-merge). The push to
+# the repo's GitHub Container Registry namespace is OPT-IN via the manual
+# `workflow_dispatch` trigger only: ghcr.io's token endpoint occasionally
+# times out from the runner ("context deadline exceeded"), and the images are
+# not consumed by any live deploy yet — so a flaky registry must never red a
+# green main. Run the workflow manually when you actually want to publish.
+# R8 will layer a deploy job on top of a tag once the EC2 target is provisioned.
 
 on:
   push:
@@ -20,6 +23,8 @@ env:
   # Images live under ghcr.io/<owner>/<name>. github.repository_owner is
   # always lowercase-safe (unlike github.actor which can be MixedCase).
   OWNER: ${{ github.repository_owner }}
+  # Push only on a manual run; a plain push-to-main just builds (no ghcr login).
+  PUSH: ${{ github.event_name == 'workflow_dispatch' }}
 
 jobs:
   build-api:
@@ -34,18 +39,19 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push (api)
+      - name: Build (and push on manual run) (api)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: infrastructure/docker/Dockerfile.api
-          push: true
+          push: ${{ env.PUSH }}
           # `sha-<short>` for traceability + `latest` for convenience pulls.
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-api:sha-${{ github.sha }}
@@ -76,29 +82,29 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push (frontend)
+      - name: Build (and push on manual run) (frontend)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: infrastructure/docker/Dockerfile.web
-          push: true
+          push: ${{ env.PUSH }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-frontend:sha-${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-frontend:latest
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
-  # R8 PR #2 : build + push the four standalone engine containers introduced
-  # in R7. A matrix factorises the four identical jobs (only the service
-  # name, Dockerfile path and buildx cache scope differ). Each one publishes
-  # two tags — `sha-<commit>` for reproducible prod pulls and `latest` for
-  # convenience — under the same ghcr.io namespace as api + frontend.
+  # The four standalone engine containers introduced in R7. A matrix
+  # factorises the four identical jobs (only the service name, Dockerfile path
+  # and buildx cache scope differ). On a manual run each publishes two tags —
+  # `sha-<commit>` and `latest` — under the same ghcr.io namespace.
   build-engines:
     name: build + push fx-options-${{ matrix.service.image }}
     runs-on: ubuntu-latest
@@ -123,18 +129,19 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push (${{ matrix.service.image }})
+      - name: Build (and push on manual run) (${{ matrix.service.image }})
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ${{ matrix.service.dockerfile }}
-          push: true
+          push: ${{ env.PUSH }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-${{ matrix.service.image }}:sha-${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-${{ matrix.service.image }}:latest

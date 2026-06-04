@@ -54,7 +54,10 @@ def test_api_job_pushes_sha_and_latest_tags(wf: dict):
     assert "fx-options-api:sha-${{ github.sha }}" in tags
     assert "fx-options-api:latest" in tags
     assert push_step["with"]["file"] == "infrastructure/docker/Dockerfile.api"
-    assert push_step["with"]["push"] is True
+    # Push is gated on a manual run via env.PUSH (see
+    # test_push_is_gated_on_manual_dispatch) so a flaky ghcr login never reds
+    # a plain push-to-main; the tags contract above still holds.
+    assert push_step["with"]["push"] == "${{ env.PUSH }}"
 
 
 @pytest.mark.unit
@@ -91,6 +94,25 @@ def test_both_jobs_log_in_to_ghcr(wf: dict):
         assert registry in allowed_registries, (
             f"{job_name} must log in to GHCR (got {registry!r})"
         )
+
+
+@pytest.mark.unit
+def test_push_is_gated_on_manual_dispatch(wf: dict):
+    """ghcr.io's token endpoint intermittently times out from the runner
+    ("context deadline exceeded"), and the images aren't consumed by a live
+    deploy — so login + push are gated on workflow_dispatch. A plain push to
+    main builds every image (real signal) without touching the registry."""
+    assert wf["env"]["PUSH"] == "${{ github.event_name == 'workflow_dispatch' }}"
+    for job_name in ("build-api", "build-frontend", "build-engines"):
+        steps = wf["jobs"][job_name]["steps"]
+        login = next(s for s in steps if s.get("uses", "").startswith("docker/login-action"))
+        assert login["if"] == "${{ github.event_name == 'workflow_dispatch' }}", (
+            f"{job_name} must only log in to GHCR on a manual run"
+        )
+        push_step = next(
+            s for s in steps if s.get("uses", "").startswith("docker/build-push-action")
+        )
+        assert push_step["with"]["push"] == "${{ env.PUSH }}"
 
 
 @pytest.mark.unit
