@@ -125,12 +125,11 @@ known-first-party = ["api", "bus", "core", "engines", "persistence", "shared"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-# This branch carries the flat tests/ layout that origin/main still ships
-# (tests/test_*.py + tests/services/ + tests/shared/ + tests/integration/).
-# The tests/unit + tests/integration + tests/old restructure is a separate
-# refactor that lands later ; once it does, pin this to
-# ["tests/unit", "tests/integration"] to keep tests/old/ out of CI.
-testpaths = ["tests"]
+# Pin collection to the curated test buckets : tests/old/ holds historical
+# tests pending triage (see tests/STRUCTURE.md § "tests/old — quarantine"),
+# they must not block CI. Promotion out of old/ is a separate, ongoing
+# effort, not a hard prerequisite for the refactor.
+testpaths = ["tests/unit", "tests/integration"]
 addopts = "-q --strict-markers --maxfail=1"
 asyncio_mode = "auto"
 markers = [

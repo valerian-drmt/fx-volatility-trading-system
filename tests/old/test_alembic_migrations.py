@@ -25,7 +25,7 @@ from sqlalchemy import create_engine, text
 
 pytestmark = pytest.mark.db_integration
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
 
 EXPECTED_TABLES = {

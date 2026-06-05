@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-CONF_DIR = Path(__file__).resolve().parent.parent / "infrastructure" / "nginx"
+CONF_DIR = Path(__file__).resolve().parent.parent.parent / "infrastructure" / "nginx"
 
 
 def _read(name: str) -> str:
