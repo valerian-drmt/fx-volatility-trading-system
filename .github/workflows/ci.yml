@@ -172,7 +172,7 @@ jobs:
           # --noconftest bypasses the legacy tests/conftest.py which still
           # imports PyQt5 (deprecated, removed in R8). The nginx parse test
           # is purely filesystem-based and needs no fixtures.
-          python -m pytest --noconftest tests/test_nginx_config_syntax.py -v
+          python -m pytest --noconftest tests/old/test_nginx_config_syntax.py -v
 
   frontend-e2e:
     name: frontend Playwright e2e
@@ -386,10 +386,14 @@ jobs:
         run: python -m alembic -c src/persistence/alembic.ini upgrade head
 
       - name: Run db_integration tests
-        run: python -m pytest -m db_integration -v
+        # Marker-tagged tests still live in tests/old/ until rewritten
+        # under tests/integration/pipeline_* (Wave P1.x). Until then,
+        # invoke them explicitly so the marker gate doesn't return 0
+        # tests collected and exit 5.
+        run: python -m pytest tests/old -m db_integration -v
 
       - name: Run redis_integration tests
-        run: python -m pytest -m redis_integration -v
+        run: python -m pytest tests/old -m redis_integration -v
 
   integration:
     name: IB paper integration tests (manual only)
@@ -463,7 +467,7 @@ jobs:
         run: docker compose --profile engines up -d --build
 
       - name: Run the split-compose integration suite
-        run: python -m pytest tests/integration/test_engines_split_compose.py -v
+        run: python -m pytest tests/old/test_engines_split_compose.py -v
 
       - name: Dump container logs on failure
         if: failure()
