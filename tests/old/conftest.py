@@ -6,7 +6,7 @@ import pytest
 
 pytest_plugins = ["pytester"]
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = PROJECT_ROOT / "src"
 # R7 introduces top-level packages (core/, shared/, services/) alongside
 # src/. Both paths must resolve for legacy + new imports. PyQt5 was

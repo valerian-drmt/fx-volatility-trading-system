@@ -39,7 +39,7 @@ pytestmark = pytest.mark.db_integration
 # tests run before or after in the same CI job.
 _TEST_TABLES = ("vol_surfaces", "signals")
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
 
 
