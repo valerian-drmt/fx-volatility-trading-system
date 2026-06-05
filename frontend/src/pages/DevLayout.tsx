@@ -18,6 +18,9 @@
 import { useState, type CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
+import { DbSchema } from "./dev/DbSchema";
+import { Logs } from "./dev/Logs";
+import { Migrations } from "./dev/Migrations";
 import { Portfolio } from "./dev/Portfolio";
 import { StackCombined } from "./dev/StackCombined";
 import { Step2Pca } from "./dev/Step2Pca";
@@ -37,6 +40,9 @@ const TABS: TabDef[] = [
   { id: "stack", label: "🐳 Stack · Health · Redis", Component: StackCombined },
   { id: "ws", label: "📡 WS Monitor", Component: WsMonitor },
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
+  { id: "schema", label: "🗺 DB Schema", Component: DbSchema },
+  { id: "logs", label: "🔍 Logs", Component: Logs },
+  { id: "migrations", label: "🔁 Migrations", Component: Migrations },
   { id: "step2", label: "📊 PCA Signals", Component: Step2Pca },
   { id: "step3", label: "🎯 Trade · pre/post", Component: Step3Trade },
   { id: "portfolio", label: "💼 Portfolio", Component: Portfolio },
