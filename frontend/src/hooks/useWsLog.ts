@@ -20,6 +20,9 @@ export interface UseWsLogResult {
   count: number;       // total messages reçus depuis le mount
   messages: LoggedMessage[];
   paused: boolean;
+  /** Live message rate (msg/s, sliding 5 s window). Recomputed once
+   *  per second so the displayed number doesn't flicker. */
+  rate: number;
   pause: () => void;
   resume: () => void;
   clear: () => void;
@@ -32,8 +35,22 @@ export function useWsLog(url: string, max = 50): UseWsLogResult {
   const [count, setCount] = useState(0);
   const [messages, setMessages] = useState<LoggedMessage[]>([]);
   const [paused, setPaused] = useState(false);
+  const [rate, setRate] = useState(0);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  // Rolling buffer of epoch-ms timestamps for the last 5 s. Lives in
+  // a ref so updating it doesn't trigger renders.
+  const tsBufferRef = useRef<number[]>([]);
+
+  // Once per second, recompute msg/s from the rolling buffer.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      tsBufferRef.current = tsBufferRef.current.filter((t) => now - t <= 5000);
+      setRate(tsBufferRef.current.length / 5);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -49,6 +66,10 @@ export function useWsLog(url: string, max = 50): UseWsLogResult {
         if (pausedRef.current) return;
         const raw = typeof evt.data === "string" ? evt.data : String(evt.data);
         const ts = new Date().toISOString();
+        // Rate is computed independent of pause/clear — it tracks
+        // what the wire is actually delivering, which is what an
+        // operator wants to see when debugging "is the engine alive ?".
+        tsBufferRef.current.push(Date.now());
         setCount((c) => c + 1);
         setMessages((prev) => {
           const next = [{ ts, raw }, ...prev];
@@ -76,5 +97,5 @@ export function useWsLog(url: string, max = 50): UseWsLogResult {
   const resume = useCallback(() => setPaused(false), []);
   const clear = useCallback(() => setMessages([]), []);
 
-  return { status, count, messages, paused, pause, resume, clear };
+  return { status, count, messages, paused, rate, pause, resume, clear };
 }
