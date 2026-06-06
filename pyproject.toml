@@ -12,9 +12,7 @@ requires-python = ">=3.11,<3.12"
 authors = [{ name = "Valérian Darmenté" }]
 
 # Base runtime — every service container needs these.
-# Aligned 1-to-1 with the legacy requirements/base.txt + the persistence
-# block of requirements.txt. Engines + db-writer + api all install at
-# minimum this set.
+# Engines + db-writer + api all install at minimum this set.
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
@@ -46,8 +44,6 @@ api = [
     "fastapi>=0.110,<0.112",
     "uvicorn[standard]>=0.27,<0.29",
     "slowapi>=0.1.9,<0.2",
-    # prometheus-client now in base deps (P0 obs) — kept here historically
-    # for clarity, can be dropped once docs confirm base import.
     "httpx>=0.27,<0.28",
 ]
 
@@ -131,10 +127,9 @@ known-first-party = ["api", "bus", "core", "engines", "persistence", "shared"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-# Pin collection to the curated test buckets : tests/old/ holds historical
-# tests pending triage (see tests/STRUCTURE.md § "tests/old — quarantine"),
-# they must not block CI. Promotion out of old/ is a separate, ongoing
-# effort, not a hard prerequisite for the refactor.
+# Pin collection to the curated test buckets ; ``tests/old/`` only holds
+# the nginx-config syntax test that ``.github/workflows/ci.yml`` runs
+# explicitly via path, never via marker.
 testpaths = ["tests/unit", "tests/integration"]
 addopts = "-q --strict-markers --maxfail=1"
 asyncio_mode = "auto"
@@ -147,7 +142,8 @@ markers = [
 
 [tool.mypy]
 python_version = "3.11"
-# Start permissive. Group F Step 19 will tighten to strict mode incrementally.
+# Start permissive ; tighten incrementally per module once `mypy --strict`
+# returns clean on it.
 ignore_missing_imports = true
 namespace_packages = true
 explicit_package_bases = true

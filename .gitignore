@@ -1,5 +1,10 @@
 .venv/
+# Tooling caches — each also self-gitignores via an internal .gitignore,
+# but list them at root for belt + suspenders + discoverability.
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -26,7 +31,6 @@ frontend/test-results/
 infrastructure/ib-gateway/upstream/
 market-data.log
 *.log
-docs/vol_pipeline_pca*.ipynb
 
 # Operator scratch dumps from live debug sessions (position P&L snapshots etc.)
 pin.json

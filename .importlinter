@@ -14,6 +14,17 @@ include_external_packages = False
 # Domain code (vol models, pricing, greeks) must not depend on any
 # infrastructure (DB, Redis bus) nor on any presentation layer (api,
 # engines). It is the only layer with no imports from this project.
+#
+# Every module under ``core/`` MUST also be :
+#   - side-effect free   (no Redis, no DB, no IB, no filesystem)
+#   - deterministic      (identical output for identical inputs)
+#   - typed explicitly   (no Any, no implicit Optional)
+#   - covered by a snapshot-equivalence test that locks numerical output
+#
+# These four rules are NOT enforced by import-linter (it only sees the
+# import graph) — they're conventions every PR touching ``core/`` must
+# uphold. Listed here because ``core/`` no longer has an ``__init__.py``
+# to host the docstring.
 # ────────────────────────────────────────────────────────────────────
 [importlinter:contract:1]
 name = core is pure (no I/O, no presentation)

@@ -54,7 +54,7 @@ trail in Postgres.
 
 ## Architecture
 
-**10 containers, 6 ship our Python code.**
+**10-container core stack** (6 ship our Python code) **+ optional 6-container observability stack** (Prometheus / Loki / Tempo / Grafana / promtail / otel-collector, opt-in via `--profile obs`).
 
 ```
                           ┌────────────────┐
@@ -127,7 +127,7 @@ Shared Python libs (under `src/`, no container of their own) :
 
 Dependency direction is enforced by [`import-linter`](https://import-linter.readthedocs.io/) in CI ; see [`.importlinter`](.importlinter) for the 5 contracts.
 
-**Full architecture** : see [`docs/vol_trading_pca/project_architecture.md`](docs/vol_trading_pca/project_architecture.md) (canonical reference) and [`docs/structure-refactor-plan.md`](docs/structure-refactor-plan.md) (the 20-step plan that produced the current src-layout).
+**Full architecture** : the in-app **Stack** dev tab (`/dev` → 🐳 Stack · Health · Redis) renders the 17 containers, their wiring, and live health probes — single canonical view, no static diagram to drift against.
 
 ---
 
@@ -145,7 +145,7 @@ Dependency direction is enforced by [`import-linter`](https://import-linter.read
 | Vol models | numpy, scipy (PCHIP, norm), arch (GARCH), scikit-learn (GMM), custom SVI/SSVI |
 | Secrets | AWS SSM Parameter Store + KMS CMK |
 | CI | GitHub Actions — ruff, pytest, compileall, import-linter, openapi drift, vitest, Playwright, alembic round-trip |
-| Deploy | Docker compose local, systemd + EC2 prod (R8) |
+| Deploy | Docker compose local (10-container `obs` profile optional) |
 
 ---
 
@@ -165,7 +165,7 @@ python -m pip install -e ".[dev,api,quant,ib,writer]"
 .\scripts\ops\load_secrets.ps1
 
 # 3. Start the full stack
-.\scripts\ops\start_stack.ps1          # build + up + alembic upgrade head + 11 logs tabs
+.\scripts\ops\start_stack.ps1          # build + up + alembic upgrade head (+ obs profile)
 .\scripts\ops\start_stack.ps1 -NoBuild # skip build, reuse cached images
 ```
 
@@ -190,7 +190,7 @@ uv run pytest
 ```powershell
 # Python — pyproject.toml drives ruff config + pytest config + mypy config
 python -m ruff check src tests                       # lint
-python -m pytest                                     # unit only (76 tests, < 5s)
+python -m pytest                                     # unit suite (~410 tests, < 10s)
 PYTHONPATH=src lint-imports                          # architecture contracts
 
 # Integration suites (gated by env)
@@ -214,9 +214,10 @@ jupyter lab scripts/smoke/redis/02_test_bus_package.ipynb   # bus Python wrapper
 jupyter lab scripts/smoke/db-writer/01_test_writer.ipynb    # AsyncDatabaseWriter end-to-end
 ```
 
-Tests under `tests/old/` are a deliberate quarantine of historical tests
-pending triage (see [`tests/STRUCTURE.md`](tests/STRUCTURE.md)) ; they are
-excluded from the default pytest collection.
+`tests/old/` retains only `test_nginx_config_syntax.py` — the
+`nginx-config` CI job runs it explicitly by path. Everything else has
+been promoted into `tests/unit/` or dropped (cf.
+[`tests/STRUCTURE.md`](tests/STRUCTURE.md)).
 
 ---
 
@@ -228,19 +229,20 @@ fx-volatility-trading-system/
 ├── .importlinter                   architecture contracts (5 layered rules)
 ├── docker-compose.yml, docker-compose.override.yml
 ├── README.md, CLAUDE.md, LICENSE
-├── .github/workflows/              ci.yml + build.yml + deploy.yml
+├── .github/workflows/              ci.yml + build.yml + codeql.yml + security-scan.yml
 ├── src/                            (PyPA src-layout, all Python)
 │   ├── api/                        → container fxvol-api
 │   │   ├── main.py                 FastAPI app + lifespan (events scheduler, WS bridge)
-│   │   ├── routers/                12 routers : health, admin, analytics, cockpit,
-│   │   │                             dev, orders, portfolio, pricing, regime,
-│   │   │                             signals, vol, ws
+│   │   ├── routers/                16 routers : health, admin, analytics, cockpit,
+│   │   │                             dev, orders, portfolio, portfolio_panel,
+│   │   │                             positions, pricing, regime, signals, trade,
+│   │   │                             trades, vol, ws
 │   │   ├── ws/                     connection_manager + redis_bridge
 │   │   ├── middleware/             logging (structlog) + rate_limit + timing
 │   │   ├── schemas/                Pydantic v2 request/response classes
-│   │   └── orchestration/          use-case orchestration (was: api/services/)
+│   │   └── orchestration/          use-case orchestration
 │   │       └── events/             FRED + ECB + BoE + FOMC + Eurostat + ONS pipeline
-│   ├── engines/                    5 long-running services (was: src/services/)
+│   ├── engines/                    5 long-running services
 │   │   ├── market_data/            → fxvol-market-data (clientID 1)
 │   │   ├── vol/                    → fxvol-vol-engine    (clientID 2)
 │   │   ├── risk/                   → fxvol-risk-engine   (clientID 3)
@@ -254,13 +256,14 @@ fx-volatility-trading-system/
 │   │   ├── pricing/bs.py           Black-Scholes for FX options
 │   │   ├── risk/greeks.py          Δ/Γ/V analytics
 │   │   ├── config/                 config helpers
+│   │   ├── products.py             Murex-style product label dual-column
 │   │   └── payloads.py             engine output → DB row dict (pure)
 │   ├── persistence/                ONLY the DB adapter
-│   │   ├── models.py               20 ORM classes (single file)
+│   │   ├── models.py               30 ORM classes (single file)
 │   │   ├── db.py                   engine + AsyncSession factory
 │   │   ├── writer.py               AsyncDatabaseWriter (batch INSERT + retry)
 │   │   ├── alembic.ini
-│   │   └── migrations/versions/    18 revisions
+│   │   └── migrations/versions/    41 revisions
 │   ├── bus/                        ONLY the Redis adapter
 │   │   ├── client.py               connection factory (async + sync)
 │   │   ├── publisher.py
@@ -270,31 +273,39 @@ fx-volatility-trading-system/
 │       ├── config.py               base Settings (extended by api/config.py)
 │       ├── logging.py              structlog setup
 │       ├── ib_connection.py        IB sync wrapper + backoff
+│       ├── observability.py        Prometheus metrics + OTel tracing
 │       └── db_events.py            db-events Redis publisher
-├── frontend/                       React + TS + Vite (15 panels, 18 dev pages)
+├── frontend/                       React + TS + Vite (15 production panels +
+│                                     9 dev tabs : Stack / WS / DB Explorer /
+│                                     DB Schema / Logs / Migrations / PCA /
+│                                     Trade / Portfolio)
 ├── infrastructure/
-│   ├── docker/                     api.Dockerfile, web.Dockerfile, execution.Dockerfile, …
+│   ├── docker/                     api.Dockerfile, web.Dockerfile, execution.Dockerfile, ib-stub
 │   ├── nginx/                      nginx.conf + nginx-dev.conf + frontend.conf
-│   ├── aws/                        secrets bootstrap doc + R8 deploy plan
-│   └── ec2/                        systemd unit + provisioning
+│   ├── ib-gateway/                 local IB gateway image build instructions
+│   ├── postgres/                   init.sql
+│   ├── redis/                      redis.conf (hardened)
+│   └── aws/                        SSM secrets bootstrap + KMS / IAM / S3 reference
 ├── scripts/
 │   ├── ops/                        load_secrets.{ps1,sh} + start_stack.ps1
-│   ├── dev/                        dump_openapi.py + gmm_diagnostic.py
+│   ├── dev/                        dump_openapi.py + gmm_diagnostic.py + seed_pca_*
 │   ├── migrations/                 backfill_iv_history_for_gmm.py + seed_events_manual.py
 │   └── smoke/<service>/            re-runnable Jupyter smoke notebooks per container
+├── obs/                            Prometheus / Loki / Tempo / Promtail / OTel-collector
+│                                     configs + Grafana dashboards + datasources
 ├── tests/                          mirrors src/ 1-to-1
 │   ├── unit/                       (api, bus, core, engines, persistence, shared)
 │   ├── integration/                pipeline_<sub-system>/ (gated by markers)
 │   ├── fixtures/                   shared pytest fixtures
-│   └── old/                        quarantine, NOT collected by default
+│   └── old/                        residual nginx-config syntax test (CI path-pinned)
 └── docs/
     ├── README.md                   landing page index
     ├── run-local-stack.md          local stack runbook
-    ├── deployment.md               EC2 prod deploy
+    ├── docker-cheatsheet.md        day-to-day docker compose commands
+    ├── db_schema_drift_workflow.md ORM ⇄ DB drift fix via alembic
     ├── branch-protection.md        GitHub branch rules
-    ├── preventing-spaghetti-code.md  theory + agent guard rails
-    ├── structure-refactor-plan.md  the 20-step refactor that built this layout
-    └── vol_trading_pca/            architecture + research-to-trade specs
+    ├── observability/              metric naming conventions + obs runbooks
+    └── vol_trading_pca/            events pipeline architecture spec
 ```
 
 ---
@@ -304,14 +315,16 @@ fx-volatility-trading-system/
 | Document | Content |
 |---|---|
 | [docs/README.md](docs/README.md) | Index of all docs with one-sentence summaries |
-| [docs/vol_trading_pca/project_architecture.md](docs/vol_trading_pca/project_architecture.md) | Canonical architecture : containers, data flows, ports |
-| [docs/vol_trading_pca/index.md](docs/vol_trading_pca/index.md) | Vol-PCA research-to-trade roadmap (Step 1 regime → Step 2 PCA → Step 3 trade preview → Step 4 execution) |
 | [docs/run-local-stack.md](docs/run-local-stack.md) | Local stack operator runbook |
-| [docs/deployment.md](docs/deployment.md) | EC2 prod deploy (systemd + IAM + Let's Encrypt) |
-| [docs/branch-protection.md](docs/branch-protection.md) | GitHub `main` branch ruleset |
-| [docs/structure-refactor-plan.md](docs/structure-refactor-plan.md) | 20-step refactor plan : the *why* behind the layout |
-| [docs/preventing-spaghetti-code.md](docs/preventing-spaghetti-code.md) | Theory : prevention principles + AI-agent guard rails |
+| [docs/docker-cheatsheet.md](docs/docker-cheatsheet.md) | Day-to-day docker compose commands |
+| [docs/db_schema_drift_workflow.md](docs/db_schema_drift_workflow.md) | How to feed DB-schema-drift fixes back through alembic |
+| [docs/branch-protection.md](docs/branch-protection.md) | GitHub `main` branch ruleset + required status checks |
+| [docs/observability/CONVENTIONS.md](docs/observability/CONVENTIONS.md) | Metric naming + label cardinality rules |
+| [docs/observability/RUNBOOKS.md](docs/observability/RUNBOOKS.md) | Loki / Prometheus / Tempo / Grafana operator playbooks |
+| [docs/vol_trading_pca/events_pipeline_spec.md](docs/vol_trading_pca/events_pipeline_spec.md) | Multi-source economic-events pipeline architecture |
+| [tests/STRUCTURE.md](tests/STRUCTURE.md) | Test layout + pytest configuration reference |
 | [infrastructure/aws/secrets-bootstrap.md](infrastructure/aws/secrets-bootstrap.md) | AWS SSM + KMS + IAM one-time setup |
+| Live ER diagram, drift detection, log tail, alembic chain | in-app **dev console** (`/dev`) — DB Schema / Logs / Migrations tabs |
 
 ---
 
@@ -323,12 +336,12 @@ fx-volatility-trading-system/
 python -m compileall -q src
 python -m ruff check src tests
 PYTHONPATH=src lint-imports                                # architecture contracts
-$env:PYTHONPATH = "src"; python -m pytest                  # 76 unit tests
+$env:PYTHONPATH = "src"; python -m pytest                  # ~410 unit tests
 cd frontend; npm test; npm run build
 ```
 
 **Branching** : trunk-based, `main` always deployable. One short-lived feature
-branch per PR, naming `<type>/<release>-<slug>` (e.g. `feat/r4-vol-router`).
+branch per PR, naming `<type>/<release>-<slug>` (e.g. `feat/r10-dev-tabs`).
 Conventional Commits for messages. Squash-merge only. Branch protection rules
 in [`docs/branch-protection.md`](docs/branch-protection.md).
 

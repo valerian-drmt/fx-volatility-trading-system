@@ -416,7 +416,7 @@ services:
   # Opt-in via `docker compose --profile obs up -d`. All 4 services live
   # on fxvol-internal so Prometheus reaches the engine /metrics ports
   # without any host-side mapping. Grafana also gets fxvol-public for
-  # browser access. Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 1.
+  # browser access.
 
   prometheus:
     image: prom/prometheus:v2.55.0

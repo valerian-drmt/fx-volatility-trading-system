@@ -1,6 +1,6 @@
 # Auto-loaded by `docker compose` in local dev.
-# Exposes Postgres and Redis on the host so PyCharm / psql / redis-cli / the
-# PyQt v1 app can reach them without going through a container.
+# Exposes Postgres and Redis on the host so PyCharm / psql / redis-cli /
+# any local Python REPL can reach them without going through a container.
 #
 # Production / CI runs `docker compose -f docker-compose.yml up` WITHOUT this
 # file, so these ports stay closed behind the internal network (prod-like).
