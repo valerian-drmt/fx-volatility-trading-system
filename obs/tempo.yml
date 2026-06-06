@@ -1,6 +1,7 @@
-# Tempo single-binary monolithic config — P2 obs (traces).
-# Filesystem storage, 7 days retention.
-# Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 2.
+# Tempo single-binary monolithic config — distributed-trace store.
+# Filesystem storage, 7-day retention. Fed by otel-collector, queried
+# by Grafana via tracesToLogsV2 (cf. obs/grafana/provisioning/
+# datasources/datasources.yml).
 
 server:
   http_listen_port: 3200

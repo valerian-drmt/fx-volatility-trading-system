@@ -1,5 +1,6 @@
-# Grafana datasources auto-provisioning — P1 obs.
-# Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 1.
+# Grafana datasources — auto-provisioned at startup. Wires Prometheus
+# (metrics), Loki (logs), Tempo (traces) ; sets up the trace_id
+# click-through (Loki → Tempo) and tracesToLogsV2 (Tempo → Loki).
 
 apiVersion: 1
 

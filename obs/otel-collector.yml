@@ -1,6 +1,5 @@
 # OTel collector — proxy between engines (gRPC 4317) and Tempo.
 # Single pipeline: traces → batch → otlp/tempo.
-# Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 2.
 
 receivers:
   otlp:

@@ -1,9 +1,9 @@
-# Promtail config — P1 obs.
-# Scrapes Docker container stdout via Docker SD. Extracts JSON log
-# fields (level, cycle_id, trace_id, event) — `level` becomes a label
-# (low-cardinality), `cycle_id` / `trace_id` stay in the message
-# content (high-cardinality, queryable via LogQL `|= "cycle_id"`).
-# Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 1.
+# Promtail — scrapes Docker container stdout via Docker SD. Extracts
+# JSON log fields (level, cycle_id, trace_id, event) — ``level`` becomes
+# a label (low-cardinality), ``cycle_id`` / ``trace_id`` stay in the
+# message content (high-cardinality, queryable via LogQL
+# ``|= "cycle_id"``). Label-cardinality rules in
+# docs/observability/CONVENTIONS.md.
 
 server:
   http_listen_port: 9080

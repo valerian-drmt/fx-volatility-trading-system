@@ -1,6 +1,7 @@
-# Prometheus config — P1 obs.
-# Single-binary scrape config for the 5 engine /metrics endpoints.
-# Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 1.
+# Prometheus config — single-binary scrape of the 5 engine /metrics
+# endpoints (+ Prometheus + Loki self-scrape). Metric definitions live
+# in src/shared/observability.py ; naming conventions in
+# docs/observability/CONVENTIONS.md.
 
 global:
   scrape_interval: 15s

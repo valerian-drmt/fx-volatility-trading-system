@@ -1,5 +1,4 @@
 # Grafana dashboard provisioning — auto-loads JSON from /var/lib/grafana/dashboards.
-# Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 1.
 
 apiVersion: 1
 

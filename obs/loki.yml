@@ -1,7 +1,7 @@
-# Loki single-binary monolithic config — P1 obs.
-# Filesystem storage on the loki-data volume. No replication, no
-# sharding — adapted for solo-dev 1-host scale.
-# Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 1.
+# Loki single-binary monolithic config — solo-dev 1-host scale (no
+# replication, no sharding, filesystem storage on the loki-data
+# volume). 14-day retention sized for ~2 GB / 1.5 KB/log × 100k events
+# /day × 5 engines.
 
 auth_enabled: false
 
