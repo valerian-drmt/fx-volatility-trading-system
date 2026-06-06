@@ -125,7 +125,7 @@ export function DbExplorer(): JSX.Element {
     if (orderBy) params.set("order_by", orderBy);
     params.set("order_dir", orderDir);
     const filterStr = Array.from(filters.entries())
-      .filter(([_, v]) => v.trim() !== "")
+      .filter(([, v]) => v.trim() !== "")
       .map(([k, v]) => `${k}:${v}`)
       .join(",");
     if (filterStr) params.set("filters", filterStr);

@@ -25,9 +25,6 @@ import { Portfolio } from "./dev/Portfolio";
 import { StackCombined } from "./dev/StackCombined";
 import { Step2Pca } from "./dev/Step2Pca";
 import { Step3Trade } from "./dev/Step3Trade";
-// Step4Trades / TradePreview / OrderSubmit were folded into Step3Trade
-// (unified "Trade · pre/post" tab). Their source files remain on disk
-// for cherry-picking history but are no longer imported.
 import { WsMonitor } from "./dev/WsMonitor";
 
 interface TabDef {
