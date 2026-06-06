@@ -1,9 +1,47 @@
-"""add col X
+"""add col X — accidental autogen artifact, retained for chain integrity.
+
+⚠ HISTORICAL NOTE FOR FUTURE READERS
+
+This file is a leftover from a misfired ``alembic revision --autogenerate``
+early in the project (April 2026). Its name suggests an "add column"
+intent, but the actual upgrade simply **drops the 16 indexes that
+migration 002 had just created** — then migration 003 immediately re-
+creates the same indexes alongside its own schema additions.
+
+Net effect : zero. The DROP+CREATE round-trip cancels itself.
+
+Why this file is still here :
+
+  - At the time of detection (R10 DB review), the chain
+    ``002 → 254fc54bb36f → 003`` was already applied in every deployed
+    DB.
+  - Deleting the file would orphan ``003``'s ``down_revision``
+    reference and break ``alembic upgrade`` on any fresh DB.
+  - Editing the revision ID would break the in-DB ``alembic_version``
+    history on every existing deployment.
+
+So the file stays. The hash filename (rather than a descriptive name)
+plus the misleading ``add col X`` title are part of the audit trail
+that this autogen actually ran. The contents below are intentionally
+untouched.
+
+If a future migration absolutely needs to clean this up, the right
+move is :
+
+  1. New migration ``NNN_collapse_002_254fc54bb36f.py`` that does
+     nothing on upgrade (DB is already in the correct state) but on
+     downgrade replays the 254fc54bb36f drops to keep the rollback
+     path symmetric.
+  2. Update ``003``'s ``down_revision`` to point at ``002`` directly,
+     drop this file.
+  3. ``alembic stamp NNN`` on every deployed DB during a maintenance
+     window.
+
+Until then : **do not edit, do not delete**.
 
 Revision ID: 254fc54bb36f
 Revises: 002_add_indices
 Create Date: 2026-04-21 08:57:43.366204+00:00
-
 """
 from __future__ import annotations
 
