@@ -23,3 +23,28 @@ CH_RISK_UPDATE: str = "risk_update"
 
 # Any engine publishes errors/warnings worth surfacing in the UI.
 CH_SYSTEM_ALERTS: str = "system_alerts"
+
+# Admin endpoint publishes the new version number (as string) whenever
+# /api/v1/admin/config accepts a PUT or POST revert. Engines subscribe
+# to hot-reload their Pydantic config without a restart.
+CH_CONFIG_CHANGED: str = "config:changed"
+
+# STEP4 — execution-engine publishes per-structure order events
+# (acknowledged / filled / rejected / cancelled / unwind_created). Channel
+# name is dynamic : ``orders:<structure_id>``. The Redis-WS bridge uses a
+# pattern subscription (``orders:*``) and forwards to ConnectionManager
+# keyed on the full channel name ; clients of ``/ws/orders/{structure_id}``
+# only see their own structure.
+CH_ORDERS_PATTERN: str = "orders:*"
+
+
+def orders_channel(structure_id: int) -> str:
+    """Build the per-structure channel name."""
+    return f"orders:{structure_id}"
+
+
+# STEP5 — position_monitor publishes one MTM snapshot per cycle.
+CH_POSITIONS: str = "positions"
+
+# STEP5 — position_monitor publishes one row per ExitAlert that fires.
+CH_EXIT_ALERTS: str = "exit_alerts"
