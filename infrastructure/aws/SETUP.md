@@ -76,8 +76,8 @@ Pas besoin de `boto3` côté machine : les scripts utilisent l'`aws` CLI.
       → Security credentials → Assign MFA device.
 - [ ] **MFA activée sur `fxvol-dev`** : idem. Sans MFA, refuser tout `aws iam
       put-user-policy` qui donne des droits sensibles (KMS decrypt).
-- [ ] **Région par défaut `eu-west-1`** : tous les scripts/commandes de cette
-      doc et de `DEPLOYMENT_PREP.md` sont hardcodés sur `eu-west-1`.
+- [ ] **Région par défaut `eu-west-1`** : tous les scripts et commandes
+      de cette doc sont hardcodés sur `eu-west-1`.
 
 **Architecture IAM cible (classique, pas SSO)** :
 

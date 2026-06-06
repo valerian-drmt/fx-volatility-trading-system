@@ -15,8 +15,15 @@
 | Observability (CloudWatch, SNS) | ✅ done | `STATE.md` § 4 |
 | Cost protection (Budget, Anomaly) | ✅ done | `STATE.md` § 5 |
 | DNS (domaine, hosted zone, délégation) | ✅ done | `STATE.md` § 6 |
-| **EC2 instance + EIP + DNS records** | 🔒 différé R8 | `R8_DEPLOY.md` |
-| GHCR setup (visibilité packages) | 🔒 différé R6 | `DEPLOYMENT_PREP.md` § 5 |
+| **EC2 instance + EIP + DNS records** | ❌ pas déployé | déploiement EC2 abandonné — voir note ci-dessous |
+| GHCR setup (visibilité packages) | ✅ done par défaut | repo `public` → packages publics |
+
+> **Note déploiement EC2** : R8 prévoyait un déploiement EC2 prod ; la
+> workflow `deploy.yml` et le playbook `R8_DEPLOY.md` ont été retirés.
+> Les ressources support AWS (KMS, IAM, SSM, S3, DNS) restent en place
+> et sont utilisées par `scripts/ops/load_secrets.{ps1,sh}` pour le
+> bootstrap local des secrets. Si un déploiement EC2 reprend, repartir
+> de zéro sur un nouveau plan plutôt que de reconstituer l'historique.
 
 ---
 
@@ -24,20 +31,15 @@
 
 ### Si tu veux comprendre **ce qui existe maintenant**
 
-→ `STATE.md` — snapshot précis de toutes les ressources AWS provisionnées au 27/04/2026.
+→ `STATE.md` — snapshot précis de toutes les ressources AWS provisionnées au 2026-04-27.
 
-### Si tu fais le déploiement **R8 (~12/05/2026)**
+### Si tu setup un compte AWS depuis zéro
 
-→ `R8_DEPLOY.md` — séquence exacte des commandes à lancer le jour J. Toutes les ressources support (KMS, IAM role, Security group, S3, DNS) sont déjà créées.
+→ `SETUP.md` — plan KMS + SSM + IAM users.
 
-### Si tu veux comprendre la **trajectoire pré-session**
+### Si tu provisionnes les secrets dans SSM
 
-→ Les 3 fichiers ci-dessous (au top-level du dossier) contiennent les plans d'origine, conservés pour traçabilité :
-- `SETUP.md` — plan KMS+SSM+IAM users (rédigé avant que la session bootstrap soit faite)
-- `DEPLOYMENT_PREP.md` — plan phases A-H pour R8 (rédigé avant la session)
-- `secrets-bootstrap.md` — détail technique secrets (commit pré-existant `b23865f5` + `3e3bd556`)
-
-Ces 3 fichiers sont **historiques**. Ne pas s'y référer pour l'état courant : utiliser `STATE.md`. Ils seront éventuellement déplacés dans un sous-dossier `_archive/` lors d'une PR R9 dédiée à la couche AWS ops.
+→ `secrets-bootstrap.md` — procédure SSM Parameter Store + KMS encryption.
 
 ---
 
@@ -46,8 +48,7 @@ Ces 3 fichiers sont **historiques**. Ne pas s'y référer pour l'état courant :
 À chaque session AWS qui modifie l'infra :
 
 1. Mettre à jour `STATE.md` (ressources réellement existantes)
-2. Si nouvelle phase de déploiement : créer un nouveau fichier `R<N>_DEPLOY.md` ou amender l'existant
-3. Mettre à jour ce `README.md` si l'organisation des fichiers change
+2. Mettre à jour ce `README.md` si l'organisation des fichiers change
 
 ---
 
@@ -79,10 +80,9 @@ Domain            valeriandarmente.dev (Route 53 hosted zone, délégué depuis 
 
 | Période | Ressources actives | Coût |
 |---|---|---|
-| **Maintenant (post-bootstrap)** | KMS + Route 53 hosted zone | **~$1.50/mo** |
-| Après R8 (~12/05) | + EC2 t3.small + EBS + EIP attachée + S3 backups | **~$22/mo** |
+| **Maintenant** | KMS + Route 53 hosted zone | **~$1.50/mo** |
 
-Budget cap actuel : **$10/mo** avec alerte à 80%. À monter à $25/mo le jour de R8.
+Budget cap actuel : **$10/mo** avec alerte à 80%.
 
 ---
 

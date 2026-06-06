@@ -2,7 +2,7 @@
 
 > Source de vérité sur ce qui existe en AWS au 27/04/2026 18h00 CET, après la session bootstrap complète.
 > Pour l'état réel-temps, lancer `aws cli` ou consulter la console.
-> Pour la roadmap restante : voir `R8_DEPLOY.md`.
+> Note : le déploiement EC2 prod n'a pas été activé — voir `README.md` § État global.
 
 ---
 
@@ -276,7 +276,7 @@ Configurée le 27/04/2026 ~14h CET. Les 4 nameservers AWS sont définis comme cu
 | NS | valeriandarmente.dev | 4 nameservers AWS (cf. ci-dessus) | géré par AWS, ne pas toucher |
 | SOA | valeriandarmente.dev | `ns-1239.awsdns-26.org. awsdns-hostmaster.amazon.com. 1 7200 900 1209600 86400` | géré par AWS, ne pas toucher |
 
-→ Records A/CAA pour pointer vers l'EC2 = à ajouter en R8 (cf. `R8_DEPLOY.md`).
+→ Records A/CAA pour pointer vers l'EC2 = à ajouter si un déploiement EC2 reprend (pas planifié pour l'instant).
 
 ---
 
