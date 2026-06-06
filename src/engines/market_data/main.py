@@ -22,7 +22,7 @@ import asyncio
 import signal
 from typing import Any
 
-from bus import get_async_redis
+from bus.client import get_async_redis
 from shared.config import get_settings
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server

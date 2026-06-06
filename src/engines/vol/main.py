@@ -16,8 +16,8 @@ from typing import Any
 
 from redis import asyncio as aioredis
 
-from bus import get_async_redis
 from bus.channels import CH_CONFIG_CHANGED
+from bus.client import get_async_redis
 from core.config import VolTradingConfig
 from shared.config import get_settings
 from shared.logging import configure_logging
@@ -37,8 +37,8 @@ async def _watch_config_changes(
 
     Payload contract : JSON ``{"version": int, "config": {...VolTradingConfig}}``.
     Self-contained -- no Postgres round-trip from the vol-engine, which
-    keeps sqlalchemy/asyncpg out of the engine image (R7 isolation rule :
-    only db-writer touches Postgres).
+    keeps sqlalchemy/asyncpg out of the engine image (engine-isolation
+    rule : only db-writer touches Postgres).
     """
     try:
         pubsub = redis.pubsub()

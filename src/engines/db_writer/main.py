@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import signal
 
-from bus import get_async_redis
+from bus.client import get_async_redis
 from engines.db_writer.service import DbWriterService
 from persistence.writer import AsyncDatabaseWriter
 from shared.config import get_settings
