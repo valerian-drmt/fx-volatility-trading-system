@@ -38,7 +38,6 @@ from core.vol.feature_enrichment import (
 )
 from persistence.models import (
     Event,
-    RegimeLookup,
     RegimeSnapshot,
 )
 
@@ -173,7 +172,7 @@ async def _build_synthesis(
         regime_payload = None
     else:
         joint_pattern = f"({bk_l},{bk_v},{bk_s})"
-        regime_payload = await _lookup_regime(db, joint_pattern)
+        regime_payload = _lookup_regime(joint_pattern)
 
     # Dominant feature = argmax |z|.
     z_by_feature: dict[str, float] = {}
@@ -241,24 +240,21 @@ def _build_action(
 # DB helpers
 # ─────────────────────────────────────────────────────────────────────────
 
-async def _lookup_regime(db: AsyncSession, pattern: str) -> dict[str, Any] | None:
-    row = (await db.execute(
-        select(RegimeLookup).where(RegimeLookup.pattern == pattern).limit(1)
-    )).scalar_one_or_none()
-    if row is None:
-        # Fallback row (seeded by scripts/dev/seed_regime_lookup.py).
-        row = (await db.execute(
-            select(RegimeLookup).where(RegimeLookup.pattern == "unmapped_extreme").limit(1)
-        )).scalar_one_or_none()
-    if row is None:
-        return None
+def _lookup_regime(pattern: str) -> dict[str, Any]:
+    """Pattern → regime metadata. Sourced from
+    ``core.regime_patterns.REGIME_PATTERNS`` (was a ``regime_pattern_dict``
+    DB table until migration 039 dropped that mirror). Always returns a
+    row — falls back to ``unmapped_extreme`` when the pattern is unseen.
+    """
+    from core.regime_patterns import lookup_regime
+    row = lookup_regime(pattern)
     return {
-        "id": row.regime_id,
-        "name": row.regime_name,
-        "family": row.family,
-        "action_default": row.action_default,
-        "asymmetry_note": row.asymmetry_note,
-        "intensity_count": row.intensity_count,
+        "id": row["regime_id"],
+        "name": row["regime_name"],
+        "family": row["family"],
+        "action_default": row["action_default"],
+        "asymmetry_note": row["asymmetry_note"],
+        "intensity_count": row["intensity_count"],
     }
 
 

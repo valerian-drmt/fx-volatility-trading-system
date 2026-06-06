@@ -214,11 +214,11 @@ class VolSurface(Base):
 class RegimeSnapshot(Base):
     """One row per vol-engine cycle — Panel 1 audit + stability gate input."""
 
-    __tablename__ = "regime_snapshot"  # renamed in migration 023
+    __tablename__ = "regime_snapshot_history"  # renamed 023 → 040 (_history suffix alignment)
     __table_args__ = (
         CheckConstraint(
             "label IN ('calm','stressed','pre_event')",
-            name="ck_regime_snapshots_label",
+            name="ck_regime_snapshot_history_label",
         ),
     )
 
@@ -261,26 +261,9 @@ class RegimeSnapshot(Base):
     signal_term_slope: Mapped[str | None] = mapped_column(String(8))
 
 
-class RegimeLookup(Base):
-    """Joint-pattern → regime mapping (15 base patterns × 5-bucket expansion).
-
-    Patterns shape : ``"(<bucket_vol_level>,<bucket_vol_of_vol>,<bucket_term_slope>)"``
-    e.g. ``"(0,0,+)"`` or ``"(--,+,++)"``. Unmapped tail-extreme combinations
-    fall back to the seeded ``unmapped_extreme`` row.
-    """
-
-    __tablename__ = "regime_pattern_dict"
-
-    pattern: Mapped[str] = mapped_column(String(20), primary_key=True)
-    regime_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    regime_name: Mapped[str] = mapped_column(String(60), nullable=False)
-    family: Mapped[str] = mapped_column(String(40), nullable=False)
-    action_default: Mapped[str] = mapped_column(String(80), nullable=False)
-    asymmetry_note: Mapped[str | None] = mapped_column(String(120))
-    intensity_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(),
-    )
+# ``regime_pattern_dict`` (ORM ``RegimeLookup``) was dropped in
+# migration 039. Joint-pattern → regime mapping now lives in
+# ``core.regime_patterns.REGIME_PATTERNS`` — single source of truth.
 
 
 class FeatureHistory(Base):
@@ -333,35 +316,12 @@ class Event(Base):
     )
 
 
-class VrpTableDefault(Base):
-    """Hardcoded VRP placeholder by (regime, tenor) — 18 rows seeded by
-    migration 010. Read at every vol cycle by ``vol/engine._compute_regime``
-    to build the per-(regime, tenor) lookup. Values DIFFER from
-    ``core.vol.vrp.VRP_DEFAULTS_VOL_PTS`` (latter is older heuristic), so
-    the table can't be removed by aliasing onto the Python dict — they're
-    distinct sources of truth that will be reconciled in Theme 4 (config
-    table unification)."""
-
-    __tablename__ = "vrp_default_curve"
-    __table_args__ = (
-        UniqueConstraint("regime", "tenor", name="uq_vrp_table_default_regime_tenor"),
-        CheckConstraint(
-            "regime IN ('calm','stressed','pre_event')",
-            name="ck_vrp_table_default_regime",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    regime: Mapped[str] = mapped_column(String(20), nullable=False)
-    tenor: Mapped[str] = mapped_column(String(5), nullable=False)
-    vrp_vol_pts: Mapped[Decimal] = mapped_column(Numeric(8, 4), nullable=False)
-    calibration_method: Mapped[str] = mapped_column(
-        String(40), nullable=False, default="hardcoded_placeholder"
-    )
-    calibration_date: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    notes: Mapped[str | None] = mapped_column(String(500))
+# ``vrp_default_curve`` table (ORM ``VrpTableDefault``) was dropped in
+# migration 038. Its 18 placeholder rows (one per regime × tenor) were
+# bit-for-bit identical to ``core.vol.vrp.VRP_DEFAULTS_VOL_PTS`` (the
+# alembic 010 seed populated the table from that dict) and never
+# recalibrated since. vol-engine + cockpit both now read the dict
+# directly — single source of truth.
 
 
 class VolConfig(Base):
@@ -377,7 +337,7 @@ class VolConfig(Base):
     Pydantic field does NOT require an Alembic migration.
     """
 
-    __tablename__ = "vol_engine_config"
+    __tablename__ = "config_vol_engine"  # renamed in migration 040 (config_* prefix alignment)
 
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
     config: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
@@ -401,7 +361,7 @@ _DELTAS = ("10dp", "25dp", "atm", "25dc", "10dc")
 class SurfaceSnapshotHourly(Base):
     """30-dim hourly snapshot for PCA fit (6 tenors × 5 deltas)."""
 
-    __tablename__ = "surface_pca_snapshot_history"  # renamed in migration 023
+    __tablename__ = "pca_surface_snapshot_history"  # renamed 023 → 036 (pca_* prefix alignment)
     __table_args__ = (
         UniqueConstraint("symbol", "timestamp", name="uq_surface_snap_hourly_symbol_ts"),
     )
@@ -488,54 +448,19 @@ class PcaSignal(Base):
     recommended_structure: Mapped[str | None] = mapped_column(String(80))
 
 
-class SignalRecommendationsMap(Base):
-    """Lookup PC × CHEAP/EXPENSIVE → structure recommandée (6 rows seed)."""
-
-    __tablename__ = "pca_structure_recommendation"
-    __table_args__ = (
-        UniqueConstraint(
-            "pc_id", "signal_label", "is_active",
-            name="uq_signal_rec_map_pc_label_active",
-        ),
-        CheckConstraint(
-            "signal_label IN ('CHEAP','EXPENSIVE')",
-            name="ck_signal_rec_map_label",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    pc_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    signal_label: Mapped[str] = mapped_column(String(15), nullable=False)
-    recommended_structure: Mapped[str] = mapped_column(String(60), nullable=False)
-    default_tenor: Mapped[str] = mapped_column(String(10), nullable=False)
-    description: Mapped[str | None] = mapped_column(String(200))
-    rationale: Mapped[str | None] = mapped_column(String(500))
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+# ``pca_structure_recommendation`` (ORM ``SignalRecommendationsMap``)
+# was dropped in migration 039. The (pc_id, signal_label) → structure
+# mapping lives in ``core.pca_recommendations.PCA_RECOMMENDATIONS``.
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Step 3 — Trade preview (cf. STEP3_TRADE_PREVIEW.md §5)
+# Step 3 — Trade preview
 # ──────────────────────────────────────────────────────────────────────
 
 
-class StructureDefinition(Base):
-    """Catalogue des structures supportées (6 rows seed)."""
-
-    __tablename__ = "structure_definition_ref"  # renamed in migration 025
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    structure_type: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
-    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
-    leg_template: Mapped[list] = mapped_column(JSONB_PORTABLE, nullable=False)
-    min_legs: Mapped[int] = mapped_column(Integer, nullable=False)
-    max_legs: Mapped[int] = mapped_column(Integer, nullable=False)
-    requires_delta_hedge: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    typical_vega_sign: Mapped[str] = mapped_column(String(10), nullable=False)
-    typical_gamma_sign: Mapped[str] = mapped_column(String(10), nullable=False)
-    typical_theta_sign: Mapped[str] = mapped_column(String(10), nullable=False)
-    description: Mapped[str | None] = mapped_column(String(300))
-    rationale_for_pc: Mapped[str | None] = mapped_column(String(300))
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+# ``structure_definition_ref`` (ORM ``StructureDefinition``) was dropped
+# in migration 039. The 6 catalog structures live as entries marked
+# ``in_catalog=True`` in ``core.trade_preview.TEMPLATES``.
 
 
 class TradePreviewRow(Base):
@@ -573,7 +498,7 @@ class TradePreviewRow(Base):
 class BookStateSnapshot(Base):
     """État aggregé du book (1 row is_current=true par symbol + history)."""
 
-    __tablename__ = "book_state_snapshot"  # renamed in migration 026 (Theme 2)
+    __tablename__ = "book_state_snapshot_history"  # renamed 026 → 040 (_history suffix alignment)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -592,8 +517,9 @@ class BookStateSnapshot(Base):
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
-# RiskLimit + DeltaHedgeConfig folded into `app_config_scalar` in migration 024
-# (Theme 4). Schemas were strictly identical (name/value(FLOAT)/unit/description/
+# RiskLimit + DeltaHedgeConfig folded into ``config_scalar`` (originally
+# ``app_config_scalar``, renamed in migration 037). Schemas were strictly
+# identical (name/value(FLOAT)/unit/description/
 # is_active) so they're unified under a `namespace` discriminator. Access via
 # `AppConfigScalar` with `namespace='risk'` / `namespace='delta_hedge'`.
 
@@ -616,9 +542,9 @@ class AppConfigScalar(Base):
     its specialised shape because of Pydantic schema + admin UI).
     """
 
-    __tablename__ = "app_config_scalar"
+    __tablename__ = "config_scalar"  # renamed from app_config_scalar in migration 037
     __table_args__ = (
-        UniqueConstraint("namespace", "name", name="uq_app_config_scalar_ns_name"),
+        UniqueConstraint("namespace", "name", name="uq_config_scalar_ns_name"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -828,7 +754,7 @@ class IbConnectionState(Base):
     """Singleton broker connectivity row. UPDATE in place ; never INSERT a new
     row past the migration seed. Heartbeat loop in execution-engine populates."""
 
-    __tablename__ = "ib_session_state"  # renamed in migration 024 (state semantics)
+    __tablename__ = "runtime_ib_session"  # 024 → 037 (config_*) → 041 (runtime_* — semantic correction)
     __table_args__ = (
         CheckConstraint(
             "account_type IS NULL OR account_type IN ('paper','live')",
@@ -984,7 +910,7 @@ class ExitAlert(Base):
 class ExitRulesConfig(Base):
     """Hot-reloadable exit rule params."""
 
-    __tablename__ = "exit_rules_config"
+    __tablename__ = "config_exit_rules"  # renamed in migration 040 (config_* prefix alignment)
     __table_args__ = (
         CheckConstraint("priority BETWEEN 1 AND 10", name="ck_exit_rules_priority"),
     )

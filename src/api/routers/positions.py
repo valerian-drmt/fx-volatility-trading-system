@@ -421,8 +421,9 @@ async def list_exit_rules_config(db: DbDep) -> list[dict[str, Any]]:
 
 @router.get("/delta-hedge-config")
 async def list_delta_hedge_config(db: DbDep) -> list[dict[str, Any]]:
-    # Theme 4 migration 024 : delta_hedge_config folded into app_config_scalar
-    # with namespace='delta_hedge'. Response shape preserved for API stability.
+    # delta_hedge_config rows folded into config_scalar with
+    # namespace='delta_hedge' (migration 024, table renamed 037).
+    # Response shape preserved for API stability.
     rows = (await db.execute(
         select(AppConfigScalar).where(AppConfigScalar.namespace == "delta_hedge")
     )).scalars().all()

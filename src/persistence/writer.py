@@ -61,8 +61,8 @@ TABLE_MODELS: dict[str, type[Base]] = {
     "pca_signal_history": PcaSignal,                          # renamed in migration 023
     "open_position": OpenPosition,                                # renamed in migration 033
     "open_position_history": OpenPositionHistory,           # renamed in migration 033
-    "regime_snapshot": RegimeSnapshot,                        # renamed in migration 023
-    "surface_pca_snapshot_history": SurfaceSnapshotHourly,    # renamed in migration 023
+    "regime_snapshot_history": RegimeSnapshot,                # renamed in migration 040
+    "pca_surface_snapshot_history": SurfaceSnapshotHourly,    # renamed in migration 036
     "vol_surface_history": VolSurface,                        # renamed in migration 023
 }
 
@@ -81,7 +81,7 @@ IDEMPOTENT_TABLES: dict[str, list[str]] = {
     "vol_surface_history": ["timestamp", "underlying"],                                   # renamed
     "open_position": ["id"],                                                              # renamed in 033
     "feature_history": ["symbol", "timestamp"],                                           # renamed
-    "surface_pca_snapshot_history": ["symbol", "timestamp"],                              # renamed
+    "pca_surface_snapshot_history": ["symbol", "timestamp"],                              # renamed in migration 036
     "pca_signal_history": ["symbol", "timestamp", "pca_model_id", "pc_id"],               # renamed
 }
 

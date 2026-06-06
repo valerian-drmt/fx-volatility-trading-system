@@ -559,7 +559,7 @@ class VolEngine:
             # Step 1 : persist regime_snapshot + feature_history.
             if regime_rows is not None:
                 await publish_db_event(
-                    self.redis, table="regime_snapshot",  # renamed in migration 023
+                    self.redis, table="regime_snapshot_history",  # renamed in migration 040
                     payload={**regime_rows["snapshot_row"], "timestamp": ts_iso},
                 )
                 await publish_db_event(
@@ -575,7 +575,7 @@ class VolEngine:
                     )
             if hourly_snapshot is not None:
                 await publish_db_event(
-                    self.redis, table="surface_pca_snapshot_history",  # renamed in migration 023
+                    self.redis, table="pca_surface_snapshot_history",  # renamed in migration 036
                     payload=hourly_snapshot,
                 )
         except Exception:
@@ -699,11 +699,11 @@ class VolEngine:
 
             from sqlalchemy import select
 
+            from core.vol.vrp import VRP_DEFAULTS_VOL_PTS
             from persistence.db import get_sessionmaker
             from persistence.models import (
                 Event,
                 FeatureHistory,
-                VrpTableDefault,
             )
 
             surface["_symbol"] = self.symbol
@@ -769,10 +769,14 @@ class VolEngine:
                         "days_remaining": round(days, 4),
                     }
 
-                vrp_rows = (await session.execute(
-                    select(VrpTableDefault.regime, VrpTableDefault.tenor, VrpTableDefault.vrp_vol_pts)
-                )).all()
-                vrp_lookup = {(r[0], r[1]): float(r[2]) for r in vrp_rows}
+            # VRP defaults sourced from ``core.vol.vrp.VRP_DEFAULTS_VOL_PTS`` —
+            # single source of truth (was a DB table mirror until
+            # migration 038 dropped it as resolved tech debt).
+            vrp_lookup = {
+                (regime, tenor): pts
+                for regime, by_tenor in VRP_DEFAULTS_VOL_PTS.items()
+                for tenor, pts in by_tenor.items()
+            }
 
             await self._publish_progress("regime_features", "bucket_signal")
             from core.vol.regime_engine import compute_regime_snapshot
@@ -938,6 +942,7 @@ class VolEngine:
             import numpy as np
             from sqlalchemy import desc, select
 
+            from core.pca_recommendations import recommendation_label
             from core.vol.pca_engine import (
                 DELTAS,
                 TENORS,
@@ -954,7 +959,6 @@ class VolEngine:
             from persistence.models import (
                 PcaModel,
                 PcaSignal,
-                SignalRecommendationsMap,
                 SurfaceSnapshotHourly,
             )
 
@@ -998,14 +1002,15 @@ class VolEngine:
                         hist_raw[r[0]].append(float(r[1]))
                         hist_z[r[0]].append(float(r[2]))
 
-                rec_rows = (await session.execute(
-                    select(
-                        SignalRecommendationsMap.pc_id, SignalRecommendationsMap.signal_label,
-                        SignalRecommendationsMap.recommended_structure,
-                        SignalRecommendationsMap.default_tenor,
-                    ).where(SignalRecommendationsMap.is_active.is_(True))
-                )).all()
-                rec_map = {(r[0], r[1]): f"{r[2]}_{r[3]}" for r in rec_rows}
+                # Sourced from core.pca_recommendations (was the
+                # ``pca_structure_recommendation`` table until migration
+                # 039 dropped that mirror).
+                rec_map: dict[tuple[int, str], str] = {}
+                for pc in (1, 2, 3):
+                    for lab in ("CHEAP", "EXPENSIVE"):
+                        label_str = recommendation_label(pc, lab)
+                        if label_str is not None:
+                            rec_map[(pc, lab)] = label_str
 
                 # PC3 sub-signals : skew + convex history from snapshot_hourly.
                 # We cap at 200 latest rows — rolling z-score window, not the

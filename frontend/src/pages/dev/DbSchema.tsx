@@ -134,23 +134,27 @@ const DOMAINS: Array<{
 }> = [
   {
     key: "trading", label: "Trading",  color: "#7af",
-    match: (n) => /^(open_position|booked_position|account_history|book_state|trade_|hedge_|exit_|structure_|package)/.test(n),
+    match: (n) => /^(open_position|booked_position|account_history|book_state|trade_|hedge_|exit_(?!rules_)|structure_|package)/.test(n),
   },
   {
     key: "vol",     label: "Volatility", color: "#ec6",
-    match: (n) => /^vol_/.test(n),
+    match: (n) => /^(vol_)/.test(n),
   },
   {
     key: "pca",     label: "PCA",       color: "#c8f",
-    match: (n) => /^(pca_|surface_pca)/.test(n),
+    match: (n) => /^pca_/.test(n),
   },
   {
     key: "regime",  label: "Regime",    color: "#6c6",
-    match: (n) => /^(regime_|feature_|event_|vrp_)/.test(n),
+    match: (n) => /^(regime_|feature_|event_)/.test(n),
   },
   {
     key: "config",  label: "Config",    color: "#fc6",
-    match: (n) => /^(app_config|exit_rules|ib_session)/.test(n),
+    match: (n) => /^config_/.test(n),
+  },
+  {
+    key: "runtime", label: "Runtime",   color: "#f9a",
+    match: (n) => /^runtime_/.test(n),
   },
 ];
 const DEFAULT_DOMAIN = { key: "other", label: "Other", color: "#888" };

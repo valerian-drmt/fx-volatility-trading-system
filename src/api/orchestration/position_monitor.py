@@ -564,8 +564,9 @@ class PositionMonitorScheduler:
         return out
 
     async def _load_hedge_config(self, db: AsyncSession) -> dict[str, float]:
-        # Theme 4 migration 024 : delta_hedge_config folded into
-        # app_config_scalar with namespace='delta_hedge'.
+        # delta_hedge_config rows folded into config_scalar with
+        # namespace='delta_hedge' (migration 024 ; 037 renamed
+        # app_config_scalar → config_scalar for prefix alignment).
         rows = (await db.execute(
             select(AppConfigScalar).where(AppConfigScalar.namespace == "delta_hedge")
         )).scalars().all()

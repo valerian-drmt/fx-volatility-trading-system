@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI):
             if current.version <= 1 and current.config.model_dump() == VolTradingConfig().model_dump():
                 # Seed only if still on the initial empty placeholder row.
                 empty_check_row = (await db.execute(
-                    text("SELECT config FROM vol_engine_config WHERE version=1")
+                    text("SELECT config FROM config_vol_engine WHERE version=1")
                 )).scalar_one_or_none()
                 if empty_check_row in (None, {}, "{}"):
                     await update(

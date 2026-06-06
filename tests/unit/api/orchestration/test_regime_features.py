@@ -61,20 +61,9 @@ async def _seed_history(db, *, symbol="EURUSD", n_history=40) -> datetime:
     return ts_latest
 
 
-async def _seed_regime_lookup(db) -> None:
-    from persistence.models import RegimeLookup
-    db.add(RegimeLookup(
-        pattern="(0,0,-)", regime_id=9, regime_name="stress_local_naissant",
-        family="B_normal_vol", action_default="size_reduce_monitor",
-        asymmetry_note="transition_to_stressed", intensity_count=0,
-    ))
-    db.add(RegimeLookup(
-        pattern="unmapped_extreme", regime_id=99, regime_name="unmapped_extreme",
-        family="Z_fallback",
-        action_default="observation_only_log_for_review",
-        asymmetry_note="tail_combination_unseen_in_15_base_regimes",
-        intensity_count=0,
-    ))
+# Pattern → regime lookup used to be DB-seeded ; since migration 039
+# it lives in ``core.regime_patterns.REGIME_PATTERNS`` and is loaded at
+# module import time. No fixture seeding needed.
 
 
 async def test_build_features_payload_full_shape():
@@ -84,7 +73,6 @@ async def test_build_features_payload_full_shape():
     try:
         async with maker() as db:
             await _seed_history(db)
-            await _seed_regime_lookup(db)
             await db.commit()
         async with maker() as db:
             payload = await build_features_payload(db, symbol="EURUSD")
@@ -126,7 +114,6 @@ async def test_dominant_feature_is_argmax_abs_z():
     try:
         async with maker() as db:
             await _seed_history(db)
-            await _seed_regime_lookup(db)
             await db.commit()
         async with maker() as db:
             payload = await build_features_payload(db, symbol="EURUSD")
@@ -146,7 +133,6 @@ async def test_action_includes_dampener_modifier():
     try:
         async with maker() as db:
             await _seed_history(db)
-            await _seed_regime_lookup(db)
             # Override : flip event_dampener on the latest row.
             from sqlalchemy import desc, select, update
             row_id = (await db.execute(
