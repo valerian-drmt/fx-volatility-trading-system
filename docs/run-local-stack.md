@@ -121,7 +121,7 @@ Ce que ça fait, dans l'ordre :
 |---|---|---|
 | 1 | Vérifie `docker`, `aws`, `python`, `git` sur le PATH | — |
 | 2 | `git pull --ff-only origin main` (si branche = main) | `-NoPull` |
-| 3 | Crée `.venv` + `pip install -r requirements.txt` si absent | `-RecreateVenv` pour forcer |
+| 3 | Crée `.venv` + `pip install -e ".[dev,api,quant,ib,writer]"` si absent | `-RecreateVenv` pour forcer |
 | 4 | Charge les 5 secrets depuis SSM en `$env:*` | — |
 | 5 | `docker compose up -d --build` (profils `engines` + `ib`) | `-NoBuild` |
 | 6 | Attend Postgres `healthy` (max 60s) | — |
@@ -139,7 +139,7 @@ Durée typique :
 
 ```powershell
 .\scripts\ops\start_stack.ps1 -NoPull -NoBuild   # quick restart (~30s)
-.\scripts\ops\start_stack.ps1 -RecreateVenv      # rebuild venv (après requirements.txt change)
+.\scripts\ops\start_stack.ps1 -RecreateVenv      # rebuild venv (après pyproject.toml change)
 .\scripts\ops\start_stack.ps1 -NoTabs            # CI / scripting / pas de WT
 ```
 
@@ -210,19 +210,16 @@ Si un secret apparaît accidentellement quelque part :
 |---|---|
 | `start_stack.ps1` | **THE one-shot command** ci-dessus |
 | `load_secrets.ps1` | Appelé par `start_stack.ps1` — fetch SSM → `$env:*` |
-| `load_secrets.sh` | **Prod EC2** : appelé par `infrastructure/ec2/fxvol-compose.service` (ExecStartPre) |
+| `load_secrets.sh` | Linux equivalent of `load_secrets.ps1`. Source it in a bash session : `. scripts/ops/load_secrets.sh` |
 | `.claude/hooks/block_secrets.ps1` | Hook Claude Code (PreToolUse) qui bloque les commandes exposant un secret. **Vit dans `.claude/`** (gitignored) car c'est de la config harness Claude, pas un script utilisateur. |
 | `db_apply.py` / `db_rollback.py` / `db_new_revision.py` / `db_reset.py` | Wrappers Alembic (pour usage hors container, ex: créer une nouvelle migration en local) |
 | `dump_openapi.py` | Régénère `frontend/src/api/schema.d.ts` après changement Pydantic |
-
-**Supprimés au 28/04** : `up.{ps1,sh}` (legacy `.env`-based, remplacés par `start_stack.ps1`), `down.{ps1,sh}` (absorbés en `start_stack.ps1 -Down`), `run_api.{ps1,sh}` (dev-out-of-docker, useless une fois `api` containerisé), `put_secrets.ps1` (édition des secrets via console AWS uniquement, pour éviter les fausses manipulations CLI).
 
 ---
 
 ## Références
 
-- AWS prep : `infrastructure/aws/SETUP.md` (KMS+SSM+IAM) + `infrastructure/aws/DEPLOYMENT_PREP.md` (EC2 prep)
-- État AWS courant : `infrastructure/aws/STATE.md`
-- Architecture cible : `releases/architecture_finale_project/00-architecture-main.md`
-- Schéma Postgres : `docs/schémas/postgres-architecture.md`
-- API endpoints : `docs/API_ENDPOINTS.md`
+- AWS prep : `infrastructure/aws/` (KMS+SSM+IAM setup, EC2 prep)
+- Architecture cible : repo root `README.md` + in-app **Stack** dev tab (17 containers, wiring)
+- Schéma DB live : in-app **DB Schema** dev tab (introspects `Base.metadata` — no static doc to drift)
+- API endpoints : `http://localhost/docs` (FastAPI Swagger) + generated `frontend/src/api/schema.d.ts`

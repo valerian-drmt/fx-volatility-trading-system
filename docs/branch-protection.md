@@ -2,8 +2,6 @@
 
 GitHub branch protection rules to enforce on `main`. Apply via **Settings > Branches > Add branch ruleset** (or legacy **Branch protection rules**) targeting `main`.
 
-This checklist is the R0 baseline; additional status checks are added at each release (see "Future status checks" at the bottom).
-
 ## Required settings
 
 - [x] **Restrict creations** — only collaborators can push new branches matching a protected pattern
@@ -13,8 +11,15 @@ This checklist is the R0 baseline; additional status checks are added at each re
   - [x] Require review from Code Owners — off for now (no `CODEOWNERS` file yet)
 - [x] **Require status checks to pass before merging**
   - [x] Require branches to be up to date before merging
-  - Required checks (R0 baseline):
-    - [x] `compileall + ruff + pytest` (job `quality` from `.github/workflows/ci.yml`)
+  - Required checks (current — keep in sync with `.github/workflows/*.yml`) :
+    - [x] `compileall + ruff + pytest` (job `quality` in `ci.yml`)
+    - [x] `frontend pipeline (openapi drift + lint + vitest + build artifact)` (job `frontend` in `ci.yml`)
+    - [x] `nginx -t syntax + pytest parse` (job `nginx-config` in `ci.yml`)
+    - [x] `frontend Playwright e2e` (job `frontend-e2e` in `ci.yml`)
+    - [x] `Playwright e2e against ephemeral docker-compose stack` (job `frontend-e2e-compose` in `ci.yml`)
+    - [x] `build frontend docker image` (job `frontend-image` in `ci.yml`)
+    - [x] `alembic + writer + redis bus live tests` (job `live-integration` in `ci.yml`)
+    - [x] `CodeQL (python)` + `CodeQL (javascript-typescript)` (`codeql.yml`)
 - [x] **Require conversation resolution before merging**
 - [x] **Require linear history** — prevents merge commits, forces squash or rebase merge
 - [x] **Block force pushes**
@@ -23,7 +28,7 @@ This checklist is the R0 baseline; additional status checks are added at each re
 
 ## Repository-wide settings
 
-Go to **Settings > General > Pull Requests**:
+Go to **Settings > General > Pull Requests** :
 
 - [x] **Allow squash merging** — enabled (default)
 - [ ] **Allow merge commits** — disabled (combined with "Require linear history")
@@ -32,30 +37,14 @@ Go to **Settings > General > Pull Requests**:
 
 ## Default merge strategy
 
-- **Squash and merge** is the default. See `releases/GIT_WORKFLOW.md` for rationale (linear history, one commit per PR on `main`).
-
-## Future status checks (added at their respective releases)
-
-| Release | New required check |
-|---|---|
-| R5 | `frontend-lint`, `frontend-test`, `openapi-typescript-check` |
-| R6 | `docker-build`, `docker-compose-up` |
-| R8 | `playwright-e2e`, `codeql-python`, `codeql-javascript` |
-
-Update the "Required status checks" list on the branch ruleset at each release that adds a new workflow job.
+**Squash and merge** is the default — linear history on `main`, one commit per PR. Rationale + full git workflow live in `releases/git_management/WORKFLOW.md` (single source of truth).
 
 ## Verifying the rules
 
-From the command line (with `gh` authenticated):
+From the command line (with `gh` authenticated) :
 
 ```bash
 gh api repos/:owner/:repo/branches/main/protection
 ```
 
 Should return a JSON describing the enforced rules. A `404 Not Found` means the branch is unprotected.
-
-## Related documents
-
-- Branching and commit strategy: `releases/GIT_WORKFLOW.md`
-- Commit message conventions: `releases/COMMIT_METHODOLOGY.md`
-- Release roadmap: `releases/README.md`

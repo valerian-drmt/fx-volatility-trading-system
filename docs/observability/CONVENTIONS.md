@@ -1,7 +1,8 @@
 # Observability conventions
 
-Naming + cardinality rules for metrics, log fields, and (later) spans.
-Spec : `docs/LGTM_IMPLEMENTATION_SPEC.md` § 3.
+Naming + cardinality rules for metrics, log fields, and spans. The
+canonical definitions live in `src/shared/observability.py` — the
+tables below mirror what's instantiated there.
 
 ---
 
