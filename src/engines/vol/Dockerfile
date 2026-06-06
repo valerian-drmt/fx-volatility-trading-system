@@ -1,5 +1,6 @@
-# Vol-engine service — installs the [quant] extra (transitively pulls [ib])
-# for GARCH (arch) + GMM regime detection (scikit-learn) on top of the IB stack.
+# Vol-engine service — installs the [quant] extra (transitively pulls
+# [ib]) for GARCH (arch) + GMM regime detection (scikit-learn) on top
+# of the IB stack.
 
 ARG PYTHON_IMAGE=python:3.11-slim
 
@@ -12,16 +13,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# arch ships manylinux wheels for 3.11 ; build-essential is a belt.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# arch ships wheels for 3.11 on manylinux → build-essential is a belt.
-# pyproject.toml + src/ are needed together because PEP 517 resolves the
-# package layout from src/ when installing fxvol[quant].
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 RUN pip install --upgrade pip && pip install ".[quant]"
+
+# Backfill scripts (one-shot data seeding, e.g. backfill_iv_history_for_gmm.py).
+COPY scripts/ ./scripts/
 
 RUN useradd -m -u 1002 fxvol && chown -R fxvol:fxvol /app
 USER fxvol
