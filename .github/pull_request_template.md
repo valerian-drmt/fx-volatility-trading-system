@@ -16,8 +16,9 @@
 ## Tests effectués
 
 - [ ] `python -m pytest -m "not integration"` OK
-- [ ] `python -m ruff check src tests app.py` OK
-- [ ] `python -m compileall -q src app.py` OK
+- [ ] `python -m ruff check src tests` OK
+- [ ] `python -m compileall -q src` OK
+- [ ] `PYTHONPATH=src lint-imports` OK (architecture contracts)
 - [ ] Tests manuels : <scénario>
 - [ ] (si frontend) `npm run test` + `npm run test:e2e` OK
 

@@ -94,11 +94,13 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 
-  # R8 PR #2 : build + push the four standalone engine containers introduced
-  # in R7. A matrix factorises the four identical jobs (only the service
-  # name, Dockerfile path and buildx cache scope differ). Each one publishes
-  # two tags — `sha-<commit>` for reproducible prod pulls and `latest` for
-  # convenience — under the same ghcr.io namespace as api + frontend.
+  # Build + push the five standalone engine containers. A matrix
+  # factorises the otherwise-identical jobs (only the service name,
+  # Dockerfile path and buildx cache scope differ). Each one publishes
+  # two tags — `sha-<commit>` for reproducible prod pulls and `latest`
+  # for convenience — under the same ghcr.io namespace as api +
+  # frontend. The execution engine ships from infrastructure/docker/
+  # instead of co-located with its source (legacy from R7 split).
   build-engines:
     name: build + push fx-options-${{ matrix.service.image }}
     runs-on: ubuntu-latest
@@ -108,13 +110,15 @@ jobs:
       matrix:
         service:
           - image: market-data
-            dockerfile: services/market_data/Dockerfile
+            dockerfile: src/engines/market_data/Dockerfile
           - image: vol-engine
-            dockerfile: services/vol/Dockerfile
-          - image: risk
-            dockerfile: services/risk/Dockerfile
+            dockerfile: src/engines/vol/Dockerfile
+          - image: risk-engine
+            dockerfile: src/engines/risk/Dockerfile
           - image: db-writer
-            dockerfile: services/db_writer/Dockerfile
+            dockerfile: src/engines/db_writer/Dockerfile
+          - image: execution
+            dockerfile: infrastructure/docker/execution.Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4

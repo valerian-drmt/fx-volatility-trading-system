@@ -53,9 +53,13 @@ jobs:
 
       - name: Install Python dependencies (for CodeQL autobuild)
         if: matrix.setup == 'python'
+        # Project's single source of truth = pyproject.toml. The api +
+        # quant extras pull in enough of the codebase (FastAPI app, ORM,
+        # vol/risk engines) for CodeQL's autobuild step to resolve all
+        # imports it scans.
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -e ".[api,quant]"
 
       - name: Set up Node 20
         if: matrix.setup == 'node'

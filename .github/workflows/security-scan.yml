@@ -36,8 +36,9 @@ jobs:
           - fx-options-frontend
           - fx-options-market-data
           - fx-options-vol-engine
-          - fx-options-risk
+          - fx-options-risk-engine
           - fx-options-db-writer
+          - fx-options-execution
 
     steps:
       - name: Checkout
