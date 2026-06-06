@@ -1,9 +1,6 @@
 # `tests/` — structure et conventions
 
 > Doc de référence pour savoir **où mettre un test** et **comment exécuter**.
-> Posée 28/04/2026 (R9 sandbox), mise à jour post-refactor 01/05/2026
-> (services → engines, api/services → api/orchestration, api/models →
-> api/schemas).
 
 ---
 
@@ -132,42 +129,36 @@ from tests.fixtures.positions import make_long_call
 
 ---
 
-## `tests/old/` — quarantine pré-migration
+## `tests/old/` — quarantine résiduelle
 
-Tous les tests historiques sont là en attendant d'être déplacés. Trois actions possibles par fichier :
+Vidée lors du cleanup repo (2026-06-06). Seul **`test_nginx_config_syntax.py`**
+y reste : il est exécuté par le job `nginx-config` de `.github/workflows/ci.yml`
+qui pointe explicitement sur ce path (offline parse-level validation des
+configs nginx, complément du `nginx -t` live).
 
-1. **Promote en unit** : si pas d'I/O → `git mv tests/old/test_X.py tests/unit/<module>/`
-2. **Promote en integration** : si I/O → `git mv tests/old/test_X.py tests/integration/<pipeline>/`
-3. **Drop** : si test obsolète/redondant → supprimer
-
-À faire **post-R8** (PR dédiée) pour ne pas casser les rebases en cours dans la queue PLAYBOOK.
+À déplacer dans `tests/unit/infrastructure/` lors d'une PR dédiée si on
+décide de cataloguer aussi les tests de config infra. Pour l'instant le
+status quo limite le changement de surface CI.
 
 ---
 
-## Configuration pytest (à poser plus tard)
+## Configuration pytest
+
+Vit dans `pyproject.toml § [tool.pytest.ini_options]` (single source of
+truth, cf. CLAUDE.md). Markers et `testpaths` y sont déjà définis :
 
 ```toml
-# pyproject.toml ou pytest.ini
-
 [tool.pytest.ini_options]
-testpaths = ["tests/unit", "tests/integration"]   # ignore tests/old
-addopts = "--strict-markers -ra"
+testpaths = ["tests/unit", "tests/integration"]
 markers = [
-    "integration: requires real Postgres/Redis/IB-stub (slow)",
-    "live_ib: requires real IB Gateway connection (manual only, IB_RUN_INTEGRATION=1)",
+    "integration: requires real IB Gateway (IB_RUN_INTEGRATION=1)",
+    "db_integration: requires real Postgres (DB_RUN_INTEGRATION=1)",
+    "redis_integration: requires real Redis (REDIS_RUN_INTEGRATION=1)",
 ]
 ```
 
-CI split (`.github/workflows/build.yml` à updater) :
-
-```yaml
-- name: Unit tests (fast)
-  run: python -m pytest tests/unit -v
-
-- name: Integration tests (slow)
-  if: github.ref == 'refs/heads/main' || contains(github.event.pull_request.labels.*.name, 'run-integration')
-  run: python -m pytest tests/integration -v -m integration
-```
+CI exerce ces markers dans `.github/workflows/ci.yml` (job
+`live-integration` pour db + redis, job `integration` manuel pour IB).
 
 ---
 
