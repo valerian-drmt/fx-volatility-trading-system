@@ -159,14 +159,18 @@ class AccountSnap(Base):
         DateTime(timezone=True), nullable=False
     )
 
+    # Globaux (en currency de base du compte — typiquement EUR)
     net_liq_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     cash_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
-    buying_power_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
-    available_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
-
     unrealized_pnl_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
-    realized_pnl_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
-    gross_position_value_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    accrued_cash: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    gross_position_value: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+
+    # Margin / liquidity (IB account summary tags)
+    init_margin_req: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    maint_margin_req: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    excess_liquidity: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    cushion: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
 
     currencies: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
 
@@ -188,8 +192,6 @@ class VolSurface(Base):
     forward: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
 
     surface_data: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
-    fair_vol_data: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
-    rv_data: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
 
     scan_duration_s: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
 
@@ -220,6 +222,8 @@ class Signal(Base):
     signal_type: Mapped[str] = mapped_column(String(15), nullable=False)
 
     rv: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
+    sigma_fair_p: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
+    vrp_vol_pts: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
 
 
 class BacktestRun(Base):
