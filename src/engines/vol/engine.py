@@ -553,9 +553,9 @@ class VolEngine:
                 },
             )
             # SVI / SSVI params live in vol_surface_history.surface_data
-            # (_svi / _ssvi). Dedicated svi_params / ssvi_params dropped (R9).
-            # Per-tenor pricing signals dropped — vol_pricing_signal_snapshot
-            # table removed when CHEAP/FAIR/EXPENSIVE was retired in R9.
+            # (_svi / _ssvi) ; dedicated svi_params / ssvi_params tables
+            # are gone. Per-tenor pricing signals also gone with the
+            # vol_pricing_signal_snapshot table.
             # Step 1 : persist regime_snapshot + feature_history.
             if regime_rows is not None:
                 await publish_db_event(

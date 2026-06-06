@@ -1,10 +1,9 @@
 """Publisher helper : engines push DB events onto a Redis channel, the
 db-writer subscribes and batches them into Postgres.
 
-R2 routed DB writes through an in-process ``asyncio.Queue``. R7 breaks
-that up — engines run in separate containers, so the "queue" is now a
-Redis pub/sub channel. Payload shape is unchanged (table name + row
-dict) so ``db_writer`` can keep the R2 bulk-insert logic verbatim.
+The "queue" between engines and Postgres is a Redis pub/sub channel
+(engines run in separate containers). Payload shape : ``(table_name,
+row_dict)`` so ``db_writer`` can keep its bulk-insert logic unchanged.
 """
 from __future__ import annotations
 

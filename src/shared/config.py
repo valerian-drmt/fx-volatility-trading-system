@@ -41,8 +41,8 @@ class Settings(BaseSettings):
     # Redis : shared bus + heartbeat + db-writer queue.
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
 
-    # IB Gateway. Defaults mirror the host-side PyQt config so the same env
-    # file works in both modes — containers override IB_HOST=ib-gateway.
+    # IB Gateway. Defaults target a host-side gateway ; containers
+    # override ``IB_HOST=ib-gateway`` via docker-compose env.
     IB_HOST: str = Field(default="127.0.0.1")
     IB_PORT: int = Field(default=4002)
     IB_CLIENT_ID: int = Field(default=1)

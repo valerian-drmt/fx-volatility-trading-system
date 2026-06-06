@@ -5,11 +5,9 @@ and reusable across engines. Each function maps one engine-native dict
 shape (or list of them) to a dict ready to enqueue on the db-events
 Redis channel.
 
-Status : these helpers were authored in R2 for the PyQt Controller
-that was removed in R8. The R9 engines currently build dict payloads
-inline. They are kept here as a reference implementation for when
-a future cleanup unifies the engines' dict-building under a single
-typed surface.
+Status : reference implementation. The engines currently build their
+dict payloads inline ; these helpers are the canonical typed surface
+to migrate towards when the engines' dict-building is unified.
 
 Scope :
     - account_snaps      (from MarketDataEngine portfolio_payload)

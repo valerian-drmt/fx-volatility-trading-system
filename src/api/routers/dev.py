@@ -1,8 +1,9 @@
-"""Dev console endpoints — read-only inspection of Redis, engines, IB.
+"""Dev console endpoints — read-only inspection of Redis, engines, IB,
+DB schema, alembic migrations, Loki logs.
 
-R9 sandbox spike. **NOT prod-ready** : no auth, hardcoded key whitelist, etc.
-A feature flag (`VITE_DEV_TABS=false` côté frontend, allow-list `/dev/*` bloqué
-côté nginx) sera ajoutée avant le déploiement EC2.
+**NOT prod-ready** : no auth, hardcoded Redis-key whitelist. A feature
+flag (``VITE_DEV_TABS=false`` côté frontend + allow-list ``/dev/*``
+bloqué côté nginx) doit être posée avant tout déploiement public.
 """
 from __future__ import annotations
 

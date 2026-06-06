@@ -23,8 +23,7 @@ wins over the monolith :
 - ``asyncio.Semaphore(3)`` scans 3 tenors in parallel instead of 6
   sequential — typical speedup on paper gateway : 24-30s -> 8-10s.
 
-The monolith's Qt-gated design has been dropped in favour of pure
-asyncio, which is what the R7 service expects anyway.
+Pure asyncio — the legacy Qt-gated design is gone.
 """
 from __future__ import annotations
 

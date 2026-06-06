@@ -1,7 +1,8 @@
 """IB Gateway connection with exponential backoff.
 
-Every R7 service container opens its own IB connection (distinct
-``client_id`` per service : 1=market-data, 2=vol-engine, 3=risk).
+Every engine container opens its own IB connection (distinct
+``client_id`` per service : 1=market-data, 2=vol-engine, 3=risk,
+5=execution-engine).
 If the Gateway is down at startup — common during the 23:59 daily
 restart window — the service retries with an exponential backoff capped
 at 60 seconds, yielding control via ``asyncio.sleep`` so the event loop

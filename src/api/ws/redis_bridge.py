@@ -12,10 +12,11 @@ from bus import channels
 
 logger = logging.getLogger("api.ws.bridge")
 
-# Channels forwarded from Redis to WebSocket clients. Matches the producers
-# in R3 PR #3 (publish_tick, publish_account, publish_vol_update,
-# publish_risk_update) and the system_alerts channel reserved for engine
-# errors. Keep this list in sync with bus.channels.
+# Channels forwarded from Redis to WebSocket clients. Matches the
+# publish_* helpers in ``bus.publisher`` (publish_tick, publish_account,
+# publish_vol_update, publish_risk_update) and the ``system_alerts``
+# channel reserved for engine errors. Keep this list in sync with
+# ``bus.channels``.
 _FORWARDED: tuple[str, ...] = (
     channels.CH_TICKS,
     channels.CH_ACCOUNT,

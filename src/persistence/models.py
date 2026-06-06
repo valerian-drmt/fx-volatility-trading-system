@@ -1,21 +1,8 @@
 """SQLAlchemy ORM models for every persistence table.
 
-Tables covered:
-    Core trading (R1 PR #3):
-        - positions
-        - position_snapshots
-        - trades
-        - account_snaps
-
-    Vol and analytics (R1 PR #4):
-        - vol_surfaces
-        - signals
-        - backtest_runs
-
 All models share the same declarative Base so Alembic can diff them
-together in R1 PR #5.
-
-Reference: releases/architecture_finale_project/08-postgresql.md
+together. Live ER diagram + drift detection (ORM vs DB) lives in the
+dev console (``/dev`` → 🗺 DB Schema tab).
 """
 
 from __future__ import annotations
@@ -119,8 +106,8 @@ class OpenPosition(Base):
     metric_history: Mapped[list[OpenPositionHistory]] = relationship(
         back_populates="position", cascade="all, delete-orphan"
     )
-    # Note: `trades` relationship removed — Trade ORM dropped in migration 025
-    # (Theme 3). Legacy R7 fills journal had zero R9 writers.
+    # Note: `trades` relationship removed — Trade ORM dropped in
+    # migration 025 (legacy fills journal had no live writers).
 
 
 class OpenPositionHistory(Base):
@@ -168,13 +155,12 @@ class OpenPositionHistory(Base):
     position: Mapped[OpenPosition] = relationship(back_populates="metric_history")
 
 
-# Trade, Order, OrderEvent ORM classes deleted in migration 025 (Theme 3).
-# All three were dead code in R9 (zero writers, no readers in execution-engine
-# or api routers). Their roles are now covered by:
+# Trade, Order, OrderEvent ORM classes deleted in migration 025 — all
+# three were dead code (zero writers, no readers). Their roles are now
+# covered by :
 #   - trade_fill (formerly structure_fills) — fills journal
 #   - trade_order (formerly structure_orders) — active IB orders
 #   - trade_event (event_type='audit') — order action audit log
-# See docs/db-schema-theme3-plan.md.
 
 
 class AccountHistory(Base):

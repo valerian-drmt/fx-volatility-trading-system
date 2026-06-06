@@ -2,10 +2,10 @@
 hands every frame to the existing ``AsyncDatabaseWriter`` queue, and
 flushes cleanly on SIGTERM.
 
-The batching + retry logic lives in ``persistence.writer`` (R2) — this
+The batching + retry logic lives in ``persistence.writer`` — this
 service only owns the Redis subscribe loop and the graceful-shutdown
-sequence. Replaces the in-process ``asyncio.Queue`` that the R2
-monolith used to bridge engines and Postgres.
+sequence. Replaces the legacy in-process ``asyncio.Queue`` bridge
+between engines and Postgres.
 """
 from __future__ import annotations
 
@@ -148,7 +148,7 @@ def _coerce_datetime_fields(payload: dict[str, Any]) -> dict[str, Any]:
         value = out.get(key)
         if not isinstance(value, str):
             continue
-        # Accept both `+00:00` and the trailing-Z form produced by R9 engines.
+        # Accept both ``+00:00`` and the trailing-Z form (engines emit either).
         iso = value.replace("Z", "+00:00") if value.endswith("Z") else value
         try:
             out[key] = datetime.fromisoformat(iso)

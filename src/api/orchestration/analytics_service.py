@@ -1,10 +1,4 @@
-"""Analytics endpoint helpers — vol history + system stats.
-
-Per-tenor pricing signals (CHEAP / FAIR / EXPENSIVE) and the associated
-``vol_pricing_signal_snapshot`` table were dropped in R9 once the trading
-strategy switched to PCA-only — the matching ``list_signals`` helper +
-``/api/v1/analytics/signals`` route went with them.
-"""
+"""Analytics endpoint helpers — vol history + system stats."""
 from __future__ import annotations
 
 from datetime import UTC, datetime

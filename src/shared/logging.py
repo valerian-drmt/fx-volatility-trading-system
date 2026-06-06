@@ -1,7 +1,7 @@
 """structlog configuration shared by every service container.
 
 Format choice : JSON to stdout. Each record carries ``service_name`` so
-``docker logs market-data -f`` and centralised aggregators (R8 Grafana
+``docker logs market-data -f`` and centralised aggregators (Grafana
 Loki) can filter without regex-parsing a plain-text prefix.
 """
 from __future__ import annotations

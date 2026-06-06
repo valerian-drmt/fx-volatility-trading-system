@@ -7,9 +7,9 @@ Two surviving public symbols, both consumed by the regime-features pipeline :
 - ``detect_regime(vol_level_pct, vol_of_vol_pct, term_slope_pct)`` : 3-regime
   classifier (calm / stressed / pre_event) consumed by ``regime_engine``.
 
-The Q-measure conversion (``q_measure_from_p``, ``predict_vrp``) and ex-post
-``compute_realized_vrp`` were retired in R9 alongside the per-tenor pricing
-signal pipeline — no live consumers remained.
+The Q-measure conversion (``q_measure_from_p``, ``predict_vrp``) and
+ex-post ``compute_realized_vrp`` were retired with the per-tenor
+pricing signal pipeline — no live consumers remained.
 """
 from __future__ import annotations
 

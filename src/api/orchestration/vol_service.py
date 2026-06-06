@@ -91,10 +91,10 @@ async def get_term_structure(
 ) -> TermStructureResponse:
     """Derive term structure (tenor → ATM vol) from the latest Redis surface.
 
-    Post-R9 the per-tenor pricing-signal pipeline (HAR/GARCH/fair_q) is gone,
-    so the response carries only the ATM IV per tenor. The deprecated fields
-    (sigma_fair_pct, sigma_fair_p_pct, sigma_fair_q_pct, vrp_vol_pts, regime,
-    rv_pct) are returned as ``None`` for back-compat with the old schema.
+    Only ATM IV per tenor is meaningful ; the deprecated per-tenor
+    pricing-signal fields (sigma_fair_pct, sigma_fair_p_pct,
+    sigma_fair_q_pct, vrp_vol_pts, regime, rv_pct) are returned as
+    ``None`` for back-compat with the legacy schema.
     """
     surface = await get_latest_surface(redis, symbol)
 

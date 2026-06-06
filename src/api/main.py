@@ -71,9 +71,9 @@ async def lifespan(app: FastAPI):
     await position_monitor.start()
     app.state.position_monitor = position_monitor
 
-    # R9 : api redevient pure stateless. L'IB connection + le sync loop
-    # vivent désormais dans le container `execution-engine` (cf. routers/
-    # orders.py qui forwarde via httpx).
+    # The api is pure stateless ; the IB connection + sync loop live
+    # in the ``execution-engine`` container (cf. routers/orders.py
+    # which forwards via httpx).
 
     # One-shot seed : si vol_config n'a que la row initiale (version=1,
     # config={}), pousse une version 2 avec le dump complet des defaults.

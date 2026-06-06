@@ -2,7 +2,7 @@
 
 Each helper writes to the live-state cache (SET with the TTL prescribed
 by ``bus.keys``) and, when relevant, fan-outs through pub/sub so
-subscribers (FastAPI WebSocket bridge in R4) get a push.
+subscribers (FastAPI WebSocket bridge) get a push.
 
 All writes to ``CH_TICKS`` are throttled to one message per
 ``TICK_PUBLISH_THROTTLE_MS`` per symbol — Market Data fires at ~5/s

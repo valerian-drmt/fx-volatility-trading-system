@@ -314,10 +314,9 @@ def _lookup_baseline(
         "tod_bucket": tod_bucket,
     }
 
-    # Live computation : progressive relaxation across context dimensions.
-    # The pre-computed baseline table (vol_features_context_baseline) was
-    # dropped in R9 — its weekly batch never shipped and the relaxation below
-    # covers the same use cases without an extra table.
+    # Live computation : progressive relaxation across context dimensions
+    # (no pre-computed baseline table — the relaxation below covers the
+    # same use cases without an extra batch job).
     z_attr = f"{feature}_z"
 
     def _z_values(filt: list[str]) -> list[float]:

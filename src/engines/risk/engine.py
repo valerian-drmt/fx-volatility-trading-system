@@ -1,4 +1,4 @@
-"""Async RiskEngine — standalone service (R7 PR #5).
+"""Async RiskEngine — standalone service.
 
 One cycle every two seconds (configurable via ``LIVE_LOOP_INTERVAL_S``) :
 
@@ -432,9 +432,10 @@ class RiskEngine:
           format alternatif possiblement utilisé ailleurs.
 
         Le tolerant des deux formes évite un mismatch de contrat bus
-        entre market-data (writer) et risk-engine (reader). Bug R9
-        sandbox 28/04/2026 : le mismatch entraînait ``risk_cycle_skipped``
-        en boucle alors que la valeur était bien dans Redis.
+        entre market-data (writer) et risk-engine (reader). Sans cette
+        tolérance, un mismatch entraîne ``risk_cycle_skipped`` en boucle
+        alors que la valeur est bien dans Redis (incident reproduit en
+        sandbox).
         """
         key = keys.LATEST_SPOT.format(symbol=self.symbol)
         raw = await self.redis.get(key)

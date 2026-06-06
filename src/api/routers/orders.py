@@ -1,7 +1,7 @@
 """Orders router — pure proxy vers le container `execution-engine`.
 
-L'api ne touche plus IB directement (cf. R9 sandbox split). Toutes les
-mutations sont forwardées via httpx vers http://execution-engine:8001.
+L'api ne touche pas IB directement : toutes les mutations sont
+forwardées via httpx vers http://execution-engine:8001.
 
 Endpoints inchangés côté client :
   - GET    /api/v1/orders               → forward GET  /internal/orders
