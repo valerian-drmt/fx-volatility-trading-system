@@ -18,7 +18,7 @@ classes (added in a follow-up code commit) so alembic --autogenerate
 stays clean. The migration only touches DB metadata, no row movement.
 
 Revision ID: 042_add_table_comments
-Revises: 041_rename_config_ib_session_runtime
+Revises: 041_ib_session_to_runtime
 Create Date: 2026-06-06
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ from __future__ import annotations
 from alembic import op
 
 revision: str = "042_add_table_comments"
-down_revision: str | None = "041_rename_config_ib_session_runtime"
+down_revision: str | None = "041_ib_session_to_runtime"
 branch_labels: str | None = None
 depends_on: str | None = None
 

@@ -16,15 +16,21 @@ two domains are now well-defined :
     Runtime : live-state singletons, UPDATE-in-place at heartbeat
               frequency.
 
-Revision ID: 041_rename_config_ib_session_runtime
+Revision ID: 041_ib_session_to_runtime
 Revises: 040_rename_config_history_tables
 Create Date: 2026-06-06
+
+Note : the file name and revision ID are short (≤ 32 chars) because
+``alembic_version.version_num`` is ``VARCHAR(32)`` in the deployed
+schema — a longer ID truncates on UPDATE and the migration fails.
+Migration 040 happens to be exactly 32 chars and is the last one that
+fits the original verbose pattern.
 """
 from __future__ import annotations
 
 from alembic import op
 
-revision: str = "041_rename_config_ib_session_runtime"
+revision: str = "041_ib_session_to_runtime"
 down_revision: str | None = "040_rename_config_history_tables"
 branch_labels: str | None = None
 depends_on: str | None = None
