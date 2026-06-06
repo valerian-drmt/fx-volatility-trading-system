@@ -106,16 +106,6 @@ def build_vol_surface_row(
         spot_decimal = forward  # last-resort fallback, see docstring
 
     surface_data = {p.get("tenor_label", f"idx_{i}"): p for i, p in enumerate(pillar_rows)}
-    fair_vol_data = {
-        p.get("tenor_label"): p.get("sigma_fair_pct")
-        for p in pillar_rows
-        if p.get("tenor_label") and p.get("sigma_fair_pct") is not None
-    }
-    rv_data = {
-        p.get("tenor_label"): p.get("RV_pct")
-        for p in pillar_rows
-        if p.get("tenor_label") and p.get("RV_pct") is not None
-    }
 
     return {
         "timestamp": ts,
@@ -123,8 +113,6 @@ def build_vol_surface_row(
         "spot": spot_decimal,
         "forward": forward,
         "surface_data": surface_data,
-        "fair_vol_data": fair_vol_data or None,
-        "rv_data": rv_data or None,
     }
 
 

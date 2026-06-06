@@ -121,8 +121,6 @@ def _vol_surface_row(
         "spot": Decimal(spot),
         "forward": Decimal(forward),
         "surface_data": {"1M": {"iv": 7.5}, "3M": {"iv": 8.0}},
-        "fair_vol_data": {"1M": 7.4, "3M": 7.9},
-        "rv_data": {"1M": 7.6, "3M": 8.1},
     }
 
 
@@ -150,7 +148,7 @@ async def test_write_vol_surface_end_to_end(truncate_tables):
         with engine.connect() as conn:
             row = conn.execute(
                 text(
-                    "SELECT underlying, spot, forward, surface_data, fair_vol_data "
+                    "SELECT underlying, spot, forward, surface_data "
                     "FROM vol_surfaces WHERE timestamp = :ts"
                 ),
                 {"ts": ts},
@@ -163,7 +161,6 @@ async def test_write_vol_surface_end_to_end(truncate_tables):
     assert row.forward == Decimal("1.08600")
     # JSONB round-trips to a dict on read.
     assert row.surface_data == {"1M": {"iv": 7.5}, "3M": {"iv": 8.0}}
-    assert row.fair_vol_data == {"1M": 7.4, "3M": 7.9}
 
 
 @pytest.mark.asyncio
