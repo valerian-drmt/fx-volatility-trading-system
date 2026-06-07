@@ -303,6 +303,7 @@ class Event(Base):
     __tablename__ = "events"
     __table_args__ = (
         CheckConstraint("impact IN ('high','medium','low')", name="ck_events_impact"),
+        UniqueConstraint("event_hash", name="uq_events_event_hash"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -313,6 +314,7 @@ class Event(Base):
     description: Mapped[str | None] = mapped_column(String(500))
     source: Mapped[str] = mapped_column(String(40), nullable=False, server_default="manual")
     source_url: Mapped[str | None] = mapped_column(String(500))
+    event_hash: Mapped[str] = mapped_column(String(16), nullable=False)
     inserted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
