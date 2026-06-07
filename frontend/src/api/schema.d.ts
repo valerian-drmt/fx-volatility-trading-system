@@ -356,6 +356,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/regime/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** State */
+        get: operations["state_api_v1_regime_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_api_v1_regime_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Events */
+        get: operations["list_events_api_v1_regime_events_get"];
+        put?: never;
+        /** Insert Event */
+        post: operations["insert_event_api_v1_regime_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Transitions
+         * @description Compte les transitions de label sur les N derniers jours.
+         *
+         *     But : détecter si le seuil heuristique (vov > 0.4 → pre_event) est trop
+         *     proche du bruit de mesure. Si > 5 transitions calm↔pre_event par jour,
+         *     c'est un signal pour ajouter de l'hystérésis ou un seuil dynamique
+         *     (cf. TODO.md / STEP1 §14).
+         *
+         *     Returns :
+         *       - by_day : dict {YYYY-MM-DD: {transition_type: count}}
+         *       - total : sum across all days/transitions
+         *       - calm_pre_event_per_day : average flips calm↔pre_event per day
+         *       - threshold_warning : True if average > 5/day
+         */
+        get: operations["transitions_api_v1_regime_transitions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/gmm/shadow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gmm Shadow Diagnostic
+         * @description Compare the shadow GMM outputs vs the active heuristic over the last N
+         *     snapshots. Used to decide when the GMM is good enough to take over the
+         *     label (cf. STEP1 §13 "switch criteria").
+         *
+         *     Returns :
+         *       - n_with_gmm : number of snapshots where GMM fitted (probabilities not null)
+         *       - agreement_ratio : fraction where argmax(p_*) == heuristic label
+         *       - cluster_sep_vol_of_vol : (μ_max - μ_min) of components on the vov axis,
+         *         a proxy for how distinct the 3 clusters are. Spec §13 requires
+         *         > 2 × max(σ_intra) before promoting GMM. We don't have σ_intra
+         *         from snapshots ; this number alone is informative on its own.
+         *       - by_label : breakdown {heuristic_label: {gmm_argmax: count}}
+         *       - ready_to_promote : boolean threshold check
+         */
+        get: operations["gmm_shadow_diagnostic_api_v1_regime_gmm_shadow_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/events/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Events From Feed
+         * @description Trigger one full events sync cycle on demand (admin tool).
+         *
+         *     Same code path as the daily background loop : every configured Source
+         *     is hit in parallel with isolation, results are deduped by hash, then
+         *     INSERT ON CONFLICT DO NOTHING. Returns the per-source counts so you
+         *     can immediately see which sources are healthy.
+         */
+        post: operations["sync_events_from_feed_api_v1_regime_events_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -401,6 +541,31 @@ export interface components {
             state: string;
             /** Heartbeat Age S */
             heartbeat_age_s: number | null;
+        };
+        /** EventIn */
+        EventIn: {
+            /** Event Type */
+            event_type: string;
+            /** Impact */
+            impact: string;
+            /** Region */
+            region: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+            /** Description */
+            description?: string | null;
+        };
+        /** GateOut */
+        GateOut: {
+            /** Authorized */
+            authorized: boolean;
+            /** Reason */
+            reason: string;
+            /** Size Mult */
+            size_mult: number;
         };
         /**
          * GreeksAggregated
@@ -511,6 +676,24 @@ export interface components {
             /** Implied Volatility */
             implied_volatility: number;
         };
+        /** NextEventOut */
+        NextEventOut: {
+            /** Event Type */
+            event_type: string;
+            /** Impact */
+            impact: string;
+            /** Region */
+            region: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+            /** Days Remaining */
+            days_remaining: number;
+            /** Description */
+            description?: string | null;
+        };
         /**
          * PnLCurve
          * @description Spot vs PnL curve (~31 points) from RiskEngine.
@@ -618,6 +801,39 @@ export interface components {
         PriceResponse: {
             /** Price */
             price: number;
+        };
+        /** RegimeStateOut */
+        RegimeStateOut: {
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Symbol */
+            symbol: string;
+            /** Label */
+            label: string;
+            /** Method */
+            method: string;
+            /** Event Dampener */
+            event_dampener: boolean;
+            /** Days To Next Event */
+            days_to_next_event?: number | null;
+            /** Next Event Type */
+            next_event_type?: string | null;
+            next_event_high?: components["schemas"]["NextEventOut"] | null;
+            next_event_any?: components["schemas"]["NextEventOut"] | null;
+            /** Features */
+            features: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            gate: components["schemas"]["GateOut"];
+            /** Probabilities */
+            probabilities?: {
+                [key: string]: number;
+            } | null;
         };
         /**
          * SignalRow
@@ -1289,6 +1505,229 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemStats"];
+                };
+            };
+        };
+    };
+    state_api_v1_regime_state_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegimeStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_api_v1_regime_history_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_regime_events_get: {
+        parameters: {
+            query?: {
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    insert_event_api_v1_regime_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transitions_api_v1_regime_transitions_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gmm_shadow_diagnostic_api_v1_regime_gmm_shadow_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_events_from_feed_api_v1_regime_events_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
