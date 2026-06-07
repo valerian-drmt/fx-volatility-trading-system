@@ -25,6 +25,8 @@ from decimal import Decimal
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -34,6 +36,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -251,6 +254,62 @@ class BacktestRun(Base):
 
     equity_curve: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
     trades_log: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
+
+
+class RegimeSnapshot(Base):
+    """Step 1 regime classification snapshot (one row per vol-engine cycle)."""
+
+    __tablename__ = "regime_snapshots"
+    __table_args__ = (
+        CheckConstraint(
+            "label IN ('calm','stressed','pre_event')",
+            name="ck_regime_snapshots_label",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, server_default="EURUSD")
+    label: Mapped[str] = mapped_column(String(20), nullable=False)
+    method: Mapped[str] = mapped_column(String(40), nullable=False)
+
+    vol_level_pct: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    vol_of_vol_pct: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    term_slope_pct: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    vol_level_z: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    vol_of_vol_z: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    term_slope_z: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+
+    p_calm: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
+    p_stressed: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
+    p_pre_event: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))
+
+    event_dampener: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    days_to_next_event: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    next_event_type: Mapped[str | None] = mapped_column(String(40))
+
+
+class Event(Base):
+    """Scheduled macro event (manual or feed-sourced), read by the regime gate."""
+
+    __tablename__ = "events"
+    __table_args__ = (
+        CheckConstraint("impact IN ('high','medium','low')", name="ck_events_impact"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    impact: Mapped[str] = mapped_column(String(10), nullable=False)
+    region: Mapped[str] = mapped_column(String(10), nullable=False)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500))
+    source: Mapped[str] = mapped_column(String(40), nullable=False, server_default="manual")
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    inserted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
