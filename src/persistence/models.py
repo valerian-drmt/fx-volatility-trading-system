@@ -30,6 +30,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     Numeric,
@@ -436,3 +437,295 @@ class SignalRecommendationsMap(Base):
     description: Mapped[str | None] = mapped_column(String(200))
     rationale: Mapped[str | None] = mapped_column(String(500))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class StructureDefinition(Base):
+    """Catalogue des structures supportées (6 rows seed)."""
+
+    __tablename__ = "structure_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    structure_type: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    leg_template: Mapped[list] = mapped_column(JSONB_PORTABLE, nullable=False)
+    min_legs: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_legs: Mapped[int] = mapped_column(Integer, nullable=False)
+    requires_delta_hedge: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    typical_vega_sign: Mapped[str] = mapped_column(String(10), nullable=False)
+    typical_gamma_sign: Mapped[str] = mapped_column(String(10), nullable=False)
+    typical_theta_sign: Mapped[str] = mapped_column(String(10), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(300))
+    rationale_for_pc: Mapped[str | None] = mapped_column(String(300))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class TradePreviewRow(Base):
+    """Audit log : 1 row par Arm trade."""
+
+    __tablename__ = "trade_previews"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('valid_for_submit','blocked','expired','submitted','cancelled')",
+            name="ck_trade_previews_state",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    preview_id: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_signals.id"))
+    triggering_pc: Mapped[int | None] = mapped_column(Integer)
+    armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    armed_signal_label: Mapped[str | None] = mapped_column(String(15))
+    structure_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    reference_tenor: Mapped[str] = mapped_column(String(10), nullable=False)
+    structure_full_payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
+    state: Mapped[str] = mapped_column(String(25), nullable=False)
+    pre_submit_checks: Mapped[list] = mapped_column(JSONB_PORTABLE, nullable=False)
+    blocking_reasons: Mapped[list | None] = mapped_column(JSONB_PORTABLE)
+    user_action: Mapped[str | None] = mapped_column(String(20))
+    user_action_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_trade_id: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class BookStateSnapshot(Base):
+    """État aggregé du book (1 row is_current=true par symbol + history)."""
+
+    __tablename__ = "book_state_snapshots"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, default="EURUSD")
+    total_vega_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    total_gamma_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    total_theta_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    total_delta: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    vega_by_tenor: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
+    vega_by_pc_source: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
+    n_open_structures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    n_open_legs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    notional_engaged_usd: Mapped[float | None] = mapped_column(Float)
+    capital_total_usd: Mapped[float | None] = mapped_column(Float)
+    margin_used_usd: Mapped[float | None] = mapped_column(Float)
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class RiskLimit(Base):
+    """Hot-reloadable risk parameters (cf. STEP3 §5.5)."""
+
+    __tablename__ = "risk_limits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    limit_name: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
+    limit_value: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String(20), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(300))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_by: Mapped[str | None] = mapped_column(String(40))
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Step 4 — Execution (mock-mode sandbox, cf. STEP4_EXECUTION.md §5)
+# ──────────────────────────────────────────────────────────────────────
+
+
+class TradeStructure(Base):
+    """Multi-leg trade : 1 row per Submit (new STEP3/STEP4 workflow)."""
+
+    __tablename__ = "trade_structures"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('submitted','partial_fill','fully_filled','partial_fail','fully_failed','closed')",
+            name="ck_trade_structures_state",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    preview_id: Mapped[str | None] = mapped_column(String(40), ForeignKey("trade_previews.preview_id"))
+    pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_signals.id"))
+    triggering_pc: Mapped[int | None] = mapped_column(Integer)
+    armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    armed_signal_label: Mapped[str | None] = mapped_column(String(15))
+    structure_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    reference_tenor: Mapped[str] = mapped_column(String(10), nullable=False)
+    expiry_date: Mapped[date | None] = mapped_column(Date)
+    base_qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(String(25), nullable=False)
+    state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    ib_combo_order_id: Mapped[str | None] = mapped_column(String(40))
+    execution_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="mock")
+    total_premium_paid_usd: Mapped[float | None] = mapped_column(Float)
+    total_slippage_usd: Mapped[float | None] = mapped_column(Float)
+    total_commission_usd: Mapped[float | None] = mapped_column(Float)
+    total_entry_cost_usd: Mapped[float | None] = mapped_column(Float)
+    first_fill_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fully_filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    close_reason: Mapped[str | None] = mapped_column(String(80))
+
+
+class StructureOrder(Base):
+    """One leg of a multi-leg trade structure."""
+
+    __tablename__ = "structure_orders"
+    __table_args__ = (
+        UniqueConstraint(
+            "structure_id", "leg_idx", "order_role",
+            name="uq_structure_orders_structure_leg_role",
+        ),
+        CheckConstraint(
+            "state IN ('pending','submitted','acknowledged','partially_filled','filled','rejected','cancelled','expired')",
+            name="ck_structure_orders_state",
+        ),
+        CheckConstraint("side IN ('BUY','SELL')", name="ck_structure_orders_side"),
+        CheckConstraint(
+            "order_role IN ('entry','closing','unwind','hedge')",
+            name="ck_structure_orders_order_role",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structures.id"), nullable=False)
+    leg_idx: Mapped[int] = mapped_column(Integer, nullable=False)
+    order_role: Mapped[str] = mapped_column(String(20), nullable=False, default="entry")
+    ib_order_id: Mapped[str | None] = mapped_column(String(40))
+    ib_perm_id: Mapped[str | None] = mapped_column(String(40))
+    contract_symbol: Mapped[str] = mapped_column(String(10), nullable=False, default="EUR")
+    contract_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    contract_expiry: Mapped[date | None] = mapped_column(Date)
+    contract_strike: Mapped[float | None] = mapped_column(Float)
+    contract_exchange: Mapped[str] = mapped_column(String(10), nullable=False, default="CME")
+    contract_currency: Mapped[str] = mapped_column(String(5), nullable=False, default="USD")
+    side: Mapped[str] = mapped_column(String(5), nullable=False)
+    qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    order_type: Mapped[str] = mapped_column(String(10), nullable=False, default="LMT")
+    limit_price: Mapped[float | None] = mapped_column(Float)
+    time_in_force: Mapped[str] = mapped_column(String(5), nullable=False, default="DAY")
+    preview_iv_pct: Mapped[float | None] = mapped_column(Float)
+    preview_price: Mapped[float | None] = mapped_column(Float)
+    state: Mapped[str] = mapped_column(String(25), nullable=False)
+    state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejection_code: Mapped[str | None] = mapped_column(String(20))
+    rejection_text: Mapped[str | None] = mapped_column(String(300))
+    qty_filled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    avg_fill_price: Mapped[float | None] = mapped_column(Float)
+    total_commission_usd: Mapped[float | None] = mapped_column(Float, default=0.0)
+    fully_filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    slippage_per_contract: Mapped[float | None] = mapped_column(Float)
+    total_slippage_usd: Mapped[float | None] = mapped_column(Float)
+
+
+class StructureFill(Base):
+    """One execution event on a leg."""
+
+    __tablename__ = "structure_fills"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("structure_orders.id"), nullable=False)
+    ib_execution_id: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    qty_filled: Mapped[int] = mapped_column(Integer, nullable=False)
+    fill_price: Mapped[float] = mapped_column(Float, nullable=False)
+    commission_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    exchange: Mapped[str | None] = mapped_column(String(10))
+    side: Mapped[str] = mapped_column(String(5), nullable=False)
+    spot_at_fill: Mapped[float | None] = mapped_column(Float)
+    bid_at_fill: Mapped[float | None] = mapped_column(Float)
+    ask_at_fill: Mapped[float | None] = mapped_column(Float)
+    iv_implied_from_fill: Mapped[float | None] = mapped_column(Float)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class TradePosition(Base):
+    """Position created when a structure is fully_filled. Consumed by Step 5."""
+
+    __tablename__ = "trade_positions"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('open','closing','closed','expired')",
+            name="ck_trade_positions_state",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structures.id"), nullable=False, unique=True)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    entry_premium_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    entry_total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    state: Mapped[str] = mapped_column(String(15), nullable=False, default="open")
+    state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    entry_vega_usd_per_volpt: Mapped[float | None] = mapped_column(Float)
+    entry_gamma_usd_per_pip2: Mapped[float | None] = mapped_column(Float)
+    entry_theta_usd_per_day: Mapped[float | None] = mapped_column(Float)
+    entry_spot: Mapped[float | None] = mapped_column(Float)
+    entry_iv_avg: Mapped[float | None] = mapped_column(Float)
+    entry_regime: Mapped[str | None] = mapped_column(String(20))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    close_reason: Mapped[str | None] = mapped_column(String(80))
+    exit_premium_usd: Mapped[float | None] = mapped_column(Float)
+    exit_total_cost_usd: Mapped[float | None] = mapped_column(Float)
+    gross_pnl_usd: Mapped[float | None] = mapped_column(Float)
+    net_pnl_usd: Mapped[float | None] = mapped_column(Float)
+
+
+class IbConnectionState(Base):
+    """Singleton broker connectivity row. UPDATE in place ; never INSERT a new
+    row past the migration seed. Heartbeat loop in execution-engine populates."""
+
+    __tablename__ = "ib_connection_state"
+    __table_args__ = (
+        CheckConstraint(
+            "account_type IS NULL OR account_type IN ('paper','live')",
+            name="ck_ib_connection_account_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    broker: Mapped[str] = mapped_column(String(20), nullable=False, unique=True, default="IB")
+    is_connected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_heartbeat: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    account_id: Mapped[str | None] = mapped_column(String(40))
+    account_type: Mapped[str | None] = mapped_column(String(20))
+    available_funds_usd: Mapped[float | None] = mapped_column(Float)
+    buying_power_usd: Mapped[float | None] = mapped_column(Float)
+    margin_used_usd: Mapped[float | None] = mapped_column(Float)
+    gateway_version: Mapped[str | None] = mapped_column(String(40))
+    api_version: Mapped[str | None] = mapped_column(String(40))
+    last_disconnect_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    n_disconnects_24h: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now(),
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Step 5 — Active Positions monitoring (cf. STEP5_ACTIVE_POSITIONS.md §7)
+# ──────────────────────────────────────────────────────────────────────
+
+class ExecutionAuditLog(Base):
+    """Granular event log for execution debugging / post-mortem."""
+
+    __tablename__ = "execution_audit_log"
+    __table_args__ = (
+        CheckConstraint(
+            "severity IN ('debug','info','warning','error','critical')",
+            name="ck_audit_severity",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    structure_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("trade_structures.id"))
+    order_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("structure_orders.id"))
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    severity: Mapped[str] = mapped_column(String(15), nullable=False, default="info")
+    message: Mapped[str] = mapped_column(String(500), nullable=False)
+    payload: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
