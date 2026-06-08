@@ -19,10 +19,12 @@ from api.middleware.rate_limit import build_limiter, rate_limit_exceeded_handler
 from api.middleware.timing import TimingMiddleware
 from api.routers import analytics as analytics_router
 from api.routers import health as health_router
+from api.routers import orders as orders_router
 from api.routers import portfolio as portfolio_router
 from api.routers import pricing as pricing_router
 from api.routers import regime as regime_router
 from api.routers import signals as signals_router
+from api.routers import trade as trade_router
 from api.routers import vol as vol_router
 from api.routers import ws as ws_router
 from api.ws.connection_manager import ConnectionManager
@@ -98,6 +100,8 @@ def create_app() -> FastAPI:
     app.include_router(analytics_router.router)
     app.include_router(regime_router.router)
     app.include_router(signals_router.router)
+    app.include_router(trade_router.router)
+    app.include_router(orders_router.router)
     app.include_router(ws_router.router)
     # Remaining planned : orders router (PR #5b) — requires OrderExecutor wiring.
     return app
