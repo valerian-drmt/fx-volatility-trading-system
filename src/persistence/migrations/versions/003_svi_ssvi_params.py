@@ -63,7 +63,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("idx_ssvi_params_underlying_ts", table_name="ssvi_params")
+    # IF EXISTS: migration 019 drops these tables (and their indices) further
+    # up the chain, so on a full downgrade the index may already be gone.
+    op.execute("DROP INDEX IF EXISTS idx_ssvi_params_underlying_ts")
     op.drop_table("ssvi_params")
-    op.drop_index("idx_svi_params_underlying_tenor_ts", table_name="svi_params")
+    op.execute("DROP INDEX IF EXISTS idx_svi_params_underlying_tenor_ts")
     op.drop_table("svi_params")

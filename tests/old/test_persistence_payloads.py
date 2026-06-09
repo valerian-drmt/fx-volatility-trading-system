@@ -16,7 +16,6 @@ from core.payloads import (
     build_account_snap_row,
     build_position_row,
     build_position_snapshot_row,
-    build_signal_rows,
     build_vol_surface_row,
     compute_position_id,
 )
@@ -145,37 +144,6 @@ class TestBuildVolSurfaceRow:
             p["sigma_fair_pct"] = None
         row = build_vol_surface_row(vol_result, "EURUSD", spot=1.0)
         assert row["fair_vol_data"] is None
-
-
-# --- signals ---------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestBuildSignalRows:
-    def test_emits_one_row_per_complete_pillar(self):
-        rows = build_signal_rows(_vol_result(), "EURUSD")
-        assert len(rows) == 2
-        first = rows[0]
-        assert first["underlying"] == "EURUSD"
-        assert first["tenor"] == "1M"
-        assert first["dte"] == 30
-        assert first["sigma_mid"] == Decimal("7.5")
-        assert first["sigma_fair"] == Decimal("7.4")
-        assert first["signal_type"] == "CHEAP"
-        assert first["rv"] == Decimal("7.6")
-
-    def test_skips_pillars_missing_sigma_or_signal(self):
-        vol_result = _vol_result()
-        # corrupt one pillar : sigma missing
-        vol_result["pillar_rows"][0]["sigma_ATM_pct"] = None
-        # corrupt the other : invalid signal
-        vol_result["pillar_rows"][1]["signal"] = "UNKNOWN"
-        rows = build_signal_rows(vol_result, "EURUSD")
-        assert rows == []
-
-    def test_no_pillars_returns_empty_list(self):
-        assert build_signal_rows({"pillar_rows": []}, "EURUSD") == []
-        assert build_signal_rows({}, "EURUSD") == []
 
 
 # --- positions + position_snapshots ---------------------------------------

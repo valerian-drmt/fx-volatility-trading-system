@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await mockBackend(page);
 });
 
-test("dashboard boots with header and all nine panels render", async ({ page }) => {
+test("dashboard boots with header and all panels render", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("app-header")).toBeVisible();
@@ -18,7 +18,6 @@ test("dashboard boots with header and all nine panels render", async ({ page }) 
     "chart-panel",
     "term-panel",
     "smile-panel",
-    "scanner-panel",
     "order-ticket-panel",
     "book-panel",
   ];

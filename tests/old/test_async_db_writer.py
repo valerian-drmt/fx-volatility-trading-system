@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from persistence.models import AccountSnap, Base, Signal, Trade
+from persistence.models import AccountSnap, Base, Trade
 from persistence.writer import AsyncDatabaseWriter
 
 
@@ -119,36 +119,17 @@ async def test_write_batch_groups_by_table(writer, session_factory):
                 "timestamp": ts,
             },
         ),
-        # 5 signals, tenor differs so the UNIQUE(ts, underlying, tenor) does not fire
-        *[
-            (
-                "signals",
-                {
-                    "timestamp": ts,
-                    "underlying": "EURUSD",
-                    "tenor": tenor,
-                    "dte": dte,
-                    "sigma_mid": Decimal("7.50000"),
-                    "sigma_fair": Decimal("7.40000"),
-                    "ecart": Decimal("0.10000"),
-                    "signal_type": "CHEAP",
-                },
-            )
-            for tenor, dte in [("1W", 7), ("1M", 30), ("2M", 60), ("3M", 90), ("6M", 180)]
-        ],
     ]
-    assert len(batch) == 10
+    assert len(batch) == 5
 
     await writer._write_batch(batch)
 
     async with session_factory() as session:
         account_count = await session.scalar(select(func.count()).select_from(AccountSnap))
         trade_count = await session.scalar(select(func.count()).select_from(Trade))
-        signal_count = await session.scalar(select(func.count()).select_from(Signal))
 
     assert account_count == 3
     assert trade_count == 2
-    assert signal_count == 5
 
 
 # --- R2 PR #2 : idempotency, retries, graceful shutdown ---------------------
@@ -169,7 +150,7 @@ def test_on_conflict_do_nothing_applied_to_vol_surfaces(writer):
             "surface_data": {},
         }
     ]
-    stmt = writer._build_insert("vol_surfaces", rows, dialect_name="postgresql")
+    stmt = writer._build_insert("vol_surface_snapshot", rows, dialect_name="postgresql")
     sql = str(stmt.compile(dialect=postgresql.dialect()))
     assert "ON CONFLICT" in sql.upper()
     assert "DO NOTHING" in sql.upper()

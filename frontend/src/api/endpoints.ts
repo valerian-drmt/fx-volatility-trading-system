@@ -69,16 +69,10 @@ export const fetchRisk = () => apiGet<Risk>("/api/v1/risk");
 export const fetchPnlCurve = () => apiGet<PnlCurve>("/api/v1/pnl-curve");
 
 // ── Analytics ─────────────────────────────────────────────────────────────
-export type Signals = Get<"/api/v1/signals", 200>;
+// Per-tenor pricing signals (CHEAP/FAIR/EXPENSIVE) and the /signals endpoint
+// were retired in R9 alongside the Vol Scanner panel.
 export type VolHistory = Get<"/api/v1/vol-history", 200>;
 export type SystemStats = Get<"/api/v1/system-stats", 200>;
-
-export const fetchSignals = (params?: {
-  underlying?: string;
-  tenor?: string;
-  signal_type?: string;
-  limit?: number;
-}) => apiGet<Signals>("/api/v1/signals", params ? { query: params } : {});
 
 export const fetchVolHistory = (symbol = "EURUSD", limit = 50) =>
   apiGet<VolHistory>("/api/v1/vol-history", { query: { symbol, limit } });

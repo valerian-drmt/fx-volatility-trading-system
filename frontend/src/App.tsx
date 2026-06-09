@@ -16,9 +16,6 @@ const TermStructurePanel = lazy(() =>
 const SmileChartPanel = lazy(() =>
   import("./components/panels/SmileChartPanel").then((m) => ({ default: m.SmileChartPanel })),
 );
-const VolScannerPanel = lazy(() =>
-  import("./components/panels/VolScannerPanel").then((m) => ({ default: m.VolScannerPanel })),
-);
 
 const LOADING = <div className="panel panel-placeholder"><div className="panel-body">loading charts…</div></div>;
 
@@ -39,7 +36,6 @@ export default function App(): JSX.Element {
             <TermStructurePanel />
             <SmileChartPanel />
           </div>
-          <VolScannerPanel />
         </Suspense>
       }
       right={

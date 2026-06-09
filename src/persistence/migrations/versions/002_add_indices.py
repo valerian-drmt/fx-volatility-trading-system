@@ -161,14 +161,17 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("idx_backtest_created", table_name="backtest_runs")
-    op.drop_index("idx_backtest_strategy", table_name="backtest_runs")
+    # IF EXISTS for indices on tables that later migrations drop outright
+    # (019: backtest_runs; 021: signals) — on a full downgrade they may be
+    # gone already, since dropping a table also drops its indices.
+    op.execute("DROP INDEX IF EXISTS idx_backtest_created")
+    op.execute("DROP INDEX IF EXISTS idx_backtest_strategy")
     op.drop_index("idx_account_ts", table_name="account_snaps")
     op.drop_index("idx_trades_ts", table_name="trades")
     op.drop_index("idx_trades_position", table_name="trades")
-    op.drop_index("idx_signals_ts", table_name="signals")
-    op.drop_index("idx_signals_type_ts", table_name="signals")
-    op.drop_index("idx_signals_underlying_tenor_ts", table_name="signals")
+    op.execute("DROP INDEX IF EXISTS idx_signals_ts")
+    op.execute("DROP INDEX IF EXISTS idx_signals_type_ts")
+    op.execute("DROP INDEX IF EXISTS idx_signals_underlying_tenor_ts")
     if _is_postgres():
         op.drop_index("idx_vol_surf_data_gin", table_name="vol_surfaces")
     op.drop_index("idx_vol_surf_ts", table_name="vol_surfaces")
