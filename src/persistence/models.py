@@ -297,6 +297,42 @@ class RegimeSnapshot(Base):
     days_to_next_event: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     next_event_type: Mapped[str | None] = mapped_column(String(40))
 
+    # Feature enrichment (migration 018) — per-feature bucket/Δz-1h/pct/signal.
+    # The bucket/signal CHECK constraints are enforced by migration 018.
+    bucket_vol_level: Mapped[str | None] = mapped_column(String(4))
+    delta_z_1h_vol_level: Mapped[float | None] = mapped_column(Float)
+    pct_vol_level: Mapped[int | None] = mapped_column(Integer)
+    signal_vol_level: Mapped[str | None] = mapped_column(String(8))
+    bucket_vol_of_vol: Mapped[str | None] = mapped_column(String(4))
+    delta_z_1h_vol_of_vol: Mapped[float | None] = mapped_column(Float)
+    pct_vol_of_vol: Mapped[int | None] = mapped_column(Integer)
+    signal_vol_of_vol: Mapped[str | None] = mapped_column(String(8))
+    bucket_term_slope: Mapped[str | None] = mapped_column(String(4))
+    delta_z_1h_term_slope: Mapped[float | None] = mapped_column(Float)
+    pct_term_slope: Mapped[int | None] = mapped_column(Integer)
+    signal_term_slope: Mapped[str | None] = mapped_column(String(8))
+
+
+class RegimeLookup(Base):
+    """Joint-pattern → regime mapping (15 base patterns, 5-bucket expansion).
+
+    Pattern shape ``"(<bucket_vol_level>,<bucket_vol_of_vol>,<bucket_term_slope>)"``,
+    e.g. ``"(0,0,+)"``. Unmapped tail-extreme combos fall back to a seeded row.
+    """
+
+    __tablename__ = "regime_lookup_table"
+
+    pattern: Mapped[str] = mapped_column(String(20), primary_key=True)
+    regime_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    regime_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    family: Mapped[str] = mapped_column(String(40), nullable=False)
+    action_default: Mapped[str] = mapped_column(String(80), nullable=False)
+    asymmetry_note: Mapped[str | None] = mapped_column(String(120))
+    intensity_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
 
 class Event(Base):
     """Scheduled macro event (manual or feed-sourced), read by the regime gate."""
