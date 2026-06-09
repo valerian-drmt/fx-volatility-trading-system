@@ -729,3 +729,226 @@ class ExecutionAuditLog(Base):
     severity: Mapped[str] = mapped_column(String(15), nullable=False, default="info")
     message: Mapped[str] = mapped_column(String(500), nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
+
+
+class Order(Base):
+    """IB order lifecycle row. 1 row par order envoyé à IB, status évolue
+    selon la lifecycle (PendingSubmit → Submitted → Filled / Cancelled).
+    """
+    __tablename__ = "orders"
+    __table_args__ = (
+        UniqueConstraint("ib_perm_id", name="uq_orders_ib_perm_id"),
+        CheckConstraint("side IN ('BUY', 'SELL')", name="ck_orders_side"),
+        CheckConstraint(
+            "sec_type IN ('FUT', 'FOP', 'STK', 'OPT', 'CONTFUT')",
+            name="ck_orders_sec_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ib_perm_id: Mapped[int | None] = mapped_column(BigInteger)
+    ib_order_id: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    sec_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    expiry: Mapped[str | None] = mapped_column(String(10))
+    strike: Mapped[Decimal | None] = mapped_column(Numeric(10, 5))
+    right: Mapped[str | None] = mapped_column(String(2))
+
+    side: Mapped[str] = mapped_column(String(4), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    limit_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
+
+    status: Mapped[str] = mapped_column(String(30), nullable=False)
+    filled_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False, default=Decimal("0"))
+    avg_fill_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
+
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class OrderEvent(Base):
+    """Audit log : 1 row par action utilisateur envoyée à IB.
+
+    Append-only. Permet de retrouver qui a demandé quoi, quand, et la
+    réponse IB exacte (success/failure, message d'erreur).
+    """
+    __tablename__ = "order_events"
+    __table_args__ = (
+        CheckConstraint(
+            "action_type IN ('SUBMIT', 'CANCEL', 'CLOSE_POSITION')",
+            name="ck_order_events_action_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"))
+    action_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    request_payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
+    response_payload: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(String(500))
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+
+
+class PositionMtmHistory(Base):
+    """1 row per monitoring cycle per open position. Series for equity curve
+    + P&L attribution + drawdown analysis."""
+
+    __tablename__ = "position_mtm_history"
+    __table_args__ = (
+        UniqueConstraint("position_id", "timestamp", name="uq_mtm_position_ts"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    position_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+    )
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    spot: Mapped[float] = mapped_column(Float, nullable=False)
+    iv_avg_legs_pct: Mapped[float | None] = mapped_column(Float)
+    current_pnl_gross_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    current_pnl_net_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    vega_pnl_usd: Mapped[float | None] = mapped_column(Float)
+    gamma_pnl_usd: Mapped[float | None] = mapped_column(Float)
+    theta_pnl_usd: Mapped[float | None] = mapped_column(Float)
+    other_pnl_usd: Mapped[float | None] = mapped_column(Float)
+    current_vega_usd_per_volpt: Mapped[float | None] = mapped_column(Float)
+    current_gamma_usd_per_pip2: Mapped[float | None] = mapped_column(Float)
+    current_theta_usd_per_day: Mapped[float | None] = mapped_column(Float)
+    current_delta_unhedged: Mapped[float | None] = mapped_column(Float)
+
+
+class PositionSignalTracking(Base):
+    """Signal-vs-entry comparison snapshot (1 / cycle / position)."""
+
+    __tablename__ = "position_signal_tracking"
+    __table_args__ = (
+        UniqueConstraint("position_id", "timestamp", name="uq_signal_track_position_ts"),
+        CheckConstraint("status IN ('HOLD','TRIM','EXIT')", name="ck_signal_track_status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    position_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+    )
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    triggering_pc: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_z_score: Mapped[float] = mapped_column(Float, nullable=False)
+    current_label: Mapped[str] = mapped_column(String(15), nullable=False)
+    entry_z_score: Mapped[float] = mapped_column(Float, nullable=False)
+    entry_label: Mapped[str] = mapped_column(String(15), nullable=False)
+    weakening_ratio: Mapped[float | None] = mapped_column(Float)
+    sign_flipped: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+
+
+class HedgeOrder(Base):
+    """Delta-rebalancing future order on an open position."""
+
+    __tablename__ = "hedge_orders"
+    __table_args__ = (
+        CheckConstraint("side IN ('BUY','SELL')", name="ck_hedge_orders_side"),
+        CheckConstraint(
+            "state IN ('pending','submitted','filled','failed')",
+            name="ck_hedge_orders_state",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    position_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+    )
+    triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    delta_imbalance_at_trigger: Mapped[float] = mapped_column(Float, nullable=False)
+    rebalance_threshold_used: Mapped[float] = mapped_column(Float, nullable=False)
+    hedge_qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    side: Mapped[str] = mapped_column(String(5), nullable=False)
+    ib_order_id: Mapped[str | None] = mapped_column(String(40))
+    fill_price: Mapped[float | None] = mapped_column(Float)
+    commission_usd: Mapped[float | None] = mapped_column(Float)
+    spread_paid_usd: Mapped[float | None] = mapped_column(Float)
+    total_cost_usd: Mapped[float | None] = mapped_column(Float)
+    state: Mapped[str] = mapped_column(String(15), nullable=False)
+
+
+class ExitAlert(Base):
+    """1 row per exit-rule trigger. Acted on or not."""
+
+    __tablename__ = "exit_alerts"
+    __table_args__ = (
+        CheckConstraint(
+            "action_recommended IN ('EXIT','TRIM','ALERT_ONLY')",
+            name="ck_exit_alerts_action",
+        ),
+        CheckConstraint(
+            "execution_status IS NULL OR execution_status IN "
+            "('in_progress','done','failed','overridden')",
+            name="ck_exit_alerts_exec_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    position_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+    )
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    rule_triggered: Mapped[str] = mapped_column(String(40), nullable=False)
+    action_recommended: Mapped[str] = mapped_column(String(15), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False)
+    rule_detail: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
+    auto_executed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    execution_status: Mapped[str | None] = mapped_column(String(20))
+    closing_structure_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("trade_structures.id")
+    )
+    notes: Mapped[str | None] = mapped_column(String(500))
+
+
+class ExitRulesConfig(Base):
+    """Hot-reloadable exit rule params."""
+
+    __tablename__ = "exit_rules_config"
+    __table_args__ = (
+        CheckConstraint("priority BETWEEN 1 AND 10", name="ck_exit_rules_priority"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rule_name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False)
+    params: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
+    description: Mapped[str | None] = mapped_column(String(300))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(40))
+
+
+class DeltaHedgeConfig(Base):
+    """Hot-reloadable delta-hedge params."""
+
+    __tablename__ = "delta_hedge_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    config_name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    config_value: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String(20), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(300))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+
+
