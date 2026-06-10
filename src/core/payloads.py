@@ -116,41 +116,6 @@ def build_vol_surface_row(
     }
 
 
-def build_signal_rows(
-    vol_result: dict,
-    underlying: str,
-    timestamp: datetime | None = None,
-) -> list[dict[str, Any]]:
-    """Map each enriched pillar to a ``signals`` row.
-
-    Only pillars that have BOTH ``sigma_ATM_pct`` AND ``sigma_fair_pct``
-    produce a row — the others are partial data (scan in progress, missing
-    IV, etc.) and writing them would dirty the dataset.
-    """
-    ts = timestamp or datetime.now(UTC)
-    rows: list[dict[str, Any]] = []
-    for p in vol_result.get("pillar_rows") or []:
-        sigma_mid = _safe_decimal(p.get("sigma_ATM_pct"))
-        sigma_fair = _safe_decimal(p.get("sigma_fair_pct"))
-        if sigma_mid is None or sigma_fair is None:
-            continue
-        signal_type = p.get("signal")
-        if signal_type not in {"CHEAP", "EXPENSIVE", "FAIR"}:
-            continue
-        rows.append({
-            "timestamp": ts,
-            "underlying": underlying,
-            "tenor": str(p.get("tenor_label", ""))[:5],
-            "dte": int(p.get("dte", 0)),
-            "sigma_mid": sigma_mid,
-            "sigma_fair": sigma_fair,
-            "ecart": _safe_decimal(p.get("ecart_pct")) or Decimal("0"),
-            "signal_type": signal_type,
-            "rv": _safe_decimal(p.get("RV_pct")),
-        })
-    return rows
-
-
 # --- positions + position_snapshots ----------------------------------------
 
 

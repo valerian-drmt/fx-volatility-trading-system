@@ -276,26 +276,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/signals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Signals
-         * @description Recent signals, most-recent first. Filters combinable (underlying, tenor, type, since).
-         */
-        get: operations["signals_api_v1_signals_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/vol-history": {
         parameters: {
             query?: never;
@@ -305,29 +285,9 @@ export interface paths {
         };
         /**
          * Vol History
-         * @description N most recent vol_surfaces snapshots — headline fields only (no JSONB payload).
+         * @description N most recent vol_surface_snapshot rows for ``symbol`` — headline fields only.
          */
         get: operations["vol_history_api_v1_vol_history_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/backtest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Backtests
-         * @description Backtest runs with headline metrics (Sharpe, MDD, return, n_trades).
-         */
-        get: operations["backtests_api_v1_backtest_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1016,39 +976,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /**
-         * BacktestRunRow
-         * @description One row of backtest_runs — headline metrics only.
-         */
-        BacktestRunRow: {
-            /** Id */
-            id: number;
-            /** Strategy Name */
-            strategy_name: string;
-            /**
-             * Start Date
-             * Format: date
-             */
-            start_date: string;
-            /**
-             * End Date
-             * Format: date
-             */
-            end_date: string;
-            /** Sharpe Ratio */
-            sharpe_ratio: string | null;
-            /** Max Drawdown Pct */
-            max_drawdown_pct: string | null;
-            /** Total Return Pct */
-            total_return_pct: string | null;
-            /** N Trades */
-            n_trades: number | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-        };
         /** EngineStats */
         EngineStats: {
             /** Name */
@@ -1375,35 +1302,6 @@ export interface components {
             probabilities?: {
                 [key: string]: number;
             } | null;
-        };
-        /**
-         * SignalRow
-         * @description One row of the signals table — one scan's CHEAP/FAIR/EXPENSIVE verdict.
-         */
-        SignalRow: {
-            /** Id */
-            id: number;
-            /**
-             * Timestamp
-             * Format: date-time
-             */
-            timestamp: string;
-            /** Underlying */
-            underlying: string;
-            /** Tenor */
-            tenor: string;
-            /** Dte */
-            dte: number;
-            /** Sigma Mid */
-            sigma_mid: string;
-            /** Sigma Fair */
-            sigma_fair: string;
-            /** Ecart */
-            ecart: string;
-            /** Signal Type */
-            signal_type: string;
-            /** Rv */
-            rv: string | null;
         };
         /**
          * SmilePoint
@@ -1933,41 +1831,6 @@ export interface operations {
             };
         };
     };
-    signals_api_v1_signals_get: {
-        parameters: {
-            query?: {
-                underlying?: string | null;
-                tenor?: string | null;
-                signal_type?: string | null;
-                since?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SignalRow"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     vol_history_api_v1_vol_history_get: {
         parameters: {
             query?: {
@@ -1987,38 +1850,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VolHistoryRow"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    backtests_api_v1_backtest_get: {
-        parameters: {
-            query?: {
-                strategy_name?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BacktestRunRow"][];
                 };
             };
             /** @description Validation Error */

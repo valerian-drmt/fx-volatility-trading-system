@@ -31,11 +31,9 @@ ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
 EXPECTED_TABLES = {
     "positions",
     "position_snapshots",
-    "vol_surfaces",
-    "signals",
+    "vol_surface_snapshot",
     "trades",
     "account_snaps",
-    "backtest_runs",
 }
 
 # Index set is intentionally empty: migration ``254fc54bb36f_add_col_x``

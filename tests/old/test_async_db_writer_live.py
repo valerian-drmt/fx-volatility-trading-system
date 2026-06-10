@@ -37,7 +37,7 @@ pytestmark = pytest.mark.db_integration
 # Tables we touch in this suite — truncated before/after each test so the
 # assertions on exact row counts stay meaningful even when other live
 # tests run before or after in the same CI job.
-_TEST_TABLES = ("vol_surfaces", "signals")
+_TEST_TABLES = ("vol_surface_snapshot",)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
@@ -124,24 +124,11 @@ def _vol_surface_row(
     }
 
 
-def _signal_row(tenor: str, dte: int, timestamp: datetime) -> dict:
-    return {
-        "timestamp": timestamp,
-        "underlying": "EURUSD",
-        "tenor": tenor,
-        "dte": dte,
-        "sigma_mid": Decimal("7.50"),
-        "sigma_fair": Decimal("7.40"),
-        "ecart": Decimal("0.10"),
-        "signal_type": "CHEAP",
-    }
-
-
 @pytest.mark.asyncio
 async def test_write_vol_surface_end_to_end(truncate_tables):
     """One vol_surface event → one row in Postgres, JSONB round-trip intact."""
     ts = datetime(2026, 4, 20, 10, 0, 0, tzinfo=UTC)
-    await _run_writer_with_events([("vol_surfaces", _vol_surface_row(timestamp=ts))])
+    await _run_writer_with_events([("vol_surface_snapshot", _vol_surface_row(timestamp=ts))])
 
     engine = create_engine(_sync_url(), future=True)
     try:
@@ -149,7 +136,7 @@ async def test_write_vol_surface_end_to_end(truncate_tables):
             row = conn.execute(
                 text(
                     "SELECT underlying, spot, forward, surface_data "
-                    "FROM vol_surfaces WHERE timestamp = :ts"
+                    "FROM vol_surface_snapshot WHERE timestamp = :ts"
                 ),
                 {"ts": ts},
             ).one()
@@ -161,33 +148,6 @@ async def test_write_vol_surface_end_to_end(truncate_tables):
     assert row.forward == Decimal("1.08600")
     # JSONB round-trips to a dict on read.
     assert row.surface_data == {"1M": {"iv": 7.5}, "3M": {"iv": 8.0}}
-
-
-@pytest.mark.asyncio
-async def test_write_signals_batch(truncate_tables):
-    """Six signals at the same timestamp with distinct tenors all land."""
-    ts = datetime(2026, 4, 20, 10, 0, 0, tzinfo=UTC)
-    events = [
-        ("signals", _signal_row(tenor, dte, ts))
-        for tenor, dte in [("1W", 7), ("1M", 30), ("2M", 60), ("3M", 90), ("6M", 180), ("1Y", 365)]
-    ]
-    await _run_writer_with_events(events)
-
-    assert _count("signals") == 6
-
-    engine = create_engine(_sync_url(), future=True)
-    try:
-        with engine.connect() as conn:
-            tenors = {
-                r[0]
-                for r in conn.execute(
-                    text("SELECT tenor FROM signals WHERE timestamp = :ts"),
-                    {"ts": ts},
-                )
-            }
-    finally:
-        engine.dispose()
-    assert tenors == {"1W", "1M", "2M", "3M", "6M", "1Y"}
 
 
 @pytest.mark.asyncio
@@ -203,17 +163,17 @@ async def test_idempotency_on_duplicate_vol_surface(truncate_tables):
     duplicate = _vol_surface_row(timestamp=ts, spot="9.9999")  # same key, different data
 
     await _run_writer_with_events([
-        ("vol_surfaces", row),
-        ("vol_surfaces", duplicate),
+        ("vol_surface_snapshot", row),
+        ("vol_surface_snapshot", duplicate),
     ])
 
-    assert _count("vol_surfaces") == 1
+    assert _count("vol_surface_snapshot") == 1
 
     engine = create_engine(_sync_url(), future=True)
     try:
         with engine.connect() as conn:
             spot = conn.execute(
-                text("SELECT spot FROM vol_surfaces WHERE timestamp = :ts"),
+                text("SELECT spot FROM vol_surface_snapshot WHERE timestamp = :ts"),
                 {"ts": ts},
             ).scalar_one()
     finally:

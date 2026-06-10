@@ -19,11 +19,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from persistence.models import (
     AccountSnap,
-    BacktestRun,
     Base,
     Position,
     PositionSnapshot,
-    Signal,
     Trade,
     VolSurface,
 )
@@ -185,21 +183,13 @@ async def test_account_snap_currencies_jsonb_roundtrip(async_session):
 # --- R1 PR #4 : vol and analytics tables ------------------------------------
 
 
-def test_vol_signal_backtest_tables_are_declared():
-    assert VolSurface.__tablename__ == "vol_surfaces"
-    assert Signal.__tablename__ == "signals"
-    assert BacktestRun.__tablename__ == "backtest_runs"
+def test_vol_surface_table_is_declared():
+    assert VolSurface.__tablename__ == "vol_surface_snapshot"
 
 
 def test_vol_surfaces_has_unique_on_timestamp_and_underlying():
     constraint_names = {c.name for c in VolSurface.__table__.constraints if c.name}
     assert "uq_vol_surfaces_ts_underlying" in constraint_names
-
-
-def test_signals_has_unique_and_signal_type_check():
-    constraint_names = {c.name for c in Signal.__table__.constraints if c.name}
-    assert "uq_signals_ts_underlying_tenor" in constraint_names
-    assert "ck_signals_signal_type" in constraint_names
 
 
 def test_vol_surfaces_surface_data_is_not_null_jsonb_portable():
@@ -262,59 +252,3 @@ async def test_vol_surface_unique_constraint_on_ts_underlying(async_session):
     assert "UNIQUE" in str(excinfo.value).upper() or "IntegrityError" in type(
         excinfo.value
     ).__name__
-
-
-async def test_signal_roundtrip_and_type(async_session):
-    async_session.add(
-        Signal(
-            timestamp=datetime(2026, 4, 17, 15, 0, tzinfo=UTC),
-            underlying="EUR.USD",
-            tenor="1M",
-            dte=30,
-            sigma_mid=Decimal("6.76000"),
-            sigma_fair=Decimal("7.55000"),
-            ecart=Decimal("0.79000"),
-            signal_type="CHEAP",
-            rv=Decimal("7.10000"),
-        )
-    )
-    await async_session.commit()
-
-    result = await async_session.execute(select(Signal))
-    loaded = result.scalar_one()
-    assert loaded.tenor == "1M"
-    assert loaded.signal_type == "CHEAP"
-    assert loaded.ecart == Decimal("0.79000")
-
-
-async def test_backtest_run_jsonb_and_metrics_roundtrip(async_session):
-    parameters = {"threshold_bps": 20, "tenor": "1M", "symbol": "EUR.USD"}
-    equity_curve = [
-        {"date": "2025-01-01", "equity": 100000.0},
-        {"date": "2025-12-31", "equity": 115200.0},
-    ]
-    from datetime import date as _date
-
-    async_session.add(
-        BacktestRun(
-            strategy_name="vol_rv_spread_v1",
-            parameters=parameters,
-            start_date=_date(2025, 1, 1),
-            end_date=_date(2025, 12, 31),
-            sharpe_ratio=Decimal("1.4523"),
-            max_drawdown_pct=Decimal("5.8100"),
-            hit_rate=Decimal("0.5833"),
-            total_return_pct=Decimal("15.2000"),
-            n_trades=12,
-            equity_curve=equity_curve,
-        )
-    )
-    await async_session.commit()
-
-    result = await async_session.execute(select(BacktestRun))
-    loaded = result.scalar_one()
-    assert loaded.parameters == parameters
-    assert loaded.equity_curve == equity_curve
-    assert loaded.sharpe_ratio == Decimal("1.4523")
-    assert loaded.n_trades == 12
-    assert loaded.created_at is not None  # server_default

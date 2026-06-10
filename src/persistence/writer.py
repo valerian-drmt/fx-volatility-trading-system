@@ -37,7 +37,6 @@ from persistence.models import (
     Base,
     Position,
     PositionSnapshot,
-    Signal,
     Trade,
     VolSurface,
 )
@@ -57,9 +56,8 @@ TABLE_MODELS: dict[str, type[Base]] = {
     "account_snaps": AccountSnap,
     "positions": Position,
     "position_snapshots": PositionSnapshot,
-    "signals": Signal,
     "trades": Trade,
-    "vol_surfaces": VolSurface,
+    "vol_surface_snapshot": VolSurface,
 }
 
 # Tables where duplicates on the natural key are safe to drop silently.
@@ -74,8 +72,7 @@ TABLE_MODELS: dict[str, type[Base]] = {
 # Other tables (trades, position_snapshots, account_snaps) have no natural
 # dedup key, duplicates there are real data and must not be silenced.
 IDEMPOTENT_TABLES: dict[str, list[str]] = {
-    "vol_surfaces": ["timestamp", "underlying"],
-    "signals": ["timestamp", "underlying", "tenor"],
+    "vol_surface_snapshot": ["timestamp", "underlying"],
     "positions": ["id"],
 }
 
