@@ -53,7 +53,7 @@ def test_api_job_pushes_sha_and_latest_tags(wf: dict):
     tags = push_step["with"]["tags"]
     assert "fx-options-api:sha-${{ github.sha }}" in tags
     assert "fx-options-api:latest" in tags
-    assert push_step["with"]["file"] == "infrastructure/docker/Dockerfile.api"
+    assert push_step["with"]["file"] == "infrastructure/docker/api.Dockerfile"
     # Push is gated on a manual run via env.PUSH (see
     # test_push_is_gated_on_manual_dispatch) so a flaky ghcr login never reds
     # a plain push-to-main; the tags contract above still holds.
@@ -67,7 +67,7 @@ def test_frontend_job_pushes_sha_and_latest_tags(wf: dict):
     tags = push_step["with"]["tags"]
     assert "fx-options-frontend:sha-${{ github.sha }}" in tags
     assert "fx-options-frontend:latest" in tags
-    assert push_step["with"]["file"] == "infrastructure/docker/Dockerfile.web"
+    assert push_step["with"]["file"] == "infrastructure/docker/web.Dockerfile"
 
 
 @pytest.mark.unit

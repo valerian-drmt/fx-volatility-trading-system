@@ -99,7 +99,7 @@ def test_init_sql_declares_extensions():
 def test_api_service_present_and_built_locally(compose: dict):
     svc = compose["services"]["api"]
     assert svc["build"]["context"] == "."
-    assert svc["build"]["dockerfile"] == "infrastructure/docker/Dockerfile.api"
+    assert svc["build"]["dockerfile"] == "infrastructure/docker/api.Dockerfile"
     assert svc["networks"] == ["fxvol-internal"]
     assert svc.get("restart") == "unless-stopped"
     # Must wait for postgres AND redis healthy before starting — otherwise
@@ -131,7 +131,7 @@ def test_api_has_http_healthcheck(compose: dict):
 
 @pytest.mark.unit
 def test_dockerfile_api_ships_uvicorn():
-    dockerfile = (REPO_ROOT / "infrastructure" / "docker" / "Dockerfile.api").read_text()
+    dockerfile = (REPO_ROOT / "infrastructure" / "docker" / "api.Dockerfile").read_text()
     assert "FROM python:3.11-slim" in dockerfile or "${PYTHON_IMAGE}" in dockerfile
     assert "EXPOSE 8000" in dockerfile
     assert "uvicorn" in dockerfile
@@ -144,7 +144,7 @@ def test_dockerfile_api_ships_uvicorn():
 def test_frontend_service_build_context(compose: dict):
     svc = compose["services"]["frontend"]
     assert svc["build"]["context"] == "."
-    assert svc["build"]["dockerfile"] == "infrastructure/docker/Dockerfile.web"
+    assert svc["build"]["dockerfile"] == "infrastructure/docker/web.Dockerfile"
     assert svc["networks"] == ["fxvol-internal"], (
         "frontend container serves the bundle on :8080 — only nginx needs to reach it"
     )

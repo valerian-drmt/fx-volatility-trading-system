@@ -4,7 +4,7 @@
 # Stage 2 copies the dist/ output into an nginx:alpine image configured with
 # frontend.conf (SPA fallback + immutable cache for hashed assets).
 #
-#   docker build -f infrastructure/docker/Dockerfile.web -t fx-options-frontend .
+#   docker build -f infrastructure/docker/web.Dockerfile -t fx-options-frontend .
 
 ARG NODE_IMAGE=node:20-alpine
 ARG NGINX_IMAGE=nginx:alpine
