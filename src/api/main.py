@@ -19,6 +19,8 @@ from api.middleware.rate_limit import build_limiter, rate_limit_exceeded_handler
 from api.middleware.timing import TimingMiddleware
 from api.routers import admin as admin_router
 from api.routers import analytics as analytics_router
+from api.routers import cockpit as cockpit_router
+from api.routers import dev as dev_router
 from api.routers import health as health_router
 from api.routers import orders as orders_router
 from api.routers import portfolio as portfolio_router
@@ -50,10 +52,25 @@ async def lifespan(app: FastAPI):
     app.state.ws_manager = manager
     bridge_task = asyncio.create_task(redis_to_ws_bridge(client, manager))
 
+    # Background schedulers (each spawns a task that sleeps a startup delay
+    # before its first cycle, so app/TestClient boot is never blocked).
+    from api.orchestration.pca_refit_scheduler import build_pca_refit_scheduler
+    from api.orchestration.trade_preview_expirer import build_trade_preview_expirer
+
+    pca_refit_scheduler = build_pca_refit_scheduler()
+    await pca_refit_scheduler.start()
+    app.state.pca_refit_scheduler = pca_refit_scheduler
+
+    trade_preview_expirer = build_trade_preview_expirer()
+    await trade_preview_expirer.start()
+    app.state.trade_preview_expirer = trade_preview_expirer
+
     log.info("api_startup", redis_url=settings.redis_url)
     try:
         yield
     finally:
+        await pca_refit_scheduler.stop()
+        await trade_preview_expirer.stop()
         bridge_task.cancel()
         # Await the task so its cleanup (pubsub.aclose) runs. CancelledError
         # is expected and swallowed — any other exception would be logged.
@@ -108,6 +125,8 @@ def create_app() -> FastAPI:
     app.include_router(orders_router.router)
     app.include_router(positions_router.router)
     app.include_router(admin_router.router)
+    app.include_router(cockpit_router.router)
+    app.include_router(dev_router.router)
     app.include_router(ws_router.router)
     # Remaining planned : orders router (PR #5b) — requires OrderExecutor wiring.
     return app

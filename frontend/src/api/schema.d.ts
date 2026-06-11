@@ -1237,6 +1237,210 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/vol/regime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Regime
+         * @description Current market regime + per-tenor expected VRP.
+         */
+        get: operations["regime_api_v1_vol_regime_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vol/trade-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trade Preview */
+        post: operations["trade_preview_api_v1_vol_trade_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vol/model-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model Health */
+        get: operations["model_health_api_v1_vol_model_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/redis/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Redis Keys
+         * @description Return the whitelist of known keys with TTL + age (parsed from value).
+         */
+        get: operations["redis_keys_api_v1_dev_redis_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/engines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Engines Status
+         * @description Aggregate health for each of the 4 engines + IB Gateway TCP probe.
+         */
+        get: operations["engines_status_api_v1_dev_engines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/stack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stack Overview
+         * @description Aggregate status pour les 10 containers, dérivé de probes + heartbeats.
+         *
+         *     On ne lit pas le Docker socket (api n'a pas accès, et c'est mieux comme ça).
+         *     Statuses dérivés :
+         *       - postgres / redis / ib-gateway   : TCP probe ou ping
+         *       - frontend                        : HTTP probe http://frontend:8080/
+         *       - nginx / api                     : implicite (la requête arrive via eux)
+         *       - 4 engines                       : heartbeat Redis + age vs threshold
+         */
+        get: operations["stack_overview_api_v1_dev_stack_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tables
+         * @description Return the static whitelist of tables that DB Explorer can read.
+         */
+        get: operations["list_tables_api_v1_dev_tables_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/tables/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Table
+         * @description Read N rows from `name` (whitelisted), ordered DESC by its PK column.
+         *
+         *     JSONB / datetime / Decimal sont sérialisés via FastAPI's jsonable_encoder.
+         */
+        get: operations["read_table_api_v1_dev_tables__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/redis/value": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Redis Value
+         * @description GET a single key's value. Parses JSON if applicable.
+         */
+        get: operations["redis_value_api_v1_dev_redis_value_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/cycle-progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cycle Progress
+         * @description Return the vol-engine's current cycle stage + task and the list of
+         *     completed (stage, task) pairs in this cycle.
+         */
+        get: operations["cycle_progress_api_v1_dev_cycle_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1529,6 +1733,34 @@ export interface components {
             /** Implied Volatility */
             implied_volatility: number;
         };
+        /** LegItem */
+        LegItem: {
+            /** Instrument */
+            instrument: string;
+            /** Side */
+            side: string;
+            /** Qty */
+            qty: number;
+            /** Strike */
+            strike: number | null;
+            /** Tenor */
+            tenor: string;
+            /** Iv */
+            iv: number | null;
+            /** Premium Per Contract */
+            premium_per_contract: number;
+        };
+        /** ModelHealthResponse */
+        ModelHealthResponse: {
+            /** Vol Surfaces Count */
+            vol_surfaces_count: number;
+            /** Svi Params Count */
+            svi_params_count: number;
+            /** Last Vol Surface Ts */
+            last_vol_surface_ts: string | null;
+            /** Pca Ready */
+            pca_ready: boolean;
+        };
         /** NextEventOut */
         NextEventOut: {
             /** Event Type */
@@ -1758,6 +1990,27 @@ export interface components {
              */
             stressed_sizing_multiplier: number;
         };
+        /** RegimeResponse */
+        RegimeResponse: {
+            /** Regime */
+            regime: string;
+            /** Probabilities */
+            probabilities: {
+                [key: string]: number;
+            };
+            /** Features */
+            features: {
+                [key: string]: number | null;
+            };
+            /** Vrp By Tenor */
+            vrp_by_tenor: {
+                [key: string]: number;
+            };
+            /** Event Dampener */
+            event_dampener: boolean;
+            /** Bootstrap */
+            bootstrap: boolean;
+        };
         /** RegimeStateOut */
         RegimeStateOut: {
             /**
@@ -1962,6 +2215,44 @@ export interface components {
             dte: number | null;
             /** Sigma Atm Pct */
             sigma_atm_pct: number | null;
+        };
+        /** TradePreviewRequest */
+        TradePreviewRequest: {
+            /** Structure */
+            structure: string;
+            /** Tenor */
+            tenor: string;
+            /**
+             * Side
+             * @default BUY
+             */
+            side: string;
+            /**
+             * Qty
+             * @default 10
+             */
+            qty: number;
+            /** Tenor Far */
+            tenor_far?: string | null;
+        };
+        /** TradePreviewResponse */
+        TradePreviewResponse: {
+            /** Structure */
+            structure: string;
+            /** Legs */
+            legs: components["schemas"]["LegItem"][];
+            /** Net Vega */
+            net_vega: number;
+            /** Net Gamma */
+            net_gamma: number;
+            /** Net Theta */
+            net_theta: number;
+            /** Net Delta */
+            net_delta: number;
+            /** Total Premium */
+            total_premium: number;
+            /** Bootstrap */
+            bootstrap: boolean;
         };
         /**
          * TradeStructuresConfig
@@ -3910,6 +4201,269 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    regime_api_v1_vol_regime_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegimeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trade_preview_api_v1_vol_trade_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TradePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradePreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_health_api_v1_vol_model_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelHealthResponse"];
+                };
+            };
+        };
+    };
+    redis_keys_api_v1_dev_redis_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    engines_status_api_v1_dev_engines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    stack_overview_api_v1_dev_stack_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_tables_api_v1_dev_tables_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    read_table_api_v1_dev_tables__name__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redis_value_api_v1_dev_redis_value_get: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cycle_progress_api_v1_dev_cycle_progress_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

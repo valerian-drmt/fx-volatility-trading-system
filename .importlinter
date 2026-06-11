@@ -76,10 +76,10 @@ forbidden_modules =
 #
 # The api may *route* to engines via HTTP (execution-engine on :8001)
 # but must not Python-import their internals. This rules out subtle
-# api → engine import loops. (The sandbox carries a documented
-# whitelist for api.routers.cockpit -> engines.execution.structures ;
-# that router does not yet exist on this branch, so no exception is
-# needed here — re-add the ignore_imports line when cockpit lands.)
+# api → engine import loops. The single documented exception is
+# api.routers.cockpit -> engines.execution.structures : cockpit reuses
+# the pure structure dataclasses to build trade previews (function-local
+# import), which is a shared data-class, not engine business logic.
 # ────────────────────────────────────────────────────────────────────
 [importlinter:contract:5]
 name = api does not depend on engines
@@ -88,3 +88,5 @@ source_modules =
     api
 forbidden_modules =
     engines
+ignore_imports =
+    api.routers.cockpit -> engines.execution.structures
