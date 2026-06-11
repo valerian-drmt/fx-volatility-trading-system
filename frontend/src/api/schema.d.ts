@@ -276,6 +276,199 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portfolio/account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Account
+         * @description Latest account snapshot + the closest snapshot ≥24h before it.
+         *
+         *     Frontend uses ``prev_24h`` to display deltas (Δ Net Liq vs hier, etc.).
+         *     Returns ``latest=None`` if the table is empty (execution-engine never ran).
+         */
+        get: operations["get_account_api_v1_portfolio_account_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/header": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Header Summary
+         * @description One-shot endpoint for the dashboard sticky header (panel A).
+         *
+         *     Bundles in a single round-trip :
+         *       - latest ``account_snaps`` row + reference 24 h before for delta P&L
+         *       - aggregate greeks across all OPEN positions (denormalised on
+         *         ``positions`` since migration 028)
+         *       - 1-day 99% historical VaR computed on the daily distribution of
+         *         ``net_liq`` deltas from ``account_snaps`` (last 60 days).
+         *
+         *     Frontend can render the whole panel-A strip from one fetch.
+         */
+        get: operations["header_summary_api_v1_portfolio_header_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/equity-curve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Equity Curve
+         * @description Net liq time series, server-side downsampled to ~1–2k points.
+         *
+         *     Implementation : SQL ``DISTINCT ON (bucket)`` keeps the latest snap per
+         *     bucket without ever loading the full row set into Python. EOD = the
+         *     last point of each calendar day (UTC) when its bucketed timestamp
+         *     falls before 22:00 UTC.
+         */
+        get: operations["equity_curve_api_v1_portfolio_equity_curve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/aggregate-greeks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Aggregate Greeks
+         * @description Σ Δ Γ V Θ across all OPEN positions (latest snap per position).
+         *
+         *     Single SQL pass with ``DISTINCT ON (position_id)`` — no per-position
+         *     sub-query.
+         */
+        get: operations["aggregate_greeks_api_v1_portfolio_aggregate_greeks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/vega-per-tenor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vega Per Tenor
+         * @description Vega ($/volpt) bucketed by days-to-expiry. Single SQL pass.
+         */
+        get: operations["vega_per_tenor_api_v1_portfolio_vega_per_tenor_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/hedge-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hedge Summary
+         * @description Multi-window cumul of `hedge_orders`. Pattern Risk Ops standard :
+         *     a drift surfaces by comparing several windows side-by-side (today
+         *     sharp vs 7d normal → local event ; 30d up vs today calm → structural).
+         *
+         *     Only counts FILLED hedges (state='filled'). All windows are anchored
+         *     to ``now`` UTC ; calendar windows (today/WTD/MTD/YTD) use UTC midnight
+         *     or the latest UTC Mon/01-of-month/Jan-1 boundary.
+         */
+        get: operations["hedge_summary_api_v1_portfolio_hedge_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/stress-grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stress Grid
+         * @description 5×7 spot × IV stress matrix. Each cell = ``NPV(scenario) - NPV(now)``.
+         *
+         *     Full revaluation per scenario via Black-Scholes for options, linear for
+         *     futures. Baseline = current ``market_price`` for futures, BS at current
+         *     ``iv`` for options. Matches spec ``risk_dashboard_spec.md § F``.
+         */
+        get: operations["stress_grid_api_v1_portfolio_stress_grid_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/greeks-ladder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Greeks Ladder
+         * @description Per-spot-bucket greeks ladder. For each ΔSpot in {-400, -200, 0, +200, +400} bp :
+         *     full revaluation of the book, then sum Δ / Γ / Vega and the resulting
+         *     P&L vs current. ``hedge_delta_usd`` = ``-delta_usd`` (qty of $ Δ to
+         *     short/long via futures to be delta-neutral at that spot).
+         */
+        get: operations["greeks_ladder_api_v1_portfolio_greeks_ladder_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/vol-history": {
         parameters: {
             query?: never;
@@ -1154,7 +1347,8 @@ export interface components {
         };
         /**
          * PositionSnapshotView
-         * @description One snapshot row used by /history.
+         * @description One snapshot row used by /history. Mirrors the panel-E shape after
+         *     migration 030.
          */
         PositionSnapshotView: {
             /**
@@ -1162,51 +1356,89 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
-            /** Spot */
-            spot: string | null;
-            /** Iv */
-            iv: string | null;
+            /** Structure */
+            structure: string;
+            /** Side */
+            side: string;
+            /** Tenor */
+            tenor: string | null;
+            /** Expiry */
+            expiry: string | null;
+            /** Quantity */
+            quantity: string;
+            /** Nominal Eur */
+            nominal_eur: string | null;
+            /** Contract Price Entry */
+            contract_price_entry: string | null;
+            /** Market Price */
+            market_price: string | null;
+            /** Current Pnl Usd */
+            current_pnl_usd: string | null;
             /** Delta Usd */
             delta_usd: string | null;
-            /** Vega Usd */
-            vega_usd: string | null;
             /** Gamma Usd */
             gamma_usd: string | null;
+            /** Vega Usd */
+            vega_usd: string | null;
             /** Theta Usd */
             theta_usd: string | null;
-            /** Pnl Usd */
-            pnl_usd: string | null;
+            /** Iv */
+            iv: string | null;
+            /** Vanna Usd */
+            vanna_usd: string | null;
+            /** Volga Usd */
+            volga_usd: string | null;
         };
         /**
          * PositionView
-         * @description A single position row — mirrors ``persistence.models.Position``.
+         * @description A single position row — mirrors ``persistence.models.Position`` after
+         *     migration 028. Field order = panel E + entry_timestamp + updated_at.
          */
         PositionView: {
             /** Id */
             id: number;
-            /** Symbol */
-            symbol: string;
-            /** Instrument Type */
-            instrument_type: string;
+            /** Structure */
+            structure: string;
             /** Side */
             side: string;
+            /** Tenor */
+            tenor: string | null;
+            /** Expiry */
+            expiry: string | null;
             /** Quantity */
             quantity: string;
-            /** Strike */
-            strike: string | null;
-            /** Maturity */
-            maturity: string | null;
-            /** Option Type */
-            option_type: string | null;
-            /** Entry Price */
-            entry_price: string;
+            /** Nominal Eur */
+            nominal_eur: string | null;
+            /** Contract Price Entry */
+            contract_price_entry: string | null;
+            /** Market Price */
+            market_price: string | null;
+            /** Current Pnl Usd */
+            current_pnl_usd: string | null;
+            /** Delta Usd */
+            delta_usd: string | null;
+            /** Gamma Usd */
+            gamma_usd: string | null;
+            /** Vega Usd */
+            vega_usd: string | null;
+            /** Theta Usd */
+            theta_usd: string | null;
+            /** Iv */
+            iv: string | null;
+            /** Vanna Usd */
+            vanna_usd: string | null;
+            /** Volga Usd */
+            volga_usd: string | null;
             /**
              * Entry Timestamp
              * Format: date-time
              */
             entry_timestamp: string;
-            /** Status */
-            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** PreviewRequest */
         PreviewRequest: {
@@ -1827,6 +2059,193 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_account_api_v1_portfolio_account_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    header_summary_api_v1_portfolio_header_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    equity_curve_api_v1_portfolio_equity_curve_get: {
+        parameters: {
+            query?: {
+                window?: "1d" | "7d" | "30d" | "1y" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    aggregate_greeks_api_v1_portfolio_aggregate_greeks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    vega_per_tenor_api_v1_portfolio_vega_per_tenor_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    hedge_summary_api_v1_portfolio_hedge_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    stress_grid_api_v1_portfolio_stress_grid_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    greeks_ladder_api_v1_portfolio_greeks_ladder_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

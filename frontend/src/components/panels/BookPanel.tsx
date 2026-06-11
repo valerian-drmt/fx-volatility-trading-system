@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchPositions, type Positions } from "../../api/endpoints";
 import { DataTable, type Column } from "../common/DataTable";
 
@@ -6,20 +6,30 @@ type Row = Positions[number];
 
 const COLUMNS: Column<Row>[] = [
   { key: "id", label: "ID" },
-  { key: "symbol", label: "Symbol" },
+  { key: "structure", label: "Structure" },
   {
     key: "side",
     label: "Side",
     render: (r) => <span data-sign={r.side === "BUY" ? "pos" : "neg"}>{r.side}</span>,
   },
   { key: "quantity", label: "Qty" },
-  { key: "option_type", label: "OptType", render: (r) => r.option_type ?? "—" },
-  { key: "strike", label: "Strike", render: (r) => r.strike ?? "—" },
-  { key: "maturity", label: "Maturity", render: (r) => r.maturity ?? "—" },
+  { key: "tenor", label: "Tenor", render: (r) => r.tenor ?? "—" },
+  { key: "expiry", label: "Expiry", render: (r) => r.expiry ?? "—" },
   {
-    key: "entry_price",
+    key: "contract_price_entry",
     label: "Entry",
-    render: (r) => Number(r.entry_price).toFixed(4),
+    render: (r) =>
+      r.contract_price_entry != null ? Number(r.contract_price_entry).toFixed(4) : "—",
+  },
+  {
+    key: "market_price",
+    label: "Mark",
+    render: (r) => (r.market_price != null ? Number(r.market_price).toFixed(4) : "—"),
+  },
+  {
+    key: "current_pnl_usd",
+    label: "PnL",
+    render: (r) => (r.current_pnl_usd != null ? Number(r.current_pnl_usd).toFixed(2) : "—"),
   },
 ];
 
@@ -32,31 +42,16 @@ export function BookPanel(): JSX.Element {
       .catch(() => setRows([]));
   }, []);
 
-  const { open, closed } = useMemo(() => {
-    const o: Positions = [];
-    const c: Positions = [];
-    for (const r of rows) (r.status === "OPEN" ? o : c).push(r);
-    return { open: o, closed: c };
-  }, [rows]);
-
+  // Since migration 028 the ``positions`` table holds OPEN positions only
+  // (closed ones are DELETEd at sync time), so the book is a single table.
   return (
     <section className="panel book-panel" data-testid="book-panel">
       <header className="panel-header">
         <h2>Book</h2>
-        <span className="panel-count">
-          {open.length} open · {closed.length} closed
-        </span>
+        <span className="panel-count">{rows.length} open</span>
       </header>
       <div className="panel-body">
-        <h3 className="book-subhead">Open</h3>
-        <DataTable columns={COLUMNS} rows={open} empty="no open positions" rowKey={(r) => r.id} />
-        <h3 className="book-subhead">Closed</h3>
-        <DataTable
-          columns={COLUMNS}
-          rows={closed}
-          empty="no closed positions"
-          rowKey={(r) => r.id}
-        />
+        <DataTable columns={COLUMNS} rows={rows} empty="no open positions" rowKey={(r) => r.id} />
       </div>
     </section>
   );

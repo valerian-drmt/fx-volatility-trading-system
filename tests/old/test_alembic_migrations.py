@@ -114,8 +114,15 @@ def test_migration_upgrade_from_scratch(clean_db):
 
 
 def test_migration_downgrade_then_upgrade(clean_db):
-    """Full round-trip: upgrade head, downgrade base, upgrade head again."""
-    _alembic("upgrade head")
+    """Round-trip across the reversible core (001 → 027), then forward tail.
+
+    Migrations 028 & 030 rebuild ``positions`` / ``position_snapshots`` with
+    intentional data loss and are deliberately one-way (their ``downgrade``
+    raises ``RuntimeError``). The round-trip therefore exercises the
+    reversible prefix (upgrade 027 → downgrade base) and re-validates the
+    one-way tail (028 → 031) on the final forward ``upgrade head``.
+    """
+    _alembic("upgrade 027_positions_closed_at")
     _alembic("downgrade base")
 
     engine = create_engine(_sync_url(), future=True)

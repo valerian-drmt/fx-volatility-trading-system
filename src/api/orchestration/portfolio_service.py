@@ -25,10 +25,14 @@ class NotFoundInPortfolio(Exception):
 async def list_positions(
     db: AsyncSession, status: str | None = None, limit: int = 100
 ) -> list[PositionView]:
-    """List positions ordered by most recent entry first, optional status filter."""
+    """List positions ordered by most recent entry first.
+
+    The ``status`` parameter is accepted for OpenAPI back-compat but
+    ignored : after migration 028, only OPEN positions live in the table
+    (closed positions are DELETEd at sync time).
+    """
+    _ = status
     stmt = select(Position).order_by(desc(Position.entry_timestamp)).limit(limit)
-    if status:
-        stmt = stmt.where(Position.status == status.upper())
     rows = (await db.execute(stmt)).scalars().all()
     return [PositionView.model_validate(r) for r in rows]
 

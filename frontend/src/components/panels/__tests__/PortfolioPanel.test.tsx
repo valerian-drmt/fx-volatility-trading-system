@@ -7,16 +7,15 @@ import { PortfolioPanel } from "../PortfolioPanel";
 const ROWS = [
   {
     id: 1,
-    symbol: "EURUSD",
-    instrument_type: "OPT",
+    structure: "6EM6",
     side: "BUY",
     quantity: "10",
-    strike: "1.08",
-    maturity: "2026-05-15",
-    option_type: "CALL",
-    entry_price: "0.0012",
+    tenor: "1M",
+    expiry: "2026-05-15",
+    contract_price_entry: "0.0012",
+    current_pnl_usd: "30",
     entry_timestamp: "2026-04-01T10:00:00Z",
-    status: "OPEN",
+    updated_at: "2026-04-01T10:00:00Z",
   },
 ];
 
@@ -28,10 +27,7 @@ describe("PortfolioPanel", () => {
 
   it("fetches positions and renders a row per position", async () => {
     render(<PortfolioPanel />);
-    await waitFor(() =>
-      expect(screen.getByText("EURUSD")).toBeInTheDocument(),
-    );
-    expect(screen.getByText("OPEN")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("6EM6")).toBeInTheDocument());
     expect(screen.getByTestId("portfolio-panel")).toBeInTheDocument();
   });
 
