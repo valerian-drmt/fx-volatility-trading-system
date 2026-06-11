@@ -928,3 +928,29 @@ class DeltaHedgeConfig(Base):
     )
 
 
+class VolConfig(Base):
+    """Append-only versioned config for the vol trading pipeline.
+
+    Each PUT on ``/api/v1/admin/config`` inserts a new row with the
+    next ``version``. The latest row is the source of truth ; older rows
+    provide the audit trail + revert + backtest reproducibility
+    (a backtest can pin ``config_version=N`` to replay that config).
+
+    ``config`` holds the full :class:`core.config.VolTradingConfig`
+    serialized as JSONB -- schema-less on the DB side so adding a new
+    Pydantic field does NOT require an Alembic migration.
+    """
+
+    __tablename__ = "vol_engine_config"
+
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    config: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+    comment: Mapped[str | None] = mapped_column(String(500))
+
+
