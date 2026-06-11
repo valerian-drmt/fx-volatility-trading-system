@@ -21,6 +21,7 @@ from api.routers import analytics as analytics_router
 from api.routers import health as health_router
 from api.routers import orders as orders_router
 from api.routers import portfolio as portfolio_router
+from api.routers import portfolio_panel as portfolio_panel_router
 from api.routers import positions as positions_router
 from api.routers import pricing as pricing_router
 from api.routers import regime as regime_router
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(pricing_router.router)
     app.include_router(vol_router.router)
     app.include_router(portfolio_router.router)
+    app.include_router(portfolio_panel_router.router)
     app.include_router(analytics_router.router)
     app.include_router(regime_router.router)
     app.include_router(signals_router.router)

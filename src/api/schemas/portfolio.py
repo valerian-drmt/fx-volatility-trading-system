@@ -9,36 +9,56 @@ from pydantic import BaseModel, ConfigDict
 
 
 class PositionView(BaseModel):
-    """A single position row — mirrors ``persistence.models.Position``."""
+    """A single position row — mirrors ``persistence.models.Position`` after
+    migration 028. Field order = panel E + entry_timestamp + updated_at.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    symbol: str
-    instrument_type: str
+    structure: str
     side: str
+    tenor: str | None
+    expiry: date | None
     quantity: Decimal
-    strike: Decimal | None
-    maturity: date | None
-    option_type: str | None
-    entry_price: Decimal
+    nominal_eur: Decimal | None
+    contract_price_entry: Decimal | None
+    market_price: Decimal | None
+    current_pnl_usd: Decimal | None
+    delta_usd: Decimal | None
+    gamma_usd: Decimal | None
+    vega_usd: Decimal | None
+    theta_usd: Decimal | None
+    iv: Decimal | None
+    vanna_usd: Decimal | None
+    volga_usd: Decimal | None
     entry_timestamp: datetime
-    status: str
+    updated_at: datetime
 
 
 class PositionSnapshotView(BaseModel):
-    """One snapshot row used by /history."""
+    """One snapshot row used by /history. Mirrors the panel-E shape after
+    migration 030."""
 
     model_config = ConfigDict(from_attributes=True)
 
     timestamp: datetime
-    spot: Decimal | None
-    iv: Decimal | None
+    structure: str
+    side: str
+    tenor: str | None
+    expiry: date | None
+    quantity: Decimal
+    nominal_eur: Decimal | None
+    contract_price_entry: Decimal | None
+    market_price: Decimal | None
+    current_pnl_usd: Decimal | None
     delta_usd: Decimal | None
-    vega_usd: Decimal | None
     gamma_usd: Decimal | None
+    vega_usd: Decimal | None
     theta_usd: Decimal | None
-    pnl_usd: Decimal | None
+    iv: Decimal | None
+    vanna_usd: Decimal | None
+    volga_usd: Decimal | None
 
 
 class GreeksAggregated(BaseModel):
