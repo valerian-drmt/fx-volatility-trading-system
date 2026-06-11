@@ -1165,10 +1165,201 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Current Config */
+        get: operations["get_current_config_api_v1_admin_config_get"];
+        /** Update Config */
+        put: operations["update_config_api_v1_admin_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/config/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config Schema
+         * @description Raw JSON Schema of :class:`VolTradingConfig` for React JSON Schema Form.
+         */
+        get: operations["get_config_schema_api_v1_admin_config_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/config/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Config History */
+        get: operations["list_config_history_api_v1_admin_config_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/config/revert/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revert Config */
+        post: operations["revert_config_api_v1_admin_config_revert__version__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * CalibrationConfig
+         * @description Walk-forward + backtest calibration hyperparameters.
+         */
+        CalibrationConfig: {
+            /**
+             * W1 Walk Forward Months
+             * @default 12
+             */
+            w1_walk_forward_months: number;
+            /**
+             * W1 Clip Min
+             * @default 0
+             */
+            w1_clip_min: number;
+            /**
+             * W1 Clip Max
+             * @default 1
+             */
+            w1_clip_max: number;
+            /**
+             * Vrp Train Split
+             * @default 0.7
+             */
+            vrp_train_split: number;
+            /**
+             * Vrp Mae Improvement Threshold
+             * @default 0.2
+             */
+            vrp_mae_improvement_threshold: number;
+            /**
+             * Har Components
+             * @default [
+             *       1,
+             *       5,
+             *       22
+             *     ]
+             */
+            har_components: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Ewma Lambda Fair Smile
+             * @default 0.94
+             */
+            ewma_lambda_fair_smile: number;
+        };
+        /**
+         * ConfigPatchRequest
+         * @description Partial update. The `patch` object is deep-merged into the current config.
+         */
+        ConfigPatchRequest: {
+            /**
+             * Patch
+             * @description Nested dict mirroring VolTradingConfig sections
+             */
+            patch: {
+                [key: string]: unknown;
+            };
+            /** User */
+            user?: string | null;
+            /** Comment */
+            comment?: string | null;
+        };
+        /**
+         * ConfigResponse
+         * @description Current or historical config row with its metadata.
+         */
+        ConfigResponse: {
+            /**
+             * Version
+             * @description Monotonic version number ; 0 = pydantic defaults (empty table)
+             */
+            version: number;
+            config: components["schemas"]["VolTradingConfig"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Updated By */
+            updated_by?: string | null;
+            /** Comment */
+            comment?: string | null;
+        };
+        /**
+         * ConfigRevertRequest
+         * @description Revert the current config to a past version (duplicates it as the new head).
+         */
+        ConfigRevertRequest: {
+            /** User */
+            user?: string | null;
+            /** Comment */
+            comment?: string | null;
+        };
+        /**
+         * DeltaHedgeConfig
+         * @description Delta hedging behavior : static / threshold / scheduled.
+         */
+        DeltaHedgeConfig: {
+            /**
+             * Mode
+             * @default threshold
+             * @enum {string}
+             */
+            mode: "static" | "threshold" | "scheduled";
+            /**
+             * Threshold Delta
+             * @default 0.05
+             */
+            threshold_delta: number;
+            /**
+             * Scheduled Interval Minutes
+             * @default 60
+             */
+            scheduled_interval_minutes: number;
+        };
         /** EngineStats */
         EngineStats: {
             /** Name */
@@ -1193,6 +1384,32 @@ export interface components {
             scheduled_at: string;
             /** Description */
             description?: string | null;
+        };
+        /**
+         * ExitRulesConfig
+         * @description Thresholds that trigger systematic exits on open structures.
+         */
+        ExitRulesConfig: {
+            /**
+             * Z Flip Exit Threshold
+             * @default 0.5
+             */
+            z_flip_exit_threshold: number;
+            /**
+             * Time Remaining Min Ratio
+             * @default 0.3
+             */
+            time_remaining_min_ratio: number;
+            /**
+             * Stop Loss Vega Multiplier
+             * @default 3
+             */
+            stop_loss_vega_multiplier: number;
+            /**
+             * Time To Expiry Force Exit Days
+             * @default 7
+             */
+            time_to_expiry_force_exit_days: number;
         };
         /** GateOut */
         GateOut: {
@@ -1502,6 +1719,45 @@ export interface components {
             /** Price */
             price: number;
         };
+        /**
+         * RegimeConfig
+         * @description Features + thresholds for the GMM-based regime detector.
+         */
+        RegimeConfig: {
+            /**
+             * Gmm Components
+             * @default 3
+             */
+            gmm_components: number;
+            /**
+             * Regime Labels
+             * @default [
+             *       "calm",
+             *       "stressed",
+             *       "pre_event"
+             *     ]
+             */
+            regime_labels: [
+                "calm" | "stressed" | "pre_event",
+                "calm" | "stressed" | "pre_event",
+                "calm" | "stressed" | "pre_event"
+            ];
+            /**
+             * Event Dampener Horizon Days
+             * @default 5
+             */
+            event_dampener_horizon_days: number;
+            /**
+             * Vol Of Vol Window Days
+             * @default 20
+             */
+            vol_of_vol_window_days: number;
+            /**
+             * Stressed Sizing Multiplier
+             * @default 0.7
+             */
+            stressed_sizing_multiplier: number;
+        };
         /** RegimeStateOut */
         RegimeStateOut: {
             /**
@@ -1536,6 +1792,68 @@ export interface components {
             } | null;
         };
         /**
+         * SignalConfig
+         * @description z-score thresholds for the PCA signal panel.
+         */
+        SignalConfig: {
+            /**
+             * Z Threshold Arm
+             * @default 1.5
+             */
+            z_threshold_arm: number;
+            /**
+             * Z Threshold Strong
+             * @default 2
+             */
+            z_threshold_strong: number;
+            /**
+             * Z Threshold Extreme
+             * @default 3
+             */
+            z_threshold_extreme: number;
+            /**
+             * Pca Rolling Months
+             * @default 3
+             */
+            pca_rolling_months: number;
+            /**
+             * Variance Explained Min
+             * @default 0.85
+             */
+            variance_explained_min: number;
+        };
+        /**
+         * SizingConfig
+         * @description Position sizing formula : base × conviction × book_penalty × event.
+         */
+        SizingConfig: {
+            /**
+             * Base Size
+             * @default 10
+             */
+            base_size: number;
+            /**
+             * Alpha Book
+             * @default 0.2
+             */
+            alpha_book: number;
+            /**
+             * Book Rejection Threshold
+             * @default 0.8
+             */
+            book_rejection_threshold: number;
+            /**
+             * Event Dampener Multiplier
+             * @default 0.5
+             */
+            event_dampener_multiplier: number;
+            /**
+             * Max Loss Pct Capital
+             * @default 0.02
+             */
+            max_loss_pct_capital: number;
+        };
+        /**
          * SmilePoint
          * @description One point of the smile : strike + implied vol in percent.
          */
@@ -1562,6 +1880,31 @@ export interface components {
             dte: number | null;
             /** Points */
             points: components["schemas"]["SmilePoint"][];
+        };
+        /**
+         * SurfaceConfig
+         * @description Tenor grid, fit diagnostics, no-arb tolerances.
+         */
+        SurfaceConfig: {
+            /** Tenors Days */
+            tenors_days?: number[];
+            /** Delta Pillars */
+            delta_pillars?: number[];
+            /**
+             * Svi Rmse Max Warn
+             * @default 0.003
+             */
+            svi_rmse_max_warn: number;
+            /**
+             * Butterfly Check Grid
+             * @default 100
+             */
+            butterfly_check_grid: number;
+            /**
+             * Ssvi Vs Svi Tolerance
+             * @default 0.2
+             */
+            ssvi_vs_svi_tolerance: number;
         };
         /**
          * SurfaceResponse
@@ -1620,6 +1963,41 @@ export interface components {
             /** Sigma Atm Pct */
             sigma_atm_pct: number | null;
         };
+        /**
+         * TradeStructuresConfig
+         * @description Which structure is generated for each signal origin.
+         */
+        TradeStructuresConfig: {
+            /**
+             * Pc1 Structure
+             * @default straddle_atm
+             * @enum {string}
+             */
+            pc1_structure: "straddle_atm" | "calendar_spread" | "risk_reversal_25d" | "butterfly_25d";
+            /**
+             * Pc2 Structure
+             * @default calendar_spread
+             * @enum {string}
+             */
+            pc2_structure: "straddle_atm" | "calendar_spread" | "risk_reversal_25d" | "butterfly_25d";
+            /**
+             * Pc3 Skew Structure
+             * @default risk_reversal_25d
+             * @enum {string}
+             */
+            pc3_skew_structure: "straddle_atm" | "calendar_spread" | "risk_reversal_25d" | "butterfly_25d";
+            /**
+             * Pc3 Convex Structure
+             * @default butterfly_25d
+             * @enum {string}
+             */
+            pc3_convex_structure: "straddle_atm" | "calendar_spread" | "risk_reversal_25d" | "butterfly_25d";
+            /**
+             * Default Tenor Days
+             * @default 90
+             */
+            default_tenor_days: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1645,6 +2023,29 @@ export interface components {
             spot: string;
             /** Forward */
             forward: string | null;
+        };
+        /**
+         * VolTradingConfig
+         * @description Root config persisted as JSONB in the ``vol_config`` table.
+         *
+         *     Adding a new tunable parameter is a 2-step operation :
+         *       1. add the field to the relevant section below (or create a new
+         *          section if no existing one fits).
+         *       2. reference ``get_current_config().section.field`` from the
+         *          consuming service code.
+         *
+         *     The admin UI picks up the new field automatically because RJSF
+         *     generates the form from this schema's JSON Schema export.
+         */
+        VolTradingConfig: {
+            regime?: components["schemas"]["RegimeConfig"];
+            signal?: components["schemas"]["SignalConfig"];
+            sizing?: components["schemas"]["SizingConfig"];
+            exit_rules?: components["schemas"]["ExitRulesConfig"];
+            surface?: components["schemas"]["SurfaceConfig"];
+            calibration?: components["schemas"]["CalibrationConfig"];
+            delta_hedge?: components["schemas"]["DeltaHedgeConfig"];
+            structures?: components["schemas"]["TradeStructuresConfig"];
         };
     };
     responses: never;
@@ -3368,6 +3769,147 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_current_config_api_v1_admin_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+        };
+    };
+    update_config_api_v1_admin_config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_config_schema_api_v1_admin_config_schema_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_config_history_api_v1_admin_config_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revert_config_api_v1_admin_config_revert__version__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigRevertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
