@@ -148,7 +148,10 @@ async def _ib_probe(host: str = "ib-gateway", port: int = 4002, timeout_s: float
             pass
         return {"status": "OK", "host": host, "port": port}
     except (TimeoutError, OSError) as e:
-        return {"status": "DOWN", "host": host, "port": port, "error": str(e)[:80]}
+        # Static reason only — never surface the exception text (could leak
+        # internal host/network detail to an external caller).
+        reason = "timeout" if isinstance(e, TimeoutError) else "unreachable"
+        return {"status": "DOWN", "host": host, "port": port, "error": reason}
 
 
 async def _tcp_probe(host: str, port: int, timeout_s: float = 2.0) -> str:
@@ -268,29 +271,33 @@ async def stack_overview(
 # dans cette liste avant interpolation. Pas d'autres requêtes que SELECT.
 # Value = colonne pour ORDER BY DESC (PK la plupart du temps, mais pas toujours
 # `id` — vol_config utilise `version`).
-ALLOWED_TABLES: dict[str, str] = {
-    "order_events": "id",
-    "orders": "id",
-    "trades": "id",
-    "positions": "id",
-    "position_snapshots": "id",
-    "account_snaps": "id",
-    "vol_surface_snapshot": "id",
-    "vol_engine_config": "version",
+# Maps a public table name to the (sql_identifier, order_by_column) pair.
+# Both elements are constant literals : the read endpoint interpolates THESE
+# into the SQL string, never the raw request value, so the query identifier
+# is provably whitelist-sourced (defuses static SQL-injection taint tracking).
+ALLOWED_TABLES: dict[str, tuple[str, str]] = {
+    "order_events": ("order_events", "id"),
+    "orders": ("orders", "id"),
+    "trades": ("trades", "id"),
+    "positions": ("positions", "id"),
+    "position_snapshots": ("position_snapshots", "id"),
+    "account_snaps": ("account_snaps", "id"),
+    "vol_surface_snapshot": ("vol_surface_snapshot", "id"),
+    "vol_engine_config": ("vol_engine_config", "version"),
     # Step 1 — regime gating
-    "regime_feature_snapshot": "id",
-    "feature_history_30d": "id",
-    "macro_event": "id",
-    "vrp_default_curve": "id",
+    "regime_feature_snapshot": ("regime_feature_snapshot", "id"),
+    "feature_history_30d": ("feature_history_30d", "id"),
+    "macro_event": ("macro_event", "id"),
+    "vrp_default_curve": ("vrp_default_curve", "id"),
     # Step 2 — PCA factor model
-    "surface_snapshots_hourly": "id",
-    "pca_model": "id",
-    "pca_projection_snapshot": "id",
-    "pca_structure_recommendation": "id",
+    "surface_snapshots_hourly": ("surface_snapshots_hourly", "id"),
+    "pca_model": ("pca_model", "id"),
+    "pca_projection_snapshot": ("pca_projection_snapshot", "id"),
+    "pca_structure_recommendation": ("pca_structure_recommendation", "id"),
     # Step 5 — position monitoring & hedging
-    "hedge_orders": "id",
-    "exit_alerts": "id",
-    "position_mtm_history": "id",
+    "hedge_orders": ("hedge_orders", "id"),
+    "exit_alerts": ("exit_alerts", "id"),
+    "position_mtm_history": ("position_mtm_history", "id"),
 }
 
 
@@ -311,23 +318,25 @@ async def read_table(
 
     JSONB / datetime / Decimal sont sérialisés via FastAPI's jsonable_encoder.
     """
-    order_col = ALLOWED_TABLES.get(name)
-    if order_col is None:
+    spec = ALLOWED_TABLES.get(name)
+    if spec is None:
         raise HTTPException(status_code=404, detail=f"table {name!r} not in whitelist")
     if not 1 <= limit <= 10000:
         raise HTTPException(status_code=400, detail="limit must be in [1, 10000]")
     if offset < 0:
         raise HTTPException(status_code=400, detail="offset must be >= 0")
 
-    # `name` et `order_col` sont validés via la whitelist (pas user input
-    # libre), donc l'interpolation est safe.
+    # ``table_sql`` / ``order_col`` are constant literals pulled from the
+    # whitelist dict (NOT the raw request value), so the interpolated SQL
+    # identifier is provably whitelist-sourced.
+    table_sql, order_col = spec
     rows_res = await db.execute(
-        text(f"SELECT * FROM {name} ORDER BY {order_col} DESC LIMIT :lim OFFSET :off"),
+        text(f"SELECT * FROM {table_sql} ORDER BY {order_col} DESC LIMIT :lim OFFSET :off"),
         {"lim": limit, "off": offset},
     )
     rows = [dict(r) for r in rows_res.mappings().all()]
 
-    count_res = await db.execute(text(f"SELECT COUNT(*) AS n FROM {name}"))
+    count_res = await db.execute(text(f"SELECT COUNT(*) AS n FROM {table_sql}"))
     total = int(count_res.scalar_one())
 
     columns = list(rows[0].keys()) if rows else []
