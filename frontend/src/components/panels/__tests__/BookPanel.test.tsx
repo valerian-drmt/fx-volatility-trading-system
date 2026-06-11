@@ -4,35 +4,34 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../tests/mocks/handlers";
 import { BookPanel } from "../BookPanel";
 
-const P = (id: number, status: string, side = "BUY") => ({
+const P = (id: number, side = "BUY") => ({
   id,
-  symbol: "EURUSD",
-  instrument_type: "OPT",
+  structure: "6EM6",
   side,
   quantity: "10",
-  strike: "1.08",
-  maturity: "2026-05-15",
-  option_type: "CALL",
-  entry_price: "0.0012",
+  tenor: "1M",
+  expiry: "2026-05-15",
+  contract_price_entry: "0.0012",
+  market_price: "0.0015",
+  current_pnl_usd: "30",
   entry_timestamp: "2026-04-01T10:00:00Z",
-  status,
+  updated_at: "2026-04-01T10:00:00Z",
 });
 
 describe("BookPanel", () => {
   beforeEach(() => {
     server.use(
       http.get("*/api/v1/positions", () =>
-        HttpResponse.json([P(1, "OPEN", "BUY"), P(2, "CLOSED", "SELL"), P(3, "OPEN", "SELL")]),
+        HttpResponse.json([P(1, "BUY"), P(2, "SELL"), P(3, "SELL")]),
       ),
     );
   });
   afterEach(() => server.resetHandlers());
 
-  it("splits rows into Open vs Closed tables with correct counts", async () => {
+  it("renders all open positions with a count", async () => {
     render(<BookPanel />);
-    await waitFor(() => expect(screen.getByText(/2 open · 1 closed/)).toBeInTheDocument());
-    expect(screen.getByText("Open")).toBeInTheDocument();
-    expect(screen.getByText("Closed")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/3 open/)).toBeInTheDocument());
+    expect(screen.getByTestId("book-panel")).toBeInTheDocument();
   });
 
   it("colors BUY side positive and SELL side negative", async () => {

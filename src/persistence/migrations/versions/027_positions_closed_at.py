@@ -40,8 +40,12 @@ def upgrade() -> None:
     op.execute("UPDATE positions SET closed_at = NOW() WHERE status <> 'OPEN'")
 
     # 2. Drop dependent indexes / constraints first, then the columns.
+    #    NB : ``idx_positions_status_active`` is owned by the 254fc54bb36f
+    #    autogen artifact (created in 002, dropped in 254) — it does not exist
+    #    at this point in the forward chain, so we neither drop nor recreate it
+    #    here (254's downgrade restores it). Touching it would collide with
+    #    254's downgrade on a full ``downgrade base`` round-trip.
     op.drop_index("ix_positions_local_symbol_open", table_name="positions")
-    op.drop_index("idx_positions_status_active", table_name="positions", if_exists=True)
     op.drop_constraint("ck_positions_status", "positions", type_="check")
     op.drop_column("positions", "status")
     op.drop_column("positions", "created_at")
@@ -82,12 +86,8 @@ def downgrade() -> None:
         "positions",
         "status IN ('OPEN','CLOSED','EXPIRED')",
     )
-    op.create_index(
-        "idx_positions_status_active",
-        "positions",
-        ["status"],
-        postgresql_where=sa.text("status = 'OPEN'"),
-    )
+    # ``idx_positions_status_active`` is recreated by 254fc54bb36f's downgrade
+    # (it owns that index) — recreating it here would duplicate it.
     op.create_index(
         "ix_positions_local_symbol_open",
         "positions",

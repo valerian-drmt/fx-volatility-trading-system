@@ -6,16 +6,21 @@ type Row = Positions[number];
 
 const COLUMNS: Column<Row>[] = [
   { key: "id", label: "ID" },
-  { key: "symbol", label: "Symbol" },
-  { key: "instrument_type", label: "Type" },
+  { key: "structure", label: "Structure" },
   { key: "side", label: "Side" },
   { key: "quantity", label: "Qty" },
+  { key: "tenor", label: "Tenor", render: (r) => r.tenor ?? "—" },
   {
-    key: "entry_price",
+    key: "contract_price_entry",
     label: "Entry",
-    render: (r) => Number(r.entry_price).toFixed(4),
+    render: (r) =>
+      r.contract_price_entry != null ? Number(r.contract_price_entry).toFixed(4) : "—",
   },
-  { key: "status", label: "Status" },
+  {
+    key: "current_pnl_usd",
+    label: "PnL",
+    render: (r) => (r.current_pnl_usd != null ? Number(r.current_pnl_usd).toFixed(2) : "—"),
+  },
 ];
 
 export function PortfolioPanel(): JSX.Element {
