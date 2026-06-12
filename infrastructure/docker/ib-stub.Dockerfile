@@ -4,7 +4,7 @@
 # quickly disconnect and retry — that's fine, we're only validating
 # the frontend stack boots and Nginx routes correctly.
 #
-#   docker build -f infrastructure/docker/Dockerfile.ib-stub -t fx-options-ib-stub .
+#   docker build -f infrastructure/docker/ib-stub.Dockerfile -t fx-options-ib-stub .
 
 FROM python:3.11-slim AS base
 

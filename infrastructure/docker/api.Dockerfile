@@ -5,7 +5,7 @@
 # scipy / pandas / redis / structlog / pydantic / SQLAlchemy / asyncpg
 # / alembic). No ib_insync, no arch — the api is pure stateless.
 #
-#   docker build -f infrastructure/docker/Dockerfile.api -t fx-options-api .
+#   docker build -f infrastructure/docker/api.Dockerfile -t fx-options-api .
 
 ARG PYTHON_IMAGE=python:3.11-slim
 

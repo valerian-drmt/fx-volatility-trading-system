@@ -50,7 +50,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: infrastructure/docker/Dockerfile.api
+          file: infrastructure/docker/api.Dockerfile
           push: ${{ env.PUSH }}
           # `sha-<short>` for traceability + `latest` for convenience pulls.
           tags: |
@@ -68,7 +68,7 @@ jobs:
         uses: actions/checkout@v4
 
       # setup-node with npm cache accelerates the multi-stage build — the
-      # Dockerfile.web `npm ci` layer is already cached by buildx but the
+      # web.Dockerfile `npm ci` layer is already cached by buildx but the
       # hash hit on the action runner itself avoids re-downloading
       # ~200 MB of tarballs when buildx cold-starts.
       - name: Set up Node 20 with npm cache
@@ -93,7 +93,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: infrastructure/docker/Dockerfile.web
+          file: infrastructure/docker/web.Dockerfile
           push: ${{ env.PUSH }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-frontend:sha-${{ github.sha }}

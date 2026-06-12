@@ -1,8 +1,8 @@
-# Skeleton Dockerfile.engines — filled in R7 when the three engines
+# Skeleton engines.Dockerfile — filled in R7 when the three engines
 # (MarketDataEngine, VolEngine, RiskEngine) are extracted out of the
 # PyQt Controller into a standalone service.
 #
-# Keep the base and layout similar to Dockerfile.api so both images
+# Keep the base and layout similar to api.Dockerfile so both images
 # share a layer cache in the future GHCR registry — only the CMD and
 # the requirements subset will differ.
 #
@@ -38,4 +38,4 @@ COPY src/ ./src/
 # Placeholder entrypoint. A real engines_runner lands in R7 — for now we
 # want the image to build cleanly in CI without producing a broken
 # container that someone could run accidentally.
-CMD ["python", "-c", "print('Dockerfile.engines is a skeleton — see R7 for the runtime'); import sys; sys.exit(78)"]
+CMD ["python", "-c", "print('engines.Dockerfile is a skeleton — see R7 for the runtime'); import sys; sys.exit(78)"]

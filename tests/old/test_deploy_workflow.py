@@ -234,8 +234,8 @@ def test_ci_compose_e2e_uploads_report_on_failure(ci_wf: dict):
 
 @pytest.mark.unit
 def test_ib_stub_dockerfile_exists():
-    dockerfile = Path(__file__).resolve().parent.parent / "infrastructure" / "docker" / "Dockerfile.ib-stub"
-    assert dockerfile.exists(), "Dockerfile.ib-stub must ship for the CI stub IB service"
+    dockerfile = Path(__file__).resolve().parent.parent / "infrastructure" / "docker" / "ib-stub.Dockerfile"
+    assert dockerfile.exists(), "ib-stub.Dockerfile must ship for the CI stub IB service"
     content = dockerfile.read_text(encoding="utf-8")
     assert "EXPOSE 4002" in content
 
@@ -246,7 +246,7 @@ def test_ib_stub_server_is_shipped():
     assert server.exists()
     code = server.read_text(encoding="utf-8")
     # PORT/HOST sourced from env (IB_STUB_PORT/IB_STUB_BIND) since v1.9.0
-    # hardening — Dockerfile.ib-stub sets them to 4002 / 0.0.0.0 for the
+    # hardening — ib-stub.Dockerfile sets them to 4002 / 0.0.0.0 for the
     # docker network. Source no longer carries the literal 0.0.0.0 (CodeQL
     # py/bind-socket-all-network-interfaces).
     assert "IB_STUB_PORT" in code and "4002" in code
