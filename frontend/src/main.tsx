@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App";
+import VoldeskApp from "./voldesk/VoldeskApp";
 import { DevLayout } from "./pages/DevLayout";
 import { VolEngineConfigPage } from "./pages/VolEngineConfigPage";
 import "./theme.css";
@@ -8,15 +8,19 @@ import "./theme.css";
 const container = document.getElementById("root");
 if (!container) throw new Error("missing #root mount point");
 
-// R9 sandbox : path-based routing (no react-router yet, cf. routes.tsx).
-// /dev/*  → DevLayout (validation tabs)
-// /config → VolEngineConfigPage (engine config editor)
-// default → App (live dashboard)
-const path = typeof window !== "undefined" ? window.location.pathname : "/";
+// Path-based routing (no react-router yet). Base-aware so it survives the
+// deploy subpath (import.meta.env.BASE_URL, e.g. "/fx-volatility-trading-system/").
+//   /        → VoldeskApp (user-facing desk)
+//   /dev/*   → DevLayout   (validation / diagnostic tabs)
+//   /config  → VolEngineConfigPage (engine config editor)
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const rawPath = typeof window !== "undefined" ? window.location.pathname : "/";
+const path = base && rawPath.startsWith(base) ? rawPath.slice(base.length) || "/" : rawPath;
+
 const Root =
   path.startsWith("/config") ? VolEngineConfigPage :
   path.startsWith("/dev")    ? DevLayout :
-  App;
+  VoldeskApp;
 
 ReactDOM.createRoot(container).render(
   <React.StrictMode>
