@@ -1,7 +1,7 @@
 """Parse-level validation of the Nginx configs shipped in ``infrastructure/nginx/``.
 
 Live ``nginx -t`` runs behind a Docker image in the CI job
-(``nginx-config-test``). This test stays offline: it reads the files and
+(``nginx-config``). This test stays offline: it reads the files and
 asserts the primitives we rely on (proxy_pass, Upgrade header, SPA fallback,
 TLS) are present, so a typo or an accidental deletion is caught at pytest
 time without needing a Docker daemon.
@@ -12,7 +12,17 @@ from pathlib import Path
 
 import pytest
 
-CONF_DIR = Path(__file__).resolve().parent.parent / "infrastructure" / "nginx"
+
+def _repo_root() -> Path:
+    """Walk up until we find the dir holding ``pyproject.toml`` — keeps the
+    config path correct regardless of where this test lives in the tree."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pyproject.toml").is_file():
+            return parent
+    raise RuntimeError("repo root (with pyproject.toml) not found")
+
+
+CONF_DIR = _repo_root() / "infrastructure" / "nginx"
 
 
 def _read(name: str) -> str:

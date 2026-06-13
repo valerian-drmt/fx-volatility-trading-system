@@ -127,9 +127,9 @@ known-first-party = ["api", "bus", "core", "engines", "persistence", "shared"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-# Pin collection to the curated test buckets ; ``tests/old/`` only holds
-# the nginx-config syntax test that ``.github/workflows/ci.yml`` runs
-# explicitly via path, never via marker.
+# Pin collection to the curated test buckets. The historical ``tests/old/``
+# quarantine has been removed — its last survivor (the nginx-config parse
+# test) now lives under ``tests/unit/infrastructure/`` and is collected here.
 testpaths = ["tests/unit", "tests/integration"]
 addopts = "-q --strict-markers --maxfail=1"
 asyncio_mode = "auto"

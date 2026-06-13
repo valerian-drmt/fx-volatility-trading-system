@@ -214,9 +214,10 @@ jupyter lab scripts/smoke/redis/02_test_bus_package.ipynb   # bus Python wrapper
 jupyter lab scripts/smoke/db-writer/01_test_writer.ipynb    # AsyncDatabaseWriter end-to-end
 ```
 
-`tests/old/` retains only `test_nginx_config_syntax.py` — the
-`nginx-config` CI job runs it explicitly by path. Everything else has
-been promoted into `tests/unit/` or dropped (cf.
+The nginx config parse-test lives at
+`tests/unit/infrastructure/test_nginx_config_syntax.py` — collected with the
+unit suite and also run explicitly by the `nginx-config` CI job. The old
+`tests/old/` quarantine has been emptied and removed (cf.
 [`tests/STRUCTURE.md`](tests/STRUCTURE.md)).
 
 ---

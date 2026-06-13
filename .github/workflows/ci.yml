@@ -169,7 +169,7 @@ jobs:
       - name: pytest parse check on every config
         run: |
           python -m pip install --upgrade pip pytest
-          python -m pytest tests/old/test_nginx_config_syntax.py -v
+          python -m pytest tests/unit/infrastructure/test_nginx_config_syntax.py -v
 
   frontend-e2e:
     name: frontend Playwright e2e

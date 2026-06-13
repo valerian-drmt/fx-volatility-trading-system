@@ -129,16 +129,16 @@ from tests.fixtures.positions import make_long_call
 
 ---
 
-## `tests/old/` — quarantine résiduelle
+## `tests/old/` — supprimée
 
-Vidée lors du cleanup repo (2026-06-06). Seul **`test_nginx_config_syntax.py`**
-y reste : il est exécuté par le job `nginx-config` de `.github/workflows/ci.yml`
-qui pointe explicitement sur ce path (offline parse-level validation des
-configs nginx, complément du `nginx -t` live).
-
-À déplacer dans `tests/unit/infrastructure/` lors d'une PR dédiée si on
-décide de cataloguer aussi les tests de config infra. Pour l'instant le
-status quo limite le changement de surface CI.
+Quarantine historique vidée lors du cleanup repo (2026-06-06) puis
+**supprimée en R11**. Son dernier survivant, **`test_nginx_config_syntax.py`**
+(offline parse-level validation des configs nginx, complément du `nginx -t`
+live), a été déplacé dans **`tests/unit/infrastructure/`** : il est désormais
+collecté avec la suite unit et reste référencé explicitement par le job
+`nginx-config` de `.github/workflows/ci.yml`. Le chemin des configs y est
+résolu via remontée jusqu'au `pyproject.toml`, donc insensible à un futur
+déplacement.
 
 ---
 
