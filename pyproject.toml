@@ -164,3 +164,7 @@ dev-dependencies = []
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["api*", "bus*", "core*", "engines*", "persistence*", "shared*"]
+# PEP 420 namespace packages : the top-level packages have no __init__.py,
+# so discovery must use find_namespace semantics (else `pip install -e`
+# discovers nothing under src/).
+namespaces = true
