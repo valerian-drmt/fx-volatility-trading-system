@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # db-writer service — installs the [writer] extra (psycopg2-binary on
 # top of base runtime). Deliberately does NOT pull ib-insync, making
 # this image ~150 MB lighter than the engine containers.
@@ -19,7 +20,7 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
-RUN pip install --upgrade pip && pip install ".[writer]"
+RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip install ".[writer]"
 
 RUN useradd -m -u 1004 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

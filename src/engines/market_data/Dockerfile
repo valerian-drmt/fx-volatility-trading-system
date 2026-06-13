@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Market-data service — async IB tick publisher.
 #
 # Installs the [ib] extra (ib-insync + tzdata + base runtime). Multi-
@@ -22,7 +23,7 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
-RUN pip install --upgrade pip && pip install ".[ib]"
+RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip install ".[ib]"
 
 RUN useradd -m -u 1001 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

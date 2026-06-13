@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Risk-engine service — installs the [ib] extra (ib-insync + base
 # runtime, no GARCH).
 
@@ -18,7 +19,7 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
-RUN pip install --upgrade pip && pip install ".[ib]"
+RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip install ".[ib]"
 
 RUN useradd -m -u 1003 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

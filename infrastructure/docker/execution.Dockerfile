@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Execution engine — IB-connected microservice owning the order /
 # trade / position lifecycle. The api forwards REST user requests to
 # this service via internal HTTP.
@@ -28,7 +29,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
-RUN pip install --upgrade pip && pip install ".[api,ib]"
+RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip install ".[api,ib]"
 
 EXPOSE 8001
 

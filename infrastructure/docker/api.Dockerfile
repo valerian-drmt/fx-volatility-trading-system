@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # FastAPI backend image — pyproject-driven (PEP 621).
 #
 # Installs the [api] extra of the fxvol project — fastapi + uvicorn +
@@ -33,7 +34,7 @@ WORKDIR /app
 # split into a deps-only first stage with a stub src/ tree.
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
-RUN pip install --upgrade pip && pip install ".[api]"
+RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip install ".[api]"
 
 COPY scripts/ ./scripts/
 

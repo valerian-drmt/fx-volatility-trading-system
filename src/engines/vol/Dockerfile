@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Vol-engine service — installs the [quant] extra (transitively pulls
 # [ib]) for GARCH (arch) + GMM regime detection (scikit-learn) on top
 # of the IB stack.
@@ -20,7 +21,7 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
-RUN pip install --upgrade pip && pip install ".[quant]"
+RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip install ".[quant]"
 
 # Backfill scripts (one-shot data seeding, e.g. backfill_iv_history_for_gmm.py).
 COPY scripts/ ./scripts/
