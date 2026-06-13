@@ -1,9 +1,21 @@
 # Auto-loaded by `docker compose` in local dev.
-# Exposes Postgres and Redis on the host so PyCharm / psql / redis-cli /
-# any local Python REPL can reach them without going through a container.
 #
-# Production / CI runs `docker compose -f docker-compose.yml up` WITHOUT this
-# file, so these ports stay closed behind the internal network (prod-like).
+# Two dev conveniences, both OFF in prod/CI (which run
+# `docker compose -f docker-compose.yml up` WITHOUT this file) :
+#
+#  1. Host-exposed Postgres (5433) + Redis (6380) so PyCharm / psql / redis-cli
+#     / a local REPL can reach them without going through a container.
+#
+#  2. LIVE CODE RELOAD — every service that ships our Python bind-mounts
+#     ./src over /app/src and runs a reload-aware command. Editing a .py file
+#     reloads the running process automatically, NO rebuild :
+#       - api + execution-engine  → `uvicorn --reload` (ASGI apps)
+#       - the 4 engine loops       → `watchmedo auto-restart` (watchdog)
+#     `PYTHONPATH=/app/src` makes the bind-mounted source shadow the image's
+#     baked install, so the process always imports the host's current code.
+#     watchdog is pip-installed at container start (dev-only, ~1s) to keep it
+#     out of the production images. Rebuild only when pyproject / a Dockerfile
+#     changes — never for a code edit.
 services:
   postgres:
     ports:
@@ -15,3 +27,79 @@ services:
     ports:
       # Host 6380 -> container 6379, same rationale (avoid native Redis clash).
       - "127.0.0.1:6380:6379"
+
+  # ---- live code reload (dev) ---------------------------------------------
+
+  api:
+    volumes:
+      - ./src:/app/src
+    environment:
+      PYTHONPATH: /app/src
+    command:
+      - uvicorn
+      - api.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --reload
+      - --reload-dir
+      - /app/src
+
+  execution-engine:
+    volumes:
+      - ./src:/app/src
+    environment:
+      PYTHONPATH: /app/src
+    command:
+      - uvicorn
+      - engines.execution.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8001"
+      - --proxy-headers
+      - --reload
+      - --reload-dir
+      - /app/src
+
+  market-data:
+    volumes:
+      - ./src:/app/src
+    environment:
+      PYTHONPATH: /app/src
+    command:
+      - sh
+      - -c
+      - "pip install -q --no-warn-script-location 'watchdog[watchmedo]' && exec python -m watchdog.watchmedo auto-restart --directory /app/src --pattern '*.py' --recursive -- python -m engines.market_data.main"
+
+  vol-engine:
+    volumes:
+      - ./src:/app/src
+    environment:
+      PYTHONPATH: /app/src
+    command:
+      - sh
+      - -c
+      - "pip install -q --no-warn-script-location 'watchdog[watchmedo]' && exec python -m watchdog.watchmedo auto-restart --directory /app/src --pattern '*.py' --recursive -- python -m engines.vol.main"
+
+  risk-engine:
+    volumes:
+      - ./src:/app/src
+    environment:
+      PYTHONPATH: /app/src
+    command:
+      - sh
+      - -c
+      - "pip install -q --no-warn-script-location 'watchdog[watchmedo]' && exec python -m watchdog.watchmedo auto-restart --directory /app/src --pattern '*.py' --recursive -- python -m engines.risk.main"
+
+  db-writer:
+    volumes:
+      - ./src:/app/src
+    environment:
+      PYTHONPATH: /app/src
+    command:
+      - sh
+      - -c
+      - "pip install -q --no-warn-script-location 'watchdog[watchmedo]' && exec python -m watchdog.watchmedo auto-restart --directory /app/src --pattern '*.py' --recursive -- python -m engines.db_writer.main"
