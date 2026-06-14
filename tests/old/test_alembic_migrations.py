@@ -31,7 +31,7 @@ ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
 EXPECTED_TABLES = {
     "positions",
     "position_snapshots",
-    "vol_surface_snapshot",
+    "vol_surface_history",
     "trades",
     "account_snaps",
 }
