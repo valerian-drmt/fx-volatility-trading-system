@@ -53,9 +53,9 @@ SHUTDOWN_TIMEOUT_S: float = 30.0
 # Dispatcher : event table_name -> ORM model class.
 # The writer rejects any event targeting a table not in this map.
 TABLE_MODELS: dict[str, type[Base]] = {
-    "account_snaps": AccountSnap,
-    "positions": Position,
-    "position_snapshots": PositionSnapshot,
+    "account_history": AccountSnap,
+    "open_position": Position,
+    "open_position_history": PositionSnapshot,
     "trades": Trade,
     "vol_surface_history": VolSurface,
 }
@@ -73,7 +73,7 @@ TABLE_MODELS: dict[str, type[Base]] = {
 # dedup key, duplicates there are real data and must not be silenced.
 IDEMPOTENT_TABLES: dict[str, list[str]] = {
     "vol_surface_history": ["timestamp", "underlying"],
-    "positions": ["id"],
+    "open_position": ["id"],
 }
 
 

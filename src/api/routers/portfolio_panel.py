@@ -138,7 +138,7 @@ async def header_summary(db: DbDep) -> dict[str, Any]:
           COALESCE(SUM(vega_usd),  0)         AS sum_vega,
           COALESCE(SUM(theta_usd), 0)         AS sum_theta,
           COALESCE(SUM(current_pnl_usd), 0)   AS sum_pnl
-        FROM positions
+        FROM open_position
     """)
     g = (await db.execute(greeks_sql)).one()
 
@@ -150,7 +150,7 @@ async def header_summary(db: DbDep) -> dict[str, Any]:
           SELECT DISTINCT ON (date_trunc('day', timestamp))
                  date_trunc('day', timestamp) AS day,
                  net_liq_usd
-            FROM account_snaps
+            FROM account_history
            WHERE timestamp >= NOW() - INTERVAL '60 days'
              AND net_liq_usd IS NOT NULL
            ORDER BY date_trunc('day', timestamp), timestamp DESC
@@ -231,7 +231,7 @@ async def equity_curve(
                        AT TIME ZONE 'UTC' AS bucket_ts,
                    net_liq_usd,
                    timestamp
-              FROM account_snaps
+              FROM account_history
              WHERE timestamp >= :cutoff
              ORDER BY bucket_ts, timestamp DESC
           ) sub
@@ -280,7 +280,7 @@ async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
           COALESCE(SUM(vega_usd),  0)           AS sum_vega,
           COALESCE(SUM(theta_usd), 0)           AS sum_theta,
           MAX(updated_at)                       AS last_ts
-        FROM positions
+        FROM open_position
     """)
     row = (await db.execute(sql)).one()
     return {
@@ -302,7 +302,7 @@ async def vega_per_tenor(db: DbDep) -> list[dict[str, Any]]:
         SELECT
           GREATEST(0, (expiry - CURRENT_DATE))::int  AS dte,
           vega_usd
-        FROM positions
+        FROM open_position
         WHERE structure LIKE 'EUU%'   -- option contracts on EUR FOP
           AND expiry IS NOT NULL
           AND expiry >= CURRENT_DATE
