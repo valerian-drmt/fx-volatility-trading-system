@@ -183,7 +183,7 @@ class AccountSnap(Base):
 
 
 class VolSurface(Base):
-    __tablename__ = "vol_surface_snapshot"
+    __tablename__ = "vol_surface_history"
     __table_args__ = (
         UniqueConstraint("timestamp", "underlying", name="uq_vol_surfaces_ts_underlying"),
     )
@@ -202,7 +202,7 @@ class VolSurface(Base):
 class RegimeSnapshot(Base):
     """Step 1 regime classification snapshot (one row per vol-engine cycle)."""
 
-    __tablename__ = "regime_feature_snapshot"
+    __tablename__ = "regime_snapshot_history"
     __table_args__ = (
         CheckConstraint(
             "label IN ('calm','stressed','pre_event')",
@@ -273,7 +273,7 @@ class RegimeLookup(Base):
 class Event(Base):
     """Scheduled macro event (manual or feed-sourced), read by the regime gate."""
 
-    __tablename__ = "macro_event"
+    __tablename__ = "event_calendar"
     __table_args__ = (
         CheckConstraint("impact IN ('high','medium','low')", name="ck_events_impact"),
         UniqueConstraint("event_hash", name="uq_events_event_hash"),
@@ -300,7 +300,7 @@ _DELTAS = ("10dp", "25dp", "atm", "25dc", "10dc")
 class SurfaceSnapshotHourly(Base):
     """30-dim hourly snapshot for PCA fit (6 tenors × 5 deltas)."""
 
-    __tablename__ = "surface_snapshots_hourly"
+    __tablename__ = "pca_surface_snapshot_history"
     __table_args__ = (
         UniqueConstraint("symbol", "timestamp", name="uq_surface_snap_hourly_symbol_ts"),
     )
@@ -359,7 +359,7 @@ class PcaModel(Base):
 class PcaSignal(Base):
     """1 row per PC per vol-engine cycle. Feeds Panel 2 + history charts."""
 
-    __tablename__ = "pca_projection_snapshot"
+    __tablename__ = "pca_signal_history"
     __table_args__ = (
         UniqueConstraint(
             "symbol", "timestamp", "pca_model_id", "pc_id",
@@ -446,7 +446,7 @@ class TradePreviewRow(Base):
     preview_id: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_projection_snapshot.id"))
+    pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_signal_history.id"))
     triggering_pc: Mapped[int | None] = mapped_column(Integer)
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     armed_signal_label: Mapped[str | None] = mapped_column(String(15))
@@ -517,7 +517,7 @@ class TradeStructure(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     preview_id: Mapped[str | None] = mapped_column(String(40), ForeignKey("trade_previews.preview_id"))
-    pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_projection_snapshot.id"))
+    pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_signal_history.id"))
     triggering_pc: Mapped[int | None] = mapped_column(Integer)
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     armed_signal_label: Mapped[str | None] = mapped_column(String(15))

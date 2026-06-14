@@ -201,7 +201,7 @@ async def active_model(db: DbDep) -> dict[str, Any]:
 async def perform_refit(db: AsyncSession, symbol: str = "EURUSD") -> dict[str, Any]:
     """Core refit logic — usable from the HTTP route AND the background scheduler.
 
-    Reads surface_snapshots_hourly, fits PCA via SVD, sign-corrects vs prev
+    Reads pca_surface_snapshot_history, fits PCA via SVD, sign-corrects vs prev
     active model, demotes prev, promotes new (in that order to honour the
     partial unique index ix_pca_models_active_unique).
     """

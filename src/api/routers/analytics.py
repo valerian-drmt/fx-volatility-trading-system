@@ -1,7 +1,7 @@
 """GET /api/v1/{vol-history,system-stats} — analytics reads.
 
 The /signals + /backtest routes were dropped in R9 with the per-tenor
-pricing-signals retirement. /vol-history surfaces vol_surface_snapshot
+pricing-signals retirement. /vol-history surfaces vol_surface_history
 headline fields ; /system-stats reports row counts + engine heartbeats.
 """
 from __future__ import annotations
