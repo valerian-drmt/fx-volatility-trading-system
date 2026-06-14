@@ -29,11 +29,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
 
 EXPECTED_TABLES = {
-    "positions",
-    "position_snapshots",
+    "open_position",
+    "open_position_history",
     "vol_surface_history",
     "trades",
-    "account_snaps",
+    "account_history",
 }
 
 # Index set is intentionally empty: migration ``254fc54bb36f_add_col_x``
