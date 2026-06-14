@@ -907,7 +907,7 @@ class ExitAlert(Base):
 class ExitRulesConfig(Base):
     """Hot-reloadable exit rule params."""
 
-    __tablename__ = "exit_rules_config"
+    __tablename__ = "config_exit_rules"
     __table_args__ = (
         CheckConstraint("priority BETWEEN 1 AND 10", name="ck_exit_rules_priority"),
     )
@@ -937,7 +937,7 @@ class VolConfig(Base):
     Pydantic field does NOT require an Alembic migration.
     """
 
-    __tablename__ = "vol_engine_config"
+    __tablename__ = "config_vol_engine"
 
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
     config: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)

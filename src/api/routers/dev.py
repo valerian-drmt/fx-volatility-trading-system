@@ -283,10 +283,10 @@ ALLOWED_TABLES: dict[str, tuple[str, str]] = {
     "open_position_history": ("open_position_history", "id"),
     "account_history": ("account_history", "id"),
     "vol_surface_history": ("vol_surface_history", "id"),
-    "vol_engine_config": ("vol_engine_config", "version"),
+    "config_vol_engine": ("config_vol_engine", "version"),
     # Step 1 — regime gating
     "regime_snapshot_history": ("regime_snapshot_history", "id"),
-    "feature_history_30d": ("feature_history_30d", "id"),
+    "feature_history": ("feature_history", "id"),
     "event_calendar": ("event_calendar", "id"),
     "vrp_default_curve": ("vrp_default_curve", "id"),
     # Step 2 — PCA factor model

@@ -532,14 +532,14 @@ class VolEngine:
             # (_svi / _ssvi). Dedicated svi_params / ssvi_params dropped (R9).
             # Per-tenor pricing signals dropped — vol_pricing_signal_snapshot
             # table removed when CHEAP/FAIR/EXPENSIVE was retired in R9.
-            # Step 1 : persist regime_snapshot_history + feature_history_30d.
+            # Step 1 : persist regime_snapshot_history + feature_history.
             if regime_rows is not None:
                 await publish_db_event(
                     self.redis, table="regime_snapshot_history",
                     payload={**regime_rows["snapshot_row"], "timestamp": ts_iso},
                 )
                 await publish_db_event(
-                    self.redis, table="feature_history_30d",
+                    self.redis, table="feature_history",
                     payload={**regime_rows["feature_row"], "timestamp": ts_iso},
                 )
             # Step 2 : persist pca_signal_history (1 row per PC) + hourly snapshot.
