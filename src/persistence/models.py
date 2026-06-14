@@ -57,7 +57,7 @@ class Position(Base):
     ``shared.contracts.parse_local_symbol`` when they need contract specs).
     """
 
-    __tablename__ = "positions"
+    __tablename__ = "open_position"
     __table_args__ = (
         CheckConstraint("side IN ('BUY', 'SELL')", name="ck_positions_side"),
     )
@@ -98,13 +98,13 @@ class Position(Base):
 
 
 class PositionSnapshot(Base):
-    __tablename__ = "position_snapshots"
+    __tablename__ = "open_position_history"
 
     # Schema mirrors ``positions`` (panel E columns) + position_id + timestamp.
     # risk-engine writes one row per OPEN position per cycle.
     id: Mapped[int] = mapped_column(primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        ForeignKey("positions.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("open_position.id", ondelete="CASCADE"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
@@ -137,7 +137,7 @@ class Trade(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    position_id: Mapped[int | None] = mapped_column(ForeignKey("positions.id"))
+    position_id: Mapped[int | None] = mapped_column(ForeignKey("open_position.id"))
 
     ib_order_id: Mapped[str | None] = mapped_column(String(50))
 
@@ -157,7 +157,7 @@ class Trade(Base):
 
 
 class AccountSnap(Base):
-    __tablename__ = "account_snaps"
+    __tablename__ = "account_history"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(
@@ -464,7 +464,7 @@ class TradePreviewRow(Base):
 class BookStateSnapshot(Base):
     """État aggregé du book (1 row is_current=true par symbol + history)."""
 
-    __tablename__ = "book_state_snapshots"
+    __tablename__ = "book_state_snapshot_history"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -628,7 +628,7 @@ class StructureFill(Base):
 class TradePosition(Base):
     """Position created when a structure is fully_filled. Consumed by Step 5."""
 
-    __tablename__ = "trade_positions"
+    __tablename__ = "booked_position"
     __table_args__ = (
         CheckConstraint(
             "state IN ('open','closing','closed','expired')",
@@ -790,14 +790,14 @@ class PositionMtmHistory(Base):
     """1 row per monitoring cycle per open position. Series for equity curve
     + P&L attribution + drawdown analysis."""
 
-    __tablename__ = "position_mtm_history"
+    __tablename__ = "booked_position_metric_history"
     __table_args__ = (
         UniqueConstraint("position_id", "timestamp", name="uq_mtm_position_ts"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+        BigInteger, ForeignKey("booked_position.id"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     spot: Mapped[float] = mapped_column(Float, nullable=False)
@@ -825,7 +825,7 @@ class PositionSignalTracking(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+        BigInteger, ForeignKey("booked_position.id"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     triggering_pc: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -852,7 +852,7 @@ class HedgeOrder(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+        BigInteger, ForeignKey("booked_position.id"), nullable=False
     )
     triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -887,7 +887,7 @@ class ExitAlert(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     position_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("trade_positions.id"), nullable=False
+        BigInteger, ForeignKey("booked_position.id"), nullable=False
     )
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),

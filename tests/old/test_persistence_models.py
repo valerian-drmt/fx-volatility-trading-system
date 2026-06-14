@@ -46,10 +46,10 @@ async def async_session():
 
 
 def test_tables_are_declared_with_expected_names():
-    assert Position.__tablename__ == "positions"
-    assert PositionSnapshot.__tablename__ == "position_snapshots"
+    assert Position.__tablename__ == "open_position"
+    assert PositionSnapshot.__tablename__ == "open_position_history"
     assert Trade.__tablename__ == "trades"
-    assert AccountSnap.__tablename__ == "account_snaps"
+    assert AccountSnap.__tablename__ == "account_history"
 
 
 def test_positions_has_expected_check_constraints():
@@ -78,7 +78,7 @@ def test_account_snaps_currencies_column_uses_jsonb_on_postgres():
 def test_position_snapshot_foreign_key_to_positions():
     fks = list(PositionSnapshot.__table__.c.position_id.foreign_keys)
     assert len(fks) == 1
-    assert fks[0].column.table.name == "positions"
+    assert fks[0].column.table.name == "open_position"
 
 
 @pytest.mark.asyncio

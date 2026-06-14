@@ -27,7 +27,7 @@ from persistence.models import (
 # Tables reported in /system-stats — tuple keeps order stable.
 _COUNTED_TABLES: tuple[tuple[str, type], ...] = (
     ("vol_surface_history", VolSurface),
-    ("position_snapshots", PositionSnapshot),
+    ("open_position_history", PositionSnapshot),
 )
 
 _MONITORED_ENGINES: tuple[str, ...] = (

@@ -279,9 +279,9 @@ ALLOWED_TABLES: dict[str, tuple[str, str]] = {
     "order_events": ("order_events", "id"),
     "orders": ("orders", "id"),
     "trades": ("trades", "id"),
-    "positions": ("positions", "id"),
-    "position_snapshots": ("position_snapshots", "id"),
-    "account_snaps": ("account_snaps", "id"),
+    "open_position": ("open_position", "id"),
+    "open_position_history": ("open_position_history", "id"),
+    "account_history": ("account_history", "id"),
     "vol_surface_history": ("vol_surface_history", "id"),
     "vol_engine_config": ("vol_engine_config", "version"),
     # Step 1 — regime gating
@@ -297,7 +297,7 @@ ALLOWED_TABLES: dict[str, tuple[str, str]] = {
     # Step 5 — position monitoring & hedging
     "hedge_order": ("hedge_order", "id"),
     "exit_alert": ("exit_alert", "id"),
-    "position_mtm_history": ("position_mtm_history", "id"),
+    "booked_position_metric_history": ("booked_position_metric_history", "id"),
 }
 
 
