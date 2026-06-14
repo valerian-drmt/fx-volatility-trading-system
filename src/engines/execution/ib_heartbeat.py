@@ -4,7 +4,7 @@ Two background tasks owned by `engines.execution.main:lifespan` :
 
 1. ``heartbeat_loop`` — every ``HEARTBEAT_INTERVAL_S`` (default 10 s) :
    * Read account summary + connection state from ``OrderExecutor``.
-   * UPDATE the singleton ``ib_connection_state`` row (id=1) with
+   * UPDATE the singleton ``runtime_ib_session`` row (id=1) with
      ``is_connected``, ``last_heartbeat``, ``available_funds_usd``,
      ``buying_power_usd``, ``margin_used_usd``.
    * If the state flips connected→disconnected, increment ``n_disconnects_24h``
@@ -55,7 +55,7 @@ async def update_heartbeat_row(
     account_summary: dict[str, Any] | None,
     now: datetime,
 ) -> None:
-    """Single-row UPDATE on ``ib_connection_state``. Caller commits."""
+    """Single-row UPDATE on ``runtime_ib_session``. Caller commits."""
     row = (await db.execute(
         select(IbConnectionState).where(IbConnectionState.broker == "IB").limit(1)
     )).scalar_one_or_none()
@@ -198,7 +198,7 @@ async def stuck_order_watcher_loop(
 # --------------------------------------------------------------------------
 
 async def fetch_ib_connected(db: AsyncSession) -> bool:
-    """Return latest cached value of ``ib_connection_state.is_connected``.
+    """Return latest cached value of ``runtime_ib_session.is_connected``.
 
     Submit flow uses this as a pre-condition (cf. spec §7.4 — "Gating Submit
     on is_connected"). Cheap : single-row PK lookup.

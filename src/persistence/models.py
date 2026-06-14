@@ -483,18 +483,29 @@ class BookStateSnapshot(Base):
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
-class RiskLimit(Base):
-    """Hot-reloadable risk parameters (cf. STEP3 §5.5)."""
+class AppConfigScalar(Base):
+    """Unified scalar config — folds delta_hedge_config + risk_limits (migration 033).
 
-    __tablename__ = "risk_limits"
+    One row per tunable, keyed by ``(namespace, name)``. ``namespace='delta_hedge'``
+    carries the former delta_hedge_config rows, ``namespace='risk'`` the former
+    risk_limits rows. Hot-reloadable, edited via the config endpoints.
+    """
+
+    __tablename__ = "config_scalar"
+    __table_args__ = (
+        UniqueConstraint("namespace", "name", name="uq_config_scalar_ns_name"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    limit_name: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
-    limit_value: Mapped[float] = mapped_column(Float, nullable=False)
-    unit: Mapped[str] = mapped_column(String(20), nullable=False)
+    namespace: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(60), nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str | None] = mapped_column(String(20))
     description: Mapped[str | None] = mapped_column(String(300))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     updated_by: Mapped[str | None] = mapped_column(String(40))
 
 
@@ -654,7 +665,7 @@ class IbConnectionState(Base):
     """Singleton broker connectivity row. UPDATE in place ; never INSERT a new
     row past the migration seed. Heartbeat loop in execution-engine populates."""
 
-    __tablename__ = "ib_connection_state"
+    __tablename__ = "runtime_ib_session"
     __table_args__ = (
         CheckConstraint(
             "account_type IS NULL OR account_type IN ('paper','live')",
@@ -911,21 +922,6 @@ class ExitRulesConfig(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(),
     )
     updated_by: Mapped[str | None] = mapped_column(String(40))
-
-
-class DeltaHedgeConfig(Base):
-    """Hot-reloadable delta-hedge params."""
-
-    __tablename__ = "delta_hedge_config"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    config_name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
-    config_value: Mapped[float] = mapped_column(Float, nullable=False)
-    unit: Mapped[str] = mapped_column(String(20), nullable=False)
-    description: Mapped[str | None] = mapped_column(String(300))
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(),
-    )
 
 
 class VolConfig(Base):
