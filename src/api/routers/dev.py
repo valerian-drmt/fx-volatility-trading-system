@@ -288,7 +288,6 @@ ALLOWED_TABLES: dict[str, tuple[str, str]] = {
     "regime_snapshot_history": ("regime_snapshot_history", "id"),
     "feature_history": ("feature_history", "id"),
     "event_calendar": ("event_calendar", "id"),
-    "vrp_default_curve": ("vrp_default_curve", "id"),
     # Step 2 — PCA factor model
     "pca_surface_snapshot_history": ("pca_surface_snapshot_history", "id"),
     "pca_model": ("pca_model", "id"),
