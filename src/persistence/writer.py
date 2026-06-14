@@ -57,7 +57,7 @@ TABLE_MODELS: dict[str, type[Base]] = {
     "positions": Position,
     "position_snapshots": PositionSnapshot,
     "trades": Trade,
-    "vol_surface_snapshot": VolSurface,
+    "vol_surface_history": VolSurface,
 }
 
 # Tables where duplicates on the natural key are safe to drop silently.
@@ -72,7 +72,7 @@ TABLE_MODELS: dict[str, type[Base]] = {
 # Other tables (trades, position_snapshots, account_snaps) have no natural
 # dedup key, duplicates there are real data and must not be silenced.
 IDEMPOTENT_TABLES: dict[str, list[str]] = {
-    "vol_surface_snapshot": ["timestamp", "underlying"],
+    "vol_surface_history": ["timestamp", "underlying"],
     "positions": ["id"],
 }
 

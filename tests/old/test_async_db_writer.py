@@ -150,7 +150,7 @@ def test_on_conflict_do_nothing_applied_to_vol_surfaces(writer):
             "surface_data": {},
         }
     ]
-    stmt = writer._build_insert("vol_surface_snapshot", rows, dialect_name="postgresql")
+    stmt = writer._build_insert("vol_surface_history", rows, dialect_name="postgresql")
     sql = str(stmt.compile(dialect=postgresql.dialect()))
     assert "ON CONFLICT" in sql.upper()
     assert "DO NOTHING" in sql.upper()

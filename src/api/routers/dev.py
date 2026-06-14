@@ -282,17 +282,17 @@ ALLOWED_TABLES: dict[str, tuple[str, str]] = {
     "positions": ("positions", "id"),
     "position_snapshots": ("position_snapshots", "id"),
     "account_snaps": ("account_snaps", "id"),
-    "vol_surface_snapshot": ("vol_surface_snapshot", "id"),
+    "vol_surface_history": ("vol_surface_history", "id"),
     "vol_engine_config": ("vol_engine_config", "version"),
     # Step 1 — regime gating
-    "regime_feature_snapshot": ("regime_feature_snapshot", "id"),
+    "regime_snapshot_history": ("regime_snapshot_history", "id"),
     "feature_history_30d": ("feature_history_30d", "id"),
-    "macro_event": ("macro_event", "id"),
+    "event_calendar": ("event_calendar", "id"),
     "vrp_default_curve": ("vrp_default_curve", "id"),
     # Step 2 — PCA factor model
-    "surface_snapshots_hourly": ("surface_snapshots_hourly", "id"),
+    "pca_surface_snapshot_history": ("pca_surface_snapshot_history", "id"),
     "pca_model": ("pca_model", "id"),
-    "pca_projection_snapshot": ("pca_projection_snapshot", "id"),
+    "pca_signal_history": ("pca_signal_history", "id"),
     "pca_structure_recommendation": ("pca_structure_recommendation", "id"),
     # Step 5 — position monitoring & hedging
     "hedge_orders": ("hedge_orders", "id"),

@@ -184,7 +184,7 @@ async def test_account_snap_currencies_jsonb_roundtrip(async_session):
 
 
 def test_vol_surface_table_is_declared():
-    assert VolSurface.__tablename__ == "vol_surface_snapshot"
+    assert VolSurface.__tablename__ == "vol_surface_history"
 
 
 def test_vol_surfaces_has_unique_on_timestamp_and_underlying():

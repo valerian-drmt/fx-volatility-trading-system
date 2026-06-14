@@ -37,7 +37,7 @@ pytestmark = pytest.mark.db_integration
 # Tables we touch in this suite — truncated before/after each test so the
 # assertions on exact row counts stay meaningful even when other live
 # tests run before or after in the same CI job.
-_TEST_TABLES = ("vol_surface_snapshot",)
+_TEST_TABLES = ("vol_surface_history",)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ALEMBIC_INI = PROJECT_ROOT / "src" / "persistence" / "alembic.ini"
@@ -128,7 +128,7 @@ def _vol_surface_row(
 async def test_write_vol_surface_end_to_end(truncate_tables):
     """One vol_surface event → one row in Postgres, JSONB round-trip intact."""
     ts = datetime(2026, 4, 20, 10, 0, 0, tzinfo=UTC)
-    await _run_writer_with_events([("vol_surface_snapshot", _vol_surface_row(timestamp=ts))])
+    await _run_writer_with_events([("vol_surface_history", _vol_surface_row(timestamp=ts))])
 
     engine = create_engine(_sync_url(), future=True)
     try:
@@ -136,7 +136,7 @@ async def test_write_vol_surface_end_to_end(truncate_tables):
             row = conn.execute(
                 text(
                     "SELECT underlying, spot, forward, surface_data "
-                    "FROM vol_surface_snapshot WHERE timestamp = :ts"
+                    "FROM vol_surface_history WHERE timestamp = :ts"
                 ),
                 {"ts": ts},
             ).one()
@@ -163,17 +163,17 @@ async def test_idempotency_on_duplicate_vol_surface(truncate_tables):
     duplicate = _vol_surface_row(timestamp=ts, spot="9.9999")  # same key, different data
 
     await _run_writer_with_events([
-        ("vol_surface_snapshot", row),
-        ("vol_surface_snapshot", duplicate),
+        ("vol_surface_history", row),
+        ("vol_surface_history", duplicate),
     ])
 
-    assert _count("vol_surface_snapshot") == 1
+    assert _count("vol_surface_history") == 1
 
     engine = create_engine(_sync_url(), future=True)
     try:
         with engine.connect() as conn:
             spot = conn.execute(
-                text("SELECT spot FROM vol_surface_snapshot WHERE timestamp = :ts"),
+                text("SELECT spot FROM vol_surface_history WHERE timestamp = :ts"),
                 {"ts": ts},
             ).scalar_one()
     finally:

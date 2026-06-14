@@ -193,7 +193,7 @@ async def model_health(db: DbDep) -> ModelHealthResponse:
     vs_count = int((await db.execute(
         select(VolSurface).with_only_columns(VolSurface.id).order_by(None)
     )).scalars().all().__len__())
-    # SVI fits 1:1 with vol_surface_snapshot rows (params live in surface_data._svi).
+    # SVI fits 1:1 with vol_surface_history rows (params live in surface_data._svi).
     svi_count = vs_count
     last_vs = (await db.execute(
         select(VolSurface).order_by(desc(VolSurface.timestamp)).limit(1)
