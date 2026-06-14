@@ -434,7 +434,7 @@ class StructureDefinition(Base):
 class TradePreviewRow(Base):
     """Audit log : 1 row par Arm trade."""
 
-    __tablename__ = "trade_previews"
+    __tablename__ = "trade_preview"
     __table_args__ = (
         CheckConstraint(
             "state IN ('valid_for_submit','blocked','expired','submitted','cancelled')",
@@ -517,7 +517,7 @@ class AppConfigScalar(Base):
 class TradeStructure(Base):
     """Multi-leg trade : 1 row per Submit (new STEP3/STEP4 workflow)."""
 
-    __tablename__ = "trade_structures"
+    __tablename__ = "trade_structure"
     __table_args__ = (
         CheckConstraint(
             "state IN ('submitted','partial_fill','fully_filled','partial_fail','fully_failed','closed')",
@@ -527,7 +527,7 @@ class TradeStructure(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    preview_id: Mapped[str | None] = mapped_column(String(40), ForeignKey("trade_previews.preview_id"))
+    preview_id: Mapped[str | None] = mapped_column(String(40), ForeignKey("trade_preview.preview_id"))
     pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_signal_history.id"))
     triggering_pc: Mapped[int | None] = mapped_column(Integer)
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
@@ -553,7 +553,7 @@ class TradeStructure(Base):
 class StructureOrder(Base):
     """One leg of a multi-leg trade structure."""
 
-    __tablename__ = "structure_orders"
+    __tablename__ = "trade_order"
     __table_args__ = (
         UniqueConstraint(
             "structure_id", "leg_idx", "order_role",
@@ -571,7 +571,7 @@ class StructureOrder(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structures.id"), nullable=False)
+    structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structure.id"), nullable=False)
     leg_idx: Mapped[int] = mapped_column(Integer, nullable=False)
     order_role: Mapped[str] = mapped_column(String(20), nullable=False, default="entry")
     ib_order_id: Mapped[str | None] = mapped_column(String(40))
@@ -607,10 +607,10 @@ class StructureOrder(Base):
 class StructureFill(Base):
     """One execution event on a leg."""
 
-    __tablename__ = "structure_fills"
+    __tablename__ = "trade_fill"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("structure_orders.id"), nullable=False)
+    order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_order.id"), nullable=False)
     ib_execution_id: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -637,7 +637,7 @@ class TradePosition(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structures.id"), nullable=False, unique=True)
+    structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structure.id"), nullable=False, unique=True)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     entry_premium_usd: Mapped[float] = mapped_column(Float, nullable=False)
     entry_total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
@@ -710,8 +710,8 @@ class ExecutionAuditLog(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    structure_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("trade_structures.id"))
-    order_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("structure_orders.id"))
+    structure_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("trade_structure.id"))
+    order_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("trade_order.id"))
     event_type: Mapped[str] = mapped_column(String(40), nullable=False)
     severity: Mapped[str] = mapped_column(String(15), nullable=False, default="info")
     message: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -841,7 +841,7 @@ class PositionSignalTracking(Base):
 class HedgeOrder(Base):
     """Delta-rebalancing future order on an open position."""
 
-    __tablename__ = "hedge_orders"
+    __tablename__ = "hedge_order"
     __table_args__ = (
         CheckConstraint("side IN ('BUY','SELL')", name="ck_hedge_orders_side"),
         CheckConstraint(
@@ -872,7 +872,7 @@ class HedgeOrder(Base):
 class ExitAlert(Base):
     """1 row per exit-rule trigger. Acted on or not."""
 
-    __tablename__ = "exit_alerts"
+    __tablename__ = "exit_alert"
     __table_args__ = (
         CheckConstraint(
             "action_recommended IN ('EXIT','TRIM','ALERT_ONLY')",
@@ -899,7 +899,7 @@ class ExitAlert(Base):
     auto_executed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     execution_status: Mapped[str | None] = mapped_column(String(20))
     closing_structure_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("trade_structures.id")
+        BigInteger, ForeignKey("trade_structure.id")
     )
     notes: Mapped[str | None] = mapped_column(String(500))
 

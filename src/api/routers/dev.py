@@ -295,8 +295,8 @@ ALLOWED_TABLES: dict[str, tuple[str, str]] = {
     "pca_signal_history": ("pca_signal_history", "id"),
     "pca_structure_recommendation": ("pca_structure_recommendation", "id"),
     # Step 5 — position monitoring & hedging
-    "hedge_orders": ("hedge_orders", "id"),
-    "exit_alerts": ("exit_alerts", "id"),
+    "hedge_order": ("hedge_order", "id"),
+    "exit_alert": ("exit_alert", "id"),
     "position_mtm_history": ("position_mtm_history", "id"),
 }
 
