@@ -355,7 +355,7 @@ async def hedge_summary(db: DbDep) -> dict[str, Any]:
           COALESCE(SUM(total_cost_usd) FILTER (WHERE triggered_at >= :r7d_start), 0)    AS cost_r7d,
           COUNT(*) FILTER (WHERE triggered_at >= :r30d_start)         AS n_r30d,
           COALESCE(SUM(total_cost_usd) FILTER (WHERE triggered_at >= :r30d_start), 0)   AS cost_r30d
-        FROM hedge_orders
+        FROM hedge_order
         WHERE state = 'filled'
     """)
     now = datetime.now(UTC)
