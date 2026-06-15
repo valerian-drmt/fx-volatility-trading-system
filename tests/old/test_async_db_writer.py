@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from persistence.models import AccountSnap, Base, Trade
+from persistence.models import AccountHistory, Base, Trade
 from persistence.writer import AsyncDatabaseWriter
 
 
@@ -125,7 +125,7 @@ async def test_write_batch_groups_by_table(writer, session_factory):
     await writer._write_batch(batch)
 
     async with session_factory() as session:
-        account_count = await session.scalar(select(func.count()).select_from(AccountSnap))
+        account_count = await session.scalar(select(func.count()).select_from(AccountHistory))
         trade_count = await session.scalar(select(func.count()).select_from(Trade))
 
     assert account_count == 3
@@ -178,7 +178,7 @@ async def test_shutdown_drains_remaining_queue(writer, session_factory):
     assert writer.stop_event.is_set()
     assert writer.queue.empty()
     async with session_factory() as session:
-        count = await session.scalar(select(func.count()).select_from(AccountSnap))
+        count = await session.scalar(select(func.count()).select_from(AccountHistory))
     assert count == 20
 
 

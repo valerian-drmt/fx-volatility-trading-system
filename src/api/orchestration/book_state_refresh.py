@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from persistence.models import BookStateSnapshot, TradePosition, TradeStructure
+from persistence.models import BookedPosition, BookStateSnapshot, TradeStructure
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,9 @@ async def refresh_book_state(
     """Recompute and persist a fresh book-state snapshot. Returns the new row."""
     # 1. Load all currently-open positions joined to their parent structures.
     rows = (await db.execute(
-        select(TradePosition, TradeStructure)
-        .join(TradeStructure, TradeStructure.id == TradePosition.structure_id)
-        .where(TradePosition.state == "open")
+        select(BookedPosition, TradeStructure)
+        .join(TradeStructure, TradeStructure.id == BookedPosition.structure_id)
+        .where(BookedPosition.state == "open")
     )).all()
 
     total_vega = 0.0

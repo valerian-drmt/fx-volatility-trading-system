@@ -18,10 +18,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from persistence.models import (
-    AccountSnap,
+    AccountHistory,
     Base,
-    Position,
-    PositionSnapshot,
+    OpenPosition,
+    OpenPositionHistory,
     Trade,
     VolSurface,
 )
@@ -46,14 +46,14 @@ async def async_session():
 
 
 def test_tables_are_declared_with_expected_names():
-    assert Position.__tablename__ == "open_position"
-    assert PositionSnapshot.__tablename__ == "open_position_history"
+    assert OpenPosition.__tablename__ == "open_position"
+    assert OpenPositionHistory.__tablename__ == "open_position_history"
     assert Trade.__tablename__ == "trades"
-    assert AccountSnap.__tablename__ == "account_history"
+    assert AccountHistory.__tablename__ == "account_history"
 
 
 def test_positions_has_expected_check_constraints():
-    constraint_names = {c.name for c in Position.__table__.constraints if c.name}
+    constraint_names = {c.name for c in OpenPosition.__table__.constraints if c.name}
     assert "ck_positions_instrument_type" in constraint_names
     assert "ck_positions_side" in constraint_names
     assert "ck_positions_option_type" in constraint_names
@@ -68,7 +68,7 @@ def test_trades_has_unique_constraint_on_ib_order_id():
 def test_account_snaps_currencies_column_uses_jsonb_on_postgres():
     from sqlalchemy.dialects import postgresql, sqlite
 
-    col = AccountSnap.__table__.c.currencies
+    col = AccountHistory.__table__.c.currencies
     pg_impl = col.type.dialect_impl(postgresql.dialect())
     sqlite_impl = col.type.dialect_impl(sqlite.dialect())
     assert isinstance(pg_impl, JSONB), "postgres should compile to JSONB"
@@ -76,14 +76,14 @@ def test_account_snaps_currencies_column_uses_jsonb_on_postgres():
 
 
 def test_position_snapshot_foreign_key_to_positions():
-    fks = list(PositionSnapshot.__table__.c.position_id.foreign_keys)
+    fks = list(OpenPositionHistory.__table__.c.position_id.foreign_keys)
     assert len(fks) == 1
     assert fks[0].column.table.name == "open_position"
 
 
 @pytest.mark.asyncio
 async def test_position_insert_and_query(async_session):
-    pos = Position(
+    pos = OpenPosition(
         symbol="EUR.USD",
         instrument_type="SPOT",
         side="BUY",
@@ -94,7 +94,7 @@ async def test_position_insert_and_query(async_session):
     async_session.add(pos)
     await async_session.commit()
 
-    result = await async_session.execute(select(Position))
+    result = await async_session.execute(select(OpenPosition))
     rows = result.scalars().all()
     assert len(rows) == 1
     assert rows[0].symbol == "EUR.USD"
@@ -104,7 +104,7 @@ async def test_position_insert_and_query(async_session):
 
 @pytest.mark.asyncio
 async def test_position_with_snapshots_relationship(async_session):
-    pos = Position(
+    pos = OpenPosition(
         symbol="EUR.USD",
         instrument_type="OPTION",
         side="BUY",
@@ -116,7 +116,7 @@ async def test_position_with_snapshots_relationship(async_session):
         entry_timestamp=datetime(2026, 4, 17, 10, 0, tzinfo=UTC),
     )
     pos.snapshots.append(
-        PositionSnapshot(
+        OpenPositionHistory(
             timestamp=datetime(2026, 4, 17, 11, 0, tzinfo=UTC),
             spot=Decimal("1.08500000"),
             iv=Decimal("7.35000"),
@@ -126,7 +126,7 @@ async def test_position_with_snapshots_relationship(async_session):
     async_session.add(pos)
     await async_session.commit()
 
-    result = await async_session.execute(select(Position))
+    result = await async_session.execute(select(OpenPosition))
     loaded = result.scalar_one()
     assert len(loaded.snapshots) == 1
     assert loaded.snapshots[0].delta_usd == Decimal("500.00")
@@ -164,7 +164,7 @@ async def test_trade_unique_constraint_on_ib_order_id(async_session):
 
 @pytest.mark.asyncio
 async def test_account_snap_currencies_jsonb_roundtrip(async_session):
-    snap = AccountSnap(
+    snap = AccountHistory(
         timestamp=datetime(2026, 4, 17, 10, 0, tzinfo=UTC),
         net_liq_usd=Decimal("125000.00"),
         currencies={"USD": 75000.50, "EUR": 45000.25, "GBP": 5000.00},
@@ -173,7 +173,7 @@ async def test_account_snap_currencies_jsonb_roundtrip(async_session):
     async_session.add(snap)
     await async_session.commit()
 
-    result = await async_session.execute(select(AccountSnap))
+    result = await async_session.execute(select(AccountHistory))
     loaded = result.scalar_one()
     assert loaded.currencies == {"USD": 75000.50, "EUR": 45000.25, "GBP": 5000.00}
     assert loaded.net_liq_usd == Decimal("125000.00")

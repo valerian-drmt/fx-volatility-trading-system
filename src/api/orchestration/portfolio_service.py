@@ -15,7 +15,7 @@ from api.schemas.portfolio import (
     PositionView,
 )
 from bus import keys
-from persistence.models import Position, PositionSnapshot
+from persistence.models import OpenPosition, OpenPositionHistory
 
 
 class NotFoundInPortfolio(Exception):
@@ -32,13 +32,13 @@ async def list_positions(
     (closed positions are DELETEd at sync time).
     """
     _ = status
-    stmt = select(Position).order_by(desc(Position.entry_timestamp)).limit(limit)
+    stmt = select(OpenPosition).order_by(desc(OpenPosition.entry_timestamp)).limit(limit)
     rows = (await db.execute(stmt)).scalars().all()
     return [PositionView.model_validate(r) for r in rows]
 
 
 async def get_position(db: AsyncSession, position_id: int) -> PositionView:
-    row = await db.get(Position, position_id)
+    row = await db.get(OpenPosition, position_id)
     if row is None:
         raise NotFoundInPortfolio(f"Position {position_id} not found")
     return PositionView.model_validate(row)
@@ -65,12 +65,12 @@ async def get_history(
     db: AsyncSession, position_id: int, limit: int = 500
 ) -> HistoryResponse:
     """Latest N snapshots for a position, chronological (oldest first for plotting)."""
-    if await db.get(Position, position_id) is None:
+    if await db.get(OpenPosition, position_id) is None:
         raise NotFoundInPortfolio(f"Position {position_id} not found")
     stmt = (
-        select(PositionSnapshot)
-        .where(PositionSnapshot.position_id == position_id)
-        .order_by(asc(PositionSnapshot.timestamp))
+        select(OpenPositionHistory)
+        .where(OpenPositionHistory.position_id == position_id)
+        .order_by(asc(OpenPositionHistory.timestamp))
         .limit(limit)
     )
     rows = (await db.execute(stmt)).scalars().all()

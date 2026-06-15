@@ -3,7 +3,7 @@
 Pipeline :
   - **sync_positions_from_ib** : fait l'upsert IB → DB. Match par tuple
     (symbol, instrument_type, strike, maturity, option_type) — pas besoin
-    d'ajouter une colonne con_id à Position.
+    d'ajouter une colonne con_id à OpenPosition.
   - **publish_portfolio_to_redis** : pour chaque OPEN position, publie sur
     Redis hashes (contract_marks / option_marks / unrealized_pnl) les
     données IB-canoniques. Aucune écriture DB ici — risk-engine est le seul
@@ -25,12 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from engines.execution.order_executor import OrderExecutor
 from persistence.models import (
-    AccountSnap,
+    AccountHistory,
+    BookedPosition,
+    OpenPosition,
     Order,
-    Position,
     StructureOrder,
     Trade,
-    TradePosition,
 )
 from shared.contracts import multiplier_for, parse_local_symbol
 
@@ -101,7 +101,7 @@ def _ib_position_key(p: dict) -> str | None:
     return ls if ls else None
 
 
-def _db_position_key(p: Position) -> str | None:
+def _db_position_key(p: OpenPosition) -> str | None:
     return p.structure
 
 
@@ -145,9 +145,9 @@ async def sync_positions_from_ib(
             ib_by_key[k] = p
 
     db_rows = (await db.execute(
-        select(Position)
+        select(OpenPosition)
     )).scalars().all()
-    db_by_key: dict[str, Position] = {}
+    db_by_key: dict[str, OpenPosition] = {}
     for p in db_rows:
         k = _db_position_key(p)
         if k:
@@ -184,7 +184,7 @@ async def sync_positions_from_ib(
             row.nominal_eur = nominal
             row.contract_price_entry = cp_entry
         else:
-            row = Position(
+            row = OpenPosition(
                 structure=local_sym,
                 side=side,
                 tenor=tenor,
@@ -226,7 +226,7 @@ async def publish_portfolio_to_redis(
     if not executor.is_connected() or redis is None:
         return {"published": 0, "error": "ib_not_connected"}
     db_rows = (await db.execute(
-        select(Position)
+        select(OpenPosition)
     )).scalars().all()
     if not db_rows:
         return {"published": 0}
@@ -341,9 +341,9 @@ async def sync_trades_from_ib(db: AsyncSession, executor: OrderExecutor) -> dict
 
     # Index OPEN positions par localSymbol.
     pos_rows = (await db.execute(
-        select(Position)
+        select(OpenPosition)
     )).scalars().all()
-    pos_by_key: dict[str, Position] = {p.structure: p for p in pos_rows if p.structure}
+    pos_by_key: dict[str, OpenPosition] = {p.structure: p for p in pos_rows if p.structure}
 
     inserted = 0
     for t in trades:
@@ -397,10 +397,10 @@ async def insert_account_snap(db: AsyncSession, executor: OrderExecutor) -> bool
         return False
 
     open_count = (await db.execute(
-        select(Position)
+        select(OpenPosition)
     )).scalars().all()
 
-    snap = AccountSnap(
+    snap = AccountHistory(
         timestamp=datetime.now(UTC),
         net_liq_usd=_pick(summary, ["NetLiquidation", "NetLiquidationByCurrency"]),
         cash_usd=_pick(summary, ["TotalCashValue", "TotalCashBalance", "CashBalance"]),
@@ -486,7 +486,7 @@ async def reconcile_trade_positions(
         ib_qty_by_key[key] = ib_qty_by_key.get(key, 0) + abs(int(p["position"]))
 
     open_trade_positions = (await db.execute(
-        select(TradePosition).where(TradePosition.state == "open")
+        select(BookedPosition).where(BookedPosition.state == "open")
     )).scalars().all()
 
     now = datetime.now(UTC)

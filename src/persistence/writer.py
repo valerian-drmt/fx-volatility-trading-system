@@ -33,10 +33,10 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from persistence.models import (
-    AccountSnap,
+    AccountHistory,
     Base,
-    Position,
-    PositionSnapshot,
+    OpenPosition,
+    OpenPositionHistory,
     Trade,
     VolSurface,
 )
@@ -53,9 +53,9 @@ SHUTDOWN_TIMEOUT_S: float = 30.0
 # Dispatcher : event table_name -> ORM model class.
 # The writer rejects any event targeting a table not in this map.
 TABLE_MODELS: dict[str, type[Base]] = {
-    "account_history": AccountSnap,
-    "open_position": Position,
-    "open_position_history": PositionSnapshot,
+    "account_history": AccountHistory,
+    "open_position": OpenPosition,
+    "open_position_history": OpenPositionHistory,
     "trades": Trade,
     "vol_surface_history": VolSurface,
 }

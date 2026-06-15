@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class PositionView(BaseModel):
-    """A single position row — mirrors ``persistence.models.Position`` after
+    """A single position row — mirrors ``persistence.models.OpenPosition`` after
     migration 028. Field order = panel E + entry_timestamp + updated_at.
     """
 

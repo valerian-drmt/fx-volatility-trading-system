@@ -36,6 +36,7 @@ from core.trade_preview import (
 from core.trade_preview_regime import apply_regime_to_limits, regime_label
 from persistence.models import (
     AppConfigScalar,
+    BookedPosition,
     BookStateSnapshot,
     ExecutionAuditLog,
     IbConnectionState,
@@ -44,7 +45,6 @@ from persistence.models import (
     StructureDefinition,
     StructureFill,
     StructureOrder,
-    TradePosition,
     TradePreviewRow,
     TradeStructure,
 )
@@ -829,7 +829,7 @@ async def submit_preview(
 
     # 4. Create position record (consumed by Step 5)
     greeks = payload.get("greeks_net") or {}
-    position = TradePosition(
+    position = BookedPosition(
         structure_id=structure.id,
         opened_at=now,
         entry_premium_usd=structure.total_premium_paid_usd or 0.0,
@@ -884,7 +884,7 @@ async def list_submitted_structures(
     out: list[dict[str, Any]] = []
     for s in rows:
         position = (await db.execute(
-            select(TradePosition).where(TradePosition.structure_id == s.id).limit(1)
+            select(BookedPosition).where(BookedPosition.structure_id == s.id).limit(1)
         )).scalar_one_or_none()
         out.append({
             "id": s.id, "created_at": s.created_at, "structure_type": s.structure_type,
