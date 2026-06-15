@@ -14,15 +14,20 @@ GET  /api/v1/positions/delta-hedge-config     hot-reload config visibility
 """
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
+from core.products import product_label_from_symbol
 from persistence.models import (
     AppConfigScalar,
     BookedPosition,
@@ -32,6 +37,8 @@ from persistence.models import (
     HedgeOrder,
     OpenPosition,
     OpenPositionHistory,
+    StructureOrder,
+    TradeEvent,
     TradeStructure,
 )
 from shared.contracts import multiplier_for, parse_local_symbol
@@ -212,11 +219,11 @@ def _serialize_ib_position(
         "current_gamma_usd_per_pip2": gamma,
         "current_theta_usd_per_day": theta,
         "current_delta_unhedged": delta,
-        "last_mtm_at": pos.updated_at.isoformat() if pos.updated_at else None,
-        "ib_reconciled_at": pos.updated_at.isoformat() if pos.updated_at else None,
+        "last_mtm_at": pos.timestamp.isoformat() if pos.timestamp else None,
+        "ib_reconciled_at": pos.timestamp.isoformat() if pos.timestamp else None,
         "ib_qty_total": round(signed_qty) if pos.quantity is not None else None,
         "ib_qty_diff": 0,
-        "ib_sync_status": _ib_sync_status(pos.updated_at),
+        "ib_sync_status": _ib_sync_status(pos.timestamp),
         "nominal_eur": nominal_eur,
         "contract_price_entry": contract_price_entry,
         "contract_price_market": contract_price_market,
@@ -267,6 +274,59 @@ def _serialize_position(pos: BookedPosition, struct: TradeStructure | None,
         "contract_price_entry": None,
         "contract_price_market": None,
     }
+
+
+@router.get("/open")
+async def list_open(db: DbDep) -> list[dict[str, Any]]:
+    """Raw ``open_position`` rows — one record per live IB contract.
+
+    Direct mirror of the table : risk-engine UPDATEs greeks / market_price /
+    pnl every 2 s, position_sync_loop INSERTs / DELETEs rows every 30 s on
+    IB diffs. No join, no merge — the panel renders exactly what the DB
+    holds. ``open_position_history`` carries the time series (snapshot
+    per cycle) with the same shape minus the FK / current-state state.
+    """
+    rows = (await db.execute(
+        select(OpenPosition).order_by(desc(OpenPosition.entry_timestamp))
+    )).scalars().all()
+
+    def _f(v):  # Decimal → float for JSON
+        return float(v) if v is not None else None
+
+    # Column order : identity / grouping → spec → P&L → main greeks →
+    # secondary greeks → metadata. Python dicts preserve insertion order
+    # (>= 3.7) so JSON consumers see the same order.
+    return [{
+        # ── Identity & grouping (Murex-style id stack) ──
+        "id": r.id,
+        "package_id": r.package_id,
+        "trade_id": r.trade_id,
+        "contract_id": r.contract_id,
+        "product_label": r.product_label,
+        "structure": r.structure,
+        "side": r.side,
+        # ── Spec ──
+        "quantity": _f(r.quantity),
+        "tenor": r.tenor,
+        "expiry": r.expiry.isoformat() if r.expiry else None,
+        # ── P&L & pricing ──
+        "current_pnl_usd": _f(r.current_pnl_usd),
+        "market_price": _f(r.market_price),
+        "contract_price_entry": _f(r.contract_price_entry),
+        "nominal_eur": _f(r.nominal_eur),
+        # ── Main greeks ──
+        "delta_usd": _f(r.delta_usd),
+        "gamma_usd": _f(r.gamma_usd),
+        "vega_usd": _f(r.vega_usd),
+        "theta_usd": _f(r.theta_usd),
+        "iv": _f(r.iv),
+        # ── Secondary greeks ──
+        "vanna_usd": _f(r.vanna_usd),
+        "volga_usd": _f(r.volga_usd),
+        # ── Metadata ──
+        "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+        "entry_timestamp": r.entry_timestamp.isoformat() if r.entry_timestamp else None,
+    } for r in rows]
 
 
 @router.get("/active")
@@ -467,6 +527,287 @@ async def signal_tracking(
             "status": r.signal_status,
         } for r in rows
     ]
+
+
+class ClosePositionRequest(BaseModel):
+    qty: int = Field(gt=0, description="Number of contracts to close. Must be ≤ open qty.")
+    # Optional explicit LimitOrder override. Default behaviour :
+    #   - during RTH ⇒ MarketOrder (fills instantly at touch)
+    #   - outside RTH ⇒ LimitOrder at ``market_price × (1 ± OUTSIDE_RTH_SLIPPAGE)``
+    #     on the close side (100 bps default ; guaranteed marketable at next open)
+    # The operator only sets this field when they want a specific
+    # price (e.g. cleanup of a stuck order).
+    limit_price: float | None = Field(default=None, gt=0)
+
+
+# Slippage applied to the close LimitOrder when we fall back outside
+# RTH. 5 bps = 0.05% — marketable on liquid CME FX contracts without
+# meaningfully impacting close P&L (typical option spread is wider).
+# Used only on the LMT fallback ; the RTH path stays MKT, no slippage.
+_OUTSIDE_RTH_SLIPPAGE = 0.0005
+
+# CME Globex regular trading hours for EUR FX futures + options on EUR.
+# Continuous session : Sunday 17:00 CT → Friday 16:00 CT, with a daily
+# break 16:00 → 17:00 CT (sessional reset).  IB Gateway rejects ``MarketOrder``s
+# on FOP outside this window — we detect it client-side and switch to LMT
+# so the operator's intent goes through either way.
+_CT_TZ = ZoneInfo("America/Chicago")
+
+
+def _is_cme_fx_rth(now_utc: datetime | None = None) -> bool:
+    if now_utc is None:
+        now_utc = datetime.now(UTC)
+    ct = now_utc.astimezone(_CT_TZ)
+    wd = ct.weekday()  # Monday=0 .. Sunday=6
+    h = ct.hour
+    if wd == 5:                      # Saturday closed all day
+        return False
+    if wd == 6:                      # Sunday : reopens at 17:00 CT
+        return h >= 17
+    if wd == 4 and h >= 16:          # Friday : closes at 16:00 CT
+        return False
+    if h == 16:                      # Daily break 16:00–17:00 CT (Mon–Thu)
+        return False
+    return True
+
+
+def _close_limit_from_mark(mark: float, side: str) -> float:
+    """Compute a marketable LimitOrder price on the reverse direction.
+
+    Closing a BUY (long) means SELLing → price slightly below mark.
+    Closing a SELL (short) means BUYing → price slightly above mark.
+    """
+    if side == "BUY":
+        return mark * (1.0 - _OUTSIDE_RTH_SLIPPAGE)
+    return mark * (1.0 + _OUTSIDE_RTH_SLIPPAGE)
+
+
+def _contract_fields_from_symbol(local_symbol: str, side: str) -> dict[str, Any]:
+    """Map an IB ``localSymbol`` + the position side onto the
+    ``trade_order`` contract columns (``contract_symbol``,
+    ``contract_type``, ``contract_strike``, ``contract_expiry`` is
+    handled separately because the DB stores it as Date).
+    """
+    spec = parse_local_symbol(local_symbol)
+    if spec is None:
+        # Defensive default — log row will be incomplete but legal.
+        return {
+            "contract_symbol": "EUR", "contract_type": "future",
+            "contract_strike": None,
+        }
+    if spec.instrument_type == "OPTION":
+        return {
+            "contract_symbol": "EUR",  # all CME EUR FOPs
+            "contract_type": (spec.option_type or "").lower(),  # "call" / "put"
+            "contract_strike": float(spec.strike) if spec.strike is not None else None,
+        }
+    # FUTURE — symbol "EUR" for full-size 6E, "M6E" for micro.
+    return {
+        "contract_symbol": spec.symbol,
+        "contract_type": "future",
+        "contract_strike": None,
+    }
+
+
+def _structure_type_for_close(local_symbol: str, side: str) -> str:
+    """Pick a ``structure_type`` for the closing TradeStructure row.
+
+    Symbol-derived, kept minimal :
+      - vanilla call / put when the IB symbol is an option
+      - future_buy / future_sell when it's a future (side = OUR position
+        side, since closing means reversing it)
+    A future enhancement could resolve the parent live structure_type
+    (e.g. straddle_atm) so the row reads "Straddle" instead — out of
+    scope here ; ``product_label`` is consistent either way thanks to
+    ``core.products.product_label_from_symbol``.
+    """
+    spec = parse_local_symbol(local_symbol)
+    if spec is None:
+        return "future_buy"  # last-resort default
+    if spec.instrument_type == "OPTION":
+        return "vanilla_call" if spec.option_type == "CALL" else "vanilla_put"
+    return "future_buy" if side == "BUY" else "future_sell"
+
+
+async def close_one_open_position(
+    *,
+    db: AsyncSession,
+    pos: OpenPosition,
+    qty: int,
+    limit_price_override: float | None = None,
+) -> dict[str, Any]:
+    """Close ``qty`` contracts of a single ``open_position`` row.
+
+    Public helper extracted from ``close_live_position`` so other
+    endpoints (notably the trade-level close that closes every leg of
+    a trade_structure together) can reuse the exact same audit + IB
+    submission flow without duplicating the logic.
+
+    Raises :
+        - ``HTTPException(400)`` on validation errors (zero qty, qty
+          exceeds open, no market price outside RTH, …).
+        - ``HTTPException(503)`` on execution-engine unreachable.
+        - ``HTTPException(r.status_code)`` on exec-engine refusal.
+
+    The caller commits / rollbacks the session.
+    """
+    open_qty = int(abs(pos.quantity))
+    if open_qty == 0:
+        raise HTTPException(400, f"position #{pos.id} has zero open qty")
+    if qty > open_qty:
+        raise HTTPException(
+            400, f"qty {qty} exceeds open qty {open_qty} on position #{pos.id}",
+        )
+    # Order type selection :
+    #   1. Operator-supplied limit_price wins — always LMT at that price.
+    #   2. Else inside RTH → MarketOrder (instant fill at touch).
+    #   3. Else outside RTH → LMT at mark × (1 ± 5 bps) on close side.
+    #      Reject if no mark available (caller must then supply limit_price).
+    reverse_side = "SELL" if pos.side == "BUY" else "BUY"
+    if limit_price_override is not None:
+        limit_price: float | None = round(float(limit_price_override), 6)
+    elif _is_cme_fx_rth():
+        limit_price = None  # → MKT
+    else:
+        if pos.market_price is None:
+            raise HTTPException(
+                400,
+                f"position #{pos.id} has no market_price and CME is outside RTH ; "
+                "supply an explicit limit_price",
+            )
+        limit_price = round(
+            _close_limit_from_mark(float(pos.market_price), pos.side), 6,
+        )
+    order_type = "LMT" if limit_price is not None else "MKT"
+
+    # ── 1. Persist trade_structure + trade_order rows (audit + UI). ──
+    structure_type = _structure_type_for_close(pos.structure, pos.side)
+    product_label  = product_label_from_symbol(pos.structure, structure_type)
+    closing_struct = TradeStructure(
+        structure_type=structure_type,
+        product_label=product_label,
+        reference_tenor=pos.tenor or "1M",
+        expiry_date=pos.expiry,
+        base_qty=qty,
+        state="submitted",
+        execution_mode="live",
+    )
+    db.add(closing_struct)
+    await db.flush()  # populates closing_struct.id
+
+    contract_fields = _contract_fields_from_symbol(pos.structure, pos.side)
+    closing_order = StructureOrder(
+        structure_id=closing_struct.id,
+        leg_idx=0, order_role="closing",
+        side=reverse_side, qty=qty,
+        order_type=order_type, limit_price=limit_price,
+        contract_expiry=pos.expiry,
+        state="pending",
+        **contract_fields,
+    )
+    db.add(closing_order)
+
+    # NOTE: TradeEvent.position_id FKs to booked_position.id, not the
+    # IB-live ``position`` table — leave it NULL and store the live
+    # position id in the payload for traceability.
+    db.add(TradeEvent(
+        structure_id=closing_struct.id,
+        event_type="position_close_initiated",
+        severity="info",
+        description=(
+            f"manual close live#{pos.id} : {qty}/{open_qty} {order_type}"
+            + (f" @ {limit_price}" if limit_price is not None else "")
+        ),
+        payload={
+            "live_position_id": pos.id,
+            "local_symbol": pos.structure,
+            "qty": qty,
+            "open_qty_before": open_qty,
+            "order_type": order_type,
+            "limit_price": limit_price,
+            "reverse_side": reverse_side,
+        },
+    ))
+    await db.commit()
+
+    # ── 2. Forward to execution-engine. ──
+    payload: dict[str, Any] = {
+        "local_symbol": pos.structure,
+        "qty": qty,
+        # Plumb the DB ``trade_order.id`` so the exec-engine can attach
+        # fills_handler callbacks ; without this, qty_filled stays at 0
+        # on the closing row even after IB fills the order.
+        "db_order_id": closing_order.id,
+    }
+    if limit_price is not None:
+        payload["limit_price"] = limit_price
+    exec_url = os.getenv("EXECUTION_URL", "http://execution-engine:8001")
+    url = f"{exec_url}/internal/positions/close-by-symbol"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(url, json=payload)
+    except httpx.HTTPError as e:
+        # Mark the closing structure as failed so the operator sees it.
+        closing_struct.state = "partial_fail"
+        closing_order.state = "rejected"
+        closing_order.rejection_text = f"execution-engine unreachable: {e}"[:300]
+        await db.commit()
+        raise HTTPException(503, f"execution-engine unreachable: {e}") from e
+    if r.status_code >= 400:
+        try:
+            detail = r.json().get("detail", r.text)
+        except Exception:
+            detail = r.text
+        closing_struct.state = "partial_fail"
+        closing_order.state = "rejected"
+        closing_order.rejection_text = str(detail)[:300]
+        await db.commit()
+        raise HTTPException(r.status_code, detail)
+
+    ib_response = r.json()
+
+    # ── 3. Stamp IB orderId + flip the leg state to 'submitted'. ──
+    ib_order_id = ib_response.get("order_id")
+    if ib_order_id is not None:
+        closing_order.ib_order_id = str(ib_order_id)
+    perm_id = ib_response.get("perm_id")
+    if perm_id is not None:
+        closing_order.ib_perm_id = str(perm_id)
+    closing_order.state = "submitted"
+    closing_order.submitted_at = datetime.now(UTC)
+    await db.commit()
+
+    return {
+        "position_id": pos.id,
+        "local_symbol": pos.structure,
+        "closed_qty": qty,
+        "open_qty_before": open_qty,
+        "order_type": order_type,
+        "limit_price": limit_price,
+        "structure_id": closing_struct.id,
+        "order_id": closing_order.id,
+        "ib": ib_response,
+    }
+
+
+@router.post("/{position_id}/close")
+async def close_live_position(
+    position_id: int, body: ClosePositionRequest, db: DbDep,
+) -> dict[str, Any]:
+    """Partial / full close on an IB-live ``open_position`` row.
+
+    Thin wrapper over :func:`close_one_open_position`. The trade-level
+    close endpoint (``POST /api/v1/trades/{trade_id}/close``) calls the
+    same helper once per leg.
+    """
+    pos = (await db.execute(
+        select(OpenPosition).where(OpenPosition.id == position_id).limit(1)
+    )).scalar_one_or_none()
+    if pos is None:
+        raise HTTPException(404, f"position #{position_id} not found")
+    return await close_one_open_position(
+        db=db, pos=pos, qty=body.qty, limit_price_override=body.limit_price,
+    )
 
 
 @router.post("/{position_id}/close-manual")

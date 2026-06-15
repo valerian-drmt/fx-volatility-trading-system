@@ -968,6 +968,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/positions/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Open
+         * @description Raw ``open_position`` rows — one record per live IB contract.
+         *
+         *     Direct mirror of the table : risk-engine UPDATEs greeks / market_price /
+         *     pnl every 2 s, position_sync_loop INSERTs / DELETEs rows every 30 s on
+         *     IB diffs. No join, no merge — the panel renders exactly what the DB
+         *     holds. ``open_position_history`` carries the time series (snapshot
+         *     per cycle) with the same shape minus the FK / current-state state.
+         */
+        get: operations["list_open_api_v1_positions_open_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/positions/active": {
         parameters: {
             query?: never;
@@ -1106,6 +1132,30 @@ export interface paths {
         get: operations["signal_tracking_api_v1_positions__position_id__signal_tracking_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/{position_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Live Position
+         * @description Partial / full close on an IB-live ``open_position`` row.
+         *
+         *     Thin wrapper over :func:`close_one_open_position`. The trade-level
+         *     close endpoint (``POST /api/v1/trades/{trade_id}/close``) calls the
+         *     same helper once per leg.
+         */
+        post: operations["close_live_position_api_v1_positions__position_id__close_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1382,6 +1432,10 @@ export interface paths {
          * Read Table
          * @description Read N rows from `name` (whitelisted), ordered DESC by its PK column.
          *
+         *     Columns are remapped via ``PREFERRED_COLUMN_ORDER`` when an override
+         *     exists for ``name`` (e.g. ``open_position``) — otherwise physical
+         *     Postgres order is preserved.
+         *
          *     JSONB / datetime / Decimal sont sérialisés via FastAPI's jsonable_encoder.
          */
         get: operations["read_table_api_v1_dev_tables__name__get"];
@@ -1428,6 +1482,47 @@ export interface paths {
         get: operations["cycle_progress_api_v1_dev_cycle_progress_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trades/{trade_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Trade
+         * @description Atomically close every open leg of ``trade_id``.
+         *
+         *     Server-side loop = "atomic" in the sense that :
+         *       - the operator sends 1 request,
+         *       - the audit chain in ``trade_structure`` / ``trade_order`` records
+         *         all legs under successive close trade_structure rows,
+         *       - partial failure is reported in one structured response.
+         *
+         *     Note : IB execution events themselves are async (orders are placed
+         *     but fills land later). "Atomic" here means the *submission* is
+         *     grouped — not that all orders fill simultaneously.
+         *
+         *     Response shape :
+         *         {
+         *           "trade_id": <int>,
+         *           "total_legs": <int>,
+         *           "closed_legs": <int>,            # legs whose close was accepted
+         *           "failed_legs": <int>,
+         *           "results": [ { "position_id": ..., "ok": bool,
+         *                          "structure_id": ..., "order_id": ...,
+         *                          "error": "..." | null }, ... ]
+         *         }
+         */
+        post: operations["close_trade_api_v1_trades__trade_id__close_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1486,6 +1581,21 @@ export interface components {
              * @default 0.94
              */
             ewma_lambda_fair_smile: number;
+        };
+        /** ClosePositionRequest */
+        ClosePositionRequest: {
+            /**
+             * Qty
+             * @description Number of contracts to close. Must be ≤ open qty.
+             */
+            qty: number;
+            /** Limit Price */
+            limit_price?: number | null;
+        };
+        /** CloseTradeRequest */
+        CloseTradeRequest: {
+            /** Limit Price */
+            limit_price?: number | null;
         };
         /**
          * ConfigPatchRequest
@@ -3775,6 +3885,28 @@ export interface operations {
             };
         };
     };
+    list_open_api_v1_positions_open_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
     list_active_api_v1_positions_active_get: {
         parameters: {
             query?: never;
@@ -3991,6 +4123,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_live_position_api_v1_positions__position_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                position_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClosePositionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4459,6 +4628,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    close_trade_api_v1_trades__trade_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trade_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseTradeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
