@@ -32,5 +32,10 @@ infrastructure/ib-gateway/upstream/
 market-data.log
 *.log
 
+# Generated OpenAPI dump — scripts/dump_openapi.py writes it at the repo root
+# transiently to feed the frontend openapi-typescript drift check (CI + local).
+# Regenerated on demand; never a tracked source of truth.
+openapi.json
+
 # Operator scratch dumps from live debug sessions (position P&L snapshots etc.)
 pin.json
