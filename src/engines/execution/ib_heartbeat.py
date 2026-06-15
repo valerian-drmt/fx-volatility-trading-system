@@ -69,7 +69,17 @@ async def update_heartbeat_row(
     row.is_connected = is_connected
     row.last_heartbeat = now
     if is_connected and account_summary is not None:
-        row.account_id = account_summary.get("account") or row.account_id
+        acct_id = account_summary.get("account") or row.account_id
+        row.account_id = acct_id
+        # IB account-id prefix convention : 'D' = paper (e.g. DU1234567),
+        # 'U' = live retail (e.g. U1234567), 'F' = live institutional.
+        # Fall back to keeping the previous value if the prefix is unknown.
+        if acct_id:
+            first = str(acct_id)[:1].upper()
+            if first == "D":
+                row.account_type = "paper"
+            elif first in ("U", "F"):
+                row.account_type = "live"
         row.available_funds_usd = _pick_float(account_summary, "AvailableFunds")
         row.buying_power_usd = _pick_float(account_summary, "BuyingPower")
         row.margin_used_usd = _pick_float(account_summary, "MaintMarginReq")
