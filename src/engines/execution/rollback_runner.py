@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.execution.rollback import OrderState, RollbackPlan, decide_rollback
-from persistence.models import ExecutionAuditLog, StructureOrder
+from persistence.models import StructureOrder, TradeEvent
 
 logger = logging.getLogger(__name__)
 
@@ -85,10 +85,10 @@ async def run_rollback(
                 if trade.order.orderId == ib_order_id_int:
                     ib.cancelOrder(trade.order)
                     break
-            db.add(ExecutionAuditLog(
+            db.add(TradeEvent(
                 structure_id=structure_id, order_id=order.id,
                 event_type="order_cancelled", severity="warning",
-                message=f"rollback cancel leg={action.leg_idx}",
+                description=f"rollback cancel leg={action.leg_idx}",
                 payload={"ib_order_id": order.ib_order_id},
             ))
             cancelled.append(order.id)
@@ -158,10 +158,10 @@ async def run_rollback(
                 trade=trade, order_id=unwind_order.id, sessionmaker_factory=sm,
             )
 
-            db.add(ExecutionAuditLog(
+            db.add(TradeEvent(
                 structure_id=structure_id, order_id=unwind_order.id,
                 event_type="unwind_order_created", severity="warning",
-                message=(
+                description=(
                     f"rollback unwind leg={action.leg_idx} "
                     f"side={action.side} qty={action.qty}"
                 ),

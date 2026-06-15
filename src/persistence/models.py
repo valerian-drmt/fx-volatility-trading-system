@@ -697,25 +697,34 @@ class IbConnectionState(Base):
 # Step 5 — Active Positions monitoring (cf. STEP5_ACTIVE_POSITIONS.md §7)
 # ──────────────────────────────────────────────────────────────────────
 
-class ExecutionAuditLog(Base):
-    """Granular event log for execution debugging / post-mortem."""
+class TradeEvent(Base):
+    """Unified trade event journal — append-only (folded from execution_audit_log).
 
-    __tablename__ = "execution_audit_log"
+    ``event_type`` is the discriminator — legacy values are preserved verbatim
+    (e.g. ``structure_filled``, ``submission_blocked``, ``order_cancelled``).
+    ``description`` carries the human-readable summary, ``payload`` the
+    structured context. ``severity`` follows the standard 5-level scale.
+    """
+
+    __tablename__ = "trade_event"
     __table_args__ = (
         CheckConstraint(
             "severity IN ('debug','info','warning','error','critical')",
-            name="ck_audit_severity",
+            name="ck_trade_event_severity",
         ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    structure_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("trade_structure.id"))
-    order_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("trade_order.id"))
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
     event_type: Mapped[str] = mapped_column(String(40), nullable=False)
     severity: Mapped[str] = mapped_column(String(15), nullable=False, default="info")
-    message: Mapped[str] = mapped_column(String(500), nullable=False)
-    payload: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
+    structure_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("trade_structure.id"))
+    order_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("trade_order.id"))
+    position_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("booked_position.id"))
+    description: Mapped[str | None] = mapped_column(String(500))
+    payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False, default=dict)
 
 
 class Order(Base):
