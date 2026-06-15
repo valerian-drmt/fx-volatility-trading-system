@@ -44,7 +44,9 @@ from persistence.models import OrderEvent
 logger = logging.getLogger("execution")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 
-SYNC_INTERVAL_S = float(os.getenv("SYNC_INTERVAL_S", "1.0"))
+# 5 s default : UI polls positions at ~5 s, moderate IB load (~12 calls/min).
+# Override via the SYNC_INTERVAL_S env var.
+SYNC_INTERVAL_S = float(os.getenv("SYNC_INTERVAL_S", "5.0"))
 HEARTBEAT_INTERVAL_S = float(os.getenv("HEARTBEAT_INTERVAL_S", "10.0"))
 STUCK_WATCH_INTERVAL_S = float(os.getenv("STUCK_WATCH_INTERVAL_S", "60.0"))
 STUCK_AFTER_S = float(os.getenv("STUCK_AFTER_S", "600.0"))
