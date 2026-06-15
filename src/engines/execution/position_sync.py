@@ -65,28 +65,32 @@ def _expiry_to_date(s: str | None) -> date | None:
 def _tenor_bucket(maturity: date | None) -> str | None:
     """Closest FX OTC tenor pillar for ``maturity`` (1W / 2W / 1M / ... / 2Y+).
     Mirrors the same bucketing used by the API's ``_tenor_bucket`` so the
-    persisted column matches what the panel computes on the fly."""
+    persisted column matches what the panel computes on the fly.
+
+    Thresholds are midpoints between nominal tenor day counts so a real
+    180-day contract (= 6M) lands in the "6M" bucket, not "9M".
+    """
     if maturity is None:
         return None
     today = datetime.now(UTC).date()
     days = (maturity - today).days
     if days < 0:
         return "expired"
-    if days <= 10:
+    if days <= 10:                       # 1W (7) ↔ 2W (14) midpoint ~ 10
         return "1W"
-    if days <= 21:
+    if days <= 22:                       # 2W (14) ↔ 1M (30)  midpoint 22
         return "2W"
-    if days <= 45:
+    if days <= 45:                       # 1M (30) ↔ 2M (60)  midpoint 45
         return "1M"
-    if days <= 75:
+    if days <= 75:                       # 2M (60) ↔ 3M (90)  midpoint 75
         return "2M"
-    if days <= 105:
+    if days <= 135:                      # 3M (90) ↔ 6M (180) midpoint 135
         return "3M"
-    if days <= 165:
+    if days <= 225:                      # 6M (180) ↔ 9M (270) midpoint 225
         return "6M"
-    if days <= 270:
+    if days <= 317:                      # 9M (270) ↔ 1Y (365) midpoint 317
         return "9M"
-    if days <= 460:
+    if days <= 547:                      # 1Y (365) ↔ 2Y (730) midpoint 547
         return "1Y"
     return "2Y+"
 
