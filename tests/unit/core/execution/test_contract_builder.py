@@ -18,7 +18,10 @@ def test_build_contract_call_eur():
     )
     assert out["symbol"] == "EUR"
     assert out["secType"] == "FOP"
-    assert out["lastTradeDateOrContractMonth"] == "20260619"
+    # FOP expiry now reduced to YYYYMM so IB resolves to the monthly
+    # listing (3rd Friday) without depending on the caller knowing the
+    # exact listed date.
+    assert out["lastTradeDateOrContractMonth"] == "202606"
     assert out["right"] == "C"
     assert out["strike"] == pytest.approx(1.0850)
     assert out["tradingClass"] == "EUU"
@@ -29,7 +32,7 @@ def test_build_contract_put_iso_string_expiry():
         contract_type="put", expiry="2026-09-18", strike=1.10,
     )
     assert out["right"] == "P"
-    assert out["lastTradeDateOrContractMonth"] == "20260918"
+    assert out["lastTradeDateOrContractMonth"] == "202609"
 
 
 def test_build_contract_rejects_bad_type():

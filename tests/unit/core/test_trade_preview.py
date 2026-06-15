@@ -115,19 +115,35 @@ def test_long_strangle_greeks_signs():
     assert g.theta_usd_per_day < 0
 
 
-def test_future_buy_delta_plus_one_no_other_greeks():
+def test_future_buy_full_delta_usd_no_other_greeks():
+    # 6E (full size) — delta_usd = +1 × 125_000 × spot. Mock spot = 1.085 →
+    # delta_usd = 135_625. Vega / gamma / theta stay 0 for a future.
     s = build_structure("future_buy", "3M", None, _mock_surface())
+    assert s.future_contract_size == "full"
     g = compute_net_greeks(s, _mock_surface())
-    assert g.delta_unhedged == 1.0
+    assert g.delta_unhedged == pytest.approx(125_000 * 1.085)
     assert g.vega_usd_per_volpt == 0.0
     assert g.gamma_usd_per_pip2 == 0.0
     assert g.theta_usd_per_day == 0.0
 
 
-def test_future_sell_delta_minus_one():
+def test_future_buy_micro_delta_usd_one_tenth():
+    # M6E (micro) — delta_usd = +1 × 12_500 × spot. Should be exactly
+    # 1/10 of the full-size delta.
+    s = build_structure(
+        "future_buy", "3M", None, _mock_surface(),
+        future_contract_size="micro",
+    )
+    assert s.future_contract_size == "micro"
+    g = compute_net_greeks(s, _mock_surface())
+    assert g.delta_unhedged == pytest.approx(12_500 * 1.085)
+
+
+def test_future_sell_delta_negative_usd():
     s = build_structure("future_sell", "3M", None, _mock_surface())
     g = compute_net_greeks(s, _mock_surface())
-    assert g.delta_unhedged == -1.0
+    # Sell 6E full size : delta_usd = -125_000 × spot.
+    assert g.delta_unhedged == pytest.approx(-125_000 * 1.085)
 
 
 def test_future_no_strike_no_iv():
@@ -371,9 +387,12 @@ def _ok_args() -> dict:
 def test_all_checks_pass_baseline():
     checks = run_pre_submit_checks(**_ok_args())
     assert all(c.passed for c in checks)
+    # max_loss_under_capital_limit + iv_data_fresh dropped on request — too
+    # punitive for short-vol structures + redundant with the YELLOW block
+    # freshness display.
     assert {c.name for c in checks} == {
-        "regime_not_pre_event", "signal_still_actionable", "max_loss_under_capital_limit",
-        "vega_under_book_limit", "iv_data_fresh", "no_arb_violation_on_legs", "minimum_liquidity",
+        "regime_not_pre_event", "signal_still_actionable",
+        "vega_under_book_limit", "no_arb_violation_on_legs", "minimum_liquidity",
     }
 
 
@@ -399,26 +418,12 @@ def test_check_signal_too_weak_blocks():
     assert next(c for c in checks if c.name == "signal_still_actionable").passed is False
 
 
-def test_check_max_loss_blocks_oversized():
-    args = _ok_args()
-    args["max_loss_usd"] = 5000.0  # 5% of capital
-    checks = run_pre_submit_checks(**args)
-    assert next(c for c in checks if c.name == "max_loss_under_capital_limit").passed is False
-
-
 def test_check_vega_book_limit_blocks():
     args = _ok_args()
     args["book_total_vega_usd"] = 4900.0
     args["structure_vega_usd"] = 200.0           # post = 5100 > limit 5000
     checks = run_pre_submit_checks(**args)
     assert next(c for c in checks if c.name == "vega_under_book_limit").passed is False
-
-
-def test_check_iv_stale_blocks():
-    args = _ok_args()
-    args["surface_age_seconds"] = 200.0
-    checks = run_pre_submit_checks(**args)
-    assert next(c for c in checks if c.name == "iv_data_fresh").passed is False
 
 
 def test_check_arb_violation_blocks():
