@@ -67,6 +67,14 @@ class OpenPosition(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     structure: Mapped[str] = mapped_column(String(20), nullable=False)
     product_label: Mapped[str | None] = mapped_column(String(40))
+    # 3-level identity (migration 041) : contract (IB conId) → trade → package.
+    contract_id: Mapped[int | None] = mapped_column(BigInteger)
+    trade_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("trade_structure.id", ondelete="SET NULL"),
+    )
+    package_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("package.id", ondelete="SET NULL"),
+    )
     side: Mapped[str] = mapped_column(String(4), nullable=False)
     tenor: Mapped[str | None] = mapped_column(String(10))
     expiry: Mapped[date | None] = mapped_column(Date)
@@ -112,6 +120,14 @@ class OpenPositionHistory(Base):
     )
     structure: Mapped[str] = mapped_column(String(20), nullable=False)
     product_label: Mapped[str | None] = mapped_column(String(40))
+    # 3-level identity (migration 041) : contract (IB conId) → trade → package.
+    contract_id: Mapped[int | None] = mapped_column(BigInteger)
+    trade_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("trade_structure.id", ondelete="SET NULL"),
+    )
+    package_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("package.id", ondelete="SET NULL"),
+    )
     side: Mapped[str] = mapped_column(String(4), nullable=False)
     tenor: Mapped[str | None] = mapped_column(String(10))
     expiry: Mapped[date | None] = mapped_column(Date)
@@ -517,6 +533,21 @@ class AppConfigScalar(Base):
 # ──────────────────────────────────────────────────────────────────────
 
 
+class Package(Base):
+    """Operational grouping of multiple TradeStructure (= trades) into one
+    envelope — Murex's "package" concept. Empty until an operator bundles
+    trades under a single risk/funding key (migration 041)."""
+
+    __tablename__ = "package"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    label: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(300))
+
+
 class TradeStructure(Base):
     """Multi-leg trade : 1 row per Submit (new STEP3/STEP4 workflow)."""
 
@@ -531,6 +562,9 @@ class TradeStructure(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     preview_id: Mapped[str | None] = mapped_column(String(40), ForeignKey("trade_preview.preview_id"))
+    package_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("package.id", ondelete="SET NULL"),
+    )
     pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_signal_history.id"))
     triggering_pc: Mapped[int | None] = mapped_column(Integer)
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
@@ -580,6 +614,8 @@ class StructureOrder(Base):
     order_role: Mapped[str] = mapped_column(String(20), nullable=False, default="entry")
     ib_order_id: Mapped[str | None] = mapped_column(String(40))
     ib_perm_id: Mapped[str | None] = mapped_column(String(40))
+    # Set by fills_handler on first fill — exact leg→trade resolution key.
+    ib_local_symbol: Mapped[str | None] = mapped_column(String(20))
     contract_symbol: Mapped[str] = mapped_column(String(10), nullable=False, default="EUR")
     contract_type: Mapped[str] = mapped_column(String(10), nullable=False)
     contract_expiry: Mapped[date | None] = mapped_column(Date)
