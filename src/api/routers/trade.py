@@ -9,9 +9,11 @@ GET  /api/v1/trade/book                 current book state snapshot
 """
 from __future__ import annotations
 
+import logging
 import secrets
+import traceback
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -22,7 +24,9 @@ from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.book_state_refresh import refresh_book_state
 from core.execution.revalidation import revalidate_preview
 from core.execution.slippage import compute_limit_price
+from core.products import product_label_from_symbol
 from core.trade_preview import (
+    _spot_from_surface,
     build_structure,
     compute_legs_greeks,
     compute_net_greeks,
@@ -49,6 +53,8 @@ from persistence.models import (
     TradeStructure,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/trade", tags=["trade"])
 
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -66,6 +72,9 @@ class PreviewRequest(BaseModel):
     override_tenor: str | None = None
     override_far_tenor: str | None = None
     override_qty: int | None = None
+    # CME EUR/USD future contract size : 'full' = 6E (€125 000) or
+    # 'micro' = M6E (€12 500). Only used when structure_type is future_buy/sell.
+    future_contract_size: Literal["full", "micro"] | None = None
 
 
 async def _load_limits(db: AsyncSession) -> dict[str, float]:
@@ -147,6 +156,19 @@ async def _acquire_preview_lock(preview_id: str, ttl_s: int = 10) -> bool:
         return bool(ok)
     except Exception:
         return True
+
+
+async def _release_preview_lock(preview_id: str) -> None:
+    """Drop the Redis lock held by ``_acquire_preview_lock``. Call in the
+    error path so a failed submit doesn't block retries for the next 10 s.
+    """
+    client = get_redis_client_or_none()
+    if client is None:
+        return
+    try:
+        await client.delete(f"trade:submit_lock:{preview_id}")
+    except Exception:
+        pass
 
 
 async def _post_execution_engine(path: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -317,9 +339,38 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         structure_type, near_tenor, far_tenor, surface,
         delta_pillar_override=req.delta_pillar,
         strike_override=req.strike_override,
+        future_contract_size=req.future_contract_size,
     )
     pricing = price_structure(structure, surface)
     greeks = compute_net_greeks(structure, surface)
+
+    # Cosmetic display name = bare product family. Strips side prefix
+    # (long_/short_), trailing pillar suffix (_atm/_25d/_10d) and the
+    # future_buy/future_sell side marker. The side info is already on a
+    # dedicated column in the post-trade tables ; the delta info lives on
+    # each leg's strike. Keeps "vanilla_call" / "vanilla_put" as-is so
+    # the contract-type (≠ side) is still visible.
+    def _bare_product(s: str) -> str:
+        # Strip side prefix.
+        for pref in ("long_", "short_"):
+            if s.startswith(pref):
+                s = s[len(pref):]
+                break
+        # Strip pillar suffix.
+        for suf in ("_atm", "_25d", "_10d"):
+            if s.endswith(suf):
+                s = s[: -len(suf)]
+                break
+        # Strip calendar side suffix.
+        for suf in ("_long", "_short"):
+            if s.endswith(suf):
+                s = s[: -len(suf)]
+                break
+        # Futures collapse to single "future".
+        if s in ("future_buy", "future_sell"):
+            return "future"
+        return s
+    display_structure_type = _bare_product(structure.type)
 
     # 4. Sizing
     if manual_mode:
@@ -356,8 +407,23 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
 
     # 5. Scenarios + per-leg greeks + 2D P&L grid (risk-analysis tables)
     scenarios = simulate_scenarios(structure, surface, greeks)
-    legs_greeks = compute_legs_greeks(structure, surface)
+    legs_greeks_raw = compute_legs_greeks(structure, surface)
     pnl_grid = compute_pnl_grid(structure, surface, greeks)
+
+    # Scale per-leg greeks to the actual trade size — same logic as
+    # greeks_net above. ``qty_factor`` becomes the final per-leg quantity
+    # (qty_factor × base_qty) so the operator sees "what's actually
+    # being traded".
+    _base_qty_for_scaling = max(sizing.base_qty, 1)
+    legs_greeks: list[dict[str, Any]] = []
+    for r in legs_greeks_raw:
+        scaled = dict(r)
+        scaled["qty_factor"] = int(r.get("qty_factor", 1)) * _base_qty_for_scaling
+        for k in ("vega", "gamma", "theta", "delta"):
+            v = r.get(k)
+            if isinstance(v, (int, float)):
+                scaled[k] = v * _base_qty_for_scaling
+        legs_greeks.append(scaled)
 
     # 6. Pre-submit checks
     structure_vega_at_size = greeks.vega_usd_per_volpt * (sizing.final_qty_per_leg / max(sizing.base_qty, 1))
@@ -403,13 +469,26 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
     # Costs : commission + total trade cost. Commission = $/contract × total
     # contracts (sum across legs, weighted by qty_factor). Premium per contract
     # is the structure premium for qty=base_qty divided by base_qty.
-    commission_per_contract = limits.get("commission_per_contract_usd", 2.0)
+    # For futures we override the generic per-contract rate with the
+    # CME-published rate for the chosen contract size (6E: $2.40, M6E: $0.60).
+    if structure.future_contract_size:
+        from core.trade_preview import FUTURE_COMMISSION_USD
+        commission_per_contract = FUTURE_COMMISSION_USD[structure.future_contract_size]
+    else:
+        commission_per_contract = limits.get("commission_per_contract_usd", 2.0)
     total_contracts = sum(abs(q) for q in sizing.leg_quantities.values())
     commission_usd = float(total_contracts) * commission_per_contract
-    premium_per_contract_usd = (
-        pricing.total_premium_usd / max(sizing.base_qty, 1)
-        if sizing.base_qty else 0.0
-    )
+    # "Cost per contract" displayed on the RED block. Options : premium of
+    # one structure unit (=total_premium / base_qty). Futures : no premium,
+    # so we expose the commission per contract instead so the operator sees
+    # a non-zero entry.
+    if structure.future_contract_size:
+        premium_per_contract_usd = commission_per_contract
+    else:
+        premium_per_contract_usd = (
+            pricing.total_premium_usd / max(sizing.base_qty, 1)
+            if sizing.base_qty else 0.0
+        )
     total_trade_cost_usd = abs(sizing.final_premium_usd) + commission_usd
 
     preview_id = "tp_" + secrets.token_hex(6)
@@ -426,11 +505,25 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
             "label": signal.label,
         },
         "structure": {
-            "type": structure.type,
+            "type": display_structure_type,
+            "type_template": structure.type,           # canonical template name
             "reference_tenor": structure.reference_tenor,
             "tenor_far": structure.tenor_far,
             "requires_delta_hedge": structure.requires_delta_hedge,
             "vega_sign": structure.vega_sign,
+            "future_contract_size": structure.future_contract_size,
+            # Trader-facing ticker (6E / M6E) — distinct from the IB API
+            # Contract.symbol which is "EUR" for 6E. Cf. shared/contracts.py.
+            "ib_symbol": (
+                "6E" if structure.future_contract_size == "full"
+                else "M6E" if structure.future_contract_size == "micro"
+                else None
+            ),
+            "future_multiplier_eur": (
+                125_000 if structure.future_contract_size == "full"
+                else 12_500 if structure.future_contract_size == "micro"
+                else None
+            ),
             "legs": [
                 {
                     "leg_idx": leg.leg_idx, "contract_type": leg.contract_type,
@@ -443,12 +536,22 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
                 } for leg in structure.legs
             ],
         },
+        # greeks scaled to the actual trade size (× base_qty). compute_net_greeks
+        # returns per-structure-unit values; the operator-facing display
+        # ought to reflect the full trade impact.
         "greeks_net": {
-            "vega_usd_per_volpt": greeks.vega_usd_per_volpt,
-            "gamma_usd_per_pip2": greeks.gamma_usd_per_pip2,
-            "theta_usd_per_day": greeks.theta_usd_per_day,
-            "delta_unhedged": greeks.delta_unhedged,
-            "delta_post_hedge": greeks.delta_post_hedge,
+            "vega_usd_per_volpt": round(greeks.vega_usd_per_volpt * sizing.base_qty, 4),
+            "gamma_usd_per_pip2": round(greeks.gamma_usd_per_pip2 * sizing.base_qty, 6),
+            "theta_usd_per_day": round(greeks.theta_usd_per_day * sizing.base_qty, 4),
+            "delta_unhedged": round(greeks.delta_unhedged * sizing.base_qty, 4),
+            "delta_post_hedge": round(greeks.delta_post_hedge * sizing.base_qty, 4),
+            "_per_unit": {  # raw per-structure-unit values (for debug / scaling)
+                "vega_usd_per_volpt": greeks.vega_usd_per_volpt,
+                "gamma_usd_per_pip2": greeks.gamma_usd_per_pip2,
+                "theta_usd_per_day": greeks.theta_usd_per_day,
+                "delta_unhedged": greeks.delta_unhedged,
+                "delta_post_hedge": greeks.delta_post_hedge,
+            },
         },
         "pricing": {
             "premium_paid_usd": pricing.total_premium_usd,
@@ -478,6 +581,11 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         "state": state,
         "blocking_reasons": blocking,
         "surface_age_seconds": surface_age_s,
+        # Spot used for the pricing/greeks computation. Echoed back so the
+        # frontend can render "Market data · Spot" without a separate
+        # /vol/term-structure round-trip (which sometimes returns no
+        # forward when the FX market is closed).
+        "spot": _spot_from_surface(surface),
     }
 
     # 7. Persist (audit)
@@ -487,7 +595,11 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         triggering_pc=signal.pc_id if signal else None,
         armed_z_score=float(signal.z_score) if signal else None,
         armed_signal_label=signal.label if signal else None,
-        structure_type=structure.type, reference_tenor=structure.reference_tenor,
+        # Persist the display-friendly type so tables / audit show
+        # "straddle_10d" instead of canonical "straddle_atm" when override.
+        structure_type=display_structure_type,
+        product_label=product_label_from_symbol(None, display_structure_type),
+        reference_tenor=structure.reference_tenor,
         structure_full_payload=payload, state=state,
         pre_submit_checks=payload["pre_submit_checks"],
         blocking_reasons=blocking or None,
@@ -535,19 +647,61 @@ async def get_preview(preview_id: str, db: DbDep) -> dict[str, Any]:
 async def submit_preview(
     body: dict[str, Any], db: DbDep,
 ) -> dict[str, Any]:
-    """Step 4 — Submit a previewed trade. **MOCK EXECUTION**.
+    """Step 4 — Submit a previewed trade (mock or live).
 
-    No IB call is made. Instead the endpoint :
-      1. Loads the preview row.
-      2. Creates a ``trade_structures`` row with state='submitted'.
-      3. Creates ``structure_orders`` rows (one per leg) with state='filled'.
-      4. Creates ``structure_fills`` rows with synthetic fill prices == preview prices
-         (zero slippage, $2/contract commission).
-      5. Marks structure ``fully_filled`` and creates a ``trade_positions`` row.
-      6. Marks the trade_preview as ``user_action='submitted'``.
+    Wraps the real impl in a try/except so that unhandled Python exceptions
+    surface as structured JSON instead of HTML "Internal Server Error".
+    All errors also land in structlog with ``event='trade_submit_failed'``
+    so Grafana / Loki can pick them up by ``{container="fxvol-api"} |= "trade_submit_failed"``.
+    """
+    preview_id = body.get("preview_id")
+    execution_mode_arg = body.get("execution_mode", "mock")
+    logger.info(
+        "trade_submit_received preview_id=%s execution_mode=%s",
+        preview_id, execution_mode_arg,
+    )
+    try:
+        return await _submit_preview_impl(body, db)
+    except HTTPException as he:
+        # Release the lock so the user can retry without waiting 10 s for
+        # the Redis TTL to expire. We DON'T release the lock on success —
+        # the submission is recorded and the preview can't be re-used.
+        if preview_id:
+            await _release_preview_lock(str(preview_id))
+        # Log structured for Grafana.
+        logger.warning(
+            "trade_submit_http_error preview_id=%s status=%s detail=%s",
+            preview_id, he.status_code, str(he.detail)[:300],
+        )
+        raise
+    except Exception as exc:
+        if preview_id:
+            await _release_preview_lock(str(preview_id))
+        tb = traceback.format_exc()
+        logger.error(
+            "trade_submit_failed preview_id=%s exc_type=%s exc=%s\n%s",
+            preview_id, type(exc).__name__, str(exc)[:500], tb,
+        )
+        raise HTTPException(
+            500,
+            detail={
+                "error": "trade_submit_unhandled_exception",
+                "exception_type": type(exc).__name__,
+                "message": str(exc)[:500],
+                # Last 5 frames of the traceback for quick diagnosis on the UI.
+                "traceback_tail": tb.strip().splitlines()[-5:],
+            },
+        ) from exc
 
-    Returns the structure summary including position_id. Real IB integration
-    is deferred to spec phase 2/3.
+
+async def _submit_preview_impl(
+    body: dict[str, Any], db: DbDep,
+) -> dict[str, Any]:
+    """Actual submit impl. See ``submit_preview`` for the wrapper rationale.
+
+    Loads preview, runs revalidation, creates trade_structure + trade_order
+    rows, dispatches to execution-engine for live mode or synthesises mock
+    fills for mock mode.
     """
     preview_id = body.get("preview_id")
     if not preview_id:
@@ -676,6 +830,7 @@ async def submit_preview(
         armed_z_score=preview.armed_z_score,
         armed_signal_label=preview.armed_signal_label,
         structure_type=preview.structure_type,
+        product_label=product_label_from_symbol(None, preview.structure_type),
         reference_tenor=preview.reference_tenor,
         expiry_date=expiry_d,
         base_qty=base_qty,
@@ -698,6 +853,15 @@ async def submit_preview(
     # places them via ib_insync and wires fills handlers. The cascade to
     # state='filled' / 'fully_filled' / trade_positions arrives via events.
     if execution_mode == "live":
+        # For futures, route the order to the right CME ticker — 6E for
+        # 'full' size, M6E for 'micro'. Options keep the legacy default
+        # 'EUR' (which the contract_builder maps to the FOP trading class).
+        # ``future_contract_size`` lives on the preview's frozen payload
+        # (the JSONB ``structure_full_payload`` column) — we never persisted
+        # it as a TradeStructure column so we read it back here.
+        from core.trade_preview import FUTURE_IB_SYMBOLS as _FIB
+        fcs_from_payload = (payload.get("structure") or {}).get("future_contract_size")
+        fut_symbol = _FIB.get(fcs_from_payload or "")
         for i, leg in enumerate(legs):
             qty = int(leg.get("qty", 0))
             preview_price = float(leg.get("entry_price_per_contract_usd") or 0.0)
@@ -710,34 +874,63 @@ async def submit_preview(
                     contract_expiry = date.fromisoformat(leg["expiry"])
                 except ValueError:
                     pass
-            try:
-                limit_price = compute_limit_price(
-                    preview_price=preview_price, side=side,
-                    slippage_tolerance_pct=slippage_tolerance_pct,
-                )
-            except ValueError:
-                limit_price = preview_price
+            # Live limit price for futures with preview_price=0 is meaningless ;
+            # use the spot from the surface as a sensible starting LMT.
+            # Future contract_symbol gets the CME ticker (6E / M6E).
+            extra_kwargs: dict[str, Any] = {}
+            if contract_type == "future":
+                # IB API symbol : "EUR" for 6E full, "M6E" for micro. Default
+                # to "EUR" (the most common case).
+                extra_kwargs["contract_symbol"] = fut_symbol or "EUR"
+                # No live Redis surface here — read the spot that was
+                # echoed back in the preview payload (added to the response
+                # at preview time, lives in structure_full_payload.spot).
+                if preview_price <= 0:
+                    spot_from_preview = payload.get("spot")
+                    if isinstance(spot_from_preview, (int, float)) and spot_from_preview > 0:
+                        preview_price = float(spot_from_preview)
+                    else:
+                        preview_price = 1.0  # last-resort to keep flow alive
+            # Both futures and options go out as MKT orders — immediate
+            # fills, no LMT wait. The slippage tolerance compute is
+            # bypassed entirely. live_submit translates order_type='MKT'
+            # into ib_insync.MarketOrder.
+            order_type_db = "MKT"
+            limit_price = None
             db.add(StructureOrder(
                 structure_id=structure.id, leg_idx=i, order_role="entry",
                 contract_type=contract_type, contract_expiry=contract_expiry,
                 contract_strike=float(contract_strike)
                                  if isinstance(contract_strike, (int, float)) else None,
                 side=side, qty=qty,
-                order_type="LMT", limit_price=limit_price,
+                order_type=order_type_db, limit_price=limit_price,
                 preview_iv_pct=leg.get("entry_iv_pct"),
                 preview_price=preview_price,
                 state="pending",
+                **extra_kwargs,
             ))
         preview.user_action = "submitted"
         preview.user_action_at = now
         preview.state = "submitted"
         await db.commit()
+        logger.info(
+            "trade_submit_persisted_live structure_id=%s n_legs=%s preview_id=%s",
+            structure.id, len(legs), preview_id,
+        )
 
         # Fire-and-forget HTTP call to execution-engine. Failure here does
         # not roll the structure back automatically — operator decides.
+        logger.info(
+            "trade_submit_dispatch_ee structure_id=%s url=/internal/structure/submit",
+            structure.id,
+        )
         ee_result = await _post_execution_engine(
             "/internal/structure/submit",
             {"structure_id": structure.id},
+        )
+        logger.info(
+            "trade_submit_ee_ok structure_id=%s body=%s",
+            structure.id, str(ee_result)[:300],
         )
         return {
             "success": True,
@@ -888,6 +1081,7 @@ async def list_submitted_structures(
         )).scalar_one_or_none()
         out.append({
             "id": s.id, "created_at": s.created_at, "structure_type": s.structure_type,
+            "product_label": s.product_label,
             "reference_tenor": s.reference_tenor, "base_qty": s.base_qty, "state": s.state,
             "execution_mode": s.execution_mode,
             "total_premium_paid_usd": s.total_premium_paid_usd,

@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
+from core.products import product_label_from_symbol
+
 # 6-tenor canonical grid
 TENOR_TO_DTE = {"1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180}
 DELTA_PILLARS = ("10dp", "25dp", "atm", "25dc", "10dc")
@@ -232,6 +234,28 @@ class Structure:
     legs: list[Leg]
     requires_delta_hedge: bool
     vega_sign: str
+    # CME EUR/USD future contract size when type ∈ {future_buy, future_sell}.
+    # 'full' = 6E (€125 000), 'micro' = M6E (€12 500). None for non-future.
+    future_contract_size: Literal["full", "micro"] | None = None
+    # User-friendly product label (cf. core.products / migration 032).
+    # Computed at build time so the preview JSON carries it through to
+    # the frontend OrderRow drawer.
+    product_label: str | None = None
+
+
+# Multiplier in EUR notional per CME contract.
+FUTURE_MULTIPLIERS: dict[str, int] = {"full": 125_000, "micro": 12_500}
+# IB ``Contract.symbol`` convention : EUR for full size 6E, M6E for micro.
+# Cf. src/shared/contracts.py ContractSpec.symbol.
+FUTURE_IB_SYMBOLS: dict[str, str] = {"full": "EUR", "micro": "M6E"}
+# Trader-friendly label shown in the UI (the IB Contract.symbol is not what
+# the operator reads on a chart — "6E" / "M6E" matches the ticker).
+FUTURE_DISPLAY_SYMBOLS: dict[str, str] = {"full": "6E", "micro": "M6E"}
+# Commission per round-trip-side (entry only) in USD. IB published rates.
+FUTURE_COMMISSION_USD: dict[str, float] = {"full": 2.40, "micro": 0.60}
+
+# CME EUR options (FOP class EUU) notional per contract — same as 6E future.
+EUR_FOP_MULTIPLIER: float = 125_000.0
 
 
 def parse_recommendation(rec: str | None) -> tuple[str, str, str | None]:
@@ -294,6 +318,7 @@ def build_structure(
     *,
     delta_pillar_override: str | None = None,
     strike_override: float | None = None,
+    future_contract_size: Literal["full", "micro"] | None = None,
 ) -> Structure:
     """Build a Structure from a template + market surface.
 
@@ -336,11 +361,22 @@ def build_structure(
             qty_factor=int(lt["qty_factor"]), side=lt["side"],
             entry_iv_pct=None if is_future else (float(iv) * 100.0 if isinstance(iv, (int, float)) else None),
         ))
+    # Only meaningful for future_buy / future_sell; defaulted to 'full'
+    # (6E) when caller didn't specify but the structure is a future.
+    is_future_struct = structure_type in ("future_buy", "future_sell")
+    fcs: Literal["full", "micro"] | None = None
+    if is_future_struct:
+        fcs = future_contract_size or "full"
+    # Symbol hint for the 6E / M6E split on futures. None for options ;
+    # the helper falls back to the structure_type mapping.
+    _sym_hint = "M6E" if fcs == "micro" else ("6E" if is_future_struct else None)
     return Structure(
         type=structure_type, reference_tenor=near_tenor, tenor_far=far_tenor,
         legs=legs,
         requires_delta_hedge=tpl["requires_delta_hedge"],
         vega_sign=tpl["vega_sign"],
+        future_contract_size=fcs,
+        product_label=product_label_from_symbol(_sym_hint, structure_type),
     )
 
 
@@ -408,23 +444,31 @@ def price_structure(structure: Structure, surface: dict[str, Any]) -> PricingRes
 
 def compute_net_greeks(structure: Structure, surface: dict[str, Any]) -> NetGreeks:
     spot = _spot_from_surface(surface)
+    fut_mult = FUTURE_MULTIPLIERS.get(structure.future_contract_size or "full", 125_000)
     vega = gamma = theta = delta = 0.0
     for leg in structure.legs:
         if leg.contract_type == "future":
-            # Future leg : delta = ±1 per contract, no convexity / vega / theta.
+            # Future leg : delta_usd = ±qty × multiplier × spot.
+            # 6E (full) : 125 000 × spot ≈ $147 000 per contract @ 1.175.
+            # M6E (micro) :  12 500 × spot ≈ $14 700 per contract.
             sign = +1 if leg.side == "BUY" else -1
-            delta += sign * leg.qty_factor
+            delta += sign * leg.qty_factor * fut_mult * spot
             continue
         if leg.contract_type in ("call", "put") and leg.strike and leg.entry_iv_pct:
             T = leg.dte / 365.0
             sigma = leg.entry_iv_pct / 100.0
             g = bs_greeks(spot, leg.strike, T, sigma, leg.contract_type)
             sign = +1 if leg.side == "BUY" else -1
-            mult = sign * leg.qty_factor
-            vega += g["vega"] * 0.01 * mult     # per vol-pt (1% σ)
-            gamma += g["gamma"] * mult
-            theta += g["theta"] / 365.0 * mult  # per day
-            delta += g["delta"] * mult
+            mult = sign * leg.qty_factor * EUR_FOP_MULTIPLIER
+            # Trader-readable USD units. Conventions :
+            #   vega   = $ P&L per +1 vol-pt (1 % IV move)
+            #   gamma  = $ delta change per +1 pip spot move = bs_gamma × pip
+            #   theta  = $ P&L per +1 day decay
+            #   delta  = $ exposure   = bs_delta × spot × notional
+            vega += g["vega"] * 0.01 * mult
+            gamma += g["gamma"] * 1e-4 * mult
+            theta += g["theta"] / 365.0 * mult
+            delta += g["delta"] * spot * mult
     delta_post_hedge = 0.0 if structure.requires_delta_hedge else delta
     return NetGreeks(
         vega_usd_per_volpt=round(vega, 4),
@@ -470,22 +514,23 @@ def compute_legs_greeks(
     """Greeks per leg (signed, scaled by qty_factor). For futures, only delta
     is non-zero. Used for the per-leg breakdown table on Panel 3."""
     spot = _spot_from_surface(surface)
+    fut_mult = FUTURE_MULTIPLIERS.get(structure.future_contract_size or "full", 125_000)
     rows: list[dict[str, Any]] = []
     for leg in structure.legs:
         vega = gamma = theta = delta = 0.0
         if leg.contract_type == "future":
             sign = +1 if leg.side == "BUY" else -1
-            delta = sign * leg.qty_factor
+            delta = sign * leg.qty_factor * fut_mult * spot
         elif leg.contract_type in ("call", "put") and leg.strike and leg.entry_iv_pct:
             T = leg.dte / 365.0
             sigma = leg.entry_iv_pct / 100.0
             g = bs_greeks(spot, leg.strike, T, sigma, leg.contract_type)
             sign = +1 if leg.side == "BUY" else -1
-            mult = sign * leg.qty_factor
-            vega = g["vega"] * 0.01 * mult
-            gamma = g["gamma"] * mult
-            theta = g["theta"] / 365.0 * mult
-            delta = g["delta"] * mult
+            mult = sign * leg.qty_factor * EUR_FOP_MULTIPLIER
+            vega = g["vega"] * 0.01 * mult       # $ / vol-pt
+            gamma = g["gamma"] * 1e-4 * mult     # $ delta per pip spot move
+            theta = g["theta"] / 365.0 * mult    # $ / day
+            delta = g["delta"] * spot * mult     # $ delta
         rows.append({
             "leg_idx": leg.leg_idx,
             "type": leg.contract_type,
@@ -548,14 +593,16 @@ def compute_greeks_grid(
     """
     moves = spot_moves_pct or DEFAULT_SPOT_MOVES_PCT
     base_spot = _spot_from_surface(surface)
+    fut_mult = FUTURE_MULTIPLIERS.get(structure.future_contract_size or "full", 125_000)
     grid: list[dict[str, Any]] = []
     for pct in moves:
         s_shocked = base_spot * (1.0 + pct / 100.0)
         vega = gamma = theta = delta = 0.0
         for leg in structure.legs:
             if leg.contract_type == "future":
+                # Future delta_usd = ±qty × multiplier × spot_shocked.
                 sign = +1 if leg.side == "BUY" else -1
-                delta += sign * leg.qty_factor
+                delta += sign * leg.qty_factor * fut_mult * s_shocked
                 continue
             if leg.contract_type in ("call", "put") and leg.strike and leg.entry_iv_pct:
                 T = leg.dte / 365.0
@@ -694,21 +741,15 @@ def run_pre_submit_checks(
         {"armed_z": armed_z, "current_z": current_z},
     ))
 
-    pct = (max_loss_usd / capital_total_usd * 100.0) if capital_total_usd > 0 else 1e9
-    checks.append(Check(
-        "max_loss_under_capital_limit", pct <= max_loss_pct,
-        {"max_loss_pct": round(pct, 2), "limit_pct": max_loss_pct},
-    ))
+    # max_loss_under_capital_limit + iv_data_fresh removed by request — the
+    # first was too punitive for products where max_loss is uncapped (short
+    # vol), the second was redundant with the freshness shown on the YELLOW
+    # block. Keep the post-vega book limit which IS a real risk gate.
 
     post_vega = book_total_vega_usd + structure_vega_usd
     checks.append(Check(
         "vega_under_book_limit", abs(post_vega) <= max_book_vega_usd,
         {"post_trade_vega": round(post_vega, 2), "limit": max_book_vega_usd},
-    ))
-
-    checks.append(Check(
-        "iv_data_fresh", surface_age_seconds <= max_iv_age_s,
-        {"data_age_seconds": round(surface_age_seconds, 1), "limit": max_iv_age_s},
     ))
 
     checks.append(Check(
