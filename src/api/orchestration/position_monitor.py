@@ -46,7 +46,6 @@ from persistence.models import (
     ExitAlert,
     HedgeOrder,
     PcaSignal,
-    PositionSignalTracking,
     RegimeSnapshot,
     StructureOrder,
     TradeStructure,
@@ -271,22 +270,6 @@ class PositionMonitorScheduler:
             "hedge_cost_cumul_usd": hedge_cost_cumul,
         })
 
-        # Persist mtm row (skipped silently on UNIQUE collision for same ts)
-        db.add(BookedPositionMetricHistory(
-            position_id=pos.id, timestamp=now,
-            spot=spot_eff, iv_avg_legs_pct=iv_eff,
-            current_pnl_gross_usd=mtm.pnl_gross_usd,
-            current_pnl_net_usd=mtm.pnl_net_usd,
-            vega_pnl_usd=attribution.vega_usd,
-            gamma_pnl_usd=attribution.gamma_usd,
-            theta_pnl_usd=attribution.theta_usd,
-            other_pnl_usd=attribution.other_usd,
-            current_vega_usd_per_volpt=current_vega,
-            current_gamma_usd_per_pip2=current_gamma,
-            current_theta_usd_per_day=current_theta,
-            current_delta_unhedged=current_delta_unhedged,
-        ))
-
         # Build context for exit rules
         triggering_pc = struct.triggering_pc
         entry_z = float(struct.armed_z_score) if struct.armed_z_score is not None else None
@@ -300,7 +283,13 @@ class PositionMonitorScheduler:
             dte_at_entry=dte_at_entry, days_remaining=days_remaining,
         )
 
-        # Persist signal tracking (only if we have a triggering_pc and entry_z)
+        # Compute signal-tracking cols, folded into the mtm row (migration 039).
+        # All NULL for positions not opened from a triggering PCA signal.
+        signal_cols: dict[str, Any] = {
+            "triggering_pc": None, "current_z_score": None, "current_label": None,
+            "entry_z_score": None, "entry_label": None, "weakening_ratio": None,
+            "sign_flipped": None, "signal_status": None,
+        }
         if triggering_pc is not None and entry_z is not None:
             current = current_signals.get(triggering_pc)
             if current is not None:
@@ -310,16 +299,33 @@ class PositionMonitorScheduler:
                 )
                 flipped = (entry_z > 0) != (current.z_score > 0)
                 status = self._signal_status(entry_z, current.z_score, flipped, ratio)
-                db.add(PositionSignalTracking(
-                    position_id=pos.id, timestamp=now,
-                    triggering_pc=triggering_pc,
-                    current_z_score=current.z_score,
-                    current_label=current.label,
-                    entry_z_score=entry_z,
-                    entry_label=struct.armed_signal_label or "FAIR",
-                    weakening_ratio=ratio, sign_flipped=flipped,
-                    status=status,
-                ))
+                signal_cols.update({
+                    "triggering_pc": triggering_pc,
+                    "current_z_score": current.z_score,
+                    "current_label": current.label,
+                    "entry_z_score": entry_z,
+                    "entry_label": struct.armed_signal_label or "FAIR",
+                    "weakening_ratio": ratio, "sign_flipped": flipped,
+                    "signal_status": status,
+                })
+
+        # Persist mtm + signal in a single folded row (migration 039 ;
+        # skipped silently on UNIQUE collision for same ts).
+        db.add(BookedPositionMetricHistory(
+            position_id=pos.id, timestamp=now,
+            spot=spot_eff, iv_avg_legs_pct=iv_eff,
+            current_pnl_gross_usd=mtm.pnl_gross_usd,
+            current_pnl_net_usd=mtm.pnl_net_usd,
+            vega_pnl_usd=attribution.vega_usd,
+            gamma_pnl_usd=attribution.gamma_usd,
+            theta_pnl_usd=attribution.theta_usd,
+            other_pnl_usd=attribution.other_usd,
+            current_vega_usd_per_volpt=current_vega,
+            current_gamma_usd_per_pip2=current_gamma,
+            current_theta_usd_per_day=current_theta,
+            current_delta_unhedged=current_delta_unhedged,
+            **signal_cols,
+        ))
 
         # Exit rules
         decisions = evaluate_all_rules(

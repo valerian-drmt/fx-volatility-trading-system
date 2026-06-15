@@ -821,30 +821,16 @@ class BookedPositionMetricHistory(Base):
     current_gamma_usd_per_pip2: Mapped[float | None] = mapped_column(Float)
     current_theta_usd_per_day: Mapped[float | None] = mapped_column(Float)
     current_delta_unhedged: Mapped[float | None] = mapped_column(Float)
-
-
-class PositionSignalTracking(Base):
-    """Signal-vs-entry comparison snapshot (1 / cycle / position)."""
-
-    __tablename__ = "position_signal_tracking"
-    __table_args__ = (
-        UniqueConstraint("position_id", "timestamp", name="uq_signal_track_position_ts"),
-        CheckConstraint("status IN ('HOLD','TRIM','EXIT')", name="ck_signal_track_status"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    position_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("booked_position.id"), nullable=False
-    )
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    triggering_pc: Mapped[int] = mapped_column(Integer, nullable=False)
-    current_z_score: Mapped[float] = mapped_column(Float, nullable=False)
-    current_label: Mapped[str] = mapped_column(String(15), nullable=False)
-    entry_z_score: Mapped[float] = mapped_column(Float, nullable=False)
-    entry_label: Mapped[str] = mapped_column(String(15), nullable=False)
+    # Signal-vs-entry trail — folded from position_signal_tracking (migration 039).
+    # All NULL for positions not opened from a triggering PCA signal.
+    triggering_pc: Mapped[int | None] = mapped_column(Integer)
+    current_z_score: Mapped[float | None] = mapped_column(Float)
+    current_label: Mapped[str | None] = mapped_column(String(15))
+    entry_z_score: Mapped[float | None] = mapped_column(Float)
+    entry_label: Mapped[str | None] = mapped_column(String(15))
     weakening_ratio: Mapped[float | None] = mapped_column(Float)
-    sign_flipped: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    sign_flipped: Mapped[bool | None] = mapped_column(Boolean)
+    signal_status: Mapped[str | None] = mapped_column(String(10))
 
 
 class HedgeOrder(Base):
