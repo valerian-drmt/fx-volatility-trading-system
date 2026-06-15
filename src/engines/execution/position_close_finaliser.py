@@ -20,9 +20,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from persistence.models import (
     BookedPosition,
-    ExecutionAuditLog,
     ExitAlert,
     HedgeOrder,
+    TradeEvent,
     TradeStructure,
 )
 
@@ -83,10 +83,10 @@ async def finalise_position_close(
         if alert.execution_status == "in_progress":
             alert.execution_status = "done"
 
-        db.add(ExecutionAuditLog(
+        db.add(TradeEvent(
             structure_id=closing_structure_id,
             event_type="position_closed", severity="info",
-            message=f"position {pos.id} closed",
+            description=f"position {pos.id} closed",
             payload={
                 "position_id": pos.id,
                 "gross_pnl_usd": pos.gross_pnl_usd,

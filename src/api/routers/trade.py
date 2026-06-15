@@ -38,13 +38,13 @@ from persistence.models import (
     AppConfigScalar,
     BookedPosition,
     BookStateSnapshot,
-    ExecutionAuditLog,
     IbConnectionState,
     PcaSignal,
     RegimeSnapshot,
     StructureDefinition,
     StructureFill,
     StructureOrder,
+    TradeEvent,
     TradePreviewRow,
     TradeStructure,
 )
@@ -574,9 +574,9 @@ async def submit_preview(
 
     # Live mode requires IB Gateway up. Mock mode skips the gate.
     if execution_mode == "live" and not await _fetch_ib_connected(db):
-        db.add(ExecutionAuditLog(
+        db.add(TradeEvent(
             structure_id=None, event_type="submission_blocked",
-            severity="warning", message="ib_disconnected_at_submit",
+            severity="warning", description="ib_disconnected_at_submit",
             payload={"preview_id": preview_id},
         ))
         await db.commit()
@@ -629,9 +629,9 @@ async def submit_preview(
     if not revalidation.passed:
         # Audit-log the block + return structured error (status 400 — not 422 —
         # since the client already passed body validation, the issue is state).
-        db.add(ExecutionAuditLog(
+        db.add(TradeEvent(
             structure_id=None, event_type="submission_blocked",
-            severity="warning", message=f"revalidation_failed: {revalidation.reason}",
+            severity="warning", description=f"revalidation_failed: {revalidation.reason}",
             payload=revalidation.details,
         ))
         await db.commit()
@@ -685,10 +685,10 @@ async def submit_preview(
     db.add(structure)
     await db.flush()
 
-    db.add(ExecutionAuditLog(
+    db.add(TradeEvent(
         structure_id=structure.id, event_type="submission_attempt",
         severity="info",
-        message=f"{execution_mode} submit for preview {preview_id}",
+        description=f"{execution_mode} submit for preview {preview_id}",
     ))
 
     now = datetime.now(UTC)
@@ -847,9 +847,9 @@ async def submit_preview(
     preview.user_action_at = now
     preview.state = "submitted"
 
-    db.add(ExecutionAuditLog(
+    db.add(TradeEvent(
         structure_id=structure.id, event_type="structure_filled",
-        severity="info", message="mock fully_filled, position created",
+        severity="info", description="mock fully_filled, position created",
         payload={"position_id": position.id, "premium_usd": structure.total_premium_paid_usd},
     ))
 
