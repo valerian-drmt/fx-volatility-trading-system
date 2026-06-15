@@ -32,9 +32,9 @@ async def _make_session():
 async def test_finalise_closes_position_and_computes_pnl():
     from engines.execution.position_close_finaliser import finalise_position_close
     from persistence.models import (
+        BookedPosition,
         ExitAlert,
         HedgeOrder,
-        TradePosition,
         TradeStructure,
     )
 
@@ -50,7 +50,7 @@ async def test_finalise_closes_position_and_computes_pnl():
             )
             db.add(entry)
             await db.flush()
-            pos = TradePosition(
+            pos = BookedPosition(
                 structure_id=entry.id, opened_at=now,
                 entry_premium_usd=100.0, entry_total_cost_usd=5.0,
                 state="closing",
@@ -87,7 +87,7 @@ async def test_finalise_closes_position_and_computes_pnl():
         )
         assert ok is True
         async with maker() as db:
-            pos = await db.get(TradePosition, pos_id)
+            pos = await db.get(BookedPosition, pos_id)
         assert pos.state == "closed"
         assert pos.closed_at is not None
         # gross = -(-130) - 100 = 30

@@ -18,7 +18,7 @@ _TS_ISO = _TS.isoformat().replace("+00:00", "Z")
 
 
 def _pos_row(pid: int = 42) -> SimpleNamespace:
-    """Stub PG row matching the Position ORM shape (from_attributes=True)."""
+    """Stub PG row matching the OpenPosition ORM shape (from_attributes=True)."""
     return SimpleNamespace(
         id=pid, symbol="EUR.USD", instrument_type="OPTION", side="BUY",
         quantity=Decimal("1"), strike=Decimal("1.08000"),

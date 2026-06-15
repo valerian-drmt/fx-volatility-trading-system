@@ -16,7 +16,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from engines.db_writer.service import DbWriterService
-from persistence.models import AccountSnap, Base
+from persistence.models import AccountHistory, Base
 from persistence.writer import AsyncDatabaseWriter
 from shared.db_events import DB_EVENTS_CHANNEL
 
@@ -163,7 +163,7 @@ async def test_end_to_end_batched_insert(monkeypatch):
     async with writer.session_factory() as s:
         from sqlalchemy import func, select
 
-        count = (await s.execute(select(func.count()).select_from(AccountSnap))).scalar_one()
+        count = (await s.execute(select(func.count()).select_from(AccountHistory))).scalar_one()
         assert count == 10
 
 
@@ -194,7 +194,7 @@ async def test_flush_on_stop_commits_buffered_events(monkeypatch):
     async with writer.session_factory() as s:
         from sqlalchemy import func, select
 
-        count = (await s.execute(select(func.count()).select_from(AccountSnap))).scalar_one()
+        count = (await s.execute(select(func.count()).select_from(AccountHistory))).scalar_one()
         assert count == 3
 
 
