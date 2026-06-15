@@ -848,19 +848,12 @@ export interface paths {
         put?: never;
         /**
          * Submit Preview
-         * @description Step 4 — Submit a previewed trade. **MOCK EXECUTION**.
+         * @description Step 4 — Submit a previewed trade (mock or live).
          *
-         *     No IB call is made. Instead the endpoint :
-         *       1. Loads the preview row.
-         *       2. Creates a ``trade_structures`` row with state='submitted'.
-         *       3. Creates ``structure_orders`` rows (one per leg) with state='filled'.
-         *       4. Creates ``structure_fills`` rows with synthetic fill prices == preview prices
-         *          (zero slippage, $2/contract commission).
-         *       5. Marks structure ``fully_filled`` and creates a ``trade_positions`` row.
-         *       6. Marks the trade_preview as ``user_action='submitted'``.
-         *
-         *     Returns the structure summary including position_id. Real IB integration
-         *     is deferred to spec phase 2/3.
+         *     Wraps the real impl in a try/except so that unhandled Python exceptions
+         *     surface as structured JSON instead of HTML "Internal Server Error".
+         *     All errors also land in structlog with ``event='trade_submit_failed'``
+         *     so Grafana / Loki can pick them up by ``{container="fxvol-api"} |= "trade_submit_failed"``.
          */
         post: operations["submit_preview_api_v1_trade_submit_post"];
         delete?: never;
@@ -1913,6 +1906,8 @@ export interface components {
             override_far_tenor?: string | null;
             /** Override Qty */
             override_qty?: number | null;
+            /** Future Contract Size */
+            future_contract_size?: ("full" | "micro") | null;
         };
         /**
          * PriceRequest
