@@ -32,7 +32,6 @@ from persistence.models import (
     HedgeOrder,
     OpenPosition,
     OpenPositionHistory,
-    PositionSignalTracking,
     TradeStructure,
 )
 from shared.contracts import multiplier_for, parse_local_symbol
@@ -447,9 +446,13 @@ async def position_hedges(
 async def signal_tracking(
     position_id: int, db: DbDep, limit: int = Query(200, ge=1, le=2000),
 ) -> list[dict[str, Any]]:
+    # Signal-vs-entry trail folded into the mtm rows (migration 039) — read
+    # the metric-history rows that carry a triggering_pc (signal-driven only).
     rows = (await db.execute(
-        select(PositionSignalTracking).where(PositionSignalTracking.position_id == position_id)
-        .order_by(desc(PositionSignalTracking.timestamp)).limit(limit)
+        select(BookedPositionMetricHistory)
+        .where(BookedPositionMetricHistory.position_id == position_id)
+        .where(BookedPositionMetricHistory.triggering_pc.is_not(None))
+        .order_by(desc(BookedPositionMetricHistory.timestamp)).limit(limit)
     )).scalars().all()
     return [
         {
@@ -461,7 +464,7 @@ async def signal_tracking(
             "entry_label": r.entry_label,
             "weakening_ratio": r.weakening_ratio,
             "sign_flipped": r.sign_flipped,
-            "status": r.status,
+            "status": r.signal_status,
         } for r in rows
     ]
 
