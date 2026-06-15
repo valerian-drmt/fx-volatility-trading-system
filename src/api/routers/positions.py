@@ -57,8 +57,11 @@ _FUT_MONTH_CODES = "FGHJKMNQUVXZ"  # Jan→Dec, IB convention
 
 
 def _tenor_bucket(maturity: Any) -> str | None:
-    """Closest FX OTC tenor pillar (1W / 2W / 1M / 2M / 3M / 6M / 1Y / 2Y).
-    Returns None if maturity is unset."""
+    """Closest FX OTC tenor pillar (1W / 2W / 1M / 2M / 3M / 6M / 9M / 1Y / 2Y+).
+    Thresholds are midpoints between nominal tenor day counts so a real
+    180-day contract (= 6M) lands in the "6M" bucket, not "9M".
+    Returns None if maturity is unset.
+    """
     if maturity is None:
         return None
     today = datetime.now(UTC).date()
@@ -68,21 +71,21 @@ def _tenor_bucket(maturity: Any) -> str | None:
         return None
     if days < 0:
         return "expired"
-    if days <= 10:
+    if days <= 10:                       # 1W ↔ 2W
         return "1W"
-    if days <= 21:
+    if days <= 22:                       # 2W ↔ 1M
         return "2W"
-    if days <= 45:
+    if days <= 45:                       # 1M ↔ 2M
         return "1M"
-    if days <= 75:
+    if days <= 75:                       # 2M ↔ 3M
         return "2M"
-    if days <= 105:
+    if days <= 135:                      # 3M ↔ 6M
         return "3M"
-    if days <= 165:
+    if days <= 225:                      # 6M ↔ 9M
         return "6M"
-    if days <= 270:
+    if days <= 317:                      # 9M ↔ 1Y
         return "9M"
-    if days <= 460:
+    if days <= 547:                      # 1Y ↔ 2Y
         return "1Y"
     return "2Y+"
 
