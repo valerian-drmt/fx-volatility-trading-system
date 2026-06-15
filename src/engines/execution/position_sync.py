@@ -23,6 +23,7 @@ from redis import asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from core.products import product_label_from_symbol
 from engines.execution.order_executor import OrderExecutor
 from persistence.models import (
     AccountHistory,
@@ -31,6 +32,7 @@ from persistence.models import (
     Order,
     StructureOrder,
     Trade,
+    TradeStructure,
 )
 from shared.contracts import multiplier_for, parse_local_symbol
 
@@ -153,6 +155,10 @@ async def sync_positions_from_ib(
         if k:
             db_by_key[k] = p
 
+    # Map IB symbol → parent structure_type so a leg of a multi-leg booking
+    # carries its parent's product label (e.g. "Straddle"), not the per-leg one.
+    parent_st_by_symbol = await _build_leg_to_structure_type_map(db)
+
     now = datetime.now(UTC)
     opened = 0
     unchanged = 0
@@ -172,6 +178,11 @@ async def sync_positions_from_ib(
         nominal = qty * Decimal(str(mult))
         cp_entry = (avg_cost / Decimal(str(mult))) if avg_cost else None
         tenor = _tenor_bucket(maturity)
+        # Prefer the parent structure_type (so a leg of a straddle reads
+        # "Straddle"), falling back to symbol-parse for standalone IB-live rows.
+        product_label = product_label_from_symbol(
+            local_sym, parent_st_by_symbol.get(local_sym),
+        )
         if local_sym in db_by_key:
             row = db_by_key[local_sym]
             if row.quantity != qty or row.side != side:
@@ -183,9 +194,11 @@ async def sync_positions_from_ib(
             row.tenor = tenor
             row.nominal_eur = nominal
             row.contract_price_entry = cp_entry
+            row.product_label = product_label
         else:
             row = OpenPosition(
                 structure=local_sym,
+                product_label=product_label,
                 side=side,
                 tenor=tenor,
                 quantity=qty,
@@ -429,6 +442,37 @@ def _pick(summary: dict, aliases: list[str]) -> Decimal | None:
             except (ValueError, TypeError):
                 continue
     return None
+
+
+_PARENT_LIVE_STATES = ("submitted", "partial_fill", "fully_filled", "partial_fail")
+
+
+async def _build_leg_to_structure_type_map(db: AsyncSession) -> dict[str, str]:
+    """Map ``IB localSymbol → parent trade_structure.structure_type`` for every
+    entry leg of every still-live ``trade_structure``.
+
+    Lets ``sync_positions_from_ib`` label IB-live rows with the booking-level
+    product (e.g. straddle) rather than the per-leg call/put. When a symbol is
+    reused across open structures, the most recently created one wins.
+    """
+    structures = (await db.execute(
+        select(TradeStructure)
+        .where(TradeStructure.state.in_(_PARENT_LIVE_STATES))
+        .order_by(TradeStructure.created_at)
+    )).scalars().all()
+    out: dict[str, str] = {}
+    for ts in structures:
+        legs = (await db.execute(
+            select(StructureOrder).where(
+                StructureOrder.structure_id == ts.id,
+                StructureOrder.order_role == "entry",
+            )
+        )).scalars().all()
+        for leg in legs:
+            key = _structure_order_to_ib_key(leg)
+            if key is not None:
+                out[key] = ts.structure_type  # later (newer) wins
+    return out
 
 
 def _structure_order_to_ib_key(leg: StructureOrder) -> str | None:
