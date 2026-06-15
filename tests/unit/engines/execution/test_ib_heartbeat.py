@@ -173,8 +173,8 @@ async def test_find_stuck_orders_filters_by_state_and_age():
 async def test_already_alerted_recently_dedupes_by_order_id():
     from engines.execution.ib_heartbeat import _already_alerted_recently
     from persistence.models import (
-        ExecutionAuditLog,
         StructureOrder,
+        TradeEvent,
         TradeStructure,
     )
 
@@ -197,11 +197,11 @@ async def test_already_alerted_recently_dedupes_by_order_id():
             )
             db.add(order)
             await db.flush()
-            db.add(ExecutionAuditLog(
+            db.add(TradeEvent(
                 id=1, structure_id=struct.id, order_id=order.id,
                 event_type="stuck_order_alert", severity="critical",
-                message="seeded", payload={"order_id": order.id},
-                timestamp=now - timedelta(minutes=2),
+                description="seeded", payload={"order_id": order.id},
+                ts=now - timedelta(minutes=2),
             ))
             await db.commit()
             order_id_kept = order.id
