@@ -36,10 +36,10 @@ from core.execution.fills import (
 )
 from engines.execution.redis_state import get_client as _get_redis
 from persistence.models import (
+    BookedPosition,
     ExecutionAuditLog,
     StructureFill,
     StructureOrder,
-    TradePosition,
     TradeStructure,
 )
 
@@ -298,11 +298,11 @@ async def maybe_complete_structure(
             # Idempotent : skip if a position row already exists.
             existing = (await db.execute(
                 select(func.count())
-                .select_from(TradePosition)
-                .where(TradePosition.structure_id == structure_id)
+                .select_from(BookedPosition)
+                .where(BookedPosition.structure_id == structure_id)
             )).scalar_one()
             if existing == 0:
-                db.add(TradePosition(
+                db.add(BookedPosition(
                     structure_id=structure_id,
                     opened_at=now,
                     entry_premium_usd=struct.total_premium_paid_usd or 0.0,

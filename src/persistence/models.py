@@ -49,7 +49,7 @@ class Base(DeclarativeBase):
     """Declarative base shared by every persistence model."""
 
 
-class Position(Base):
+class OpenPosition(Base):
     """Open position book — one row per IB contract held.
 
     Schema mirrors Portfolio panel section E. The IB ``localSymbol`` is the
@@ -91,13 +91,13 @@ class Position(Base):
         onupdate=func.now(),
     )
 
-    snapshots: Mapped[list[PositionSnapshot]] = relationship(
+    snapshots: Mapped[list[OpenPositionHistory]] = relationship(
         back_populates="position", cascade="all, delete-orphan"
     )
     trades: Mapped[list[Trade]] = relationship(back_populates="position")
 
 
-class PositionSnapshot(Base):
+class OpenPositionHistory(Base):
     __tablename__ = "open_position_history"
 
     # Schema mirrors ``positions`` (panel E columns) + position_id + timestamp.
@@ -126,7 +126,7 @@ class PositionSnapshot(Base):
     vanna_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     volga_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
 
-    position: Mapped[Position] = relationship(back_populates="snapshots")
+    position: Mapped[OpenPosition] = relationship(back_populates="snapshots")
 
 
 class Trade(Base):
@@ -153,10 +153,10 @@ class Trade(Base):
     spot_at_execution: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
     iv_at_execution: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
 
-    position: Mapped[Position | None] = relationship(back_populates="trades")
+    position: Mapped[OpenPosition | None] = relationship(back_populates="trades")
 
 
-class AccountSnap(Base):
+class AccountHistory(Base):
     __tablename__ = "account_history"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -625,7 +625,7 @@ class StructureFill(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
-class TradePosition(Base):
+class BookedPosition(Base):
     """Position created when a structure is fully_filled. Consumed by Step 5."""
 
     __tablename__ = "booked_position"
@@ -786,7 +786,7 @@ class OrderEvent(Base):
 
 
 
-class PositionMtmHistory(Base):
+class BookedPositionMetricHistory(Base):
     """1 row per monitoring cycle per open position. Series for equity curve
     + P&L attribution + drawdown analysis."""
 

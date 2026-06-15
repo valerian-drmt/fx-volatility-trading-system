@@ -41,14 +41,14 @@ from core.positions.mtm import attribute_pnl, compute_mtm
 from core.positions.position_pricing import LegSpec, PositionMark, price_position
 from persistence.models import (
     AppConfigScalar,
+    BookedPosition,
+    BookedPositionMetricHistory,
     ExitAlert,
     HedgeOrder,
     PcaSignal,
-    PositionMtmHistory,
     PositionSignalTracking,
     RegimeSnapshot,
     StructureOrder,
-    TradePosition,
     TradeStructure,
 )
 
@@ -113,7 +113,7 @@ class PositionMonitorScheduler:
 
     async def _cycle(self, db: AsyncSession) -> dict[str, Any]:
         open_positions = (await db.execute(
-            select(TradePosition).where(TradePosition.state == "open")
+            select(BookedPosition).where(BookedPosition.state == "open")
         )).scalars().all()
         if not open_positions:
             return {"open_positions": 0, "alerts": 0, "hedges": 0}
@@ -182,7 +182,7 @@ class PositionMonitorScheduler:
             logger.exception("hedge_dispatch_loop_crashed")
 
     async def _monitor_one(
-        self, db: AsyncSession, pos: TradePosition, now: datetime,
+        self, db: AsyncSession, pos: BookedPosition, now: datetime,
         spot_now: float | None, iv_now_pct: float | None,
         current_signals: dict[int, CurrentSignal],
         current_regime: str | None = None,
@@ -272,7 +272,7 @@ class PositionMonitorScheduler:
         })
 
         # Persist mtm row (skipped silently on UNIQUE collision for same ts)
-        db.add(PositionMtmHistory(
+        db.add(BookedPositionMetricHistory(
             position_id=pos.id, timestamp=now,
             spot=spot_eff, iv_avg_legs_pct=iv_eff,
             current_pnl_gross_usd=mtm.pnl_gross_usd,

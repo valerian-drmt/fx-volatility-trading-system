@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_vega
-from persistence.models import AccountSnap, Position, PositionSnapshot  # noqa: F401
+from persistence.models import AccountHistory, OpenPosition, OpenPositionHistory  # noqa: F401
 from shared.contracts import parse_local_symbol
 
 router = APIRouter(prefix="/api/v1/portfolio", tags=["portfolio-panel"])
@@ -49,7 +49,7 @@ _TENOR_BUCKETS = [
 ]
 
 
-def _serialize_snap(s: AccountSnap | None) -> dict[str, Any] | None:
+def _serialize_snap(s: AccountHistory | None) -> dict[str, Any] | None:
     if s is None:
         return None
     return {
@@ -87,15 +87,15 @@ async def get_account(db: DbDep) -> dict[str, Any]:
     Returns ``latest=None`` if the table is empty (execution-engine never ran).
     """
     latest = (await db.execute(
-        select(AccountSnap).order_by(desc(AccountSnap.timestamp)).limit(1)
+        select(AccountHistory).order_by(desc(AccountHistory.timestamp)).limit(1)
     )).scalar_one_or_none()
 
-    prev: AccountSnap | None = None
+    prev: AccountHistory | None = None
     if latest is not None:
         cutoff = latest.timestamp - timedelta(hours=24)
         prev = (await db.execute(
-            select(AccountSnap).where(AccountSnap.timestamp <= cutoff)
-            .order_by(desc(AccountSnap.timestamp)).limit(1)
+            select(AccountHistory).where(AccountHistory.timestamp <= cutoff)
+            .order_by(desc(AccountHistory.timestamp)).limit(1)
         )).scalar_one_or_none()
 
     return {
@@ -119,14 +119,14 @@ async def header_summary(db: DbDep) -> dict[str, Any]:
     Frontend can render the whole panel-A strip from one fetch.
     """
     latest = (await db.execute(
-        select(AccountSnap).order_by(desc(AccountSnap.timestamp)).limit(1)
+        select(AccountHistory).order_by(desc(AccountHistory.timestamp)).limit(1)
     )).scalar_one_or_none()
-    prev: AccountSnap | None = None
+    prev: AccountHistory | None = None
     if latest is not None:
         cutoff = latest.timestamp - timedelta(hours=24)
         prev = (await db.execute(
-            select(AccountSnap).where(AccountSnap.timestamp <= cutoff)
-            .order_by(desc(AccountSnap.timestamp)).limit(1)
+            select(AccountHistory).where(AccountHistory.timestamp <= cutoff)
+            .order_by(desc(AccountHistory.timestamp)).limit(1)
         )).scalar_one_or_none()
 
     # Aggregate greeks — single SUM scan on the denormalised positions row.
@@ -402,7 +402,7 @@ async def stress_grid(db: DbDep) -> dict[str, Any]:
     futures. Baseline = current ``market_price`` for futures, BS at current
     ``iv`` for options. Matches spec ``risk_dashboard_spec.md § F``.
     """
-    open_positions = (await db.execute(select(Position))).scalars().all()
+    open_positions = (await db.execute(select(OpenPosition))).scalars().all()
     if not open_positions:
         return {
             "current_spot": None,
@@ -508,7 +508,7 @@ async def greeks_ladder(db: DbDep) -> dict[str, Any]:
     P&L vs current. ``hedge_delta_usd`` = ``-delta_usd`` (qty of $ Δ to
     short/long via futures to be delta-neutral at that spot).
     """
-    open_positions = (await db.execute(select(Position))).scalars().all()
+    open_positions = (await db.execute(select(OpenPosition))).scalars().all()
     if not open_positions:
         return {
             "current_spot": None,

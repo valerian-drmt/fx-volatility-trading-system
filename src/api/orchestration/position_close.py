@@ -27,10 +27,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.positions.closing import EntryLegSnapshot, build_closing_legs
 from persistence.models import (
+    BookedPosition,
     ExecutionAuditLog,
     ExitAlert,
     StructureOrder,
-    TradePosition,
     TradeStructure,
 )
 
@@ -58,7 +58,7 @@ async def initiate_position_close(
     """
     sm = sessionmaker_factory
     async with sm() as db:
-        pos = await db.get(TradePosition, position_id)
+        pos = await db.get(BookedPosition, position_id)
         if pos is None:
             raise ValueError(f"position {position_id} not found")
         if pos.state != "open":
