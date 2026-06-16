@@ -207,6 +207,8 @@ export const pcaModel = {
   shrinkage: 0.35,
   eigen: { lambda: [97.2, 1.2, 0.8], gap23: 0.4, ratio23: 1.5, state: "narrow", note: "PC2/PC3 identities may rotate on refit" },
 };
+/** Active-model meta shape — reused by the live adapter (R11). */
+export type PcaModelMeta = typeof pcaModel;
 
 export interface RegimeFeature {
   name: string;

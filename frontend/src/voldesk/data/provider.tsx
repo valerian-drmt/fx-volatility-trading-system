@@ -14,21 +14,40 @@
  * `VITE_USE_MOCK` (default "true") flips the global default.
  */
 import { type ReactNode, useEffect } from "react";
-import { fetchTermStructure, fetchVolSurface } from "../../api/endpoints";
+import {
+  fetchPcaHistory,
+  fetchPcaModel,
+  fetchPcaState,
+  fetchTermStructure,
+  fetchVolSurface,
+} from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { useVolStream } from "../../hooks/streams";
 import {
   deltas as mockDeltas,
   ivSurface as mockIvSurface,
   ivZ as mockIvZ,
+  pcaModel as mockPcaModel,
+  pcs as mockPcs,
   tenors as mockTenors,
   termStructure as mockTermStructure,
   type TermPoint,
 } from "./core";
-import { type DeskData, DeskDataContext, type SurfaceData } from "./deskData";
+import {
+  type DeskData,
+  DeskDataContext,
+  type PcaData,
+  type SurfaceData,
+} from "./deskData";
 import { type Fresh, makeFresh } from "./freshness";
+import { adaptPca } from "./live/pca";
 import { adaptIvSurface } from "./live/surface";
 import { adaptTermStructure } from "./live/termStructure";
+
+const MOCK_PCA: PcaData = {
+  pcs: mockPcs.map((p) => ({ ...p, zHistory: [] })),
+  model: mockPcaModel,
+};
 
 const DEFAULT_MOCK = (import.meta.env["VITE_USE_MOCK"] ?? "true") !== "false";
 const VOL_WARN_MS = 240_000; // vol-engine cycle ~3 min
@@ -51,17 +70,33 @@ export function DataProvider({
     VOL_WARN_MS,
     !mock,
   );
+  const livePca = useFetch<PcaData>(
+    async () => {
+      const [state, model, h1, h2, h3] = await Promise.all([
+        fetchPcaState(),
+        fetchPcaModel(),
+        fetchPcaHistory(1),
+        fetchPcaHistory(2),
+        fetchPcaHistory(3),
+      ]);
+      return adaptPca(state, model, [h1, h2, h3]);
+    },
+    VOL_WARN_MS,
+    !mock,
+  );
 
-  // Re-fetch surface + term on each vol-engine cycle push (~3 min).
+  // Re-fetch surface + term + pca on each vol-engine cycle push (~3 min).
   const vol = useVolStream(!mock);
   const reloadTerm = liveTerm.reload;
   const reloadSurface = liveSurface.reload;
+  const reloadPca = livePca.reload;
   useEffect(() => {
     if (vol.asOf !== null) {
       reloadTerm();
       reloadSurface();
+      reloadPca();
     }
-  }, [vol.asOf, reloadTerm, reloadSurface]);
+  }, [vol.asOf, reloadTerm, reloadSurface, reloadPca]);
 
   const termStructure: Fresh<TermPoint[]> = mock
     ? makeFresh(mockTermStructure, Date.now(), Number.POSITIVE_INFINITY)
@@ -88,7 +123,11 @@ export function DataProvider({
           : null,
       };
 
-  const value: DeskData = { termStructure, surface };
+  const pca: Fresh<PcaData> = mock
+    ? makeFresh(MOCK_PCA, Date.now(), Number.POSITIVE_INFINITY)
+    : livePca;
+
+  const value: DeskData = { termStructure, surface, pca };
   return (
     <DeskDataContext.Provider value={value}>{children}</DeskDataContext.Provider>
   );

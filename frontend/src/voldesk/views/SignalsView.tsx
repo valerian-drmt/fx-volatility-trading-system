@@ -15,7 +15,7 @@ import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls, type Tone } from "../components/format";
 import { DATA, fmt, mulberry32 } from "../data";
 import type { Pc, TermPoint } from "../data";
-import type { SurfaceData } from "../data/deskData";
+import type { PcaCard, PcaModelMeta, SurfaceData } from "../data/deskData";
 import { useDeskData } from "../data/deskData";
 
 const FAIR_COL = "#46b3d6"; // distinct cool color for the σ_fair curve (vs orange accent for ATM)
@@ -167,9 +167,11 @@ function zDisplay(pc: Pc, view: string): number[] {
   return out;
 }
 
-// z-score over the display window — POSITION (vs per-mode thresholds) + TRAJECTORY (extending vs reverting)
-function ZSeriesChart({ pc, view }: { pc: Pc; view: string }): JSX.Element {
-  const data = zDisplay(pc, view);
+// z-score over the display window — POSITION (vs per-mode thresholds) + TRAJECTORY (extending vs reverting).
+// `series` (real backend z-history, oldest→newest) is used when present; otherwise the synthetic mock trajectory.
+function ZSeriesChart({ pc, view, series }: { pc: Pc; view: string; series?: number[] }): JSX.Element {
+  const data =
+    series && series.length >= 2 ? series.slice(view === "1W" ? -120 : -65) : zDisplay(pc, view);
   const n = data.length;
   const w = 300,
     h = 150,
@@ -215,7 +217,7 @@ function ZSeriesChart({ pc, view }: { pc: Pc; view: string }): JSX.Element {
 }
 
 // PCA surface-mode card — the RELATIVE signal only (z vs history, loadings). The level gate lives in its own Fair vol panel.
-function ModeCard({ pc, view }: { pc: Pc; view: string }): JSX.Element {
+function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
   const tone: Tone =
     pc.label === "CHEAP" ? "good" : pc.label === "EXPENSIVE" || pc.label === "RICH" ? "danger" : "neutral";
   return (
@@ -237,7 +239,7 @@ function ModeCard({ pc, view }: { pc: Pc; view: string }): JSX.Element {
           </span>
         </div>
       </div>
-      <ZSeriesChart pc={pc} view={view} />
+      <ZSeriesChart pc={pc} view={view} series={pc.zHistory} />
       <div className="mc-load-lbl dim small mono">loadings · tenor × delta</div>
       <Heatmap rows={DATA.tenors} cols={DATA.deltas} matrix={pc.load} />
     </div>
@@ -245,8 +247,8 @@ function ModeCard({ pc, view }: { pc: Pc; view: string }): JSX.Element {
 }
 
 // mode stability — eigengap λ2−λ3; warns when slope/curvature identities may rotate
-function ModeStability(): JSX.Element {
-  const e = DATA.pcaModel.eigen,
+function ModeStability({ model }: { model: PcaModelMeta }): JSX.Element {
+  const e = model.eigen,
     lam = e.lambda;
   const max = Math.max(...lam) || 1;
   const degenerate = e.ratio23 < 2;
@@ -332,9 +334,10 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
 }
 
 export function SignalsView(): JSX.Element {
-  const m = DATA.pcaModel;
   const [view, setView] = useState<string>("3M");
-  const { surface, termStructure } = useDeskData();
+  const { surface, termStructure, pca } = useDeskData();
+  const m = pca.data?.model ?? DATA.pcaModel;
+  const pcsList = pca.data?.pcs ?? [];
   return (
     <div className="ts-grid">
       <div className="sig-cluster">
@@ -342,8 +345,8 @@ export function SignalsView(): JSX.Element {
           <Panel title="IV surface" right={<FreshBadge fresh={surface} label="EURUSD · z-score field" />} className="ts-curve-panel">
             <IVSurfaceZ data={surface.data} />
           </Panel>
-          <Panel title="Mode stability" right={<span className="dim mono small">eigengap</span>} className="ts-stab-panel">
-            <ModeStability />
+          <Panel title="Mode stability" right={<FreshBadge fresh={pca} label="eigengap" />} className="ts-stab-panel">
+            <ModeStability model={m} />
           </Panel>
         </div>
         <Panel title="Fair vol — level gate" right={<FreshBadge fresh={termStructure} label="RV / GARCH" />} className="ts-fv-panel sig-fv" pad>
@@ -365,15 +368,20 @@ export function SignalsView(): JSX.Element {
             <span className="dim mono small">
               PCA {m.pcaWindow} · z {m.zWindow} · display {m.display} · {m.dims}-dim · shrink {m.shrinkage}
             </span>
+            <FreshBadge fresh={pca} />
           </div>
         }
         className="ts-pca-panel"
       >
-        <div className="mode-grid">
-          {DATA.pcs.map((pc) => (
-            <ModeCard key={pc.id} pc={pc} view={view} />
-          ))}
-        </div>
+        {pcsList.length ? (
+          <div className="mode-grid">
+            {pcsList.map((pc) => (
+              <ModeCard key={pc.id} pc={pc} view={view} />
+            ))}
+          </div>
+        ) : (
+          <div className="dim small mono ivz-empty">modèle PCA indisponible (pas de fit / marché fermé)</div>
+        )}
       </Panel>
     </div>
   );

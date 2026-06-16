@@ -4,8 +4,10 @@
  * `useDeskData()` to read each domain as `Fresh<T>` (live or mock).
  */
 import { createContext, useContext } from "react";
-import type { TermPoint } from "./core";
+import type { Pc, PcaModelMeta, TermPoint } from "./core";
 import type { Fresh } from "./freshness";
+
+export type { PcaModelMeta };
 
 export interface SurfaceData {
   /** 6×5 IV grid (%), [tenorIdx][deltaIdx]. Live from /vol/surface (PR 1). */
@@ -16,11 +18,22 @@ export interface SurfaceData {
   deltas: string[];
 }
 
+/** A mode card = the mock `Pc` plus its real z trajectory (empty in mock mode). */
+export interface PcaCard extends Pc {
+  zHistory: number[];
+}
+export interface PcaData {
+  pcs: PcaCard[];
+  model: PcaModelMeta;
+}
+
 export interface DeskData {
   /** ATM term structure (+ fair/rv). Live (PR F). */
   termStructure: Fresh<TermPoint[]>;
   /** IV surface grid + z field. ivSurface live (PR 1) ; ivZ still mock (gap). */
   surface: Fresh<SurfaceData>;
+  /** PCA mode cards + model meta. Live (PR 1.2) ; display-config statics on mock. */
+  pca: Fresh<PcaData>;
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);
