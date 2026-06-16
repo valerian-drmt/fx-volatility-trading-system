@@ -111,7 +111,11 @@ export interface paths {
         };
         /**
          * Latest Surface
-         * @description Latest volatility surface for ``symbol`` — reads Redis cache (TTL 600s).
+         * @description Latest volatility surface for ``symbol``.
+         *
+         *     Reads Redis cache first (TTL 600 s). Falls back to the most recent
+         *     ``vol_surfaces`` row by ``timestamp DESC`` when Redis is empty —
+         *     markets-closed sandbox keeps the surface available off the DB.
          */
         get: operations["latest_surface_api_v1_vol_surface_get"];
         put?: never;
@@ -182,7 +186,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/positions": {
+    "/api/v1/positions/open": {
         parameters: {
             query?: never;
             header?: never;
@@ -190,10 +194,92 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Positions
-         * @description All positions (most-recent first). Filter by ``status`` if given.
+         * List Open
+         * @description Raw ``open_position`` rows — one record per live IB contract.
+         *
+         *     Direct mirror of the table : risk-engine UPDATEs greeks / market_price /
+         *     pnl every 2 s, position_sync_loop INSERTs / DELETEs rows every 30 s on
+         *     IB diffs. No join, no merge — the panel renders exactly what the DB
+         *     holds. ``open_position_history`` carries the time series (snapshot
+         *     per cycle) with the same shape minus the FK / current-state state.
          */
-        get: operations["list_positions_api_v1_positions_get"];
+        get: operations["list_open_api_v1_positions_open_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Active
+         * @description Union of booked structures (`trade_positions`) and live IB rows
+         *     (`positions`). The frontend distinguishes via the ``source`` field
+         *     so both lists render in a single Step 5 table.
+         */
+        get: operations["list_active_api_v1_positions_active_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/aggregate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Aggregate Greeks
+         * @description Sum of current greeks across all open positions (for Panel 4 zone B).
+         */
+        get: operations["aggregate_greeks_api_v1_positions_aggregate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/exit-rules-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Exit Rules Config */
+        get: operations["list_exit_rules_config_api_v1_positions_exit_rules_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/delta-hedge-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Delta Hedge Config */
+        get: operations["list_delta_hedge_config_api_v1_positions_delta_hedge_config_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -211,6 +297,169 @@ export interface paths {
         };
         /** Get Position */
         get: operations["get_position_api_v1_positions__position_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/{position_id}/mtm-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mtm History */
+        get: operations["mtm_history_api_v1_positions__position_id__mtm_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/{position_id}/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Position Alerts */
+        get: operations["position_alerts_api_v1_positions__position_id__alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/{position_id}/hedges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Position Hedges */
+        get: operations["position_hedges_api_v1_positions__position_id__hedges_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/{position_id}/signal-tracking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Signal Tracking
+         * @description Signal drift history. Reads from BookedPositionMetricHistory rows where
+         *     triggering_pc is set (signal-driven positions only). Folded into mtm rows
+         *     in migration 026 (Theme 2).
+         */
+        get: operations["signal_tracking_api_v1_positions__position_id__signal_tracking_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/{position_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Live Position
+         * @description Partial / full close on an IB-live ``open_position`` row.
+         *
+         *     Thin wrapper over :func:`close_one_open_position`. The trade-level
+         *     close endpoint (``POST /api/v1/trades/{trade_id}/close``) calls the
+         *     same helper once per leg.
+         */
+        post: operations["close_live_position_api_v1_positions__position_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/{position_id}/close-manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Manual
+         * @description Mark a position for manual close. Step 5 phase 1 = state flip only.
+         *
+         *     The actual closing-structure submit + fills will be wired when markets-open
+         *     phase lands (cf. MARKETS_OPEN_TODO.md). For now we record an audit alert.
+         */
+        post: operations["close_manual_api_v1_positions__position_id__close_manual_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/monitor/run-once": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Monitor Once
+         * @description Trigger one monitoring cycle on demand. Useful from the dev panel.
+         *
+         *     The scheduler in api lifespan owns the recurring loop ; this endpoint
+         *     creates an ad-hoc instance and runs ``run_once`` once.
+         */
+        post: operations["run_monitor_once_api_v1_positions_monitor_run_once_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Positions
+         * @description All positions (most-recent first). Filter by ``status`` if given.
+         */
+        get: operations["list_positions_api_v1_positions_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -276,7 +525,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/signals": {
+    "/api/v1/portfolio/account": {
         parameters: {
             query?: never;
             header?: never;
@@ -284,10 +533,283 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Signals
-         * @description Recent signals, most-recent first. Filters combinable (underlying, tenor, type, since).
+         * Get Account
+         * @description Latest account snapshot + the closest snapshot ≥24h before it.
+         *
+         *     Frontend uses ``prev_24h`` to display deltas (Δ Net Liq vs hier, etc.).
+         *     Returns ``latest=None`` if the table is empty (execution-engine never ran).
          */
-        get: operations["signals_api_v1_signals_get"];
+        get: operations["get_account_api_v1_portfolio_account_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/header": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Header Summary
+         * @description One-shot endpoint for the dashboard sticky header (panel A).
+         *
+         *     Bundles in a single round-trip :
+         *       - latest ``account_snaps`` row + reference 24 h before for delta P&L
+         *       - aggregate greeks across all OPEN positions (denormalised on
+         *         ``positions`` since migration 028)
+         *       - 1-day 99% historical VaR computed on the daily distribution of
+         *         ``net_liq`` deltas from ``account_snaps`` (last 60 days).
+         *
+         *     Frontend can render the whole panel-A strip from one fetch.
+         */
+        get: operations["header_summary_api_v1_portfolio_header_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/equity-curve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Equity Curve
+         * @description Net liq time series, server-side downsampled to ~1–2k points.
+         *
+         *     Implementation : SQL ``DISTINCT ON (bucket)`` keeps the latest snap per
+         *     bucket without ever loading the full row set into Python. EOD = the
+         *     last point of each calendar day (UTC) when its bucketed timestamp
+         *     falls before 22:00 UTC.
+         */
+        get: operations["equity_curve_api_v1_portfolio_equity_curve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/aggregate-greeks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Aggregate Greeks
+         * @description Σ Δ Γ V Θ across all OPEN positions (latest snap per position).
+         *
+         *     Single SQL pass with ``DISTINCT ON (position_id)`` — no per-position
+         *     sub-query.
+         */
+        get: operations["aggregate_greeks_api_v1_portfolio_aggregate_greeks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/vega-per-tenor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vega Per Tenor
+         * @description Vega ($/volpt) bucketed by days-to-expiry. Single SQL pass.
+         */
+        get: operations["vega_per_tenor_api_v1_portfolio_vega_per_tenor_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/hedge-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hedge Summary
+         * @description Multi-window cumul of `hedge_orders`. Pattern Risk Ops standard :
+         *     a drift surfaces by comparing several windows side-by-side (today
+         *     sharp vs 7d normal → local event ; 30d up vs today calm → structural).
+         *
+         *     Only counts FILLED hedges (state='filled'). All windows are anchored
+         *     to ``now`` UTC ; calendar windows (today/WTD/MTD/YTD) use UTC midnight
+         *     or the latest UTC Mon/01-of-month/Jan-1 boundary.
+         */
+        get: operations["hedge_summary_api_v1_portfolio_hedge_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/stress-grid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stress Grid
+         * @description 5×7 spot × IV stress matrix. Each cell = ``NPV(scenario) - NPV(now)``.
+         *
+         *     Full revaluation per scenario via Black-Scholes for options, linear for
+         *     futures. Baseline = current ``market_price`` for futures, BS at current
+         *     ``iv`` for options. Matches spec ``risk_dashboard_spec.md § F``.
+         */
+        get: operations["stress_grid_api_v1_portfolio_stress_grid_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/greeks-ladder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Greeks Ladder
+         * @description Per-spot-bucket greeks ladder. For each ΔSpot in {-400, -200, 0, +200, +400} bp :
+         *     full revaluation of the book, then sum Δ / Γ / Vega and the resulting
+         *     P&L vs current. ``hedge_delta_usd`` = ``-delta_usd`` (qty of $ Δ to
+         *     short/long via futures to be delta-neutral at that spot).
+         */
+        get: operations["greeks_ladder_api_v1_portfolio_greeks_ladder_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/pnl-attribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pnl Attribution
+         * @description Decompose realized P&L into greek contributions over the window.
+         *
+         *     Per-position Taylor expansion :
+         *         actual_pnl  = (pnl_now - pnl_then)
+         *         delta_pnl   = δ_now × (spot_now - spot_then)
+         *         gamma_pnl   = 0.5 × Γ_now × (spot_now - spot_then) ** 2
+         *         vega_pnl    = V_now × (iv_now - iv_then)      [vol points]
+         *         theta_pnl   = Θ_now × Δt_days
+         *         residual    = actual_pnl - (delta + gamma + vega + theta)
+         *
+         *     Frozen-greeks approximation (uses current greeks for both endpoints) —
+         *     fine for short windows ≤ 1 day, less accurate over a week. The
+         *     ``residual`` row captures the un-attributed drift so the operator can
+         *     spot when the Taylor expansion stops being valid.
+         *
+         *     Sources :
+         *       - IB-live positions (``position`` table) : t-1 row in
+         *         ``position_metric_history`` closest to ``now - lookback_hours``.
+         *         Spot comes from the snapshot's ``market_price`` for the
+         *         underlying FUT contract on the same symbol.
+         *       - Booked positions (``booked_position``) : t-1 row in
+         *         ``booked_position_metric_history``. Spot stored on the snapshot.
+         */
+        get: operations["pnl_attribution_api_v1_portfolio_pnl_attribution_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/pin-risk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pin Risk
+         * @description Full BS revaluation per option at strike (pin) and strike ± 50 bp.
+         *
+         *     The frontend's old linearised approximation (Δ × ΔS) was a poor
+         *     proxy near expiry where Γ dominates. Here we do the proper reval:
+         *
+         *       pnl_at_pin       = NPV(spot=K) - NPV(spot=now)
+         *       pnl_at_breach_up = NPV(spot=K + 50bp) - NPV(spot=now)
+         *       pnl_at_breach_dn = NPV(spot=K - 50bp) - NPV(spot=now)
+         *
+         *     All computed at the position's current T and IV (no time decay, no
+         *     vol shock — operator can run those via the stress-grid panel).
+         *     Futures are ignored (no pin risk — payoff is linear in spot).
+         */
+        get: operations["pin_risk_api_v1_portfolio_pin_risk_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/scenarios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scenarios
+         * @description Two-axis full-reval scenario surface for the live book.
+         *
+         *     Axis 1 (spot shocks, fixed IV) : revalue every position at
+         *     ``spot × (1 + step/100)``. Returns one row per spot step with PnL +
+         *     4 net greeks. Used by the 5-chart Portfolio scenarios panel.
+         *
+         *     Axis 2 (IV shocks, fixed spot) : shift each option's IV by ``step``
+         *     vol-points, recompute price + greeks. Futures contribute 0 (no IV
+         *     exposure).
+         */
+        get: operations["scenarios_api_v1_portfolio_scenarios_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -305,29 +827,9 @@ export interface paths {
         };
         /**
          * Vol History
-         * @description N most recent vol_surfaces snapshots — headline fields only (no JSONB payload).
+         * @description N most recent vol_surface_snapshot rows for ``symbol`` — headline fields only.
          */
         get: operations["vol_history_api_v1_vol_history_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/backtest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Backtests
-         * @description Backtest runs with headline metrics (Sharpe, MDD, return, n_trades).
-         */
-        get: operations["backtests_api_v1_backtest_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -356,42 +858,1083 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/vol/regime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Regime
+         * @description Current market regime + per-tenor expected VRP.
+         */
+        get: operations["regime_api_v1_vol_regime_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vol/trade-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Trade Preview */
+        post: operations["trade_preview_api_v1_vol_trade_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vol/model-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model Health */
+        get: operations["model_health_api_v1_vol_model_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Current Config */
+        get: operations["get_current_config_api_v1_admin_config_get"];
+        /** Update Config */
+        put: operations["update_config_api_v1_admin_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/config/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Config Schema
+         * @description Raw JSON Schema of :class:`VolTradingConfig` for React JSON Schema Form.
+         */
+        get: operations["get_config_schema_api_v1_admin_config_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/config/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Config History */
+        get: operations["list_config_history_api_v1_admin_config_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/config/revert/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revert Config */
+        post: operations["revert_config_api_v1_admin_config_revert__version__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/redis/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Redis Keys
+         * @description Return the whitelist of known keys with TTL + age (parsed from value).
+         */
+        get: operations["redis_keys_api_v1_dev_redis_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/engines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Engines Status
+         * @description Aggregate health for each of the 4 engines + IB Gateway TCP probe.
+         */
+        get: operations["engines_status_api_v1_dev_engines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/stack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stack Overview
+         * @description Aggregate status pour les 10 containers, dérivé de probes + heartbeats.
+         *
+         *     On ne lit pas le Docker socket (api n'a pas accès, et c'est mieux comme ça).
+         *     Statuses dérivés :
+         *       - postgres / redis / ib-gateway   : TCP probe ou ping
+         *       - frontend                        : HTTP probe http://frontend:8080/
+         *       - nginx / api                     : implicite (la requête arrive via eux)
+         *       - 4 engines                       : heartbeat Redis + age vs threshold
+         */
+        get: operations["stack_overview_api_v1_dev_stack_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tables
+         * @description Auto-discover every ORM-declared table with light metadata.
+         *
+         *     Returns ``{ name, n_columns, pk: [col, ...] }`` per entry so the
+         *     front-end can drive a search-as-you-type picker and surface the
+         *     PK columns inline. The list always reflects the current
+         *     ``Base.metadata`` — no out-of-band whitelist to maintain.
+         */
+        get: operations["list_tables_api_v1_dev_tables_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/tables/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Table
+         * @description Read N rows from ``name`` with optional sort / pagination / filter.
+         *
+         *     Query params
+         *     ------------
+         *     - ``limit`` (1..10000, default 50)
+         *     - ``offset`` (≥0, default 0)
+         *     - ``order_by`` : column name. Defaults to the first PK column.
+         *     - ``order_dir`` : ``asc`` | ``desc`` (default ``desc``).
+         *     - ``filters`` : ``col:value`` pairs joined by ``,``. Exact-match.
+         *       Example : ``filters=structure:butterfly,side:long``
+         *       String columns can also use ``col:%substr%`` for ILIKE matching.
+         *
+         *     Response
+         *     --------
+         *     Adds ``columns_meta`` (per-col type / nullable / pk / fk) so the
+         *     front-end can render with type-aware formatting (right-align
+         *     numbers, render JSONB as JSON, locale-format timestamps, badge
+         *     booleans, etc.) without a second round-trip to ``/db-schema``.
+         */
+        get: operations["read_table_api_v1_dev_tables__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/logs/containers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Logs Containers
+         * @description Return the distinct values of the ``container`` Loki label.
+         */
+        get: operations["logs_containers_api_v1_dev_logs_containers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/logs/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Logs Query
+         * @description Query Loki for log lines matching the given filters.
+         *
+         *     Params
+         *     ------
+         *     - ``container`` : exact value of the Loki ``container`` label.
+         *       Omitted → all containers.
+         *     - ``pattern`` : free-text regex applied as a LogQL ``|~``. Case-
+         *       insensitive by default (we prepend ``(?i)`` if there's no
+         *       explicit (?-flag).
+         *     - ``level`` : ERROR / WARNING / INFO / DEBUG. Matched against
+         *       structlog's ``"level": "..."`` JSON field. Omitted → no level
+         *       filter.
+         *     - ``minutes`` : lookback window. Default 15.
+         *     - ``limit`` : max lines returned (Loki cap is typically 5000).
+         *
+         *     Response
+         *     --------
+         *     ``{ entries: [{ ts, container, message, labels }], total, query }``
+         *     where ``ts`` is RFC3339 (browser-friendly) and ``message`` is the
+         *     raw log line (often already structlog JSON — front-end pretty-prints
+         *     if so).
+         */
+        get: operations["logs_query_api_v1_dev_logs_query_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/migrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Migrations
+         * @description Return the full alembic chain + the currently-applied revision.
+         *
+         *     Every entry is tagged ``status`` ∈ {applied, current, pending}.
+         *     A ``pending`` count > 0 means a release shipped migrations the
+         *     deployed API didn't run yet — surface it to the operator.
+         */
+        get: operations["list_migrations_api_v1_dev_migrations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/migrations/{rev_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Migration
+         * @description Return the full source + extracted upgrade/downgrade bodies of one
+         *     revision, so the front-end can render syntax-highlighted code.
+         */
+        get: operations["get_migration_api_v1_dev_migrations__rev_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/redis/value": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Redis Value
+         * @description GET a single key's value. Parses JSON if applicable.
+         */
+        get: operations["redis_value_api_v1_dev_redis_value_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/cycle-progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cycle Progress
+         * @description Return the vol-engine's current cycle stage + task and the list of
+         *     completed (stage, task) pairs in this cycle.
+         */
+        get: operations["cycle_progress_api_v1_dev_cycle_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/dev/db-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Db Schema
+         * @description Return every table with its columns + foreign keys, from one of:
+         *
+         *     - ``source=orm`` (default) : walks ``Base.metadata.tables`` — the
+         *       compile-time view of what the API *thinks* the schema is.
+         *       Cheap (<5 ms), no DB round-trip. Sees ORM-side metadata that the
+         *       DB can't expose (``comment="..."``, ``CheckConstraint(name=...)``).
+         *     - ``source=live`` : runs ``sqlalchemy.inspect()`` against the
+         *       connected PostgreSQL — the actual on-disk schema. Slower
+         *       (~50-200 ms), but reflects what's really there : manual
+         *       ``ALTER TABLE``, tables created out-of-band, drift from the ORM.
+         *
+         *     The two outputs share the exact same shape so the front-end
+         *     renderer doesn't branch. The DB Schema dev tab uses both for the
+         *     DIFF mode — it fetches both and surfaces what differs.
+         */
+        get: operations["db_schema_api_v1_dev_db_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Orders */
+        get: operations["list_orders_api_v1_orders_get"];
+        put?: never;
+        /** Place Order */
+        post: operations["place_order_api_v1_orders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel Order */
+        delete: operations["cancel_order_api_v1_orders__order_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exec/positions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live Positions */
+        get: operations["live_positions_api_v1_exec_positions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/exec/positions/{con_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Position */
+        post: operations["close_position_api_v1_exec_positions__con_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** State */
+        get: operations["state_api_v1_regime_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Features
+         * @description Step 2 dashboard feed : 3 features × 8 columns + synthesis row.
+         *
+         *     Cf. ``api.orchestration.regime_features.build_features_payload``.
+         */
+        get: operations["features_api_v1_regime_features_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_api_v1_regime_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Events */
+        get: operations["list_events_api_v1_regime_events_get"];
+        put?: never;
+        /** Insert Event */
+        post: operations["insert_event_api_v1_regime_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Transitions
+         * @description Compte les transitions de label sur les N derniers jours.
+         *
+         *     But : détecter si le seuil heuristique (vov > 0.4 → pre_event) est trop
+         *     proche du bruit de mesure. Si > 5 transitions calm↔pre_event par jour,
+         *     c'est un signal pour ajouter de l'hystérésis ou un seuil dynamique
+         *     (cf. TODO.md / STEP1 §14).
+         *
+         *     Returns :
+         *       - by_day : dict {YYYY-MM-DD: {transition_type: count}}
+         *       - total : sum across all days/transitions
+         *       - calm_pre_event_per_day : average flips calm↔pre_event per day
+         *       - threshold_warning : True if average > 5/day
+         */
+        get: operations["transitions_api_v1_regime_transitions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/gmm/shadow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Gmm Shadow Diagnostic
+         * @description Compare the shadow GMM outputs vs the active heuristic over the last N
+         *     snapshots. Used to decide when the GMM is good enough to take over the
+         *     label (cf. STEP1 §13 "switch criteria").
+         *
+         *     Returns :
+         *       - n_with_gmm : number of snapshots where GMM fitted (probabilities not null)
+         *       - agreement_ratio : fraction where argmax(p_*) == heuristic label
+         *       - cluster_sep_vol_of_vol : (μ_max - μ_min) of components on the vov axis,
+         *         a proxy for how distinct the 3 clusters are. Spec §13 requires
+         *         > 2 × max(σ_intra) before promoting GMM. We don't have σ_intra
+         *         from snapshots ; this number alone is informative on its own.
+         *       - by_label : breakdown {heuristic_label: {gmm_argmax: count}}
+         *       - ready_to_promote : boolean threshold check
+         */
+        get: operations["gmm_shadow_diagnostic_api_v1_regime_gmm_shadow_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/regime/events/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Events From Feed
+         * @description Trigger one full events sync cycle on demand (admin tool).
+         *
+         *     Same code path as the daily background loop : every configured Source
+         *     is hit in parallel with isolation, results are deduped by hash, then
+         *     INSERT ON CONFLICT DO NOTHING. Returns the per-source counts so you
+         *     can immediately see which sources are healthy.
+         */
+        post: operations["sync_events_from_feed_api_v1_regime_events_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signals/pca/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * State
+         * @description Latest 3 signals (1 per PC) under the active PCA model — or, if
+         *     ``?scenario=...`` is passed, under the model whose ``version`` matches
+         *     the scenario tag (fixture mode).
+         */
+        get: operations["state_api_v1_signals_pca_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signals/pca/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_api_v1_signals_pca_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signals/pca/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Active Model */
+        get: operations["active_model_api_v1_signals_pca_model_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pca/refit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refit
+         * @description Manual refit (kept alongside the background scheduler so the user can
+         *     force a refit after seeding new data or tweaking thresholds).
+         */
+        post: operations["refit_api_v1_admin_pca_refit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade/structures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Structures
+         * @description Catalogue of the 6 PCA-actionable structures. Source : the
+         *     ``TEMPLATES`` dict in ``core.trade_preview`` (in_catalog=True
+         *     entries). Was backed by ``structure_definition_ref`` until migration
+         *     039 dropped that mirror table.
+         */
+        get: operations["list_structures_api_v1_trade_structures_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Limits */
+        get: operations["list_limits_api_v1_trade_limits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade/book": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Book */
+        get: operations["get_book_api_v1_trade_book_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Preview
+         * @description Build a full trade preview from a pca_signals.id. Persists to trade_previews
+         *     and returns the payload conforming to STEP3 §4.
+         */
+        post: operations["create_preview_api_v1_trade_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade/preview/{preview_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Preview */
+        get: operations["get_preview_api_v1_trade_preview__preview_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Preview
+         * @description Step 4 — Submit a previewed trade (mock or live).
+         *
+         *     Wraps the real impl in a try/except so that unhandled Python exceptions
+         *     surface as structured JSON instead of HTML "Internal Server Error".
+         *     All errors also land in structlog with ``event='trade_submit_failed'``
+         *     so Grafana / Loki can pick them up by ``{container="fxvol-api"} |= "trade_submit_failed"``.
+         */
+        post: operations["submit_preview_api_v1_trade_submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade/submitted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Submitted Structures
+         * @description List recent submitted trade_structures (for the new positions tab).
+         */
+        get: operations["list_submitted_structures_api_v1_trade_submitted_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade/preview/{preview_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Preview */
+        post: operations["cancel_preview_api_v1_trade_preview__preview_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trades/{trade_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Close Trade
+         * @description Atomically close every open leg of ``trade_id``.
+         *
+         *     Server-side loop = "atomic" in the sense that :
+         *       - the operator sends 1 request,
+         *       - the audit chain in ``trade_structure`` / ``trade_order`` records
+         *         all legs under successive close trade_structure rows,
+         *       - partial failure is reported in one structured response.
+         *
+         *     Note : IB execution events themselves are async (orders are placed
+         *     but fills land later). "Atomic" here means the *submission* is
+         *     grouped — not that all orders fill simultaneously.
+         *
+         *     Response shape :
+         *         {
+         *           "trade_id": <int>,
+         *           "total_legs": <int>,
+         *           "closed_legs": <int>,            # legs whose close was accepted
+         *           "failed_legs": <int>,
+         *           "results": [ { "position_id": ..., "ok": bool,
+         *                          "structure_id": ..., "order_id": ...,
+         *                          "error": "..." | null }, ... ]
+         *         }
+         */
+        post: operations["close_trade_api_v1_trades__trade_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * BacktestRunRow
-         * @description One row of backtest_runs — headline metrics only.
+         * CalibrationConfig
+         * @description Walk-forward + backtest calibration hyperparameters.
          */
-        BacktestRunRow: {
-            /** Id */
-            id: number;
-            /** Strategy Name */
-            strategy_name: string;
+        CalibrationConfig: {
             /**
-             * Start Date
-             * Format: date
+             * W1 Walk Forward Months
+             * @default 12
              */
-            start_date: string;
+            w1_walk_forward_months: number;
             /**
-             * End Date
-             * Format: date
+             * W1 Clip Min
+             * @default 0
              */
-            end_date: string;
-            /** Sharpe Ratio */
-            sharpe_ratio: string | null;
-            /** Max Drawdown Pct */
-            max_drawdown_pct: string | null;
-            /** Total Return Pct */
-            total_return_pct: string | null;
-            /** N Trades */
-            n_trades: number | null;
+            w1_clip_min: number;
             /**
-             * Created At
+             * W1 Clip Max
+             * @default 1
+             */
+            w1_clip_max: number;
+            /**
+             * Vrp Train Split
+             * @default 0.7
+             */
+            vrp_train_split: number;
+            /**
+             * Vrp Mae Improvement Threshold
+             * @default 0.2
+             */
+            vrp_mae_improvement_threshold: number;
+            /**
+             * Har Components
+             * @default [
+             *       1,
+             *       5,
+             *       22
+             *     ]
+             */
+            har_components: [
+                number,
+                number,
+                number
+            ];
+            /**
+             * Ewma Lambda Fair Smile
+             * @default 0.94
+             */
+            ewma_lambda_fair_smile: number;
+        };
+        /** ClosePositionRequest */
+        ClosePositionRequest: {
+            /**
+             * Qty
+             * @description Number of contracts to close. Must be ≤ open qty.
+             */
+            qty: number;
+            /** Limit Price */
+            limit_price?: number | null;
+        };
+        /** CloseTradeRequest */
+        CloseTradeRequest: {
+            /** Limit Price */
+            limit_price?: number | null;
+        };
+        /**
+         * ConfigPatchRequest
+         * @description Partial update. The `patch` object is deep-merged into the current config.
+         */
+        ConfigPatchRequest: {
+            /**
+             * Patch
+             * @description Nested dict mirroring VolTradingConfig sections
+             */
+            patch: {
+                [key: string]: unknown;
+            };
+            /** User */
+            user?: string | null;
+            /** Comment */
+            comment?: string | null;
+        };
+        /**
+         * ConfigResponse
+         * @description Current or historical config row with its metadata.
+         */
+        ConfigResponse: {
+            /**
+             * Version
+             * @description Monotonic version number ; 0 = pydantic defaults (empty table)
+             */
+            version: number;
+            config: components["schemas"]["VolTradingConfig"];
+            /**
+             * Updated At
              * Format: date-time
              */
-            created_at: string;
+            updated_at: string;
+            /** Updated By */
+            updated_by?: string | null;
+            /** Comment */
+            comment?: string | null;
+        };
+        /**
+         * ConfigRevertRequest
+         * @description Revert the current config to a past version (duplicates it as the new head).
+         */
+        ConfigRevertRequest: {
+            /** User */
+            user?: string | null;
+            /** Comment */
+            comment?: string | null;
+        };
+        /**
+         * DeltaHedgeConfig
+         * @description Delta hedging behavior : static / threshold / scheduled.
+         */
+        DeltaHedgeConfig: {
+            /**
+             * Mode
+             * @default threshold
+             * @enum {string}
+             */
+            mode: "static" | "threshold" | "scheduled";
+            /**
+             * Threshold Delta
+             * @default 0.05
+             */
+            threshold_delta: number;
+            /**
+             * Scheduled Interval Minutes
+             * @default 60
+             */
+            scheduled_interval_minutes: number;
         };
         /** EngineStats */
         EngineStats: {
@@ -401,6 +1944,57 @@ export interface components {
             state: string;
             /** Heartbeat Age S */
             heartbeat_age_s: number | null;
+        };
+        /** EventIn */
+        EventIn: {
+            /** Event Type */
+            event_type: string;
+            /** Impact */
+            impact: string;
+            /** Region */
+            region: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+            /** Description */
+            description?: string | null;
+        };
+        /**
+         * ExitRulesConfig
+         * @description Thresholds that trigger systematic exits on open structures.
+         */
+        ExitRulesConfig: {
+            /**
+             * Z Flip Exit Threshold
+             * @default 0.5
+             */
+            z_flip_exit_threshold: number;
+            /**
+             * Time Remaining Min Ratio
+             * @default 0.3
+             */
+            time_remaining_min_ratio: number;
+            /**
+             * Stop Loss Vega Multiplier
+             * @default 3
+             */
+            stop_loss_vega_multiplier: number;
+            /**
+             * Time To Expiry Force Exit Days
+             * @default 7
+             */
+            time_to_expiry_force_exit_days: number;
+        };
+        /** GateOut */
+        GateOut: {
+            /** Authorized */
+            authorized: boolean;
+            /** Reason */
+            reason: string;
+            /** Size Mult */
+            size_mult: number;
         };
         /**
          * GreeksAggregated
@@ -511,6 +2105,52 @@ export interface components {
             /** Implied Volatility */
             implied_volatility: number;
         };
+        /** LegItem */
+        LegItem: {
+            /** Instrument */
+            instrument: string;
+            /** Side */
+            side: string;
+            /** Qty */
+            qty: number;
+            /** Strike */
+            strike: number | null;
+            /** Tenor */
+            tenor: string;
+            /** Iv */
+            iv: number | null;
+            /** Premium Per Contract */
+            premium_per_contract: number;
+        };
+        /** ModelHealthResponse */
+        ModelHealthResponse: {
+            /** Vol Surfaces Count */
+            vol_surfaces_count: number;
+            /** Svi Params Count */
+            svi_params_count: number;
+            /** Last Vol Surface Ts */
+            last_vol_surface_ts: string | null;
+            /** Pca Ready */
+            pca_ready: boolean;
+        };
+        /** NextEventOut */
+        NextEventOut: {
+            /** Event Type */
+            event_type: string;
+            /** Impact */
+            impact: string;
+            /** Region */
+            region: string;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+            /** Days Remaining */
+            days_remaining: number;
+            /** Description */
+            description?: string | null;
+        };
         /**
          * PnLCurve
          * @description Spot vs PnL curve (~31 points) from RiskEngine.
@@ -528,7 +2168,8 @@ export interface components {
         };
         /**
          * PositionSnapshotView
-         * @description One snapshot row used by /history.
+         * @description One snapshot row used by /history. Mirrors the panel-E shape after
+         *     migration 030.
          */
         PositionSnapshotView: {
             /**
@@ -536,51 +2177,122 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
-            /** Spot */
-            spot: string | null;
-            /** Iv */
-            iv: string | null;
+            /** Structure */
+            structure: string;
+            /** Product Label */
+            product_label: string | null;
+            /** Side */
+            side: string;
+            /** Tenor */
+            tenor: string | null;
+            /** Expiry */
+            expiry: string | null;
+            /** Quantity */
+            quantity: string;
+            /** Nominal Eur */
+            nominal_eur: string | null;
+            /** Contract Price Entry */
+            contract_price_entry: string | null;
+            /** Market Price */
+            market_price: string | null;
+            /** Current Pnl Usd */
+            current_pnl_usd: string | null;
             /** Delta Usd */
             delta_usd: string | null;
-            /** Vega Usd */
-            vega_usd: string | null;
             /** Gamma Usd */
             gamma_usd: string | null;
+            /** Vega Usd */
+            vega_usd: string | null;
             /** Theta Usd */
             theta_usd: string | null;
-            /** Pnl Usd */
-            pnl_usd: string | null;
+            /** Iv */
+            iv: string | null;
+            /** Vanna Usd */
+            vanna_usd: string | null;
+            /** Volga Usd */
+            volga_usd: string | null;
         };
         /**
          * PositionView
-         * @description A single position row — mirrors ``persistence.models.Position``.
+         * @description A single position row — mirrors ``persistence.models.OpenPosition``
+         *     (table ``open_position`` after migration 033). Same shape as
+         *     ``PositionSnapshotView`` below ; the only difference is the
+         *     ``open_position_history`` table also carries a ``position_id`` FK.
          */
         PositionView: {
             /** Id */
             id: number;
-            /** Symbol */
-            symbol: string;
-            /** Instrument Type */
-            instrument_type: string;
+            /** Structure */
+            structure: string;
+            /** Product Label */
+            product_label: string | null;
             /** Side */
             side: string;
+            /** Tenor */
+            tenor: string | null;
+            /** Expiry */
+            expiry: string | null;
             /** Quantity */
             quantity: string;
-            /** Strike */
-            strike: string | null;
-            /** Maturity */
-            maturity: string | null;
-            /** Option Type */
-            option_type: string | null;
-            /** Entry Price */
-            entry_price: string;
+            /** Nominal Eur */
+            nominal_eur: string | null;
+            /** Contract Price Entry */
+            contract_price_entry: string | null;
+            /** Market Price */
+            market_price: string | null;
+            /** Current Pnl Usd */
+            current_pnl_usd: string | null;
+            /** Delta Usd */
+            delta_usd: string | null;
+            /** Gamma Usd */
+            gamma_usd: string | null;
+            /** Vega Usd */
+            vega_usd: string | null;
+            /** Theta Usd */
+            theta_usd: string | null;
+            /** Iv */
+            iv: string | null;
+            /** Vanna Usd */
+            vanna_usd: string | null;
+            /** Volga Usd */
+            volga_usd: string | null;
             /**
              * Entry Timestamp
              * Format: date-time
              */
             entry_timestamp: string;
-            /** Status */
-            status: string;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+        };
+        /** PreviewRequest */
+        PreviewRequest: {
+            /** Signal Id */
+            signal_id?: number | null;
+            /** Scenario */
+            scenario?: string | null;
+            /** Structure Type */
+            structure_type?: string | null;
+            /** Tenor */
+            tenor?: string | null;
+            /** Tenor Far */
+            tenor_far?: string | null;
+            /** Qty */
+            qty?: number | null;
+            /** Delta Pillar */
+            delta_pillar?: string | null;
+            /** Strike Override */
+            strike_override?: number | null;
+            /** Override Tenor */
+            override_tenor?: string | null;
+            /** Override Far Tenor */
+            override_far_tenor?: string | null;
+            /** Override Qty */
+            override_qty?: number | null;
+            /** Future Contract Size */
+            future_contract_size?: ("full" | "micro") | null;
         };
         /**
          * PriceRequest
@@ -620,33 +2332,159 @@ export interface components {
             price: number;
         };
         /**
-         * SignalRow
-         * @description One row of the signals table — one scan's CHEAP/FAIR/EXPENSIVE verdict.
+         * RegimeConfig
+         * @description Features + thresholds for the GMM-based regime detector.
          */
-        SignalRow: {
-            /** Id */
-            id: number;
+        RegimeConfig: {
+            /**
+             * Gmm Components
+             * @default 3
+             */
+            gmm_components: number;
+            /**
+             * Regime Labels
+             * @default [
+             *       "calm",
+             *       "stressed",
+             *       "pre_event"
+             *     ]
+             */
+            regime_labels: [
+                "calm" | "stressed" | "pre_event",
+                "calm" | "stressed" | "pre_event",
+                "calm" | "stressed" | "pre_event"
+            ];
+            /**
+             * Event Dampener Horizon Days
+             * @default 5
+             */
+            event_dampener_horizon_days: number;
+            /**
+             * Vol Of Vol Window Days
+             * @default 20
+             */
+            vol_of_vol_window_days: number;
+            /**
+             * Stressed Sizing Multiplier
+             * @default 0.7
+             */
+            stressed_sizing_multiplier: number;
+        };
+        /** RegimeResponse */
+        RegimeResponse: {
+            /** Regime */
+            regime: string;
+            /** Probabilities */
+            probabilities: {
+                [key: string]: number;
+            };
+            /** Features */
+            features: {
+                [key: string]: number | null;
+            };
+            /** Vrp By Tenor */
+            vrp_by_tenor: {
+                [key: string]: number;
+            };
+            /** Event Dampener */
+            event_dampener: boolean;
+            /** Bootstrap */
+            bootstrap: boolean;
+        };
+        /** RegimeStateOut */
+        RegimeStateOut: {
             /**
              * Timestamp
              * Format: date-time
              */
             timestamp: string;
-            /** Underlying */
-            underlying: string;
-            /** Tenor */
-            tenor: string;
-            /** Dte */
-            dte: number;
-            /** Sigma Mid */
-            sigma_mid: string;
-            /** Sigma Fair */
-            sigma_fair: string;
-            /** Ecart */
-            ecart: string;
-            /** Signal Type */
-            signal_type: string;
-            /** Rv */
-            rv: string | null;
+            /** Symbol */
+            symbol: string;
+            /** Label */
+            label: string;
+            /** Method */
+            method: string;
+            /** Event Dampener */
+            event_dampener: boolean;
+            /** Days To Next Event */
+            days_to_next_event?: number | null;
+            /** Next Event Type */
+            next_event_type?: string | null;
+            next_event_high?: components["schemas"]["NextEventOut"] | null;
+            next_event_any?: components["schemas"]["NextEventOut"] | null;
+            /** Features */
+            features: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            gate: components["schemas"]["GateOut"];
+            /** Probabilities */
+            probabilities?: {
+                [key: string]: number;
+            } | null;
+        };
+        /**
+         * SignalConfig
+         * @description z-score thresholds for the PCA signal panel.
+         */
+        SignalConfig: {
+            /**
+             * Z Threshold Arm
+             * @default 1.5
+             */
+            z_threshold_arm: number;
+            /**
+             * Z Threshold Strong
+             * @default 2
+             */
+            z_threshold_strong: number;
+            /**
+             * Z Threshold Extreme
+             * @default 3
+             */
+            z_threshold_extreme: number;
+            /**
+             * Pca Rolling Months
+             * @default 3
+             */
+            pca_rolling_months: number;
+            /**
+             * Variance Explained Min
+             * @default 0.85
+             */
+            variance_explained_min: number;
+        };
+        /**
+         * SizingConfig
+         * @description OpenPosition sizing formula : base × conviction × book_penalty × event.
+         */
+        SizingConfig: {
+            /**
+             * Base Size
+             * @default 10
+             */
+            base_size: number;
+            /**
+             * Alpha Book
+             * @default 0.2
+             */
+            alpha_book: number;
+            /**
+             * Book Rejection Threshold
+             * @default 0.8
+             */
+            book_rejection_threshold: number;
+            /**
+             * Event Dampener Multiplier
+             * @default 0.5
+             */
+            event_dampener_multiplier: number;
+            /**
+             * Max Loss Pct Capital
+             * @default 0.02
+             */
+            max_loss_pct_capital: number;
         };
         /**
          * SmilePoint
@@ -683,8 +2521,36 @@ export interface components {
             svi_curve?: components["schemas"]["SmilePoint"][] | null;
         };
         /**
+         * SurfaceConfig
+         * @description Tenor grid, fit diagnostics, no-arb tolerances.
+         */
+        SurfaceConfig: {
+            /** Tenors Days */
+            tenors_days?: number[];
+            /** Delta Pillars */
+            delta_pillars?: number[];
+            /**
+             * Svi Rmse Max Warn
+             * @default 0.003
+             */
+            svi_rmse_max_warn: number;
+            /**
+             * Butterfly Check Grid
+             * @default 100
+             */
+            butterfly_check_grid: number;
+            /**
+             * Ssvi Vs Svi Tolerance
+             * @default 0.2
+             */
+            ssvi_vs_svi_tolerance: number;
+        };
+        /**
          * SurfaceResponse
          * @description Latest vol surface for a symbol — pillars keyed by tenor label.
+         *
+         *     ``surface`` values can be either a per-tenor pillar dict, or an
+         *     engine-level aggregate (float / dict prefixed with ``_``).
          */
         SurfaceResponse: {
             /** Symbol */
@@ -696,9 +2562,7 @@ export interface components {
             timestamp: string;
             /** Surface */
             surface: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
+                [key: string]: unknown;
             };
         };
         /**
@@ -740,8 +2604,89 @@ export interface components {
             sigma_atm_pct: number | null;
             /** Sigma Fair Pct */
             sigma_fair_pct?: number | null;
+            /** Sigma Fair P Pct */
+            sigma_fair_p_pct?: number | null;
+            /** Sigma Fair Q Pct */
+            sigma_fair_q_pct?: number | null;
+            /** Vrp Vol Pts */
+            vrp_vol_pts?: number | null;
+            /** Regime */
+            regime?: string | null;
             /** Rv Pct */
             rv_pct?: number | null;
+        };
+        /** TradePreviewRequest */
+        TradePreviewRequest: {
+            /** Structure */
+            structure: string;
+            /** Tenor */
+            tenor: string;
+            /**
+             * Side
+             * @default BUY
+             */
+            side: string;
+            /**
+             * Qty
+             * @default 10
+             */
+            qty: number;
+            /** Tenor Far */
+            tenor_far?: string | null;
+        };
+        /** TradePreviewResponse */
+        TradePreviewResponse: {
+            /** Structure */
+            structure: string;
+            /** Legs */
+            legs: components["schemas"]["LegItem"][];
+            /** Net Vega */
+            net_vega: number;
+            /** Net Gamma */
+            net_gamma: number;
+            /** Net Theta */
+            net_theta: number;
+            /** Net Delta */
+            net_delta: number;
+            /** Total Premium */
+            total_premium: number;
+            /** Bootstrap */
+            bootstrap: boolean;
+        };
+        /**
+         * TradeStructuresConfig
+         * @description Which structure is generated for each signal origin.
+         */
+        TradeStructuresConfig: {
+            /**
+             * Pc1 Structure
+             * @default straddle_atm
+             * @enum {string}
+             */
+            pc1_structure: "straddle_atm" | "calendar_spread" | "risk_reversal_25d" | "butterfly_25d";
+            /**
+             * Pc2 Structure
+             * @default calendar_spread
+             * @enum {string}
+             */
+            pc2_structure: "straddle_atm" | "calendar_spread" | "risk_reversal_25d" | "butterfly_25d";
+            /**
+             * Pc3 Skew Structure
+             * @default risk_reversal_25d
+             * @enum {string}
+             */
+            pc3_skew_structure: "straddle_atm" | "calendar_spread" | "risk_reversal_25d" | "butterfly_25d";
+            /**
+             * Pc3 Convex Structure
+             * @default butterfly_25d
+             * @enum {string}
+             */
+            pc3_convex_structure: "straddle_atm" | "calendar_spread" | "risk_reversal_25d" | "butterfly_25d";
+            /**
+             * Default Tenor Days
+             * @default 90
+             */
+            default_tenor_days: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -768,6 +2713,29 @@ export interface components {
             spot: string;
             /** Forward */
             forward: string | null;
+        };
+        /**
+         * VolTradingConfig
+         * @description Root config persisted as JSONB in the ``vol_config`` table.
+         *
+         *     Adding a new tunable parameter is a 2-step operation :
+         *       1. add the field to the relevant section below (or create a new
+         *          section if no existing one fits).
+         *       2. reference ``get_current_config().section.field`` from the
+         *          consuming service code.
+         *
+         *     The admin UI picks up the new field automatically because RJSF
+         *     generates the form from this schema's JSON Schema export.
+         */
+        VolTradingConfig: {
+            regime?: components["schemas"]["RegimeConfig"];
+            signal?: components["schemas"]["SignalConfig"];
+            sizing?: components["schemas"]["SizingConfig"];
+            exit_rules?: components["schemas"]["ExitRulesConfig"];
+            surface?: components["schemas"]["SurfaceConfig"];
+            calibration?: components["schemas"]["CalibrationConfig"];
+            delta_hedge?: components["schemas"]["DeltaHedgeConfig"];
+            structures?: components["schemas"]["TradeStructuresConfig"];
         };
     };
     responses: never;
@@ -1049,12 +3017,9 @@ export interface operations {
             };
         };
     };
-    list_positions_api_v1_positions_get: {
+    list_open_api_v1_positions_open_get: {
         parameters: {
-            query?: {
-                status?: string | null;
-                limit?: number;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -1067,16 +3032,97 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PositionView"][];
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
-            /** @description Validation Error */
-            422: {
+        };
+    };
+    list_active_api_v1_positions_active_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    aggregate_greeks_api_v1_positions_aggregate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_exit_rules_config_api_v1_positions_exit_rules_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    list_delta_hedge_config_api_v1_positions_delta_hedge_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
         };
@@ -1099,6 +3145,271 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PositionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mtm_history_api_v1_positions__position_id__mtm_history_get: {
+        parameters: {
+            query?: {
+                hours?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                position_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    position_alerts_api_v1_positions__position_id__alerts_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                position_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    position_hedges_api_v1_positions__position_id__hedges_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                position_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    signal_tracking_api_v1_positions__position_id__signal_tracking_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                position_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_live_position_api_v1_positions__position_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                position_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClosePositionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_manual_api_v1_positions__position_id__close_manual_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                position_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_monitor_once_api_v1_positions_monitor_run_once_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_positions_api_v1_positions_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PositionView"][];
                 };
             };
             /** @description Validation Error */
@@ -1184,14 +3495,54 @@ export interface operations {
             };
         };
     };
-    signals_api_v1_signals_get: {
+    get_account_api_v1_portfolio_account_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    header_summary_api_v1_portfolio_header_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    equity_curve_api_v1_portfolio_equity_curve_get: {
         parameters: {
             query?: {
-                underlying?: string | null;
-                tenor?: string | null;
-                signal_type?: string | null;
-                since?: string | null;
-                limit?: number;
+                window?: "1d" | "7d" | "30d" | "1y" | "all";
             };
             header?: never;
             path?: never;
@@ -1205,7 +3556,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SignalRow"][];
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Validation Error */
@@ -1215,6 +3568,193 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    aggregate_greeks_api_v1_portfolio_aggregate_greeks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    vega_per_tenor_api_v1_portfolio_vega_per_tenor_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    hedge_summary_api_v1_portfolio_hedge_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    stress_grid_api_v1_portfolio_stress_grid_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    greeks_ladder_api_v1_portfolio_greeks_ladder_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    pnl_attribution_api_v1_portfolio_pnl_attribution_get: {
+        parameters: {
+            query?: {
+                lookback_hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pin_risk_api_v1_portfolio_pin_risk_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    scenarios_api_v1_portfolio_scenarios_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -1251,38 +3791,6 @@ export interface operations {
             };
         };
     };
-    backtests_api_v1_backtest_get: {
-        parameters: {
-            query?: {
-                strategy_name?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["BacktestRunRow"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     system_stats_api_v1_system_stats_get: {
         parameters: {
             query?: never;
@@ -1299,6 +3807,1383 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemStats"];
+                };
+            };
+        };
+    };
+    regime_api_v1_vol_regime_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegimeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trade_preview_api_v1_vol_trade_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TradePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradePreviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_health_api_v1_vol_model_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelHealthResponse"];
+                };
+            };
+        };
+    };
+    get_current_config_api_v1_admin_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+        };
+    };
+    update_config_api_v1_admin_config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_config_schema_api_v1_admin_config_schema_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_config_history_api_v1_admin_config_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revert_config_api_v1_admin_config_revert__version__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigRevertRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redis_keys_api_v1_dev_redis_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    engines_status_api_v1_dev_engines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    stack_overview_api_v1_dev_stack_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_tables_api_v1_dev_tables_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    read_table_api_v1_dev_tables__name__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                order_by?: string | null;
+                order_dir?: string;
+                filters?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logs_containers_api_v1_dev_logs_containers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    logs_query_api_v1_dev_logs_query_get: {
+        parameters: {
+            query?: {
+                container?: string | null;
+                pattern?: string | null;
+                level?: string | null;
+                minutes?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_migrations_api_v1_dev_migrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_migration_api_v1_dev_migrations__rev_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rev_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redis_value_api_v1_dev_redis_value_get: {
+        parameters: {
+            query: {
+                key: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cycle_progress_api_v1_dev_cycle_progress_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    db_schema_api_v1_dev_db_schema_get: {
+        parameters: {
+            query?: {
+                source?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_orders_api_v1_orders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    place_order_api_v1_orders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_order_api_v1_orders__order_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                order_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    live_positions_api_v1_exec_positions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    close_position_api_v1_exec_positions__con_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                con_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    state_api_v1_regime_state_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegimeStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    features_api_v1_regime_features_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_api_v1_regime_history_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_regime_events_get: {
+        parameters: {
+            query?: {
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    insert_event_api_v1_regime_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transitions_api_v1_regime_transitions_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gmm_shadow_diagnostic_api_v1_regime_gmm_shadow_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_events_from_feed_api_v1_regime_events_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    state_api_v1_signals_pca_state_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+                /** @description if set, returns the named PcaModel.version instead of the active one (fixture mode for UI testing) */
+                scenario?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_api_v1_signals_pca_history_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+                pc_id?: number;
+                n?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    active_model_api_v1_signals_pca_model_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    refit_api_v1_admin_pca_refit_post: {
+        parameters: {
+            query?: {
+                symbol?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_structures_api_v1_trade_structures_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    list_limits_api_v1_trade_limits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    get_book_api_v1_trade_book_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_preview_api_v1_trade_preview_post: {
+        parameters: {
+            query?: {
+                symbol?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_preview_api_v1_trade_preview__preview_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                preview_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_preview_api_v1_trade_submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_submitted_structures_api_v1_trade_submitted_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_preview_api_v1_trade_preview__preview_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                preview_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_trade_api_v1_trades__trade_id__close_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trade_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CloseTradeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
