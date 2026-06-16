@@ -13,7 +13,7 @@ import { FreshBadge } from "../components/FreshBadge";
 import { OpenPositionsTable } from "../components/PositionsTable";
 import { OrderBuilder, type BuilderState } from "../components/OrderBuilder";
 import { DATA, fmt } from "../data";
-import type { AccountState, Greeks, Limits, MacroEvent, Position } from "../data";
+import type { AccountState, Cash, Greeks, Limits, MacroEvent, Position } from "../data";
 import { useDeskData } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 
@@ -232,9 +232,9 @@ function ClosePanel({
 }
 
 // ---------------- HoldingsStrip ----------------
-function HoldingsStrip(): JSX.Element {
-  const eur = DATA.cash.find((c) => c.ccy === "EUR");
-  const usd = DATA.cash.find((c) => c.ccy === "USD");
+function HoldingsStrip({ cash }: { cash: Cash[] }): JSX.Element {
+  const eur = cash.find((c) => c.ccy === "EUR");
+  const usd = cash.find((c) => c.ccy === "USD");
   const eurUsd = eur ? eur.usd : 0;
   const usdUsd = usd ? usd.usd : 0;
   const total = eurUsd + usdUsd;
@@ -352,18 +352,20 @@ function IndicatorsPanel({
   account,
   limits,
   events,
+  cash,
 }: {
   builder: BuilderState | null;
   greeks: Greeks;
   account: AccountState;
   limits: Limits;
   events: MacroEvent[];
+  cash: Cash[];
 }): JSX.Element {
   const g = greeks,
     a = account,
     L = limits;
-  const eur = DATA.cash.find((c) => c.ccy === "EUR"),
-    usd = DATA.cash.find((c) => c.ccy === "USD");
+  const eur = cash.find((c) => c.ccy === "EUR"),
+    usd = cash.find((c) => c.ccy === "USD");
   const bid = (DATA.SPOT - 0.0001).toFixed(4),
     ask = (DATA.SPOT + 0.0001).toFixed(4);
   const evt = nextHighImpact(events);
@@ -616,12 +618,13 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const account = td?.account ?? DATA.account;
   const limits = td?.limits ?? DATA.limits;
   const events = td?.events ?? DATA.events;
+  const cash = td?.cash ?? DATA.cash;
 
   return (
     <div className={"trade-grid " + (tweaks.density || "regular")}>
       <div className="trade-main">
         <Panel title="Indicators" right={<FreshBadge fresh={trade} label="state for execution · not a signal" />} className="trade-block">
-          <IndicatorsPanel builder={builder} greeks={greeks} account={account} limits={limits} events={events} />
+          <IndicatorsPanel builder={builder} greeks={greeks} account={account} limits={limits} events={events} cash={cash} />
         </Panel>
         <Panel title="Open positions" pad={false} className="trade-block open-pos-panel">
           <HedgeStrip greeks={greeks} limits={limits} />
@@ -637,7 +640,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
       </div>
       <div className="trade-side">
         <Panel title="Order builder" className="trade-block">
-          <HoldingsStrip />
+          <HoldingsStrip cash={cash} />
           <OrderBuilder onState={setBuilder} />
         </Panel>
         <Panel title="Close position" className="trade-block close-block">

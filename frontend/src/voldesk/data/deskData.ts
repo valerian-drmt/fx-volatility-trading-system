@@ -4,7 +4,7 @@
  * `useDeskData()` to read each domain as `Fresh<T>` (live or mock).
  */
 import { createContext, useContext } from "react";
-import type { AccountState, Greeks, Limits, MacroEvent, Pc, PcaModelMeta, Position, TermPoint } from "./core";
+import type { AccountState, Cash, Greeks, Limits, MacroEvent, Pc, PcaModelMeta, Position, TermPoint } from "./core";
 import type { StackItem } from "./extended";
 import type { Fresh } from "./freshness";
 
@@ -17,6 +17,7 @@ export interface TradeData {
   account: AccountState;
   limits: Limits;
   events: MacroEvent[];
+  cash: Cash[];
 }
 
 /** Engine heartbeat row (same shape as the mock `engines[]`). */

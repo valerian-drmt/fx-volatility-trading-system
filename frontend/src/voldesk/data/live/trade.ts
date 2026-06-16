@@ -20,6 +20,7 @@
 import {
   type AccountState,
   account as mockAccount,
+  type Cash,
   type Greeks,
   greeks as mockGreeks,
   type Limits,
@@ -159,6 +160,29 @@ export function adaptLimits(raw: unknown): Limits {
     deltaBandUsd: scalar("deltaBandUsd", mockLimits.deltaBandUsd),
     skewVarPct: scalar("skewVarPct", mockLimits.skewVarPct),
   };
+}
+
+interface BackendCashRow {
+  ccy?: string;
+  settled?: number | null;
+  unsettled?: number | null;
+  rate?: number | null;
+  usd_value?: number | null;
+}
+
+/** /portfolio/cash → the mock Cash[] shape (usd_value → usd). Unvalued
+ * currencies (no rate) are dropped — the donut only plots USD-valued legs. */
+export function adaptCash(raw: unknown): Cash[] {
+  const rows = ((raw ?? {}) as { currencies?: BackendCashRow[] }).currencies ?? [];
+  return rows
+    .filter((c) => typeof c.usd_value === "number")
+    .map((c) => ({
+      ccy: c.ccy ?? "",
+      settled: n(c.settled),
+      unsettled: n(c.unsettled),
+      rate: n(c.rate),
+      usd: n(c.usd_value),
+    }));
 }
 
 const IMPACT = new Set(["high", "medium", "low"]);

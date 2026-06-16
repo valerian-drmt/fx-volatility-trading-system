@@ -23,6 +23,7 @@ import {
   fetchPcaHistory,
   fetchPcaModel,
   fetchPcaState,
+  fetchPortfolioCash,
   fetchRegimeEvents,
   fetchTermStructure,
   fetchTradeBook,
@@ -43,6 +44,7 @@ import {
 } from "./core";
 import {
   account as mockAccount,
+  cash as mockCash,
   events as mockEvents,
   limits as mockLimits,
   positions as mockPositions,
@@ -64,7 +66,7 @@ import { adaptPca } from "./live/pca";
 import { adaptIvSurface } from "./live/surface";
 import { adaptSystem } from "./live/system";
 import { adaptTermStructure } from "./live/termStructure";
-import { adaptAccount, adaptEvents, adaptLimits, adaptPositions, deriveNetGreeks } from "./live/trade";
+import { adaptAccount, adaptCash, adaptEvents, adaptLimits, adaptPositions, deriveNetGreeks } from "./live/trade";
 
 const MOCK_PCA: PcaData = {
   pcs: mockPcs.map((p) => ({ ...p, zHistory: [] })),
@@ -79,6 +81,7 @@ const MOCK_TRADE: TradeData = {
   account: mockAccount,
   limits: mockLimits,
   events: mockEvents,
+  cash: mockCash,
 };
 const TRADE_POLL_MS = 15_000; // positions mtm: snapshot + modest poll (WS in 6w)
 const TRADE_WARN_MS = 30_000;
@@ -156,11 +159,12 @@ export function DataProvider({
   );
   const liveTrade = useFetch<TradeData>(
     async () => {
-      const [pos, lim, evts, book] = await Promise.all([
+      const [pos, lim, evts, book, cash] = await Promise.all([
         fetchOpenPositions(),
         fetchTradeLimits(),
         fetchRegimeEvents(),
         fetchTradeBook(),
+        fetchPortfolioCash(),
       ]);
       const positions = adaptPositions(pos, Date.now());
       return {
@@ -169,6 +173,7 @@ export function DataProvider({
         account: adaptAccount(book),
         limits: adaptLimits(lim),
         events: adaptEvents(evts),
+        cash: adaptCash(cash),
       };
     },
     TRADE_WARN_MS,
