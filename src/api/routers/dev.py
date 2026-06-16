@@ -276,9 +276,6 @@ async def stack_overview(
 # into the SQL string, never the raw request value, so the query identifier
 # is provably whitelist-sourced (defuses static SQL-injection taint tracking).
 ALLOWED_TABLES: dict[str, tuple[str, str]] = {
-    "order_events": ("order_events", "id"),
-    "orders": ("orders", "id"),
-    "trades": ("trades", "id"),
     "open_position": ("open_position", "id"),
     "open_position_history": ("open_position_history", "id"),
     "account_history": ("account_history", "id"),

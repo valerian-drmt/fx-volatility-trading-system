@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from persistence.models import AccountHistory, Base, Trade
+from persistence.models import AccountHistory, Base
 from persistence.writer import AsyncDatabaseWriter
 
 
@@ -96,40 +96,19 @@ async def test_write_batch_groups_by_table(writer, session_factory):
     """
     ts = datetime(2026, 4, 20, 10, 0, 0, tzinfo=UTC)
     batch = [
-        # 3 account_snaps
-        ("account_snaps", {"timestamp": ts}),
-        ("account_snaps", {"timestamp": ts}),
-        ("account_snaps", {"timestamp": ts}),
-        # 2 trades
-        (
-            "trades",
-            {
-                "side": "BUY",
-                "quantity": Decimal("1"),
-                "price": Decimal("1.08500000"),
-                "timestamp": ts,
-            },
-        ),
-        (
-            "trades",
-            {
-                "side": "SELL",
-                "quantity": Decimal("2"),
-                "price": Decimal("1.08600000"),
-                "timestamp": ts,
-            },
-        ),
+        # 3 account_history rows
+        ("account_history", {"timestamp": ts}),
+        ("account_history", {"timestamp": ts}),
+        ("account_history", {"timestamp": ts}),
     ]
-    assert len(batch) == 5
+    assert len(batch) == 3
 
     await writer._write_batch(batch)
 
     async with session_factory() as session:
         account_count = await session.scalar(select(func.count()).select_from(AccountHistory))
-        trade_count = await session.scalar(select(func.count()).select_from(Trade))
 
     assert account_count == 3
-    assert trade_count == 2
 
 
 # --- R2 PR #2 : idempotency, retries, graceful shutdown ---------------------
