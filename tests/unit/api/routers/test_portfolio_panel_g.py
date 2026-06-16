@@ -98,6 +98,16 @@ async def test_percentile_interpolates():
     assert _percentile([], 0.5) is None
 
 
+async def test_histogram_bins_and_counts():
+    from api.routers.portfolio_panel import _histogram
+    h = _histogram([0.0, 1.0, 2.0, 3.0, 4.0], nbins=2)
+    assert len(h) == 2
+    assert sum(b["count"] for b in h) == 5
+    assert h[0]["lo"] == 0.0 and h[-1]["hi"] == 4.0
+    assert _histogram([1.0], nbins=4) == []        # too few
+    assert _histogram([2.0, 2.0, 2.0], nbins=4) == []  # zero range
+
+
 # ───────────────────────────── cash_holdings ────────────────────────────────
 
 

@@ -16,12 +16,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
+from core.risk.stress import reval_book
 from persistence.models import (  # noqa: F401
     AccountHistory,
     BookedPosition,
@@ -339,6 +340,39 @@ async def vega_per_tenor(db: DbDep) -> list[dict[str, Any]]:
     ]
 
 
+@router.get("/risk-per-tenor")
+async def risk_per_tenor(db: DbDep) -> list[dict[str, Any]]:
+    """Vega + vanna + volga ($) bucketed by DTE (R11 G-risk). Reads the
+    denormalised greek columns on ``open_position`` (no reval needed)."""
+    sql = text("""
+        SELECT GREATEST(0, (expiry - CURRENT_DATE))::int AS dte,
+               vega_usd, vanna_usd, volga_usd
+          FROM open_position
+         WHERE structure LIKE 'EUU%' AND expiry IS NOT NULL AND expiry >= CURRENT_DATE
+    """)
+    rs = (await db.execute(sql)).all()
+    agg = {b[0]: {"vega": 0.0, "vanna": 0.0, "volga": 0.0, "n": 0} for b in _TENOR_BUCKETS}
+    for dte, vega, vanna, volga in rs:
+        for label, lo, hi in _TENOR_BUCKETS:
+            if lo <= dte <= hi:
+                a = agg[label]
+                a["vega"] += float(vega or 0.0)
+                a["vanna"] += float(vanna or 0.0)
+                a["volga"] += float(volga or 0.0)
+                a["n"] += 1
+                break
+    return [
+        {
+            "bucket": label, "dte_lo": lo, "dte_hi": hi,
+            "vega_usd": round(agg[label]["vega"], 2),
+            "vanna_usd": round(agg[label]["vanna"], 2),
+            "volga_usd": round(agg[label]["volga"], 2),
+            "n_positions": int(agg[label]["n"]),
+        }
+        for label, lo, hi in _TENOR_BUCKETS
+    ]
+
+
 @router.get("/hedge-summary")
 async def hedge_summary(db: DbDep) -> dict[str, Any]:
     """Multi-window cumul of `hedge_orders`. Pattern Risk Ops standard :
@@ -395,33 +429,45 @@ async def hedge_summary(db: DbDep) -> dict[str, Any]:
     }
 
 
-# Spot bins (bp move from current) and IV bins (vol points absolute shift).
-# Defaults from risk_dashboard_spec.md § F. Spot range ~1σ–2σ daily for FX,
-# vol range capturing typical regime shifts.
+# Shock bins. Spot = bp move ; vol/skew/fly = vol points ; time = days decayed.
 _STRESS_SPOT_BPS = [-200, -100, -50, 0, 50, 100, 200]
-_STRESS_VOL_VPS = [3, 1, 0, -1, -3]   # rows top→bottom (+3 vp on top)
+_STRESS_VOL_VPS = [3, 1, 0, -1, -3]      # rows top→bottom (+3 vp on top)
+_STRESS_TIME_DAYS = [40, 20, 10, 5, 0]   # rows top→bottom (most decay on top)
+_STRESS_SKEW_VPS = [2, 1, 0, -1, -2]     # ΔRR vol points
+_STRESS_FLY_VPS = [2, 1, 0, -1, -2]      # ΔBF vol points
+_LADDER_SPOT_BPS = [-400, -200, 0, 200, 400]
+_LADDER_VOL_VPS = [-3, -1, 0, 1, 3]
+_LADDER_TIME_DAYS = [0, 5, 10, 20, 40]
+_LADDER_SKEW_VPS = [-2, -1, 0, 1, 2]
+_LADDER_FLY_VPS = [-2, -1, 0, 1, 2]
+
+# Row-axis → (bins, kwarg-name for reval_book, unit label).
+_STRESS_ROW_AXES: dict[str, tuple[list[int], str, str]] = {
+    "spot-vol":  (_STRESS_VOL_VPS,   "dvol_vp",  "vp"),
+    "spot-time": (_STRESS_TIME_DAYS, "dt_days",  "d"),
+    "spot-skew": (_STRESS_SKEW_VPS,  "dskew_vp", "vp"),
+    "spot-fly":  (_STRESS_FLY_VPS,   "dfly_vp",  "vp"),
+}
+_LADDER_AXES: dict[str, tuple[list[int], str, str]] = {
+    "spot": (_LADDER_SPOT_BPS, "dspot_bp", "bp"),
+    "vol":  (_LADDER_VOL_VPS,  "dvol_vp",  "vp"),
+    "time": (_LADDER_TIME_DAYS, "dt_days", "d"),
+    "skew": (_LADDER_SKEW_VPS, "dskew_vp", "vp"),
+    "fly":  (_LADDER_FLY_VPS,  "dfly_vp",  "vp"),
+}
+_OUTPUTS = ("pnl", "delta", "gamma", "vega", "theta", "vanna", "volga")
 
 
-@router.get("/stress-grid")
-async def stress_grid(db: DbDep) -> dict[str, Any]:
-    """5×7 spot × IV stress matrix. Each cell = ``NPV(scenario) - NPV(now)``.
+async def _resolve_book(db: AsyncSession) -> tuple[float | None, list[dict[str, Any]]]:
+    """Resolve OPEN positions → (current_spot, baselines) for ``reval_book``.
 
-    Full revaluation per scenario via Black-Scholes for options, linear for
-    futures. Baseline = current ``market_price`` for futures, BS at current
-    ``iv`` for options. Matches spec ``risk_dashboard_spec.md § F``.
+    Spot proxy : any FUTURE market_price, else an option strike (ATM fallback).
+    Each option baseline stores the per-unit BS ``price_base`` at current iv.
     """
     open_positions = (await db.execute(select(OpenPosition))).scalars().all()
     if not open_positions:
-        return {
-            "current_spot": None,
-            "spot_bins_bps": _STRESS_SPOT_BPS,
-            "vol_bins_vps": _STRESS_VOL_VPS,
-            "grid": [],
-            "n_positions": 0,
-        }
+        return None, []
 
-    # Spot proxy : take any FUTURE marketPrice (most reliable). Falls back to
-    # the underlying spot derived from option moneyness if no future is held.
     current_spot: float | None = None
     for p in open_positions:
         spec = parse_local_symbol(p.structure)
@@ -429,186 +475,112 @@ async def stress_grid(db: DbDep) -> dict[str, Any]:
             current_spot = float(p.market_price)
             break
     if current_spot is None:
-        # Fallback : an option's underlying must have been priced upstream.
         for p in open_positions:
-            if p.market_price and p.iv:
-                # rough proxy : option mid-strike ≈ spot for ATM positions.
-                spec = parse_local_symbol(p.structure)
-                if spec and spec.strike:
-                    current_spot = float(spec.strike)
-                    break
+            spec = parse_local_symbol(p.structure)
+            if p.market_price and p.iv and spec and spec.strike:
+                current_spot = float(spec.strike)
+                break
     if current_spot is None:
-        return {
-            "current_spot": None,
-            "spot_bins_bps": _STRESS_SPOT_BPS,
-            "vol_bins_vps": _STRESS_VOL_VPS,
-            "grid": [],
-            "n_positions": len(open_positions),
-        }
+        return None, []
 
     today = datetime.now(UTC).date()
-
-    # Pre-compute baseline NPV per position once.
     baselines: list[dict[str, Any]] = []
     for p in open_positions:
         spec = parse_local_symbol(p.structure)
         if spec is None:
             continue
         qty_signed = float(p.quantity) * (1.0 if p.side == "BUY" else -1.0)
-        mult = spec.multiplier
         if spec.instrument_type == "FUTURE":
-            baselines.append({
-                "type": "FUTURE",
-                "qty_signed": qty_signed, "mult": mult,
-                "npv_base": qty_signed * mult * current_spot,
-            })
+            baselines.append({"type": "FUTURE", "qty_signed": qty_signed, "mult": spec.multiplier})
         elif spec.option_type and spec.strike and p.expiry and p.iv:
             T = max(0.001, (p.expiry - today).days / 365.0)
             iv_dec = float(p.iv)
             right = "C" if spec.option_type == "CALL" else "P"
-            base_price = bs_price(current_spot, spec.strike, T, iv_dec, right)
             baselines.append({
-                "type": "OPTION",
-                "qty_signed": qty_signed, "mult": mult,
+                "type": "OPTION", "qty_signed": qty_signed, "mult": spec.multiplier,
                 "K": float(spec.strike), "T": T, "iv": iv_dec, "right": right,
-                "npv_base": qty_signed * mult * base_price,
+                "price_base": bs_price(current_spot, float(spec.strike), T, iv_dec, right),
             })
+    return current_spot, baselines
 
-    grid: list[list[float]] = []
-    for dvol_vp in _STRESS_VOL_VPS:
-        dsigma = dvol_vp / 100.0
-        row: list[float] = []
-        for dspot_bp in _STRESS_SPOT_BPS:
-            new_spot = current_spot * (1.0 + dspot_bp / 10000.0)
-            total_pnl = 0.0
-            for b in baselines:
-                if b["type"] == "FUTURE":
-                    npv_new = b["qty_signed"] * b["mult"] * new_spot
-                else:
-                    new_iv = b["iv"] + dsigma
-                    if new_iv <= 0:
-                        continue
-                    new_price = bs_price(
-                        new_spot, b["K"], b["T"], new_iv, b["right"],
-                    )
-                    npv_new = b["qty_signed"] * b["mult"] * new_price
-                total_pnl += npv_new - b["npv_base"]
-            row.append(round(total_pnl, 2))
-        grid.append(row)
 
-    return {
-        "current_spot": round(current_spot, 5),
-        "spot_bins_bps": _STRESS_SPOT_BPS,
-        "vol_bins_vps": _STRESS_VOL_VPS,
-        "grid": grid,
+@router.get("/stress-grid")
+async def stress_grid(
+    db: DbDep,
+    axis: str = Query("spot-vol", pattern="^spot-(vol|time|skew|fly)$"),
+    output: str = Query("pnl"),
+) -> dict[str, Any]:
+    """Parameterised spot × {vol|time|skew|fly} stress matrix (R11 G-risk 5.2).
+
+    Columns = spot bp bins ; rows = the chosen 2nd axis. Each cell = the chosen
+    ``output`` (pnl = ΔNPV vs now ; any greek = the book greek at that scenario),
+    full-BS revalued via ``core.risk.stress.reval_book``. ``axis=spot-vol,
+    output=pnl`` reproduces the legacy 5×7 grid (``vol_bins_vps`` kept for compat).
+    """
+    if output not in _OUTPUTS:
+        raise HTTPException(422, f"output must be one of {_OUTPUTS}")
+    row_bins, row_kw, row_unit = _STRESS_ROW_AXES[axis]
+    current_spot, baselines = await _resolve_book(db)
+    base = {
+        "current_spot": round(current_spot, 5) if current_spot else None,
+        "axis": axis, "output": output,
+        "spot_bins_bps": _STRESS_SPOT_BPS, "row_bins": row_bins, "row_unit": row_unit,
         "n_positions": len(baselines),
     }
+    if axis == "spot-vol":
+        base["vol_bins_vps"] = _STRESS_VOL_VPS  # legacy field
+    if current_spot is None:
+        return {**base, "grid": []}
 
-
-# Spot ladder bins (bp move from current). Spec ``risk_dashboard_spec.md § H``.
-_LADDER_SPOT_BPS = [-400, -200, 0, 200, 400]
+    grid: list[list[float]] = []
+    for row_val in row_bins:
+        row: list[float] = []
+        for dspot_bp in _STRESS_SPOT_BPS:
+            v = reval_book(
+                baselines, current_spot,
+                dspot_bp=dspot_bp, output=output, **{row_kw: float(row_val)},
+            )
+            row.append(round(v, 2))
+        grid.append(row)
+    return {**base, "grid": grid}
 
 
 @router.get("/greeks-ladder")
-async def greeks_ladder(db: DbDep) -> dict[str, Any]:
-    """Per-spot-bucket greeks ladder. For each ΔSpot in {-400, -200, 0, +200, +400} bp :
-    full revaluation of the book, then sum Δ / Γ / Vega and the resulting
-    P&L vs current. ``hedge_delta_usd`` = ``-delta_usd`` (qty of $ Δ to
-    short/long via futures to be delta-neutral at that spot).
-    """
-    open_positions = (await db.execute(select(OpenPosition))).scalars().all()
-    if not open_positions:
-        return {
-            "current_spot": None,
-            "spot_bins_bps": _LADDER_SPOT_BPS,
-            "rows": [],
-        }
-
-    current_spot: float | None = None
-    for p in open_positions:
-        spec = parse_local_symbol(p.structure)
-        if spec and spec.instrument_type == "FUTURE" and p.market_price:
-            current_spot = float(p.market_price)
-            break
+async def greeks_ladder(
+    db: DbDep,
+    axis: str = Query("spot", pattern="^(spot|vol|time|skew|fly)$"),
+) -> dict[str, Any]:
+    """Per-bin greeks ladder along one axis (R11 G-risk 5.3). Each row = P&L +
+    Δ/Γ/Vega revalued at that shock. ``hedge_delta_usd = −delta_usd``. The
+    ``axis`` column name (``dspot_bps``/``dvol_vps``/…) reflects the chosen axis."""
+    bins, kw, unit = _LADDER_AXES[axis]
+    current_spot, baselines = await _resolve_book(db)
+    base = {
+        "current_spot": round(current_spot, 5) if current_spot else None,
+        "axis": axis, "bins": bins, "unit": unit, "n_positions": len(baselines),
+    }
+    if axis == "spot":
+        base["spot_bins_bps"] = _LADDER_SPOT_BPS  # legacy field
     if current_spot is None:
-        return {
-            "current_spot": None,
-            "spot_bins_bps": _LADDER_SPOT_BPS,
-            "rows": [],
-        }
-
-    today = datetime.now(UTC).date()
-
-    # Pre-extract per-position contract spec + baseline NPV.
-    positions_resolved: list[dict[str, Any]] = []
-    for p in open_positions:
-        spec = parse_local_symbol(p.structure)
-        if spec is None:
-            continue
-        qty_signed = float(p.quantity) * (1.0 if p.side == "BUY" else -1.0)
-        mult = spec.multiplier
-        if spec.instrument_type == "FUTURE":
-            positions_resolved.append({
-                "type": "FUTURE",
-                "qty_signed": qty_signed, "mult": mult,
-                "npv_base": qty_signed * mult * current_spot,
-            })
-        elif spec.option_type and spec.strike and p.expiry and p.iv:
-            T = max(0.001, (p.expiry - today).days / 365.0)
-            iv_dec = float(p.iv)
-            right = "C" if spec.option_type == "CALL" else "P"
-            base_price = bs_price(current_spot, spec.strike, T, iv_dec, right)
-            positions_resolved.append({
-                "type": "OPTION",
-                "qty_signed": qty_signed, "mult": mult,
-                "K": float(spec.strike), "T": T, "iv": iv_dec, "right": right,
-                "npv_base": qty_signed * mult * base_price,
-            })
+        return {**base, "rows": []}
 
     rows: list[dict[str, Any]] = []
-    for dspot_bp in _LADDER_SPOT_BPS:
-        new_spot = current_spot * (1.0 + dspot_bp / 10000.0)
-        total_pnl = 0.0
-        total_delta = 0.0
-        total_gamma = 0.0
-        total_vega = 0.0
-        for pos in positions_resolved:
-            if pos["type"] == "FUTURE":
-                npv_new = pos["qty_signed"] * pos["mult"] * new_spot
-                total_delta += pos["qty_signed"] * pos["mult"]
-                # Γ / vega = 0 for futures.
-            else:
-                K, T, iv_dec, right = pos["K"], pos["T"], pos["iv"], pos["right"]
-                new_price = bs_price(new_spot, K, T, iv_dec, right)
-                npv_new = pos["qty_signed"] * pos["mult"] * new_price
-                total_delta += pos["qty_signed"] * pos["mult"] * bs_delta(
-                    new_spot, K, T, iv_dec, right,
-                )
-                total_gamma += (
-                    pos["qty_signed"] * pos["mult"]
-                    * bs_gamma(new_spot, K, T, iv_dec) * 1e-4  # $/pip
-                )
-                total_vega += (
-                    pos["qty_signed"] * pos["mult"]
-                    * bs_vega(new_spot, K, T, iv_dec) * 0.01  # $/volpt
-                )
-            total_pnl += npv_new - pos["npv_base"]
-        rows.append({
-            "dspot_bps": dspot_bp,
-            "spot": round(new_spot, 5),
-            "pnl_usd": round(total_pnl, 2),
-            "delta_usd": round(total_delta, 2),
-            "gamma_usd_per_pip": round(total_gamma, 2),
-            "vega_usd_per_volpt": round(total_vega, 2),
-            "hedge_delta_usd": -round(total_delta, 2),
-        })
-
-    return {
-        "current_spot": round(current_spot, 5),
-        "spot_bins_bps": _LADDER_SPOT_BPS,
-        "rows": rows,
-        "n_positions": len(positions_resolved),
-    }
+    for b in bins:
+        kwargs = {kw: float(b)}
+        delta = reval_book(baselines, current_spot, output="delta", **kwargs)
+        row = {
+            "axis_value": b,
+            "pnl_usd": round(reval_book(baselines, current_spot, output="pnl", **kwargs), 2),
+            "delta_usd": round(delta, 2),
+            "gamma_usd_per_pip": round(reval_book(baselines, current_spot, output="gamma", **kwargs), 2),
+            "vega_usd_per_volpt": round(reval_book(baselines, current_spot, output="vega", **kwargs), 2),
+            "hedge_delta_usd": -round(delta, 2),
+        }
+        if axis == "spot":
+            row["dspot_bps"] = b
+            row["spot"] = round(current_spot * (1.0 + b / 10000.0), 5)
+        rows.append(row)
+    return {**base, "rows": rows}
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1081,6 +1053,25 @@ def _var_stats(deltas: list[float]) -> dict[str, float] | None:
     return {"var_95": var95, "var_99": var99, "es_99": es99, "n": float(len(deltas))}
 
 
+def _histogram(values: list[float], nbins: int = 21) -> list[dict[str, float]]:
+    """Equal-width histogram bins ``[{lo, hi, count}]`` over `values`. Empty
+    when < 2 points or zero range."""
+    if len(values) < 2:
+        return []
+    lo, hi = min(values), max(values)
+    if hi <= lo:
+        return []
+    width = (hi - lo) / nbins
+    counts = [0] * nbins
+    for v in values:
+        idx = min(nbins - 1, int((v - lo) / width))
+        counts[idx] += 1
+    return [
+        {"lo": round(lo + i * width, 2), "hi": round(lo + (i + 1) * width, 2), "count": counts[i]}
+        for i in range(nbins)
+    ]
+
+
 def _sharpe_and_drawdown(nl: list[float]) -> tuple[float | None, float | None, float | None]:
     """Pure compute (unit-tested): from a daily net-liq curve → annualised
     Sharpe, max drawdown (≤0), and current drawdown vs the running peak (≤0).
@@ -1211,6 +1202,7 @@ async def value_at_risk(db: DbDep) -> dict[str, Any]:
         "var_95_usd": round(stats["var_95"], 2) if stats else None,
         "var_99_usd": round(stats["var_99"], 2) if stats else None,
         "es_99_usd": round(stats["es_99"], 2) if stats else None,
+        "hist": _histogram(deltas),
     }
 
 
