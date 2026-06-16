@@ -87,12 +87,15 @@ export function adaptPositions(raw: unknown, now: number): Position[] {
       iv: n(r.iv),
       pnl,
       nominal,
+      // δ/Γ/vega/θ stay in $ (the view auto-scales via gkc/gk$). vanna/volga
+      // are displayed with a hardcoded "k" suffix → convert $ → $k (engine
+      // writes them in $: qty·bs_vanna·mult·0.01). See engines/risk/engine.py.
       delta: n(r.delta_usd),
       gamma: n(r.gamma_usd),
       vega: n(r.vega_usd),
       theta: n(r.theta_usd),
-      vanna: n(r.vanna_usd),
-      volga: n(r.volga_usd),
+      vanna: n(r.vanna_usd) / 1000,
+      volga: n(r.volga_usd) / 1000,
       updated: r.timestamp ?? "",
       opened: r.entry_timestamp ?? "",
       pnlPct: nominal ? (pnl / nominal) * 100 : 0,
