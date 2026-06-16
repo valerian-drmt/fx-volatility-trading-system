@@ -78,3 +78,64 @@ export const fetchVolHistory = (symbol = "EURUSD", limit = 50) =>
   apiGet<VolHistory>("/api/v1/vol-history", { query: { symbol, limit } });
 
 export const fetchSystemStats = () => apiGet<SystemStats>("/api/v1/system-stats");
+
+// ── R11 voldesk wiring (read) ───────────────────────────────────────────────
+// Typed against schema.d.ts. Endpoints returning a bare dict server-side surface
+// here as opaque values; the per-domain adapter (voldesk/data/live/*) maps them
+// to the DATA/DATA2 shapes the views consume.
+
+// Regime
+export type RegimeState = Get<"/api/v1/regime/state", 200>;
+export const fetchRegimeState = (symbol = "EURUSD") =>
+  apiGet<RegimeState>("/api/v1/regime/state", { query: { symbol } });
+export const fetchRegimeEvents = (n = 10) =>
+  apiGet<unknown>("/api/v1/regime/events", { query: { n } });
+
+// PCA signals
+export type PcaState = Get<"/api/v1/signals/pca/state", 200>;
+export type PcaModel = Get<"/api/v1/signals/pca/model", 200>;
+export const fetchPcaState = (symbol = "EURUSD") =>
+  apiGet<PcaState>("/api/v1/signals/pca/state", { query: { symbol } });
+export const fetchPcaModel = () => apiGet<PcaModel>("/api/v1/signals/pca/model");
+
+// Positions (Step 5)
+export const fetchOpenPositions = () => apiGet<unknown>("/api/v1/positions/open");
+export const fetchActivePositions = () => apiGet<unknown>("/api/v1/positions/active");
+export const fetchPositionsAggregate = () =>
+  apiGet<unknown>("/api/v1/positions/aggregate");
+
+// Portfolio panels (A–J + scenarios)
+export const fetchPortfolioHeader = () => apiGet<unknown>("/api/v1/portfolio/header");
+export const fetchEquityCurve = (window = "30d") =>
+  apiGet<unknown>("/api/v1/portfolio/equity-curve", { query: { window } });
+export const fetchAggregateGreeks = () =>
+  apiGet<unknown>("/api/v1/portfolio/aggregate-greeks");
+export const fetchVegaPerTenor = () =>
+  apiGet<unknown>("/api/v1/portfolio/vega-per-tenor");
+export const fetchStressGrid = () => apiGet<unknown>("/api/v1/portfolio/stress-grid");
+export const fetchGreeksLadder = () =>
+  apiGet<unknown>("/api/v1/portfolio/greeks-ladder");
+export const fetchPnlAttribution = (lookbackHours = 24) =>
+  apiGet<unknown>("/api/v1/portfolio/pnl-attribution", {
+    query: { lookback_hours: lookbackHours },
+  });
+export const fetchPinRisk = () => apiGet<unknown>("/api/v1/portfolio/pin-risk");
+export const fetchScenarios = () => apiGet<unknown>("/api/v1/portfolio/scenarios");
+export const fetchHedgeSummary = () =>
+  apiGet<unknown>("/api/v1/portfolio/hedge-summary");
+
+// Trade (read)
+export const fetchTradeStructures = () => apiGet<unknown>("/api/v1/trade/structures");
+export const fetchTradeLimits = () => apiGet<unknown>("/api/v1/trade/limits");
+export const fetchTradeBook = (symbol = "EURUSD") =>
+  apiGet<unknown>("/api/v1/trade/book", { query: { symbol } });
+
+// Admin config (read; write lands in Phase 2 behind auth)
+export type ConfigResponse = Get<"/api/v1/admin/config", 200>;
+export const fetchConfig = () => apiGet<ConfigResponse>("/api/v1/admin/config");
+export const fetchConfigSchema = () => apiGet<unknown>("/api/v1/admin/config/schema");
+export const fetchConfigHistory = (limit = 50) =>
+  apiGet<unknown>("/api/v1/admin/config/history", { query: { limit } });
+
+// Dev / system
+export const fetchDevEngines = () => apiGet<unknown>("/api/v1/dev/engines");
