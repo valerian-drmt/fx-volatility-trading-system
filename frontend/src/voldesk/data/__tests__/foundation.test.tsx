@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { server } from "../../../tests/mocks/handlers";
 import { useDeskData } from "../deskData";
 import { makeFresh, statusFor } from "../freshness";
+import { adaptPca } from "../live/pca";
 import { adaptIvSurface } from "../live/surface";
 import { adaptTermStructure } from "../live/termStructure";
 import { DataProvider } from "../provider";
@@ -57,6 +58,48 @@ describe("adaptIvSurface", () => {
   });
 });
 
+describe("adaptPca", () => {
+  const grid = Array.from({ length: 6 }, () => [0.1, 0.2, 0.3, 0.2, 0.1]);
+  const state = {
+    signals: {
+      pc1: { z_score: -1.0, label: "FAIR", recommended_structure: "Long 1M ATM straddle" },
+      pc2: { z_score: 0.8, label: "FAIR", recommended_structure: null },
+      pc3: { z_score: -2.2, label: "CHEAP", recommended_structure: "fly", sub_signals: { convex_z: -2.2 } },
+    },
+    variance_explained: { pc1: 0.97, pc2: 0.012, pc3: 0.008, cumulative: 0.99 },
+    loadings_stable: { pc1: true, pc2: true, pc3: false },
+    loadings_grid: [grid, grid, grid],
+    coherence: { all_coherent: true, contradictions: [] },
+  };
+  const model = { n_obs_used: 1500, variance_explained: [0.97, 0.012, 0.008, 0.005, 0.003, 0.002] };
+
+  it("maps z/label/variance/tier/loadings and PC3 convex_z", () => {
+    const data = adaptPca(state, model, [[], [], []]);
+    expect(data.pcs).toHaveLength(3);
+    expect(data.pcs[0]).toMatchObject({ id: "PC1", name: "level", z: -1.0, label: "FAIR", tier: 1, stable: true });
+    expect(data.pcs[0]!.variance).toBeCloseTo(97, 6);
+    expect(data.pcs[0]!.load).toEqual(grid);
+    expect(data.pcs[2]).toMatchObject({ id: "PC3", label: "CHEAP", tier: 3, stable: false, dataQuality: "noisy" });
+    expect(data.pcs[2]!.extra).toEqual({ convex_z: -2.2 });
+  });
+
+  it("derives pctile from the (reversed) z-history", () => {
+    // pc1 history newest-first [-1.0,-0.5,0.2] → current z=-1.0 is the min → ~33%
+    const data = adaptPca(state, model, [[{ z_score: -1.0 }, { z_score: -0.5 }, { z_score: 0.2 }], [], []]);
+    expect(data.pcs[0]!.pctile).toBeCloseTo(100 / 3, 1);
+    expect(data.pcs[0]!.zHistory).toEqual([0.2, -0.5, -1.0]); // oldest→newest
+  });
+
+  it("derives eigen gap/ratio from the model variance_explained list", () => {
+    const data = adaptPca(state, model, [[], [], []]);
+    expect(data.model.eigen.gap23).toBeCloseTo(0.4, 3); // 1.2% − 0.8%
+    expect(data.model.eigen.ratio23).toBeCloseTo(1.5, 3); // 1.2 / 0.8
+    expect(data.model.eigen.state).toBe("narrow"); // ratio < 2
+    expect(data.model.variance.cumul).toBeCloseTo(99, 6);
+    expect(data.model.pcaObs).toBe(1500);
+  });
+});
+
 function TermProbe(): JSX.Element {
   const { termStructure } = useDeskData();
   return (
@@ -76,6 +119,17 @@ function SurfaceProbe(): JSX.Element {
       <span data-testid="s-iv00">{surface.data?.ivSurface[0]?.[0] ?? "none"}</span>
       {/* ivZ is the mock-backed gap — present in both mock and live */}
       <span data-testid="s-hasz">{surface.data?.ivZ.length ?? "none"}</span>
+    </div>
+  );
+}
+
+function PcaProbe(): JSX.Element {
+  const { pca } = useDeskData();
+  return (
+    <div>
+      <span data-testid="p-status">{pca.status}</span>
+      <span data-testid="p-n">{pca.data?.pcs.length ?? "none"}</span>
+      <span data-testid="p-z0">{pca.data?.pcs[0]?.z ?? "none"}</span>
     </div>
   );
 }
@@ -123,6 +177,48 @@ describe("DataProvider swap", () => {
     expect(screen.getByTestId("s-status").textContent).toBe("live");
     // ivZ still served from the mock (5 tenor rows) — backend per-cell-z gap.
     expect(Number(screen.getByTestId("s-hasz").textContent)).toBeGreaterThan(0);
+  });
+
+  it("mock mode serves synthetic PCA (3 cards, status live)", () => {
+    render(
+      <DataProvider mock={true}>
+        <PcaProbe />
+      </DataProvider>,
+    );
+    expect(screen.getByTestId("p-status").textContent).toBe("live");
+    expect(screen.getByTestId("p-n").textContent).toBe("3");
+  });
+
+  it("live mode fetches state/model/history + adapts the mode cards", async () => {
+    server.use(
+      http.get("*/api/v1/signals/pca/state", () =>
+        HttpResponse.json({
+          state: "stable",
+          model_version: "v9",
+          signals: {
+            pc1: { z_score: -1.4, label: "FAIR", recommended_structure: null },
+            pc2: { z_score: 0.5, label: "FAIR", recommended_structure: null },
+            pc3: { z_score: -2.1, label: "CHEAP", recommended_structure: "fly" },
+          },
+          variance_explained: { pc1: 0.96, pc2: 0.02, pc3: 0.01, cumulative: 0.99 },
+          loadings_stable: { pc1: true, pc2: true, pc3: false },
+          loadings_grid: [],
+          coherence: { all_coherent: true, contradictions: [] },
+        }),
+      ),
+      http.get("*/api/v1/signals/pca/model", () =>
+        HttpResponse.json({ active: true, version: "v9", n_obs_used: 1200, variance_explained: [0.96, 0.02, 0.01] }),
+      ),
+      http.get("*/api/v1/signals/pca/history", () => HttpResponse.json([{ z_score: -1.4 }, { z_score: -1.0 }])),
+    );
+    render(
+      <DataProvider mock={false}>
+        <PcaProbe />
+      </DataProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("p-z0").textContent).toBe("-1.4"));
+    expect(screen.getByTestId("p-n").textContent).toBe("3");
+    expect(screen.getByTestId("p-status").textContent).toBe("live");
   });
 
   it("live mode fetches + adapts the backend term-structure", async () => {

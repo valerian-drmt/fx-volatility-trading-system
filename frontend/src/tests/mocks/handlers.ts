@@ -23,6 +23,19 @@ export const handlers = [
     const body = (await request.json()) as { spot: number; volatility: number };
     return HttpResponse.json({ price: body.spot * body.volatility });
   }),
+
+  // Desk live-data defaults (R11) — the voldesk provider fetches these on mount
+  // in live mode. Minimal valid payloads; tests override with server.use(...).
+  http.get("*/api/v1/vol/term-structure", () =>
+    HttpResponse.json({ symbol: "EURUSD", timestamp: "2026-06-16T00:00:00Z", pillars: [] }),
+  ),
+  http.get("*/api/v1/signals/pca/state", () =>
+    HttpResponse.json({ state: "stable", model_version: "test", signals: {} }),
+  ),
+  http.get("*/api/v1/signals/pca/model", () =>
+    HttpResponse.json({ active: true, version: "test", variance_explained: null }),
+  ),
+  http.get("*/api/v1/signals/pca/history", () => HttpResponse.json([])),
 ];
 
 export const server = setupServer(...handlers);
