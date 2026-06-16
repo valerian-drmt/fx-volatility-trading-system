@@ -15,6 +15,8 @@
  */
 import { type ReactNode, useEffect } from "react";
 import {
+  fetchDevEngines,
+  fetchHealthExtended,
   fetchPcaHistory,
   fetchPcaModel,
   fetchPcaState,
@@ -38,16 +40,22 @@ import {
   DeskDataContext,
   type PcaData,
   type SurfaceData,
+  type SystemData,
 } from "./deskData";
+import { engines as mockEngines, stack as mockStack } from "./extended";
 import { type Fresh, makeFresh } from "./freshness";
 import { adaptPca } from "./live/pca";
 import { adaptIvSurface } from "./live/surface";
+import { adaptSystem } from "./live/system";
 import { adaptTermStructure } from "./live/termStructure";
 
 const MOCK_PCA: PcaData = {
   pcs: mockPcs.map((p) => ({ ...p, zHistory: [] })),
   model: mockPcaModel,
 };
+const MOCK_SYSTEM: SystemData = { engines: mockEngines, stack: mockStack };
+const SYSTEM_POLL_MS = 10_000; // engine heartbeats: no WS push → poll
+const SYSTEM_WARN_MS = 20_000;
 
 const DEFAULT_MOCK = (import.meta.env["VITE_USE_MOCK"] ?? "true") !== "false";
 const VOL_WARN_MS = 240_000; // vol-engine cycle ~3 min
@@ -83,6 +91,17 @@ export function DataProvider({
     },
     VOL_WARN_MS,
     !mock,
+  );
+  const liveSystem = useFetch<SystemData>(
+    async () => {
+      // /dev/engines is auth-gated in prod → tolerate failure, compose from health.
+      const [health, dev] = await Promise.allSettled([fetchHealthExtended(), fetchDevEngines()]);
+      if (health.status !== "fulfilled") throw new Error("health/extended unavailable");
+      return adaptSystem(health.value, dev.status === "fulfilled" ? dev.value : null);
+    },
+    SYSTEM_WARN_MS,
+    !mock,
+    SYSTEM_POLL_MS,
   );
 
   // Re-fetch surface + term + pca on each vol-engine cycle push (~3 min).
@@ -127,7 +146,11 @@ export function DataProvider({
     ? makeFresh(MOCK_PCA, Date.now(), Number.POSITIVE_INFINITY)
     : livePca;
 
-  const value: DeskData = { termStructure, surface, pca };
+  const system: Fresh<SystemData> = mock
+    ? makeFresh(MOCK_SYSTEM, Date.now(), Number.POSITIVE_INFINITY)
+    : liveSystem;
+
+  const value: DeskData = { termStructure, surface, pca, system };
   return (
     <DeskDataContext.Provider value={value}>{children}</DeskDataContext.Provider>
   );

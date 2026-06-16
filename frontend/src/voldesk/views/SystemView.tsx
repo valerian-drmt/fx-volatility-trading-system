@@ -4,7 +4,9 @@
  * Mock data for now; wires to the backend in a later lot.
  */
 import { MetricTile, Panel, StatusDot } from "../components/common";
+import { FreshBadge } from "../components/FreshBadge";
 import { DATA2 } from "../data";
+import { useDeskData } from "../data/deskData";
 
 const layerColor: Record<string, string> = {
   EDGE: "#a78bfa",
@@ -22,11 +24,14 @@ const erGroups: [string, string[]][] = [
 ];
 
 export function SystemView(): JSX.Element {
+  const { system } = useDeskData();
+  const stack = system.data?.stack ?? [];
+  const engines = system.data?.engines ?? [];
   return (
     <div className="system-grid">
-      <Panel title="Container stack" right={<span className="dim mono">10 containers · Docker · AWS</span>} className="stack-panel">
+      <Panel title="Container stack" right={<FreshBadge fresh={system} label="containers · Docker · AWS" />} className="stack-panel">
         <div className="stack">
-          {DATA2.stack.map((l) => (
+          {stack.map((l) => (
             <div key={l.layer} className="stack-layer">
               <span className="stack-layer-tag" style={{ color: layerColor[l.layer] ?? "var(--muted)" }}>
                 {l.layer}
@@ -46,8 +51,11 @@ export function SystemView(): JSX.Element {
           ))}
         </div>
       </Panel>
-      <Panel title="Engine heartbeats">
-        {DATA2.engines.map((e) => (
+      <Panel title="Engine heartbeats" right={<FreshBadge fresh={system} />}>
+        {engines.length === 0 && (
+          <div className="dim small mono ivz-empty">heartbeats indisponibles (/dev gated ou engines arrêtés)</div>
+        )}
+        {engines.map((e) => (
           <div key={e.name} className="eng-row">
             <StatusDot status={e.status} />
             <span className="eng-name mono">{e.name}</span>
@@ -80,7 +88,7 @@ export function SystemView(): JSX.Element {
           ))}
         </div>
       </Panel>
-      <Panel title="Backtest">
+      <Panel title="Backtest" right={<span className="dim mono small">mock · pas de moteur live</span>}>
         <div className="bt-tiles">
           <MetricTile label="Sharpe" value={DATA2.backtest.sharpe.toFixed(2)} tone="pos" />
           <MetricTile label="Max DD" value={DATA2.backtest.maxDd + "%"} tone="neg" />

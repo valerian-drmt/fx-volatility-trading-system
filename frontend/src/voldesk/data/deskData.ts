@@ -5,9 +5,27 @@
  */
 import { createContext, useContext } from "react";
 import type { Pc, PcaModelMeta, TermPoint } from "./core";
+import type { StackItem } from "./extended";
 import type { Fresh } from "./freshness";
 
 export type { PcaModelMeta };
+
+/** Engine heartbeat row (same shape as the mock `engines[]`). */
+export interface EngineRow {
+  name: string;
+  hb: number;
+  stale: number;
+  status: "up" | "warn" | "down";
+}
+export interface StackLayer {
+  layer: string;
+  items: StackItem[];
+}
+/** System view live part: container stack + engine heartbeats. */
+export interface SystemData {
+  engines: EngineRow[];
+  stack: StackLayer[];
+}
 
 export interface SurfaceData {
   /** 6×5 IV grid (%), [tenorIdx][deltaIdx]. Live from /vol/surface (PR 1). */
@@ -34,6 +52,8 @@ export interface DeskData {
   surface: Fresh<SurfaceData>;
   /** PCA mode cards + model meta. Live (PR 1.2) ; display-config statics on mock. */
   pca: Fresh<PcaData>;
+  /** Container stack + engine heartbeats. Live (PR 2r.1, polled). */
+  system: Fresh<SystemData>;
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);

@@ -1,7 +1,8 @@
 /**
  * Generic HTTP snapshot hook (R11 PR F) → `Fresh<T>` + `reload()`.
  * Fetches on mount; `reload()` (or a WS stream invalidation) re-fetches.
- * On error → status "missing" (the view shows last-known / placeholder).
+ * `pollMs > 0` also re-fetches on an interval (for sources with no WS push,
+ * e.g. engine heartbeats). On error → status "missing" (view shows last-known).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type Fresh, makeFresh } from "../voldesk/data/freshness";
@@ -14,6 +15,7 @@ export function useFetch<T>(
   fetcher: () => Promise<T>,
   warnMs: number,
   enabled = true,
+  pollMs = 0,
 ): FetchResult<T> {
   const [state, setState] = useState<Fresh<T>>({
     data: null,
@@ -42,6 +44,12 @@ export function useFetch<T>(
       cancelled = true;
     };
   }, [tick, warnMs, enabled]);
+
+  useEffect(() => {
+    if (!enabled || pollMs <= 0) return;
+    const id = setInterval(() => setTick((t) => t + 1), pollMs);
+    return () => clearInterval(id);
+  }, [enabled, pollMs]);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
   return { ...state, reload };
