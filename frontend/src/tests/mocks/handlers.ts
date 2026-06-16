@@ -36,6 +36,15 @@ export const handlers = [
     HttpResponse.json({ active: true, version: "test", variance_explained: null }),
   ),
   http.get("*/api/v1/signals/pca/history", () => HttpResponse.json([])),
+  http.get("*/api/v1/health/extended", () =>
+    HttpResponse.json({
+      status: "OK",
+      components: { redis: "OK", database: "OK", engines: { market_data: "OK", vol_engine: "OK", risk_engine: "OK" } },
+    }),
+  ),
+  http.get("*/api/v1/dev/engines", () =>
+    HttpResponse.json({ engines: [], ib_gateway: { status: "OK" } }),
+  ),
 ];
 
 export const server = setupServer(...handlers);

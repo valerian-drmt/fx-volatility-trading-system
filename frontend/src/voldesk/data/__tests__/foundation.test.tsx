@@ -6,6 +6,7 @@ import { useDeskData } from "../deskData";
 import { makeFresh, statusFor } from "../freshness";
 import { adaptPca } from "../live/pca";
 import { adaptIvSurface } from "../live/surface";
+import { adaptSystem } from "../live/system";
 import { adaptTermStructure } from "../live/termStructure";
 import { DataProvider } from "../provider";
 
@@ -100,6 +101,40 @@ describe("adaptPca", () => {
   });
 });
 
+describe("adaptSystem", () => {
+  const health = {
+    status: "OK",
+    components: { redis: "OK", database: "DOWN", engines: { market_data: "OK", vol_engine: "OK", risk_engine: "STALE" } },
+  };
+
+  it("prefers /dev/engines (5 engines + IB, heartbeat ages + status map)", () => {
+    const dev = {
+      engines: [
+        { name: "market_data", status: "OK", hb_age_s: 1.2, stale_threshold_s: 60 },
+        { name: "vol_engine", status: "STALE", hb_age_s: 320, stale_threshold_s: 300 },
+        { name: "execution", status: "DOWN", hb_age_s: null, stale_threshold_s: 10 },
+      ],
+      ib_gateway: { status: "DOWN" },
+    };
+    const out = adaptSystem(health, dev);
+    expect(out.engines).toHaveLength(4); // 3 + IB
+    expect(out.engines[0]).toMatchObject({ name: "market-data", hb: 1.2, stale: 60, status: "up" });
+    expect(out.engines[1]).toMatchObject({ name: "vol-engine", status: "warn" }); // STALE→warn
+    expect(out.engines[2]).toMatchObject({ name: "exec-engine", hb: 0, status: "down" });
+    expect(out.engines[3]).toMatchObject({ name: "IB Gateway", status: "down" });
+    // DATA layer reflects component statuses (redis up, database down).
+    const data = out.stack.find((l) => l.layer === "DATA")!;
+    expect(data.items.find((i) => i.name === "redis")!.status).toBe("up");
+    expect(data.items.find((i) => i.name === "postgres")!.status).toBe("down");
+  });
+
+  it("falls back to /health/extended engines when /dev is unavailable", () => {
+    const out = adaptSystem(health, null);
+    expect(out.engines.map((e) => e.name)).toEqual(["market-data", "vol-engine", "risk-engine"]);
+    expect(out.engines[2]).toMatchObject({ name: "risk-engine", status: "warn" }); // STALE
+  });
+});
+
 function TermProbe(): JSX.Element {
   const { termStructure } = useDeskData();
   return (
@@ -130,6 +165,17 @@ function PcaProbe(): JSX.Element {
       <span data-testid="p-status">{pca.status}</span>
       <span data-testid="p-n">{pca.data?.pcs.length ?? "none"}</span>
       <span data-testid="p-z0">{pca.data?.pcs[0]?.z ?? "none"}</span>
+    </div>
+  );
+}
+
+function SystemProbe(): JSX.Element {
+  const { system } = useDeskData();
+  return (
+    <div>
+      <span data-testid="sys-status">{system.status}</span>
+      <span data-testid="sys-eng">{system.data?.engines.length ?? "none"}</span>
+      <span data-testid="sys-layers">{system.data?.stack.length ?? "none"}</span>
     </div>
   );
 }
@@ -219,6 +265,42 @@ describe("DataProvider swap", () => {
     await waitFor(() => expect(screen.getByTestId("p-z0").textContent).toBe("-1.4"));
     expect(screen.getByTestId("p-n").textContent).toBe("3");
     expect(screen.getByTestId("p-status").textContent).toBe("live");
+  });
+
+  it("mock mode serves synthetic system (engines + 5 stack layers)", () => {
+    render(
+      <DataProvider mock={true}>
+        <SystemProbe />
+      </DataProvider>,
+    );
+    expect(screen.getByTestId("sys-status").textContent).toBe("live");
+    expect(screen.getByTestId("sys-layers").textContent).toBe("5");
+  });
+
+  it("live mode composes the stack from health + dev engines", async () => {
+    server.use(
+      http.get("*/api/v1/health/extended", () =>
+        HttpResponse.json({
+          status: "OK",
+          components: { redis: "OK", database: "OK", engines: { market_data: "OK" } },
+        }),
+      ),
+      http.get("*/api/v1/dev/engines", () =>
+        HttpResponse.json({
+          engines: [{ name: "vol_engine", status: "OK", hb_age_s: 2, stale_threshold_s: 300 }],
+          ib_gateway: { status: "OK" },
+        }),
+      ),
+    );
+    render(
+      <DataProvider mock={false}>
+        <SystemProbe />
+      </DataProvider>,
+    );
+    // 1 dev engine + IB = 2 rows; 5 stack layers always.
+    await waitFor(() => expect(screen.getByTestId("sys-eng").textContent).toBe("2"));
+    expect(screen.getByTestId("sys-layers").textContent).toBe("5");
+    expect(screen.getByTestId("sys-status").textContent).toBe("live");
   });
 
   it("live mode fetches + adapts the backend term-structure", async () => {
