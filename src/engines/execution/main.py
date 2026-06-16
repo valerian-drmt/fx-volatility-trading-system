@@ -39,7 +39,7 @@ from engines.execution.position_sync import position_sync_loop
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
-from persistence.models import OrderEvent
+from persistence.models import TradeEvent
 
 logger = logging.getLogger("execution")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
@@ -130,21 +130,25 @@ async def health(request: Request) -> dict[str, Any]:
 async def _log_event(
     sessionmaker: async_sessionmaker[AsyncSession],
     *,
-    action_type: Literal["SUBMIT", "CANCEL", "CLOSE_POSITION"],
+    action_type: Literal["SUBMIT", "CANCEL", "CLOSE_POSITION", "CLOSE_POSITION_BY_SYMBOL", "SYNC_POSITIONS"],
     request_payload: dict,
     response_payload: dict | None,
     success: bool,
     error_message: str | None = None,
 ) -> None:
+    # order_events folded into the trade_event journal (migration 044).
     try:
         async with sessionmaker() as db:
-            db.add(OrderEvent(
-                action_type=action_type,
-                request_payload=request_payload,
-                response_payload=response_payload,
-                success=success,
-                error_message=error_message,
-                timestamp=datetime.now(UTC),
+            db.add(TradeEvent(
+                event_type=f"order_action_{action_type.lower()}",
+                severity="info" if success else "error",
+                description=error_message[:500] if error_message else None,
+                payload={
+                    "action_type": action_type,
+                    "request_payload": request_payload,
+                    "response_payload": response_payload,
+                    "success": success,
+                },
             ))
             await db.commit()
     except Exception:

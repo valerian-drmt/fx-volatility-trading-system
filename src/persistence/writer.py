@@ -37,7 +37,6 @@ from persistence.models import (
     Base,
     OpenPosition,
     OpenPositionHistory,
-    Trade,
     VolSurface,
 )
 
@@ -56,7 +55,6 @@ TABLE_MODELS: dict[str, type[Base]] = {
     "account_history": AccountHistory,
     "open_position": OpenPosition,
     "open_position_history": OpenPositionHistory,
-    "trades": Trade,
     "vol_surface_history": VolSurface,
 }
 

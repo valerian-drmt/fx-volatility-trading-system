@@ -103,7 +103,6 @@ class OpenPosition(Base):
     snapshots: Mapped[list[OpenPositionHistory]] = relationship(
         back_populates="position", cascade="all, delete-orphan"
     )
-    trades: Mapped[list[Trade]] = relationship(back_populates="position")
 
 
 class OpenPositionHistory(Base):
@@ -147,31 +146,8 @@ class OpenPositionHistory(Base):
     position: Mapped[OpenPosition] = relationship(back_populates="snapshots")
 
 
-class Trade(Base):
-    __tablename__ = "trades"
-    __table_args__ = (
-        UniqueConstraint("ib_order_id", name="uq_trades_ib_order_id"),
-        CheckConstraint("side IN ('BUY', 'SELL')", name="ck_trades_side"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    position_id: Mapped[int | None] = mapped_column(ForeignKey("open_position.id"))
-
-    ib_order_id: Mapped[str | None] = mapped_column(String(50))
-
-    side: Mapped[str] = mapped_column(String(4), nullable=False)
-    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
-    price: Mapped[Decimal] = mapped_column(Numeric(15, 8), nullable=False)
-    commission: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-
-    spot_at_execution: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
-    iv_at_execution: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
-
-    position: Mapped[OpenPosition | None] = relationship(back_populates="trades")
+# ``trades`` (ORM Trade) dropped in migration 044 — the legacy IB-fill sync flow
+# was removed ; fills now land in trade_fill via the execution engine.
 
 
 class AccountHistory(Base):
@@ -714,70 +690,9 @@ class TradeEvent(Base):
     payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False, default=dict)
 
 
-class Order(Base):
-    """IB order lifecycle row. 1 row par order envoyé à IB, status évolue
-    selon la lifecycle (PendingSubmit → Submitted → Filled / Cancelled).
-    """
-    __tablename__ = "orders"
-    __table_args__ = (
-        UniqueConstraint("ib_perm_id", name="uq_orders_ib_perm_id"),
-        CheckConstraint("side IN ('BUY', 'SELL')", name="ck_orders_side"),
-        CheckConstraint(
-            "sec_type IN ('FUT', 'FOP', 'STK', 'OPT', 'CONTFUT')",
-            name="ck_orders_sec_type",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    ib_perm_id: Mapped[int | None] = mapped_column(BigInteger)
-    ib_order_id: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
-    sec_type: Mapped[str] = mapped_column(String(10), nullable=False)
-    expiry: Mapped[str | None] = mapped_column(String(10))
-    strike: Mapped[Decimal | None] = mapped_column(Numeric(10, 5))
-    right: Mapped[str | None] = mapped_column(String(2))
-
-    side: Mapped[str] = mapped_column(String(4), nullable=False)
-    quantity: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
-    limit_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
-
-    status: Mapped[str] = mapped_column(String(30), nullable=False)
-    filled_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False, default=Decimal("0"))
-    avg_fill_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
-
-    submitted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-
-class OrderEvent(Base):
-    """Audit log : 1 row par action utilisateur envoyée à IB.
-
-    Append-only. Permet de retrouver qui a demandé quoi, quand, et la
-    réponse IB exacte (success/failure, message d'erreur).
-    """
-    __tablename__ = "order_events"
-    __table_args__ = (
-        CheckConstraint(
-            "action_type IN ('SUBMIT', 'CANCEL', 'CLOSE_POSITION')",
-            name="ck_order_events_action_type",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"))
-    action_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    request_payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
-    response_payload: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
-    success: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    error_message: Mapped[str | None] = mapped_column(String(500))
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+# ``orders`` (ORM Order) + ``order_events`` (ORM OrderEvent) dropped in migration
+# 044 — the legacy IB order-sync flow was removed. IB order lifecycle is handled
+# in trade_order by the execution engine ; order-action audit lands in trade_event.
 
 
 
