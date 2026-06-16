@@ -22,7 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
-from persistence.models import AccountHistory, OpenPosition, OpenPositionHistory  # noqa: F401
+from persistence.models import (  # noqa: F401
+    AccountHistory,
+    BookedPosition,
+    OpenPosition,
+    OpenPositionHistory,
+    VolSurface,
+)
 from shared.contracts import parse_local_symbol
 
 router = APIRouter(prefix="/api/v1/portfolio", tags=["portfolio-panel"])
@@ -71,6 +77,8 @@ def _freshness(reference: datetime | None) -> str:
     """Same fresh / stale / missing taxonomy as Step 5 IB sync badge."""
     if reference is None:
         return "missing"
+    if reference.tzinfo is None:  # defensive: treat naive timestamps as UTC
+        reference = reference.replace(tzinfo=UTC)
     age = datetime.now(UTC) - reference
     if age < timedelta(minutes=5):
         return "fresh"
@@ -1041,4 +1049,156 @@ async def scenarios(db: DbDep) -> dict[str, Any]:
         "by_spot": by_spot,
         "by_iv": by_iv,
         "n_positions": len(positions_resolved),
+    }
+
+
+# ───────────────────────── P4 — Trade holdings + performance (R11 G) ─────────
+
+
+def _sharpe_and_drawdown(nl: list[float]) -> tuple[float | None, float | None, float | None]:
+    """Pure compute (unit-tested): from a daily net-liq curve → annualised
+    Sharpe, max drawdown (≤0), and current drawdown vs the running peak (≤0).
+    All ``None`` when the series is too short (< 3 points)."""
+    if len(nl) < 3:
+        return None, None, None
+    rets = [(nl[i] - nl[i - 1]) / nl[i - 1] for i in range(1, len(nl)) if nl[i - 1]]
+    sharpe: float | None = None
+    if rets:
+        mean = sum(rets) / len(rets)
+        std = (sum((x - mean) ** 2 for x in rets) / len(rets)) ** 0.5
+        sharpe = (mean / std) * (252 ** 0.5) if std > 0 else None
+    peak = nl[0]
+    max_dd = 0.0
+    for v in nl:
+        peak = max(peak, v)
+        if peak > 0:
+            max_dd = min(max_dd, (v - peak) / peak)
+    run_peak = max(nl)
+    current_dd = (nl[-1] - run_peak) / run_peak if run_peak > 0 else None
+    return sharpe, max_dd, current_dd
+
+
+@router.get("/cash")
+async def cash_holdings(db: DbDep) -> dict[str, Any]:
+    """Per-currency cash detail for the Trade holdings donut (R11 G-trade).
+
+    Source : the latest ``account_history.currencies`` JSONB (currency → settled
+    cash balance, written by the execution-engine). USD value uses the latest
+    EURUSD spot from ``vol_surface_history`` (USD per EUR) ; USD is 1:1 ; other
+    currencies have no rate here → ``usd_value=None``. Unsettled cash is not
+    tracked upstream → always ``None``.
+    """
+    latest = (await db.execute(
+        select(AccountHistory).order_by(desc(AccountHistory.timestamp)).limit(1)
+    )).scalar_one_or_none()
+    spot_row = (await db.execute(
+        select(VolSurface.spot).where(VolSurface.underlying == "EURUSD")
+        .order_by(desc(VolSurface.timestamp)).limit(1)
+    )).scalar_one_or_none()
+    eurusd = float(spot_row) if spot_row is not None else None
+
+    currencies = (latest.currencies if latest and latest.currencies else {}) or {}
+    rows: list[dict[str, Any]] = []
+    for ccy, balance in currencies.items():
+        settled = float(balance) if balance is not None else 0.0
+        if ccy == "USD":
+            rate: float | None = 1.0
+            usd: float | None = settled
+        elif ccy == "EUR" and eurusd is not None:
+            rate, usd = eurusd, settled * eurusd
+        else:
+            rate, usd = None, None
+        rows.append({
+            "ccy": ccy, "settled": settled, "unsettled": None,
+            "rate": rate, "usd_value": (round(usd, 2) if usd is not None else None),
+        })
+    # Largest USD value first; unconvertible currencies last.
+    rows.sort(key=lambda r: (r["usd_value"] is None, -(r["usd_value"] or 0.0)))
+    total_usd = sum(r["usd_value"] for r in rows if r["usd_value"] is not None)
+    return {
+        "timestamp": latest.timestamp.isoformat() if latest and latest.timestamp else None,
+        "eurusd_spot": eurusd,
+        "currencies": rows,
+        "total_usd": round(total_usd, 2),
+        "freshness": _freshness(latest.timestamp if latest else None),
+    }
+
+
+@router.get("/daily-pnl")
+async def daily_pnl(db: DbDep, days: int = Query(90, ge=1, le=730)) -> dict[str, Any]:
+    """Realized P&L aggregated per UTC day (R11 G-portfolio).
+
+    From closed booked positions : ``SUM(net_pnl_usd)`` grouped by the day of
+    ``closed_at``, plus a running cumulative. Empty list when no closes yet.
+    """
+    sql = text("""
+        SELECT date_trunc('day', closed_at) AS day,
+               COALESCE(SUM(net_pnl_usd), 0) AS realized,
+               COUNT(*)                      AS n_closed
+          FROM booked_position
+         WHERE state = 'closed' AND closed_at IS NOT NULL
+           AND closed_at >= NOW() - make_interval(days => :days)
+         GROUP BY 1 ORDER BY 1
+    """)
+    rows = (await db.execute(sql, {"days": days})).all()
+    series: list[dict[str, Any]] = []
+    cum = 0.0
+    for r in rows:
+        realized = float(r.realized or 0.0)
+        cum += realized
+        series.append({
+            "day": r.day.date().isoformat(),
+            "realized_usd": round(realized, 2),
+            "cumulative_usd": round(cum, 2),
+            "n_closed": int(r.n_closed),
+        })
+    return {"days": days, "series": series, "total_realized_usd": round(cum, 2)}
+
+
+@router.get("/stats")
+async def portfolio_stats(db: DbDep) -> dict[str, Any]:
+    """Headline performance stats (R11 G-portfolio).
+
+    Sharpe + drawdown from the daily net-liq curve (``account_history``),
+    hit-rate + cumulative realized from closed booked positions, cumulative
+    unrealized from the live book. Fields are ``None`` when the underlying
+    series is too short / empty (read-only public deployment at boot).
+    """
+    nl_sql = text("""
+        WITH daily AS (
+          SELECT DISTINCT ON (date_trunc('day', timestamp))
+                 date_trunc('day', timestamp) AS day, net_liq_usd
+            FROM account_history
+           WHERE timestamp >= NOW() - INTERVAL '365 days' AND net_liq_usd IS NOT NULL
+           ORDER BY date_trunc('day', timestamp), timestamp DESC
+        )
+        SELECT net_liq_usd FROM daily ORDER BY day
+    """)
+    nl = [float(r[0]) for r in (await db.execute(nl_sql)).all()]
+    sharpe, max_dd, current_dd = _sharpe_and_drawdown(nl)
+
+    closed = (await db.execute(text("""
+        SELECT COUNT(*) AS n,
+               COUNT(*) FILTER (WHERE net_pnl_usd > 0) AS wins,
+               COALESCE(SUM(net_pnl_usd), 0) AS cum_real
+          FROM booked_position WHERE state = 'closed'
+    """))).one()
+    n_closed = int(closed.n or 0)
+    hit_rate = (float(closed.wins) / n_closed) if n_closed else None
+
+    openp = (await db.execute(text(
+        "SELECT COALESCE(SUM(current_pnl_usd), 0) AS u, COUNT(*) AS n FROM open_position"
+    ))).one()
+
+    return {
+        "computed_at": datetime.now(UTC).isoformat(),
+        "sharpe": round(sharpe, 3) if sharpe is not None else None,
+        "max_drawdown_pct": round(max_dd * 100, 2) if max_dd is not None else None,
+        "current_drawdown_pct": round(current_dd * 100, 2) if current_dd is not None else None,
+        "hit_rate": round(hit_rate, 4) if hit_rate is not None else None,
+        "n_closed": n_closed,
+        "cum_realized_usd": round(float(closed.cum_real), 2),
+        "cum_unrealized_usd": round(float(openp.u), 2),
+        "n_open": int(openp.n or 0),
+        "n_days": len(nl),
     }
