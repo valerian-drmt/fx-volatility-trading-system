@@ -22,6 +22,15 @@ export interface TradeData {
 
 /** Portfolio view live part (PR 3). coverage/leverage/non-greek waterfall pivots
  * stay mock (backend gaps) — see 09. */
+/** 1-day VaR card (PR 5) — values in $k. factors/marginal/vega-PCA remain
+ * backend gaps (separate G-risk PR) → those widgets stay mock. */
+export interface VarData {
+  var95: number;
+  var99: number;
+  es99: number;
+  nDays: number;
+}
+
 export interface PortfolioData {
   account: AccountState;
   greeks: Greeks;
@@ -104,6 +113,8 @@ export interface DeskData {
   trade: Fresh<TradeData>;
   /** Portfolio : capital, perf-stats, attribution, book composition. Live (PR 3). */
   portfolio: Fresh<PortfolioData>;
+  /** Risk : 1-day VaR card values (PR 5). Stress grids/ladders/factors stay mock. */
+  risk: Fresh<VarData>;
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);

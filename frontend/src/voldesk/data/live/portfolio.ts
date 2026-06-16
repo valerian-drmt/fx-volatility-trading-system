@@ -22,6 +22,7 @@ import {
   account as mockAccount,
   type Position,
 } from "../core";
+import type { VarData } from "../deskData";
 import type { BookComposition, PerfStats, VegaTenor, WaterfallStep } from "../extended";
 
 const n = (v: unknown): number => (typeof v === "number" ? v : 0);
@@ -160,6 +161,22 @@ export function deriveBookComposition(positions: Position[]): BookComposition {
     byStructure,
     legs: positions.length,
     totalNominal: r2([...byName.values()].reduce((s, x) => s + x.nominal, 0)),
+  };
+}
+
+/** /portfolio/var → 1d VaR 95/99 + ES 99, in $k (backend gives USD losses). */
+export function adaptVar(raw: unknown): VarData {
+  const v = (raw ?? {}) as {
+    var_95_usd?: number | null;
+    var_99_usd?: number | null;
+    es_99_usd?: number | null;
+    n_days?: number | null;
+  };
+  return {
+    var95: n(v.var_95_usd) / 1000,
+    var99: n(v.var_99_usd) / 1000,
+    es99: n(v.es_99_usd) / 1000,
+    nDays: v.n_days ?? 0,
   };
 }
 

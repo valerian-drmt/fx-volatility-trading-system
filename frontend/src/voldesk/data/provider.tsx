@@ -28,6 +28,7 @@ import {
   fetchPortfolioCash,
   fetchPortfolioDailyPnl,
   fetchPortfolioStats,
+  fetchPortfolioVar,
   fetchRegimeEvents,
   fetchTermStructure,
   fetchTradeBook,
@@ -51,6 +52,7 @@ import {
   account as mockAccount,
   cash as mockCash,
   events as mockEvents,
+  greeks as mockGreeks,
   limits as mockLimits,
   positions as mockPositions,
 } from "./core";
@@ -64,6 +66,7 @@ import {
   type SurfaceData,
   type SystemData,
   type TradeData,
+  type VarData,
 } from "./deskData";
 import {
   bookComposition as mockBookComposition,
@@ -82,6 +85,7 @@ import {
   adaptAccount as adaptPortfolioAccountSnap,
   adaptDailyPnl,
   adaptPerfStats,
+  adaptVar,
   adaptVegaPerTenor,
   adaptWaterfallGreek,
   deriveBookComposition,
@@ -120,6 +124,12 @@ const MOCK_PORTFOLIO: PortfolioData = {
 };
 const PORTFOLIO_WARN_MS = 120_000; // history-ish; light poll
 const PORTFOLIO_POLL_MS = 60_000;
+const MOCK_RISK: VarData = {
+  var95: mockGreeks.var1d95,
+  var99: mockGreeks.var1d99,
+  es99: +(mockGreeks.var1d99 * 1.16).toFixed(1),
+  nDays: 504,
+};
 const CONFIG_WARN_MS = Number.POSITIVE_INFINITY; // config rarely changes → never "stale"
 
 // Mock config is a flat key/value list; fold it into the hybrid (sections + history) shape.
@@ -243,6 +253,13 @@ export function DataProvider({
     PORTFOLIO_POLL_MS,
   );
 
+  const liveRisk = useFetch<VarData>(
+    async () => adaptVar(await fetchPortfolioVar()),
+    PORTFOLIO_WARN_MS,
+    !mock,
+    PORTFOLIO_POLL_MS,
+  );
+
   // Re-fetch surface + term + pca on each vol-engine cycle push (~3 min).
   const vol = useVolStream(!mock);
   const reloadTerm = liveTerm.reload;
@@ -301,7 +318,11 @@ export function DataProvider({
     ? makeFresh(MOCK_PORTFOLIO, Date.now(), Number.POSITIVE_INFINITY)
     : livePortfolio;
 
-  const value: DeskData = { termStructure, surface, pca, system, config, trade, portfolio };
+  const risk: Fresh<VarData> = mock
+    ? makeFresh(MOCK_RISK, Date.now(), Number.POSITIVE_INFINITY)
+    : liveRisk;
+
+  const value: DeskData = { termStructure, surface, pca, system, config, trade, portfolio, risk };
   return (
     <DeskDataContext.Provider value={value}>{children}</DeskDataContext.Provider>
   );

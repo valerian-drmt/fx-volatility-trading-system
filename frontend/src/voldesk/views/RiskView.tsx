@@ -5,10 +5,13 @@
  */
 import { useState } from "react";
 import { Bar, Panel, Tag } from "../components/common";
+import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
 import { DATA, DATA2, fmt } from "../data";
 import type { LadderRow, VarFactor } from "../data";
+import { useDeskData } from "../data/deskData";
+import type { Fresh } from "../data/freshness";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -228,10 +231,10 @@ interface VarCalc {
   esZ: number;
 }
 
-function VarCard(): JSX.Element {
-  const base95 = DATA.greeks.var1d95,
-    base99 = DATA.greeks.var1d99;
-  const NL = DATA.account.netLiq;
+function VarCard({ var95, var99, es99, netLiq, fresh }: { var95: number; var99: number; es99: number; netLiq: number; fresh: Fresh<unknown> }): JSX.Element {
+  const base95 = var95,
+    base99 = var99;
+  const NL = netLiq;
   const rows: VarRow[] = [
     { id: "1d", lbl: "Daily", m: 1, ret: 0.92, ratio: 1.16 },
     { id: "1w", lbl: "Weekly", m: 2.6, ret: 2.1, ratio: 1.19 },
@@ -243,7 +246,8 @@ function VarCard(): JSX.Element {
   const calc = (r: VarRow): VarCalc => {
     const v95 = base95 * r.m,
       v99 = base99 * r.m,
-      es = v99 * r.ratio;
+      // live 1d ES from the endpoint; longer horizons use the √t-scaled ES/VaR ratio.
+      es = r.id === "1d" ? es99 : v99 * r.ratio;
     const retk = (r.ret / 100) * NL / 1000;
     const sig = Math.abs(v95) / 1.645;
     return { v95, v99, es, retk, muZ: retk / sig, esZ: -2.326 * r.ratio };
@@ -252,7 +256,7 @@ function VarCard(): JSX.Element {
     c = calc(sel);
   const letter = ({ "1d": "D", "1w": "W", "1M": "M", "1Y": "Y" } as Record<string, string>)[sel.id] ?? "D";
   return (
-    <Panel title="Value at Risk" pad={false} className="trade-block">
+    <Panel title="Value at Risk" right={<FreshBadge fresh={fresh} label="historical 1d" />} pad={false} className="trade-block">
       <div className="var-meta">
         <span className="var-method">historical sim</span>
         <span>504 obs · 504d window</span>
@@ -701,8 +705,10 @@ function LadderTable({ title, right, axisLbl, rows, nowKey, sub }: {
 export function RiskView(): JSX.Element {
   const [scenKind] = useState("spot");
   const scen = DATA2.scenarioSeries(scenKind);
-  const g = DATA.greeks;
-  const a = DATA.account;
+  const { risk, portfolio } = useDeskData();
+  const g = DATA.greeks; // per-unit greek representation — not the live positions-derived nets; stays mock (09)
+  const a = portfolio.data?.account ?? DATA.account; // margin/net-liq live (PR 3 account domain)
+  const vd = risk.data ?? { var95: g.var1d95, var99: g.var1d99, es99: g.var1d99 * 1.16, nDays: 0 };
   // reconciliation (§1): net 2nd-order greeks = Σ of their tenor buckets, by construction
   const netVanna = DATA2.vannaPerTenor.reduce((s, r) => s + r.v, 0);
   const netVolga = DATA2.volgaPerTenor.reduce((s, r) => s + r.v, 0);
@@ -781,7 +787,7 @@ export function RiskView(): JSX.Element {
               <Bar label="Γ exposure" used="14.5k" limit="20.4k" pct={71} value="71%" tone="auto" />
             </div>
           </Panel>
-          <VarCard />
+          <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} fresh={risk} />
         </div>
       </Panel>
       <StressEngine />

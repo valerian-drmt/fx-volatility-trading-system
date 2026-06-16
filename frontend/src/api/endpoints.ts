@@ -114,6 +114,7 @@ export const fetchPortfolioCash = () => apiGet<unknown>("/api/v1/portfolio/cash"
 export const fetchPortfolioDailyPnl = (days = 90) =>
   apiGet<unknown>("/api/v1/portfolio/daily-pnl", { query: { days } });
 export const fetchPortfolioStats = () => apiGet<unknown>("/api/v1/portfolio/stats");
+export const fetchPortfolioVar = () => apiGet<unknown>("/api/v1/portfolio/var");
 export const fetchEquityCurve = (window = "30d") =>
   apiGet<unknown>("/api/v1/portfolio/equity-curve", { query: { window } });
 export const fetchAggregateGreeks = () =>
