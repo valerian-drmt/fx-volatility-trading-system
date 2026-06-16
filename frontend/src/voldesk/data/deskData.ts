@@ -22,13 +22,29 @@ export interface TradeData {
 
 /** Portfolio view live part (PR 3). coverage/leverage/non-greek waterfall pivots
  * stay mock (backend gaps) — see 09. */
-/** 1-day VaR card (PR 5) — values in $k. factors/marginal/vega-PCA remain
- * backend gaps (separate G-risk PR) → those widgets stay mock. */
+export interface HistBin {
+  lo: number;
+  hi: number;
+  count: number;
+}
+/** Vega/vanna/volga by tenor bucket, in $k (PR 5). */
+export interface TenorRisk {
+  tenor: string;
+  vega: number;
+  vanna: number;
+  volga: number;
+  n: number;
+}
+/** Risk view live data (PR 5): VaR values ($k) + empirical histogram + 2nd-order
+ * by tenor. factors/marginal/vega-PCA + the stress grids/ladders remain mock
+ * (separate G-risk frontend wiring) → flagged in 09. */
 export interface VarData {
   var95: number;
   var99: number;
   es99: number;
   nDays: number;
+  hist: HistBin[];
+  perTenor: TenorRisk[];
 }
 
 export interface PortfolioData {

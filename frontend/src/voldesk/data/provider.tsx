@@ -30,6 +30,7 @@ import {
   fetchPortfolioStats,
   fetchPortfolioVar,
   fetchRegimeEvents,
+  fetchRiskPerTenor,
   fetchTermStructure,
   fetchTradeBook,
   fetchTradeLimits,
@@ -75,7 +76,9 @@ import {
   engines as mockEngines,
   perfStats as mockPerfStats,
   stack as mockStack,
+  vannaPerTenor as mockVannaPerTenor,
   vegaPerTenor as mockVegaPerTenor,
+  volgaPerTenor as mockVolgaPerTenor,
   waterfall as mockWaterfall,
 } from "./extended";
 import { type Fresh, makeFresh } from "./freshness";
@@ -85,6 +88,7 @@ import {
   adaptAccount as adaptPortfolioAccountSnap,
   adaptDailyPnl,
   adaptPerfStats,
+  adaptRiskPerTenor,
   adaptVar,
   adaptVegaPerTenor,
   adaptWaterfallGreek,
@@ -129,6 +133,14 @@ const MOCK_RISK: VarData = {
   var99: mockGreeks.var1d99,
   es99: +(mockGreeks.var1d99 * 1.16).toFixed(1),
   nDays: 504,
+  hist: [],
+  perTenor: mockVegaPerTenor.map((r) => ({
+    tenor: r.tenor,
+    vega: r.vega,
+    vanna: mockVannaPerTenor.find((x) => x.tenor === r.tenor)?.v ?? 0,
+    volga: mockVolgaPerTenor.find((x) => x.tenor === r.tenor)?.v ?? 0,
+    n: r.n,
+  })),
 };
 const CONFIG_WARN_MS = Number.POSITIVE_INFINITY; // config rarely changes → never "stale"
 
@@ -254,7 +266,10 @@ export function DataProvider({
   );
 
   const liveRisk = useFetch<VarData>(
-    async () => adaptVar(await fetchPortfolioVar()),
+    async () => {
+      const [v, rpt] = await Promise.all([fetchPortfolioVar(), fetchRiskPerTenor()]);
+      return { ...adaptVar(v), perTenor: adaptRiskPerTenor(rpt) };
+    },
     PORTFOLIO_WARN_MS,
     !mock,
     PORTFOLIO_POLL_MS,

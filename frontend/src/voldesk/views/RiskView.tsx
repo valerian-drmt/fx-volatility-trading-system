@@ -531,9 +531,8 @@ function PositionBreakdown(): JSX.Element {
 }
 
 // ---- vega bucketed by tenor : the curve-risk ladder (a term-structure desk's #1 risk) ----
-function VegaTenorLadder(): JSX.Element {
-  const rows = DATA2.vegaPerTenor;
-  const max = Math.max(...rows.map((r) => r.vega)) || 1;
+function VegaTenorLadder({ rows }: { rows: { tenor: string; vega: number; n: number }[] }): JSX.Element {
+  const max = Math.max(1, ...rows.map((r) => r.vega));
   return (
     <div className="vtl">
       {rows.map((r) => (
@@ -708,10 +707,11 @@ export function RiskView(): JSX.Element {
   const { risk, portfolio } = useDeskData();
   const g = DATA.greeks; // per-unit greek representation — not the live positions-derived nets; stays mock (09)
   const a = portfolio.data?.account ?? DATA.account; // margin/net-liq live (PR 3 account domain)
-  const vd = risk.data ?? { var95: g.var1d95, var99: g.var1d99, es99: g.var1d99 * 1.16, nDays: 0 };
+  const vd = risk.data ?? { var95: g.var1d95, var99: g.var1d99, es99: g.var1d99 * 1.16, nDays: 0, hist: [], perTenor: [] };
+  const pt = vd.perTenor; // vega/vanna/volga by tenor ($k) — live (PR 5)
   // reconciliation (§1): net 2nd-order greeks = Σ of their tenor buckets, by construction
-  const netVanna = DATA2.vannaPerTenor.reduce((s, r) => s + r.v, 0);
-  const netVolga = DATA2.volgaPerTenor.reduce((s, r) => s + r.v, 0);
+  const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
+  const netVolga = pt.reduce((s, r) => s + r.volga, 0);
   const sumPC = +DATA2.vegaPCA.reduce((s, p) => s + p.vega, 0).toFixed(1);
   const skewResid = +(g.vega - sumPC).toFixed(1); // vega outside the 3 signal modes = incident skew
   const SKEW_THR = 5; // |residual| above this = a leak to investigate
@@ -757,7 +757,7 @@ export function RiskView(): JSX.Element {
             </div>
             <div className="gs-section-lbl util-lbl">Vega exposure <span className="dim">· by tenor (curve) & by signal mode (PCA)</span></div>
             <div className="gs-2col">
-              <div className="gs-sub"><div className="gs-sublbl mono dim">vega by tenor · curve 1M–6M (magnitude)</div><VegaTenorLadder /></div>
+              <div className="gs-sub"><div className="gs-sublbl mono dim">vega by tenor · curve 1M–6M (magnitude)</div><VegaTenorLadder rows={pt} /></div>
               <div className="gs-sub"><div className="gs-sublbl mono dim">vega → PCA mode · the signal base ($k)</div><DivBars rows={DATA2.vegaPCA.map((p) => ({ label: p.mode, sub: p.name + " · " + p.var + "%", v: p.vega }))} unit="k" /></div>
             </div>
             <div className="skew-resid">
@@ -775,8 +775,8 @@ export function RiskView(): JSX.Element {
             </div>
             <div className="gs-section-lbl util-lbl">Vanna / Volga by tenor <span className="dim">· skew & convexity risk, signed · $k/vp · échelle √</span></div>
             <div className="gs-2col">
-              <div className="gs-sub"><div className="gs-sublbl mono dim">vanna by tenor · dVega/dSpot (where RR lives)</div><DivBars rows={DATA2.vannaPerTenor.map((r) => ({ label: r.tenor, v: r.v, flag: Math.abs(r.v) >= 150 ? "outlier — RR 2M domine" : null }))} unit="k" scale="sqrt" /></div>
-              <div className="gs-sub"><div className="gs-sublbl mono dim">volga by tenor · dVega/dVol (where BF lives)</div><DivBars rows={DATA2.volgaPerTenor.map((r) => ({ label: r.tenor, v: r.v }))} unit="k" scale="sqrt" /></div>
+              <div className="gs-sub"><div className="gs-sublbl mono dim">vanna by tenor · dVega/dSpot (where RR lives)</div><DivBars rows={pt.map((r) => ({ label: r.tenor, v: r.vanna, flag: Math.abs(r.vanna) >= 150 ? "outlier — RR 2M domine" : null }))} unit="k" scale="sqrt" /></div>
+              <div className="gs-sub"><div className="gs-sublbl mono dim">volga by tenor · dVega/dVol (where BF lives)</div><DivBars rows={pt.map((r) => ({ label: r.tenor, v: r.volga }))} unit="k" scale="sqrt" /></div>
             </div>
             <div className="gs-section-lbl util-lbl">Risk utilization <span className="dim">· used vs limit</span></div>
             <div className="util-bars">

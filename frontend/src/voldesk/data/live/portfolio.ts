@@ -22,7 +22,7 @@ import {
   account as mockAccount,
   type Position,
 } from "../core";
-import type { VarData } from "../deskData";
+import type { HistBin, TenorRisk, VarData } from "../deskData";
 import type { BookComposition, PerfStats, VegaTenor, WaterfallStep } from "../extended";
 
 const n = (v: unknown): number => (typeof v === "number" ? v : 0);
@@ -164,20 +164,50 @@ export function deriveBookComposition(positions: Position[]): BookComposition {
   };
 }
 
-/** /portfolio/var → 1d VaR 95/99 + ES 99, in $k (backend gives USD losses). */
+/** /portfolio/var → 1d VaR 95/99 + ES 99 ($k) + empirical histogram ($k bins).
+ * `perTenor` is filled by the provider from /risk-per-tenor. */
 export function adaptVar(raw: unknown): VarData {
   const v = (raw ?? {}) as {
     var_95_usd?: number | null;
     var_99_usd?: number | null;
     es_99_usd?: number | null;
     n_days?: number | null;
+    hist?: { lo?: number; hi?: number; count?: number }[];
   };
+  const hist: HistBin[] = (v.hist ?? []).map((b) => ({
+    lo: n(b.lo) / 1000,
+    hi: n(b.hi) / 1000,
+    count: n(b.count),
+  }));
   return {
     var95: n(v.var_95_usd) / 1000,
     var99: n(v.var_99_usd) / 1000,
     es99: n(v.es_99_usd) / 1000,
     nDays: v.n_days ?? 0,
+    hist,
+    perTenor: [],
   };
+}
+
+interface RiskTenorRow {
+  bucket?: string;
+  vega_usd?: number | null;
+  vanna_usd?: number | null;
+  volga_usd?: number | null;
+  n_positions?: number | null;
+}
+
+/** /portfolio/risk-per-tenor → vega/vanna/volga by tenor, $ → $k (all displayed
+ * with the "k" suffix). */
+export function adaptRiskPerTenor(raw: unknown): TenorRisk[] {
+  const rows = Array.isArray(raw) ? (raw as RiskTenorRow[]) : [];
+  return rows.map((r) => ({
+    tenor: r.bucket ?? "",
+    vega: n(r.vega_usd) / 1000,
+    vanna: n(r.vanna_usd) / 1000,
+    volga: n(r.volga_usd) / 1000,
+    n: r.n_positions ?? 0,
+  }));
 }
 
 /** /portfolio/equity-curve → net-liq series for the equity chart. */
