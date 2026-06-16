@@ -6,6 +6,14 @@ import { useDeskData } from "../deskData";
 import { makeFresh, statusFor } from "../freshness";
 import { adaptConfig, adaptConfigCurrent, adaptConfigHistory } from "../live/config";
 import { adaptPca } from "../live/pca";
+import {
+  adaptAccount as adaptPortfolioAccount,
+  adaptDailyPnl,
+  adaptPerfStats,
+  adaptVegaPerTenor,
+  adaptWaterfallGreek,
+  deriveBookComposition,
+} from "../live/portfolio";
 import { adaptIvSurface } from "../live/surface";
 import { adaptSystem } from "../live/system";
 import { adaptTermStructure } from "../live/termStructure";
@@ -235,6 +243,61 @@ describe("adaptPositions / deriveNetGreeks / adaptAccount / adaptLimits / adaptE
   });
 });
 
+describe("portfolio adapters", () => {
+  it("account: margin %, deltas from prev_24h", () => {
+    const a = adaptPortfolioAccount({
+      latest: { net_liq_usd: 1000, cash_usd: 400, init_margin_req: 250, maint_margin_req: 150, excess_liquidity: 750, cushion: 0.7, open_positions_count: 6 },
+      prev_24h: { net_liq_usd: 900, cash_usd: 380 },
+    });
+    expect(a.netLiq).toBe(1000);
+    expect(a.marginInitPct).toBeCloseTo(25, 1);
+    expect(a.marginMaintPct).toBeCloseTo(15, 1);
+    expect(a.nPositions).toBe(6);
+    expect(a.dNetLiq).toBeCloseTo(((1000 - 900) / 900) * 100, 1); // ~11.1%
+    expect(a.dayPnl).toBeCloseTo(100, 1);
+  });
+
+  it("vega-per-tenor: vega_usd → $k", () => {
+    const v = adaptVegaPerTenor([{ bucket: "1M", vega_usd: 6400, n_positions: 4 }]);
+    expect(v[0]).toMatchObject({ tenor: "1M", vega: 6.4, n: 4 });
+  });
+
+  it("perf-stats: $→$k, hit_rate→%", () => {
+    const ps = adaptPerfStats({ sharpe: 1.8, max_drawdown_pct: -8.2, current_drawdown_pct: -1.4, hit_rate: 0.58, cum_realized_usd: 312000, cum_unrealized_usd: 38400 });
+    expect(ps).toMatchObject({ sharpe: 1.8, maxDd: -8.2, currentDd: -1.4 });
+    expect(ps.cumRealized).toBe(312);
+    expect(ps.cumUnrealized).toBeCloseTo(38.4, 1);
+    expect(ps.hitRate).toBeCloseTo(58, 1);
+  });
+
+  it("daily-pnl: realized series → $k", () => {
+    const d = adaptDailyPnl({ series: [{ realized_usd: 48000 }, { realized_usd: -4000 }] });
+    expect(d).toEqual([48, -4]);
+  });
+
+  it("waterfall greek: totals → bridge steps in $k", () => {
+    const w = adaptWaterfallGreek({ totals: { actual_pnl: 24900, gamma_pnl: 88200, vega_pnl: 54100, theta_pnl: -118400, delta_pnl: -5900, residual: 1300 } });
+    const byLabel = Object.fromEntries(w.map((s) => [s.label, s.v]));
+    expect(byLabel["+Γ"]).toBe(88.2);
+    expect(byLabel["−Θ"]).toBe(-118.4);
+    expect(byLabel["Net"]).toBe(24.9);
+    expect(w[0]).toMatchObject({ label: "Start", type: "start" });
+  });
+
+  it("book composition: groups positions by structure, € → M, pct sums ~100", () => {
+    const bc = deriveBookComposition([
+      { structure: "Straddle ATM 1M", nominal: 6_000_000, vanna: 1, volga: 2 },
+      { structure: "Straddle ATM 1M", nominal: 250_000, vanna: 1, volga: 2 },
+      { structure: "Risk Reversal 25Δ", nominal: 7_500_000, vanna: 90, volga: 1 },
+    ] as never);
+    expect(bc.legs).toBe(3);
+    const straddle = bc.byStructure.find((s) => s.name.startsWith("Straddle"))!;
+    expect(straddle.legs).toBe(2);
+    expect(straddle.nominal).toBeCloseTo(6.25, 2);
+    expect(bc.byStructure.reduce((s, x) => s + x.pct, 0)).toBeCloseTo(100, 1);
+  });
+});
+
 function TermProbe(): JSX.Element {
   const { termStructure } = useDeskData();
   return (
@@ -298,6 +361,17 @@ function TradeProbe(): JSX.Element {
       <span data-testid="tr-status">{trade.status}</span>
       <span data-testid="tr-pos">{trade.data?.positions.length ?? "none"}</span>
       <span data-testid="tr-netd">{trade.data?.greeks.netDelta ?? "none"}</span>
+    </div>
+  );
+}
+
+function PortfolioProbe(): JSX.Element {
+  const { portfolio } = useDeskData();
+  return (
+    <div>
+      <span data-testid="pf-status">{portfolio.status}</span>
+      <span data-testid="pf-netliq">{portfolio.data?.account.netLiq ?? "none"}</span>
+      <span data-testid="pf-wf">{portfolio.data?.waterfallGreek.length ?? "none"}</span>
     </div>
   );
 }
@@ -423,6 +497,35 @@ describe("DataProvider swap", () => {
     await waitFor(() => expect(screen.getByTestId("sys-eng").textContent).toBe("2"));
     expect(screen.getByTestId("sys-layers").textContent).toBe("5");
     expect(screen.getByTestId("sys-status").textContent).toBe("live");
+  });
+
+  it("mock mode serves synthetic portfolio (account + greek waterfall)", () => {
+    render(
+      <DataProvider mock={true}>
+        <PortfolioProbe />
+      </DataProvider>,
+    );
+    expect(screen.getByTestId("pf-status").textContent).toBe("live");
+    expect(Number(screen.getByTestId("pf-netliq").textContent)).toBeGreaterThan(0);
+    expect(Number(screen.getByTestId("pf-wf").textContent)).toBeGreaterThan(0);
+  });
+
+  it("live mode composes the portfolio (account net-liq from /portfolio/account)", async () => {
+    server.use(
+      http.get("*/api/v1/portfolio/account", () =>
+        HttpResponse.json({
+          latest: { net_liq_usd: 4_200_000, cash_usd: 1_500_000, init_margin_req: 1_800_000, maint_margin_req: 1_200_000, excess_liquidity: 2_900_000, cushion: 0.7, open_positions_count: 8 },
+          prev_24h: { net_liq_usd: 4_180_000 },
+        }),
+      ),
+    );
+    render(
+      <DataProvider mock={false}>
+        <PortfolioProbe />
+      </DataProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("pf-netliq").textContent).toBe("4200000"));
+    expect(screen.getByTestId("pf-status").textContent).toBe("live");
   });
 
   it("mock mode serves synthetic config (sections + version)", () => {

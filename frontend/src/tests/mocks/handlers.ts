@@ -56,6 +56,16 @@ export const handlers = [
   http.get("*/api/v1/portfolio/cash", () =>
     HttpResponse.json({ currencies: [], total_usd: 0, eurusd_spot: null, freshness: "missing" }),
   ),
+  http.get("*/api/v1/portfolio/account", () =>
+    HttpResponse.json({ latest: null, prev_24h: null, freshness: "missing" }),
+  ),
+  http.get("*/api/v1/portfolio/vega-per-tenor", () => HttpResponse.json([])),
+  http.get("*/api/v1/portfolio/stats", () =>
+    HttpResponse.json({ sharpe: null, max_drawdown_pct: null, current_drawdown_pct: null, hit_rate: null, cum_realized_usd: 0, cum_unrealized_usd: 0, n_closed: 0, n_open: 0, n_days: 0 }),
+  ),
+  http.get("*/api/v1/portfolio/daily-pnl", () => HttpResponse.json({ days: 90, series: [], total_realized_usd: 0 })),
+  http.get("*/api/v1/portfolio/pnl-attribution", () => HttpResponse.json({ totals: {}, per_position: [] })),
+  http.get("*/api/v1/portfolio/equity-curve", () => HttpResponse.json([])),
 ];
 
 export const server = setupServer(...handlers);
