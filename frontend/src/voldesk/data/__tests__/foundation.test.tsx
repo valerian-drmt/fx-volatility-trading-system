@@ -234,11 +234,13 @@ describe("adaptPositions / deriveNetGreeks / adaptAccount / adaptLimits / adaptE
   });
 
   it("events map + validate impact, keep ISO date for the view parser", () => {
+    const now = Date.parse("2026-06-30T12:30:00Z"); // 1 day before NFP
     const e = adaptEvents([
       { event_type: "NFP", impact: "high", region: "US", scheduled_at: "2026-07-01T12:30:00Z", source: "FRED", description: "Non-Farm Payrolls" },
       { event_type: "X", impact: "weird" },
-    ]);
+    ], now);
     expect(e[0]).toMatchObject({ code: "NFP", impact: "high", country: "US", src: "FRED", date: "2026-07-01T12:30:00Z" });
+    expect(e[0]!.in).toBe("1d 0h"); // relative countdown
     expect(e[1]!.impact).toBe("low"); // unknown → low
   });
 });
