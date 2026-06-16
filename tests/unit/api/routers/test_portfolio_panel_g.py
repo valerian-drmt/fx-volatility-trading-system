@@ -70,6 +70,34 @@ async def test_sharpe_positive_for_uptrend():
     assert max_dd == 0.0        # monotone up → never below peak
 
 
+# ───────────────────────────── _var_stats ───────────────────────────────────
+
+
+async def test_var_stats_short_series_is_none():
+    from api.routers.portfolio_panel import _var_stats
+    assert _var_stats([1.0, -2.0, 3.0]) is None
+
+
+async def test_var_stats_quantiles_and_es():
+    from api.routers.portfolio_panel import _var_stats
+    # 100 deltas from -100..-1 (losses) → VaR/ES on the left tail.
+    deltas = [float(-x) for x in range(1, 101)]  # -1 .. -100
+    out = _var_stats(deltas)
+    assert out is not None
+    # 1% quantile of the sorted (−100..−1) list ≈ −99.01; 5% ≈ −95.05
+    assert out["var_99"] == pytest.approx(-99.01, abs=0.5)
+    assert out["var_95"] == pytest.approx(-95.05, abs=0.5)
+    # ES99 = mean of losses ≤ var99 (the worst ~1) → about −100
+    assert out["es_99"] <= out["var_99"]
+    assert out["n"] == 100.0
+
+
+async def test_percentile_interpolates():
+    from api.routers.portfolio_panel import _percentile
+    assert _percentile([0.0, 10.0], 0.5) == pytest.approx(5.0)
+    assert _percentile([], 0.5) is None
+
+
 # ───────────────────────────── cash_holdings ────────────────────────────────
 
 

@@ -1055,6 +1055,32 @@ async def scenarios(db: DbDep) -> dict[str, Any]:
 # ───────────────────────── P4 — Trade holdings + performance (R11 G) ─────────
 
 
+def _percentile(sorted_vals: list[float], q: float) -> float | None:
+    """Linear-interpolated q-quantile (q in [0,1]) of an already-sorted list."""
+    if not sorted_vals:
+        return None
+    rank = q * (len(sorted_vals) - 1)
+    lo = int(rank)
+    hi = min(lo + 1, len(sorted_vals) - 1)
+    return sorted_vals[lo] + (rank - lo) * (sorted_vals[hi] - sorted_vals[lo])
+
+
+def _var_stats(deltas: list[float]) -> dict[str, float] | None:
+    """Pure compute (unit-tested): historical 1d VaR 95/99 + ES 99 (mean of the
+    losses at or below the 99% quantile) from a list of net-liq daily changes.
+    `None` when < 5 observations. Values are losses (negative)."""
+    if len(deltas) < 5:
+        return None
+    s = sorted(deltas)
+    var95 = _percentile(s, 0.05)
+    var99 = _percentile(s, 0.01)
+    if var95 is None or var99 is None:
+        return None
+    tail = [x for x in s if x <= var99]
+    es99 = sum(tail) / len(tail) if tail else var99
+    return {"var_95": var95, "var_99": var99, "es_99": es99, "n": float(len(deltas))}
+
+
 def _sharpe_and_drawdown(nl: list[float]) -> tuple[float | None, float | None, float | None]:
     """Pure compute (unit-tested): from a daily net-liq curve → annualised
     Sharpe, max drawdown (≤0), and current drawdown vs the running peak (≤0).
@@ -1153,6 +1179,39 @@ async def daily_pnl(db: DbDep, days: int = Query(90, ge=1, le=730)) -> dict[str,
             "n_closed": int(r.n_closed),
         })
     return {"days": days, "series": series, "total_realized_usd": round(cum, 2)}
+
+
+@router.get("/var")
+async def value_at_risk(db: DbDep) -> dict[str, Any]:
+    """Historical 1-day Value-at-Risk (R11 G-risk).
+
+    VaR 95 / 99 + ES 99 from the empirical distribution of daily ``net_liq``
+    changes over the last ~504 sessions. Values are losses (negative USD).
+    Fields ``None`` when < 5 days of history. The factor decomposition
+    (skew/level/curvature) + per-position marginal-VaR remain a separate G-risk
+    PR (they need greeks × shock attribution, not just the net-liq series).
+    """
+    nl_sql = text("""
+        WITH daily AS (
+          SELECT DISTINCT ON (date_trunc('day', timestamp))
+                 date_trunc('day', timestamp) AS day, net_liq_usd
+            FROM account_history
+           WHERE timestamp >= NOW() - INTERVAL '504 days' AND net_liq_usd IS NOT NULL
+           ORDER BY date_trunc('day', timestamp), timestamp DESC
+        )
+        SELECT net_liq_usd FROM daily ORDER BY day
+    """)
+    nl = [float(r[0]) for r in (await db.execute(nl_sql)).all()]
+    deltas = [nl[i] - nl[i - 1] for i in range(1, len(nl))]
+    stats = _var_stats(deltas)
+    return {
+        "computed_at": datetime.now(UTC).isoformat(),
+        "method": "historical",
+        "n_days": len(deltas),
+        "var_95_usd": round(stats["var_95"], 2) if stats else None,
+        "var_99_usd": round(stats["var_99"], 2) if stats else None,
+        "es_99_usd": round(stats["es_99"], 2) if stats else None,
+    }
 
 
 @router.get("/stats")
