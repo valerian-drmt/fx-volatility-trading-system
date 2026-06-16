@@ -267,25 +267,8 @@ class RegimeSnapshot(Base):
     signal_term_slope: Mapped[str | None] = mapped_column(String(8))
 
 
-class RegimeLookup(Base):
-    """Joint-pattern → regime mapping (15 base patterns, 5-bucket expansion).
-
-    Pattern shape ``"(<bucket_vol_level>,<bucket_vol_of_vol>,<bucket_term_slope>)"``,
-    e.g. ``"(0,0,+)"``. Unmapped tail-extreme combos fall back to a seeded row.
-    """
-
-    __tablename__ = "regime_pattern_dict"
-
-    pattern: Mapped[str] = mapped_column(String(20), primary_key=True)
-    regime_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    regime_name: Mapped[str] = mapped_column(String(60), nullable=False)
-    family: Mapped[str] = mapped_column(String(40), nullable=False)
-    action_default: Mapped[str] = mapped_column(String(80), nullable=False)
-    asymmetry_note: Mapped[str | None] = mapped_column(String(120))
-    intensity_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+# ``regime_pattern_dict`` (ORM RegimeLookup) dropped in migration 042 — the
+# lookup is now a code constant in ``core.regime_patterns.REGIME_PATTERNS``.
 
 
 class Event(Base):
@@ -405,28 +388,8 @@ class PcaSignal(Base):
     recommended_structure: Mapped[str | None] = mapped_column(String(80))
 
 
-class SignalRecommendationsMap(Base):
-    """Lookup PC × CHEAP/EXPENSIVE → recommended structure (6-row seed)."""
-
-    __tablename__ = "pca_structure_recommendation"
-    __table_args__ = (
-        UniqueConstraint(
-            "pc_id", "signal_label", "is_active",
-            name="uq_signal_rec_map_pc_label_active",
-        ),
-        CheckConstraint(
-            "signal_label IN ('CHEAP','EXPENSIVE')", name="ck_signal_rec_map_label",
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    pc_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    signal_label: Mapped[str] = mapped_column(String(15), nullable=False)
-    recommended_structure: Mapped[str] = mapped_column(String(60), nullable=False)
-    default_tenor: Mapped[str] = mapped_column(String(10), nullable=False)
-    description: Mapped[str | None] = mapped_column(String(200))
-    rationale: Mapped[str | None] = mapped_column(String(500))
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+# ``pca_structure_recommendation`` (ORM SignalRecommendationsMap) dropped in
+# migration 042 — now a code constant in ``core.pca_recommendations``.
 
 
 class StructureDefinition(Base):

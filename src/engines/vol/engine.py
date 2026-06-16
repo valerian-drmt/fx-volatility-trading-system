@@ -914,6 +914,7 @@ class VolEngine:
             import numpy as np
             from sqlalchemy import desc, select
 
+            from core.pca_recommendations import recommendation_label
             from core.vol.pca_engine import (
                 DELTAS,
                 TENORS,
@@ -930,7 +931,6 @@ class VolEngine:
             from persistence.models import (
                 PcaModel,
                 PcaSignal,
-                SignalRecommendationsMap,
                 SurfaceSnapshotHourly,
             )
 
@@ -974,14 +974,14 @@ class VolEngine:
                         hist_raw[r[0]].append(float(r[1]))
                         hist_z[r[0]].append(float(r[2]))
 
-                rec_rows = (await session.execute(
-                    select(
-                        SignalRecommendationsMap.pc_id, SignalRecommendationsMap.signal_label,
-                        SignalRecommendationsMap.recommended_structure,
-                        SignalRecommendationsMap.default_tenor,
-                    ).where(SignalRecommendationsMap.is_active.is_(True))
-                )).all()
-                rec_map = {(r[0], r[1]): f"{r[2]}_{r[3]}" for r in rec_rows}
+                # Sourced from core.pca_recommendations (was the
+                # ``pca_structure_recommendation`` table until migration 042).
+                rec_map: dict[tuple[int, str], str] = {}
+                for pc in (1, 2, 3):
+                    for lab in ("CHEAP", "EXPENSIVE"):
+                        label_str = recommendation_label(pc, lab)
+                        if label_str is not None:
+                            rec_map[(pc, lab)] = label_str
 
                 # PC3 sub-signals : skew + convex history from snapshot_hourly.
                 # We cap at 200 latest rows — rolling z-score window, not the

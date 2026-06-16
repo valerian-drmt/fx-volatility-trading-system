@@ -16,6 +16,7 @@ from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
+from core.pca_recommendations import recommendation_label
 from core.vol.pca_engine import (
     N_FEATURES,
     actionable_check,
@@ -30,7 +31,6 @@ from core.vol.pca_engine import (
 from persistence.models import (
     PcaModel,
     PcaSignal,
-    SignalRecommendationsMap,
     SurfaceSnapshotHourly,
 )
 
@@ -331,16 +331,14 @@ async def _backfill_signals_from_fit(
     sigma = np.where(sigma <= 0, 1.0, sigma)
     z = (raw - mu) / sigma
 
-    # Recommendation lookup
-    rec_rows = (await db.execute(
-        select(
-            SignalRecommendationsMap.pc_id,
-            SignalRecommendationsMap.signal_label,
-            SignalRecommendationsMap.recommended_structure,
-            SignalRecommendationsMap.default_tenor,
-        ).where(SignalRecommendationsMap.is_active.is_(True))
-    )).all()
-    rec_map = {(r[0], r[1]): f"{r[2]}_{r[3]}" for r in rec_rows}
+    # Recommendation lookup — sourced from core.pca_recommendations (was the
+    # ``pca_structure_recommendation`` table until migration 042 dropped it).
+    rec_map: dict[tuple[int, str], str] = {}
+    for pc in (1, 2, 3):
+        for lab in ("CHEAP", "EXPENSIVE"):
+            label_str = recommendation_label(pc, lab)
+            if label_str is not None:
+                rec_map[(pc, lab)] = label_str
 
     T = X.shape[0]
     rows_to_add: list[PcaSignal] = []
