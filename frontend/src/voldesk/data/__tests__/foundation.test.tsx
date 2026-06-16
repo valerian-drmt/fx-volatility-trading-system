@@ -10,6 +10,7 @@ import {
   adaptAccount as adaptPortfolioAccount,
   adaptDailyPnl,
   adaptPerfStats,
+  adaptVar,
   adaptVegaPerTenor,
   adaptWaterfallGreek,
   deriveBookComposition,
@@ -286,6 +287,11 @@ describe("portfolio adapters", () => {
     expect(w[0]).toMatchObject({ label: "Start", type: "start" });
   });
 
+  it("var: USD losses → $k", () => {
+    const v = adaptVar({ var_95_usd: -184000, var_99_usd: -312000, es_99_usd: -362000, n_days: 503 });
+    expect(v).toEqual({ var95: -184, var99: -312, es99: -362, nDays: 503 });
+  });
+
   it("book composition: groups positions by structure, € → M, pct sums ~100", () => {
     const bc = deriveBookComposition([
       { structure: "Straddle ATM 1M", nominal: 6_000_000, vanna: 1, volga: 2 },
@@ -528,6 +534,24 @@ describe("DataProvider swap", () => {
     );
     await waitFor(() => expect(screen.getByTestId("pf-netliq").textContent).toBe("4200000"));
     expect(screen.getByTestId("pf-status").textContent).toBe("live");
+  });
+
+  it("live mode fetches the VaR card values ($k)", async () => {
+    server.use(
+      http.get("*/api/v1/portfolio/var", () =>
+        HttpResponse.json({ var_95_usd: -184000, var_99_usd: -312000, es_99_usd: -362000, n_days: 480 }),
+      ),
+    );
+    function VarProbe(): JSX.Element {
+      const { risk } = useDeskData();
+      return <span data-testid="v99">{risk.data?.var99 ?? "none"}</span>;
+    }
+    render(
+      <DataProvider mock={false}>
+        <VarProbe />
+      </DataProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("v99").textContent).toBe("-312"));
   });
 
   it("mock mode serves synthetic config (sections + version)", () => {
