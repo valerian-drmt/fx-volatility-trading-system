@@ -45,6 +45,10 @@ export const handlers = [
   http.get("*/api/v1/dev/engines", () =>
     HttpResponse.json({ engines: [], ib_gateway: { status: "OK" } }),
   ),
+  http.get("*/api/v1/admin/config", () =>
+    HttpResponse.json({ version: 0, config: {}, updated_at: "2026-06-16T00:00:00Z", updated_by: null, comment: null }),
+  ),
+  http.get("*/api/v1/admin/config/history", () => HttpResponse.json([])),
 ];
 
 export const server = setupServer(...handlers);

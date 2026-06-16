@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { server } from "../../../tests/mocks/handlers";
 import { useDeskData } from "../deskData";
 import { makeFresh, statusFor } from "../freshness";
+import { adaptConfig, adaptConfigCurrent, adaptConfigHistory } from "../live/config";
 import { adaptPca } from "../live/pca";
 import { adaptIvSurface } from "../live/surface";
 import { adaptSystem } from "../live/system";
@@ -135,6 +136,41 @@ describe("adaptSystem", () => {
   });
 });
 
+describe("adaptConfig", () => {
+  const current = {
+    version: 12,
+    config: { signal: { pca: { z_threshold: 1.5 } }, sizing: { base_contracts: 25 }, debug: true },
+    updated_by: "quant",
+    comment: "x",
+  };
+
+  it("folds nested config into sections + flattens dotted keys", () => {
+    const out = adaptConfigCurrent(current);
+    expect(out.version).toBe(12);
+    const signal = out.sections.find((s) => s.name === "signal")!;
+    expect(signal.fields).toEqual([{ key: "pca.z_threshold", value: "1.5" }]);
+    // scalar top-level keys land in "general"
+    const general = out.sections.find((s) => s.name === "general")!;
+    expect(general.fields).toContainEqual({ key: "debug", value: "true" });
+  });
+
+  it("maps history rows with fallbacks", () => {
+    const rows = adaptConfigHistory([
+      { version: 12, updated_by: "quant", comment: "c", updated_at: "2026-06-16T00:00:00Z" },
+      { version: 11 },
+    ]);
+    expect(rows[0]).toEqual({ version: 12, by: "quant", comment: "c", at: "2026-06-16T00:00:00Z" });
+    expect(rows[1]).toEqual({ version: 11, by: "—", comment: "", at: null });
+  });
+
+  it("adaptConfig bundles current + history", () => {
+    const out = adaptConfig(current, [{ version: 12, updated_by: "quant" }]);
+    expect(out.currentVersion).toBe(12);
+    expect(out.sections.length).toBeGreaterThan(0);
+    expect(out.history).toHaveLength(1);
+  });
+});
+
 function TermProbe(): JSX.Element {
   const { termStructure } = useDeskData();
   return (
@@ -176,6 +212,17 @@ function SystemProbe(): JSX.Element {
       <span data-testid="sys-status">{system.status}</span>
       <span data-testid="sys-eng">{system.data?.engines.length ?? "none"}</span>
       <span data-testid="sys-layers">{system.data?.stack.length ?? "none"}</span>
+    </div>
+  );
+}
+
+function ConfigProbe(): JSX.Element {
+  const { config } = useDeskData();
+  return (
+    <div>
+      <span data-testid="cfg-status">{config.status}</span>
+      <span data-testid="cfg-v">{config.data?.currentVersion ?? "none"}</span>
+      <span data-testid="cfg-sec">{config.data?.sections.length ?? "none"}</span>
     </div>
   );
 }
@@ -301,6 +348,34 @@ describe("DataProvider swap", () => {
     await waitFor(() => expect(screen.getByTestId("sys-eng").textContent).toBe("2"));
     expect(screen.getByTestId("sys-layers").textContent).toBe("5");
     expect(screen.getByTestId("sys-status").textContent).toBe("live");
+  });
+
+  it("mock mode serves synthetic config (sections + version)", () => {
+    render(
+      <DataProvider mock={true}>
+        <ConfigProbe />
+      </DataProvider>,
+    );
+    expect(screen.getByTestId("cfg-status").textContent).toBe("live");
+    expect(Number(screen.getByTestId("cfg-sec").textContent)).toBeGreaterThan(0);
+  });
+
+  it("live mode fetches + folds the versioned config", async () => {
+    server.use(
+      http.get("*/api/v1/admin/config", () =>
+        HttpResponse.json({ version: 7, config: { surface: { calibration: "SSVI" } }, updated_by: "quant" }),
+      ),
+      http.get("*/api/v1/admin/config/history", () =>
+        HttpResponse.json([{ version: 7, updated_by: "quant", comment: "no-arb", updated_at: "2026-06-16T00:00:00Z" }]),
+      ),
+    );
+    render(
+      <DataProvider mock={false}>
+        <ConfigProbe />
+      </DataProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("cfg-v").textContent).toBe("7"));
+    expect(screen.getByTestId("cfg-status").textContent).toBe("live");
   });
 
   it("live mode fetches + adapts the backend term-structure", async () => {
