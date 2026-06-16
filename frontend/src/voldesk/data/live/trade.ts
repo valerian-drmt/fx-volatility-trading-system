@@ -196,15 +196,27 @@ interface BackendEvent {
   source?: string;
 }
 
-/** /regime/events → MacroEvent[]. `date` keeps the locale string the view parses. */
-export function adaptEvents(raw: unknown): MacroEvent[] {
+/** Relative "in 3h" / "in 2d 4h" / "now" string for an upcoming event. */
+function inWords(at: number, now: number): string {
+  const ms = at - now;
+  if (ms <= 0) return "now";
+  const h = ms / 3.6e6;
+  if (h < 24) return `${Math.round(h)}h`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${Math.round(h - d * 24)}h`;
+}
+
+/** /regime/events → MacroEvent[]. `date` keeps the ISO string (the view's
+ * parseEvt Date.parse's it) ; `in` is the relative countdown at fetch time. */
+export function adaptEvents(raw: unknown, now: number): MacroEvent[] {
   const rows = Array.isArray(raw) ? (raw as BackendEvent[]) : [];
   return rows.map((e) => {
+    const at = e.scheduled_at ? Date.parse(e.scheduled_at) : NaN;
     return {
       date: e.scheduled_at ?? "", // ISO — parseEvt() in the view Date.parse's it
       country: e.region ?? "",
       impact: e.impact && IMPACT.has(e.impact) ? e.impact : "low",
-      in: "",
+      in: Number.isNaN(at) ? "" : inWords(at, now),
       code: e.event_type ?? "",
       content: e.description ?? e.event_type ?? "",
       src: e.source ?? "",

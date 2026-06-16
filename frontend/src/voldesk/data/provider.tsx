@@ -207,7 +207,7 @@ export function DataProvider({
         greeks: deriveNetGreeks(positions),
         account: adaptAccount(book),
         limits: adaptLimits(lim),
-        events: adaptEvents(evts),
+        events: adaptEvents(evts, Date.now()),
         cash: adaptCash(cash),
       };
     },

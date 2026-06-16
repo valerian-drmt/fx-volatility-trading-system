@@ -7,11 +7,12 @@ import { Bar, Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
 import { DATA, DATA2, fmt } from "../data";
-import type { Pc } from "../data";
+import type { Pc, TermPoint } from "../data";
+import { useDeskData } from "../data/deskData";
+import type { FreshStatus } from "../data/freshness";
 
 // mini ATM term-structure with σ_fair overlay
-function MiniTerm(): JSX.Element {
-  const ts = DATA.termStructure;
+function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
   const w = 250,
     h = 74,
     pl = 6,
@@ -43,17 +44,22 @@ function MiniTerm(): JSX.Element {
 }
 
 export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element | null {
-  const a = DATA.account,
-    g = DATA.greeks,
-    r = DATA.regime,
-    L = DATA.limits,
-    f = DATA.feed;
-  const live = DATA.SPOT;
-  const cov = DATA2.coverage;
+  // Composition view: read the already-wired desk domains, fall back to mock.
+  const { pca, portfolio, trade, termStructure } = useDeskData();
+  const a = portfolio.data?.account ?? DATA.account,
+    g = portfolio.data?.greeks ?? DATA.greeks,
+    r = DATA.regime, // regime gate: no domain yet → mock (flagged in 09)
+    L = trade.data?.limits ?? DATA.limits,
+    f = DATA.feed; // freshness thresholds mock; ages/tones derived from domains below
+  const live = DATA.SPOT; // spot/move/RV: needs /ws/ticks → mock (flagged)
+  const cov = DATA2.coverage; // coverage: backend gap → mock (flagged)
+  const ts = termStructure.data ?? DATA.termStructure;
+  const events = trade.data?.events ?? DATA.events;
+  const totalNominal = portfolio.data?.bookComposition.totalNominal ?? DATA2.bookComposition.totalNominal;
   // signal: conviction-ranked by VARIANCE share (PC1 > PC2 > PC3)
-  const ranked = [...DATA.pcs].sort((x, y) => (y.variance || 0) - (x.variance || 0));
+  const ranked = [...(pca.data?.pcs ?? DATA.pcs)].sort((x, y) => (y.variance || 0) - (x.variance || 0));
   const lead = ranked[0];
-  const ev0 = DATA.events[0];
+  const ev0 = events[0];
   if (!lead || !ev0) return null;
   const convW = (pc: Pc): number => Math.sqrt(pc.variance || 0);
   const maxW = Math.max(...ranked.map(convW)) || 1;
@@ -61,13 +67,16 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
     lead.label === "CHEAP" ? "good" : lead.label === "RICH" || lead.label === "EXPENSIVE" ? "danger" : "neutral";
   // leverage — € notional ÷ € net liq
   const netLiqEur = a.netLiq / DATA.SPOT;
-  const grossX = (DATA2.bookComposition.totalNominal / (netLiqEur / 1e6)).toFixed(2);
+  const grossX = (totalNominal / (netLiqEur / 1e6)).toFixed(2);
   const netX = (18.2 / (netLiqEur / 1e6)).toFixed(2);
 
-  // freshness
-  const ftone = (age: number, warn: number, stale: number): Status => (age > stale ? "down" : age > warn ? "warn" : "up");
-  const feedTone = ftone(f.feedS, f.feedWarn, f.feedStale);
-  const surfTone = ftone(f.surfaceS, f.surfWarn, f.surfStale);
+  // freshness — derived from the live domains (honest staleness), not mock timers.
+  const toTone = (s: FreshStatus): Status => (s === "live" ? "up" : s === "stale" ? "warn" : "down");
+  const ageS = (ms: number | null, fallback: number): number => (ms != null ? Math.round(ms / 1000) : fallback);
+  const feedTone = toTone(trade.status);
+  const surfTone = toTone(termStructure.status);
+  const feedS = ageS(trade.ageMs, f.feedS);
+  const surfaceS = ageS(termStructure.ageMs, f.surfaceS);
   const surfStale = surfTone === "down";
   const worst: Status = [feedTone, surfTone].includes("down") ? "down" : [feedTone, surfTone].includes("warn") ? "warn" : "up";
 
@@ -113,10 +122,10 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
         <span className={"df-dot " + worst} />
         <b className="df-status">{worst === "down" ? "FEED STALE" : worst === "warn" ? "feed delayed" : "live"}</b>
         <span className="df-src mono">
-          feed <em className={feedTone}>{f.feedS}s</em>
+          feed <em className={feedTone}>{feedS}s</em>
         </span>
         <span className="df-src mono">
-          surface <em className={surfTone}>{f.surfaceS}s</em>
+          surface <em className={surfTone}>{surfaceS}s</em>
         </span>
         {surfStale && <span className="df-warn mono">surface &gt; {f.surfStale}s — greyed tiles are unreliable</span>}
         <span className="df-asof dim mono">as of {new Date().toLocaleTimeString("en-GB")} · UTC+1</span>
@@ -206,7 +215,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                 σ_fair
               </span>
             </div>
-            <MiniTerm />
+            <MiniTerm ts={ts} />
           </div>
         </Panel>
         <Panel
