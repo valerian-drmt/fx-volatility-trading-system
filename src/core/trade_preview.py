@@ -74,12 +74,23 @@ def bs_greeks(F: float, K: float, T: float, sigma: float, right: str) -> dict[st
 # ────────────────────────────────────────────────────────────────
 
 
-# leg_template per spec §5.1, kept in sync with the migration 013 seed.
+# Structure catalog + leg template per spec §5.1. Source of truth for both :
+#   - the trade-preview builder (uses ``legs``, ``vega_sign``, etc.)
+#   - the ``/api/v1/trade/structures`` endpoint, which surfaces entries
+#     marked ``in_catalog: True`` (the 6 main PCA-actionable structures).
+# A mirroring ``structure_definition_ref`` DB table existed (seeded by
+# migration 013 from a list identical to this dict) until migration 039
+# dropped it.
 TEMPLATES: dict[str, dict[str, Any]] = {
     "straddle_atm": {
         "display": "Long straddle ATM",
         "requires_delta_hedge": True,
         "vega_sign": "positive",
+        "in_catalog": True,
+        "typical_gamma_sign": "positive",
+        "typical_theta_sign": "negative",
+        "description": "Buy ATM call + ATM put",
+        "rationale_for_pc": "PC1 CHEAP : level low → buy vol",
         "legs": [
             {"contract_type": "call", "delta_pillar": "atm", "side": "BUY", "qty_factor": 1},
             {"contract_type": "put",  "delta_pillar": "atm", "side": "BUY", "qty_factor": 1},
@@ -89,6 +100,11 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "display": "Short OTM strangle",
         "requires_delta_hedge": True,
         "vega_sign": "negative",
+        "in_catalog": True,
+        "typical_gamma_sign": "negative",
+        "typical_theta_sign": "positive",
+        "description": "Sell 25d strangle",
+        "rationale_for_pc": "PC1 EXPENSIVE : level high → sell vol",
         "legs": [
             {"contract_type": "call", "delta_pillar": "25dc", "side": "SELL", "qty_factor": 1},
             {"contract_type": "put",  "delta_pillar": "25dp", "side": "SELL", "qty_factor": 1},
@@ -98,6 +114,11 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "display": "Calendar buy long-dated",
         "requires_delta_hedge": True,
         "vega_sign": "positive",
+        "in_catalog": True,
+        "typical_gamma_sign": "neutral",
+        "typical_theta_sign": "neutral",
+        "description": "Sell near, buy far",
+        "rationale_for_pc": "PC2 CHEAP : term inverted",
         "legs": [
             {"contract_type": "call", "delta_pillar": "atm", "tenor_role": "near", "side": "SELL", "qty_factor": 1},
             {"contract_type": "call", "delta_pillar": "atm", "tenor_role": "far",  "side": "BUY",  "qty_factor": 1},
@@ -107,6 +128,11 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "display": "Calendar sell long-dated",
         "requires_delta_hedge": True,
         "vega_sign": "negative",
+        "in_catalog": True,
+        "typical_gamma_sign": "neutral",
+        "typical_theta_sign": "neutral",
+        "description": "Buy near, sell far",
+        "rationale_for_pc": "PC2 EXPENSIVE : term steep",
         "legs": [
             {"contract_type": "call", "delta_pillar": "atm", "tenor_role": "near", "side": "BUY",  "qty_factor": 1},
             {"contract_type": "call", "delta_pillar": "atm", "tenor_role": "far",  "side": "SELL", "qty_factor": 1},
@@ -116,6 +142,11 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "display": "Long butterfly (10d wings)",
         "requires_delta_hedge": True,
         "vega_sign": "neutral",
+        "in_catalog": True,
+        "typical_gamma_sign": "neutral",
+        "typical_theta_sign": "neutral",
+        "description": "Long wings, short body",
+        "rationale_for_pc": "PC3 CHEAP : wings cheap",
         "legs": [
             {"contract_type": "call", "delta_pillar": "10dc", "side": "BUY",  "qty_factor": 1, "overridable": True},
             {"contract_type": "call", "delta_pillar": "atm",  "side": "SELL", "qty_factor": 2, "overridable": False},
@@ -126,6 +157,11 @@ TEMPLATES: dict[str, dict[str, Any]] = {
         "display": "Short butterfly (10d wings)",
         "requires_delta_hedge": True,
         "vega_sign": "neutral",
+        "in_catalog": True,
+        "typical_gamma_sign": "neutral",
+        "typical_theta_sign": "neutral",
+        "description": "Short wings, long body",
+        "rationale_for_pc": "PC3 EXPENSIVE : wings rich",
         "legs": [
             {"contract_type": "call", "delta_pillar": "10dc", "side": "SELL", "qty_factor": 1, "overridable": True},
             {"contract_type": "call", "delta_pillar": "atm",  "side": "BUY",  "qty_factor": 2, "overridable": False},

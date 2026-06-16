@@ -392,24 +392,8 @@ class PcaSignal(Base):
 # migration 042 — now a code constant in ``core.pca_recommendations``.
 
 
-class StructureDefinition(Base):
-    """Catalogue des structures supportées (6 rows seed)."""
-
-    __tablename__ = "structure_definitions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    structure_type: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
-    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
-    leg_template: Mapped[list] = mapped_column(JSONB_PORTABLE, nullable=False)
-    min_legs: Mapped[int] = mapped_column(Integer, nullable=False)
-    max_legs: Mapped[int] = mapped_column(Integer, nullable=False)
-    requires_delta_hedge: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    typical_vega_sign: Mapped[str] = mapped_column(String(10), nullable=False)
-    typical_gamma_sign: Mapped[str] = mapped_column(String(10), nullable=False)
-    typical_theta_sign: Mapped[str] = mapped_column(String(10), nullable=False)
-    description: Mapped[str | None] = mapped_column(String(300))
-    rationale_for_pc: Mapped[str | None] = mapped_column(String(300))
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+# ``structure_definitions`` (ORM StructureDefinition) dropped in migration 043 —
+# the catalogue is now the in_catalog entries of core.trade_preview.TEMPLATES.
 
 
 class TradePreviewRow(Base):

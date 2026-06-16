@@ -26,6 +26,7 @@ from core.execution.revalidation import revalidate_preview
 from core.execution.slippage import compute_limit_price
 from core.products import product_label_from_symbol
 from core.trade_preview import (
+    TEMPLATES,
     _spot_from_surface,
     build_structure,
     compute_legs_greeks,
@@ -45,7 +46,6 @@ from persistence.models import (
     IbConnectionState,
     PcaSignal,
     RegimeSnapshot,
-    StructureDefinition,
     StructureFill,
     StructureOrder,
     TradeEvent,
@@ -232,20 +232,26 @@ async def _read_surface_redis(symbol: str = "EURUSD") -> tuple[dict[str, Any] | 
 
 
 @router.get("/structures")
-async def list_structures(db: DbDep) -> list[dict[str, Any]]:
-    rows = (await db.execute(
-        select(StructureDefinition).where(StructureDefinition.is_active.is_(True))
-    )).scalars().all()
+async def list_structures() -> list[dict[str, Any]]:
+    """Catalogue of the PCA-actionable structures. Sourced from the
+    ``TEMPLATES`` dict in core.trade_preview (in_catalog=True entries) — was
+    backed by the ``structure_definitions`` table until migration 043 dropped it.
+    """
     return [
         {
-            "structure_type": r.structure_type, "display_name": r.display_name,
-            "leg_template": r.leg_template, "min_legs": r.min_legs, "max_legs": r.max_legs,
-            "requires_delta_hedge": r.requires_delta_hedge,
-            "typical_vega_sign": r.typical_vega_sign,
-            "typical_gamma_sign": r.typical_gamma_sign,
-            "typical_theta_sign": r.typical_theta_sign,
-            "rationale_for_pc": r.rationale_for_pc,
-        } for r in rows
+            "structure_type": k,
+            "display_name": v["display"],
+            "leg_template": v["legs"],
+            "min_legs": len(v["legs"]),
+            "max_legs": len(v["legs"]),
+            "requires_delta_hedge": v["requires_delta_hedge"],
+            "typical_vega_sign": v["vega_sign"],
+            "typical_gamma_sign": v.get("typical_gamma_sign", "neutral"),
+            "typical_theta_sign": v.get("typical_theta_sign", "neutral"),
+            "rationale_for_pc": v.get("rationale_for_pc"),
+        }
+        for k, v in TEMPLATES.items()
+        if v.get("in_catalog")
     ]
 
 

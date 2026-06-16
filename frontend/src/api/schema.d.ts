@@ -755,7 +755,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Structures */
+        /**
+         * List Structures
+         * @description Catalogue of the PCA-actionable structures. Sourced from the
+         *     ``TEMPLATES`` dict in core.trade_preview (in_catalog=True entries) — was
+         *     backed by the ``structure_definitions`` table until migration 043 dropped it.
+         */
         get: operations["list_structures_api_v1_trade_structures_get"];
         put?: never;
         post?: never;
