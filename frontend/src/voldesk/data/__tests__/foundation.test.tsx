@@ -10,6 +10,7 @@ import {
   adaptAccount as adaptPortfolioAccount,
   adaptDailyPnl,
   adaptPerfStats,
+  adaptRiskPerTenor,
   adaptVar,
   adaptVegaPerTenor,
   adaptWaterfallGreek,
@@ -197,6 +198,9 @@ describe("adaptPositions / deriveNetGreeks / adaptAccount / adaptLimits / adaptE
     expect(pos[0]).toMatchObject({ id: "7", packageId: "PK1", side: "SELL", qty: 5, pnl: -120, delta: 10, vega: 3 });
     expect(pos[0]!.dte).toBe(30); // Jul 16 − Jun 16
     expect(pos[0]!.pnlPct).toBeCloseTo(-0.012, 6); // -120 / 1e6 * 100
+    // δ/Γ/vega/θ stay $ ; vanna/volga ($) → $k for the "k"-suffixed display.
+    expect(pos[0]!.vanna).toBeCloseTo(0.0005, 9); // 0.5 / 1000
+    expect(pos[0]!.volga).toBeCloseTo(0.0002, 9); // 0.2 / 1000
   });
 
   it("net book greeks = Σ per-leg, non-net fields kept from mock", () => {
@@ -287,9 +291,18 @@ describe("portfolio adapters", () => {
     expect(w[0]).toMatchObject({ label: "Start", type: "start" });
   });
 
-  it("var: USD losses → $k", () => {
-    const v = adaptVar({ var_95_usd: -184000, var_99_usd: -312000, es_99_usd: -362000, n_days: 503 });
-    expect(v).toEqual({ var95: -184, var99: -312, es99: -362, nDays: 503 });
+  it("var: USD losses → $k + histogram bins → $k", () => {
+    const v = adaptVar({
+      var_95_usd: -184000, var_99_usd: -312000, es_99_usd: -362000, n_days: 503,
+      hist: [{ lo: -400000, hi: -300000, count: 3 }],
+    });
+    expect(v).toMatchObject({ var95: -184, var99: -312, es99: -362, nDays: 503, perTenor: [] });
+    expect(v.hist[0]).toEqual({ lo: -400, hi: -300, count: 3 });
+  });
+
+  it("risk-per-tenor: vega/vanna/volga $ → $k", () => {
+    const t = adaptRiskPerTenor([{ bucket: "1M", vega_usd: 6400, vanna_usd: 152000, volga_usd: -64000, n_positions: 4 }]);
+    expect(t[0]).toEqual({ tenor: "1M", vega: 6.4, vanna: 152, volga: -64, n: 4 });
   });
 
   it("book composition: groups positions by structure, € → M, pct sums ~100", () => {

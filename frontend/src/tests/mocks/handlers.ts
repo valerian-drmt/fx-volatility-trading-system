@@ -67,8 +67,9 @@ export const handlers = [
   http.get("*/api/v1/portfolio/pnl-attribution", () => HttpResponse.json({ totals: {}, per_position: [] })),
   http.get("*/api/v1/portfolio/equity-curve", () => HttpResponse.json([])),
   http.get("*/api/v1/portfolio/var", () =>
-    HttpResponse.json({ var_95_usd: null, var_99_usd: null, es_99_usd: null, n_days: 0, method: "historical" }),
+    HttpResponse.json({ var_95_usd: null, var_99_usd: null, es_99_usd: null, n_days: 0, method: "historical", hist: [] }),
   ),
+  http.get("*/api/v1/portfolio/risk-per-tenor", () => HttpResponse.json([])),
 ];
 
 export const server = setupServer(...handlers);
