@@ -15,6 +15,8 @@
  */
 import { type ReactNode, useEffect } from "react";
 import {
+  fetchConfig,
+  fetchConfigHistory,
   fetchDevEngines,
   fetchHealthExtended,
   fetchPcaHistory,
@@ -36,14 +38,17 @@ import {
   type TermPoint,
 } from "./core";
 import {
+  type ConfigData,
+  type ConfigSection,
   type DeskData,
   DeskDataContext,
   type PcaData,
   type SurfaceData,
   type SystemData,
 } from "./deskData";
-import { engines as mockEngines, stack as mockStack } from "./extended";
+import { config as mockConfig, engines as mockEngines, stack as mockStack } from "./extended";
 import { type Fresh, makeFresh } from "./freshness";
+import { adaptConfig } from "./live/config";
 import { adaptPca } from "./live/pca";
 import { adaptIvSurface } from "./live/surface";
 import { adaptSystem } from "./live/system";
@@ -56,6 +61,23 @@ const MOCK_PCA: PcaData = {
 const MOCK_SYSTEM: SystemData = { engines: mockEngines, stack: mockStack };
 const SYSTEM_POLL_MS = 10_000; // engine heartbeats: no WS push → poll
 const SYSTEM_WARN_MS = 20_000;
+const CONFIG_WARN_MS = Number.POSITIVE_INFINITY; // config rarely changes → never "stale"
+
+// Mock config is a flat key/value list; fold it into the hybrid (sections + history) shape.
+const MOCK_CONFIG: ConfigData = (() => {
+  const bySection = new Map<string, ConfigSection>();
+  for (const c of mockConfig) {
+    const [head, ...rest] = c.key.split(".");
+    const name = head ?? "general";
+    if (!bySection.has(name)) bySection.set(name, { name, fields: [] });
+    bySection.get(name)!.fields.push({ key: rest.length ? rest.join(".") : c.key, value: c.value });
+  }
+  return {
+    currentVersion: Math.max(...mockConfig.map((c) => c.v)),
+    sections: [...bySection.values()],
+    history: mockConfig.map((c) => ({ version: c.v, by: c.by, comment: c.note, at: null })),
+  };
+})();
 
 const DEFAULT_MOCK = (import.meta.env["VITE_USE_MOCK"] ?? "true") !== "false";
 const VOL_WARN_MS = 240_000; // vol-engine cycle ~3 min
@@ -102,6 +124,14 @@ export function DataProvider({
     SYSTEM_WARN_MS,
     !mock,
     SYSTEM_POLL_MS,
+  );
+  const liveConfig = useFetch<ConfigData>(
+    async () => {
+      const [current, history] = await Promise.all([fetchConfig(), fetchConfigHistory()]);
+      return adaptConfig(current, history);
+    },
+    CONFIG_WARN_MS,
+    !mock,
   );
 
   // Re-fetch surface + term + pca on each vol-engine cycle push (~3 min).
@@ -150,7 +180,11 @@ export function DataProvider({
     ? makeFresh(MOCK_SYSTEM, Date.now(), Number.POSITIVE_INFINITY)
     : liveSystem;
 
-  const value: DeskData = { termStructure, surface, pca, system };
+  const config: Fresh<ConfigData> = mock
+    ? makeFresh(MOCK_CONFIG, Date.now(), Number.POSITIVE_INFINITY)
+    : liveConfig;
+
+  const value: DeskData = { termStructure, surface, pca, system, config };
   return (
     <DeskDataContext.Provider value={value}>{children}</DeskDataContext.Provider>
   );

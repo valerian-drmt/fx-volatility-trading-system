@@ -27,6 +27,27 @@ export interface SystemData {
   stack: StackLayer[];
 }
 
+/** Versioned trading-config (Settings view, hybrid read model). */
+export interface ConfigVersionRow {
+  version: number;
+  by: string;
+  comment: string;
+  at: string | null;
+}
+export interface ConfigField {
+  key: string;
+  value: string;
+}
+export interface ConfigSection {
+  name: string;
+  fields: ConfigField[];
+}
+export interface ConfigData {
+  currentVersion: number;
+  sections: ConfigSection[];
+  history: ConfigVersionRow[];
+}
+
 export interface SurfaceData {
   /** 6×5 IV grid (%), [tenorIdx][deltaIdx]. Live from /vol/surface (PR 1). */
   ivSurface: number[][];
@@ -54,6 +75,8 @@ export interface DeskData {
   pca: Fresh<PcaData>;
   /** Container stack + engine heartbeats. Live (PR 2r.1, polled). */
   system: Fresh<SystemData>;
+  /** Versioned trading-config : history + current. Live read (PR 2r.2). */
+  config: Fresh<ConfigData>;
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);
