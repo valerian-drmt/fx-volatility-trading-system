@@ -9,7 +9,7 @@ import { adaptPca } from "../live/pca";
 import { adaptIvSurface } from "../live/surface";
 import { adaptSystem } from "../live/system";
 import { adaptTermStructure } from "../live/termStructure";
-import { adaptAccount, adaptEvents, adaptLimits, adaptPositions, deriveNetGreeks } from "../live/trade";
+import { adaptAccount, adaptCash, adaptEvents, adaptLimits, adaptPositions, deriveNetGreeks } from "../live/trade";
 import { DataProvider } from "../provider";
 
 describe("freshness contract", () => {
@@ -210,6 +210,19 @@ describe("adaptPositions / deriveNetGreeks / adaptAccount / adaptLimits / adaptE
     expect(L.gamma).toEqual({ cap: 30000, unit: "$/pip" });
     expect(L.deltaBandUsd).toBe(6000);
     expect(L.vega.cap).toBeGreaterThan(0); // fallback to mock
+  });
+
+  it("cash: usd_value → usd, drops unvalued currencies", () => {
+    const c = adaptCash({
+      currencies: [
+        { ccy: "USD", settled: 500, unsettled: null, rate: 1, usd_value: 500 },
+        { ccy: "EUR", settled: 200, unsettled: null, rate: 1.1, usd_value: 220 },
+        { ccy: "JPY", settled: 1000, unsettled: null, rate: null, usd_value: null },
+      ],
+    });
+    expect(c).toHaveLength(2); // JPY (no usd_value) dropped
+    expect(c[0]).toMatchObject({ ccy: "USD", settled: 500, usd: 500 });
+    expect(c[1]).toMatchObject({ ccy: "EUR", usd: 220, rate: 1.1 });
   });
 
   it("events map + validate impact, keep ISO date for the view parser", () => {
