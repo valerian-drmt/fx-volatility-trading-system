@@ -49,6 +49,10 @@ export const handlers = [
     HttpResponse.json({ version: 0, config: {}, updated_at: "2026-06-16T00:00:00Z", updated_by: null, comment: null }),
   ),
   http.get("*/api/v1/admin/config/history", () => HttpResponse.json([])),
+  http.get("*/api/v1/positions/open", () => HttpResponse.json([])),
+  http.get("*/api/v1/trade/limits", () => HttpResponse.json({})),
+  http.get("*/api/v1/trade/book", () => HttpResponse.json({ capital_total_usd: 0, margin_used_usd: 0 })),
+  http.get("*/api/v1/regime/events", () => HttpResponse.json([])),
 ];
 
 export const server = setupServer(...handlers);

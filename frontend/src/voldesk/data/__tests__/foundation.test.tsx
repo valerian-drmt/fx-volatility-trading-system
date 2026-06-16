@@ -9,6 +9,7 @@ import { adaptPca } from "../live/pca";
 import { adaptIvSurface } from "../live/surface";
 import { adaptSystem } from "../live/system";
 import { adaptTermStructure } from "../live/termStructure";
+import { adaptAccount, adaptEvents, adaptLimits, adaptPositions, deriveNetGreeks } from "../live/trade";
 import { DataProvider } from "../provider";
 
 describe("freshness contract", () => {
@@ -171,6 +172,56 @@ describe("adaptConfig", () => {
   });
 });
 
+describe("adaptPositions / deriveNetGreeks / adaptAccount / adaptLimits / adaptEvents", () => {
+  const now = Date.parse("2026-06-16T00:00:00Z");
+  const raw = [
+    {
+      id: 7, package_id: "PK1", side: "SELL", quantity: 5, structure: "Straddle ATM 1M",
+      expiry: "2026-07-16T00:00:00Z", current_pnl_usd: -120, nominal_eur: 1_000_000,
+      delta_usd: 10, gamma_usd: 2, vega_usd: 3, theta_usd: -1, vanna_usd: 0.5, volga_usd: 0.2,
+      iv: 8.1, market_price: 0.012, contract_price_entry: 0.011,
+    },
+  ];
+
+  it("maps a position row + derives dte/pnlPct", () => {
+    const pos = adaptPositions(raw, now);
+    expect(pos[0]).toMatchObject({ id: "7", packageId: "PK1", side: "SELL", qty: 5, pnl: -120, delta: 10, vega: 3 });
+    expect(pos[0]!.dte).toBe(30); // Jul 16 − Jun 16
+    expect(pos[0]!.pnlPct).toBeCloseTo(-0.012, 6); // -120 / 1e6 * 100
+  });
+
+  it("net book greeks = Σ per-leg, non-net fields kept from mock", () => {
+    const g = deriveNetGreeks(adaptPositions(raw, now));
+    expect(g.netDelta).toBe(10);
+    expect(g.netVega).toBe(3);
+    expect(g.netUnreal).toBe(-120);
+    expect(typeof g.var1d99).toBe("number"); // preserved from mock
+  });
+
+  it("account margin/excess from /trade/book", () => {
+    const a = adaptAccount({ capital_total_usd: 1000, margin_used_usd: 250 });
+    expect(a.marginInitPct).toBeCloseTo(25, 6);
+    expect(a.excessLiq).toBe(750);
+    expect(a.netLiq).toBe(1000);
+  });
+
+  it("limits keyed dict → struct with mock fallbacks", () => {
+    const L = adaptLimits({ gamma: { value: 30000, unit: "$/pip" }, deltaBandUsd: { value: 6000 } });
+    expect(L.gamma).toEqual({ cap: 30000, unit: "$/pip" });
+    expect(L.deltaBandUsd).toBe(6000);
+    expect(L.vega.cap).toBeGreaterThan(0); // fallback to mock
+  });
+
+  it("events map + validate impact, keep ISO date for the view parser", () => {
+    const e = adaptEvents([
+      { event_type: "NFP", impact: "high", region: "US", scheduled_at: "2026-07-01T12:30:00Z", source: "FRED", description: "Non-Farm Payrolls" },
+      { event_type: "X", impact: "weird" },
+    ]);
+    expect(e[0]).toMatchObject({ code: "NFP", impact: "high", country: "US", src: "FRED", date: "2026-07-01T12:30:00Z" });
+    expect(e[1]!.impact).toBe("low"); // unknown → low
+  });
+});
+
 function TermProbe(): JSX.Element {
   const { termStructure } = useDeskData();
   return (
@@ -223,6 +274,17 @@ function ConfigProbe(): JSX.Element {
       <span data-testid="cfg-status">{config.status}</span>
       <span data-testid="cfg-v">{config.data?.currentVersion ?? "none"}</span>
       <span data-testid="cfg-sec">{config.data?.sections.length ?? "none"}</span>
+    </div>
+  );
+}
+
+function TradeProbe(): JSX.Element {
+  const { trade } = useDeskData();
+  return (
+    <div>
+      <span data-testid="tr-status">{trade.status}</span>
+      <span data-testid="tr-pos">{trade.data?.positions.length ?? "none"}</span>
+      <span data-testid="tr-netd">{trade.data?.greeks.netDelta ?? "none"}</span>
     </div>
   );
 }
@@ -376,6 +438,35 @@ describe("DataProvider swap", () => {
     );
     await waitFor(() => expect(screen.getByTestId("cfg-v").textContent).toBe("7"));
     expect(screen.getByTestId("cfg-status").textContent).toBe("live");
+  });
+
+  it("mock mode serves synthetic trade (positions + derived nets)", () => {
+    render(
+      <DataProvider mock={true}>
+        <TradeProbe />
+      </DataProvider>,
+    );
+    expect(screen.getByTestId("tr-status").textContent).toBe("live");
+    expect(Number(screen.getByTestId("tr-pos").textContent)).toBeGreaterThan(0);
+  });
+
+  it("live mode fetches positions + derives the book net delta", async () => {
+    server.use(
+      http.get("*/api/v1/positions/open", () =>
+        HttpResponse.json([
+          { id: 1, side: "BUY", quantity: 2, delta_usd: 40, vega_usd: 5, current_pnl_usd: 10, expiry: "2026-08-01T00:00:00Z" },
+          { id: 2, side: "SELL", quantity: 1, delta_usd: -15, vega_usd: 2, current_pnl_usd: -3, expiry: "2026-08-01T00:00:00Z" },
+        ]),
+      ),
+    );
+    render(
+      <DataProvider mock={false}>
+        <TradeProbe />
+      </DataProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("tr-pos").textContent).toBe("2"));
+    expect(screen.getByTestId("tr-netd").textContent).toBe("25"); // 40 − 15
+    expect(screen.getByTestId("tr-status").textContent).toBe("live");
   });
 
   it("live mode fetches + adapts the backend term-structure", async () => {
