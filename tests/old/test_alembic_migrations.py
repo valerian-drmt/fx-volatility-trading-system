@@ -32,7 +32,6 @@ EXPECTED_TABLES = {
     "open_position",
     "open_position_history",
     "vol_surface_history",
-    "trades",
     "account_history",
 }
 

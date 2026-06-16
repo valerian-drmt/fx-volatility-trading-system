@@ -22,7 +22,6 @@ from persistence.models import (
     Base,
     OpenPosition,
     OpenPositionHistory,
-    Trade,
     VolSurface,
 )
 
@@ -48,7 +47,6 @@ async def async_session():
 def test_tables_are_declared_with_expected_names():
     assert OpenPosition.__tablename__ == "open_position"
     assert OpenPositionHistory.__tablename__ == "open_position_history"
-    assert Trade.__tablename__ == "trades"
     assert AccountHistory.__tablename__ == "account_history"
 
 
@@ -60,9 +58,6 @@ def test_positions_has_expected_check_constraints():
     assert "ck_positions_status" in constraint_names
 
 
-def test_trades_has_unique_constraint_on_ib_order_id():
-    constraint_names = {c.name for c in Trade.__table__.constraints if c.name}
-    assert "uq_trades_ib_order_id" in constraint_names
 
 
 def test_account_snaps_currencies_column_uses_jsonb_on_postgres():
@@ -131,35 +126,6 @@ async def test_position_with_snapshots_relationship(async_session):
     assert len(loaded.snapshots) == 1
     assert loaded.snapshots[0].delta_usd == Decimal("500.00")
     assert loaded.snapshots[0].position is loaded
-
-
-@pytest.mark.asyncio
-async def test_trade_unique_constraint_on_ib_order_id(async_session):
-    async_session.add(
-        Trade(
-            ib_order_id="IB-42",
-            side="BUY",
-            quantity=Decimal("1"),
-            price=Decimal("1.08500000"),
-            timestamp=datetime(2026, 4, 17, 10, 0, tzinfo=UTC),
-        )
-    )
-    await async_session.commit()
-
-    async_session.add(
-        Trade(
-            ib_order_id="IB-42",
-            side="SELL",
-            quantity=Decimal("1"),
-            price=Decimal("1.08600000"),
-            timestamp=datetime(2026, 4, 17, 11, 0, tzinfo=UTC),
-        )
-    )
-    with pytest.raises(Exception) as excinfo:
-        await async_session.commit()
-    assert "UNIQUE" in str(excinfo.value).upper() or "IntegrityError" in type(
-        excinfo.value
-    ).__name__
 
 
 @pytest.mark.asyncio
