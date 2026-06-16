@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import VoldeskApp from "./voldesk/VoldeskApp";
+import { DataProvider } from "./voldesk/data/provider";
 import { DevLayout } from "./pages/DevLayout";
 import { VolEngineConfigPage } from "./pages/VolEngineConfigPage";
 import "./theme.css";
@@ -17,13 +18,17 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 const rawPath = typeof window !== "undefined" ? window.location.pathname : "/";
 const path = base && rawPath.startsWith(base) ? rawPath.slice(base.length) || "/" : rawPath;
 
-const Root =
-  path.startsWith("/config") ? VolEngineConfigPage :
-  path.startsWith("/dev")    ? DevLayout :
-  VoldeskApp;
+// Only the desk consumes live desk-data; /dev and /config stay provider-free so
+// they don't open feeds they never read.
+const tree =
+  path.startsWith("/config") ? <VolEngineConfigPage /> :
+  path.startsWith("/dev")    ? <DevLayout /> :
+  (
+    <DataProvider>
+      <VoldeskApp />
+    </DataProvider>
+  );
 
 ReactDOM.createRoot(container).render(
-  <React.StrictMode>
-    <Root />
-  </React.StrictMode>,
+  <React.StrictMode>{tree}</React.StrictMode>,
 );

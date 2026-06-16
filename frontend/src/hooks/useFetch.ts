@@ -3,7 +3,7 @@
  * Fetches on mount; `reload()` (or a WS stream invalidation) re-fetches.
  * On error → status "missing" (the view shows last-known / placeholder).
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type Fresh, makeFresh } from "../voldesk/data/freshness";
 
 export interface FetchResult<T> extends Fresh<T> {
@@ -43,5 +43,6 @@ export function useFetch<T>(
     };
   }, [tick, warnMs, enabled]);
 
-  return { ...state, reload: () => setTick((t) => t + 1) };
+  const reload = useCallback(() => setTick((t) => t + 1), []);
+  return { ...state, reload };
 }

@@ -7,9 +7,20 @@ import { createContext, useContext } from "react";
 import type { TermPoint } from "./core";
 import type { Fresh } from "./freshness";
 
+export interface SurfaceData {
+  /** 6×5 IV grid (%), [tenorIdx][deltaIdx]. Live from /vol/surface (PR 1). */
+  ivSurface: number[][];
+  /** 6×5 per-cell rich/cheap z. Backend gap → mock until a per-cell-z endpoint. */
+  ivZ: number[][];
+  tenors: string[];
+  deltas: string[];
+}
+
 export interface DeskData {
-  /** ATM term structure (+ fair/rv). Pilot live domain (PR F). */
+  /** ATM term structure (+ fair/rv). Live (PR F). */
   termStructure: Fresh<TermPoint[]>;
+  /** IV surface grid + z field. ivSurface live (PR 1) ; ivZ still mock (gap). */
+  surface: Fresh<SurfaceData>;
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);

@@ -11,9 +11,12 @@
 import { Fragment, useState } from "react";
 import { Heatmap } from "../components/charts";
 import { Panel, Tag } from "../components/common";
+import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls, type Tone } from "../components/format";
 import { DATA, fmt, mulberry32 } from "../data";
-import type { Pc } from "../data";
+import type { Pc, TermPoint } from "../data";
+import type { SurfaceData } from "../data/deskData";
+import { useDeskData } from "../data/deskData";
 
 const FAIR_COL = "#46b3d6"; // distinct cool color for the σ_fair curve (vs orange accent for ATM)
 
@@ -30,11 +33,14 @@ function sigDivZ(z: number): string {
     `rgb(${c0.map((v, i) => Math.round(v + (c1[i]! - v) * f)).join(",")})`;
   return t < 0.5 ? mix(A, M, t / 0.5) : mix(M, B, (t - 0.5) / 0.5);
 }
-function IVSurfaceZ(): JSX.Element {
-  const surf = DATA.ivSurface,
-    z = DATA.ivZ,
-    deltas = DATA.deltas,
-    tenors = DATA.tenors;
+function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
+  if (!data) {
+    return <div className="dim small mono ivz-empty">surface indisponible (marché fermé / pas de cycle vol)</div>;
+  }
+  const surf = data.ivSurface,
+    z = data.ivZ,
+    deltas = data.deltas,
+    tenors = data.tenors;
   const C = deltas.length;
   return (
     <div className="ivz">
@@ -84,8 +90,7 @@ function IVSurfaceZ(): JSX.Element {
 }
 
 // ATM term curve with σ_fair overlay (the level / gate visual)
-function ATMTermChart(): JSX.Element {
-  const ts = DATA.termStructure;
+function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
   const w = 560,
     h = 168,
     pl = 38,
@@ -274,13 +279,15 @@ function ModeStability(): JSX.Element {
 
 // (Expressions moved to the Order builder as an exposure reference — see order_builder.jsx)
 
-function FairVolGate(): JSX.Element {
-  const ts = DATA.termStructure;
+function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
+  if (!ts) {
+    return <div className="dim small mono ivz-empty">term-structure indisponible (marché fermé / pas de cycle vol)</div>;
+  }
   return (
     <div>
       <div className="fv-chart">
         <div className="surf-curve-lbl dim small mono">ATM level vs σ_fair</div>
-        <ATMTermChart />
+        <ATMTermChart ts={ts} />
       </div>
       <div className="table-scroll fv-table-wrap">
         <table className="dt fv-table">
@@ -327,19 +334,20 @@ function FairVolGate(): JSX.Element {
 export function SignalsView(): JSX.Element {
   const m = DATA.pcaModel;
   const [view, setView] = useState<string>("3M");
+  const { surface, termStructure } = useDeskData();
   return (
     <div className="ts-grid">
       <div className="sig-cluster">
         <div className="sig-left">
-          <Panel title="IV surface" right={<span className="dim mono small">EURUSD · z-score field · live</span>} className="ts-curve-panel">
-            <IVSurfaceZ />
+          <Panel title="IV surface" right={<FreshBadge fresh={surface} label="EURUSD · z-score field" />} className="ts-curve-panel">
+            <IVSurfaceZ data={surface.data} />
           </Panel>
           <Panel title="Mode stability" right={<span className="dim mono small">eigengap</span>} className="ts-stab-panel">
             <ModeStability />
           </Panel>
         </div>
-        <Panel title="Fair vol — level gate" right={<span className="dim mono small">RV / GARCH</span>} className="ts-fv-panel sig-fv" pad>
-          <FairVolGate />
+        <Panel title="Fair vol — level gate" right={<FreshBadge fresh={termStructure} label="RV / GARCH" />} className="ts-fv-panel sig-fv" pad>
+          <FairVolGate ts={termStructure.data} />
         </Panel>
       </div>
 

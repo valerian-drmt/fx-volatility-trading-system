@@ -495,7 +495,13 @@ input,select{font-family:inherit;font-size:13px}
 .ivs-cell.wing{outline:1px dashed color-mix(in srgb,var(--warn) 45%,transparent);outline-offset:-1px}
 .ivsurf-note{display:flex;align-items:center;gap:6px;margin-top:7px}
 .wing-dot{width:9px;height:9px;border-radius:2px;border:1px dashed var(--warn);flex:0 0 auto}
+/* freshness badge (live/stale/missing) — see FreshBadge.tsx */
+.fresh-badge .fresh-dot{display:inline-block;width:6px;height:6px;border-radius:50%;vertical-align:middle}
+.fresh-dot.pos{background:var(--pos)}
+.fresh-dot.warn{background:var(--warn)}
+.fresh-dot.neg{background:var(--neg)}
 .surf-curve-lbl{margin-bottom:4px}
+.ivz-empty{padding:24px 12px;text-align:center;color:var(--text-faint)}
 /* conviction hierarchy — 3 equal cards on one row, tier badge encodes conviction */
 .mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start}
 .mc-loads-reduced .heatmap td{font-size:9px;padding:2px 1px}
