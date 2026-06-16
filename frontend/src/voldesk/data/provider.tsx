@@ -23,11 +23,16 @@ import {
   fetchPcaHistory,
   fetchPcaModel,
   fetchPcaState,
+  fetchPnlAttribution,
+  fetchPortfolioAccount,
   fetchPortfolioCash,
+  fetchPortfolioDailyPnl,
+  fetchPortfolioStats,
   fetchRegimeEvents,
   fetchTermStructure,
   fetchTradeBook,
   fetchTradeLimits,
+  fetchVegaPerTenor,
   fetchVolSurface,
 } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
@@ -55,14 +60,32 @@ import {
   type DeskData,
   DeskDataContext,
   type PcaData,
+  type PortfolioData,
   type SurfaceData,
   type SystemData,
   type TradeData,
 } from "./deskData";
-import { config as mockConfig, engines as mockEngines, stack as mockStack } from "./extended";
+import {
+  bookComposition as mockBookComposition,
+  config as mockConfig,
+  dailyPnl as mockDailyPnl,
+  engines as mockEngines,
+  perfStats as mockPerfStats,
+  stack as mockStack,
+  vegaPerTenor as mockVegaPerTenor,
+  waterfall as mockWaterfall,
+} from "./extended";
 import { type Fresh, makeFresh } from "./freshness";
 import { adaptConfig } from "./live/config";
 import { adaptPca } from "./live/pca";
+import {
+  adaptAccount as adaptPortfolioAccountSnap,
+  adaptDailyPnl,
+  adaptPerfStats,
+  adaptVegaPerTenor,
+  adaptWaterfallGreek,
+  deriveBookComposition,
+} from "./live/portfolio";
 import { adaptIvSurface } from "./live/surface";
 import { adaptSystem } from "./live/system";
 import { adaptTermStructure } from "./live/termStructure";
@@ -85,6 +108,18 @@ const MOCK_TRADE: TradeData = {
 };
 const TRADE_POLL_MS = 15_000; // positions mtm: snapshot + modest poll (WS in 6w)
 const TRADE_WARN_MS = 30_000;
+const MOCK_PORTFOLIO: PortfolioData = {
+  account: mockAccount,
+  greeks: deriveNetGreeks(mockPositions),
+  positions: mockPositions,
+  vegaPerTenor: mockVegaPerTenor,
+  perfStats: mockPerfStats,
+  dailyPnl: mockDailyPnl,
+  waterfallGreek: mockWaterfall["greek"] ?? [],
+  bookComposition: mockBookComposition,
+};
+const PORTFOLIO_WARN_MS = 120_000; // history-ish; light poll
+const PORTFOLIO_POLL_MS = 60_000;
 const CONFIG_WARN_MS = Number.POSITIVE_INFINITY; // config rarely changes → never "stale"
 
 // Mock config is a flat key/value list; fold it into the hybrid (sections + history) shape.
@@ -181,6 +216,33 @@ export function DataProvider({
     TRADE_POLL_MS,
   );
 
+  const livePortfolio = useFetch<PortfolioData>(
+    async () => {
+      const [acct, vega, stats, daily, attrib, pos] = await Promise.all([
+        fetchPortfolioAccount(),
+        fetchVegaPerTenor(),
+        fetchPortfolioStats(),
+        fetchPortfolioDailyPnl(),
+        fetchPnlAttribution(),
+        fetchOpenPositions(),
+      ]);
+      const positions = adaptPositions(pos, Date.now());
+      return {
+        account: adaptPortfolioAccountSnap(acct),
+        greeks: deriveNetGreeks(positions),
+        positions,
+        vegaPerTenor: adaptVegaPerTenor(vega),
+        perfStats: adaptPerfStats(stats),
+        dailyPnl: adaptDailyPnl(daily),
+        waterfallGreek: adaptWaterfallGreek(attrib),
+        bookComposition: deriveBookComposition(positions),
+      };
+    },
+    PORTFOLIO_WARN_MS,
+    !mock,
+    PORTFOLIO_POLL_MS,
+  );
+
   // Re-fetch surface + term + pca on each vol-engine cycle push (~3 min).
   const vol = useVolStream(!mock);
   const reloadTerm = liveTerm.reload;
@@ -235,7 +297,11 @@ export function DataProvider({
     ? makeFresh(MOCK_TRADE, Date.now(), Number.POSITIVE_INFINITY)
     : liveTrade;
 
-  const value: DeskData = { termStructure, surface, pca, system, config, trade };
+  const portfolio: Fresh<PortfolioData> = mock
+    ? makeFresh(MOCK_PORTFOLIO, Date.now(), Number.POSITIVE_INFINITY)
+    : livePortfolio;
+
+  const value: DeskData = { termStructure, surface, pca, system, config, trade, portfolio };
   return (
     <DeskDataContext.Provider value={value}>{children}</DeskDataContext.Provider>
   );

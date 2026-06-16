@@ -5,7 +5,7 @@
  */
 import { createContext, useContext } from "react";
 import type { AccountState, Cash, Greeks, Limits, MacroEvent, Pc, PcaModelMeta, Position, TermPoint } from "./core";
-import type { StackItem } from "./extended";
+import type { BookComposition, PerfStats, StackItem, VegaTenor, WaterfallStep } from "./extended";
 import type { Fresh } from "./freshness";
 
 export type { PcaModelMeta };
@@ -18,6 +18,19 @@ export interface TradeData {
   limits: Limits;
   events: MacroEvent[];
   cash: Cash[];
+}
+
+/** Portfolio view live part (PR 3). coverage/leverage/non-greek waterfall pivots
+ * stay mock (backend gaps) — see 09. */
+export interface PortfolioData {
+  account: AccountState;
+  greeks: Greeks;
+  positions: Position[];
+  vegaPerTenor: VegaTenor[];
+  perfStats: PerfStats;
+  dailyPnl: number[];
+  waterfallGreek: WaterfallStep[];
+  bookComposition: BookComposition;
 }
 
 /** Engine heartbeat row (same shape as the mock `engines[]`). */
@@ -89,6 +102,8 @@ export interface DeskData {
   config: Fresh<ConfigData>;
   /** Trade read part : positions + book greeks + caps + events. Live (PR 6r.1, polled). */
   trade: Fresh<TradeData>;
+  /** Portfolio : capital, perf-stats, attribution, book composition. Live (PR 3). */
+  portfolio: Fresh<PortfolioData>;
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);

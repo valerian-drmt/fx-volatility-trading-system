@@ -109,6 +109,7 @@ export const fetchPositionsAggregate = () =>
 
 // Portfolio panels (A–J + scenarios)
 export const fetchPortfolioHeader = () => apiGet<unknown>("/api/v1/portfolio/header");
+export const fetchPortfolioAccount = () => apiGet<unknown>("/api/v1/portfolio/account");
 export const fetchPortfolioCash = () => apiGet<unknown>("/api/v1/portfolio/cash");
 export const fetchPortfolioDailyPnl = (days = 90) =>
   apiGet<unknown>("/api/v1/portfolio/daily-pnl", { query: { days } });

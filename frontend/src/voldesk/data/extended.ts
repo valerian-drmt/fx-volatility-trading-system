@@ -361,6 +361,8 @@ export const perfStats = {
   sharpe: 1.84,
   hitRate: (dailyPnl.filter((v) => v > 0).length / dailyPnl.length) * 100,
 };
+/** Shape reused by the live Portfolio adapter (R11 PR 3). */
+export type PerfStats = typeof perfStats;
 
 export interface Coverage {
   gammaPnl: number;
