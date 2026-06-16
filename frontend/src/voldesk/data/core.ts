@@ -418,6 +418,9 @@ export const limits = {
   deltaBandUsd: 5000,
   skewVarPct: 20,
 };
+/** Inline-const shapes reused by the live Trade adapter (R11 PR 6r). */
+export type AccountState = typeof account;
+export type Limits = typeof limits;
 
 export const feed = { feedS: 2, surfaceS: 38, feedWarn: 5, feedStale: 15, surfWarn: 45, surfStale: 60 };
 

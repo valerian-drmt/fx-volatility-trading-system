@@ -4,11 +4,20 @@
  * `useDeskData()` to read each domain as `Fresh<T>` (live or mock).
  */
 import { createContext, useContext } from "react";
-import type { Pc, PcaModelMeta, TermPoint } from "./core";
+import type { AccountState, Greeks, Limits, MacroEvent, Pc, PcaModelMeta, Position, TermPoint } from "./core";
 import type { StackItem } from "./extended";
 import type { Fresh } from "./freshness";
 
 export type { PcaModelMeta };
+
+/** Trade view live read part : positions + derived book greeks + caps + calendar. */
+export interface TradeData {
+  positions: Position[];
+  greeks: Greeks;
+  account: AccountState;
+  limits: Limits;
+  events: MacroEvent[];
+}
 
 /** Engine heartbeat row (same shape as the mock `engines[]`). */
 export interface EngineRow {
@@ -77,6 +86,8 @@ export interface DeskData {
   system: Fresh<SystemData>;
   /** Versioned trading-config : history + current. Live read (PR 2r.2). */
   config: Fresh<ConfigData>;
+  /** Trade read part : positions + book greeks + caps + events. Live (PR 6r.1, polled). */
+  trade: Fresh<TradeData>;
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);

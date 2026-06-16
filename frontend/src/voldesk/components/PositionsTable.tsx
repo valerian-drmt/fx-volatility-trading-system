@@ -6,7 +6,7 @@
  */
 import { pnlCls } from "./format";
 import { DATA, fmt } from "../data";
-import type { Position } from "../data";
+import type { Greeks, Position } from "../data";
 
 // compact signed formatter for per-leg / net greek cells (±N · ±N.Nk · ±N.NNM).
 // NOTE: distinct from common's gk$ — this one omits the "$" prefix by design.
@@ -24,6 +24,9 @@ interface OpenPositionsTableProps {
   extended?: boolean;
   onClose?: (p: Position) => void;
   dense?: boolean;
+  /** Live positions + book greeks (PR 6r). Default to the mock when omitted. */
+  positions?: Position[];
+  greeks?: Greeks;
 }
 
 export function OpenPositionsTable({
@@ -31,9 +34,11 @@ export function OpenPositionsTable({
   extended = false,
   onClose,
   dense = false,
+  positions = DATA.positions,
+  greeks = DATA.greeks,
 }: OpenPositionsTableProps): JSX.Element {
-  const rows = DATA.positions;
-  const g = DATA.greeks;
+  const rows = positions;
+  const g = greeks;
   const total = g.netUnreal,
     tNom = g.netNominal;
   return (

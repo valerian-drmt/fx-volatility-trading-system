@@ -1,0 +1,189 @@
+/**
+ * Live adapter (R11 PR 6r.1): backend trade/portfolio reads → the voldesk Trade
+ * view (read-only part).
+ *
+ * Sources:
+ *   - GET /positions/open  rich per-leg rows (greeks/pnl/iv/nominal)
+ *   - GET /trade/limits    risk caps (keyed dict)
+ *   - GET /regime/events   macro calendar
+ *   - GET /trade/book      capital / margin state
+ *
+ * Net book greeks are DERIVED by summing the live per-leg greeks — the same
+ * "one engine · = Risk" invariant the mock encodes (no separate aggregate call,
+ * which would risk the book not footing). Per-unit greeks (var1d99, beta, 24h
+ * deltas) have no live source here → kept from the mock for the Trade context;
+ * Risk view (PR 5) wires VaR properly via G-risk.
+ *
+ * ⚠️ Cash-by-currency (holdings donut) needs /account/cash (G-trade gap) — stays
+ * mock. Vanna/volga units (backend $ vs mock $k) are flagged in 09.
+ */
+import {
+  type AccountState,
+  account as mockAccount,
+  type Greeks,
+  greeks as mockGreeks,
+  type Limits,
+  limits as mockLimits,
+  type MacroEvent,
+  type Position,
+} from "../core";
+
+interface BackendPosition {
+  id?: number;
+  package_id?: string | null;
+  trade_id?: string | null;
+  contract_id?: number | null;
+  product_label?: string | null;
+  structure?: string | null;
+  side?: string;
+  quantity?: number | null;
+  tenor?: string | null;
+  expiry?: string | null;
+  current_pnl_usd?: number | null;
+  market_price?: number | null;
+  contract_price_entry?: number | null;
+  nominal_eur?: number | null;
+  delta_usd?: number | null;
+  gamma_usd?: number | null;
+  vega_usd?: number | null;
+  theta_usd?: number | null;
+  iv?: number | null;
+  vanna_usd?: number | null;
+  volga_usd?: number | null;
+  timestamp?: string | null;
+  entry_timestamp?: string | null;
+}
+
+const n = (v: number | null | undefined): number => (typeof v === "number" ? v : 0);
+
+/** days-to-expiry from an ISO date (≥ 0), or 0 when unknown. */
+function dteFrom(expiry: string | null | undefined, now: number): number {
+  if (!expiry) return 0;
+  const t = Date.parse(expiry);
+  if (Number.isNaN(t)) return 0;
+  return Math.max(0, Math.round((t - now) / 86_400_000));
+}
+
+export function adaptPositions(raw: unknown, now: number): Position[] {
+  const rows = Array.isArray(raw) ? (raw as BackendPosition[]) : [];
+  return rows.map((r) => {
+    const nominal = n(r.nominal_eur);
+    const pnl = n(r.current_pnl_usd);
+    return {
+      id: String(r.id ?? ""),
+      packageId: r.package_id ?? "",
+      tradeId: r.trade_id ?? "",
+      conId: r.contract_id ?? 0,
+      product: r.product_label ?? "",
+      structure: r.structure ?? r.product_label ?? "—",
+      side: r.side ?? "BUY",
+      qty: n(r.quantity),
+      tenor: r.tenor ?? "",
+      expiry: r.expiry ?? "",
+      strike: 0, // backend row carries no strike → table omits the "K" hint
+      entry: n(r.contract_price_entry),
+      mark: n(r.market_price),
+      iv: n(r.iv),
+      pnl,
+      nominal,
+      delta: n(r.delta_usd),
+      gamma: n(r.gamma_usd),
+      vega: n(r.vega_usd),
+      theta: n(r.theta_usd),
+      vanna: n(r.vanna_usd),
+      volga: n(r.volga_usd),
+      updated: r.timestamp ?? "",
+      opened: r.entry_timestamp ?? "",
+      pnlPct: nominal ? (pnl / nominal) * 100 : 0,
+      dte: dteFrom(r.expiry, now),
+    };
+  });
+}
+
+/** Net book greeks = Σ per-leg live greeks; non-net fields kept from the mock. */
+export function deriveNetGreeks(positions: Position[]): Greeks {
+  const sum = (f: (p: Position) => number): number => positions.reduce((s, p) => s + f(p), 0);
+  return {
+    ...mockGreeks,
+    netDelta: sum((p) => p.delta),
+    netGamma: sum((p) => p.gamma),
+    netVega: sum((p) => p.vega),
+    netTheta: sum((p) => p.theta),
+    netVanna: sum((p) => p.vanna),
+    netVolga: sum((p) => p.volga),
+    netNominal: sum((p) => p.nominal),
+    netUnreal: sum((p) => p.pnl),
+  };
+}
+
+interface TradeBook {
+  capital_total_usd?: number | null;
+  margin_used_usd?: number | null;
+}
+
+/** Margin / excess-liquidity from /trade/book; other account fields kept mock. */
+export function adaptAccount(raw: unknown): AccountState {
+  const b = (raw ?? {}) as TradeBook;
+  const cap = n(b.capital_total_usd);
+  const used = n(b.margin_used_usd);
+  return {
+    ...mockAccount,
+    netLiq: cap || mockAccount.netLiq,
+    marginInit: used || mockAccount.marginInit,
+    marginInitPct: cap > 0 ? (used / cap) * 100 : mockAccount.marginInitPct,
+    excessLiq: cap > 0 ? cap - used : mockAccount.excessLiq,
+  };
+}
+
+interface BackendLimit {
+  value?: number | null;
+  unit?: string | null;
+}
+
+/** /trade/limits keyed dict → the mock limits struct (cap+unit per greek). */
+export function adaptLimits(raw: unknown): Limits {
+  const d = (raw ?? {}) as Record<string, BackendLimit>;
+  const cap = (key: string, fallback: { cap: number; unit: string }) => {
+    const l = d[key];
+    return l ? { cap: n(l.value) || fallback.cap, unit: l.unit ?? fallback.unit } : fallback;
+  };
+  const scalar = (key: string, fallback: number) => {
+    const l = d[key];
+    return l && typeof l.value === "number" ? l.value : fallback;
+  };
+  return {
+    gamma: cap("gamma", mockLimits.gamma),
+    vega: cap("vega", mockLimits.vega),
+    vanna: cap("vanna", mockLimits.vanna),
+    var99: cap("var99", mockLimits.var99),
+    deltaBandUsd: scalar("deltaBandUsd", mockLimits.deltaBandUsd),
+    skewVarPct: scalar("skewVarPct", mockLimits.skewVarPct),
+  };
+}
+
+const IMPACT = new Set(["high", "medium", "low"]);
+
+interface BackendEvent {
+  event_type?: string;
+  impact?: string;
+  region?: string;
+  scheduled_at?: string;
+  description?: string | null;
+  source?: string;
+}
+
+/** /regime/events → MacroEvent[]. `date` keeps the locale string the view parses. */
+export function adaptEvents(raw: unknown): MacroEvent[] {
+  const rows = Array.isArray(raw) ? (raw as BackendEvent[]) : [];
+  return rows.map((e) => {
+    return {
+      date: e.scheduled_at ?? "", // ISO — parseEvt() in the view Date.parse's it
+      country: e.region ?? "",
+      impact: e.impact && IMPACT.has(e.impact) ? e.impact : "low",
+      in: "",
+      code: e.event_type ?? "",
+      content: e.description ?? e.event_type ?? "",
+      src: e.source ?? "",
+    };
+  });
+}

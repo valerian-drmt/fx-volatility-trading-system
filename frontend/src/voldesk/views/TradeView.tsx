@@ -9,10 +9,15 @@ import { useEffect, useState } from "react";
 import { Panel } from "../components/common";
 import { gk$, pnlCls } from "../components/format";
 import { Donut } from "../components/charts";
+import { FreshBadge } from "../components/FreshBadge";
 import { OpenPositionsTable } from "../components/PositionsTable";
 import { OrderBuilder, type BuilderState } from "../components/OrderBuilder";
 import { DATA, fmt } from "../data";
-import type { MacroEvent, Position } from "../data";
+import type { AccountState, Greeks, Limits, MacroEvent, Position } from "../data";
+import { useDeskData } from "../data/deskData";
+import { WRITE_ENABLED } from "../data/writeEnabled";
+
+const GATE_TITLE = "écriture désactivée — auth requise (Phase 2)";
 
 interface TradeTweaks {
   density: string;
@@ -20,7 +25,19 @@ interface TradeTweaks {
 }
 
 // ---------------- ClosePanel ----------------
-function ClosePanel({ pos, onDone }: { pos: Position | null; onDone: () => void }): JSX.Element {
+function ClosePanel({
+  pos,
+  onDone,
+  positions,
+  greeks,
+  account,
+}: {
+  pos: Position | null;
+  onDone: () => void;
+  positions: Position[];
+  greeks: Greeks;
+  account: AccountState;
+}): JSX.Element {
   const [type, setType] = useState<"contract" | "trade">("contract");
   const [contractId, setContractId] = useState("");
   const [tradeId, setTradeId] = useState("");
@@ -33,13 +50,13 @@ function ClosePanel({ pos, onDone }: { pos: Position | null; onDone: () => void 
     }
   }, [pos]);
 
-  const packages = [...new Set(DATA.positions.map((p) => p.packageId))].map((id) => ({
+  const packages = [...new Set(positions.map((p) => p.packageId))].map((id) => ({
     id,
-    struct: DATA.positions.find((p) => p.packageId === id)?.structure ?? "",
+    struct: positions.find((p) => p.packageId === id)?.structure ?? "",
   }));
-  const g = DATA.greeks;
+  const g = greeks;
   const before: Record<string, number> = {
-    pnl24: DATA.account.dayPnl,
+    pnl24: account.dayPnl,
     unrl: g.netUnreal,
     delta: g.netDelta,
     gamma: g.netGamma,
@@ -52,7 +69,7 @@ function ClosePanel({ pos, onDone }: { pos: Position | null; onDone: () => void 
   const c = { pnl: 0, d: 0, g: 0, v: 0, vn: 0, t: 0, frac: 0 };
   let recompose: { from: string; to: string } | null = null;
   if (type === "contract" && contractId) {
-    const p = DATA.positions.find((x) => x.id === contractId);
+    const p = positions.find((x) => x.id === contractId);
     if (p) {
       const f = Math.min(1, (qty || 0) / p.qty);
       sel = p;
@@ -63,7 +80,7 @@ function ClosePanel({ pos, onDone }: { pos: Position | null; onDone: () => void 
       c.vn = p.vanna * f;
       c.t = p.theta * f;
       c.frac = f;
-      const legsInPkg = DATA.positions.filter((x) => x.packageId === p.packageId);
+      const legsInPkg = positions.filter((x) => x.packageId === p.packageId);
       if (legsInPkg.length > 1 && f >= 0.999) {
         const s = p.structure;
         const resid = s.includes("Butterfly")
@@ -79,7 +96,7 @@ function ClosePanel({ pos, onDone }: { pos: Position | null; onDone: () => void 
       }
     }
   } else if (type === "trade" && tradeId) {
-    const legs = DATA.positions.filter((x) => x.packageId === tradeId);
+    const legs = positions.filter((x) => x.packageId === tradeId);
     if (legs.length) {
       sel = { trade: true };
       legs.forEach((p) => {
@@ -135,12 +152,12 @@ function ClosePanel({ pos, onDone }: { pos: Position | null; onDone: () => void 
             disabled={type === "trade"}
             onChange={(e) => {
               setContractId(e.target.value);
-              const p = DATA.positions.find((x) => x.id === e.target.value);
+              const p = positions.find((x) => x.id === e.target.value);
               if (p) setQty(p.qty);
             }}
           >
             <option value="">— pick a contract —</option>
-            {DATA.positions.map((p) => (
+            {positions.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.conId} · {p.structure}
               </option>
@@ -202,7 +219,12 @@ function ClosePanel({ pos, onDone }: { pos: Position | null; onDone: () => void 
           ))}
         </tbody>
       </table>
-      <button className="btn-close-exec" disabled={!sel} onClick={onDone}>
+      <button
+        className="btn-close-exec"
+        disabled={!sel || !WRITE_ENABLED}
+        title={WRITE_ENABLED ? "" : GATE_TITLE}
+        onClick={onDone}
+      >
         {sel ? (type === "trade" ? "Close trade" : `Close ${qty} ct`) : "Close"}
       </button>
     </div>
@@ -261,12 +283,15 @@ function HoldingsStrip(): JSX.Element {
 
 // ---------------- Indicators ----------------
 function parseEvt(d: string): Date | null {
+  // Live events carry an ISO date; the mock carries a locale string.
+  const iso = Date.parse(d);
+  if (!Number.isNaN(iso)) return new Date(iso);
   const m = d.match(/(\d+)\/(\d+)\/(\d+),\s*(\d+):(\d+)/);
   return m ? new Date(+m[3]!, +m[2]! - 1, +m[1]!, +m[4]!, +m[5]!) : null;
 }
-function nextHighImpact(): { e: MacroEvent; dt: Date } | null {
+function nextHighImpact(events: MacroEvent[]): { e: MacroEvent; dt: Date } | null {
   const now = new Date();
-  const cand = DATA.events
+  const cand = events
     .filter((e) => e.impact === "high")
     .map((e) => ({ e, dt: parseEvt(e.date) }))
     .filter((x): x is { e: MacroEvent; dt: Date } => x.dt != null && x.dt > now)
@@ -321,15 +346,27 @@ function BudgetBar({ label, used, cap, unit, fmtv, add = 0 }: BudgetBarProps): J
   );
 }
 
-function IndicatorsPanel({ builder }: { builder: BuilderState | null }): JSX.Element {
-  const g = DATA.greeks,
-    a = DATA.account,
-    L = DATA.limits;
+function IndicatorsPanel({
+  builder,
+  greeks,
+  account,
+  limits,
+  events,
+}: {
+  builder: BuilderState | null;
+  greeks: Greeks;
+  account: AccountState;
+  limits: Limits;
+  events: MacroEvent[];
+}): JSX.Element {
+  const g = greeks,
+    a = account,
+    L = limits;
   const eur = DATA.cash.find((c) => c.ccy === "EUR"),
     usd = DATA.cash.find((c) => c.ccy === "USD");
   const bid = (DATA.SPOT - 0.0001).toFixed(4),
     ask = (DATA.SPOT + 0.0001).toFixed(4);
-  const evt = nextHighImpact();
+  const evt = nextHighImpact(events);
   const isActive = !!(builder && builder.active && !builder.isFut);
   const add = isActive && builder ? builder.net : null;
   const tradedTenor = builder ? builder.tenor : null;
@@ -338,7 +375,7 @@ function IndicatorsPanel({ builder }: { builder: BuilderState | null }): JSX.Ele
   const evtInWindow = !!(isActive && evt && tradedDte != null && (evt.dt.getTime() - Date.now()) / 8.64e7 <= tradedDte);
 
   const kM = (v: number): string => (v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" : "$" + Math.round(v / 1e3) + "k");
-  const drift = Math.abs(g.netDelta) > DATA.limits.deltaBandUsd;
+  const drift = Math.abs(g.netDelta) > L.deltaBandUsd;
   const usedMarginPct = a.marginInitPct;
   const pct = (added: number, used: number, cap: number): number => {
     const rem = cap - used;
@@ -419,9 +456,9 @@ function IndicatorsPanel({ builder }: { builder: BuilderState | null }): JSX.Ele
             <b className={"mono " + (drift ? "warn" : "pos")}>
               {drift
                 ? "+" +
-                  Math.round((Math.abs(g.netDelta) / DATA.limits.deltaBandUsd - 1) * 100) +
+                  Math.round((Math.abs(g.netDelta) / L.deltaBandUsd - 1) * 100) +
                   "% beyond ±$" +
-                  (DATA.limits.deltaBandUsd / 1000).toFixed(1) +
+                  (L.deltaBandUsd / 1000).toFixed(1) +
                   "k"
                 : "within band"}
             </b>
@@ -534,10 +571,10 @@ function IndicatorsPanel({ builder }: { builder: BuilderState | null }): JSX.Ele
 }
 
 // ---------------- HedgeStrip ----------------
-function HedgeStrip(): JSX.Element {
+function HedgeStrip({ greeks, limits }: { greeks: Greeks; limits: Limits }): JSX.Element {
   const [hedged, setHedged] = useState(false);
-  const resid = hedged ? 120 : DATA.greeks.netDelta;
-  const band = DATA.limits.deltaBandUsd;
+  const resid = hedged ? 120 : greeks.netDelta;
+  const band = limits.deltaBandUsd;
   const drift = Math.abs(resid) > band;
   const over = Math.round((Math.abs(resid) / band - 1) * 100);
   const bandTxt = "$" + (band / 1000).toFixed(1) + "k";
@@ -557,7 +594,12 @@ function HedgeStrip(): JSX.Element {
         <span className="gs-lbl">Last hedge</span>
         <b className="mono dim">{hedged ? "just now" : "11:48:02"}</b>
       </div>
-      <button className="btn-hedge" disabled={hedged} onClick={() => setHedged(true)}>
+      <button
+        className="btn-hedge"
+        disabled={hedged || !WRITE_ENABLED}
+        title={WRITE_ENABLED ? "" : GATE_TITLE}
+        onClick={() => setHedged(true)}
+      >
         {hedged ? "✓ re-centered" : "hedge to flat"}
       </button>
     </div>
@@ -567,20 +609,29 @@ function HedgeStrip(): JSX.Element {
 export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const [closing, setClosing] = useState<Position | null>(null);
   const [builder, setBuilder] = useState<BuilderState | null>(null);
+  const { trade } = useDeskData();
+  const td = trade.data;
+  const positions = td?.positions ?? DATA.positions;
+  const greeks = td?.greeks ?? DATA.greeks;
+  const account = td?.account ?? DATA.account;
+  const limits = td?.limits ?? DATA.limits;
+  const events = td?.events ?? DATA.events;
 
   return (
     <div className={"trade-grid " + (tweaks.density || "regular")}>
       <div className="trade-main">
-        <Panel title="Indicators" right={<span className="dim mono small">state for execution · not a signal</span>} className="trade-block">
-          <IndicatorsPanel builder={builder} />
+        <Panel title="Indicators" right={<FreshBadge fresh={trade} label="state for execution · not a signal" />} className="trade-block">
+          <IndicatorsPanel builder={builder} greeks={greeks} account={account} limits={limits} events={events} />
         </Panel>
         <Panel title="Open positions" pad={false} className="trade-block open-pos-panel">
-          <HedgeStrip />
+          <HedgeStrip greeks={greeks} limits={limits} />
           <OpenPositionsTable
             showGreeks={tweaks.showGreeks}
             extended={tweaks.showGreeks}
             onClose={setClosing}
             dense={tweaks.density === "compact"}
+            positions={positions}
+            greeks={greeks}
           />
         </Panel>
       </div>
@@ -590,7 +641,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
           <OrderBuilder onState={setBuilder} />
         </Panel>
         <Panel title="Close position" className="trade-block close-block">
-          <ClosePanel pos={closing} onDone={() => setClosing(null)} />
+          <ClosePanel pos={closing} onDone={() => setClosing(null)} positions={positions} greeks={greeks} account={account} />
         </Panel>
       </div>
     </div>

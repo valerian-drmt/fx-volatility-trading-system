@@ -19,10 +19,14 @@ import {
   fetchConfigHistory,
   fetchDevEngines,
   fetchHealthExtended,
+  fetchOpenPositions,
   fetchPcaHistory,
   fetchPcaModel,
   fetchPcaState,
+  fetchRegimeEvents,
   fetchTermStructure,
+  fetchTradeBook,
+  fetchTradeLimits,
   fetchVolSurface,
 } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
@@ -38,6 +42,12 @@ import {
   type TermPoint,
 } from "./core";
 import {
+  account as mockAccount,
+  events as mockEvents,
+  limits as mockLimits,
+  positions as mockPositions,
+} from "./core";
+import {
   type ConfigData,
   type ConfigSection,
   type DeskData,
@@ -45,6 +55,7 @@ import {
   type PcaData,
   type SurfaceData,
   type SystemData,
+  type TradeData,
 } from "./deskData";
 import { config as mockConfig, engines as mockEngines, stack as mockStack } from "./extended";
 import { type Fresh, makeFresh } from "./freshness";
@@ -53,6 +64,7 @@ import { adaptPca } from "./live/pca";
 import { adaptIvSurface } from "./live/surface";
 import { adaptSystem } from "./live/system";
 import { adaptTermStructure } from "./live/termStructure";
+import { adaptAccount, adaptEvents, adaptLimits, adaptPositions, deriveNetGreeks } from "./live/trade";
 
 const MOCK_PCA: PcaData = {
   pcs: mockPcs.map((p) => ({ ...p, zHistory: [] })),
@@ -61,6 +73,15 @@ const MOCK_PCA: PcaData = {
 const MOCK_SYSTEM: SystemData = { engines: mockEngines, stack: mockStack };
 const SYSTEM_POLL_MS = 10_000; // engine heartbeats: no WS push → poll
 const SYSTEM_WARN_MS = 20_000;
+const MOCK_TRADE: TradeData = {
+  positions: mockPositions,
+  greeks: deriveNetGreeks(mockPositions),
+  account: mockAccount,
+  limits: mockLimits,
+  events: mockEvents,
+};
+const TRADE_POLL_MS = 15_000; // positions mtm: snapshot + modest poll (WS in 6w)
+const TRADE_WARN_MS = 30_000;
 const CONFIG_WARN_MS = Number.POSITIVE_INFINITY; // config rarely changes → never "stale"
 
 // Mock config is a flat key/value list; fold it into the hybrid (sections + history) shape.
@@ -133,6 +154,27 @@ export function DataProvider({
     CONFIG_WARN_MS,
     !mock,
   );
+  const liveTrade = useFetch<TradeData>(
+    async () => {
+      const [pos, lim, evts, book] = await Promise.all([
+        fetchOpenPositions(),
+        fetchTradeLimits(),
+        fetchRegimeEvents(),
+        fetchTradeBook(),
+      ]);
+      const positions = adaptPositions(pos, Date.now());
+      return {
+        positions,
+        greeks: deriveNetGreeks(positions),
+        account: adaptAccount(book),
+        limits: adaptLimits(lim),
+        events: adaptEvents(evts),
+      };
+    },
+    TRADE_WARN_MS,
+    !mock,
+    TRADE_POLL_MS,
+  );
 
   // Re-fetch surface + term + pca on each vol-engine cycle push (~3 min).
   const vol = useVolStream(!mock);
@@ -184,7 +226,11 @@ export function DataProvider({
     ? makeFresh(MOCK_CONFIG, Date.now(), Number.POSITIVE_INFINITY)
     : liveConfig;
 
-  const value: DeskData = { termStructure, surface, pca, system, config };
+  const trade: Fresh<TradeData> = mock
+    ? makeFresh(MOCK_TRADE, Date.now(), Number.POSITIVE_INFINITY)
+    : liveTrade;
+
+  const value: DeskData = { termStructure, surface, pca, system, config, trade };
   return (
     <DeskDataContext.Provider value={value}>{children}</DeskDataContext.Provider>
   );
