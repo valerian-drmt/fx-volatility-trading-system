@@ -7,9 +7,9 @@
  * (10Δp…) are positional, so we map by index. Missing cells → 0.
  *
  * The per-cell rich/cheap read (`ivZ`) is carried by `/vol/surface` as
- * `surface[tenor][delta].z` (vol-engine `_attach_fair_richness`): z =
- * (IV_ATM − σ_fair^Q)/scale, the value signal (sell rich / buy cheap).
- * `adaptIvZ` reads it ; IV ≈ fair → 0 (neutral).
+ * `surface[tenor][delta].z` (vol-engine `_attach_iv_z`): a per-cell z-score
+ * z = (IV_now − mean)/std vs the cell's own recent history. `adaptIvZ` reads
+ * it ; cells with too little history fall back to 0 (neutral).
  */
 import type { VolSurface } from "../../../api/endpoints";
 
@@ -32,9 +32,9 @@ export function adaptIvSurface(resp: VolSurface): number[][] {
 }
 
 /** Per-cell rich/cheap z grid (6×5) from the backend surface (cell `.z`).
- * z = (IV_ATM − σ_fair^Q)/scale, computed server-side (vol-engine
- * `_attach_fair_richness`) — + = rich, − = cheap. Per-tenor (broadcast across
- * the row's deltas). Missing cell → 0 (neutral, IV ≈ fair or fair unavailable). */
+ * z = (IV_now − mean)/std vs the cell's own history, computed server-side
+ * (vol-engine `_attach_iv_z`) — + = rich, − = cheap, per-cell across the smile.
+ * Missing cell → 0 (neutral, insufficient history). */
 export function adaptIvZ(resp: VolSurface): number[][] {
   const surface = (resp as { surface?: Record<string, TenorMap> }).surface ?? {};
   return SURFACE_TENOR_KEYS.map((t) => {

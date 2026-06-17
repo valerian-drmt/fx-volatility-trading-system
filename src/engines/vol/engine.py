@@ -699,27 +699,39 @@ class VolEngine:
             except Exception:
                 logger.exception("fair_vol_attach_failed")
 
-        # Per-cell rich/cheap colour (IV vs σ_fair^Q). Needs _fair_q (attached
-        # above), no DB / no history → colours on the first cycle.
+        # Per-cell rich/cheap z-score (vs each cell's own history) → heatmap
+        # colour. Best-effort ; no-op until enough surface history persisted.
         try:
-            self._attach_fair_richness(out)
+            await self._attach_iv_z(out)
         except Exception:
-            logger.exception("fair_richness_attach_failed")
+            logger.exception("iv_z_attach_failed")
         return out
 
     # Delta cells of a pillar, in heatmap column order.
     _IV_Z_DELTAS = ["10dp", "25dp", "atm", "25dc", "10dc"]
 
-    def _attach_fair_richness(self, out: dict[str, Any]) -> None:
-        """Attach a per-cell rich/cheap z = (IV_ATM − σ_fair^Q)/scale onto each
-        pillar cell as ``z`` (broadcast across the row's deltas). + = rich (sell),
-        − = cheap (buy). No-op when σ_fair^Q is unavailable."""
-        from core.vol.fair_richness import build_fair_richness
+    async def _attach_iv_z(self, out: dict[str, Any]) -> None:
+        """Attach a per-cell z-score onto each pillar cell as ``z``: z = (IV_now
+        − mean) / std vs the last ~N persisted surfaces, computed per (tenor,
+        delta). Drives the heatmap rich/cheap colour, with per-cell granularity
+        across the smile. Best-effort ; no-op until ≥ min_obs history."""
+        from sqlalchemy import desc, select
 
-        fair_q = out.get("_fair_q")
-        if not isinstance(fair_q, dict):
+        from core.vol.iv_z import compute_iv_z
+        from persistence.db import get_sessionmaker
+        from persistence.models import VolSurface
+
+        async with get_sessionmaker()() as session:
+            rows = (await session.execute(
+                select(VolSurface.surface_data)
+                .where(VolSurface.underlying == self.symbol)
+                .order_by(desc(VolSurface.timestamp))
+                .limit(120)
+            )).scalars().all()
+        history = [r for r in rows if isinstance(r, dict)]
+        if len(history) < 8:
             return
-        z = build_fair_richness(out, fair_q, self._IV_Z_DELTAS)
+        z = compute_iv_z(history, out, list(self.tenor_t), self._IV_Z_DELTAS)
         for tenor, drow in z.items():
             pillar = out.get(tenor)
             if not isinstance(pillar, dict):
