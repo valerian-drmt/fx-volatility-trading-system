@@ -9,7 +9,7 @@
  * Wired so far:
  *   - termStructure (PR F)        — live via /vol/term-structure
  *   - surface.ivSurface (PR 1)    — live via /vol/surface, invalidated by /ws/vol
- *     surface.ivZ                 — still mock (backend per-cell z gap, see 09)
+ *     surface.ivZ                 — live per-cell rich/cheap z (surface `.z`)
  *
  * `VITE_USE_MOCK` (default "true") flips the global default.
  */
@@ -95,7 +95,7 @@ import {
   adaptWaterfallGreek,
   deriveBookComposition,
 } from "./live/portfolio";
-import { adaptIvSurface } from "./live/surface";
+import { adaptIvSurface, adaptIvZ } from "./live/surface";
 import { adaptSystem } from "./live/system";
 import { adaptTermStructure } from "./live/termStructure";
 import { adaptAccount, adaptCash, adaptEvents, adaptLimits, adaptPositions, deriveNetGreeks } from "./live/trade";
@@ -177,8 +177,11 @@ export function DataProvider({
     VOL_WARN_MS,
     !mock,
   );
-  const liveSurface = useFetch<number[][]>(
-    async () => adaptIvSurface(await fetchVolSurface()),
+  const liveSurface = useFetch<{ ivSurface: number[][]; ivZ: number[][] }>(
+    async () => {
+      const resp = await fetchVolSurface();
+      return { ivSurface: adaptIvSurface(resp), ivZ: adaptIvZ(resp) };
+    },
     VOL_WARN_MS,
     !mock,
   );
@@ -328,11 +331,11 @@ export function DataProvider({
         status: liveSurface.status,
         asOf: liveSurface.asOf,
         ageMs: liveSurface.ageMs,
-        // ivZ stays on the mock until the backend exposes a per-cell z field.
+        // ivZ is the live per-cell rich/cheap z (backend surface `.z`).
         data: liveSurface.data
           ? {
-              ivSurface: liveSurface.data,
-              ivZ: mockIvZ,
+              ivSurface: liveSurface.data.ivSurface,
+              ivZ: liveSurface.data.ivZ,
               tenors: mockTenors,
               deltas: mockDeltas,
             }

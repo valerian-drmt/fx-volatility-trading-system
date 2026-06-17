@@ -698,7 +698,46 @@ class VolEngine:
                 await self._attach_fair_vol(out)
             except Exception:
                 logger.exception("fair_vol_attach_failed")
+
+        # Per-cell IV z-score (rich/cheap heatmap) from persisted surface history.
+        await self._publish_progress("vol_surface", "iv_z")
+        try:
+            await self._attach_iv_z(out)
+        except Exception:
+            logger.exception("iv_z_attach_failed")
         return out
+
+    # Delta cells of a pillar, in heatmap column order.
+    _IV_Z_DELTAS = ["10dp", "25dp", "atm", "25dc", "10dc"]
+
+    async def _attach_iv_z(self, out: dict[str, Any]) -> None:
+        """Attach a per-cell rich/cheap z (vs the last ~N surfaces) onto each
+        pillar cell as ``z``. Best-effort ; no-op until enough history."""
+        from sqlalchemy import desc, select
+
+        from core.vol.iv_z import compute_iv_z
+        from persistence.db import get_sessionmaker
+        from persistence.models import VolSurface
+
+        async with get_sessionmaker()() as session:
+            rows = (await session.execute(
+                select(VolSurface.surface_data)
+                .where(VolSurface.underlying == self.symbol)
+                .order_by(desc(VolSurface.timestamp))
+                .limit(120)
+            )).scalars().all()
+        history = [r for r in rows if isinstance(r, dict)]
+        if len(history) < 8:
+            return
+        z = compute_iv_z(history, out, list(self.tenor_t), self._IV_Z_DELTAS)
+        for tenor, drow in z.items():
+            pillar = out.get(tenor)
+            if not isinstance(pillar, dict):
+                continue
+            for delta, zv in drow.items():
+                cell = pillar.get(delta)
+                if isinstance(cell, dict):
+                    cell["z"] = zv
 
     async def _attach_fair_vol(self, out: dict[str, Any]) -> None:
         """OHLC → Yang-Zhang RV → HAR + GARCH (P) → VRP → σ_fair^Q, onto ``out``.

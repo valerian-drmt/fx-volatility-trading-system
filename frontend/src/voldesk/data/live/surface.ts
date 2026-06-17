@@ -6,17 +6,17 @@
  * meta). Delta keys are lowercase (10dp/25dp/atm/25dc/10dc); the voldesk labels
  * (10Δp…) are positional, so we map by index. Missing cells → 0.
  *
- * ⚠️ The per-cell z-score field (`ivZ`, the rich/cheap read) is NOT carried by
- * `/vol/surface` — it needs a rolling per-cell distribution server-side. Tracked
- * as a backend gap (see releases/r11_frontend_backend/09 — per-cell IV z). Until
- * then the provider keeps `ivZ` on the synthetic mock.
+ * The per-cell z-score (`ivZ`, the rich/cheap read) is now carried by
+ * `/vol/surface` as `surface[tenor][delta].z` (vol-engine `_attach_iv_z`,
+ * computed vs each cell's rolling history). `adaptIvZ` reads it ; cells with no
+ * history yet fall back to 0 (neutral) rather than a synthetic value.
  */
 import type { VolSurface } from "../../../api/endpoints";
 
 export const SURFACE_TENOR_KEYS = ["1M", "2M", "3M", "4M", "5M", "6M"] as const;
 export const SURFACE_DELTA_KEYS = ["10dp", "25dp", "atm", "25dc", "10dc"] as const;
 
-type Cell = { iv?: number | null } | undefined;
+type Cell = { iv?: number | null; z?: number | null } | undefined;
 type TenorMap = Partial<Record<string, Cell>> | undefined;
 
 /** Extract the 6×5 IV grid (%) from the backend surface payload. */
@@ -27,6 +27,20 @@ export function adaptIvSurface(resp: VolSurface): number[][] {
     return SURFACE_DELTA_KEYS.map((d) => {
       const iv = row?.[d]?.iv;
       return typeof iv === "number" ? iv * 100 : 0;
+    });
+  });
+}
+
+/** Per-cell rich/cheap z-score grid (6×5) from the backend surface (cell `.z`,
+ * computed server-side vs each cell's history). Missing cell → 0 (neutral) ;
+ * the engine fills `z` once enough surface history has accumulated. */
+export function adaptIvZ(resp: VolSurface): number[][] {
+  const surface = (resp as { surface?: Record<string, TenorMap> }).surface ?? {};
+  return SURFACE_TENOR_KEYS.map((t) => {
+    const row = surface[t];
+    return SURFACE_DELTA_KEYS.map((d) => {
+      const z = row?.[d]?.z;
+      return typeof z === "number" ? z : 0;
     });
   });
 }

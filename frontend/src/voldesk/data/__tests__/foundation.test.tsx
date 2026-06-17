@@ -16,7 +16,7 @@ import {
   adaptWaterfallGreek,
   deriveBookComposition,
 } from "../live/portfolio";
-import { adaptIvSurface } from "../live/surface";
+import { adaptIvSurface, adaptIvZ } from "../live/surface";
 import { adaptSystem } from "../live/system";
 import { adaptTermStructure } from "../live/termStructure";
 import { adaptAccount, adaptCash, adaptEvents, adaptLimits, adaptPositions, deriveNetGreeks } from "../live/trade";
@@ -69,6 +69,24 @@ describe("adaptIvSurface", () => {
     // 3M: only atm present → others 0, atm = 7.5
     expect(grid[2]).toEqual([0, 0, 7.5, 0, 0]);
     // 6M absent entirely → all 0
+    expect(grid[5]).toEqual([0, 0, 0, 0, 0]);
+  });
+});
+
+describe("adaptIvZ", () => {
+  it("extracts the 6×5 per-cell z grid, missing z → 0 (neutral)", () => {
+    const grid = adaptIvZ({
+      surface: {
+        "1M": { "10dp": { iv: 0.09, z: -1.8 }, atm: { iv: 0.08, z: 2.4 }, "10dc": { iv: 0.088 } },
+        "3M": { atm: { iv: 0.075, z: 0 } },
+      },
+    } as never);
+    expect(grid).toHaveLength(6);
+    // 1M: 10dp=-1.8, 25dp absent→0, atm=2.4, 25dc absent→0, 10dc has no z→0
+    expect(grid[0]).toEqual([-1.8, 0, 2.4, 0, 0]);
+    // explicit z=0 is kept (neutral, not dropped)
+    expect(grid[2]![2]).toBe(0);
+    // 6M absent → all neutral
     expect(grid[5]).toEqual([0, 0, 0, 0, 0]);
   });
 });
