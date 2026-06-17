@@ -64,10 +64,12 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
                   title={`${tenors[i]} ${deltas[j]} · IV ${v.toFixed(1)} · ${zz > 0 ? "+" : ""}${zz.toFixed(1)}σ`}
                 >
                   <span className="gz-iv mono">{v.toFixed(1)}</span>
-                  <span className="gz-z mono">
-                    {zz > 0 ? "+" : ""}
-                    {zz.toFixed(1)}σ
-                  </span>
+                  {Math.abs(zz) >= 0.05 && (
+                    <span className="gz-z mono">
+                      {zz > 0 ? "+" : ""}
+                      {zz.toFixed(1)}σ
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -80,10 +82,6 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
           <i style={{ background: `linear-gradient(90deg,${sigDivZ(-SIG_ZMAX)},${sigDivZ(0)},${sigDivZ(SIG_ZMAX)})` }} />
           <span className="mono small dim">rich</span>
         </div>
-        <span className="ivz-cap dim small">
-          background = z-score (rich/cheap vs history) · number = IV · <span className="wing-dot" />
-          wings (noisy)
-        </span>
       </div>
     </div>
   );
