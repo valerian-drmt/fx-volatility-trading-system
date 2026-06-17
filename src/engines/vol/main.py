@@ -81,7 +81,7 @@ async def run() -> None:
     configure_logging(
         service_name=settings.SERVICE_NAME or "vol_engine", level=settings.LOG_LEVEL
     )
-    start_metrics_server(_METRICS_PORT)
+    start_metrics_server(_METRICS_PORT, engine="vol_engine")
     # P2 obs (PoC vol-engine seul) : OTel tracer → otel-collector → Tempo.
     # Spec § Phase 2 gate 2.1 — rollout aux 4 autres engines après
     # validation flame graph dans Grafana.

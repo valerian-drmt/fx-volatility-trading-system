@@ -194,7 +194,19 @@ def observed_cycle(engine: str) -> Iterator[str]:
 
 # ── Metrics HTTP server ──────────────────────────────────────────────────────
 
-def start_metrics_server(port: int) -> None:
+def _prewarm_counters(engine: str) -> None:
+    """Create the `(engine, status)` label combinations at value 0.
+
+    Without this, Prometheus has no time series for `status="error"` until
+    the first actual error cycle — Grafana renders "No data" on the error
+    rate panel even when everything is fine. Pre-warming makes the panel
+    show a flat 0 line, which is the expected "all good" view.
+    """
+    for status in ("ok", "error"):
+        cycles_total.labels(engine=engine, status=status)
+
+
+def start_metrics_server(port: int, engine: str | None = None) -> None:
     """Boot the Prometheus exposition endpoint on the given port.
 
     Idempotent in practice (prometheus_client raises OSError if the port
@@ -207,9 +219,15 @@ def start_metrics_server(port: int) -> None:
       execution-engine : 9104
       db-writer   : 9105
 
+    If `engine` is provided, also pre-warms the `engine_cycles_total`
+    label combinations for it so Grafana's error rate panel renders a
+    flat 0 instead of "No data" before the first error happens.
+
     Spec : ``docs/LGTM_IMPLEMENTATION_SPEC.md`` § Phase 0 step 3.
     """
     start_http_server(port)
+    if engine:
+        _prewarm_counters(engine)
 
 
 __all__ = [
