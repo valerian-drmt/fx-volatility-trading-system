@@ -12,7 +12,7 @@ import { Fragment, useState } from "react";
 import { Heatmap } from "../components/charts";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
-import { pnlCls, type Tone } from "../components/format";
+import { type Tone } from "../components/format";
 import { DATA, fmt, mulberry32 } from "../data";
 import type { Pc, TermPoint } from "../data";
 import type { PcaCard, PcaModelMeta, SurfaceData } from "../data/deskData";
@@ -237,16 +237,15 @@ function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
         <span className="mc-name">{pc.name}</span>
         <span className="mc-desc dim">{pc.desc}</span>
         <span className={"mc-tier mono tier-" + pc.tier}>
-          {pc.tier === 1 ? "CORE" : pc.tier === 2 ? "SECONDARY" : "TERTIARY"} · {pc.variance}% var
+          {pc.tier === 1 ? "CORE" : pc.tier === 2 ? "SECONDARY" : "TERTIARY"} · {pc.variance.toFixed(2)}% var
         </span>
       </div>
       <div className="mc-zrow">
-        <span className={"mc-z mono " + pnlCls(pc.z)}>{fmt.sgn(pc.z, 2)}</span>
+        {/* z coloured by rich/cheap : green = CHEAP, red = EXPENSIVE, white = FAIR */}
+        <span className={"mc-z mono " + (tone === "good" ? "pos" : tone === "danger" ? "neg" : "")}>{fmt.sgn(pc.z, 2)}</span>
         <div className="mc-zmeta">
           <Tag tone={tone}>{pc.label}</Tag>
-          <span className="dim small mono">
-            pctile {pc.pctile}% · thr ±{pc.thr.toFixed(1)}
-          </span>
+          <span className="dim small mono">%ile {pc.pctile.toFixed(2)}%</span>
         </div>
       </div>
       <ZSeriesChart pc={pc} view={view} series={pc.zHistory} />
