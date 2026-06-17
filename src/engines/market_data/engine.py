@@ -70,6 +70,7 @@ class MarketDataEngine:
     async def run(self) -> None:
         """Main engine loop : connect, poll, publish, heartbeat, repeat."""
         from shared.ib_connection import connect_ib_with_backoff
+        from shared.observability import observed_cycle
 
         await connect_ib_with_backoff(
             self.ib, host=self.ib_host, port=self.ib_port, client_id=self.client_id
@@ -79,7 +80,11 @@ class MarketDataEngine:
         try:
             poll = 0
             while not self._stop.is_set():
-                await self._poll_once()
+                # P0 obs : each 100 ms poll = one cycle. Prometheus counters
+                # handle the rate fine. cycle_id rotates per poll keeping logs
+                # cleanly segmented.
+                with observed_cycle("market_data"):
+                    await self._poll_once()
                 poll += 1
                 if poll % HEARTBEAT_EVERY_N_POLLS == 0:
                     await publisher.set_heartbeat(self.redis, keys.ENGINE_MARKET_DATA)

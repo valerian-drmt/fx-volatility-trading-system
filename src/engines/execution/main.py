@@ -40,9 +40,13 @@ from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
 from persistence.models import TradeEvent
+from shared.observability import start_metrics_server
 
 logger = logging.getLogger("execution")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
+
+# P0 obs : Prometheus /metrics endpoint port. Spec § Phase 0 step 3.
+_METRICS_PORT = 9104
 
 # 5 s default : UI polls positions at ~5 s, moderate IB load (~12 calls/min).
 # Override via the SYNC_INTERVAL_S env var.
@@ -54,6 +58,10 @@ STUCK_AFTER_S = float(os.getenv("STUCK_AFTER_S", "600.0"))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # P0 obs : start the Prometheus /metrics HTTP server first thing so the
+    # endpoint is reachable even during the rest of startup.
+    start_metrics_server(_METRICS_PORT)
+
     redis = aioredis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=False)
     app.state.redis = redis
     set_redis_client(redis)

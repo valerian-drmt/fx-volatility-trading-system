@@ -76,6 +76,7 @@ class RiskEngine:
 
     async def run(self) -> None:
         from shared.ib_connection import connect_ib_with_backoff
+        from shared.observability import observed_cycle
 
         await connect_ib_with_backoff(
             self.ib, host=self.ib_host, port=self.ib_port, client_id=self.client_id
@@ -83,7 +84,9 @@ class RiskEngine:
         logger.info("risk_engine_started", extra={"symbol": self.symbol})
         try:
             while not self._stop.is_set():
-                await self.run_cycle()
+                # P0 obs : cycle_id propagated to structlog + metrics emitted.
+                with observed_cycle("risk_engine"):
+                    await self.run_cycle()
                 try:
                     await asyncio.wait_for(self._stop.wait(), timeout=CYCLE_SECONDS)
                     break

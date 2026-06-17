@@ -94,6 +94,10 @@ services:
         required: false
     networks:
       - fxvol-internal
+    # P0 obs : Prometheus /metrics endpoint, scraped by Prometheus from
+    # within fxvol-internal in P1. Spec § Phase 0 step 3.
+    expose:
+      - "9101"
     healthcheck:
       test:
         - CMD-SHELL
@@ -128,6 +132,9 @@ services:
         required: false
     networks:
       - fxvol-internal
+    # P0 obs : Prometheus /metrics endpoint. Spec § Phase 0 step 3.
+    expose:
+      - "9102"
     healthcheck:
       test:
         - CMD-SHELL
@@ -162,6 +169,9 @@ services:
         required: false
     networks:
       - fxvol-internal
+    # P0 obs : Prometheus /metrics endpoint. Spec § Phase 0 step 3.
+    expose:
+      - "9103"
     healthcheck:
       test:
         - CMD-SHELL
@@ -191,6 +201,9 @@ services:
         condition: service_healthy
     networks:
       - fxvol-internal
+    # P0 obs : Prometheus /metrics endpoint. Spec § Phase 0 step 3.
+    expose:
+      - "9105"
     healthcheck:
       test:
         - CMD-SHELL

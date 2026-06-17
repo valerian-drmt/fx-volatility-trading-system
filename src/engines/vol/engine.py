@@ -381,6 +381,7 @@ class VolEngine:
 
     async def run(self) -> None:
         from shared.ib_connection import connect_ib_with_backoff
+        from shared.observability import observed_cycle
 
         await connect_ib_with_backoff(
             self.ib, host=self.ib_host, port=self.ib_port, client_id=self.client_id
@@ -393,7 +394,9 @@ class VolEngine:
             while not self._stop.is_set():
                 await publisher.set_heartbeat(self.redis, keys.ENGINE_VOL)
                 deadline = _time.monotonic() + CYCLE_S
-                published = await self.run_cycle()
+                # P0 obs : cycle_id auto-bound to structlog + metrics emitted.
+                with observed_cycle("vol_engine"):
+                    published = await self.run_cycle()
                 elapsed_until_deadline = deadline - _time.monotonic()
                 # When the cycle completed early (typical — work takes ~60-120 s,
                 # cadence is 180 s), sleep the remainder so each cycle starts
