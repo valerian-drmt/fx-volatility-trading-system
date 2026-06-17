@@ -95,8 +95,8 @@ describe("adaptPca", () => {
   const grid = Array.from({ length: 6 }, () => [0.1, 0.2, 0.3, 0.2, 0.1]);
   const state = {
     signals: {
-      pc1: { z_score: -1.0, label: "FAIR", recommended_structure: "Long 1M ATM straddle" },
-      pc2: { z_score: 0.8, label: "FAIR", recommended_structure: null },
+      pc1: { z_score: -1.0, label: "FAIR", recommended_structure: "Long 1M ATM straddle", actionable: true },
+      pc2: { z_score: 0.8, label: "FAIR", recommended_structure: "calendar_long_1M_3M", actionable: false, actionable_reason: "low_variance_pc2" },
       pc3: { z_score: -2.2, label: "CHEAP", recommended_structure: "fly", sub_signals: { convex_z: -2.2 } },
     },
     variance_explained: { pc1: 0.97, pc2: 0.012, pc3: 0.008, cumulative: 0.99 },
@@ -114,6 +114,18 @@ describe("adaptPca", () => {
     expect(data.pcs[0]!.load).toEqual(grid);
     expect(data.pcs[2]).toMatchObject({ id: "PC3", label: "CHEAP", tier: 3, stable: false, dataQuality: "noisy" });
     expect(data.pcs[2]!.extra).toEqual({ convex_z: -2.2 });
+  });
+
+  it("maps recommended_structure + actionable per PC (étape 2)", () => {
+    const data = adaptPca(state, model, [[], [], []]);
+    expect(data.pcs[0]).toMatchObject({ reco: "Long 1M ATM straddle", actionable: true });
+    expect(data.pcs[1]).toMatchObject({
+      reco: "calendar_long_1M_3M",
+      actionable: false,
+      actionableReason: "low_variance_pc2",
+    });
+    expect(data.pcs[2]!.reco).toBe("fly"); // no actionable field → defaults false
+    expect(data.pcs[2]!.actionable).toBe(false);
   });
 
   it("derives pctile from the (reversed) z-history", () => {

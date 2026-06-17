@@ -181,6 +181,8 @@ export interface Pc {
   thr: number;
   load: number[][];
   reco: string;
+  actionable?: boolean;
+  actionableReason?: string | undefined;
   extra: { convex_z: number } | null;
 }
 
