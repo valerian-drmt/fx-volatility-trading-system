@@ -209,13 +209,6 @@ function ZSeriesChart({ pc, view, series }: { pc: Pc; view: string; series?: num
   );
 }
 
-// snake_case backend identifier → readable label, e.g. "calendar_long_1M_3M"
-// → "Calendar long 1M 3M", "signal_below_threshold" → "Signal below threshold".
-function humanize(s: string): string {
-  const t = s.replace(/_/g, " ").trim();
-  return t.charAt(0).toUpperCase() + t.slice(1);
-}
-
 // PCA surface-mode card — the RELATIVE signal only (z vs history, loadings). The level gate lives in its own Fair vol panel.
 function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
   const tone: Tone =
@@ -239,21 +232,6 @@ function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
         </div>
       </div>
       <ZSeriesChart pc={pc} view={view} series={pc.zHistory} />
-      {/* étape 2 — native expression for this mode (recommended_structure) */}
-      <div className="mc-reco">
-        <span className="mc-reco-lbl dim small mono">expression</span>
-        {pc.reco && pc.reco !== "—" ? (
-          <>
-            <span className="mc-reco-val mono">{humanize(pc.reco)}</span>
-            <Tag tone={pc.actionable ? "good" : "neutral"}>{pc.actionable ? "actionable" : "monitor"}</Tag>
-            {!pc.actionable && pc.actionableReason ? (
-              <span className="mc-reco-why small mono">{humanize(pc.actionableReason)}</span>
-            ) : null}
-          </>
-        ) : (
-          <span className="dim small mono">no structure at this z</span>
-        )}
-      </div>
       <div className="mc-load-lbl dim small mono">loadings · tenor × delta</div>
       <Heatmap rows={DATA.tenors} cols={DATA.deltas} matrix={pc.load} />
     </div>

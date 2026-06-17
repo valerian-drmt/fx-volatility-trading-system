@@ -259,10 +259,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
               </div>
             ))}
           </div>
-          <div className="sig-reco">
-            <span className="dim mono small">native expression · reference</span>
-            <span className="sig-struct">{lead.reco}</span>
-          </div>
         </Panel>
       </div>
 

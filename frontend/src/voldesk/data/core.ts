@@ -180,16 +180,13 @@ export interface Pc {
   dataQuality: string;
   thr: number;
   load: number[][];
-  reco: string;
-  actionable?: boolean;
-  actionableReason?: string | undefined;
   extra: { convex_z: number } | null;
 }
 
 export const pcs: Pc[] = [
-  { id: "PC1", name: "level", desc: "surface up/down", z: -1.09, pctile: 13.8, label: "FAIR", variance: 97.2, stable: true, tier: 1, dataQuality: "clean", thr: 1.5, load: pc1Load, reco: "Long 1M ATM straddle", extra: null },
-  { id: "PC2", name: "slope", desc: "front vs back (tenor)", z: 0.83, pctile: 79.8, label: "FAIR", variance: 1.2, stable: true, tier: 2, dataQuality: "clean", thr: 1.8, load: pc2Load, reco: "Calendar 1M / 6M", extra: null },
-  { id: "PC3", name: "curvature", desc: "wings vs ATM (delta)", z: -2.15, pctile: 3.2, label: "CHEAP", variance: 0.8, stable: false, tier: 3, dataQuality: "noisy", thr: 2.0, load: pc3Load, reco: "Long 1M+6M / short 3M butterfly", extra: { convex_z: -2.15 } },
+  { id: "PC1", name: "level", desc: "surface up/down", z: -1.09, pctile: 13.8, label: "FAIR", variance: 97.2, stable: true, tier: 1, dataQuality: "clean", thr: 1.5, load: pc1Load, extra: null },
+  { id: "PC2", name: "slope", desc: "front vs back (tenor)", z: 0.83, pctile: 79.8, label: "FAIR", variance: 1.2, stable: true, tier: 2, dataQuality: "clean", thr: 1.8, load: pc2Load, extra: null },
+  { id: "PC3", name: "curvature", desc: "wings vs ATM (delta)", z: -2.15, pctile: 3.2, label: "CHEAP", variance: 0.8, stable: false, tier: 3, dataQuality: "noisy", thr: 2.0, load: pc3Load, extra: { convex_z: -2.15 } },
 ];
 
 export const pcaModel = {

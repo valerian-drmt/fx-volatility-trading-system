@@ -21,9 +21,6 @@ import type { PcaCard, PcaData, PcaModelMeta } from "../deskData";
 interface PcSig {
   z_score: number;
   label: "CHEAP" | "FAIR" | "EXPENSIVE";
-  recommended_structure: string | null;
-  actionable?: boolean;
-  actionable_reason?: string | null;
   sub_signals?: { skew_z?: number; convex_z?: number } | null;
 }
 interface PcaStateResp {
@@ -99,9 +96,6 @@ export function adaptPca(
       dataQuality: isStable ? "clean" : "noisy",
       thr: meta.thr,
       load: grids[i] && grids[i]!.length ? grids[i]! : ZERO_GRID,
-      reco: s?.recommended_structure ?? "—",
-      actionable: s?.actionable ?? false,
-      actionableReason: s?.actionable_reason ?? undefined,
       extra: meta.id === "PC3" && typeof convexZ === "number" ? { convex_z: convexZ } : null,
       zHistory,
     };
