@@ -97,13 +97,15 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
     pr = 16,
     pt = 16,
     pb = 28;
-  const all = ts.flatMap((t) => [t.atm, t.fair]);
+  // RV (réalisé) is a surface-level scalar → a flat reference line across tenors.
+  const hasRv = ts.some((t) => t.rv > 0);
+  const all = ts.flatMap((t) => (hasRv ? [t.atm, t.fair, t.rv] : [t.atm, t.fair]));
   const lo = Math.min(...all) - 0.15,
     hi = Math.max(...all) + 0.15,
     rng = hi - lo || 1;
   const X = (i: number): number => pl + (i / (ts.length - 1)) * (w - pl - pr);
   const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
-  const line = (key: "atm" | "fair"): string =>
+  const line = (key: "atm" | "fair" | "rv"): string =>
     ts.map((t, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(t[key]).toFixed(1)).join(" ");
   const ticks: number[] = [];
   for (let v = Math.ceil(lo); v <= hi; v += 0.5) ticks.push(v);
@@ -118,6 +120,7 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
             </text>
           </g>
         ))}
+        {hasRv && <path d={line("rv")} stroke="var(--muted)" strokeDasharray="2 2" fill="none" strokeWidth="1.4" />}
         <path d={line("fair")} stroke={FAIR_COL} strokeDasharray="5 3" fill="none" strokeWidth="1.8" />
         <path d={line("atm")} stroke="var(--accent)" fill="none" strokeWidth="2.2" />
         {ts.map((t, i) => (
@@ -138,6 +141,12 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
           <i className="lg-line fair" style={{ borderColor: FAIR_COL }} />
           σ_fair · level gate
         </span>
+        {hasRv && (
+          <span>
+            <i className="lg-line" style={{ borderColor: "var(--muted)", borderStyle: "dotted" }} />
+            RV réalisé
+          </span>
+        )}
       </div>
     </div>
   );
