@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./voldesk.css";
-import { useTicks } from "../hooks/streams";
+import { useDeskData } from "./data/deskData";
 import { useTweaks } from "./useTweaks";
 import { DashboardView } from "./views/DashboardView";
 import { TradeView } from "./views/TradeView";
@@ -217,8 +217,9 @@ export default function VoldeskApp(): JSX.Element {
   const [route, setRoute] = useState<string>(() => location.hash.slice(1) || "dashboard");
   const [live, setLive] = useState<LiveTick>({ mid: SPOT, dir: 1 });
   const [clock, setClock] = useState<string>("");
-  // Live EURUSD ticks (/ws/ticks). Disabled in mock mode -> synthetic walk below.
-  const tick = useTicks(!USE_MOCK);
+  // Live EURUSD ticks via the shared desk domain (/ws/ticks, one WS connection).
+  // Mock mode -> synthetic walk below.
+  const { ticks: tick } = useDeskData();
   const prevMidRef = useRef<number>(SPOT);
   // setTweak is wired for the (not-yet-ported) Settings/Tweaks UI.
   void setTweak;

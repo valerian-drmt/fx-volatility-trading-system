@@ -232,7 +232,7 @@ function ClosePanel({
 }
 
 // ---------------- HoldingsStrip ----------------
-function HoldingsStrip({ cash }: { cash: Cash[] }): JSX.Element {
+function HoldingsStrip({ cash, spotBid, spotAsk }: { cash: Cash[]; spotBid: number; spotAsk: number }): JSX.Element {
   const eur = cash.find((c) => c.ccy === "EUR");
   const usd = cash.find((c) => c.ccy === "USD");
   const eurUsd = eur ? eur.usd : 0;
@@ -240,8 +240,8 @@ function HoldingsStrip({ cash }: { cash: Cash[] }): JSX.Element {
   const total = eurUsd + usdUsd;
   const k = (v: number): string => (v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" : "$" + (v / 1e3).toFixed(0) + "k");
   const pct = (v: number): string => ((v / total) * 100).toFixed(1) + "%";
-  const bid = (DATA.SPOT - 0.0001).toFixed(4);
-  const ask = (DATA.SPOT + 0.0001).toFixed(4);
+  const bid = spotBid.toFixed(5);
+  const ask = spotAsk.toFixed(5);
   return (
     <div className="hold-strip">
       <div className="hold-legend">
@@ -353,6 +353,8 @@ function IndicatorsPanel({
   limits,
   events,
   cash,
+  spotBid,
+  spotAsk,
 }: {
   builder: BuilderState | null;
   greeks: Greeks;
@@ -360,14 +362,16 @@ function IndicatorsPanel({
   limits: Limits;
   events: MacroEvent[];
   cash: Cash[];
+  spotBid: number;
+  spotAsk: number;
 }): JSX.Element {
   const g = greeks,
     a = account,
     L = limits;
   const eur = cash.find((c) => c.ccy === "EUR"),
     usd = cash.find((c) => c.ccy === "USD");
-  const bid = (DATA.SPOT - 0.0001).toFixed(4),
-    ask = (DATA.SPOT + 0.0001).toFixed(4);
+  const bid = spotBid.toFixed(5),
+    ask = spotAsk.toFixed(5);
   const evt = nextHighImpact(events);
   const isActive = !!(builder && builder.active && !builder.isFut);
   const add = isActive && builder ? builder.net : null;
@@ -611,7 +615,7 @@ function HedgeStrip({ greeks, limits }: { greeks: Greeks; limits: Limits }): JSX
 export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const [closing, setClosing] = useState<Position | null>(null);
   const [builder, setBuilder] = useState<BuilderState | null>(null);
-  const { trade } = useDeskData();
+  const { trade, ticks } = useDeskData();
   const td = trade.data;
   const positions = td?.positions ?? DATA.positions;
   const greeks = td?.greeks ?? DATA.greeks;
@@ -619,12 +623,15 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const limits = td?.limits ?? DATA.limits;
   const events = td?.events ?? DATA.events;
   const cash = td?.cash ?? DATA.cash;
+  // Live EURUSD bid/ask (RT.1) ; fallback to a synthetic spread around the mock spot.
+  const spotBid = ticks.data?.bid ?? DATA.SPOT - 0.0001;
+  const spotAsk = ticks.data?.ask ?? DATA.SPOT + 0.0001;
 
   return (
     <div className={"trade-grid " + (tweaks.density || "regular")}>
       <div className="trade-main">
         <Panel title="Indicators" right={<FreshBadge fresh={trade} label="state for execution · not a signal" />} className="trade-block">
-          <IndicatorsPanel builder={builder} greeks={greeks} account={account} limits={limits} events={events} cash={cash} />
+          <IndicatorsPanel builder={builder} greeks={greeks} account={account} limits={limits} events={events} cash={cash} spotBid={spotBid} spotAsk={spotAsk} />
         </Panel>
         <Panel title="Open positions" pad={false} className="trade-block open-pos-panel">
           <HedgeStrip greeks={greeks} limits={limits} />
@@ -640,7 +647,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
       </div>
       <div className="trade-side">
         <Panel title="Order builder" className="trade-block">
-          <HoldingsStrip cash={cash} />
+          <HoldingsStrip cash={cash} spotBid={spotBid} spotAsk={spotAsk} />
           <OrderBuilder onState={setBuilder} />
         </Panel>
         <Panel title="Close position" className="trade-block close-block">

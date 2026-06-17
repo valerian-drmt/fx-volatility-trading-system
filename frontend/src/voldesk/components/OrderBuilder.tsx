@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { gk$, pnlCls } from "./format";
 import { DATA, DATA2, fmt } from "../data";
+import { useDeskData } from "../data/deskData";
 
 const PRODUCTS = ["Vanilla Call", "Vanilla Put", "Straddle", "Strangle", "Butterfly", "Risk Reversal", "Calendar", "Future"];
 const TENORS = DATA.tenors;
@@ -214,6 +215,9 @@ interface OrderBuilderProps {
 }
 
 export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderProps): JSX.Element {
+  // Live spot for the MARKET display block (RT.1). The structure pricing/preview
+  // still uses the mock spot until the live preview lands (6r.2).
+  const { ticks } = useDeskData();
   const [product, setProduct] = useState("Risk Reversal");
   const [side, setSide] = useState("BUY");
   const [tenor, setTenor] = useState("2M");
@@ -391,7 +395,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
       <div className="builder-block block-mkt">
         <div className="block-tag">MARKET</div>
         <div className="mkt-rows">
-          <div><span>Spot bid/ask</span><b className="mono">{(DATA.SPOT - 0.0001).toFixed(4)}/{(DATA.SPOT + 0.0001).toFixed(4)}</b></div>
+          <div><span>Spot bid/ask</span><b className="mono">{(ticks.data?.bid ?? DATA.SPOT - 0.0001).toFixed(5)}/{(ticks.data?.ask ?? DATA.SPOT + 0.0001).toFixed(5)}</b></div>
           <div><span>ATM curve age</span><b className="mono warn">38s</b></div>
           <div><span>ATM IV {tenor}</span><b className="mono">{DATA.ivSurface[tenorIdx(tenor)]![2]!.toFixed(1)}%</b></div>
           <div><span>Fwd {tenor}</span><b className="mono">{DATA.smileFor(tenorIdx(tenor)).fwd.toFixed(4)}</b></div>

@@ -38,7 +38,7 @@ import {
   fetchVolSurface,
 } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
-import { useVolStream } from "../../hooks/streams";
+import { type TickMsg, useRiskStream, useTicks, useVolStream } from "../../hooks/streams";
 import {
   deltas as mockDeltas,
   ivSurface as mockIvSurface,
@@ -56,6 +56,7 @@ import {
   greeks as mockGreeks,
   limits as mockLimits,
   positions as mockPositions,
+  SPOT as mockSpot,
 } from "./core";
 import {
   type ConfigData,
@@ -288,6 +289,29 @@ export function DataProvider({
     }
   }, [vol.asOf, reloadTerm, reloadSurface, reloadPca]);
 
+  // RT.1 — live EURUSD spot (/ws/ticks). RT.2/RT.3 — the risk-engine cycle (~2s)
+  // is the realtime heartbeat: its raw greeks payload isn't USD-scaled, so we use
+  // it only to invalidate trade+portfolio -> re-fetch the USD-scaled REST snapshot
+  // (greeks + positions mtm) = correct numbers, updated live.
+  const liveTicks = useTicks(!mock);
+  const riskBeat = useRiskStream(!mock);
+  const reloadTrade = liveTrade.reload;
+  const reloadPortfolio = livePortfolio.reload;
+  useEffect(() => {
+    if (riskBeat.asOf !== null) {
+      reloadTrade();
+      reloadPortfolio();
+    }
+  }, [riskBeat.asOf, reloadTrade, reloadPortfolio]);
+
+  const ticks: Fresh<TickMsg> = mock
+    ? makeFresh<TickMsg>(
+        { symbol: "EURUSD", mid: mockSpot, bid: mockSpot - 0.00008, ask: mockSpot + 0.00008 },
+        Date.now(),
+        Number.POSITIVE_INFINITY,
+      )
+    : liveTicks;
+
   const termStructure: Fresh<TermPoint[]> = mock
     ? makeFresh(mockTermStructure, Date.now(), Number.POSITIVE_INFINITY)
     : liveTerm;
@@ -337,7 +361,7 @@ export function DataProvider({
     ? makeFresh(MOCK_RISK, Date.now(), Number.POSITIVE_INFINITY)
     : liveRisk;
 
-  const value: DeskData = { termStructure, surface, pca, system, config, trade, portfolio, risk };
+  const value: DeskData = { termStructure, surface, pca, system, config, trade, portfolio, risk, ticks };
   return (
     <DeskDataContext.Provider value={value}>{children}</DeskDataContext.Provider>
   );

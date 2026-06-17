@@ -4,6 +4,7 @@
  * `useDeskData()` to read each domain as `Fresh<T>` (live or mock).
  */
 import { createContext, useContext } from "react";
+import type { TickMsg } from "../../hooks/streams";
 import type { AccountState, Cash, Greeks, Limits, MacroEvent, Pc, PcaModelMeta, Position, TermPoint } from "./core";
 import type { BookComposition, PerfStats, StackItem, VegaTenor, WaterfallStep } from "./extended";
 import type { Fresh } from "./freshness";
@@ -131,6 +132,8 @@ export interface DeskData {
   portfolio: Fresh<PortfolioData>;
   /** Risk : 1-day VaR card values (PR 5). Stress grids/ladders/factors stay mock. */
   risk: Fresh<VarData>;
+  /** Live EURUSD spot tick (bid/ask/mid) via /ws/ticks (RT.1). */
+  ticks: Fresh<TickMsg>;
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);

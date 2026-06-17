@@ -45,13 +45,13 @@ function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
 
 export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element | null {
   // Composition view: read the already-wired desk domains, fall back to mock.
-  const { pca, portfolio, trade, termStructure } = useDeskData();
+  const { pca, portfolio, trade, termStructure, ticks } = useDeskData();
   const a = portfolio.data?.account ?? DATA.account,
     g = portfolio.data?.greeks ?? DATA.greeks,
     r = DATA.regime, // regime gate: no domain yet → mock (flagged in 09)
     L = trade.data?.limits ?? DATA.limits,
     f = DATA.feed; // freshness thresholds mock; ages/tones derived from domains below
-  const live = DATA.SPOT; // spot/move/RV: needs /ws/ticks → mock (flagged)
+  const live = ticks.data?.mid ?? DATA.SPOT; // live spot (RT.1) ; move/RV restent mock
   const cov = DATA2.coverage; // coverage: backend gap → mock (flagged)
   const ts = termStructure.data ?? DATA.termStructure;
   const events = trade.data?.events ?? DATA.events;
@@ -190,7 +190,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
               <span className="gs-lbl">EURUSD spot</span>
               <b className="mono">{live.toFixed(5)}</b>
               <span className="dim mono small">
-                {(live - 0.00008).toFixed(5)} / {(live + 0.00008).toFixed(5)}
+                {(ticks.data?.bid ?? live - 0.00008).toFixed(5)} / {(ticks.data?.ask ?? live + 0.00008).toFixed(5)}
               </span>
             </div>
             <div className="mkt-stat">
