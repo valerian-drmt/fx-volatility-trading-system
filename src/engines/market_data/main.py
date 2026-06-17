@@ -35,7 +35,7 @@ _METRICS_PORT = 9101
 async def run() -> None:
     settings = get_settings()
     configure_logging(service_name=settings.SERVICE_NAME or "market_data", level=settings.LOG_LEVEL)
-    start_metrics_server(_METRICS_PORT)
+    start_metrics_server(_METRICS_PORT, engine="market_data")
     # P2 obs : OTel tracer (rollout post P2.1 validation).
     init_tracing(service_name=settings.SERVICE_NAME or "market_data")
 
