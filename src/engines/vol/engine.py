@@ -699,37 +699,27 @@ class VolEngine:
             except Exception:
                 logger.exception("fair_vol_attach_failed")
 
-        # Per-cell IV z-score (rich/cheap heatmap) from persisted surface history.
-        await self._publish_progress("vol_surface", "iv_z")
+        # Per-cell rich/cheap colour (IV vs σ_fair^Q). Needs _fair_q (attached
+        # above), no DB / no history → colours on the first cycle.
         try:
-            await self._attach_iv_z(out)
+            self._attach_fair_richness(out)
         except Exception:
-            logger.exception("iv_z_attach_failed")
+            logger.exception("fair_richness_attach_failed")
         return out
 
     # Delta cells of a pillar, in heatmap column order.
     _IV_Z_DELTAS = ["10dp", "25dp", "atm", "25dc", "10dc"]
 
-    async def _attach_iv_z(self, out: dict[str, Any]) -> None:
-        """Attach a per-cell rich/cheap z (vs the last ~N surfaces) onto each
-        pillar cell as ``z``. Best-effort ; no-op until enough history."""
-        from sqlalchemy import desc, select
+    def _attach_fair_richness(self, out: dict[str, Any]) -> None:
+        """Attach a per-cell rich/cheap z = (IV_ATM − σ_fair^Q)/scale onto each
+        pillar cell as ``z`` (broadcast across the row's deltas). + = rich (sell),
+        − = cheap (buy). No-op when σ_fair^Q is unavailable."""
+        from core.vol.fair_richness import build_fair_richness
 
-        from core.vol.iv_z import compute_iv_z
-        from persistence.db import get_sessionmaker
-        from persistence.models import VolSurface
-
-        async with get_sessionmaker()() as session:
-            rows = (await session.execute(
-                select(VolSurface.surface_data)
-                .where(VolSurface.underlying == self.symbol)
-                .order_by(desc(VolSurface.timestamp))
-                .limit(120)
-            )).scalars().all()
-        history = [r for r in rows if isinstance(r, dict)]
-        if len(history) < 8:
+        fair_q = out.get("_fair_q")
+        if not isinstance(fair_q, dict):
             return
-        z = compute_iv_z(history, out, list(self.tenor_t), self._IV_Z_DELTAS)
+        z = build_fair_richness(out, fair_q, self._IV_Z_DELTAS)
         for tenor, drow in z.items():
             pillar = out.get(tenor)
             if not isinstance(pillar, dict):
@@ -786,8 +776,10 @@ class VolEngine:
                 out["_har"] = fit_and_project_har(closes, tenor_days)
             except Exception:
                 logger.exception("har_projection_failed")
-        # P→Q : prefer HAR, fall back to GARCH inside build_fair_q.
-        out["_fair_q"] = build_fair_q(out, preferred_estimator="har")
+        # P→Q : σ_fair^P anchored to the Yang-Zhang RV (per-tenor rv_pct set
+        # above), + VRP. HAR/GARCH stay on the surface as forward-looking
+        # diagnostics (their daily-|r| proxy biases the level low — see fair_term).
+        out["_fair_q"] = build_fair_q(out)
 
     async def _compute_regime(self, surface: dict[str, Any]) -> dict[str, Any] | None:
         """Read history from Postgres + compute Step 1 regime payload.

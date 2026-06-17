@@ -99,28 +99,51 @@ def test_vrp_table_covers_regimes():
 
 def _surface_with_estimators() -> dict:
     return {
-        "1M": {"atm": {"iv": 0.065}, "dte": 30},
-        "6M": {"atm": {"iv": 0.085}, "dte": 180},
+        # Horizon-matched Yang-Zhang RV per pillar (the fair-vol level anchor).
+        "1M": {"atm": {"iv": 0.065}, "dte": 30, "rv_pct": 5.5},
+        "6M": {"atm": {"iv": 0.085}, "dte": 180, "rv_pct": 6.2},
         "_rv_full_pct": 6.0,
         "_har": {"1M": {"sigma_har_pct": 5.2}, "6M": {"sigma_har_pct": 5.8}},
         "_garch": {"1M": {"sigma_model_pct": 5.0}},
     }
 
 
-def test_build_fair_q_p_plus_vrp_per_tenor():
-    fq = build_fair_q(_surface_with_estimators(), preferred_estimator="har")
+def test_build_fair_q_anchors_p_to_yang_zhang_rv():
+    # σ_fair^P must track the horizon-matched RV (rv_pct), NOT the (biased-low)
+    # HAR estimate — this is the fix for σ_fair landing at ~half of RV.
+    fq = build_fair_q(_surface_with_estimators())
     assert set(fq) == {"1M", "6M"}
     one = fq["1M"]
-    assert one["sigma_fair_p_pct"] == pytest.approx(5.2)  # HAR preferred
+    assert one["sigma_fair_p_pct"] == pytest.approx(5.5)  # rv_pct, not HAR 5.2
+    assert one["fair_source"] == "rv_tenor"
+    assert fq["6M"]["sigma_fair_p_pct"] == pytest.approx(6.2)
     assert one["sigma_fair_q_pct"] == pytest.approx(one["sigma_fair_p_pct"] + one["vrp_vol_pts"])
     assert one["regime"] in {"calm", "stressed", "pre_event"}
 
 
-def test_build_fair_q_skips_tenor_without_estimator():
-    surface = _surface_with_estimators()
-    del surface["_har"]["6M"]  # 6M has no HAR and no GARCH
-    fq = build_fair_q(surface, preferred_estimator="har")
+def test_build_fair_q_falls_back_to_full_rv_then_estimator():
+    # No per-pillar rv_pct → full-sample RV anchor for every tenor.
+    surface = {
+        "1M": {"atm": {"iv": 0.065}},
+        "6M": {"atm": {"iv": 0.085}},
+        "_rv_full_pct": 6.0,
+        "_har": {"1M": {"sigma_har_pct": 5.2}},
+    }
+    fq = build_fair_q(surface)
+    assert fq["1M"]["sigma_fair_p_pct"] == pytest.approx(6.0)
+    assert fq["1M"]["fair_source"] == "rv_full"
+
+
+def test_build_fair_q_skips_tenor_without_rv_or_estimator():
+    # No RV anywhere : a tenor with an estimator survives, one without is skipped.
+    surface = {
+        "1M": {"atm": {"iv": 0.065}},
+        "6M": {"atm": {"iv": 0.085}},
+        "_har": {"1M": {"sigma_har_pct": 5.2}},  # only 1M has an estimator
+    }
+    fq = build_fair_q(surface)
     assert "1M" in fq and "6M" not in fq
+    assert fq["1M"]["fair_source"] == "har"
 
 
 def test_pick_sigma_fair_p_falls_back_to_garch():
