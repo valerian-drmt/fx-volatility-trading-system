@@ -9,13 +9,17 @@ Two surviving public symbols, both consumed by the regime-features pipeline :
 - ``detect_regime(vol_level_pct, vol_of_vol_pct, term_slope_pct)`` : 3-regime
   classifier (calm / stressed / pre_event) consumed by ``regime_engine``.
 
-The Q-measure conversion (``q_measure_from_p``, ``predict_vrp``) and
-ex-post ``compute_realized_vrp`` were retired with the per-tenor
-pricing signal pipeline — no live consumers remained.
+- ``predict_vrp(tenor, regime)`` + ``q_measure_from_p(sigma_p, tenor, regime)`` :
+  the P→Q conversion ``σ_fair^Q = σ_fair^P + VRP(tenor, regime)``. Restored
+  (R11) for the fair-vol term-structure pipeline (vol-engine consumes them).
 """
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 Regime = Literal["calm", "stressed", "pre_event"]
 
@@ -31,6 +35,36 @@ VRP_DEFAULTS_VOL_PTS: dict[Regime, dict[str, float]] = {
     "stressed":  {"1M": 1.5, "2M": 1.6, "3M": 1.8, "4M": 1.9, "5M": 2.0, "6M": 2.1},
     "pre_event": {"1M": 2.5, "2M": 2.2, "3M": 2.0, "4M": 1.9, "5M": 1.8, "6M": 1.8},
 }
+
+
+@dataclass(frozen=True)
+class VrpEstimate:
+    tenor: str
+    regime: Regime
+    value_vol_pts: float
+    source: str  # 'default' (tabulated) until a history-calibrated model is live
+
+
+def predict_vrp(tenor: str, regime: Regime = "calm") -> VrpEstimate:
+    """VRP at ``tenor`` for ``regime`` (vol points, e.g. 0.6 = +60bp).
+
+    Returns the tabulated default — empirical calibration needs ≥6 months of
+    aligned IV/RV history (future work). Unknown tenor → 0.8 + WARNING.
+    """
+    bucket = VRP_DEFAULTS_VOL_PTS.get(regime, VRP_DEFAULTS_VOL_PTS["calm"])
+    value = bucket.get(tenor)
+    if value is None:
+        logger.warning("predict_vrp: unknown tenor %r, defaulting to 0.8", tenor)
+        value = 0.8
+    return VrpEstimate(tenor=tenor, regime=regime, value_vol_pts=value, source="default")
+
+
+def q_measure_from_p(
+    sigma_p_pct: float, tenor: str, regime: Regime = "calm",
+) -> tuple[float, float]:
+    """σ_fair^Q = σ_fair^P + VRP(tenor, regime). Returns ``(sigma_q_pct, vrp_pts)``."""
+    vrp = predict_vrp(tenor, regime)
+    return sigma_p_pct + vrp.value_vol_pts, vrp.value_vol_pts
 
 
 def detect_regime(
