@@ -86,6 +86,28 @@ async def get_surface_at(
     )
 
 
+def _cell_iv_pct(pillar: dict, key: str) -> float | None:
+    """IV (in %) of a surface pillar cell (``10dp``/``25dp``/``atm``/``25dc``/
+    ``10dc``), or None when the cell / iv is absent. Surface stores fractions."""
+    node = pillar.get(key)
+    if isinstance(node, dict) and isinstance(node.get("iv"), (int, float)):
+        return float(node["iv"]) * 100.0
+    return None
+
+
+def _rr_bf(
+    pillar: dict, call_key: str, put_key: str, atm_pct: float | None,
+) -> tuple[float | None, float | None]:
+    """(risk-reversal, butterfly) in vol points from the pillar wing IVs :
+    RR = IV(call) − IV(put) ; BF = ½(IV(call)+IV(put)) − IV(ATM)."""
+    c = _cell_iv_pct(pillar, call_key)
+    p = _cell_iv_pct(pillar, put_key)
+    if c is None or p is None:
+        return None, None
+    bf = round((c + p) / 2 - atm_pct, 4) if atm_pct is not None else None
+    return round(c - p, 4), bf
+
+
 async def get_term_structure(
     redis: aioredis.Redis, symbol: str
 ) -> TermStructureResponse:
@@ -119,11 +141,19 @@ async def get_term_structure(
         # surface-level full-sample RV when the per-tenor window is unavailable.
         pillar_rv = pillar.get("rv_pct")
         rv = float(pillar_rv) if isinstance(pillar_rv, (int, float)) else rv_full_f
+        # Smile metrics (vol points) from the surface wings : RR = call − put,
+        # BF = ½(call + put) − ATM. None when a wing IV is missing.
+        rr25, bf25 = _rr_bf(pillar, "25dc", "25dp", sigma_pct)
+        rr10, bf10 = _rr_bf(pillar, "10dc", "10dp", sigma_pct)
         rows.append(
             TermStructureRow(
                 tenor=tenor,
                 dte=pillar.get("dte"),
                 sigma_atm_pct=sigma_pct,
+                rr_25d_pct=rr25,
+                bf_25d_pct=bf25,
+                rr_10d_pct=rr10,
+                bf_10d_pct=bf10,
                 # legacy field : Q if available, else P.
                 sigma_fair_pct=sigma_fair_q if sigma_fair_q is not None else sigma_fair_p,
                 sigma_fair_p_pct=sigma_fair_p,

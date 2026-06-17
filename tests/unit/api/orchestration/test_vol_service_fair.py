@@ -19,8 +19,12 @@ def _surface() -> SimpleNamespace:
         symbol="EURUSD",
         timestamp=datetime(2026, 6, 17, 12, tzinfo=UTC),
         surface={
-            "1M": {"atm": {"iv": 0.065}, "dte": 30, "rv_pct": 5.5},  # per-tenor RV
-            "3M": {"atm": {"iv": 0.072}, "dte": 90},                  # no per-tenor RV → fallback
+            "1M": {
+                "atm": {"iv": 0.065}, "dte": 30, "rv_pct": 5.5,  # per-tenor RV
+                "25dc": {"iv": 0.066}, "25dp": {"iv": 0.068},     # wings → RR/BF
+                "10dc": {"iv": 0.067}, "10dp": {"iv": 0.072},
+            },
+            "3M": {"atm": {"iv": 0.072}, "dte": 90},              # no RV/wings → fallbacks
             "_rv_full_pct": 6.0,
             "_fair_q": {
                 "1M": {"sigma_fair_p_pct": 5.2, "vrp_vol_pts": 0.6, "sigma_fair_q_pct": 5.8, "regime": "calm"},
@@ -47,8 +51,15 @@ async def test_term_structure_propagates_fair_and_rv(monkeypatch):
     assert by["1M"].sigma_fair_pct == pytest.approx(5.8)        # legacy = Q when present
     assert by["1M"].regime == "calm"
     assert by["1M"].rv_pct == pytest.approx(5.5)                # horizon-matched per-tenor RV
+    # smile : RR = call − put, BF = ½(call+put) − ATM, in vol points.
+    assert by["1M"].rr_25d_pct == pytest.approx((0.066 - 0.068) * 100)   # −0.2
+    assert by["1M"].bf_25d_pct == pytest.approx(((0.066 + 0.068) / 2 - 0.065) * 100)  # +0.2
+    assert by["1M"].rr_10d_pct == pytest.approx((0.067 - 0.072) * 100)   # −0.5
+    assert by["1M"].bf_10d_pct == pytest.approx(((0.067 + 0.072) / 2 - 0.065) * 100)  # +0.45
 
-    # 3M has no _fair_q entry -> fair fields None ; no per-tenor RV → full-sample fallback.
+    # 3M has no _fair_q entry -> fair fields None ; no per-tenor RV/wings → fallbacks/None.
     assert by["3M"].sigma_fair_q_pct is None
     assert by["3M"].sigma_fair_pct is None
     assert by["3M"].rv_pct == pytest.approx(6.0)
+    assert by["3M"].rr_25d_pct is None
+    assert by["3M"].bf_25d_pct is None

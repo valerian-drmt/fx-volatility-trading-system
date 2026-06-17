@@ -39,18 +39,20 @@ describe("freshness contract", () => {
 });
 
 describe("adaptTermStructure", () => {
-  it("maps atm/fair/rv from pillars and defaults bf/rr to 0", () => {
+  it("maps atm/fair/rv + smile (bf/rr) from pillars ; absent smile → 0", () => {
     const out = adaptTermStructure({
       symbol: "EURUSD",
       timestamp: "2026-06-16T00:00:00Z",
       pillars: [
-        { tenor: "1M", dte: 30, sigma_atm_pct: 7.5, sigma_fair_q_pct: 8.1, rv_pct: 6.0 },
+        { tenor: "1M", dte: 30, sigma_atm_pct: 7.5, sigma_fair_q_pct: 8.1, rv_pct: 6.0,
+          rr_25d_pct: -0.2, bf_25d_pct: 0.2, rr_10d_pct: -0.5, bf_10d_pct: 0.45 },
         { tenor: "2M", dte: 60, sigma_atm_pct: 7.8, sigma_fair_pct: 8.0, rv_pct: null },
       ],
     } as never);
     expect(out).toHaveLength(2);
-    expect(out[0]).toMatchObject({ tenor: "1M", atm: 7.5, fair: 8.1, rv: 6.0, bf25: 0, rr10: 0 });
-    expect(out[1]).toMatchObject({ tenor: "2M", atm: 7.8, fair: 8.0, rv: 0 });
+    expect(out[0]).toMatchObject({ tenor: "1M", atm: 7.5, fair: 8.1, rv: 6.0, rr25: -0.2, bf25: 0.2, rr10: -0.5, bf10: 0.45 });
+    // no smile fields on 2M → default 0
+    expect(out[1]).toMatchObject({ tenor: "2M", atm: 7.8, fair: 8.0, rv: 0, bf25: 0, rr10: 0 });
   });
 });
 

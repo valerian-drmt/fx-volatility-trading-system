@@ -28,7 +28,12 @@ class TermStructureRow(BaseModel):
     sigma_fair_q_pct: float | None = None          # Q-measure (P + VRP)
     vrp_vol_pts: float | None = None               # spread added to P to obtain Q
     regime: str | None = None                      # calm / stressed / pre_event
-    rv_pct: float | None = None                    # P-measure realised
+    rv_pct: float | None = None                    # P-measure realised (horizon-matched)
+    # Smile metrics from the surface wings (vol points) :
+    rr_25d_pct: float | None = None                # IV(25Δc) − IV(25Δp) (skew)
+    bf_25d_pct: float | None = None                # ½(IV(25Δc)+IV(25Δp)) − IV(ATM) (wings)
+    rr_10d_pct: float | None = None                # 10Δ risk reversal
+    bf_10d_pct: float | None = None                # 10Δ butterfly
 
 
 class TermStructureResponse(BaseModel):
