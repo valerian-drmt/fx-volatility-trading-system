@@ -699,39 +699,25 @@ class VolEngine:
             except Exception:
                 logger.exception("fair_vol_attach_failed")
 
-        # Per-cell rich/cheap z-score (vs each cell's own history) → heatmap
-        # colour. Best-effort ; no-op until enough surface history persisted.
+        # Per-cell cross-sectional z (each IV vs the whole current surface) →
+        # heatmap colour. No DB / no history → colours on the first cycle.
         try:
-            await self._attach_iv_z(out)
+            self._attach_surface_z(out)
         except Exception:
-            logger.exception("iv_z_attach_failed")
+            logger.exception("surface_z_attach_failed")
         return out
 
     # Delta cells of a pillar, in heatmap column order.
     _IV_Z_DELTAS = ["10dp", "25dp", "atm", "25dc", "10dc"]
 
-    async def _attach_iv_z(self, out: dict[str, Any]) -> None:
-        """Attach a per-cell z-score onto each pillar cell as ``z``: z = (IV_now
-        − mean) / std vs the last ~N persisted surfaces, computed per (tenor,
-        delta). Drives the heatmap rich/cheap colour, with per-cell granularity
-        across the smile. Best-effort ; no-op until ≥ min_obs history."""
-        from sqlalchemy import desc, select
+    def _attach_surface_z(self, out: dict[str, Any]) -> None:
+        """Attach a per-cell cross-sectional z onto each pillar cell as ``z``:
+        z = (iv_cell − mean) / std over all cells of the current surface. Shows
+        the smile/term shape + the 10Δp vs 10Δc put/call skew. No-op on a flat
+        or too-small surface."""
+        from core.vol.surface_z import cross_sectional_z
 
-        from core.vol.iv_z import compute_iv_z
-        from persistence.db import get_sessionmaker
-        from persistence.models import VolSurface
-
-        async with get_sessionmaker()() as session:
-            rows = (await session.execute(
-                select(VolSurface.surface_data)
-                .where(VolSurface.underlying == self.symbol)
-                .order_by(desc(VolSurface.timestamp))
-                .limit(120)
-            )).scalars().all()
-        history = [r for r in rows if isinstance(r, dict)]
-        if len(history) < 8:
-            return
-        z = compute_iv_z(history, out, list(self.tenor_t), self._IV_Z_DELTAS)
+        z = cross_sectional_z(out, list(self.tenor_t), self._IV_Z_DELTAS)
         for tenor, drow in z.items():
             pillar = out.get(tenor)
             if not isinstance(pillar, dict):

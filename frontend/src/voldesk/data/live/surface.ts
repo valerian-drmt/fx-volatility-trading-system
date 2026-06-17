@@ -6,10 +6,10 @@
  * meta). Delta keys are lowercase (10dp/25dp/atm/25dc/10dc); the voldesk labels
  * (10Δp…) are positional, so we map by index. Missing cells → 0.
  *
- * The per-cell rich/cheap read (`ivZ`) is carried by `/vol/surface` as
- * `surface[tenor][delta].z` (vol-engine `_attach_iv_z`): a per-cell z-score
- * z = (IV_now − mean)/std vs the cell's own recent history. `adaptIvZ` reads
- * it ; cells with too little history fall back to 0 (neutral).
+ * The per-cell z (`ivZ`) is carried by `/vol/surface` as
+ * `surface[tenor][delta].z` (vol-engine `_attach_surface_z`): a cross-sectional
+ * z = (iv_cell − mean)/std over the WHOLE current surface — shows the smile/term
+ * shape + the 10Δp vs 10Δc skew. No history needed. `adaptIvZ` reads it.
  */
 import type { VolSurface } from "../../../api/endpoints";
 
@@ -31,10 +31,10 @@ export function adaptIvSurface(resp: VolSurface): number[][] {
   });
 }
 
-/** Per-cell rich/cheap z grid (6×5) from the backend surface (cell `.z`).
- * z = (IV_now − mean)/std vs the cell's own history, computed server-side
- * (vol-engine `_attach_iv_z`) — + = rich, − = cheap, per-cell across the smile.
- * Missing cell → 0 (neutral, insufficient history). */
+/** Per-cell z grid (6×5) from the backend surface (cell `.z`). Cross-sectional
+ * z = (iv_cell − mean)/std over the whole current surface (vol-engine
+ * `_attach_surface_z`) — + = high vs surface (wings), − = low (ATM); 10Δp vs
+ * 10Δc = put/call skew. Missing cell → 0 (neutral). */
 export function adaptIvZ(resp: VolSurface): number[][] {
   const surface = (resp as { surface?: Record<string, TenorMap> }).surface ?? {};
   return SURFACE_TENOR_KEYS.map((t) => {
