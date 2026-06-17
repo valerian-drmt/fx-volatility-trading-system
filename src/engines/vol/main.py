@@ -21,8 +21,12 @@ from bus.channels import CH_CONFIG_CHANGED
 from core.config import VolTradingConfig
 from shared.config import get_settings
 from shared.logging import configure_logging
+from shared.observability import start_metrics_server
 
 logger = logging.getLogger(__name__)
+
+# P0 obs : Prometheus /metrics endpoint port. Spec § Phase 0 step 3.
+_METRICS_PORT = 9102
 
 
 async def _watch_config_changes(
@@ -76,6 +80,7 @@ async def run() -> None:
     configure_logging(
         service_name=settings.SERVICE_NAME or "vol_engine", level=settings.LOG_LEVEL
     )
+    start_metrics_server(_METRICS_PORT)
 
     from ib_insync import IB
 

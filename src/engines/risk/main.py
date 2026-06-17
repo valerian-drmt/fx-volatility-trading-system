@@ -7,6 +7,10 @@ import signal
 from bus import get_async_redis
 from shared.config import get_settings
 from shared.logging import configure_logging
+from shared.observability import start_metrics_server
+
+# P0 obs : Prometheus /metrics endpoint port. Spec § Phase 0 step 3.
+_METRICS_PORT = 9103
 
 
 async def run() -> None:
@@ -14,6 +18,7 @@ async def run() -> None:
     configure_logging(
         service_name=settings.SERVICE_NAME or "risk_engine", level=settings.LOG_LEVEL
     )
+    start_metrics_server(_METRICS_PORT)
 
     from ib_insync import IB
 
