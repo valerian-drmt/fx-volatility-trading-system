@@ -17,8 +17,8 @@ const WARN_MS = {
   alerts: 300_000,
 } as const;
 
-function useStream<T>(path: string | null, warnMs: number): Fresh<T> {
-  const { last, asOf } = useWebSocket<T>(path);
+function useStream<T>(path: string | null, warnMs: number, throttleMs = 0): Fresh<T> {
+  const { last, asOf } = useWebSocket<T>(path, undefined, throttleMs);
   return makeFresh<T>(last, asOf, warnMs);
 }
 
@@ -29,8 +29,9 @@ export interface TickMsg {
   ask?: number;
 }
 
+// Ticks fire ~5/s ; coalesce to a steady 1s beat (display-only smoothing).
 export const useTicks = (enabled = true): Fresh<TickMsg> =>
-  useStream<TickMsg>(enabled ? "/ws/ticks" : null, WARN_MS.ticks);
+  useStream<TickMsg>(enabled ? "/ws/ticks" : null, WARN_MS.ticks, 1000);
 
 export const useVolStream = (enabled = true): Fresh<unknown> =>
   useStream<unknown>(enabled ? "/ws/vol" : null, WARN_MS.vol);

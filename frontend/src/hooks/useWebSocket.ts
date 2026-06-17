@@ -31,6 +31,9 @@ const MAX_BACKOFF_MS = 15_000;
 export function useWebSocket<T>(
   path: string | null,
   parse: (raw: string) => T | null = defaultParse,
+  /** >0 : coalesce messages, emit only the latest once per `throttleMs`
+   * (e.g. a 5/s tick feed displayed on a steady 1s beat). 0 = emit each message. */
+  throttleMs = 0,
 ): WsState<T> {
   const [state, setState] = useState<WsState<T>>({
     last: null,
@@ -49,6 +52,22 @@ export function useWebSocket<T>(
     let socket: WebSocket | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let attempt = 0;
+    // Throttle buffer : keep only the latest message, flush on an interval so
+    // setState (and re-render) fires at most once per `throttleMs`.
+    let pending: WsState<T> | null = null;
+    let flush: ReturnType<typeof setInterval> | undefined;
+    const emit = (s: WsState<T>): void => {
+      if (throttleMs > 0) pending = s;
+      else setState(s);
+    };
+    if (throttleMs > 0) {
+      flush = setInterval(() => {
+        if (pending) {
+          setState(pending);
+          pending = null;
+        }
+      }, throttleMs);
+    }
 
     const connect = (): void => {
       if (stopped) return;
@@ -62,7 +81,7 @@ export function useWebSocket<T>(
         const raw = typeof ev.data === "string" ? ev.data : "";
         const parsed = parseRef.current(raw);
         if (parsed !== null) {
-          setState({ last: parsed, status: "open", asOf: Date.now() });
+          emit({ last: parsed, status: "open", asOf: Date.now() });
         }
       };
       socket.onclose = () => {
@@ -79,9 +98,10 @@ export function useWebSocket<T>(
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
+      if (flush) clearInterval(flush);
       socket?.close();
     };
-  }, [path]);
+  }, [path, throttleMs]);
 
   return state;
 }
