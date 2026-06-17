@@ -345,6 +345,7 @@ class VolEngine:
         client_id: int,
         fetch_fop_chain: Any,
         tenor_t: dict[str, float] | None = None,
+        fetch_ohlc: Any = None,
     ) -> None:
         self.ib = ib
         self.redis = redis
@@ -354,6 +355,9 @@ class VolEngine:
         self.client_id = client_id
         # fetch_fop_chain : (F) -> {tenor -> [(delta, iv, strike)]}
         self._fetch_fop_chain = fetch_fop_chain
+        # fetch_ohlc : () -> DataFrame[open,high,low,close] (daily bars) | awaitable.
+        # Drives the fair-vol pipeline (RV/HAR/GARCH). None -> fair vol skipped.
+        self._fetch_ohlc = fetch_ohlc
         self.tenor_t = tenor_t or DEFAULT_TENOR_T
         self._stop = asyncio.Event()
         # Cycle-progress instrumentation : reset at the start of every
@@ -684,7 +688,57 @@ class VolEngine:
                 out["_ssvi"] = ssvi
         except Exception:
             logger.exception("ssvi_fit_failed")
+
+        # Fair vol per tenor (R11) : OHLC -> Yang-Zhang RV -> HAR/GARCH (P) ->
+        # +VRP -> sigma_fair^Q. Best-effort ; needs the injected OHLC fetcher +
+        # enough daily history. Attaches _rv_full_pct / _har / _garch / _fair_q.
+        if self._fetch_ohlc is not None:
+            await self._publish_progress("vol_surface", "fair_vol")
+            try:
+                await self._attach_fair_vol(out)
+            except Exception:
+                logger.exception("fair_vol_attach_failed")
         return out
+
+    async def _attach_fair_vol(self, out: dict[str, Any]) -> None:
+        """OHLC → Yang-Zhang RV → HAR + GARCH (P) → VRP → σ_fair^Q, onto ``out``.
+
+        Heavy estimators (arch/numpy) imported locally so the api path (no
+        ``[quant]``) never drags them in. No-op when the fetcher returns no
+        usable history.
+        """
+        import inspect
+
+        from core.vol.fair_term import build_fair_q
+        from core.vol.yang_zhang import yang_zhang_rv_pct
+
+        ohlc = self._fetch_ohlc()
+        if inspect.isawaitable(ohlc):
+            ohlc = await ohlc
+        if ohlc is None or len(ohlc) < 3:
+            return
+        rv_full = yang_zhang_rv_pct(ohlc, window=len(ohlc) - 1)
+        if rv_full is None:
+            return
+        out["_rv_full_pct"] = round(float(rv_full), 4)
+        closes = ohlc["close"].to_numpy() if hasattr(ohlc, "close") else None
+        if closes is None:
+            return
+        if len(closes) >= 5:
+            try:
+                from core.vol.garch import fit_and_project_garch
+                out["_garch"] = fit_and_project_garch(closes, tenor_t=self.tenor_t, rv_full=rv_full)
+            except Exception:
+                logger.exception("garch_projection_failed")
+        if len(closes) >= 45:
+            try:
+                from core.vol.har_rv import fit_and_project_har
+                tenor_days = {k: round(v * 365) for k, v in self.tenor_t.items()}
+                out["_har"] = fit_and_project_har(closes, tenor_days)
+            except Exception:
+                logger.exception("har_projection_failed")
+        # P→Q : prefer HAR, fall back to GARCH inside build_fair_q.
+        out["_fair_q"] = build_fair_q(out, preferred_estimator="har")
 
     async def _compute_regime(self, surface: dict[str, Any]) -> dict[str, Any] | None:
         """Read history from Postgres + compute Step 1 regime payload.

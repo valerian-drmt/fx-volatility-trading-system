@@ -114,6 +114,16 @@ async def run() -> None:
             return {}
         return await chain_fetcher.scan_all_tenors_concurrent(ib, F, chains)
 
+    async def _ohlc_real() -> Any | None:
+        """~1y of daily bars on the EUR continuous future (cached 30min).
+
+        Feeds the fair-vol pipeline (Yang-Zhang RV → HAR/GARCH → +VRP → σ_fair^Q).
+        Returns None when IB has no history → the engine simply skips fair vol.
+        """
+        from engines.vol.historical_fetcher import fetch_daily_ohlc
+
+        return await fetch_daily_ohlc(ib)
+
     engine = VolEngine(
         ib=ib,
         redis=redis,
@@ -122,6 +132,7 @@ async def run() -> None:
         ib_port=settings.IB_PORT,
         client_id=settings.IB_CLIENT_ID,
         fetch_fop_chain=_fop_real,
+        fetch_ohlc=_ohlc_real,
     )
 
     # Boot config comes from env vars (pydantic-settings) ; live updates
