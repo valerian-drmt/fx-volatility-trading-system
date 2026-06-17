@@ -89,14 +89,18 @@ async def get_surface_at(
 async def get_term_structure(
     redis: aioredis.Redis, symbol: str
 ) -> TermStructureResponse:
-    """Derive term structure (tenor → ATM vol) from the latest Redis surface.
+    """Derive the term structure (ATM IV + fair vol per tenor) from the latest
+    Redis surface.
 
-    Only ATM IV per tenor is meaningful ; the deprecated per-tenor
-    pricing-signal fields (sigma_fair_pct, sigma_fair_p_pct,
-    sigma_fair_q_pct, vrp_vol_pts, regime, rv_pct) are returned as
-    ``None`` for back-compat with the legacy schema.
+    Fair-vol fields are read from the ``_fair_q`` sub-dict the vol-engine
+    publishes (σ_fair^Q = σ_fair^P + VRP, per tenor) + the surface-level
+    ``_rv_full_pct``. Tenors without a fair-vol entry keep those fields ``None``
+    (e.g. before the engine has enough OHLC history to fit HAR/GARCH).
     """
     surface = await get_latest_surface(redis, symbol)
+    fair_q = surface.surface.get("_fair_q") or {}
+    rv_full = surface.surface.get("_rv_full_pct")
+    rv_full_f = float(rv_full) if isinstance(rv_full, (int, float)) else None
 
     rows: list[TermStructureRow] = []
     for tenor, pillar in surface.surface.items():
@@ -107,17 +111,22 @@ async def get_term_structure(
             atm = pillar.get("atm")
             if isinstance(atm, dict) and isinstance(atm.get("iv"), (int, float)):
                 sigma_pct = float(atm["iv"]) * 100.0
+        fq = fair_q.get(tenor) if isinstance(fair_q, dict) else None
+        fq = fq if isinstance(fq, dict) else {}
+        sigma_fair_q = fq.get("sigma_fair_q_pct")
+        sigma_fair_p = fq.get("sigma_fair_p_pct")
         rows.append(
             TermStructureRow(
                 tenor=tenor,
                 dte=pillar.get("dte"),
                 sigma_atm_pct=sigma_pct,
-                sigma_fair_pct=None,
-                sigma_fair_p_pct=None,
-                sigma_fair_q_pct=None,
-                vrp_vol_pts=None,
-                regime=None,
-                rv_pct=None,
+                # legacy field : Q if available, else P.
+                sigma_fair_pct=sigma_fair_q if sigma_fair_q is not None else sigma_fair_p,
+                sigma_fair_p_pct=sigma_fair_p,
+                sigma_fair_q_pct=sigma_fair_q,
+                vrp_vol_pts=fq.get("vrp_vol_pts"),
+                regime=fq.get("regime"),
+                rv_pct=rv_full_f,
             )
         )
     return TermStructureResponse(

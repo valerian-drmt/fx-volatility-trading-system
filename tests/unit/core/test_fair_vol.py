@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from core.vol.fair_term import build_fair_q, pick_sigma_fair_p
 from core.vol.har_rv import fit_and_project_har, fit_har_rv, project_horizon
 from core.vol.vrp import VRP_DEFAULTS_VOL_PTS, predict_vrp, q_measure_from_p
 from core.vol.yang_zhang import yang_zhang_rv_pct
@@ -91,6 +92,40 @@ def test_predict_vrp_unknown_tenor_falls_back():
 
 def test_vrp_table_covers_regimes():
     assert set(VRP_DEFAULTS_VOL_PTS) == {"calm", "stressed", "pre_event"}
+
+
+# ───────────────────────────── fair_term assembly (P→Q) ─────────────────────
+
+
+def _surface_with_estimators() -> dict:
+    return {
+        "1M": {"atm": {"iv": 0.065}, "dte": 30},
+        "6M": {"atm": {"iv": 0.085}, "dte": 180},
+        "_rv_full_pct": 6.0,
+        "_har": {"1M": {"sigma_har_pct": 5.2}, "6M": {"sigma_har_pct": 5.8}},
+        "_garch": {"1M": {"sigma_model_pct": 5.0}},
+    }
+
+
+def test_build_fair_q_p_plus_vrp_per_tenor():
+    fq = build_fair_q(_surface_with_estimators(), preferred_estimator="har")
+    assert set(fq) == {"1M", "6M"}
+    one = fq["1M"]
+    assert one["sigma_fair_p_pct"] == pytest.approx(5.2)  # HAR preferred
+    assert one["sigma_fair_q_pct"] == pytest.approx(one["sigma_fair_p_pct"] + one["vrp_vol_pts"])
+    assert one["regime"] in {"calm", "stressed", "pre_event"}
+
+
+def test_build_fair_q_skips_tenor_without_estimator():
+    surface = _surface_with_estimators()
+    del surface["_har"]["6M"]  # 6M has no HAR and no GARCH
+    fq = build_fair_q(surface, preferred_estimator="har")
+    assert "1M" in fq and "6M" not in fq
+
+
+def test_pick_sigma_fair_p_falls_back_to_garch():
+    surface = {"_har": {}, "_garch": {"1M": {"sigma_model_pct": 5.0}}}
+    assert pick_sigma_fair_p(surface, "1M", "har") == pytest.approx(5.0)
 
 
 # ───────────────────────────── GARCH (arch) ─────────────────────────────────
