@@ -13,7 +13,7 @@ import { Heatmap } from "../components/charts";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { type Tone } from "../components/format";
-import { DATA, fmt, mulberry32 } from "../data";
+import { DATA, fmt } from "../data";
 import type { Pc, TermPoint } from "../data";
 import type { PcaCard, PcaModelMeta, SurfaceData } from "../data/deskData";
 import { useDeskData } from "../data/deskData";
@@ -151,42 +151,27 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
   );
 }
 
-// rolling z-score series for a mode — z is computed HOURLY on the 1M reference window, then DOWNSAMPLED for display
-// (we never recompute z on coarser bars — that would change the reference window's meaning).
-function zSeriesHourly(pc: Pc, hours: number): number[] {
-  const seed = pc.id === "PC1" ? 11 : pc.id === "PC2" ? 29 : 47;
-  const rnd = mulberry32(seed);
-  const a: number[] = [];
-  let v = pc.z * 0.3;
-  for (let i = 0; i < hours; i++) {
-    v = v * 0.985 + (rnd() - 0.5) * 0.34;
-    a.push(v);
-  }
-  const last = a[hours - 1]!;
-  return a.map((x) => x - last + pc.z); // preserve shape, pin the right end to the current z
-}
-// display series: 3M span downsampled to daily (~65 pts), or the 1W hourly zoom (~120 pts)
-function zDisplay(pc: Pc, view: string): number[] {
-  if (view === "1W") return zSeriesHourly(pc, 24 * 7).slice(-120); // last week, hourly
-  const hourly = zSeriesHourly(pc, 24 * 92); // ~3M of hourly z
-  const out: number[] = [];
-  for (let i = 0; i < hourly.length; i += 24) out.push(hourly[i]!); // daily downsample
-  out[out.length - 1] = pc.z;
-  return out;
-}
-
 // z-score over the display window — POSITION (vs per-mode thresholds) + TRAJECTORY (extending vs reverting).
-// `series` (real backend z-history, oldest→newest) is used when present; otherwise the synthetic mock trajectory.
+// `series` = the real backend z-history (oldest→newest, /signals/pca/history).
+// Empty state until ≥2 points are persisted — no synthetic fallback.
 function ZSeriesChart({ pc, view, series }: { pc: Pc; view: string; series?: number[] }): JSX.Element {
-  const data =
-    series && series.length >= 2 ? series.slice(view === "1W" ? -120 : -65) : zDisplay(pc, view);
-  const n = data.length;
+  const data = series && series.length >= 2 ? series.slice(view === "1W" ? -120 : -65) : [];
   const w = 300,
     h = 150,
     pl = 4,
     pr = 34,
     pt = 10,
     pb = 16;
+  if (data.length < 2) {
+    return (
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ display: "block" }}>
+        <text x={w / 2} y={h / 2} textAnchor="middle" fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
+          z-history accumulating…
+        </text>
+      </svg>
+    );
+  }
+  const n = data.length;
   const ymin = -3,
     ymax = 3;
   const X = (i: number): number => pl + (i / (n - 1)) * (w - pl - pr);
@@ -254,7 +239,10 @@ function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
 }
 
 // mode stability — eigengap λ2−λ3; warns when slope/curvature identities may rotate
-function ModeStability({ model }: { model: PcaModelMeta }): JSX.Element {
+function ModeStability({ model }: { model: PcaModelMeta | null }): JSX.Element {
+  if (!model) {
+    return <div className="dim small mono ivz-empty">PCA model not loaded (no active fit)</div>;
+  }
   const e = model.eigen,
     // only the 3 traded modes (PC1/2/3) ; drop the higher eigenvalues (4-6).
     lam = e.lambda.slice(0, 3);
@@ -344,7 +332,7 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
 export function SignalsView(): JSX.Element {
   const [view, setView] = useState<string>("3M");
   const { surface, termStructure, pca } = useDeskData();
-  const m = pca.data?.model ?? DATA.pcaModel;
+  const m = pca.data?.model ?? null;
   const pcsList = pca.data?.pcs ?? [];
   return (
     <div className="ts-grid">
