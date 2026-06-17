@@ -13,7 +13,7 @@
  *
  * `VITE_USE_MOCK` (default "true") flips the global default.
  */
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   fetchConfig,
   fetchConfigHistory,
@@ -304,13 +304,25 @@ export function DataProvider({
     }
   }, [riskBeat.asOf, reloadTrade, reloadPortfolio]);
 
+  // Sample the tick feed on a steady 1s beat instead of re-emitting on every WS
+  // message (irregular ~5/s) — the displayed bid/ask updates once per second.
+  const liveTicksRef = useRef(liveTicks);
+  liveTicksRef.current = liveTicks;
+  const [sampledTicks, setSampledTicks] = useState<Fresh<TickMsg>>(liveTicks);
+  useEffect(() => {
+    if (mock) return;
+    setSampledTicks(liveTicksRef.current);
+    const id = setInterval(() => setSampledTicks(liveTicksRef.current), 1000);
+    return () => clearInterval(id);
+  }, [mock]);
+
   const ticks: Fresh<TickMsg> = mock
     ? makeFresh<TickMsg>(
         { symbol: "EURUSD", mid: mockSpot, bid: mockSpot - 0.00008, ask: mockSpot + 0.00008 },
         Date.now(),
         Number.POSITIVE_INFINITY,
       )
-    : liveTicks;
+    : sampledTicks;
 
   const termStructure: Fresh<TermPoint[]> = mock
     ? makeFresh(mockTermStructure, Date.now(), Number.POSITIVE_INFINITY)
