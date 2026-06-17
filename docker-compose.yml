@@ -297,6 +297,9 @@ services:
     build:
       context: .
       dockerfile: infrastructure/docker/web.Dockerfile
+      args:
+        # LIVE par defaut (desk -> backend same-origin). VITE_USE_MOCK=true pour mock.
+        VITE_USE_MOCK: "${VITE_USE_MOCK:-false}"
     image: ${FRONTEND_IMAGE:-fx-options-frontend:local}
     container_name: fxvol-frontend
     restart: unless-stopped
