@@ -12,8 +12,9 @@
  *     console is a separate path-routed root in main.tsx). Base-aware via
  *     import.meta.env.BASE_URL so it survives the deploy subpath.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./voldesk.css";
+import { useTicks } from "../hooks/streams";
 import { useTweaks } from "./useTweaks";
 import { DashboardView } from "./views/DashboardView";
 import { TradeView } from "./views/TradeView";
@@ -23,9 +24,10 @@ import { PortfolioView } from "./views/PortfolioView";
 import { SystemView } from "./views/SystemView";
 import { SettingsView } from "./views/SettingsView";
 
-// Spot placeholder until the data layer is ported (lot 2) — keeps the live
-// ticker animation in the topbar so the shell looks alive.
+// Mock seed for the topbar ticker (used only when VITE_USE_MOCK is on — the
+// shell does a synthetic random walk). In live mode the ticker reads /ws/ticks.
 const SPOT = 1.0842;
+const USE_MOCK = (import.meta.env["VITE_USE_MOCK"] ?? "true") !== "false";
 
 const ICONS: Record<string, ReactNode> = {
   dashboard: (
@@ -112,8 +114,20 @@ interface LiveTick {
   dir: number;
 }
 
-function Topbar({ live, clock }: { live: LiveTick; clock: string }): JSX.Element {
-  const arrow = live.dir >= 0 ? "▲" : "▼";
+interface TickerView {
+  mid: number | null;
+  bid: number | null;
+  ask: number | null;
+  dir: number;
+  status: "live" | "stale" | "missing";
+}
+
+function Topbar({ ticker, clock }: { ticker: TickerView; clock: string }): JSX.Element {
+  const { mid, bid, ask, dir, status } = ticker;
+  const has = mid !== null;
+  const arrow = dir >= 0 ? "▲" : "▼";
+  const dotColor = status === "live" ? "var(--pos)" : status === "stale" ? "var(--warn)" : "var(--neg)";
+  const stateLabel = status === "live" ? "Market open" : status === "stale" ? "feed stale" : "no feed";
   return (
     <header className="topbar">
       <div className="brand">
@@ -125,17 +139,17 @@ function Topbar({ live, clock }: { live: LiveTick; clock: string }): JSX.Element
         </select>
       </div>
       <div className="ticker">
-        <span className={"ticker-mid mono " + (live.dir >= 0 ? "pos" : "neg")}>
-          {live.mid.toFixed(5)} {arrow}
+        <span className={"ticker-mid mono " + (dir >= 0 ? "pos" : "neg")}>
+          {has ? mid.toFixed(5) : "—"} {has ? arrow : ""}
         </span>
         <span className="ticker-ba mono dim">
-          {(live.mid - 0.00008).toFixed(5)} / {(live.mid + 0.00008).toFixed(5)}
+          {bid !== null && ask !== null ? `${bid.toFixed(5)} / ${ask.toFixed(5)}` : "— / —"}
         </span>
       </div>
       <div className="tb-spacer" />
-      <span className="tb-badge open">
-        <span className="status-dot" style={{ background: "var(--pos)" }} />
-        Market open
+      <span className={"tb-badge " + (status === "live" ? "open" : "")}>
+        <span className="status-dot" style={{ background: dotColor }} />
+        {stateLabel}
       </span>
       <span className="tb-badge paper">PAPER</span>
       <span className="tb-clock mono">
@@ -203,6 +217,9 @@ export default function VoldeskApp(): JSX.Element {
   const [route, setRoute] = useState<string>(() => location.hash.slice(1) || "dashboard");
   const [live, setLive] = useState<LiveTick>({ mid: SPOT, dir: 1 });
   const [clock, setClock] = useState<string>("");
+  // Live EURUSD ticks (/ws/ticks). Disabled in mock mode -> synthetic walk below.
+  const tick = useTicks(!USE_MOCK);
+  const prevMidRef = useRef<number>(SPOT);
   // setTweak is wired for the (not-yet-ported) Settings/Tweaks UI.
   void setTweak;
 
@@ -211,18 +228,41 @@ export default function VoldeskApp(): JSX.Element {
     location.hash = r;
   };
 
+  // Clock — always ticking (1s), independent of the price feed.
   useEffect(() => {
+    setClock(new Date().toLocaleTimeString("en-GB"));
+    const id = setInterval(() => setClock(new Date().toLocaleTimeString("en-GB")), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Mock mode only : synthetic random-walk so the shell looks alive offline.
+  useEffect(() => {
+    if (!USE_MOCK) return;
     const id = setInterval(() => {
       setLive((p) => {
         const step = (Math.random() - 0.5) * 0.00015;
         const mid = +(p.mid + step).toFixed(5);
         return { mid, dir: step >= 0 ? 1 : -1 };
       });
-      setClock(new Date().toLocaleTimeString("en-GB"));
     }, 1100);
-    setClock(new Date().toLocaleTimeString("en-GB"));
     return () => clearInterval(id);
   }, []);
+
+  // Track previous mid (live mode) to colour the up/down arrow.
+  const liveMid = tick.data?.mid ?? null;
+  useEffect(() => {
+    if (!USE_MOCK && liveMid !== null) prevMidRef.current = liveMid;
+  }, [liveMid]);
+
+  const ticker: TickerView = USE_MOCK
+    ? { mid: live.mid, bid: live.mid - 0.00008, ask: live.mid + 0.00008, dir: live.dir, status: "live" }
+    : {
+        mid: liveMid,
+        bid: tick.data?.bid ?? null,
+        ask: tick.data?.ask ?? null,
+        dir: liveMid !== null && liveMid >= prevMidRef.current ? 1 : -1,
+        status: tick.status,
+      };
 
   useEffect(() => {
     const h = (): void => setRoute(location.hash.slice(1) || "dashboard");
@@ -239,7 +279,7 @@ export default function VoldeskApp(): JSX.Element {
 
   return (
     <div className={"shell density-" + t.density}>
-      <Topbar live={live} clock={clock} />
+      <Topbar ticker={ticker} clock={clock} />
       <div className="body">
         <Rail route={route} go={go} labels={t.railLabels} />
         <main className="content">
