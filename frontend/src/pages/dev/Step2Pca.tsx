@@ -492,6 +492,7 @@ function GaussianMarker({ z, color }: { z: number; color: string }): JSX.Element
       arr.push({ x, y: phi(x) });
     }
     return arr;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const peak = phi(0);                                    // ≈ 0.3989
   const yScale = (y: number) => H - 4 - (y / peak) * (H - 8);

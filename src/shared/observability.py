@@ -24,9 +24,9 @@ Spec : ``docs/LGTM_IMPLEMENTATION_SPEC.md`` § Phase 0.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Iterator
 from uuid import uuid4
 
 import structlog
@@ -231,15 +231,15 @@ def start_metrics_server(port: int, engine: str | None = None) -> None:
 
 
 __all__ = [
-    "cycle_id_var",
-    "trace_id_var",
-    "new_cycle",
     "clear_cycle",
-    "observed_cycle",
-    "cycles_total",
     "cycle_duration",
-    "last_cycle_ts",
-    "ib_session_connected",
+    "cycle_id_var",
+    "cycles_total",
     "ib_requests_total",
+    "ib_session_connected",
+    "last_cycle_ts",
+    "new_cycle",
+    "observed_cycle",
     "start_metrics_server",
+    "trace_id_var",
 ]

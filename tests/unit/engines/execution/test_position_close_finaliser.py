@@ -32,9 +32,9 @@ async def _make_session():
 async def test_finalise_closes_position_and_computes_pnl():
     from engines.execution.position_close_finaliser import finalise_position_close
     from persistence.models import (
+        BookedPosition,
         ExitAlert,
         HedgeOrder,
-        BookedPosition,
         TradeStructure,
     )
 

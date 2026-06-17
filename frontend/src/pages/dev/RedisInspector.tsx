@@ -38,6 +38,7 @@ export interface RedisInspectorState {
   fetchValue: (k: string) => void;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useRedisInspector(): RedisInspectorState {
   const [keys, setKeys] = useState<KeyInfo[]>([]);
   const [selected, setSelected] = useState<string | null>(null);

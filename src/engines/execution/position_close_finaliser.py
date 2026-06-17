@@ -19,10 +19,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from persistence.models import (
+    BookedPosition,
     ExitAlert,
     HedgeOrder,
     TradeEvent,
-    BookedPosition,
     TradeStructure,
 )
 

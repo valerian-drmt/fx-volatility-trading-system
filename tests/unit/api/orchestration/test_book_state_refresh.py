@@ -42,8 +42,8 @@ async def test_refresh_sums_open_position_greeks():
 
     from api.orchestration.book_state_refresh import refresh_book_state
     from persistence.models import (
-        BookStateSnapshot,
         BookedPosition,
+        BookStateSnapshot,
         TradeStructure,
     )
 

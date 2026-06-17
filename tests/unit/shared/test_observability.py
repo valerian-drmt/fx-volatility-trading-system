@@ -50,9 +50,8 @@ def test_observed_cycle_increments_counters_on_success():
 
 def test_observed_cycle_increments_error_on_exception():
     before_err = cycles_total.labels(engine="test", status="error")._value.get()
-    with pytest.raises(ValueError, match="boom"):
-        with observed_cycle("test"):
-            raise ValueError("boom")
+    with pytest.raises(ValueError, match="boom"), observed_cycle("test"):
+        raise ValueError("boom")
     after_err = cycles_total.labels(engine="test", status="error")._value.get()
     assert after_err == before_err + 1
 

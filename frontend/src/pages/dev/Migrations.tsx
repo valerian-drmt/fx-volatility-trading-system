@@ -86,6 +86,7 @@ export function Migrations(): JSX.Element {
       .catch((e) => setError(String(e)));
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(loadChain, []);
 
   // Load the selected revision's source on demand.
