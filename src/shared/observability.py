@@ -108,7 +108,7 @@ ib_requests_total = Counter(
 
 @contextmanager
 def observed_cycle(engine: str) -> Iterator[str]:
-    """Wrap one engine cycle with cycle_id propagation + metrics.
+    """Wrap one engine cycle with cycle_id propagation + metrics + OTel span.
 
     Usage in an engine's main loop ::
 
@@ -127,28 +127,69 @@ def observed_cycle(engine: str) -> Iterator[str]:
     with cycle_id + engine attached so the spec § 2.4 criterion "logs
     filterables via jq cycle_id" holds even if surrounding code uses
     stdlib logging.
+
+    P2 : also creates the root OTel span ``<engine>_cycle`` for this
+    cycle. Children spans created inside via
+    ``tracer.start_as_current_span("stage_name")`` attach automatically
+    (contextvars propagation). trace_id is bound to structlog so logs
+    can be linked to traces in Grafana.
     """
     cid = new_cycle()
     log = structlog.get_logger()
-    log.info("cycle_start", engine=engine)
-    start = time.perf_counter()
-    status = "ok"
+
+    # P2 : open root OTel span. tracer is module-level (per-engine,
+    # initialised by init_tracing() in main.py). Tolerate the case where
+    # tracing is not initialised (unit tests, smoke scripts).
     try:
-        yield cid
-    except Exception:
-        status = "error"
-        raise
-    finally:
-        duration = time.perf_counter() - start
-        cycles_total.labels(engine=engine, status=status).inc()
-        cycle_duration.labels(engine=engine).observe(duration)
-        last_cycle_ts.labels(engine=engine).set(time.time())
-        log.info(
-            "cycle_end",
-            engine=engine,
-            status=status,
-            duration_ms=round(duration * 1000, 3),
+        from opentelemetry import trace
+        tracer = trace.get_tracer(__name__)
+        span_cm = tracer.start_as_current_span(
+            f"{engine}_cycle",
+            attributes={"engine": engine, "cycle_id": cid},
         )
+    except ImportError:
+        from contextlib import nullcontext
+        span_cm = nullcontext()
+
+    with span_cm as span:
+        # Propagate trace_id to structlog so logs carry it (Loki ↔ Tempo
+        # cross-navigation via Grafana's derivedFields).
+        if span is not None:
+            try:
+                ctx = span.get_span_context()
+                tid = format(ctx.trace_id, "032x")
+                if tid != "0" * 32:
+                    trace_id_var.set(tid)
+                    structlog.contextvars.bind_contextvars(trace_id=tid)
+            except Exception:
+                pass
+
+        log.info("cycle_start", engine=engine)
+        start = time.perf_counter()
+        status = "ok"
+        try:
+            yield cid
+        except Exception as exc:
+            status = "error"
+            if span is not None:
+                try:
+                    span.record_exception(exc)
+                    from opentelemetry.trace import Status, StatusCode
+                    span.set_status(Status(StatusCode.ERROR))
+                except Exception:
+                    pass
+            raise
+        finally:
+            duration = time.perf_counter() - start
+            cycles_total.labels(engine=engine, status=status).inc()
+            cycle_duration.labels(engine=engine).observe(duration)
+            last_cycle_ts.labels(engine=engine).set(time.time())
+            log.info(
+                "cycle_end",
+                engine=engine,
+                status=status,
+                duration_ms=round(duration * 1000, 3),
+            )
 
 
 # ── Metrics HTTP server ──────────────────────────────────────────────────────

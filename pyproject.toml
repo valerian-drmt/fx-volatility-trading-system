@@ -28,6 +28,12 @@ dependencies = [
     "alembic>=1.13,<1.14",
     # P0 observability — every container ships /metrics. Tiny (<200 KB).
     "prometheus-client>=0.19,<0.21",
+    # P2 observability — OTel SDK for distributed tracing → Tempo.
+    # Auto-instrumentation for SQLAlchemy + Redis kept off-tree to avoid
+    # forced wiring on test envs (engines import them explicitly).
+    "opentelemetry-api>=1.27,<2.0",
+    "opentelemetry-sdk>=1.27,<2.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.27,<2.0",
 ]
 
 # Optional dependency groups — one per container archetype, plus tooling.

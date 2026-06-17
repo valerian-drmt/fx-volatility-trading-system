@@ -15,6 +15,7 @@ from persistence.writer import AsyncDatabaseWriter
 from shared.config import get_settings
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
+from shared.tracing import init_tracing
 
 # P0 obs : Prometheus /metrics endpoint port. Spec § Phase 0 step 3.
 _METRICS_PORT = 9105
@@ -26,6 +27,8 @@ async def run() -> None:
         service_name=settings.SERVICE_NAME or "db_writer", level=settings.LOG_LEVEL
     )
     start_metrics_server(_METRICS_PORT)
+    # P2 obs : OTel tracer (rollout post P2.1 validation).
+    init_tracing(service_name=settings.SERVICE_NAME or "db_writer")
 
     if not settings.DATABASE_URL:
         raise RuntimeError("DATABASE_URL env var is required for db-writer")

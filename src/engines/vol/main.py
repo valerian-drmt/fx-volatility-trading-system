@@ -22,6 +22,7 @@ from core.config import VolTradingConfig
 from shared.config import get_settings
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
+from shared.tracing import init_tracing
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,10 @@ async def run() -> None:
         service_name=settings.SERVICE_NAME or "vol_engine", level=settings.LOG_LEVEL
     )
     start_metrics_server(_METRICS_PORT)
+    # P2 obs (PoC vol-engine seul) : OTel tracer → otel-collector → Tempo.
+    # Spec § Phase 2 gate 2.1 — rollout aux 4 autres engines après
+    # validation flame graph dans Grafana.
+    init_tracing(service_name=settings.SERVICE_NAME or "vol_engine")
 
     from ib_insync import IB
 
