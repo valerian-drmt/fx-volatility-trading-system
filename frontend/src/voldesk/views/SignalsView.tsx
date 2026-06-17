@@ -35,7 +35,7 @@ function sigDivZ(z: number): string {
 }
 function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
   if (!data) {
-    return <div className="dim small mono ivz-empty">surface indisponible (marché fermé / pas de cycle vol)</div>;
+    return <div className="dim small mono ivz-empty">surface unavailable (market closed / no vol cycle)</div>;
   }
   const surf = data.ivSurface,
     z = data.ivZ,
@@ -81,8 +81,8 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
           <span className="mono small dim">rich</span>
         </div>
         <span className="ivz-cap dim small">
-          fond = z-score (rich/cheap vs histoire) · chiffre = IV · <span className="wing-dot" />
-          wings (bruités)
+          background = z-score (rich/cheap vs history) · number = IV · <span className="wing-dot" />
+          wings (noisy)
         </span>
       </div>
     </div>
@@ -97,7 +97,7 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
     pr = 16,
     pt = 16,
     pb = 28;
-  // RV (réalisé) is horizon-matched per tenor (Yang-Zhang over a trailing window
+  // RV (realized) is horizon-matched per tenor (Yang-Zhang over a trailing window
   // ≈ each tenor) → a realized-vol curve aligned with the IV / σ_fair curves.
   const hasRv = ts.some((t) => t.rv > 0);
   const all = ts.flatMap((t) => (hasRv ? [t.atm, t.fair, t.rv] : [t.atm, t.fair]));
@@ -145,7 +145,7 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
         {hasRv && (
           <span>
             <i className="lg-line" style={{ borderColor: "var(--muted)", borderStyle: "dotted" }} />
-            RV réalisé
+            RV (realized)
           </span>
         )}
       </div>
@@ -293,7 +293,7 @@ function ModeStability({ model }: { model: PcaModelMeta }): JSX.Element {
 
 function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
   if (!ts) {
-    return <div className="dim small mono ivz-empty">term-structure indisponible (marché fermé / pas de cycle vol)</div>;
+    return <div className="dim small mono ivz-empty">term structure unavailable (market closed / no vol cycle)</div>;
   }
   return (
     <div>
@@ -387,7 +387,7 @@ export function SignalsView(): JSX.Element {
             ))}
           </div>
         ) : (
-          <div className="dim small mono ivz-empty">modèle PCA indisponible (pas de fit / marché fermé)</div>
+          <div className="dim small mono ivz-empty">PCA model unavailable (no fit / market closed)</div>
         )}
       </Panel>
     </div>
