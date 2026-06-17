@@ -33,18 +33,44 @@
 .PARAMETER RecreateVenv
   Force la recreation du .venv (sinon reutilise l'existant).
 
+.PARAMETER Service
+  Mode CIBLE : rebuild + recreate uniquement le(s) service(s) nomme(s)
+  (frontend, api, nginx, vol-engine, ...). Skip git pull / venv / alembic full /
+  les autres containers. Le plus rapide pour iterer sur un seul container.
+  Avec -Down : arrete juste ce(s) service(s). Avec -NoBuild : recreate sans build.
+  Reutilise les secrets deja charges dans le shell (sinon les charge via SSM).
+  Rebuild 'api' -> alembic upgrade ; rebuild 'frontend'/'api' -> restart nginx.
+
+.PARAMETER Logs
+  Avec -Service : tail les logs du/des service(s) apres le up.
+
+.PARAMETER Refresh
+  Purge la RAM accumulee SANS perdre de donnees : down (volumes conserves) ->
+  'wsl --shutdown' (la VM WSL2 de Docker rend sa RAM a Windows) -> attend le
+  retour du moteur -> up -d (images existantes) + alembic + nginx.
+  ATTENTION : 'wsl --shutdown' arrete TOUTES les distros WSL (ferme tes autres
+  sessions WSL). DB/Redis (volumes) + images intactes.
+
 .EXAMPLE
-  .\scripts\start_stack.ps1                 # full pipeline up
-  .\scripts\start_stack.ps1 -NoPull -NoBuild  # demarrage rapide
-  .\scripts\start_stack.ps1 -Down           # stop
-  .\scripts\start_stack.ps1 -Down -DropVolumes  # stop + wipe data
+  .\scripts\ops\start_stack.ps1                      # full pipeline up
+  .\scripts\ops\start_stack.ps1 -NoPull -NoBuild     # demarrage rapide
+  .\scripts\ops\start_stack.ps1 -Down                # stop
+  .\scripts\ops\start_stack.ps1 -Down -DropVolumes   # stop + wipe data
+  .\scripts\ops\start_stack.ps1 -Service frontend            # rebuild + recreate le frontend (rapide)
+  .\scripts\ops\start_stack.ps1 -Service frontend -Logs      # idem + tail logs
+  .\scripts\ops\start_stack.ps1 -Service api,vol-engine      # rebuild 2 services
+  .\scripts\ops\start_stack.ps1 -Service frontend -NoBuild   # recreate sans rebuild
+  .\scripts\ops\start_stack.ps1 -Service vol-engine -Down    # stop juste vol-engine
 #>
 param(
     [switch]$Down,
     [switch]$NoPull,
     [switch]$NoBuild,
     [switch]$DropVolumes,
-    [switch]$RecreateVenv
+    [switch]$RecreateVenv,
+    [string[]]$Service,
+    [switch]$Logs,
+    [switch]$Refresh
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,8 +82,91 @@ function Write-Ok($msg)   { Write-Host "    [OK] $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "    [!]  $msg" -ForegroundColor Yellow }
 
 try {
+    # ---------- Mode REFRESH : purge la RAM (VM WSL2) sans perdre les donnees ----------
+    # down (volumes gardes) -> wsl --shutdown (rend la RAM a Windows) -> attend le
+    # moteur Docker -> retombe dans le pipeline up normal (NoPull + NoBuild).
+    if ($Refresh) {
+        if (-not $env:DB_PASSWORD) {
+            Write-Step "Secrets absents -> chargement depuis AWS SSM"
+            & "$PSScriptRoot\load_secrets.ps1"
+        }
+        $profiles = @('compose', '--profile', 'engines', '--profile', 'ib', '--profile', 'obs')
+        Write-Step "Arret de la stack (volumes conserves -> DB intacte)"
+        $downArgs = $profiles + @('down', '--remove-orphans')
+        & docker @downArgs
+        Write-Step "wsl --shutdown (la VM WSL2 rend sa RAM a Windows)"
+        & wsl --shutdown
+        Write-Step "Attente du redemarrage du moteur Docker (max 90s)"
+        $engineOk = $false
+        for ($i = 0; $i -lt 45; $i++) {
+            Start-Sleep -Seconds 2
+            docker info *> $null
+            if ($LASTEXITCODE -eq 0) { $engineOk = $true; break }
+        }
+        if (-not $engineOk) {
+            throw "Moteur Docker indisponible apres 'wsl --shutdown'. Ouvre Docker Desktop, puis : .\scripts\ops\start_stack.ps1 -NoBuild"
+        }
+        Write-Ok "Moteur Docker pret -> recreation des containers (images existantes)"
+        # Retombe dans le pipeline up : pas de pull, pas de build.
+        $NoPull = $true
+        $NoBuild = $true
+    }
+
+    # ---------- Mode CIBLE : un (ou plusieurs) service seulement ----------
+    # Rebuild/recreate/stop d'un container precis sans relancer tout le pipeline.
+    # Tous les profils sont passes pour que n'importe quel nom de service marche.
+    if ($Service) {
+        $profiles = @('compose', '--profile', 'engines', '--profile', 'ib', '--profile', 'obs')
+
+        if ($Down) {
+            Write-Step "Stopping service(s): $($Service -join ', ')"
+            $stopArgs = $profiles + @('stop') + $Service
+            & docker @stopArgs
+            Write-Ok "Stopped"
+            exit 0
+        }
+
+        # docker compose interpole ${DB_PASSWORD:?} au parse -> secrets requis en env.
+        if (-not $env:DB_PASSWORD) {
+            Write-Step "Secrets absents du shell -> chargement depuis AWS SSM"
+            & "$PSScriptRoot\load_secrets.ps1"
+        } else {
+            Write-Ok "Secrets deja charges dans ce shell (skip SSM)"
+        }
+
+        Write-Step "Rebuild + recreate: $($Service -join ', ')$(if ($NoBuild) { ' (no build)' })"
+        $upArgs = $profiles + @('up', '-d')
+        if (-not $NoBuild) { $upArgs += '--build' }
+        $upArgs += $Service
+        & docker @upArgs
+        if ($LASTEXITCODE -ne 0) { throw "docker compose up failed (exit $LASTEXITCODE)" }
+
+        # api rebuild -> migrations ; frontend/api rebuild -> refresh DNS upstream nginx.
+        if ($Service -contains 'api') {
+            Write-Step "Alembic upgrade head (api rebuilt)"
+            docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
+        }
+        if (($Service -contains 'frontend') -or ($Service -contains 'api')) {
+            Write-Step "Restart nginx (refresh upstream DNS)"
+            docker compose restart nginx | Out-Null
+        }
+
+        Write-Ok "Service(s) up: $($Service -join ', ')  -  UI http://localhost/"
+        if ($Logs) {
+            Write-Step "Tailing logs (Ctrl-C pour sortir)"
+            $logArgs = $profiles + @('logs', '-f') + $Service
+            & docker @logArgs
+        }
+        exit 0
+    }
+
     # ---------- Sous-mode -Down : stop & exit ----------
     if ($Down) {
+        # compose interpole ${DB_PASSWORD:?} au parse meme pour 'down' -> secrets requis.
+        if (-not $env:DB_PASSWORD) {
+            Write-Step "Secrets absents du shell -> chargement depuis AWS SSM"
+            & "$PSScriptRoot\load_secrets.ps1"
+        }
         Write-Step "Stopping stack$(if ($DropVolumes) { ' (DROPPING VOLUMES)' })"
         $args = @('compose', '--profile', 'engines', '--profile', 'ib', '--profile', 'obs', 'down', '--remove-orphans')
         if ($DropVolumes) { $args += '--volumes' }
