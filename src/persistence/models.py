@@ -445,12 +445,12 @@ class PcaSignal(Base):
     actionable: Mapped[bool] = mapped_column(Boolean, nullable=False)
     actionable_reason: Mapped[str | None] = mapped_column(String(80))
     sub_signals: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
-    recommended_structure: Mapped[str | None] = mapped_column(String(80))
 
 
-# ``pca_structure_recommendation`` (ORM ``SignalRecommendationsMap``)
-# was dropped in migration 039. The (pc_id, signal_label) → structure
-# mapping lives in ``core.pca_recommendations.PCA_RECOMMENDATIONS``.
+# ``pca_structure_recommendation`` (ORM ``SignalRecommendationsMap``) was
+# dropped in migration 039. Trade suggestions were removed entirely in R11
+# (migration 043 drops ``pca_signal.recommended_structure``): the desk is
+# decision-support, the user picks structures — the engine doesn't propose them.
 
 
 # ──────────────────────────────────────────────────────────────────────

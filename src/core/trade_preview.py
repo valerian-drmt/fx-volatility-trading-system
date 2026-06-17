@@ -294,24 +294,6 @@ FUTURE_COMMISSION_USD: dict[str, float] = {"full": 2.40, "micro": 0.60}
 EUR_FOP_MULTIPLIER: float = 125_000.0
 
 
-def parse_recommendation(rec: str | None) -> tuple[str, str, str | None]:
-    """Parse 'straddle_atm_3M' or 'calendar_long_1M_3M' → (type, near, far|None)."""
-    if not rec:
-        raise ValueError("empty recommendation")
-    toks = rec.split("_")
-    # Calendar form first : *_<near>_<far> with both being tenors.
-    if (
-        len(toks) >= 4
-        and toks[-1].upper() in TENOR_TO_DTE
-        and toks[-2].upper() in TENOR_TO_DTE
-    ):
-        return "_".join(toks[:-2]), toks[-2].upper(), toks[-1].upper()
-    # Single-tenor form : *_<tenor>
-    if len(toks) >= 2 and toks[-1].upper() in TENOR_TO_DTE:
-        return "_".join(toks[:-1]), toks[-1].upper(), None
-    raise ValueError(f"cannot parse recommendation: {rec!r}")
-
-
 def _resolve_tenor(template_leg: dict, near: str, far: str | None) -> str:
     role = template_leg.get("tenor_role")
     if role == "near":

@@ -1,7 +1,7 @@
 """Step 3 — pure-Python unit tests for trade_preview.py.
 
-Covers : recommendation parser, structure builder, pricing reconciliation,
-greeks signs, sizing formula, scenario decomposition, all 7 pre-submit checks.
+Covers : structure builder, pricing reconciliation, greeks signs, sizing
+formula, scenario decomposition, all 7 pre-submit checks.
 """
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from core.trade_preview import (
     build_structure,
     compute_net_greeks,
     compute_sizing,
-    parse_recommendation,
     price_structure,
     run_pre_submit_checks,
     simulate_scenarios,
@@ -38,29 +37,6 @@ def _mock_surface() -> dict:
             node[d] = {"iv": iv, "strike": spot + offset}
         surface[t] = node
     return surface
-
-
-# ────────────────────────────────────────────────────────────────
-# Recommendation parser
-# ────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.parametrize("rec,expected", [
-    ("straddle_atm_3M", ("straddle_atm", "3M", None)),
-    ("short_strangle_3M", ("short_strangle", "3M", None)),
-    ("long_butterfly_25d_3M", ("long_butterfly_25d", "3M", None)),
-    ("calendar_long_1M_3M", ("calendar_long", "1M", "3M")),
-    ("calendar_short_2M_6M", ("calendar_short", "2M", "6M")),
-])
-def test_parse_recommendation(rec, expected):
-    assert parse_recommendation(rec) == expected
-
-
-def test_parse_recommendation_invalid_raises():
-    with pytest.raises(ValueError):
-        parse_recommendation("garbage")
-    with pytest.raises(ValueError):
-        parse_recommendation("")
 
 
 # ────────────────────────────────────────────────────────────────

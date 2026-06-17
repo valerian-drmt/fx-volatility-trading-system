@@ -1035,7 +1035,6 @@ class VolEngine:
             import numpy as np
             from sqlalchemy import desc, select
 
-            from core.pca_recommendations import recommendation_label
             from core.vol.pca_engine import (
                 DELTAS,
                 TENORS,
@@ -1095,16 +1094,6 @@ class VolEngine:
                         hist_raw[r[0]].append(float(r[1]))
                         hist_z[r[0]].append(float(r[2]))
 
-                # Sourced from core.pca_recommendations (was the
-                # ``pca_structure_recommendation`` table until migration
-                # 039 dropped that mirror).
-                rec_map: dict[tuple[int, str], str] = {}
-                for pc in (1, 2, 3):
-                    for lab in ("CHEAP", "EXPENSIVE"):
-                        label_str = recommendation_label(pc, lab)
-                        if label_str is not None:
-                            rec_map[(pc, lab)] = label_str
-
                 # PC3 sub-signals : skew + convex history from snapshot_hourly.
                 # We cap at 200 latest rows — rolling z-score window, not the
                 # PCA fit window. Cheap : 200 × 30 floats.
@@ -1157,9 +1146,6 @@ class VolEngine:
                     persistent=persistent,
                     n_obs=n_obs, cumulative_variance=cum_var,
                 )
-                # Always compute the would-be recommended structure so the
-                # UI shows it greyed-out when not actionable.
-                rec = rec_map.get((pc_id, label))
                 sub = pc3_sub if pc_id == 3 else None
                 node = {
                     "z_score": round(z, 2),
@@ -1167,7 +1153,6 @@ class VolEngine:
                     "label": label,
                     "actionable": flag.actionable,
                     "actionable_reason": flag.reason,
-                    "recommended_structure": rec,
                 }
                 if sub is not None:
                     node["sub_signals"] = sub
@@ -1176,8 +1161,7 @@ class VolEngine:
                     "symbol": self.symbol, "pca_model_id": int(model.id),
                     "pc_id": pc_id, "raw_score": raw, "z_score": z,
                     "label": label, "actionable": flag.actionable,
-                    "actionable_reason": flag.reason,
-                    "recommended_structure": rec, "sub_signals": sub,
+                    "actionable_reason": flag.reason, "sub_signals": sub,
                 })
 
             payload = {

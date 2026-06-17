@@ -1,6 +1,6 @@
 """Step 3 — Trade preview API.
 
-POST /api/v1/trade/preview              build full preview from a signal_id
+POST /api/v1/trade/preview              build full preview from a user-picked structure
 POST /api/v1/trade/preview/{id}/cancel  user cancels a pending preview
 GET  /api/v1/trade/preview/{id}         retrieve a stored preview
 GET  /api/v1/trade/structures           list structure_definitions (catalogue)
@@ -33,7 +33,6 @@ from core.trade_preview import (
     compute_net_greeks,
     compute_pnl_grid,
     compute_sizing,
-    parse_recommendation,
     price_structure,
     run_pre_submit_checks,
     simulate_scenarios,
@@ -61,9 +60,8 @@ DbDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 class PreviewRequest(BaseModel):
-    signal_id: int | None = None
     scenario: str | None = None             # fixture mode (returns canned preview)
-    structure_type: str | None = None       # manual mode (no signal needed)
+    structure_type: str | None = None       # user-picked structure
     tenor: str | None = None                # manual mode reference tenor
     tenor_far: str | None = None            # manual mode (calendar only)
     qty: int | None = None                  # manual mode base_qty
@@ -296,24 +294,13 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
     if req.scenario:
         return _fixture_preview(req.scenario)
 
-    # Manual mode : user picked structure + tenor directly (no PCA signal).
-    manual_mode = req.signal_id is None and req.structure_type is not None
-    if not manual_mode and not req.signal_id:
-        raise HTTPException(400, "signal_id or structure_type required (or use ?scenario=…)")
-
+    # The desk does not propose trades : the user always picks the structure +
+    # tenor directly. (Signal-driven auto-structuring was removed — the PCA
+    # engine no longer emits recommended_structure.)
+    manual_mode = True
     signal = None
-    if not manual_mode:
-        signal = (await db.execute(
-            select(PcaSignal).where(PcaSignal.id == req.signal_id).limit(1)
-        )).scalar_one_or_none()
-        if signal is None:
-            raise HTTPException(404, "signal not found")
-        if not signal.actionable:
-            raise HTTPException(
-                400, f"signal not actionable: {signal.actionable_reason or 'unknown'}",
-            )
-        if not signal.recommended_structure:
-            raise HTTPException(400, "signal has no recommended_structure")
+    if req.structure_type is None:
+        raise HTTPException(400, "structure_type required (or use ?scenario=…)")
 
     # 2. Limits + book + surface + regime. Regime conditions both the
     #    sizing multiplier (compute_sizing) and the *limits* themselves
@@ -333,13 +320,10 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         else:
             raise HTTPException(503, "surface unavailable (vol-engine down or markets closed)")
 
-    # 3. Parse recommendation (signal mode) or use manual inputs
-    if manual_mode:
-        structure_type = req.structure_type
-        near_tenor = (req.tenor or "3M").upper()
-        far_tenor = req.tenor_far.upper() if req.tenor_far else None
-    else:
-        structure_type, near_tenor, far_tenor = parse_recommendation(signal.recommended_structure)
+    # 3. Structure + tenors come from the user's manual selection.
+    structure_type = req.structure_type
+    near_tenor = (req.tenor or "3M").upper()
+    far_tenor = req.tenor_far.upper() if req.tenor_far else None
     if req.override_tenor:
         near_tenor = req.override_tenor.upper()
     if req.override_far_tenor:

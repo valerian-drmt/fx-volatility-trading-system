@@ -16,7 +16,6 @@ from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
-from core.pca_recommendations import recommendation_label
 from core.vol.pca_engine import (
     N_FEATURES,
     actionable_check,
@@ -115,7 +114,6 @@ async def state(
             "label": r.label, "actionable": r.actionable,
             "actionable_reason": r.actionable_reason,
             "reason_category": reason_category(r.actionable_reason),
-            "recommended_structure": r.recommended_structure,
             "sub_signals": r.sub_signals,
         } for r in rows
     }
@@ -331,16 +329,6 @@ async def _backfill_signals_from_fit(
     sigma = np.where(sigma <= 0, 1.0, sigma)
     z = (raw - mu) / sigma
 
-    # Recommendation lookup — sourced from core.pca_recommendations
-    # (was the ``pca_structure_recommendation`` table until migration 039
-    # dropped that mirror).
-    rec_map: dict[tuple[int, str], str] = {}
-    for pc in (1, 2, 3):
-        for lab in ("CHEAP", "EXPENSIVE"):
-            label_str = recommendation_label(pc, lab)
-            if label_str is not None:
-                rec_map[(pc, lab)] = label_str
-
     T = X.shape[0]
     rows_to_add: list[PcaSignal] = []
     for t in range(T):
@@ -364,10 +352,6 @@ async def _backfill_signals_from_fit(
                 persistent=persistent,
                 n_obs=n_obs, cumulative_variance=cum_var,
             )
-            # Always compute the would-be recommended structure so the UI
-            # can show it greyed-out when not actionable (post-MVP critique).
-            rec = rec_map.get((pc_id, label))
-
             sub = None
             if pc_id == 3:
                 s, c = pc3_sub_metrics(X[t])
@@ -386,7 +370,7 @@ async def _backfill_signals_from_fit(
                 pca_model_id=int(model.id), pc_id=pc_id,
                 raw_score=raw_t, z_score=z_t, label=label,
                 actionable=flag.actionable, actionable_reason=flag.reason,
-                sub_signals=sub, recommended_structure=rec,
+                sub_signals=sub,
             ))
     db.add_all(rows_to_add)
     await db.flush()
