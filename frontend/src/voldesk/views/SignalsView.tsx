@@ -245,7 +245,7 @@ function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
         <span className={"mc-z mono " + (tone === "good" ? "pos" : tone === "danger" ? "neg" : "")}>{fmt.sgn(pc.z, 2)}</span>
         <div className="mc-zmeta">
           <Tag tone={tone}>{pc.label}</Tag>
-          <span className="dim small mono">%ile {pc.pctile.toFixed(2)}%</span>
+          <span className="dim small mono">percentile {pc.pctile.toFixed(2)}%</span>
         </div>
       </div>
       <ZSeriesChart pc={pc} view={view} series={pc.zHistory} />
@@ -375,9 +375,6 @@ export function SignalsView(): JSX.Element {
                 </button>
               ))}
             </div>
-            <span className="dim mono small">
-              PCA {m.pcaWindow} · z {m.zWindow} · display {m.display} · {m.dims}-dim · shrink {m.shrinkage}
-            </span>
             <FreshBadge fresh={pca} />
           </div>
         }
