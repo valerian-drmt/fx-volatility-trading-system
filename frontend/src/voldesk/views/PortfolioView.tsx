@@ -4,7 +4,7 @@
  * `js/views_portfolio.jsx` (global-window pattern) into typed ES modules.
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { fetchEquityCurve } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, MetricTile, Tag } from "../components/common";
@@ -16,24 +16,29 @@ import type { BookComposition, Position, VegaTenor, WaterfallStep } from "../dat
 import { useDeskData } from "../data/deskData";
 import { adaptEquityCurve } from "../data/live/portfolio";
 
-const USE_MOCK = (import.meta.env["VITE_USE_MOCK"] ?? "true") !== "false";
-
 // equity curve + drawdown band. Window-parameterised → fetched here (per-window
-// state) rather than in the provider; mock fallback when live is empty/disabled.
+// state) rather than in the provider. Live-only: empty state until data exists.
 function EquityChart({ window: win }: { window: string }): JSX.Element {
-  const mockData = useMemo<number[]>(() => DATA.equityCurve(win), [win]);
   const live = useFetch<number[]>(
     () => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve),
     120_000,
-    !USE_MOCK,
   );
-  const data = live.data && live.data.length > 1 ? live.data : mockData;
+  const data = live.data ?? [];
   const w = 760,
     h = 230,
     pl = 52,
     pr = 12,
     pt = 14,
     pb = 40;
+  if (data.length < 2) {
+    return (
+      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+        <text x={w / 2} y={h / 2} textAnchor="middle" fill="var(--text-faint)" fontSize="11" fontFamily="var(--mono)">
+          {live.status === "missing" ? "no equity history" : "loading…"}
+        </text>
+      </svg>
+    );
+  }
   const lo = Math.min(...data),
     hi = Math.max(...data),
     rng = hi - lo || 1;

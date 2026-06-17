@@ -24,11 +24,6 @@ import { PortfolioView } from "./views/PortfolioView";
 import { SystemView } from "./views/SystemView";
 import { SettingsView } from "./views/SettingsView";
 
-// Mock seed for the topbar ticker (used only when VITE_USE_MOCK is on — the
-// shell does a synthetic random walk). In live mode the ticker reads /ws/ticks.
-const SPOT = 1.0842;
-const USE_MOCK = (import.meta.env["VITE_USE_MOCK"] ?? "true") !== "false";
-
 const ICONS: Record<string, ReactNode> = {
   dashboard: (
     <g>
@@ -108,11 +103,6 @@ const TITLES: Record<string, [string, string]> = {
   system: ["System", "Infrastructure & diagnostics"],
   settings: ["Settings", "Versioned configuration"],
 };
-
-interface LiveTick {
-  mid: number;
-  dir: number;
-}
 
 interface TickerView {
   mid: number | null;
@@ -215,12 +205,10 @@ function Rail({
 export default function VoldeskApp(): JSX.Element {
   const [t, setTweak] = useTweaks();
   const [route, setRoute] = useState<string>(() => location.hash.slice(1) || "dashboard");
-  const [live, setLive] = useState<LiveTick>({ mid: SPOT, dir: 1 });
   const [clock, setClock] = useState<string>("");
   // Live EURUSD ticks via the shared desk domain (/ws/ticks, one WS connection).
-  // Mock mode -> synthetic walk below.
   const { ticks: tick } = useDeskData();
-  const prevMidRef = useRef<number>(SPOT);
+  const prevMidRef = useRef<number | null>(null);
   // setTweak is wired for the (not-yet-ported) Settings/Tweaks UI.
   void setTweak;
 
@@ -236,34 +224,20 @@ export default function VoldeskApp(): JSX.Element {
     return () => clearInterval(id);
   }, []);
 
-  // Mock mode only : synthetic random-walk so the shell looks alive offline.
-  useEffect(() => {
-    if (!USE_MOCK) return;
-    const id = setInterval(() => {
-      setLive((p) => {
-        const step = (Math.random() - 0.5) * 0.00015;
-        const mid = +(p.mid + step).toFixed(5);
-        return { mid, dir: step >= 0 ? 1 : -1 };
-      });
-    }, 1100);
-    return () => clearInterval(id);
-  }, []);
-
-  // Track previous mid (live mode) to colour the up/down arrow.
+  // Track previous mid to colour the up/down arrow.
   const liveMid = tick.data?.mid ?? null;
+  const prevMid = prevMidRef.current;
   useEffect(() => {
-    if (!USE_MOCK && liveMid !== null) prevMidRef.current = liveMid;
+    if (liveMid !== null) prevMidRef.current = liveMid;
   }, [liveMid]);
 
-  const ticker: TickerView = USE_MOCK
-    ? { mid: live.mid, bid: live.mid - 0.00008, ask: live.mid + 0.00008, dir: live.dir, status: "live" }
-    : {
-        mid: liveMid,
-        bid: tick.data?.bid ?? null,
-        ask: tick.data?.ask ?? null,
-        dir: liveMid !== null && liveMid >= prevMidRef.current ? 1 : -1,
-        status: tick.status,
-      };
+  const ticker: TickerView = {
+    mid: liveMid,
+    bid: tick.data?.bid ?? null,
+    ask: tick.data?.ask ?? null,
+    dir: liveMid !== null && prevMid !== null && liveMid >= prevMid ? 1 : -1,
+    status: tick.status,
+  };
 
   useEffect(() => {
     const h = (): void => setRoute(location.hash.slice(1) || "dashboard");

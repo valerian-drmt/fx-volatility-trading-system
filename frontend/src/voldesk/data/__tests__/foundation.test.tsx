@@ -356,7 +356,7 @@ function SurfaceProbe(): JSX.Element {
     <div>
       <span data-testid="s-status">{surface.status}</span>
       <span data-testid="s-iv00">{surface.data?.ivSurface[0]?.[0] ?? "none"}</span>
-      {/* ivZ is the mock-backed gap — present in both mock and live */}
+      {/* ivZ is the live per-cell rich/cheap grid (always 6 tenor rows) */}
       <span data-testid="s-hasz">{surface.data?.ivZ.length ?? "none"}</span>
     </div>
   );
@@ -417,29 +417,8 @@ function PortfolioProbe(): JSX.Element {
   );
 }
 
-describe("DataProvider swap", () => {
-  it("mock mode serves synthetic term-structure (status live, no fetch)", () => {
-    render(
-      <DataProvider mock={true}>
-        <TermProbe />
-      </DataProvider>,
-    );
-    expect(screen.getByTestId("status").textContent).toBe("live");
-    expect(Number(screen.getByTestId("n").textContent)).toBeGreaterThan(0);
-  });
-
-  it("mock mode serves synthetic surface (ivSurface + ivZ both present)", () => {
-    render(
-      <DataProvider mock={true}>
-        <SurfaceProbe />
-      </DataProvider>,
-    );
-    expect(screen.getByTestId("s-status").textContent).toBe("live");
-    expect(screen.getByTestId("s-iv00").textContent).not.toBe("none");
-    expect(Number(screen.getByTestId("s-hasz").textContent)).toBeGreaterThan(0);
-  });
-
-  it("live mode fetches + adapts the surface, keeps ivZ from the mock", async () => {
+describe("DataProvider (live-only)", () => {
+  it("fetches + adapts the surface ; ivZ grid is always 6 rows (neutral when no fair)", async () => {
     server.use(
       http.get("*/api/v1/vol/surface", () =>
         HttpResponse.json({
@@ -452,24 +431,15 @@ describe("DataProvider swap", () => {
       ),
     );
     render(
-      <DataProvider mock={false}>
+      <DataProvider>
         <SurfaceProbe />
       </DataProvider>,
     );
     await waitFor(() => expect(screen.getByTestId("s-iv00").textContent).toBe("11"));
     expect(screen.getByTestId("s-status").textContent).toBe("live");
-    // ivZ still served from the mock (5 tenor rows) — backend per-cell-z gap.
-    expect(Number(screen.getByTestId("s-hasz").textContent)).toBeGreaterThan(0);
-  });
-
-  it("mock mode serves synthetic PCA (3 cards, status live)", () => {
-    render(
-      <DataProvider mock={true}>
-        <PcaProbe />
-      </DataProvider>,
-    );
-    expect(screen.getByTestId("p-status").textContent).toBe("live");
-    expect(screen.getByTestId("p-n").textContent).toBe("3");
+    // ivZ is live (surface `.z`); the grid is always 6 rows, neutral (0) when
+    // the payload carries no fair-richness yet.
+    expect(Number(screen.getByTestId("s-hasz").textContent)).toBe(6);
   });
 
   it("live mode fetches state/model/history + adapts the mode cards", async () => {
@@ -495,23 +465,13 @@ describe("DataProvider swap", () => {
       http.get("*/api/v1/signals/pca/history", () => HttpResponse.json([{ z_score: -1.4 }, { z_score: -1.0 }])),
     );
     render(
-      <DataProvider mock={false}>
+      <DataProvider>
         <PcaProbe />
       </DataProvider>,
     );
     await waitFor(() => expect(screen.getByTestId("p-z0").textContent).toBe("-1.4"));
     expect(screen.getByTestId("p-n").textContent).toBe("3");
     expect(screen.getByTestId("p-status").textContent).toBe("live");
-  });
-
-  it("mock mode serves synthetic system (engines + 5 stack layers)", () => {
-    render(
-      <DataProvider mock={true}>
-        <SystemProbe />
-      </DataProvider>,
-    );
-    expect(screen.getByTestId("sys-status").textContent).toBe("live");
-    expect(screen.getByTestId("sys-layers").textContent).toBe("5");
   });
 
   it("live mode composes the stack from health + dev engines", async () => {
@@ -530,7 +490,7 @@ describe("DataProvider swap", () => {
       ),
     );
     render(
-      <DataProvider mock={false}>
+      <DataProvider>
         <SystemProbe />
       </DataProvider>,
     );
@@ -538,17 +498,6 @@ describe("DataProvider swap", () => {
     await waitFor(() => expect(screen.getByTestId("sys-eng").textContent).toBe("2"));
     expect(screen.getByTestId("sys-layers").textContent).toBe("5");
     expect(screen.getByTestId("sys-status").textContent).toBe("live");
-  });
-
-  it("mock mode serves synthetic portfolio (account + greek waterfall)", () => {
-    render(
-      <DataProvider mock={true}>
-        <PortfolioProbe />
-      </DataProvider>,
-    );
-    expect(screen.getByTestId("pf-status").textContent).toBe("live");
-    expect(Number(screen.getByTestId("pf-netliq").textContent)).toBeGreaterThan(0);
-    expect(Number(screen.getByTestId("pf-wf").textContent)).toBeGreaterThan(0);
   });
 
   it("live mode composes the portfolio (account net-liq from /portfolio/account)", async () => {
@@ -561,7 +510,7 @@ describe("DataProvider swap", () => {
       ),
     );
     render(
-      <DataProvider mock={false}>
+      <DataProvider>
         <PortfolioProbe />
       </DataProvider>,
     );
@@ -580,21 +529,11 @@ describe("DataProvider swap", () => {
       return <span data-testid="v99">{risk.data?.var99 ?? "none"}</span>;
     }
     render(
-      <DataProvider mock={false}>
+      <DataProvider>
         <VarProbe />
       </DataProvider>,
     );
     await waitFor(() => expect(screen.getByTestId("v99").textContent).toBe("-312"));
-  });
-
-  it("mock mode serves synthetic config (sections + version)", () => {
-    render(
-      <DataProvider mock={true}>
-        <ConfigProbe />
-      </DataProvider>,
-    );
-    expect(screen.getByTestId("cfg-status").textContent).toBe("live");
-    expect(Number(screen.getByTestId("cfg-sec").textContent)).toBeGreaterThan(0);
   });
 
   it("live mode fetches + folds the versioned config", async () => {
@@ -607,22 +546,12 @@ describe("DataProvider swap", () => {
       ),
     );
     render(
-      <DataProvider mock={false}>
+      <DataProvider>
         <ConfigProbe />
       </DataProvider>,
     );
     await waitFor(() => expect(screen.getByTestId("cfg-v").textContent).toBe("7"));
     expect(screen.getByTestId("cfg-status").textContent).toBe("live");
-  });
-
-  it("mock mode serves synthetic trade (positions + derived nets)", () => {
-    render(
-      <DataProvider mock={true}>
-        <TradeProbe />
-      </DataProvider>,
-    );
-    expect(screen.getByTestId("tr-status").textContent).toBe("live");
-    expect(Number(screen.getByTestId("tr-pos").textContent)).toBeGreaterThan(0);
   });
 
   it("live mode fetches positions + derives the book net delta", async () => {
@@ -635,7 +564,7 @@ describe("DataProvider swap", () => {
       ),
     );
     render(
-      <DataProvider mock={false}>
+      <DataProvider>
         <TradeProbe />
       </DataProvider>,
     );
@@ -655,7 +584,7 @@ describe("DataProvider swap", () => {
       ),
     );
     render(
-      <DataProvider mock={false}>
+      <DataProvider>
         <TermProbe />
       </DataProvider>,
     );

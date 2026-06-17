@@ -17,11 +17,8 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
 COPY frontend/ ./
-# VITE_USE_MOCK=false (defaut) -> bundle LIVE : le desk appelle le backend en
-# same-origin (/api, /ws) via le nginx principal. Mettre "true" pour un bundle
-# 100% mock (offline). Le dev frontend pur passe plutot par `npm run dev`.
-ARG VITE_USE_MOCK=false
-ENV VITE_USE_MOCK=${VITE_USE_MOCK}
+# The desk is live-only : it calls the backend same-origin (/api, /ws) via the
+# main nginx. No mock build flag — there is no mock mode.
 RUN npm run build
 
 FROM ${NGINX_IMAGE} AS runtime

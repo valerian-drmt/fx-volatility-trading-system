@@ -118,7 +118,8 @@ export interface PcaData {
 export interface DeskData {
   /** ATM term structure (+ fair/rv). Live (PR F). */
   termStructure: Fresh<TermPoint[]>;
-  /** IV surface grid + z field. ivSurface live (PR 1) ; ivZ still mock (gap). */
+  /** IV surface grid + per-cell rich/cheap z. Both live (ivSurface PR 1, ivZ via
+   * backend surface `.z`) ; z is 0/neutral until the engine has surface history. */
   surface: Fresh<SurfaceData>;
   /** PCA mode cards + model meta. Live (PR 1.2) ; display-config statics on mock. */
   pca: Fresh<PcaData>;
