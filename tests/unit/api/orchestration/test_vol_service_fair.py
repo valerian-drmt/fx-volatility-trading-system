@@ -19,8 +19,8 @@ def _surface() -> SimpleNamespace:
         symbol="EURUSD",
         timestamp=datetime(2026, 6, 17, 12, tzinfo=UTC),
         surface={
-            "1M": {"atm": {"iv": 0.065}, "dte": 30},
-            "3M": {"atm": {"iv": 0.072}, "dte": 90},
+            "1M": {"atm": {"iv": 0.065}, "dte": 30, "rv_pct": 5.5},  # per-tenor RV
+            "3M": {"atm": {"iv": 0.072}, "dte": 90},                  # no per-tenor RV → fallback
             "_rv_full_pct": 6.0,
             "_fair_q": {
                 "1M": {"sigma_fair_p_pct": 5.2, "vrp_vol_pts": 0.6, "sigma_fair_q_pct": 5.8, "regime": "calm"},
@@ -46,9 +46,9 @@ async def test_term_structure_propagates_fair_and_rv(monkeypatch):
     assert by["1M"].vrp_vol_pts == pytest.approx(0.6)
     assert by["1M"].sigma_fair_pct == pytest.approx(5.8)        # legacy = Q when present
     assert by["1M"].regime == "calm"
-    assert by["1M"].rv_pct == pytest.approx(6.0)                # surface-level, all tenors
+    assert by["1M"].rv_pct == pytest.approx(5.5)                # horizon-matched per-tenor RV
 
-    # 3M has no _fair_q entry -> fair fields None, but RV still attached.
+    # 3M has no _fair_q entry -> fair fields None ; no per-tenor RV → full-sample fallback.
     assert by["3M"].sigma_fair_q_pct is None
     assert by["3M"].sigma_fair_pct is None
     assert by["3M"].rv_pct == pytest.approx(6.0)

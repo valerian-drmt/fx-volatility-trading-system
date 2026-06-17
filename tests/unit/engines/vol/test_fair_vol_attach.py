@@ -46,6 +46,9 @@ async def test_attach_fair_vol_populates_fair_q():
     fq = out["_fair_q"]["1M"]
     assert fq["sigma_fair_q_pct"] == pytest.approx(fq["sigma_fair_p_pct"] + fq["vrp_vol_pts"])
     assert fq["regime"] in {"calm", "stressed", "pre_event"}
+    # horizon-matched RV per tenor stored on the pillar.
+    assert out["1M"].get("rv_pct", 0) > 0
+    assert out["6M"].get("rv_pct", 0) > 0
 
 
 async def test_attach_fair_vol_noop_on_no_history():

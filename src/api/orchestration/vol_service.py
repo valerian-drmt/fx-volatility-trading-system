@@ -115,6 +115,10 @@ async def get_term_structure(
         fq = fq if isinstance(fq, dict) else {}
         sigma_fair_q = fq.get("sigma_fair_q_pct")
         sigma_fair_p = fq.get("sigma_fair_p_pct")
+        # Horizon-matched RV per tenor (pillar.rv_pct) ; fall back to the
+        # surface-level full-sample RV when the per-tenor window is unavailable.
+        pillar_rv = pillar.get("rv_pct")
+        rv = float(pillar_rv) if isinstance(pillar_rv, (int, float)) else rv_full_f
         rows.append(
             TermStructureRow(
                 tenor=tenor,
@@ -126,7 +130,7 @@ async def get_term_structure(
                 sigma_fair_q_pct=sigma_fair_q,
                 vrp_vol_pts=fq.get("vrp_vol_pts"),
                 regime=fq.get("regime"),
-                rv_pct=rv_full_f,
+                rv_pct=rv,
             )
         )
     return TermStructureResponse(

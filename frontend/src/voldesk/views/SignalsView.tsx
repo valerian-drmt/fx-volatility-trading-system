@@ -97,7 +97,8 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
     pr = 16,
     pt = 16,
     pb = 28;
-  // RV (réalisé) is a surface-level scalar → a flat reference line across tenors.
+  // RV (réalisé) is horizon-matched per tenor (Yang-Zhang over a trailing window
+  // ≈ each tenor) → a realized-vol curve aligned with the IV / σ_fair curves.
   const hasRv = ts.some((t) => t.rv > 0);
   const all = ts.flatMap((t) => (hasRv ? [t.atm, t.fair, t.rv] : [t.atm, t.fair]));
   const lo = Math.min(...all) - 0.15,

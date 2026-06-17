@@ -721,6 +721,16 @@ class VolEngine:
         if rv_full is None:
             return
         out["_rv_full_pct"] = round(float(rv_full), 4)
+        # Horizon-matched RV per tenor : Yang-Zhang over a trailing window ≈ the
+        # tenor length in trading days (1M≈21, 3M≈63, 6M≈126). Stored per pillar
+        # so the term chart shows a realized-vol CURVE aligned with IV / σ_fair.
+        for tenor, yfrac in self.tenor_t.items():
+            pillar = out.get(tenor)
+            if not isinstance(pillar, dict):
+                continue
+            rv_t = yang_zhang_rv_pct(ohlc, window=max(3, round(float(yfrac) * 252)))
+            if rv_t is not None:
+                pillar["rv_pct"] = round(float(rv_t), 4)
         closes = ohlc["close"].to_numpy() if hasattr(ohlc, "close") else None
         if closes is None:
             return
