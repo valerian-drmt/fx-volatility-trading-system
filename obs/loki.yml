@@ -1,0 +1,48 @@
+# Loki single-binary monolithic config — P1 obs.
+# Filesystem storage on the loki-data volume. No replication, no
+# sharding — adapted for solo-dev 1-host scale.
+# Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 1.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # 14-day retention (durcissement spec § 2.4 : volume Loki recompté
+  # à ~2 GB sur 14j à 1.5 KB/log line × ~100k events/day × 5 engines).
+  retention_period: 336h
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+  max_global_streams_per_user: 5000
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h  # 7 jours pour les replays Promtail
+
+compactor:
+  working_directory: /loki/compactor
+  delete_request_store: filesystem
+  retention_enabled: true
+  retention_delete_delay: 2h

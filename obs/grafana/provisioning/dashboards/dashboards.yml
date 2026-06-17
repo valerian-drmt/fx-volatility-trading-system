@@ -1,0 +1,14 @@
+# Grafana dashboard provisioning — auto-loads JSON from /var/lib/grafana/dashboards.
+# Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 1.
+
+apiVersion: 1
+
+providers:
+  - name: 'fxvol'
+    folder: 'fxvol'
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
