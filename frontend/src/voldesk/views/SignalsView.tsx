@@ -249,7 +249,8 @@ function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
 // mode stability — eigengap λ2−λ3; warns when slope/curvature identities may rotate
 function ModeStability({ model }: { model: PcaModelMeta }): JSX.Element {
   const e = model.eigen,
-    lam = e.lambda;
+    // only the 3 traded modes (PC1/2/3) ; drop the higher eigenvalues (4-6).
+    lam = e.lambda.slice(0, 3);
   const max = Math.max(...lam) || 1;
   const degenerate = e.ratio23 < 2;
   return (
