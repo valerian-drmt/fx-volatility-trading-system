@@ -20,3 +20,34 @@ datasources:
     editable: false
     jsonData:
       maxLines: 2000
+      derivedFields:
+        # Click on trace_id in a Loki log → opens the Tempo trace.
+        - datasourceUid: tempo
+          matcherRegex: '"trace_id":\s*"([a-f0-9]{32})"'
+          name: trace_id
+          url: $${__value.raw}
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        tags:
+          - key: cycle_id
+            value: cycle_id
+          - key: engine
+            value: engine
+        filterByTraceID: false
+        filterBySpanID: false
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false

@@ -361,6 +361,43 @@ services:
     networks:
       - fxvol-internal
 
+  tempo:
+    image: grafana/tempo:2.6.0
+    container_name: fxvol-tempo
+    profiles: ["obs"]
+    restart: unless-stopped
+    command: -config.file=/etc/tempo.yml
+    volumes:
+      - ./obs/tempo.yml:/etc/tempo.yml:ro
+      - tempo_data:/var/tempo
+    networks:
+      - fxvol-internal
+    expose:
+      - "3200"   # Tempo HTTP query
+      - "4317"   # OTLP gRPC ingest (from otel-collector)
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3200/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.110.0
+    container_name: fxvol-otel-collector
+    profiles: ["obs"]
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector.yml"]
+    volumes:
+      - ./obs/otel-collector.yml:/etc/otel-collector.yml:ro
+    depends_on:
+      tempo:
+        condition: service_healthy
+    networks:
+      - fxvol-internal
+    expose:
+      - "4317"   # OTLP gRPC receiver (engines send here)
+
   grafana:
     image: grafana/grafana-oss:11.3.0
     container_name: fxvol-grafana
@@ -418,3 +455,5 @@ volumes:
   prom_data:
   loki_data:
   grafana_data:
+  # P2 obs — Tempo traces storage (7 days retention).
+  tempo_data:

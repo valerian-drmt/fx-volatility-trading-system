@@ -96,29 +96,40 @@ class RiskEngine:
             self._teardown()
 
     async def run_cycle(self) -> bool:
-        F = await self._read_spot()
+        """P2 obs : child spans per stage. service.name=risk_engine."""
+        from opentelemetry import trace as _otel
+        tracer = _otel.get_tracer(__name__)
+
+        with tracer.start_as_current_span("risk_read_spot") as span:
+            F = await self._read_spot()
+            span.set_attribute("spot", F if F is not None else -1)
         if F is None:
             logger.debug("risk_cycle_skipped", extra={"reason": "no_spot"})
             return False
 
-        surface = await self._read_surface()
+        with tracer.start_as_current_span("risk_read_surface") as span:
+            surface = await self._read_surface()
+            span.set_attribute("n_pillars", len(surface) if surface else 0)
         if surface is None:
             logger.debug("risk_cycle_skipped", extra={"reason": "no_surface"})
             return False
 
-        positions = self._fetch_positions() or []
-        greeks = self._aggregate_greeks(positions, F, surface)
-        pnl_curve = self._compute_pnl_curve(positions, F, surface) if positions else None
+        with tracer.start_as_current_span("risk_compute_greeks") as span:
+            positions = self._fetch_positions() or []
+            greeks = self._aggregate_greeks(positions, F, surface)
+            pnl_curve = self._compute_pnl_curve(positions, F, surface) if positions else None
+            span.set_attribute("n_positions", len(positions))
 
-        try:
-            await publisher.publish_risk_update(
-                self.redis, greeks=greeks, pnl_curve=pnl_curve
-            )
-            await publisher.set_heartbeat(self.redis, keys.ENGINE_RISK)
-            return True
-        except Exception:
-            logger.exception("publish_risk_update_failed")
-            return False
+        with tracer.start_as_current_span("risk_redis_publish"):
+            try:
+                await publisher.publish_risk_update(
+                    self.redis, greeks=greeks, pnl_curve=pnl_curve
+                )
+                await publisher.set_heartbeat(self.redis, keys.ENGINE_RISK)
+                return True
+            except Exception:
+                logger.exception("publish_risk_update_failed")
+                return False
 
     async def _read_spot(self) -> float | None:
         key = keys.LATEST_SPOT.format(symbol=self.symbol)
