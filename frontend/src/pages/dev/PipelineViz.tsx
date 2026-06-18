@@ -171,13 +171,13 @@ function Terminal({ pipe, live, ticks }: { pipe: PanelPipe; live: boolean; ticks
         {([["BID", bid], ["ASK", ask]] as const).map(([lbl, v]) => (
           <div key={lbl} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <span className="pp-mono" style={{ fontSize: 10, letterSpacing: ".12em", color: "#6b7180" }}>{lbl}</span>
-            <span className="pp-mono" style={{ fontSize: 18, fontWeight: 600, color: val }}>{v != null ? v.toFixed(4) : "—"}</span>
+            <span className="pp-mono" style={{ fontSize: 18, fontWeight: 600, color: val }}>{v != null ? v.toFixed(5) : "—"}</span>
           </div>
         ))}
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <span className="pp-mono" style={{ fontSize: 10, letterSpacing: ".12em", color: "#6b7180" }}>MID</span>
-        <span className="pp-mono" style={{ fontSize: 27, fontWeight: 700, color: live ? GREEN : "#766f5e", lineHeight: 1 }}>{mid != null ? mid.toFixed(4) : "—"}</span>
+        <span className="pp-mono" style={{ fontSize: 27, fontWeight: 700, color: live ? GREEN : "#766f5e", lineHeight: 1 }}>{mid != null ? mid.toFixed(5) : "—"}</span>
       </div>
       <div className="pp-mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#5a606e" }}>
         <span>spread {spread} pip</span><span>{live ? "EUR/USD" : "no fresh ticks"}</span>
