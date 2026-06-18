@@ -23,11 +23,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.dependencies import get_db_session
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
 from core.risk.stress import reval_book
+from core.risk.vega_pca import N_CELLS, PC_NAMES, cell_index, project_vega
 from persistence.models import (  # noqa: F401
     AccountHistory,
     BookedPosition,
     OpenPosition,
     OpenPositionHistory,
+    PcaModel,
     VolSurface,
 )
 from shared.contracts import parse_local_symbol
@@ -581,6 +583,46 @@ async def greeks_ladder(
             row["spot"] = round(current_spot * (1.0 + b / 10000.0), 5)
         rows.append(row)
     return {**base, "rows": rows}
+
+
+@router.get("/vega-pca")
+async def vega_pca(db: DbDep) -> dict[str, Any]:
+    """Project the book's per-cell vega onto the active PCA loadings (R11 G-risk).
+
+    Each open option is classified into a 30-dim grid cell (DTE -> tenor, BS delta
+    -> delta bucket) and its vega ($/vol-pt) accumulated. The active model's
+    loadings + stds then give the book's vega P&L sensitivity to each PC
+    (level / slope / curvature) -- see ``core.risk.vega_pca``.
+    """
+    current_spot, baselines = await _resolve_book(db)
+    opts = [b for b in baselines if b["type"] == "OPTION"]
+    vega_cells = [0.0] * N_CELLS
+    if current_spot is not None:
+        for b in opts:
+            d = bs_delta(current_spot, b["K"], b["T"], b["iv"], b["right"])
+            vega = bs_vega(current_spot, b["K"], b["T"], b["iv"]) * b["qty_signed"] * b["mult"] * 0.01
+            vega_cells[cell_index(b["T"] * 365.0, d)] += vega
+    model = (
+        await db.execute(select(PcaModel).where(PcaModel.is_active.is_(True)).limit(1))
+    ).scalar_one_or_none()
+    base = {
+        "current_spot": round(current_spot, 5) if current_spot else None,
+        "n_positions": len(opts),
+    }
+    if model is None:
+        return {**base, "model_version": None, "pcs": []}
+    proj = project_vega(vega_cells, model.loadings, model.stds)
+    var_ratio = model.variance_explained_ratio or []
+    pcs = [
+        {
+            "pc": i + 1,
+            "name": PC_NAMES.get(i + 1, f"pc{i + 1}"),
+            "variance_pct": round(float(var_ratio[i]) * 100, 1) if i < len(var_ratio) else None,
+            "vega_usd": round(proj[i], 2),
+        }
+        for i in range(len(proj))
+    ]
+    return {**base, "model_version": model.version, "pcs": pcs}
 
 
 # ──────────────────────────────────────────────────────────────────────
