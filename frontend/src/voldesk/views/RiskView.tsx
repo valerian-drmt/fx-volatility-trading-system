@@ -12,7 +12,7 @@ import { pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
 import { DATA, DATA2, fmt } from "../data";
 import type { VarFactor } from "../data";
-import { useDeskData } from "../data/deskData";
+import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
 import { adaptGreeksLadder, adaptPinRisk, adaptStressGrid, type LiveLadder, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
 
@@ -176,44 +176,44 @@ function ReturnsBars({ data, h = 130 }: { data: RetDatum[]; h?: number }): JSX.E
   );
 }
 
-function EmpiricalHist({ muZ, v95z, v99z, esZ, letter, h = 88 }: { muZ: number; v95z: number; v99z: number; esZ: number; letter: string; h?: number }): JSX.Element {
-  const w = 340,
-    x0 = -3.8,
-    x1 = 2.8;
-  const px = (z: number): number => 12 + ((z - x0) / (x1 - x0)) * (w - 20);
-  const baseY = h - 24,
-    topY = 14;
-  const bins = [0.04, 0.06, 0.09, 0.07, 0.12, 0.10, 0.17, 0.15, 0.23, 0.33, 0.47, 0.63, 0.81, 0.97, 1.0, 0.83, 0.6, 0.4, 0.25, 0.15, 0.08, 0.04];
-  const n = bins.length,
-    bw = (w - 20) / n,
-    maxH = baseY - topY;
+function EmpiricalHist({ hist, var95, var99, es99, retk, letter, h = 88 }: { hist: HistBin[]; var95: number; var99: number; es99: number; retk: number; letter: string; h?: number }): JSX.Element {
+  const w = 340;
+  if (!hist.length) {
+    return (
+      <svg className="var-curve-svg" width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+        <text x={w / 2} y={h / 2} fill="var(--text-faint)" fontSize="10" fontFamily="var(--mono)" textAnchor="middle">distribution accumulating…</text>
+      </svg>
+    );
+  }
+  // Empirical P&L histogram in $k space. VaR/ES are loss magnitudes → plotted at −x.
+  const marks = [0, -var95, -var99, -es99, retk];
+  const lo = Math.min(...hist.map((b) => b.lo), ...marks);
+  const hi = Math.max(...hist.map((b) => b.hi), ...marks);
+  const rng = hi - lo || 1;
+  const padL = 12, padR = 8;
+  const px = (v: number): number => padL + ((v - lo) / rng) * (w - padL - padR);
+  const baseY = h - 24, topY = 14, maxH = baseY - topY;
+  const maxC = Math.max(...hist.map((b) => b.count)) || 1;
   return (
     <svg className="var-curve-svg" width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      {/* left-tail shading behind bars */}
-      <rect x={px(x0)} y={topY} width={px(v95z) - px(x0)} height={baseY - topY} fill="var(--neg)" fillOpacity="0.08" />
-      {bins.map((b, i) => {
-        const x = 12 + i * bw,
-          hh = b * maxH;
-        const zc = x0 + ((i + 0.5) / n) * (x1 - x0);
-        return <rect key={i} x={x + bw * 0.08} y={baseY - hh} width={bw * 0.84} height={hh} fill={zc <= v95z ? "var(--neg)" : "var(--muted)"} fillOpacity={zc <= v95z ? 0.55 : 0.5} />;
+      <rect x={px(lo)} y={topY} width={Math.max(0, px(-var95) - px(lo))} height={maxH} fill="var(--neg)" fillOpacity="0.08" />
+      {hist.map((b, i) => {
+        const x = px(b.lo), bw = Math.max(1, px(b.hi) - px(b.lo)), hh = (b.count / maxC) * maxH;
+        const loss = b.hi <= -var95;
+        return <rect key={i} x={x + bw * 0.06} y={baseY - hh} width={bw * 0.88} height={hh} fill={loss ? "var(--neg)" : "var(--muted)"} fillOpacity={loss ? 0.55 : 0.5} />;
       })}
-      <line x1={px(x0)} x2={px(x1)} y1={baseY} y2={baseY} stroke="var(--border)" strokeWidth="1" />
-      {/* mean μ of the distribution (subtle reference) */}
+      <line x1={px(lo)} x2={px(hi)} y1={baseY} y2={baseY} stroke="var(--border)" strokeWidth="1" />
       <line x1={px(0)} x2={px(0)} y1={topY} y2={baseY} stroke="var(--fg)" strokeWidth="1.1" strokeOpacity="0.35" strokeDasharray="2 2" />
       <text x={px(0)} y={baseY + 11} fill="var(--fg)" fontSize="8" fontFamily="var(--mono)" textAnchor="middle" opacity="0.55">µ</text>
-      {/* current realized return (white) */}
-      <line x1={px(muZ)} x2={px(muZ)} y1={topY} y2={baseY} stroke="var(--fg)" strokeWidth="1.6" />
-      <text x={px(muZ)} y={topY - 3} fill="var(--fg)" fontSize="8" fontWeight="700" fontFamily="var(--mono)" textAnchor="middle">{letter}</text>
-      {/* VaR95 */}
-      <line x1={px(v95z)} x2={px(v95z)} y1={topY + 8} y2={baseY} stroke="var(--warn)" strokeWidth="1.3" strokeDasharray="4 3" />
-      <text x={px(v95z)} y={baseY + 11} fill="var(--warn)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">95%</text>
-      {/* VaR99 */}
-      <line x1={px(v99z)} x2={px(v99z)} y1={topY + 8} y2={baseY} stroke="var(--neg)" strokeWidth="1.3" strokeDasharray="4 3" />
-      <text x={px(v99z)} y={baseY + 11} fill="var(--neg)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">99%</text>
-      {/* ES point */}
-      <line x1={px(esZ)} x2={px(esZ)} y1={baseY - 14} y2={baseY} stroke="#b3402f" strokeWidth="1.4" strokeDasharray="2 2" />
-      <circle cx={px(esZ)} cy={baseY - 14} r="3.5" fill="#b3402f" stroke="var(--bg)" strokeWidth="1" />
-      <text x={px(esZ)} y={baseY + 11} fill="#c4584a" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">ES</text>
+      <line x1={px(retk)} x2={px(retk)} y1={topY} y2={baseY} stroke="var(--fg)" strokeWidth="1.6" />
+      <text x={px(retk)} y={topY - 3} fill="var(--fg)" fontSize="8" fontWeight="700" fontFamily="var(--mono)" textAnchor="middle">{letter}</text>
+      <line x1={px(-var95)} x2={px(-var95)} y1={topY + 8} y2={baseY} stroke="var(--warn)" strokeWidth="1.3" strokeDasharray="4 3" />
+      <text x={px(-var95)} y={baseY + 11} fill="var(--warn)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">95%</text>
+      <line x1={px(-var99)} x2={px(-var99)} y1={topY + 8} y2={baseY} stroke="var(--neg)" strokeWidth="1.3" strokeDasharray="4 3" />
+      <text x={px(-var99)} y={baseY + 11} fill="var(--neg)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">99%</text>
+      <line x1={px(-es99)} x2={px(-es99)} y1={baseY - 14} y2={baseY} stroke="#b3402f" strokeWidth="1.4" strokeDasharray="2 2" />
+      <circle cx={px(-es99)} cy={baseY - 14} r="3.5" fill="#b3402f" stroke="var(--bg)" strokeWidth="1" />
+      <text x={px(-es99)} y={baseY + 11} fill="#c4584a" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">ES</text>
     </svg>
   );
 }
@@ -234,7 +234,7 @@ interface VarCalc {
   esZ: number;
 }
 
-function VarCard({ var95, var99, es99, netLiq, fresh }: { var95: number; var99: number; es99: number; netLiq: number; fresh: Fresh<unknown> }): JSX.Element {
+function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; var99: number; es99: number; netLiq: number; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
   const base95 = var95,
     base99 = var99;
   const NL = netLiq;
@@ -257,6 +257,8 @@ function VarCard({ var95, var99, es99, netLiq, fresh }: { var95: number; var99: 
   };
   const sel = rows.find((r) => r.id === tf) ?? rows[0]!,
     c = calc(sel);
+  // empirical 1d distribution scaled to the selected horizon (same √t the table uses).
+  const histScaled = hist.map((b) => ({ lo: b.lo * sel.m, hi: b.hi * sel.m, count: b.count }));
   const letter = ({ "1d": "D", "1w": "W", "1M": "M", "1Y": "Y" } as Record<string, string>)[sel.id] ?? "D";
   return (
     <Panel title="Value at Risk" right={<FreshBadge fresh={fresh} label="historical 1d" />} pad={false} className="trade-block">
@@ -295,7 +297,7 @@ function VarCard({ var95, var99, es99, netLiq, fresh }: { var95: number; var99: 
       </div>
       <div className="ret-chart">
         <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · empirical</span></div>
-        <EmpiricalHist muZ={c.muZ} v95z={-1.645} v99z={-2.326} esZ={c.esZ} letter={letter} />
+        <EmpiricalHist hist={histScaled} var95={c.v95} var99={c.v99} es99={c.es} retk={c.retk} letter={letter} />
         <div className="hist-leg dim mono">
           <span><i className="lg-line mu" />return (D/W/M/Y)</span>
           <span><i className="lg-line w" />VaR 95%</span>
@@ -763,7 +765,7 @@ export function RiskView(): JSX.Element {
               <Bar label="Γ exposure" used="14.5k" limit="20.4k" pct={71} value="71%" tone="auto" />
             </div>
           </Panel>
-          <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} fresh={risk} />
+          <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} />
         </div>
       </Panel>
       <StressEngine />
