@@ -75,6 +75,9 @@ input,select{font-family:inherit;font-size:13px}
 .var-method{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);padding:2px 8px;border-radius:4px;font-weight:700}
 .var-live{display:flex;align-items:center;gap:5px;color:var(--pos);margin-left:auto}
 .var-live .status-dot{width:7px;height:7px}
+/* per-panel live indicator (right slot) + the VaR-stack column */
+.panel-live{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.var-col{display:flex;flex-direction:column;gap:12px}
 .var-row{cursor:pointer}
 .var-row:hover{background:color-mix(in srgb,var(--accent) 6%,transparent)}
 .hist-leg{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;font-size:11px;margin-top:6px}

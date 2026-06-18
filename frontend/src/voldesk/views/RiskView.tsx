@@ -3,7 +3,7 @@
  * prototype's `js/views_risk.jsx` (global-window JSX) into typed ES modules.
  * Exports only RiskView; all sub-components stay local (lint).
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchGreeksLadder, fetchPinRisk, fetchStressGrid, fetchVegaPca } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
@@ -65,6 +65,25 @@ function DivBars({ rows, unit = "", scale = "linear" }: { rows: DivBarRow[]; uni
 // neutral "risk-only" badge — marks surfaces that carry exposure but NO signal (skew). Never the signal palette.
 function RiskOnly({ text = "risk-only" }: { text?: string }): JSX.Element {
   return <span className="risk-only-badge mono">{text}</span>;
+}
+
+// per-panel data-source indicator: live (fresh) / stale / no-data / mock.
+// Reuses the .status-dot/.pulse styles from the VaR card's live pill.
+function PanelLive({ status }: { status: Fresh<unknown>["status"] | "mock" }): JSX.Element {
+  const cfg = {
+    live: { c: "var(--pos)", t: "live", pulse: true },
+    stale: { c: "var(--warn)", t: "stale", pulse: false },
+    missing: { c: "var(--muted)", t: "no data", pulse: false },
+    mock: { c: "var(--muted)", t: "mock", pulse: false },
+  }[status];
+  return (
+    <span
+      className="panel-live dim mono small"
+      title={status === "mock" ? "placeholder data — no live endpoint yet" : "data feed status"}
+    >
+      <span className={"status-dot" + (cfg.pulse ? " pulse" : "")} style={{ background: cfg.c }} /> {cfg.t}
+    </span>
+  );
 }
 
 // ---- stacked factor decomposition bar (VaR by factor: spot / vol / skew / curvature) ----
@@ -411,24 +430,9 @@ function LiveStressGrid({ d, status }: { d: StressGridData | null; status: Fresh
 
 const STRESS_AXES = ["spot-time", "spot-vol", "spot-skew", "spot-fly"] as const;
 
-// Fetches the four stress matrices for the current output. Remounted (key=output
-// in StressEngine) so a toggle change re-runs the fetch with the new output.
-function StressGrids({ output }: { output: "pnl" | GreekKey }): JSX.Element {
-  const live = useFetch<(StressGridData | null)[]>(
-    () => Promise.all(STRESS_AXES.map((a) => fetchStressGrid(a, output).then(adaptStressGrid))),
-    120_000,
-  );
-  const g = live.data ?? [null, null, null, null];
-  return (
-    <div className="stress-2x2">
-      <Panel title="Spot × Time" right={<span className="dim mono small">decay</span>} className="trade-block"><LiveStressGrid d={g[0] ?? null} status={live.status} /></Panel>
-      <Panel title="Spot × ΔVol ∥ ATM" right={<span className="dim mono small">level only</span>} className="trade-block"><LiveStressGrid d={g[1] ?? null} status={live.status} /></Panel>
-      <Panel title="Spot × Skew (ΔRR)" right={<RiskOnly text="risk-only · pas de signal" />} className="trade-block"><LiveStressGrid d={g[2] ?? null} status={live.status} /></Panel>
-      <Panel title="Spot × Fly (ΔBF)" right={<span className="accent mono small">curvature · PC3</span>} className="trade-block"><LiveStressGrid d={g[3] ?? null} status={live.status} /></Panel>
-    </div>
-  );
-}
-
+// Stress engine: one output toggle drives P&L or any greek across the four
+// spot-x grids. Owns the fetch so it can show a live indicator; refetches on
+// output change (the four axes in parallel).
 function PositionBreakdown(): JSX.Element {
   const rows = DATA.positions;
   const k = (v: number | null, d = 2): string => v == null ? "—" : (v >= 0 ? "+" : "-") + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(2) + "k" : Math.abs(v).toFixed(d));
@@ -497,19 +501,34 @@ function VegaTenorLadder({ rows }: { rows: { tenor: string; vega: number; n: num
   );
 }
 
-// ---- single stress engine: one toggle drives P&L or any greek across all four grids ----
 function StressEngine(): JSX.Element {
   const [out, setOut] = useState<"pnl" | GreekKey>("pnl");
   const labels: Record<"pnl" | GreekKey, string> = { pnl: "P&L", delta: "Δ Delta", gamma: "Γ Gamma", vega: "Vega", theta: "Θ Theta", vanna: "Vanna", volga: "Volga" };
   const opts: ("pnl" | GreekKey)[] = ["pnl", "delta", "gamma", "vega", "theta", "vanna", "volga"];
+  const live = useFetch<(StressGridData | null)[]>(
+    () => Promise.all(STRESS_AXES.map((a) => fetchStressGrid(a, out).then(adaptStressGrid))),
+    120_000,
+  );
+  const reload = live.reload;
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    reload();
+  }, [out, reload]);
+  const g = live.data ?? [null, null, null, null];
   return (
-    <Panel title="Stress test — scenario engine" right={<span className="dim mono small">factor base spans skew & curvature</span>} className="stress-panel">
+    <Panel title="Stress test — scenario engine" right={<><span className="dim mono small">factor base spans skew & curvature</span> <PanelLive status={live.status} /></>} className="stress-panel">
       <div className="greek-btns">
         {opts.map((o) => (
           <button key={o} className={"chip " + (out === o ? "on" : "")} onClick={() => setOut(o)}>{labels[o]}</button>
         ))}
       </div>
-      <StressGrids key={out} output={out} />
+      <div className="stress-2x2">
+        <Panel title="Spot × Time" right={<span className="dim mono small">decay</span>} className="trade-block"><LiveStressGrid d={g[0] ?? null} status={live.status} /></Panel>
+        <Panel title="Spot × ΔVol ∥ ATM" right={<span className="dim mono small">level only</span>} className="trade-block"><LiveStressGrid d={g[1] ?? null} status={live.status} /></Panel>
+        <Panel title="Spot × Skew (ΔRR)" right={<RiskOnly text="risk-only · pas de signal" />} className="trade-block"><LiveStressGrid d={g[2] ?? null} status={live.status} /></Panel>
+        <Panel title="Spot × Fly (ΔBF)" right={<span className="accent mono small">curvature · PC3</span>} className="trade-block"><LiveStressGrid d={g[3] ?? null} status={live.status} /></Panel>
+      </div>
       <HeatLegend note={(out === "pnl" ? "portfolio P&L" : labels[out] + " value") + " · value printed in cell · color normalized per grid · RR is ~vega-neutral in Spot×Vol → its risk only shows in Spot×Skew"} />
     </Panel>
   );
@@ -524,7 +543,7 @@ function CalendarPanel(): JSX.Element {
   const { trade } = useDeskData();
   const events = trade.data?.events ?? [];
   return (
-    <Panel title="Calendar — events & expiries" pad className="ladder-panel">
+    <Panel title="Calendar — events & expiries" right={<PanelLive status={pin.status} />} pad className="ladder-panel">
       <div className="risk-cards2">
         <Panel title="Expiries & roll-off" className="trade-block" pad={false}>
           <div className="table-scroll">
@@ -566,58 +585,43 @@ function CalendarPanel(): JSX.Element {
 }
 
 // ---- desk backlog : named-scenario presets + marginal VaR contribution ----
-function DeskGapsPanel(): JSX.Element {
-  const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + "k" : Math.abs(v));
+// Marginal contribution to VaR — rendered under the VaR panel. Still mock; the
+// /portfolio/marginal-var endpoint is the next Track B item.
+function MarginalVarPanel(): JSX.Element {
   const kv = (v: number): string => "-$" + Math.abs(v) + "k";
   const facColor: Record<string, string> = { skew: "#a78bfa", level: "var(--accent)", spot: "var(--warn)", curv: "var(--pos)" };
   const T = DATA2.marginalVarTotal;
   return (
-    <Panel title="Desk gaps — backlog of additions" pad className="ladder-panel">
-      <div className="risk-cards2">
-        <Panel title="Scenario presets / replay" className="trade-block">
-          <div className="preset-grid">
-            {DATA2.stressPresets.map((p) => (
-              <button key={p.id} className="preset-card">
-                <div className="preset-head"><span className="preset-name">{p.name}</span><span className={"preset-pnl mono " + pnlCls(p.pnl)}>{kk(p.pnl)}</span></div>
-                <div className="preset-sub dim mono">{p.sub}</div>
-                <div className="preset-shock mono dim">spot {p.spot > 0 ? "+" : ""}{p.spot}bp · vol {p.vol > 0 ? "+" : ""}{p.vol}vp</div>
-              </button>
-            ))}
-          </div>
-          <div className="dim small mono preset-note">named historical shocks in one click → feed the stress engine</div>
-        </Panel>
-        <Panel title="Marginal contribution to VaR" className="trade-block" pad={false}>
-          <div className="mvar-factors">
-            <div className="gs-sublbl mono dim">component VaR by factor · le <b className="accent">skew (RR)</b> domine sans vue associée → exposition incidente à neutraliser, pas un edge</div>
-            <FactorStack factors={DATA2.varFactors} />
-          </div>
-          <div className="table-scroll">
-            <table className="dt">
-              <thead><tr><th className="l">Position</th><th className="r">standalone</th><th className="r">marginal</th><th className="r">component</th><th className="r">% VaR</th></tr></thead>
-              <tbody>
-                {DATA2.marginalVar.map((m, i) => {
-                  const dom = Object.entries(m.f).reduce((a, b) => (Math.abs(b[1]) > Math.abs(a[1]) ? b : a))[0];
-                  return (
-                    <tr key={i}>
-                      <td className="l mono"><span className="mvar-dot" style={{ background: facColor[dom] }} title={"driver: " + dom} />{m.pos}</td>
-                      <td className="r mono dim">{kv(m.standalone)}</td>
-                      <td className="r mono neg">{kv(m.marginal)}</td>
-                      <td className="r mono neg">{kv(m.comp)}</td>
-                      <td className="r"><div className="mvar-pct"><div className="mvar-bar" style={{ width: m.pct + "%" }} /><span className="mono">{m.pct.toFixed(1)}%</span></div></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot><tr>
-                <td className="l mono">Portfolio <span className="dim">· diversif. {T.diversification}%</span></td>
-                <td className="r mono dim">{kv(T.standalone)}</td>
-                <td className="r mono dim">—</td>
-                <td className="r mono neg">{kv(T.comp)}</td>
-                <td className="r mono">100%</td>
-              </tr></tfoot>
-            </table>
-          </div>
-        </Panel>
+    <Panel title="Marginal contribution to VaR" right={<PanelLive status="mock" />} className="trade-block" pad={false}>
+      <div className="mvar-factors">
+        <div className="gs-sublbl mono dim">component VaR by factor · le <b className="accent">skew (RR)</b> domine sans vue associée → exposition incidente à neutraliser, pas un edge</div>
+        <FactorStack factors={DATA2.varFactors} />
+      </div>
+      <div className="table-scroll">
+        <table className="dt">
+          <thead><tr><th className="l">Position</th><th className="r">standalone</th><th className="r">marginal</th><th className="r">component</th><th className="r">% VaR</th></tr></thead>
+          <tbody>
+            {DATA2.marginalVar.map((m, i) => {
+              const dom = Object.entries(m.f).reduce((a, b) => (Math.abs(b[1]) > Math.abs(a[1]) ? b : a))[0];
+              return (
+                <tr key={i}>
+                  <td className="l mono"><span className="mvar-dot" style={{ background: facColor[dom] }} title={"driver: " + dom} />{m.pos}</td>
+                  <td className="r mono dim">{kv(m.standalone)}</td>
+                  <td className="r mono neg">{kv(m.marginal)}</td>
+                  <td className="r mono neg">{kv(m.comp)}</td>
+                  <td className="r"><div className="mvar-pct"><div className="mvar-bar" style={{ width: m.pct + "%" }} /><span className="mono">{m.pct.toFixed(1)}%</span></div></td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot><tr>
+            <td className="l mono">Portfolio <span className="dim">· diversif. {T.diversification}%</span></td>
+            <td className="r mono dim">{kv(T.standalone)}</td>
+            <td className="r mono dim">—</td>
+            <td className="r mono neg">{kv(T.comp)}</td>
+            <td className="r mono">100%</td>
+          </tr></tfoot>
+        </table>
       </div>
     </Panel>
   );
@@ -670,13 +674,15 @@ function LiveLadders(): JSX.Element {
   const L = live.data ?? [];
   const at = (i: number): LiveLadder | null => L[i] ?? null;
   return (
-    <>
-      <LiveLadderTable title="vs Spot" axisLbl="Spot" d={at(0)} status={live.status} />
-      <LiveLadderTable title="vs Vol ∥ ATM" right={<span className="dim mono small">level</span>} axisLbl="Vol" d={at(1)} status={live.status} />
-      <LiveLadderTable title="vs Time" axisLbl="Time" d={at(2)} status={live.status} />
-      <LiveLadderTable title="vs Skew (ΔRR)" right={<RiskOnly />} axisLbl="RR" d={at(3)} status={live.status} />
-      <LiveLadderTable title="vs Fly (ΔBF)" right={<span className="accent mono small">PC3</span>} axisLbl="BF" d={at(4)} status={live.status} />
-    </>
+    <Panel title="Greeks ladder" right={<><span className="dim mono small">5 axes · full BS reval</span> <PanelLive status={live.status} /></>} pad className="ladder-panel">
+      <div className="ladder-grid">
+        <LiveLadderTable title="vs Spot" axisLbl="Spot" d={at(0)} status={live.status} />
+        <LiveLadderTable title="vs Vol ∥ ATM" right={<span className="dim mono small">level</span>} axisLbl="Vol" d={at(1)} status={live.status} />
+        <LiveLadderTable title="vs Time" axisLbl="Time" d={at(2)} status={live.status} />
+        <LiveLadderTable title="vs Skew (ΔRR)" right={<RiskOnly />} axisLbl="RR" d={at(3)} status={live.status} />
+        <LiveLadderTable title="vs Fly (ΔBF)" right={<span className="accent mono small">PC3</span>} axisLbl="BF" d={at(4)} status={live.status} />
+      </div>
+    </Panel>
   );
 }
 
@@ -713,7 +719,7 @@ export function RiskView(): JSX.Element {
     <div className="risk-grid">
       <Panel title="Portfolio risk" className="stress-panel">
         <div className="risk-overview2">
-          <Panel title="Greeks & risk utilization" className="trade-block">
+          <Panel title="Greeks & risk utilization" right={<PanelLive status={risk.status} />} className="trade-block">
             <div className="gs-section-lbl">Portfolio greeks <span className="dim">· risk stock</span></div>
             <div className="greeks-summary gs-g4">
               <div className="gs-item"><span className="gs-lbl">Net Δ</span><b className={"mono " + pnlCls(g.delta)}>{fmt.usdk(g.delta * 1000)}</b><span className="gs-sub mono">{fmt.sgn(g.dDelta24h, 1)}k / 24h</span></div>
@@ -767,20 +773,18 @@ export function RiskView(): JSX.Element {
               <Bar label="Γ exposure" used="14.5k" limit="20.4k" pct={71} value="71%" tone="auto" />
             </div>
           </Panel>
-          <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} />
+          <div className="var-col">
+            <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} />
+            <MarginalVarPanel />
+          </div>
         </div>
       </Panel>
       <StressEngine />
-      <Panel title="Greeks ladder" right={<span className="dim mono small">5 axes · full BS reval</span>} pad className="ladder-panel">
-        <div className="ladder-grid">
-          <LiveLadders />
-        </div>
-      </Panel>
-      <Panel title="Position breakdown" pad={false} className="ladder-panel">
+      <LiveLadders />
+      <Panel title="Position breakdown" right={<PanelLive status="mock" />} pad={false} className="ladder-panel">
         <PositionBreakdown />
       </Panel>
       <CalendarPanel />
-      <DeskGapsPanel />
     </div>
   );
 }
