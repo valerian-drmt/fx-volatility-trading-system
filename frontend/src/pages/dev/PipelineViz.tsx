@@ -223,7 +223,7 @@ function Stage({ pipe, id, setId, statuses, asOf, ticks }: {
             <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, minWidth: 240, maxHeight: 420, overflow: "auto", background: "#161a20", border: "1px solid #2a2f38", borderRadius: 8, padding: 5, zIndex: 40, boxShadow: "0 12px 34px rgba(0,0,0,.55)" }}>
               {[...byView.entries()].map(([view, panels]) => (
                 <div key={view}>
-                  <div className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".12em", color: "#4d5360", padding: "7px 9px 3px" }}>{VIEW_LABEL[view].toUpperCase()}</div>
+                  <div className="pp-mono" style={{ fontSize: 13, fontWeight: 600, letterSpacing: ".1em", color: "#aab0bd", padding: "11px 9px 5px" }}>{VIEW_LABEL[view].toUpperCase()}</div>
                   {panels.map((p) => (
                     <div key={p.id} onClick={() => { setId(p.id); setOpen(false); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 9px", borderRadius: 6, cursor: "pointer", background: p.id === id ? "rgba(62,196,109,.1)" : "transparent" }}>
                       <span style={{ fontSize: 12.5, color: p.id === id ? "#e6f6ec" : "#aab0bd" }}>{p.panel}</span>
