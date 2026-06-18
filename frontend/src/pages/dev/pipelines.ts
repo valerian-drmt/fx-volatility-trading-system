@@ -53,7 +53,7 @@ export const PIPELINES: PanelPipe[] = [
       { kind: "container", label: "ib-gateway", sub: "broker session", health: "IB Gateway" },
       { kind: "container", label: "market-data", sub: "clientId 1 · tick stream", health: "market-data" },
       { kind: "store", label: "Redis", sub: "latest_spot:EUR · ticks ch.", health: "redis" },
-      { kind: "api", label: "api", sub: "FastAPI · WS bridge", health: "api (FastAPI)" },
+      { kind: "api", label: "api", sub: "FastAPI · WS bridge", health: "__api" },
       { kind: "frontend", label: "frontend", sub: "React · WS client", health: "__self" },
       { kind: "panel", label: "Ticker bid/ask", sub: "displayed panel", health: "__ws" },
     ],

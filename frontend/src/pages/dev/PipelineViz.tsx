@@ -54,9 +54,10 @@ function buildHealthMap(system: SystemData | null): Record<string, H> {
   for (const layer of system.stack) for (const it of layer.items) m[it.name] = normStatus(it.status);
   return m;
 }
-function resolve(node: PipeNode, hmap: Record<string, H>, domain: H, ws: H): H {
+function resolve(node: PipeNode, hmap: Record<string, H>, domain: H, ws: H, api: H): H {
   if (node.health === "__self") return "up";
   if (node.health === "__ws") return ws;
+  if (node.health === "__api") return api; // api-specific: up if it responds (not the global DEGRADED)
   if (node.health && hmap[node.health]) return hmap[node.health]!;
   return domain; // fallback: panel's domain freshness
 }
@@ -268,7 +269,10 @@ function LiveStage({ pipe, id, setId }: { pipe: PanelPipe; id: string; setId: (v
   const hmap = buildHealthMap(desk.system.data);
   const dom = normStatus(domainF.status);
   const ws = normStatus(ticks.status);
-  const statuses = pipe.nodes.map((n) => resolve(n, hmap, dom, ws));
+  // api is up the moment it responds (system probe came back, or ticks flow) —
+  // independent of the stack's global DEGRADED flag.
+  const apiUp: H = desk.system.status !== "missing" || ws === "up" ? "up" : "down";
+  const statuses = pipe.nodes.map((n) => resolve(n, hmap, dom, ws, apiUp));
   return <Stage pipe={pipe} id={id} setId={setId} statuses={statuses} asOf={domainF.asOf ?? ticks.asOf} ticks={ticks} />;
 }
 
