@@ -349,6 +349,51 @@ export function adaptVegaPca(raw: unknown): VegaPcaRow[] {
   }));
 }
 
+export interface MarginalVarRow {
+  label: string;
+  factor: string; // dominant greek: spot | level | skew | curv
+  standalone: number; // USD loss
+  component: number; // USD contribution to portfolio VaR (signed)
+  pct: number;
+}
+
+export interface MarginalVarData {
+  rows: MarginalVarRow[];
+  portfolioVar: number;
+  diversification: number;
+  nDays: number;
+}
+
+interface MVarResp {
+  positions?: {
+    label?: string;
+    factor?: string;
+    standalone_usd?: number | null;
+    component_usd?: number | null;
+    pct?: number | null;
+  }[];
+  total?: { portfolio_var_usd?: number | null; diversification_pct?: number | null } | null;
+  n_days?: number;
+}
+
+/** /portfolio/marginal-var → per-position standalone + component VaR. */
+export function adaptMarginalVar(raw: unknown): MarginalVarData {
+  const o = (raw ?? {}) as MVarResp;
+  const rows = (o.positions ?? []).map((r) => ({
+    label: r.label ?? "",
+    factor: r.factor ?? "spot",
+    standalone: n(r.standalone_usd),
+    component: n(r.component_usd),
+    pct: n(r.pct),
+  }));
+  return {
+    rows,
+    portfolioVar: n(o.total?.portfolio_var_usd),
+    diversification: n(o.total?.diversification_pct),
+    nDays: o.n_days ?? 0,
+  };
+}
+
 /** /portfolio/pin-risk → per-option pin exposure (P&L now vs at the strike). */
 export function adaptPinRisk(raw: unknown): PinRiskRow[] {
   const rows = ((raw ?? {}) as { rows?: PinRowResp[] }).rows ?? [];

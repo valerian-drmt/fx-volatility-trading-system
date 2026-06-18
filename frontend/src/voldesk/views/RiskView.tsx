@@ -4,7 +4,7 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useEffect, useRef, useState } from "react";
-import { fetchGreeksLadder, fetchPinRisk, fetchStressGrid, fetchVegaPca } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fetchVegaPca } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -14,7 +14,7 @@ import { DATA, DATA2, fmt } from "../data";
 import type { VarFactor } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreeksLadder, adaptPinRisk, adaptStressGrid, adaptVegaPca, type LiveLadder, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, adaptVegaPca, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -588,39 +588,36 @@ function CalendarPanel(): JSX.Element {
 // Marginal contribution to VaR — rendered under the VaR panel. Still mock; the
 // /portfolio/marginal-var endpoint is the next Track B item.
 function MarginalVarPanel(): JSX.Element {
-  const kv = (v: number): string => "-$" + Math.abs(v) + "k";
+  const live = useFetch<MarginalVarData>(() => fetchMarginalVar().then(adaptMarginalVar), 120_000);
+  const d = live.data;
+  const rows = d?.rows ?? [];
   const facColor: Record<string, string> = { skew: "#a78bfa", level: "var(--accent)", spot: "var(--warn)", curv: "var(--pos)" };
-  const T = DATA2.marginalVarTotal;
+  const money = (v: number): string => { const a = Math.abs(v); const m = a >= 1000 ? (a / 1000).toFixed(1) + "k" : Math.round(a).toString(); return (v >= 0 ? "-$" : "+$") + m; };
   return (
-    <Panel title="Marginal contribution to VaR" right={<PanelLive status="mock" />} className="trade-block" pad={false}>
-      <div className="mvar-factors">
-        <div className="gs-sublbl mono dim">component VaR by factor · le <b className="accent">skew (RR)</b> domine sans vue associée → exposition incidente à neutraliser, pas un edge</div>
-        <FactorStack factors={DATA2.varFactors} />
-      </div>
+    <Panel title="Marginal contribution to VaR" right={<PanelLive status={live.status} />} className="trade-block" pad={false}>
       <div className="table-scroll">
         <table className="dt">
-          <thead><tr><th className="l">Position</th><th className="r">standalone</th><th className="r">marginal</th><th className="r">component</th><th className="r">% VaR</th></tr></thead>
+          <thead><tr><th className="l">Position</th><th className="r">standalone</th><th className="r">component</th><th className="r">% VaR</th></tr></thead>
           <tbody>
-            {DATA2.marginalVar.map((m, i) => {
-              const dom = Object.entries(m.f).reduce((a, b) => (Math.abs(b[1]) > Math.abs(a[1]) ? b : a))[0];
-              return (
-                <tr key={i}>
-                  <td className="l mono"><span className="mvar-dot" style={{ background: facColor[dom] }} title={"driver: " + dom} />{m.pos}</td>
-                  <td className="r mono dim">{kv(m.standalone)}</td>
-                  <td className="r mono neg">{kv(m.marginal)}</td>
-                  <td className="r mono neg">{kv(m.comp)}</td>
-                  <td className="r"><div className="mvar-pct"><div className="mvar-bar" style={{ width: m.pct + "%" }} /><span className="mono">{m.pct.toFixed(1)}%</span></div></td>
-                </tr>
-              );
-            })}
+            {rows.length === 0 ? (
+              <tr><td className="l dim mono small" colSpan={4}>{live.status === "missing" ? "no open book" : d && d.nDays < 5 ? "accumulating history (≈5d)…" : "loading…"}</td></tr>
+            ) : rows.map((m, i) => (
+              <tr key={i}>
+                <td className="l mono"><span className="mvar-dot" style={{ background: facColor[m.factor] ?? "var(--muted)" }} title={"driver: " + m.factor} />{m.label}</td>
+                <td className="r mono dim">{money(m.standalone)}</td>
+                <td className={"r mono " + (m.component >= 0 ? "neg" : "pos")}>{money(m.component)}</td>
+                <td className="r"><div className="mvar-pct"><div className="mvar-bar" style={{ width: Math.max(0, m.pct) + "%" }} /><span className="mono">{m.pct.toFixed(1)}%</span></div></td>
+              </tr>
+            ))}
           </tbody>
-          <tfoot><tr>
-            <td className="l mono">Portfolio <span className="dim">· diversif. {T.diversification}%</span></td>
-            <td className="r mono dim">{kv(T.standalone)}</td>
-            <td className="r mono dim">—</td>
-            <td className="r mono neg">{kv(T.comp)}</td>
-            <td className="r mono">100%</td>
-          </tr></tfoot>
+          {rows.length > 0 && d ? (
+            <tfoot><tr>
+              <td className="l mono">Portfolio <span className="dim">· diversif. {d.diversification}%</span></td>
+              <td className="r mono dim">—</td>
+              <td className="r mono neg">{money(d.portfolioVar)}</td>
+              <td className="r mono">100%</td>
+            </tr></tfoot>
+          ) : null}
         </table>
       </div>
     </Panel>
