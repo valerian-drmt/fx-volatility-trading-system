@@ -23,7 +23,7 @@ import {
   type Position,
 } from "../core";
 import type { HistBin, TenorRisk, VarData } from "../deskData";
-import type { BookComposition, PerfStats, VegaTenor, WaterfallStep } from "../extended";
+import type { BookComposition, PerfStats, VarFactor, VegaTenor, WaterfallStep } from "../extended";
 
 const n = (v: unknown): number => (typeof v === "number" ? v : 0);
 const r1 = (v: number): number => Math.round(v * 10) / 10;
@@ -392,6 +392,26 @@ export function adaptMarginalVar(raw: unknown): MarginalVarData {
     diversification: n(o.total?.diversification_pct),
     nDays: o.n_days ?? 0,
   };
+}
+
+const _FACTOR_COLOR: Record<string, string> = {
+  spot: "var(--warn)",
+  level: "var(--accent)",
+  skew: "#a78bfa",
+  curv: "var(--pos)",
+};
+
+/** /portfolio/var-factors → scenario VaR by factor ($ → $k) for the FactorStack. */
+export function adaptVarFactors(raw: unknown): VarFactor[] {
+  const factors = ((raw ?? {}) as {
+    factors?: { key?: string; label?: string; var_usd?: number | null }[];
+  }).factors ?? [];
+  return factors.map((f) => ({
+    key: f.key ?? "",
+    label: f.label ?? "",
+    v: r1(n(f.var_usd) / 1000),
+    color: _FACTOR_COLOR[f.key ?? ""] ?? "var(--muted)",
+  }));
 }
 
 /** /portfolio/pin-risk → per-option pin exposure (P&L now vs at the strike). */

@@ -4,7 +4,7 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useEffect, useRef, useState } from "react";
-import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fetchVegaPca } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fetchVarFactors, fetchVegaPca } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -14,7 +14,7 @@ import { DATA, DATA2, fmt } from "../data";
 import type { VarFactor } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, adaptVegaPca, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, adaptVarFactors, adaptVegaPca, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -254,6 +254,7 @@ interface VarCalc {
 }
 
 function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; var99: number; es99: number; netLiq: number; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
+  const factorsLive = useFetch<VarFactor[]>(() => fetchVarFactors().then(adaptVarFactors), 120_000).data ?? [];
   const base95 = var95,
     base99 = var99;
   const NL = netLiq;
@@ -312,7 +313,7 @@ function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; v
       </div>
       <div className="var-factors">
         <div className="vf-lbl dim small mono">VaR by factor <span className="dim">· which factor carries the tail (ties to marginal-VaR panel)</span></div>
-        <FactorStack factors={DATA2.varFactors} compact />
+        <FactorStack factors={factorsLive} compact />
       </div>
       <div className="ret-chart">
         <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · empirical</span></div>

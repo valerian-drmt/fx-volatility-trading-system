@@ -133,6 +133,7 @@ export const fetchPnlAttribution = (lookbackHours = 24) =>
 export const fetchPinRisk = () => apiGet<unknown>("/api/v1/portfolio/pin-risk");
 export const fetchVegaPca = () => apiGet<unknown>("/api/v1/portfolio/vega-pca");
 export const fetchMarginalVar = () => apiGet<unknown>("/api/v1/portfolio/marginal-var");
+export const fetchVarFactors = () => apiGet<unknown>("/api/v1/portfolio/var-factors");
 export const fetchScenarios = () => apiGet<unknown>("/api/v1/portfolio/scenarios");
 export const fetchHedgeSummary = () =>
   apiGet<unknown>("/api/v1/portfolio/hedge-summary");
