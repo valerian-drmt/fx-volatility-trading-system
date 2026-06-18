@@ -20,14 +20,14 @@ const GREEN = "#3ec46d", AMBER = "#d9a441", RED = "#e0564f";
 type H = "up" | "warn" | "down";
 const HCOLOR: Record<H, string> = { up: GREEN, warn: AMBER, down: RED };
 
-const KIND: Record<NodeKind, { color: string; glyph: string; tag: string }> = {
+// Two block categories → two colours only: the external broker vs everything
+// we run (containers + stores + api + front all read as "container").
+const BLOCK_STYLE = {
   external: { color: "#c79a4b", glyph: "⇅", tag: "EXTERNAL" },
   container: { color: "#5b8fd6", glyph: "▣", tag: "CONTAINER" },
-  store: { color: "#9b7ad6", glyph: "▤", tag: "STORE" },
-  api: { color: "#46b39a", glyph: "◆", tag: "API" },
-  frontend: { color: "#4d9460", glyph: "⧉", tag: "FRONT" },
-  panel: { color: GREEN, glyph: "■", tag: "PANEL" },
-};
+} as const;
+const blockStyle = (kind: NodeKind): { color: string; glyph: string; tag: string } =>
+  kind === "external" ? BLOCK_STYLE.external : BLOCK_STYLE.container;
 const VIEW_LABEL: Record<ViewId, string> = {
   dashboard: "Dashboard", trade: "Trade", signals: "Signal", risk: "Risk", portfolio: "Portfolio",
 };
@@ -83,23 +83,23 @@ function XMark({ size }: { size: number }): JSX.Element {
 function Block({ node, status, tip, onEnter, onLeave }: {
   node: PipeNode; status: H; tip: boolean; onEnter: () => void; onLeave: () => void;
 }): JSX.Element {
-  const k = KIND[node.kind];
+  const k = blockStyle(node.kind);
   const sc = HCOLOR[status];
   const down = status === "down";
   return (
-    <div style={{ flex: "none", width: 140, position: "relative" }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
-      {down ? <div style={{ position: "absolute", left: "50%", top: -34, transform: "translateX(-50%)", lineHeight: 0, zIndex: 6 }}><XMark size={28} /></div> : null}
-      <div style={{ position: "relative", background: down ? "#1b1517" : "#181b22", border: `1px solid ${hexa(sc, down ? 0.5 : 0.32)}`, borderRadius: 6, padding: "11px 11px 12px", minHeight: 92, display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", boxShadow: down ? `0 0 16px ${hexa(RED, 0.14)}, inset 0 0 22px ${hexa(RED, 0.05)}` : "none", transition: "background .25s, border-color .25s, box-shadow .25s" }}>
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: hexa(sc, down ? 0.7 : 0.55) }} />
+    <div style={{ flex: "none", width: 188, position: "relative" }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
+      {down ? <div style={{ position: "absolute", left: "50%", top: -42, transform: "translateX(-50%)", lineHeight: 0, zIndex: 6 }}><XMark size={34} /></div> : null}
+      <div style={{ position: "relative", background: down ? "#1b1517" : "#181b22", border: `1px solid ${hexa(sc, down ? 0.5 : 0.32)}`, borderRadius: 7, padding: "15px 15px 16px", minHeight: 122, display: "flex", flexDirection: "column", gap: 11, overflow: "hidden", boxShadow: down ? `0 0 16px ${hexa(RED, 0.14)}, inset 0 0 22px ${hexa(RED, 0.05)}` : "none", transition: "background .25s, border-color .25s, box-shadow .25s" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: hexa(sc, down ? 0.7 : 0.55) }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div className="pp-mono" style={{ width: 22, height: 22, borderRadius: 5, display: "grid", placeItems: "center", fontSize: 12, color: k.color, border: `1px solid ${hexa(k.color, 0.42)}`, background: hexa(k.color, 0.1), opacity: down ? 0.6 : 1 }}>{k.glyph}</div>
-          <div className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".12em", color: k.color, fontWeight: 600, opacity: down ? 0.7 : 1 }}>{k.tag}</div>
+          <div className="pp-mono" style={{ width: 30, height: 30, borderRadius: 6, display: "grid", placeItems: "center", fontSize: 17, color: k.color, border: `1px solid ${hexa(k.color, 0.42)}`, background: hexa(k.color, 0.1), opacity: down ? 0.6 : 1 }}>{k.glyph}</div>
+          <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: ".12em", color: k.color, fontWeight: 600, opacity: down ? 0.7 : 1 }}>{k.tag}</div>
         </div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#e6eaf1" }}>{node.label}</div>
-        <div className="pp-mono" style={{ fontSize: 9.5, color: "#6b7180", lineHeight: 1.4 }}>{node.sub}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: sc, boxShadow: `0 0 7px ${hexa(sc, 0.8)}`, animation: status === "up" ? "pppulse 1.6s ease-in-out infinite" : "none" }} />
-          <span className="pp-mono" style={{ fontSize: 9, letterSpacing: ".12em", fontWeight: 600, color: sc }}>{status === "up" ? "UP" : status === "warn" ? "WARN" : "DOWN"}</span>
+        <div style={{ fontSize: 16.5, fontWeight: 600, color: "#e6eaf1" }}>{node.label}</div>
+        <div className="pp-mono" style={{ fontSize: 12, color: "#6b7180", lineHeight: 1.45 }}>{node.sub}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 9, height: 9, borderRadius: "50%", background: sc, boxShadow: `0 0 8px ${hexa(sc, 0.8)}`, animation: status === "up" ? "pppulse 1.6s ease-in-out infinite" : "none" }} />
+          <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: ".12em", fontWeight: 600, color: sc }}>{status === "up" ? "UP" : status === "warn" ? "WARN" : "DOWN"}</span>
         </div>
       </div>
       {tip ? (
@@ -116,13 +116,13 @@ function Pipe({ label, flow, broken, hover, onEnter, onLeave }: {
 }): JSX.Element {
   const sc = flow ? GREEN : broken ? RED : "#5a606e";
   return (
-    <div style={{ position: "relative", flex: 1, minWidth: 56, alignSelf: "stretch", display: "flex", alignItems: "center", padding: "0 1px" }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
-      <div className="pp-mono" style={{ position: "absolute", top: "calc(50% - 19px)", left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap", fontSize: 9, letterSpacing: ".07em", textTransform: "uppercase", pointerEvents: "none", color: hover ? "#dfe7e2" : "#586070", textShadow: hover ? `0 0 9px ${hexa(sc, 0.55)}` : "none", fontWeight: hover ? 600 : 400 }}>{label}</div>
-      <div style={{ position: "relative", flex: 1, height: 8, minWidth: 30, background: "#0c0e12", border: `1px solid ${hexa(sc, 0.42)}`, borderRadius: 5, overflow: "hidden", boxShadow: flow ? `0 0 10px ${hexa(sc, 0.16)}, inset 0 0 6px ${hexa(sc, 0.1)}` : `inset 0 0 6px ${hexa(sc, 0.06)}`, transition: "box-shadow .35s, border-color .35s" }}>
+    <div style={{ position: "relative", flex: 1, minWidth: 156, alignSelf: "stretch", display: "flex", alignItems: "center", padding: "0 1px" }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
+      <div className="pp-mono" style={{ position: "absolute", top: "calc(50% - 27px)", left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap", fontSize: 11.5, letterSpacing: ".07em", textTransform: "uppercase", pointerEvents: "none", color: hover ? "#dfe7e2" : "#7b8494", textShadow: hover ? `0 0 9px ${hexa(sc, 0.55)}` : "none", fontWeight: hover ? 600 : 500 }}>{label}</div>
+      <div style={{ position: "relative", flex: 1, height: 10, minWidth: 30, background: "#0c0e12", border: `1px solid ${hexa(sc, 0.42)}`, borderRadius: 6, overflow: "hidden", boxShadow: flow ? `0 0 10px ${hexa(sc, 0.16)}, inset 0 0 6px ${hexa(sc, 0.1)}` : `inset 0 0 6px ${hexa(sc, 0.06)}`, transition: "box-shadow .35s, border-color .35s" }}>
         <div style={{ position: "absolute", inset: 0, backgroundImage: `repeating-linear-gradient(90deg, ${sc} 0, ${sc} 6px, ${hexa(sc, 0)} 6px, ${hexa(sc, 0)} 16px)`, backgroundSize: "16px 100%", animation: flow ? "ppflow .6s linear infinite" : "none", opacity: flow ? 0.92 : 0.45, transition: "opacity .35s" }} />
       </div>
-      <div style={{ position: "absolute", right: -2, top: "50%", transform: "translateY(-50%)", lineHeight: 0 }}>
-        <svg width="9" height="11" viewBox="0 0 9 11" fill="none"><path d="M1.5 1.5L6 5.5L1.5 9.5" stroke={sc} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      <div style={{ position: "absolute", right: -3, top: "50%", transform: "translateY(-50%)", lineHeight: 0 }}>
+        <svg width="12" height="15" viewBox="0 0 9 11" fill="none"><path d="M1.5 1.5L6 5.5L1.5 9.5" stroke={sc} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </div>
     </div>
   );
@@ -131,9 +131,9 @@ function Pipe({ label, flow, broken, hover, onEnter, onLeave }: {
 function Terminal({ pipe, live, ticks }: { pipe: PanelPipe; live: boolean; ticks: Fresh<unknown> }): JSX.Element {
   const accent = live ? GREEN : AMBER;
   const card: CSSProperties = {
-    width: 200, background: live ? "linear-gradient(180deg,#161b21,#13171c)" : "linear-gradient(180deg,#1a1813,#141210)",
-    border: `1px solid ${hexa(accent, live ? 0.55 : 0.5)}`, borderRadius: 7, padding: "12px 13px 13px",
-    display: "flex", flexDirection: "column", gap: 9, position: "relative",
+    width: 234, background: live ? "linear-gradient(180deg,#161b21,#13171c)" : "linear-gradient(180deg,#1a1813,#141210)",
+    border: `1px solid ${hexa(accent, live ? 0.55 : 0.5)}`, borderRadius: 8, padding: "14px 15px 15px",
+    display: "flex", flexDirection: "column", gap: 11, position: "relative",
     boxShadow: live ? "0 0 0 1px rgba(62,196,109,.25),0 0 26px rgba(62,196,109,.2),inset 0 0 30px rgba(62,196,109,.05)" : "inset 0 0 26px rgba(217,164,65,.06)",
     animation: live ? "pphalo 2.6s ease-in-out infinite" : "none", transition: "border-color .4s, box-shadow .4s, background .4s",
   };
@@ -147,8 +147,8 @@ function Terminal({ pipe, live, ticks }: { pipe: PanelPipe; live: boolean; ticks
   );
   const head = (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-      <span style={{ fontSize: 12.5, fontWeight: 600, color: "#eef1f6" }}>{pipe.id === "ticker" ? "Ticker bid/ask" : pipe.panel}</span>
-      <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>PANEL</span>
+      <span style={{ fontSize: 14.5, fontWeight: 600, color: "#eef1f6" }}>{pipe.id === "ticker" ? "Ticker bid/ask" : pipe.panel}</span>
+      <span className="pp-mono" style={{ fontSize: 10, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>PANEL</span>
     </div>
   );
   if (pipe.id !== "ticker") {
@@ -168,14 +168,14 @@ function Terminal({ pipe, live, ticks }: { pipe: PanelPipe; live: boolean; ticks
       <div style={{ display: "flex", gap: 14 }}>
         {([["BID", bid], ["ASK", ask]] as const).map(([lbl, v]) => (
           <div key={lbl} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".12em", color: "#6b7180" }}>{lbl}</span>
-            <span className="pp-mono" style={{ fontSize: 15, fontWeight: 600, color: val }}>{v != null ? v.toFixed(4) : "—"}</span>
+            <span className="pp-mono" style={{ fontSize: 10, letterSpacing: ".12em", color: "#6b7180" }}>{lbl}</span>
+            <span className="pp-mono" style={{ fontSize: 18, fontWeight: 600, color: val }}>{v != null ? v.toFixed(4) : "—"}</span>
           </div>
         ))}
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".12em", color: "#6b7180" }}>MID</span>
-        <span className="pp-mono" style={{ fontSize: 22, fontWeight: 700, color: live ? GREEN : "#766f5e", lineHeight: 1 }}>{mid != null ? mid.toFixed(4) : "—"}</span>
+        <span className="pp-mono" style={{ fontSize: 10, letterSpacing: ".12em", color: "#6b7180" }}>MID</span>
+        <span className="pp-mono" style={{ fontSize: 27, fontWeight: 700, color: live ? GREEN : "#766f5e", lineHeight: 1 }}>{mid != null ? mid.toFixed(4) : "—"}</span>
       </div>
       <div className="pp-mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#5a606e" }}>
         <span>spread {spread} pip</span><span>{live ? "EUR/USD" : "no fresh ticks"}</span>
