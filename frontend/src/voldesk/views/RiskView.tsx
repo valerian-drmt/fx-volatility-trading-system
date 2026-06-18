@@ -281,7 +281,7 @@ function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; v
   const histScaled = hist.map((b) => ({ lo: b.lo * sel.m, hi: b.hi * sel.m, count: b.count }));
   const letter = ({ "1d": "D", "1w": "W", "1M": "M", "1Y": "Y" } as Record<string, string>)[sel.id] ?? "D";
   return (
-    <Panel title="Value at Risk" right={<FreshBadge fresh={fresh} label="historical 1d" />} pad={false} className="trade-block">
+    <Panel title="Value at Risk" dataPp="var" right={<FreshBadge fresh={fresh} label="historical 1d" />} pad={false} className="trade-block">
       <div className="var-meta">
         <span className="var-method">historical sim</span>
         <span>504 obs · 504d window</span>
@@ -518,7 +518,7 @@ function StressEngine(): JSX.Element {
   }, [out, reload]);
   const g = live.data ?? [null, null, null, null];
   return (
-    <Panel title="Stress test — scenario engine" right={<><span className="dim mono small">factor base spans skew & curvature</span> <PanelLive status={live.status} /></>} className="stress-panel">
+    <Panel title="Stress test — scenario engine" dataPp="stress" right={<><span className="dim mono small">factor base spans skew & curvature</span> <PanelLive status={live.status} /></>} className="stress-panel">
       <div className="greek-btns">
         {opts.map((o) => (
           <button key={o} className={"chip " + (out === o ? "on" : "")} onClick={() => setOut(o)}>{labels[o]}</button>
@@ -544,9 +544,9 @@ function CalendarPanel(): JSX.Element {
   const { trade } = useDeskData();
   const events = trade.data?.events ?? [];
   return (
-    <Panel title="Calendar — events & expiries" right={<PanelLive status={pin.status} />} pad className="ladder-panel">
+    <Panel title="Calendar — events & expiries" dataPp="risk-calendar-wrap" right={<PanelLive status={pin.status} />} pad className="ladder-panel">
       <div className="risk-cards2">
-        <Panel title="Expiries & roll-off" className="trade-block" pad={false}>
+        <Panel title="Expiries & roll-off" dataPp="pin-risk" className="trade-block" pad={false}>
           <div className="table-scroll">
             <table className="dt">
               <thead><tr><th className="l">Option</th><th className="r">Strike</th><th className="r">DTE</th><th className="r">Dist pip</th><th className="r">P&L now</th><th className="r">if pin</th></tr></thead>
@@ -567,7 +567,7 @@ function CalendarPanel(): JSX.Element {
             </table>
           </div>
         </Panel>
-        <Panel title="Macro events" className="trade-block">
+        <Panel title="Macro events" dataPp="risk-macro" className="trade-block">
           <div className="evt-list">
             {events.length === 0 ? (
               <div className="dim mono small">no scheduled events</div>
@@ -595,7 +595,7 @@ function MarginalVarPanel(): JSX.Element {
   const facColor: Record<string, string> = { skew: "#a78bfa", level: "var(--accent)", spot: "var(--warn)", curv: "var(--pos)" };
   const money = (v: number): string => { const a = Math.abs(v); const m = a >= 1000 ? (a / 1000).toFixed(1) + "k" : Math.round(a).toString(); return (v >= 0 ? "-$" : "+$") + m; };
   return (
-    <Panel title="Marginal contribution to VaR" right={<PanelLive status={live.status} />} className="trade-block" pad={false}>
+    <Panel title="Marginal contribution to VaR" dataPp="marginal-var" right={<PanelLive status={live.status} />} className="trade-block" pad={false}>
       <div className="table-scroll">
         <table className="dt">
           <thead><tr><th className="l">Position</th><th className="r">standalone</th><th className="r">component</th><th className="r">% VaR</th></tr></thead>
@@ -672,7 +672,7 @@ function LiveLadders(): JSX.Element {
   const L = live.data ?? [];
   const at = (i: number): LiveLadder | null => L[i] ?? null;
   return (
-    <Panel title="Greeks ladder" right={<><span className="dim mono small">5 axes · full BS reval</span> <PanelLive status={live.status} /></>} pad className="ladder-panel">
+    <Panel title="Greeks ladder" dataPp="greeks-ladder" right={<><span className="dim mono small">5 axes · full BS reval</span> <PanelLive status={live.status} /></>} pad className="ladder-panel">
       <div className="ladder-grid">
         <LiveLadderTable title="vs Spot" axisLbl="Spot" d={at(0)} status={live.status} />
         <LiveLadderTable title="vs Vol ∥ ATM" right={<span className="dim mono small">level</span>} axisLbl="Vol" d={at(1)} status={live.status} />
@@ -715,9 +715,9 @@ export function RiskView(): JSX.Element {
   void ScenarioMini;
   return (
     <div className="risk-grid">
-      <Panel title="Portfolio risk" className="stress-panel">
+      <Panel title="Portfolio risk" dataPp="risk-portfolio-wrap" className="stress-panel">
         <div className="risk-overview2">
-          <Panel title="Greeks & risk utilization" right={<PanelLive status={risk.status} />} className="trade-block">
+          <Panel title="Greeks & risk utilization" dataPp="greeks-util" right={<PanelLive status={risk.status} />} className="trade-block">
             <div className="gs-section-lbl">Portfolio greeks <span className="dim">· risk stock</span></div>
             <div className="greeks-summary gs-g4">
               <div className="gs-item"><span className="gs-lbl">Net Δ</span><b className={"mono " + pnlCls(g.delta)}>{fmt.usdk(g.delta * 1000)}</b><span className="gs-sub mono">{fmt.sgn(g.dDelta24h, 1)}k / 24h</span></div>
@@ -779,7 +779,7 @@ export function RiskView(): JSX.Element {
       </Panel>
       <StressEngine />
       <LiveLadders />
-      <Panel title="Position breakdown" right={<PanelLive status="mock" />} pad={false} className="ladder-panel">
+      <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status="mock" />} pad={false} className="ladder-panel">
         <PositionBreakdown />
       </Panel>
       <CalendarPanel />

@@ -14,6 +14,8 @@ interface PanelProps {
   pad?: boolean;
   className?: string;
   scroll?: boolean;
+  /** Stable id for the dev Pipeline tab to isolate this panel (data-pp). */
+  dataPp?: string;
 }
 
 export function Panel({
@@ -23,9 +25,10 @@ export function Panel({
   pad = true,
   className = "",
   scroll = false,
+  dataPp,
 }: PanelProps): JSX.Element {
   return (
-    <section className={"panel " + className}>
+    <section className={"panel " + className} data-pp={dataPp}>
       {(title || right) && (
         <header className="panel-head">
           <h3>{title}</h3>

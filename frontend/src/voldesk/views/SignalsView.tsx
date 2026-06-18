@@ -338,20 +338,21 @@ export function SignalsView(): JSX.Element {
     <div className="ts-grid">
       <div className="sig-cluster">
         <div className="sig-left">
-          <Panel title="IV surface" right={<FreshBadge fresh={surface} label="EURUSD · z-score field" />} className="ts-curve-panel">
+          <Panel title="IV surface" dataPp="iv-surface" right={<FreshBadge fresh={surface} label="EURUSD · z-score field" />} className="ts-curve-panel">
             <IVSurfaceZ data={surface.data} />
           </Panel>
-          <Panel title="Mode stability" right={<FreshBadge fresh={pca} label="eigengap" />} className="ts-stab-panel">
+          <Panel title="Mode stability" dataPp="mode-stability" right={<FreshBadge fresh={pca} label="eigengap" />} className="ts-stab-panel">
             <ModeStability model={m} />
           </Panel>
         </div>
-        <Panel title="Fair vol — level gate" right={<FreshBadge fresh={termStructure} label="RV / GARCH" />} className="ts-fv-panel sig-fv" pad>
+        <Panel title="Fair vol — level gate" dataPp="fair-vol" right={<FreshBadge fresh={termStructure} label="RV / GARCH" />} className="ts-fv-panel sig-fv" pad>
           <FairVolGate ts={termStructure.data} />
         </Panel>
       </div>
 
       <Panel
         title="PCA engine — surface modes"
+        dataPp="pca-modes"
         right={
           <div className="pca-head-right">
             <div className="tf-group">

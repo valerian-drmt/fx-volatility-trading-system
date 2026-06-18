@@ -522,7 +522,7 @@ export function PortfolioView(): JSX.Element {
   const pnlSkew = dp.reduce((x, y) => x + ((y - mean) / sd) ** 3, 0) / dp.length;
   return (
     <div className="portfolio-grid">
-      <Panel title="Account & capital" right={<FreshBadge fresh={portfolio} label="IB account" />} className="acct-panel">
+      <Panel title="Account & capital" dataPp="account" right={<FreshBadge fresh={portfolio} label="IB account" />} className="acct-panel">
         <div className="acct-tiles">
           <MetricTile big label="Net liquidation" value={fmt.usd(a.netLiq)} delta={a.dNetLiq} />
           <MetricTile label="Cash" value={fmt.usd(a.cash)} delta={a.dCash} />
@@ -566,6 +566,7 @@ export function PortfolioView(): JSX.Element {
 
       <Panel
         title="Performance"
+        dataPp="perf"
         right={
           <div className="tf-group">
             {["1D", "7D", "30D", "1Y", "all"].map((wn) => (
@@ -620,13 +621,14 @@ export function PortfolioView(): JSX.Element {
         </div>
       </Panel>
 
-      <Panel title="Carry vs convexity — survival metric" className="cov-panel">
+      <Panel title="Carry vs convexity — survival metric" dataPp="carry-convex" className="cov-panel">
         <CoverageHero />
       </Panel>
 
       <div className="row2 pf-row2">
         <Panel
           title="Realized P&L attribution — bridge"
+          dataPp="pnl-attribution"
           right={
             <div className="tf-group">
               {["greek", "structure", "tenor", "mode"].map((p) => (
@@ -651,7 +653,7 @@ export function PortfolioView(): JSX.Element {
             </div>
           )}
         </Panel>
-        <Panel title="Book composition" right={<FreshBadge fresh={portfolio} />} className="bookcomp-panel">
+        <Panel title="Book composition" dataPp="book-composition" right={<FreshBadge fresh={portfolio} />} className="bookcomp-panel">
           <BookComposition
             vegaPerTenor={pd?.vegaPerTenor ?? DATA2.vegaPerTenor}
             bookComposition={pd?.bookComposition ?? DATA2.bookComposition}

@@ -630,10 +630,10 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   return (
     <div className={"trade-grid " + (tweaks.density || "regular")}>
       <div className="trade-main">
-        <Panel title="Indicators" right={<FreshBadge fresh={trade} label="state for execution · not a signal" />} className="trade-block">
+        <Panel title="Indicators" dataPp="trade-indicators" right={<FreshBadge fresh={trade} label="state for execution · not a signal" />} className="trade-block">
           <IndicatorsPanel builder={builder} greeks={greeks} account={account} limits={limits} events={events} cash={cash} spotBid={spotBid} spotAsk={spotAsk} />
         </Panel>
-        <Panel title="Open positions" pad={false} className="trade-block open-pos-panel">
+        <Panel title="Open positions" dataPp="trade-open" pad={false} className="trade-block open-pos-panel">
           <HedgeStrip greeks={greeks} limits={limits} />
           <OpenPositionsTable
             showGreeks={tweaks.showGreeks}
@@ -646,11 +646,11 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
         </Panel>
       </div>
       <div className="trade-side">
-        <Panel title="Order builder" className="trade-block">
+        <Panel title="Order builder" dataPp="trade-builder" className="trade-block">
           <HoldingsStrip cash={cash} spotBid={spotBid} spotAsk={spotAsk} />
           <OrderBuilder onState={setBuilder} />
         </Panel>
-        <Panel title="Close position" className="trade-block close-block">
+        <Panel title="Close position" dataPp="trade-close" className="trade-block close-block">
           <ClosePanel pos={closing} onDone={() => setClosing(null)} positions={positions} greeks={greeks} account={account} />
         </Panel>
       </div>

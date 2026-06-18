@@ -154,9 +154,18 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
         <span style={{ fontSize: 14, fontWeight: 600, color: "#eef1f6" }}>{pipe.panel}</span>
         <span className="pp-mono" style={{ fontSize: 9.5, color: live ? "#7fcf9a" : "#d9b86a" }}>{live ? "live" : "stale"}</span>
         <span style={{ flex: 1 }} />
-        <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>PANEL · {VIEW_LABEL[pipe.view]}</span>
+        <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>{pipe.isolated ? "PANEL" : "VIEW"} · {VIEW_LABEL[pipe.view]}</span>
       </div>
-      <div style={{ flex: 1, overflow: "auto", minHeight: 0, background: "#0f1115" }}>
+      <div className={pipe.isolated ? "pp-screen pp-iso" : "pp-screen"} style={{ flex: 1, overflow: "auto", minHeight: 0, background: "#0f1115" }}>
+        {pipe.isolated ? (
+          <style>{
+            // Hide every annotated panel that is NEITHER the target NOR an
+            // ancestor of it. The target and its annotated wrappers are never
+            // touched, so their author `display` (flex/grid) stays intact —
+            // only sibling leaves and unrelated top-level panels collapse.
+            `.pp-iso [data-pp]:not([data-pp="${pipe.id}"]):not(:has([data-pp="${pipe.id}"])){display:none!important}`
+          }</style>
+        ) : null}
         <ViewComp />
       </div>
     </div>

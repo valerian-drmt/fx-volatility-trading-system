@@ -32,6 +32,12 @@ export interface PanelPipe {
   domain: DomainId;
   nodes: PipeNode[];
   edges: string[];
+  /**
+   * When true, the panel carries a matching `data-pp="<id>"` in its prod view,
+   * so the Pipeline terminal renders the REAL view and CSS-isolates just this
+   * panel (siblings hidden). Omitted → terminal renders the whole parent view.
+   */
+  isolated?: boolean;
 }
 
 const IB: PipeNode = { kind: "external", label: "IB", sub: "Interactive Brokers" };
@@ -92,108 +98,113 @@ export const PIPELINES: PanelPipe[] = [
 
   // ───────────────────────── Trade ─────────────────────────
   {
-    id: "trade-indicators", panel: "Indicators", view: "trade", domain: "trade",
+    id: "trade-indicators", panel: "Indicators", view: "trade", domain: "trade", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Indicators")],
     edges: ["UPDATE greeks", "read book", "GET /positions/open (Σ)", "render"],
   },
   {
-    id: "trade-open", panel: "Open positions", view: "trade", domain: "trade",
+    id: "trade-open", panel: "Open positions", view: "trade", domain: "trade", isolated: true,
     nodes: [IB, IBG, eng("execution-engine", "clientId 5 · sync"), eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Open positions")],
     edges: ["positions", "reqPositions", "UPDATE greeks", "UPSERT row", "read book", "GET /positions/open", "render"],
   },
   {
-    id: "trade-builder", panel: "Order builder", view: "trade", domain: "surface",
+    id: "trade-builder", panel: "Order builder", view: "trade", domain: "surface", isolated: true,
     nodes: [redis("latest_vol_surface"), API, FE, panel("Order builder")],
     edges: ["read surface", "POST /vol/trade-preview (price legs)", "preview + render"],
   },
   {
-    id: "trade-close", panel: "Close position", view: "trade", domain: "trade",
+    id: "trade-close", panel: "Close position", view: "trade", domain: "trade", isolated: true,
     nodes: [eng("execution-engine", "RTH-aware close"), pg("booked_position · open_position"), API, FE, panel("Close position")],
     edges: ["mark closeable", "read book", "GET /positions/open · POST close", "render + arm"],
   },
 
   // ───────────────────────── Signal ─────────────────────────
   {
-    id: "iv-surface", panel: "IV surface", view: "signals", domain: "surface",
+    id: "iv-surface", panel: "IV surface", view: "signals", domain: "surface", isolated: true,
     nodes: [IB, IBG, eng("vol-engine", "clientId 2 · 180s"), redis("latest_vol_surface · vol_surface_history"), API, FE, panel("IV surface")],
     edges: ["FOP chain", "reqMktData", "compute (SET + db_events)", "read", "GET /vol/surface", "render"],
   },
   {
-    id: "mode-stability", panel: "Mode stability", view: "signals", domain: "pca",
+    id: "mode-stability", panel: "Mode stability", view: "signals", domain: "pca", isolated: true,
     nodes: [eng("vol-engine", "PCA fit + project"), pg("pca_model · pca_signal_history"), API, FE, panel("Mode stability")],
     edges: ["fit/project (db_events)", "read active model", "GET /signals/pca/model", "render"],
   },
   {
-    id: "fair-vol", panel: "Fair vol — level gate", view: "signals", domain: "termStructure",
+    id: "fair-vol", panel: "Fair vol — level gate", view: "signals", domain: "termStructure", isolated: true,
     nodes: [eng("vol-engine", "YZ-RV · HAR/GARCH · VRP"), redis("latest_vol_surface"), API, FE, panel("Fair vol gate")],
     edges: ["σ_fair^Q (SET)", "read", "GET /vol/term-structure", "render"],
+  },
+  {
+    id: "pca-modes", panel: "PCA engine — surface modes", view: "signals", domain: "pca", isolated: true,
+    nodes: [eng("vol-engine", "PCA fit + project"), pg("pca_model · pca_signal_history"), API, FE, panel("PCA modes")],
+    edges: ["fit/project (db_events)", "read pcs", "GET /signals/pca/model", "render"],
   },
 
   // ───────────────────────── Risk ─────────────────────────
   {
-    id: "greeks-util", panel: "Greeks & risk utilization", view: "risk", domain: "risk",
+    id: "greeks-util", panel: "Greeks & risk utilization", view: "risk", domain: "risk", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position · account_history"), API, FE, panel("Greeks & utilization")],
     edges: ["UPDATE book", "read book + account", "GET /portfolio/risk-per-tenor", "render"],
   },
   {
-    id: "var", panel: "Value at Risk", view: "risk", domain: "risk",
+    id: "var", panel: "Value at Risk", view: "risk", domain: "risk", isolated: true,
     nodes: [IB, IBG, eng("execution-engine", "account snaps"), DBW, pg("account_history (504d)"), API, FE, panel("Value at Risk")],
     edges: ["account summary", "reqAccountSummary", "db_events", "INSERT", "504d sim", "GET /portfolio/var", "render"],
   },
   {
-    id: "marginal-var", panel: "Marginal contribution to VaR", view: "risk", domain: "risk",
+    id: "marginal-var", panel: "Marginal contribution to VaR", view: "risk", domain: "risk", isolated: true,
     nodes: [eng("risk-engine", "per-pos pnl /2s"), pg("open_position_history"), API, FE, panel("Marginal VaR")],
     edges: ["INSERT snapshot", "daily pnl series", "GET /portfolio/marginal-var (Euler)", "render"],
   },
   {
-    id: "stress", panel: "Stress test", view: "risk", domain: "risk",
+    id: "stress", panel: "Stress test", view: "risk", domain: "risk", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Stress engine")],
     edges: ["UPDATE book", "read book", "GET /portfolio/stress-grid (reval)", "render"],
   },
   {
-    id: "greeks-ladder", panel: "Greeks ladder", view: "risk", domain: "risk",
+    id: "greeks-ladder", panel: "Greeks ladder", view: "risk", domain: "risk", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Greeks ladder")],
     edges: ["UPDATE book", "read book", "GET /portfolio/greeks-ladder (reval)", "render"],
   },
   {
-    id: "position-breakdown", panel: "Position breakdown", view: "risk", domain: "trade",
+    id: "position-breakdown", panel: "Position breakdown", view: "risk", domain: "trade", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Position breakdown")],
     edges: ["UPDATE greeks", "read book", "GET /positions/open", "render"],
   },
   {
-    id: "pin-risk", panel: "Expiries & roll-off (pin risk)", view: "risk", domain: "risk",
+    id: "pin-risk", panel: "Expiries & roll-off (pin risk)", view: "risk", domain: "risk", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Pin risk")],
     edges: ["UPDATE book", "read options", "GET /portfolio/pin-risk (reval)", "render"],
   },
   {
-    id: "risk-macro", panel: "Macro events", view: "risk", domain: "trade",
+    id: "risk-macro", panel: "Macro events", view: "risk", domain: "trade", isolated: true,
     nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Macro events")],
     edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
   },
 
   // ───────────────────────── Portfolio ─────────────────────────
   {
-    id: "account", panel: "Account & capital", view: "portfolio", domain: "portfolio",
+    id: "account", panel: "Account & capital", view: "portfolio", domain: "portfolio", isolated: true,
     nodes: [IB, IBG, eng("execution-engine", "account snaps"), DBW, pg("account_history"), API, FE, panel("Account & capital")],
     edges: ["account summary", "reqAccountSummary", "db_events", "INSERT", "latest + 24h", "GET /portfolio/account", "render"],
   },
   {
-    id: "perf", panel: "Performance", view: "portfolio", domain: "portfolio",
+    id: "perf", panel: "Performance", view: "portfolio", domain: "portfolio", isolated: true,
     nodes: [eng("execution-engine", "account + close"), pg("account_history · booked_position"), API, FE, panel("Performance")],
     edges: ["INSERT", "daily series", "GET /portfolio/stats", "render"],
   },
   {
-    id: "carry-convex", panel: "Carry vs convexity", view: "portfolio", domain: "portfolio",
+    id: "carry-convex", panel: "Carry vs convexity", view: "portfolio", domain: "portfolio", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Carry vs convexity")],
     edges: ["UPDATE Γ/Θ", "read book", "GET /portfolio/aggregate-greeks", "render"],
   },
   {
-    id: "pnl-attribution", panel: "Realized P&L attribution", view: "portfolio", domain: "portfolio",
+    id: "pnl-attribution", panel: "Realized P&L attribution", view: "portfolio", domain: "portfolio", isolated: true,
     nodes: [eng("execution-engine", "MTM /2s"), pg("booked_position_metric_history"), API, FE, panel("P&L attribution")],
     edges: ["INSERT MTM", "Taylor decomp", "GET /portfolio/pnl-attribution", "render"],
   },
   {
-    id: "book-composition", panel: "Book composition", view: "portfolio", domain: "portfolio",
+    id: "book-composition", panel: "Book composition", view: "portfolio", domain: "portfolio", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Book composition")],
     edges: ["UPDATE book", "read book", "GET /positions/open (grouped)", "render"],
   },
