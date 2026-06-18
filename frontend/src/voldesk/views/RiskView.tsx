@@ -4,6 +4,8 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useState } from "react";
+import { fetchStressGrid } from "../../api/endpoints";
+import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
@@ -12,6 +14,7 @@ import { DATA, DATA2, fmt } from "../data";
 import type { LadderRow, VarFactor } from "../data";
 import { useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
+import { adaptStressGrid, type StressGridData } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -320,34 +323,6 @@ function HeatLegend({ note }: { note: string }): JSX.Element {
   );
 }
 
-function StressGrid(): JSX.Element {
-  const { dSpot, dVol, stressGrid } = DATA2;
-  const max = Math.max(...stressGrid.flat().map(Math.abs)) || 1;
-  const cell = (v: number): string => {
-    const t = Math.max(-1, Math.min(1, v / max));
-    if (t >= 0) return `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})`;
-    return `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`;
-  };
-  // transpose: rows = spot (vertical), cols = vol (horizontal)
-  return (
-    <table className="heatmap stress">
-      <thead><tr><th className="corner">ΔSpot \ ΔVol</th>{dVol.map((v) => <th key={v}>{v > 0 ? "+" : ""}{v}vp<span className="th-sub">&nbsp;</span></th>)}</tr></thead>
-      <tbody>
-        {dSpot.map((s, si) => (
-          <tr key={si}>
-            <th>{s > 0 ? "+" : ""}{s}bp</th>
-            {dVol.map((v, vi) => {
-              const val = stressGrid[vi]![si]!;
-              const center = v === 0 && s === 0;
-              return <td key={vi} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : cell(val) }}>{fmt.usdk(val).replace("$", "")}</td>;
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
 interface ScenarioDatum {
   x: number;
   pnl: number;
@@ -380,102 +355,75 @@ function ScenarioMini({ data, keyName, color, label }: { data: ScenarioDatum[]; 
   );
 }
 
-function TimeStressGrid(): JSX.Element {
-  const { dSpot, stressTimeCols, stressTimeDays, timeGrid } = DATA2;
-  const max = Math.max(...timeGrid.flat().map(Math.abs)) || 1;
-  const cell = (v: number): string => {
-    const t = Math.max(-1, Math.min(1, v / max));
-    if (t >= 0) return `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})`;
-    return `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`;
-  };
-  return (
-    <table className="heatmap stress">
-      <thead><tr><th className="corner">ΔSpot \ Time</th>{stressTimeCols.map((c, i) => <th key={c}>{c}<span className="dim th-sub">{stressTimeDays[i] === 0 ? " " : stressTimeDays[i] + "d"}</span></th>)}</tr></thead>
-      <tbody>
-        {dSpot.map((s, si) => (
-          <tr key={si}>
-            <th>{s > 0 ? "+" : ""}{s}bp</th>
-            {timeGrid[si]!.map((v, ci) => {
-              const now = s === 0 && ci === 0;
-              return <td key={ci} className={now ? "center-cell" : ""} style={{ background: now ? "var(--bg-3)" : cell(v) }}>{fmt.usdk(v).replace("$", "")}</td>;
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-type PnlAxis = "vol" | "skew" | "fly";
-
-// generic P&L stress grid for the vol / skew / fly axes (time has its own decay grid)
-function PnlGrid({ axis }: { axis: PnlAxis }): JSX.Element {
-  const D = DATA2;
-  const cfg = {
-    vol: { grid: D.stressGrid, cols: D.dVol, lbl: "ΔVol ∥ ATM" },
-    skew: { grid: D.skewGrid, cols: D.dRR, lbl: "ΔRR · skew" },
-    fly: { grid: D.flyGrid, cols: D.dBF, lbl: "ΔBF · fly" },
-  }[axis];
-  const max = Math.max(...cfg.grid.flat().map(Math.abs)) || 1;
-  const cell = (v: number): string => { const t = Math.max(-1, Math.min(1, v / max)); return t >= 0 ? `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})` : `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`; };
-  return (
-    <table className="heatmap stress">
-      <thead><tr><th className="corner">ΔSpot \ {cfg.lbl}</th>{cfg.cols.map((v) => <th key={v}>{v > 0 ? "+" : ""}{v}vp<span className="th-sub">&nbsp;</span></th>)}</tr></thead>
-      <tbody>
-        {D.dSpot.map((s, si) => (
-          <tr key={si}>
-            <th>{s > 0 ? "+" : ""}{s}bp</th>
-            {cfg.cols.map((v, ci) => {
-              const val = cfg.grid[ci]![si]!,
-                center = v === 0 && s === 0;
-              return <td key={ci} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : cell(val) }}>{fmt.usdk(val).replace("$", "")}</td>;
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
 type GreekKey = "delta" | "gamma" | "vega" | "theta" | "vanna" | "volga";
-type GreekAxis = "time" | "vol" | "skew" | "fly";
 
-interface GreekGridCfg {
-  grid: Record<string, number[][]>;
-  cols: (string | number)[];
-  lbl: string;
-  sub?: (i: number) => string;
-  zero: (ci: number) => boolean;
-}
+// Per-axis 2nd-dimension label for the live stress grids.
+const STRESS_AXIS_LABEL: Record<string, string> = {
+  "spot-vol": "ΔVol ∥ ATM",
+  "spot-time": "Time",
+  "spot-skew": "ΔRR · skew",
+  "spot-fly": "ΔBF · fly",
+};
 
-function GreekStressGrid({ greek, axis }: { greek: GreekKey; axis: GreekAxis }): JSX.Element {
-  const D = DATA2;
-  const cfgs: Record<GreekAxis, GreekGridCfg> = {
-    time: { grid: D.greekTimeGrids, cols: D.stressTimeCols, lbl: "Time", sub: (i: number) => (D.stressTimeDays[i] === 0 ? " " : D.stressTimeDays[i] + "d"), zero: (ci: number) => ci === 0 },
-    vol: { grid: D.greekVolGrids, cols: D.dVol.map((v) => (v > 0 ? "+" : "") + v + "vp"), lbl: "ΔVol ∥ ATM", zero: (ci: number) => D.dVol[ci] === 0 },
-    skew: { grid: D.greekSkewGrids, cols: D.dRR.map((v) => (v > 0 ? "+" : "") + v + "vp"), lbl: "ΔRR · skew", zero: (ci: number) => D.dRR[ci] === 0 },
-    fly: { grid: D.greekFlyGrids, cols: D.dBF.map((v) => (v > 0 ? "+" : "") + v + "vp"), lbl: "ΔBF · fly", zero: (ci: number) => D.dBF[ci] === 0 },
-  };
-  const cfg = cfgs[axis];
-  const grid = cfg.grid[greek]!;
-  const max = Math.max(...grid.flat().map(Math.abs)) || 1;
-  const cell = (v: number): string => { const t = Math.max(-1, Math.min(1, v / max)); return t >= 0 ? `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})` : `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`; };
-  const kg = (v: number): string => { const s = v >= 0 ? "+" : "-"; const a = Math.abs(v); return a >= 1000 ? s + (a / 1000).toFixed(1) + "k" : s + a; };
+const stressCell = (v: number, max: number): string => {
+  const t = Math.max(-1, Math.min(1, v / max));
+  return t >= 0
+    ? `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})`
+    : `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`;
+};
+const stressKg = (v: number): string => {
+  const s = v >= 0 ? "+" : "-";
+  const a = Math.abs(v);
+  return a >= 1000 ? s + (a / 1000).toFixed(1) + "k" : s + a.toFixed(0);
+};
+
+// One live (axis, output) matrix. Rows = the 2nd-axis bins, cols = spot bp bins.
+function LiveStressGrid({ d, status }: { d: StressGridData | null; status: Fresh<unknown>["status"] }): JSX.Element {
+  if (!d || !d.grid.length) {
+    return <div className="heat-empty dim mono small">{status === "missing" ? "no book / no spot" : "loading…"}</div>;
+  }
+  const max = Math.max(...d.grid.flat().map(Math.abs)) || 1;
+  const rowLbl = (v: number): string => (d.rowUnit === "d" ? v + "d" : (v > 0 ? "+" : "") + v + "vp");
   return (
     <table className="heatmap stress">
-      <thead><tr><th className="corner">ΔSpot \ {cfg.lbl}</th>{cfg.cols.map((c, i) => <th key={i}>{c}{cfg.sub ? <span className="dim th-sub">{cfg.sub(i)}</span> : <span className="th-sub">&nbsp;</span>}</th>)}</tr></thead>
+      <thead>
+        <tr>
+          <th className="corner">Δ{STRESS_AXIS_LABEL[d.axis] ?? d.axis} \ ΔSpot</th>
+          {d.spotBins.map((s) => <th key={s}>{s > 0 ? "+" : ""}{s}bp<span className="th-sub">&nbsp;</span></th>)}
+        </tr>
+      </thead>
       <tbody>
-        {D.dSpot.map((s, si) => (
-          <tr key={si}>
-            <th>{s > 0 ? "+" : ""}{s}bp</th>
-            {grid[si]!.map((v, ci) => {
-              const now = s === 0 && cfg.zero(ci);
-              return <td key={ci} className={now ? "center-cell" : ""} style={{ background: now ? "var(--bg-3)" : cell(v) }}>{kg(v)}</td>;
+        {d.grid.map((row, ri) => (
+          <tr key={ri}>
+            <th>{rowLbl(d.rowBins[ri] ?? 0)}</th>
+            {row.map((v, ci) => {
+              const center = (d.rowBins[ri] ?? NaN) === 0 && (d.spotBins[ci] ?? NaN) === 0;
+              return <td key={ci} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : stressCell(v, max) }}>{stressKg(v)}</td>;
             })}
           </tr>
         ))}
       </tbody>
     </table>
+  );
+}
+
+const STRESS_AXES = ["spot-time", "spot-vol", "spot-skew", "spot-fly"] as const;
+
+// Fetches the four stress matrices for the current output. Remounted (key=output
+// in StressEngine) so a toggle change re-runs the fetch with the new output.
+function StressGrids({ output }: { output: "pnl" | GreekKey }): JSX.Element {
+  const live = useFetch<(StressGridData | null)[]>(
+    () => Promise.all(STRESS_AXES.map((a) => fetchStressGrid(a, output).then(adaptStressGrid))),
+    120_000,
+  );
+  const g = live.data ?? [null, null, null, null];
+  return (
+    <div className="stress-2x2">
+      <Panel title="Spot × Time" right={<span className="dim mono small">decay</span>} className="trade-block"><LiveStressGrid d={g[0] ?? null} status={live.status} /></Panel>
+      <Panel title="Spot × ΔVol ∥ ATM" right={<span className="dim mono small">level only</span>} className="trade-block"><LiveStressGrid d={g[1] ?? null} status={live.status} /></Panel>
+      <Panel title="Spot × Skew (ΔRR)" right={<RiskOnly text="risk-only · pas de signal" />} className="trade-block"><LiveStressGrid d={g[2] ?? null} status={live.status} /></Panel>
+      <Panel title="Spot × Fly (ΔBF)" right={<span className="accent mono small">curvature · PC3</span>} className="trade-block"><LiveStressGrid d={g[3] ?? null} status={live.status} /></Panel>
+    </div>
   );
 }
 
@@ -559,12 +507,7 @@ function StressEngine(): JSX.Element {
           <button key={o} className={"chip " + (out === o ? "on" : "")} onClick={() => setOut(o)}>{labels[o]}</button>
         ))}
       </div>
-      <div className="stress-2x2">
-        <Panel title="Spot × Time" right={<span className="dim mono small">decay</span>} className="trade-block">{out === "pnl" ? <TimeStressGrid /> : <GreekStressGrid greek={out} axis="time" />}</Panel>
-        <Panel title="Spot × ΔVol ∥ ATM" right={<span className="dim mono small">level only</span>} className="trade-block">{out === "pnl" ? <PnlGrid axis="vol" /> : <GreekStressGrid greek={out} axis="vol" />}</Panel>
-        <Panel title="Spot × Skew (ΔRR)" right={<RiskOnly text="risk-only · pas de signal" />} className="trade-block">{out === "pnl" ? <PnlGrid axis="skew" /> : <GreekStressGrid greek={out} axis="skew" />}</Panel>
-        <Panel title="Spot × Fly (ΔBF)" right={<span className="accent mono small">curvature · PC3</span>} className="trade-block">{out === "pnl" ? <PnlGrid axis="fly" /> : <GreekStressGrid greek={out} axis="fly" />}</Panel>
-      </div>
+      <StressGrids key={out} output={out} />
       <HeatLegend note={(out === "pnl" ? "portfolio P&L" : labels[out] + " value") + " · value printed in cell · color normalized per grid · RR is ~vega-neutral in Spot×Vol → its risk only shows in Spot×Skew"} />
     </Panel>
   );
@@ -727,7 +670,6 @@ export function RiskView(): JSX.Element {
   void utilColor;
   void VarCurve;
   void ReturnsBars;
-  void StressGrid;
   void ScenarioMini;
   return (
     <div className="risk-grid">

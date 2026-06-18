@@ -122,9 +122,10 @@ export const fetchAggregateGreeks = () =>
   apiGet<unknown>("/api/v1/portfolio/aggregate-greeks");
 export const fetchVegaPerTenor = () =>
   apiGet<unknown>("/api/v1/portfolio/vega-per-tenor");
-export const fetchStressGrid = () => apiGet<unknown>("/api/v1/portfolio/stress-grid");
-export const fetchGreeksLadder = () =>
-  apiGet<unknown>("/api/v1/portfolio/greeks-ladder");
+export const fetchStressGrid = (axis = "spot-vol", output = "pnl") =>
+  apiGet<unknown>("/api/v1/portfolio/stress-grid", { query: { axis, output } });
+export const fetchGreeksLadder = (axis = "spot") =>
+  apiGet<unknown>("/api/v1/portfolio/greeks-ladder", { query: { axis } });
 export const fetchPnlAttribution = (lookbackHours = 24) =>
   apiGet<unknown>("/api/v1/portfolio/pnl-attribution", {
     query: { lookback_hours: lookbackHours },

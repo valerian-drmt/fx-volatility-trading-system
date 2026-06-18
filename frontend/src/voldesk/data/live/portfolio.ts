@@ -215,3 +215,45 @@ export function adaptEquityCurve(raw: unknown): number[] {
   const rows = Array.isArray(raw) ? (raw as { net_liq_usd?: number | null }[]) : [];
   return rows.map((p) => n(p.net_liq_usd)).filter((v) => v > 0);
 }
+
+export type StressAxis = "spot-vol" | "spot-time" | "spot-skew" | "spot-fly";
+
+export interface StressGridData {
+  axis: string;
+  output: string;
+  currentSpot: number | null;
+  spotBins: number[]; // bp columns
+  rowBins: number[]; // 2nd-axis rows
+  rowUnit: string; // "vp" | "d"
+  nPositions: number;
+  grid: number[][]; // [row][col], raw $ (full-BS reval)
+}
+
+/** /portfolio/stress-grid?axis=&output= → one (axis, output) matrix. Rows = the
+ * 2nd-axis bins, cols = spot bp bins. `null` when the book is empty or no spot
+ * could be resolved (backend returns `grid: []`). Values stay in raw $ — the grid
+ * component formats with the desk's signed-k convention. */
+export function adaptStressGrid(raw: unknown): StressGridData | null {
+  const o = (raw ?? {}) as {
+    axis?: string;
+    output?: string;
+    current_spot?: number | null;
+    spot_bins_bps?: number[];
+    row_bins?: number[];
+    row_unit?: string;
+    n_positions?: number;
+    grid?: number[][];
+  };
+  const grid = Array.isArray(o.grid) ? o.grid : [];
+  if (!grid.length) return null;
+  return {
+    axis: o.axis ?? "",
+    output: o.output ?? "pnl",
+    currentSpot: typeof o.current_spot === "number" ? o.current_spot : null,
+    spotBins: Array.isArray(o.spot_bins_bps) ? o.spot_bins_bps : [],
+    rowBins: Array.isArray(o.row_bins) ? o.row_bins : [],
+    rowUnit: o.row_unit ?? "vp",
+    nPositions: o.n_positions ?? 0,
+    grid,
+  };
+}
