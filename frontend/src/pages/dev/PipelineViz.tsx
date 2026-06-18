@@ -111,15 +111,16 @@ function Block({ node, status, tip, onEnter, onLeave }: {
   );
 }
 
-function Pipe({ label, flow, broken, hover, onEnter, onLeave }: {
-  label: string; flow: boolean; broken: boolean; hover: boolean; onEnter: () => void; onLeave: () => void;
+function Pipe({ label, state, hover, onEnter, onLeave }: {
+  label: string; state: "flow" | "warn" | "down"; hover: boolean; onEnter: () => void; onLeave: () => void;
 }): JSX.Element {
-  const sc = flow ? GREEN : broken ? RED : "#5a606e";
+  const sc = state === "flow" ? GREEN : state === "warn" ? AMBER : RED;
+  const animate = state !== "down"; // warn still flows (degraded but up) — only down breaks it
   return (
     <div style={{ position: "relative", flex: 1, minWidth: 156, alignSelf: "stretch", display: "flex", alignItems: "center", padding: "0 1px" }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
       <div className="pp-mono" style={{ position: "absolute", top: "calc(50% - 27px)", left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap", fontSize: 11.5, letterSpacing: ".07em", textTransform: "uppercase", pointerEvents: "none", color: hover ? "#dfe7e2" : "#7b8494", textShadow: hover ? `0 0 9px ${hexa(sc, 0.55)}` : "none", fontWeight: hover ? 600 : 500 }}>{label}</div>
-      <div style={{ position: "relative", flex: 1, height: 10, minWidth: 30, background: "#0c0e12", border: `1px solid ${hexa(sc, 0.42)}`, borderRadius: 6, overflow: "hidden", boxShadow: flow ? `0 0 10px ${hexa(sc, 0.16)}, inset 0 0 6px ${hexa(sc, 0.1)}` : `inset 0 0 6px ${hexa(sc, 0.06)}`, transition: "box-shadow .35s, border-color .35s" }}>
-        <div style={{ position: "absolute", inset: 0, backgroundImage: `repeating-linear-gradient(90deg, ${sc} 0, ${sc} 6px, ${hexa(sc, 0)} 6px, ${hexa(sc, 0)} 16px)`, backgroundSize: "16px 100%", animation: flow ? "ppflow .6s linear infinite" : "none", opacity: flow ? 0.92 : 0.45, transition: "opacity .35s" }} />
+      <div style={{ position: "relative", flex: 1, height: 10, minWidth: 30, background: "#0c0e12", border: `1px solid ${hexa(sc, 0.42)}`, borderRadius: 6, overflow: "hidden", boxShadow: animate ? `0 0 10px ${hexa(sc, 0.16)}, inset 0 0 6px ${hexa(sc, 0.1)}` : `inset 0 0 6px ${hexa(sc, 0.06)}`, transition: "box-shadow .35s, border-color .35s" }}>
+        <div style={{ position: "absolute", inset: 0, backgroundImage: `repeating-linear-gradient(90deg, ${sc} 0, ${sc} 6px, ${hexa(sc, 0)} 6px, ${hexa(sc, 0)} 16px)`, backgroundSize: "16px 100%", animation: animate ? "ppflow .6s linear infinite" : "none", opacity: animate ? 0.9 : 0.45, transition: "opacity .35s" }} />
       </div>
       <div style={{ position: "absolute", right: -3, top: "50%", transform: "translateY(-50%)", lineHeight: 0 }}>
         <svg width="12" height="15" viewBox="0 0 9 11" fill="none"><path d="M1.5 1.5L6 5.5L1.5 9.5" stroke={sc} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -191,17 +192,21 @@ function Stage({ pipe, id, setId, statuses, asOf, ticks }: {
   const [hoverNode, setHoverNode] = useState<number | null>(null);
   const [hoverPipe, setHoverPipe] = useState<number | null>(null);
   const infra = pipe.nodes.slice(0, -1);
-  const flows = statuses.slice(0, -1).map((_, i) => statuses[i] === "up" && statuses[i + 1] === "up");
+  const pstate = (a: H, b: H): "flow" | "warn" | "down" =>
+    a === "down" || b === "down" ? "down" : a === "up" && b === "up" ? "flow" : "warn";
   const healthy = statuses.every((s) => s === "up");
   const downNames = pipe.nodes.filter((_, i) => statuses[i] === "down").map((n) => n.label);
+  const warnNames = pipe.nodes.filter((_, i) => statuses[i] === "warn").map((n) => n.label);
 
   const byView = new Map<ViewId, PanelPipe[]>();
   for (const p of PIPELINES) byView.set(p.view, [...(byView.get(p.view) ?? []), p]);
 
-  const stampColor = healthy ? "#7fcf9a" : "#d9b86a";
+  const stampColor = healthy ? "#7fcf9a" : downNames.length ? "#e08a84" : "#d9b86a";
   const stampText = healthy
     ? `⚡ live · updated ${asOf ? clk(new Date(asOf)) : "—"}`
-    : `⚠ degraded · ${downNames.length === 1 ? downNames[0] + " down" : downNames.length + " blocks down"}`;
+    : downNames.length
+      ? `⚠ ${downNames.length === 1 ? downNames[0] + " down" : downNames.length + " blocks down"}`
+      : `◐ degraded · ${warnNames.join(", ")}`;
 
   return (
     <div className="pp-root">
@@ -238,7 +243,7 @@ function Stage({ pipe, id, setId, statuses, asOf, ticks }: {
           {infra.map((n, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center" }}>
               <Block node={n} status={statuses[i]!} tip={hoverNode === i} onEnter={() => setHoverNode(i)} onLeave={() => setHoverNode(null)} />
-              <Pipe label={pipe.edges[i] ?? ""} flow={flows[i]!} broken={statuses[i] === "down" || statuses[i + 1] === "down"} hover={hoverPipe === i} onEnter={() => setHoverPipe(i)} onLeave={() => setHoverPipe(null)} />
+              <Pipe label={pipe.edges[i] ?? ""} state={pstate(statuses[i]!, statuses[i + 1]!)} hover={hoverPipe === i} onEnter={() => setHoverPipe(i)} onLeave={() => setHoverPipe(null)} />
             </div>
           ))}
           <Terminal pipe={pipe} live={statuses[statuses.length - 1] === "up"} ticks={ticks} />
