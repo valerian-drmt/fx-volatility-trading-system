@@ -1,21 +1,18 @@
 /**
- * Declarative data-pipeline model per front panel (dev "Pipeline" tab).
+ * Declarative end-to-end pipeline per PROD panel (dev "Pipeline" tab).
  *
- * Drawn as a plumbing/network schematic: container blocks joined by pipes with
- * an animated "current" that only flows when the panel's data domain is live.
- * The pipeline terminates at the panel itself (rendered live on the right) —
- * the final pipe feeds the panel's west face, labelled with `endpoint`.
- *
- * `nodes` run source → api (the panel is the frontend destination, not a node).
- * `edges.length === nodes.length - 1`. `domain` is the DeskData key whose
- * freshness drives the flow animation + the "last update" stamp.
+ * The prod front (voldesk) has 5 tabs, each with several small panels. Each
+ * panel maps to ONE full left→right schematic: source → … → api → frontend →
+ * the panel itself (the terminal block). Drawn as a plumbing diagram; the
+ * "current" only flows when `domain`'s data is live (proof of live) + a
+ * last-update stamp. `edges.length === nodes.length - 1`.
  */
-export type ViewId = "signals" | "trade" | "portfolio" | "risk" | "dashboard" | "system";
+export type ViewId = "dashboard" | "trade" | "signals" | "risk" | "portfolio";
 
 export type DomainId =
-  | "surface" | "pca" | "trade" | "portfolio" | "risk" | "system" | "termStructure" | "ticks";
+  | "surface" | "pca" | "trade" | "portfolio" | "risk" | "termStructure" | "ticks";
 
-export type NodeKind = "external" | "container" | "store" | "api";
+export type NodeKind = "external" | "container" | "store" | "api" | "frontend" | "panel";
 
 export interface PipeNode {
   kind: NodeKind;
@@ -25,124 +22,151 @@ export interface PipeNode {
 
 export interface PanelPipe {
   id: string;
-  panel: string; // listbox label
-  view: ViewId; // which voldesk view is rendered live on the right
-  domain: DomainId; // freshness source (flow animation + last-update stamp)
-  endpoint: string; // label on the final pipe into the panel's west face
-  nodes: PipeNode[]; // source → api
-  edges: string[]; // labels between consecutive nodes (length = nodes-1)
+  panel: string;
+  view: ViewId;
+  domain: DomainId;
+  nodes: PipeNode[]; // source → panel (terminal)
+  edges: string[];
 }
 
-const ibg: PipeNode = { kind: "container", label: "ib-gateway", sub: "broker session" };
+// reusable blocks
+const IB: PipeNode = { kind: "external", label: "IB", sub: "Interactive Brokers" };
+const IBG: PipeNode = { kind: "container", label: "ib-gateway", sub: "broker session" };
+const API: PipeNode = { kind: "api", label: "api", sub: "FastAPI" };
+const FE: PipeNode = { kind: "frontend", label: "frontend", sub: "React · fetch/WS" };
+const pg = (sub: string): PipeNode => ({ kind: "store", label: "Postgres", sub });
+const redis = (sub: string): PipeNode => ({ kind: "store", label: "Redis", sub });
+const eng = (label: string, sub: string): PipeNode => ({ kind: "container", label, sub });
+const panel = (name: string): PipeNode => ({ kind: "panel", label: name, sub: "displayed panel" });
 
 export const PIPELINES: PanelPipe[] = [
+  // ---------------- Dashboard ----------------
   {
-    id: "ticks", panel: "Spot ticks (Dashboard)", view: "dashboard", domain: "ticks",
-    endpoint: "WS /ws/ticks",
-    nodes: [
-      { kind: "external", label: "IB", sub: "live market data" },
-      ibg,
-      { kind: "container", label: "market-data", sub: "clientId 1" },
-      { kind: "store", label: "Redis", sub: "latest_spot:EUR · ticks ch." },
-      { kind: "api", label: "api", sub: "WS bridge" },
-    ],
-    edges: ["get tick", "reqMktData", "publish ticks", "subscribe"],
+    id: "ticker", panel: "Spot ticker (bid/ask)", view: "dashboard", domain: "ticks",
+    nodes: [IB, IBG, eng("market-data", "clientId 1"), redis("latest_spot · ticks ch."), API, FE, panel("Ticker bid/ask")],
+    edges: ["get tick", "reqMktData", "publish ticks", "WS bridge", "WS /ws/ticks", "render"],
   },
   {
-    id: "iv-surface", panel: "IV surface heatmap (Signals)", view: "signals", domain: "surface",
-    endpoint: "GET /vol/surface",
-    nodes: [
-      { kind: "external", label: "IB", sub: "FOP option chain" },
-      ibg,
-      { kind: "container", label: "vol-engine", sub: "clientId 2 · 180s cycle" },
-      { kind: "store", label: "Redis + Postgres", sub: "latest_vol_surface · vol_surface_history" },
-      { kind: "api", label: "api", sub: "vol router" },
-    ],
-    edges: ["chain + greeks", "reqMktData", "compute surface (SET + db_events)", "read latest"],
+    id: "dash-signal", panel: "Active signal", view: "dashboard", domain: "pca",
+    nodes: [eng("vol-engine", "PCA projection"), pg("pca_signal_history"), API, FE, panel("Active signal")],
+    edges: ["persist (db_events)", "read latest", "GET /signals/pca/state", "render"],
   },
   {
-    id: "pca-signals", panel: "PCA mode cards (Signals)", view: "signals", domain: "pca",
-    endpoint: "GET /signals/pca/state",
-    nodes: [
-      { kind: "container", label: "vol-engine", sub: "projects surface on PCA" },
-      { kind: "store", label: "Postgres", sub: "pca_model · pca_signal_history" },
-      { kind: "api", label: "api", sub: "signals router" },
-    ],
-    edges: ["project + persist (db_events)", "read active model + signals"],
+    id: "dash-term", panel: "Mini term-structure", view: "dashboard", domain: "termStructure",
+    nodes: [eng("vol-engine", "180s cycle"), redis("latest_vol_surface"), API, FE, panel("Term-structure mini")],
+    edges: ["SET surface", "read", "GET /vol/term-structure", "render"],
   },
   {
-    id: "positions", panel: "Position breakdown (Trade / Risk)", view: "trade", domain: "trade",
-    endpoint: "GET /positions/open",
-    nodes: [
-      { kind: "external", label: "IB", sub: "open positions" },
-      ibg,
-      { kind: "container", label: "execution-engine", sub: "clientId 5 · position sync" },
-      { kind: "container", label: "risk-engine", sub: "clientId 3 · greeks /2s" },
-      { kind: "store", label: "Postgres", sub: "open_position" },
-      { kind: "api", label: "api", sub: "positions router" },
-    ],
-    edges: ["positions", "reqPositions", "UPDATE greeks", "UPSERT row", "read book"],
+    id: "dash-events", panel: "Today — events & expiries", view: "dashboard", domain: "trade",
+    nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Today")],
+    edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
+  },
+
+  // ---------------- Trade ----------------
+  {
+    id: "trade-indicators", panel: "Indicators", view: "trade", domain: "trade",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Indicators")],
+    edges: ["UPDATE greeks", "read book", "GET /positions/open (Σ)", "render"],
   },
   {
-    id: "var", panel: "Value at Risk (Risk)", view: "risk", domain: "risk",
-    endpoint: "GET /portfolio/var",
-    nodes: [
-      { kind: "external", label: "IB", sub: "account updates" },
-      ibg,
-      { kind: "container", label: "execution-engine", sub: "account snapshots" },
-      { kind: "store", label: "Postgres", sub: "account_history (504d)" },
-      { kind: "api", label: "api", sub: "historical-sim VaR" },
-    ],
-    edges: ["account summary", "reqAccountSummary", "INSERT account_history", "504d net-liq deltas"],
+    id: "trade-open", panel: "Open positions", view: "trade", domain: "trade",
+    nodes: [IB, IBG, eng("execution-engine", "clientId 5 · sync"), eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Open positions")],
+    edges: ["positions", "reqPositions", "UPDATE greeks", "UPSERT row", "read book", "GET /positions/open", "render"],
   },
   {
-    id: "stress", panel: "Stress engine (Risk)", view: "risk", domain: "risk",
-    endpoint: "GET /portfolio/stress-grid",
-    nodes: [
-      { kind: "container", label: "risk-engine", sub: "writes greeks /2s" },
-      { kind: "store", label: "Postgres", sub: "open_position" },
-      { kind: "api", label: "api", sub: "full-BS reval per cell" },
-    ],
-    edges: ["UPDATE book", "read open book"],
+    id: "trade-builder", panel: "Order builder", view: "trade", domain: "surface",
+    nodes: [redis("latest_vol_surface"), API, FE, panel("Order builder")],
+    edges: ["read surface", "POST /vol/trade-preview (price legs)", "preview + render"],
   },
   {
-    id: "vega-pca", panel: "vega → PCA mode (Risk)", view: "risk", domain: "risk",
-    endpoint: "GET /portfolio/vega-pca",
-    nodes: [
-      { kind: "container", label: "risk-engine + vol-engine", sub: "greeks + PCA model" },
-      { kind: "store", label: "Postgres", sub: "open_position · pca_model" },
-      { kind: "api", label: "api", sub: "project vega × loadings" },
-    ],
-    edges: ["greeks + active model", "read book + loadings"],
+    id: "trade-close", panel: "Close position", view: "trade", domain: "trade",
+    nodes: [eng("execution-engine", "RTH-aware close"), pg("booked_position · open_position"), API, FE, panel("Close position")],
+    edges: ["mark closeable", "read book", "GET /positions/open · POST close", "render + arm"],
+  },
+
+  // ---------------- Signal ----------------
+  {
+    id: "iv-surface", panel: "IV surface", view: "signals", domain: "surface",
+    nodes: [IB, IBG, eng("vol-engine", "clientId 2 · 180s"), redis("latest_vol_surface · vol_surface_history"), API, FE, panel("IV surface")],
+    edges: ["FOP chain", "reqMktData", "compute (SET + db_events)", "read", "GET /vol/surface", "render"],
   },
   {
-    id: "marginal-var", panel: "Marginal VaR (Risk)", view: "risk", domain: "risk",
-    endpoint: "GET /portfolio/marginal-var",
-    nodes: [
-      { kind: "container", label: "risk-engine", sub: "per-position pnl /2s" },
-      { kind: "store", label: "Postgres", sub: "open_position_history" },
-      { kind: "api", label: "api", sub: "component VaR (Euler)" },
-    ],
-    edges: ["INSERT snapshot", "daily pnl series"],
+    id: "mode-stability", panel: "Mode stability (PCA)", view: "signals", domain: "pca",
+    nodes: [eng("vol-engine", "PCA fit + project"), pg("pca_model · pca_signal_history"), API, FE, panel("Mode stability")],
+    edges: ["fit/project (db_events)", "read active model", "GET /signals/pca/model", "render"],
   },
   {
-    id: "equity-curve", panel: "Equity curve (Portfolio)", view: "portfolio", domain: "portfolio",
-    endpoint: "GET /portfolio/equity-curve",
-    nodes: [
-      { kind: "container", label: "execution-engine", sub: "account snapshots" },
-      { kind: "store", label: "Postgres", sub: "account_history" },
-      { kind: "api", label: "api", sub: "adaptive downsample" },
-    ],
-    edges: ["INSERT net-liq", "windowed query"],
+    id: "fair-vol", panel: "Fair vol — level gate", view: "signals", domain: "termStructure",
+    nodes: [eng("vol-engine", "YZ-RV · HAR/GARCH · VRP"), redis("latest_vol_surface"), API, FE, panel("Fair vol gate")],
+    edges: ["σ_fair^Q (SET)", "read", "GET /vol/term-structure", "render"],
+  },
+
+  // ---------------- Risk ----------------
+  {
+    id: "var", panel: "Value at Risk", view: "risk", domain: "risk",
+    nodes: [IB, IBG, eng("execution-engine", "account snaps"), pg("account_history (504d)"), API, FE, panel("Value at Risk")],
+    edges: ["account summary", "reqAccountSummary", "INSERT", "504d sim", "GET /portfolio/var", "render"],
   },
   {
-    id: "engines-health", panel: "Engine health (System)", view: "system", domain: "system",
-    endpoint: "GET /health/extended",
-    nodes: [
-      { kind: "container", label: "5 engines", sub: "heartbeat each cycle" },
-      { kind: "store", label: "Redis", sub: "heartbeat:<engine>" },
-      { kind: "api", label: "api", sub: "health router" },
-    ],
-    edges: ["SET heartbeat (TTL)", "read heartbeats"],
+    id: "stress", panel: "Stress engine", view: "risk", domain: "risk",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Stress engine")],
+    edges: ["UPDATE book", "read book", "GET /portfolio/stress-grid (reval)", "render"],
+  },
+  {
+    id: "greeks-ladder", panel: "Greeks ladder", view: "risk", domain: "risk",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Greeks ladder")],
+    edges: ["UPDATE book", "read book", "GET /portfolio/greeks-ladder (reval)", "render"],
+  },
+  {
+    id: "vega-pca", panel: "vega → PCA mode", view: "risk", domain: "risk",
+    nodes: [eng("risk-engine + vol-engine", "greeks + PCA"), pg("open_position · pca_model"), API, FE, panel("vega → PCA")],
+    edges: ["greeks + model", "read book + loadings", "GET /portfolio/vega-pca", "render"],
+  },
+  {
+    id: "marginal-var", panel: "Marginal contribution to VaR", view: "risk", domain: "risk",
+    nodes: [eng("risk-engine", "per-pos pnl /2s"), pg("open_position_history"), API, FE, panel("Marginal VaR")],
+    edges: ["INSERT snapshot", "daily pnl series", "GET /portfolio/marginal-var (Euler)", "render"],
+  },
+  {
+    id: "var-factors", panel: "VaR by factor", view: "risk", domain: "risk",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("VaR by factor")],
+    edges: ["UPDATE book", "read book", "GET /portfolio/var-factors (reval)", "render"],
+  },
+  {
+    id: "greeks-util", panel: "Greeks & risk utilization", view: "risk", domain: "risk",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position · account_history"), API, FE, panel("Greeks & utilization")],
+    edges: ["UPDATE book", "read book + account", "GET /portfolio/risk-per-tenor", "render"],
+  },
+  {
+    id: "pin-risk", panel: "Expiries & roll-off (pin risk)", view: "risk", domain: "risk",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Pin risk")],
+    edges: ["UPDATE book", "read options", "GET /portfolio/pin-risk (reval)", "render"],
+  },
+
+  // ---------------- Portfolio ----------------
+  {
+    id: "account", panel: "Account & capital", view: "portfolio", domain: "portfolio",
+    nodes: [IB, IBG, eng("execution-engine", "account snaps"), pg("account_history"), API, FE, panel("Account & capital")],
+    edges: ["account summary", "reqAccountSummary", "INSERT", "latest + 24h", "GET /portfolio/account", "render"],
+  },
+  {
+    id: "equity-curve", panel: "Equity curve", view: "portfolio", domain: "portfolio",
+    nodes: [eng("execution-engine", "account snaps"), pg("account_history"), API, FE, panel("Equity curve")],
+    edges: ["INSERT net-liq", "windowed query", "GET /portfolio/equity-curve", "render"],
+  },
+  {
+    id: "book-composition", panel: "Book composition", view: "portfolio", domain: "portfolio",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Book composition")],
+    edges: ["UPDATE book", "read book", "GET /positions/open (grouped)", "render"],
+  },
+  {
+    id: "carry-convex", panel: "Carry vs convexity", view: "portfolio", domain: "portfolio",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Carry vs convexity")],
+    edges: ["UPDATE Γ/Θ", "read book", "GET /portfolio/aggregate-greeks", "render"],
+  },
+  {
+    id: "daily-pnl", panel: "Daily P&L", view: "portfolio", domain: "portfolio",
+    nodes: [eng("execution-engine", "close booking"), pg("booked_position (closed)"), API, FE, panel("Daily P&L")],
+    edges: ["set net_pnl", "per-day sum", "GET /portfolio/daily-pnl", "render"],
   },
 ];
