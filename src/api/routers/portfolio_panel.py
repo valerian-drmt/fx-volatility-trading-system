@@ -24,6 +24,7 @@ from api.dependencies import get_db_session
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
 from core.risk.marginal_var import component_var
 from core.risk.stress import reval_book
+from core.risk.var_factors import factor_var_breakdown
 from core.risk.vega_pca import N_CELLS, PC_NAMES, cell_index, project_vega
 from persistence.models import (  # noqa: F401
     AccountHistory,
@@ -680,6 +681,24 @@ async def marginal_var(db: DbDep) -> dict[str, Any]:
         if out else None
     )
     return {"positions": out, "total": total, "n_days": res["n_days"]}
+
+
+@router.get("/var-factors")
+async def var_factors(db: DbDep) -> dict[str, Any]:
+    """Scenario VaR by factor (spot / level / skew / curv) over the open book (R11 G-risk).
+
+    Each factor's VaR is the book's loss under its 1-day 99% adverse move, full-BS
+    revalued via ``core.risk.var_factors`` — derived entirely from the live book
+    (the shock sizes are documented desk assumptions). Empty when the book/spot is missing.
+    """
+    spot, baselines = await _resolve_book(db)
+    if spot is None or not baselines:
+        return {"current_spot": round(spot, 5) if spot else None, "n_positions": 0, "factors": []}
+    return {
+        "current_spot": round(spot, 5),
+        "n_positions": len(baselines),
+        "factors": factor_var_breakdown(baselines, spot),
+    }
 
 
 # ──────────────────────────────────────────────────────────────────────
