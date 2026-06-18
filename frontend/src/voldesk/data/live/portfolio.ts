@@ -307,3 +307,35 @@ export function adaptGreeksLadder(raw: unknown): LiveLadder {
   }));
   return { axis: o.axis ?? "", unit, rows };
 }
+
+export interface PinRiskRow {
+  product: string;
+  strike: number;
+  distPips: number;
+  dte: number;
+  pnlNow: number;
+  pnlAtPin: number;
+}
+
+interface PinRowResp {
+  product_label?: string | null;
+  structure?: string | null;
+  strike?: number | null;
+  distance_pips?: number | null;
+  dte_days?: number | null;
+  pnl_now_usd?: number | null;
+  pnl_at_pin_usd?: number | null;
+}
+
+/** /portfolio/pin-risk → per-option pin exposure (P&L now vs at the strike). */
+export function adaptPinRisk(raw: unknown): PinRiskRow[] {
+  const rows = ((raw ?? {}) as { rows?: PinRowResp[] }).rows ?? [];
+  return rows.map((r) => ({
+    product: r.product_label || r.structure || "—",
+    strike: n(r.strike),
+    distPips: Math.round(n(r.distance_pips)),
+    dte: n(r.dte_days),
+    pnlNow: n(r.pnl_now_usd),
+    pnlAtPin: n(r.pnl_at_pin_usd),
+  }));
+}

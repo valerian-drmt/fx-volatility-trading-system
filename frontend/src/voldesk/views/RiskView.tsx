@@ -4,7 +4,7 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useState } from "react";
-import { fetchGreeksLadder, fetchStressGrid } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -14,7 +14,7 @@ import { DATA, DATA2, fmt } from "../data";
 import type { VarFactor } from "../data";
 import { useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreeksLadder, adaptStressGrid, type LiveLadder, type StressGridData } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptPinRisk, adaptStressGrid, type LiveLadder, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -516,7 +516,11 @@ function StressEngine(): JSX.Element {
 // ---- event & expiry calendar : roll-off / pin risk + dated macro ----
 function CalendarPanel(): JSX.Element {
   const impactTone: Record<string, Tone> = { high: "danger", medium: "warn", low: "neutral" };
-  const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + Math.abs(v);
+  const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + "k" : Math.round(Math.abs(v)));
+  const pin = useFetch<PinRiskRow[]>(() => fetchPinRisk().then(adaptPinRisk), 120_000);
+  const pinRows = pin.data ?? [];
+  const { trade } = useDeskData();
+  const events = trade.data?.events ?? [];
   return (
     <Panel title="Calendar — events & expiries" pad className="ladder-panel">
       <div className="risk-cards2">
@@ -525,14 +529,16 @@ function CalendarPanel(): JSX.Element {
             <table className="dt">
               <thead><tr><th className="l">Option</th><th className="r">Strike</th><th className="r">DTE</th><th className="r">Dist pip</th><th className="r">P&L now</th><th className="r">if pin</th></tr></thead>
               <tbody>
-                {DATA2.pinRisk.map((p, i) => (
-                  <tr key={i} className={p.dist <= 10 ? "row-now" : ""}>
+                {pinRows.length === 0 ? (
+                  <tr><td className="l dim mono small" colSpan={6}>{pin.status === "missing" ? "no open options" : "loading…"}</td></tr>
+                ) : pinRows.map((p, i) => (
+                  <tr key={i} className={p.distPips <= 10 ? "row-now" : ""}>
                     <td className="l mono">{p.product}</td>
                     <td className="r mono dim">{p.strike.toFixed(4)}</td>
                     <td className="r mono dim">{p.dte}d</td>
-                    <td className={"r mono " + (p.dist <= 10 ? "warn" : "dim")}>{p.dist}</td>
-                    <td className={"r mono " + pnlCls(p.now)}>{kk(p.now)}</td>
-                    <td className={"r mono " + pnlCls(p.ifPin)}>{kk(p.ifPin)}</td>
+                    <td className={"r mono " + (p.distPips <= 10 ? "warn" : "dim")}>{p.distPips}</td>
+                    <td className={"r mono " + pnlCls(p.pnlNow)}>{kk(p.pnlNow)}</td>
+                    <td className={"r mono " + pnlCls(p.pnlAtPin)}>{kk(p.pnlAtPin)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -541,7 +547,9 @@ function CalendarPanel(): JSX.Element {
         </Panel>
         <Panel title="Macro events" className="trade-block">
           <div className="evt-list">
-            {DATA.events.map((e, i) => (
+            {events.length === 0 ? (
+              <div className="dim mono small">no scheduled events</div>
+            ) : events.map((e, i) => (
               <div key={i} className="evt-item">
                 <div className="evt-when mono"><span className="evt-in accent">{e.in}</span><span className="dim small">{e.date.split(",")[0]}</span></div>
                 <div className="evt-body"><span className="evt-code mono">{e.code}</span><span className="evt-name">{e.content}</span><span className="dim mono small"> · {e.country}</span></div>
