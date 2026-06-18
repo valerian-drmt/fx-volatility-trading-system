@@ -18,6 +18,11 @@ export interface PipeNode {
   kind: NodeKind;
   label: string;
   sub?: string;
+  /** Real-health source key (resolved against the system domain): an engine
+   * label / stack item name (e.g. "market-data", "redis", "IB Gateway",
+   * "api (FastAPI)"), or "__self" (always up) / "__ws" (the panel's WS feed).
+   * Omitted → falls back to the panel's domain freshness. */
+  health?: string;
 }
 
 export interface PanelPipe {
@@ -43,7 +48,15 @@ export const PIPELINES: PanelPipe[] = [
   // ---------------- Dashboard ----------------
   {
     id: "ticker", panel: "Spot ticker (bid/ask)", view: "dashboard", domain: "ticks",
-    nodes: [IB, IBG, eng("market-data", "clientId 1"), redis("latest_spot · ticks ch."), API, FE, panel("Ticker bid/ask")],
+    nodes: [
+      { kind: "external", label: "IB", sub: "Interactive Brokers", health: "IB Gateway" },
+      { kind: "container", label: "ib-gateway", sub: "broker session", health: "IB Gateway" },
+      { kind: "container", label: "market-data", sub: "clientId 1 · tick stream", health: "market-data" },
+      { kind: "store", label: "Redis", sub: "latest_spot:EUR · ticks ch.", health: "redis" },
+      { kind: "api", label: "api", sub: "FastAPI · WS bridge", health: "api (FastAPI)" },
+      { kind: "frontend", label: "frontend", sub: "React · WS client", health: "__self" },
+      { kind: "panel", label: "Ticker bid/ask", sub: "displayed panel", health: "__ws" },
+    ],
     edges: ["get tick", "reqMktData", "publish ticks", "WS bridge", "WS /ws/ticks", "render"],
   },
   {

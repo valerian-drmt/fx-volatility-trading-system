@@ -1,18 +1,25 @@
 /**
- * Dev "Pipeline" tab — end-to-end plumbing schematic per PROD panel.
- * Faithful to the Claude Design mockup (Pipeline Viz - Ticker bid/ask), wired
- * to real data: the panel's data domain freshness drives the flowing "current"
- * + the terminal panel's live/stale state; the Ticker terminal shows the live
- * bid/ask/mid from the ticks domain. Live is gated behind a Connect toggle
- * (/dev stays provider-free until asked).
+ * Dev "Pipeline" tab — live end-to-end plumbing schematic per PROD panel.
+ * Faithful to the Claude Design mockup (Ticker bid/ask). Always live (no toggle):
+ * the schema mounts the desk DataProvider and reads real state.
+ *
+ * Spot ticker = the REAL pipeline: each block resolves its actual health from the
+ * `system` domain (market-data heartbeat, IB Gateway connection, redis/api status)
+ * + the WS leg from the ticks feed freshness; a pipe flows only between two healthy
+ * blocks, a down block goes red with a ✕. The Ticker terminal shows live bid/ask/mid
+ * from /ws/ticks. Other panels fall back to their domain freshness (uniform) until
+ * wired the same way.
  */
 import { type CSSProperties, useState } from "react";
 import { DataProvider } from "../../voldesk/data/provider";
-import { useDeskData } from "../../voldesk/data/deskData";
+import { type SystemData, useDeskData } from "../../voldesk/data/deskData";
 import type { Fresh } from "../../voldesk/data/freshness";
-import { PIPELINES, type NodeKind, type PanelPipe, type ViewId } from "./pipelines";
+import { PIPELINES, type NodeKind, type PanelPipe, type PipeNode, type ViewId } from "./pipelines";
 
-const GREEN = "#3ec46d", AMBER = "#d9a441";
+const GREEN = "#3ec46d", AMBER = "#d9a441", RED = "#e0564f";
+type H = "up" | "warn" | "down";
+const HCOLOR: Record<H, string> = { up: GREEN, warn: AMBER, down: RED };
+
 const KIND: Record<NodeKind, { color: string; glyph: string; tag: string }> = {
   external: { color: "#c79a4b", glyph: "⇅", tag: "EXTERNAL" },
   container: { color: "#5b8fd6", glyph: "▣", tag: "CONTAINER" },
@@ -34,6 +41,26 @@ const clk = (d: Date): string => {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 };
 
+function normStatus(s: string | undefined): H {
+  const x = String(s ?? "").toLowerCase();
+  if (x.startsWith("up") || x === "ok" || x === "healthy" || x === "live") return "up";
+  if (x.startsWith("warn") || x === "degraded" || x.startsWith("stale")) return "warn";
+  return "down";
+}
+function buildHealthMap(system: SystemData | null): Record<string, H> {
+  const m: Record<string, H> = {};
+  if (!system) return m;
+  for (const e of system.engines) m[e.name] = normStatus(e.status);
+  for (const layer of system.stack) for (const it of layer.items) m[it.name] = normStatus(it.status);
+  return m;
+}
+function resolve(node: PipeNode, hmap: Record<string, H>, domain: H, ws: H): H {
+  if (node.health === "__self") return "up";
+  if (node.health === "__ws") return ws;
+  if (node.health && hmap[node.health]) return hmap[node.health]!;
+  return domain; // fallback: panel's domain freshness
+}
+
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 @keyframes ppflow { from{background-position:0 0} to{background-position:16px 0} }
@@ -49,32 +76,30 @@ const CSS = `
 .pp-area::-webkit-scrollbar-thumb{background:#262a33;border-radius:5px}
 `;
 
-type Stat = "live" | "stale" | "missing" | "offline";
+function XMark({ size }: { size: number }): JSX.Element {
+  return <svg width={size} height={size} viewBox="0 0 28 28" fill="none"><path d="M7 7L21 21M21 7L7 21" stroke={RED} strokeWidth="3" strokeLinecap="round" /></svg>;
+}
 
-function Block({ node, live, tip, onEnter, onLeave }: {
-  node: PanelPipe["nodes"][number]; live: boolean; tip: boolean;
-  onEnter: () => void; onLeave: () => void;
+function Block({ node, status, tip, onEnter, onLeave }: {
+  node: PipeNode; status: H; tip: boolean; onEnter: () => void; onLeave: () => void;
 }): JSX.Element {
   const k = KIND[node.kind];
-  const sc = live ? GREEN : node.kind === "panel" ? AMBER : "#5a606e";
-  const card: CSSProperties = {
-    position: "relative", background: "#181b22", border: `1px solid ${hexa(sc, live ? 0.32 : 0.4)}`,
-    borderRadius: 6, padding: "11px 11px 12px", minHeight: 92, display: "flex", flexDirection: "column",
-    gap: 8, overflow: "hidden", transition: "border-color .3s, box-shadow .3s",
-  };
+  const sc = HCOLOR[status];
+  const down = status === "down";
   return (
     <div style={{ flex: "none", width: 140, position: "relative" }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
-      <div style={card}>
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: hexa(sc, 0.55) }} />
+      {down ? <div style={{ position: "absolute", left: "50%", top: -34, transform: "translateX(-50%)", lineHeight: 0, zIndex: 6 }}><XMark size={28} /></div> : null}
+      <div style={{ position: "relative", background: down ? "#1b1517" : "#181b22", border: `1px solid ${hexa(sc, down ? 0.5 : 0.32)}`, borderRadius: 6, padding: "11px 11px 12px", minHeight: 92, display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", boxShadow: down ? `0 0 16px ${hexa(RED, 0.14)}, inset 0 0 22px ${hexa(RED, 0.05)}` : "none", transition: "background .25s, border-color .25s, box-shadow .25s" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: hexa(sc, down ? 0.7 : 0.55) }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div className="pp-mono" style={{ width: 22, height: 22, borderRadius: 5, display: "grid", placeItems: "center", fontSize: 12, color: k.color, border: `1px solid ${hexa(k.color, 0.42)}`, background: hexa(k.color, 0.1) }}>{k.glyph}</div>
-          <div className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".12em", color: k.color, fontWeight: 600 }}>{k.tag}</div>
+          <div className="pp-mono" style={{ width: 22, height: 22, borderRadius: 5, display: "grid", placeItems: "center", fontSize: 12, color: k.color, border: `1px solid ${hexa(k.color, 0.42)}`, background: hexa(k.color, 0.1), opacity: down ? 0.6 : 1 }}>{k.glyph}</div>
+          <div className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".12em", color: k.color, fontWeight: 600, opacity: down ? 0.7 : 1 }}>{k.tag}</div>
         </div>
         <div style={{ fontSize: 13, fontWeight: 600, color: "#e6eaf1" }}>{node.label}</div>
         <div className="pp-mono" style={{ fontSize: 9.5, color: "#6b7180", lineHeight: 1.4 }}>{node.sub}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: sc, boxShadow: `0 0 7px ${hexa(sc, 0.8)}`, animation: live ? "pppulse 1.6s ease-in-out infinite" : "none" }} />
-          <span className="pp-mono" style={{ fontSize: 9, letterSpacing: ".12em", fontWeight: 600, color: sc }}>{live ? "UP" : "IDLE"}</span>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: sc, boxShadow: `0 0 7px ${hexa(sc, 0.8)}`, animation: status === "up" ? "pppulse 1.6s ease-in-out infinite" : "none" }} />
+          <span className="pp-mono" style={{ fontSize: 9, letterSpacing: ".12em", fontWeight: 600, color: sc }}>{status === "up" ? "UP" : status === "warn" ? "WARN" : "DOWN"}</span>
         </div>
       </div>
       {tip ? (
@@ -86,15 +111,15 @@ function Block({ node, live, tip, onEnter, onLeave }: {
   );
 }
 
-function Pipe({ label, live, hover, onEnter, onLeave }: {
-  label: string; live: boolean; hover: boolean; onEnter: () => void; onLeave: () => void;
+function Pipe({ label, flow, broken, hover, onEnter, onLeave }: {
+  label: string; flow: boolean; broken: boolean; hover: boolean; onEnter: () => void; onLeave: () => void;
 }): JSX.Element {
-  const sc = live ? GREEN : "#5a606e";
+  const sc = flow ? GREEN : broken ? RED : "#5a606e";
   return (
     <div style={{ position: "relative", flex: 1, minWidth: 56, alignSelf: "stretch", display: "flex", alignItems: "center", padding: "0 1px" }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
       <div className="pp-mono" style={{ position: "absolute", top: "calc(50% - 19px)", left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap", fontSize: 9, letterSpacing: ".07em", textTransform: "uppercase", pointerEvents: "none", color: hover ? "#dfe7e2" : "#586070", textShadow: hover ? `0 0 9px ${hexa(sc, 0.55)}` : "none", fontWeight: hover ? 600 : 400 }}>{label}</div>
-      <div style={{ position: "relative", flex: 1, height: 8, minWidth: 30, background: "#0c0e12", border: `1px solid ${hexa(sc, 0.42)}`, borderRadius: 5, overflow: "hidden", boxShadow: live ? `0 0 10px ${hexa(sc, 0.16)}, inset 0 0 6px ${hexa(sc, 0.1)}` : `inset 0 0 6px ${hexa(sc, 0.06)}`, transition: "box-shadow .35s, border-color .35s" }}>
-        <div style={{ position: "absolute", inset: 0, backgroundImage: `repeating-linear-gradient(90deg, ${sc} 0, ${sc} 6px, ${hexa(sc, 0)} 6px, ${hexa(sc, 0)} 16px)`, backgroundSize: "16px 100%", animation: live ? "ppflow .6s linear infinite" : "none", opacity: live ? 0.92 : 0.4, transition: "opacity .35s" }} />
+      <div style={{ position: "relative", flex: 1, height: 8, minWidth: 30, background: "#0c0e12", border: `1px solid ${hexa(sc, 0.42)}`, borderRadius: 5, overflow: "hidden", boxShadow: flow ? `0 0 10px ${hexa(sc, 0.16)}, inset 0 0 6px ${hexa(sc, 0.1)}` : `inset 0 0 6px ${hexa(sc, 0.06)}`, transition: "box-shadow .35s, border-color .35s" }}>
+        <div style={{ position: "absolute", inset: 0, backgroundImage: `repeating-linear-gradient(90deg, ${sc} 0, ${sc} 6px, ${hexa(sc, 0)} 6px, ${hexa(sc, 0)} 16px)`, backgroundSize: "16px 100%", animation: flow ? "ppflow .6s linear infinite" : "none", opacity: flow ? 0.92 : 0.45, transition: "opacity .35s" }} />
       </div>
       <div style={{ position: "absolute", right: -2, top: "50%", transform: "translateY(-50%)", lineHeight: 0 }}>
         <svg width="9" height="11" viewBox="0 0 9 11" fill="none"><path d="M1.5 1.5L6 5.5L1.5 9.5" stroke={sc} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -120,21 +145,17 @@ function Terminal({ pipe, live, ticks }: { pipe: PanelPipe; live: boolean; ticks
       <span className="pp-mono" style={{ fontSize: 9, color: "#5a606e" }}>{pipe.domain}</span>
     </div>
   );
+  const head = (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <span style={{ fontSize: 12.5, fontWeight: 600, color: "#eef1f6" }}>{pipe.id === "ticker" ? "Ticker bid/ask" : pipe.panel}</span>
+      <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>PANEL</span>
+    </div>
+  );
   if (pipe.id !== "ticker") {
     return (
-      <div style={{ flex: "none" }}>
-        <div style={card}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: "#eef1f6" }}>{pipe.panel}</span>
-            <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>PANEL</span>
-          </div>
-          {dotRow}
-          <div style={{ height: 1, background: "#23272f" }} />
-          <div className="pp-mono" style={{ fontSize: 11, color: live ? "#cdd3dd" : "#766f5e", lineHeight: 1.5 }}>
-            {live ? "rendering live data" : "awaiting feed…"}
-          </div>
-        </div>
-      </div>
+      <div style={{ flex: "none" }}><div style={card}>{head}{dotRow}<div style={{ height: 1, background: "#23272f" }} />
+        <div className="pp-mono" style={{ fontSize: 11, color: live ? "#cdd3dd" : "#766f5e", lineHeight: 1.5 }}>{live ? "rendering live data" : "awaiting feed…"}</div>
+      </div></div>
     );
   }
   const t = ticks.data as { bid?: number | null; ask?: number | null; mid?: number | null } | null;
@@ -143,58 +164,48 @@ function Terminal({ pipe, live, ticks }: { pipe: PanelPipe; live: boolean; ticks
   const spread = bid != null && ask != null ? ((ask - bid) * 10000).toFixed(1) : "—";
   const val = live ? "#dfe4ec" : "#766f5e";
   return (
-    <div style={{ flex: "none" }}>
-      <div style={card}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: "#eef1f6" }}>Ticker bid/ask</span>
-          <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>PANEL</span>
-        </div>
-        {dotRow}
-        <div style={{ height: 1, background: "#23272f" }} />
-        <div style={{ display: "flex", gap: 14 }}>
-          {([["BID", bid], ["ASK", ask]] as const).map(([lbl, v]) => (
-            <div key={lbl} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".12em", color: "#6b7180" }}>{lbl}</span>
-              <span className="pp-mono" style={{ fontSize: 15, fontWeight: 600, color: val }}>{v != null ? v.toFixed(4) : "—"}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".12em", color: "#6b7180" }}>MID</span>
-          <span className="pp-mono" style={{ fontSize: 22, fontWeight: 700, color: live ? GREEN : "#766f5e", lineHeight: 1 }}>{mid != null ? mid.toFixed(4) : "—"}</span>
-        </div>
-        <div className="pp-mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#5a606e" }}>
-          <span>spread {spread} pip</span>
-          <span>{live ? "EUR/USD" : "no fresh ticks"}</span>
-        </div>
+    <div style={{ flex: "none" }}><div style={card}>{head}{dotRow}<div style={{ height: 1, background: "#23272f" }} />
+      <div style={{ display: "flex", gap: 14 }}>
+        {([["BID", bid], ["ASK", ask]] as const).map(([lbl, v]) => (
+          <div key={lbl} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".12em", color: "#6b7180" }}>{lbl}</span>
+            <span className="pp-mono" style={{ fontSize: 15, fontWeight: 600, color: val }}>{v != null ? v.toFixed(4) : "—"}</span>
+          </div>
+        ))}
       </div>
-    </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".12em", color: "#6b7180" }}>MID</span>
+        <span className="pp-mono" style={{ fontSize: 22, fontWeight: 700, color: live ? GREEN : "#766f5e", lineHeight: 1 }}>{mid != null ? mid.toFixed(4) : "—"}</span>
+      </div>
+      <div className="pp-mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#5a606e" }}>
+        <span>spread {spread} pip</span><span>{live ? "EUR/USD" : "no fresh ticks"}</span>
+      </div>
+    </div></div>
   );
 }
 
-function Stage({ pipe, id, setId, connected, onToggle, freshness, ticks }: {
-  pipe: PanelPipe; id: string; setId: (v: string) => void; connected: boolean; onToggle: () => void;
-  freshness: { status: Stat; asOf: number | null }; ticks: Fresh<unknown>;
+function Stage({ pipe, id, setId, statuses, asOf, ticks }: {
+  pipe: PanelPipe; id: string; setId: (v: string) => void; statuses: H[]; asOf: number | null; ticks: Fresh<unknown>;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [hoverNode, setHoverNode] = useState<number | null>(null);
   const [hoverPipe, setHoverPipe] = useState<number | null>(null);
-  const live = connected && freshness.status === "live";
   const infra = pipe.nodes.slice(0, -1);
+  const flows = statuses.slice(0, -1).map((_, i) => statuses[i] === "up" && statuses[i + 1] === "up");
+  const healthy = statuses.every((s) => s === "up");
+  const downNames = pipe.nodes.filter((_, i) => statuses[i] === "down").map((n) => n.label);
 
   const byView = new Map<ViewId, PanelPipe[]>();
   for (const p of PIPELINES) byView.set(p.view, [...(byView.get(p.view) ?? []), p]);
 
-  const stampColor = live ? "#7fcf9a" : freshness.status === "offline" ? "#6b7180" : "#d9b86a";
-  const stampText = live
-    ? `⚡ live · updated ${freshness.asOf ? clk(new Date(freshness.asOf)) : "—"}`
-    : freshness.status === "offline" ? "○ offline — connect to feed the pipes"
-    : freshness.status === "missing" ? "⚠ no data yet" : "⚠ stale";
+  const stampColor = healthy ? "#7fcf9a" : "#d9b86a";
+  const stampText = healthy
+    ? `⚡ live · updated ${asOf ? clk(new Date(asOf)) : "—"}`
+    : `⚠ degraded · ${downNames.length === 1 ? downNames[0] + " down" : downNames.length + " blocks down"}`;
 
   return (
     <div className="pp-root">
       <style>{CSS}</style>
-      {/* toolbar */}
       <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 14, padding: "11px 18px", background: "#0f1115", borderBottom: "1px solid #1b1e25", position: "relative", zIndex: 20 }}>
         <div style={{ position: "relative" }}>
           <button onClick={() => setOpen((o) => !o)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 11px", background: "#181b22", border: "1px solid #2a2f38", borderRadius: 7, cursor: "pointer", color: "#e6eaf1" }}>
@@ -220,52 +231,44 @@ function Stage({ pipe, id, setId, connected, onToggle, freshness, ticks }: {
         </div>
         <span style={{ flex: 1 }} />
         <span className="pp-mono" style={{ fontSize: 11, color: stampColor }}>{stampText}</span>
-        <button onClick={onToggle} className="pp-mono" style={{ fontSize: 11, padding: "6px 12px", borderRadius: 6, border: "none", cursor: "pointer", background: connected ? "#2a2f38" : "#1f6f63", color: "#fff" }}>
-          {connected ? "⏸ disconnect" : "⚡ connect"}
-        </button>
       </div>
 
-      {/* schema */}
       <div className="pp-area" style={{ flex: 1, overflow: "auto", display: "flex", alignItems: "center", padding: "44px 34px", background: "radial-gradient(ellipse 80% 120% at 50% 0%, #121620 0%, #0e0e0e 60%)" }}>
         <div style={{ display: "flex", alignItems: "center", margin: "auto" }}>
           {infra.map((n, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center" }}>
-              <Block node={n} live={live} tip={hoverNode === i} onEnter={() => setHoverNode(i)} onLeave={() => setHoverNode(null)} />
-              <Pipe label={pipe.edges[i] ?? ""} live={live} hover={hoverPipe === i} onEnter={() => setHoverPipe(i)} onLeave={() => setHoverPipe(null)} />
+              <Block node={n} status={statuses[i]!} tip={hoverNode === i} onEnter={() => setHoverNode(i)} onLeave={() => setHoverNode(null)} />
+              <Pipe label={pipe.edges[i] ?? ""} flow={flows[i]!} broken={statuses[i] === "down" || statuses[i + 1] === "down"} hover={hoverPipe === i} onEnter={() => setHoverPipe(i)} onLeave={() => setHoverPipe(null)} />
             </div>
           ))}
-          <Terminal pipe={pipe} live={live} ticks={ticks} />
+          <Terminal pipe={pipe} live={statuses[statuses.length - 1] === "up"} ticks={ticks} />
         </div>
       </div>
 
-      {/* status bar */}
       <div className="pp-mono" style={{ flex: "none", height: 30, display: "flex", alignItems: "center", gap: 18, padding: "0 16px", background: "#0c0d10", borderTop: "1px solid #1b1e25", fontSize: 10, color: "#4d5360" }}>
         <span style={{ color: "#5a606e" }}>domain: {pipe.domain}</span>
         <span style={{ color: "#3a3f49" }}>·</span>
         <span>{pipe.view}</span>
         <span style={{ flex: 1 }} />
-        <span style={{ color: stampColor }}>{live ? "◍ healthy" : connected ? "pipeline idle" : "disconnected"}</span>
+        <span style={{ color: stampColor }}>{healthy ? "◍ healthy" : "pipeline degraded"}</span>
       </div>
     </div>
   );
 }
 
-const EMPTY_TICK: Fresh<unknown> = { data: null, status: "missing", asOf: null, ageMs: null };
-
-function LiveStage(props: { pipe: PanelPipe; id: string; setId: (v: string) => void; onToggle: () => void }): JSX.Element {
+function LiveStage({ pipe, id, setId }: { pipe: PanelPipe; id: string; setId: (v: string) => void }): JSX.Element {
   const desk = useDeskData();
-  const f = desk[props.pipe.domain];
-  return <Stage {...props} connected freshness={{ status: f.status, asOf: f.asOf }} ticks={desk.ticks} />;
+  const domainF = desk[pipe.domain];
+  const ticks = desk.ticks;
+  const hmap = buildHealthMap(desk.system.data);
+  const dom = normStatus(domainF.status);
+  const ws = normStatus(ticks.status);
+  const statuses = pipe.nodes.map((n) => resolve(n, hmap, dom, ws));
+  return <Stage pipe={pipe} id={id} setId={setId} statuses={statuses} asOf={domainF.asOf ?? ticks.asOf} ticks={ticks} />;
 }
 
 export function PipelineViz(): JSX.Element {
   const [id, setId] = useState<string>(PIPELINES[0]?.id ?? "");
-  const [connected, setConnected] = useState(false);
   const pipe = PIPELINES.find((p) => p.id === id) ?? PIPELINES[0]!;
-  const toggle = (): void => setConnected((c) => !c);
-  return connected ? (
-    <DataProvider><LiveStage pipe={pipe} id={id} setId={setId} onToggle={toggle} /></DataProvider>
-  ) : (
-    <Stage pipe={pipe} id={id} setId={setId} connected={false} onToggle={toggle} freshness={{ status: "offline", asOf: null }} ticks={EMPTY_TICK} />
-  );
+  return <DataProvider><LiveStage pipe={pipe} id={id} setId={setId} /></DataProvider>;
 }
