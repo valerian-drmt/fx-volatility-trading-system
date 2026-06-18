@@ -257,3 +257,53 @@ export function adaptStressGrid(raw: unknown): StressGridData | null {
     grid,
   };
 }
+
+export type LadderAxis = "spot" | "vol" | "time" | "skew" | "fly";
+
+export interface LiveLadderRow {
+  label: string;
+  pnl: number;
+  delta: number;
+  gamma: number;
+  vega: number;
+  hedge: number;
+  isNow: boolean;
+  spot: number | null;
+}
+
+export interface LiveLadder {
+  axis: string;
+  unit: string;
+  rows: LiveLadderRow[];
+}
+
+interface LadderRowResp {
+  axis_value?: number | null;
+  pnl_usd?: number | null;
+  delta_usd?: number | null;
+  gamma_usd_per_pip?: number | null;
+  vega_usd_per_volpt?: number | null;
+  hedge_delta_usd?: number | null;
+  spot?: number | null;
+}
+
+/** /portfolio/greeks-ladder?axis= → per-bin P&L + Δ/Γ/Vega + hedge-Δ along one
+ * axis (full-BS reval). θ/vanna/volga aren't in the row payload (backend subset
+ * — a trivial extension). Empty rows when the book/spot is missing. */
+export function adaptGreeksLadder(raw: unknown): LiveLadder {
+  const o = (raw ?? {}) as { axis?: string; unit?: string; rows?: LadderRowResp[] };
+  const unit = o.unit ?? "";
+  const fmtLbl = (v: number): string =>
+    unit === "d" ? (v === 0 ? "now" : v + "d") : (v > 0 ? "+" : "") + v + unit;
+  const rows = (Array.isArray(o.rows) ? o.rows : []).map((r) => ({
+    label: fmtLbl(n(r.axis_value)),
+    pnl: n(r.pnl_usd),
+    delta: n(r.delta_usd),
+    gamma: n(r.gamma_usd_per_pip),
+    vega: n(r.vega_usd_per_volpt),
+    hedge: n(r.hedge_delta_usd),
+    isNow: n(r.axis_value) === 0,
+    spot: typeof r.spot === "number" ? r.spot : null,
+  }));
+  return { axis: o.axis ?? "", unit, rows };
+}

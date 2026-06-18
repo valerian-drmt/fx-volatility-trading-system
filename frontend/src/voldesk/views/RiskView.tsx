@@ -4,17 +4,17 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useState } from "react";
-import { fetchStressGrid } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchStressGrid } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
 import { DATA, DATA2, fmt } from "../data";
-import type { LadderRow, VarFactor } from "../data";
+import type { VarFactor } from "../data";
 import { useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptStressGrid, type StressGridData } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptStressGrid, type LiveLadder, type StressGridData } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -614,33 +614,59 @@ function DeskGapsPanel(): JSX.Element {
 }
 
 // ---- greeks ladder table (P1: includes vanna/volga; reference row frozen as read anchor) ----
-function LadderTable({ title, right, axisLbl, rows, nowKey, sub }: {
+function LiveLadderTable({ title, right, axisLbl, d, status }: {
   title: string;
   right?: JSX.Element;
   axisLbl: string;
-  rows: LadderRow[];
-  nowKey: (l: LadderRow, i: number) => boolean;
-  sub?: (l: LadderRow) => string;
+  d: LiveLadder | null;
+  status: Fresh<unknown>["status"];
 }): JSX.Element {
   const kg = (v: number): string => { const s = v >= 0 ? "+" : "-"; const a = Math.abs(v); return a >= 1000 ? s + (a / 1000).toFixed(1) + "k" : s + Math.round(a); };
-  const cols: (keyof LadderRow)[] = ["pnl", "delta", "gamma", "vega", "theta", "vanna", "volga"];
-  const heads = ["P&L", "Δ", "Γ", "Vega", "Θ", "Vanna", "Volga"];
+  const heads = ["P&L", "Δ", "Γ", "Vega", "Hedge Δ"];
+  const rows = d?.rows ?? [];
   return (
     <Panel title={title} right={right} className="trade-block" pad={false}>
       <div className="table-scroll">
         <table className="dt ladder-dt">
           <thead><tr><th className="l">{axisLbl}</th>{heads.map((h) => <th key={h} className="r">{h}</th>)}</tr></thead>
           <tbody>
-            {rows.map((l, i) => (
-              <tr key={i} className={nowKey(l, i) ? "row-now ladder-anchor" : ""}>
-                <td className="l mono">{l.axis}{sub ? <span className="dim"> {sub(l)}</span> : null}</td>
-                {cols.map((c) => <td key={c} className={"r mono " + pnlCls(l[c] as number)}>{kg(l[c] as number)}</td>)}
+            {rows.length === 0 ? (
+              <tr><td className="l dim mono small" colSpan={6}>{status === "missing" ? "no book / no spot" : "loading…"}</td></tr>
+            ) : rows.map((l, i) => (
+              <tr key={i} className={l.isNow ? "row-now ladder-anchor" : ""}>
+                <td className="l mono">{l.label}{l.spot != null ? <span className="dim"> {l.spot.toFixed(4)}</span> : null}</td>
+                <td className={"r mono " + pnlCls(l.pnl)}>{kg(l.pnl)}</td>
+                <td className={"r mono " + pnlCls(l.delta)}>{kg(l.delta)}</td>
+                <td className={"r mono " + pnlCls(l.gamma)}>{kg(l.gamma)}</td>
+                <td className={"r mono " + pnlCls(l.vega)}>{kg(l.vega)}</td>
+                <td className={"r mono " + pnlCls(l.hedge)}>{kg(l.hedge)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
     </Panel>
+  );
+}
+
+const LADDER_AXES = ["spot", "vol", "time", "skew", "fly"] as const;
+
+// All five greek ladders, each a full-BS reval along one axis (live).
+function LiveLadders(): JSX.Element {
+  const live = useFetch<LiveLadder[]>(
+    () => Promise.all(LADDER_AXES.map((a) => fetchGreeksLadder(a).then(adaptGreeksLadder))),
+    120_000,
+  );
+  const L = live.data ?? [];
+  const at = (i: number): LiveLadder | null => L[i] ?? null;
+  return (
+    <>
+      <LiveLadderTable title="vs Spot" axisLbl="Spot" d={at(0)} status={live.status} />
+      <LiveLadderTable title="vs Vol ∥ ATM" right={<span className="dim mono small">level</span>} axisLbl="Vol" d={at(1)} status={live.status} />
+      <LiveLadderTable title="vs Time" axisLbl="Time" d={at(2)} status={live.status} />
+      <LiveLadderTable title="vs Skew (ΔRR)" right={<RiskOnly />} axisLbl="RR" d={at(3)} status={live.status} />
+      <LiveLadderTable title="vs Fly (ΔBF)" right={<span className="accent mono small">PC3</span>} axisLbl="BF" d={at(4)} status={live.status} />
+    </>
   );
 }
 
@@ -733,13 +759,9 @@ export function RiskView(): JSX.Element {
         </div>
       </Panel>
       <StressEngine />
-      <Panel title="Greeks ladder" right={<span className="dim mono small">incl. vanna / volga · 5 axes</span>} pad className="ladder-panel">
+      <Panel title="Greeks ladder" right={<span className="dim mono small">5 axes · full BS reval</span>} pad className="ladder-panel">
         <div className="ladder-grid">
-          <LadderTable title="vs Spot" axisLbl="Spot" rows={DATA2.spotLadder} nowKey={(l) => l.axis === "0bp"} sub={(l) => (l.spot ?? 0).toFixed(4)} />
-          <LadderTable title="vs Vol ∥ ATM" right={<span className="dim mono small">level</span>} axisLbl="Vol" rows={[...DATA2.volLadder].reverse()} nowKey={(l) => l.axis === "0vp"} />
-          <LadderTable title="vs Time" axisLbl="Time" rows={DATA2.timeLadder} nowKey={(_l, i) => i === 0} sub={(l) => (l.days === 0 ? "now" : l.days + "d")} />
-          <LadderTable title="vs Skew (ΔRR)" right={<RiskOnly />} axisLbl="RR" rows={[...DATA2.skewLadder].reverse()} nowKey={(l) => l.axis === "0vp"} />
-          <LadderTable title="vs Fly (ΔBF)" right={<span className="accent mono small">PC3</span>} axisLbl="BF" rows={[...DATA2.flyLadder].reverse()} nowKey={(l) => l.axis === "0vp"} />
+          <LiveLadders />
         </div>
       </Panel>
       <Panel title="Position breakdown" pad={false} className="ladder-panel">
