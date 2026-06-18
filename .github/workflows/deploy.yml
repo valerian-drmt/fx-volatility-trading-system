@@ -11,6 +11,13 @@ name: deploy-prod
 # (private key PEM), DB_PASSWORD, VNC_PASSWORD, IB_USERID, IB_PASSWORD.
 # The deploy_sha input lets operators redeploy an arbitrary commit
 # without tagging — useful for emergency rollbacks.
+#
+# GATED until the EC2 host is provisioned : the deploy job runs only when
+# the repo variable DEPLOY_ENABLED == 'true'. While it is unset the job is
+# skipped (neutral, not failed), so a pushed semver tag no longer red-marks
+# the Actions tab against a host that does not exist yet. Flip it on with
+# `gh variable set DEPLOY_ENABLED --body true` once EC2_HOST/EC2_USER/
+# EC2_SSH_KEY are in repo secrets and the instance is up.
 
 on:
   push:
@@ -34,6 +41,9 @@ env:
 jobs:
   deploy:
     name: deploy ${{ github.ref_name }} to EC2
+    # Skip cleanly until EC2 is provisioned (see header). Set the repo
+    # variable DEPLOY_ENABLED=true to arm real deploys.
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 20
