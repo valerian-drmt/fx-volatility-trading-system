@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
+from core.risk.marginal_var import component_var
 from core.risk.stress import reval_book
 from core.risk.vega_pca import N_CELLS, PC_NAMES, cell_index, project_vega
 from persistence.models import (  # noqa: F401
@@ -623,6 +624,62 @@ async def vega_pca(db: DbDep) -> dict[str, Any]:
         for i in range(len(proj))
     ]
     return {**base, "model_version": model.version, "pcs": pcs}
+
+
+@router.get("/marginal-var")
+async def marginal_var(db: DbDep) -> dict[str, Any]:
+    """Per-position component VaR over the open book (R11 G-risk).
+
+    Builds each open position's daily P&L delta series from
+    ``open_position_history``, then decomposes the 99% historical portfolio VaR
+    into per-position standalone + component contributions (Euler allocation, see
+    ``core.risk.marginal_var``). The factor tag is the position's dominant greek
+    (spot / level / skew / curv). Empty until ~5 days of history accumulate.
+    """
+    positions = (await db.execute(select(OpenPosition))).scalars().all()
+    if not positions:
+        return {"positions": [], "total": None, "n_days": 0}
+    meta: dict[str, dict[str, Any]] = {}
+    for pos in positions:
+        cand = {
+            "spot": abs(float(pos.delta_usd or 0)),
+            "level": abs(float(pos.vega_usd or 0)),
+            "skew": abs(float(pos.vanna_usd or 0)),
+            "curv": abs(float(pos.volga_usd or 0)),
+        }
+        meta[str(pos.id)] = {
+            "label": pos.product_label or pos.structure,
+            "factor": max(cand, key=lambda k: cand[k]),
+        }
+    rows = (await db.execute(text("""
+        WITH daily AS (
+          SELECT DISTINCT ON (position_id, date_trunc('day', timestamp))
+                 position_id, date_trunc('day', timestamp) AS day, current_pnl_usd
+            FROM open_position_history
+           WHERE timestamp >= NOW() - INTERVAL '120 days' AND current_pnl_usd IS NOT NULL
+           ORDER BY position_id, date_trunc('day', timestamp), timestamp DESC
+        )
+        SELECT position_id, current_pnl_usd FROM daily ORDER BY position_id, day
+    """))).all()
+    cum: dict[str, list[float]] = {}
+    for pid, pnl in rows:
+        cum.setdefault(str(pid), []).append(float(pnl))
+    series_by_id = {
+        pid: [vals[i] - vals[i - 1] for i in range(1, len(vals))]
+        for pid, vals in cum.items()
+        if len(vals) >= 2
+    }
+    res = component_var(series_by_id)
+    out = [
+        {**row, "label": meta.get(row["id"], {}).get("label", row["id"]),
+         "factor": meta.get(row["id"], {}).get("factor", "spot")}
+        for row in res["positions"]
+    ]
+    total = (
+        {"portfolio_var_usd": res["portfolio_var_usd"], "diversification_pct": res["diversification_pct"]}
+        if out else None
+    )
+    return {"positions": out, "total": total, "n_days": res["n_days"]}
 
 
 # ──────────────────────────────────────────────────────────────────────
