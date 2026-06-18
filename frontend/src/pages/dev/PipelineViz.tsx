@@ -10,11 +10,25 @@
  * from /ws/ticks. Other panels fall back to their domain freshness (uniform) until
  * wired the same way.
  */
-import { type CSSProperties, useState } from "react";
+import { useState } from "react";
 import { DataProvider } from "../../voldesk/data/provider";
 import { type SystemData, useDeskData } from "../../voldesk/data/deskData";
-import type { Fresh } from "../../voldesk/data/freshness";
+import { DashboardView } from "../../voldesk/views/DashboardView";
+import { PortfolioView } from "../../voldesk/views/PortfolioView";
+import { RiskView } from "../../voldesk/views/RiskView";
+import { SignalsView } from "../../voldesk/views/SignalsView";
+import { TradeView } from "../../voldesk/views/TradeView";
 import { PIPELINES, type NodeKind, type PanelPipe, type PipeNode, type ViewId } from "./pipelines";
+
+// The real prod view rendered in the terminal "screen" (the panel lives in it).
+// Dashboard + Trade take props in the app; stub them for the viz.
+const VIEW_COMPONENTS: Record<ViewId, () => JSX.Element> = {
+  dashboard: () => <DashboardView go={() => undefined} />,
+  trade: () => <TradeView tweaks={{ density: "comfortable", showGreeks: true }} />,
+  signals: SignalsView,
+  risk: RiskView,
+  portfolio: PortfolioView,
+};
 
 const GREEN = "#3ec46d", AMBER = "#d9a441", RED = "#e0564f";
 type H = "up" | "warn" | "down";
@@ -130,64 +144,27 @@ function Pipe({ label, state, hover, onEnter, onLeave }: {
   );
 }
 
-function Terminal({ pipe, live, ticks }: { pipe: PanelPipe; live: boolean; ticks: Fresh<unknown> }): JSX.Element {
+function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Element {
   const accent = live ? GREEN : AMBER;
-  const card: CSSProperties = {
-    width: 234, background: live ? "linear-gradient(180deg,#161b21,#13171c)" : "linear-gradient(180deg,#1a1813,#141210)",
-    border: `1px solid ${hexa(accent, live ? 0.55 : 0.5)}`, borderRadius: 8, padding: "14px 15px 15px",
-    display: "flex", flexDirection: "column", gap: 11, position: "relative",
-    boxShadow: live ? "0 0 0 1px rgba(62,196,109,.25),0 0 26px rgba(62,196,109,.2),inset 0 0 30px rgba(62,196,109,.05)" : "inset 0 0 26px rgba(217,164,65,.06)",
-    animation: live ? "pphalo 2.6s ease-in-out infinite" : "none", transition: "border-color .4s, box-shadow .4s, background .4s",
-  };
-  const dotRow = (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <span style={{ width: 7, height: 7, borderRadius: "50%", background: accent, boxShadow: `0 0 7px ${hexa(accent, 0.85)}`, animation: live ? "pppulse 1.4s ease-in-out infinite" : "none" }} />
-      <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: ".04em", color: live ? "#7fcf9a" : "#d9b86a" }}>{live ? "live" : "stale"}</span>
-      <span style={{ flex: 1 }} />
-      <span className="pp-mono" style={{ fontSize: 9, color: "#5a606e" }}>{pipe.domain}</span>
-    </div>
-  );
-  const head = (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-      <span style={{ fontSize: 14.5, fontWeight: 600, color: "#eef1f6" }}>{pipe.id === "ticker" ? "Ticker bid/ask" : pipe.panel}</span>
-      <span className="pp-mono" style={{ fontSize: 10, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>PANEL</span>
-    </div>
-  );
-  if (pipe.id !== "ticker") {
-    return (
-      <div style={{ flex: "none" }}><div style={card}>{head}{dotRow}<div style={{ height: 1, background: "#23272f" }} />
-        <div className="pp-mono" style={{ fontSize: 11, color: live ? "#cdd3dd" : "#766f5e", lineHeight: 1.5 }}>{live ? "rendering live data" : "awaiting feed…"}</div>
-      </div></div>
-    );
-  }
-  const t = ticks.data as { bid?: number | null; ask?: number | null; mid?: number | null } | null;
-  const bid = t?.bid ?? null, ask = t?.ask ?? null;
-  const mid = bid != null && ask != null ? (bid + ask) / 2 : (t?.mid ?? null);
-  const spread = bid != null && ask != null ? ((ask - bid) * 10000).toFixed(1) : "—";
-  const val = live ? "#dfe4ec" : "#766f5e";
+  const ViewComp = VIEW_COMPONENTS[pipe.view];
   return (
-    <div style={{ flex: "none" }}><div style={card}>{head}{dotRow}<div style={{ height: 1, background: "#23272f" }} />
-      <div style={{ display: "flex", gap: 14 }}>
-        {([["BID", bid], ["ASK", ask]] as const).map(([lbl, v]) => (
-          <div key={lbl} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            <span className="pp-mono" style={{ fontSize: 10, letterSpacing: ".12em", color: "#6b7180" }}>{lbl}</span>
-            <span className="pp-mono" style={{ fontSize: 18, fontWeight: 600, color: val }}>{v != null ? v.toFixed(5) : "—"}</span>
-          </div>
-        ))}
+    <div style={{ flex: "none", alignSelf: "stretch", width: 640, minHeight: 420, display: "flex", flexDirection: "column", border: `1px solid ${hexa(accent, live ? 0.55 : 0.5)}`, borderRadius: 9, overflow: "hidden", background: "#0f1115", boxShadow: live ? "0 0 0 1px rgba(62,196,109,.25),0 0 28px rgba(62,196,109,.18)" : "inset 0 0 26px rgba(217,164,65,.05)", animation: live ? "pphalo 2.6s ease-in-out infinite" : "none" }}>
+      <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", borderBottom: `1px solid ${hexa(accent, 0.3)}`, background: "#13171c" }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: accent, boxShadow: `0 0 7px ${hexa(accent, 0.85)}`, animation: live ? "pppulse 1.4s ease-in-out infinite" : "none" }} />
+        <span style={{ fontSize: 14, fontWeight: 600, color: "#eef1f6" }}>{pipe.panel}</span>
+        <span className="pp-mono" style={{ fontSize: 9.5, color: live ? "#7fcf9a" : "#d9b86a" }}>{live ? "live" : "stale"}</span>
+        <span style={{ flex: 1 }} />
+        <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>PANEL · {VIEW_LABEL[pipe.view]}</span>
       </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-        <span className="pp-mono" style={{ fontSize: 10, letterSpacing: ".12em", color: "#6b7180" }}>MID</span>
-        <span className="pp-mono" style={{ fontSize: 27, fontWeight: 700, color: live ? GREEN : "#766f5e", lineHeight: 1 }}>{mid != null ? mid.toFixed(5) : "—"}</span>
+      <div style={{ flex: 1, overflow: "auto", minHeight: 0, background: "#0f1115" }}>
+        <ViewComp />
       </div>
-      <div className="pp-mono" style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#5a606e" }}>
-        <span>spread {spread} pip</span><span>{live ? "EUR/USD" : "no fresh ticks"}</span>
-      </div>
-    </div></div>
+    </div>
   );
 }
 
-function Stage({ pipe, id, setId, statuses, asOf, ticks }: {
-  pipe: PanelPipe; id: string; setId: (v: string) => void; statuses: H[]; asOf: number | null; ticks: Fresh<unknown>;
+function Stage({ pipe, id, setId, statuses, asOf }: {
+  pipe: PanelPipe; id: string; setId: (v: string) => void; statuses: H[]; asOf: number | null;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [hoverNode, setHoverNode] = useState<number | null>(null);
@@ -239,15 +216,15 @@ function Stage({ pipe, id, setId, statuses, asOf, ticks }: {
         <span className="pp-mono" style={{ fontSize: 11, color: stampColor }}>{stampText}</span>
       </div>
 
-      <div className="pp-area" style={{ flex: 1, overflow: "auto", display: "flex", alignItems: "center", padding: "44px 34px", background: "radial-gradient(ellipse 80% 120% at 50% 0%, #121620 0%, #0e0e0e 60%)" }}>
-        <div style={{ display: "flex", alignItems: "center", margin: "auto" }}>
+      <div className="pp-area" style={{ flex: 1, overflow: "auto", display: "flex", alignItems: "stretch", padding: "30px 34px", background: "radial-gradient(ellipse 80% 120% at 50% 0%, #121620 0%, #0e0e0e 60%)" }}>
+        <div style={{ display: "flex", alignItems: "stretch", margin: "auto 0" }}>
           {infra.map((n, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center" }}>
               <Block node={n} status={statuses[i]!} tip={hoverNode === i} onEnter={() => setHoverNode(i)} onLeave={() => setHoverNode(null)} />
               <Pipe label={pipe.edges[i] ?? ""} state={pstate(statuses[i]!, statuses[i + 1]!)} hover={hoverPipe === i} onEnter={() => setHoverPipe(i)} onLeave={() => setHoverPipe(null)} />
             </div>
           ))}
-          <Terminal pipe={pipe} live={statuses[statuses.length - 1] === "up"} ticks={ticks} />
+          <Terminal pipe={pipe} live={statuses[statuses.length - 1] === "up"} />
         </div>
       </div>
 
@@ -273,7 +250,7 @@ function LiveStage({ pipe, id, setId }: { pipe: PanelPipe; id: string; setId: (v
   // independent of the stack's global DEGRADED flag.
   const apiUp: H = desk.system.status !== "missing" || ws === "up" ? "up" : "down";
   const statuses = pipe.nodes.map((n) => resolve(n, hmap, dom, ws, apiUp));
-  return <Stage pipe={pipe} id={id} setId={setId} statuses={statuses} asOf={domainF.asOf ?? ticks.asOf} ticks={ticks} />;
+  return <Stage pipe={pipe} id={id} setId={setId} statuses={statuses} asOf={domainF.asOf ?? ticks.asOf} />;
 }
 
 export function PipelineViz(): JSX.Element {
