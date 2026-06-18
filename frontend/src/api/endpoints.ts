@@ -131,6 +131,7 @@ export const fetchPnlAttribution = (lookbackHours = 24) =>
     query: { lookback_hours: lookbackHours },
   });
 export const fetchPinRisk = () => apiGet<unknown>("/api/v1/portfolio/pin-risk");
+export const fetchVegaPca = () => apiGet<unknown>("/api/v1/portfolio/vega-pca");
 export const fetchScenarios = () => apiGet<unknown>("/api/v1/portfolio/scenarios");
 export const fetchHedgeSummary = () =>
   apiGet<unknown>("/api/v1/portfolio/hedge-summary");

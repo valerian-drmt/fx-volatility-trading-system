@@ -4,7 +4,7 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useState } from "react";
-import { fetchGreeksLadder, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchPinRisk, fetchStressGrid, fetchVegaPca } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -14,7 +14,7 @@ import { DATA, DATA2, fmt } from "../data";
 import type { VarFactor } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreeksLadder, adaptPinRisk, adaptStressGrid, type LiveLadder, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptPinRisk, adaptStressGrid, adaptVegaPca, type LiveLadder, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -684,6 +684,7 @@ export function RiskView(): JSX.Element {
   const [scenKind] = useState("spot");
   const scen = DATA2.scenarioSeries(scenKind);
   const { risk, portfolio } = useDeskData();
+  const vpca = useFetch<VegaPcaRow[]>(() => fetchVegaPca().then(adaptVegaPca), 120_000).data ?? [];
   const g = DATA.greeks; // per-unit greek representation — not the live positions-derived nets; stays mock (09)
   const a = portfolio.data?.account ?? DATA.account; // margin/net-liq live (PR 3 account domain)
   const vd = risk.data ?? { var95: g.var1d95, var99: g.var1d99, es99: g.var1d99 * 1.16, nDays: 0, hist: [], perTenor: [] };
@@ -691,8 +692,9 @@ export function RiskView(): JSX.Element {
   // reconciliation (§1): net 2nd-order greeks = Σ of their tenor buckets, by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
   const netVolga = pt.reduce((s, r) => s + r.volga, 0);
-  const sumPC = +DATA2.vegaPCA.reduce((s, p) => s + p.vega, 0).toFixed(1);
-  const skewResid = +(g.vega - sumPC).toFixed(1); // vega outside the 3 signal modes = incident skew
+  const netVega = +pt.reduce((s, r) => s + r.vega, 0).toFixed(1); // live net vega = Σ tenor buckets
+  const sumPC = +vpca.reduce((s, p) => s + p.vega, 0).toFixed(1);
+  const skewResid = +(netVega - sumPC).toFixed(1); // vega outside the 3 signal modes = incident skew
   const SKEW_THR = 5; // |residual| above this = a leak to investigate
   const skewLeak = Math.abs(skewResid) > SKEW_THR;
   const rrToFlat = Math.round(Math.abs(netVanna) / 8); // RR 25Δ contracts to flatten net vanna (mechanical hedge)
@@ -736,16 +738,16 @@ export function RiskView(): JSX.Element {
             <div className="gs-section-lbl util-lbl">Vega exposure <span className="dim">· by tenor (curve) & by signal mode (PCA)</span></div>
             <div className="gs-2col">
               <div className="gs-sub"><div className="gs-sublbl mono dim">vega by tenor · curve 1M–6M (magnitude)</div><VegaTenorLadder rows={pt} /></div>
-              <div className="gs-sub"><div className="gs-sublbl mono dim">vega → PCA mode · the signal base ($k)</div><DivBars rows={DATA2.vegaPCA.map((p) => ({ label: p.mode, sub: p.name + " · " + p.var + "%", v: p.vega }))} unit="k" /></div>
+              <div className="gs-sub"><div className="gs-sublbl mono dim">vega → PCA mode · the signal base ($k)</div><DivBars rows={vpca.map((p) => ({ label: p.mode, sub: p.name + " · " + p.var + "%", v: p.vega }))} unit="k" /></div>
             </div>
             <div className="skew-resid">
               <div className="sr-head">
                 <span className="sr-lbl mono">skew · hors-signal</span>
                 <RiskOnly />
                 <span className={"sr-val mono " + (skewLeak ? "warn" : "dim")}>{fmt.sgn(skewResid, 1)}k</span>
-                <span className="sr-eq dim small mono">ΣPC ({sumPC}k) + skew = net vega ({g.vega}k)</span>
+                <span className="sr-eq dim small mono">ΣPC ({sumPC}k) + skew = net vega ({netVega}k)</span>
               </div>
-              <div className="sr-bar"><div className="sr-fill" style={{ width: Math.min(100, Math.abs(skewResid) / g.vega * 100) + "%" }} /></div>
+              <div className="sr-bar"><div className="sr-fill" style={{ width: Math.min(100, Math.abs(skewResid) / (netVega || 1) * 100) + "%" }} /></div>
               {skewLeak
                 ? <div className="sr-alert"><span className="flag-dot" />skew incident à revoir · |résiduel| &gt; {SKEW_THR}k — fuite (structure asymétrique / fill déséquilibré), pas une position</div>
                 : <div className="sr-ok dim small mono">dans le seuil (≈ 0) · aucune vue de skew au book</div>}

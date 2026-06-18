@@ -327,6 +327,28 @@ interface PinRowResp {
   pnl_at_pin_usd?: number | null;
 }
 
+export interface VegaPcaRow {
+  mode: string;
+  name: string;
+  vega: number; // $k per unit-PC move
+  var: number; // variance explained %
+}
+
+interface VegaPcaResp {
+  pcs?: { pc?: number; name?: string; variance_pct?: number | null; vega_usd?: number | null }[];
+}
+
+/** /portfolio/vega-pca → book vega projected on PC1/2/3 ($ → $k). */
+export function adaptVegaPca(raw: unknown): VegaPcaRow[] {
+  const pcs = ((raw ?? {}) as VegaPcaResp).pcs ?? [];
+  return pcs.map((p) => ({
+    mode: "PC" + (p.pc ?? 0),
+    name: p.name ?? "",
+    vega: r1(n(p.vega_usd) / 1000),
+    var: n(p.variance_pct),
+  }));
+}
+
 /** /portfolio/pin-risk → per-option pin exposure (P&L now vs at the strike). */
 export function adaptPinRisk(raw: unknown): PinRiskRow[] {
   const rows = ((raw ?? {}) as { rows?: PinRowResp[] }).rows ?? [];
