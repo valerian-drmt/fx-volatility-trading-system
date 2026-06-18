@@ -21,6 +21,7 @@ import { DbExplorer } from "./dev/DbExplorer";
 import { DbSchema } from "./dev/DbSchema";
 import { Logs } from "./dev/Logs";
 import { Migrations } from "./dev/Migrations";
+import { PipelineViz } from "./dev/PipelineViz";
 import { Portfolio } from "./dev/Portfolio";
 import { StackCombined } from "./dev/StackCombined";
 import { Step2Pca } from "./dev/Step2Pca";
@@ -43,6 +44,7 @@ const TABS: TabDef[] = [
   { id: "step2", label: "📊 PCA Signals", Component: Step2Pca },
   { id: "step3", label: "🎯 Trade · pre/post", Component: Step3Trade },
   { id: "portfolio", label: "💼 Portfolio", Component: Portfolio },
+  { id: "pipeline", label: "🧭 Pipeline", Component: PipelineViz },
 ];
 
 export function DevLayout(): JSX.Element {
