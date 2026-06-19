@@ -19,11 +19,11 @@ export type DomainId =
 export type NodeKind = "external" | "container" | "store" | "api" | "frontend" | "panel";
 
 /**
- * Data-flow archetype of a block (a block can wear several at once):
- * - emit      émetteur     — sends data out (source of an edge)
- * - receive   récepteur    — receives / stores data (sink of an edge)
- * - transform transformateur — changes the data (engines, api compute)
- * - hub       concentrateur — centralizes inbound + redistributes outbound (api, Redis)
+ * Single data-flow archetype of a block (its dominant role):
+ * - emit      emitter     — sends data out (source of the flow)
+ * - receive   receiver    — receives / stores data (sink of the flow)
+ * - transform transformer — changes the data (engines, api compute)
+ * - hub       hub         — centralizes inbound + redistributes outbound (api, Redis)
  */
 export type Role = "emit" | "transform" | "receive" | "hub";
 
@@ -32,7 +32,7 @@ export interface PipeNode {
   label: string;
   sub?: string;
   health?: string;
-  roles?: Role[];
+  role?: Role;
 }
 
 export interface PanelPipe {
@@ -50,31 +50,31 @@ export interface PanelPipe {
   isolated?: boolean;
 }
 
-// roles encode each block's data-flow archetype(s) — see `Role`.
-const IB: PipeNode = { kind: "external", label: "IB", sub: "Interactive Brokers", roles: ["emit"] };
-const IBG: PipeNode = { kind: "container", label: "ib-gateway", sub: "broker session", roles: ["receive", "emit"] };
-const API: PipeNode = { kind: "api", label: "api", sub: "FastAPI", roles: ["receive", "transform", "emit", "hub"] };
-const FE: PipeNode = { kind: "frontend", label: "frontend", sub: "React · fetch/WS", roles: ["receive", "emit"] };
-const pg = (sub: string): PipeNode => ({ kind: "store", label: "Postgres", sub, roles: ["receive", "emit"] });
-const redis = (sub: string): PipeNode => ({ kind: "store", label: "Redis", sub, roles: ["receive", "emit", "hub"] });
-// engines receive (IB/Redis/PG), transform (compute), then emit (publish) — never store.
-const eng = (label: string, sub: string): PipeNode => ({ kind: "container", label, sub, roles: ["receive", "transform", "emit"] });
-const panel = (name: string): PipeNode => ({ kind: "panel", label: name, sub: "displayed panel", roles: ["receive"] });
-// db-writer is the only writer: it receives db_events and emits rows into Postgres (no transform).
-const DBW: PipeNode = { kind: "container", label: "db-writer", sub: "db_events → batch INSERT", roles: ["receive", "emit"] };
+// role = each block's dominant data-flow archetype (see `Role`).
+const IB: PipeNode = { kind: "external", label: "IB", sub: "Interactive Brokers", role: "emit" };
+const IBG: PipeNode = { kind: "container", label: "ib-gateway", sub: "broker session", role: "emit" };
+const API: PipeNode = { kind: "api", label: "api", sub: "FastAPI", role: "hub" };
+const FE: PipeNode = { kind: "frontend", label: "frontend", sub: "React · fetch/WS", role: "receive" };
+const pg = (sub: string): PipeNode => ({ kind: "store", label: "Postgres", sub, role: "receive" });
+const redis = (sub: string): PipeNode => ({ kind: "store", label: "Redis", sub, role: "hub" });
+// engines compute — their dominant role is transformer (they never store).
+const eng = (label: string, sub: string): PipeNode => ({ kind: "container", label, sub, role: "transform" });
+const panel = (name: string): PipeNode => ({ kind: "panel", label: name, sub: "displayed panel", role: "receive" });
+// db-writer is the only writer: it lands db_events into Postgres → receiver.
+const DBW: PipeNode = { kind: "container", label: "db-writer", sub: "db_events → batch INSERT", role: "receive" };
 
 export const PIPELINES: PanelPipe[] = [
   // ───────────────────────── Dashboard ─────────────────────────
   {
     id: "ticker", panel: "Spot ticker (bid/ask)", view: "dashboard", domain: "ticks",
     nodes: [
-      { kind: "external", label: "IB", sub: "Interactive Brokers", health: "IB Gateway", roles: ["emit"] },
-      { kind: "container", label: "ib-gateway", sub: "broker session", health: "IB Gateway", roles: ["receive", "emit"] },
-      { kind: "container", label: "market-data", sub: "clientId 1 · tick stream", health: "market-data", roles: ["receive", "transform", "emit"] },
-      { kind: "store", label: "Redis", sub: "latest_spot:EUR · ticks ch.", health: "redis", roles: ["receive", "emit", "hub"] },
-      { kind: "api", label: "api", sub: "FastAPI · WS bridge", health: "__api", roles: ["receive", "emit", "hub"] },
-      { kind: "frontend", label: "frontend", sub: "React · WS client", health: "__self", roles: ["receive", "emit"] },
-      { kind: "panel", label: "Ticker bid/ask", sub: "displayed panel", health: "__ws", roles: ["receive"] },
+      { kind: "external", label: "IB", sub: "Interactive Brokers", health: "IB Gateway", role: "emit" },
+      { kind: "container", label: "ib-gateway", sub: "broker session", health: "IB Gateway", role: "emit" },
+      { kind: "container", label: "market-data", sub: "clientId 1 · tick stream", health: "market-data", role: "transform" },
+      { kind: "store", label: "Redis", sub: "latest_spot:EUR · ticks ch.", health: "redis", role: "hub" },
+      { kind: "api", label: "api", sub: "FastAPI · WS bridge", health: "__api", role: "hub" },
+      { kind: "frontend", label: "frontend", sub: "React · WS client", health: "__self", role: "receive" },
+      { kind: "panel", label: "Ticker bid/ask", sub: "displayed panel", health: "__ws", role: "receive" },
     ],
     edges: ["get tick", "reqMktData", "publish ticks", "WS bridge", "WS /ws/ticks", "render"],
   },

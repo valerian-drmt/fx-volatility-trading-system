@@ -18,7 +18,7 @@ import { PortfolioView } from "../../voldesk/views/PortfolioView";
 import { RiskView } from "../../voldesk/views/RiskView";
 import { SignalsView } from "../../voldesk/views/SignalsView";
 import { TradeView } from "../../voldesk/views/TradeView";
-import { PIPELINES, type NodeKind, type PanelPipe, type PipeNode, type Role, type ViewId } from "./pipelines";
+import { PIPELINES, type PanelPipe, type PipeNode, type Role, type ViewId } from "./pipelines";
 
 // The real prod view rendered in the terminal "screen" (the panel lives in it).
 // Dashboard + Trade take props in the app; stub them for the viz.
@@ -34,23 +34,16 @@ const GREEN = "#3ec46d", AMBER = "#d9a441", RED = "#e0564f";
 type H = "up" | "warn" | "down";
 const HCOLOR: Record<H, string> = { up: GREEN, warn: AMBER, down: RED };
 
-// Two block categories → two colours only: the external broker vs everything
-// we run (containers + stores + api + front all read as "container").
-const BLOCK_STYLE = {
-  external: { color: "#c79a4b", glyph: "⇅", tag: "EXTERNAL" },
-  container: { color: "#5b8fd6", glyph: "▣", tag: "CONTAINER" },
-} as const;
-const blockStyle = (kind: NodeKind): { color: string; glyph: string; tag: string } =>
-  kind === "external" ? BLOCK_STYLE.external : BLOCK_STYLE.container;
 const VIEW_LABEL: Record<ViewId, string> = {
   dashboard: "Dashboard", trade: "Trade", signals: "Signal", risk: "Risk", portfolio: "Portfolio",
 };
-// data-flow archetype chips shown on each block (a block can wear several).
-const ROLE_META: Record<Role, { abbr: string; label: string; color: string }> = {
-  emit: { abbr: "É", label: "émetteur · envoie la donnée", color: "#3ec46d" },
-  transform: { abbr: "T", label: "transformateur · calcule / transforme", color: "#5b8fd6" },
-  receive: { abbr: "R", label: "récepteur · reçoit / enregistre", color: "#d9a441" },
-  hub: { abbr: "H", label: "hub / concentrateur · centralise + redistribue", color: "#a77bd6" },
+// Each block's single data-flow archetype → tag term, glyph and colour. The
+// term replaces the old CONTAINER/EXTERNAL tag; the glyph changes with it.
+const ROLE_META: Record<Role, { term: string; glyph: string; label: string; color: string }> = {
+  emit: { term: "EMITTER", glyph: "➚", label: "emitter · sends data out", color: "#3ec46d" },
+  transform: { term: "TRANSFORMER", glyph: "⚙", label: "transformer · computes / transforms the data", color: "#5b8fd6" },
+  receive: { term: "RECEIVER", glyph: "➘", label: "receiver · receives / records the data", color: "#d9a441" },
+  hub: { term: "HUB", glyph: "❖", label: "hub · centralizes inbound + redistributes outbound", color: "#a77bd6" },
 };
 
 const hexa = (hex: string, a: number): string => {
@@ -99,7 +92,8 @@ const CSS = `
 .pp-side-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:4px 0 14px}
 .pp-side-list::-webkit-scrollbar{width:8px}
 .pp-side-list::-webkit-scrollbar-thumb{background:#20242d;border-radius:5px}
-.pp-grp{font-size:9.5px;font-weight:700;letter-spacing:.18em;color:#5a606e;padding:14px 16px 5px}
+.pp-grp{font-size:12.5px;font-weight:700;letter-spacing:.1em;color:#dfe4ec;padding:16px 16px 7px;border-top:1px solid #15181e}
+.pp-side-list>div:first-child .pp-grp{border-top:none}
 .pp-item{display:flex;align-items:center;gap:9px;padding:8px 14px 8px 16px;cursor:pointer;border-left:2px solid transparent;transition:background .12s}
 .pp-item:hover{background:#11141a}
 .pp-item.on{background:#141a16;border-left-color:#3ec46d}
@@ -117,41 +111,53 @@ function XMark({ size }: { size: number }): JSX.Element {
   return <svg width={size} height={size} viewBox="0 0 28 28" fill="none"><path d="M7 7L21 21M21 7L7 21" stroke={RED} strokeWidth="3" strokeLinecap="round" /></svg>;
 }
 
+// hexagon (pointy left/right) for EXTERNAL blocks — a distinct shape so the
+// broker reads as "outside our infra", unlike the rounded-rect containers.
+const HEX = "polygon(18px 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 18px 100%, 0 50%)";
+
 function Block({ node, status, tip, onEnter, onLeave }: {
   node: PipeNode; status: H; tip: boolean; onEnter: () => void; onLeave: () => void;
 }): JSX.Element {
-  const k = blockStyle(node.kind);
+  const rm = ROLE_META[node.role ?? "receive"];
   const sc = HCOLOR[status];
   const down = status === "down";
-  return (
-    <div style={{ flex: "none", width: 188, position: "relative" }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
-      {down ? <div style={{ position: "absolute", left: "50%", top: -42, transform: "translateX(-50%)", lineHeight: 0, zIndex: 6 }}><XMark size={34} /></div> : null}
-      <div style={{ position: "relative", background: down ? "#1b1517" : "#181b22", border: `1px solid ${hexa(sc, down ? 0.5 : 0.32)}`, borderRadius: 7, padding: "15px 15px 16px", minHeight: 150, display: "flex", flexDirection: "column", gap: 10, overflow: "hidden", boxShadow: down ? `0 0 16px ${hexa(RED, 0.14)}, inset 0 0 22px ${hexa(RED, 0.05)}` : "none", transition: "background .25s, border-color .25s, box-shadow .25s" }}>
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: hexa(sc, down ? 0.7 : 0.55) }} />
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div className="pp-mono" style={{ width: 30, height: 30, borderRadius: 6, display: "grid", placeItems: "center", fontSize: 17, color: k.color, border: `1px solid ${hexa(k.color, 0.42)}`, background: hexa(k.color, 0.1), opacity: down ? 0.6 : 1 }}>{k.glyph}</div>
-          <div className="pp-mono" style={{ fontSize: 10.5, letterSpacing: ".12em", color: k.color, fontWeight: 600, opacity: down ? 0.7 : 1 }}>{k.tag}</div>
-        </div>
-        <div style={{ fontSize: 16.5, fontWeight: 600, color: "#e6eaf1" }}>{node.label}</div>
-        <div className="pp-mono" style={{ fontSize: 12, color: "#6b7180", lineHeight: 1.45 }}>{node.sub}</div>
-        {node.roles?.length ? (
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            {node.roles.map((r) => {
-              const m = ROLE_META[r];
-              return (
-                <span key={r} className="pp-mono" title={m.label} style={{ fontSize: 9.5, fontWeight: 700, lineHeight: 1, padding: "3px 5px", borderRadius: 4, color: m.color, border: `1px solid ${hexa(m.color, down ? 0.28 : 0.45)}`, background: hexa(m.color, down ? 0.05 : 0.12), opacity: down ? 0.65 : 1 }}>{m.abbr}</span>
-              );
-            })}
-          </div>
-        ) : null}
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 9, height: 9, borderRadius: "50%", background: sc, boxShadow: `0 0 8px ${hexa(sc, 0.8)}`, animation: status === "up" ? "pppulse 1.6s ease-in-out infinite" : "none" }} />
-          <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: ".12em", fontWeight: 600, color: sc }}>{status === "up" ? "UP" : status === "warn" ? "WARN" : "DOWN"}</span>
-        </div>
+  const external = node.kind === "external";
+  const cardBg = down ? "#1b1517" : "#181b22";
+
+  const body = (
+    <>
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: hexa(sc, down ? 0.7 : 0.55) }} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div className="pp-mono" style={{ width: 30, height: 30, borderRadius: 6, display: "grid", placeItems: "center", fontSize: 17, color: rm.color, border: `1px solid ${hexa(rm.color, 0.42)}`, background: hexa(rm.color, 0.1), opacity: down ? 0.6 : 1 }}>{rm.glyph}</div>
+        <div className="pp-mono" title={rm.label} style={{ fontSize: 10.5, letterSpacing: ".1em", color: rm.color, fontWeight: 700, opacity: down ? 0.7 : 1 }}>{rm.term}</div>
       </div>
+      <div style={{ fontSize: 16.5, fontWeight: 600, color: "#e6eaf1" }}>{node.label}</div>
+      <div className="pp-mono" style={{ fontSize: 12, color: "#6b7180", lineHeight: 1.45 }}>{node.sub}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ width: 9, height: 9, borderRadius: "50%", background: sc, boxShadow: `0 0 8px ${hexa(sc, 0.8)}`, animation: status === "up" ? "pppulse 1.6s ease-in-out infinite" : "none" }} />
+        <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: ".12em", fontWeight: 600, color: sc }}>{status === "up" ? "UP" : status === "warn" ? "WARN" : "DOWN"}</span>
+      </div>
+    </>
+  );
+
+  return (
+    <div style={{ flex: "none", width: external ? 210 : 188, position: "relative" }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
+      {down ? <div style={{ position: "absolute", left: "50%", top: -42, transform: "translateX(-50%)", lineHeight: 0, zIndex: 6 }}><XMark size={34} /></div> : null}
+      {external ? (
+        // two-layer clip = a bordered hexagon (CSS borders don't follow clip-path)
+        <div style={{ clipPath: HEX, background: hexa(sc, down ? 0.5 : 0.4), padding: 1.5, boxShadow: down ? `0 0 16px ${hexa(RED, 0.14)}` : `0 0 18px ${hexa(rm.color, 0.1)}` }}>
+          <div style={{ position: "relative", clipPath: HEX, background: cardBg, padding: "15px 30px 16px", minHeight: 150, display: "flex", flexDirection: "column", gap: 10, overflow: "hidden" }}>
+            {body}
+          </div>
+        </div>
+      ) : (
+        <div style={{ position: "relative", background: cardBg, border: `1px solid ${hexa(sc, down ? 0.5 : 0.32)}`, borderRadius: 7, padding: "15px 15px 16px", minHeight: 150, display: "flex", flexDirection: "column", gap: 10, overflow: "hidden", boxShadow: down ? `0 0 16px ${hexa(RED, 0.14)}, inset 0 0 22px ${hexa(RED, 0.05)}` : "none", transition: "background .25s, border-color .25s, box-shadow .25s" }}>
+          {body}
+        </div>
+      )}
       {tip ? (
         <div className="pp-mono" style={{ position: "absolute", top: "calc(100% + 9px)", left: "50%", transform: "translateX(-50%)", whiteSpace: "nowrap", background: "#20242d", border: "1px solid #313742", borderRadius: 6, padding: "6px 9px", fontSize: 10, color: "#c3c8d2", boxShadow: "0 8px 22px rgba(0,0,0,.5)", zIndex: 15 }}>
-          {node.kind}: {node.label} — {node.sub}
+          {rm.term}: {node.label} — {node.sub}
         </div>
       ) : null}
     </div>
