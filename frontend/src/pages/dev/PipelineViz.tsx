@@ -144,8 +144,39 @@ function Pipe({ label, state, hover, onEnter, onLeave }: {
   );
 }
 
+// EURUSD spot ticker — bespoke terminal screen (no real Dashboard `Panel` to
+// isolate: bid/ask lives in the app header). Reads the live /ws/ticks feed.
+function TickerScreen({ live }: { live: boolean }): JSX.Element {
+  const { ticks } = useDeskData();
+  const d = ticks.data;
+  const bid = d?.bid;
+  const ask = d?.ask;
+  const mid = d?.mid ?? (bid != null && ask != null ? (bid + ask) / 2 : undefined);
+  const f5 = (v?: number): string => (v != null ? v.toFixed(5) : "—.—————");
+  const accent = live ? GREEN : AMBER;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, minHeight: 380, padding: 30 }}>
+      <div className="pp-mono" style={{ fontSize: 12, letterSpacing: ".24em", color: "#8a909c", textTransform: "uppercase" }}>EURUSD spot</div>
+      <div className="pp-mono" style={{ fontSize: 58, fontWeight: 600, lineHeight: 1, color: live ? "#eef6f0" : "#cdd1d8", textShadow: live ? `0 0 22px ${hexa(GREEN, 0.4)}` : "none", animation: live ? "pphalo 2.6s ease-in-out infinite" : "none" }}>{f5(mid)}</div>
+      <div style={{ display: "flex", alignItems: "stretch", gap: 24, marginTop: 8 }}>
+        <div style={{ textAlign: "center" }}>
+          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: ".18em", color: "#a06158" }}>BID</div>
+          <div className="pp-mono" style={{ fontSize: 26, fontWeight: 500, color: "#e0726a" }}>{f5(bid)}</div>
+        </div>
+        <div style={{ width: 1, background: "#262a33" }} />
+        <div style={{ textAlign: "center" }}>
+          <div className="pp-mono" style={{ fontSize: 10, letterSpacing: ".18em", color: "#4f9c74" }}>ASK</div>
+          <div className="pp-mono" style={{ fontSize: 26, fontWeight: 500, color: "#5fce93" }}>{f5(ask)}</div>
+        </div>
+      </div>
+      <div className="pp-mono" style={{ fontSize: 10.5, color: accent, marginTop: 10 }}>{live ? "● live · /ws/ticks" : "○ stale · last value"}</div>
+    </div>
+  );
+}
+
 function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Element {
   const accent = live ? GREEN : AMBER;
+  const isTicker = pipe.id === "ticker";
   const ViewComp = VIEW_COMPONENTS[pipe.view];
   const screenRef = useRef<HTMLDivElement>(null);
 
@@ -189,10 +220,10 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
         <span style={{ fontSize: 14, fontWeight: 600, color: "#eef1f6" }}>{pipe.panel}</span>
         <span className="pp-mono" style={{ fontSize: 9.5, color: live ? "#7fcf9a" : "#d9b86a" }}>{live ? "live" : "stale"}</span>
         <span style={{ flex: 1 }} />
-        <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>{pipe.isolated ? "PANEL" : "VIEW"} · {VIEW_LABEL[pipe.view]}</span>
+        <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>{pipe.isolated || isTicker ? "PANEL" : "VIEW"} · {VIEW_LABEL[pipe.view]}</span>
       </div>
       <div ref={screenRef} className={pipe.isolated ? "pp-screen pp-iso" : "pp-screen"} style={{ flex: 1, overflow: "auto", minHeight: 0, background: "#0f1115" }}>
-        <ViewComp />
+        {isTicker ? <TickerScreen live={live} /> : <ViewComp />}
       </div>
     </div>
   );
