@@ -84,9 +84,24 @@ const CSS = `
   0%,100%{box-shadow:0 0 0 1px rgba(62,196,109,.22),0 0 22px rgba(62,196,109,.16),inset 0 0 30px rgba(62,196,109,.05)}
   50%{box-shadow:0 0 0 1px rgba(62,196,109,.32),0 0 32px rgba(62,196,109,.28),inset 0 0 34px rgba(62,196,109,.08)}
 }
-.pp-root{height:calc(100vh - 92px);display:flex;flex-direction:column;overflow:hidden;background:#0e0e0e;color:#d4d8e0;font-family:'IBM Plex Sans',system-ui,sans-serif}
+.pp-root{height:calc(100vh - 92px);display:flex;overflow:hidden;background:#0e0e0e;color:#d4d8e0;font-family:'IBM Plex Sans',system-ui,sans-serif}
 .pp-root *{box-sizing:border-box}
 .pp-mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+.pp-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.pp-side{flex:none;width:276px;background:#08090b;border-right:1px solid #1b1e25;display:flex;flex-direction:column;overflow:hidden}
+.pp-side-list{flex:1;overflow-y:auto;overflow-x:hidden;padding:4px 0 14px}
+.pp-side-list::-webkit-scrollbar{width:8px}
+.pp-side-list::-webkit-scrollbar-thumb{background:#20242d;border-radius:5px}
+.pp-grp{font-size:9.5px;font-weight:700;letter-spacing:.18em;color:#5a606e;padding:14px 16px 5px}
+.pp-item{display:flex;align-items:center;gap:9px;padding:8px 14px 8px 16px;cursor:pointer;border-left:2px solid transparent;transition:background .12s}
+.pp-item:hover{background:#11141a}
+.pp-item.on{background:#141a16;border-left-color:#3ec46d}
+.pp-item-name{flex:1;font-size:12.5px;color:#9aa1ae;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pp-item.on .pp-item-name{color:#e6f6ec}
+.pp-dot{flex:none;width:9px;height:9px;border-radius:50%}
+.pp-canvas{flex:1;position:relative;overflow:hidden;background:radial-gradient(ellipse 90% 130% at 50% 0%, #121620 0%, #0e0e0e 62%);cursor:grab}
+.pp-canvas.grabbing{cursor:grabbing}
+.pp-stagewrap{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
 .pp-area::-webkit-scrollbar{height:9px;width:9px}
 .pp-area::-webkit-scrollbar-thumb{background:#262a33;border-radius:5px}
 `;
@@ -229,22 +244,89 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
   );
 }
 
-function Stage({ pipe, id, setId, statuses, asOf }: {
-  pipe: PanelPipe; id: string; setId: (v: string) => void; statuses: H[]; asOf: number | null;
+// roll a pipe's per-node statuses into one health pill: any down → down,
+// any warn → warn, else up.
+function rollUp(statuses: H[]): H {
+  return statuses.includes("down") ? "down" : statuses.includes("warn") ? "warn" : "up";
+}
+
+function Sidebar({ id, setId, healthById }: {
+  id: string; setId: (v: string) => void; healthById: Record<string, H>;
 }): JSX.Element {
-  const [open, setOpen] = useState(false);
+  const byView = new Map<ViewId, PanelPipe[]>();
+  for (const p of PIPELINES) byView.set(p.view, [...(byView.get(p.view) ?? []), p]);
+  const downCount = PIPELINES.filter((p) => healthById[p.id] === "down").length;
+  return (
+    <div className="pp-side">
+      <div style={{ flex: "none", padding: "13px 16px 12px", borderBottom: "1px solid #1b1e25" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#e6eaf1" }}>Pipelines</div>
+        <div className="pp-mono" style={{ fontSize: 10, color: downCount ? "#e08a84" : "#5f8d6e", marginTop: 3 }}>
+          {PIPELINES.length} panels · {downCount ? `${downCount} degraded` : "all live"}
+        </div>
+      </div>
+      <div className="pp-side-list">
+        {[...byView.entries()].map(([view, panels]) => (
+          <div key={view}>
+            <div className="pp-grp pp-mono">{VIEW_LABEL[view].toUpperCase()}</div>
+            {panels.map((p) => {
+              const h = healthById[p.id] ?? "down";
+              const c = HCOLOR[h];
+              return (
+                <div key={p.id} className={"pp-item" + (p.id === id ? " on" : "")} onClick={() => setId(p.id)}>
+                  <span className="pp-item-name">{p.panel}</span>
+                  <span className="pp-dot" style={{ background: c, boxShadow: `0 0 7px ${hexa(c, 0.8)}`, animation: h === "up" ? "pppulse 1.8s ease-in-out infinite" : "none" }} />
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// The floating, pannable + zoomable schema canvas (grab to pan, wheel to zoom,
+// double-click to reset) — same interaction model as the DB-schema tab.
+function Stage({ pipe, statuses, asOf }: { pipe: PanelPipe; statuses: H[]; asOf: number | null }): JSX.Element {
   const [hoverNode, setHoverNode] = useState<number | null>(null);
   const [hoverPipe, setHoverPipe] = useState<number | null>(null);
+  const [tx, setTx] = useState(40);
+  const [ty, setTy] = useState(40);
+  const [scale, setScale] = useState(0.78);
+  const [grabbing, setGrabbing] = useState(false);
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+
+  const reset = (): void => { setTx(40); setTy(40); setScale(0.78); };
+  const onMouseDown = (e: React.MouseEvent): void => {
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: tx, oy: ty };
+    setGrabbing(true);
+  };
+  const onMouseMove = (e: React.MouseEvent): void => {
+    const d = dragRef.current;
+    if (!d) return;
+    setTx(d.ox + (e.clientX - d.sx));
+    setTy(d.oy + (e.clientY - d.sy));
+  };
+  const onMouseUp = (): void => { dragRef.current = null; setGrabbing(false); };
+  const onWheel = (e: React.WheelEvent): void => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const cx = (px - tx) / scale;
+    const cy = (py - ty) / scale;
+    const next = Math.max(0.3, Math.min(1.6, scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+    setScale(next);
+    setTx(px - cx * next);
+    setTy(py - cy * next);
+  };
+
   const infra = pipe.nodes.slice(0, -1);
   const pstate = (a: H, b: H): "flow" | "warn" | "down" =>
     a === "down" || b === "down" ? "down" : a === "up" && b === "up" ? "flow" : "warn";
   const healthy = statuses.every((s) => s === "up");
   const downNames = pipe.nodes.filter((_, i) => statuses[i] === "down").map((n) => n.label);
   const warnNames = pipe.nodes.filter((_, i) => statuses[i] === "warn").map((n) => n.label);
-
-  const byView = new Map<ViewId, PanelPipe[]>();
-  for (const p of PIPELINES) byView.set(p.view, [...(byView.get(p.view) ?? []), p]);
-
   const stampColor = healthy ? "#7fcf9a" : downNames.length ? "#e08a84" : "#d9b86a";
   const stampText = healthy
     ? `⚡ live · updated ${asOf ? clk(new Date(asOf)) : "—"}`
@@ -253,44 +335,40 @@ function Stage({ pipe, id, setId, statuses, asOf }: {
       : `◐ degraded · ${warnNames.join(", ")}`;
 
   return (
-    <div className="pp-root">
-      <style>{CSS}</style>
-      <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 14, padding: "11px 18px", background: "#0f1115", borderBottom: "1px solid #1b1e25", position: "relative", zIndex: 20 }}>
-        <div style={{ position: "relative" }}>
-          <button onClick={() => setOpen((o) => !o)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 11px", background: "#181b22", border: "1px solid #2a2f38", borderRadius: 7, cursor: "pointer", color: "#e6eaf1" }}>
-            <span className="pp-mono" style={{ fontSize: 8.5, letterSpacing: ".14em", color: "#5a606e" }}>PANEL</span>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>{pipe.panel}</span>
-            <span style={{ fontSize: 9, color: "#6b7180" }}>▼</span>
-          </button>
-          {open ? (
-            <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, minWidth: 240, maxHeight: 420, overflow: "auto", background: "#161a20", border: "1px solid #2a2f38", borderRadius: 8, padding: 5, zIndex: 40, boxShadow: "0 12px 34px rgba(0,0,0,.55)" }}>
-              {[...byView.entries()].map(([view, panels]) => (
-                <div key={view}>
-                  <div className="pp-mono" style={{ fontSize: 13, fontWeight: 600, letterSpacing: ".1em", color: "#aab0bd", padding: "11px 9px 5px" }}>{VIEW_LABEL[view].toUpperCase()}</div>
-                  {panels.map((p) => (
-                    <div key={p.id} onClick={() => { setId(p.id); setOpen(false); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 9px", borderRadius: 6, cursor: "pointer", background: p.id === id ? "rgba(62,196,109,.1)" : "transparent" }}>
-                      <span style={{ fontSize: 12.5, color: p.id === id ? "#e6f6ec" : "#aab0bd" }}>{p.panel}</span>
-                      {p.id === id ? <span style={{ color: GREEN, fontSize: 12 }}>✓</span> : null}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
+    <div className="pp-main">
+      <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", background: "#0f1115", borderBottom: "1px solid #1b1e25" }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "#eef1f6" }}>{pipe.panel}</span>
+        <span className="pp-mono" style={{ fontSize: 9, letterSpacing: ".14em", color: "#5a606e" }}>{pipe.isolated || pipe.id === "ticker" ? "PANEL" : "VIEW"} · {VIEW_LABEL[pipe.view]}</span>
         <span style={{ flex: 1 }} />
         <span className="pp-mono" style={{ fontSize: 11, color: stampColor }}>{stampText}</span>
       </div>
 
-      <div className="pp-area" style={{ flex: 1, overflow: "auto", display: "flex", alignItems: "stretch", padding: "30px 34px", background: "radial-gradient(ellipse 80% 120% at 50% 0%, #121620 0%, #0e0e0e 60%)" }}>
-        <div style={{ display: "flex", alignItems: "stretch", margin: "auto 0" }}>
-          {infra.map((n, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center" }}>
-              <Block node={n} status={statuses[i]!} tip={hoverNode === i} onEnter={() => setHoverNode(i)} onLeave={() => setHoverNode(null)} />
-              <Pipe label={pipe.edges[i] ?? ""} state={pstate(statuses[i]!, statuses[i + 1]!)} hover={hoverPipe === i} onEnter={() => setHoverPipe(i)} onLeave={() => setHoverPipe(null)} />
+      <div
+        className={"pp-canvas" + (grabbing ? " grabbing" : "")}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        onWheel={onWheel}
+        onDoubleClick={reset}
+      >
+        <div className="pp-stagewrap" style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}>
+          <div style={{ display: "flex", alignItems: "stretch" }}>
+            {infra.map((n, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center" }}>
+                <Block node={n} status={statuses[i]!} tip={hoverNode === i} onEnter={() => setHoverNode(i)} onLeave={() => setHoverNode(null)} />
+                <Pipe label={pipe.edges[i] ?? ""} state={pstate(statuses[i]!, statuses[i + 1]!)} hover={hoverPipe === i} onEnter={() => setHoverPipe(i)} onLeave={() => setHoverPipe(null)} />
+              </div>
+            ))}
+            {/* the live panel keeps its own scroll/clicks — don't let a drag here pan the canvas */}
+            <div style={{ display: "flex" }} onMouseDown={(e) => e.stopPropagation()}>
+              <Terminal pipe={pipe} live={statuses[statuses.length - 1] === "up"} />
             </div>
-          ))}
-          <Terminal pipe={pipe} live={statuses[statuses.length - 1] === "up"} />
+          </div>
+        </div>
+
+        <div className="pp-mono" style={{ position: "absolute", left: 12, bottom: 10, fontSize: 9.5, color: "#3f454c", pointerEvents: "none" }}>
+          drag to pan · wheel to zoom · double-click to reset · {Math.round(scale * 100)}%
         </div>
       </div>
 
@@ -305,22 +383,33 @@ function Stage({ pipe, id, setId, statuses, asOf }: {
   );
 }
 
-function LiveStage({ pipe, id, setId }: { pipe: PanelPipe; id: string; setId: (v: string) => void }): JSX.Element {
+function PipelineLive(): JSX.Element {
+  const [id, setId] = useState<string>(PIPELINES[0]?.id ?? "");
   const desk = useDeskData();
-  const domainF = desk[pipe.domain];
-  const ticks = desk.ticks;
   const hmap = buildHealthMap(desk.system.data);
-  const dom = normStatus(domainF.status);
-  const ws = normStatus(ticks.status);
+  const ws = normStatus(desk.ticks.status);
   // api is up the moment it responds (system probe came back, or ticks flow) —
   // independent of the stack's global DEGRADED flag.
   const apiUp: H = desk.system.status !== "missing" || ws === "up" ? "up" : "down";
-  const statuses = pipe.nodes.map((n) => resolve(n, hmap, dom, ws, apiUp));
-  return <Stage pipe={pipe} id={id} setId={setId} statuses={statuses} asOf={domainF.asOf ?? ticks.asOf} />;
+  const statusesOf = (p: PanelPipe): H[] =>
+    p.nodes.map((n) => resolve(n, hmap, normStatus(desk[p.domain].status), ws, apiUp));
+
+  const healthById: Record<string, H> = {};
+  for (const p of PIPELINES) healthById[p.id] = rollUp(statusesOf(p));
+
+  const pipe = PIPELINES.find((p) => p.id === id) ?? PIPELINES[0]!;
+  const statuses = statusesOf(pipe);
+  const asOf = desk[pipe.domain].asOf ?? desk.ticks.asOf;
+
+  return (
+    <div className="pp-root">
+      <style>{CSS}</style>
+      <Sidebar id={id} setId={setId} healthById={healthById} />
+      <Stage pipe={pipe} statuses={statuses} asOf={asOf} />
+    </div>
+  );
 }
 
 export function PipelineViz(): JSX.Element {
-  const [id, setId] = useState<string>(PIPELINES[0]?.id ?? "");
-  const pipe = PIPELINES.find((p) => p.id === id) ?? PIPELINES[0]!;
-  return <DataProvider><LiveStage pipe={pipe} id={id} setId={setId} /></DataProvider>;
+  return <DataProvider><PipelineLive /></DataProvider>;
 }
