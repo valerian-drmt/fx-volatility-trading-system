@@ -118,12 +118,16 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
   );
   const liveTrade = useFetch<TradeData>(
     async () => {
-      const [pos, lim, evts, book, cash] = await Promise.all([
-        fetchOpenPositions(),
-        fetchTradeLimits(),
-        fetchRegimeEvents(),
-        fetchTradeBook(),
-        fetchPortfolioCash(),
+      // Positions are the primary signal — they drive the domain freshness (and
+      // the Open-positions pipeline). The four secondary reads degrade on their
+      // own (caps/cash/events/book): a single one 404-ing in read-only mode must
+      // NOT take the whole trade domain "missing" and red-out the pipeline.
+      const pos = await fetchOpenPositions();
+      const [lim, evts, book, cash] = await Promise.all([
+        fetchTradeLimits().catch(() => null),
+        fetchRegimeEvents().catch(() => null),
+        fetchTradeBook().catch(() => null),
+        fetchPortfolioCash().catch(() => null),
       ]);
       const positions = adaptPositions(pos, Date.now());
       return {
