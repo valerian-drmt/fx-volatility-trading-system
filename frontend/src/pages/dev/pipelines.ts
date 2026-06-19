@@ -48,6 +48,32 @@ export interface PanelPipe {
    * panel (siblings hidden). Omitted → terminal renders the whole parent view.
    */
   isolated?: boolean;
+  /**
+   * Accurate branching topology (sources → spine → fork into store + serve).
+   * When present, the schema renders as a graph-with-a-fork instead of a flat
+   * line. The flat `nodes`/`edges` stay for the sidebar health roll-up.
+   */
+  graph?: PipeGraph;
+}
+
+/** A horizontal chain of blocks: `edges.length === nodes.length - 1`. */
+export interface GraphChain {
+  nodes: PipeNode[];
+  edges: string[];
+}
+
+/**
+ * Branching pipeline: a `spine` from the source(s) through the fork node (its
+ * last element — the hub that fans out), then two branches off that hub:
+ * `store` (where data is recorded) and `serve` (the read path to the panel).
+ */
+export interface PipeGraph {
+  spine: PipeNode[];
+  spineEdges: string[]; // length spine.length - 1
+  storeEdge: string;    // hub → store.nodes[0]
+  store: GraphChain;
+  serveEdge: string;    // hub → serve.nodes[0]
+  serve: GraphChain;    // last node = the displayed panel (rendered as the live terminal)
 }
 
 // role = each block's dominant data-flow archetype (see `Role`).
@@ -137,6 +163,32 @@ export const PIPELINES: PanelPipe[] = [
     id: "iv-surface", panel: "IV surface", view: "signals", domain: "surface", isolated: true,
     nodes: [IB, IBG, eng("vol-engine", "clientId 2 · 180s"), redis("latest_vol_surface · vol_surface_history"), API, FE, panel("IV surface")],
     edges: ["FOP chain", "reqMktData", "compute (SET + db_events)", "read", "GET /vol/surface", "render"],
+    graph: {
+      spine: [
+        { kind: "external", label: "IB", sub: "Interactive Brokers", role: "emit", health: "IB Gateway" },
+        { kind: "container", label: "ib-gateway", sub: "broker session · clientId 1–5", role: "hub", health: "IB Gateway" },
+        { kind: "container", label: "vol-engine", sub: "clientId 2 · 180s cycle", role: "transform", health: "vol-engine" },
+        { kind: "store", label: "Redis", sub: "SET latest_vol_surface + db_events", role: "hub", health: "redis" },
+      ],
+      spineEdges: ["FOP chain", "reqMktData", "SVI/SSVI calibrate"],
+      storeEdge: "db_events",
+      store: {
+        nodes: [
+          { kind: "container", label: "db-writer", sub: "db_events → batch INSERT", role: "receive", health: "db-writer" },
+          { kind: "store", label: "Postgres", sub: "vol_surface_history", role: "receive", health: "postgres" },
+        ],
+        edges: ["INSERT row"],
+      },
+      serveEdge: "read latest",
+      serve: {
+        nodes: [
+          { kind: "api", label: "api", sub: "FastAPI · GET /vol/surface", role: "hub", health: "__api" },
+          { kind: "frontend", label: "frontend", sub: "React · fetch", role: "receive", health: "__self" },
+          { kind: "panel", label: "IV surface", sub: "displayed panel", role: "receive" },
+        ],
+        edges: ["JSON surface", "render"],
+      },
+    },
   },
   {
     id: "mode-stability", panel: "Mode stability", view: "signals", domain: "pca", isolated: true,
