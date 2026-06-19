@@ -66,32 +66,32 @@ export const PIPELINES: PanelPipe[] = [
     edges: ["get tick", "reqMktData", "publish ticks", "WS bridge", "WS /ws/ticks", "render"],
   },
   {
-    id: "dash-market", panel: "Market snapshot", view: "dashboard", domain: "ticks",
+    id: "dash-market", panel: "Market snapshot", view: "dashboard", domain: "ticks", isolated: true,
     nodes: [IB, IBG, eng("market-data", "clientId 1"), redis("latest_spot:EUR"), API, FE, panel("Market snapshot")],
     edges: ["get tick", "reqMktData", "publish", "WS bridge", "WS /ws/ticks", "render"],
   },
   {
-    id: "dash-signal", panel: "Active signal", view: "dashboard", domain: "pca",
+    id: "dash-signal", panel: "Active signal", view: "dashboard", domain: "pca", isolated: true,
     nodes: [eng("vol-engine", "PCA projection"), pg("pca_signal_history"), API, FE, panel("Active signal")],
     edges: ["persist (db_events)", "read latest", "GET /signals/pca/state", "render"],
   },
   {
-    id: "dash-book-health", panel: "Book health", view: "dashboard", domain: "portfolio",
+    id: "dash-book-health", panel: "Book health", view: "dashboard", domain: "portfolio", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Book health")],
     edges: ["UPDATE greeks", "read book", "GET /portfolio/aggregate-greeks", "render"],
   },
   {
-    id: "dash-capital", panel: "Capital", view: "dashboard", domain: "portfolio",
+    id: "dash-capital", panel: "Capital", view: "dashboard", domain: "portfolio", isolated: true,
     nodes: [eng("execution-engine", "account snaps"), DBW, pg("account_history"), API, FE, panel("Capital")],
     edges: ["account summary", "db_events", "INSERT", "latest", "GET /portfolio/account", "render"],
   },
   {
-    id: "dash-today", panel: "Today — events & expiries", view: "dashboard", domain: "trade",
+    id: "dash-today", panel: "Today — events & expiries", view: "dashboard", domain: "trade", isolated: true,
     nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Today")],
     edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
   },
   {
-    id: "dash-attention", panel: "Attention (alerts)", view: "dashboard", domain: "system",
+    id: "dash-attention", panel: "Attention (alerts)", view: "dashboard", domain: "system", isolated: true,
     nodes: [eng("5 engines", "heartbeat each cycle"), redis("heartbeat:<engine>"), API, FE, panel("Attention")],
     edges: ["SET heartbeat (TTL)", "read heartbeats", "GET /health/extended", "derive alerts"],
   },

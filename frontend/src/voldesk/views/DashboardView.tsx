@@ -134,6 +134,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
       {/* LAYER 1 — exceptions */}
       <Panel
         title="Attention"
+        dataPp="dash-attention"
         right={
           <span className="dim mono small">
             1 breach · {watches.length} watch · {cleared.length} clear
@@ -178,6 +179,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
       <div className="dash-r2">
         <Panel
           title="Market snapshot"
+          dataPp="dash-market"
           right={
             <button className="link-btn" onClick={() => go("signals")}>
               Signal →
@@ -220,6 +222,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
         </Panel>
         <Panel
           title="Active signal"
+          dataPp="dash-signal"
           right={
             <button className="link-btn" onClick={() => go("signals")}>
               Signal →
@@ -265,6 +268,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
       <div className="dash-r2 dash-r2b">
         <Panel
           title="Book health"
+          dataPp="dash-book-health"
           right={
             <button className="link-btn" onClick={() => go("risk")}>
               Risk →
@@ -329,6 +333,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
         </Panel>
         <Panel
           title="Capital"
+          dataPp="dash-capital"
           right={
             <button className="link-btn" onClick={() => go("portfolio")}>
               Portfolio →
@@ -361,7 +366,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
       </div>
 
       {/* LAYER 3 — temporal */}
-      <Panel title="Today — events, expiries & working orders" className="dash-today">
+      <Panel title="Today — events, expiries & working orders" dataPp="dash-today" className="dash-today">
         <div className="today-grid t3">
           <div className="today-col">
             <span className="gs-lbl">Today's macro events</span>
