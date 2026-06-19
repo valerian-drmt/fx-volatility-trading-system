@@ -18,7 +18,7 @@ import { PortfolioView } from "../../voldesk/views/PortfolioView";
 import { RiskView } from "../../voldesk/views/RiskView";
 import { SignalsView } from "../../voldesk/views/SignalsView";
 import { TradeView } from "../../voldesk/views/TradeView";
-import { PIPELINES, type NodeKind, type PanelPipe, type PipeNode, type ViewId } from "./pipelines";
+import { PIPELINES, type NodeKind, type PanelPipe, type PipeNode, type Role, type ViewId } from "./pipelines";
 
 // The real prod view rendered in the terminal "screen" (the panel lives in it).
 // Dashboard + Trade take props in the app; stub them for the viz.
@@ -44,6 +44,13 @@ const blockStyle = (kind: NodeKind): { color: string; glyph: string; tag: string
   kind === "external" ? BLOCK_STYLE.external : BLOCK_STYLE.container;
 const VIEW_LABEL: Record<ViewId, string> = {
   dashboard: "Dashboard", trade: "Trade", signals: "Signal", risk: "Risk", portfolio: "Portfolio",
+};
+// data-flow archetype chips shown on each block (a block can wear several).
+const ROLE_META: Record<Role, { abbr: string; label: string; color: string }> = {
+  emit: { abbr: "É", label: "émetteur · envoie la donnée", color: "#3ec46d" },
+  transform: { abbr: "T", label: "transformateur · calcule / transforme", color: "#5b8fd6" },
+  receive: { abbr: "R", label: "récepteur · reçoit / enregistre", color: "#d9a441" },
+  hub: { abbr: "H", label: "hub / concentrateur · centralise + redistribue", color: "#a77bd6" },
 };
 
 const hexa = (hex: string, a: number): string => {
@@ -119,7 +126,7 @@ function Block({ node, status, tip, onEnter, onLeave }: {
   return (
     <div style={{ flex: "none", width: 188, position: "relative" }} onMouseEnter={onEnter} onMouseLeave={onLeave}>
       {down ? <div style={{ position: "absolute", left: "50%", top: -42, transform: "translateX(-50%)", lineHeight: 0, zIndex: 6 }}><XMark size={34} /></div> : null}
-      <div style={{ position: "relative", background: down ? "#1b1517" : "#181b22", border: `1px solid ${hexa(sc, down ? 0.5 : 0.32)}`, borderRadius: 7, padding: "15px 15px 16px", minHeight: 122, display: "flex", flexDirection: "column", gap: 11, overflow: "hidden", boxShadow: down ? `0 0 16px ${hexa(RED, 0.14)}, inset 0 0 22px ${hexa(RED, 0.05)}` : "none", transition: "background .25s, border-color .25s, box-shadow .25s" }}>
+      <div style={{ position: "relative", background: down ? "#1b1517" : "#181b22", border: `1px solid ${hexa(sc, down ? 0.5 : 0.32)}`, borderRadius: 7, padding: "15px 15px 16px", minHeight: 150, display: "flex", flexDirection: "column", gap: 10, overflow: "hidden", boxShadow: down ? `0 0 16px ${hexa(RED, 0.14)}, inset 0 0 22px ${hexa(RED, 0.05)}` : "none", transition: "background .25s, border-color .25s, box-shadow .25s" }}>
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: hexa(sc, down ? 0.7 : 0.55) }} />
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div className="pp-mono" style={{ width: 30, height: 30, borderRadius: 6, display: "grid", placeItems: "center", fontSize: 17, color: k.color, border: `1px solid ${hexa(k.color, 0.42)}`, background: hexa(k.color, 0.1), opacity: down ? 0.6 : 1 }}>{k.glyph}</div>
@@ -127,6 +134,16 @@ function Block({ node, status, tip, onEnter, onLeave }: {
         </div>
         <div style={{ fontSize: 16.5, fontWeight: 600, color: "#e6eaf1" }}>{node.label}</div>
         <div className="pp-mono" style={{ fontSize: 12, color: "#6b7180", lineHeight: 1.45 }}>{node.sub}</div>
+        {node.roles?.length ? (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {node.roles.map((r) => {
+              const m = ROLE_META[r];
+              return (
+                <span key={r} className="pp-mono" title={m.label} style={{ fontSize: 9.5, fontWeight: 700, lineHeight: 1, padding: "3px 5px", borderRadius: 4, color: m.color, border: `1px solid ${hexa(m.color, down ? 0.28 : 0.45)}`, background: hexa(m.color, down ? 0.05 : 0.12), opacity: down ? 0.65 : 1 }}>{m.abbr}</span>
+              );
+            })}
+          </div>
+        ) : null}
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ width: 9, height: 9, borderRadius: "50%", background: sc, boxShadow: `0 0 8px ${hexa(sc, 0.8)}`, animation: status === "up" ? "pppulse 1.6s ease-in-out infinite" : "none" }} />
           <span className="pp-mono" style={{ fontSize: 11.5, letterSpacing: ".12em", fontWeight: 600, color: sc }}>{status === "up" ? "UP" : status === "warn" ? "WARN" : "DOWN"}</span>
