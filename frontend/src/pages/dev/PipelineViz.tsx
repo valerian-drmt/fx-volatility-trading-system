@@ -198,9 +198,10 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
   // Isolate the selected panel in JS (no `:has()` — that selector silently
   // drops the whole rule on parsers that don't support it, which left every
   // value showing the full view). Hide every annotated panel that is neither
-  // the target nor an ancestor of it, then flatten the target's ancestor
-  // containers (grid/flex → block) so the lone panel fills the screen instead
-  // of sitting in an empty grid cell. Re-applied on every live re-render via a
+  // the target nor an ancestor of it; leave the target and its ancestors
+  // untouched so the panel keeps its EXACT live design/size (no forced
+  // block/width — that distorted it and caused a scrollbar-width oscillation
+  // that made busy panels vibrate). Re-applied on every live re-render via a
   // MutationObserver (React reconciles the view ~1-2s on fresh data).
   useLayoutEffect(() => {
     const root = screenRef.current;
@@ -208,19 +209,10 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
     const apply = (): void => {
       const target = root.querySelector<HTMLElement>(`[data-pp="${window.CSS.escape(pipe.id)}"]`);
       const tagged = root.querySelectorAll<HTMLElement>("[data-pp]");
-      if (!target) {
-        tagged.forEach((el) => { el.style.removeProperty("display"); });
-        return;
-      }
       tagged.forEach((el) => {
-        if (el === target || el.contains(target)) el.style.removeProperty("display");
+        if (!target || el === target || el.contains(target)) el.style.removeProperty("display");
         else el.style.setProperty("display", "none", "important");
       });
-      for (let n = target.parentElement; n && n !== root; n = n.parentElement) {
-        n.style.setProperty("display", "block", "important");
-        n.style.setProperty("width", "100%", "important");
-        n.style.removeProperty("flex");
-      }
     };
     apply();
     const obs = new MutationObserver(apply);
@@ -290,13 +282,26 @@ function Sidebar({ id, setId, healthById }: {
 function Stage({ pipe, statuses, asOf }: { pipe: PanelPipe; statuses: H[]; asOf: number | null }): JSX.Element {
   const [hoverNode, setHoverNode] = useState<number | null>(null);
   const [hoverPipe, setHoverPipe] = useState<number | null>(null);
+  const DEFAULT_SCALE = 0.78;
   const [tx, setTx] = useState(40);
   const [ty, setTy] = useState(40);
-  const [scale, setScale] = useState(0.78);
+  const [scale, setScale] = useState(DEFAULT_SCALE);
   const [grabbing, setGrabbing] = useState(false);
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
-  const reset = (): void => { setTx(40); setTy(40); setScale(0.78); };
+  // Center the schema in the canvas (natural content size × scale), centered
+  // on both axes. Called on mount, on panel switch, and on double-click reset.
+  const recenter = (s: number): void => {
+    const cv = canvasRef.current;
+    const ct = contentRef.current;
+    if (!cv || !ct) return;
+    setTx((cv.clientWidth - ct.offsetWidth * s) / 2);
+    setTy((cv.clientHeight - ct.offsetHeight * s) / 2);
+  };
+  useLayoutEffect(() => { recenter(scale); }, [pipe.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const reset = (): void => { setScale(DEFAULT_SCALE); recenter(DEFAULT_SCALE); };
   const onMouseDown = (e: React.MouseEvent): void => {
     dragRef.current = { sx: e.clientX, sy: e.clientY, ox: tx, oy: ty };
     setGrabbing(true);
@@ -344,6 +349,7 @@ function Stage({ pipe, statuses, asOf }: { pipe: PanelPipe; statuses: H[]; asOf:
       </div>
 
       <div
+        ref={canvasRef}
         className={"pp-canvas" + (grabbing ? " grabbing" : "")}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
@@ -353,7 +359,7 @@ function Stage({ pipe, statuses, asOf }: { pipe: PanelPipe; statuses: H[]; asOf:
         onDoubleClick={reset}
       >
         <div className="pp-stagewrap" style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}>
-          <div style={{ display: "flex", alignItems: "stretch" }}>
+          <div ref={contentRef} style={{ display: "flex", alignItems: "stretch" }}>
             {infra.map((n, i) => (
               <div key={i} style={{ display: "flex", alignItems: "center" }}>
                 <Block node={n} status={statuses[i]!} tip={hoverNode === i} onEnter={() => setHoverNode(i)} onLeave={() => setHoverNode(null)} />
