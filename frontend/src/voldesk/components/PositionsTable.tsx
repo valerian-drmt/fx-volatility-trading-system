@@ -102,6 +102,9 @@ export function OpenPositionsTable({
         <table className={"dt positions-table" + (dense ? " dense" : "")}>
           <thead>
             <tr>
+              <th className="l">Trade</th>
+              <th className="l">Contract</th>
+              <th className="l">Product</th>
               <th className="l">Structure</th>
               <th>Side</th>
               <th className="r">Qty</th>
@@ -146,13 +149,16 @@ export function OpenPositionsTable({
               const newPkg = i === 0 || rows[i - 1]!.packageId !== p.packageId;
               return (
                 <tr key={p.id} className={newPkg ? "pkg-start" : ""}>
+                  <td className="l mono dim">{p.tradeId ? "#" + p.tradeId : "—"}</td>
+                  <td className="l mono dim">{p.conId ? p.conId : "—"}</td>
                   <td className="l">
-                    <span className="sym">{p.structure}</span>
+                    <span className="sym">{p.product || "—"}</span>
                     <span className="substruct">
-                      {p.packageId} · {p.expiry}
+                      {p.packageId ? p.packageId + " · " : ""}{p.expiry}
                       {p.strike ? " · K " + p.strike.toFixed(4) : ""}
                     </span>
                   </td>
+                  <td className="l mono dim">{p.structure || "—"}</td>
                   <td>
                     <span className={"side-pill " + (p.side === "BUY" ? "long" : "short")}>{p.side}</span>
                   </td>
