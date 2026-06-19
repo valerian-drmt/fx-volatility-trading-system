@@ -52,7 +52,8 @@ export interface PanelPipe {
 
 // role = each block's dominant data-flow archetype (see `Role`).
 const IB: PipeNode = { kind: "external", label: "IB", sub: "Interactive Brokers", role: "emit" };
-const IBG: PipeNode = { kind: "container", label: "ib-gateway", sub: "broker session", role: "emit" };
+// one IB connection in, fanned out to every engine client (clientId 1/2/3/5) → hub.
+const IBG: PipeNode = { kind: "container", label: "ib-gateway", sub: "broker session · clientId 1–5", role: "hub" };
 const API: PipeNode = { kind: "api", label: "api", sub: "FastAPI", role: "hub" };
 const FE: PipeNode = { kind: "frontend", label: "frontend", sub: "React · fetch/WS", role: "receive" };
 const pg = (sub: string): PipeNode => ({ kind: "store", label: "Postgres", sub, role: "receive" });
@@ -69,7 +70,7 @@ export const PIPELINES: PanelPipe[] = [
     id: "ticker", panel: "Spot ticker (bid/ask)", view: "dashboard", domain: "ticks",
     nodes: [
       { kind: "external", label: "IB", sub: "Interactive Brokers", health: "IB Gateway", role: "emit" },
-      { kind: "container", label: "ib-gateway", sub: "broker session", health: "IB Gateway", role: "emit" },
+      { kind: "container", label: "ib-gateway", sub: "broker session · clientId 1–5", health: "IB Gateway", role: "hub" },
       { kind: "container", label: "market-data", sub: "clientId 1 · tick stream", health: "market-data", role: "transform" },
       { kind: "store", label: "Redis", sub: "latest_spot:EUR · ticks ch.", health: "redis", role: "hub" },
       { kind: "api", label: "api", sub: "FastAPI · WS bridge", health: "__api", role: "hub" },
