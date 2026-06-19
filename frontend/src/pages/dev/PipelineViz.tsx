@@ -103,7 +103,7 @@ const CSS = `
 .pp-dot{flex:none;width:9px;height:9px;border-radius:50%}
 .pp-canvas{flex:1;position:relative;overflow:hidden;background:radial-gradient(ellipse 90% 130% at 50% 0%, #121620 0%, #0e0e0e 62%);cursor:grab}
 .pp-canvas.grabbing{cursor:grabbing}
-.pp-stagewrap{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+.pp-stagewrap{position:absolute;top:0;left:0;transform-origin:0 0}
 .pp-area::-webkit-scrollbar{height:9px;width:9px}
 .pp-area::-webkit-scrollbar-thumb{background:#262a33;border-radius:5px}
 `;
@@ -513,7 +513,7 @@ function Stage({ pipe, statuses, resolveNode, asOf }: { pipe: PanelPipe; statuse
         onWheel={onWheel}
         onDoubleClick={reset}
       >
-        <div className="pp-stagewrap" style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}>
+        <div className="pp-stagewrap" style={{ transform: `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${scale})` }}>
           <div ref={contentRef} style={pipe.graph ? undefined : { display: "flex", alignItems: "stretch" }}>
             {pipe.graph ? (
               <BranchSchema graph={pipe.graph} pipe={pipe} resolveNode={resolveNode} />
