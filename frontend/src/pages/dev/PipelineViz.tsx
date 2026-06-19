@@ -314,79 +314,110 @@ function FlowPath({ d, state }: { d: string; state: "flow" | "warn" | "down" }):
   );
 }
 
-// Branching schema: sources → spine → fork (at the hub) into a store branch
-// (top, where data is recorded) and a serve branch (bottom, the read path that
-// ends in the live panel). Blocks are absolutely placed; edges are SVG.
+// Branching schema. A spine runs source(s) → hub. Optional `sources` converge
+// into spine[0] from a left column. Off the hub: an optional STORE branch
+// (forks up — where data is recorded) and the SERVE branch (the read path to
+// the live panel) — which forks down when a store exists, or continues the
+// spine in a straight line when it doesn't. Blocks absolute, edges SVG.
 function BranchSchema({ graph, pipe, resolveNode }: {
   graph: PipeGraph; pipe: PanelPipe; resolveNode: (n: PipeNode) => H;
 }): JSX.Element {
   const [hover, setHover] = useState<string | null>(null);
   const BW = 188, IBW = 210, BH = 150, GAP = 124, TW = 640, TH = 440, VGAP = 66;
-  const storeC = BH / 2;                          // 75
-  const spineC = BH + VGAP + BH / 2;              // 291
-  const serveC = spineC + BH / 2 + VGAP + TH / 2; // 652
-  const H = serveC + TH / 2;                      // 872
+  const wOf = (n: PipeNode): number => (n.kind === "external" ? IBW : BW);
+  const sources = graph.sources ?? [];
+  const hasStore = !!graph.store && graph.store.nodes.length > 0;
 
-  type P = { key: string; node: PipeNode; x: number; y: number; w: number; terminal?: boolean };
-  const spine: P[] = [];
-  let x = 0;
-  graph.spine.forEach((n, i) => {
-    const w = n.kind === "external" ? IBW : BW;
-    spine.push({ key: `sp${i}`, node: n, x, y: spineC - BH / 2, w });
-    x += w + GAP;
-  });
-  const hub = spine[spine.length - 1]!;
+  const srcStackH = sources.length ? sources.length * BH + (sources.length - 1) * VGAP : 0;
+  const storeC = BH / 2;
+  const spineC = hasStore ? BH + VGAP + BH / 2 : Math.max(TH / 2, srcStackH / 2);
+  const serveC = hasStore ? spineC + BH / 2 + VGAP + TH / 2 : spineC;
+
+  type P = { key: string; node: PipeNode; x: number; y: number; w: number; h: number; cy: number; terminal?: boolean };
+  const placed: P[] = [];
+  const add = (key: string, node: PipeNode, x: number, cy: number, w: number, h: number, terminal?: boolean): P => {
+    const p: P = { key, node, x, y: cy - h / 2, w, h, cy };
+    if (terminal) p.terminal = true;
+    placed.push(p);
+    return p;
+  };
+
+  // converging sources (left column)
+  const sourceColW = sources.length ? Math.max(...sources.map(wOf)) : 0;
+  const srcP = sources.map((n, i) =>
+    add(`src${i}`, n, (sourceColW - wOf(n)) / 2, spineC - srcStackH / 2 + i * (BH + VGAP) + BH / 2, wOf(n), BH));
+  const spineX0 = sources.length ? sourceColW + GAP : 0;
+
+  // spine
+  let x = spineX0;
+  const spineP = graph.spine.map((n, i) => { const w = wOf(n); const p = add(`sp${i}`, n, x, spineC, w, BH); x += w + GAP; return p; });
+  const hub = spineP[spineP.length - 1]!;
   const hubRight = hub.x + hub.w;
   const forkX = hubRight + GAP;
-
-  const store: P[] = [];
-  let sx = forkX;
-  graph.store.nodes.forEach((n, i) => { store.push({ key: `st${i}`, node: n, x: sx, y: storeC - BH / 2, w: BW }); sx += BW + GAP; });
-
-  const serve: P[] = [];
-  let vx = forkX;
-  graph.serve.nodes.forEach((n, i) => {
-    const terminal = i === graph.serve.nodes.length - 1;
-    const w = terminal ? TW : BW;
-    serve.push({ key: `sv${i}`, node: n, x: vx, y: terminal ? serveC - TH / 2 : serveC - BH / 2, w, terminal });
-    vx += w + GAP;
-  });
-  const totalW = vx - GAP;
   const midSX = (hubRight + forkX) / 2;
 
+  // store branch (fork up)
+  let stx = forkX;
+  const storeP = hasStore ? graph.store!.nodes.map((n, i) => { const p = add(`st${i}`, n, stx, storeC, BW, BH); stx += BW + GAP; return p; }) : [];
+
+  // serve branch (fork down if store, else straight from hub)
+  let vx = forkX;
+  const serveP = graph.serve.nodes.map((n, i) => {
+    const terminal = i === graph.serve.nodes.length - 1;
+    const w = terminal ? TW : BW, h = terminal ? TH : BH;
+    const p = add(`sv${i}`, n, vx, serveC, w, h, terminal);
+    vx += w + GAP;
+    return p;
+  });
+
+  const totalW = Math.max(...placed.map((p) => p.x + p.w));
+  const totalH = Math.max(...placed.map((p) => p.y + p.h));
+
   const edges: { d: string; from: PipeNode; to: PipeNode }[] = [];
-  for (let i = 0; i < spine.length - 1; i++) edges.push({ d: `M ${spine[i]!.x + spine[i]!.w} ${spineC} H ${spine[i + 1]!.x}`, from: spine[i]!.node, to: spine[i + 1]!.node });
-  edges.push({ d: `M ${hubRight} ${spineC} H ${midSX} V ${storeC} H ${forkX}`, from: hub.node, to: store[0]!.node });
-  edges.push({ d: `M ${hubRight} ${spineC} H ${midSX} V ${serveC} H ${forkX}`, from: hub.node, to: serve[0]!.node });
-  for (let i = 0; i < store.length - 1; i++) edges.push({ d: `M ${store[i]!.x + store[i]!.w} ${storeC} H ${store[i + 1]!.x}`, from: store[i]!.node, to: store[i + 1]!.node });
-  for (let i = 0; i < serve.length - 1; i++) edges.push({ d: `M ${serve[i]!.x + serve[i]!.w} ${serveC} H ${serve[i + 1]!.x}`, from: serve[i]!.node, to: serve[i + 1]!.node });
+  srcP.forEach((s) => {
+    const mid = (s.x + s.w + spineX0) / 2;
+    edges.push({ d: `M ${s.x + s.w} ${s.cy} H ${mid} V ${spineC} H ${spineX0}`, from: s.node, to: spineP[0]!.node });
+  });
+  for (let i = 0; i < spineP.length - 1; i++) edges.push({ d: `M ${spineP[i]!.x + spineP[i]!.w} ${spineC} H ${spineP[i + 1]!.x}`, from: spineP[i]!.node, to: spineP[i + 1]!.node });
+  if (hasStore) {
+    edges.push({ d: `M ${hubRight} ${spineC} H ${midSX} V ${storeC} H ${forkX}`, from: hub.node, to: storeP[0]!.node });
+    edges.push({ d: `M ${hubRight} ${spineC} H ${midSX} V ${serveC} H ${forkX}`, from: hub.node, to: serveP[0]!.node });
+  } else {
+    edges.push({ d: `M ${hubRight} ${spineC} H ${serveP[0]!.x}`, from: hub.node, to: serveP[0]!.node });
+  }
+  for (let i = 0; i < storeP.length - 1; i++) edges.push({ d: `M ${storeP[i]!.x + storeP[i]!.w} ${storeC} H ${storeP[i + 1]!.x}`, from: storeP[i]!.node, to: storeP[i + 1]!.node });
+  for (let i = 0; i < serveP.length - 1; i++) edges.push({ d: `M ${serveP[i]!.x + serveP[i]!.w} ${serveC} H ${serveP[i + 1]!.x}`, from: serveP[i]!.node, to: serveP[i + 1]!.node });
 
   const labels: { x: number; y: number; text: string }[] = [];
-  graph.spineEdges.forEach((t, i) => labels.push({ x: (spine[i]!.x + spine[i]!.w + spine[i + 1]!.x) / 2, y: spineC - 19, text: t }));
-  labels.push({ x: midSX, y: (spineC + storeC) / 2, text: graph.storeEdge });
-  labels.push({ x: midSX, y: (spineC + serveC) / 2, text: graph.serveEdge });
-  graph.store.edges.forEach((t, i) => labels.push({ x: (store[i]!.x + store[i]!.w + store[i + 1]!.x) / 2, y: storeC - 19, text: t }));
-  graph.serve.edges.forEach((t, i) => labels.push({ x: (serve[i]!.x + serve[i]!.w + serve[i + 1]!.x) / 2, y: serveC - 19, text: t }));
+  (graph.sourceEdges ?? []).forEach((t, i) => { const s = srcP[i]; if (s) labels.push({ x: (s.x + s.w + spineX0) / 2, y: (s.cy + spineC) / 2, text: t }); });
+  graph.spineEdges.forEach((t, i) => labels.push({ x: (spineP[i]!.x + spineP[i]!.w + spineP[i + 1]!.x) / 2, y: spineC - 19, text: t }));
+  if (hasStore) {
+    if (graph.storeEdge) labels.push({ x: midSX, y: (spineC + storeC) / 2, text: graph.storeEdge });
+    if (graph.serveEdge) labels.push({ x: midSX, y: (spineC + serveC) / 2, text: graph.serveEdge });
+  } else if (graph.serveEdge) {
+    labels.push({ x: (hubRight + serveP[0]!.x) / 2, y: spineC - 19, text: graph.serveEdge });
+  }
+  graph.store?.edges.forEach((t, i) => labels.push({ x: (storeP[i]!.x + storeP[i]!.w + storeP[i + 1]!.x) / 2, y: storeC - 19, text: t }));
+  graph.serve.edges.forEach((t, i) => labels.push({ x: (serveP[i]!.x + serveP[i]!.w + serveP[i + 1]!.x) / 2, y: serveC - 19, text: t }));
 
   const pstate = (a: H, b: H): "flow" | "warn" | "down" =>
     a === "down" || b === "down" ? "down" : a === "up" && b === "up" ? "flow" : "warn";
 
-  // branch captions (STORE / SERVE) at the head of each branch
-  const caption = (text: string, color: string, y: number): JSX.Element => (
-    <div className="pp-mono" style={{ position: "absolute", left: forkX, top: y, fontSize: 10, fontWeight: 700, letterSpacing: ".16em", color }}>{text}</div>
-  );
-
   return (
-    <div style={{ position: "relative", width: totalW, height: H }}>
-      <svg width={totalW} height={H} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+    <div style={{ position: "relative", width: totalW, height: totalH }}>
+      <svg width={totalW} height={totalH} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
         {edges.map((e, i) => <FlowPath key={i} d={e.d} state={pstate(resolveNode(e.from), resolveNode(e.to))} />)}
       </svg>
-      {caption("STORE · recorded", "#d9a441", storeC - BH / 2 - 20)}
-      {caption("SERVE · displayed", "#3ec46d", serveC - TH / 2 - 20)}
+      {hasStore ? (
+        <>
+          <div className="pp-mono" style={{ position: "absolute", left: forkX, top: storeC - BH / 2 - 20, fontSize: 10, fontWeight: 700, letterSpacing: ".16em", color: "#d9a441" }}>STORE · recorded</div>
+          <div className="pp-mono" style={{ position: "absolute", left: forkX, top: serveC - TH / 2 - 20, fontSize: 10, fontWeight: 700, letterSpacing: ".16em", color: "#3ec46d" }}>SERVE · displayed</div>
+        </>
+      ) : null}
       {labels.map((l, i) => (
         <div key={i} className="pp-mono" style={{ position: "absolute", left: l.x, top: l.y, transform: "translate(-50%,-50%)", fontSize: 11, letterSpacing: ".05em", textTransform: "uppercase", color: "#7b8494", background: "#0e0e0e", padding: "1px 6px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none" }}>{l.text}</div>
       ))}
-      {[...spine, ...store, ...serve].map((p) => (
+      {placed.map((p) => (
         p.terminal ? (
           <div key={p.key} style={{ position: "absolute", left: p.x, top: p.y, width: TW, height: TH, display: "flex" }} onMouseDown={(e) => e.stopPropagation()}>
             <Terminal pipe={pipe} live={resolveNode(p.node) === "up"} />
