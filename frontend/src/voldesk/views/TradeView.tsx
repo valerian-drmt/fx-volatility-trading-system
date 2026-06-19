@@ -67,7 +67,6 @@ function ClosePanel({
   };
   let sel: Position | { trade: true } | null = null;
   const c = { pnl: 0, d: 0, g: 0, v: 0, vn: 0, t: 0, frac: 0 };
-  let recompose: { from: string; to: string } | null = null;
   if (type === "contract" && contractId) {
     const p = positions.find((x) => x.id === contractId);
     if (p) {
@@ -80,20 +79,6 @@ function ClosePanel({
       c.vn = p.vanna * f;
       c.t = p.theta * f;
       c.frac = f;
-      const legsInPkg = positions.filter((x) => x.packageId === p.packageId);
-      if (legsInPkg.length > 1 && f >= 0.999) {
-        const s = p.structure;
-        const resid = s.includes("Butterfly")
-          ? "call/put spread (wings unbalanced)"
-          : s.includes("Risk Reversal")
-            ? "a naked " + (p.side === "BUY" ? "long call" : "short put")
-            : s.includes("Straddle")
-              ? "an outright " + (p.side === "BUY" ? "long" : "short") + " leg"
-              : s.includes("Calendar")
-                ? "a single-tenor outright"
-                : legsInPkg.length - 1 + " residual leg(s)";
-        recompose = { from: s, to: resid };
-      }
     }
   } else if (type === "trade" && tradeId) {
     const legs = positions.filter((x) => x.packageId === tradeId);
@@ -185,19 +170,6 @@ function ClosePanel({
           </div>
         </label>
       </div>
-      {recompose && (
-        <div className="recompose-warn">
-          <span className="flag-dot" />
-          <div>
-            <b>Recomposes the structure</b>
-            <span className="dim">
-              {" "}
-              — closing this leg leaves <b>{recompose.to}</b>, no longer a {recompose.from}. Close the full trade to
-              exit cleanly.
-            </span>
-          </div>
-        </div>
-      )}
       <table className="dt close-risk-tbl">
         <thead>
           <tr>
