@@ -10,7 +10,7 @@
  * from /ws/ticks. Other panels fall back to their domain freshness (uniform) until
  * wired the same way.
  */
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { DataProvider } from "../../voldesk/data/provider";
 import { type SystemData, useDeskData } from "../../voldesk/data/deskData";
 import { DashboardView } from "../../voldesk/views/DashboardView";
@@ -147,6 +147,41 @@ function Pipe({ label, state, hover, onEnter, onLeave }: {
 function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Element {
   const accent = live ? GREEN : AMBER;
   const ViewComp = VIEW_COMPONENTS[pipe.view];
+  const screenRef = useRef<HTMLDivElement>(null);
+
+  // Isolate the selected panel in JS (no `:has()` — that selector silently
+  // drops the whole rule on parsers that don't support it, which left every
+  // value showing the full view). Hide every annotated panel that is neither
+  // the target nor an ancestor of it, then flatten the target's ancestor
+  // containers (grid/flex → block) so the lone panel fills the screen instead
+  // of sitting in an empty grid cell. Re-applied on every live re-render via a
+  // MutationObserver (React reconciles the view ~1-2s on fresh data).
+  useLayoutEffect(() => {
+    const root = screenRef.current;
+    if (!root || !pipe.isolated) return;
+    const apply = (): void => {
+      const target = root.querySelector<HTMLElement>(`[data-pp="${window.CSS.escape(pipe.id)}"]`);
+      const tagged = root.querySelectorAll<HTMLElement>("[data-pp]");
+      if (!target) {
+        tagged.forEach((el) => { el.style.removeProperty("display"); });
+        return;
+      }
+      tagged.forEach((el) => {
+        if (el === target || el.contains(target)) el.style.removeProperty("display");
+        else el.style.setProperty("display", "none", "important");
+      });
+      for (let n = target.parentElement; n && n !== root; n = n.parentElement) {
+        n.style.setProperty("display", "block", "important");
+        n.style.setProperty("width", "100%", "important");
+        n.style.removeProperty("flex");
+      }
+    };
+    apply();
+    const obs = new MutationObserver(apply);
+    obs.observe(root, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, [pipe.id, pipe.isolated]);
+
   return (
     <div style={{ flex: "none", alignSelf: "stretch", width: 640, minHeight: 420, display: "flex", flexDirection: "column", border: `1px solid ${hexa(accent, live ? 0.55 : 0.5)}`, borderRadius: 9, overflow: "hidden", background: "#0f1115", boxShadow: live ? "0 0 0 1px rgba(62,196,109,.25),0 0 28px rgba(62,196,109,.18)" : "inset 0 0 26px rgba(217,164,65,.05)", animation: live ? "pphalo 2.6s ease-in-out infinite" : "none" }}>
       <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", borderBottom: `1px solid ${hexa(accent, 0.3)}`, background: "#13171c" }}>
@@ -156,16 +191,7 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
         <span style={{ flex: 1 }} />
         <span className="pp-mono" style={{ fontSize: 9.5, letterSpacing: ".14em", color: accent, fontWeight: 600 }}>{pipe.isolated ? "PANEL" : "VIEW"} · {VIEW_LABEL[pipe.view]}</span>
       </div>
-      <div className={pipe.isolated ? "pp-screen pp-iso" : "pp-screen"} style={{ flex: 1, overflow: "auto", minHeight: 0, background: "#0f1115" }}>
-        {pipe.isolated ? (
-          <style>{
-            // Hide every annotated panel that is NEITHER the target NOR an
-            // ancestor of it. The target and its annotated wrappers are never
-            // touched, so their author `display` (flex/grid) stays intact —
-            // only sibling leaves and unrelated top-level panels collapse.
-            `.pp-iso [data-pp]:not([data-pp="${pipe.id}"]):not(:has([data-pp="${pipe.id}"])){display:none!important}`
-          }</style>
-        ) : null}
+      <div ref={screenRef} className={pipe.isolated ? "pp-screen pp-iso" : "pp-screen"} style={{ flex: 1, overflow: "auto", minHeight: 0, background: "#0f1115" }}>
         <ViewComp />
       </div>
     </div>
