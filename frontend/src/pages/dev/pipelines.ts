@@ -54,6 +54,36 @@ export interface PanelPipe {
    * line. The flat `nodes`/`edges` stay for the sidebar health roll-up.
    */
   graph?: PipeGraph;
+  /**
+   * Full data-flow DAG (dagre-laid-out): every real input/output, including
+   * shared dual-role nodes (e.g. Postgres written-by db-writer AND read-by the
+   * api). Preferred over `graph` when present; `nodes`/`edges` stay for the
+   * sidebar health roll-up.
+   */
+  dag?: PipeDag;
+}
+
+/** A node in the full data-flow DAG. `terminal` = the displayed panel. */
+export interface DagNode {
+  id: string;
+  kind: NodeKind;
+  label: string;
+  sub?: string;
+  role: Role;
+  health?: string;
+  terminal?: boolean;
+}
+
+/** A directed data edge `from → to` with an optional flow label. */
+export interface DagEdge {
+  from: string;
+  to: string;
+  label?: string;
+}
+
+export interface PipeDag {
+  nodes: DagNode[];
+  edges: DagEdge[];
 }
 
 /** A horizontal chain of blocks: `edges.length === nodes.length - 1`. */
@@ -265,6 +295,30 @@ export const PIPELINES: PanelPipe[] = [
         ],
         edges: ["JSON surface", "render"],
       },
+    },
+    dag: {
+      nodes: [
+        { id: "ib", kind: "external", label: "IB", sub: "Interactive Brokers", role: "emit", health: "IB Gateway" },
+        { id: "ibg", kind: "container", label: "ib-gateway", sub: "broker session · clientId 1–5", role: "hub", health: "IB Gateway" },
+        { id: "vol", kind: "container", label: "vol-engine", sub: "clientId 2 · 180s cycle", role: "transform", health: "vol-engine" },
+        { id: "redis", kind: "store", label: "Redis", sub: "SET latest_vol_surface + db_events", role: "hub", health: "redis" },
+        { id: "dbw", kind: "container", label: "db-writer", sub: "db_events → batch INSERT", role: "receive", health: "db-writer" },
+        { id: "pg", kind: "store", label: "Postgres", sub: "vol_surface_history", role: "receive", health: "postgres" },
+        { id: "api", kind: "api", label: "api", sub: "FastAPI · GET /vol/surface", role: "hub", health: "__api" },
+        { id: "fe", kind: "frontend", label: "frontend", sub: "React · fetch", role: "receive", health: "__self" },
+        { id: "panel", kind: "panel", label: "IV surface", sub: "displayed panel", role: "receive", terminal: true },
+      ],
+      edges: [
+        { from: "ib", to: "ibg", label: "FOP chain" },
+        { from: "ibg", to: "vol", label: "reqMktData" },
+        { from: "vol", to: "redis", label: "SVI/SSVI + db_events" },
+        { from: "redis", to: "dbw", label: "db_events" },
+        { from: "dbw", to: "pg", label: "INSERT" },
+        { from: "redis", to: "api", label: "read latest (live)" },
+        { from: "pg", to: "api", label: "history · z-score" },
+        { from: "api", to: "fe", label: "GET /vol/surface" },
+        { from: "fe", to: "panel", label: "render" },
+      ],
     },
   },
   {

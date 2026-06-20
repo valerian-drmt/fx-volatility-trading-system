@@ -10,7 +10,8 @@
  * from /ws/ticks. Other panels fall back to their domain freshness (uniform) until
  * wired the same way.
  */
-import { useLayoutEffect, useRef, useState } from "react";
+import dagre from "@dagrejs/dagre";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DataProvider } from "../../voldesk/data/provider";
 import { type SystemData, useDeskData } from "../../voldesk/data/deskData";
 import { DashboardView } from "../../voldesk/views/DashboardView";
@@ -18,7 +19,7 @@ import { PortfolioView } from "../../voldesk/views/PortfolioView";
 import { RiskView } from "../../voldesk/views/RiskView";
 import { SignalsView } from "../../voldesk/views/SignalsView";
 import { TradeView } from "../../voldesk/views/TradeView";
-import { PIPELINES, type PanelPipe, type PipeGraph, type PipeNode, type Role, type ViewId } from "./pipelines";
+import { PIPELINES, type DagNode, type PanelPipe, type PipeDag, type PipeGraph, type PipeNode, type Role, type ViewId } from "./pipelines";
 
 // The real prod view rendered in the terminal "screen" (the panel lives in it).
 // Dashboard + Trade take props in the app; stub them for the viz.
@@ -432,6 +433,69 @@ function BranchSchema({ graph, pipe, resolveNode }: {
   );
 }
 
+// Full data-flow DAG, dagre-laid-out (left→right). Every real input/output is
+// an edge, so shared dual-role nodes (Postgres written by db-writer AND read by
+// the api) and fan-out hubs (Redis → persist + serve) render faithfully.
+function DagSchema({ dag, pipe, resolveNode }: {
+  dag: PipeDag; pipe: PanelPipe; resolveNode: (n: PipeNode) => H;
+}): JSX.Element {
+  const [hover, setHover] = useState<string | null>(null);
+  const sizeOf = (n: DagNode): { w: number; h: number } =>
+    n.terminal ? { w: 640, h: 460 } : n.kind === "external" ? { w: 210, h: 178 } : { w: 188, h: 178 };
+
+  const layout = useMemo(() => {
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: "LR", nodesep: 56, ranksep: 120, marginx: 14, marginy: 14 });
+    g.setDefaultEdgeLabel(() => ({}));
+    dag.nodes.forEach((n) => { const s = sizeOf(n); g.setNode(n.id, { width: s.w, height: s.h }); });
+    dag.edges.forEach((e) => g.setEdge(e.from, e.to));
+    dagre.layout(g);
+    return g;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dag]);
+
+  const gw = (layout.graph().width as number) ?? 0;
+  const gh = (layout.graph().height as number) ?? 0;
+  const byId: Record<string, DagNode> = {};
+  dag.nodes.forEach((n) => { byId[n.id] = n; });
+  const pstate = (a: H, b: H): "flow" | "warn" | "down" =>
+    a === "down" || b === "down" ? "down" : a === "up" && b === "up" ? "flow" : "warn";
+  const pts = (e: { from: string; to: string }): { x: number; y: number }[] =>
+    (layout.edge(e.from, e.to) as { points: { x: number; y: number }[] }).points;
+  const toPath = (p: { x: number; y: number }[]): string =>
+    p.map((q, i) => `${i === 0 ? "M" : "L"} ${q.x.toFixed(1)} ${q.y.toFixed(1)}`).join(" ");
+
+  return (
+    <div style={{ position: "relative", width: gw, height: gh }}>
+      <svg width={gw} height={gh} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+        {dag.edges.map((e, i) => <FlowPath key={i} d={toPath(pts(e))} state={pstate(resolveNode(byId[e.from]!), resolveNode(byId[e.to]!))} />)}
+      </svg>
+      {dag.edges.map((e, i) => {
+        if (!e.label) return null;
+        const p = pts(e);
+        const mid = p[Math.floor(p.length / 2)]!;
+        return (
+          <div key={i} className="pp-mono" style={{ position: "absolute", left: mid.x, top: mid.y, transform: "translate(-50%,-50%)", fontSize: 10.5, letterSpacing: ".04em", textTransform: "uppercase", color: "#7b8494", background: "#0e0e0e", padding: "1px 5px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none" }}>{e.label}</div>
+        );
+      })}
+      {dag.nodes.map((n) => {
+        const gn = layout.node(n.id) as { x: number; y: number };
+        const s = sizeOf(n);
+        const left = gn.x - s.w / 2, top = gn.y - s.h / 2;
+        return n.terminal ? (
+          <div key={n.id} style={{ position: "absolute", left, top, width: s.w, height: s.h, display: "flex" }} onMouseDown={(ev) => ev.stopPropagation()}>
+            <Terminal pipe={pipe} live={resolveNode(n) === "up"} />
+          </div>
+        ) : (
+          <div key={n.id} style={{ position: "absolute", left, top }}>
+            <Block node={n} status={resolveNode(n)} tip={hover === n.id} onEnter={() => setHover(n.id)} onLeave={() => setHover(null)} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // The floating, pannable + zoomable schema canvas (grab to pan, wheel to zoom,
 // double-click to reset) — same interaction model as the DB-schema tab.
 function Stage({ pipe, statuses, resolveNode, asOf }: { pipe: PanelPipe; statuses: H[]; resolveNode: (n: PipeNode) => H; asOf: number | null }): JSX.Element {
@@ -514,8 +578,10 @@ function Stage({ pipe, statuses, resolveNode, asOf }: { pipe: PanelPipe; statuse
         onDoubleClick={reset}
       >
         <div className="pp-stagewrap" style={{ transform: `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${scale})` }}>
-          <div ref={contentRef} style={pipe.graph ? undefined : { display: "flex", alignItems: "stretch" }}>
-            {pipe.graph ? (
+          <div ref={contentRef} style={pipe.dag || pipe.graph ? undefined : { display: "flex", alignItems: "stretch" }}>
+            {pipe.dag ? (
+              <DagSchema dag={pipe.dag} pipe={pipe} resolveNode={resolveNode} />
+            ) : pipe.graph ? (
               <BranchSchema graph={pipe.graph} pipe={pipe} resolveNode={resolveNode} />
             ) : (
               <>
