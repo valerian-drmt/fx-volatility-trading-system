@@ -23,6 +23,53 @@ export const handlers = [
     const body = (await request.json()) as { spot: number; volatility: number };
     return HttpResponse.json({ price: body.spot * body.volatility });
   }),
+
+  // Desk live-data defaults (R11) — the voldesk provider fetches these on mount
+  // in live mode. Minimal valid payloads; tests override with server.use(...).
+  http.get("*/api/v1/vol/term-structure", () =>
+    HttpResponse.json({ symbol: "EURUSD", timestamp: "2026-06-16T00:00:00Z", pillars: [] }),
+  ),
+  http.get("*/api/v1/signals/pca/state", () =>
+    HttpResponse.json({ state: "stable", model_version: "test", signals: {} }),
+  ),
+  http.get("*/api/v1/signals/pca/model", () =>
+    HttpResponse.json({ active: true, version: "test", variance_explained: null }),
+  ),
+  http.get("*/api/v1/signals/pca/history", () => HttpResponse.json([])),
+  http.get("*/api/v1/health/extended", () =>
+    HttpResponse.json({
+      status: "OK",
+      components: { redis: "OK", database: "OK", engines: { market_data: "OK", vol_engine: "OK", risk_engine: "OK" } },
+    }),
+  ),
+  http.get("*/api/v1/dev/engines", () =>
+    HttpResponse.json({ engines: [], ib_gateway: { status: "OK" } }),
+  ),
+  http.get("*/api/v1/admin/config", () =>
+    HttpResponse.json({ version: 0, config: {}, updated_at: "2026-06-16T00:00:00Z", updated_by: null, comment: null }),
+  ),
+  http.get("*/api/v1/admin/config/history", () => HttpResponse.json([])),
+  http.get("*/api/v1/positions/open", () => HttpResponse.json([])),
+  http.get("*/api/v1/trade/limits", () => HttpResponse.json({})),
+  http.get("*/api/v1/trade/book", () => HttpResponse.json({ capital_total_usd: 0, margin_used_usd: 0 })),
+  http.get("*/api/v1/regime/events", () => HttpResponse.json([])),
+  http.get("*/api/v1/portfolio/cash", () =>
+    HttpResponse.json({ currencies: [], total_usd: 0, eurusd_spot: null, freshness: "missing" }),
+  ),
+  http.get("*/api/v1/portfolio/account", () =>
+    HttpResponse.json({ latest: null, prev_24h: null, freshness: "missing" }),
+  ),
+  http.get("*/api/v1/portfolio/vega-per-tenor", () => HttpResponse.json([])),
+  http.get("*/api/v1/portfolio/stats", () =>
+    HttpResponse.json({ sharpe: null, max_drawdown_pct: null, current_drawdown_pct: null, hit_rate: null, cum_realized_usd: 0, cum_unrealized_usd: 0, n_closed: 0, n_open: 0, n_days: 0 }),
+  ),
+  http.get("*/api/v1/portfolio/daily-pnl", () => HttpResponse.json({ days: 90, series: [], total_realized_usd: 0 })),
+  http.get("*/api/v1/portfolio/pnl-attribution", () => HttpResponse.json({ totals: {}, per_position: [] })),
+  http.get("*/api/v1/portfolio/equity-curve", () => HttpResponse.json([])),
+  http.get("*/api/v1/portfolio/var", () =>
+    HttpResponse.json({ var_95_usd: null, var_99_usd: null, es_99_usd: null, n_days: 0, method: "historical", hist: [] }),
+  ),
+  http.get("*/api/v1/portfolio/risk-per-tenor", () => HttpResponse.json([])),
 ];
 
 export const server = setupServer(...handlers);

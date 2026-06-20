@@ -4,20 +4,12 @@
  * `useDeskData()` to read each domain as `Fresh<T>` (live or mock).
  */
 import { createContext, useContext } from "react";
+import type { TickMsg } from "../../hooks/streams";
 import type { AccountState, Cash, Greeks, Limits, MacroEvent, Pc, PcaModelMeta, Position, TermPoint } from "./core";
 import type { BookComposition, PerfStats, StackItem, VegaTenor, WaterfallStep } from "./extended";
 import type { Fresh } from "./freshness";
 
 export type { PcaModelMeta };
-
-// Inlined for the mock-first foundation (Phase 0): the live WS hooks
-// (`hooks/streams`, which exports this) land with the live provider in Phase 1.
-export interface TickMsg {
-  symbol?: string;
-  mid?: number;
-  bid?: number;
-  ask?: number;
-}
 
 /** Trade view live read part : positions + derived book greeks + caps + calendar. */
 export interface TradeData {
