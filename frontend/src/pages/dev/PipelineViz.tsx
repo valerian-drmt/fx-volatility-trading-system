@@ -12,6 +12,7 @@
  */
 import dagre from "@dagrejs/dagre";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useWsLog } from "../../hooks/useWsLog";
 import { DataProvider } from "../../voldesk/data/provider";
 import { type SystemData, useDeskData } from "../../voldesk/data/deskData";
 import { DashboardView } from "../../voldesk/views/DashboardView";
@@ -19,7 +20,7 @@ import { PortfolioView } from "../../voldesk/views/PortfolioView";
 import { RiskView } from "../../voldesk/views/RiskView";
 import { SignalsView } from "../../voldesk/views/SignalsView";
 import { TradeView } from "../../voldesk/views/TradeView";
-import { PIPELINES, type DagNode, type PanelPipe, type PipeDag, type PipeNode, type Role, type ViewId } from "./pipelines";
+import { PIPELINES, type DagNode, type DomainId, type PanelPipe, type PipeDag, type PipeNode, type Role, type ViewId } from "./pipelines";
 
 // The real prod view rendered in the terminal "screen" (the panel lives in it).
 // Dashboard + Trade take props in the app; stub them for the viz.
@@ -378,9 +379,89 @@ function DagSchema({ dag, pipe, resolveNode }: {
   );
 }
 
+// The panel's domain → the WS channel that carries its live payload (folded in
+// from the removed WS-monitor tab). REST-only domains (system/config) → null.
+const WS_BASE = (import.meta.env["VITE_WS_BASE_URL"] as string | undefined) ?? "";
+function wsChannelFor(domain: DomainId): { url: string; label: string } | null {
+  if (domain === "ticks") return { url: WS_BASE + "/ws/ticks", label: "/ws/ticks" };
+  if (domain === "surface" || domain === "pca" || domain === "termStructure") return { url: WS_BASE + "/ws/vol", label: "/ws/vol" };
+  if (domain === "risk" || domain === "portfolio" || domain === "trade") return { url: WS_BASE + "/ws/risk", label: "/ws/risk" };
+  return null;
+}
+
+// Live WS message tap for one channel (lean port of the WS-monitor). Mounted
+// keyed by url so switching panels reconnects cleanly.
+function WsLogView({ url }: { url: string }): JSX.Element {
+  const { status, count, messages, rate, paused, pause, resume, clear } = useWsLog(url, 200);
+  const dot = status === "open" ? GREEN : status === "connecting" ? AMBER : RED;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      <div className="pp-mono" style={{ flex: "none", display: "flex", alignItems: "center", gap: 10, padding: "5px 12px", borderBottom: "1px solid #14171d", fontSize: 10.5, color: "#7b8494" }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot }} />
+        <span style={{ color: dot }}>{status}</span>
+        <span><b style={{ color: "#7fa8e0" }}>{rate.toFixed(1)}</b>/s · {count} msg</span>
+        <span style={{ flex: 1 }} />
+        {paused ? <button onClick={resume} style={inspectBtn}>▶ resume</button> : <button onClick={pause} style={inspectBtn}>⏸ pause</button>}
+        <button onClick={clear} style={inspectBtn}>clear</button>
+      </div>
+      <div className="pp-mono" style={{ flex: 1, overflow: "auto", minHeight: 0, padding: "6px 12px", fontSize: 11, color: "#bcd0c6", background: "#08090c" }}>
+        {messages.length === 0 ? <span style={{ color: "#4d5360" }}>(no messages yet)</span> : messages.map((m, i) => (
+          <div key={`${m.ts}-${i}`} style={{ marginBottom: 5 }}>
+            <span style={{ color: "#4d5360" }}>{m.ts.slice(11, 19)} </span>
+            <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{m.raw}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const inspectBtn: React.CSSProperties = { padding: "1px 8px", fontSize: 10, borderRadius: 3, border: "1px solid #2a3040", background: "#141a22", color: "#8fb0d8", cursor: "pointer", fontFamily: "inherit" };
+
+// Bottom drawer: the live data the selected panel actually receives — its
+// domain payload as JSON, and (when WS-fed) the raw channel message log.
+function DataInspector({ pipe, fresh }: {
+  pipe: PanelPipe; fresh: { data: unknown; status: string; asOf: number | null };
+}): JSX.Element {
+  const [open, setOpen] = useState(true);
+  const [tab, setTab] = useState<"json" | "ws">("json");
+  const chan = wsChannelFor(pipe.domain);
+  const view = tab === "ws" && chan ? "ws" : "json";
+  const json = useMemo(() => {
+    try { return JSON.stringify(fresh.data, null, 2); } catch { return String(fresh.data); }
+  }, [fresh.data]);
+  const sc = fresh.status === "live" ? "#7fcf9a" : fresh.status === "stale" ? "#d9b86a" : "#e08a84";
+  const tabStyle = (on: boolean): React.CSSProperties => ({ padding: "3px 11px", fontSize: 11, fontWeight: 600, borderRadius: 5, cursor: "pointer", border: "1px solid " + (on ? "#2f5c3f" : "#23272f"), background: on ? "rgba(62,196,109,.12)" : "transparent", color: on ? "#cdebd6" : "#8a909c" });
+  return (
+    <div style={{ flex: "none", height: open ? 246 : 34, display: "flex", flexDirection: "column", overflow: "hidden", borderTop: "1px solid #1b1e25", background: "#0b0d11", transition: "height .15s" }}>
+      <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", background: "#0f1115" }}>
+        <span className="pp-mono" style={{ fontSize: 9, letterSpacing: ".16em", color: "#5a606e" }}>DATA</span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: "#e6eaf1" }}>{pipe.panel}</span>
+        <span style={{ width: 8 }} />
+        <button onClick={() => setTab("json")} style={tabStyle(view === "json")}>JSON payload</button>
+        {chan ? <button onClick={() => setTab("ws")} style={tabStyle(view === "ws")}>WS {chan.label}</button> : null}
+        <span style={{ flex: 1 }} />
+        {view === "json" ? (
+          <span className="pp-mono" style={{ fontSize: 10.5, color: sc }}>{fresh.status}{fresh.asOf ? " · " + clk(new Date(fresh.asOf)) : ""}</span>
+        ) : null}
+        <button onClick={() => setOpen((o) => !o)} className="pp-mono" style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, border: "1px solid #23272f", background: "transparent", color: "#8a909c", cursor: "pointer" }}>{open ? "▾ hide" : "▸ data"}</button>
+      </div>
+      {open ? (
+        view === "ws" && chan ? (
+          <WsLogView key={chan.url} url={chan.url} />
+        ) : (
+          <pre className="pp-mono" style={{ flex: 1, margin: 0, overflow: "auto", minHeight: 0, padding: "8px 12px", fontSize: 11, lineHeight: 1.5, color: fresh.data == null ? "#4d5360" : "#bcd0c6", background: "#08090c", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {fresh.data == null ? "(no data — " + fresh.status + ")" : json}
+          </pre>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 // The floating, pannable + zoomable schema canvas (grab to pan, wheel to zoom,
 // double-click to reset) — same interaction model as the DB-schema tab.
-function Stage({ pipe, statuses, resolveNode, asOf }: { pipe: PanelPipe; statuses: H[]; resolveNode: (n: PipeNode) => H; asOf: number | null }): JSX.Element {
+function Stage({ pipe, statuses, resolveNode, asOf, domainFresh }: { pipe: PanelPipe; statuses: H[]; resolveNode: (n: PipeNode) => H; asOf: number | null; domainFresh: { data: unknown; status: string; asOf: number | null } }): JSX.Element {
   const [hoverNode, setHoverNode] = useState<number | null>(null);
   const [hoverPipe, setHoverPipe] = useState<number | null>(null);
   const DEFAULT_SCALE = 0.78;
@@ -485,6 +566,8 @@ function Stage({ pipe, statuses, resolveNode, asOf }: { pipe: PanelPipe; statuse
         </div>
       </div>
 
+      <DataInspector pipe={pipe} fresh={domainFresh} />
+
       <div className="pp-mono" style={{ flex: "none", height: 30, display: "flex", alignItems: "center", gap: 18, padding: "0 16px", background: "#0c0d10", borderTop: "1px solid #1b1e25", fontSize: 10, color: "#4d5360" }}>
         <span style={{ color: "#5a606e" }}>domain: {pipe.domain}</span>
         <span style={{ color: "#3a3f49" }}>·</span>
@@ -518,7 +601,7 @@ function PipelineLive(): JSX.Element {
     <div className="pp-root">
       <style>{CSS}</style>
       <Sidebar id={id} setId={setId} healthById={healthById} />
-      <Stage pipe={pipe} statuses={statuses} resolveNode={(n) => resolveFor(pipe, n)} asOf={asOf} />
+      <Stage pipe={pipe} statuses={statuses} resolveNode={(n) => resolveFor(pipe, n)} asOf={asOf} domainFresh={desk[pipe.domain]} />
     </div>
   );
 }

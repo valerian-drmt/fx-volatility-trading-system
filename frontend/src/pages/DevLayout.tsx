@@ -26,7 +26,6 @@ import { Portfolio } from "./dev/Portfolio";
 import { StackCombined } from "./dev/StackCombined";
 import { Step2Pca } from "./dev/Step2Pca";
 import { Step3Trade } from "./dev/Step3Trade";
-import { WsMonitor } from "./dev/WsMonitor";
 
 interface TabDef {
   id: string;
@@ -36,7 +35,6 @@ interface TabDef {
 
 const TABS: TabDef[] = [
   { id: "stack", label: "🐳 Stack · Health · Redis", Component: StackCombined },
-  { id: "ws", label: "📡 WS Monitor", Component: WsMonitor },
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
   { id: "schema", label: "🗺 DB Schema", Component: DbSchema },
   { id: "logs", label: "🔍 Logs", Component: Logs },
