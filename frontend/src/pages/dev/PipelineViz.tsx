@@ -508,12 +508,17 @@ function Stage({ pipe, statuses, resolveNode, asOf, domainFresh }: { pipe: Panel
     setTy(py - cy * next);
   };
 
+  // `statuses` is computed over the rendered nodes (DAG when present), so the
+  // stamp/footer count what's actually drawn — not the flat `pipe.nodes`, whose
+  // health-less entries all collapse to the domain status (the "7 blocks down"
+  // bug when only the panel's domain was missing).
+  const sNodes: { label: string }[] = pipe.dag ? pipe.dag.nodes : pipe.nodes;
   const infra = pipe.nodes.slice(0, -1);
   const pstate = (a: H, b: H): "flow" | "warn" | "down" =>
     a === "down" || b === "down" ? "down" : a === "up" && b === "up" ? "flow" : "warn";
   const healthy = statuses.every((s) => s === "up");
-  const downNames = pipe.nodes.filter((_, i) => statuses[i] === "down").map((n) => n.label);
-  const warnNames = pipe.nodes.filter((_, i) => statuses[i] === "warn").map((n) => n.label);
+  const downNames = sNodes.filter((_, i) => statuses[i] === "down").map((n) => n.label);
+  const warnNames = sNodes.filter((_, i) => statuses[i] === "warn").map((n) => n.label);
   const stampColor = healthy ? "#7fcf9a" : downNames.length ? "#e08a84" : "#d9b86a";
   const stampText = healthy
     ? `⚡ live · updated ${asOf ? clk(new Date(asOf)) : "—"}`
@@ -588,7 +593,9 @@ function PipelineLive(): JSX.Element {
   // independent of the stack's global DEGRADED flag.
   const apiUp: H = desk.system.status !== "missing" || ws === "up" ? "up" : "down";
   const resolveFor = (p: PanelPipe, n: PipeNode): H => resolve(n, hmap, normStatus(desk[p.domain].status), ws, apiUp);
-  const statusesOf = (p: PanelPipe): H[] => p.nodes.map((n) => resolveFor(p, n));
+  // Resolve over the rendered topology (DAG when present) so the sidebar pill
+  // and the header stamp count the same blocks the schema draws.
+  const statusesOf = (p: PanelPipe): H[] => (p.dag ? p.dag.nodes : p.nodes).map((n) => resolveFor(p, n));
 
   const healthById: Record<string, H> = {};
   for (const p of PIPELINES) healthById[p.id] = rollUp(statusesOf(p));
