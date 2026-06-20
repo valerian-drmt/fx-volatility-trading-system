@@ -37,7 +37,7 @@ def _surface() -> SimpleNamespace:
 async def test_term_structure_propagates_fair_and_rv(monkeypatch):
     from api.orchestration import vol_service
 
-    async def _fake_latest(_redis, _symbol):
+    async def _fake_latest(_redis, _symbol, db=None):
         return _surface()
 
     monkeypatch.setattr(vol_service, "get_latest_surface", _fake_latest)

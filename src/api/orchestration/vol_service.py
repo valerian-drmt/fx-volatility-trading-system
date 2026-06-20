@@ -109,17 +109,22 @@ def _rr_bf(
 
 
 async def get_term_structure(
-    redis: aioredis.Redis, symbol: str
+    redis: aioredis.Redis, symbol: str, db: AsyncSession | None = None,
 ) -> TermStructureResponse:
     """Derive the term structure (ATM IV + fair vol per tenor) from the latest
-    Redis surface.
+    surface.
+
+    Reads the same source as ``/vol/surface`` — Redis first, then the most
+    recent ``vol_surfaces`` row when ``db`` is passed and Redis is dry — so a
+    markets-closed sandbox (no live ``latest_vol_surface`` key) still serves the
+    last-known term structure instead of 404-ing.
 
     Fair-vol fields are read from the ``_fair_q`` sub-dict the vol-engine
     publishes (σ_fair^Q = σ_fair^P + VRP, per tenor) + the surface-level
     ``_rv_full_pct``. Tenors without a fair-vol entry keep those fields ``None``
     (e.g. before the engine has enough OHLC history to fit HAR/GARCH).
     """
-    surface = await get_latest_surface(redis, symbol)
+    surface = await get_latest_surface(redis, symbol, db=db)
     fair_q = surface.surface.get("_fair_q") or {}
     rv_full = surface.surface.get("_rv_full_pct")
     rv_full_f = float(rv_full) if isinstance(rv_full, (int, float)) else None

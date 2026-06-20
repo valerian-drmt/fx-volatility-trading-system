@@ -49,11 +49,16 @@ async def surface_at(
 
 @router.get("/term-structure", response_model=TermStructureResponse)
 async def term_structure(
-    redis: RedisDep, symbol: str = Query("EURUSD", min_length=3, max_length=20)
+    redis: RedisDep, db: DbDep,
+    symbol: str = Query("EURUSD", min_length=3, max_length=20),
 ) -> TermStructureResponse:
-    """Tenor → ATM vol mapping derived from the latest Redis surface."""
+    """Tenor → ATM vol mapping from the latest surface.
+
+    Redis first, then the most recent ``vol_surfaces`` row (markets-closed
+    fallback) — same source as ``/vol/surface`` so the two stay consistent.
+    """
     try:
-        return await vol_service.get_term_structure(redis, symbol)
+        return await vol_service.get_term_structure(redis, symbol, db=db)
     except vol_service.VolNotFound as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
