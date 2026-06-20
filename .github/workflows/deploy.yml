@@ -70,24 +70,39 @@ jobs:
           chmod 600 ~/.ssh/ec2.pem
           ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Ship compose + .env payloads to the host
+      - name: Ship compose + configs + .env payloads to the host
         run: |
+          # Ship the compose file AND the configs it bind-mounts (nginx confs,
+          # postgres init, redis conf, obs/*). Without these the nginx/postgres
+          # containers fail to mount at boot. The dev override is NOT shipped
+          # (it stays local) — the host runs the base compose, prod-tuned via .env.
           scp -i ~/.ssh/ec2.pem docker-compose.yml \
             "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/fxvol/docker-compose.yml"
+          scp -i ~/.ssh/ec2.pem -r infrastructure obs \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/fxvol/"
           # .env is rendered on the host from repo secrets, not shipped
           # as a file (avoids writing secrets to a worktree on the runner).
+          # COMPOSE_PROFILES (repo variable) selects engines/ib/obs — empty = core
+          # stack only (api+frontend+nginx+pg+redis), the safe first deploy.
           ssh -i ~/.ssh/ec2.pem "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
             "umask 077 && cat > /opt/fxvol/.env" <<EOF
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
           VNC_PASSWORD=${{ secrets.VNC_PASSWORD }}
           IB_USERID=${{ secrets.IB_USERID }}
           IB_PASSWORD=${{ secrets.IB_PASSWORD }}
+          TRADING_MODE=paper
+          READ_ONLY_API=yes
+          COMPOSE_PROFILES=${{ vars.COMPOSE_PROFILES }}
+          NGINX_CONF_FILE=./infrastructure/nginx/nginx.conf
+          LETSENCRYPT_DIR=/etc/letsencrypt
+          CERTBOT_WWW_DIR=/var/www/certbot
           API_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-api:${{ steps.resolve.outputs.image_tag }}
           FRONTEND_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-frontend:${{ steps.resolve.outputs.image_tag }}
           MARKET_DATA_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-market-data:${{ steps.resolve.outputs.image_tag }}
           VOL_ENGINE_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-vol-engine:${{ steps.resolve.outputs.image_tag }}
           RISK_ENGINE_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-risk-engine:${{ steps.resolve.outputs.image_tag }}
           DB_WRITER_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-db-writer:${{ steps.resolve.outputs.image_tag }}
+          IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:latest
           EOF
 
       - name: Pull + restart stack on EC2
