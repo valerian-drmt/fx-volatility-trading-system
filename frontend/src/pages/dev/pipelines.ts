@@ -135,46 +135,76 @@ const xFE: PipeNode = { kind: "frontend", label: "frontend", sub: "React · fetc
 const xRedis = (sub: string): PipeNode => ({ kind: "store", label: "Redis", sub, role: "hub", health: "redis" });
 const xPg = (sub: string): PipeNode => ({ kind: "store", label: "Postgres", sub, role: "receive", health: "postgres" });
 const xEng = (label: string, sub: string, health: string): PipeNode => ({ kind: "container", label, sub, role: "transform", health });
-const xExt = (label: string, sub: string): PipeNode => ({ kind: "external", label, sub, role: "emit" });
-const xPanel = (name: string): PipeNode => ({ kind: "panel", label: name, sub: "displayed panel", role: "receive" });
-const xApi = (sub: string, role: Role = "hub"): PipeNode => ({ kind: "api", label: "api", sub, role, health: "__api" });
 
-// ── topology builders (each returns the accurate source→…→panel graph) ──
-// engine computes → persisted → api serves the LIVE value from the Redis cache (FORK: store + serve)
-function gFork(engine: PipeNode, redisSub: string, e0: string, e1: string, pgSub: string, apiSub: string, panelName: string, apiRole: Role = "hub"): PipeGraph {
+// ── DAG node helpers ──
+const toDag = (n: PipeNode, id: string): DagNode => ({
+  id, kind: n.kind, label: n.label, role: n.role ?? "receive",
+  ...(n.sub !== undefined ? { sub: n.sub } : {}),
+  ...(n.health !== undefined ? { health: n.health } : {}),
+});
+const dApi = (sub: string, role: Role = "hub"): DagNode => ({ id: "api", kind: "api", label: "api", sub, role, health: "__api" });
+const dPanel = (name: string): DagNode => ({ id: "panel", kind: "panel", label: name, sub: "displayed panel", role: "receive", terminal: true });
+
+// ── DAG topology builders (same call sites as the old tree builders) ──
+// engine → persisted → api serves the LIVE value from the Redis cache. Redis
+// fans out (db-writer + api), Postgres written-then-read (dual role), api 2 inputs.
+function dagFork(engine: PipeNode, redisSub: string, e0: string, e1: string, pgSub: string, apiSub: string, panelName: string, apiRole: Role = "hub"): PipeDag {
   return {
-    spine: [xIB, xIBG, engine, xRedis(redisSub)], spineEdges: [e0, e1, "SET + db_events"],
-    store: { nodes: [xDBW, xPg(pgSub)], edges: ["INSERT"] }, storeEdge: "db_events",
-    serve: { nodes: [xApi(apiSub, apiRole), xFE, xPanel(panelName)], edges: ["JSON", "render"] }, serveEdge: "read latest (Redis)",
+    nodes: [toDag(xIB, "ib"), toDag(xIBG, "ibg"), toDag(engine, "eng"), toDag(xRedis(redisSub), "redis"), toDag(xDBW, "dbw"), toDag(xPg(pgSub), "pg"), dApi(apiSub, apiRole), toDag(xFE, "fe"), dPanel(panelName)],
+    edges: [
+      { from: "ib", to: "ibg", label: e0 }, { from: "ibg", to: "eng", label: e1 },
+      { from: "eng", to: "redis", label: "SET + db_events" },
+      { from: "redis", to: "dbw", label: "db_events" }, { from: "dbw", to: "pg", label: "INSERT" },
+      { from: "redis", to: "api", label: "read latest (live)" }, { from: "pg", to: "api", label: "history" },
+      { from: "api", to: "fe", label: "JSON" }, { from: "fe", to: "panel", label: "render" },
+    ],
   };
 }
-// engine computes → persisted → api READS it back from Postgres (straight line through the store)
-function gPersist(engine: PipeNode, e0: string, e1: string, pgSub: string, apiSub: string, panelName: string, apiRole: Role = "hub"): PipeGraph {
+// engine → persisted → api READS it back from Postgres (linear; Postgres in+out = dual role).
+function dagPersist(engine: PipeNode, e0: string, e1: string, pgSub: string, apiSub: string, panelName: string, apiRole: Role = "hub"): PipeDag {
   return {
-    spine: [xIB, xIBG, engine, xRedis("db_events"), xDBW, xPg(pgSub)], spineEdges: [e0, e1, "publish", "consume", "INSERT"],
-    serve: { nodes: [xApi(apiSub, apiRole), xFE, xPanel(panelName)], edges: ["JSON", "render"] }, serveEdge: "read",
+    nodes: [toDag(xIB, "ib"), toDag(xIBG, "ibg"), toDag(engine, "eng"), toDag(xRedis("db_events"), "redis"), toDag(xDBW, "dbw"), toDag(xPg(pgSub), "pg"), dApi(apiSub, apiRole), toDag(xFE, "fe"), dPanel(panelName)],
+    edges: [
+      { from: "ib", to: "ibg", label: e0 }, { from: "ibg", to: "eng", label: e1 },
+      { from: "eng", to: "redis", label: "publish" }, { from: "redis", to: "dbw", label: "db_events" },
+      { from: "dbw", to: "pg", label: "INSERT" }, { from: "pg", to: "api", label: "read" },
+      { from: "api", to: "fe", label: "JSON" }, { from: "fe", to: "panel", label: "render" },
+    ],
   };
 }
-// live-only, never persisted (ticks) — straight line, no store
-function gLive(engine: PipeNode, redisSub: string, e0: string, e1: string, apiSub: string, panelName: string): PipeGraph {
+// live-only, never persisted (ticks): IB → … → Redis → api (no store branch).
+function dagLive(engine: PipeNode, redisSub: string, e0: string, e1: string, apiSub: string, panelName: string): PipeDag {
   return {
-    spine: [xIB, xIBG, engine, xRedis(redisSub)], spineEdges: [e0, e1, "publish"],
-    serve: { nodes: [xApi(apiSub), xFE, xPanel(panelName)], edges: ["WS", "render"] }, serveEdge: "WS bridge",
+    nodes: [toDag(xIB, "ib"), toDag(xIBG, "ibg"), toDag(engine, "eng"), toDag(xRedis(redisSub), "redis"), dApi(apiSub), toDag(xFE, "fe"), dPanel(panelName)],
+    edges: [
+      { from: "ib", to: "ibg", label: e0 }, { from: "ibg", to: "eng", label: e1 },
+      { from: "eng", to: "redis", label: "publish" }, { from: "redis", to: "api", label: "WS bridge" },
+      { from: "api", to: "fe", label: "JSON" }, { from: "fe", to: "panel", label: "render" },
+    ],
   };
 }
-// computed on demand by the api from several converging sources (no engine, no store)
-function gReval(sources: PipeNode[], sourceEdges: string[], apiSub: string, panelName: string): PipeGraph {
+// computed on demand by the api from several converging sources (no store).
+function dagReval(sources: PipeNode[], sourceEdges: string[], apiSub: string, panelName: string): PipeDag {
   return {
-    sources, sourceEdges, spine: [xApi(apiSub, "transform")], spineEdges: [],
-    serve: { nodes: [xFE, xPanel(panelName)], edges: ["render"] }, serveEdge: "JSON",
+    nodes: [...sources.map((s, i) => toDag(s, `s${i}`)), dApi(apiSub, "transform"), toDag(xFE, "fe"), dPanel(panelName)],
+    edges: [
+      ...sources.map((_, i): DagEdge => ({ from: `s${i}`, to: "api", label: sourceEdges[i] ?? "" })),
+      { from: "api", to: "fe", label: "JSON" }, { from: "fe", to: "panel", label: "render" },
+    ],
   };
 }
-// macro events: external providers → api scheduler → Postgres → api serve
-function gEvents(panelName: string): PipeGraph {
+// macro events: providers → scheduler → Postgres → api serve (Postgres dual-role).
+function dagEvents(panelName: string): PipeDag {
   return {
-    spine: [xExt("macro providers", "FRED · ECB · BoE · FOMC"), { kind: "api", label: "events scheduler", sub: "fetch + dedup", role: "transform", health: "__api" }, xPg("event_calendar")],
-    spineEdges: ["fetch", "upsert"],
-    serve: { nodes: [xApi("GET /regime/events"), xFE, xPanel(panelName)], edges: ["JSON", "render"] }, serveEdge: "read",
+    nodes: [
+      { id: "ext", kind: "external", label: "macro providers", sub: "FRED · ECB · BoE · FOMC", role: "emit" },
+      { id: "sched", kind: "api", label: "events scheduler", sub: "fetch + dedup", role: "transform", health: "__api" },
+      toDag(xPg("event_calendar"), "pg"), dApi("GET /regime/events"), toDag(xFE, "fe"), dPanel(panelName),
+    ],
+    edges: [
+      { from: "ext", to: "sched", label: "fetch" }, { from: "sched", to: "pg", label: "upsert" },
+      { from: "pg", to: "api", label: "read" }, { from: "api", to: "fe", label: "JSON" }, { from: "fe", to: "panel", label: "render" },
+    ],
   };
 }
 
@@ -192,46 +222,56 @@ export const PIPELINES: PanelPipe[] = [
       { kind: "panel", label: "Ticker bid/ask", sub: "displayed panel", health: "__ws", role: "receive" },
     ],
     edges: ["get tick", "reqMktData", "publish ticks", "WS bridge", "WS /ws/ticks", "render"],
-    graph: gLive(xEng("market-data", "clientId 1 · tick stream", "market-data"), "latest_spot:EUR · ticks ch.", "get tick", "reqMktData", "FastAPI · WS bridge", "Ticker bid/ask"),
+    dag: dagLive(xEng("market-data", "clientId 1 · tick stream", "market-data"), "latest_spot:EUR · ticks ch.", "get tick", "reqMktData", "FastAPI · WS bridge", "Ticker bid/ask"),
   },
   {
     id: "dash-market", panel: "Market snapshot", view: "dashboard", domain: "ticks", isolated: true,
     nodes: [IB, IBG, eng("market-data", "clientId 1"), redis("latest_spot:EUR"), API, FE, panel("Market snapshot")],
     edges: ["get tick", "reqMktData", "publish", "WS bridge", "WS /ws/ticks", "render"],
-    graph: gLive(xEng("market-data", "clientId 1", "market-data"), "latest_spot:EUR", "get tick", "reqMktData", "FastAPI · WS bridge", "Market snapshot"),
+    dag: dagLive(xEng("market-data", "clientId 1", "market-data"), "latest_spot:EUR", "get tick", "reqMktData", "FastAPI · WS bridge", "Market snapshot"),
   },
   {
     id: "dash-signal", panel: "Active signal", view: "dashboard", domain: "pca", isolated: true,
     nodes: [eng("vol-engine", "PCA projection"), pg("pca_signal_history"), API, FE, panel("Active signal")],
     edges: ["persist (db_events)", "read latest", "GET /signals/pca/state", "render"],
-    graph: gPersist(xEng("vol-engine", "PCA project", "vol-engine"), "FOP chain", "reqMktData", "pca_signal_history", "GET /signals/pca/state", "Active signal"),
+    dag: dagPersist(xEng("vol-engine", "PCA project", "vol-engine"), "FOP chain", "reqMktData", "pca_signal_history", "GET /signals/pca/state", "Active signal"),
   },
   {
     id: "dash-book-health", panel: "Book health", view: "dashboard", domain: "portfolio", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Book health")],
     edges: ["UPDATE greeks", "read book", "GET /portfolio/aggregate-greeks", "render"],
-    graph: gPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /portfolio/aggregate-greeks", "Book health"),
+    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /portfolio/aggregate-greeks", "Book health"),
   },
   {
     id: "dash-capital", panel: "Capital", view: "dashboard", domain: "portfolio", isolated: true,
     nodes: [eng("execution-engine", "account snaps"), DBW, pg("account_history"), API, FE, panel("Capital")],
     edges: ["account summary", "db_events", "INSERT", "latest", "GET /portfolio/account", "render"],
-    graph: gPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history", "GET /portfolio/account", "Capital"),
+    dag: dagPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history", "GET /portfolio/account", "Capital"),
   },
   {
     id: "dash-today", panel: "Today — events & expiries", view: "dashboard", domain: "trade", isolated: true,
     nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Today")],
     edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
-    graph: gEvents("Today"),
+    dag: dagEvents("Today"),
   },
   {
     id: "dash-attention", panel: "Attention (alerts)", view: "dashboard", domain: "system", isolated: true,
     nodes: [eng("5 engines", "heartbeat each cycle"), redis("heartbeat:<engine>"), API, FE, panel("Attention")],
     edges: ["SET heartbeat (TTL)", "read heartbeats", "GET /health/extended", "derive alerts"],
-    graph: {
-      spine: [{ kind: "container", label: "5 engines", sub: "heartbeat each cycle", role: "emit" }, xRedis("heartbeat:<engine> (TTL)")],
-      spineEdges: ["SET heartbeat"],
-      serve: { nodes: [xApi("GET /health/extended"), xFE, xPanel("Attention")], edges: ["JSON", "derive alerts"] }, serveEdge: "read heartbeats",
+    dag: {
+      nodes: [
+        { id: "engs", kind: "container", label: "5 engines", sub: "heartbeat each cycle", role: "emit" },
+        { id: "redis", kind: "store", label: "Redis", sub: "heartbeat:<engine> (TTL)", role: "hub", health: "redis" },
+        { id: "api", kind: "api", label: "api", sub: "GET /health/extended", role: "hub", health: "__api" },
+        { id: "fe", kind: "frontend", label: "frontend", sub: "React · fetch", role: "receive", health: "__self" },
+        { id: "panel", kind: "panel", label: "Attention", sub: "displayed panel", role: "receive", terminal: true },
+      ],
+      edges: [
+        { from: "engs", to: "redis", label: "SET heartbeat" },
+        { from: "redis", to: "api", label: "read heartbeats" },
+        { from: "api", to: "fe", label: "JSON" },
+        { from: "fe", to: "panel", label: "derive alerts" },
+      ],
     },
   },
 
@@ -240,29 +280,37 @@ export const PIPELINES: PanelPipe[] = [
     id: "trade-indicators", panel: "Indicators", view: "trade", domain: "trade", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Indicators")],
     edges: ["UPDATE greeks", "read book", "GET /positions/open (Σ)", "render"],
-    graph: gPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /positions/open (Σ)", "Indicators"),
+    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /positions/open (Σ)", "Indicators"),
   },
   {
     id: "trade-open", panel: "Open positions", view: "trade", domain: "trade", isolated: true,
     nodes: [IB, IBG, eng("execution-engine", "clientId 5 · sync"), eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Open positions")],
     edges: ["positions", "reqPositions", "UPDATE greeks", "UPSERT row", "read book", "GET /positions/open", "render"],
-    graph: gPersist(xEng("execution-engine", "clientId 5 · sync", "exec-engine"), "positions", "UPSERT row", "open_position", "GET /positions/open", "Open positions"),
+    dag: dagPersist(xEng("execution-engine", "clientId 5 · sync", "exec-engine"), "positions", "UPSERT row", "open_position", "GET /positions/open", "Open positions"),
   },
   {
     id: "trade-builder", panel: "Order builder", view: "trade", domain: "surface", isolated: true,
     nodes: [redis("latest_vol_surface"), API, FE, panel("Order builder")],
     edges: ["read surface", "POST /vol/trade-preview (price legs)", "preview + render"],
-    graph: {
-      spine: [xRedis("latest_vol_surface"), xApi("POST /vol/trade-preview · price legs", "transform")],
-      spineEdges: ["read surface"],
-      serve: { nodes: [xFE, xPanel("Order builder")], edges: ["render"] }, serveEdge: "preview",
+    dag: {
+      nodes: [
+        { id: "redis", kind: "store", label: "Redis", sub: "latest_vol_surface", role: "hub", health: "redis" },
+        { id: "api", kind: "api", label: "api", sub: "POST /vol/trade-preview · price legs", role: "transform", health: "__api" },
+        { id: "fe", kind: "frontend", label: "frontend", sub: "React · fetch", role: "receive", health: "__self" },
+        { id: "panel", kind: "panel", label: "Order builder", sub: "displayed panel", role: "receive", terminal: true },
+      ],
+      edges: [
+        { from: "redis", to: "api", label: "read surface" },
+        { from: "api", to: "fe", label: "preview" },
+        { from: "fe", to: "panel", label: "render" },
+      ],
     },
   },
   {
     id: "trade-close", panel: "Close position", view: "trade", domain: "trade", isolated: true,
     nodes: [eng("execution-engine", "RTH-aware close"), pg("booked_position · open_position"), API, FE, panel("Close position")],
     edges: ["mark closeable", "read book", "GET /positions/open · POST close", "render + arm"],
-    graph: gPersist(xEng("execution-engine", "RTH-aware close", "exec-engine"), "positions", "mark closeable", "booked_position · open_position", "GET /positions/open · POST close", "Close position"),
+    dag: dagPersist(xEng("execution-engine", "RTH-aware close", "exec-engine"), "positions", "mark closeable", "booked_position · open_position", "GET /positions/open · POST close", "Close position"),
   },
 
   // ───────────────────────── Signal ─────────────────────────
@@ -270,32 +318,6 @@ export const PIPELINES: PanelPipe[] = [
     id: "iv-surface", panel: "IV surface", view: "signals", domain: "surface", isolated: true,
     nodes: [IB, IBG, eng("vol-engine", "clientId 2 · 180s"), redis("latest_vol_surface · vol_surface_history"), API, FE, panel("IV surface")],
     edges: ["FOP chain", "reqMktData", "compute (SET + db_events)", "read", "GET /vol/surface", "render"],
-    graph: {
-      spine: [
-        { kind: "external", label: "IB", sub: "Interactive Brokers", role: "emit", health: "IB Gateway" },
-        { kind: "container", label: "ib-gateway", sub: "broker session · clientId 1–5", role: "hub", health: "IB Gateway" },
-        { kind: "container", label: "vol-engine", sub: "clientId 2 · 180s cycle", role: "transform", health: "vol-engine" },
-        { kind: "store", label: "Redis", sub: "SET latest_vol_surface + db_events", role: "hub", health: "redis" },
-      ],
-      spineEdges: ["FOP chain", "reqMktData", "SVI/SSVI calibrate"],
-      storeEdge: "db_events",
-      store: {
-        nodes: [
-          { kind: "container", label: "db-writer", sub: "db_events → batch INSERT", role: "receive", health: "db-writer" },
-          { kind: "store", label: "Postgres", sub: "vol_surface_history", role: "receive", health: "postgres" },
-        ],
-        edges: ["INSERT row"],
-      },
-      serveEdge: "read latest",
-      serve: {
-        nodes: [
-          { kind: "api", label: "api", sub: "FastAPI · GET /vol/surface", role: "hub", health: "__api" },
-          { kind: "frontend", label: "frontend", sub: "React · fetch", role: "receive", health: "__self" },
-          { kind: "panel", label: "IV surface", sub: "displayed panel", role: "receive" },
-        ],
-        edges: ["JSON surface", "render"],
-      },
-    },
     dag: {
       nodes: [
         { id: "ib", kind: "external", label: "IB", sub: "Interactive Brokers", role: "emit", health: "IB Gateway" },
@@ -325,19 +347,19 @@ export const PIPELINES: PanelPipe[] = [
     id: "mode-stability", panel: "Mode stability", view: "signals", domain: "pca", isolated: true,
     nodes: [eng("vol-engine", "PCA fit + project"), pg("pca_model · pca_signal_history"), API, FE, panel("Mode stability")],
     edges: ["fit/project (db_events)", "read active model", "GET /signals/pca/model", "render"],
-    graph: gPersist(xEng("vol-engine", "PCA fit + project", "vol-engine"), "FOP chain", "reqMktData", "pca_model · pca_signal_history", "GET /signals/pca/model", "Mode stability"),
+    dag: dagPersist(xEng("vol-engine", "PCA fit + project", "vol-engine"), "FOP chain", "reqMktData", "pca_model · pca_signal_history", "GET /signals/pca/model", "Mode stability"),
   },
   {
     id: "fair-vol", panel: "Fair vol — level gate", view: "signals", domain: "termStructure", isolated: true,
     nodes: [eng("vol-engine", "YZ-RV · HAR/GARCH · VRP"), redis("latest_vol_surface"), API, FE, panel("Fair vol gate")],
     edges: ["σ_fair^Q (SET)", "read", "GET /vol/term-structure", "render"],
-    graph: gFork(xEng("vol-engine", "YZ-RV · HAR/GARCH · VRP", "vol-engine"), "latest_vol_surface (σ_fair)", "FOP chain", "reqMktData", "vol_surface_history", "GET /vol/term-structure", "Fair vol gate"),
+    dag: dagFork(xEng("vol-engine", "YZ-RV · HAR/GARCH · VRP", "vol-engine"), "latest_vol_surface (σ_fair)", "FOP chain", "reqMktData", "vol_surface_history", "GET /vol/term-structure", "Fair vol gate"),
   },
   {
     id: "pca-modes", panel: "PCA engine — surface modes", view: "signals", domain: "pca", isolated: true,
     nodes: [eng("vol-engine", "PCA fit + project"), pg("pca_model · pca_signal_history"), API, FE, panel("PCA modes")],
     edges: ["fit/project (db_events)", "read pcs", "GET /signals/pca/model", "render"],
-    graph: gPersist(xEng("vol-engine", "PCA fit + project", "vol-engine"), "FOP chain", "reqMktData", "pca_model · pca_signal_history", "GET /signals/pca/model", "PCA modes"),
+    dag: dagPersist(xEng("vol-engine", "PCA fit + project", "vol-engine"), "FOP chain", "reqMktData", "pca_model · pca_signal_history", "GET /signals/pca/model", "PCA modes"),
   },
 
   // ───────────────────────── Risk ─────────────────────────
@@ -345,49 +367,49 @@ export const PIPELINES: PanelPipe[] = [
     id: "greeks-util", panel: "Greeks & risk utilization", view: "risk", domain: "risk", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position · account_history"), API, FE, panel("Greeks & utilization")],
     edges: ["UPDATE book", "read book + account", "GET /portfolio/risk-per-tenor", "render"],
-    graph: gPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE book", "open_position · account_history", "GET /portfolio/risk-per-tenor", "Greeks & utilization"),
+    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE book", "open_position · account_history", "GET /portfolio/risk-per-tenor", "Greeks & utilization"),
   },
   {
     id: "var", panel: "Value at Risk", view: "risk", domain: "risk", isolated: true,
     nodes: [IB, IBG, eng("execution-engine", "account snaps"), DBW, pg("account_history (504d)"), API, FE, panel("Value at Risk")],
     edges: ["account summary", "reqAccountSummary", "db_events", "INSERT", "504d sim", "GET /portfolio/var", "render"],
-    graph: gPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history (504d)", "GET /portfolio/var · sim", "Value at Risk", "transform"),
+    dag: dagPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history (504d)", "GET /portfolio/var · sim", "Value at Risk", "transform"),
   },
   {
     id: "marginal-var", panel: "Marginal contribution to VaR", view: "risk", domain: "risk", isolated: true,
     nodes: [eng("risk-engine", "per-pos pnl /2s"), pg("open_position_history"), API, FE, panel("Marginal VaR")],
     edges: ["INSERT snapshot", "daily pnl series", "GET /portfolio/marginal-var (Euler)", "render"],
-    graph: gPersist(xEng("risk-engine", "per-pos pnl /2s", "risk-engine"), "positions", "INSERT snapshot", "open_position_history", "GET /portfolio/marginal-var · Euler", "Marginal VaR", "transform"),
+    dag: dagPersist(xEng("risk-engine", "per-pos pnl /2s", "risk-engine"), "positions", "INSERT snapshot", "open_position_history", "GET /portfolio/marginal-var · Euler", "Marginal VaR", "transform"),
   },
   {
     id: "stress", panel: "Stress test", view: "risk", domain: "risk", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Stress engine")],
     edges: ["UPDATE book", "read book", "GET /portfolio/stress-grid (reval)", "render"],
-    graph: gReval([xPg("open_position"), xRedis("latest_vol_surface")], ["read book", "read surface"], "GET /portfolio/stress-grid · reval_book", "Stress engine"),
+    dag: dagReval([xPg("open_position"), xRedis("latest_vol_surface")], ["read book", "read surface"], "GET /portfolio/stress-grid · reval_book", "Stress engine"),
   },
   {
     id: "greeks-ladder", panel: "Greeks ladder", view: "risk", domain: "risk", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Greeks ladder")],
     edges: ["UPDATE book", "read book", "GET /portfolio/greeks-ladder (reval)", "render"],
-    graph: gReval([xPg("open_position"), xRedis("latest_vol_surface")], ["read book", "read surface"], "GET /portfolio/greeks-ladder · reval", "Greeks ladder"),
+    dag: dagReval([xPg("open_position"), xRedis("latest_vol_surface")], ["read book", "read surface"], "GET /portfolio/greeks-ladder · reval", "Greeks ladder"),
   },
   {
     id: "position-breakdown", panel: "Position breakdown", view: "risk", domain: "trade", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Position breakdown")],
     edges: ["UPDATE greeks", "read book", "GET /positions/open", "render"],
-    graph: gPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /positions/open", "Position breakdown"),
+    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /positions/open", "Position breakdown"),
   },
   {
     id: "pin-risk", panel: "Expiries & roll-off (pin risk)", view: "risk", domain: "risk", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Pin risk")],
     edges: ["UPDATE book", "read options", "GET /portfolio/pin-risk (reval)", "render"],
-    graph: gReval([xPg("open_position"), xRedis("latest_vol_surface")], ["read options", "read surface"], "GET /portfolio/pin-risk · reval", "Pin risk"),
+    dag: dagReval([xPg("open_position"), xRedis("latest_vol_surface")], ["read options", "read surface"], "GET /portfolio/pin-risk · reval", "Pin risk"),
   },
   {
     id: "risk-macro", panel: "Macro events", view: "risk", domain: "trade", isolated: true,
     nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Macro events")],
     edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
-    graph: gEvents("Macro events"),
+    dag: dagEvents("Macro events"),
   },
 
   // ───────────────────────── Portfolio ─────────────────────────
@@ -395,30 +417,30 @@ export const PIPELINES: PanelPipe[] = [
     id: "account", panel: "Account & capital", view: "portfolio", domain: "portfolio", isolated: true,
     nodes: [IB, IBG, eng("execution-engine", "account snaps"), DBW, pg("account_history"), API, FE, panel("Account & capital")],
     edges: ["account summary", "reqAccountSummary", "db_events", "INSERT", "latest + 24h", "GET /portfolio/account", "render"],
-    graph: gPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history", "GET /portfolio/account", "Account & capital"),
+    dag: dagPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history", "GET /portfolio/account", "Account & capital"),
   },
   {
     id: "perf", panel: "Performance", view: "portfolio", domain: "portfolio", isolated: true,
     nodes: [eng("execution-engine", "account + close"), pg("account_history · booked_position"), API, FE, panel("Performance")],
     edges: ["INSERT", "daily series", "GET /portfolio/stats", "render"],
-    graph: gPersist(xEng("execution-engine", "account + close", "exec-engine"), "account summary", "publish", "account_history · booked_position", "GET /portfolio/stats", "Performance", "transform"),
+    dag: dagPersist(xEng("execution-engine", "account + close", "exec-engine"), "account summary", "publish", "account_history · booked_position", "GET /portfolio/stats", "Performance", "transform"),
   },
   {
     id: "carry-convex", panel: "Carry vs convexity", view: "portfolio", domain: "portfolio", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Carry vs convexity")],
     edges: ["UPDATE Γ/Θ", "read book", "GET /portfolio/aggregate-greeks", "render"],
-    graph: gPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE Γ/Θ", "open_position", "GET /portfolio/aggregate-greeks", "Carry vs convexity"),
+    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE Γ/Θ", "open_position", "GET /portfolio/aggregate-greeks", "Carry vs convexity"),
   },
   {
     id: "pnl-attribution", panel: "Realized P&L attribution", view: "portfolio", domain: "portfolio", isolated: true,
     nodes: [eng("execution-engine", "MTM /2s"), pg("booked_position_metric_history"), API, FE, panel("P&L attribution")],
     edges: ["INSERT MTM", "Taylor decomp", "GET /portfolio/pnl-attribution", "render"],
-    graph: gPersist(xEng("execution-engine", "MTM /2s", "exec-engine"), "fills", "INSERT MTM", "booked_position_metric_history", "GET /portfolio/pnl-attribution · Taylor", "P&L attribution", "transform"),
+    dag: dagPersist(xEng("execution-engine", "MTM /2s", "exec-engine"), "fills", "INSERT MTM", "booked_position_metric_history", "GET /portfolio/pnl-attribution · Taylor", "P&L attribution", "transform"),
   },
   {
     id: "book-composition", panel: "Book composition", view: "portfolio", domain: "portfolio", isolated: true,
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Book composition")],
     edges: ["UPDATE book", "read book", "GET /positions/open (grouped)", "render"],
-    graph: gPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE book", "open_position", "GET /positions/open (grouped)", "Book composition"),
+    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE book", "open_position", "GET /positions/open (grouped)", "Book composition"),
   },
 ];
