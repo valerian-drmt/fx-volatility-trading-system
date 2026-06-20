@@ -69,9 +69,13 @@ UNIT
 systemctl daemon-reload
 systemctl enable fxvol-compose.service
 
+echo "[setup] ACME webroot dir (host certbot writes challenges here; Nginx serves them)"
+mkdir -p /var/www/certbot
+
 echo "[setup] Let's Encrypt renewal cron (certbot renew --deploy-hook reloads Nginx)"
 install -m 0755 /dev/stdin /etc/cron.daily/fxvol-certbot-renew <<'CRON'
 #!/bin/sh
+# Webroot renewal (Nginx serves /var/www/certbot on :80); reload the container.
 certbot renew --quiet --deploy-hook "docker compose -f /opt/fxvol/docker-compose.yml exec nginx nginx -s reload"
 CRON
 
@@ -91,6 +95,10 @@ rm -f "/tmp/fxvol-$ts.dump"
 CRON
 
 echo "[setup] done. Next steps :"
-echo "  1. scp the .env file (DB_PASSWORD + IB creds) to $APP_DIR/.env"
-echo "  2. certbot --nginx -d <your-domain>"
-echo "  3. systemctl start fxvol-compose.service"
+echo "  1. Render $APP_DIR/.env (done by deploy.yml, or scp manually: DB_PASSWORD,"
+echo "     IB creds, image tags, NGINX_CONF_FILE=./infrastructure/nginx/nginx.conf)."
+echo "  2. Bootstrap the TLS cert (containerised Nginx, one-shot) :"
+echo "       DOMAIN=valeriandarmente.dev EMAIL=you@example.com \\"
+echo "         bash $APP_DIR/infrastructure/ec2/init-letsencrypt.sh"
+echo "     (NOT 'certbot --nginx' — Nginx runs in a container, not on the host.)"
+echo "  3. systemctl start fxvol-compose.service   # or: cd $APP_DIR && docker compose up -d"

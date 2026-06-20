@@ -285,7 +285,14 @@ services:
       # T2 logs unification : JSON access log format loaded first via
       # alpha-ordered include (00-* before default.conf).
       - ./infrastructure/nginx/log-format-json.conf:/etc/nginx/conf.d/00-log-format.conf:ro
-      - ./infrastructure/nginx/nginx-dev.conf:/etc/nginx/conf.d/default.conf:ro
+      # Conf is env-driven : dev defaults to the HTTP-only conf ; prod sets
+      # NGINX_CONF_FILE=./infrastructure/nginx/nginx.conf (TLS) in /opt/fxvol/.env.
+      - ${NGINX_CONF_FILE:-./infrastructure/nginx/nginx-dev.conf}:/etc/nginx/conf.d/default.conf:ro
+      # Let's Encrypt + ACME webroot. Dev → empty committed dirs (harmless, the
+      # dev conf has no TLS) ; prod → host /etc/letsencrypt + /var/www/certbot
+      # (host certbot writes there ; the renewal cron reloads this container).
+      - ${LETSENCRYPT_DIR:-./infrastructure/nginx/letsencrypt-empty}:/etc/letsencrypt:ro
+      - ${CERTBOT_WWW_DIR:-./infrastructure/nginx/certbot-www-empty}:/var/www/certbot:ro
     depends_on:
       api:
         condition: service_healthy
