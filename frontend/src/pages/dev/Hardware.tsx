@@ -133,6 +133,8 @@ export function Hardware(): JSX.Element {
   memNow.forEach((x) => { memByName[x.name] = x.v; });
   const tableRows = (cm?.cpu ?? []).map((s) => ({ name: s.name, cpu: last(s), mem: memByName[s.name] ?? 0 }))
     .sort((a, b) => (sort === "cpu" ? b.cpu - a.cpu : b.mem - a.mem));
+  const maxCpu = Math.max(0.01, ...tableRows.map((r) => r.cpu));
+  const maxMem = Math.max(1, ...tableRows.map((r) => r.mem));
 
   return (
     <div style={{ padding: 14, fontFamily: "'IBM Plex Sans', system-ui, sans-serif", color: "#d4d8e0", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -165,43 +167,49 @@ export function Hardware(): JSX.Element {
         </div>
       ) : cm ? (
         <>
-          {/* sizing tiles */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {/* sizing tiles — full width, aligned with the toolbar/graphs */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
             <Tile label="Stack CPU" value={`${cpuTot.now.toFixed(0)}%`} sub={`peak ${cpuTot.peak.toFixed(0)}% · ${(cpuTot.peak / 100).toFixed(1)} vCPU`} />
             <Tile label="Stack RAM" value={`${(memTot.now / GB).toFixed(1)} GB`} sub={`peak ${(memTot.peak / GB).toFixed(1)} GB`} />
             <Tile label="Containers" value={`${tableRows.length}`} sub={cm.source === "docker" ? "docker socket" : "cAdvisor"} />
             <Tile label="EC2 sizing" value={`~${Math.max(1, Math.ceil(cpuTot.peak / 100))} vCPU`} sub={`~${Math.max(1, Math.ceil(memTot.peak / GB * 1.3))} GB (1.3× peak)`} />
           </div>
 
-          {/* donuts + table */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.4fr", gap: 14 }}>
+          {/* donuts — same 1fr 1fr grid as the graphs below (right edge aligned with the toolbar) */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <Section title="CPU SHARE" hint="now">
               <PlotlyChart data={donut(cpuNow)} layout={donutLayout(`${cpuTot.now.toFixed(0)}%`)} height={220} />
             </Section>
             <Section title="RAM SHARE" hint="now">
               <PlotlyChart data={donut(memNow)} layout={donutLayout(`${(memTot.now / GB).toFixed(1)}GB`)} height={220} />
             </Section>
-            <Section title="TOP CONSUMERS" hint={`sort: ${sort}`}>
-              <table className="dt" style={{ width: "100%", fontSize: 12 }}>
-                <thead>
-                  <tr style={{ color: "#6b7180" }}>
-                    <th style={{ textAlign: "left", padding: "3px 6px" }}>Container</th>
-                    <th onClick={() => setSort("cpu")} style={{ textAlign: "right", padding: "3px 6px", cursor: "pointer", color: sort === "cpu" ? "#cdebd6" : "#6b7180" }}>CPU% ▾</th>
-                    <th onClick={() => setSort("mem")} style={{ textAlign: "right", padding: "3px 6px", cursor: "pointer", color: sort === "mem" ? "#cdebd6" : "#6b7180" }}>RAM ▾</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableRows.map((r) => (
-                    <tr key={r.name}>
-                      <td style={{ padding: "3px 6px" }}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: colorMap[r.name] ?? "#888", marginRight: 6 }} />{short(r.name)}</td>
-                      <td style={{ textAlign: "right", padding: "3px 6px", fontFamily: "Consolas, monospace", color: col(r.cpu) }}>{r.cpu.toFixed(1)}</td>
-                      <td style={{ textAlign: "right", padding: "3px 6px", fontFamily: "Consolas, monospace", color: "#cdd1d8" }}>{r.mem >= GB ? (r.mem / GB).toFixed(2) + " GB" : (r.mem / 1_048_576).toFixed(0) + " MB"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Section>
           </div>
+
+          {/* top consumers — full width */}
+          <Section title="TOP CONSUMERS" hint={`sort: ${sort}`}>
+            <table className="dt" style={{ width: "100%", fontSize: 12, tableLayout: "fixed" }}>
+              <thead>
+                <tr style={{ color: "#6b7180" }}>
+                  <th style={{ textAlign: "left", padding: "3px 8px", width: "22%" }}>Container</th>
+                  <th onClick={() => setSort("cpu")} style={{ textAlign: "right", padding: "3px 8px", width: 64, cursor: "pointer", color: sort === "cpu" ? "#cdebd6" : "#6b7180" }}>CPU% ▾</th>
+                  <th style={{ padding: "3px 8px" }} />
+                  <th onClick={() => setSort("mem")} style={{ textAlign: "right", padding: "3px 8px", width: 84, cursor: "pointer", color: sort === "mem" ? "#cdebd6" : "#6b7180" }}>RAM ▾</th>
+                  <th style={{ padding: "3px 8px" }} />
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.map((r) => (
+                  <tr key={r.name}>
+                    <td style={{ padding: "3px 8px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: colorMap[r.name] ?? "#888", marginRight: 6 }} />{short(r.name)}</td>
+                    <td style={{ textAlign: "right", padding: "3px 8px", fontFamily: "Consolas, monospace", color: col(r.cpu) }}>{r.cpu.toFixed(1)}</td>
+                    <td style={{ padding: "3px 8px" }}><div style={{ background: "#181b22", borderRadius: 3, height: 7, overflow: "hidden" }}><div style={{ width: (r.cpu / maxCpu) * 100 + "%", height: "100%", background: colorMap[r.name] ?? "#888" }} /></div></td>
+                    <td style={{ textAlign: "right", padding: "3px 8px", fontFamily: "Consolas, monospace", color: "#cdd1d8" }}>{r.mem >= GB ? (r.mem / GB).toFixed(2) + " GB" : (r.mem / 1_048_576).toFixed(0) + " MB"}</td>
+                    <td style={{ padding: "3px 8px" }}><div style={{ background: "#181b22", borderRadius: 3, height: 7, overflow: "hidden" }}><div style={{ width: (r.mem / maxMem) * 100 + "%", height: "100%", background: colorMap[r.name] ?? "#888" }} /></div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Section>
 
           {/* stacked-area time-series */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
