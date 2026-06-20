@@ -19,6 +19,11 @@ scrape_configs:
           - 'execution-engine:9104'
           - 'db-writer:9105'
 
+  # Per-container CPU/RAM/net/fs (cAdvisor) → the dev Hardware tab graphs these.
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
   # Self-scrape (Prometheus health + tsdb size).
   - job_name: 'prometheus'
     static_configs:

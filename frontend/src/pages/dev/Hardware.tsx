@@ -1,139 +1,133 @@
 /**
- * Hardware monitor — host CPU / RAM / disk + GPU consumption of the machine
- * running the stack. Polls GET /api/v1/dev/hardware (reads /proc + nvidia-smi
- * server-side; browsers can't read host hardware). Read-only, dev-only.
+ * Hardware / resource monitor.
+ *
+ * Per-container CPU% and RAM over time (the main view) — data lives in
+ * Prometheus (scraped from cAdvisor), this range-queries it via
+ * GET /api/v1/dev/containers/metrics and plots the curves. Plus a compact
+ * host snapshot (GET /api/v1/dev/hardware) for a quick "is the box ok" glance.
+ * Read-only, dev-only. Needs the `obs` compose profile for the graphs.
  */
+import type { Data, Layout } from "plotly.js";
 import { useEffect, useRef, useState } from "react";
+
+import { PlotlyChart } from "../../components/charts/PlotlyChart";
 
 interface Cpu { percent: number; cores: number; per_core: number[]; load_avg: number[]; }
 interface Mem { total_gb: number; used_gb: number; percent: number; }
 interface Disk { total_gb: number; used_gb: number; percent: number; }
-interface Gpu {
-  name: string;
-  util_percent: number | null;
-  mem_used_mb: number | null;
-  mem_total_mb: number | null;
-  temp_c: number | null;
-}
-interface Hw { cpu: Cpu; memory: Mem; disk: Disk; gpu: Gpu[]; timestamp: string; }
+interface Gpu { name: string; util_percent: number | null; mem_used_mb: number | null; mem_total_mb: number | null; temp_c: number | null; }
+interface Hw { cpu: Cpu; memory: Mem; disk: Disk; gpu: Gpu[]; }
 
-const POLL_MS = 2_000;
+interface Series { name: string; points: [number, number][]; }
+interface ContainerMetrics { reachable: boolean; cpu: Series[]; mem: Series[]; }
+
+const POLL_MS = 10_000;
+const WINDOWS = [{ lbl: "5m", m: 5 }, { lbl: "15m", m: 15 }, { lbl: "1h", m: 60 }];
+const PALETTE = ["#3ec46d", "#5b8fd6", "#d9a441", "#a77bd6", "#e0726a", "#38c8c0", "#e0a060", "#7fa8e0", "#cf6bce", "#5fce93", "#d9b86a", "#8fb0d8"];
 const col = (p: number): string => (p > 85 ? "#e0564f" : p > 65 ? "#d9a441" : "#3ec46d");
 
 function Gauge({ label, pct, detail }: { label: string; pct: number; detail?: string }): JSX.Element {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 12, marginBottom: 5 }}>
-        <span style={{ color: "#cdd1d8", fontWeight: 600 }}>{label}</span>
-        <span style={{ fontFamily: "Consolas, monospace" }}>
-          <b style={{ color: col(pct) }}>{pct.toFixed(0)}%</b>
-          {detail ? <span style={{ color: "#666" }}> · {detail}</span> : null}
-        </span>
+    <div style={{ flex: 1, minWidth: 150 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 11, marginBottom: 4 }}>
+        <span style={{ color: "#9aa1ae" }}>{label}</span>
+        <span style={{ fontFamily: "Consolas, monospace" }}><b style={{ color: col(pct) }}>{pct.toFixed(0)}%</b>{detail ? <span style={{ color: "#666" }}> · {detail}</span> : null}</span>
       </div>
-      <div style={{ height: 11, background: "#181b22", borderRadius: 6, overflow: "hidden", border: "1px solid #23272f" }}>
-        <div style={{ height: "100%", width: Math.min(100, pct) + "%", background: col(pct), transition: "width .3s, background .3s" }} />
+      <div style={{ height: 8, background: "#181b22", borderRadius: 4, overflow: "hidden", border: "1px solid #23272f" }}>
+        <div style={{ height: "100%", width: Math.min(100, pct) + "%", background: col(pct), transition: "width .3s" }} />
       </div>
     </div>
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
-  return (
-    <section style={{ background: "#0a0a0a", border: "1px solid #222", borderRadius: 6, padding: "14px 16px" }}>
-      <div style={{ fontSize: 11, letterSpacing: ".14em", color: "#6b7180", fontWeight: 700, marginBottom: 12 }}>{title}</div>
-      {children}
-    </section>
-  );
-}
+const toTraces = (series: Series[], scale: number): Data[] =>
+  series.map((s, i) => ({
+    x: s.points.map((p) => new Date(p[0] * 1000)),
+    y: s.points.map((p) => p[1] * scale),
+    type: "scatter", mode: "lines", name: s.name.replace("fxvol-", ""),
+    line: { color: PALETTE[i % PALETTE.length], width: 1.5 },
+  })) as unknown as Data[];
+
+const CHART_LAYOUT: Partial<Layout> = {
+  showlegend: true,
+  legend: { orientation: "h", font: { size: 9 }, y: -0.18 },
+  margin: { t: 8, r: 12, b: 36, l: 48 },
+  xaxis: { type: "date", gridcolor: "#262a33" },
+};
 
 export function Hardware(): JSX.Element {
-  const [data, setData] = useState<Hw | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [auto, setAuto] = useState(true);
+  const [hw, setHw] = useState<Hw | null>(null);
+  const [cm, setCm] = useState<ContainerMetrics | null>(null);
+  const [minutes, setMinutes] = useState(15);
+  const [err, setErr] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
 
-  const load = async (): Promise<void> => {
+  const load = async (mins: number): Promise<void> => {
     try {
-      const r = await fetch("/api/v1/dev/hardware");
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      setData((await r.json()) as Hw);
-      setError(null);
+      const [h, c] = await Promise.all([
+        fetch("/api/v1/dev/hardware").then((r) => (r.ok ? r.json() : null)),
+        fetch(`/api/v1/dev/containers/metrics?minutes=${mins}`).then((r) => (r.ok ? r.json() : null)),
+      ]);
+      setHw(h as Hw | null);
+      setCm(c as ContainerMetrics | null);
+      setErr(null);
     } catch (e) {
-      setError(String(e));
+      setErr(String(e));
     }
   };
 
   useEffect(() => {
-    void load();
-    if (auto) timer.current = window.setInterval(() => void load(), POLL_MS);
+    void load(minutes);
+    timer.current = window.setInterval(() => void load(minutes), POLL_MS);
     return () => { if (timer.current) window.clearInterval(timer.current); };
-  }, [auto]);
+  }, [minutes]);
 
-  const c = data?.cpu;
-  const m = data?.memory;
-  const d = data?.disk;
   return (
     <div style={{ padding: 14, fontFamily: "'IBM Plex Sans', system-ui, sans-serif", color: "#d4d8e0" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: "#e6eaf1" }}>🖥 Hardware</span>
-        <span style={{ fontSize: 11, color: "#666", fontFamily: "Consolas, monospace" }}>
-          host CPU/RAM/GPU · /api/v1/dev/hardware
-        </span>
+        <span style={{ fontSize: 11, color: "#666", fontFamily: "Consolas, monospace" }}>per-container CPU/RAM · cAdvisor → Prometheus</span>
         <span style={{ flex: 1 }} />
-        <label style={{ fontSize: 11, color: "#9aa1ae", display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}>
-          <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> auto {POLL_MS / 1000}s
-        </label>
-        <button onClick={() => void load()} style={{ padding: "3px 11px", fontSize: 11, borderRadius: 4, border: "1px solid #2a3040", background: "#141a22", color: "#8fb0d8", cursor: "pointer" }}>↻ refresh</button>
+        <div style={{ display: "flex", gap: 4 }}>
+          {WINDOWS.map((w) => (
+            <button key={w.m} onClick={() => setMinutes(w.m)} style={{ padding: "3px 10px", fontSize: 11, borderRadius: 5, cursor: "pointer", border: "1px solid " + (minutes === w.m ? "#2f5c3f" : "#23272f"), background: minutes === w.m ? "rgba(62,196,109,.12)" : "transparent", color: minutes === w.m ? "#cdebd6" : "#8a909c" }}>{w.lbl}</button>
+          ))}
+        </div>
       </div>
 
-      {error ? <div style={{ color: "#fbb", fontSize: 12, background: "#3a1a1a", padding: "6px 10px", borderRadius: 4, marginBottom: 12 }}>{error}</div> : null}
-      {!data ? <div style={{ color: "#666", fontSize: 12 }}>loading…</div> : null}
+      {err ? <div style={{ color: "#fbb", fontSize: 12, background: "#3a1a1a", padding: "6px 10px", borderRadius: 4, marginBottom: 12 }}>{err}</div> : null}
 
-      {data ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <Card title="CPU">
-            {c ? (
-              <>
-                <Gauge label="Overall" pct={c.percent} detail={`${c.cores} cores · load ${c.load_avg.map((x) => x.toFixed(2)).join(" ")}`} />
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
-                  {c.per_core.map((p, i) => (
-                    <div key={i} title={`core ${i}: ${p.toFixed(0)}%`} style={{ width: 26, height: 40, background: "#181b22", borderRadius: 3, display: "flex", flexDirection: "column", justifyContent: "flex-end", overflow: "hidden", border: "1px solid #23272f" }}>
-                      <div style={{ height: Math.min(100, p) + "%", background: col(p) }} />
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : null}
-          </Card>
-
-          <Card title="Memory">
-            {m ? <Gauge label="RAM" pct={m.percent} detail={`${m.used_gb.toFixed(1)} / ${m.total_gb.toFixed(1)} GB`} /> : null}
-            {d ? <Gauge label="Disk /" pct={d.percent} detail={`${d.used_gb.toFixed(0)} / ${d.total_gb.toFixed(0)} GB`} /> : null}
-          </Card>
-
-          <div style={{ gridColumn: "1 / -1" }}>
-            <Card title="GPU">
-              {data.gpu.length === 0 ? (
-                <div style={{ color: "#666", fontSize: 12 }}>No NVIDIA GPU exposed to the container (nvidia-smi unavailable).</div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
-                  {data.gpu.map((g, i) => (
-                    <div key={i} style={{ background: "#0d0f13", border: "1px solid #23272f", borderRadius: 5, padding: "10px 12px" }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "#cdd1d8", marginBottom: 8 }}>
-                        {g.name}{g.temp_c != null ? <span style={{ float: "right", color: col(g.temp_c) }}>{g.temp_c.toFixed(0)}°C</span> : null}
-                      </div>
-                      <Gauge label="Util" pct={g.util_percent ?? 0} />
-                      {g.mem_total_mb ? (
-                        <Gauge label="VRAM" pct={100 * (g.mem_used_mb ?? 0) / g.mem_total_mb} detail={`${((g.mem_used_mb ?? 0) / 1024).toFixed(1)} / ${(g.mem_total_mb / 1024).toFixed(1)} GB`} />
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </div>
+      {/* Host snapshot strip */}
+      {hw ? (
+        <div style={{ display: "flex", gap: 18, alignItems: "center", background: "#0a0a0a", border: "1px solid #222", borderRadius: 6, padding: "10px 16px", marginBottom: 14 }}>
+          <span style={{ fontSize: 10, letterSpacing: ".14em", color: "#6b7180", fontWeight: 700, whiteSpace: "nowrap" }}>HOST</span>
+          <Gauge label={`CPU · ${hw.cpu.cores} cores`} pct={hw.cpu.percent} detail={`load ${hw.cpu.load_avg.map((x) => x.toFixed(1)).join(" ")}`} />
+          <Gauge label="RAM" pct={hw.memory.percent} detail={`${hw.memory.used_gb.toFixed(1)}/${hw.memory.total_gb.toFixed(1)} GB`} />
+          <Gauge label="Disk" pct={hw.disk.percent} detail={`${hw.disk.used_gb.toFixed(0)}/${hw.disk.total_gb.toFixed(0)} GB`} />
+          {hw.gpu.length ? <Gauge label={`GPU · ${hw.gpu[0]!.name}`} pct={hw.gpu[0]!.util_percent ?? 0} /> : <span style={{ fontSize: 11, color: "#4d5360" }}>no GPU</span>}
         </div>
       ) : null}
+
+      {/* Per-container time-series */}
+      {cm && !cm.reachable ? (
+        <div style={{ color: "#d9b86a", fontSize: 12, background: "#23200f", border: "1px solid #3a3417", padding: "10px 14px", borderRadius: 6 }}>
+          Prometheus/cAdvisor unreachable — start the observability profile:
+          <code style={{ color: "#cdd1d8", marginLeft: 6 }}>docker compose --profile obs up -d cadvisor prometheus</code>
+        </div>
+      ) : cm ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <section style={{ background: "#0a0a0a", border: "1px solid #222", borderRadius: 6, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, letterSpacing: ".14em", color: "#6b7180", fontWeight: 700, marginBottom: 6 }}>CPU % PER CONTAINER <span style={{ color: "#4d5360", letterSpacing: 0 }}>· % of one core</span></div>
+            <PlotlyChart data={toTraces(cm.cpu, 1)} layout={{ ...CHART_LAYOUT, yaxis: { gridcolor: "#262a33", ticksuffix: "%" } }} height={300} />
+          </section>
+          <section style={{ background: "#0a0a0a", border: "1px solid #222", borderRadius: 6, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, letterSpacing: ".14em", color: "#6b7180", fontWeight: 700, marginBottom: 6 }}>RAM PER CONTAINER <span style={{ color: "#4d5360", letterSpacing: 0 }}>· working set (GB)</span></div>
+            <PlotlyChart data={toTraces(cm.mem, 1 / 1_073_741_824)} layout={{ ...CHART_LAYOUT, yaxis: { gridcolor: "#262a33", ticksuffix: " GB" } }} height={300} />
+          </section>
+        </div>
+      ) : (
+        <div style={{ color: "#666", fontSize: 12 }}>loading…</div>
+      )}
     </div>
   );
 }

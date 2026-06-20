@@ -443,6 +443,35 @@ services:
       retries: 3
       start_period: 30s
 
+  # Per-container CPU/RAM/net/fs metrics → scraped by Prometheus. The standard
+  # way to graph "how much does each container consume" (locally + on EC2).
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: fxvol-cadvisor
+    profiles: ["obs"]
+    restart: unless-stopped
+    privileged: true
+    command:
+      - '--housekeeping_interval=10s'
+      - '--docker_only=true'
+      - '--store_container_labels=false'
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - fxvol-internal
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
   loki:
     image: grafana/loki:3.2.0
     container_name: fxvol-loki

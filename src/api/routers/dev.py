@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import shutil
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from redis import asyncio as aioredis
@@ -1438,3 +1440,55 @@ async def hardware() -> dict[str, Any]:
         "gpu": await _read_gpu(),
         "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
+
+
+# ── Per-container resource history (Prometheus/cAdvisor) ──────────────────────
+# The pro way to graph "how much does each container consume over time" : the
+# data lives in Prometheus (scraped from cAdvisor), this just range-queries it
+# so the dev Hardware tab can plot the curves. Needs the `obs` compose profile.
+PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+# Fixed queries (no user-controlled URL/expr → no SSRF surface).
+_CPU_QUERY = 'sum by (name) (rate(container_cpu_usage_seconds_total{name=~"fxvol-.*"}[1m])) * 100'
+_MEM_QUERY = 'sum by (name) (container_memory_working_set_bytes{name=~"fxvol-.*"})'
+
+
+async def _prom_range(
+    client: httpx.AsyncClient, query: str, start: float, end: float, step: int,
+) -> list[dict[str, Any]]:
+    r = await client.get(
+        f"{PROMETHEUS_URL}/api/v1/query_range",
+        params={"query": query, "start": start, "end": end, "step": step},
+    )
+    r.raise_for_status()
+    series: list[dict[str, Any]] = []
+    for s in r.json().get("data", {}).get("result", []):
+        name = s.get("metric", {}).get("name", "?")
+        pts = [[float(t), float(v)] for t, v in s.get("values", [])]
+        series.append({"name": name, "points": pts})
+    series.sort(key=lambda x: x["name"])
+    return series
+
+
+@router.get("/containers/metrics")
+async def container_metrics(minutes: int = 15) -> dict[str, Any]:
+    """Per-container CPU % + RAM (bytes) time-series over the last ``minutes``.
+
+    Range-queries Prometheus (cAdvisor metrics). ``reachable: false`` with empty
+    series when the ``obs`` profile (Prometheus + cAdvisor) isn't running.
+    """
+    minutes = max(1, min(180, minutes))
+    end = datetime.now(UTC)
+    start = end - timedelta(minutes=minutes)
+    step = max(15, minutes * 60 // 120)  # ~120 points across the window
+    base = {
+        "start": start.isoformat().replace("+00:00", "Z"),
+        "end": end.isoformat().replace("+00:00", "Z"),
+        "step": step,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            cpu = await _prom_range(client, _CPU_QUERY, start.timestamp(), end.timestamp(), step)
+            mem = await _prom_range(client, _MEM_QUERY, start.timestamp(), end.timestamp(), step)
+        return {**base, "reachable": True, "cpu": cpu, "mem": mem}
+    except Exception:
+        return {**base, "reachable": False, "cpu": [], "mem": []}
