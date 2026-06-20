@@ -49,16 +49,9 @@ export interface PanelPipe {
    */
   isolated?: boolean;
   /**
-   * Accurate branching topology (sources → spine → fork into store + serve).
-   * When present, the schema renders as a graph-with-a-fork instead of a flat
-   * line. The flat `nodes`/`edges` stay for the sidebar health roll-up.
-   */
-  graph?: PipeGraph;
-  /**
    * Full data-flow DAG (dagre-laid-out): every real input/output, including
    * shared dual-role nodes (e.g. Postgres written-by db-writer AND read-by the
-   * api). Preferred over `graph` when present; `nodes`/`edges` stay for the
-   * sidebar health roll-up.
+   * api). The flat `nodes`/`edges` stay for the sidebar health roll-up.
    */
   dag?: PipeDag;
 }
@@ -84,33 +77,6 @@ export interface DagEdge {
 export interface PipeDag {
   nodes: DagNode[];
   edges: DagEdge[];
-}
-
-/** A horizontal chain of blocks: `edges.length === nodes.length - 1`. */
-export interface GraphChain {
-  nodes: PipeNode[];
-  edges: string[];
-}
-
-/**
- * Branching pipeline. A `spine` runs from the source(s) through the fork node
- * (its last element — the hub). Off that hub:
- *  - `store` (optional) — where data is recorded (db-writer → Postgres). When
- *    present the serve branch forks DOWN; when absent the serve branch simply
- *    continues the spine in a straight line (live-only / read-from-DB flows).
- *  - `serve` — the read path to the panel (last node = the live terminal).
- * `sources` (optional) are extra emitters that CONVERGE into spine[0] (e.g. a
- * reval endpoint reading the book from Postgres + the surface from Redis).
- */
-export interface PipeGraph {
-  sources?: PipeNode[];   // converge into spine[0]
-  sourceEdges?: string[]; // label per source → spine[0]
-  spine: PipeNode[];
-  spineEdges: string[];   // length spine.length - 1
-  store?: GraphChain;     // optional store branch (fork up)
-  storeEdge?: string;     // hub → store.nodes[0]
-  serve: GraphChain;      // last node = the displayed panel (live terminal)
-  serveEdge?: string;     // hub → serve.nodes[0]
 }
 
 // role = each block's dominant data-flow archetype (see `Role`).

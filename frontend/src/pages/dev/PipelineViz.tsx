@@ -19,7 +19,7 @@ import { PortfolioView } from "../../voldesk/views/PortfolioView";
 import { RiskView } from "../../voldesk/views/RiskView";
 import { SignalsView } from "../../voldesk/views/SignalsView";
 import { TradeView } from "../../voldesk/views/TradeView";
-import { PIPELINES, type DagNode, type PanelPipe, type PipeDag, type PipeGraph, type PipeNode, type Role, type ViewId } from "./pipelines";
+import { PIPELINES, type DagNode, type PanelPipe, type PipeDag, type PipeNode, type Role, type ViewId } from "./pipelines";
 
 // The real prod view rendered in the terminal "screen" (the panel lives in it).
 // Dashboard + Trade take props in the app; stub them for the viz.
@@ -315,124 +315,6 @@ function FlowPath({ d, state }: { d: string; state: "flow" | "warn" | "down" }):
   );
 }
 
-// Branching schema. A spine runs source(s) → hub. Optional `sources` converge
-// into spine[0] from a left column. Off the hub: an optional STORE branch
-// (forks up — where data is recorded) and the SERVE branch (the read path to
-// the live panel) — which forks down when a store exists, or continues the
-// spine in a straight line when it doesn't. Blocks absolute, edges SVG.
-function BranchSchema({ graph, pipe, resolveNode }: {
-  graph: PipeGraph; pipe: PanelPipe; resolveNode: (n: PipeNode) => H;
-}): JSX.Element {
-  const [hover, setHover] = useState<string | null>(null);
-  const BW = 188, IBW = 210, BH = 150, GAP = 124, TW = 640, TH = 440, VGAP = 66;
-  const wOf = (n: PipeNode): number => (n.kind === "external" ? IBW : BW);
-  const sources = graph.sources ?? [];
-  const hasStore = !!graph.store && graph.store.nodes.length > 0;
-
-  const srcStackH = sources.length ? sources.length * BH + (sources.length - 1) * VGAP : 0;
-  const storeC = BH / 2;
-  const spineC = hasStore ? BH + VGAP + BH / 2 : Math.max(TH / 2, srcStackH / 2);
-  const serveC = hasStore ? spineC + BH / 2 + VGAP + TH / 2 : spineC;
-
-  type P = { key: string; node: PipeNode; x: number; y: number; w: number; h: number; cy: number; terminal?: boolean };
-  const placed: P[] = [];
-  const add = (key: string, node: PipeNode, x: number, cy: number, w: number, h: number, terminal?: boolean): P => {
-    const p: P = { key, node, x, y: cy - h / 2, w, h, cy };
-    if (terminal) p.terminal = true;
-    placed.push(p);
-    return p;
-  };
-
-  // converging sources (left column)
-  const sourceColW = sources.length ? Math.max(...sources.map(wOf)) : 0;
-  const srcP = sources.map((n, i) =>
-    add(`src${i}`, n, (sourceColW - wOf(n)) / 2, spineC - srcStackH / 2 + i * (BH + VGAP) + BH / 2, wOf(n), BH));
-  const spineX0 = sources.length ? sourceColW + GAP : 0;
-
-  // spine
-  let x = spineX0;
-  const spineP = graph.spine.map((n, i) => { const w = wOf(n); const p = add(`sp${i}`, n, x, spineC, w, BH); x += w + GAP; return p; });
-  const hub = spineP[spineP.length - 1]!;
-  const hubRight = hub.x + hub.w;
-  const forkX = hubRight + GAP;
-  const midSX = (hubRight + forkX) / 2;
-
-  // store branch (fork up)
-  let stx = forkX;
-  const storeP = hasStore ? graph.store!.nodes.map((n, i) => { const p = add(`st${i}`, n, stx, storeC, BW, BH); stx += BW + GAP; return p; }) : [];
-
-  // serve branch (fork down if store, else straight from hub)
-  let vx = forkX;
-  const serveP = graph.serve.nodes.map((n, i) => {
-    const terminal = i === graph.serve.nodes.length - 1;
-    const w = terminal ? TW : BW, h = terminal ? TH : BH;
-    const p = add(`sv${i}`, n, vx, serveC, w, h, terminal);
-    vx += w + GAP;
-    return p;
-  });
-
-  const totalW = Math.max(...placed.map((p) => p.x + p.w));
-  const totalH = Math.max(...placed.map((p) => p.y + p.h));
-
-  const edges: { d: string; from: PipeNode; to: PipeNode }[] = [];
-  srcP.forEach((s) => {
-    const mid = (s.x + s.w + spineX0) / 2;
-    edges.push({ d: `M ${s.x + s.w} ${s.cy} H ${mid} V ${spineC} H ${spineX0}`, from: s.node, to: spineP[0]!.node });
-  });
-  for (let i = 0; i < spineP.length - 1; i++) edges.push({ d: `M ${spineP[i]!.x + spineP[i]!.w} ${spineC} H ${spineP[i + 1]!.x}`, from: spineP[i]!.node, to: spineP[i + 1]!.node });
-  if (hasStore) {
-    edges.push({ d: `M ${hubRight} ${spineC} H ${midSX} V ${storeC} H ${forkX}`, from: hub.node, to: storeP[0]!.node });
-    edges.push({ d: `M ${hubRight} ${spineC} H ${midSX} V ${serveC} H ${forkX}`, from: hub.node, to: serveP[0]!.node });
-  } else {
-    edges.push({ d: `M ${hubRight} ${spineC} H ${serveP[0]!.x}`, from: hub.node, to: serveP[0]!.node });
-  }
-  for (let i = 0; i < storeP.length - 1; i++) edges.push({ d: `M ${storeP[i]!.x + storeP[i]!.w} ${storeC} H ${storeP[i + 1]!.x}`, from: storeP[i]!.node, to: storeP[i + 1]!.node });
-  for (let i = 0; i < serveP.length - 1; i++) edges.push({ d: `M ${serveP[i]!.x + serveP[i]!.w} ${serveC} H ${serveP[i + 1]!.x}`, from: serveP[i]!.node, to: serveP[i + 1]!.node });
-
-  const labels: { x: number; y: number; text: string }[] = [];
-  (graph.sourceEdges ?? []).forEach((t, i) => { const s = srcP[i]; if (s) labels.push({ x: (s.x + s.w + spineX0) / 2, y: (s.cy + spineC) / 2, text: t }); });
-  graph.spineEdges.forEach((t, i) => labels.push({ x: (spineP[i]!.x + spineP[i]!.w + spineP[i + 1]!.x) / 2, y: spineC - 19, text: t }));
-  if (hasStore) {
-    if (graph.storeEdge) labels.push({ x: midSX, y: (spineC + storeC) / 2, text: graph.storeEdge });
-    if (graph.serveEdge) labels.push({ x: midSX, y: (spineC + serveC) / 2, text: graph.serveEdge });
-  } else if (graph.serveEdge) {
-    labels.push({ x: (hubRight + serveP[0]!.x) / 2, y: spineC - 19, text: graph.serveEdge });
-  }
-  graph.store?.edges.forEach((t, i) => labels.push({ x: (storeP[i]!.x + storeP[i]!.w + storeP[i + 1]!.x) / 2, y: storeC - 19, text: t }));
-  graph.serve.edges.forEach((t, i) => labels.push({ x: (serveP[i]!.x + serveP[i]!.w + serveP[i + 1]!.x) / 2, y: serveC - 19, text: t }));
-
-  const pstate = (a: H, b: H): "flow" | "warn" | "down" =>
-    a === "down" || b === "down" ? "down" : a === "up" && b === "up" ? "flow" : "warn";
-
-  return (
-    <div style={{ position: "relative", width: totalW, height: totalH }}>
-      <svg width={totalW} height={totalH} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-        {edges.map((e, i) => <FlowPath key={i} d={e.d} state={pstate(resolveNode(e.from), resolveNode(e.to))} />)}
-      </svg>
-      {hasStore ? (
-        <>
-          <div className="pp-mono" style={{ position: "absolute", left: forkX, top: storeC - BH / 2 - 20, fontSize: 10, fontWeight: 700, letterSpacing: ".16em", color: "#d9a441" }}>STORE · recorded</div>
-          <div className="pp-mono" style={{ position: "absolute", left: forkX, top: serveC - TH / 2 - 20, fontSize: 10, fontWeight: 700, letterSpacing: ".16em", color: "#3ec46d" }}>SERVE · displayed</div>
-        </>
-      ) : null}
-      {labels.map((l, i) => (
-        <div key={i} className="pp-mono" style={{ position: "absolute", left: l.x, top: l.y, transform: "translate(-50%,-50%)", fontSize: 11, letterSpacing: ".05em", textTransform: "uppercase", color: "#7b8494", background: "#0e0e0e", padding: "1px 6px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none" }}>{l.text}</div>
-      ))}
-      {placed.map((p) => (
-        p.terminal ? (
-          <div key={p.key} style={{ position: "absolute", left: p.x, top: p.y, width: TW, height: TH, display: "flex" }} onMouseDown={(e) => e.stopPropagation()}>
-            <Terminal pipe={pipe} live={resolveNode(p.node) === "up"} />
-          </div>
-        ) : (
-          <div key={p.key} style={{ position: "absolute", left: p.x, top: p.y }}>
-            <Block node={p.node} status={resolveNode(p.node)} tip={hover === p.key} onEnter={() => setHover(p.key)} onLeave={() => setHover(null)} />
-          </div>
-        )
-      ))}
-    </div>
-  );
-}
-
 // Full data-flow DAG, dagre-laid-out (left→right). Every real input/output is
 // an edge, so shared dual-role nodes (Postgres written by db-writer AND read by
 // the api) and fan-out hubs (Redis → persist + serve) render faithfully.
@@ -578,11 +460,9 @@ function Stage({ pipe, statuses, resolveNode, asOf }: { pipe: PanelPipe; statuse
         onDoubleClick={reset}
       >
         <div className="pp-stagewrap" style={{ transform: `translate(${Math.round(tx)}px, ${Math.round(ty)}px) scale(${scale})` }}>
-          <div ref={contentRef} style={pipe.dag || pipe.graph ? undefined : { display: "flex", alignItems: "stretch" }}>
+          <div ref={contentRef} style={pipe.dag ? undefined : { display: "flex", alignItems: "stretch" }}>
             {pipe.dag ? (
               <DagSchema dag={pipe.dag} pipe={pipe} resolveNode={resolveNode} />
-            ) : pipe.graph ? (
-              <BranchSchema graph={pipe.graph} pipe={pipe} resolveNode={resolveNode} />
             ) : (
               <>
                 {infra.map((n, i) => (
