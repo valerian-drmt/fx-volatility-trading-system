@@ -19,6 +19,7 @@ import { useState, type CSSProperties } from "react";
 import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
 import { DbSchema } from "./dev/DbSchema";
+import { Hardware } from "./dev/Hardware";
 import { Logs } from "./dev/Logs";
 import { Migrations } from "./dev/Migrations";
 import { PipelineViz } from "./dev/PipelineViz";
@@ -43,6 +44,7 @@ const TABS: TabDef[] = [
   { id: "step3", label: "🎯 Trade · pre/post", Component: Step3Trade },
   { id: "portfolio", label: "💼 Portfolio", Component: Portfolio },
   { id: "pipeline", label: "🧭 Pipeline", Component: PipelineViz },
+  { id: "hw", label: "🖥 Hardware", Component: Hardware },
 ];
 
 export function DevLayout(): JSX.Element {

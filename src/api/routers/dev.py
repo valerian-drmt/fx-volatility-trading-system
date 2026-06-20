@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -1303,3 +1304,137 @@ async def _db_schema_live(db: AsyncSession) -> dict[str, Any]:
 
     conn = await db.connection()
     return await conn.run_sync(_introspect)
+
+
+# ── Hardware / resource monitor ───────────────────────────────────────────────
+# Host CPU/RAM/disk read straight from /proc (Docker leaves it host-wide, so no
+# psutil dep needed) + best-effort GPU via nvidia-smi. Read-only, dev-only.
+
+def _read_meminfo() -> dict[str, float]:
+    try:
+        info: dict[str, int] = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                k, _, rest = line.partition(":")
+                info[k.strip()] = int(rest.strip().split()[0])  # kB
+        total = info.get("MemTotal", 0)
+        avail = info.get("MemAvailable", info.get("MemFree", 0))
+        used = max(0, total - avail)
+        return {
+            "total_gb": round(total / 1_048_576, 2),
+            "used_gb": round(used / 1_048_576, 2),
+            "percent": round(100 * used / total, 1) if total else 0.0,
+        }
+    except Exception:
+        return {"total_gb": 0.0, "used_gb": 0.0, "percent": 0.0}
+
+
+def _read_cpu_jiffies() -> dict[str, tuple[int, int]]:
+    """Per-cpu (idle, total) jiffies from /proc/stat."""
+    out: dict[str, tuple[int, int]] = {}
+    with open("/proc/stat") as f:
+        for line in f:
+            if not line.startswith("cpu"):
+                continue
+            parts = line.split()
+            vals = [int(x) for x in parts[1:]]
+            if len(vals) < 4:
+                continue
+            idle = vals[3] + (vals[4] if len(vals) > 4 else 0)  # idle + iowait
+            out[parts[0]] = (idle, sum(vals))
+    return out
+
+
+async def _read_cpu() -> dict[str, Any]:
+    """Overall + per-core CPU % via two /proc/stat samples 200 ms apart."""
+    try:
+        a = _read_cpu_jiffies()
+        await asyncio.sleep(0.2)
+        b = _read_cpu_jiffies()
+
+        def pct(name: str) -> float:
+            i0, t0 = a.get(name, (0, 0))
+            i1, t1 = b.get(name, (0, 0))
+            dt = t1 - t0
+            return round(100 * (1 - (i1 - i0) / dt), 1) if dt > 0 else 0.0
+
+        cores = sorted((k for k in b if k != "cpu"), key=lambda c: int(c[3:] or 0))
+        load = [0.0, 0.0, 0.0]
+        try:
+            with open("/proc/loadavg") as f:
+                load = [float(x) for x in f.read().split()[:3]]
+        except Exception:
+            pass
+        return {
+            "percent": pct("cpu"),
+            "cores": len(cores),
+            "per_core": [pct(c) for c in cores],
+            "load_avg": load,
+        }
+    except Exception:
+        return {"percent": 0.0, "cores": 0, "per_core": [], "load_avg": [0.0, 0.0, 0.0]}
+
+
+def _read_disk() -> dict[str, float]:
+    try:
+        total, used, _free = shutil.disk_usage("/")
+        return {
+            "total_gb": round(total / 1_073_741_824, 1),
+            "used_gb": round(used / 1_073_741_824, 1),
+            "percent": round(100 * used / total, 1) if total else 0.0,
+        }
+    except Exception:
+        return {"total_gb": 0.0, "used_gb": 0.0, "percent": 0.0}
+
+
+def _to_float(s: str) -> float | None:
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return None
+
+
+async def _read_gpu() -> list[dict[str, Any]]:
+    """nvidia-smi best-effort — empty list when no GPU / tool is unavailable."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "nvidia-smi",
+            "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
+            "--format=csv,noheader,nounits",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+        gpus: list[dict[str, Any]] = []
+        for line in out.decode().strip().splitlines():
+            cells = [c.strip() for c in line.split(",")]
+            if len(cells) < 5:
+                continue
+            name, util, mem_used, mem_total, temp = cells[:5]
+            gpus.append({
+                "name": name,
+                "util_percent": _to_float(util),
+                "mem_used_mb": _to_float(mem_used),
+                "mem_total_mb": _to_float(mem_total),
+                "temp_c": _to_float(temp),
+            })
+        return gpus
+    except Exception:
+        return []
+
+
+@router.get("/hardware")
+async def hardware() -> dict[str, Any]:
+    """Host CPU / RAM / disk (from /proc) + best-effort GPU (nvidia-smi).
+
+    Read straight from the container's /proc, which Docker leaves host-wide, so
+    it reflects the machine running the stack. ``gpu`` is empty when no NVIDIA
+    GPU is exposed to the container. Dev-only, read-only, no auth.
+    """
+    return {
+        "cpu": await _read_cpu(),
+        "memory": _read_meminfo(),
+        "disk": _read_disk(),
+        "gpu": await _read_gpu(),
+        "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+    }
