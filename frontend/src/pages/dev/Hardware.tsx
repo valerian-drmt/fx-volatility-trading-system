@@ -22,6 +22,8 @@ const WINDOWS = [{ lbl: "5m", m: 5 }, { lbl: "15m", m: 15 }, { lbl: "1h", m: 60 
 const PALETTE = ["#3ec46d", "#5b8fd6", "#d9a441", "#a77bd6", "#e0726a", "#38c8c0", "#e0a060", "#7fa8e0", "#cf6bce", "#5fce93", "#d9b86a", "#8fb0d8", "#b0d86a", "#d86ab0"];
 const col = (p: number): string => (p > 85 ? "#e0564f" : p > 65 ? "#d9a441" : "#3ec46d");
 const last = (s: Series): number => (s.points.length ? s.points[s.points.length - 1]![1] : 0);
+/** mean of a series over the fetched window (drives the share donuts). */
+const avg = (s: Series): number => (s.points.length ? s.points.reduce((a, p) => a + p[1], 0) / s.points.length : 0);
 const short = (n: string): string => n.replace("fxvol-", "");
 const GB = 1_073_741_824;
 
@@ -127,10 +129,15 @@ export function Hardware(): JSX.Element {
 
   const cpuTot = cm ? stackTotal(cm.cpu) : { now: 0, peak: 0 };
   const memTot = cm ? stackTotal(cm.mem) : { now: 0, peak: 0 };
-  const cpuNow = (cm?.cpu ?? []).map((s) => ({ name: s.name, v: last(s) })).filter((x) => x.v > 0.05);
-  const memNow = (cm?.mem ?? []).map((s) => ({ name: s.name, v: last(s) })).filter((x) => x.v > 0);
+  const winLabel = WINDOWS.find((w) => w.m === minutes)?.lbl ?? `${minutes}m`;
+  // Donuts = share AVERAGED over the selected window (so 5m/15m/1h changes them).
+  const cpuShare = (cm?.cpu ?? []).map((s) => ({ name: s.name, v: avg(s) })).filter((x) => x.v > 0.05);
+  const memShare = (cm?.mem ?? []).map((s) => ({ name: s.name, v: avg(s) })).filter((x) => x.v > 0);
+  const cpuShareTot = cpuShare.reduce((a, x) => a + x.v, 0);
+  const memShareTot = memShare.reduce((a, x) => a + x.v, 0);
+  // Table = current snapshot (latest sample), docker-stats style.
   const memByName: Record<string, number> = {};
-  memNow.forEach((x) => { memByName[x.name] = x.v; });
+  (cm?.mem ?? []).forEach((s) => { memByName[s.name] = last(s); });
   const tableRows = (cm?.cpu ?? []).map((s) => ({ name: s.name, cpu: last(s), mem: memByName[s.name] ?? 0 }))
     .sort((a, b) => (sort === "cpu" ? b.cpu - a.cpu : b.mem - a.mem));
   const maxCpu = Math.max(0.01, ...tableRows.map((r) => r.cpu));
@@ -177,11 +184,11 @@ export function Hardware(): JSX.Element {
 
           {/* donuts — same 1fr 1fr grid as the graphs below (right edge aligned with the toolbar) */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <Section title="CPU SHARE" hint="now">
-              <PlotlyChart data={donut(cpuNow)} layout={donutLayout(`${cpuTot.now.toFixed(0)}%`)} height={220} />
+            <Section title="CPU SHARE" hint={`${winLabel} avg`}>
+              <PlotlyChart data={donut(cpuShare)} layout={donutLayout(`${cpuShareTot.toFixed(0)}%`)} height={220} />
             </Section>
-            <Section title="RAM SHARE" hint="now">
-              <PlotlyChart data={donut(memNow)} layout={donutLayout(`${(memTot.now / GB).toFixed(1)}GB`)} height={220} />
+            <Section title="RAM SHARE" hint={`${winLabel} avg`}>
+              <PlotlyChart data={donut(memShare)} layout={donutLayout(`${(memShareTot / GB).toFixed(1)}GB`)} height={220} />
             </Section>
           </div>
 
