@@ -112,8 +112,18 @@ async def engines_status(
 ) -> dict[str, Any]:
     """Aggregate health for each of the 4 engines + IB Gateway TCP probe."""
     now = datetime.now(UTC)
+    # Bounded liveness ping — a downed Redis blocks on connect with no implicit
+    # timeout, so short-circuit every engine to DOWN instead of hanging the probe.
+    redis_up = await _redis_alive(redis)
     engines_out: list[dict[str, Any]] = []
     for cfg in ENGINES_CONFIG:
+        if not redis_up:
+            engines_out.append({
+                "name": cfg["name"], "status": "DOWN", "hb_age_s": None,
+                "hb_ttl_s": None, "stale_threshold_s": cfg["stale_s"],
+                "out_key": cfg["out"], "out_age_s": None,
+            })
+            continue
         hb_age = await _key_age(redis, cfg["hb"], now)
         hb_ttl = await redis.ttl(cfg["hb"])
         out_age = await _key_age(redis, cfg["out"], now) if cfg["out"] else None
@@ -136,6 +146,14 @@ async def engines_status(
 
     ib = await _ib_probe()
     return {"engines": engines_out, "ib_gateway": ib, "timestamp": now.isoformat().replace("+00:00", "Z")}
+
+
+async def _redis_alive(redis: aioredis.Redis, timeout_s: float = 2.0) -> bool:
+    """Bounded Redis ping so a downed Redis can't hang the engines probe."""
+    try:
+        return bool(await asyncio.wait_for(redis.ping(), timeout=timeout_s))
+    except Exception:
+        return False
 
 
 async def _key_age(redis: aioredis.Redis, key: str, now: datetime) -> float | None:

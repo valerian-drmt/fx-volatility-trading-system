@@ -1,6 +1,7 @@
 """Health and liveness endpoints — /api/v1/health (basic) + /extended."""
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -16,6 +17,10 @@ router = APIRouter(prefix="/api/v1", tags=["health"])
 
 # A heartbeat older than HEARTBEAT_STALE_S is flagged STALE ; missing = DOWN.
 HEARTBEAT_STALE_S: int = 30
+# A downed Redis can make a ping/get BLOCK on connect (no implicit timeout), so
+# every Redis probe is bounded — a health endpoint must answer fast even when a
+# dependency is down (else the whole readiness read hangs and reads as all-DOWN).
+REDIS_PROBE_TIMEOUT_S: float = 2.0
 ENGINES: tuple[str, ...] = (keys.ENGINE_MARKET_DATA, keys.ENGINE_VOL, keys.ENGINE_RISK)
 
 
@@ -38,7 +43,12 @@ async def health_extended(
     """
     redis_status = await _check_redis(redis)
     db_status = await _check_db(db)
-    engines_status = await _check_engines(redis)
+    # Engine liveness is read from Redis heartbeats — short-circuit to DOWN when
+    # Redis is unreachable instead of timing out once per engine.
+    engines_status = (
+        await _check_engines(redis) if redis_status == "OK"
+        else {e: "DOWN" for e in ENGINES}
+    )
 
     all_ok = (
         redis_status == "OK"
@@ -58,7 +68,7 @@ async def health_extended(
 
 async def _check_redis(redis: aioredis.Redis) -> str:
     try:
-        return "OK" if await redis.ping() else "DOWN"
+        return "OK" if await asyncio.wait_for(redis.ping(), REDIS_PROBE_TIMEOUT_S) else "DOWN"
     except Exception:
         return "DOWN"
 
@@ -77,7 +87,9 @@ async def _check_engines(redis: aioredis.Redis) -> dict[str, str]:
     now = datetime.now(UTC)
     for engine in ENGINES:
         try:
-            raw = await redis.get(keys.HEARTBEAT.format(engine_name=engine))
+            raw = await asyncio.wait_for(
+                redis.get(keys.HEARTBEAT.format(engine_name=engine)), REDIS_PROBE_TIMEOUT_S
+            )
         except Exception:
             statuses[engine] = "DOWN"
             continue
