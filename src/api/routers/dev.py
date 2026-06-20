@@ -12,6 +12,8 @@ import json
 import os
 import re
 import shutil
+import time
+from collections import deque
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
@@ -1469,12 +1471,74 @@ async def _prom_range(
     return series
 
 
+# Docker-socket fallback: per-container stats where cAdvisor can't see them
+# (Docker Desktop / WSL2 only exposes the root cgroup). Reads the Docker Engine
+# API over the mounted socket and keeps a short in-memory history, sampled on
+# each poll. The socket is mounted in local dev only (compose override).
+_DOCKER_SOCK = os.getenv("DOCKER_SOCK", "/var/run/docker.sock")
+_HISTORY: dict[str, deque[tuple[float, float, float]]] = {}  # name -> (ts, cpu%, mem bytes)
+_HISTORY_MAXLEN = 1080  # ~3 h at one sample / 10 s
+_last_sample = 0.0
+_MIN_SAMPLE_GAP_S = 5.0
+
+
+def _docker_cpu_pct(stats: dict[str, Any]) -> float | None:
+    try:
+        cpu, pre = stats["cpu_stats"], stats["precpu_stats"]
+        cd = cpu["cpu_usage"]["total_usage"] - pre["cpu_usage"]["total_usage"]
+        sd = cpu["system_cpu_usage"] - pre.get("system_cpu_usage", 0)
+        ncpu = cpu.get("online_cpus") or len(cpu["cpu_usage"].get("percpu_usage") or []) or 1
+        if sd > 0 and cd >= 0:
+            return round(cd / sd * ncpu * 100, 1)
+    except Exception:
+        pass
+    return None
+
+
+async def _sample_docker() -> None:
+    """Append one per-container (cpu%, mem) sample to the in-memory history."""
+    global _last_sample
+    now = time.time()
+    if now - _last_sample < _MIN_SAMPLE_GAP_S:
+        return
+    try:
+        transport = httpx.AsyncHTTPTransport(uds=_DOCKER_SOCK)
+        async with httpx.AsyncClient(transport=transport, base_url="http://docker", timeout=8.0) as cli:
+            containers = (await cli.get("/containers/json")).json()
+            targets = [
+                (c["Id"], (c.get("Names") or ["?"])[0].lstrip("/"))
+                for c in containers
+                if (c.get("Names") or ["?"])[0].lstrip("/").startswith("fxvol-")
+            ]
+
+            async def _one(cid: str, name: str) -> tuple[str, float | None, float]:
+                try:
+                    s = (await cli.get(f"/containers/{cid}/stats", params={"stream": "false"})).json()
+                    ms = s.get("memory_stats", {})
+                    inactive = (ms.get("stats", {}) or {}).get("inactive_file", 0) or 0
+                    mem = max(0.0, float(ms.get("usage", 0)) - float(inactive))
+                    return name, _docker_cpu_pct(s), mem
+                except Exception:
+                    return name, None, 0.0
+
+            results = await asyncio.gather(*[_one(cid, n) for cid, n in targets])
+        for name, cpu_pct, mem in results:
+            if cpu_pct is None:
+                continue
+            _HISTORY.setdefault(name, deque(maxlen=_HISTORY_MAXLEN)).append((now, cpu_pct, mem))
+        _last_sample = now
+    except Exception:
+        pass  # socket absent (prod) / docker unreachable → leave history untouched
+
+
 @router.get("/containers/metrics")
 async def container_metrics(minutes: int = 15) -> dict[str, Any]:
     """Per-container CPU % + RAM (bytes) time-series over the last ``minutes``.
 
-    Range-queries Prometheus (cAdvisor metrics). ``reachable: false`` with empty
-    series when the ``obs`` profile (Prometheus + cAdvisor) isn't running.
+    Prefers Prometheus (cAdvisor — persistent, used on Linux/EC2). Falls back to
+    the Docker socket (sampled in-memory each poll) when Prometheus has no
+    per-container series — e.g. Docker Desktop / WSL2, where cAdvisor only sees
+    the root cgroup. ``source`` says which path served the data.
     """
     minutes = max(1, min(180, minutes))
     end = datetime.now(UTC)
@@ -1485,10 +1549,18 @@ async def container_metrics(minutes: int = 15) -> dict[str, Any]:
         "end": end.isoformat().replace("+00:00", "Z"),
         "step": step,
     }
+    # 1) Prometheus / cAdvisor (works on Linux/EC2, persistent history).
     try:
         async with httpx.AsyncClient(timeout=6.0) as client:
             cpu = await _prom_range(client, _CPU_QUERY, start.timestamp(), end.timestamp(), step)
             mem = await _prom_range(client, _MEM_QUERY, start.timestamp(), end.timestamp(), step)
-        return {**base, "reachable": True, "cpu": cpu, "mem": mem}
+        if any(s["points"] for s in cpu):
+            return {**base, "reachable": True, "source": "prometheus", "cpu": cpu, "mem": mem}
     except Exception:
-        return {**base, "reachable": False, "cpu": [], "mem": []}
+        pass
+    # 2) Docker-socket fallback (Docker Desktop): sample now, return the history.
+    await _sample_docker()
+    cutoff = time.time() - minutes * 60
+    cpu = [{"name": n, "points": [[ts, c] for ts, c, _m in pts if ts >= cutoff]} for n, pts in sorted(_HISTORY.items())]
+    mem = [{"name": n, "points": [[ts, m] for ts, _c, m in pts if ts >= cutoff]} for n, pts in sorted(_HISTORY.items())]
+    return {**base, "reachable": bool(_HISTORY), "source": "docker", "cpu": cpu, "mem": mem}

@@ -33,6 +33,11 @@ services:
   api:
     volumes:
       - ./src:/app/src
+      # Dev-only: lets the /dev Hardware tab read per-container stats straight
+      # from the Docker Engine API (cAdvisor can't see per-container cgroups on
+      # Docker Desktop / WSL2). Root-equivalent access → local dev ONLY, never
+      # in the prod compose (which omits this override file).
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       PYTHONPATH: /app/src
     command:

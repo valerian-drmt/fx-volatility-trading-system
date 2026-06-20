@@ -110,9 +110,11 @@ export function Hardware(): JSX.Element {
 
       {/* Per-container time-series */}
       {cm && !cm.reachable ? (
-        <div style={{ color: "#d9b86a", fontSize: 12, background: "#23200f", border: "1px solid #3a3417", padding: "10px 14px", borderRadius: 6 }}>
-          Prometheus/cAdvisor unreachable — start the observability profile:
-          <code style={{ color: "#cdd1d8", marginLeft: 6 }}>docker compose --profile obs up -d cadvisor prometheus</code>
+        <div style={{ color: "#d9b86a", fontSize: 12, background: "#23200f", border: "1px solid #3a3417", padding: "10px 14px", borderRadius: 6, lineHeight: 1.6 }}>
+          No per-container metrics yet. On Linux/EC2: start the obs profile{" "}
+          <code style={{ color: "#cdd1d8" }}>docker compose --profile obs up -d cadvisor prometheus</code>.{" "}
+          On Docker Desktop (cAdvisor can't read per-container cgroups): recreate the api so it mounts the Docker socket{" "}
+          <code style={{ color: "#cdd1d8" }}>docker compose up -d api</code> — graphs then build live.
         </div>
       ) : cm ? (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
