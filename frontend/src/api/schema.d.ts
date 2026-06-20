@@ -396,6 +396,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portfolio/risk-per-tenor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Risk Per Tenor
+         * @description Vega + vanna + volga ($) bucketed by DTE (R11 G-risk). Reads the
+         *     denormalised greek columns on ``open_position`` (no reval needed).
+         */
+        get: operations["risk_per_tenor_api_v1_portfolio_risk_per_tenor_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portfolio/hedge-summary": {
         parameters: {
             query?: never;
@@ -431,11 +452,12 @@ export interface paths {
         };
         /**
          * Stress Grid
-         * @description 5×7 spot × IV stress matrix. Each cell = ``NPV(scenario) - NPV(now)``.
+         * @description Parameterised spot × {vol|time|skew|fly} stress matrix (R11 G-risk 5.2).
          *
-         *     Full revaluation per scenario via Black-Scholes for options, linear for
-         *     futures. Baseline = current ``market_price`` for futures, BS at current
-         *     ``iv`` for options. Matches spec ``risk_dashboard_spec.md § F``.
+         *     Columns = spot bp bins ; rows = the chosen 2nd axis. Each cell = the chosen
+         *     ``output`` (pnl = ΔNPV vs now ; any greek = the book greek at that scenario),
+         *     full-BS revalued via ``core.risk.stress.reval_book``. ``axis=spot-vol,
+         *     output=pnl`` reproduces the legacy 5×7 grid (``vol_bins_vps`` kept for compat).
          */
         get: operations["stress_grid_api_v1_portfolio_stress_grid_get"];
         put?: never;
@@ -455,12 +477,286 @@ export interface paths {
         };
         /**
          * Greeks Ladder
-         * @description Per-spot-bucket greeks ladder. For each ΔSpot in {-400, -200, 0, +200, +400} bp :
-         *     full revaluation of the book, then sum Δ / Γ / Vega and the resulting
-         *     P&L vs current. ``hedge_delta_usd`` = ``-delta_usd`` (qty of $ Δ to
-         *     short/long via futures to be delta-neutral at that spot).
+         * @description Per-bin greeks ladder along one axis (R11 G-risk 5.3). Each row = P&L +
+         *     Δ/Γ/Vega revalued at that shock. ``hedge_delta_usd = −delta_usd``. The
+         *     ``axis`` column name (``dspot_bps``/``dvol_vps``/…) reflects the chosen axis.
          */
         get: operations["greeks_ladder_api_v1_portfolio_greeks_ladder_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/vega-pca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vega Pca
+         * @description Project the book's per-cell vega onto the active PCA loadings (R11 G-risk).
+         *
+         *     Each open option is classified into a 30-dim grid cell (DTE -> tenor, BS delta
+         *     -> delta bucket) and its vega ($/vol-pt) accumulated. The active model's
+         *     loadings + stds then give the book's vega P&L sensitivity to each PC
+         *     (level / slope / curvature) -- see ``core.risk.vega_pca``.
+         */
+        get: operations["vega_pca_api_v1_portfolio_vega_pca_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/marginal-var": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Marginal Var
+         * @description Per-position component VaR over the open book (R11 G-risk).
+         *
+         *     Builds each open position's daily P&L delta series from
+         *     ``open_position_history``, then decomposes the 99% historical portfolio VaR
+         *     into per-position standalone + component contributions (Euler allocation, see
+         *     ``core.risk.marginal_var``). The factor tag is the position's dominant greek
+         *     (spot / level / skew / curv). Empty until ~5 days of history accumulate.
+         */
+        get: operations["marginal_var_api_v1_portfolio_marginal_var_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/var-factors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Var Factors
+         * @description Scenario VaR by factor (spot / level / skew / curv) over the open book (R11 G-risk).
+         *
+         *     Each factor's VaR is the book's loss under its 1-day 99% adverse move, full-BS
+         *     revalued via ``core.risk.var_factors`` — derived entirely from the live book
+         *     (the shock sizes are documented desk assumptions). Empty when the book/spot is missing.
+         */
+        get: operations["var_factors_api_v1_portfolio_var_factors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/pnl-attribution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pnl Attribution
+         * @description Decompose realized P&L into greek contributions over the window.
+         *
+         *     Per-position Taylor expansion :
+         *         actual_pnl  = (pnl_now - pnl_then)
+         *         delta_pnl   = δ_now × (spot_now - spot_then)
+         *         gamma_pnl   = 0.5 × Γ_now × (spot_now - spot_then) ** 2
+         *         vega_pnl    = V_now × (iv_now - iv_then)      [vol points]
+         *         theta_pnl   = Θ_now × Δt_days
+         *         residual    = actual_pnl - (delta + gamma + vega + theta)
+         *
+         *     Frozen-greeks approximation (uses current greeks for both endpoints) —
+         *     fine for short windows ≤ 1 day, less accurate over a week. The
+         *     ``residual`` row captures the un-attributed drift so the operator can
+         *     spot when the Taylor expansion stops being valid.
+         *
+         *     Sources :
+         *       - IB-live positions (``position`` table) : t-1 row in
+         *         ``position_metric_history`` closest to ``now - lookback_hours``.
+         *         Spot comes from the snapshot's ``market_price`` for the
+         *         underlying FUT contract on the same symbol.
+         *       - Booked positions (``booked_position``) : t-1 row in
+         *         ``booked_position_metric_history``. Spot stored on the snapshot.
+         */
+        get: operations["pnl_attribution_api_v1_portfolio_pnl_attribution_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/pin-risk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pin Risk
+         * @description Full BS revaluation per option at strike (pin) and strike ± 50 bp.
+         *
+         *     The frontend's old linearised approximation (Δ × ΔS) was a poor
+         *     proxy near expiry where Γ dominates. Here we do the proper reval:
+         *
+         *       pnl_at_pin       = NPV(spot=K) - NPV(spot=now)
+         *       pnl_at_breach_up = NPV(spot=K + 50bp) - NPV(spot=now)
+         *       pnl_at_breach_dn = NPV(spot=K - 50bp) - NPV(spot=now)
+         *
+         *     All computed at the position's current T and IV (no time decay, no
+         *     vol shock — operator can run those via the stress-grid panel).
+         *     Futures are ignored (no pin risk — payoff is linear in spot).
+         */
+        get: operations["pin_risk_api_v1_portfolio_pin_risk_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/scenarios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scenarios
+         * @description Two-axis full-reval scenario surface for the live book.
+         *
+         *     Axis 1 (spot shocks, fixed IV) : revalue every position at
+         *     ``spot × (1 + step/100)``. Returns one row per spot step with PnL +
+         *     4 net greeks. Used by the 5-chart Portfolio scenarios panel.
+         *
+         *     Axis 2 (IV shocks, fixed spot) : shift each option's IV by ``step``
+         *     vol-points, recompute price + greeks. Futures contribute 0 (no IV
+         *     exposure).
+         */
+        get: operations["scenarios_api_v1_portfolio_scenarios_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/cash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cash Holdings
+         * @description Per-currency cash detail for the Trade holdings donut (R11 G-trade).
+         *
+         *     Source : the latest ``account_history.currencies`` JSONB (currency → settled
+         *     cash balance, written by the execution-engine). USD value uses the latest
+         *     EURUSD spot from ``vol_surface_history`` (USD per EUR) ; USD is 1:1 ; other
+         *     currencies have no rate here → ``usd_value=None``. Unsettled cash is not
+         *     tracked upstream → always ``None``.
+         */
+        get: operations["cash_holdings_api_v1_portfolio_cash_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/daily-pnl": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Daily Pnl
+         * @description Realized P&L aggregated per UTC day (R11 G-portfolio).
+         *
+         *     From closed booked positions : ``SUM(net_pnl_usd)`` grouped by the day of
+         *     ``closed_at``, plus a running cumulative. Empty list when no closes yet.
+         */
+        get: operations["daily_pnl_api_v1_portfolio_daily_pnl_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/var": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Value At Risk
+         * @description Historical 1-day Value-at-Risk (R11 G-risk).
+         *
+         *     VaR 95 / 99 + ES 99 from the empirical distribution of daily ``net_liq``
+         *     changes over the last ~504 sessions. Values are losses (negative USD).
+         *     Fields ``None`` when < 5 days of history. The factor decomposition
+         *     (skew/level/curvature) + per-position marginal-VaR remain a separate G-risk
+         *     PR (they need greeks × shock attribution, not just the net-liq series).
+         */
+        get: operations["value_at_risk_api_v1_portfolio_var_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Portfolio Stats
+         * @description Headline performance stats (R11 G-portfolio).
+         *
+         *     Sharpe + drawdown from the daily net-liq curve (``account_history``),
+         *     hit-rate + cumulative realized from closed booked positions, cumulative
+         *     unrealized from the live book. Fields are ``None`` when the underlying
+         *     series is too short / empty (read-only public deployment at boot).
+         */
+        get: operations["portfolio_stats_api_v1_portfolio_stats_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2986,6 +3282,28 @@ export interface operations {
             };
         };
     };
+    risk_per_tenor_api_v1_portfolio_risk_per_tenor_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
     hedge_summary_api_v1_portfolio_hedge_summary_get: {
         parameters: {
             query?: never;
@@ -3010,6 +3328,73 @@ export interface operations {
     };
     stress_grid_api_v1_portfolio_stress_grid_get: {
         parameters: {
+            query?: {
+                axis?: string;
+                output?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    greeks_ladder_api_v1_portfolio_greeks_ladder_get: {
+        parameters: {
+            query?: {
+                axis?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vega_pca_api_v1_portfolio_vega_pca_get: {
+        parameters: {
             query?: never;
             header?: never;
             path?: never;
@@ -3030,7 +3415,205 @@ export interface operations {
             };
         };
     };
-    greeks_ladder_api_v1_portfolio_greeks_ladder_get: {
+    marginal_var_api_v1_portfolio_marginal_var_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    var_factors_api_v1_portfolio_var_factors_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    pnl_attribution_api_v1_portfolio_pnl_attribution_get: {
+        parameters: {
+            query?: {
+                lookback_hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pin_risk_api_v1_portfolio_pin_risk_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    scenarios_api_v1_portfolio_scenarios_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    cash_holdings_api_v1_portfolio_cash_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    daily_pnl_api_v1_portfolio_daily_pnl_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    value_at_risk_api_v1_portfolio_var_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    portfolio_stats_api_v1_portfolio_stats_get: {
         parameters: {
             query?: never;
             header?: never;
