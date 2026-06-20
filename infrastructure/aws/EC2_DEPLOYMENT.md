@@ -15,14 +15,13 @@
 | Compte AWS + KMS + SSM secrets + IAM role EC2 + SG + SSH key + S3 + DNS zone | ✅ provisionné (`STATE.md`) |
 | Images GHCR (`build.yml` → 7 images sur push `main`) | ✅ pipeline en place |
 | `deploy.yml` (tag `v*.*.*` → SSH EC2 → pull/up/alembic/smoke) | ✅ existe, **gated** `DEPLOY_ENABLED` |
-| **Instance EC2 + EIP + DNS A-record** | ❌ à créer |
-| **TLS / Let's Encrypt** dans le compose | ❌ non câblé (le compose monte le conf **dev** HTTP-only) |
-| **deploy.yml ship les fichiers `infrastructure/`** au host | ❌ ne ship que `docker-compose.yml` |
-| **Profils engines + ib au déploiement** | ❌ `up -d` sans `--profile` = pas de pipeline data ni IB |
-| Secrets GitHub repo (`EC2_HOST`, …) + `DEPLOY_ENABLED` | ❌ à poser |
+| **Trous compose/deploy (§4)** : ship `infrastructure/`, nginx prod+TLS, domaine, profils, `.env`, cert bootstrap | ✅ **corrigés (#131)** |
+| **Instance EC2 + EIP + DNS A-record** | ❌ à créer (toi) |
+| Secrets GitHub repo (`EC2_HOST`, …) + `DEPLOY_ENABLED` | ❌ à poser (toi) |
 
-**Conclusion** : l'infra AWS de support est prête ; il reste à (a) lancer l'instance,
-(b) **corriger ~6 trous dans le compose/deploy** (§4), (c) armer le workflow (§5).
+**Conclusion** : le **code est prêt** (#131). Il ne reste que de l'**ops AWS côté toi** :
+(a) lancer l'instance + EIP + DNS, (b) bootstrap host (`setup.sh`) + cert
+(`init-letsencrypt.sh`), (c) poser les secrets repo + armer `DEPLOY_ENABLED` (§5).
 
 ---
 
