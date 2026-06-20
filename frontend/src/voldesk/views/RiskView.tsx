@@ -253,7 +253,7 @@ interface VarCalc {
   esZ: number;
 }
 
-function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; var99: number; es99: number; netLiq: number; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
+function VarCard({ var95, var99, es99, netLiq, hist, fresh, nDays }: { var95: number; var99: number; es99: number; netLiq: number; hist: HistBin[]; fresh: Fresh<unknown>; nDays: number }): JSX.Element {
   const factorsLive = useFetch<VarFactor[]>(() => fetchVarFactors().then(adaptVarFactors), 120_000).data ?? [];
   const base95 = var95,
     base99 = var99;
@@ -284,7 +284,7 @@ function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; v
     <Panel title="Value at Risk" dataPp="var" right={<FreshBadge fresh={fresh} label="historical 1d" />} pad={false} className="trade-block">
       <div className="var-meta">
         <span className="var-method">historical sim</span>
-        <span>504 obs · 504d window</span>
+        <span>{nDays > 0 ? `${nDays} obs · ${nDays}d window` : "building window…"}</span>
         <span>scale √t · 252d</span>
         <span className="var-frozen" title="le scaling √t suppose une exposition gelée — faux pour un book non-linéaire (vanna 2M +152k, theta bleed, roll-down du gamma). Lire 1M/1Y avec prudence.">⚠ exposition gelée</span>
         <span className="var-live"><span className="status-dot pulse" style={{ background: "var(--pos)" }} />live</span>
@@ -764,15 +764,15 @@ export function RiskView(): JSX.Element {
             </div>
             <div className="gs-section-lbl util-lbl">Risk utilization <span className="dim">· used vs limit</span></div>
             <div className="util-bars">
-              <Bar label="Init margin" used="$1.84M" limit="$4.22M" pct={a.marginInitPct} value={a.marginInitPct + "%"} tone="auto" />
-              <Bar label="Maint margin" used="$1.28M" limit="$4.22M" pct={a.marginMaintPct} value={a.marginMaintPct + "%"} tone="auto" />
+              <Bar label="Init margin" used={fmt.usd(a.marginInit)} limit={fmt.usd(a.netLiq)} pct={a.marginInitPct} value={a.marginInitPct.toFixed(0) + "%"} tone="auto" />
+              <Bar label="Maint margin" used={fmt.usd(a.marginMaint)} limit={fmt.usd(a.netLiq)} pct={a.marginMaintPct} value={a.marginMaintPct.toFixed(0) + "%"} tone="auto" />
               <Bar label="Δ exposure" used="$1.18M" limit="$4.22M" pct={28} value="28%" tone="auto" />
               <Bar label="Vega" used="$32k" limit="$62k" pct={52} value="52%" tone="auto" />
               <Bar label="Γ exposure" used="14.5k" limit="20.4k" pct={71} value="71%" tone="auto" />
             </div>
           </Panel>
           <div className="var-col">
-            <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} />
+            <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} nDays={vd.nDays} />
             <MarginalVarPanel />
           </div>
         </div>
