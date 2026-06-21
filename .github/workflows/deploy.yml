@@ -1,13 +1,17 @@
 name: deploy-prod
 
-# Production deploy. Triggers on a pushed semver tag (v*.*.*) or manual
-# workflow_dispatch. NO SSH and NO inbound port 22: the runner federates
-# into AWS via GitHub OIDC (no stored AWS key), uploads the config payload
-# to S3, then drives the deploy on the host through SSM RunShellScript.
+# Continuous deploy to the prod EC2. Runs automatically AFTER `build-and-push`
+# succeeds on main (so the per-commit images already exist in GHCR), and can
+# also be run manually via workflow_dispatch — optionally for an arbitrary
+# commit SHA (rollback / redeploy).
+#
+# NO SSH and NO inbound port 22: the runner federates into AWS via GitHub OIDC
+# (no stored AWS key), uploads the config payload to S3, then drives the deploy
+# on the host through SSM RunShellScript.
 #
 # Secrets never touch GitHub: the host renders /opt/fxvol/.env by reading
-# /fxvol/prod/* from SSM Parameter Store via its own instance role. The
-# runner only passes non-secret config (image tag, compose profiles, owner).
+# /fxvol/prod/* from SSM Parameter Store via its own instance role. The runner
+# only passes non-secret config (image tag, compose profiles, owner).
 #
 # Required repo VARIABLES:
 #   DEPLOY_ENABLED      'true' to arm real deploys (gate)
@@ -16,18 +20,19 @@ name: deploy-prod
 #   DEPLOY_BUCKET       S3 bucket for the config payload (fxvol-deploy)
 #   EC2_INSTANCE_ID     i-082e72f0186c9d019
 #   DEPLOY_DOMAIN       valeriandarmente.dev  (smoke target)
-#   COMPOSE_PROFILES    optional; empty = core stack only
+#   COMPOSE_PROFILES    optional; empty = core stack only (add "engines,ib" for live)
 # Host-side SSM params consumed by infrastructure/ec2/remote-deploy.sh:
-#   /fxvol/prod/{DB_PASSWORD,VNC_PASSWORD,IB_USERID,IB_PASSWORD,FRED_API_KEY,GHCR_TOKEN}
+#   /fxvol/prod/{DB_PASSWORD,VNC_PASSWORD,IB_USERID,IB_PASSWORD,FRED_API_KEY?,GHCR_TOKEN?}
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_run:
+    workflows: ["build-and-push"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       deploy_sha:
-        description: "Commit SHA to deploy (defaults to the current ref)"
+        description: "Commit SHA to deploy (default: the build's commit / main HEAD)"
         required: false
         type: string
 
@@ -42,24 +47,35 @@ env:
 
 jobs:
   deploy:
-    name: deploy ${{ github.ref_name }} to EC2
-    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    name: deploy to EC2
+    # Armed by DEPLOY_ENABLED. On the auto (workflow_run) path, only deploy when
+    # the build actually succeeded — never ship a half-built image set.
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     environment: production   # OIDC sub is pinned to this environment
     timeout-minutes: 20
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Resolve image tag to deploy
+      - name: Resolve commit to deploy
         id: resolve
         run: |
+          # Manual SHA wins; else the commit the build ran on (auto path); else
+          # the dispatch ref. Images + compose/infra all come from this commit.
           if [ -n "${{ inputs.deploy_sha }}" ]; then
-            echo "image_tag=sha-${{ inputs.deploy_sha }}" >> "$GITHUB_OUTPUT"
+            sha="${{ inputs.deploy_sha }}"
+          elif [ -n "${{ github.event.workflow_run.head_sha }}" ]; then
+            sha="${{ github.event.workflow_run.head_sha }}"
           else
-            echo "image_tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            sha="${{ github.sha }}"
           fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "image_tag=sha-$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying commit $sha (image tag sha-$sha)"
+
+      - name: Checkout the deployed commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.resolve.outputs.sha }}
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -71,7 +87,7 @@ jobs:
         env:
           BUCKET: ${{ vars.DEPLOY_BUCKET }}
           REGION: ${{ vars.AWS_REGION }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ steps.resolve.outputs.sha }}
         run: |
           # Ship the compose file plus the configs it bind-mounts (nginx confs,
           # postgres init, redis conf, obs/*). The dev override stays local.
@@ -82,7 +98,7 @@ jobs:
         env:
           BUCKET: ${{ vars.DEPLOY_BUCKET }}
           REGION: ${{ vars.AWS_REGION }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ steps.resolve.outputs.sha }}
           INSTANCE: ${{ vars.EC2_INSTANCE_ID }}
           IMAGE_TAG: ${{ steps.resolve.outputs.image_tag }}
           OWNER: ${{ env.OWNER }}
