@@ -92,57 +92,24 @@ VPC                default vpc-08e90d78d8401b137 (172.31.0.0/16)
 
 ---
 
-## 4. ⚠️ Trous à boucher dans le code AVANT de déployer
+## 4. ✅ Code EC2-ready (fait via #131)
 
-Ces points cassent un déploiement tel quel — à corriger (chacun = petit PR backend/infra) :
+Les trous compose/deploy qui cassaient un déploiement sont **corrigés sur `main`** (#131) :
+- **`deploy.yml`** ship `infrastructure/` + `obs/` au host (les confs bind-montées) +
+  rend un **`.env` complet** : `NGINX_CONF_FILE` → conf TLS prod, `LETSENCRYPT_DIR`/
+  `CERTBOT_WWW_DIR`, `IB_GATEWAY_IMAGE`, `TRADING_MODE=paper`, `READ_ONLY_API=yes`,
+  `COMPOSE_PROFILES` (repo-var → engines/ib opt-in, core par défaut).
+- **compose nginx** env-driven : dev = HTTP-only ; prod = `nginx.conf` (TLS) +
+  `/etc/letsencrypt` + `/var/www/certbot`.
+- **`nginx.conf`** : domaine corrigé `valeriandarmente.dev`.
+- **`infrastructure/ec2/setup.sh`** : bootstrap host (docker, ufw, user `fxvol`,
+  `/opt/fxvol`, systemd unit, cron renew certbot, cron backup Postgres→S3).
+- **`infrastructure/ec2/init-letsencrypt.sh`** : bootstrap du cert TLS (placeholder
+  self-signed → émission webroot → reload), résout le deadlock nginx↔certbot.
 
-### 4.1 `deploy.yml` ne ship que `docker-compose.yml`
-Le compose monte des fichiers locaux : `./infrastructure/nginx/*.conf`,
-`./infrastructure/postgres/init.sql`, `./infrastructure/redis/redis.conf`, et (profil
-obs) `./obs/*`. Ils **n'existent pas** sur le host → `nginx`/`postgres` échouent au mount.
-**Fix** : shipper le dossier `infrastructure/` (et `obs/` si profil obs) vers
-`/opt/fxvol/` (ajouter un `scp -r infrastructure obs` dans deploy.yml), ou bake les
-confs dans les images.
-
-### 4.2 nginx = conf **dev** (HTTP-only), pas de TLS
-Le compose monte `infrastructure/nginx/nginx-dev.conf` (`listen 80`, `server_name
-localhost`, aucun TLS). Or le smoke deploy est en **https** et le TLD `.dev` force
-HSTS/HTTPS. **Fix** : monter `nginx.conf` (prod) + câbler Let's Encrypt (cf. 4.3/4.4).
-
-### 4.3 `nginx.conf` (prod) a le mauvais domaine + chemin cert
-Il contient `server_name valerian.dev` et `ssl_certificate
-/etc/letsencrypt/live/valerian.dev/…` → **doit être `valeriandarmente.dev`**.
-**Fix** : corriger les 3 occurrences `valerian.dev` → `valeriandarmente.dev`.
-
-### 4.4 TLS / Let's Encrypt non câblé dans le compose
-Pas de service `certbot`, pas de volume `/etc/letsencrypt`, pas de `root
-/var/www/certbot`. **Fix** : ajouter un certbot (ou certbot host) + monter
-`letsencrypt:/etc/letsencrypt:ro` et `certbot_www:/var/www/certbot` dans nginx.
-Bootstrap initial du cert (1 fois) :
-`certbot certonly --webroot -w /var/www/certbot -d valeriandarmente.dev`.
-
-### 4.5 Profils `engines` + `ib` non démarrés au déploiement
-`deploy.yml` fait `docker compose up -d` **sans** `--profile`. Or les 5 engines et
-ib-gateway sont sur les profils `engines`/`ib` → un déploiement nu = api+frontend+
-nginx+pg+redis **sans pipeline data ni IB** (desk vide). **Fix** : `docker compose
---profile engines --profile ib up -d` (+ obs si voulu).
-
-### 4.6 `.env` rendu incomplet
-deploy.yml rend `API/FRONTEND/MARKET_DATA/VOL_ENGINE/RISK_ENGINE/DB_WRITER_IMAGE`
-mais **pas** `EXECUTION_IMAGE` ni `IB_GATEWAY_IMAGE`, ni `TRADING_MODE`/`READ_ONLY_API`.
-Si on active les profils, execution-engine prendrait `fx-options-execution:local`
-(absent du host) → fail. **Fix** : ajouter au heredoc `.env` :
-`EXECUTION_IMAGE=…/fx-options-execution:<tag>`, `IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:latest`,
-`TRADING_MODE=paper`, `READ_ONLY_API=yes` (desk read-only : bloque tout ordre côté gateway).
-
-### 4.7 (info) L'app se déploie à la **racine** du domaine
-`web.Dockerfile` build en base `/` et nginx route `/`. Le sous-chemin
-`/fx-volatility-trading-system` (évoqué ailleurs) **n'est pas** implémenté → ce
-serait un changement séparé (vite `base` + nginx `location /sous-chemin/`). Pour ce
-déploiement, l'app vit sur `https://valeriandarmente.dev/`.
-
-> Recommandation : regrouper 4.1→4.6 dans **un PR `fix(deploy): EC2-ready compose + TLS`**
-> avant d'armer. C'est le vrai contenu de la « PR D » du plan R11.
+> **Reste 100 % ops AWS côté toi** (§5) — aucune modif code requise.
+> L'app se déploie à la **racine** du domaine (`https://valeriandarmente.dev/`) ;
+> le sous-chemin `/fx-volatility-trading-system` n'est pas implémenté (changement séparé).
 
 ---
 
@@ -171,43 +138,51 @@ CAA recommandé : `0 issue "letsencrypt.org"`. Vérifier : `dig valeriandarmente
 ### Étape C — Bootstrap host (via SSM Session Manager, port 22 fermé)
 ```bash
 aws ssm start-session --target i-xxxx --region eu-west-1
-# sur l'instance :
-sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin
-sudo usermod -aG docker ubuntu
-sudo mkdir -p /opt/fxvol && sudo chown ubuntu:ubuntu /opt/fxvol
-# (certbot pour le bootstrap initial du cert, cf. 4.4)
+# sur l'instance — un seul script fait tout (docker, user fxvol, /opt/fxvol,
+# ufw, systemd unit, cron renew certbot, cron backup Postgres→S3) :
+curl -fsS https://raw.githubusercontent.com/valerian-drmt/fx-volatility-trading-system/main/infrastructure/ec2/setup.sh | sudo bash
 ```
-Vérifier le rôle : `aws sts get-caller-identity` doit montrer
+Vérifier le rôle IAM : `aws sts get-caller-identity` doit montrer
 `assumed-role/fxvol-ec2-secrets-role/i-xxx`.
 
-### Étape D — Corriger les trous §4 (PR infra) puis re-push `main`
-`build.yml` reconstruit les 7 images avec les configs corrigées.
+> **Étape D (corriger le code) : déjà faite** — #131 a rendu compose/deploy
+> EC2-ready (cf. §4). Rien à coder, on passe directement à l'armement.
 
 ### Étape E — Poser les secrets GitHub + armer
 ```bash
 gh secret set EC2_HOST     --body "valeriandarmente.dev"   # ou l'EIP
-gh secret set EC2_USER     --body "ubuntu"
+gh secret set EC2_USER     --body "fxvol"                  # setup.sh crée ce user + possède /opt/fxvol
 gh secret set EC2_SSH_KEY  < chemin/clé-privée-fxvol-ec2.pem
 gh secret set DB_PASSWORD  --body "<depuis SSM>"
 gh secret set VNC_PASSWORD --body "<depuis SSM>"
 gh secret set IB_USERID    --body "<depuis SSM>"
 gh secret set IB_PASSWORD  --body "<depuis SSM>"
 gh variable set DEPLOY_ENABLED --body true   # ARME le workflow
+# (optionnel) données live : gh variable set COMPOSE_PROFILES --body "engines,ib"
+#   — sinon core seul (api+frontend+nginx+pg+redis), le 1er deploy sûr.
 ```
 
-### Étape F — Premier déploiement
+### Étape F — Premier déploiement + bootstrap TLS
 ```bash
-gh workflow run deploy-prod                      # workflow_dispatch
-#   ou : git tag v2.0.0 && git push origin v2.0.0
+gh workflow run deploy-prod      # ship compose+infra → rend .env → login ghcr → pull → up → alembic → smoke
 ```
-Le workflow : scp compose → rend `.env` → pull/up → alembic → smoke `https://…/api/v1/health`.
+⚠️ **Au tout premier run, nginx (conf prod TLS) ne peut pas démarrer sans cert** →
+le smoke `https` échoue **une fois** (api/pg/redis/frontend, eux, sont up). Bootstraper
+le cert sur le host, puis re-déployer :
+```bash
+# SSM dans l'instance, le compose + .env + images y sont déjà (du run ci-dessus) :
+cd /opt/fxvol && sudo DOMAIN=valeriandarmente.dev EMAIL=valeriandarmente@gmail.com \
+  bash infrastructure/ec2/init-letsencrypt.sh        # placeholder → webroot → reload
+gh workflow run deploy-prod                          # re-deploy → smoke /api/v1/health = 200 ✅
+```
+Renouvellements ensuite automatiques (cron `certbot renew` posé par setup.sh).
 
-### Étape G — Setup one-shot IB Gateway (si profil `ib`)
+### Étape G — Setup one-shot IB Gateway (si `COMPOSE_PROFILES` inclut `ib`)
 IB = **une seule session par userid** (le login web kick le container — cf. note IB).
 Via VNC `127.0.0.1:5900` (tunnel SSM) : Configure → API → Settings : décocher
 "localhost only", ajouter les Trusted IPs des engines (`172.20.0.10/11/12`),
-Save Settings (persisté dans le volume `ib_gateway_jts`). `READ_ONLY_API=yes` pour
-un desk read-only.
+Save Settings (persisté dans le volume `ib_gateway_jts`). `READ_ONLY_API=yes` (déjà
+dans le `.env`) garde le desk read-only.
 
 ---
 
