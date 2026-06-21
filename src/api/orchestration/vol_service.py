@@ -65,19 +65,73 @@ async def get_surface_at(
     )
 
 
+def _wing_iv_pct(pillar: dict, delta: str) -> float | None:
+    """IV (%) of a surface wing cell, robust to both pillar layouts : the flat
+    ``iv_{delta}_pct`` the engine currently publishes, or a nested
+    ``{delta: {"iv": fraction}}`` form."""
+    flat = pillar.get(f"iv_{delta}_pct")
+    if isinstance(flat, (int, float)):
+        return float(flat)
+    node = pillar.get(delta)
+    if isinstance(node, dict) and isinstance(node.get("iv"), (int, float)):
+        return float(node["iv"]) * 100.0
+    return None
+
+
+def _rr_bf(
+    pillar: dict, call: str, put: str, atm_pct: float | None
+) -> tuple[float | None, float | None]:
+    """(risk-reversal, butterfly) in vol points from the wing IVs :
+    RR = IV(call) − IV(put) ; BF = ½(IV(call)+IV(put)) − IV(ATM)."""
+    c, p = _wing_iv_pct(pillar, call), _wing_iv_pct(pillar, put)
+    if c is None or p is None:
+        return None, None
+    bf = round((c + p) / 2 - atm_pct, 4) if atm_pct is not None else None
+    return round(c - p, 4), bf
+
+
 async def get_term_structure(
     redis: aioredis.Redis, symbol: str
 ) -> TermStructureResponse:
-    """Derive term structure (tenor → ATM vol) from the latest Redis surface."""
+    """Term structure from the latest Redis surface : ATM IV + smile metrics
+    (RR/BF, live from the wings) per tenor, plus fair-vol / RV fields read from
+    the engine enrichment (``_fair_q`` per tenor, ``_rv_full_pct``, pillar
+    ``rv_pct``) — these stay null until the vol-engine publishes them."""
     surface = await get_latest_surface(redis, symbol)
-    rows = [
-        TermStructureRow(
-            tenor=tenor,
-            dte=pillar.get("dte"),
-            sigma_atm_pct=pillar.get("sigma_atm_pct") or pillar.get("sigma_ATM_pct"),
+    fair_q = surface.surface.get("_fair_q")
+    fair_q = fair_q if isinstance(fair_q, dict) else {}
+    rv_full = surface.surface.get("_rv_full_pct")
+    rv_full_f = float(rv_full) if isinstance(rv_full, (int, float)) else None
+
+    rows: list[TermStructureRow] = []
+    for tenor, pillar in surface.surface.items():
+        if tenor.startswith("_") or not isinstance(pillar, dict):
+            continue  # skip meta keys (_regime, _pca_signals, _symbol, …)
+        atm = pillar.get("sigma_atm_pct") or pillar.get("sigma_ATM_pct")
+        rr25, bf25 = _rr_bf(pillar, "25dc", "25dp", atm)
+        rr10, bf10 = _rr_bf(pillar, "10dc", "10dp", atm)
+        fq = fair_q.get(tenor)
+        fq = fq if isinstance(fq, dict) else {}
+        sf_q, sf_p = fq.get("sigma_fair_q_pct"), fq.get("sigma_fair_p_pct")
+        pillar_rv = pillar.get("rv_pct")
+        rv = float(pillar_rv) if isinstance(pillar_rv, (int, float)) else rv_full_f
+        rows.append(
+            TermStructureRow(
+                tenor=tenor,
+                dte=pillar.get("dte"),
+                sigma_atm_pct=atm,
+                rr_25d_pct=rr25,
+                bf_25d_pct=bf25,
+                rr_10d_pct=rr10,
+                bf_10d_pct=bf10,
+                sigma_fair_pct=sf_q if sf_q is not None else sf_p,
+                sigma_fair_p_pct=sf_p,
+                sigma_fair_q_pct=sf_q,
+                vrp_vol_pts=fq.get("vrp_vol_pts"),
+                regime=fq.get("regime"),
+                rv_pct=rv,
+            )
         )
-        for tenor, pillar in surface.surface.items()
-    ]
     return TermStructureResponse(
         symbol=surface.symbol, timestamp=surface.timestamp, pillars=rows
     )
