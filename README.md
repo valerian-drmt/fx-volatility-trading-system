@@ -1,188 +1,312 @@
-# FX Options Trading Dashboard
+# FX Volatility Trading System
 
-**Real-time FX volatility analytics and order execution platform** built on Interactive Brokers API.
+**End-to-end trading platform for EUR/USD FX options : microservices pipeline,
+research-grade vol signals, web cockpit, and Interactive Brokers execution.**
 
 [![CI](https://github.com/valerian-drmt/fx-volatility-trading-system/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/valerian-drmt/fx-volatility-trading-system/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
-![PyQt5](https://img.shields.io/badge/PyQt5-GUI-41CD52?logo=qt&logoColor=white)
-![ib-insync](https://img.shields.io/badge/ib--insync-IBKR%20API-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Single-screen dashboard for FX options traders: **implied vol vs fair vol signals**, **real-time portfolio greeks**, **PnL simulation**, and **multi-instrument order execution** (Spot, Future, Option) with live IB Gateway connectivity.
-
-![Dashboard Screenshot](docs/screenshot_dashboard.png)
+15-panel React cockpit on top of 5 async Python engines :
+live IB tick stream → vol surface fit (SVI/SSVI, GARCH, HAR-RV) → GMM regime
++ PCA signal z-scores → order submission with delta hedge → versioned audit
+trail in Postgres.
 
 ---
 
 ## Features
 
-### Market Data & Execution
-- Real-time FX spot tick chart with bid/ask (pyqtgraph, 200ms buckets)
-- **3 order types** in a single ticket: Spot (IDEALPRO), Future (6E CME), Option (EUU FOP CME)
-- Order preview with IB whatIf (margin, commission, greeks) before submission
-- Option delta-hedge: auto-computed future quantity for delta-neutral entry
-- Account summary with Net Liq, Cash, Unrealized PnL, currency balances
+### Market data + execution
+- IB Gateway container (gnzsnz fork) serving delayed EUR/USD FOP chains
+- Real-time tick stream published on Redis (throttled ~200ms)
+- Order structures factory : straddle ATM, calendar spread, risk reversal 25d,
+  butterfly 25d, all delta-hedged via 6E futures leg
 
-### Volatility Analytics
-- **Vol Scanner** -- market IV vs model fair vol per tenor, CHEAP/EXPENSIVE/FAIR signals
-- **Term Structure** -- IV market vs sigma fair vs Realized Vol across 6 tenors (1M-6M)
-- **Smile Chart** -- delta-space smile (10Dp, 25Dp, ATM, 25Dc, 10Dc) per tenor
-- **Greeks Summary** -- aggregated Delta, Vega, Gamma, Theta, PnL across all open positions
-- **PnL vs Spot** -- simulated portfolio PnL curve over +/-3% spot range (vectorized BS)
+### Volatility analytics
+- **Regime detector** — GMM on `[vol_of_vol, vol_level, term_slope]` → 3 regimes
+  (calm / stressed / pre_event) driving sizing multipliers
+- **Surface fit** — SVI per tenor + SSVI global, butterfly + calendar no-arb checks,
+  fair smile via EWMA on historical SVI params
+- **Signal** — PCA(3) on the 30-D surface snapshot (6 tenors × 5 delta pillars),
+  z-score each PC vs rolling 3M distribution, arm trade on `|z| > 1.5`
+- **VRP** — realized forward vol vs IV ATM, conditional on regime ; fallback
+  constant RP if history < 6 months
 
-### Quantitative Models
-- **IV Surface (Step 1)** -- FOP chain scan, BS IV extraction via IB model greeks, PCHIP delta-space interpolation, RR/BF derivation, validation gates per tenor
-- **Fair Vol (Step 2)** -- Yang-Zhang realized vol + dynamic risk premium, GARCH(1,1) forward projection with mean-reversion blend, conditional W1 weighting, portfolio book adjustment
-- **Signal** -- `sigma_fair(T) - sigma_mid(T)` thresholded at +/-20bps
+### Risk + P&L
+- Greeks aggregation across open structures, per-tenor vega bar charts
+- Delta hedge modes : static / threshold (default Δ=0.05) / scheduled
+- Exit rules systematic : z-flip, time ratio, stop-loss vega, time to expiry
+
+### Admin & observability
+- Versioned vol config in Postgres (`vol_config` append-only table), edited
+  via `/settings` React page, hot-reloaded into engines via Redis pub/sub
+- Secrets in AWS SSM Parameter Store (KMS-encrypted), never on disk, loaded
+  per-session by `scripts/ops/load_secrets.ps1` (Windows) or IAM role (EC2)
+- Structured JSON logs (structlog), Prometheus metrics at `/metrics`,
+  extended health probe exercising DB + Redis + engine heartbeats
 
 ---
 
 ## Architecture
 
-### Threading Model -- Main + 3 Worker Threads
+**10-container core stack** (6 ship our Python code) **+ optional 6-container observability stack** (Prometheus / Loki / Tempo / Grafana / promtail / otel-collector, opt-in via `--profile obs`).
 
 ```
-Main Thread (Qt)               Thread 1                Thread 2              Thread 3
-UI rendering                   MarketDataEngine        VolEngine             RiskEngine
-Order execution                IB ticks (100ms)        IV scan (180s)        Positions (10s)
-QTimer 50ms + 1s               Account (10s)           GARCH + RV            BS greeks (2s)
-                               Status snapshot         PCHIP interpolation   PnL chart (2s)
-
-IB client_id=1 (shared)        IB client_id=1          IB client_id=2        IB client_id=3
+                          ┌────────────────┐
+                          │  React cockpit │   ←──── Users
+                          │   (frontend)   │
+                          └────────┬───────┘
+                                   │ HTTP + WS
+                          ┌────────▼───────┐
+                          │     nginx      │  reverse proxy (80/443)
+                          └────────┬───────┘
+                                   │
+                          ┌────────▼───────┐
+                          │    FastAPI     │  REST + WS bridge (8000)
+                          │     (api)      │
+                          └─┬────────────┬─┘
+                            │            │
+            ┌───────────────┘            └──────────────────┐
+            ▼                                               ▼
+    ┌─────────────┐                                ┌────────────────┐
+    │  Postgres   │◄───── db-writer ─────┐         │     Redis      │
+    │   (16)      │  (Redis → DB sink)   │         │ pub/sub + cache│
+    └─────────────┘                      │         └─┬────┬──┬───┬──┘
+                                         │           │    │  │   │
+                                         └───────────┤    │  │   │
+                                                     │    │  │   │
+       ┌────────────┐  ticks/bars     ┌──────────────▼┐   │  │   │
+       │ ib-gateway │◄────────────────│ market-data    │───┘  │   │
+       │  (IB API)  │  (clientID 1)   │   engine       │      │   │
+       └─────┬──────┘                 └────────────────┘      │   │
+             │                                                │   │
+             │     option chains + IV history                 │   │
+             │     (clientID 2)        ┌────────────────┐     │   │
+             ├────────────────────────►│   vol-engine   │─────┘   │
+             │                         │ SVI/SSVI/GARCH │         │
+             │                         │ HAR/PCA/GMM    │         │
+             │                         └────────────────┘         │
+             │                                                    │
+             │     positions + greeks  ┌────────────────┐         │
+             │     (clientID 3)        │   risk-engine  │─────────┘
+             ├────────────────────────►│ Δ/Γ/V aggreg.  │
+             │                         └────────────────┘
+             │
+             │     order submission    ┌────────────────┐
+             │     (clientID 5)        │ execution-eng. │  HTTP server
+             └────────────────────────►│ orders+hedger  │  (port 8001)
+                                       └────────────────┘
 ```
 
-- **Thread 1** polls IB ticks and pushes to UI via queue. Writes spot to Thread 3.
-- **Thread 2** runs the full vol pipeline every 180s. Writes IV surface to Thread 3. Skipped if market is closed.
-- **Thread 3** fetches positions from IB, computes BS greeks and PnL chart on its own thread (no main thread bottleneck).
-- **Main Thread** only renders UI and handles order clicks. Zero scipy, zero BS computation.
+| Container | Runs | Source | Dockerfile |
+|---|---|---|---|
+| `postgres` | DB 16 | — | `postgres:16-alpine` |
+| `redis` | Bus + cache | — | `redis:7-alpine` |
+| `nginx` | Reverse proxy | `infrastructure/nginx/` | `nginx:alpine` |
+| `ib-gateway` | IB API | — | `gnzsnz/ib-gateway:latest` |
+| `frontend` | React SPA | `frontend/` | `infrastructure/docker/web.Dockerfile` |
+| **`api`** | FastAPI REST + WS | `src/api/` + shared libs | `infrastructure/docker/api.Dockerfile` |
+| **`market-data`** | IB ticks → Redis (clientID 1) | `src/engines/market_data/` | `src/engines/market_data/Dockerfile` |
+| **`vol-engine`** | SVI/SSVI/GARCH/HAR/PCA/GMM (clientID 2) | `src/engines/vol/` | `src/engines/vol/Dockerfile` |
+| **`risk-engine`** | Greeks + delta hedge (clientID 3) | `src/engines/risk/` | `src/engines/risk/Dockerfile` |
+| **`db-writer`** | Redis → Postgres async sink | `src/engines/db_writer/` | `src/engines/db_writer/Dockerfile` |
+| **`execution-engine`** | Order submission HTTP (clientID 5, :8001) | `src/engines/execution/` | `infrastructure/docker/execution.Dockerfile` |
 
-Communication: `queue.Queue` (thread-safe) + atomic attribute writes (CPython GIL). No locks.
+Networks : `fxvol-public` (nginx), `fxvol-internal` (services), `fxvol-external` (IB outbound). The 5 Python engines live behind the `engines` compose profile (opt-in : `docker compose --profile engines up -d`).
 
-### Tech Stack
+Shared Python libs (under `src/`, no container of their own) :
+- **`core/`** — pure pricing + vol + risk algorithms (no I/O)
+- **`persistence/`** — SQLAlchemy 2 ORM (`models.py`, 20 classes) + 18 Alembic revisions + `AsyncDatabaseWriter`
+- **`bus/`** — Redis pub/sub helpers + channel/key constants + connection factories
+- **`shared/`** — config (`Settings`), structlog setup, IB connection wrapper, db-events publisher
 
-| Layer | Technology |
+Dependency direction is enforced by [`import-linter`](https://import-linter.readthedocs.io/) in CI ; see [`.importlinter`](.importlinter) for the 5 contracts.
+
+**Full architecture** : the in-app **Stack** dev tab (`/dev` → 🐳 Stack · Health · Redis) renders the 17 containers, their wiring, and live health probes — single canonical view, no static diagram to drift against.
+
+---
+
+## Tech stack
+
+| Layer | Tech |
 |---|---|
-| Language | Python 3.11 |
-| GUI | PyQt5 + pyqtgraph |
-| IB connectivity | ib_insync |
-| Concurrency | threading.Thread (3 workers) + QTimer (2 pollers) |
-| Vol models | scipy (PCHIP, norm.cdf), arch (GARCH), numpy |
-| Option pricing | Black-Scholes (custom bs_pricer.py) |
-| Testing | pytest (unit + integration) |
-| Linting | ruff |
+| Language | Python 3.11 + TypeScript 5 |
+| Build / packaging | `pyproject.toml` (PEP 621) — single source of truth ; `uv` recommended, plain `pip` works |
+| API | FastAPI + uvicorn + pydantic v2 + pydantic-settings + slowapi |
+| Frontend | React 18 + Vite + TypeScript strict + zustand + plotly.js |
+| Persistence | PostgreSQL 16 + SQLAlchemy 2 async + Alembic |
+| Cache + bus | Redis 7 (pub/sub + cache) |
+| IB connectivity | ib_insync (async) |
+| Vol models | numpy, scipy (PCHIP, norm), arch (GARCH), scikit-learn (GMM), custom SVI/SSVI |
+| Secrets | AWS SSM Parameter Store + KMS CMK |
+| CI | GitHub Actions — ruff, pytest, compileall, import-linter, openapi drift, vitest, Playwright, alembic round-trip |
+| Deploy | Docker compose local (10-container `obs` profile optional) |
 
 ---
 
 ## Quickstart
 
-**Prerequisites:** Python 3.11, IB Gateway or TWS with API enabled (paper: port `4002`)
+**Prerequisites** : Docker Desktop (WSL2 backend) + Python 3.11 + Node 20.
+AWS CLI v2 configured with profile `fxvol-dev` (see
+[`infrastructure/aws/secrets-bootstrap.md`](infrastructure/aws/secrets-bootstrap.md)).
 
-```bash
+```powershell
+# 1. venv + deps (one-off)
 python -m venv .venv
-source .venv/bin/activate          # macOS / Linux
-# .\.venv\Scripts\Activate.ps1     # Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev,api,quant,ib,writer]"
 
-pip install -r requirements.txt
-python app.py
+# 2. Load secrets from SSM into the shell (every PS session)
+.\scripts\ops\load_secrets.ps1
+
+# 3. Start the full stack
+.\scripts\ops\start_stack.ps1          # build + up + alembic upgrade head (+ obs profile)
+.\scripts\ops\start_stack.ps1 -NoBuild # skip build, reuse cached images
 ```
 
-1. Click **Start** to connect to IB Gateway
-2. Click **Start Engine** to launch all 3 threads (ticks, vol scan, risk)
-3. Use the **Order Ticket** to trade Spot, Future, or Option
+Then :
+
+- Cockpit : http://localhost/
+- Admin config : http://localhost/settings
+- API health : http://localhost/api/v1/health
+- Extended health (DB + Redis + engines) : http://localhost/api/v1/health/extended
+
+**Faster setup with [`uv`](https://docs.astral.sh/uv/)** (recommended) :
+
+```powershell
+uv sync --extra dev --extra api --extra quant --extra ib --extra writer
+uv run pytest
+```
 
 ---
 
 ## Testing
 
-```bash
-python -m pytest                                              # unit tests
-$env:IB_RUN_INTEGRATION=1; python -m pytest -m integration -rs # integration (requires IB Gateway)
-python -m ruff check src tests app.py                         # lint
+```powershell
+# Python — pyproject.toml drives ruff config + pytest config + mypy config
+python -m ruff check src tests                       # lint
+python -m pytest                                     # unit suite (~410 tests, < 10s)
+PYTHONPATH=src lint-imports                          # architecture contracts
+
+# Integration suites (gated by env)
+$env:DB_RUN_INTEGRATION = "1"; python -m pytest -m db_integration
+$env:REDIS_RUN_INTEGRATION = "1"; python -m pytest -m redis_integration
+$env:IB_RUN_INTEGRATION = "1"; python -m pytest -m integration
+
+# Frontend
+cd frontend
+npm run lint && npm run typecheck                    # ESLint + tsc
+npm test                                             # vitest (with 70% coverage threshold)
+npm run test:e2e                                     # Playwright
+
+# Re-runnable smoke notebooks (manual validation per container)
+jupyter lab scripts/smoke/postgresql/02_setup.ipynb         # apply migrations + seed vol_config v1
+jupyter lab scripts/smoke/postgresql/03_test_crud.ipynb     # CRUD per table
+jupyter lab scripts/smoke/api/01_test_endpoints.ipynb       # 30 REST/WS endpoints
+jupyter lab scripts/smoke/nginx/01_test_routes.ipynb        # reverse proxy + WS upgrade
+jupyter lab scripts/smoke/redis/01_test_pubsub.ipynb        # cache + pub/sub
+jupyter lab scripts/smoke/redis/02_test_bus_package.ipynb   # bus Python wrapper
+jupyter lab scripts/smoke/db-writer/01_test_writer.ipynb    # AsyncDatabaseWriter end-to-end
 ```
+
+The nginx config parse-test lives at
+`tests/unit/infrastructure/test_nginx_config_syntax.py` — collected with the
+unit suite and also run explicitly by the `nginx-config` CI job. The old
+`tests/old/` quarantine has been emptied and removed (cf.
+[`tests/STRUCTURE.md`](tests/STRUCTURE.md)).
 
 ---
 
-## Contributing
-
-### Local CI reproduction
-
-The three commands below mirror exactly what `.github/workflows/ci.yml` runs on every push and pull request. Run them locally before pushing to avoid red CI:
-
-```bash
-# 1. Static import check
-python -m compileall -q src app.py
-
-# 2. Lint
-python -m ruff check src tests app.py
-
-# 3. Unit tests (integration excluded)
-$env:PYTHONPATH = "src"; $env:QT_QPA_PLATFORM = "offscreen"
-python -m pytest -m "not integration"
-```
-
-On macOS / Linux, replace the PowerShell env assignment with `PYTHONPATH=src QT_QPA_PLATFORM=offscreen python -m pytest -m "not integration"`.
-
-### Branching and merging
-
-- Trunk-based: `main` is always deployable. One short-lived feature branch per pull request.
-- Branch naming: `<type>/<release>-<slug>` (e.g. `feat/r3-redis-pubsub-ticks`, `fix/r4-websocket-reconnect`). Types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`, `perf`, `ci`.
-- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) — see `releases/COMMIT_METHODOLOGY.md`.
-- Merge strategy: **Squash and merge** (linear history on `main`).
-- Branch protection rules for `main` are documented in [`docs/BRANCH_PROTECTION.md`](docs/BRANCH_PROTECTION.md).
-
-### Release workflow
-
-The migration from v1 (PyQt monolith) to v2 (distributed platform) is planned as a sequence of releases R0 → R8 targeting `v1.1.0` → `v2.0.0`. Each release is a GitHub milestone grouping several small PRs. See `releases/` for the roadmap (local, not tracked in git).
-
----
-
-## Project Structure
+## Project structure
 
 ```
-fx-options-desk/
-├── app.py                              # Entry point (logging + asyncio/Qt setup)
-├── src/
-│   ├── controller.py                   # App lifecycle, engine pool, signal wiring
-│   ├── services/
-│   │   ├── market_data_engine.py       # Thread 1: tick polling + account snapshots
-│   │   ├── vol_engine.py              # Thread 2: IV scan + GARCH + fair vol
-│   │   ├── risk_engine.py            # Thread 3: positions + greeks + PnL chart
-│   │   ├── order_executor.py          # Order preview + placement (Spot/Future/Option)
-│   │   ├── ib_client.py              # IB API wrapper
-│   │   └── bs_pricer.py              # Black-Scholes functions + IV interpolation
-│   └── ui/
-│       ├── main_window.py             # 3-column layout
-│       └── panels/
-│           ├── runtime_status_panel.py     # Connection + engine status
-│           ├── account_summary_panel.py    # Net Liq, Cash, currencies
-│           ├── logs_panel.py              # Filtered log viewer
-│           ├── tick_chart_panel.py         # Live bid/ask chart
-│           ├── term_structure_panel.py     # IV term structure
-│           ├── smile_chart_panel.py        # Smile per tenor
-│           ├── vol_scanner_panel.py        # Vol scanner table
-│           ├── book_panel.py              # Greeks summary + open positions
-│           ├── order_ticket_panel.py       # Spot/Future/Option order entry
-│           ├── pnl_chart_panel.py         # PnL vs Spot simulation
-│           └── settings_panel.py          # Config dialog (vol params)
-├── config/
-│   ├── status_panel_settings.json      # Connection + runtime settings
-│   ├── vol_config.json                # Vol engine parameters
-│   ├── fop_expiries.json             # Cached FOP expiry data
-│   └── fop_strikes.json              # Cached FOP strike data
-├── scripts/                            # Jupyter notebooks for standalone exploration
-│   ├── vol_mid.ipynb                  # IV surface extraction
-│   ├── vol_fair.ipynb                 # Fair vol model
-│   ├── option_booking.ipynb           # FOP order test
-│   ├── future_booking.ipynb           # Future order test
-│   ├── list_fop_strikes.ipynb         # Strike discovery
-│   └── list_fop_expiries.ipynb        # Expiry discovery
-├── docs/
-│   ├── THREADS.md                     # Threading architecture
-│   ├── UI.md                          # UI layout and panel specs
-│   ├── VOL_MODEL.md                   # Vol model math documentation
-│   ├── ORDER_EXECUTION.md             # Order flow and execution pipeline
-│   └── CONFIG.md                      # Configuration parameters reference
-└── tests/
+fx-volatility-trading-system/
+├── pyproject.toml                  single source of truth (deps + ruff + pytest + mypy)
+├── .importlinter                   architecture contracts (5 layered rules)
+├── docker-compose.yml, docker-compose.override.yml
+├── README.md, CLAUDE.md, LICENSE
+├── .github/workflows/              ci.yml + build.yml + codeql.yml + security-scan.yml
+├── src/                            (PyPA src-layout, all Python)
+│   ├── api/                        → container fxvol-api
+│   │   ├── main.py                 FastAPI app + lifespan (events scheduler, WS bridge)
+│   │   ├── routers/                16 routers : health, admin, analytics, cockpit,
+│   │   │                             dev, orders, portfolio, portfolio_panel,
+│   │   │                             positions, pricing, regime, signals, trade,
+│   │   │                             trades, vol, ws
+│   │   ├── ws/                     connection_manager + redis_bridge
+│   │   ├── middleware/             logging (structlog) + rate_limit + timing
+│   │   ├── schemas/                Pydantic v2 request/response classes
+│   │   └── orchestration/          use-case orchestration
+│   │       └── events/             FRED + ECB + BoE + FOMC + Eurostat + ONS pipeline
+│   ├── engines/                    5 long-running services
+│   │   ├── market_data/            → fxvol-market-data (clientID 1)
+│   │   ├── vol/                    → fxvol-vol-engine    (clientID 2)
+│   │   ├── risk/                   → fxvol-risk-engine   (clientID 3)
+│   │   ├── db_writer/              → fxvol-db-writer
+│   │   └── execution/              → fxvol-execution-engine (clientID 5, :8001)
+│   ├── core/                       pure-Python algos (no I/O)
+│   │   ├── vol/                    garch, har_rv, svi, ssvi, pchip_smile,
+│   │   │                             fair_smile, gmm_regime, regime_engine,
+│   │   │                             pca_engine, surface_pca, calibration,
+│   │   │                             vrp, yang_zhang
+│   │   ├── pricing/bs.py           Black-Scholes for FX options
+│   │   ├── risk/greeks.py          Δ/Γ/V analytics
+│   │   ├── config/                 config helpers
+│   │   ├── products.py             Murex-style product label dual-column
+│   │   └── payloads.py             engine output → DB row dict (pure)
+│   ├── persistence/                ONLY the DB adapter
+│   │   ├── models.py               30 ORM classes (single file)
+│   │   ├── db.py                   engine + AsyncSession factory
+│   │   ├── writer.py               AsyncDatabaseWriter (batch INSERT + retry)
+│   │   ├── alembic.ini
+│   │   └── migrations/versions/    41 revisions
+│   ├── bus/                        ONLY the Redis adapter
+│   │   ├── client.py               connection factory (async + sync)
+│   │   ├── publisher.py
+│   │   ├── channels.py
+│   │   └── keys.py
+│   └── shared/                     cross-cutting infra
+│       ├── config.py               base Settings (extended by api/config.py)
+│       ├── logging.py              structlog setup
+│       ├── ib_connection.py        IB sync wrapper + backoff
+│       ├── observability.py        Prometheus metrics + OTel tracing
+│       └── db_events.py            db-events Redis publisher
+├── frontend/                       React + TS + Vite (15 production panels +
+│                                     9 dev tabs : Stack / WS / DB Explorer /
+│                                     DB Schema / Logs / Migrations / PCA /
+│                                     Trade / Portfolio)
+├── infrastructure/
+│   ├── docker/                     api.Dockerfile, web.Dockerfile, execution.Dockerfile, ib-stub
+│   ├── nginx/                      nginx.conf + nginx-dev.conf + frontend.conf
+│   ├── ib-gateway/                 local IB gateway image build instructions
+│   ├── postgres/                   init.sql
+│   ├── redis/                      redis.conf (hardened)
+│   └── aws/                        SSM secrets bootstrap + KMS / IAM / S3 reference
+├── scripts/
+│   ├── ops/                        load_secrets.{ps1,sh} + start_stack.ps1
+│   ├── dev/                        dump_openapi.py + gmm_diagnostic.py + seed_pca_*
+│   ├── migrations/                 backfill_iv_history_for_gmm.py + seed_events_manual.py
+│   └── smoke/<service>/            re-runnable Jupyter smoke notebooks per container
+├── obs/                            Prometheus / Loki / Tempo / Promtail / OTel-collector
+│                                     configs + Grafana dashboards + datasources
+├── tests/                          mirrors src/ 1-to-1
+│   ├── unit/                       (api, bus, core, engines, persistence, shared)
+│   ├── integration/                pipeline_<sub-system>/ (gated by markers)
+│   ├── fixtures/                   shared pytest fixtures
+│   └── old/                        residual nginx-config syntax test (CI path-pinned)
+└── docs/
+    ├── README.md                   landing page index
+    ├── run-local-stack.md          local stack runbook
+    ├── docker-cheatsheet.md        day-to-day docker compose commands
+    ├── db_schema_drift_workflow.md ORM ⇄ DB drift fix via alembic
+    ├── branch-protection.md        GitHub branch rules
+    ├── observability/              metric naming conventions + obs runbooks
+    └── vol_trading_pca/            events pipeline architecture spec
 ```
 
 ---
@@ -191,11 +315,40 @@ fx-options-desk/
 
 | Document | Content |
 |---|---|
-| [docs/THREADS.md](docs/THREADS.md) | Threading architecture: 3 workers, engine pool, communication, lifecycle |
-| [docs/UI.md](docs/UI.md) | UI layout: 3-column grid, 11 panels, signal wiring, data flow |
-| [docs/VOL_MODEL.md](docs/VOL_MODEL.md) | Volatility model: PCHIP interpolation, Yang-Zhang RV, GARCH(1,1), signal generation, Greeks/PnL decomposition |
-| [docs/ORDER_EXECUTION.md](docs/ORDER_EXECUTION.md) | Order flow: Spot/Future/Option pipeline, preview, delta hedge, error handling |
-| [docs/CONFIG.md](docs/CONFIG.md) | Configuration parameters: vol engine, connection, risk limits, Settings dialog |
+| [docs/README.md](docs/README.md) | Index of all docs with one-sentence summaries |
+| [docs/run-local-stack.md](docs/run-local-stack.md) | Local stack operator runbook |
+| [docs/docker-cheatsheet.md](docs/docker-cheatsheet.md) | Day-to-day docker compose commands |
+| [docs/db_schema_drift_workflow.md](docs/db_schema_drift_workflow.md) | How to feed DB-schema-drift fixes back through alembic |
+| [docs/branch-protection.md](docs/branch-protection.md) | GitHub `main` branch ruleset + required status checks |
+| [docs/observability/CONVENTIONS.md](docs/observability/CONVENTIONS.md) | Metric naming + label cardinality rules |
+| [docs/observability/RUNBOOKS.md](docs/observability/RUNBOOKS.md) | Loki / Prometheus / Tempo / Grafana operator playbooks |
+| [docs/vol_trading_pca/events_pipeline_spec.md](docs/vol_trading_pca/events_pipeline_spec.md) | Multi-source economic-events pipeline architecture |
+| [tests/STRUCTURE.md](tests/STRUCTURE.md) | Test layout + pytest configuration reference |
+| [infrastructure/aws/secrets-bootstrap.md](infrastructure/aws/secrets-bootstrap.md) | AWS SSM + KMS + IAM one-time setup |
+| Live ER diagram, drift detection, log tail, alembic chain | in-app **dev console** (`/dev`) — DB Schema / Logs / Migrations tabs |
+
+---
+
+## Contributing
+
+**Local CI reproduction** — the commands below mirror `.github/workflows/ci.yml` :
+
+```powershell
+python -m compileall -q src
+python -m ruff check src tests
+PYTHONPATH=src lint-imports                                # architecture contracts
+$env:PYTHONPATH = "src"; python -m pytest                  # ~410 unit tests
+cd frontend; npm test; npm run build
+```
+
+**Branching** : trunk-based, `main` always deployable. One short-lived feature
+branch per PR, naming `<type>/<release>-<slug>` (e.g. `feat/r10-dev-tabs`).
+Conventional Commits for messages. Squash-merge only. Branch protection rules
+in [`docs/branch-protection.md`](docs/branch-protection.md).
+
+**Architecture lint** — [`.importlinter`](.importlinter) enforces 5 layered
+contracts in CI ; any PR introducing a forbidden import (e.g. `core/`
+depending on `persistence/`) fails the build.
 
 ---
 
