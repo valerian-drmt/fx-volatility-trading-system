@@ -19,6 +19,7 @@ from api.middleware.rate_limit import build_limiter, rate_limit_exceeded_handler
 from api.middleware.timing import TimingMiddleware
 from api.routers import admin as admin_router
 from api.routers import analytics as analytics_router
+from api.routers import auth as auth_router
 from api.routers import cockpit as cockpit_router
 from api.routers import dev as dev_router
 from api.routers import health as health_router
@@ -115,6 +116,7 @@ def create_app() -> FastAPI:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     app.include_router(health_router.router)
+    app.include_router(auth_router.router)
     app.include_router(pricing_router.router)
     app.include_router(vol_router.router)
     app.include_router(portfolio_router.router)
