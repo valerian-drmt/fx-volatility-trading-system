@@ -15,7 +15,7 @@
 set -euo pipefail
 
 DOMAIN="${DOMAIN:?set DOMAIN, e.g. valeriandarmente.dev}"
-EMAIL="${EMAIL:?set EMAIL for Let's Encrypt expiry notices}"
+EMAIL="${EMAIL:?set EMAIL for ACME / certificate expiry notices}"
 APP_DIR="${APP_DIR:-/opt/fxvol}"
 LE_DIR="${LETSENCRYPT_DIR:-/etc/letsencrypt}"
 WWW_DIR="${CERTBOT_WWW_DIR:-/var/www/certbot}"

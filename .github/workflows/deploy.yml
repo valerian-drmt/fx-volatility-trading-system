@@ -1,23 +1,24 @@
 name: deploy-prod
 
-# Production deploy workflow. Triggers on a pushed semver tag (v*.*.*)
-# or manual workflow_dispatch. SSH to the EC2 host provided via repo
-# secrets, pull the tagged images from GHCR, apply Alembic migrations
-# inside the fresh api container, then `docker compose up -d` so the
-# outer Nginx drops the old containers with a brief 502 and swaps in
-# the new ones.
+# Production deploy. Triggers on a pushed semver tag (v*.*.*) or manual
+# workflow_dispatch. NO SSH and NO inbound port 22: the runner federates
+# into AWS via GitHub OIDC (no stored AWS key), uploads the config payload
+# to S3, then drives the deploy on the host through SSM RunShellScript.
 #
-# All credentials live in repo secrets : EC2_HOST, EC2_USER, EC2_SSH_KEY
-# (private key PEM), DB_PASSWORD, VNC_PASSWORD, IB_USERID, IB_PASSWORD.
-# The deploy_sha input lets operators redeploy an arbitrary commit
-# without tagging — useful for emergency rollbacks.
+# Secrets never touch GitHub: the host renders /opt/fxvol/.env by reading
+# /fxvol/prod/* from SSM Parameter Store via its own instance role. The
+# runner only passes non-secret config (image tag, compose profiles, owner).
 #
-# GATED until the EC2 host is provisioned : the deploy job runs only when
-# the repo variable DEPLOY_ENABLED == 'true'. While it is unset the job is
-# skipped (neutral, not failed), so a pushed semver tag no longer red-marks
-# the Actions tab against a host that does not exist yet. Flip it on with
-# `gh variable set DEPLOY_ENABLED --body true` once EC2_HOST/EC2_USER/
-# EC2_SSH_KEY are in repo secrets and the instance is up.
+# Required repo VARIABLES:
+#   DEPLOY_ENABLED      'true' to arm real deploys (gate)
+#   AWS_DEPLOY_ROLE_ARN arn of fxvol-deploy-role (assumed via OIDC)
+#   AWS_REGION          eu-west-1
+#   DEPLOY_BUCKET       S3 bucket for the config payload (fxvol-deploy)
+#   EC2_INSTANCE_ID     i-082e72f0186c9d019
+#   DEPLOY_DOMAIN       valeriandarmente.dev  (smoke target)
+#   COMPOSE_PROFILES    optional; empty = core stack only
+# Host-side SSM params consumed by infrastructure/ec2/remote-deploy.sh:
+#   /fxvol/prod/{DB_PASSWORD,VNC_PASSWORD,IB_USERID,IB_PASSWORD,FRED_API_KEY,GHCR_TOKEN}
 
 on:
   push:
@@ -33,6 +34,7 @@ on:
 permissions:
   contents: read
   packages: read
+  id-token: write   # required for OIDC federation to AWS
 
 env:
   REGISTRY: ghcr.io
@@ -41,11 +43,9 @@ env:
 jobs:
   deploy:
     name: deploy ${{ github.ref_name }} to EC2
-    # Skip cleanly until EC2 is provisioned (see header). Set the repo
-    # variable DEPLOY_ENABLED=true to arm real deploys.
     if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
-    environment: production
+    environment: production   # OIDC sub is pinned to this environment
     timeout-minutes: 20
 
     steps:
@@ -57,67 +57,90 @@ jobs:
         run: |
           if [ -n "${{ inputs.deploy_sha }}" ]; then
             echo "image_tag=sha-${{ inputs.deploy_sha }}" >> "$GITHUB_OUTPUT"
-          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "image_tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
           else
             echo "image_tag=sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Configure SSH for EC2
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2.pem
-          chmod 600 ~/.ssh/ec2.pem
-          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Ship compose + configs + .env payloads to the host
+      - name: Package + upload config payload to S3
+        env:
+          BUCKET: ${{ vars.DEPLOY_BUCKET }}
+          REGION: ${{ vars.AWS_REGION }}
+          SHA: ${{ github.sha }}
         run: |
-          # Ship the compose file AND the configs it bind-mounts (nginx confs,
-          # postgres init, redis conf, obs/*). Without these the nginx/postgres
-          # containers fail to mount at boot. The dev override is NOT shipped
-          # (it stays local) — the host runs the base compose, prod-tuned via .env.
-          scp -i ~/.ssh/ec2.pem docker-compose.yml \
-            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/fxvol/docker-compose.yml"
-          scp -i ~/.ssh/ec2.pem -r infrastructure obs \
-            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/fxvol/"
-          # .env is rendered on the host from repo secrets, not shipped
-          # as a file (avoids writing secrets to a worktree on the runner).
-          # COMPOSE_PROFILES (repo variable) selects engines/ib/obs — empty = core
-          # stack only (api+frontend+nginx+pg+redis), the safe first deploy.
-          ssh -i ~/.ssh/ec2.pem "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
-            "umask 077 && cat > /opt/fxvol/.env" <<EOF
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-          VNC_PASSWORD=${{ secrets.VNC_PASSWORD }}
-          IB_USERID=${{ secrets.IB_USERID }}
-          IB_PASSWORD=${{ secrets.IB_PASSWORD }}
-          TRADING_MODE=paper
-          READ_ONLY_API=yes
-          COMPOSE_PROFILES=${{ vars.COMPOSE_PROFILES }}
-          NGINX_CONF_FILE=./infrastructure/nginx/nginx.conf
-          LETSENCRYPT_DIR=/etc/letsencrypt
-          CERTBOT_WWW_DIR=/var/www/certbot
-          API_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-api:${{ steps.resolve.outputs.image_tag }}
-          FRONTEND_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-frontend:${{ steps.resolve.outputs.image_tag }}
-          MARKET_DATA_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-market-data:${{ steps.resolve.outputs.image_tag }}
-          VOL_ENGINE_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-vol-engine:${{ steps.resolve.outputs.image_tag }}
-          RISK_ENGINE_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-risk-engine:${{ steps.resolve.outputs.image_tag }}
-          DB_WRITER_IMAGE=${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-db-writer:${{ steps.resolve.outputs.image_tag }}
-          IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:latest
-          EOF
+          # Ship the compose file plus the configs it bind-mounts (nginx confs,
+          # postgres init, redis conf, obs/*). The dev override stays local.
+          tar czf payload.tar.gz docker-compose.yml infrastructure obs
+          aws s3 cp payload.tar.gz "s3://${BUCKET}/${SHA}.tar.gz" --region "${REGION}"
 
-      - name: Pull + restart stack on EC2
+      - name: Deploy on host via SSM
+        env:
+          BUCKET: ${{ vars.DEPLOY_BUCKET }}
+          REGION: ${{ vars.AWS_REGION }}
+          SHA: ${{ github.sha }}
+          INSTANCE: ${{ vars.EC2_INSTANCE_ID }}
+          IMAGE_TAG: ${{ steps.resolve.outputs.image_tag }}
+          OWNER: ${{ env.OWNER }}
+          PROFILES: ${{ vars.COMPOSE_PROFILES }}
         run: |
-          ssh -i ~/.ssh/ec2.pem "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
-            "cd /opt/fxvol && \
-             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin && \
-             docker compose pull && \
-             docker compose up -d --remove-orphans && \
-             docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head"
+          # Build the SendCommand parameters with jq so JSON escaping is correct.
+          # Host bootstrap: pull payload from S3, extract, hand off to the
+          # versioned remote-deploy.sh (which renders .env from SSM + restarts).
+          jq -n \
+            --arg bucket "$BUCKET" --arg sha "$SHA" --arg region "$REGION" \
+            --arg tag "$IMAGE_TAG" --arg owner "$OWNER" --arg profiles "$PROFILES" '
+            { commands: [
+                "set -euo pipefail",
+                "cd /opt/fxvol",
+                "aws s3 cp s3://\($bucket)/\($sha).tar.gz /tmp/payload.tar.gz --region \($region)",
+                "tar xzf /tmp/payload.tar.gz -C /opt/fxvol",
+                "IMAGE_TAG=\($tag) OWNER=\($owner) AWS_REGION=\($region) COMPOSE_PROFILES=\"\($profiles)\" bash infrastructure/ec2/remote-deploy.sh"
+            ] }' > ssm-params.json
+
+          cmd_id=$(aws ssm send-command \
+            --region "$REGION" \
+            --instance-ids "$INSTANCE" \
+            --document-name "AWS-RunShellScript" \
+            --comment "deploy ${IMAGE_TAG}" \
+            --parameters file://ssm-params.json \
+            --query "Command.CommandId" --output text)
+          echo "SSM command id: $cmd_id"
+
+          # Poll to a terminal state.
+          for i in $(seq 1 60); do
+            status=$(aws ssm get-command-invocation --region "$REGION" \
+              --command-id "$cmd_id" --instance-id "$INSTANCE" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            echo "status: $status"
+            case "$status" in
+              Success) break ;;
+              Failed|Cancelled|TimedOut)
+                echo "---- remote stderr ----"
+                aws ssm get-command-invocation --region "$REGION" \
+                  --command-id "$cmd_id" --instance-id "$INSTANCE" \
+                  --query StandardErrorContent --output text
+                exit 1 ;;
+            esac
+            if [ "$i" = "60" ]; then echo "timed out waiting for SSM command"; exit 1; fi
+            sleep 5
+          done
+
+          echo "---- remote stdout ----"
+          aws ssm get-command-invocation --region "$REGION" \
+            --command-id "$cmd_id" --instance-id "$INSTANCE" \
+            --query StandardOutputContent --output text
 
       - name: "Smoke check /api/v1/health returns 200"
+        env:
+          DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
         run: |
           for i in $(seq 1 30); do
-            code=$(curl -sS -o /dev/null -w "%{http_code}" https://${{ secrets.EC2_HOST }}/api/v1/health || true)
+            code=$(curl -sS -o /dev/null -w "%{http_code}" "https://${DOMAIN}/api/v1/health" || true)
             if [ "$code" = "200" ]; then exit 0; fi
             sleep 3
           done
