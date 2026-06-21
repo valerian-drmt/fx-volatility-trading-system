@@ -32,9 +32,14 @@ fi
 echo "[init-le] starting the stack (Nginx now serves :80 ACME challenge + :443 placeholder)"
 ( cd "$APP_DIR" && docker compose up -d )
 
-echo "[init-le] requesting the real certificate via webroot"
-sudo certbot certonly --webroot -w "$WWW_DIR" -d "$DOMAIN" \
-  --email "$EMAIL" --agree-tos --no-eff-email --force-renewal --non-interactive
+# Drop the throwaway placeholder so certbot issues into the canonical
+# /live/$DOMAIN/ path (otherwise it side-steps to $DOMAIN-0001). The running
+# nginx keeps the placeholder in memory until the reload below. --cert-name
+# pins the lineage; --keep-until-expiring makes re-runs idempotent.
+echo "[init-le] removing placeholder + requesting the real certificate via webroot"
+sudo rm -rf "$LIVE" "$LE_DIR/archive/$DOMAIN" "$LE_DIR/renewal/$DOMAIN.conf"
+sudo certbot certonly --webroot -w "$WWW_DIR" -d "$DOMAIN" --cert-name "$DOMAIN" \
+  --email "$EMAIL" --agree-tos --no-eff-email --non-interactive --keep-until-expiring
 
 echo "[init-le] reloading Nginx with the real cert"
 ( cd "$APP_DIR" && docker compose exec nginx nginx -s reload )
