@@ -1,13 +1,12 @@
 name: build-and-push
 
-# Builds the application + engine images on every push to main to prove they
-# still build (this is the CI signal we care about post-merge). The push to
-# the repo's GitHub Container Registry namespace is OPT-IN via the manual
-# `workflow_dispatch` trigger only: ghcr.io's token endpoint occasionally
-# times out from the runner ("context deadline exceeded"), and the images are
-# not consumed by any live deploy yet — so a flaky registry must never red a
-# green main. Run the workflow manually when you actually want to publish.
-# R8 will layer a deploy job on top of a tag once the EC2 target is provisioned.
+# Builds AND pushes the application + engine images to the repo's GitHub
+# Container Registry namespace on every push to main (and on manual dispatch),
+# tagged `sha-<commit>` + `latest`. The per-commit tag is what the prod deploy
+# pulls, so publishing on every main commit makes deploys self-contained:
+# `deploy-prod` auto-runs after this workflow succeeds (workflow_run) and ships
+# the exact `sha-<commit>` just built. A transient ghcr.io login/push blip only
+# reds this post-merge run (re-runnable) — it never blocks a PR.
 
 on:
   push:
@@ -23,8 +22,9 @@ env:
   # Images live under ghcr.io/<owner>/<name>. github.repository_owner is
   # always lowercase-safe (unlike github.actor which can be MixedCase).
   OWNER: ${{ github.repository_owner }}
-  # Push only on a manual run; a plain push-to-main just builds (no ghcr login).
-  PUSH: ${{ github.event_name == 'workflow_dispatch' }}
+  # Publish on every trigger (push-to-main + manual). Deploys need the per-commit
+  # image, so we always log in + push.
+  PUSH: "true"
 
 jobs:
   build-api:
@@ -33,20 +33,19 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build (and push on manual run) (api)
+      - name: Build + push (api)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -65,7 +64,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # setup-node with npm cache accelerates the multi-stage build — the
       # web.Dockerfile `npm ci` layer is already cached by buildx but the
@@ -82,14 +81,13 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build (and push on manual run) (frontend)
+      - name: Build + push (frontend)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -103,8 +101,8 @@ jobs:
 
   # The four standalone engine containers introduced in R7. A matrix
   # factorises the four identical jobs (only the service name, Dockerfile path
-  # and buildx cache scope differ). On a manual run each publishes two tags —
-  # `sha-<commit>` and `latest` — under the same ghcr.io namespace.
+  # and buildx cache scope differ). Each publishes two tags — `sha-<commit>`
+  # and `latest` — under the same ghcr.io namespace.
   build-engines:
     name: build + push fx-options-${{ matrix.service.image }}
     runs-on: ubuntu-latest
@@ -123,20 +121,19 @@ jobs:
             dockerfile: src/engines/db_writer/Dockerfile
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build (and push on manual run) (${{ matrix.service.image }})
+      - name: Build + push (${{ matrix.service.image }})
         uses: docker/build-push-action@v5
         with:
           context: .
