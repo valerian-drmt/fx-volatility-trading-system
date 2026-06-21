@@ -91,11 +91,13 @@ jobs:
           # Build the SendCommand parameters with jq so JSON escaping is correct.
           # Host bootstrap: pull payload from S3, extract, hand off to the
           # versioned remote-deploy.sh (which renders .env from SSM + restarts).
+          # NB: AWS-RunShellScript runs under /bin/sh (dash), so no `pipefail`
+          # here (`set -eu` only). remote-deploy.sh runs under bash (full set).
           jq -n \
             --arg bucket "$BUCKET" --arg sha "$SHA" --arg region "$REGION" \
             --arg tag "$IMAGE_TAG" --arg owner "$OWNER" --arg profiles "$PROFILES" '
             { commands: [
-                "set -euo pipefail",
+                "set -eu",
                 "cd /opt/fxvol",
                 "aws s3 cp s3://\($bucket)/\($sha).tar.gz /tmp/payload.tar.gz --region \($region)",
                 "tar xzf /tmp/payload.tar.gz -C /opt/fxvol",
