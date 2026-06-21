@@ -2621,6 +2621,26 @@ export interface components {
             dte: number | null;
             /** Sigma Atm Pct */
             sigma_atm_pct: number | null;
+            /** Rr 25D Pct */
+            rr_25d_pct?: number | null;
+            /** Bf 25D Pct */
+            bf_25d_pct?: number | null;
+            /** Rr 10D Pct */
+            rr_10d_pct?: number | null;
+            /** Bf 10D Pct */
+            bf_10d_pct?: number | null;
+            /** Sigma Fair Pct */
+            sigma_fair_pct?: number | null;
+            /** Sigma Fair P Pct */
+            sigma_fair_p_pct?: number | null;
+            /** Sigma Fair Q Pct */
+            sigma_fair_q_pct?: number | null;
+            /** Vrp Vol Pts */
+            vrp_vol_pts?: number | null;
+            /** Regime */
+            regime?: string | null;
+            /** Rv Pct */
+            rv_pct?: number | null;
         };
         /** TradePreviewRequest */
         TradePreviewRequest: {
