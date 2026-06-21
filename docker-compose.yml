@@ -302,7 +302,9 @@ services:
       - fxvol-public
       - fxvol-internal
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      # /healthz returns 200 on :80 without the prod HTTPS redirect (which made
+      # the old `wget /` check fail → container marked unhealthy though serving).
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
       interval: 15s
       timeout: 3s
       retries: 3
