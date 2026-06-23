@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import require_write
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
 from core.products import product_label_from_symbol
@@ -790,7 +791,7 @@ async def close_one_open_position(
     }
 
 
-@router.post("/{position_id}/close")
+@router.post("/{position_id}/close", dependencies=[Depends(require_write)])
 async def close_live_position(
     position_id: int, body: ClosePositionRequest, db: DbDep,
 ) -> dict[str, Any]:
@@ -810,7 +811,7 @@ async def close_live_position(
     )
 
 
-@router.post("/{position_id}/close-manual")
+@router.post("/{position_id}/close-manual", dependencies=[Depends(require_write)])
 async def close_manual(position_id: int, db: DbDep) -> dict[str, Any]:
     """Mark a position for manual close. Step 5 phase 1 = state flip only.
 
@@ -842,7 +843,7 @@ async def close_manual(position_id: int, db: DbDep) -> dict[str, Any]:
     return {"position_id": position_id, "state": pos.state, "phase": "mock"}
 
 
-@router.post("/monitor/run-once")
+@router.post("/monitor/run-once", dependencies=[Depends(require_write)])
 async def run_monitor_once() -> dict[str, Any]:
     """Trigger one monitoring cycle on demand. Useful from the dev panel.
 

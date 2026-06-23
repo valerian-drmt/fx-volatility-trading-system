@@ -7,9 +7,8 @@ Endpoints :
     GET    /api/v1/admin/config/history?limit=50 -> audit trail, newest first
     POST   /api/v1/admin/config/revert/{version} -> duplicate a past version
 
-No auth for now (solo-trader cockpit, bound to localhost in dev and
-behind Nginx + Let's Encrypt in prod). When the cockpit opens to
-multiple users, wrap the PUT / POST routes in a ``Depends(require_admin)``.
+Reads are public; the mutating routes (PUT /config, POST /config/revert)
+are gated by ``Depends(require_write)`` — a valid auth cookie is required.
 """
 from __future__ import annotations
 
@@ -21,6 +20,7 @@ from pydantic import ValidationError
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import require_write
 from api.dependencies import get_db_session, get_redis
 from api.orchestration import config_service
 from api.schemas.admin import ConfigPatchRequest, ConfigResponse, ConfigRevertRequest
@@ -52,7 +52,7 @@ async def get_config_schema() -> dict:
     return config_service.export_json_schema()
 
 
-@router.put("/config", response_model=ConfigResponse)
+@router.put("/config", response_model=ConfigResponse, dependencies=[Depends(require_write)])
 async def update_config(
     req: ConfigPatchRequest, db: DbDep, redis: RedisDep,
 ) -> ConfigResponse:
@@ -83,7 +83,7 @@ async def list_config_history(
     return [_to_response(r) for r in records]
 
 
-@router.post("/config/revert/{version}", response_model=ConfigResponse)
+@router.post("/config/revert/{version}", response_model=ConfigResponse, dependencies=[Depends(require_write)])
 async def revert_config(
     version: int, req: ConfigRevertRequest, db: DbDep, redis: RedisDep,
 ) -> ConfigResponse:

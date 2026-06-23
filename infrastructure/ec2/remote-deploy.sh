@@ -28,6 +28,11 @@ IB_PASSWORD="$(ssm /fxvol/prod/IB_PASSWORD)"
 # is only needed if the GHCR packages are private (login skipped below if empty).
 FRED_API_KEY="$(ssm /fxvol/prod/FRED_API_KEY 2>/dev/null || echo "")"
 GHCR_TOKEN="$(ssm /fxvol/prod/GHCR_TOKEN 2>/dev/null || echo "")"
+# Auth (single-trader write boundary). Optional: if absent the api keeps its
+# fail-closed defaults (insecure secret + empty hash → every login fails →
+# writes stay locked). Provision both in SSM to enable the write path.
+AUTH_SECRET="$(ssm /fxvol/prod/AUTH_SECRET 2>/dev/null || echo "")"
+AUTH_PASSWORD_HASH="$(ssm /fxvol/prod/AUTH_PASSWORD_HASH 2>/dev/null || echo "")"
 
 reg="ghcr.io/${OWNER}"
 
@@ -53,6 +58,16 @@ RISK_ENGINE_IMAGE=${reg}/fx-options-risk-engine:${IMAGE_TAG}
 DB_WRITER_IMAGE=${reg}/fx-options-db-writer:${IMAGE_TAG}
 IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:latest
 ENVEOF
+
+# Auth vars appended conditionally: emit the secret/hash only when present in
+# SSM, so an unprovisioned host keeps the api's fail-closed defaults. Cookie is
+# Secure (prod serves HTTPS-only behind nginx).
+{
+  if [ -n "${AUTH_SECRET}" ];        then echo "AUTH_SECRET=${AUTH_SECRET}"; fi
+  if [ -n "${AUTH_PASSWORD_HASH}" ]; then echo "AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH}"; fi
+  echo "AUTH_USERNAME=trader"
+  echo "AUTH_COOKIE_SECURE=true"
+} >> /opt/fxvol/.env
 
 # --- pull + restart ---------------------------------------------------------
 if [ -n "${GHCR_TOKEN}" ]; then

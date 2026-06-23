@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from api.auth import require_write
 from api.dependencies import get_db_session, get_redis
 from api.main import app
 from persistence.models import Base
@@ -33,6 +34,9 @@ def client(test_db):
 
     app.dependency_overrides[get_db_session] = _session
     app.dependency_overrides[get_redis] = lambda: redis_stub
+    # Config tests exercise the merge/revert logic, not the auth boundary —
+    # bypass require_write (its own coverage lives in test_auth.py).
+    app.dependency_overrides[require_write] = lambda: {"sub": "test"}
     yield TestClient(app), redis_stub
     app.dependency_overrides.clear()
 

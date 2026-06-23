@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import require_write
 from api.dependencies import get_db_session
 from api.routers.positions import close_one_open_position
 from persistence.models import OpenPosition
@@ -33,7 +34,7 @@ class CloseTradeRequest(BaseModel):
     limit_price: float | None = Field(default=None, gt=0)
 
 
-@router.post("/{trade_id}/close")
+@router.post("/{trade_id}/close", dependencies=[Depends(require_write)])
 async def close_trade(
     trade_id: int, body: CloseTradeRequest, db: DbDep,
 ) -> dict[str, Any]:
