@@ -2,7 +2,13 @@
 
 > Source de vérité sur ce qui existe en AWS au 27/04/2026 18h00 CET, après la session bootstrap complète.
 > Pour l'état réel-temps, lancer `aws cli` ou consulter la console.
-> Note : le déploiement EC2 prod n'a pas été activé — voir `README.md` § État global.
+
+> **⚠️ DELTA 2026-06-23 — EC2 DÉPLOYÉ ET LIVE.** Le reste du fichier est le snapshot bootstrap du 27/04.
+> Changements depuis : instance **`i-082e72f0186c9d019`** (t3.small) lancée + EIP + A-record Route53 ;
+> CD **OIDC+SSM** (plus de SSH) — provider GitHub + role **`fxvol-deploy-role`** + bucket S3 **`fxvol-deploy`** ;
+> 2 params SSM ajoutés : **`AUTH_SECRET`**, **`AUTH_PASSWORD_HASH`** (auth write) ; TLS Let's Encrypt émis.
+> Live : **https://valeriandarmente.dev/**. Coût réel ≈ **$22/mo** en marche (cf. §8, à jour vs « post-R8 »).
+> Repo secrets `EC2_HOST/USER/SSH_KEY` (flow SSH) = **morts**. Runbook à jour : `EC2_DEPLOYMENT.md`.
 
 ---
 
