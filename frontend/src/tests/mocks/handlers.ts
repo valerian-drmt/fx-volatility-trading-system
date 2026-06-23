@@ -5,6 +5,11 @@ import { setupServer } from "msw/node";
 export const handlers = [
   http.get("*/api/v1/health", () => HttpResponse.json({ status: "OK" })),
 
+  // Auth — default logged-out; tests override with server.use(...) as needed.
+  http.get("*/api/v1/auth/me", () => HttpResponse.json({ authenticated: false })),
+  http.post("*/api/v1/auth/login", () => HttpResponse.json({ authenticated: true })),
+  http.post("*/api/v1/auth/logout", () => HttpResponse.json({ authenticated: false })),
+
   http.get("*/api/v1/vol/surface", ({ request }) => {
     const url = new URL(request.url);
     return HttpResponse.json({

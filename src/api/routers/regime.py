@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import require_write
 from api.dependencies import get_db_session
 from api.orchestration.regime_features import build_features_payload
 from core.vol.regime_engine import gate_decision
@@ -344,7 +345,7 @@ async def gmm_shadow_diagnostic(
     }
 
 
-@router.post("/events/sync")
+@router.post("/events/sync", dependencies=[Depends(require_write)])
 async def sync_events_from_feed(request: Request) -> dict[str, Any]:
     """Trigger one full events sync cycle on demand (admin tool).
 
@@ -363,7 +364,7 @@ async def sync_events_from_feed(request: Request) -> dict[str, Any]:
     return report
 
 
-@router.post("/events")
+@router.post("/events", dependencies=[Depends(require_write)])
 async def insert_event(payload: EventIn, db: DbDep) -> dict[str, Any]:
     e = Event(
         event_type=payload.event_type, impact=payload.impact, region=payload.region,

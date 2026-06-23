@@ -16,6 +16,7 @@ from redis import asyncio as aioredis
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import require_write
 from api.dependencies import get_db_session, get_redis
 from api.orchestration import vol_service
 
@@ -118,7 +119,7 @@ class TradePreviewResponse(BaseModel):
     bootstrap: bool
 
 
-@router.post("/trade-preview", response_model=TradePreviewResponse)
+@router.post("/trade-preview", response_model=TradePreviewResponse, dependencies=[Depends(require_write)])
 async def trade_preview(
     body: TradePreviewRequest,
     redis: RedisDep,

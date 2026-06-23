@@ -3996,7 +3996,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -4099,7 +4101,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4112,6 +4116,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4215,7 +4228,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4327,7 +4342,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -4395,7 +4412,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -4467,7 +4486,9 @@ export interface operations {
             path: {
                 preview_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4520,7 +4541,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -4559,7 +4582,9 @@ export interface operations {
             path: {
                 order_id: number;
             };
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4614,7 +4639,9 @@ export interface operations {
             path: {
                 con_id: number;
             };
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -4904,7 +4931,9 @@ export interface operations {
             path: {
                 position_id: number;
             };
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -4941,7 +4970,9 @@ export interface operations {
             path: {
                 position_id: number;
             };
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4972,7 +5003,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4985,6 +5018,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -5014,7 +5056,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5102,7 +5146,9 @@ export interface operations {
             path: {
                 version: number;
             };
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5166,7 +5212,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -5400,7 +5448,9 @@ export interface operations {
             path: {
                 trade_id: number;
             };
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody: {
             content: {

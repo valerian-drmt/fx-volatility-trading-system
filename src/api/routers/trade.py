@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import require_write
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.book_state_refresh import refresh_book_state
 from core.execution.revalidation import revalidate_preview
@@ -283,7 +284,7 @@ async def get_book(db: DbDep, symbol: str = "EURUSD") -> dict[str, Any]:
     }
 
 
-@router.post("/preview")
+@router.post("/preview", dependencies=[Depends(require_write)])
 async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EURUSD")) -> dict[str, Any]:
     """Build a full trade preview from a pca_signals.id. Persists to trade_previews
     and returns the payload conforming to STEP3 §4."""
@@ -649,7 +650,7 @@ async def get_preview(preview_id: str, db: DbDep) -> dict[str, Any]:
     }
 
 
-@router.post("/submit")
+@router.post("/submit", dependencies=[Depends(require_write)])
 async def submit_preview(
     body: dict[str, Any], db: DbDep,
 ) -> dict[str, Any]:
@@ -1100,7 +1101,7 @@ async def list_submitted_structures(
     return out
 
 
-@router.post("/preview/{preview_id}/cancel")
+@router.post("/preview/{preview_id}/cancel", dependencies=[Depends(require_write)])
 async def cancel_preview(preview_id: str, db: DbDep) -> dict[str, Any]:
     row = (await db.execute(
         select(TradePreviewRow).where(TradePreviewRow.preview_id == preview_id).limit(1)

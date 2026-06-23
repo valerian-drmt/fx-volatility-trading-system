@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import require_write
 from api.dependencies import get_db_session
 from core.pca_recommendations import recommendation_label
 from core.vol.pca_engine import (
@@ -301,7 +302,7 @@ async def perform_refit(db: AsyncSession, symbol: str = "EURUSD") -> dict[str, A
     }
 
 
-@router.post("/admin/pca/refit")
+@router.post("/admin/pca/refit", dependencies=[Depends(require_write)])
 async def refit(db: DbDep, symbol: str = Query("EURUSD")) -> dict[str, Any]:
     """Manual refit (kept alongside the background scheduler so the user can
     force a refit after seeding new data or tweaking thresholds)."""

@@ -59,6 +59,13 @@ services:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
       REDIS_URL: redis://redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Auth (single-trader write boundary). Reads stay public; writes need a
+      # valid auth cookie. Defaults below = safe local dev (HTTP, login fails
+      # until AUTH_PASSWORD_HASH is set). Prod overrides via .env from SSM.
+      AUTH_SECRET: ${AUTH_SECRET:-dev-insecure-change-me}
+      AUTH_USERNAME: ${AUTH_USERNAME:-trader}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
     depends_on:
       postgres:
         condition: service_healthy

@@ -30,6 +30,16 @@ export const fetchHealth = () => apiGet<Health>("/api/v1/health");
 export const fetchHealthExtended = () =>
   apiGet<HealthExtended>("/api/v1/health/extended");
 
+// ── Auth (single-trader write boundary) ─────────────────────────────────────
+// Reads stay public; write endpoints 401 without a valid cookie. login sets the
+// httpOnly cookie (sent automatically — client.ts uses credentials:"include").
+export type AuthStatus = Get<"/api/v1/auth/me", 200>;
+export type LoginBody = PostBody<"/api/v1/auth/login">;
+export const fetchAuthMe = () => apiGet<AuthStatus>("/api/v1/auth/me");
+export const postLogin = (body: LoginBody) =>
+  apiPost<AuthStatus>("/api/v1/auth/login", body);
+export const postLogout = () => apiPost<AuthStatus>("/api/v1/auth/logout", {});
+
 // ── Pricing ───────────────────────────────────────────────────────────────
 export type PriceRequest = PostBody<"/api/v1/price">;
 export type PriceResponse = Post<"/api/v1/price", 200>;
