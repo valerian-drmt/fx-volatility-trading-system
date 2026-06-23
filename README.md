@@ -183,6 +183,25 @@ uv sync --extra dev --extra api --extra quant --extra ib --extra writer
 uv run pytest
 ```
 
+### PyCharm run configurations
+
+The repo ships ready-to-use **Run/Debug configurations** under
+[`.idea/runConfigurations/`](.idea/runConfigurations) (version-controlled, so
+they load automatically when the project is opened in PyCharm — no setup
+command needed). They appear in the Run dropdown grouped in two folders :
+
+| Folder  | Wraps                      | Configurations |
+|---------|----------------------------|----------------|
+| `Local` | `scripts/ops/start_stack.ps1` | Up · Up (no build) · Up (fast) · Down · Down (wipe volumes) · Refresh · Rebuild: frontend · Rebuild: api |
+| `EC2`   | `scripts/ops/ec2.ps1`         | Health · Containers · Deploy · Connect (SSM) · Logs: api · Restart: nginx · Instance: status/stop/start |
+
+If they don't show up after pulling, run **File → Reload All from Disk**. They
+target Windows PowerShell (`powershell.exe`) and run in the integrated terminal.
+
+> Secrets still come from `load_secrets.ps1`, which must be **dot-sourced in
+> your shell** (`. .\scripts\ops\load_secrets.ps1`) — it is intentionally not a
+> run configuration, since a child process can't export env vars back to PyCharm.
+
 ---
 
 ## Testing
@@ -203,15 +222,6 @@ cd frontend
 npm run lint && npm run typecheck                    # ESLint + tsc
 npm test                                             # vitest (with 70% coverage threshold)
 npm run test:e2e                                     # Playwright
-
-# Re-runnable smoke notebooks (manual validation per container)
-jupyter lab scripts/smoke/postgresql/02_setup.ipynb         # apply migrations + seed vol_config v1
-jupyter lab scripts/smoke/postgresql/03_test_crud.ipynb     # CRUD per table
-jupyter lab scripts/smoke/api/01_test_endpoints.ipynb       # 30 REST/WS endpoints
-jupyter lab scripts/smoke/nginx/01_test_routes.ipynb        # reverse proxy + WS upgrade
-jupyter lab scripts/smoke/redis/01_test_pubsub.ipynb        # cache + pub/sub
-jupyter lab scripts/smoke/redis/02_test_bus_package.ipynb   # bus Python wrapper
-jupyter lab scripts/smoke/db-writer/01_test_writer.ipynb    # AsyncDatabaseWriter end-to-end
 ```
 
 The nginx config parse-test lives at
@@ -287,11 +297,10 @@ fx-volatility-trading-system/
 │   ├── postgres/                   init.sql
 │   ├── redis/                      redis.conf (hardened)
 │   └── aws/                        SSM secrets bootstrap + KMS / IAM / S3 reference
-├── scripts/
-│   ├── ops/                        load_secrets.{ps1,sh} + start_stack.ps1
-│   ├── dev/                        dump_openapi.py + gmm_diagnostic.py + seed_pca_*
-│   ├── migrations/                 backfill_iv_history_for_gmm.py + seed_events_manual.py
-│   └── smoke/<service>/            re-runnable Jupyter smoke notebooks per container
+├── scripts/                        human-run only (not shipped, not CI-collected)
+│   ├── ops/                        start_stack.ps1 + ec2.ps1 + load_secrets.{ps1,sh}
+│   ├── db/                         seed_* + backfill_iv_history_for_gmm.py
+│   └── dev/                        dump_openapi.py + gmm_diagnostic.py + check_orders.py + compute_context_baseline.py
 ├── obs/                            Prometheus / Loki / Tempo / Promtail / OTel-collector
 │                                     configs + Grafana dashboards + datasources
 ├── tests/                          mirrors src/ 1-to-1

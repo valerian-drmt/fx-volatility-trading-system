@@ -4,7 +4,7 @@ Fallback for when ForexFactory feed is down or for offline/sandbox bootstrap.
 Maintained manually : edit the EVENTS list below once a quarter (~5 min).
 
 Usage :
-    docker exec -it fxvol-api python scripts/migrations/seed_events_manual.py
+    docker exec -it fxvol-api python scripts/db/seed_events_manual.py
 
 Source : ECB monetary calendar + Federal Reserve FOMC calendar +
 BLS releases (NFP/CPI). Update when new dates are published.

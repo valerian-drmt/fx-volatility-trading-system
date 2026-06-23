@@ -6,9 +6,9 @@ complete surface → no real snapshot accumulates).
 
 Usage (from project root, secrets loaded so DATABASE_URL is set) :
 
-    python scripts/dev/seed_pca_snapshots.py            # 35 rows, EURUSD
-    python scripts/dev/seed_pca_snapshots.py --n 60
-    python scripts/dev/seed_pca_snapshots.py --purge    # wipe seed_dev rows first
+    python scripts/db/seed_pca_snapshots.py            # 35 rows, EURUSD
+    python scripts/db/seed_pca_snapshots.py --n 60
+    python scripts/db/seed_pca_snapshots.py --purge    # wipe seed_dev rows first
 
 After insertion, hit ``POST /api/v1/admin/pca/refit`` (or click the Refit
 button on the Step2 dev page) to fit the first model.

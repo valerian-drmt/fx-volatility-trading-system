@@ -7,7 +7,7 @@ Two clients serve two worlds :
         process-level ConnectionPool shared between callers.
 
     get_sync_redis()  -> redis.Redis
-        For sync callers (Jupyter smoke notebooks, scripts).
+        For sync callers (manual scripts, seeders).
         Same URL, separate pool — mixing sync/async clients on the
         same connection object is not safe.
 

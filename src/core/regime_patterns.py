@@ -7,7 +7,7 @@ Tail-extreme combinations not covered by any seed fall back to the
 ``unmapped_extreme`` row whose action defaults to "observation only".
 
 Previously mirrored as the ``regime_pattern_dict`` DB table (seeded by
-``scripts/dev/seed_regime_lookup.py`` running against the same
+``scripts/db/seed_regime_lookup.py`` running against the same
 constants below). Migration 039 dropped the table ; this module is
 now the single source of truth read by
 ``api.orchestration.regime_features``.

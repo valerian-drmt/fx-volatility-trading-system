@@ -21,11 +21,8 @@ tests/
                             # testpaths = ["tests/unit","tests/integration"]
 ```
 
-Le **3e étage de la pyramide (smoke / e2e)** vit hors de `tests/` :
-
-- **`scripts/smoke/<container>/0N_test_*.{py,ipynb}`** — tests interactifs Jupyter
-  (ou `.py` pour ib-gateway à cause de l'incompat ib_insync ↔ Jupyter).
-  Validés à la main avec inspection visuelle, pas via pytest.
+Le **3e étage de la pyramide (smoke / e2e)** vit hors de `tests/` : validation
+manuelle de la stack complète + Playwright côté frontend (`frontend/e2e/`).
 
 Cette répartition reflète la nature des tests :
 
@@ -33,7 +30,7 @@ Cette répartition reflète la nature des tests :
 |---|---|---|---|---|
 | unit | "ce module fait-il son boulot ?" | pytest | < 100ms | mocks, pas d'I/O |
 | integration | "ces N modules ensemble produisent-ils le bon output ?" | pytest + containers | secondes | DB/Redis/IB réels (ou stubs pour IB) |
-| smoke | "le user voit-il ce qu'il doit voir ?" | notebook Jupyter | min | stack complète |
+| smoke | "le user voit-il ce qu'il doit voir ?" | manuel + Playwright | min | stack complète |
 
 ---
 
@@ -59,7 +56,7 @@ src/                            tests/unit/
 └── shared/               →     └── shared/
 ```
 
-**Pas de folders `tests/unit/postgres/`, `tests/unit/redis/`, `tests/unit/ib-gateway/`** parce que ces containers utilisent des images off-the-shelf (postgres:16, redis:7, gnzsnz/ib-gateway) sans code Python custom à unit-tester. Leur validation passe par le smoke (cf. `scripts/smoke/{postgresql,redis,ib-gateway}/`).
+**Pas de folders `tests/unit/postgres/`, `tests/unit/redis/`, `tests/unit/ib-gateway/`** parce que ces containers utilisent des images off-the-shelf (postgres:16, redis:7, gnzsnz/ib-gateway) sans code Python custom à unit-tester. Leur validation passe par le smoke manuel de la stack complète.
 
 **Pas de folder `tests/unit/nginx/`** non plus — la conf nginx est testée via `tests/integration/docker_compose/` (syntaxe + reload).
 
@@ -102,7 +99,7 @@ Granularité trop fine : il y a 14+ edges dans le graphe. Tu te retrouves avec 1
 
 ### Pourquoi pas un folder par scenario (e2e)
 
-`pipeline_api_serving/` n'est pas e2e : il teste l'api isolée du frontend. L'e2e (user clique un bouton, voit un nombre changer) c'est `scripts/smoke/<container>/` côté notebooks ou Playwright côté frontend.
+`pipeline_api_serving/` n'est pas e2e : il teste l'api isolée du frontend. L'e2e (user clique un bouton, voit un nombre changer) c'est la validation manuelle de la stack ou Playwright côté frontend.
 
 ---
 
@@ -176,10 +173,6 @@ python -m pytest tests/unit/core/ -v
 
 # Un pipeline integration spécifique
 python -m pytest tests/integration/pipeline_db_writer/ -v
-
-# Smoke notebooks — hors pytest
-jupyter lab scripts/smoke/postgresql/02_setup.ipynb
-python scripts/smoke/ib-gateway/01_test_connection.py
 ```
 
 ---

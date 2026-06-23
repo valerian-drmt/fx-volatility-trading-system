@@ -8,7 +8,7 @@ the engine cleanly.
 
 Composition site : ``src/engines/db_writer/service.py`` wraps an
 instance with a Redis pub/sub subscriber loop (the ``DbWriterService``)
-to make the long-running container ; the smoke notebook uses the writer
+to make the long-running container ; manual smoke scripts use the writer
 directly without Redis. Both code paths exercise the same batching
 core.
 

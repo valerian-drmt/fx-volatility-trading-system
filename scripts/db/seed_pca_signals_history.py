@@ -5,9 +5,9 @@ instead of "(no signal yet)" while markets are closed.
 
 Usage (from project root, secrets loaded) :
 
-    python scripts/dev/seed_pca_signals_history.py
-    python scripts/dev/seed_pca_signals_history.py --shock-pc1 2.5
-    python scripts/dev/seed_pca_signals_history.py --purge
+    python scripts/db/seed_pca_signals_history.py
+    python scripts/db/seed_pca_signals_history.py --shock-pc1 2.5
+    python scripts/db/seed_pca_signals_history.py --purge
 
 Pipeline (mirrors ``engines/vol/engine.py:_compute_pca_signals``) :
   1. Read active ``pca_models`` row.
@@ -89,7 +89,7 @@ async def main(symbol: str, shock_pc1: float, purge: bool) -> None:
         )).scalar_one_or_none()
         if model is None:
             sys.exit(
-                "no active PcaModel — run scripts/dev/seed_pca_snapshots.py first "
+                "no active PcaModel — run scripts/db/seed_pca_snapshots.py first "
                 "and click 'Refit PCA' in the UI"
             )
 

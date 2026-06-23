@@ -9,9 +9,9 @@ Tail-extreme combinations not covered by the 15 mappings fall back to the
 seeded ``unmapped_extreme`` row (action = observation only).
 
 Usage :
-    PYTHONPATH=src python scripts/dev/seed_regime_lookup.py
+    PYTHONPATH=src python scripts/db/seed_regime_lookup.py
 or, inside the api container :
-    docker compose exec api python scripts/dev/seed_regime_lookup.py
+    docker compose exec api python scripts/db/seed_regime_lookup.py
 """
 from __future__ import annotations
 
