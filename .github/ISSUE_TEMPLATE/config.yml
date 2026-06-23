@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📋 Contribution protocol
+    url: https://github.com/valerian-drmt/fx-volatility-trading-system/blob/main/.github/CONTRIBUTING.md
+    about: Read the issue → branch → PR → merge procedure before opening an issue.
+  - name: 🗂️ Project board (source of truth for tracking)
+    url: https://github.com/users/valerian-drmt/projects/5
+    about: All tasks live on the board, not in .md files.
