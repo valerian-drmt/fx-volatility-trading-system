@@ -309,8 +309,6 @@ export const config = [
   { key: "delta_hedge.band_bp", value: "±50", v: 4, by: "quant@desk", note: "" },
 ];
 
-export const backtest = { sharpe: 1.84, maxDd: -8.2, totalReturn: 23.6, trades: 412, winRate: 58.3 };
-
 export interface StressPreset {
   id: string;
   name: string;
@@ -488,7 +486,7 @@ export const DATA2 = {
   dRR, dBF, skewGrid, flyGrid, greekSkewGrids, greekFlyGrids, skewLadder, flyLadder,
   vannaPerTenor, volgaPerTenor, vegaPCA, varFactors,
   dailyPnl, perfStats, coverage, waterfall, bookComposition,
-  shocks, scenarioSeries, attribution, attributionTotal, stack, engines, cycle, config, backtest,
+  shocks, scenarioSeries, attribution, attributionTotal, stack, engines, cycle, config,
   // ---- Risk reference tables (F / I / H) ----
   riskSpot: 1.15692,
   svCols: [-200, -100, -50, 0, 50, 100, 200],

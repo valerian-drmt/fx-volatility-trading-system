@@ -10,7 +10,7 @@
  *     so this may fail; we degrade to /health/extended-only and the engine list
  *     falls back to the 3 health-probed engines (status, no heartbeat age).
  *
- * Backtest + ER-schema panels stay on the static mock (no live source).
+ * The ER-schema panel stays on the static mock (no live source).
  */
 import type { EngineRow, StackLayer, SystemData } from "../deskData";
 
