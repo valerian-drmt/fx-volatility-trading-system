@@ -1,0 +1,43 @@
+name: "🔧 Chore / Infra / Docs / Refactor"
+description: "Technical task with no user-facing feature"
+title: "[Chore] "
+labels: ["type:chore"]
+projects: ["valerian-drmt/5"]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Category
+      options: [Refactor, Infra, Docs, Chore]
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Description
+      description: What we do, and why now.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [API, Core, Engines, Persistence, Bus, Frontend, Infra/AWS, Ops/CI]
+    validations:
+      required: true
+  - type: dropdown
+    id: release
+    attributes:
+      label: Release
+      options: [R11, R12, R13, Backlog]
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Definition of Done
+      value: |
+        - [ ]
+        - [ ] CI green
+    validations:
+      required: true

@@ -1,0 +1,66 @@
+name: "✨ Feature"
+description: "New feature or functional change"
+title: "[Feature] "
+labels: ["type:feature"]
+projects: ["valerian-drmt/5"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One **issue = one deliverable** (≈ one PR). Fill every required field.
+        Full procedure: [`.github/WORKFLOW.md`](https://github.com/valerian-drmt/fx-volatility-trading-system/blob/main/.github/WORKFLOW.md).
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What, and why.
+      placeholder: "As a … I want … so that …"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Main component touched (must match the board's Area field).
+      options: [API, Core, Engines, Persistence, Bus, Frontend, Infra/AWS, Ops/CI]
+    validations:
+      required: true
+  - type: dropdown
+    id: release
+    attributes:
+      label: Release
+      options: [R11, R12, R13, Backlog]
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ["P0 — Critical", "P1 — High", "P2 — Normal", "P3 — Low"]
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size (estimate)
+      options: [XS, S, M, L, XL]
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria (Definition of Done)
+      description: Verifiable list. The PR is only mergeable when all are checked.
+      value: |
+        - [ ]
+        - [ ] Unit tests added / updated
+        - [ ] CI green (ruff + import-linter + pytest)
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Technical notes / links
+      description: Files touched, spec, dependencies, risks.
+    validations:
+      required: false
