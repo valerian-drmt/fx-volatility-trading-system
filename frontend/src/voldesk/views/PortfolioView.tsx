@@ -4,22 +4,41 @@
  * `js/views_portfolio.jsx` (global-window pattern) into typed ES modules.
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { fetchEquityCurve } from "../../api/endpoints";
+import { useFetch } from "../../hooks/useFetch";
 import { Panel, MetricTile, Tag } from "../components/common";
+import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls, gk$ } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
-import type { WaterfallStep } from "../data";
+import type { BookComposition, Position, VegaTenor, WaterfallStep } from "../data";
+import { useDeskData } from "../data/deskData";
+import { adaptEquityCurve } from "../data/live/portfolio";
 
-// equity curve + drawdown band
+// equity curve + drawdown band. Window-parameterised → fetched here (per-window
+// state) rather than in the provider. Live-only: empty state until data exists.
 function EquityChart({ window: win }: { window: string }): JSX.Element {
-  const data = useMemo<number[]>(() => DATA.equityCurve(win), [win]);
+  const live = useFetch<number[]>(
+    () => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve),
+    120_000,
+  );
+  const data = live.data ?? [];
   const w = 760,
     h = 230,
     pl = 52,
     pr = 12,
     pt = 14,
     pb = 40;
+  if (data.length < 2) {
+    return (
+      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+        <text x={w / 2} y={h / 2} textAnchor="middle" fill="var(--text-faint)" fontSize="11" fontFamily="var(--mono)">
+          {live.status === "missing" ? "no equity history" : "loading…"}
+        </text>
+      </svg>
+    );
+  }
   const lo = Math.min(...data),
     hi = Math.max(...data),
     rng = hi - lo || 1;
@@ -92,13 +111,12 @@ function EquityChart({ window: win }: { window: string }): JSX.Element {
 }
 
 // daily realized P&L bars
-function DailyPnlBars(): JSX.Element {
-  const data = DATA2.dailyPnl,
-    w = 360,
+function DailyPnlBars({ data }: { data: number[] }): JSX.Element {
+  const w = 360,
     h = 150,
     pt = 14,
     pb = 18;
-  const max = Math.max(...data.map(Math.abs)) || 1;
+  const max = Math.max(1, ...data.map(Math.abs));
   const bw = (w - 8) / data.length,
     mid = pt + (h - pt - pb) / 2;
   const sc = (h - pt - pb) / 2 / max;
@@ -375,13 +393,23 @@ interface StructureFam {
   volga: number;
 }
 
-function BookComposition(): JSX.Element {
-  const vt = DATA2.vegaPerTenor,
-    maxV = Math.max(...vt.map((r) => r.vega)) || 1;
-  const bc = DATA2.bookComposition;
+function BookComposition({
+  vegaPerTenor,
+  bookComposition,
+  positions,
+  netVanna,
+}: {
+  vegaPerTenor: VegaTenor[];
+  bookComposition: BookComposition;
+  positions: Position[];
+  netVanna: number;
+}): JSX.Element {
+  const vt = vegaPerTenor,
+    maxV = Math.max(1, ...vt.map((r) => r.vega));
+  const bc = bookComposition;
   // 2nd-order by structure — which structure carries the skew (vanna) and the vol-convexity (volga)
   const fam: StructureFam[] = bc.byStructure.map((s) => {
-    const legs = DATA.positions.filter(
+    const legs = positions.filter(
       (p) => p.structure.startsWith(s.name) || p.structure.split(" ")[0] === s.name.split(" ")[0]
     );
     return {
@@ -462,7 +490,7 @@ function BookComposition(): JSX.Element {
       </table>
       <div className="dim small" style={{ marginTop: "6px" }}>
         RR carries the incident skew (net vanna) — the book's #1 VaR factor. Reconciles to Risk net vanna +
-        {DATA.greeks.netVanna}k.
+        {netVanna}k.
       </div>
     </div>
   );
@@ -471,9 +499,12 @@ function BookComposition(): JSX.Element {
 export function PortfolioView(): JSX.Element {
   const [win, setWin] = useState<string>("7D");
   const [pivot, setPivot] = useState<string>("greek");
-  const a = DATA.account,
-    ps = DATA2.perfStats,
-    g = DATA.greeks;
+  const { portfolio } = useDeskData();
+  const pd = portfolio.data;
+  const a = pd?.account ?? DATA.account,
+    ps = pd?.perfStats ?? DATA2.perfStats,
+    g = pd?.greeks ?? DATA.greeks;
+  const dailyPnlData = pd?.dailyPnl ?? DATA2.dailyPnl;
   const lev = { gross: 28.5, net: 18.2, buyingPower: 8.74 };
   // §P1 leverage unit bug: notional is in €, net liq in $ — convert to one ccy before dividing
   const netLiqEur = a.netLiq / DATA.SPOT; // $4.22M → €3.89M
@@ -485,13 +516,13 @@ export function PortfolioView(): JSX.Element {
   const gbp = DATA.cash.find((c) => c.ccy === "GBP"),
     jpy = DATA.cash.find((c) => c.ccy === "JPY");
   // §P3 P&L skew — a long-gamma book should show positive skew (many small theta losses, occasional gamma spikes)
-  const dp = DATA2.dailyPnl,
-    mean = dp.reduce((x, y) => x + y, 0) / dp.length;
+  const dp = dailyPnlData,
+    mean = dp.length ? dp.reduce((x, y) => x + y, 0) / dp.length : 0;
   const sd = Math.sqrt(dp.reduce((x, y) => x + (y - mean) ** 2, 0) / dp.length) || 1;
   const pnlSkew = dp.reduce((x, y) => x + ((y - mean) / sd) ** 3, 0) / dp.length;
   return (
     <div className="portfolio-grid">
-      <Panel title="Account & capital" className="acct-panel">
+      <Panel title="Account & capital" dataPp="account" right={<FreshBadge fresh={portfolio} label="IB account" />} className="acct-panel">
         <div className="acct-tiles">
           <MetricTile big label="Net liquidation" value={fmt.usd(a.netLiq)} delta={a.dNetLiq} />
           <MetricTile label="Cash" value={fmt.usd(a.cash)} delta={a.dCash} />
@@ -535,6 +566,7 @@ export function PortfolioView(): JSX.Element {
 
       <Panel
         title="Performance"
+        dataPp="perf"
         right={
           <div className="tf-group">
             {["1D", "7D", "30D", "1Y", "all"].map((wn) => (
@@ -553,7 +585,7 @@ export function PortfolioView(): JSX.Element {
           </div>
           <div className="perf-daily">
             <div className="perf-sub mono dim">daily realized P&L · hit rate {ps.hitRate.toFixed(0)}%</div>
-            <DailyPnlBars />
+            <DailyPnlBars data={dailyPnlData} />
           </div>
         </div>
         <div className="perf-stats">
@@ -589,13 +621,14 @@ export function PortfolioView(): JSX.Element {
         </div>
       </Panel>
 
-      <Panel title="Carry vs convexity — survival metric" className="cov-panel">
+      <Panel title="Carry vs convexity — survival metric" dataPp="carry-convex" className="cov-panel">
         <CoverageHero />
       </Panel>
 
       <div className="row2 pf-row2">
         <Panel
           title="Realized P&L attribution — bridge"
+          dataPp="pnl-attribution"
           right={
             <div className="tf-group">
               {["greek", "structure", "tenor", "mode"].map((p) => (
@@ -607,7 +640,7 @@ export function PortfolioView(): JSX.Element {
           }
           className="wf-panel"
         >
-          <Waterfall steps={DATA2.waterfall[pivot] ?? []} />
+          <Waterfall steps={pivot === "greek" ? (pd?.waterfallGreek ?? DATA2.waterfall["greek"] ?? []) : (DATA2.waterfall[pivot] ?? [])} />
           {pivot === "mode" ? (
             <div className="attrib-note dim small">
               signal → structure → realized P&L, mapped to PC1/2/3 (the modes traded) · forward realized tracking, not a
@@ -620,8 +653,13 @@ export function PortfolioView(): JSX.Element {
             </div>
           )}
         </Panel>
-        <Panel title="Book composition" className="bookcomp-panel">
-          <BookComposition />
+        <Panel title="Book composition" dataPp="book-composition" right={<FreshBadge fresh={portfolio} />} className="bookcomp-panel">
+          <BookComposition
+            vegaPerTenor={pd?.vegaPerTenor ?? DATA2.vegaPerTenor}
+            bookComposition={pd?.bookComposition ?? DATA2.bookComposition}
+            positions={pd?.positions ?? DATA.positions}
+            netVanna={g.netVanna}
+          />
         </Panel>
       </div>
     </div>
