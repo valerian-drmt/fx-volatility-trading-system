@@ -44,6 +44,13 @@
 .PARAMETER Logs
   Avec -Service : tail les logs du/des service(s) apres le up.
 
+.PARAMETER Core
+  Demarre UNIQUEMENT le core (api + frontend + nginx + postgres + redis) :
+  aucun profil engines / ib / obs. Les 5 engines (vol/risk/...) ont besoin d'une
+  session IB pour devenir healthy -- sans IB logge ils restent 'unhealthy' (la
+  connexion IB retry a l'infini avant le 1er heartbeat). Pour le dev front / api /
+  nginx / securite, le core suffit et evite ce bruit. Combinable avec -NoBuild.
+
 .PARAMETER Refresh
   Purge la RAM accumulee SANS perdre de donnees : down (volumes conserves) ->
   'wsl --shutdown' (la VM WSL2 de Docker rend sa RAM a Windows) -> attend le
@@ -52,7 +59,9 @@
   sessions WSL). DB/Redis (volumes) + images intactes.
 
 .EXAMPLE
-  .\scripts\ops\start_stack.ps1                      # full pipeline up
+  .\scripts\ops\start_stack.ps1                      # full pipeline up (engines + ib + obs)
+  .\scripts\ops\start_stack.ps1 -Core                # core seul (pas d'engines/ib/obs)
+  .\scripts\ops\start_stack.ps1 -Core -NoBuild       # core seul, rapide
   .\scripts\ops\start_stack.ps1 -NoPull -NoBuild     # demarrage rapide
   .\scripts\ops\start_stack.ps1 -Down                # stop
   .\scripts\ops\start_stack.ps1 -Down -DropVolumes   # stop + wipe data
@@ -70,7 +79,8 @@ param(
     [switch]$RecreateVenv,
     [string[]]$Service,
     [switch]$Logs,
-    [switch]$Refresh
+    [switch]$Refresh,
+    [switch]$Core
 )
 
 $ErrorActionPreference = 'Stop'
@@ -221,13 +231,21 @@ try {
     Write-Step "Loading secrets from AWS SSM"
     & "$PSScriptRoot\load_secrets.ps1"
 
-    # ---------- 5. docker compose up (all profiles : engines + ib + obs) ----------
-    Write-Step "docker compose up -d$(if (-not $NoBuild) { ' --build' }) (profiles: engines, ib, obs)"
-    $upArgs = @('compose', '--profile', 'engines', '--profile', 'ib', '--profile', 'obs', 'up', '-d')
+    # ---------- 5. docker compose up ----------
+    # Full = engines + ib + obs ; -Core = aucun profil (api/frontend/nginx/pg/redis).
+    if ($Core) {
+        $profileArgs = @()
+        $scopeMsg = 'core only: api/frontend/nginx/postgres/redis'
+    } else {
+        $profileArgs = @('--profile', 'engines', '--profile', 'ib', '--profile', 'obs')
+        $scopeMsg = 'profiles: engines, ib, obs'
+    }
+    Write-Step "docker compose up -d$(if (-not $NoBuild) { ' --build' }) ($scopeMsg)"
+    $upArgs = @('compose') + $profileArgs + @('up', '-d')
     if (-not $NoBuild) { $upArgs += '--build' }
     & docker @upArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "docker compose up failed (exit $LASTEXITCODE). Run with --build manually to see the error : docker compose --profile engines --profile ib --profile obs up -d --build"
+        throw "docker compose up failed (exit $LASTEXITCODE). Re-run with --build manually to see the error : docker compose $($profileArgs -join ' ') up -d --build"
     }
 
     # ---------- 6. Wait postgres healthy ----------
@@ -250,7 +268,11 @@ try {
     docker compose restart nginx | Out-Null
 
     Write-Ok "Stack up at http://localhost/"
-    Write-Ok "Done. UI : http://localhost/    API : http://localhost/api/v1/health    Grafana : http://localhost:3000/"
+    if ($Core) {
+        Write-Ok "Done (core only). UI : http://localhost/    API : http://localhost/api/v1/health"
+    } else {
+        Write-Ok "Done. UI : http://localhost/    API : http://localhost/api/v1/health    Grafana : http://localhost:3000/"
+    }
 } finally {
     Pop-Location
 }
