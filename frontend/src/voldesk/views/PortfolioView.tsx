@@ -5,7 +5,7 @@
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
 import { useState } from "react";
-import { fetchEquityCurve } from "../../api/endpoints";
+import { fetchEquityCurve, fetchPnlAttribution } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, MetricTile, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -14,7 +14,7 @@ import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
 import type { BookComposition, Position, VegaTenor, WaterfallStep } from "../data";
 import { useDeskData } from "../data/deskData";
-import { adaptEquityCurve } from "../data/live/portfolio";
+import { adaptCoverage, adaptEquityCurve } from "../data/live/portfolio";
 
 // equity curve + drawdown band. Window-parameterised → fetched here (per-window
 // state) rather than in the provider. Live-only: empty state until data exists.
@@ -175,7 +175,10 @@ function CovSpark({
 
 // carry vs convexity — survival hero
 function CoverageHero(): JSX.Element {
-  const c = DATA2.coverage;
+  // convexity/carry/ratio/greek-PnL/posture live (from /pnl-attribution totals). The perf
+  // trio (RoM/RoVaR/Sharpe) needs realized trading history → deferred (R12+, like backtest).
+  const covLive = useFetch(() => fetchPnlAttribution().then(adaptCoverage), 60_000).data;
+  const c = { ...DATA2.coverage, ...(covLive ?? {}) };
   const ok = c.ratio >= c.threshold;
   const tot = c.convexity + c.carry;
   // forward breakeven (implied): move_BE = √(2Θ/Γ) vs current RV — complements the realized ratio
@@ -230,20 +233,20 @@ function CoverageHero(): JSX.Element {
             Θ −${c.thetaPaid}k / {c.windowLabel} · excl. 6E/JPY funding
           </div>
         </div>
-        <div className="cov-ror">
+        <div className="cov-ror" title="realized performance — needs trading history (deferred R12+)">
           <div className="ror-item">
             <span className="gs-lbl">P&L / margin</span>
-            <b className="mono pos">{c.returnOnMargin.toFixed(1)}%</b>
+            <b className="mono dim">—</b>
           </div>
           <div className="ror-item">
             <span className="gs-lbl">P&L / VaR</span>
-            <b className="mono pos">{c.returnOnVar.toFixed(2)}×</b>
+            <b className="mono dim">—</b>
           </div>
           <div className="ror-item">
             <span className="gs-lbl">
               Realized Sharpe <em className="unit">daily ann.</em>
             </span>
-            <b className="mono">{c.sharpe.toFixed(2)}</b>
+            <b className="mono dim">—</b>
           </div>
         </div>
       </div>
