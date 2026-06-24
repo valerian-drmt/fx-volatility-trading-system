@@ -508,6 +508,10 @@ input,select{font-family:inherit;font-size:13px}
 .cfg-field:nth-child(even){background:rgba(255,255,255,.015)}
 .cfg-key{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cfg-val{flex:0 0 auto}
+.cfg-val-input{flex:0 0 auto;width:130px;text-align:right;background:var(--surface-2,rgba(255,255,255,.04));color:var(--accent,#6fd);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-size:11.5px}
+.cfg-val-input:focus{outline:none;border-color:var(--accent,#6fd)}
+.cfg-val-input:disabled{opacity:.5}
+.cfg-commit-bar{display:flex;gap:8px;align-items:center;margin-top:10px}
 /* conviction hierarchy — 3 equal cards on one row, tier badge encodes conviction */
 .mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start}
 .mc-loads-reduced .heatmap td{font-size:9px;padding:2px 1px}

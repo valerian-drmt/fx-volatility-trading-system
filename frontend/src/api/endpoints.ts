@@ -2,7 +2,7 @@
 // FastAPI Pydantic models and `schema.d.ts` is caught at `tsc --noEmit` time
 // (or earlier by `npm run gen:api:check` in CI).
 import type { paths } from "./schema";
-import { apiGet, apiPost } from "./client";
+import { apiGet, apiPost, apiPut } from "./client";
 export { ApiError } from "./client";
 
 type Get<P extends keyof paths, S extends 200> = paths[P] extends {
@@ -155,6 +155,8 @@ export const fetchConfigHistory = (limit = 50) =>
 // Settings write (Phase 2 / 2w) — gated by auth in prod (require_write), free locally.
 export const revertConfig = (version: number, comment?: string) =>
   apiPost<unknown>(`/api/v1/admin/config/revert/${version}`, { user: "trader", comment });
+export const putConfig = (patch: Record<string, unknown>, comment?: string) =>
+  apiPut<unknown>("/api/v1/admin/config", { patch, user: "trader", comment });
 
 // Dev / system
 export const fetchDevEngines = () => apiGet<unknown>("/api/v1/dev/engines");
