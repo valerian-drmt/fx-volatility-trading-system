@@ -3,15 +3,18 @@
  * prototype's `js/views_risk.jsx` (global-window JSX) into typed ES modules.
  * Exports only RiskView; all sub-components stay local (lint).
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchScenarios, fetchStressGrid, fetchVarFactors, fetchVegaPca } from "../../api/endpoints";
+import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
-import { DATA, DATA2, fmt } from "../data";
-import type { LadderRow, VarFactor } from "../data";
-import { useDeskData } from "../data/deskData";
+import { DATA, fmt } from "../data";
+import type { VarFactor } from "../data";
+import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
+import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptScenarios, adaptStressGrid, adaptVarFactors, adaptVegaPca, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -62,6 +65,25 @@ function DivBars({ rows, unit = "", scale = "linear" }: { rows: DivBarRow[]; uni
 // neutral "risk-only" badge — marks surfaces that carry exposure but NO signal (skew). Never the signal palette.
 function RiskOnly({ text = "risk-only" }: { text?: string }): JSX.Element {
   return <span className="risk-only-badge mono">{text}</span>;
+}
+
+// per-panel data-source indicator: live (fresh) / stale / no-data / mock.
+// Reuses the .status-dot/.pulse styles from the VaR card's live pill.
+function PanelLive({ status }: { status: Fresh<unknown>["status"] | "mock" }): JSX.Element {
+  const cfg = {
+    live: { c: "var(--pos)", t: "live", pulse: true },
+    stale: { c: "var(--warn)", t: "stale", pulse: false },
+    missing: { c: "var(--muted)", t: "no data", pulse: false },
+    mock: { c: "var(--muted)", t: "mock", pulse: false },
+  }[status];
+  return (
+    <span
+      className="panel-live dim mono small"
+      title={status === "mock" ? "placeholder data — no live endpoint yet" : "data feed status"}
+    >
+      <span className={"status-dot" + (cfg.pulse ? " pulse" : "")} style={{ background: cfg.c }} /> {cfg.t}
+    </span>
+  );
 }
 
 // ---- stacked factor decomposition bar (VaR by factor: spot / vol / skew / curvature) ----
@@ -173,44 +195,44 @@ function ReturnsBars({ data, h = 130 }: { data: RetDatum[]; h?: number }): JSX.E
   );
 }
 
-function EmpiricalHist({ muZ, v95z, v99z, esZ, letter, h = 88 }: { muZ: number; v95z: number; v99z: number; esZ: number; letter: string; h?: number }): JSX.Element {
-  const w = 340,
-    x0 = -3.8,
-    x1 = 2.8;
-  const px = (z: number): number => 12 + ((z - x0) / (x1 - x0)) * (w - 20);
-  const baseY = h - 24,
-    topY = 14;
-  const bins = [0.04, 0.06, 0.09, 0.07, 0.12, 0.10, 0.17, 0.15, 0.23, 0.33, 0.47, 0.63, 0.81, 0.97, 1.0, 0.83, 0.6, 0.4, 0.25, 0.15, 0.08, 0.04];
-  const n = bins.length,
-    bw = (w - 20) / n,
-    maxH = baseY - topY;
+function EmpiricalHist({ hist, var95, var99, es99, retk, letter, h = 88 }: { hist: HistBin[]; var95: number; var99: number; es99: number; retk: number; letter: string; h?: number }): JSX.Element {
+  const w = 340;
+  if (!hist.length) {
+    return (
+      <svg className="var-curve-svg" width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+        <text x={w / 2} y={h / 2} fill="var(--text-faint)" fontSize="10" fontFamily="var(--mono)" textAnchor="middle">distribution accumulating…</text>
+      </svg>
+    );
+  }
+  // Empirical P&L histogram in $k space. VaR/ES are loss magnitudes → plotted at −x.
+  const marks = [0, -var95, -var99, -es99, retk];
+  const lo = Math.min(...hist.map((b) => b.lo), ...marks);
+  const hi = Math.max(...hist.map((b) => b.hi), ...marks);
+  const rng = hi - lo || 1;
+  const padL = 12, padR = 8;
+  const px = (v: number): number => padL + ((v - lo) / rng) * (w - padL - padR);
+  const baseY = h - 24, topY = 14, maxH = baseY - topY;
+  const maxC = Math.max(...hist.map((b) => b.count)) || 1;
   return (
     <svg className="var-curve-svg" width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      {/* left-tail shading behind bars */}
-      <rect x={px(x0)} y={topY} width={px(v95z) - px(x0)} height={baseY - topY} fill="var(--neg)" fillOpacity="0.08" />
-      {bins.map((b, i) => {
-        const x = 12 + i * bw,
-          hh = b * maxH;
-        const zc = x0 + ((i + 0.5) / n) * (x1 - x0);
-        return <rect key={i} x={x + bw * 0.08} y={baseY - hh} width={bw * 0.84} height={hh} fill={zc <= v95z ? "var(--neg)" : "var(--muted)"} fillOpacity={zc <= v95z ? 0.55 : 0.5} />;
+      <rect x={px(lo)} y={topY} width={Math.max(0, px(-var95) - px(lo))} height={maxH} fill="var(--neg)" fillOpacity="0.08" />
+      {hist.map((b, i) => {
+        const x = px(b.lo), bw = Math.max(1, px(b.hi) - px(b.lo)), hh = (b.count / maxC) * maxH;
+        const loss = b.hi <= -var95;
+        return <rect key={i} x={x + bw * 0.06} y={baseY - hh} width={bw * 0.88} height={hh} fill={loss ? "var(--neg)" : "var(--muted)"} fillOpacity={loss ? 0.55 : 0.5} />;
       })}
-      <line x1={px(x0)} x2={px(x1)} y1={baseY} y2={baseY} stroke="var(--border)" strokeWidth="1" />
-      {/* mean μ of the distribution (subtle reference) */}
+      <line x1={px(lo)} x2={px(hi)} y1={baseY} y2={baseY} stroke="var(--border)" strokeWidth="1" />
       <line x1={px(0)} x2={px(0)} y1={topY} y2={baseY} stroke="var(--fg)" strokeWidth="1.1" strokeOpacity="0.35" strokeDasharray="2 2" />
       <text x={px(0)} y={baseY + 11} fill="var(--fg)" fontSize="8" fontFamily="var(--mono)" textAnchor="middle" opacity="0.55">µ</text>
-      {/* current realized return (white) */}
-      <line x1={px(muZ)} x2={px(muZ)} y1={topY} y2={baseY} stroke="var(--fg)" strokeWidth="1.6" />
-      <text x={px(muZ)} y={topY - 3} fill="var(--fg)" fontSize="8" fontWeight="700" fontFamily="var(--mono)" textAnchor="middle">{letter}</text>
-      {/* VaR95 */}
-      <line x1={px(v95z)} x2={px(v95z)} y1={topY + 8} y2={baseY} stroke="var(--warn)" strokeWidth="1.3" strokeDasharray="4 3" />
-      <text x={px(v95z)} y={baseY + 11} fill="var(--warn)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">95%</text>
-      {/* VaR99 */}
-      <line x1={px(v99z)} x2={px(v99z)} y1={topY + 8} y2={baseY} stroke="var(--neg)" strokeWidth="1.3" strokeDasharray="4 3" />
-      <text x={px(v99z)} y={baseY + 11} fill="var(--neg)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">99%</text>
-      {/* ES point */}
-      <line x1={px(esZ)} x2={px(esZ)} y1={baseY - 14} y2={baseY} stroke="#b3402f" strokeWidth="1.4" strokeDasharray="2 2" />
-      <circle cx={px(esZ)} cy={baseY - 14} r="3.5" fill="#b3402f" stroke="var(--bg)" strokeWidth="1" />
-      <text x={px(esZ)} y={baseY + 11} fill="#c4584a" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">ES</text>
+      <line x1={px(retk)} x2={px(retk)} y1={topY} y2={baseY} stroke="var(--fg)" strokeWidth="1.6" />
+      <text x={px(retk)} y={topY - 3} fill="var(--fg)" fontSize="8" fontWeight="700" fontFamily="var(--mono)" textAnchor="middle">{letter}</text>
+      <line x1={px(-var95)} x2={px(-var95)} y1={topY + 8} y2={baseY} stroke="var(--warn)" strokeWidth="1.3" strokeDasharray="4 3" />
+      <text x={px(-var95)} y={baseY + 11} fill="var(--warn)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">95%</text>
+      <line x1={px(-var99)} x2={px(-var99)} y1={topY + 8} y2={baseY} stroke="var(--neg)" strokeWidth="1.3" strokeDasharray="4 3" />
+      <text x={px(-var99)} y={baseY + 11} fill="var(--neg)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">99%</text>
+      <line x1={px(-es99)} x2={px(-es99)} y1={baseY - 14} y2={baseY} stroke="#b3402f" strokeWidth="1.4" strokeDasharray="2 2" />
+      <circle cx={px(-es99)} cy={baseY - 14} r="3.5" fill="#b3402f" stroke="var(--bg)" strokeWidth="1" />
+      <text x={px(-es99)} y={baseY + 11} fill="#c4584a" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">ES</text>
     </svg>
   );
 }
@@ -231,7 +253,8 @@ interface VarCalc {
   esZ: number;
 }
 
-function VarCard({ var95, var99, es99, netLiq, fresh }: { var95: number; var99: number; es99: number; netLiq: number; fresh: Fresh<unknown> }): JSX.Element {
+function VarCard({ var95, var99, es99, netLiq, hist, fresh, nDays }: { var95: number; var99: number; es99: number; netLiq: number; hist: HistBin[]; fresh: Fresh<unknown>; nDays: number }): JSX.Element {
+  const factorsLive = useFetch<VarFactor[]>(() => fetchVarFactors().then(adaptVarFactors), 120_000).data ?? [];
   const base95 = var95,
     base99 = var99;
   const NL = netLiq;
@@ -254,12 +277,14 @@ function VarCard({ var95, var99, es99, netLiq, fresh }: { var95: number; var99: 
   };
   const sel = rows.find((r) => r.id === tf) ?? rows[0]!,
     c = calc(sel);
+  // empirical 1d distribution scaled to the selected horizon (same √t the table uses).
+  const histScaled = hist.map((b) => ({ lo: b.lo * sel.m, hi: b.hi * sel.m, count: b.count }));
   const letter = ({ "1d": "D", "1w": "W", "1M": "M", "1Y": "Y" } as Record<string, string>)[sel.id] ?? "D";
   return (
-    <Panel title="Value at Risk" right={<FreshBadge fresh={fresh} label="historical 1d" />} pad={false} className="trade-block">
+    <Panel title="Value at Risk" dataPp="var" right={<FreshBadge fresh={fresh} label="historical 1d" />} pad={false} className="trade-block">
       <div className="var-meta">
         <span className="var-method">historical sim</span>
-        <span>504 obs · 504d window</span>
+        <span>{nDays > 0 ? `${nDays} obs · ${nDays}d window` : "building window…"}</span>
         <span>scale √t · 252d</span>
         <span className="var-frozen" title="le scaling √t suppose une exposition gelée — faux pour un book non-linéaire (vanna 2M +152k, theta bleed, roll-down du gamma). Lire 1M/1Y avec prudence.">⚠ exposition gelée</span>
         <span className="var-live"><span className="status-dot pulse" style={{ background: "var(--pos)" }} />live</span>
@@ -288,11 +313,11 @@ function VarCard({ var95, var99, es99, netLiq, fresh }: { var95: number; var99: 
       </div>
       <div className="var-factors">
         <div className="vf-lbl dim small mono">VaR by factor <span className="dim">· which factor carries the tail (ties to marginal-VaR panel)</span></div>
-        <FactorStack factors={DATA2.varFactors} compact />
+        <FactorStack factors={factorsLive} compact />
       </div>
       <div className="ret-chart">
         <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · empirical</span></div>
-        <EmpiricalHist muZ={c.muZ} v95z={-1.645} v99z={-2.326} esZ={c.esZ} letter={letter} />
+        <EmpiricalHist hist={histScaled} var95={c.v95} var99={c.v99} es99={c.es} retk={c.retk} letter={letter} />
         <div className="hist-leg dim mono">
           <span><i className="lg-line mu" />return (D/W/M/Y)</span>
           <span><i className="lg-line w" />VaR 95%</span>
@@ -312,34 +337,6 @@ function HeatLegend({ note }: { note: string }): JSX.Element {
       <span className="hl-cap mono pos">gain +</span>
       <span className="hl-note dim mono">{note}</span>
     </div>
-  );
-}
-
-function StressGrid(): JSX.Element {
-  const { dSpot, dVol, stressGrid } = DATA2;
-  const max = Math.max(...stressGrid.flat().map(Math.abs)) || 1;
-  const cell = (v: number): string => {
-    const t = Math.max(-1, Math.min(1, v / max));
-    if (t >= 0) return `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})`;
-    return `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`;
-  };
-  // transpose: rows = spot (vertical), cols = vol (horizontal)
-  return (
-    <table className="heatmap stress">
-      <thead><tr><th className="corner">ΔSpot \ ΔVol</th>{dVol.map((v) => <th key={v}>{v > 0 ? "+" : ""}{v}vp<span className="th-sub">&nbsp;</span></th>)}</tr></thead>
-      <tbody>
-        {dSpot.map((s, si) => (
-          <tr key={si}>
-            <th>{s > 0 ? "+" : ""}{s}bp</th>
-            {dVol.map((v, vi) => {
-              const val = stressGrid[vi]![si]!;
-              const center = v === 0 && s === 0;
-              return <td key={vi} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : cell(val) }}>{fmt.usdk(val).replace("$", "")}</td>;
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 
@@ -375,97 +372,72 @@ function ScenarioMini({ data, keyName, color, label }: { data: ScenarioDatum[]; 
   );
 }
 
-function TimeStressGrid(): JSX.Element {
-  const { dSpot, stressTimeCols, stressTimeDays, timeGrid } = DATA2;
-  const max = Math.max(...timeGrid.flat().map(Math.abs)) || 1;
-  const cell = (v: number): string => {
-    const t = Math.max(-1, Math.min(1, v / max));
-    if (t >= 0) return `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})`;
-    return `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`;
-  };
+function ScenariosPanel(): JSX.Element {
+  const live = useFetch(() => fetchScenarios().then(adaptScenarios), 120_000);
+  const data = live.data ?? [];
   return (
-    <table className="heatmap stress">
-      <thead><tr><th className="corner">ΔSpot \ Time</th>{stressTimeCols.map((c, i) => <th key={c}>{c}<span className="dim th-sub">{stressTimeDays[i] === 0 ? " " : stressTimeDays[i] + "d"}</span></th>)}</tr></thead>
-      <tbody>
-        {dSpot.map((s, si) => (
-          <tr key={si}>
-            <th>{s > 0 ? "+" : ""}{s}bp</th>
-            {timeGrid[si]!.map((v, ci) => {
-              const now = s === 0 && ci === 0;
-              return <td key={ci} className={now ? "center-cell" : ""} style={{ background: now ? "var(--bg-3)" : cell(v) }}>{fmt.usdk(v).replace("$", "")}</td>;
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-type PnlAxis = "vol" | "skew" | "fly";
-
-// generic P&L stress grid for the vol / skew / fly axes (time has its own decay grid)
-function PnlGrid({ axis }: { axis: PnlAxis }): JSX.Element {
-  const D = DATA2;
-  const cfg = {
-    vol: { grid: D.stressGrid, cols: D.dVol, lbl: "ΔVol ∥ ATM" },
-    skew: { grid: D.skewGrid, cols: D.dRR, lbl: "ΔRR · skew" },
-    fly: { grid: D.flyGrid, cols: D.dBF, lbl: "ΔBF · fly" },
-  }[axis];
-  const max = Math.max(...cfg.grid.flat().map(Math.abs)) || 1;
-  const cell = (v: number): string => { const t = Math.max(-1, Math.min(1, v / max)); return t >= 0 ? `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})` : `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`; };
-  return (
-    <table className="heatmap stress">
-      <thead><tr><th className="corner">ΔSpot \ {cfg.lbl}</th>{cfg.cols.map((v) => <th key={v}>{v > 0 ? "+" : ""}{v}vp<span className="th-sub">&nbsp;</span></th>)}</tr></thead>
-      <tbody>
-        {D.dSpot.map((s, si) => (
-          <tr key={si}>
-            <th>{s > 0 ? "+" : ""}{s}bp</th>
-            {cfg.cols.map((v, ci) => {
-              const val = cfg.grid[ci]![si]!,
-                center = v === 0 && s === 0;
-              return <td key={ci} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : cell(val) }}>{fmt.usdk(val).replace("$", "")}</td>;
-            })}
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <Panel title="Scenarios" dataPp="scenarios" right={<span className="dim mono small">full reval · spot ±%</span>}>
+      {data.length < 2 ? (
+        <div className="dim small mono ivz-empty">
+          {live.status === "missing" ? "aucune position ouverte" : "chargement…"}
+        </div>
+      ) : (
+        <div className="scen-grid">
+          <ScenarioMini data={data} keyName="pnl" color="var(--accent)" label="P&L" />
+          <ScenarioMini data={data} keyName="delta" color="var(--pos)" label="Δ Delta" />
+          <ScenarioMini data={data} keyName="gamma" color="var(--warn)" label="Γ Gamma" />
+          <ScenarioMini data={data} keyName="vega" color="#a78bfa" label="Vega" />
+          <ScenarioMini data={data} keyName="theta" color="var(--neg)" label="Θ Theta" />
+        </div>
+      )}
+    </Panel>
   );
 }
 
 type GreekKey = "delta" | "gamma" | "vega" | "theta" | "vanna" | "volga";
-type GreekAxis = "time" | "vol" | "skew" | "fly";
 
-interface GreekGridCfg {
-  grid: Record<string, number[][]>;
-  cols: (string | number)[];
-  lbl: string;
-  sub?: (i: number) => string;
-  zero: (ci: number) => boolean;
-}
+// Per-axis 2nd-dimension label for the live stress grids.
+const STRESS_AXIS_LABEL: Record<string, string> = {
+  "spot-vol": "ΔVol ∥ ATM",
+  "spot-time": "Time",
+  "spot-skew": "ΔRR · skew",
+  "spot-fly": "ΔBF · fly",
+};
 
-function GreekStressGrid({ greek, axis }: { greek: GreekKey; axis: GreekAxis }): JSX.Element {
-  const D = DATA2;
-  const cfgs: Record<GreekAxis, GreekGridCfg> = {
-    time: { grid: D.greekTimeGrids, cols: D.stressTimeCols, lbl: "Time", sub: (i: number) => (D.stressTimeDays[i] === 0 ? " " : D.stressTimeDays[i] + "d"), zero: (ci: number) => ci === 0 },
-    vol: { grid: D.greekVolGrids, cols: D.dVol.map((v) => (v > 0 ? "+" : "") + v + "vp"), lbl: "ΔVol ∥ ATM", zero: (ci: number) => D.dVol[ci] === 0 },
-    skew: { grid: D.greekSkewGrids, cols: D.dRR.map((v) => (v > 0 ? "+" : "") + v + "vp"), lbl: "ΔRR · skew", zero: (ci: number) => D.dRR[ci] === 0 },
-    fly: { grid: D.greekFlyGrids, cols: D.dBF.map((v) => (v > 0 ? "+" : "") + v + "vp"), lbl: "ΔBF · fly", zero: (ci: number) => D.dBF[ci] === 0 },
-  };
-  const cfg = cfgs[axis];
-  const grid = cfg.grid[greek]!;
-  const max = Math.max(...grid.flat().map(Math.abs)) || 1;
-  const cell = (v: number): string => { const t = Math.max(-1, Math.min(1, v / max)); return t >= 0 ? `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})` : `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`; };
-  const kg = (v: number): string => { const s = v >= 0 ? "+" : "-"; const a = Math.abs(v); return a >= 1000 ? s + (a / 1000).toFixed(1) + "k" : s + a; };
+const stressCell = (v: number, max: number): string => {
+  const t = Math.max(-1, Math.min(1, v / max));
+  return t >= 0
+    ? `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})`
+    : `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`;
+};
+const stressKg = (v: number): string => {
+  const s = v >= 0 ? "+" : "-";
+  const a = Math.abs(v);
+  return a >= 1000 ? s + (a / 1000).toFixed(1) + "k" : s + a.toFixed(0);
+};
+
+// One live (axis, output) matrix. Rows = the 2nd-axis bins, cols = spot bp bins.
+function LiveStressGrid({ d, status }: { d: StressGridData | null; status: Fresh<unknown>["status"] }): JSX.Element {
+  if (!d || !d.grid.length) {
+    return <div className="heat-empty dim mono small">{status === "missing" ? "no book / no spot" : "loading…"}</div>;
+  }
+  const max = Math.max(...d.grid.flat().map(Math.abs)) || 1;
+  const rowLbl = (v: number): string => (d.rowUnit === "d" ? v + "d" : (v > 0 ? "+" : "") + v + "vp");
   return (
     <table className="heatmap stress">
-      <thead><tr><th className="corner">ΔSpot \ {cfg.lbl}</th>{cfg.cols.map((c, i) => <th key={i}>{c}{cfg.sub ? <span className="dim th-sub">{cfg.sub(i)}</span> : <span className="th-sub">&nbsp;</span>}</th>)}</tr></thead>
+      <thead>
+        <tr>
+          <th className="corner">Δ{STRESS_AXIS_LABEL[d.axis] ?? d.axis} \ ΔSpot</th>
+          {d.spotBins.map((s) => <th key={s}>{s > 0 ? "+" : ""}{s}bp<span className="th-sub">&nbsp;</span></th>)}
+        </tr>
+      </thead>
       <tbody>
-        {D.dSpot.map((s, si) => (
-          <tr key={si}>
-            <th>{s > 0 ? "+" : ""}{s}bp</th>
-            {grid[si]!.map((v, ci) => {
-              const now = s === 0 && cfg.zero(ci);
-              return <td key={ci} className={now ? "center-cell" : ""} style={{ background: now ? "var(--bg-3)" : cell(v) }}>{kg(v)}</td>;
+        {d.grid.map((row, ri) => (
+          <tr key={ri}>
+            <th>{rowLbl(d.rowBins[ri] ?? 0)}</th>
+            {row.map((v, ci) => {
+              const center = (d.rowBins[ri] ?? NaN) === 0 && (d.spotBins[ci] ?? NaN) === 0;
+              return <td key={ci} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : stressCell(v, max) }}>{stressKg(v)}</td>;
             })}
           </tr>
         ))}
@@ -474,6 +446,11 @@ function GreekStressGrid({ greek, axis }: { greek: GreekKey; axis: GreekAxis }):
   );
 }
 
+const STRESS_AXES = ["spot-time", "spot-vol", "spot-skew", "spot-fly"] as const;
+
+// Stress engine: one output toggle drives P&L or any greek across the four
+// spot-x grids. Owns the fetch so it can show a live indicator; refetches on
+// output change (the four axes in parallel).
 function PositionBreakdown(): JSX.Element {
   const rows = DATA.positions;
   const k = (v: number | null, d = 2): string => v == null ? "—" : (v >= 0 ? "+" : "-") + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(2) + "k" : Math.abs(v).toFixed(d));
@@ -542,23 +519,33 @@ function VegaTenorLadder({ rows }: { rows: { tenor: string; vega: number; n: num
   );
 }
 
-// ---- single stress engine: one toggle drives P&L or any greek across all four grids ----
 function StressEngine(): JSX.Element {
   const [out, setOut] = useState<"pnl" | GreekKey>("pnl");
   const labels: Record<"pnl" | GreekKey, string> = { pnl: "P&L", delta: "Δ Delta", gamma: "Γ Gamma", vega: "Vega", theta: "Θ Theta", vanna: "Vanna", volga: "Volga" };
   const opts: ("pnl" | GreekKey)[] = ["pnl", "delta", "gamma", "vega", "theta", "vanna", "volga"];
+  const live = useFetch<(StressGridData | null)[]>(
+    () => Promise.all(STRESS_AXES.map((a) => fetchStressGrid(a, out).then(adaptStressGrid))),
+    120_000,
+  );
+  const reload = live.reload;
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    reload();
+  }, [out, reload]);
+  const g = live.data ?? [null, null, null, null];
   return (
-    <Panel title="Stress test — scenario engine" right={<span className="dim mono small">factor base spans skew & curvature</span>} className="stress-panel">
+    <Panel title="Stress test — scenario engine" dataPp="stress" right={<><span className="dim mono small">factor base spans skew & curvature</span> <PanelLive status={live.status} /></>} className="stress-panel">
       <div className="greek-btns">
         {opts.map((o) => (
           <button key={o} className={"chip " + (out === o ? "on" : "")} onClick={() => setOut(o)}>{labels[o]}</button>
         ))}
       </div>
       <div className="stress-2x2">
-        <Panel title="Spot × Time" right={<span className="dim mono small">decay</span>} className="trade-block">{out === "pnl" ? <TimeStressGrid /> : <GreekStressGrid greek={out} axis="time" />}</Panel>
-        <Panel title="Spot × ΔVol ∥ ATM" right={<span className="dim mono small">level only</span>} className="trade-block">{out === "pnl" ? <PnlGrid axis="vol" /> : <GreekStressGrid greek={out} axis="vol" />}</Panel>
-        <Panel title="Spot × Skew (ΔRR)" right={<RiskOnly text="risk-only · pas de signal" />} className="trade-block">{out === "pnl" ? <PnlGrid axis="skew" /> : <GreekStressGrid greek={out} axis="skew" />}</Panel>
-        <Panel title="Spot × Fly (ΔBF)" right={<span className="accent mono small">curvature · PC3</span>} className="trade-block">{out === "pnl" ? <PnlGrid axis="fly" /> : <GreekStressGrid greek={out} axis="fly" />}</Panel>
+        <Panel title="Spot × Time" right={<span className="dim mono small">decay</span>} className="trade-block"><LiveStressGrid d={g[0] ?? null} status={live.status} /></Panel>
+        <Panel title="Spot × ΔVol ∥ ATM" right={<span className="dim mono small">level only</span>} className="trade-block"><LiveStressGrid d={g[1] ?? null} status={live.status} /></Panel>
+        <Panel title="Spot × Skew (ΔRR)" right={<RiskOnly text="risk-only · pas de signal" />} className="trade-block"><LiveStressGrid d={g[2] ?? null} status={live.status} /></Panel>
+        <Panel title="Spot × Fly (ΔBF)" right={<span className="accent mono small">curvature · PC3</span>} className="trade-block"><LiveStressGrid d={g[3] ?? null} status={live.status} /></Panel>
       </div>
       <HeatLegend note={(out === "pnl" ? "portfolio P&L" : labels[out] + " value") + " · value printed in cell · color normalized per grid · RR is ~vega-neutral in Spot×Vol → its risk only shows in Spot×Skew"} />
     </Panel>
@@ -568,32 +555,40 @@ function StressEngine(): JSX.Element {
 // ---- event & expiry calendar : roll-off / pin risk + dated macro ----
 function CalendarPanel(): JSX.Element {
   const impactTone: Record<string, Tone> = { high: "danger", medium: "warn", low: "neutral" };
-  const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + Math.abs(v);
+  const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + "k" : Math.round(Math.abs(v)));
+  const pin = useFetch<PinRiskRow[]>(() => fetchPinRisk().then(adaptPinRisk), 120_000);
+  const pinRows = pin.data ?? [];
+  const { trade } = useDeskData();
+  const events = trade.data?.events ?? [];
   return (
-    <Panel title="Calendar — events & expiries" pad className="ladder-panel">
+    <Panel title="Calendar — events & expiries" dataPp="risk-calendar-wrap" right={<PanelLive status={pin.status} />} pad className="ladder-panel">
       <div className="risk-cards2">
-        <Panel title="Expiries & roll-off" className="trade-block" pad={false}>
+        <Panel title="Expiries & roll-off" dataPp="pin-risk" className="trade-block" pad={false}>
           <div className="table-scroll">
             <table className="dt">
               <thead><tr><th className="l">Option</th><th className="r">Strike</th><th className="r">DTE</th><th className="r">Dist pip</th><th className="r">P&L now</th><th className="r">if pin</th></tr></thead>
               <tbody>
-                {DATA2.pinRisk.map((p, i) => (
-                  <tr key={i} className={p.dist <= 10 ? "row-now" : ""}>
+                {pinRows.length === 0 ? (
+                  <tr><td className="l dim mono small" colSpan={6}>{pin.status === "missing" ? "no open options" : "loading…"}</td></tr>
+                ) : pinRows.map((p, i) => (
+                  <tr key={i} className={p.distPips <= 10 ? "row-now" : ""}>
                     <td className="l mono">{p.product}</td>
                     <td className="r mono dim">{p.strike.toFixed(4)}</td>
                     <td className="r mono dim">{p.dte}d</td>
-                    <td className={"r mono " + (p.dist <= 10 ? "warn" : "dim")}>{p.dist}</td>
-                    <td className={"r mono " + pnlCls(p.now)}>{kk(p.now)}</td>
-                    <td className={"r mono " + pnlCls(p.ifPin)}>{kk(p.ifPin)}</td>
+                    <td className={"r mono " + (p.distPips <= 10 ? "warn" : "dim")}>{p.distPips}</td>
+                    <td className={"r mono " + pnlCls(p.pnlNow)}>{kk(p.pnlNow)}</td>
+                    <td className={"r mono " + pnlCls(p.pnlAtPin)}>{kk(p.pnlAtPin)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </Panel>
-        <Panel title="Macro events" className="trade-block">
+        <Panel title="Macro events" dataPp="risk-macro" className="trade-block">
           <div className="evt-list">
-            {DATA.events.map((e, i) => (
+            {events.length === 0 ? (
+              <div className="dim mono small">no scheduled events</div>
+            ) : events.map((e, i) => (
               <div key={i} className="evt-item">
                 <div className="evt-when mono"><span className="evt-in accent">{e.in}</span><span className="dim small">{e.date.split(",")[0]}</span></div>
                 <div className="evt-body"><span className="evt-code mono">{e.code}</span><span className="evt-name">{e.content}</span><span className="dim mono small"> · {e.country}</span></div>
@@ -608,85 +603,72 @@ function CalendarPanel(): JSX.Element {
 }
 
 // ---- desk backlog : named-scenario presets + marginal VaR contribution ----
-function DeskGapsPanel(): JSX.Element {
-  const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + "k" : Math.abs(v));
-  const kv = (v: number): string => "-$" + Math.abs(v) + "k";
+// Marginal contribution to VaR — rendered under the VaR panel. Still mock; the
+// /portfolio/marginal-var endpoint is the next Track B item.
+function MarginalVarPanel(): JSX.Element {
+  const live = useFetch<MarginalVarData>(() => fetchMarginalVar().then(adaptMarginalVar), 120_000);
+  const d = live.data;
+  const rows = d?.rows ?? [];
   const facColor: Record<string, string> = { skew: "#a78bfa", level: "var(--accent)", spot: "var(--warn)", curv: "var(--pos)" };
-  const T = DATA2.marginalVarTotal;
+  const money = (v: number): string => { const a = Math.abs(v); const m = a >= 1000 ? (a / 1000).toFixed(1) + "k" : Math.round(a).toString(); return (v >= 0 ? "-$" : "+$") + m; };
   return (
-    <Panel title="Desk gaps — backlog of additions" pad className="ladder-panel">
-      <div className="risk-cards2">
-        <Panel title="Scenario presets / replay" className="trade-block">
-          <div className="preset-grid">
-            {DATA2.stressPresets.map((p) => (
-              <button key={p.id} className="preset-card">
-                <div className="preset-head"><span className="preset-name">{p.name}</span><span className={"preset-pnl mono " + pnlCls(p.pnl)}>{kk(p.pnl)}</span></div>
-                <div className="preset-sub dim mono">{p.sub}</div>
-                <div className="preset-shock mono dim">spot {p.spot > 0 ? "+" : ""}{p.spot}bp · vol {p.vol > 0 ? "+" : ""}{p.vol}vp</div>
-              </button>
+    <Panel title="Marginal contribution to VaR" dataPp="marginal-var" right={<PanelLive status={live.status} />} className="trade-block" pad={false}>
+      <div className="table-scroll">
+        <table className="dt">
+          <thead><tr><th className="l">Position</th><th className="r">standalone</th><th className="r">component</th><th className="r">% VaR</th></tr></thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td className="l dim mono small" colSpan={4}>{live.status === "missing" ? "no open book" : d && d.nDays < 5 ? "accumulating history (≈5d)…" : "loading…"}</td></tr>
+            ) : rows.map((m, i) => (
+              <tr key={i}>
+                <td className="l mono"><span className="mvar-dot" style={{ background: facColor[m.factor] ?? "var(--muted)" }} title={"driver: " + m.factor} />{m.label}</td>
+                <td className="r mono dim">{money(m.standalone)}</td>
+                <td className={"r mono " + (m.component >= 0 ? "neg" : "pos")}>{money(m.component)}</td>
+                <td className="r"><div className="mvar-pct"><div className="mvar-bar" style={{ width: Math.max(0, m.pct) + "%" }} /><span className="mono">{m.pct.toFixed(1)}%</span></div></td>
+              </tr>
             ))}
-          </div>
-          <div className="dim small mono preset-note">named historical shocks in one click → feed the stress engine</div>
-        </Panel>
-        <Panel title="Marginal contribution to VaR" className="trade-block" pad={false}>
-          <div className="mvar-factors">
-            <div className="gs-sublbl mono dim">component VaR by factor · le <b className="accent">skew (RR)</b> domine sans vue associée → exposition incidente à neutraliser, pas un edge</div>
-            <FactorStack factors={DATA2.varFactors} />
-          </div>
-          <div className="table-scroll">
-            <table className="dt">
-              <thead><tr><th className="l">Position</th><th className="r">standalone</th><th className="r">marginal</th><th className="r">component</th><th className="r">% VaR</th></tr></thead>
-              <tbody>
-                {DATA2.marginalVar.map((m, i) => {
-                  const dom = Object.entries(m.f).reduce((a, b) => (Math.abs(b[1]) > Math.abs(a[1]) ? b : a))[0];
-                  return (
-                    <tr key={i}>
-                      <td className="l mono"><span className="mvar-dot" style={{ background: facColor[dom] }} title={"driver: " + dom} />{m.pos}</td>
-                      <td className="r mono dim">{kv(m.standalone)}</td>
-                      <td className="r mono neg">{kv(m.marginal)}</td>
-                      <td className="r mono neg">{kv(m.comp)}</td>
-                      <td className="r"><div className="mvar-pct"><div className="mvar-bar" style={{ width: m.pct + "%" }} /><span className="mono">{m.pct.toFixed(1)}%</span></div></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot><tr>
-                <td className="l mono">Portfolio <span className="dim">· diversif. {T.diversification}%</span></td>
-                <td className="r mono dim">{kv(T.standalone)}</td>
-                <td className="r mono dim">—</td>
-                <td className="r mono neg">{kv(T.comp)}</td>
-                <td className="r mono">100%</td>
-              </tr></tfoot>
-            </table>
-          </div>
-        </Panel>
+          </tbody>
+          {rows.length > 0 && d ? (
+            <tfoot><tr>
+              <td className="l mono">Portfolio <span className="dim">· diversif. {d.diversification}%</span></td>
+              <td className="r mono dim">—</td>
+              <td className="r mono neg">{money(d.portfolioVar)}</td>
+              <td className="r mono">100%</td>
+            </tr></tfoot>
+          ) : null}
+        </table>
       </div>
     </Panel>
   );
 }
 
 // ---- greeks ladder table (P1: includes vanna/volga; reference row frozen as read anchor) ----
-function LadderTable({ title, right, axisLbl, rows, nowKey, sub }: {
+function LiveLadderTable({ title, right, axisLbl, d, status }: {
   title: string;
   right?: JSX.Element;
   axisLbl: string;
-  rows: LadderRow[];
-  nowKey: (l: LadderRow, i: number) => boolean;
-  sub?: (l: LadderRow) => string;
+  d: LiveLadder | null;
+  status: Fresh<unknown>["status"];
 }): JSX.Element {
   const kg = (v: number): string => { const s = v >= 0 ? "+" : "-"; const a = Math.abs(v); return a >= 1000 ? s + (a / 1000).toFixed(1) + "k" : s + Math.round(a); };
-  const cols: (keyof LadderRow)[] = ["pnl", "delta", "gamma", "vega", "theta", "vanna", "volga"];
-  const heads = ["P&L", "Δ", "Γ", "Vega", "Θ", "Vanna", "Volga"];
+  const heads = ["P&L", "Δ", "Γ", "Vega", "Hedge Δ"];
+  const rows = d?.rows ?? [];
   return (
     <Panel title={title} right={right} className="trade-block" pad={false}>
       <div className="table-scroll">
         <table className="dt ladder-dt">
           <thead><tr><th className="l">{axisLbl}</th>{heads.map((h) => <th key={h} className="r">{h}</th>)}</tr></thead>
           <tbody>
-            {rows.map((l, i) => (
-              <tr key={i} className={nowKey(l, i) ? "row-now ladder-anchor" : ""}>
-                <td className="l mono">{l.axis}{sub ? <span className="dim"> {sub(l)}</span> : null}</td>
-                {cols.map((c) => <td key={c} className={"r mono " + pnlCls(l[c] as number)}>{kg(l[c] as number)}</td>)}
+            {rows.length === 0 ? (
+              <tr><td className="l dim mono small" colSpan={6}>{status === "missing" ? "no book / no spot" : "loading…"}</td></tr>
+            ) : rows.map((l, i) => (
+              <tr key={i} className={l.isNow ? "row-now ladder-anchor" : ""}>
+                <td className="l mono">{l.label}{l.spot != null ? <span className="dim"> {l.spot.toFixed(4)}</span> : null}</td>
+                <td className={"r mono " + pnlCls(l.pnl)}>{kg(l.pnl)}</td>
+                <td className={"r mono " + pnlCls(l.delta)}>{kg(l.delta)}</td>
+                <td className={"r mono " + pnlCls(l.gamma)}>{kg(l.gamma)}</td>
+                <td className={"r mono " + pnlCls(l.vega)}>{kg(l.vega)}</td>
+                <td className={"r mono " + pnlCls(l.hedge)}>{kg(l.hedge)}</td>
               </tr>
             ))}
           </tbody>
@@ -696,10 +678,32 @@ function LadderTable({ title, right, axisLbl, rows, nowKey, sub }: {
   );
 }
 
+const LADDER_AXES = ["spot", "vol", "time", "skew", "fly"] as const;
+
+// All five greek ladders, each a full-BS reval along one axis (live).
+function LiveLadders(): JSX.Element {
+  const live = useFetch<LiveLadder[]>(
+    () => Promise.all(LADDER_AXES.map((a) => fetchGreeksLadder(a).then(adaptGreeksLadder))),
+    120_000,
+  );
+  const L = live.data ?? [];
+  const at = (i: number): LiveLadder | null => L[i] ?? null;
+  return (
+    <Panel title="Greeks ladder" dataPp="greeks-ladder" right={<><span className="dim mono small">5 axes · full BS reval</span> <PanelLive status={live.status} /></>} pad className="ladder-panel">
+      <div className="ladder-grid">
+        <LiveLadderTable title="vs Spot" axisLbl="Spot" d={at(0)} status={live.status} />
+        <LiveLadderTable title="vs Vol ∥ ATM" right={<span className="dim mono small">level</span>} axisLbl="Vol" d={at(1)} status={live.status} />
+        <LiveLadderTable title="vs Time" axisLbl="Time" d={at(2)} status={live.status} />
+        <LiveLadderTable title="vs Skew (ΔRR)" right={<RiskOnly />} axisLbl="RR" d={at(3)} status={live.status} />
+        <LiveLadderTable title="vs Fly (ΔBF)" right={<span className="accent mono small">PC3</span>} axisLbl="BF" d={at(4)} status={live.status} />
+      </div>
+    </Panel>
+  );
+}
+
 export function RiskView(): JSX.Element {
-  const [scenKind] = useState("spot");
-  const scen = DATA2.scenarioSeries(scenKind);
   const { risk, portfolio } = useDeskData();
+  const vpca = useFetch<VegaPcaRow[]>(() => fetchVegaPca().then(adaptVegaPca), 120_000).data ?? [];
   const g = DATA.greeks; // per-unit greek representation — not the live positions-derived nets; stays mock (09)
   const a = portfolio.data?.account ?? DATA.account; // margin/net-liq live (PR 3 account domain)
   const vd = risk.data ?? { var95: g.var1d95, var99: g.var1d99, es99: g.var1d99 * 1.16, nDays: 0, hist: [], perTenor: [] };
@@ -707,8 +711,9 @@ export function RiskView(): JSX.Element {
   // reconciliation (§1): net 2nd-order greeks = Σ of their tenor buckets, by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
   const netVolga = pt.reduce((s, r) => s + r.volga, 0);
-  const sumPC = +DATA2.vegaPCA.reduce((s, p) => s + p.vega, 0).toFixed(1);
-  const skewResid = +(g.vega - sumPC).toFixed(1); // vega outside the 3 signal modes = incident skew
+  const netVega = +pt.reduce((s, r) => s + r.vega, 0).toFixed(1); // live net vega = Σ tenor buckets
+  const sumPC = +vpca.reduce((s, p) => s + p.vega, 0).toFixed(1);
+  const skewResid = +(netVega - sumPC).toFixed(1); // vega outside the 3 signal modes = incident skew
   const SKEW_THR = 5; // |residual| above this = a leak to investigate
   const skewLeak = Math.abs(skewResid) > SKEW_THR;
   const rrToFlat = Math.round(Math.abs(netVanna) / 8); // RR 25Δ contracts to flatten net vanna (mechanical hedge)
@@ -718,17 +723,14 @@ export function RiskView(): JSX.Element {
   const utilColor = (p: number): string => (p > 80 ? "var(--neg)" : p > 60 ? "var(--warn)" : "var(--pos)");
   // these sub-components are defined in the prototype but not rendered in this
   // view; referenced here to keep the 1:1 port without tripping noUnusedLocals.
-  void scen;
   void utilColor;
   void VarCurve;
   void ReturnsBars;
-  void StressGrid;
-  void ScenarioMini;
   return (
     <div className="risk-grid">
-      <Panel title="Portfolio risk" className="stress-panel">
+      <Panel title="Portfolio risk" dataPp="risk-portfolio-wrap" className="stress-panel">
         <div className="risk-overview2">
-          <Panel title="Greeks & risk utilization" className="trade-block">
+          <Panel title="Greeks & risk utilization" dataPp="greeks-util" right={<PanelLive status={risk.status} />} className="trade-block">
             <div className="gs-section-lbl">Portfolio greeks <span className="dim">· risk stock</span></div>
             <div className="greeks-summary gs-g4">
               <div className="gs-item"><span className="gs-lbl">Net Δ</span><b className={"mono " + pnlCls(g.delta)}>{fmt.usdk(g.delta * 1000)}</b><span className="gs-sub mono">{fmt.sgn(g.dDelta24h, 1)}k / 24h</span></div>
@@ -753,16 +755,16 @@ export function RiskView(): JSX.Element {
             <div className="gs-section-lbl util-lbl">Vega exposure <span className="dim">· by tenor (curve) & by signal mode (PCA)</span></div>
             <div className="gs-2col">
               <div className="gs-sub"><div className="gs-sublbl mono dim">vega by tenor · curve 1M–6M (magnitude)</div><VegaTenorLadder rows={pt} /></div>
-              <div className="gs-sub"><div className="gs-sublbl mono dim">vega → PCA mode · the signal base ($k)</div><DivBars rows={DATA2.vegaPCA.map((p) => ({ label: p.mode, sub: p.name + " · " + p.var + "%", v: p.vega }))} unit="k" /></div>
+              <div className="gs-sub"><div className="gs-sublbl mono dim">vega → PCA mode · the signal base ($k)</div><DivBars rows={vpca.map((p) => ({ label: p.mode, sub: p.name + " · " + p.var + "%", v: p.vega }))} unit="k" /></div>
             </div>
             <div className="skew-resid">
               <div className="sr-head">
                 <span className="sr-lbl mono">skew · hors-signal</span>
                 <RiskOnly />
                 <span className={"sr-val mono " + (skewLeak ? "warn" : "dim")}>{fmt.sgn(skewResid, 1)}k</span>
-                <span className="sr-eq dim small mono">ΣPC ({sumPC}k) + skew = net vega ({g.vega}k)</span>
+                <span className="sr-eq dim small mono">ΣPC ({sumPC}k) + skew = net vega ({netVega}k)</span>
               </div>
-              <div className="sr-bar"><div className="sr-fill" style={{ width: Math.min(100, Math.abs(skewResid) / g.vega * 100) + "%" }} /></div>
+              <div className="sr-bar"><div className="sr-fill" style={{ width: Math.min(100, Math.abs(skewResid) / (netVega || 1) * 100) + "%" }} /></div>
               {skewLeak
                 ? <div className="sr-alert"><span className="flag-dot" />skew incident à revoir · |résiduel| &gt; {SKEW_THR}k — fuite (structure asymétrique / fill déséquilibré), pas une position</div>
                 : <div className="sr-ok dim small mono">dans le seuil (≈ 0) · aucune vue de skew au book</div>}
@@ -775,31 +777,26 @@ export function RiskView(): JSX.Element {
             </div>
             <div className="gs-section-lbl util-lbl">Risk utilization <span className="dim">· used vs limit</span></div>
             <div className="util-bars">
-              <Bar label="Init margin" used="$1.84M" limit="$4.22M" pct={a.marginInitPct} value={a.marginInitPct + "%"} tone="auto" />
-              <Bar label="Maint margin" used="$1.28M" limit="$4.22M" pct={a.marginMaintPct} value={a.marginMaintPct + "%"} tone="auto" />
+              <Bar label="Init margin" used={fmt.usd(a.marginInit)} limit={fmt.usd(a.netLiq)} pct={a.marginInitPct} value={a.marginInitPct.toFixed(0) + "%"} tone="auto" />
+              <Bar label="Maint margin" used={fmt.usd(a.marginMaint)} limit={fmt.usd(a.netLiq)} pct={a.marginMaintPct} value={a.marginMaintPct.toFixed(0) + "%"} tone="auto" />
               <Bar label="Δ exposure" used="$1.18M" limit="$4.22M" pct={28} value="28%" tone="auto" />
               <Bar label="Vega" used="$32k" limit="$62k" pct={52} value="52%" tone="auto" />
               <Bar label="Γ exposure" used="14.5k" limit="20.4k" pct={71} value="71%" tone="auto" />
             </div>
           </Panel>
-          <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} fresh={risk} />
+          <div className="var-col">
+            <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} nDays={vd.nDays} />
+            <MarginalVarPanel />
+          </div>
         </div>
       </Panel>
       <StressEngine />
-      <Panel title="Greeks ladder" right={<span className="dim mono small">incl. vanna / volga · 5 axes</span>} pad className="ladder-panel">
-        <div className="ladder-grid">
-          <LadderTable title="vs Spot" axisLbl="Spot" rows={DATA2.spotLadder} nowKey={(l) => l.axis === "0bp"} sub={(l) => (l.spot ?? 0).toFixed(4)} />
-          <LadderTable title="vs Vol ∥ ATM" right={<span className="dim mono small">level</span>} axisLbl="Vol" rows={[...DATA2.volLadder].reverse()} nowKey={(l) => l.axis === "0vp"} />
-          <LadderTable title="vs Time" axisLbl="Time" rows={DATA2.timeLadder} nowKey={(_l, i) => i === 0} sub={(l) => (l.days === 0 ? "now" : l.days + "d")} />
-          <LadderTable title="vs Skew (ΔRR)" right={<RiskOnly />} axisLbl="RR" rows={[...DATA2.skewLadder].reverse()} nowKey={(l) => l.axis === "0vp"} />
-          <LadderTable title="vs Fly (ΔBF)" right={<span className="accent mono small">PC3</span>} axisLbl="BF" rows={[...DATA2.flyLadder].reverse()} nowKey={(l) => l.axis === "0vp"} />
-        </div>
-      </Panel>
-      <Panel title="Position breakdown" pad={false} className="ladder-panel">
+      <LiveLadders />
+      <ScenariosPanel />
+      <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status="mock" />} pad={false} className="ladder-panel">
         <PositionBreakdown />
       </Panel>
       <CalendarPanel />
-      <DeskGapsPanel />
     </div>
   );
 }
