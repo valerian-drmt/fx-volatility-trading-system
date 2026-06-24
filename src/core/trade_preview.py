@@ -239,14 +239,9 @@ TEMPLATES: dict[str, dict[str, Any]] = {
 }
 
 
-# Structures recommended by the PCA strategy (per migration 011 seed).
-# Used by the UI to flag off-strategy picks (it does not block them — user can
-# still trade hedges or contrarian structures, just with a "not in strategy" tag).
-IN_STRATEGY_STRUCTURES: frozenset[str] = frozenset({
-    "straddle_atm", "short_strangle",
-    "calendar_long", "calendar_short",
-    "long_butterfly_25d", "short_butterfly_25d",
-})
+# No "in-strategy" recommendation set: the desk surfaces indicators, it does not
+# advise (see docs/strategy.md). Structure templates remain buildable references,
+# never a prescribed catalogue.
 
 
 @dataclass(frozen=True)
