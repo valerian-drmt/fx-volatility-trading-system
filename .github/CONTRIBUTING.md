@@ -22,7 +22,7 @@ follows the exact same path.
 
 ```
 1. Scope     →  open an Issue via a template            → card 📥 Backlog
-2. Ready     →  fields filled (Area, Release, Priority) → card 🟢 Ready
+2. Ready     →  fields filled (Area, Milestone, Priority) → card 🟢 Ready
 3. Code      →  dedicated branch, Conventional commits  → card ⚙️ In Progress
 4. Propose   →  PR with "Closes #N" + checklist         → card 🔍 In Review
 5. Merge     →  squash into main, CI green              → card ✅ Done (auto)

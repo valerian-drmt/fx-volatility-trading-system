@@ -8,6 +8,7 @@ body:
     attributes:
       value: |
         ⚠️ **No secrets** in this issue (keys, passwords, `DATABASE_URL`, `.env` contents).
+        After creating it, set the **Milestone** from the sidebar if the fix targets a specific release.
         Procedure: [`.github/WORKFLOW.md`](https://github.com/valerian-drmt/fx-volatility-trading-system/blob/main/.github/WORKFLOW.md).
   - type: textarea
     id: observed
