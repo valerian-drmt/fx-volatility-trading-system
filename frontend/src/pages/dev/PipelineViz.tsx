@@ -20,6 +20,7 @@ import { PortfolioView } from "../../voldesk/views/PortfolioView";
 import { RiskView } from "../../voldesk/views/RiskView";
 import { SignalsView } from "../../voldesk/views/SignalsView";
 import { TradeView } from "../../voldesk/views/TradeView";
+import { CycleProgress } from "./CycleProgress";
 import { PIPELINES, type DagNode, type DomainId, type PanelPipe, type PipeDag, type PipeNode, type Role, type ViewId } from "./pipelines";
 
 // The real prod view rendered in the terminal "screen" (the panel lives in it).
@@ -424,9 +425,11 @@ function DataInspector({ pipe, fresh }: {
   pipe: PanelPipe; fresh: { data: unknown; status: string; asOf: number | null };
 }): JSX.Element {
   const [open, setOpen] = useState(true);
-  const [tab, setTab] = useState<"json" | "ws">("json");
+  const [tab, setTab] = useState<"json" | "ws" | "cycle">("json");
   const chan = wsChannelFor(pipe.domain);
-  const view = tab === "ws" && chan ? "ws" : "json";
+  // The vol-engine cycle progress is meaningful for the vol-produced domains.
+  const cycleCapable = pipe.domain === "surface" || pipe.domain === "pca" || pipe.domain === "termStructure";
+  const view = tab === "ws" && chan ? "ws" : tab === "cycle" && cycleCapable ? "cycle" : "json";
   const json = useMemo(() => {
     try { return JSON.stringify(fresh.data, null, 2); } catch { return String(fresh.data); }
   }, [fresh.data]);
@@ -440,6 +443,7 @@ function DataInspector({ pipe, fresh }: {
         <span style={{ width: 8 }} />
         <button onClick={() => setTab("json")} style={tabStyle(view === "json")}>JSON payload</button>
         {chan ? <button onClick={() => setTab("ws")} style={tabStyle(view === "ws")}>WS {chan.label}</button> : null}
+        {cycleCapable ? <button onClick={() => setTab("cycle")} style={tabStyle(view === "cycle")}>Cycle</button> : null}
         <span style={{ flex: 1 }} />
         {view === "json" ? (
           <span className="pp-mono" style={{ fontSize: 10.5, color: sc }}>{fresh.status}{fresh.asOf ? " · " + clk(new Date(fresh.asOf)) : ""}</span>
@@ -449,6 +453,8 @@ function DataInspector({ pipe, fresh }: {
       {open ? (
         view === "ws" && chan ? (
           <WsLogView key={chan.url} url={chan.url} />
+        ) : view === "cycle" ? (
+          <CycleProgress />
         ) : (
           <pre className="pp-mono" style={{ flex: 1, margin: 0, overflow: "auto", minHeight: 0, padding: "8px 12px", fontSize: 11, lineHeight: 1.5, color: fresh.data == null ? "#4d5360" : "#bcd0c6", background: "#08090c", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
             {fresh.data == null ? "(no data — " + fresh.status + ")" : json}

@@ -17,6 +17,9 @@ export const handlers = [
       per_position: [],
     }),
   ),
+  http.get("*/api/v1/dev/cycle-progress", () =>
+    HttpResponse.json({ cycle_started_at: null, stage: null, task: null, completed: [] }),
+  ),
   http.get("*/api/v1/portfolio/scenarios", () =>
     HttpResponse.json({ by_spot: [], by_iv: [], n_positions: 0 }),
   ),

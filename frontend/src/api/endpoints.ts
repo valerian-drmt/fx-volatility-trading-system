@@ -155,3 +155,4 @@ export const fetchConfigHistory = (limit = 50) =>
 
 // Dev / system
 export const fetchDevEngines = () => apiGet<unknown>("/api/v1/dev/engines");
+export const fetchCycleProgress = () => apiGet<unknown>("/api/v1/dev/cycle-progress");
