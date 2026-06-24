@@ -16,8 +16,19 @@ import { DATA, fmt } from "../data";
 import type { AccountState, Cash, Greeks, Limits, MacroEvent, Position } from "../data";
 import { useDeskData } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
+import { ApiError } from "../../api/client";
+import { closeContract, closeTrade } from "../../api/endpoints";
 
-const GATE_TITLE = "écriture désactivée — auth requise (Phase 2)";
+const GATE_TITLE = "write disabled — auth required (Phase 2)";
+
+function closeErr(e: unknown): string {
+  if (e instanceof ApiError) {
+    const detail = (e.body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === "string") return detail;
+    return `broker/API error ${e.status}`;
+  }
+  return e instanceof Error ? e.message : "unknown error";
+}
 
 interface TradeTweaks {
   density: string;
@@ -42,6 +53,8 @@ function ClosePanel({
   const [contractId, setContractId] = useState("");
   const [tradeId, setTradeId] = useState("");
   const [qty, setQty] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     if (pos) {
       setType("contract");
@@ -107,6 +120,28 @@ function ClosePanel({
         var99: Math.round(before.var99! * (1 - 0.14 * c.frac)),
       }
     : null;
+
+  // Real close → IB paper account. Contract = one leg (OpenPosition.id, partial
+  // via qty); trade = every leg sharing the trade_id. Parent refreshes on poll.
+  const onExec = async (): Promise<void> => {
+    if (!sel || !WRITE_ENABLED || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      if (type === "contract") {
+        await closeContract(Number(contractId), qty);
+      } else {
+        const leg = positions.find((p) => p.packageId === tradeId);
+        if (!leg?.tradeId) throw new Error("no backend trade id for this package");
+        await closeTrade(Number(leg.tradeId));
+      }
+      onDone();
+    } catch (e) {
+      setErr(closeErr(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const m = (v: number): string => (v < 0 ? "-" : "") + "$" + Math.abs(Math.round(v)).toLocaleString("en-US");
   const rows: [string, string, string][] = [
@@ -191,14 +226,16 @@ function ClosePanel({
           ))}
         </tbody>
       </table>
+      {err && <div className="ob-error mono small">⚠ {err}</div>}
       <button
         className="btn-close-exec"
-        disabled={!sel || !WRITE_ENABLED}
-        title={WRITE_ENABLED ? "" : GATE_TITLE}
-        onClick={onDone}
+        disabled={!sel || !WRITE_ENABLED || busy}
+        title={WRITE_ENABLED ? "submit close to IB paper account" : GATE_TITLE}
+        onClick={onExec}
       >
-        {sel ? (type === "trade" ? "Close trade" : `Close ${qty} ct`) : "Close"}
+        {busy ? "Closing…" : sel ? (type === "trade" ? "Close trade" : `Close ${qty} ct`) : "Close"}
       </button>
+      {!WRITE_ENABLED && <div className="dim small ob-readonly-note">Read-only desk · closing requires auth (Phase 2).</div>}
     </div>
   );
 }
@@ -550,8 +587,10 @@ function IndicatorsPanel({
 
 // ---------------- HedgeStrip ----------------
 function HedgeStrip({ greeks, limits }: { greeks: Greeks; limits: Limits }): JSX.Element {
-  const [hedged, setHedged] = useState(false);
-  const resid = hedged ? 120 : greeks.netDelta;
+  // Read-only Δ-band monitor. One-click "hedge to flat" execution belongs to the
+  // auto-hedge phase (R12+, docs/strategy.md §1) — no backend endpoint yet, so we
+  // surface the residual honestly rather than fake a re-center.
+  const resid = greeks.netDelta;
   const band = limits.deltaBandUsd;
   const drift = Math.abs(resid) > band;
   const over = Math.round((Math.abs(resid) / band - 1) * 100);
@@ -566,19 +605,14 @@ function HedgeStrip({ greeks, limits }: { greeks: Greeks; limits: Limits }): JSX
       </div>
       <div className="hs-item">
         <span className="gs-lbl">Band ±{bandTxt}</span>
-        <b className={"mono " + (drift ? "warn" : "pos")}>{hedged ? "within band" : "+" + over + "% beyond"}</b>
+        <b className={"mono " + (drift ? "warn" : "pos")}>{drift ? "+" + over + "% beyond" : "within band"}</b>
       </div>
       <div className="hs-item">
-        <span className="gs-lbl">Last hedge</span>
-        <b className="mono dim">{hedged ? "just now" : "11:48:02"}</b>
+        <span className="gs-lbl">Hedge</span>
+        <b className="mono dim">manual · via order builder</b>
       </div>
-      <button
-        className="btn-hedge"
-        disabled={hedged || !WRITE_ENABLED}
-        title={WRITE_ENABLED ? "" : GATE_TITLE}
-        onClick={() => setHedged(true)}
-      >
-        {hedged ? "✓ re-centered" : "hedge to flat"}
+      <button className="btn-hedge" disabled title="auto delta-hedge lands in R12 (docs/strategy.md §1)">
+        hedge to flat
       </button>
     </div>
   );

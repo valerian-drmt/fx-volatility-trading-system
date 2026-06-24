@@ -328,7 +328,11 @@ input,select{font-family:inherit;font-size:13px}
 .book-checks .ok{color:var(--pos)}
 .book-btns{display:flex;gap:8px;margin-top:8px}
 .btn-draft-send{flex:1;padding:10px;border-radius:5px;background:#0f2417;border:1px solid color-mix(in srgb,var(--pos) 48%,transparent);color:var(--pos);font-weight:700;font-size:13px;transition:.15s}
-.btn-draft-send:hover{background:#143020}
+.btn-draft-send:hover:not(:disabled){background:#143020}
+.btn-draft-send:disabled,.btn-draft-cancel:disabled{opacity:.45;cursor:not-allowed}
+.ob-blocking{margin:8px 0 2px;padding:6px 8px;border-radius:4px;color:var(--warn);background:color-mix(in srgb,var(--warn) 10%,transparent);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent)}
+.ob-error{margin:8px 0 2px;padding:6px 8px;border-radius:4px;color:var(--neg);background:color-mix(in srgb,var(--neg) 10%,transparent);border:1px solid color-mix(in srgb,var(--neg) 30%,transparent)}
+.ob-readonly-note{margin-top:7px}
 .btn-draft-cancel{flex:1;padding:10px;border-radius:5px;background:#2c0f10;border:1px solid color-mix(in srgb,var(--neg) 48%,transparent);color:var(--neg);font-weight:700;font-size:13px;transition:.15s}
 .btn-draft-cancel:hover{background:#3a1416}
 .btn-ghost{flex:1;padding:9px;border-radius:var(--r);border:1px solid var(--border);color:var(--text-dim);font-weight:600}

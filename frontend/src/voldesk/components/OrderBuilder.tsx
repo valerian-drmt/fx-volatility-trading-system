@@ -11,7 +11,11 @@ import { useEffect, useMemo, useState } from "react";
 import { gk$, pnlCls } from "./format";
 import { DATA, DATA2, fmt } from "../data";
 import { useDeskData } from "../data/deskData";
+import { ApiError } from "../../api/client";
+import { createTradePreview, submitTrade, type PreviewLeg, type TradePreview } from "../../api/endpoints";
+import { WRITE_ENABLED } from "../data/writeEnabled";
 
+const GATE_TITLE = "write disabled — auth required (Phase 2)";
 const PRODUCTS = ["Vanilla Call", "Vanilla Put", "Straddle", "Strangle", "Butterfly", "Risk Reversal", "Calendar", "Future"];
 const TENORS = DATA.tenors;
 const PILLARS = DATA.deltas;
@@ -163,6 +167,64 @@ function buildLegs(
   }
 }
 
+// Map the product-driven builder selection onto backend free legs (LegSpec).
+// The backend re-prices from the live surface, so we send *structure* only
+// (contract/side/tenor/pillar/qty_factor) — never client strikes or premiums,
+// except a discretionary vanilla strike the trader typed by hand.
+export function builderToLegs(
+  product: string, side: string, tenor: string, farTenor: string,
+  strike: number, wing: string, csize: string,
+): PreviewLeg[] {
+  const sd = side as "BUY" | "SELL";
+  const opp: "BUY" | "SELL" = side === "BUY" ? "SELL" : "BUY";
+  const lvl = wing.replace("Δ", "").trim();   // "25Δ" → "25"
+  const dc = `${lvl}dc`, dp = `${lvl}dp`;
+  switch (product) {
+    case "Vanilla Call": return [{ contract_type: "call", side: sd, tenor, strike }];
+    case "Vanilla Put":  return [{ contract_type: "put",  side: sd, tenor, strike }];
+    case "Straddle": return [
+      { contract_type: "call", side: sd, tenor, delta_pillar: "atm" },
+      { contract_type: "put",  side: sd, tenor, delta_pillar: "atm" },
+    ];
+    case "Strangle": return [
+      { contract_type: "put",  side: sd, tenor, delta_pillar: dp },
+      { contract_type: "call", side: sd, tenor, delta_pillar: dc },
+    ];
+    case "Butterfly": return [
+      { contract_type: "call", side: sd,  tenor, delta_pillar: dc },
+      { contract_type: "call", side: opp, tenor, delta_pillar: "atm", qty_factor: 2 },
+      { contract_type: "put",  side: sd,  tenor, delta_pillar: dp },
+    ];
+    case "Risk Reversal": return [
+      { contract_type: "call", side: sd,  tenor, delta_pillar: dc },
+      { contract_type: "put",  side: opp, tenor, delta_pillar: dp },
+    ];
+    case "Calendar": return [
+      { contract_type: "call", side: opp, tenor, delta_pillar: "atm" },
+      { contract_type: "call", side: sd,  tenor: farTenor, delta_pillar: "atm" },
+    ];
+    case "Future": return [
+      { contract_type: "future", side: sd, tenor, future_contract_size: csize.startsWith("M6E") ? "micro" : "full" },
+    ];
+    default: return [];
+  }
+}
+
+// Surface a backend error as one readable line (handles the structured
+// {detail:{message}} the submit endpoint returns, plain {detail}, and network).
+function errMsg(e: unknown): string {
+  if (e instanceof ApiError) {
+    const detail = (e.body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === "string") return detail;
+    if (detail && typeof detail === "object") {
+      const msg = (detail as { message?: unknown }).message;
+      if (typeof msg === "string") return msg;
+    }
+    return `broker/API error ${e.status}`;
+  }
+  return e instanceof Error ? e.message : "unknown error";
+}
+
 // per-leg greeks → structure net. Vanna/volga are first-class (§1): a long-call/short-put RR ADDS
 // vanna while its vega ≈ 0. cost is signed by cash convention (BUY pays = +debit, SELL receives = −credit).
 function previewGreeks(legs: Leg[], mult: number): NetGreeks {
@@ -229,7 +291,18 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
   const [bundleHedge, setBundleHedge] = useState(false);
   const [stage, setStage] = useState("build"); // build | preview | booked
   const [booked, setBooked] = useState<Booked | null>(null);
-  const reset = (): void => setStage("build");
+  // 6w — real submit path. The preview is server-validated (POST /trade/preview);
+  // "Place order" routes to the IB paper account (execution_mode "live").
+  const [server, setServer] = useState<TradePreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [placed, setPlaced] = useState<Record<string, unknown> | null>(null);
+  const reset = (): void => {
+    setStage("build");
+    setServer(null);
+    setErr(null);
+    setPlaced(null);
+  };
 
   useEffect(() => {
     if (prefill) {
@@ -293,6 +366,43 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
     if (onState) onState({ active: stage === "preview", product, side, tenor, farTenor, qty, isCal, isFut, net, naked });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, product, side, tenor, farTenor, qty, isCal, isFut, net, naked]);
+
+  // Preview = server-priced validation. Read-only desk (no auth) still shows the
+  // client-side risk truth, just without a server preview_id / submit.
+  const onPreview = async (): Promise<void> => {
+    if (!WRITE_ENABLED) { setStage("preview"); return; }
+    setBusy(true);
+    setErr(null);
+    setServer(null);
+    try {
+      const resp = await createTradePreview(builderToLegs(product, side, tenor, farTenor, strike, wing, csize), qty);
+      setServer(resp);
+    } catch (e) {
+      setErr(errMsg(e));
+    } finally {
+      setBusy(false);
+      setStage("preview");
+    }
+  };
+  // Place = submit the server-validated preview to the IB paper account.
+  const onPlace = async (): Promise<void> => {
+    if (!WRITE_ENABLED || !server || server.state !== "valid_for_submit" || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const result = await submitTrade(server.preview_id, "live");
+      setPlaced(result);
+      setBooked({ side, product, qty, tenor, bundleHedge, hedgeQty, hedgeSide });
+      setStage("booked");
+    } catch (e) {
+      setErr(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const canPlace = WRITE_ENABLED && server?.state === "valid_for_submit" && !busy;
+  const stateText = !WRITE_ENABLED ? "auth required" : busy && !server ? "pricing…" : (server?.state ?? "—");
+  const stateCls = server?.state === "valid_for_submit" ? "pos" : server?.state ? "warn" : "dim";
 
   return (
     <div className="builder">
@@ -509,29 +619,55 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
 
       {/* ACTIONS */}
       <div className="builder-actions">
-        {stage === "build" && <button className="btn-preview" onClick={() => setStage("preview")}>Preview pricing & impact<span className="arr">→</span></button>}
+        {stage === "build" && (
+          <button className="btn-preview" disabled={busy} onClick={onPreview}>
+            {busy ? "Pricing…" : <>Preview pricing &amp; impact<span className="arr">→</span></>}
+          </button>
+        )}
         {stage === "preview" && (
           <div className="book-panel draft">
-            <div className="book-head"><span className="draft-title"><span className="draft-doc" />Order draft{bundleHedge ? " + hedge" : ""}</span><span className="badge-paper">PAPER</span></div>
+            <div className="book-head">
+              <span className="draft-title"><span className="draft-doc" />Order ticket{bundleHedge ? " + hedge" : ""}</span>
+              <span className="badge-paper" title="orders route to the IB paper account">PAPER ACCOUNT</span>
+            </div>
             <div className="book-kv">
               <div><span>Structure</span><b>{side} {qty}× {product} {tenor}{isCal ? "/" + farTenor : ""}{!isFut && STRUCT[product]!.mode.includes("wing") ? " " + wing : ""}</b></div>
-              <div><span>Preview id</span><b className="mono dim">tp_9425a798e686</b></div>
-              <div><span>State</span><b className="mono pos">valid_for_submit</b></div>
-              <div><span>Net cash</span><b className={"mono " + (isCredit ? "pos" : "neg")}>{isCredit ? "+" : "−"}{fmt.usd(premiumAbs)} {isCredit ? "credit" : "debit"}</b></div>
+              <div><span>Preview id</span><b className="mono dim">{server?.preview_id ?? "—"}</b></div>
+              <div><span>State</span><b className={"mono " + stateCls}>{stateText}</b></div>
+              <div><span>Net cash <em className="unit">indicative</em></span><b className={"mono " + (isCredit ? "pos" : "neg")}>{isCredit ? "+" : "−"}{fmt.usd(premiumAbs)} {isCredit ? "credit" : "debit"}</b></div>
               <div><span>Max loss</span>{naked ? <b className="mono neg">unbounded · stress {gk$(stressLoss)}</b> : <b className="mono">{fmt.usd(premiumAbs + commission)}</b>}</div>
               <div><span>{meta.order[0] === "vn" ? "Vanna (lead)" : "Lead greek"}</span><b className="mono">{GREEK_INFO[meta.order[0]!].label} {greekVal(meta.order[0]!)}</b></div>
               <div><span>Δ after hedge</span><b className="mono">{gk$(afterDelta)}</b></div>
             </div>
+            {server?.blocking_reasons && server.blocking_reasons.length > 0 && (
+              <div className="ob-blocking mono small">⛔ {server.blocking_reasons.join(" · ")}</div>
+            )}
+            {err && <div className="ob-error mono small">⚠ {err}</div>}
             <div className="book-btns">
-              <button className="btn-draft-send" onClick={() => { setBooked({ side, product, qty, tenor, bundleHedge, hedgeQty, hedgeSide }); setStage("booked"); }}>Send{bundleHedge ? " bundle" : ""}</button>
-              <button className="btn-draft-cancel" onClick={reset}>Cancel</button>
+              <button
+                className="btn-draft-send"
+                disabled={!canPlace}
+                title={WRITE_ENABLED ? (canPlace ? "submit to IB paper account" : "preview must be valid_for_submit") : GATE_TITLE}
+                onClick={onPlace}
+              >
+                {busy ? "Placing…" : "Place order"}
+              </button>
+              <button className="btn-draft-cancel" disabled={busy} onClick={reset}>Cancel</button>
             </div>
+            {!WRITE_ENABLED && <div className="dim small ob-readonly-note">Read-only desk · placing orders requires auth (Phase 2).</div>}
           </div>
         )}
         {stage === "booked" && booked && (
           <div className="book-result">
             <div className="result-icon">✓</div>
-            <div><b>Order sent</b><span className="mono">{booked.side} {booked.qty}× {booked.product} {booked.tenor}{booked.bundleHedge ? " + " + booked.hedgeSide + " " + booked.hedgeQty + "× 6E" : ""} · PAPER · filled @ market</span></div>
+            <div>
+              <b>Order submitted</b>
+              <span className="mono">
+                {booked.side} {booked.qty}× {booked.product} {booked.tenor}
+                {booked.bundleHedge ? " + " + booked.hedgeSide + " " + booked.hedgeQty + "× 6E" : ""} · IB paper account
+                {typeof placed?.["structure_id"] === "number" ? " · #" + String(placed["structure_id"]) : ""}
+              </span>
+            </div>
             <button className="btn-ghost" onClick={reset}>New order</button>
           </div>
         )}

@@ -158,6 +158,57 @@ export const revertConfig = (version: number, comment?: string) =>
 export const putConfig = (patch: Record<string, unknown>, comment?: string) =>
   apiPut<unknown>("/api/v1/admin/config", { patch, user: "trader", comment });
 
+// ── Trade write (Phase 2 / 6w) — submit + close ──────────────────────────────
+// Paper-first: `execution_mode:"live"` routes to the IB *paper* account (the
+// system stays READ_ONLY_API until an explicit go-live, see docs/strategy.md §5).
+// Gated by auth in prod (require_write); free locally behind VITE_WRITE_ENABLED.
+
+/** One free-composed leg sent to POST /trade/preview (mirrors backend LegSpec). */
+export interface PreviewLeg {
+  contract_type: "call" | "put" | "future";
+  side: "BUY" | "SELL";
+  tenor: string;
+  delta_pillar?: string;                 // 10dp/25dp/atm/25dc/10dc (options)
+  strike?: number;                       // explicit strike override (options)
+  qty_factor?: number;                   // relative weight; ×base_qty at sizing
+  future_contract_size?: "full" | "micro";
+}
+
+/** Subset of the /trade/preview payload the desk reads (server returns a dict). */
+export interface TradePreview {
+  preview_id: string;
+  state: string;                         // "valid_for_submit" | "blocked" | …
+  blocking_reasons?: string[];
+  structure?: { type?: string };
+  pricing?: {
+    premium_paid_usd?: number;
+    max_loss_usd?: number;
+    max_loss_at_expiry_only?: boolean;
+  };
+  greeks_net?: Record<string, number | Record<string, number>>;
+}
+
+export const createTradePreview = (legs: PreviewLeg[], qty: number, symbol = "EURUSD") =>
+  apiPost<TradePreview>("/api/v1/trade/preview", { legs, qty }, { query: { symbol } });
+
+/** Submit a previewed structure. execution_mode "live" = IB paper account. */
+export const submitTrade = (previewId: string, executionMode: "live" | "mock" = "live") =>
+  apiPost<Record<string, unknown>>("/api/v1/trade/submit", {
+    preview_id: previewId,
+    execution_mode: executionMode,
+  });
+
+export const cancelTradePreview = (previewId: string) =>
+  apiPost<unknown>(`/api/v1/trade/preview/${encodeURIComponent(previewId)}/cancel`, {});
+
+/** Close a single leg (OpenPosition.id). Partial close via `qty`. */
+export const closeContract = (positionId: number, qty: number) =>
+  apiPost<Record<string, unknown>>(`/api/v1/positions/${positionId}/close`, { qty });
+
+/** Close every open leg of a trade (OpenPosition.trade_id). */
+export const closeTrade = (tradeId: number) =>
+  apiPost<Record<string, unknown>>(`/api/v1/trades/${tradeId}/close`, {});
+
 // Dev / system
 export const fetchDevEngines = () => apiGet<unknown>("/api/v1/dev/engines");
 export const fetchCycleProgress = () => apiGet<unknown>("/api/v1/dev/cycle-progress");
