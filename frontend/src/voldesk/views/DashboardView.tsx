@@ -3,13 +3,29 @@
  * `js/views_misc.jsx` (DashboardView + MiniTerm). Mock data for now; wires to
  * the backend in a later lot.
  */
+import { fetchOrders, fetchPnlAttribution, fetchRegimeState } from "../../api/endpoints";
+import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
 import { DATA, DATA2, fmt } from "../data";
-import type { Pc, TermPoint } from "../data";
+import type { Pc, TermPoint, WorkingOrder } from "../data";
 import { useDeskData } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
+import { adaptCoverage } from "../data/live/portfolio";
+
+/** /api/v1/orders (live IB openTrades via execution-engine) → WorkingOrder[].
+ *  Empty when execution-engine is down or there are no resident orders. */
+function adaptWorkingOrders(raw: unknown): WorkingOrder[] {
+  const rows = (raw as { orders?: Array<Record<string, unknown>> } | null)?.orders ?? [];
+  return rows.map((o) => ({
+    id: String(o["order_id"] ?? o["perm_id"] ?? ""),
+    side: String(o["side"] ?? ""),
+    product: String(o["local_symbol"] ?? o["symbol"] ?? "—"),
+    qty: Number(o["qty"] ?? 0),
+    level: o["limit_price"] != null ? `@ ${String(o["limit_price"])} limit` : String(o["status"] ?? ""),
+  }));
+}
 
 // mini ATM term-structure with σ_fair overlay
 function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
@@ -48,11 +64,17 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const { pca, portfolio, trade, termStructure, ticks } = useDeskData();
   const a = portfolio.data?.account ?? DATA.account,
     g = portfolio.data?.greeks ?? DATA.greeks,
-    r = DATA.regime, // regime gate: no domain yet → mock (flagged in 09)
     L = trade.data?.limits ?? DATA.limits,
     f = DATA.feed; // freshness thresholds mock; ages/tones derived from domains below
+  // regime gate: live decision (/regime/state → gate.authorized), mock fallback.
+  const regimeLive = useFetch(() => fetchRegimeState(), 60_000);
+  const gateOpen = regimeLive.data?.gate?.authorized ?? DATA.regime.gate.allowed;
+  // working orders: live resident IB orders (empty when none / execution down).
+  const workingOrders = useFetch(() => fetchOrders().then(adaptWorkingOrders), 30_000).data ?? [];
   const live = ticks.data?.mid ?? DATA.SPOT; // live spot (RT.1) ; move/RV restent mock
-  const cov = DATA2.coverage; // coverage: backend gap → mock (flagged)
+  // coverage: ratio/convexity/carry live (from /pnl-attribution); perf trio deferred (mock).
+  const covLive = useFetch(() => fetchPnlAttribution().then(adaptCoverage), 60_000).data;
+  const cov = { ...DATA2.coverage, ...(covLive ?? {}) };
   const ts = termStructure.data ?? DATA.termStructure;
   const events = trade.data?.events ?? DATA.events;
   const totalNominal = portfolio.data?.bookComposition.totalNominal ?? DATA2.bookComposition.totalNominal;
@@ -242,7 +264,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
             <Tag tone={leadTone}>{lead.label}</Tag>
           </div>
           <div className="sig-conv dim small mono">
-            conviction-ranked · {lead.id} dominant ({lead.variance}% var) · gate {r.gate.allowed ? "open" : "blocked"}{" "}
+            conviction-ranked · {lead.id} dominant ({lead.variance}% var) · gate {gateOpen ? "open" : "blocked"}{" "}
             <span className="dim">(PC1 only · info)</span>
           </div>
           <div className="sig-rank">
@@ -392,10 +414,10 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           </div>
           <div className="today-col">
             <span className="gs-lbl">
-              Working orders <span className="dim">· {DATA.workingOrders.length} resident</span>
+              Working orders <span className="dim">· {workingOrders.length} resident</span>
             </span>
-            {DATA.workingOrders.length ? (
-              DATA.workingOrders.map((o) => (
+            {workingOrders.length ? (
+              workingOrders.map((o) => (
                 <button key={o.id} className="today-evt wo-row" onClick={() => go("trade")}>
                   <span className={"side-pill " + (o.side === "BUY" ? "long" : "short")}>{o.side}</span>
                   <span className="evt-code mono">{o.product}</span>
