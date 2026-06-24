@@ -3,13 +3,26 @@
  * `js/views_misc.jsx` (DashboardView + MiniTerm). Mock data for now; wires to
  * the backend in a later lot.
  */
-import { fetchRegimeState } from "../../api/endpoints";
+import { fetchOrders, fetchRegimeState } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
 import { DATA, DATA2, fmt } from "../data";
-import type { Pc, TermPoint } from "../data";
+import type { Pc, TermPoint, WorkingOrder } from "../data";
+
+/** /api/v1/orders (live IB openTrades via execution-engine) → WorkingOrder[].
+ *  Empty when execution-engine is down or there are no resident orders. */
+function adaptWorkingOrders(raw: unknown): WorkingOrder[] {
+  const rows = (raw as { orders?: Array<Record<string, unknown>> } | null)?.orders ?? [];
+  return rows.map((o) => ({
+    id: String(o["order_id"] ?? o["perm_id"] ?? ""),
+    side: String(o["side"] ?? ""),
+    product: String(o["local_symbol"] ?? o["symbol"] ?? "—"),
+    qty: Number(o["qty"] ?? 0),
+    level: o["limit_price"] != null ? `@ ${String(o["limit_price"])} limit` : String(o["status"] ?? ""),
+  }));
+}
 import { useDeskData } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
 
@@ -55,6 +68,8 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   // regime gate: live decision (/regime/state → gate.authorized), mock fallback.
   const regimeLive = useFetch(() => fetchRegimeState(), 60_000);
   const gateOpen = regimeLive.data?.gate?.authorized ?? DATA.regime.gate.allowed;
+  // working orders: live resident IB orders (empty when none / execution down).
+  const workingOrders = useFetch(() => fetchOrders().then(adaptWorkingOrders), 30_000).data ?? [];
   const live = ticks.data?.mid ?? DATA.SPOT; // live spot (RT.1) ; move/RV restent mock
   const cov = DATA2.coverage; // coverage: backend gap → mock (flagged)
   const ts = termStructure.data ?? DATA.termStructure;
@@ -396,10 +411,10 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           </div>
           <div className="today-col">
             <span className="gs-lbl">
-              Working orders <span className="dim">· {DATA.workingOrders.length} resident</span>
+              Working orders <span className="dim">· {workingOrders.length} resident</span>
             </span>
-            {DATA.workingOrders.length ? (
-              DATA.workingOrders.map((o) => (
+            {workingOrders.length ? (
+              workingOrders.map((o) => (
                 <button key={o.id} className="today-evt wo-row" onClick={() => go("trade")}>
                   <span className={"side-pill " + (o.side === "BUY" ? "long" : "short")}>{o.side}</span>
                   <span className="evt-code mono">{o.product}</span>

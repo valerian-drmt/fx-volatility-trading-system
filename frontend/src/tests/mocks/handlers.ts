@@ -5,6 +5,15 @@ import { setupServer } from "msw/node";
 export const handlers = [
   http.get("*/api/v1/health", () => HttpResponse.json({ status: "OK" })),
 
+  // Live-wiring defaults (regime gate, working orders, scenarios) — empty/neutral.
+  http.get("*/api/v1/regime/state", () =>
+    HttpResponse.json({ gate: { authorized: true, reason: "calm", size_mult: 1 } }),
+  ),
+  http.get("*/api/v1/orders", () => HttpResponse.json({ orders: [] })),
+  http.get("*/api/v1/portfolio/scenarios", () =>
+    HttpResponse.json({ by_spot: [], by_iv: [], n_positions: 0 }),
+  ),
+
   http.get("*/api/v1/vol/surface", ({ request }) => {
     const url = new URL(request.url);
     return HttpResponse.json({
