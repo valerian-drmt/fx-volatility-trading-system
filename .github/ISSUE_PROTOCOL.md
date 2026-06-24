@@ -32,7 +32,7 @@ Every issue must carry these once it leaves 📥 Backlog for 🟢 Ready:
 
 - **Type** — nature (maps the commit prefix).
 - **Area** — main `src/` component: API · Core · Engines · Persistence · Bus · Frontend · Infra/AWS · Ops/CI.
-- **Release** — R11 / R12 / R13 / Backlog.
+- **Milestone** — R11 / R12 / R13 (set from the issue sidebar; gives a due date + progress bar).
 - **Priority** — P0…P3.
 - **Size** — XS…XL (Feature/Chore).
 

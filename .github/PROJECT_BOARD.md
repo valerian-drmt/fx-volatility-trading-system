@@ -12,14 +12,15 @@
 | **Area** | single-select | API · Core · Engines · Persistence · Bus · Frontend · Infra/AWS · Ops/CI | `src/` component touched |
 | **Priority** | single-select | P0 — Critical · P1 — High · P2 — Normal · P3 — Low | Order of work |
 | **Size** | single-select | XS · S · M · L · XL | Quick estimate |
-| **Release** | single-select | R11 · R12 · R13 · Backlog | Release-cadence bucket |
+| **Milestone** | native | R11 · R12 · R13 | Release — due date + automatic progress bar; set from the issue sidebar |
+| **Start date** / **Target date** | date | — | Timeline for the Roadmap view |
 
 ## 2. Status workflow — definitions & transitions
 
 | Status | Meaning | Enter when | Leave when |
 |--------|---------|------------|------------|
 | 📥 **Backlog** | Captured, not yet ready | Issue created | Fields filled + scope clear |
-| 🟢 **Ready** | Scoped, ready to code | Area + Release + Priority + acceptance criteria set | Coding starts |
+| 🟢 **Ready** | Scoped, ready to code | Area + Milestone + Priority + acceptance criteria set | Coding starts |
 | ⚙️ **In Progress** | Being worked on | A branch is created and coding begins | The PR is opened |
 | 🔍 **In Review** | PR open / manual-test gate | `gh pr create` done | CI green + manual test passed |
 | ⛔ **Blocked** | Blocked | Missing dependency, secret, infra or decision | Blocker lifted (returns to prior status) |
@@ -33,8 +34,9 @@ The API/CLI only creates the default **Table** view. Other views are created by 
 project tab via **"+ New view"**:
 
 1. **Board · by Status** — *Board* type, group by `Status` → the daily Kanban.
-2. **Table · by Release** — *Table* type, group by `Release`, sort by `Priority` → the roadmap.
-3. **Board · Blocked** — *Board* type, filter `Status = ⛔ Blocked` → what's stuck.
+2. **Roadmap · by Milestone** — *Roadmap* type, dates = `Start date`/`Target date` → the timeline.
+3. **Table · by Milestone** — *Table* type, group by `Milestone`, sort by `Priority` → backlog grooming.
+4. **Board · Blocked** — *Board* type, filter `Status = ⛔ Blocked` → what's stuck.
 
 ## 4. What the assistant manages without approval
 

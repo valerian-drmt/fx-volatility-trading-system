@@ -9,7 +9,7 @@
 | # | Step | Action | Board card |
 |---|------|--------|------------|
 | 1 | **Scope** | Open the issue via a template | 📥 Backlog |
-| 2 | **Prepare** | Fill Type/Area/Release/Priority/Size + Definition of Done | 🟢 Ready |
+| 2 | **Prepare** | Fill Type/Area/Milestone/Priority/Size + Definition of Done | 🟢 Ready |
 | 3 | **Branch** | Create the branch from up-to-date `main` | ⚙️ In Progress |
 | 4 | **Code** | Atomic Conventional Commits | ⚙️ In Progress |
 | 5 | **Propose** | `gh pr create` with `Closes #N` + checklist | 🔍 In Review |
@@ -83,5 +83,5 @@ maintainer; the assistant does not push or merge on its own initiative.
 
 ## 7. Releases
 
-- A **Release** (board field: R11, R12…) groups a batch of PRs.
+- A **Milestone** (R11, R12…) groups a batch of PRs — with a due date and an automatic progress bar.
 - Closed by a `vX.Y.Z` **tag** on `main` once all its cards are ✅ Done.

@@ -9,7 +9,7 @@ Closes #<N>
 
 ## Release
 
-- **Release (board)**: R<X>
+- **Milestone**: R<X>
 - **Target tag**: `vX.Y.Z`
 
 ## Changes

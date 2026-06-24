@@ -4,6 +4,10 @@ title: "[Chore] "
 labels: ["type:chore"]
 projects: ["valerian-drmt/5"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        After creating the issue, set the **Milestone** (R11/R12/…) from the sidebar.
   - type: dropdown
     id: kind
     attributes:
@@ -23,13 +27,6 @@ body:
     attributes:
       label: Area
       options: [API, Core, Engines, Persistence, Bus, Frontend, Infra/AWS, Ops/CI]
-    validations:
-      required: true
-  - type: dropdown
-    id: release
-    attributes:
-      label: Release
-      options: [R11, R12, R13, Backlog]
     validations:
       required: true
   - type: textarea

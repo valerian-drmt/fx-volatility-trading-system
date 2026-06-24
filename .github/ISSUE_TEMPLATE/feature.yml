@@ -8,6 +8,7 @@ body:
     attributes:
       value: |
         One **issue = one deliverable** (≈ one PR). Fill every required field.
+        After creating it, set the **Milestone** (R11/R12/…) from the sidebar — issue forms can't set it directly.
         Full procedure: [`.github/WORKFLOW.md`](https://github.com/valerian-drmt/fx-volatility-trading-system/blob/main/.github/WORKFLOW.md).
   - type: textarea
     id: goal
@@ -23,13 +24,6 @@ body:
       label: Area
       description: Main component touched (must match the board's Area field).
       options: [API, Core, Engines, Persistence, Bus, Frontend, Infra/AWS, Ops/CI]
-    validations:
-      required: true
-  - type: dropdown
-    id: release
-    attributes:
-      label: Release
-      options: [R11, R12, R13, Backlog]
     validations:
       required: true
   - type: dropdown
