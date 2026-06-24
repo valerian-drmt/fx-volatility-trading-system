@@ -6,6 +6,8 @@
  *   - current-config viewer  ← /admin/config (nested → flat section rows)
  * Read-only : revert/commit are gated behind WRITE_ENABLED (auth, Phase 2/2w).
  */
+import { useState } from "react";
+import { revertConfig } from "../../api/endpoints";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { useDeskData } from "../data/deskData";
@@ -16,6 +18,19 @@ const GATE_TITLE = "écriture désactivée — auth requise (Phase 2)";
 export function SettingsView(): JSX.Element {
   const { config } = useDeskData();
   const data = config.data;
+  const [busy, setBusy] = useState(false);
+  // Revert = the first write (Phase 2 / 2w): duplicates a past version as the new
+  // head + hot-reloads the engine. Gated by WRITE_ENABLED (auth in prod, free local).
+  const onRevert = async (version: number): Promise<void> => {
+    if (busy || !WRITE_ENABLED) return;
+    setBusy(true);
+    try {
+      await revertConfig(version, `revert to v${version} (desk)`);
+      window.location.reload();
+    } catch {
+      setBusy(false);
+    }
+  };
   return (
     <div className="settings-grid">
       <Panel
@@ -43,7 +58,12 @@ export function SettingsView(): JSX.Element {
                   <td className="l dim small">{h.comment || "—"}</td>
                   <td className="l mono dim small">{h.at ? new Date(h.at).toLocaleString() : "—"}</td>
                   <td className="r">
-                    <button className="row-close" disabled={!WRITE_ENABLED} title={WRITE_ENABLED ? "" : GATE_TITLE}>
+                    <button
+                      className="row-close"
+                      disabled={!WRITE_ENABLED || busy}
+                      title={WRITE_ENABLED ? `revert to v${h.version}` : GATE_TITLE}
+                      onClick={() => onRevert(h.version)}
+                    >
                       revert
                     </button>
                   </td>

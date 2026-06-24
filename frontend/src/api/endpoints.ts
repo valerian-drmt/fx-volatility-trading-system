@@ -152,6 +152,9 @@ export const fetchConfig = () => apiGet<ConfigResponse>("/api/v1/admin/config");
 export const fetchConfigSchema = () => apiGet<unknown>("/api/v1/admin/config/schema");
 export const fetchConfigHistory = (limit = 50) =>
   apiGet<unknown>("/api/v1/admin/config/history", { query: { limit } });
+// Settings write (Phase 2 / 2w) — gated by auth in prod (require_write), free locally.
+export const revertConfig = (version: number, comment?: string) =>
+  apiPost<unknown>(`/api/v1/admin/config/revert/${version}`, { user: "trader", comment });
 
 // Dev / system
 export const fetchDevEngines = () => apiGet<unknown>("/api/v1/dev/engines");
