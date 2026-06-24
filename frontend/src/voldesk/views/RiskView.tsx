@@ -4,17 +4,17 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useEffect, useRef, useState } from "react";
-import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fetchVarFactors, fetchVegaPca } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchScenarios, fetchStressGrid, fetchVarFactors, fetchVegaPca } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
-import { DATA, DATA2, fmt } from "../data";
+import { DATA, fmt } from "../data";
 import type { VarFactor } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, adaptVarFactors, adaptVegaPca, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptScenarios, adaptStressGrid, adaptVarFactors, adaptVegaPca, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -372,6 +372,28 @@ function ScenarioMini({ data, keyName, color, label }: { data: ScenarioDatum[]; 
   );
 }
 
+function ScenariosPanel(): JSX.Element {
+  const live = useFetch(() => fetchScenarios().then(adaptScenarios), 120_000);
+  const data = live.data ?? [];
+  return (
+    <Panel title="Scenarios" dataPp="scenarios" right={<span className="dim mono small">full reval · spot ±%</span>}>
+      {data.length < 2 ? (
+        <div className="dim small mono ivz-empty">
+          {live.status === "missing" ? "aucune position ouverte" : "chargement…"}
+        </div>
+      ) : (
+        <div className="scen-grid">
+          <ScenarioMini data={data} keyName="pnl" color="var(--accent)" label="P&L" />
+          <ScenarioMini data={data} keyName="delta" color="var(--pos)" label="Δ Delta" />
+          <ScenarioMini data={data} keyName="gamma" color="var(--warn)" label="Γ Gamma" />
+          <ScenarioMini data={data} keyName="vega" color="#a78bfa" label="Vega" />
+          <ScenarioMini data={data} keyName="theta" color="var(--neg)" label="Θ Theta" />
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 type GreekKey = "delta" | "gamma" | "vega" | "theta" | "vanna" | "volga";
 
 // Per-axis 2nd-dimension label for the live stress grids.
@@ -680,8 +702,6 @@ function LiveLadders(): JSX.Element {
 }
 
 export function RiskView(): JSX.Element {
-  const [scenKind] = useState("spot");
-  const scen = DATA2.scenarioSeries(scenKind);
   const { risk, portfolio } = useDeskData();
   const vpca = useFetch<VegaPcaRow[]>(() => fetchVegaPca().then(adaptVegaPca), 120_000).data ?? [];
   const g = DATA.greeks; // per-unit greek representation — not the live positions-derived nets; stays mock (09)
@@ -703,11 +723,9 @@ export function RiskView(): JSX.Element {
   const utilColor = (p: number): string => (p > 80 ? "var(--neg)" : p > 60 ? "var(--warn)" : "var(--pos)");
   // these sub-components are defined in the prototype but not rendered in this
   // view; referenced here to keep the 1:1 port without tripping noUnusedLocals.
-  void scen;
   void utilColor;
   void VarCurve;
   void ReturnsBars;
-  void ScenarioMini;
   return (
     <div className="risk-grid">
       <Panel title="Portfolio risk" dataPp="risk-portfolio-wrap" className="stress-panel">
@@ -774,6 +792,7 @@ export function RiskView(): JSX.Element {
       </Panel>
       <StressEngine />
       <LiveLadders />
+      <ScenariosPanel />
       <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status="mock" />} pad={false} className="ladder-panel">
         <PositionBreakdown />
       </Panel>

@@ -229,6 +229,23 @@ export interface StressGridData {
   grid: number[][]; // [row][col], raw $ (full-BS reval)
 }
 
+export interface ScenarioPoint {
+  x: number; pnl: number; delta: number; gamma: number; vega: number; theta: number;
+}
+
+/** /portfolio/scenarios by_spot rows → ScenarioPoint[] (spot-shock full reval). */
+export function adaptScenarios(raw: unknown): ScenarioPoint[] {
+  const r = raw as { by_spot?: Array<Record<string, number>> } | null;
+  return (r?.by_spot ?? []).map((d) => ({
+    x: Number(d.step_pct ?? 0),
+    pnl: Number(d.pnl_usd ?? 0),
+    delta: Number(d.delta_usd ?? 0),
+    gamma: Number(d.gamma_usd_per_pip ?? 0),
+    vega: Number(d.vega_usd_per_volpt ?? 0),
+    theta: Number(d.theta_usd_per_day ?? 0),
+  }));
+}
+
 /** /portfolio/stress-grid?axis=&output= → one (axis, output) matrix. Rows = the
  * 2nd-axis bins, cols = spot bp bins. `null` when the book is empty or no spot
  * could be resolved (backend returns `grid: []`). Values stay in raw $ — the grid
