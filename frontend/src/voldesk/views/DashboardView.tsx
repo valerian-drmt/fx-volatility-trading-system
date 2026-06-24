@@ -3,6 +3,8 @@
  * `js/views_misc.jsx` (DashboardView + MiniTerm). Mock data for now; wires to
  * the backend in a later lot.
  */
+import { fetchRegimeState } from "../../api/endpoints";
+import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
@@ -48,9 +50,11 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const { pca, portfolio, trade, termStructure, ticks } = useDeskData();
   const a = portfolio.data?.account ?? DATA.account,
     g = portfolio.data?.greeks ?? DATA.greeks,
-    r = DATA.regime, // regime gate: no domain yet → mock (flagged in 09)
     L = trade.data?.limits ?? DATA.limits,
     f = DATA.feed; // freshness thresholds mock; ages/tones derived from domains below
+  // regime gate: live decision (/regime/state → gate.authorized), mock fallback.
+  const regimeLive = useFetch(() => fetchRegimeState(), 60_000);
+  const gateOpen = regimeLive.data?.gate?.authorized ?? DATA.regime.gate.allowed;
   const live = ticks.data?.mid ?? DATA.SPOT; // live spot (RT.1) ; move/RV restent mock
   const cov = DATA2.coverage; // coverage: backend gap → mock (flagged)
   const ts = termStructure.data ?? DATA.termStructure;
@@ -242,7 +246,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
             <Tag tone={leadTone}>{lead.label}</Tag>
           </div>
           <div className="sig-conv dim small mono">
-            conviction-ranked · {lead.id} dominant ({lead.variance}% var) · gate {r.gate.allowed ? "open" : "blocked"}{" "}
+            conviction-ranked · {lead.id} dominant ({lead.variance}% var) · gate {gateOpen ? "open" : "blocked"}{" "}
             <span className="dim">(PC1 only · info)</span>
           </div>
           <div className="sig-rank">
