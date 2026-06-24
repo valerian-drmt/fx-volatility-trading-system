@@ -1,11 +1,9 @@
 /**
- * VOLDESK — System (container stack, engine heartbeats, schema, backtest).
+ * VOLDESK — System (container stack, engine heartbeats, schema).
  * Faithful 1:1 port of the prototype's `js/views_misc.jsx` SystemView.
- * Mock data for now; wires to the backend in a later lot.
  */
-import { MetricTile, Panel, StatusDot } from "../components/common";
+import { Panel, StatusDot } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
-import { DATA2 } from "../data";
 import { useDeskData } from "../data/deskData";
 
 const layerColor: Record<string, string> = {
@@ -86,14 +84,6 @@ export function SystemView(): JSX.Element {
               ))}
             </div>
           ))}
-        </div>
-      </Panel>
-      <Panel title="Backtest" right={<span className="dim mono small">mock · pas de moteur live</span>}>
-        <div className="bt-tiles">
-          <MetricTile label="Sharpe" value={DATA2.backtest.sharpe.toFixed(2)} tone="pos" />
-          <MetricTile label="Max DD" value={DATA2.backtest.maxDd + "%"} tone="neg" />
-          <MetricTile label="Total return" value={"+" + DATA2.backtest.totalReturn + "%"} tone="pos" />
-          <MetricTile label="Trades" value={DATA2.backtest.trades} sub={DATA2.backtest.winRate + "% win"} />
         </div>
       </Panel>
     </div>

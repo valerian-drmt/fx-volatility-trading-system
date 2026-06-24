@@ -300,11 +300,6 @@ function VarCard({ var95, var99, es99, netLiq, fresh }: { var95: number; var99: 
           <span><i className="lg-dot" />ES (tail mean)</span>
         </div>
       </div>
-      <div className="var-backtest">
-        <span className="dim">backtest 99%</span>
-        <span className="mono">3 breaches / 2.5 expected · 252d</span>
-        <span className="bt-pill">in the green</span>
-      </div>
     </Panel>
   );
 }
