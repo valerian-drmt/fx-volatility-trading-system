@@ -11,6 +11,7 @@ POST /api/v1/trades/{trade_id}/close
 """
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,6 +25,7 @@ from persistence.models import OpenPosition
 
 router = APIRouter(prefix="/api/v1/trades", tags=["trades"])
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
+logger = logging.getLogger(__name__)
 
 
 class CloseTradeRequest(BaseModel):
@@ -103,10 +105,13 @@ async def close_trade(
                 "error": f"{e.status_code} : {e.detail}"[:300],
             })
             failed_count += 1
-        except Exception as e:  # pragma: no cover — defensive
+        except Exception:  # pragma: no cover — defensive
+            # Don't leak internal exception text to the API client (CWE-209);
+            # log the detail server-side and return a generic message.
+            logger.exception("close_trade_leg_failed position_id=%s", pos.id)
             results.append({
                 "position_id": pos.id, "ok": False,
-                "error": str(e)[:300],
+                "error": "internal error",
             })
             failed_count += 1
 
