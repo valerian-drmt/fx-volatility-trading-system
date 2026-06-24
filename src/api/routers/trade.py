@@ -28,6 +28,7 @@ from core.products import product_label_from_symbol
 from core.trade_preview import (
     TEMPLATES,
     _spot_from_surface,
+    build_from_legs,
     build_structure,
     compute_legs_greeks,
     compute_net_greeks,
@@ -54,14 +55,40 @@ from persistence.models import (
 
 logger = logging.getLogger(__name__)
 
+
+def _scrub(value: object) -> str:
+    """Neutralise CR/LF in user-supplied values before logging (CWE-117).
+
+    Request-body fields (``preview_id``, ``execution_mode``, error details)
+    flow into structured log lines; an embedded newline would let a caller
+    forge fake log entries. Collapse CR/LF to spaces and cap the length.
+    """
+    return str(value).replace("\r", " ").replace("\n", " ")[:300]
+
 router = APIRouter(prefix="/api/v1/trade", tags=["trade"])
 
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
+class LegSpec(BaseModel):
+    """One free-composed leg (docs/strategy.md §4 — products/delta/tenor/side
+    chosen freely, nothing imposed). Used by the ``legs`` preview path."""
+    contract_type: Literal["call", "put", "future"]
+    side: Literal["BUY", "SELL"]
+    tenor: str                                       # e.g. "3M"
+    delta_pillar: str | None = None                  # 10dp/25dp/atm/25dc/10dc (options)
+    strike: float | None = None                      # explicit strike override (options)
+    qty_factor: int = 1                              # relative weight; ×base_qty at sizing
+    future_contract_size: Literal["full", "micro"] | None = None  # future legs only
+
+
 class PreviewRequest(BaseModel):
     scenario: str | None = None             # fixture mode (returns canned preview)
-    structure_type: str | None = None       # user-picked structure
+    # Free composition (G-trade.preview): when set, the preview is built from
+    # these legs directly — no template, no imposed structure. Takes precedence
+    # over structure_type.
+    legs: list[LegSpec] | None = None
+    structure_type: str | None = None       # template path : user-picked structure
     tenor: str | None = None                # manual mode reference tenor
     tenor_far: str | None = None            # manual mode (calendar only)
     qty: int | None = None                  # manual mode base_qty
@@ -294,13 +321,15 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
     if req.scenario:
         return _fixture_preview(req.scenario)
 
-    # The desk does not propose trades : the user always picks the structure +
-    # tenor directly. (Signal-driven auto-structuring was removed — the PCA
-    # engine no longer emits recommended_structure.)
+    # The desk does not propose trades : the user always composes the position
+    # directly — either free legs (`legs`, the general path) or a named template
+    # (`structure_type`, kept as buildable reference). Signal-driven auto-
+    # structuring was removed — the PCA engine no longer emits recommended_structure.
     manual_mode = True
     signal = None
-    if req.structure_type is None:
-        raise HTTPException(400, "structure_type required (or use ?scenario=…)")
+    free_legs = req.legs is not None
+    if not free_legs and req.structure_type is None:
+        raise HTTPException(400, "legs or structure_type required (or use ?scenario=…)")
 
     # 2. Limits + book + surface + regime. Regime conditions both the
     #    sizing multiplier (compute_sizing) and the *limits* themselves
@@ -320,21 +349,29 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         else:
             raise HTTPException(503, "surface unavailable (vol-engine down or markets closed)")
 
-    # 3. Structure + tenors come from the user's manual selection.
-    structure_type = req.structure_type
-    near_tenor = (req.tenor or "3M").upper()
-    far_tenor = req.tenor_far.upper() if req.tenor_far else None
-    if req.override_tenor:
-        near_tenor = req.override_tenor.upper()
-    if req.override_far_tenor:
-        far_tenor = req.override_far_tenor.upper()
-
-    structure = build_structure(
-        structure_type, near_tenor, far_tenor, surface,
-        delta_pillar_override=req.delta_pillar,
-        strike_override=req.strike_override,
-        future_contract_size=req.future_contract_size,
-    )
+    # 3. Build the structure. Free-legs path = the trader composed arbitrary
+    #    legs (products/delta/tenor/side); template path = a named reference.
+    if free_legs:
+        try:
+            structure = build_from_legs([leg.model_dump() for leg in req.legs], surface)
+        except ValueError as exc:
+            raise HTTPException(400, f"invalid legs: {exc}") from exc
+    else:
+        near_tenor = (req.tenor or "3M").upper()
+        far_tenor = req.tenor_far.upper() if req.tenor_far else None
+        if req.override_tenor:
+            near_tenor = req.override_tenor.upper()
+        if req.override_far_tenor:
+            far_tenor = req.override_far_tenor.upper()
+        try:
+            structure = build_structure(
+                req.structure_type, near_tenor, far_tenor, surface,
+                delta_pillar_override=req.delta_pillar,
+                strike_override=req.strike_override,
+                future_contract_size=req.future_contract_size,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, f"unknown structure: {exc}") from exc
     pricing = price_structure(structure, surface)
     greeks = compute_net_greeks(structure, surface)
 
@@ -364,7 +401,11 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         if s in ("future_buy", "future_sell"):
             return "future"
         return s
-    display_structure_type = _bare_product(structure.type)
+    # Free-legs : the classifier label (e.g. "long strangle") is the display
+    # name — vocabulary, not a template code. Templates : bare product family.
+    display_structure_type = (
+        (structure.product_label or "custom") if free_legs else _bare_product(structure.type)
+    )
 
     # 4. Sizing
     if manual_mode:
@@ -592,7 +633,12 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         # Persist the display-friendly type so tables / audit show
         # "straddle_10d" instead of canonical "straddle_atm" when override.
         structure_type=display_structure_type,
-        product_label=product_label_from_symbol(None, display_structure_type),
+        # Free-legs carry the classifier label directly (not in the template→label
+        # map); templates resolve via the canonical helper.
+        product_label=(
+            structure.product_label if free_legs
+            else product_label_from_symbol(None, display_structure_type)
+        ),
         reference_tenor=structure.reference_tenor,
         structure_full_payload=payload, state=state,
         pre_submit_checks=payload["pre_submit_checks"],
@@ -652,7 +698,7 @@ async def submit_preview(
     execution_mode_arg = body.get("execution_mode", "mock")
     logger.info(
         "trade_submit_received preview_id=%s execution_mode=%s",
-        preview_id, execution_mode_arg,
+        _scrub(preview_id), _scrub(execution_mode_arg),
     )
     try:
         return await _submit_preview_impl(body, db)
@@ -665,7 +711,7 @@ async def submit_preview(
         # Log structured for Grafana.
         logger.warning(
             "trade_submit_http_error preview_id=%s status=%s detail=%s",
-            preview_id, he.status_code, str(he.detail)[:300],
+            _scrub(preview_id), he.status_code, _scrub(he.detail),
         )
         raise
     except Exception as exc:
@@ -674,7 +720,7 @@ async def submit_preview(
         tb = traceback.format_exc()
         logger.error(
             "trade_submit_failed preview_id=%s exc_type=%s exc=%s\n%s",
-            preview_id, type(exc).__name__, str(exc)[:500], tb,
+            _scrub(preview_id), type(exc).__name__, str(exc)[:500], tb,
         )
         raise HTTPException(
             500,
@@ -909,7 +955,7 @@ async def _submit_preview_impl(
         await db.commit()
         logger.info(
             "trade_submit_persisted_live structure_id=%s n_legs=%s preview_id=%s",
-            structure.id, len(legs), preview_id,
+            structure.id, len(legs), _scrub(preview_id),
         )
 
         # Fire-and-forget HTTP call to execution-engine. Failure here does

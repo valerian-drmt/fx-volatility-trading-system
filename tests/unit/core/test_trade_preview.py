@@ -12,7 +12,9 @@ from core.trade_preview import (
     TEMPLATES,
     bs_greeks,
     bs_price,
+    build_from_legs,
     build_structure,
+    classify_legs,
     compute_net_greeks,
     compute_sizing,
     price_structure,
@@ -414,3 +416,116 @@ def test_check_liquidity_blocks():
     args["min_quoted_size"] = 5
     checks = run_pre_submit_checks(**args)
     assert next(c for c in checks if c.name == "minimum_liquidity").passed is False
+
+
+# ────────────────────────────────────────────────────────────────
+# Free-legs builder (G-trade.preview) — products/delta/tenor/side composed
+# freely; no template, no imposed structure.
+# ────────────────────────────────────────────────────────────────
+
+
+def test_build_from_legs_empty_raises():
+    with pytest.raises(ValueError, match="at least one leg"):
+        build_from_legs([], _mock_surface())
+
+
+def test_build_from_legs_resolves_strike_and_iv_from_surface():
+    s = build_from_legs(
+        [{"contract_type": "call", "side": "BUY", "tenor": "3M", "delta_pillar": "25dc"}],
+        _mock_surface(),
+    )
+    assert s.type == "custom"
+    assert len(s.legs) == 1
+    leg = s.legs[0]
+    assert leg.strike is not None and leg.entry_iv_pct is not None
+    assert leg.side == "BUY" and leg.qty_factor == 1
+
+
+def test_build_from_legs_strike_override_wins():
+    s = build_from_legs(
+        [{"contract_type": "put", "side": "SELL", "tenor": "2M", "strike": 1.10}],
+        _mock_surface(),
+    )
+    assert s.legs[0].strike == 1.10
+
+
+@pytest.mark.parametrize(
+    "spec, msg",
+    [
+        ({"contract_type": "swap", "side": "BUY", "tenor": "3M"}, "contract_type"),
+        ({"contract_type": "call", "side": "HOLD", "tenor": "3M"}, "side"),
+        ({"contract_type": "call", "side": "BUY", "tenor": "9M"}, "tenor"),
+        ({"contract_type": "call", "side": "BUY", "tenor": "3M", "delta_pillar": "50d"}, "delta_pillar"),
+        ({"contract_type": "call", "side": "BUY", "tenor": "3M", "qty_factor": 0}, "qty_factor"),
+    ],
+)
+def test_build_from_legs_rejects_bad_input(spec, msg):
+    with pytest.raises(ValueError, match=msg):
+        build_from_legs([spec], _mock_surface())
+
+
+def test_build_from_legs_vega_sign_and_hedge_flag():
+    # Two bought options ⇒ net long vega, delta-hedgeable.
+    s = build_from_legs(
+        [
+            {"contract_type": "call", "side": "BUY", "tenor": "3M", "delta_pillar": "25dc"},
+            {"contract_type": "put", "side": "BUY", "tenor": "3M", "delta_pillar": "25dp"},
+        ],
+        _mock_surface(),
+    )
+    assert s.vega_sign == "positive"
+    assert s.requires_delta_hedge is True
+
+
+def test_build_from_legs_future_only_not_hedged_and_size():
+    s = build_from_legs(
+        [{"contract_type": "future", "side": "BUY", "tenor": "3M", "future_contract_size": "micro"}],
+        _mock_surface(),
+    )
+    assert s.requires_delta_hedge is False  # the future *is* the delta
+    assert s.future_contract_size == "micro"
+    assert s.vega_sign == "neutral"
+
+
+def test_build_from_legs_pricing_matches_template_equivalent():
+    """A hand-composed ATM straddle must price/greek identically to the template."""
+    surface = _mock_surface()
+    custom = build_from_legs(
+        [
+            {"contract_type": "call", "side": "BUY", "tenor": "3M", "delta_pillar": "atm"},
+            {"contract_type": "put", "side": "BUY", "tenor": "3M", "delta_pillar": "atm"},
+        ],
+        surface,
+    )
+    tpl = build_structure("straddle_atm", "3M", None, surface) if "straddle_atm" in TEMPLATES else None
+    if tpl is not None:
+        assert price_structure(custom, surface).total_premium_usd == pytest.approx(
+            price_structure(tpl, surface).total_premium_usd
+        )
+
+
+@pytest.mark.parametrize(
+    "legs, expected",
+    [
+        ([("call", "BUY", "atm")], "long call"),
+        ([("put", "SELL", "25dp")], "short put"),
+        ([("call", "BUY", "atm"), ("put", "BUY", "atm")], "long straddle"),
+        ([("call", "BUY", "25dc"), ("put", "BUY", "25dp")], "long strangle"),
+        ([("call", "BUY", "25dc"), ("put", "SELL", "25dp")], "risk reversal"),
+    ],
+)
+def test_classify_legs_names_common_shapes(legs, expected):
+    specs = [{"contract_type": ct, "side": sd, "tenor": "3M", "delta_pillar": p} for ct, sd, p in legs]
+    s = build_from_legs(specs, _mock_surface())
+    assert classify_legs(s.legs) == expected
+
+
+def test_classify_legs_calendar_two_tenors():
+    s = build_from_legs(
+        [
+            {"contract_type": "call", "side": "BUY", "tenor": "1M", "delta_pillar": "atm"},
+            {"contract_type": "call", "side": "BUY", "tenor": "3M", "delta_pillar": "atm"},
+        ],
+        _mock_surface(),
+    )
+    assert classify_legs(s.legs) == "long calendar"

@@ -393,6 +393,124 @@ def build_structure(
     )
 
 
+def classify_legs(legs: list[Leg]) -> str:
+    """Name what a free leg-set *expresses* — vocabulary, not prescription
+    (cf. docs/strategy.md §4). Returns ``"custom"`` when no common shape matches.
+
+    Pure display: the trader composes freely; this only labels the result so the
+    preview can say "this reads as a long strangle" without ever imposing it.
+    """
+    opts = [leg for leg in legs if leg.contract_type in ("call", "put")]
+    futs = [leg for leg in legs if leg.contract_type == "future"]
+    if opts and not futs:
+        n = len(opts)
+        sides = {leg.side for leg in opts}
+        types = {leg.contract_type for leg in opts}
+        tenors = {leg.tenor for leg in opts}
+        side = "long" if sides == {"BUY"} else "short" if sides == {"SELL"} else None
+        if n == 1:
+            leg = opts[0]
+            return f"{'long' if leg.side == 'BUY' else 'short'} {leg.contract_type}"
+        if n == 2 and side is not None:
+            if len(tenors) == 2 and len(types) == 1:
+                return f"{side} calendar"
+            if types == {"call", "put"}:
+                strikes = {leg.strike for leg in opts if leg.strike is not None}
+                return f"{side} {'straddle' if len(strikes) <= 1 else 'strangle'}"
+            if len(types) == 1:
+                return f"{side} vertical spread"
+        if n == 2 and side is None and types == {"call", "put"}:
+            return "risk reversal"
+        if n == 3 and len(types) == 1 and len({leg.side for leg in opts}) == 2:
+            return "butterfly"
+    if futs and not opts:
+        return f"{'long' if futs[0].side == 'BUY' else 'short'} future"
+    if futs and opts:
+        return "custom (options + future)"
+    return "custom"
+
+
+def build_from_legs(
+    leg_specs: list[dict[str, Any]],
+    surface: dict[str, Any],
+) -> Structure:
+    """Build a *custom* Structure from free, user-composed legs (no template).
+
+    Each spec: ``{contract_type, side, tenor, delta_pillar?, strike?, qty_factor?,
+    future_contract_size?}``. The trader picks products/delta/tenor/side freely
+    (docs/strategy.md §4) — nothing is imposed. Pricing/greeks are template-
+    agnostic, so the resulting Structure flows through the same downstream
+    pipeline (price_structure / compute_net_greeks / scenarios / pnl_grid).
+    """
+    if not leg_specs:
+        raise ValueError("at least one leg required")
+    legs: list[Leg] = []
+    fcs: Literal["full", "micro"] | None = None
+    now = datetime.now(UTC)
+    for i, spec in enumerate(leg_specs):
+        ct = spec.get("contract_type")
+        if ct not in ("call", "put", "future"):
+            raise ValueError(f"leg {i}: bad contract_type {ct!r}")
+        side = str(spec.get("side") or "").upper()
+        if side not in ("BUY", "SELL"):
+            raise ValueError(f"leg {i}: bad side {side!r}")
+        tenor = str(spec.get("tenor") or "3M").upper()
+        if tenor not in TENOR_TO_DTE:
+            raise ValueError(f"leg {i}: unknown tenor {tenor!r}")
+        qf_raw = spec.get("qty_factor")
+        qf = int(qf_raw if qf_raw is not None else 1)
+        if qf <= 0:
+            raise ValueError(f"leg {i}: qty_factor must be > 0")
+        dte = TENOR_TO_DTE[tenor]
+        expiry = (now + timedelta(days=dte)).date().isoformat()
+        if ct == "future":
+            size = spec.get("future_contract_size") or "full"
+            if size not in ("full", "micro"):
+                raise ValueError(f"leg {i}: bad future_contract_size {size!r}")
+            fcs = fcs or size  # type: ignore[assignment]
+            legs.append(Leg(
+                leg_idx=i, contract_type="future", tenor=tenor, expiry=expiry,
+                dte=dte, strike=None, qty_factor=qf, side=side, entry_iv_pct=None,
+            ))
+            continue
+        pillar = str(spec.get("delta_pillar") or "atm").lower()
+        if pillar not in DELTA_PILLARS:
+            raise ValueError(f"leg {i}: bad delta_pillar {pillar!r}")
+        node = (surface.get(tenor) or {}).get(pillar) or {}
+        strike_override = spec.get("strike")
+        node_strike = node.get("strike")
+        iv = node.get("iv")
+        if strike_override is not None:
+            strike: float | None = float(strike_override)
+        else:
+            strike = float(node_strike) if isinstance(node_strike, (int, float)) else None
+        legs.append(Leg(
+            leg_idx=i, contract_type=ct, tenor=tenor, expiry=expiry, dte=dte,
+            strike=strike, qty_factor=qf, side=side,
+            entry_iv_pct=float(iv) * 100.0 if isinstance(iv, (int, float)) else None,
+        ))
+    has_option = any(leg.contract_type in ("call", "put") for leg in legs)
+    # Net vega sign (display hint): bought options add vega, sold subtract.
+    vega_score = sum(
+        (1 if leg.side == "BUY" else -1) * leg.qty_factor
+        for leg in legs if leg.contract_type in ("call", "put")
+    )
+    vega_sign = "positive" if vega_score > 0 else "negative" if vega_score < 0 else "neutral"
+    distinct_tenors = sorted({leg.tenor for leg in legs}, key=lambda t: TENOR_TO_DTE[t])
+    return Structure(
+        type="custom",
+        reference_tenor=legs[0].tenor,
+        tenor_far=distinct_tenors[-1] if len(distinct_tenors) > 1 else None,
+        legs=legs,
+        # Futures-only = the future *is* the delta (no hedge). Any option leg
+        # ⇒ delta-hedgeable, matching the single-leg vanilla/future templates.
+        requires_delta_hedge=has_option,
+        vega_sign=vega_sign,
+        future_contract_size=fcs,
+        product_label=classify_legs(legs),
+    )
+
+
 # ────────────────────────────────────────────────────────────────
 # Pricing + greeks aggregation (operates on Structure)
 # ────────────────────────────────────────────────────────────────

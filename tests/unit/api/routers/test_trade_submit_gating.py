@@ -107,3 +107,53 @@ async def test_preview_lock_falls_back_when_redis_raises(monkeypatch):
     )
     # Failure of Redis is non-fatal — DB user_action is the source of truth.
     assert await trade_mod._acquire_preview_lock("tp_def") is True
+
+
+# ── G-trade.preview : free-legs path ──────────────────────────────────────
+
+
+async def test_create_preview_from_free_legs(monkeypatch):
+    """POST /trade/preview with `legs` builds a custom structure (no template),
+    persists it, and labels it via the classifier — no Redis surface needed
+    (falls back to the synthetic sandbox surface)."""
+    from api.routers import trade as trade_mod
+    from api.routers.trade import LegSpec, PreviewRequest, create_preview
+    from persistence.models import TradePreviewRow
+
+    # No Redis → _read_surface_redis returns (None, …) → synthetic surface.
+    monkeypatch.setattr(trade_mod, "get_redis_client_or_none", lambda: None)
+
+    maker, engine = await _make_session()
+    try:
+        req = PreviewRequest(legs=[
+            LegSpec(contract_type="call", side="BUY", tenor="3M", delta_pillar="25dc"),
+            LegSpec(contract_type="put", side="BUY", tenor="3M", delta_pillar="25dp"),
+        ])
+        async with maker() as db:
+            payload = await create_preview(req, db, symbol="EURUSD")
+        assert payload["structure"]["type"] == "long strangle"
+        assert payload["structure"]["type_template"] == "custom"
+        assert len(payload["structure"]["legs"]) == 2
+        assert payload["state"] in ("valid_for_submit", "blocked")
+        async with maker() as db:
+            from sqlalchemy import select
+            row = (await db.execute(select(TradePreviewRow))).scalar_one()
+            assert row.structure_type == "long strangle"
+            assert row.product_label == "long strangle"
+    finally:
+        await engine.dispose()
+
+
+async def test_create_preview_requires_legs_or_structure_type():
+    from fastapi import HTTPException
+
+    from api.routers.trade import PreviewRequest, create_preview
+
+    maker, engine = await _make_session()
+    try:
+        async with maker() as db:
+            with pytest.raises(HTTPException) as ei:
+                await create_preview(PreviewRequest(), db, symbol="EURUSD")
+            assert ei.value.status_code == 400
+    finally:
+        await engine.dispose()
