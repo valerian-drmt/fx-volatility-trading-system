@@ -418,7 +418,7 @@ function PortfolioProbe(): JSX.Element {
 }
 
 describe("DataProvider (live-only)", () => {
-  it("fetches + adapts the surface ; ivZ grid is always 6 rows (neutral when no fair)", async () => {
+  it("fetches + adapts the surface ; grid carries only the tenors present in the payload", async () => {
     server.use(
       http.get("*/api/v1/vol/surface", () =>
         HttpResponse.json({
@@ -437,9 +437,9 @@ describe("DataProvider (live-only)", () => {
     );
     await waitFor(() => expect(screen.getByTestId("s-iv00").textContent).toBe("11"));
     expect(screen.getByTestId("s-status").textContent).toBe("live");
-    // ivZ is live (surface `.z`); the grid is always 6 rows, neutral (0) when
-    // the payload carries no fair-richness yet.
-    expect(Number(screen.getByTestId("s-hasz").textContent)).toBe(6);
+    // The grid holds only the tenors actually present (here just 1M) — no
+    // misleading all-zero row for tenors the engine didn't emit (e.g. 6M).
+    expect(Number(screen.getByTestId("s-hasz").textContent)).toBe(1);
   });
 
   it("live mode fetches state/model/history + adapts the mode cards", async () => {

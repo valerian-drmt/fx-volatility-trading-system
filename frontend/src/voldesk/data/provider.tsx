@@ -34,7 +34,7 @@ import {
 } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { type TickMsg, useRiskStream, useTicks, useVolStream } from "../../hooks/streams";
-import { deltas as DELTA_LABELS, tenors as TENOR_LABELS, type TermPoint } from "./core";
+import { deltas as DELTA_LABELS, type TermPoint } from "./core";
 import {
   type ConfigData,
   type DeskData,
@@ -59,7 +59,7 @@ import {
   adaptWaterfallGreek,
   deriveBookComposition,
 } from "./live/portfolio";
-import { adaptIvSurface, adaptIvZ } from "./live/surface";
+import { adaptSurface } from "./live/surface";
 import { adaptSystem } from "./live/system";
 import { adaptTermStructure } from "./live/termStructure";
 import { adaptAccount, adaptCash, adaptEvents, adaptLimits, adaptPositions, deriveNetGreeks } from "./live/trade";
@@ -78,11 +78,8 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
     async () => adaptTermStructure(await fetchTermStructure()),
     VOL_WARN_MS,
   );
-  const liveSurface = useFetch<{ ivSurface: number[][]; ivZ: number[][] }>(
-    async () => {
-      const resp = await fetchVolSurface();
-      return { ivSurface: adaptIvSurface(resp), ivZ: adaptIvZ(resp) };
-    },
+  const liveSurface = useFetch<{ tenors: string[]; ivSurface: number[][]; ivZ: number[][] }>(
+    async () => adaptSurface(await fetchVolSurface()),
     VOL_WARN_MS,
   );
   const livePca = useFetch<PcaData>(
@@ -217,7 +214,7 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
       ? {
           ivSurface: liveSurface.data.ivSurface,
           ivZ: liveSurface.data.ivZ,
-          tenors: TENOR_LABELS,
+          tenors: liveSurface.data.tenors,
           deltas: DELTA_LABELS,
         }
       : null,
