@@ -229,6 +229,48 @@ export interface StressGridData {
   grid: number[][]; // [row][col], raw $ (full-BS reval)
 }
 
+export interface ScenarioPoint {
+  x: number; pnl: number; delta: number; gamma: number; vega: number; theta: number;
+}
+
+/** /portfolio/scenarios by_spot rows → ScenarioPoint[] (spot-shock full reval). */
+export function adaptScenarios(raw: unknown): ScenarioPoint[] {
+  const r = raw as { by_spot?: Array<Record<string, number>> } | null;
+  return (r?.by_spot ?? []).map((d) => ({
+    x: Number(d.step_pct ?? 0),
+    pnl: Number(d.pnl_usd ?? 0),
+    delta: Number(d.delta_usd ?? 0),
+    gamma: Number(d.gamma_usd_per_pip ?? 0),
+    vega: Number(d.vega_usd_per_volpt ?? 0),
+    theta: Number(d.theta_usd_per_day ?? 0),
+  }));
+}
+
+export interface LiveCoverage {
+  convexity: number; carry: number; ratio: number;
+  gammaPnl: number; vegaPnl: number; thetaPaid: number;
+  posture: string; windowLabel: string;
+}
+
+/** /portfolio/pnl-attribution totals → realized survival ratio (convexity ÷ carry).
+ *  $ → $k. Empty book → zeros (ratio 0). Perf trio (RoM/RoVaR/Sharpe) + the history
+ *  sparkline need realized trading history → deferred (R12+, like backtest). */
+export function adaptCoverage(raw: unknown): LiveCoverage {
+  const t = (raw as { totals?: Record<string, number>; lookback_hours?: number } | null) ?? {};
+  const tot = t.totals ?? {};
+  const gammaPnl = +(Number(tot["gamma_pnl_usd"] ?? 0) / 1000).toFixed(1);
+  const vegaPnl = +(Number(tot["vega_pnl_usd"] ?? 0) / 1000).toFixed(1);
+  const thetaPaid = +(Math.abs(Number(tot["theta_pnl_usd"] ?? 0)) / 1000).toFixed(1);
+  const convexity = +(gammaPnl + vegaPnl).toFixed(1);
+  const ratio = thetaPaid > 0 ? +(convexity / thetaPaid).toFixed(2) : 0;
+  const hrs = Number(t.lookback_hours ?? 24);
+  return {
+    convexity, carry: thetaPaid, ratio, gammaPnl, vegaPnl, thetaPaid,
+    posture: gammaPnl >= 0 ? "long gamma · Θ−" : "short gamma · Θ+",
+    windowLabel: hrs >= 24 ? `${Math.round(hrs / 24)}j` : `${hrs}h`,
+  };
+}
+
 /** /portfolio/stress-grid?axis=&output= → one (axis, output) matrix. Rows = the
  * 2nd-axis bins, cols = spot bp bins. `null` when the book is empty or no spot
  * could be resolved (backend returns `grid: []`). Values stay in raw $ — the grid

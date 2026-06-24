@@ -149,6 +149,8 @@ export const fetchHedgeSummary = () =>
   apiGet<unknown>("/api/v1/portfolio/hedge-summary");
 
 // Trade (read)
+// Working orders = live IB openTrades, proxied via the execution-engine.
+export const fetchOrders = () => apiGet<unknown>("/api/v1/orders");
 export const fetchTradeStructures = () => apiGet<unknown>("/api/v1/trade/structures");
 export const fetchTradeLimits = () => apiGet<unknown>("/api/v1/trade/limits");
 export const fetchTradeBook = (symbol = "EURUSD") =>

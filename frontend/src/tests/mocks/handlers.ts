@@ -5,6 +5,19 @@ import { setupServer } from "msw/node";
 export const handlers = [
   http.get("*/api/v1/health", () => HttpResponse.json({ status: "OK" })),
 
+  // Dashboard live-wiring defaults (regime gate, working orders, coverage) — empty/neutral.
+  http.get("*/api/v1/regime/state", () =>
+    HttpResponse.json({ gate: { authorized: true, reason: "calm", size_mult: 1 } }),
+  ),
+  http.get("*/api/v1/orders", () => HttpResponse.json({ orders: [] })),
+  http.get("*/api/v1/portfolio/pnl-attribution", () =>
+    HttpResponse.json({
+      lookback_hours: 24,
+      totals: { actual_pnl_usd: 0, delta_pnl_usd: 0, gamma_pnl_usd: 0, vega_pnl_usd: 0, theta_pnl_usd: 0, residual_usd: 0 },
+      per_position: [],
+    }),
+  ),
+
   // Auth — default logged-out; tests override with server.use(...) as needed.
   http.get("*/api/v1/auth/me", () => HttpResponse.json({ authenticated: false })),
   http.post("*/api/v1/auth/login", () => HttpResponse.json({ authenticated: true })),
