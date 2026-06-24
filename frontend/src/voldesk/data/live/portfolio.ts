@@ -246,6 +246,31 @@ export function adaptScenarios(raw: unknown): ScenarioPoint[] {
   }));
 }
 
+export interface LiveCoverage {
+  convexity: number; carry: number; ratio: number;
+  gammaPnl: number; vegaPnl: number; thetaPaid: number;
+  posture: string; windowLabel: string;
+}
+
+/** /portfolio/pnl-attribution totals → realized survival ratio (convexity ÷ carry).
+ *  $ → $k. Empty book → zeros (ratio 0). Perf trio (RoM/RoVaR/Sharpe) + the history
+ *  sparkline need realized trading history → deferred (R12+, like backtest). */
+export function adaptCoverage(raw: unknown): LiveCoverage {
+  const t = (raw as { totals?: Record<string, number>; lookback_hours?: number } | null) ?? {};
+  const tot = t.totals ?? {};
+  const gammaPnl = +(Number(tot["gamma_pnl_usd"] ?? 0) / 1000).toFixed(1);
+  const vegaPnl = +(Number(tot["vega_pnl_usd"] ?? 0) / 1000).toFixed(1);
+  const thetaPaid = +(Math.abs(Number(tot["theta_pnl_usd"] ?? 0)) / 1000).toFixed(1);
+  const convexity = +(gammaPnl + vegaPnl).toFixed(1);
+  const ratio = thetaPaid > 0 ? +(convexity / thetaPaid).toFixed(2) : 0;
+  const hrs = Number(t.lookback_hours ?? 24);
+  return {
+    convexity, carry: thetaPaid, ratio, gammaPnl, vegaPnl, thetaPaid,
+    posture: gammaPnl >= 0 ? "long gamma · Θ−" : "short gamma · Θ+",
+    windowLabel: hrs >= 24 ? `${Math.round(hrs / 24)}j` : `${hrs}h`,
+  };
+}
+
 /** /portfolio/stress-grid?axis=&output= → one (axis, output) matrix. Rows = the
  * 2nd-axis bins, cols = spot bp bins. `null` when the book is empty or no spot
  * could be resolved (backend returns `grid: []`). Values stay in raw $ — the grid

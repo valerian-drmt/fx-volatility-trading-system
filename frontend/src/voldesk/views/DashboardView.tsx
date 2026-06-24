@@ -3,13 +3,16 @@
  * `js/views_misc.jsx` (DashboardView + MiniTerm). Mock data for now; wires to
  * the backend in a later lot.
  */
-import { fetchOrders, fetchRegimeState } from "../../api/endpoints";
+import { fetchOrders, fetchPnlAttribution, fetchRegimeState } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
 import { DATA, DATA2, fmt } from "../data";
 import type { Pc, TermPoint, WorkingOrder } from "../data";
+import { useDeskData } from "../data/deskData";
+import type { FreshStatus } from "../data/freshness";
+import { adaptCoverage } from "../data/live/portfolio";
 
 /** /api/v1/orders (live IB openTrades via execution-engine) → WorkingOrder[].
  *  Empty when execution-engine is down or there are no resident orders. */
@@ -23,8 +26,6 @@ function adaptWorkingOrders(raw: unknown): WorkingOrder[] {
     level: o["limit_price"] != null ? `@ ${String(o["limit_price"])} limit` : String(o["status"] ?? ""),
   }));
 }
-import { useDeskData } from "../data/deskData";
-import type { FreshStatus } from "../data/freshness";
 
 // mini ATM term-structure with σ_fair overlay
 function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
@@ -71,7 +72,9 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   // working orders: live resident IB orders (empty when none / execution down).
   const workingOrders = useFetch(() => fetchOrders().then(adaptWorkingOrders), 30_000).data ?? [];
   const live = ticks.data?.mid ?? DATA.SPOT; // live spot (RT.1) ; move/RV restent mock
-  const cov = DATA2.coverage; // coverage: backend gap → mock (flagged)
+  // coverage: ratio/convexity/carry live (from /pnl-attribution); perf trio deferred (mock).
+  const covLive = useFetch(() => fetchPnlAttribution().then(adaptCoverage), 60_000).data;
+  const cov = { ...DATA2.coverage, ...(covLive ?? {}) };
   const ts = termStructure.data ?? DATA.termStructure;
   const events = trade.data?.events ?? DATA.events;
   const totalNominal = portfolio.data?.bookComposition.totalNominal ?? DATA2.bookComposition.totalNominal;
