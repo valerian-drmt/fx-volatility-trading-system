@@ -17,6 +17,7 @@ from api.schemas.vol import (
     TermStructureRow,
 )
 from bus import keys
+from core.vol.tenors import to_display_surface
 from persistence.models import VolSurface
 
 # Smile point extraction — (pillar field for IV, pillar field for strike, label).
@@ -50,7 +51,9 @@ async def get_latest_surface(
         return SurfaceResponse(
             symbol=payload.get("symbol", symbol),
             timestamp=payload["timestamp"],
-            surface=payload.get("surface", {}),
+            # Re-key the raw listed-tenor surface onto the 6 display pillars
+            # (1M,2M,3M,6M,9M,1Y), interpolating gaps + flagging source.
+            surface=to_display_surface(payload.get("surface", {})),
         )
     if db is not None:
         stmt = (
@@ -64,7 +67,7 @@ async def get_latest_surface(
             return SurfaceResponse(
                 symbol=row.underlying,
                 timestamp=row.timestamp,
-                surface=dict(row.surface_data or {}),
+                surface=to_display_surface(dict(row.surface_data or {})),
             )
     raise VolNotFound(f"No latest vol surface for symbol={symbol}")
 
@@ -82,7 +85,7 @@ async def get_surface_at(
     return SurfaceResponse(
         symbol=row.underlying,
         timestamp=row.timestamp,
-        surface=dict(row.surface_data or {}),
+        surface=to_display_surface(dict(row.surface_data or {})),
     )
 
 

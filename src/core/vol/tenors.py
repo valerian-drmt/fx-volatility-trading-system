@@ -95,3 +95,94 @@ def nearest_listed_dte(target_dte: int, listed_dtes: list[int]) -> int | None:
     """The listed expiry an order at ``target_dte`` snaps to — nearest by |ΔDTE|
     (the standard listed-options convention). ``None`` if no listed expiry."""
     return min(listed_dtes, key=lambda d: abs(d - target_dte)) if listed_dtes else None
+
+
+# Nominal DTE for each engine tenor label (the engine buckets actual expiries into
+# these labels via chain_fetcher.tenor_label). Used to place anchors on the time axis.
+LABEL_DTE: dict[str, int] = {
+    "1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180, "9M": 270, "1Y": 365,
+}
+
+
+def _recompute_surface_z(display: dict[str, dict]) -> None:
+    """Attach a cross-sectional z to every display cell: z = (iv − mean)/std over
+    all (tenor × delta) IVs of the display grid. No-op on a flat/degenerate grid."""
+    ivs = [
+        c["iv"] for t, row in display.items()
+        if not t.startswith("_") and isinstance(row, dict)
+        for c in row.values()
+        if isinstance(c, dict) and isinstance(c.get("iv"), (int, float))
+    ]
+    if len(ivs) < 2:
+        return
+    mean = sum(ivs) / len(ivs)
+    var = sum((x - mean) ** 2 for x in ivs) / len(ivs)
+    std = math.sqrt(var)
+    if std <= 0:
+        return
+    for t, row in display.items():
+        if t.startswith("_") or not isinstance(row, dict):
+            continue
+        for c in row.values():
+            if isinstance(c, dict) and isinstance(c.get("iv"), (int, float)):
+                c["z"] = (c["iv"] - mean) / std
+
+
+def to_display_surface(
+    surface: dict,
+    *,
+    delta_pillars: tuple[str, ...] = DELTA_PILLARS,
+    tol_days: int = LISTED_TOLERANCE_DAYS,
+) -> dict:
+    """Re-key a raw listed-tenor surface to the 6 display pillars.
+
+    A pillar that matches a listed tenor (within tol) keeps that tenor's real
+    cells (iv + strike + …) tagged ``source="listed"``; otherwise its IVs are
+    interpolated (``source="interp"``, no strike — there is no contract); a pillar
+    past the furthest anchor is omitted (frontend renders "—"). Meta keys (``_svi``,
+    ``_regime`, …) are carried through untouched. z is recomputed over the display
+    grid. Returns a NEW dict; the input is not mutated.
+    """
+    import copy
+
+    raw_cells: dict[str, dict] = {}
+    anchors: list[TenorAnchor] = []
+    for label, row in surface.items():
+        if not isinstance(label, str) or label.startswith("_") or not isinstance(row, dict):
+            continue
+        dte = LABEL_DTE.get(label)
+        if dte is None:
+            continue
+        iv_by = {
+            d: c["iv"] for d, c in row.items()
+            if isinstance(c, dict) and isinstance(c.get("iv"), (int, float))
+        }
+        if iv_by:
+            raw_cells[label] = row
+            anchors.append(TenorAnchor(dte=dte, iv_by_pillar=iv_by))
+
+    # carry meta keys through
+    out: dict = {k: v for k, v in surface.items() if isinstance(k, str) and k.startswith("_")}
+
+    for pillar in DISPLAY_PILLARS:
+        target = PILLAR_TARGET_DTE[pillar]
+        # listed — reuse the real cells (keep strike, etc.)
+        if raw_cells:
+            nearest = min(raw_cells, key=lambda lbl: abs(LABEL_DTE[lbl] - target))
+            if abs(LABEL_DTE[nearest] - target) <= tol_days:
+                cell = copy.deepcopy(raw_cells[nearest])
+                for c in cell.values():
+                    if isinstance(c, dict):
+                        c["source"] = "listed"
+                out[pillar] = cell
+                continue
+        # interp / missing
+        iv_by, source = interpolate_pillar(
+            anchors, target, delta_pillars=delta_pillars, tol_days=tol_days,
+        )
+        if iv_by is None:
+            continue  # missing — omit; frontend shows "—"
+        out[pillar] = {d: {"iv": iv, "strike": None, "source": source} for d, iv in iv_by.items()}
+
+    _recompute_surface_z(out)
+    return out

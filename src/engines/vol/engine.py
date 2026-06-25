@@ -47,6 +47,10 @@ SKIP_BACKOFF_S = 5.0   # short sleep when a cycle skipped (no spot / no surface)
 DEFAULT_TENOR_T = {
     "1M": 1 / 12, "2M": 2 / 12, "3M": 3 / 12,
     "4M": 4 / 12, "5M": 5 / 12, "6M": 6 / 12,
+    # Long-end anchors (chain_fetcher targets 270/365 ≈ 9M/1Y). Without a T here
+    # the SVI/pillar loop skips them (`if T is None: continue`), so the long-end
+    # bracketing anchors for the display-pillar interpolation would be lost.
+    "9M": 9 / 12, "1Y": 1.0,
 }
 
 
