@@ -36,7 +36,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TARGET_DTES: tuple[int, ...] = (30, 60, 90, 120, 150, 180)
+# Anchor-discovery targets — the listed expiries we try to qualify. Includes the
+# long-end quarterlies (270/365 ≈ 9M/1Y) so the display pillars (1M,2M,3M,6M,9M,1Y)
+# can be interpolated with bracketing anchors instead of extrapolated. These are
+# *anchors*, NOT the display set — see core.vol.tenors + docs/surface_tenor_pillars.md.
+DEFAULT_TARGET_DTES: tuple[int, ...] = (30, 60, 90, 120, 150, 180, 270, 365)
 DEFAULT_STRIKES_PER_SIDE: int = 18  # ATM ± 18 strikes per tenor
 DEFAULT_MAX_CONCURRENT: int = 3
 DEFAULT_GREEKS_WAIT_S: int = 12
@@ -55,6 +59,8 @@ def _safe(val: object) -> float | None:
 
 
 def tenor_label(dte: int) -> str:
+    """Coarse label for a *listed* anchor expiry (logging / bucketing only — the
+    display pillars are produced by core.vol.tenors interpolation)."""
     if dte <= 45:
         return "1M"
     if dte <= 75:
@@ -65,7 +71,11 @@ def tenor_label(dte: int) -> str:
         return "4M"
     if dte <= 165:
         return "5M"
-    return "6M"
+    if dte <= 210:
+        return "6M"
+    if dte <= 315:
+        return "9M"
+    return "1Y"
 
 
 def ensure_delayed_market_data(ib: Any) -> None:
