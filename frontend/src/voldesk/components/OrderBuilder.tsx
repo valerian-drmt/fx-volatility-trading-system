@@ -237,7 +237,12 @@ interface OrderBuilderProps {
 export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderProps): JSX.Element {
   // Live spot for the MARKET display block (RT.1). The structure pricing/preview
   // still uses the mock spot until the live preview lands (6r.2).
-  const { ticks } = useDeskData();
+  const { ticks, surface } = useDeskData();
+  // Tenors with no listed contract (server-interpolated). Selecting one is allowed
+  // but warns: the order routes to the nearest listed expiry (snap, backend).
+  const interpTenors = new Set(
+    (surface.data?.tenors ?? []).filter((_, i) => surface.data?.sources?.[i] === "interp"),
+  );
   const [product, setProduct] = useState("Risk Reversal");
   const [side, setSide] = useState("BUY");
   const [tenor, setTenor] = useState("2M");
@@ -396,6 +401,12 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
             <select value={farTenor} onChange={(e) => { setFarTenor(e.target.value); reset(); }}>{TENORS.map((t) => <option key={t}>{t}</option>)}</select>
           </label>}
         </div>
+        {!isFut && (interpTenors.has(tenor) || (isCal && interpTenors.has(farTenor))) && (
+          <div className="ob-interp-warn mono small">
+            ⚠ {[tenor, isCal ? farTenor : null].filter((t) => t && interpTenors.has(t)).join(" / ")} interpolated —
+            no listed contract; the order routes to the nearest listed expiry.
+          </div>
+        )}
 
         {/* strike control — driven by the structure, not a single ATM input (§6) */}
         {meta.mode === "single" && (

@@ -78,7 +78,12 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
     async () => adaptTermStructure(await fetchTermStructure()),
     VOL_WARN_MS,
   );
-  const liveSurface = useFetch<{ tenors: string[]; ivSurface: number[][]; ivZ: number[][] }>(
+  const liveSurface = useFetch<{
+    tenors: string[];
+    ivSurface: number[][];
+    ivZ: number[][];
+    sources: ("listed" | "interp" | "missing")[];
+  }>(
     async () => adaptSurface(await fetchVolSurface()),
     VOL_WARN_MS,
   );
@@ -216,6 +221,7 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
           ivZ: liveSurface.data.ivZ,
           tenors: liveSurface.data.tenors,
           deltas: DELTA_LABELS,
+          sources: liveSurface.data.sources,
         }
       : null,
   };

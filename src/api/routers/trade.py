@@ -660,8 +660,9 @@ def _synthetic_surface() -> dict[str, Any]:
     pillars = [("10dp", 0.6, -0.020), ("25dp", 0.2, -0.010),
                ("atm", 0.0, 0.0), ("25dc", 0.1, 0.010), ("10dc", 0.45, 0.020)]
     out: dict[str, Any] = {}
+    # Display pillars (surface tenor change): 1M,2M,3M,6M,9M,1Y.
     base_atm = {"1M": 0.068, "2M": 0.069, "3M": 0.070,
-                "4M": 0.0705, "5M": 0.071, "6M": 0.0715}
+                "6M": 0.0715, "9M": 0.073, "1Y": 0.0745}
     for tenor, atm in base_atm.items():
         out[tenor] = {
             d: {"iv": atm + smile / 100.0, "strike": spot + offset}

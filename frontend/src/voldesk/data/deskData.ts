@@ -104,6 +104,9 @@ export interface SurfaceData {
   ivZ: number[][];
   tenors: string[];
   deltas: string[];
+  /** Per-tenor source aligned with `tenors`: "listed" (real contract), "interp"
+   * (no listed contract — IV interpolated server-side) or "missing". */
+  sources?: ("listed" | "interp" | "missing")[];
 }
 
 /** A mode card = the mock `Pc` plus its real z trajectory (empty in mock mode). */

@@ -62,7 +62,7 @@ export function genCandles(n: number, start: number, vol: number, seed: number, 
 }
 
 export const SPOT = 1.0842;
-export const tenors = ["1M", "2M", "3M", "4M", "5M", "6M"];
+export const tenors = ["1M", "2M", "3M", "6M", "9M", "1Y"];
 export const deltas = ["10Δp", "25Δp", "ATM", "25Δc", "10Δc"];
 
 // vol surface IV [tenor][delta]

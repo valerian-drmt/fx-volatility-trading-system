@@ -454,7 +454,7 @@ def test_build_from_legs_strike_override_wins():
     [
         ({"contract_type": "swap", "side": "BUY", "tenor": "3M"}, "contract_type"),
         ({"contract_type": "call", "side": "HOLD", "tenor": "3M"}, "side"),
-        ({"contract_type": "call", "side": "BUY", "tenor": "9M"}, "tenor"),
+        ({"contract_type": "call", "side": "BUY", "tenor": "7Y"}, "tenor"),
         ({"contract_type": "call", "side": "BUY", "tenor": "3M", "delta_pillar": "50d"}, "delta_pillar"),
         ({"contract_type": "call", "side": "BUY", "tenor": "3M", "qty_factor": 0}, "qty_factor"),
     ],

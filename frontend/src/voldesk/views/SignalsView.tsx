@@ -40,8 +40,10 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
   const surf = data.ivSurface,
     z = data.ivZ,
     deltas = data.deltas,
-    tenors = data.tenors;
+    tenors = data.tenors,
+    sources = data.sources ?? [];
   const C = deltas.length;
+  const hasInterp = sources.includes("interp");
   return (
     <div className="ivz">
       <div className="gz ivz-grid" style={{ gridTemplateColumns: `42px repeat(${C}, 1fr)` }}>
@@ -53,7 +55,12 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
         ))}
         {surf.map((row, i) => (
           <Fragment key={i}>
-            <div className="gz-rowh mono">{tenors[i]}</div>
+            <div className={"gz-rowh mono" + (sources[i] === "interp" ? " gz-rowh-interp" : "")}>
+              {tenors[i]}
+              {sources[i] === "interp" && (
+                <span className="interp-mark" title="interpolated — no listed contract at this tenor">~</span>
+              )}
+            </div>
             {row.map((v, j) => {
               const zz = z[i]![j]!;
               const missing = Number.isNaN(v);
@@ -94,6 +101,12 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
           <span className="mono small dim">rich</span>
         </div>
       </div>
+      {hasInterp && (
+        <div className="ivz-interp-note small">
+          <span className="interp-mark">~</span> interpolated tenor — no listed CME contract at that maturity;
+          IV is modelled from the listed expiries. A read-only estimate, not a market quote.
+        </div>
+      )}
     </div>
   );
 }
