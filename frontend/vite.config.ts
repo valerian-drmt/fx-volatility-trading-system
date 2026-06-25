@@ -6,6 +6,11 @@ import path from "node:path";
 const API_TARGET = process.env.VITE_API_TARGET ?? "http://localhost:8000";
 
 export default defineConfig({
+  // Deployed under valeriandarmente.dev/fx-volatility-trading-system/ (CloudFront
+  // forwards this prefix to the EC2 origin; the apex "/" is the static CV on S3).
+  // main.tsx is BASE_URL-aware so client routing survives the prefix. API/WS calls
+  // stay root-absolute (/api, /ws) — the backend is not under the prefix.
+  base: "/fx-volatility-trading-system/",
   plugins: [react()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
