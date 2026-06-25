@@ -36,11 +36,11 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Anchor-discovery targets — the listed expiries we try to qualify. Includes the
-# long-end quarterlies (270/365 ≈ 9M/1Y) so the display pillars (1M,2M,3M,6M,9M,1Y)
-# can be interpolated with bracketing anchors instead of extrapolated. These are
-# *anchors*, NOT the display set — see core.vol.tenors + docs/surface_tenor_pillars.md.
-DEFAULT_TARGET_DTES: tuple[int, ...] = (30, 60, 90, 120, 150, 180, 270, 365)
+# Anchor-discovery targets — the listed expiries we try to qualify, spanning the
+# CME monthly-serial range (≈1M..6M). Display pillars come from interpolating
+# these (core.vol.tenors). The far quarterlies (9M/1Y) aren't listed on EUU, so
+# we don't chase them. See docs/surface_tenor_pillars.md.
+DEFAULT_TARGET_DTES: tuple[int, ...] = (30, 60, 90, 120, 150, 180)
 DEFAULT_STRIKES_PER_SIDE: int = 18  # ATM ± 18 strikes per tenor
 DEFAULT_MAX_CONCURRENT: int = 3
 DEFAULT_GREEKS_WAIT_S: int = 12

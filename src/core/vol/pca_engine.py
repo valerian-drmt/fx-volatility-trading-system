@@ -23,8 +23,8 @@ from dataclasses import dataclass
 import numpy as np
 
 # 30-dim canonical grid : 6 display pillars × 5 deltas (rows = tenor outer, cols
-# = delta inner). Pillars match core.vol.tenors.DISPLAY_PILLARS (surface change).
-TENORS = ("1M", "2M", "3M", "6M", "9M", "1Y")
+# = delta inner). Pillars match core.vol.tenors.DISPLAY_PILLARS.
+TENORS = ("1M", "2M", "3M", "4M", "5M", "6M")
 DELTAS = ("10dp", "25dp", "atm", "25dc", "10dc")
 N_FEATURES = len(TENORS) * len(DELTAS)  # 30
 

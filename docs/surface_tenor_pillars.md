@@ -1,8 +1,14 @@
-# Surface tenor pillars — change spec (1M·2M·3M·4M·5M·6M → 1M·2M·3M·6M·9M·1Y)
+# Surface tenor pillars — interpolation + source flags on 1M·2M·3M·4M·5M·6M
 
-> Status: **PLAN** (not yet implemented). Drives the Signal-tab front+back change.
-> Owner decision (2026‑06‑25): show the standard FX‑vol pillars **1M, 2M, 3M, 6M, 9M, 1Y**
-> instead of the dense monthly strip 1M…6M.
+> **Final decision (2026‑06‑25, revised):** keep the **1M, 2M, 3M, 4M, 5M, 6M**
+> pillar set — it matches CME's listed monthly-serial range. The live vol-engine
+> log confirmed IB lists EUU expiries only to ~Dec 2026 (~5.4M); **9M/1Y are
+> quarterly-only and not currently listed**, so they were dropped (they'd be
+> permanently empty). 1M-5M are real listed contracts; **6M is interpolated**
+> (source="interp", warned in the UI) until a ~180d serial lists, then flips to
+> "listed" automatically. The interpolation + source-flag + snap + warning
+> machinery (below) is what shipped; only the *pillar set* reverted to 1M-6M.
+> An earlier draft proposed 1M,2M,3M,6M,9M,1Y — superseded.
 
 ## 1. Why & the core principle
 

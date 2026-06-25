@@ -33,8 +33,8 @@ def _anchor(dte: int, atm: float) -> TenorAnchor:
 
 
 def test_six_canonical_pillars():
-    assert DISPLAY_PILLARS == ("1M", "2M", "3M", "6M", "9M", "1Y")
-    assert PILLAR_TARGET_DTE["6M"] == 180 and PILLAR_TARGET_DTE["1Y"] == 365
+    assert DISPLAY_PILLARS == ("1M", "2M", "3M", "4M", "5M", "6M")
+    assert PILLAR_TARGET_DTE["6M"] == 180 and PILLAR_TARGET_DTE["5M"] == 150
 
 
 def test_listed_when_anchor_within_tolerance():
@@ -91,24 +91,21 @@ def test_nearest_listed_dte_snaps_by_abs_distance():
 # ── to_display_surface : raw listed-tenor surface → 6 display pillars ──────────
 
 def test_to_display_surface_six_pillars_with_interp_and_source():
-    # Engine emitted 1M..5M monthlies + 9M/1Y quarterlies (no 6M listing).
+    # Engine emitted 1M..5M monthlies (Aug..Dec); no 6M contract listed yet.
     raw = {
         "1M": _raw_row(0.070), "2M": _raw_row(0.071), "3M": _raw_row(0.072),
         "4M": _raw_row(0.073), "5M": _raw_row(0.074),
-        "9M": _raw_row(0.078), "1Y": _raw_row(0.080),
         "_svi": {"1M": {"butterfly_ok": True}},  # meta carried through
     }
     disp = to_display_surface(raw)
-    # 1M,2M,3M listed; 6M interpolated (5M↔9M); 9M,1Y listed. 4M/5M dropped.
-    assert set(k for k in disp if not k.startswith("_")) == {"1M", "2M", "3M", "6M", "9M", "1Y"}
-    assert "4M" not in disp and "5M" not in disp
+    # 1M-5M listed; 6M interpolated (flat-hold from 5M, within margin).
+    assert set(k for k in disp if not k.startswith("_")) == {"1M", "2M", "3M", "4M", "5M", "6M"}
     assert disp["_svi"] == raw["_svi"]  # meta preserved
-    assert disp["1M"]["atm"]["source"] == "listed"
-    assert disp["1M"]["atm"]["strike"] is not None  # real cell kept
+    assert disp["5M"]["atm"]["source"] == "listed"
+    assert disp["5M"]["atm"]["strike"] is not None  # real cell kept
     assert disp["6M"]["atm"]["source"] == "interp"
     assert disp["6M"]["atm"]["strike"] is None       # no contract → no strike
-    # 6M ATM interpolated between 5M (0.074) and 9M (0.078) → strictly inside
-    assert 0.074 < disp["6M"]["atm"]["iv"] < 0.078
+    assert disp["6M"]["atm"]["iv"] == pytest.approx(0.074)  # flat-held from 5M
     # z recomputed over the display grid
     assert "z" in disp["3M"]["atm"]
 
@@ -116,8 +113,9 @@ def test_to_display_surface_six_pillars_with_interp_and_source():
 def test_to_display_surface_omits_pillar_with_no_anchor_bracket():
     raw = {"1M": _raw_row(0.07), "2M": _raw_row(0.071), "3M": _raw_row(0.072)}
     disp = to_display_surface(raw)
-    # only short anchors → 6M/9M/1Y have no bracket and fall outside margin → omitted
-    assert set(k for k in disp if not k.startswith("_")) == {"1M", "2M", "3M"}
+    # 1M-3M listed; 4M flat-holds from 3M (Δ30 ≤ margin) → interp; 5M/6M too far → omitted.
+    assert set(k for k in disp if not k.startswith("_")) == {"1M", "2M", "3M", "4M"}
+    assert disp["4M"]["atm"]["source"] == "interp"
 
 
 def test_to_display_surface_empty():

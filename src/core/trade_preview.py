@@ -21,12 +21,7 @@ from core.products import product_label_from_symbol
 from core.vol.tenors import snap_tenor
 
 # 6-tenor canonical grid
-TENOR_TO_DTE = {
-    "1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180,
-    # Long-end display pillars (surface tenor change) — 4M/5M kept for the
-    # legacy template path; the desk now composes on 1M,2M,3M,6M,9M,1Y.
-    "9M": 270, "1Y": 365,
-}
+TENOR_TO_DTE = {"1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180}
 DELTA_PILLARS = ("10dp", "25dp", "atm", "25dc", "10dc")
 
 # ────────────────────────────────────────────────────────────────

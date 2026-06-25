@@ -13,10 +13,10 @@
  */
 import type { VolSurface } from "../../../api/endpoints";
 
-// The 6 standard display pillars (backend core.vol.tenors.DISPLAY_PILLARS).
-// A pillar with no listed contract (e.g. 6M today) is interpolated server-side
-// and flagged source="interp"; one past the furthest listed expiry is omitted.
-export const SURFACE_TENOR_KEYS = ["1M", "2M", "3M", "6M", "9M", "1Y"] as const;
+// The 6 display pillars (backend core.vol.tenors.DISPLAY_PILLARS) — CME's listed
+// monthly-serial range. 1M-5M are real listed contracts; 6M is interpolated
+// (source="interp") until a ~180d serial lists, then flips to "listed".
+export const SURFACE_TENOR_KEYS = ["1M", "2M", "3M", "4M", "5M", "6M"] as const;
 export const SURFACE_DELTA_KEYS = ["10dp", "25dp", "atm", "25dc", "10dc"] as const;
 
 /** Per-pillar source: real listed contract vs interpolated vs absent. */

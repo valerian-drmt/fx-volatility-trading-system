@@ -16,10 +16,14 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-# The 6 standard display pillars + their target DTE (days). Single source of truth.
-DISPLAY_PILLARS: tuple[str, ...] = ("1M", "2M", "3M", "6M", "9M", "1Y")
+# The 6 display pillars + their target DTE (days). Single source of truth.
+# Matches CME's listed monthly-serial range (1M..6M). 1M-5M are real listed
+# expiries; 6M is interpolated (source="interp") until a ~180d serial lists,
+# then flips to "listed" automatically. (9M/1Y are quarterly-only and not
+# currently listed — left out to avoid permanently-empty columns.)
+DISPLAY_PILLARS: tuple[str, ...] = ("1M", "2M", "3M", "4M", "5M", "6M")
 PILLAR_TARGET_DTE: dict[str, int] = {
-    "1M": 30, "2M": 60, "3M": 90, "6M": 180, "9M": 270, "1Y": 365,
+    "1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180,
 }
 # Delta pillars per tenor (put wings → ATM → call wings).
 DELTA_PILLARS: tuple[str, ...] = ("10dp", "25dp", "atm", "25dc", "10dc")
