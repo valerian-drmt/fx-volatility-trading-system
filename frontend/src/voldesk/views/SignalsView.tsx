@@ -15,7 +15,7 @@ import { FreshBadge } from "../components/FreshBadge";
 import { type Tone } from "../components/format";
 import { DATA, fmt } from "../data";
 import type { Pc, TermPoint } from "../data";
-import type { PcaCard, PcaModelMeta, SurfaceData } from "../data/deskData";
+import type { PcaCard, SurfaceData } from "../data/deskData";
 import { useDeskData } from "../data/deskData";
 
 const FAIR_COL = "#46b3d6"; // distinct cool color for the σ_fair curve (vs orange accent for ATM)
@@ -56,19 +56,30 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
             <div className="gz-rowh mono">{tenors[i]}</div>
             {row.map((v, j) => {
               const zz = z[i]![j]!;
+              const missing = Number.isNaN(v);
               return (
                 <div
                   key={j}
-                  className={"gz-cell" + (j === 0 || j === C - 1 ? " wing" : "")}
-                  style={{ background: sigDivZ(zz) }}
-                  title={`${tenors[i]} ${deltas[j]} · IV ${v.toFixed(1)} · ${zz > 0 ? "+" : ""}${zz.toFixed(1)}σ`}
+                  className={"gz-cell" + (j === 0 || j === C - 1 ? " wing" : "") + (missing ? " gz-missing" : "")}
+                  style={missing ? undefined : { background: sigDivZ(zz) }}
+                  title={
+                    missing
+                      ? `${tenors[i]} ${deltas[j]} · no data`
+                      : `${tenors[i]} ${deltas[j]} · IV ${v.toFixed(1)} · ${zz > 0 ? "+" : ""}${zz.toFixed(1)}σ`
+                  }
                 >
-                  <span className="gz-iv mono">{v.toFixed(1)}</span>
-                  {Math.abs(zz) >= 0.05 && (
-                    <span className="gz-z mono">
-                      {zz > 0 ? "+" : ""}
-                      {zz.toFixed(1)}σ
-                    </span>
+                  {missing ? (
+                    <span className="gz-iv mono dim">—</span>
+                  ) : (
+                    <>
+                      <span className="gz-iv mono">{v.toFixed(1)}</span>
+                      {Math.abs(zz) >= 0.05 && (
+                        <span className="gz-z mono">
+                          {zz > 0 ? "+" : ""}
+                          {zz.toFixed(1)}σ
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               );
@@ -238,43 +249,7 @@ function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
   );
 }
 
-// mode stability — eigengap λ2−λ3; warns when slope/curvature identities may rotate
-function ModeStability({ model }: { model: PcaModelMeta | null }): JSX.Element {
-  if (!model) {
-    return <div className="dim small mono ivz-empty">PCA model not loaded (no active fit)</div>;
-  }
-  const e = model.eigen,
-    // only the 3 traded modes (PC1/2/3) ; drop the higher eigenvalues (4-6).
-    lam = e.lambda.slice(0, 3);
-  const max = Math.max(...lam) || 1;
-  const degenerate = e.ratio23 < 2;
-  return (
-    <div className="stab">
-      <div className="stab-eigs">
-        {lam.map((l, i) => (
-          <div key={i} className="stab-row">
-            <span className="stab-lbl mono">λ{i + 1}</span>
-            <div className="stab-track">
-              <div className={"stab-fill pc" + (i + 1)} style={{ width: Math.max(2, (l / max) * 100) + "%" }} />
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="stab-gap">
-        <div className="stab-gap-item">
-          <span className="gs-lbl">eigengap λ2−λ3</span>
-          <b className="mono">{e.gap23.toFixed(1)} pts</b>
-        </div>
-        <div className="stab-gap-item">
-          <span className="gs-lbl">ratio λ2/λ3</span>
-          <b className={"mono " + (degenerate ? "warn" : "pos")}>{e.ratio23.toFixed(2)}×</b>
-        </div>
-        <Tag tone={degenerate ? "danger" : "good"}>{degenerate ? "narrow — degenerate risk" : "stable"}</Tag>
-      </div>
-    </div>
-  );
-}
-
+// (Mode stability panel removed — eigengap diagnostics dropped from the desk.)
 // (Expressions moved to the Order builder as an exposure reference — see order_builder.jsx)
 
 function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
@@ -332,7 +307,6 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
 export function SignalsView(): JSX.Element {
   const [view, setView] = useState<string>("3M");
   const { surface, termStructure, pca } = useDeskData();
-  const m = pca.data?.model ?? null;
   const pcsList = pca.data?.pcs ?? [];
   return (
     <div className="ts-grid">
@@ -340,9 +314,6 @@ export function SignalsView(): JSX.Element {
         <div className="sig-left">
           <Panel title="IV surface" dataPp="iv-surface" right={<FreshBadge fresh={surface} label="EURUSD · z-score field" />} className="ts-curve-panel">
             <IVSurfaceZ data={surface.data} />
-          </Panel>
-          <Panel title="Mode stability" dataPp="mode-stability" right={<FreshBadge fresh={pca} label="eigengap" />} className="ts-stab-panel">
-            <ModeStability model={m} />
           </Panel>
         </div>
         <Panel title="Fair vol — level gate" dataPp="fair-vol" right={<FreshBadge fresh={termStructure} label="RV / GARCH" />} className="ts-fv-panel sig-fv" pad>

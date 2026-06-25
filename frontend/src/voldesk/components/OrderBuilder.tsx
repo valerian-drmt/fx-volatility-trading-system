@@ -447,18 +447,6 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
         </div>
       </div>
 
-      {/* EXPOSURE REFERENCE — what the closed set expresses (reference, not a recommendation) */}
-      <div className="exposure-ref">
-        <div className="exp-ref-head"><span>Exposure reference</span><span className="dim mono small">closed set</span></div>
-        <div className="exp-ref-list">
-          <div className="exp-ref-row"><b>Straddle</b><span className="dim">vega · level (PC1)</span></div>
-          <div className="exp-ref-row"><b>Calendar</b><span className="dim">vega-slope · theta (PC2)</span></div>
-          <div className="exp-ref-row"><b>Butterfly</b><span className="dim">volga · curvature (PC3)</span></div>
-          <div className="exp-ref-row"><b>Risk Reversal</b><span className="dim warn">vanna · skew — off by default</span></div>
-        </div>
-        <div className="dim small exp-ref-note">RR is risk-only: the desk does not signal-trade skew.</div>
-      </div>
-
       {/* MARKET (yellow) */}
       <div className="builder-block block-mkt">
         <div className="block-tag">MARKET</div>

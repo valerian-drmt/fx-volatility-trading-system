@@ -46,27 +46,24 @@ export function adaptIvZ(resp: VolSurface): number[][] {
   });
 }
 
-/** Combined adapter for the Signals heatmap: returns ONLY the tenors actually
- * present in the payload (canonical order) + their IV(%)/z rows. Avoids a
- * misleading all-zero row when the engine emits fewer tenors than the 6 pillars
- * (e.g. no 6M FOP chain → no "6M" key). Grids and `tenors` stay length-aligned. */
+/** Combined adapter for the Signals heatmap: always returns the 6 canonical
+ * tenors (1M…6M) so the full term grid — incl. 6M — is shown. Cells the engine
+ * doesn't emit (e.g. no 6M FOP chain when markets are closed) come back as `NaN`
+ * IV so the heatmap can render "—" rather than a misleading 0.0. `ivZ` stays 0
+ * (neutral) for missing cells. Grids and `tenors` stay length-aligned. */
 export function adaptSurface(
   resp: VolSurface,
 ): { tenors: string[]; ivSurface: number[][]; ivZ: number[][] } {
   const surface = (resp as { surface?: Record<string, TenorMap> }).surface ?? {};
-  const tenors = SURFACE_TENOR_KEYS.filter((t) => {
-    const row = surface[t];
-    return !!row && SURFACE_DELTA_KEYS.some((d) => typeof row[d]?.iv === "number");
-  });
   return {
-    tenors: [...tenors],
-    ivSurface: tenors.map((t) =>
+    tenors: [...SURFACE_TENOR_KEYS],
+    ivSurface: SURFACE_TENOR_KEYS.map((t) =>
       SURFACE_DELTA_KEYS.map((d) => {
         const iv = surface[t]?.[d]?.iv;
-        return typeof iv === "number" ? iv * 100 : 0;
+        return typeof iv === "number" ? iv * 100 : NaN;
       }),
     ),
-    ivZ: tenors.map((t) =>
+    ivZ: SURFACE_TENOR_KEYS.map((t) =>
       SURFACE_DELTA_KEYS.map((d) => {
         const z = surface[t]?.[d]?.z;
         return typeof z === "number" ? z : 0;

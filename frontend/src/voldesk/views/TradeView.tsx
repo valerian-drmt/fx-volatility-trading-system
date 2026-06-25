@@ -355,6 +355,39 @@ function BudgetBar({ label, used, cap, unit, fmtv, add = 0 }: BudgetBarProps): J
   );
 }
 
+// FX session windows (UTC). Bubble: green = open, orange = pre/post (±1h edge),
+// red = closed. Derived from the wall clock — no backend feed needed.
+const SESSIONS: { code: string; open: number; close: number }[] = [
+  { code: "London", open: 7, close: 16 },
+  { code: "New York", open: 12, close: 21 },
+  { code: "Hong Kong", open: 1, close: 9 },
+];
+function sessionState(hUtc: number, open: number, close: number): "open" | "edge" | "closed" {
+  if (hUtc >= open && hUtc < close) return "open";
+  if ((hUtc >= open - 1 && hUtc < open) || (hUtc >= close && hUtc < close + 1)) return "edge";
+  return "closed";
+}
+function MarketSessions(): JSX.Element {
+  const now = new Date();
+  const h = now.getUTCHours() + now.getUTCMinutes() / 60;
+  const tone: Record<string, string> = { open: "var(--pos)", edge: "var(--warn)", closed: "var(--neg)" };
+  const word: Record<string, string> = { open: "open", edge: "pre/post", closed: "closed" };
+  return (
+    <div className="mkt-sessions">
+      {SESSIONS.map((s) => {
+        const st = sessionState(h, s.open, s.close);
+        return (
+          <div key={s.code} className="mkt-sess" title={`${s.code} · ${word[st]}`}>
+            <span className="sess-dot" style={{ background: tone[st] }} />
+            <span className="sess-code">{s.code}</span>
+            <span className="sess-state mono dim">{word[st]}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function IndicatorsPanel({
   builder,
   greeks,
@@ -362,8 +395,7 @@ function IndicatorsPanel({
   limits,
   events,
   cash,
-  spotBid,
-  spotAsk,
+  positions,
 }: {
   builder: BuilderState | null;
   greeks: Greeks;
@@ -371,16 +403,13 @@ function IndicatorsPanel({
   limits: Limits;
   events: MacroEvent[];
   cash: Cash[];
-  spotBid: number;
-  spotAsk: number;
+  positions: Position[];
 }): JSX.Element {
   const g = greeks,
     a = account,
     L = limits;
   const eur = cash.find((c) => c.ccy === "EUR"),
     usd = cash.find((c) => c.ccy === "USD");
-  const bid = spotBid.toFixed(5),
-    ask = spotAsk.toFixed(5);
   const evt = nextHighImpact(events);
   const isActive = !!(builder && builder.active && !builder.isFut);
   const add = isActive && builder ? builder.net : null;
@@ -390,7 +419,6 @@ function IndicatorsPanel({
   const evtInWindow = !!(isActive && evt && tradedDte != null && (evt.dt.getTime() - Date.now()) / 8.64e7 <= tradedDte);
 
   const kM = (v: number): string => (v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" : "$" + Math.round(v / 1e3) + "k");
-  const drift = Math.abs(g.netDelta) > L.deltaBandUsd;
   const usedMarginPct = a.marginInitPct;
   const pct = (added: number, used: number, cap: number): number => {
     const rem = cap - used;
@@ -404,83 +432,55 @@ function IndicatorsPanel({
         <div className="ind-fam-head">Market microstructure</div>
         <div className="ind-rows">
           <div className="ind-row">
-            <span>Spot bid/ask</span>
-            <b className="mono">
-              {bid} / {ask}
-            </b>
-          </div>
-          <div className="ind-row">
             <span>Fwd {tradedTenor || "2M"}</span>
             <b className="mono">{DATA.smileFor(tenIx).fwd.toFixed(4)}</b>
           </div>
-          <div className="ind-row">
-            <span>Surface freshness</span>
-            <b className="mono">
-              <span className="state-chip fresh">fresh · 38s</span>
-            </b>
-          </div>
-          <div className="ind-row">
-            <span>Session</span>
-            <b className="mono">
-              London <span className="dim">· liquid</span>
-            </b>
-          </div>
         </div>
+        <MarketSessions />
       </div>
 
-      {/* 2 — book state */}
+      {/* 2 — book net (= Risk) : Δ-band monitor + net greeks + book totals.
+          Moved out of the Open-positions panel so "open positions" (the legs)
+          and "book net" (the aggregate) read as distinct blocks. */}
       <div className="ind-fam">
         <div className="ind-fam-head">
-          Book state <span className="dim">· one engine</span>
+          Book net <span className="dim">· {positions.length} legs · one engine · = Risk</span>
         </div>
+        <HedgeStrip greeks={greeks} limits={limits} />
         <div className="ind-greeks">
           <div className="indg">
-            <span className="indg-l">
-              Δ net <em className="unit">$</em>
-            </span>
-            <b className="mono">{gk$(g.netDelta)}</b>
+            <span className="indg-l">Δ net <em className="unit">$</em></span>
+            <b className={"mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</b>
           </div>
           <div className="indg">
-            <span className="indg-l">
-              Γ net <em className="unit">$/pip</em>
-            </span>
-            <b className="mono">{gk$(g.netGamma)}</b>
+            <span className="indg-l">Γ net <em className="unit">$/pip</em></span>
+            <b className={"mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</b>
           </div>
           <div className="indg">
-            <span className="indg-l">
-              Vega net <em className="unit">$/vp</em>
-            </span>
-            <b className="mono">{gk$(g.netVega)}</b>
+            <span className="indg-l">Vega net <em className="unit">$/vp</em></span>
+            <b className={"mono " + pnlCls(g.netVega)}>{gk$(g.netVega)}</b>
           </div>
           <div className="indg">
-            <span className="indg-l">
-              Vanna net <em className="unit">$k</em>
-            </span>
-            <b className="mono">{fmt.sgn(g.netVanna, 0)}k</b>
+            <span className="indg-l">Vanna net <em className="unit">$k/vp·fig</em></span>
+            <b className={"mono " + pnlCls(g.netVanna)}>{fmt.sgn(g.netVanna, 0)}k</b>
           </div>
           <div className="indg">
-            <span className="indg-l">
-              Θ net <em className="unit">$/day</em>
-            </span>
-            <b className="mono">{gk$(g.netTheta)}</b>
+            <span className="indg-l">Volga net <em className="unit">$k/vp</em></span>
+            <b className={"mono " + pnlCls(g.netVolga)}>{fmt.sgn(g.netVolga, 0)}k</b>
+          </div>
+          <div className="indg">
+            <span className="indg-l">Θ net <em className="unit">$/day</em></span>
+            <b className={"mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</b>
           </div>
         </div>
         <div className="ind-rows">
           <div className="ind-row">
-            <span>Δ drift vs band</span>
-            <b className={"mono " + (drift ? "warn" : "pos")}>
-              {drift
-                ? "+" +
-                  Math.round((Math.abs(g.netDelta) / L.deltaBandUsd - 1) * 100) +
-                  "% beyond ±$" +
-                  (L.deltaBandUsd / 1000).toFixed(1) +
-                  "k"
-                : "within band"}
-            </b>
+            <span>Nominal <em className="unit">€</em></span>
+            <b className="mono">{(g.netNominal / 1e6).toFixed(1)}M</b>
           </div>
           <div className="ind-row">
-            <span>Last hedge</span>
-            <b className="mono dim">11:48:02</b>
+            <span>Unrealized P&L</span>
+            <b className={"mono " + pnlCls(g.netUnreal)}>{fmt.usdk(g.netUnreal)}</b>
           </div>
         </div>
       </div>
@@ -637,10 +637,9 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     <div className={"trade-grid " + (tweaks.density || "regular")}>
       <div className="trade-main">
         <Panel title="Indicators" dataPp="trade-indicators" right={<FreshBadge fresh={trade} label="state for execution · not a signal" />} className="trade-block">
-          <IndicatorsPanel builder={builder} greeks={greeks} account={account} limits={limits} events={events} cash={cash} spotBid={spotBid} spotAsk={spotAsk} />
+          <IndicatorsPanel builder={builder} greeks={greeks} account={account} limits={limits} events={events} cash={cash} positions={positions} />
         </Panel>
         <Panel title="Open positions" dataPp="trade-open" pad={false} className="trade-block open-pos-panel">
-          <HedgeStrip greeks={greeks} limits={limits} />
           <OpenPositionsTable
             showGreeks={tweaks.showGreeks}
             extended={tweaks.showGreeks}
@@ -648,6 +647,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
             dense={tweaks.density === "compact"}
             positions={positions}
             greeks={greeks}
+            showNet={false}
           />
         </Panel>
       </div>

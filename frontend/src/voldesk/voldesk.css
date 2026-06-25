@@ -463,6 +463,8 @@ input,select{font-family:inherit;font-size:13px}
 /* IV surface + fair vol */
 .sig-cluster{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:stretch}
 .sig-cluster>.sig-left{display:flex;flex-direction:column;gap:12px;min-width:0}
+.sig-cluster>.sig-left>.panel{flex:1;display:flex;flex-direction:column}
+.sig-cluster>.sig-left .ivz{flex:1;justify-content:center}
 .sig-cluster .panel{margin-bottom:0}
 .sig-fv{display:flex;flex-direction:column}
 .ivsurf-table .wing{outline:1.5px dashed color-mix(in srgb,var(--warn) 55%,transparent);outline-offset:-1px}
@@ -485,8 +487,8 @@ input,select{font-family:inherit;font-size:13px}
 .ivss-val{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600;color:var(--fg);padding:11px 0;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.7)}
 .surf-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;align-items:start}
 .fv-chart{margin-bottom:11px;padding-bottom:11px;border-bottom:1px solid var(--border)}
-.fv-table{font-size:10.5px}
-.fv-table th,.fv-table td{padding:4px 5px}
+.fv-table{font-size:12.5px}
+.fv-table th,.fv-table td{padding:6px 6px}
 .fv-table .fv-wing{opacity:.62}
 .stab-spectrum-lbl{margin-top:4px}
 .ivs-corner{}
@@ -982,11 +984,12 @@ input,select{font-family:inherit;font-size:13px}
 /* grid + z-score cells */
 .gz{display:grid;gap:2px;width:100%}
 .gz-corner{font-size:9px;color:var(--text-faint);display:flex;align-items:flex-end;justify-content:center;padding-bottom:4px}
-.gz-colh{font-size:10px;color:var(--text-dim);text-align:center;align-self:end;padding-bottom:4px}
-.gz-rowh{font-size:10px;color:var(--text-dim);display:flex;align-items:center;justify-content:flex-end;padding-right:7px}
-.gz-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:9px 0;border-radius:4px}
-.gz-iv{font-size:14px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.7);line-height:1}
-.gz-z{font-size:9px;font-weight:600;color:rgba(255,255,255,.82);text-shadow:0 1px 2px rgba(0,0,0,.7);line-height:1}
+.gz-colh{font-size:12.5px;color:var(--text-dim);text-align:center;align-self:end;padding-bottom:4px}
+.gz-rowh{font-size:13px;font-weight:600;color:var(--text-dim);display:flex;align-items:center;justify-content:flex-end;padding-right:8px}
+.gz-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:16px 0;border-radius:4px}
+.gz-iv{font-size:18px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.7);line-height:1}
+.gz-z{font-size:11px;font-weight:600;color:rgba(255,255,255,.82);text-shadow:0 1px 2px rgba(0,0,0,.7);line-height:1}
+.gz-cell.gz-missing{background:color-mix(in srgb,var(--line) 45%,transparent);border:1px dashed var(--line)}
 @media(max-width:760px){.slab-herobody{grid-template-columns:1fr}}
 /* ---------- dashboard ---------- */
 .dash-grid{display:flex;flex-direction:column;gap:12px}
@@ -1307,3 +1310,14 @@ input,select{font-family:inherit;font-size:13px}
 .auth-modal input:focus{outline:none;border-color:var(--accent)}
 .auth-error{font-size:12px;color:var(--neg);background:color-mix(in srgb,var(--neg) 12%,transparent);border-radius:4px;padding:6px 9px}
 .auth-actions{display:flex;gap:8px;margin-top:4px}
+
+/* Trade · market sessions (London/NY/HK open-closed bubbles) */
+.mkt-sessions{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.mkt-sess{display:flex;align-items:center;gap:8px;font-size:12px}
+.mkt-sess .sess-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 6px color-mix(in srgb,currentColor 0%,transparent)}
+.mkt-sess .sess-code{flex:1;color:var(--fg)}
+.mkt-sess .sess-state{font-size:11px}
+
+/* Risk · VaR horizon button group (replaces the click-the-table-row selector) */
+.var-tf-group{display:flex;gap:6px;padding:8px 12px 2px;flex-wrap:wrap}
+.var-tf-group .chip{font-size:12px}

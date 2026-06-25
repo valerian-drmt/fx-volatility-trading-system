@@ -27,6 +27,9 @@ interface OpenPositionsTableProps {
   /** Live positions + book greeks (PR 6r). Default to the mock when omitted. */
   positions?: Position[];
   greeks?: Greeks;
+  /** Render the "Book net" aggregate strip. Trade moves it into the Indicators
+   * panel (showNet=false) so "open positions" vs "book state" read distinctly. */
+  showNet?: boolean;
 }
 
 export function OpenPositionsTable({
@@ -36,6 +39,7 @@ export function OpenPositionsTable({
   dense = false,
   positions = DATA.positions,
   greeks = DATA.greeks,
+  showNet = true,
 }: OpenPositionsTableProps): JSX.Element {
   const rows = positions;
   const g = greeks;
@@ -43,6 +47,7 @@ export function OpenPositionsTable({
     tNom = g.netNominal;
   return (
     <div className="positions-wrap">
+      {showNet && (
       <div className="net-strip">
         <div className="net-id">
           <span className="dim small">Book net</span>
@@ -98,6 +103,7 @@ export function OpenPositionsTable({
           </div>
         </div>
       </div>
+      )}
       <div className="table-scroll">
         <table className={"dt positions-table" + (dense ? " dense" : "")}>
           <thead>

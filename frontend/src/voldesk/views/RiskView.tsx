@@ -289,6 +289,17 @@ function VarCard({ var95, var99, es99, netLiq, hist, fresh, nDays }: { var95: nu
         <span className="var-frozen" title="le scaling √t suppose une exposition gelée — faux pour un book non-linéaire (vanna 2M +152k, theta bleed, roll-down du gamma). Lire 1M/1Y avec prudence.">⚠ exposition gelée</span>
         <span className="var-live"><span className="status-dot pulse" style={{ background: "var(--pos)" }} />live</span>
       </div>
+      <div className="var-tf-group">
+        {rows.map((r) => (
+          <button
+            key={r.id}
+            className={"chip " + (r.id === tf ? "on" : "")}
+            onClick={() => setTf(r.id)}
+          >
+            {r.id} <span className="dim">{r.lbl}</span>
+          </button>
+        ))}
+      </div>
       <div className="table-scroll">
         <table className="dt var-table">
           <thead><tr>
@@ -706,7 +717,9 @@ export function RiskView(): JSX.Element {
   const vpca = useFetch<VegaPcaRow[]>(() => fetchVegaPca().then(adaptVegaPca), 120_000).data ?? [];
   const g = DATA.greeks; // per-unit greek representation — not the live positions-derived nets; stays mock (09)
   const a = portfolio.data?.account ?? DATA.account; // margin/net-liq live (PR 3 account domain)
-  const vd = risk.data ?? { var95: g.var1d95, var99: g.var1d99, es99: g.var1d99 * 1.16, nDays: 0, hist: [], perTenor: [] };
+  // No live VaR yet (history < min window → backend returns null): show honest
+  // zeros + "building window…", NOT a fabricated mock VaR scaled across horizons.
+  const vd = risk.data ?? { var95: 0, var99: 0, es99: 0, nDays: 0, hist: [], perTenor: [] };
   const pt = vd.perTenor; // vega/vanna/volga by tenor ($k) — live (PR 5)
   // reconciliation (§1): net 2nd-order greeks = Σ of their tenor buckets, by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);

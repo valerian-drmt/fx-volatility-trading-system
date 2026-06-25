@@ -418,7 +418,7 @@ function PortfolioProbe(): JSX.Element {
 }
 
 describe("DataProvider (live-only)", () => {
-  it("fetches + adapts the surface ; grid carries only the tenors present in the payload", async () => {
+  it("fetches + adapts the surface ; grid always carries the 6 canonical tenors (missing cells = NaN → '—')", async () => {
     server.use(
       http.get("*/api/v1/vol/surface", () =>
         HttpResponse.json({
@@ -437,9 +437,9 @@ describe("DataProvider (live-only)", () => {
     );
     await waitFor(() => expect(screen.getByTestId("s-iv00").textContent).toBe("11"));
     expect(screen.getByTestId("s-status").textContent).toBe("live");
-    // The grid holds only the tenors actually present (here just 1M) — no
-    // misleading all-zero row for tenors the engine didn't emit (e.g. 6M).
-    expect(Number(screen.getByTestId("s-hasz").textContent)).toBe(1);
+    // The grid always holds the 6 canonical tenors (1M…6M) so 6M is shown;
+    // cells the engine didn't emit come back as NaN and render "—" (not 0.0).
+    expect(Number(screen.getByTestId("s-hasz").textContent)).toBe(6);
   });
 
   it("live mode fetches state/model/history + adapts the mode cards", async () => {
