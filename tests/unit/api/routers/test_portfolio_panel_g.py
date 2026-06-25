@@ -161,3 +161,37 @@ async def test_cash_holdings_values_eur_in_usd_via_spot():
         assert out["currencies"][-1]["ccy"] == "JPY"
     finally:
         await engine.dispose()
+
+
+async def test_cash_holdings_handles_ib_tag_dict_currencies():
+    # Regression: IB stores per-currency TAG DICTS (CashBalance / ExchangeRate /
+    # …), not bare scalars — the handler used to crash on float(dict).
+    from api.routers.portfolio_panel import cash_holdings
+    from persistence.models import AccountHistory, VolSurface
+
+    maker, engine = await _make_session()
+    try:
+        async with maker() as db:
+            db.add(VolSurface(
+                timestamp=datetime(2026, 6, 25, 11, tzinfo=UTC),
+                underlying="EURUSD", spot=Decimal("1.10"), forward=Decimal("1.10"),
+                surface_data={},
+            ))
+            db.add(AccountHistory(
+                timestamp=datetime(2026, 6, 25, 12, tzinfo=UTC),
+                net_liq_usd=Decimal("1000"), cash_usd=Decimal("500"),
+                currencies={
+                    "USD": {"CashBalance": 500.0, "ExchangeRate": 0.88, "UnrealizedPnL": -5.0},
+                    "EUR": {"CashBalance": 200.0, "ExchangeRate": 1.0},
+                },
+            ))
+            await db.commit()
+        async with maker() as db:
+            out = await cash_holdings(db)  # must NOT raise on the dict shape
+        by = {r["ccy"]: r for r in out["currencies"]}
+        assert by["USD"]["settled"] == pytest.approx(500.0)        # CashBalance extracted
+        assert by["USD"]["usd_value"] == pytest.approx(500.0)      # USD 1:1
+        assert by["EUR"]["settled"] == pytest.approx(200.0)
+        assert by["EUR"]["usd_value"] == pytest.approx(220.0)      # 200 × 1.10 spot (not ExchangeRate)
+    finally:
+        await engine.dispose()

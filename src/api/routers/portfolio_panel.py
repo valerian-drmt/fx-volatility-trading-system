@@ -1213,15 +1213,35 @@ def _sharpe_and_drawdown(nl: list[float]) -> tuple[float | None, float | None, f
     return sharpe, max_dd, current_dd
 
 
+def _coerce_float(v: Any) -> float | None:
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _currency_cash(balance: Any) -> float:
+    """Settled cash for one account-currency entry. IB stores a dict of tags per
+    currency (``CashBalance`` = settled); some snapshots / legacy rows stored a
+    bare number. Returns 0.0 when unparseable — never raises (this used to crash
+    on ``float(dict)``). (``ExchangeRate`` is to the account *base*, not USD, so
+    it isn't used for the USD valuation here — EUR uses the EURUSD spot.)
+    """
+    if isinstance(balance, dict):
+        return _coerce_float(balance.get("CashBalance")) or 0.0
+    return _coerce_float(balance) or 0.0
+
+
 @router.get("/cash")
 async def cash_holdings(db: DbDep) -> dict[str, Any]:
     """Per-currency cash detail for the Trade holdings donut (R11 G-trade).
 
     Source : the latest ``account_history.currencies`` JSONB (currency → settled
     cash balance, written by the execution-engine). USD value uses the latest
-    EURUSD spot from ``vol_surface_history`` (USD per EUR) ; USD is 1:1 ; other
-    currencies have no rate here → ``usd_value=None``. Unsettled cash is not
-    tracked upstream → always ``None``.
+    Per-currency cash from the latest ``account_history`` snapshot. Each entry is
+    IB's tag dict (``CashBalance`` = settled). USD is 1:1; EUR converts via the
+    EURUSD surface spot; any other currency → ``usd_value=None``. Unsettled cash
+    isn't tracked upstream → always ``None``.
     """
     latest = (await db.execute(
         select(AccountHistory).order_by(desc(AccountHistory.timestamp)).limit(1)
@@ -1235,7 +1255,7 @@ async def cash_holdings(db: DbDep) -> dict[str, Any]:
     currencies = (latest.currencies if latest and latest.currencies else {}) or {}
     rows: list[dict[str, Any]] = []
     for ccy, balance in currencies.items():
-        settled = float(balance) if balance is not None else 0.0
+        settled = _currency_cash(balance)
         if ccy == "USD":
             rate: float | None = 1.0
             usd: float | None = settled
