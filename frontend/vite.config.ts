@@ -6,6 +6,10 @@ import path from "node:path";
 const API_TARGET = process.env.VITE_API_TARGET ?? "http://localhost:8000";
 
 export default defineConfig({
+  // Deployed under valeriandarmente.dev/fx-volatility-trading-system/ (the apex
+  // "/" serves the static CV from S3 via CloudFront). All asset URLs and the
+  // API/WS calls are emitted under this prefix.
+  base: "/fx-volatility-trading-system/",
   plugins: [react()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
@@ -13,9 +17,21 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // The app is served under the base, so the client calls <base>/api and
+    // <base>/ws. Forward those to local FastAPI, stripping the base prefix
+    // (FastAPI serves /api/v1 and /ws at the root).
     proxy: {
-      "/api": { target: API_TARGET, changeOrigin: true },
-      "/ws": { target: API_TARGET, ws: true, changeOrigin: true },
+      "/fx-volatility-trading-system/api": {
+        target: API_TARGET,
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/fx-volatility-trading-system/, ""),
+      },
+      "/fx-volatility-trading-system/ws": {
+        target: API_TARGET,
+        ws: true,
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/fx-volatility-trading-system/, ""),
+      },
     },
   },
   build: {

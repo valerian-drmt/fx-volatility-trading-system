@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("root boots the live voldesk shell", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/fx-volatility-trading-system/");
 
   // The voldesk shell (topbar + rail + content) renders regardless of feed state.
   await expect(page.locator(".shell")).toBeVisible();
@@ -22,10 +22,10 @@ test("root boots the live voldesk shell", async ({ page }) => {
 });
 
 test("rail navigates between desk views", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/fx-volatility-trading-system/");
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible({ timeout: 10_000 });
 
   // Hash-based routing inside the desk: jump to Signals and back.
-  await page.goto("/#/signals");
+  await page.goto("/fx-volatility-trading-system/#/signals");
   await expect(page.locator(".shell")).toBeVisible();
 });
