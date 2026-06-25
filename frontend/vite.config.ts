@@ -18,9 +18,21 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // The app is served under /fx-volatility-trading-system/, so the client
+    // calls <base>/api and <base>/ws. Forward those to local FastAPI, stripping
+    // the base prefix (FastAPI serves /api/v1 and /ws at the root).
     proxy: {
-      "/api": { target: API_TARGET, changeOrigin: true },
-      "/ws": { target: API_TARGET, ws: true, changeOrigin: true },
+      "/fx-volatility-trading-system/api": {
+        target: API_TARGET,
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/fx-volatility-trading-system/, ""),
+      },
+      "/fx-volatility-trading-system/ws": {
+        target: API_TARGET,
+        ws: true,
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/fx-volatility-trading-system/, ""),
+      },
     },
   },
   build: {

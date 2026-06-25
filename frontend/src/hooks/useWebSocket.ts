@@ -3,8 +3,10 @@
  * status + receive-time tracking. Used by the voldesk live streams
  * (ticks / vol / risk / positions / orders / exit_alerts).
  *
- * Base URL: same-origin `/ws` in prod (Nginx) and dev (Vite proxy); override
- * via VITE_WS_BASE_URL. `path` = null disables the connection (mock mode).
+ * Base URL: same-origin under the deploy base in prod (Nginx) and dev (Vite
+ * proxy), i.e. wss://host<base>/ws/... where <base> = import.meta.env.BASE_URL
+ * (e.g. "/fx-volatility-trading-system/"). Override via VITE_WS_BASE_URL.
+ * `path` = null disables the connection (mock mode).
  */
 import { useEffect, useRef, useState } from "react";
 
@@ -13,7 +15,8 @@ function wsBase(): string {
   if (typeof override === "string" && override) return override;
   if (typeof location === "undefined") return "";
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}`;
+  const prefix = import.meta.env.BASE_URL.replace(/\/$/, "");
+  return `${proto}//${location.host}${prefix}`;
 }
 
 export type WsStatus = "connecting" | "open" | "closed";

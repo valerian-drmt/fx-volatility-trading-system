@@ -382,7 +382,9 @@ function DagSchema({ dag, pipe, resolveNode }: {
 
 // The panel's domain → the WS channel that carries its live payload (folded in
 // from the removed WS-monitor tab). REST-only domains (system/config) → null.
-const WS_BASE = (import.meta.env["VITE_WS_BASE_URL"] as string | undefined) ?? "";
+const WS_BASE =
+  (import.meta.env["VITE_WS_BASE_URL"] as string | undefined) ??
+  import.meta.env.BASE_URL.replace(/\/$/, "");
 function wsChannelFor(domain: DomainId): { url: string; label: string } | null {
   if (domain === "ticks") return { url: WS_BASE + "/ws/ticks", label: "/ws/ticks" };
   if (domain === "surface" || domain === "pca" || domain === "termStructure") return { url: WS_BASE + "/ws/vol", label: "/ws/vol" };

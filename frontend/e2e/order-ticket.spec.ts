@@ -3,7 +3,7 @@ import { mockBackend } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await mockBackend(page);
-  await page.goto("/");
+  await page.goto("/fx-volatility-trading-system/");
 });
 
 test("order ticket previews greeks once strike and tenor are filled", async ({ page }) => {

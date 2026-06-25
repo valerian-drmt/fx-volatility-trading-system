@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("dashboard boots with header and all nine panels render", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/fx-volatility-trading-system/");
 
   await expect(page.getByTestId("app-header")).toBeVisible();
   await expect(page.getByRole("heading", { name: "FX Vol Dashboard" })).toBeVisible();
@@ -29,7 +29,7 @@ test("dashboard boots with header and all nine panels render", async ({ page }) 
 });
 
 test("connection indicator surfaces the current WS status", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/fx-volatility-trading-system/");
   // The ws:// attempts fail in the preview server context (no backend) — the
   // indicator should either stay in "connecting" long enough to be seen or
   // flip to "retry". Both are valid transient states post-load.

@@ -43,10 +43,13 @@ def test_frontend_conf_has_spa_fallback_and_immutable_assets():
 @pytest.mark.unit
 def test_nginx_dev_routes_api_and_ws_upgrade():
     conf = _read("nginx-dev.conf")
-    assert "upstream api_upstream" in conf
-    assert "upstream frontend_upstream" in conf
-    assert "location /api/" in conf
-    assert "location /ws/" in conf
+    # Variable-resolver form (runtime DNS) so ``nginx -t`` passes without the
+    # docker network present in CI.
+    assert 'set $api_upstream "api:8000"' in conf
+    assert 'set $frontend_upstream "frontend:8080"' in conf
+    # The whole project is served under the deploy subpath (UI + API + WS).
+    assert "location /fx-volatility-trading-system/api/" in conf
+    assert "location /fx-volatility-trading-system/ws/" in conf
     assert "Upgrade $http_upgrade" in conf, "WS upgrade header missing"
     assert 'Connection "upgrade"' in conf
     assert "proxy_read_timeout 3600s" in conf, "WS needs long read timeout"
@@ -60,5 +63,7 @@ def test_nginx_prod_redirects_http_and_terminates_tls():
     assert "ssl_protocols TLSv1.2 TLSv1.3" in conf
     assert "Strict-Transport-Security" in conf
     assert "limit_req_zone" in conf, "rate limit zone missing"
-    assert "location /ws/" in conf
+    # API + WS live under the project subpath (apex is the CloudFront/S3 CV).
+    assert "location /fx-volatility-trading-system/ws/" in conf
+    assert "location /fx-volatility-trading-system/api/" in conf
     assert "Upgrade $http_upgrade" in conf

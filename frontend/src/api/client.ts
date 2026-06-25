@@ -1,6 +1,10 @@
-// Typed fetch wrapper. Base URL stays empty in prod (same-origin via Nginx) and
-// in dev (Vite proxy forwards /api + /ws). Override via VITE_API_BASE_URL.
-const BASE_URL = import.meta.env["VITE_API_BASE_URL"] ?? "";
+// Typed fetch wrapper. The whole project (UI + API) lives under the deploy base
+// (import.meta.env.BASE_URL, e.g. "/fx-volatility-trading-system/"), so API calls
+// are prefixed with it: Nginx routes <base>/api → api:8000 (prod) and the Vite
+// proxy forwards <base>/api in dev. In tests/at the root BASE_URL is "/" → empty
+// prefix → "/api/...". Override the whole base via VITE_API_BASE_URL.
+const BASE_URL =
+  import.meta.env["VITE_API_BASE_URL"] ?? import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export class ApiError extends Error {
   constructor(
