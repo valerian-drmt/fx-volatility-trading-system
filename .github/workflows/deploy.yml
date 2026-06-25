@@ -153,16 +153,22 @@ jobs:
             --command-id "$cmd_id" --instance-id "$INSTANCE" \
             --query StandardOutputContent --output text
 
-      - name: "Smoke check /fx-volatility-trading-system/api/v1/health returns 200"
+      - name: "Smoke check /fx-volatility-trading-system/api/v1/health returns JSON"
         env:
           DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
         run: |
           # API now lives under the project subpath (the apex serves the CV).
+          # Assert the body is the real API JSON, not just HTTP 200: nginx's SPA
+          # fallback returns 200 text/html for any unmatched path, so a 200 alone
+          # would pass even when routing is broken (e.g. nginx not reloaded).
           HEALTH="https://${DOMAIN}/fx-volatility-trading-system/api/v1/health"
           for i in $(seq 1 30); do
-            code=$(curl -sS -o /dev/null -w "%{http_code}" "$HEALTH" || true)
-            if [ "$code" = "200" ]; then exit 0; fi
+            body=$(curl -fsS "$HEALTH" || true)
+            case "$body" in
+              *'"status"'*) echo "OK: $body"; exit 0 ;;
+            esac
             sleep 3
           done
-          echo "Post-deploy smoke failed — $HEALTH did not return 200"
+          echo "Post-deploy smoke failed — $HEALTH did not return API JSON"
+          echo "last body: ${body:-<empty>}"
           exit 1

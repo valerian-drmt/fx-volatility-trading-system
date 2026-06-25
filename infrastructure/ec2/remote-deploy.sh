@@ -75,6 +75,15 @@ if [ -n "${GHCR_TOKEN}" ]; then
 fi
 docker compose pull
 docker compose up -d --remove-orphans
+
+# The nginx config is a bind-mounted file. `compose up -d` only recreates a
+# container when its image/spec changes, so a config-only change leaves the
+# running nginx on the OLD config (the new file sits on disk, unused). Validate
+# + hot-reload to actually apply it. set -e aborts the deploy if the new config
+# is invalid, leaving the previous (working) nginx running.
+docker compose exec -T nginx nginx -t
+docker compose exec -T nginx nginx -s reload
+
 docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
 
 echo "remote-deploy: done (tag ${IMAGE_TAG}, profiles '${COMPOSE_PROFILES:-core}')"
