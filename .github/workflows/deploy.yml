@@ -153,14 +153,16 @@ jobs:
             --command-id "$cmd_id" --instance-id "$INSTANCE" \
             --query StandardOutputContent --output text
 
-      - name: "Smoke check /api/v1/health returns 200"
+      - name: "Smoke check /fx-volatility-trading-system/api/v1/health returns 200"
         env:
           DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
         run: |
+          # API now lives under the project subpath (the apex serves the CV).
+          HEALTH="https://${DOMAIN}/fx-volatility-trading-system/api/v1/health"
           for i in $(seq 1 30); do
-            code=$(curl -sS -o /dev/null -w "%{http_code}" "https://${DOMAIN}/api/v1/health" || true)
+            code=$(curl -sS -o /dev/null -w "%{http_code}" "$HEALTH" || true)
             if [ "$code" = "200" ]; then exit 0; fi
             sleep 3
           done
-          echo "Post-deploy smoke failed — /api/v1/health did not return 200"
+          echo "Post-deploy smoke failed — $HEALTH did not return 200"
           exit 1
