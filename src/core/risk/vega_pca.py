@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 
-TENORS = ("1M", "2M", "3M", "4M", "5M", "6M")
+TENORS = ("1M", "2M", "3M", "6M", "9M", "1Y")  # display pillars (surface tenor change)
 DELTAS = ("10dp", "25dp", "atm", "25dc", "10dc")
 N_CELLS = len(TENORS) * len(DELTAS)  # 30
 PC_NAMES = {1: "level", 2: "slope", 3: "curvature"}

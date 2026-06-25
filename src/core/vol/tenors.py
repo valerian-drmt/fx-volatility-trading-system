@@ -172,7 +172,10 @@ def to_display_surface(
             if abs(LABEL_DTE[nearest] - target) <= tol_days:
                 cell = copy.deepcopy(raw_cells[nearest])
                 for c in cell.values():
-                    if isinstance(c, dict):
+                    # Idempotent: a cell already flagged interp (e.g. a 2nd pass
+                    # over an already-display surface) stays interp — never
+                    # downgrade an interpolated pillar to "listed".
+                    if isinstance(c, dict) and c.get("source") != "interp":
                         c["source"] = "listed"
                 out[pillar] = cell
                 continue

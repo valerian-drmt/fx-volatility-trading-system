@@ -45,8 +45,9 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Ordered tenor labels the PCA expects on the feature axis.
-DEFAULT_TENORS: tuple[str, ...] = ("1M", "2M", "3M", "4M", "5M", "6M")
+# Ordered tenor labels the PCA expects on the feature axis (display pillars —
+# core.vol.tenors.DISPLAY_PILLARS; surface tenor change).
+DEFAULT_TENORS: tuple[str, ...] = ("1M", "2M", "3M", "6M", "9M", "1Y")
 # Ordered pillar labels per tenor.
 DEFAULT_PILLARS: tuple[str, ...] = ("10dp", "25dp", "atm", "25dc", "10dc")
 N_FEATURES = len(DEFAULT_TENORS) * len(DEFAULT_PILLARS)  # 30

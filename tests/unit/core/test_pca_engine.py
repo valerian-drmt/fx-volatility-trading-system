@@ -171,7 +171,7 @@ def test_feature_vector_from_surface_full():
     surface = {
         t: {d: {"iv": 0.06 + 0.001 * i + 0.0005 * j}
             for j, d in enumerate(["10dp", "25dp", "atm", "25dc", "10dc"])}
-        for i, t in enumerate(["1M", "2M", "3M", "4M", "5M", "6M"])
+        for i, t in enumerate(TENORS)
     }
     x = feature_vector_from_surface(surface)
     assert x is not None and x.shape == (30,)

@@ -37,6 +37,7 @@ from typing import Any, Protocol
 
 from bus import keys, publisher
 from core.vol.pchip_smile import interpolate_delta_pillars
+from core.vol.tenors import to_display_surface
 from shared.market_hours import is_fx_market_open, market_gate_active
 
 logger = logging.getLogger(__name__)
@@ -508,6 +509,12 @@ class VolEngine:
         if not surface:
             logger.info("vol_cycle_skipped", extra={"reason": "no_surface"})
             return False
+
+        # Re-key the raw listed-tenor surface onto the 6 display pillars
+        # (1M,2M,3M,6M,9M,1Y) BEFORE regime/PCA/publish — so PCA fits the display
+        # grid, and the DB/Redis surface matches the desk. Gaps (e.g. 6M) are
+        # interpolated + flagged source=interp. See docs/surface_tenor_pillars.md.
+        surface = to_display_surface(surface)
 
         # Step 1 — regime gating : compute _regime payload + persist via db_events.
         with tracer.start_as_current_span("vol_compute_regime") as span:
