@@ -33,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import Any, Protocol
 
 from bus import keys, publisher
@@ -1234,7 +1235,12 @@ class VolEngine:
                     .order_by(desc(SurfaceSnapshotHourly.timestamp))
                     .limit(1)
                 )).scalar_one_or_none()
-            if last is not None and (now - last) < timedelta(minutes=55):
+            # Min gap between PCA snapshots. Default ~hourly (decorrelated samples
+            # for a clean fit); override with PCA_SNAPSHOT_INTERVAL_MIN (e.g. 2)
+            # to bootstrap fast locally. The 0.9 factor avoids missing a tick when
+            # the cycle lands just under the interval.
+            gap_min = float(os.environ.get("PCA_SNAPSHOT_INTERVAL_MIN", "55"))
+            if last is not None and (now - last) < timedelta(minutes=gap_min * 0.9):
                 return None  # not yet time
 
             row: dict[str, Any] = {
