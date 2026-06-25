@@ -509,12 +509,8 @@ class VolEngine:
         if not surface:
             logger.info("vol_cycle_skipped", extra={"reason": "no_surface"})
             return False
-
-        # Re-key the raw listed-tenor surface onto the 6 display pillars
-        # (1M,2M,3M,6M,9M,1Y) BEFORE regime/PCA/publish — so PCA fits the display
-        # grid, and the DB/Redis surface matches the desk. Gaps (e.g. 6M) are
-        # interpolated + flagged source=interp. See docs/surface_tenor_pillars.md.
-        surface = to_display_surface(surface)
+        # NB: surface is already on the 6 display pillars — _compute_surface
+        # applies to_display_surface internally (before fair-vol + z).
 
         # Step 1 — regime gating : compute _regime payload + persist via db_events.
         with tracer.start_as_current_span("vol_compute_regime") as span:
@@ -699,6 +695,13 @@ class VolEngine:
                 out["_ssvi"] = ssvi
         except Exception:
             logger.exception("ssvi_fit_failed")
+
+        # Re-key onto the 6 display pillars (1M,2M,3M,6M,9M,1Y) HERE — after SVI/
+        # SSVI (which need the raw listed strikes) but BEFORE fair-vol + z, so an
+        # interpolated pillar (e.g. 6M) gets a fair value + z too, not just IV.
+        # _svi/_ssvi meta are carried through (raw-keyed, internal). The run_cycle
+        # transform then no-ops (idempotent). See docs/surface_tenor_pillars.md.
+        out = to_display_surface(out)
 
         # Fair vol per tenor (R11) : OHLC -> Yang-Zhang RV -> HAR/GARCH (P) ->
         # +VRP -> sigma_fair^Q. Best-effort ; needs the injected OHLC fetcher +
