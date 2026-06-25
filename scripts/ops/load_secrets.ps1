@@ -51,7 +51,13 @@ $names = @(
     '/fxvol/prod/DB_PASSWORD',
     '/fxvol/prod/VNC_PASSWORD',
     '/fxvol/prod/TRADING_MODE',
-    '/fxvol/prod/FRED_API_KEY'
+    '/fxvol/prod/FRED_API_KEY',
+    # Auth boundary : load the same write-login as prod so local uses the same
+    # password. AUTH_SALT/AUTH_USERNAME stay on the code defaults (fxvol/trader)
+    # in both environments, so AUTH_PASSWORD_HASH is the only credential needed;
+    # AUTH_SECRET is loaded too for cookie parity.
+    '/fxvol/prod/AUTH_SECRET',
+    '/fxvol/prod/AUTH_PASSWORD_HASH'
 )
 $json = aws ssm get-parameters `
     --names $names `
