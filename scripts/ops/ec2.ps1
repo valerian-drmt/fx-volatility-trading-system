@@ -120,13 +120,26 @@ function Invoke-OnHost {
     if (-not $Label) { $Label = "Execution sur l'host : $ShellCommand" }
     Write-Step $Label
 
-    $cmdId = (& aws ssm send-command `
-            --region $Region --profile $Profile `
-            --instance-ids $iid `
-            --document-name 'AWS-RunShellScript' `
-            --comment "fxvol ec2.ps1 $Action" `
-            --parameters (ConvertTo-Json @{ commands = @($ShellCommand) } -Compress) `
-            --query 'Command.CommandId' --output text).Trim()
+    # PowerShell strips the embedded double-quotes when handing a JSON string to
+    # a native exe, so aws receives {commands:[...]} (invalid JSON) and rejects
+    # it. Write the payload to a temp file and pass it via file:// instead.
+    $paramsJson = ConvertTo-Json @{ commands = @($ShellCommand) } -Compress
+    $paramsFile = New-TemporaryFile
+    [System.IO.File]::WriteAllText(
+        $paramsFile.FullName, $paramsJson,
+        (New-Object System.Text.UTF8Encoding($false)))
+    try {
+        $cmdId = (& aws ssm send-command `
+                --region $Region --profile $Profile `
+                --instance-ids $iid `
+                --document-name 'AWS-RunShellScript' `
+                --comment "fxvol ec2.ps1 $Action" `
+                --parameters ("file://" + $paramsFile.FullName.Replace('\', '/')) `
+                --query 'Command.CommandId' --output text).Trim()
+    }
+    finally {
+        Remove-Item $paramsFile -Force -ErrorAction SilentlyContinue
+    }
     if (-not $cmdId) { throw "send-command n'a pas retourne de CommandId" }
 
     & aws ssm wait command-executed `
