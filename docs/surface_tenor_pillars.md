@@ -12,15 +12,22 @@ round tenor** — e.g. today the 6‑month point falls in the gap between the De
 (~162d) and the Mar quarterly (~254d). So we cannot "fetch a 6M option"; we fetch what's
 listed and **interpolate** the standard pillars for display.
 
-Two distinct tenor sets — keep them separate everywhere:
+**One tenor set — all 6 pillars are tradeable** (decision 2026‑06‑25). The trader can
+compose at any of `1M, 2M, 3M, 6M, 9M, 1Y`. Each pillar carries a status:
 
-| Concept | Set | Used by | Nature |
-|---|---|---|---|
-| **DISPLAY_PILLARS** | `1M, 2M, 3M, 6M, 9M, 1Y` | Signal IV surface, term curve, PCA grid | continuous — interpolated from listed anchors, each cell flagged `listed` vs `interp` |
-| **TRADEABLE_TENORS** | the listed expiries the engine actually qualified | OrderBuilder, `/trade/preview`, submit | discrete — only what you can actually buy |
+| status | meaning | UI |
+|---|---|---|
+| `listed` | a real CME contract sits at (≈) this tenor | normal cell / enabled |
+| `interp` | **no listed contract** — IV is interpolated from neighbours | **warning** (surface cell flagged + order‑ticket banner) |
 
-**Hard rule:** an interpolated pillar (e.g. 6M) is a value to *read*, never to *trade*.
-The OrderBuilder must offer only TRADEABLE_TENORS.
+**Behaviour for an `interp` tenor:**
+- it stays **selectable and tradeable** in the OrderBuilder;
+- the desk **warns clearly** that this tenor has no listed contract and the IV is interpolated;
+- on submit, the leg **snaps to the nearest listed expiry** (e.g. "6M → routes to Dec‑04 ≈ 5.4M"),
+  shown explicitly in the preview before the trader confirms. No silent fill at a fake tenor.
+
+So: read the smooth 6‑pillar surface, trade any of the 6 — but you always *see* when a tenor
+is interpolated and *which real expiry* your order will actually hit.
 
 ## 2. Interpolation spec (the "estimate underneath")
 
@@ -47,7 +54,8 @@ The OrderBuilder must offer only TRADEABLE_TENORS.
 | `src/api/routers/portfolio_panel.py:55‑58` | per‑tenor DTE buckets (`4M`,`6M` rows) → realign to new pillars. |
 | `src/api/routers/cockpit.py:62`, `src/core/vol/fair_term.py:67` | hardcoded `surface.get("6M")` ATM reads — 6M is now interpolated; confirm it still keys correctly (key stays `"6M"`). |
 | `src/api/routers/trade.py:663‑664` | mock/synthetic fallback surface `base_atm` map (`4M,5M,6M`) → new pillars. |
-| `src/core/trade_preview.py:23` `TENOR_TO_DTE` | This governs **TRADEABLE** tenors, NOT display. Set to the tradeable set (listed expiries / their labels). `build_from_legs` validates against it (line 458). Must match what the OrderBuilder offers. |
+| `src/core/trade_preview.py:23` `TENOR_TO_DTE` | All **6 pillars** (`1M,2M,3M,6M,9M,1Y`) — `build_from_legs` (line 458) accepts any. **NEW:** a `resolve_tradeable(tenor) → (listed_expiry, dte, snapped: bool)` step maps an `interp` pillar to the nearest **listed** expiry for the actual order; the preview payload carries `requested_tenor`, `traded_expiry`, `snapped`, `interp_warning`. Pricing of the *displayed* leg may use the interpolated IV; the *order* uses the snapped listed contract. |
+| **NEW** `/trade/tenors` (or fold into `/trade/preview` resp) | Per‑pillar `{tenor, status: listed|interp, nearest_listed_expiry, dte}` so the OrderBuilder can flag + warn without re‑deriving. |
 | `src/api/routers/positions.py:64‑93` | OTC tenor bucketer already spans 1W…2Y — verify 9M/1Y buckets unaffected. |
 
 ### PCA / DB implication (the big ripple)
@@ -67,7 +75,7 @@ The OrderBuilder must offer only TRADEABLE_TENORS.
 | `frontend/src/voldesk/data.ts` (mock surface/termStructure/`smileFor`/`ivSurface`) | re‑key to new pillars (mock parity for tests/offline). |
 | `frontend/src/voldesk/views/SignalsView.tsx` | IV surface already renders `data.tenors` (adaptive) → mostly free once keys change. **Add interp styling**: cells with `source==="interp"` rendered dimmed / hatched + tooltip "interpolated, not tradeable". Loadings `Heatmap rows={DATA.tenors}` follows. |
 | `frontend/src/voldesk/data/live/termStructure.ts` | term‑structure tenors → new set. |
-| `frontend/src/voldesk/components/OrderBuilder.tsx` | `TENORS` must come from **TRADEABLE_TENORS**, not the display pillars. Source: a new `/trade/tenors` (or reuse `/trade/limits`/book) listing tradeable expiries. So the builder never offers an interp‑only pillar (e.g. 6M today). |
+| `frontend/src/voldesk/components/OrderBuilder.tsx` | `TENORS` = all **6 pillars**. When the selected tenor is `interp`, show a **warning banner**: "6M interpolated — no listed contract; order routes to <nearest expiry> (~5.4M)". The preview/draft echoes `requested 6M → trading <expiry>` so the trader confirms knowingly. Never block; warn + snap. |
 | `frontend/src/api/schema.d.ts` | regenerate after backend surface payload gains `source` + tenor set changes. |
 
 ## 5. Tests to update
@@ -86,5 +94,9 @@ The OrderBuilder must offer only TRADEABLE_TENORS.
 ## 7. Open questions (decide before coding)
 - **Far extremity:** 9M or 1Y as the last pillar? (depends on Jun‑quarterly liquidity — run the trading‑class/expiry diagnostic first).
 - **PCA history:** refit‑fresh (simpler, model dark for a while) vs backfill old surfaces (continuous, more work)?
-- **Interp anchor for 6M when no Mar anchor yet:** interpolate 5M↔next‑listed, or leave 6M `—` until a bracketing anchor exists?
+- **Interp anchor for 6M when no Mar anchor yet:** interpolate 5M↔next‑listed, or leave 6M `—` (and its order un‑snappable) until a bracketing anchor exists?
+- **Snap target:** nearest listed expiry by |Δdte| — but if the nearest is *further* than the requested tenor (e.g. 6M → Mar 8M vs Dec 5.4M), snap to the closer one or always the shorter? Default: closest by absolute DTE.
 - Keep `4M/5M` anywhere (e.g. risk per‑tenor buckets) or drop them entirely from the system?
+
+> Resolved 2026‑06‑25: all 6 pillars tradeable; `interp` tenors warn + snap to the
+> nearest listed expiry (never blocked, never silently filled).
