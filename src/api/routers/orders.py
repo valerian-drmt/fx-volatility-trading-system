@@ -17,7 +17,9 @@ import os
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+
+from api.auth import require_write
 
 router = APIRouter(prefix="/api/v1", tags=["orders"])
 
@@ -46,12 +48,12 @@ async def list_orders(_: Request) -> dict[str, Any]:
     return await _forward("GET", "/internal/orders")
 
 
-@router.post("/orders")
+@router.post("/orders", dependencies=[Depends(require_write)])
 async def place_order(body: dict, _: Request) -> dict[str, Any]:
     return await _forward("POST", "/internal/orders", json=body)
 
 
-@router.delete("/orders/{order_id}")
+@router.delete("/orders/{order_id}", dependencies=[Depends(require_write)])
 async def cancel_order(order_id: int, _: Request) -> dict[str, Any]:
     return await _forward("DELETE", f"/internal/orders/{order_id}")
 
@@ -61,6 +63,6 @@ async def live_positions(_: Request) -> dict[str, Any]:
     return await _forward("GET", "/internal/positions")
 
 
-@router.post("/exec/positions/{con_id}/close")
+@router.post("/exec/positions/{con_id}/close", dependencies=[Depends(require_write)])
 async def close_position(con_id: int, body: dict, _: Request) -> dict[str, Any]:
     return await _forward("POST", f"/internal/positions/{con_id}/close", json=body)

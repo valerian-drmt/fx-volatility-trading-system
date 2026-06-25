@@ -32,7 +32,42 @@ class Settings(_BaseSettings):
     )
     rate_limit_per_minute: int = Field(default=100)
 
+    # Auth boundary (single-trader). Reads stay public; writes require a valid
+    # HMAC cookie (see api/auth.py). Prod sets these from SSM; locally the empty
+    # password hash keeps login closed until AUTH_PASSWORD_HASH is provided.
+    # UPPERCASE = env-var name (case_sensitive); lowercase views are below.
+    AUTH_SECRET: str = Field(default="dev-insecure-change-me")   # HMAC key for the cookie token
+    AUTH_USERNAME: str = Field(default="trader")
+    AUTH_SALT: str = Field(default="fxvol")
+    AUTH_PASSWORD_HASH: str = Field(default="")                  # pbkdf2_hmac(sha256) hex
+    AUTH_COOKIE_SECURE: bool = Field(default=True)               # set false only for local HTTP dev
+    AUTH_TTL_SECONDS: int = Field(default=43200)                 # 12 h
+
     # Lowercase aliases — read-only views of the inherited UPPERCASE fields.
+    @property
+    def auth_secret(self) -> str:
+        return self.AUTH_SECRET
+
+    @property
+    def auth_username(self) -> str:
+        return self.AUTH_USERNAME
+
+    @property
+    def auth_salt(self) -> str:
+        return self.AUTH_SALT
+
+    @property
+    def auth_password_hash(self) -> str:
+        return self.AUTH_PASSWORD_HASH
+
+    @property
+    def auth_cookie_secure(self) -> bool:
+        return self.AUTH_COOKIE_SECURE
+
+    @property
+    def auth_ttl_seconds(self) -> int:
+        return self.AUTH_TTL_SECONDS
+
     @property
     def redis_url(self) -> str:
         return self.REDIS_URL

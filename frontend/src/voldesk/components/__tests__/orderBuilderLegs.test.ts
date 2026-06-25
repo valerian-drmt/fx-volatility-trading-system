@@ -5,7 +5,7 @@
  * re-prices from the live surface (build_from_legs).
  */
 import { describe, expect, it } from "vitest";
-import { builderToLegs } from "../OrderBuilder";
+import { builderToLegs } from "../orderLegs";
 
 describe("builderToLegs", () => {
   it("vanilla call/put send a single leg with the hand-typed strike (no pillar)", () => {

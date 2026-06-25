@@ -14,6 +14,8 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./voldesk.css";
+import { useAuthStore } from "../store/authStore";
+import { LoginModal } from "./auth/LoginModal";
 import { useDeskData } from "./data/deskData";
 import { useTweaks } from "./useTweaks";
 import { DashboardView } from "./views/DashboardView";
@@ -112,7 +114,17 @@ interface TickerView {
   status: "live" | "stale" | "missing";
 }
 
-function Topbar({ ticker, clock }: { ticker: TickerView; clock: string }): JSX.Element {
+function Topbar({
+  ticker,
+  clock,
+  authed,
+  onAuthClick,
+}: {
+  ticker: TickerView;
+  clock: string;
+  authed: boolean;
+  onAuthClick: () => void;
+}): JSX.Element {
   const { mid, bid, ask, dir, status } = ticker;
   const has = mid !== null;
   const arrow = dir >= 0 ? "▲" : "▼";
@@ -142,6 +154,14 @@ function Topbar({ ticker, clock }: { ticker: TickerView; clock: string }): JSX.E
         {stateLabel}
       </span>
       <span className="tb-badge paper">PAPER</span>
+      <button
+        className={"tb-badge auth" + (authed ? " in" : "")}
+        onClick={onAuthClick}
+        title={authed ? "Sign out" : "Sign in"}
+        data-testid="auth-btn"
+      >
+        {authed ? "● Trader" : "Sign in"}
+      </button>
       <span className="tb-clock mono">
         {clock} <span className="dim">UTC+1</span>
       </span>
@@ -212,6 +232,19 @@ export default function VoldeskApp(): JSX.Element {
   // setTweak is wired for the (not-yet-ported) Settings/Tweaks UI.
   void setTweak;
 
+  // Auth — probe /me once on mount; the topbar control toggles login/logout.
+  const authenticated = useAuthStore((s) => s.authenticated);
+  const refreshAuth = useAuthStore((s) => s.refresh);
+  const logout = useAuthStore((s) => s.logout);
+  const [loginOpen, setLoginOpen] = useState(false);
+  useEffect(() => {
+    void refreshAuth();
+  }, [refreshAuth]);
+  const onAuthClick = (): void => {
+    if (authenticated) void logout();
+    else setLoginOpen(true);
+  };
+
   const go = (r: string): void => {
     setRoute(r);
     location.hash = r;
@@ -254,7 +287,7 @@ export default function VoldeskApp(): JSX.Element {
 
   return (
     <div className={"shell density-" + t.density}>
-      <Topbar ticker={ticker} clock={clock} />
+      <Topbar ticker={ticker} clock={clock} authed={authenticated} onAuthClick={onAuthClick} />
       <div className="body">
         <Rail route={route} go={go} labels={t.railLabels} />
         <main className="content">
@@ -275,6 +308,7 @@ export default function VoldeskApp(): JSX.Element {
           </div>
         </main>
       </div>
+      {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
     </div>
   );
 }

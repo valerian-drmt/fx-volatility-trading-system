@@ -23,6 +23,16 @@ type PostBody<P extends keyof paths> = paths[P] extends {
   ? B
   : never;
 
+// ── Auth (single-trader) ─────────────────────────────────────────────────────
+// Reads are public; logging in sets the httpOnly fxvol_auth cookie that unlocks
+// the write endpoints (require_write). `credentials:"include"` (client.ts) sends it.
+export type AuthStatus = Get<"/api/v1/auth/me", 200>;
+export type LoginBody = PostBody<"/api/v1/auth/login">;
+export const fetchAuthMe = () => apiGet<AuthStatus>("/api/v1/auth/me");
+export const postLogin = (body: LoginBody) =>
+  apiPost<AuthStatus>("/api/v1/auth/login", body);
+export const postLogout = () => apiPost<AuthStatus>("/api/v1/auth/logout", {});
+
 // ── Health ────────────────────────────────────────────────────────────────
 export type Health = Get<"/api/v1/health", 200>;
 export type HealthExtended = Get<"/api/v1/health/extended", 200>;

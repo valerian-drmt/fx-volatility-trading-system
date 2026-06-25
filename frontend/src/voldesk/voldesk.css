@@ -1294,3 +1294,16 @@ input,select{font-family:inherit;font-size:13px}
   .ind-grid{grid-template-columns:1fr}
   .ind-fam + .ind-fam{border-left:none;padding-left:0;border-top:1px solid var(--border);padding-top:12px}
 }
+
+/* Auth — topbar Sign-in control + login modal (Phase 2 / v2.0.0 connect flow) */
+.tb-badge.auth{cursor:pointer}
+.tb-badge.auth.in{color:var(--pos);border-color:color-mix(in srgb,var(--pos) 40%,transparent)}
+.auth-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000}
+.auth-modal{background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:22px;width:320px;display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 40px rgba(0,0,0,.5)}
+.auth-modal h2{margin:0;font-size:16px}
+.auth-modal .auth-sub{margin:0;font-size:12px;color:var(--text-dim)}
+.auth-modal label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-dim)}
+.auth-modal input{background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:7px 9px;font-size:13px;font-family:inherit}
+.auth-modal input:focus{outline:none;border-color:var(--accent)}
+.auth-error{font-size:12px;color:var(--neg);background:color-mix(in srgb,var(--neg) 12%,transparent);border-radius:4px;padding:6px 9px}
+.auth-actions{display:flex;gap:8px;margin-top:4px}

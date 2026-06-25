@@ -65,9 +65,18 @@ services:
       # FRED API key for the multi-source events pipeline. Free signup at
       # https://fredaccount.stlouisfed.org/apikeys (~30s). Without it, the
       # FRED source is skipped and only the stub sources run (= no events
-      # collected automatically — fallback is scripts/migrations/seed_events_manual.py).
+      # collected automatically — fallback is scripts/db/seed_events_manual.py).
       # Cf. docs/vol_trading_pca/events_pipeline_spec.md §8.
       FRED_API_KEY: ${FRED_API_KEY:-}
+      # Auth boundary (single-trader). Reads are public; writes need a valid
+      # cookie. Login is CLOSED until AUTH_PASSWORD_HASH is set (pbkdf2_hmac
+      # sha256 hex of the password, salt=AUTH_SALT). AUTH_COOKIE_SECURE=false
+      # for local HTTP; prod sets these from SSM. Cf. src/api/auth.py.
+      AUTH_SECRET: ${AUTH_SECRET:-dev-insecure-change-me}
+      AUTH_USERNAME: ${AUTH_USERNAME:-trader}
+      AUTH_SALT: ${AUTH_SALT:-fxvol}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -596,7 +605,14 @@ networks:
     # changer le subnet → TrustedIPs whitelist obsolète.
     ipam:
       config:
+        # ip_range OBLIGATOIRE : sans lui Docker auto-assigne les IPs dynamiques
+        # (db-writer, nginx, promtail, grafana…) sur tout le /24 en partant de .2,
+        # et grappille .10/.11/.12/.13/.14 — les IPs statiques pinnées des engines.
+        # Le 1er engine qui veut son .10 crashe alors "Address already in use".
+        # On confine donc le pool dynamique à la moitié haute (.128–.254) et on
+        # réserve .2–.127 aux pins statiques ci-dessus (engines + api + execution).
         - subnet: 172.20.0.0/24
+          ip_range: 172.20.0.128/25
   # Outbound-only lane for IB Gateway — lets it reach IB servers while
   # keeping the rest of the stack isolated from the wider internet.
   fxvol-external:

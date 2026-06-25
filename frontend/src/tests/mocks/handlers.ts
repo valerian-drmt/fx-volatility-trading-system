@@ -5,6 +5,11 @@ import { setupServer } from "msw/node";
 export const handlers = [
   http.get("*/api/v1/health", () => HttpResponse.json({ status: "OK" })),
 
+  // Auth (single-trader) — store/LoginModal tests drive these.
+  http.get("*/api/v1/auth/me", () => HttpResponse.json({ authenticated: false })),
+  http.post("*/api/v1/auth/login", () => HttpResponse.json({ authenticated: true })),
+  http.post("*/api/v1/auth/logout", () => HttpResponse.json({ authenticated: false })),
+
   // Live-wiring defaults (regime gate, working orders, scenarios) — empty/neutral.
   http.get("*/api/v1/regime/state", () =>
     HttpResponse.json({ gate: { authorized: true, reason: "calm", size_mult: 1 } }),

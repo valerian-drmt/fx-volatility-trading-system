@@ -40,7 +40,10 @@ function buildUrl(path: string, query?: RequestOptions["query"]): string {
 }
 
 function buildInit(base: RequestInit, signal: AbortSignal | undefined): RequestInit {
-  return signal ? { ...base, signal } : base;
+  // Always send cookies so the httpOnly auth cookie (fxvol_auth) rides along
+  // on write requests once the trader has logged in.
+  const init: RequestInit = { ...base, credentials: "include" };
+  return signal ? { ...init, signal } : init;
 }
 
 export async function apiGet<T>(path: string, opts: RequestOptions = {}): Promise<T> {
