@@ -567,6 +567,11 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
                     "strike": leg.strike, "qty_factor": leg.qty_factor,
                     "qty": sizing.leg_quantities.get(leg.leg_idx, 0),
                     "side": leg.side, "entry_iv_pct": leg.entry_iv_pct,
+                    # Snap (surface tenor change): an interpolated requested tenor
+                    # trades the nearest LISTED tenor. requested_tenor / snapped
+                    # let the ticket show "6M → trading 5M".
+                    "requested_tenor": leg.requested_tenor,
+                    "snapped": leg.snapped,
                     "entry_price_per_contract_usd": pricing.leg_prices_usd[leg.leg_idx]
                                                      if leg.leg_idx < len(pricing.leg_prices_usd) else 0.0,
                 } for leg in structure.legs

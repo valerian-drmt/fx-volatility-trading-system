@@ -123,3 +123,35 @@ def test_to_display_surface_omits_pillar_with_no_anchor_bracket():
 def test_to_display_surface_empty():
     assert to_display_surface({}) == {}
     assert to_display_surface({"_meta": 1}) == {"_meta": 1}
+
+
+# ── snap_tenor : interp/absent → nearest listed tenor (Phase 4) ───────────────
+
+_SNAP_SURFACE = {
+    "3M": {"atm": {"iv": 0.070, "source": "listed"}},
+    "5M": {"atm": {"iv": 0.073, "source": "listed"}},
+    "6M": {"atm": {"iv": 0.074, "source": "interp"}},
+    "9M": {"atm": {"iv": 0.076, "source": "listed"}},
+    "_meta": 1,
+}
+
+
+def test_surface_listed_tenors_excludes_interp_and_meta():
+    from core.vol.tenors import surface_listed_tenors
+    assert surface_listed_tenors(_SNAP_SURFACE) == ["3M", "5M", "9M"]
+
+
+def test_snap_tenor_interp_to_nearest_listed():
+    from core.vol.tenors import snap_tenor
+    # 6M (180d, interp) → nearest listed: 5M (150d, Δ30) beats 9M (270d, Δ90).
+    assert snap_tenor("6M", _SNAP_SURFACE) == ("5M", True)
+
+
+def test_snap_tenor_listed_stays():
+    from core.vol.tenors import snap_tenor
+    assert snap_tenor("3M", _SNAP_SURFACE) == ("3M", False)
+
+
+def test_snap_tenor_no_listed_unchanged():
+    from core.vol.tenors import snap_tenor
+    assert snap_tenor("6M", {"6M": {"atm": {"iv": 0.07, "source": "interp"}}}) == ("6M", False)

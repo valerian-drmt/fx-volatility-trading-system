@@ -487,6 +487,36 @@ def test_build_from_legs_future_only_not_hedged_and_size():
     assert s.vega_sign == "neutral"
 
 
+def test_build_from_legs_snaps_interp_tenor_to_listed():
+    # Surface with 6M interpolated (no contract) and 3M/5M/9M listed. A 6M leg
+    # must trade the nearest LISTED tenor (5M) and keep 6M as requested_tenor.
+    pillars = ["10dp", "25dp", "atm", "25dc", "10dc"]
+    def row(iv, src):
+        return {p: {"iv": iv, "strike": 1.10, "source": src} for p in pillars}
+    surface = {
+        "3M": row(0.070, "listed"), "5M": row(0.073, "listed"),
+        "6M": row(0.074, "interp"), "9M": row(0.076, "listed"),
+    }
+    s = build_from_legs(
+        [{"contract_type": "call", "side": "BUY", "tenor": "6M", "delta_pillar": "atm"}],
+        surface,
+    )
+    leg = s.legs[0]
+    assert leg.snapped is True
+    assert leg.requested_tenor == "6M"
+    assert leg.tenor == "5M"            # nearest listed (150d) to 6M (180d)
+    assert leg.entry_iv_pct == pytest.approx(7.3)  # priced off the listed 5M smile
+
+
+def test_build_from_legs_no_snap_without_source_flags():
+    # Synthetic surface (no source flags) → every present tenor is "listed" → no snap.
+    s = build_from_legs(
+        [{"contract_type": "call", "side": "BUY", "tenor": "3M", "delta_pillar": "atm"}],
+        _mock_surface(),
+    )
+    assert s.legs[0].snapped is False and s.legs[0].requested_tenor is None
+
+
 def test_build_from_legs_pricing_matches_template_equivalent():
     """A hand-composed ATM straddle must price/greek identically to the template."""
     surface = _mock_surface()

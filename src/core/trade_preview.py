@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from core.products import product_label_from_symbol
+from core.vol.tenors import snap_tenor
 
 # 6-tenor canonical grid
 TENOR_TO_DTE = {
@@ -260,6 +261,11 @@ class Leg:
     qty_factor: int
     side: Literal["BUY", "SELL"]
     entry_iv_pct: float | None
+    # Snap (surface tenor change): when the requested tenor has no listed contract
+    # (interpolated), the leg is built at the nearest LISTED tenor instead. The
+    # trader's requested tenor is preserved for the ticket; ``snapped`` flags it.
+    requested_tenor: str | None = None
+    snapped: bool = False
 
 
 @dataclass(frozen=True)
@@ -481,7 +487,14 @@ def build_from_legs(
         pillar = str(spec.get("delta_pillar") or "atm").lower()
         if pillar not in DELTA_PILLARS:
             raise ValueError(f"leg {i}: bad delta_pillar {pillar!r}")
-        node = (surface.get(tenor) or {}).get(pillar) or {}
+        # Snap an interpolated/absent tenor to the nearest LISTED tenor — that's
+        # the contract the order actually trades. The requested tenor is kept on
+        # the leg for the ticket. Surfaces without source flags (synthetic
+        # sandbox) treat every present tenor as listed → no snap.
+        eff_tenor, snapped = snap_tenor(tenor, surface)
+        eff_dte = TENOR_TO_DTE.get(eff_tenor, dte)
+        eff_expiry = (now + timedelta(days=eff_dte)).date().isoformat()
+        node = (surface.get(eff_tenor) or {}).get(pillar) or {}
         strike_override = spec.get("strike")
         node_strike = node.get("strike")
         iv = node.get("iv")
@@ -490,9 +503,10 @@ def build_from_legs(
         else:
             strike = float(node_strike) if isinstance(node_strike, (int, float)) else None
         legs.append(Leg(
-            leg_idx=i, contract_type=ct, tenor=tenor, expiry=expiry, dte=dte,
+            leg_idx=i, contract_type=ct, tenor=eff_tenor, expiry=eff_expiry, dte=eff_dte,
             strike=strike, qty_factor=qf, side=side,
             entry_iv_pct=float(iv) * 100.0 if isinstance(iv, (int, float)) else None,
+            requested_tenor=tenor if snapped else None, snapped=snapped,
         ))
     has_option = any(leg.contract_type in ("call", "put") for leg in legs)
     # Net vega sign (display hint): bought options add vega, sold subtract.

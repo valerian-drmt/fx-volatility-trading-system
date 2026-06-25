@@ -104,6 +104,45 @@ LABEL_DTE: dict[str, int] = {
 }
 
 
+def _tenor_dte(tenor: str) -> int | None:
+    return PILLAR_TARGET_DTE.get(tenor) or LABEL_DTE.get(tenor)
+
+
+def surface_listed_tenors(surface: dict) -> list[str]:
+    """Tenors in a (display) surface that have a real listed contract — present
+    IV and NOT flagged ``source="interp"``. Meta keys (``_*``) are ignored."""
+    out: list[str] = []
+    for t, row in surface.items():
+        if not isinstance(t, str) or t.startswith("_") or not isinstance(row, dict):
+            continue
+        cells = [c for c in row.values() if isinstance(c, dict)]
+        has_iv = any(isinstance(c.get("iv"), (int, float)) for c in cells)
+        is_interp = any(c.get("source") == "interp" for c in cells)
+        if has_iv and not is_interp:
+            out.append(t)
+    return out
+
+
+def snap_tenor(requested: str, surface: dict) -> tuple[str, bool]:
+    """Resolve an order's requested tenor to a tradeable one.
+
+    Returns ``(effective_tenor, snapped)``: if ``requested`` is itself listed →
+    unchanged (snapped False). If it's interpolated / absent → the nearest LISTED
+    tenor by |ΔDTE| (snapped True). If nothing is listed (or DTE unknown) →
+    ``requested`` unchanged (caller handles the degraded case).
+    """
+    listed = surface_listed_tenors(surface)
+    if requested in listed:
+        return requested, False
+    target = _tenor_dte(requested)
+    candidates = [(t, _tenor_dte(t)) for t in listed]
+    candidates = [(t, d) for t, d in candidates if d is not None]
+    if target is None or not candidates:
+        return requested, False
+    best = min(candidates, key=lambda td: abs(td[1] - target))
+    return best[0], True
+
+
 def _recompute_surface_z(display: dict[str, dict]) -> None:
     """Attach a cross-sectional z to every display cell: z = (iv − mean)/std over
     all (tenor × delta) IVs of the display grid. No-op on a flat/degenerate grid."""
