@@ -1336,8 +1336,15 @@ input,select{font-family:inherit;font-size:13px}
 /* risk-row1 itself spans the full .risk-grid (a 2-col grid); its panel children
    carry .stress-panel (grid-column:1/-1) for the OUTER grid — reset to auto here
    so Greeks (left) and Value at Risk (right) share row 1 instead of stacking. */
-.risk-row1{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start;grid-column:1/-1}
+.risk-row1{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:stretch;grid-column:1/-1}
 .risk-row1 > .panel{margin-bottom:0;min-width:0;grid-column:auto}
+/* left column = Greeks (natural height) stacked over Macro events, together
+   matching the Value-at-Risk column on the right. Greeks keeps its size; Macro
+   events takes the leftover height and scrolls internally. */
+.risk-left-col{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
+.risk-left-col > .panel{margin-bottom:0;min-width:0}
+.risk-left-col > .risk-macro-panel{flex:1 1 0;min-height:0}
+.risk-macro-panel > .panel-body{flex:1;min-height:0}
 .greeks-2x2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
 .greeks-2x2 > .panel{min-width:0;grid-column:auto}
 /* Value at Risk column — table / graph / marginal contribution stacked 1x3 */

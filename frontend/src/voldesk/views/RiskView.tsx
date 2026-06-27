@@ -499,7 +499,7 @@ function CalendarPanel(): JSX.Element {
   const { trade } = useDeskData();
   const events = trade.data?.events ?? [];
   return (
-    <Panel title="Macro events" dataPp="risk-macro" right={<PanelLive status={trade.status} />} className="ladder-panel">
+    <Panel title="Macro events" dataPp="risk-macro" right={<PanelLive status={trade.status} />} className="risk-macro-panel" scroll>
       <div className="evt-list">
         {events.length === 0 ? (
           <div className="dim mono small">no scheduled events</div>
@@ -644,6 +644,7 @@ export function RiskView(): JSX.Element {
   return (
     <div className="risk-grid">
       <div className="risk-row1">
+        <div className="risk-left-col">
         <Panel title="Greeks" dataPp="greeks-wrap" right={<PanelLive status={risk.status} />} className="stress-panel">
           <div className="greeks-2x2">
             <Panel title="Portfolio greeks" dataPp="greeks-net" right={<PanelLive status={trade.status} />} className="trade-block">
@@ -692,6 +693,8 @@ export function RiskView(): JSX.Element {
             </Panel>
           </div>
         </Panel>
+          <CalendarPanel />
+        </div>
         <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a?.netLiq ?? 0} hist={vd.hist} fresh={risk} />
       </div>
       <StressEngine />
@@ -699,7 +702,6 @@ export function RiskView(): JSX.Element {
       <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status={portfolio.status} />} pad={false} className="ladder-panel">
         <PositionBreakdown positions={portfolio.data?.positions ?? []} />
       </Panel>
-      <CalendarPanel />
     </div>
   );
 }
