@@ -8,7 +8,7 @@ import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fet
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
-import { pnlCls } from "../components/format";
+import { gk$, pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
 import { DATA, fmt } from "../data";
 import type { Position, VarFactor } from "../data";
@@ -655,9 +655,11 @@ function LiveLadders(): JSX.Element {
 }
 
 export function RiskView(): JSX.Element {
-  const { risk, portfolio } = useDeskData();
+  const { risk, portfolio, trade } = useDeskData();
   const vpca = useFetch<VegaPcaRow[]>(() => fetchVegaPca().then(adaptVegaPca), 120_000).data ?? [];
-  const g = DATA.greeks; // per-unit greek representation — not the live positions-derived nets; stays mock (09)
+  const g = DATA.greeks; // per-unit greek representation — used only for charm + the breakeven tile (no live net source).
+  // Live positions-derived NET greeks (trade domain) — the "risk stock" table.
+  const ng = trade.data?.greeks ?? DATA.greeks;
   const a = portfolio.data?.account ?? DATA.account; // margin/net-liq live (PR 3 account domain)
   // No live VaR yet (history < min window → backend returns null): show honest
   // zeros + "building window…", NOT a fabricated mock VaR scaled across horizons.
@@ -692,10 +694,10 @@ export function RiskView(): JSX.Element {
                 <table className="dt greeks-table">
                   <thead><tr><th className="l">Greek</th><th className="r">Net value</th></tr></thead>
                   <tbody>
-                    <tr><td className="l">Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(g.delta)}>{fmt.usdk(g.delta * 1000)}</td></tr>
-                    <tr><td className="l">Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(g.gamma)}>{g.gamma.toFixed(1)}k</td></tr>
-                    <tr><td className="l">Vega <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(g.vega)}>${g.vega.toFixed(0)}k</td></tr>
-                    <tr><td className="l">Θ <em className="unit">$k/day</em></td><td className={"r mono " + pnlCls(g.theta)}>${g.theta.toFixed(1)}k</td></tr>
+                    <tr><td className="l">Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(ng.netDelta)}>{gk$(ng.netDelta)}</td></tr>
+                    <tr><td className="l">Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(ng.netGamma)}>{gk$(ng.netGamma)}</td></tr>
+                    <tr><td className="l">Vega <em className="unit">$/vp</em></td><td className={"r mono " + pnlCls(ng.netVega)}>{gk$(ng.netVega)}</td></tr>
+                    <tr><td className="l">Θ <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(ng.netTheta)}>{gk$(ng.netTheta)}</td></tr>
                     <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(netVanna)}>{fmt.sgn(netVanna, 0)}k</td></tr>
                     <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(netVolga)}>{fmt.sgn(netVolga, 0)}k</td></tr>
                     <tr><td className="l">Charm <em className="unit">$k Δ/day</em></td><td className={"r mono " + pnlCls(g.charm)}>{fmt.sgn(g.charm, 2)}k</td></tr>
