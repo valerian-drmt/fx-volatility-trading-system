@@ -171,8 +171,9 @@ function EmpiricalHist({ hist, var95, var99, es99, retk, letter, h = 88 }: { his
       </svg>
     );
   }
-  // Empirical P&L histogram in $k space. VaR/ES are loss magnitudes → plotted at −x.
-  const marks = [0, -var95, -var99, -es99, retk];
+  // Empirical P&L histogram in $k space. VaR/ES arrive as signed losses
+  // (negative = left tail) straight from the backend → plot them as-is.
+  const marks = [0, var95, var99, es99, retk];
   const lo = Math.min(...hist.map((b) => b.lo), ...marks);
   const hi = Math.max(...hist.map((b) => b.hi), ...marks);
   const rng = hi - lo || 1;
@@ -182,10 +183,10 @@ function EmpiricalHist({ hist, var95, var99, es99, retk, letter, h = 88 }: { his
   const maxC = Math.max(...hist.map((b) => b.count)) || 1;
   return (
     <svg className="var-curve-svg" width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      <rect x={px(lo)} y={topY} width={Math.max(0, px(-var95) - px(lo))} height={maxH} fill="var(--neg)" fillOpacity="0.08" />
+      <rect x={px(lo)} y={topY} width={Math.max(0, px(var95) - px(lo))} height={maxH} fill="var(--neg)" fillOpacity="0.08" />
       {hist.map((b, i) => {
         const x = px(b.lo), bw = Math.max(1, px(b.hi) - px(b.lo)), hh = (b.count / maxC) * maxH;
-        const loss = b.hi <= -var95;
+        const loss = b.hi <= var95;
         return <rect key={i} x={x + bw * 0.06} y={baseY - hh} width={bw * 0.88} height={hh} fill={loss ? "var(--neg)" : "var(--muted)"} fillOpacity={loss ? 0.55 : 0.5} />;
       })}
       <line x1={px(lo)} x2={px(hi)} y1={baseY} y2={baseY} stroke="var(--border)" strokeWidth="1" />
@@ -193,13 +194,13 @@ function EmpiricalHist({ hist, var95, var99, es99, retk, letter, h = 88 }: { his
       <text x={px(0)} y={baseY + 11} fill="var(--fg)" fontSize="8" fontFamily="var(--mono)" textAnchor="middle" opacity="0.55">µ</text>
       <line x1={px(retk)} x2={px(retk)} y1={topY} y2={baseY} stroke="var(--fg)" strokeWidth="1.6" />
       <text x={px(retk)} y={topY - 3} fill="var(--fg)" fontSize="8" fontWeight="700" fontFamily="var(--mono)" textAnchor="middle">{letter}</text>
-      <line x1={px(-var95)} x2={px(-var95)} y1={topY + 8} y2={baseY} stroke="var(--warn)" strokeWidth="1.3" strokeDasharray="4 3" />
-      <text x={px(-var95)} y={baseY + 11} fill="var(--warn)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">95%</text>
-      <line x1={px(-var99)} x2={px(-var99)} y1={topY + 8} y2={baseY} stroke="var(--neg)" strokeWidth="1.3" strokeDasharray="4 3" />
-      <text x={px(-var99)} y={baseY + 11} fill="var(--neg)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">99%</text>
-      <line x1={px(-es99)} x2={px(-es99)} y1={baseY - 14} y2={baseY} stroke="#b3402f" strokeWidth="1.4" strokeDasharray="2 2" />
-      <circle cx={px(-es99)} cy={baseY - 14} r="3.5" fill="#b3402f" stroke="var(--bg)" strokeWidth="1" />
-      <text x={px(-es99)} y={baseY + 11} fill="#c4584a" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">ES</text>
+      <line x1={px(var95)} x2={px(var95)} y1={topY + 8} y2={baseY} stroke="var(--warn)" strokeWidth="1.3" strokeDasharray="4 3" />
+      <text x={px(var95)} y={baseY + 11} fill="var(--warn)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">95%</text>
+      <line x1={px(var99)} x2={px(var99)} y1={topY + 8} y2={baseY} stroke="var(--neg)" strokeWidth="1.3" strokeDasharray="4 3" />
+      <text x={px(var99)} y={baseY + 11} fill="var(--neg)" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">99%</text>
+      <line x1={px(es99)} x2={px(es99)} y1={baseY - 14} y2={baseY} stroke="#b3402f" strokeWidth="1.4" strokeDasharray="2 2" />
+      <circle cx={px(es99)} cy={baseY - 14} r="3.5" fill="#b3402f" stroke="var(--bg)" strokeWidth="1" />
+      <text x={px(es99)} y={baseY + 11} fill="#c4584a" fontSize="7.5" fontFamily="var(--mono)" textAnchor="middle">ES</text>
     </svg>
   );
 }

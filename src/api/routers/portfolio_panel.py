@@ -1155,6 +1155,11 @@ def _percentile(sorted_vals: list[float], q: float) -> float | None:
     return sorted_vals[lo] + (rank - lo) * (sorted_vals[hi] - sorted_vals[lo])
 
 
+# Max calendar-day span for two net-liq samples to count as a 1-day P&L delta.
+# 3 absorbs Fri→Mon weekends; anything longer is a data gap / capital move.
+_VAR_MAX_GAP_DAYS = 3
+
+
 def _var_stats(deltas: list[float]) -> dict[str, float] | None:
     """Pure compute (unit-tested): historical 1d VaR 95/99 + ES 99 (mean of the
     losses at or below the 99% quantile) from a list of net-liq daily changes.
@@ -1328,10 +1333,18 @@ async def value_at_risk(db: DbDep) -> dict[str, Any]:
            WHERE timestamp >= NOW() - INTERVAL '504 days' AND net_liq_usd IS NOT NULL
            ORDER BY date_trunc('day', timestamp), timestamp DESC
         )
-        SELECT net_liq_usd FROM daily ORDER BY day
+        SELECT day, net_liq_usd FROM daily ORDER BY day
     """)
-    nl = [float(r[0]) for r in (await db.execute(nl_sql)).all()]
-    deltas = [nl[i] - nl[i - 1] for i in range(1, len(nl))]
+    rows = [(r[0], float(r[1])) for r in (await db.execute(nl_sql)).all()]
+    # Only consecutive trading-day samples form a genuine 1-day P&L delta. A
+    # multi-day hole (system downtime, capital deposit/withdrawal) is NOT a daily
+    # loss — including it injects a huge phantom tail that dominates VaR/ES and
+    # the histogram. Skip any step spanning more than a long weekend.
+    deltas = [
+        rows[i][1] - rows[i - 1][1]
+        for i in range(1, len(rows))
+        if (rows[i][0] - rows[i - 1][0]).days <= _VAR_MAX_GAP_DAYS
+    ]
     stats = _var_stats(deltas)
     return {
         "computed_at": datetime.now(UTC).isoformat(),
