@@ -265,6 +265,7 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
         if (!target || el === target || el.contains(target) || target.contains(el)) el.style.removeProperty("display");
         else el.style.setProperty("display", "none", "important");
         el.style.removeProperty("grid-column"); // clear any span from a previous selection
+        el.style.removeProperty("min-height");
       });
       // Make the isolated panel FILL the frame: span every grid ancestor up to
       // the root, so a hidden sibling column (e.g. risk-row1's empty left column
@@ -273,6 +274,10 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
       for (let n: HTMLElement | null = target; n && n !== root; n = n.parentElement) {
         n.style.setProperty("grid-column", "1 / -1");
       }
+      // Panels that fill leftover height (flex:1 1 0, e.g. Macro events) collapse
+      // to 0 once their height-providing siblings are hidden → invisible. Anchor
+      // the isolated panel to the screen height so it always renders.
+      if (target) target.style.setProperty("min-height", root.clientHeight + "px");
     };
     apply();
     const obs = new MutationObserver(apply);
