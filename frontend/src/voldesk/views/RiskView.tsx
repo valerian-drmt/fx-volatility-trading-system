@@ -10,7 +10,7 @@ import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
-import { DATA, fmt } from "../data";
+import { fmt } from "../data";
 import type { Position, VarFactor } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
@@ -423,6 +423,9 @@ function PositionBreakdown({ positions }: { positions: Position[] }): JSX.Elemen
             </tr>
           </thead>
           <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={22} className="l dim small mono" style={{ padding: "16px 10px" }}>no open positions</td></tr>
+            )}
             {rows.map((p) => (
               <tr key={p.id}>
                 <td className="l grp-fix mono dim">{p.tradeId || p.packageId || "—"}</td>
@@ -555,9 +558,8 @@ function CalendarPanel(): JSX.Element {
   );
 }
 
-// ---- desk backlog : named-scenario presets + marginal VaR contribution ----
-// Marginal contribution to VaR — rendered under the VaR panel. Still mock; the
-// /portfolio/marginal-var endpoint is the next Track B item.
+// Marginal contribution to VaR — live (/portfolio/marginal-var); empty state
+// until a book + ≥5d history exist.
 function MarginalVarPanel(): JSX.Element {
   const live = useFetch<MarginalVarData>(() => fetchMarginalVar().then(adaptMarginalVar), 120_000);
   const d = live.data;
@@ -657,28 +659,28 @@ function LiveLadders(): JSX.Element {
 export function RiskView(): JSX.Element {
   const { risk, portfolio, trade } = useDeskData();
   const vpca = useFetch<VegaPcaRow[]>(() => fetchVegaPca().then(adaptVegaPca), 120_000).data ?? [];
-  const g = DATA.greeks; // per-unit greek representation — used only for charm + the breakeven tile (no live net source).
-  // Live positions-derived NET greeks (trade domain) — the "risk stock" table.
-  const ng = trade.data?.greeks ?? DATA.greeks;
-  const a = portfolio.data?.account ?? DATA.account; // margin/net-liq live (PR 3 account domain)
+  // All live. Net greeks + caps from the trade domain; account from portfolio.
+  // No DATA mock fallback — absent data reads as 0 / "—", never fabricated.
+  const ng = trade.data?.greeks;
+  const lim = trade.data?.limits;
+  const a = portfolio.data?.account;
+  const nd = ng?.netDelta ?? 0, ngm = ng?.netGamma ?? 0, nv = ng?.netVega ?? 0, nt = ng?.netTheta ?? 0;
   // No live VaR yet (history < min window → backend returns null): show honest
   // zeros + "building window…", NOT a fabricated mock VaR scaled across horizons.
   const vd = risk.data ?? { var95: 0, var99: 0, es99: 0, nDays: 0, hist: [], perTenor: [] };
   const pt = vd.perTenor; // vega/vanna/volga by tenor ($k) — live (PR 5)
-  // reconciliation (§1): net 2nd-order greeks = Σ of their tenor buckets, by construction
+  // net 2nd-order greeks = Σ of their tenor buckets (live), by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
   const netVolga = pt.reduce((s, r) => s + r.volga, 0);
-  const rvDaily = +(DATA.termStructure[0]!.rv / Math.sqrt(252)).toFixed(2); // realized 1M (YZ) → daily %
-  const beMove = +(Math.sqrt(2 * Math.abs(g.theta) / g.gamma) * 0.225).toFixed(2); // move_BE = √(2Θ/Γ), %/day
-  const beCovered = rvDaily >= beMove;
   const utilColor = (p: number): string => (p > 80 ? "var(--neg)" : p > 60 ? "var(--warn)" : "var(--pos)");
-  // Risk-utilization rows : name · used/limit (the bar) · % (used vs the cap).
+  const pctOf = (used: number, cap: number | undefined): number => (cap && cap > 0 ? Math.min(100, (Math.abs(used) / cap) * 100) : 0);
+  // Risk-utilization rows : name · used/limit (the bar) · % (used vs the cap). All live.
   const utilRows = [
-    { label: "Init margin", used: fmt.usd(a.marginInit), limit: fmt.usd(a.netLiq), pct: a.marginInitPct },
-    { label: "Maint margin", used: fmt.usd(a.marginMaint), limit: fmt.usd(a.netLiq), pct: a.marginMaintPct },
-    { label: "Δ exposure", used: "$1.18M", limit: "$4.22M", pct: 28 },
-    { label: "Vega", used: "$32k", limit: "$62k", pct: 52 },
-    { label: "Γ exposure", used: "14.5k", limit: "20.4k", pct: 71 },
+    { label: "Init margin", used: a ? fmt.usd(a.marginInit) : "—", limit: a ? fmt.usd(a.netLiq) : "—", pct: a?.marginInitPct ?? 0 },
+    { label: "Maint margin", used: a ? fmt.usd(a.marginMaint) : "—", limit: a ? fmt.usd(a.netLiq) : "—", pct: a?.marginMaintPct ?? 0 },
+    { label: "Δ exposure", used: fmt.usdk(Math.abs(nd)), limit: lim ? fmt.usdk(lim.deltaBandUsd) : "—", pct: pctOf(nd, lim?.deltaBandUsd) },
+    { label: "Vega", used: fmt.usdk(Math.abs(nv)), limit: lim ? fmt.usdk(lim.vega.cap) : "—", pct: pctOf(nv, lim?.vega.cap) },
+    { label: "Γ exposure", used: fmt.usdk(Math.abs(ngm)), limit: lim ? fmt.usdk(lim.gamma.cap) : "—", pct: pctOf(ngm, lim?.gamma.cap) },
   ];
   // these sub-components are defined in the prototype but not rendered in this
   // view; referenced here to keep the 1:1 port without tripping noUnusedLocals.
@@ -694,13 +696,12 @@ export function RiskView(): JSX.Element {
                 <table className="dt greeks-table">
                   <thead><tr><th className="l">Greek</th><th className="r">Net value</th></tr></thead>
                   <tbody>
-                    <tr><td className="l">Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(ng.netDelta)}>{gk$(ng.netDelta)}</td></tr>
-                    <tr><td className="l">Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(ng.netGamma)}>{gk$(ng.netGamma)}</td></tr>
-                    <tr><td className="l">Vega <em className="unit">$/vp</em></td><td className={"r mono " + pnlCls(ng.netVega)}>{gk$(ng.netVega)}</td></tr>
-                    <tr><td className="l">Θ <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(ng.netTheta)}>{gk$(ng.netTheta)}</td></tr>
+                    <tr><td className="l">Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(nd)}>{gk$(nd)}</td></tr>
+                    <tr><td className="l">Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(ngm)}>{gk$(ngm)}</td></tr>
+                    <tr><td className="l">Vega <em className="unit">$/vp</em></td><td className={"r mono " + pnlCls(nv)}>{gk$(nv)}</td></tr>
+                    <tr><td className="l">Θ <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(nt)}>{gk$(nt)}</td></tr>
                     <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(netVanna)}>{fmt.sgn(netVanna, 0)}k</td></tr>
                     <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(netVolga)}>{fmt.sgn(netVolga, 0)}k</td></tr>
-                    <tr><td className="l">Charm <em className="unit">$k Δ/day</em></td><td className={"r mono " + pnlCls(g.charm)}>{fmt.sgn(g.charm, 2)}k</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -722,14 +723,6 @@ export function RiskView(): JSX.Element {
                 </table>
               </div>
             </div>
-            <div className="be-tile">
-              <div className="be-l"><span className="be-lbl mono">breakeven γ–θ</span><span className="be-formula mono dim">move_BE = √(2Θ/Γ)</span></div>
-              <div className="be-vals">
-                <div className="be-v"><b className="mono">{beMove}%</b><span className="dim small">BE / jour</span></div>
-                <div className="be-v"><b className={"mono " + (beCovered ? "pos" : "warn")}>{rvDaily}%</b><span className="dim small">réalisé YZ</span></div>
-                <span className={"be-verdict " + (beCovered ? "pos" : "warn")}>{beCovered ? "le réalisé paie le θ" : "le réalisé ne paie pas le θ"}</span>
-              </div>
-            </div>
             <div className="gs-section-lbl util-lbl">Vega exposure <span className="dim">· by tenor (curve) & by signal mode (PCA)</span></div>
             <div className="gs-2col">
               <div className="gs-sub"><div className="gs-sublbl mono dim">vega by tenor · curve 1M–6M (magnitude)</div><VegaTenorLadder rows={pt} /></div>
@@ -742,15 +735,15 @@ export function RiskView(): JSX.Element {
             </div>
           </Panel>
           <div className="var-col">
-            <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} />
+            <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a?.netLiq ?? 0} hist={vd.hist} fresh={risk} />
             <MarginalVarPanel />
           </div>
         </div>
       </Panel>
       <StressEngine />
       <LiveLadders />
-      <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status={portfolio.data?.positions?.length ? portfolio.status : "mock"} />} pad={false} className="ladder-panel">
-        <PositionBreakdown positions={portfolio.data?.positions ?? DATA.positions} />
+      <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status={portfolio.status} />} pad={false} className="ladder-panel">
+        <PositionBreakdown positions={portfolio.data?.positions ?? []} />
       </Panel>
       <CalendarPanel />
     </div>
