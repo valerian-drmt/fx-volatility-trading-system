@@ -1268,6 +1268,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/risk-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Risk Config
+         * @description Effective greek-limit policy = code defaults overlaid by config_scalar.
+         */
+        get: operations["get_risk_config_api_v1_admin_risk_config_get"];
+        /**
+         * Put Risk Config
+         * @description Upsert greek-limit policy params (hot-applied on the next /greek-limits).
+         */
+        put: operations["put_risk_config_api_v1_admin_risk_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dev/redis/keys": {
         parameters: {
             query?: never;
@@ -2798,6 +2822,20 @@ export interface components {
             probabilities?: {
                 [key: string]: number;
             } | null;
+        };
+        /** RiskConfigPatch */
+        RiskConfigPatch: {
+            /** Updates */
+            updates?: {
+                [key: string]: number;
+            };
+            /**
+             * User
+             * @default desk
+             */
+            user: string;
+            /** Comment */
+            comment?: string | null;
         };
         /**
          * SignalConfig
@@ -4743,6 +4781,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_risk_config_api_v1_admin_risk_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_risk_config_api_v1_admin_risk_config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RiskConfigPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

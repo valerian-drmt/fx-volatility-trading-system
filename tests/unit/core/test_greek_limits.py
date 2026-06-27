@@ -25,6 +25,20 @@ def test_caps_scale_inversely_with_shocks_via_regime():
     assert hot.gamma_pip == pytest.approx(base.gamma_pip / 4, rel=1e-9)
 
 
+def test_compute_caps_params_override():
+    base = compute_caps(812_000, 1.08, 1.0)
+    # doubling alpha doubles the loss budget → doubles every derived cap.
+    hot = compute_caps(812_000, 1.08, 1.0, params={"alpha": 0.10})
+    assert hot.delta_usd == pytest.approx(2 * base.delta_usd)
+    assert hot.gamma_pip == pytest.approx(2 * base.gamma_pip)
+    # a partial override keeps the other axes on their defaults.
+    only_delta = compute_caps(812_000, 1.08, 1.0, params={"beta_delta": 0.30})
+    assert only_delta.vega_usd == pytest.approx(base.vega_usd)
+    assert only_delta.delta_usd == pytest.approx(2 * base.delta_usd)
+    # a zero/degenerate shock returns safe zeros, never a division error.
+    assert compute_caps(812_000, 1.08, 1.0, params={"shock_vol": 0}).vega_usd == 0.0
+
+
 def test_caps_scale_linearly_with_nav_base():
     small = compute_caps(400_000, 1.08, 1.0)
     big = compute_caps(800_000, 1.08, 1.0)

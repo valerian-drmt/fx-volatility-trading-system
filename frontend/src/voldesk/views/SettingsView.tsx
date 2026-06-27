@@ -7,11 +7,99 @@
  * Read-only : revert/commit are gated behind WRITE_ENABLED (auth, Phase 2/2w).
  */
 import { useState } from "react";
-import { putConfig, revertConfig } from "../../api/endpoints";
+import { fetchRiskConfig, putConfig, putRiskConfig, revertConfig } from "../../api/endpoints";
+import { useFetch } from "../../hooks/useFetch";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { useDeskData } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
+
+interface RiskParam { name: string; value: number; default: number; unit: string; description: string; isDefault: boolean; }
+
+function adaptRiskParams(raw: unknown): RiskParam[] {
+  const ps = ((raw ?? {}) as {
+    params?: { name?: string; value?: number; default?: number; unit?: string; description?: string; is_default?: boolean }[];
+  }).params ?? [];
+  return ps.map((p) => ({
+    name: p.name ?? "",
+    value: Number(p.value ?? 0),
+    default: Number(p.default ?? 0),
+    unit: p.unit ?? "",
+    description: p.description ?? "",
+    isDefault: !!p.is_default,
+  }));
+}
+
+/** Risk settings — editable greek-limit policy knobs (config_scalar 'greek_limits'). */
+function RiskSettingsPanel(): JSX.Element {
+  const live = useFetch<RiskParam[]>(() => fetchRiskConfig().then(adaptRiskParams), 600_000);
+  const params = live.data ?? [];
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const dirty = Object.keys(edits).length;
+  const onCommit = async (): Promise<void> => {
+    if (busy || !WRITE_ENABLED || dirty === 0) return;
+    setBusy(true);
+    const updates: Record<string, number> = {};
+    for (const [k, v] of Object.entries(edits)) {
+      const num = Number(v);
+      if (!Number.isNaN(num)) updates[k] = num;
+    }
+    try {
+      await putRiskConfig(updates, `risk settings: ${dirty} field${dirty > 1 ? "s" : ""}`);
+      window.location.reload();
+    } catch {
+      setBusy(false);
+    }
+  };
+  return (
+    <Panel title="Risk settings" right={<FreshBadge fresh={live} label="greek-limit policy · hot-applied" />} className="config-edit">
+      <div className="dim small" style={{ marginBottom: 10 }}>
+        Arbitrary policy knobs behind the greek caps — stress-loss budget α, axis weights β, 1-day shocks, nav-base anchor. Editing recomputes the live Risk-utilization caps.
+      </div>
+      <div className="cfg-sections">
+        <div className="cfg-section">
+          {params.map((p) => (
+            <div key={p.name} className="cfg-field" title={p.description}>
+              <span className="cfg-key mono dim">{p.name}{p.unit && <span className="dim"> · {p.unit}</span>}</span>
+              {WRITE_ENABLED ? (
+                <input
+                  className="cfg-val-input mono"
+                  value={edits[p.name] ?? String(p.value)}
+                  disabled={busy}
+                  onChange={(e) =>
+                    setEdits((prev) => {
+                      const next = { ...prev };
+                      if (Number(e.target.value) === p.value) delete next[p.name];
+                      else next[p.name] = e.target.value;
+                      return next;
+                    })
+                  }
+                />
+              ) : (
+                <span className="cfg-val mono accent">{p.value}{p.isDefault && <span className="dim small"> · default</span>}</span>
+              )}
+            </div>
+          ))}
+          {params.length === 0 && <div className="dim small">indisponible.</div>}
+        </div>
+      </div>
+      {WRITE_ENABLED && (
+        <div className="cfg-commit-bar">
+          <button className="btn-primary" disabled={busy || dirty === 0} onClick={onCommit}>
+            {busy ? "…" : dirty > 0 ? `Commit ${dirty} change${dirty > 1 ? "s" : ""}` : "No changes"}
+          </button>
+          {dirty > 0 && <button className="row-close" disabled={busy} onClick={() => setEdits({})}>reset</button>}
+        </div>
+      )}
+      <div className="dim small" style={{ marginTop: 10 }}>
+        {WRITE_ENABLED
+          ? "Édition par champ · commit = upsert config_scalar (namespace greek_limits), appliqué au prochain calcul des caps."
+          : "Lecture seule · l'édition arrive avec l'auth (Phase 2)."}
+      </div>
+    </Panel>
+  );
+}
 
 const GATE_TITLE = "écriture désactivée — auth requise (Phase 2)";
 const SEP = "␟"; // edits-map key separator: `${section}${SEP}${dotted.field.key}`
@@ -187,6 +275,7 @@ export function SettingsView(): JSX.Element {
           </>
         )}
       </Panel>
+      <RiskSettingsPanel />
     </div>
   );
 }

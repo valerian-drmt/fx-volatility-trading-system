@@ -14,17 +14,20 @@ multiple users, wrap the PUT / POST routes in a ``Depends(require_admin)``.
 from __future__ import annotations
 
 import json
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from redis import asyncio as aioredis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
 from api.dependencies import get_db_session, get_redis
 from api.orchestration import config_service
 from api.schemas.admin import ConfigPatchRequest, ConfigResponse, ConfigRevertRequest
+from core.risk import greek_limits as gl
+from persistence.models import AppConfigScalar
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -95,3 +98,86 @@ async def revert_config(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return _to_response(record)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Risk settings — greek-limit policy params (config_scalar 'greek_limits')
+# ──────────────────────────────────────────────────────────────────────
+
+_RISK_NS = "greek_limits"
+
+
+class RiskConfigPatch(BaseModel):
+    updates: dict[str, float] = Field(default_factory=dict)
+    user: str = "desk"
+    comment: str | None = None
+
+
+def _validate_risk_param(name: str, value: float) -> None:
+    """Light bounds — these are policy knobs, not free numbers."""
+    if name not in gl.CONFIG_DEFAULTS:
+        raise HTTPException(status_code=422, detail=f"unknown risk param: {name}")
+    if name == "alpha" and not 0 < value <= 1:
+        raise HTTPException(status_code=422, detail="alpha must be in (0, 1]")
+    if name.startswith("beta_") and not 0 <= value <= 1:
+        raise HTTPException(status_code=422, detail=f"{name} must be in [0, 1]")
+    if name in {"shock_spot", "shock_vol", "nav_halflife_days"} and value <= 0:
+        raise HTTPException(status_code=422, detail=f"{name} must be > 0")
+    if name == "nav_hwm_floor" and not 0 < value <= 1:
+        raise HTTPException(status_code=422, detail="nav_hwm_floor must be in (0, 1]")
+
+
+async def _risk_config_payload(db: AsyncSession) -> dict[str, Any]:
+    rows = {
+        r.name: r
+        for r in (await db.execute(
+            select(AppConfigScalar).where(AppConfigScalar.namespace == _RISK_NS)
+        )).scalars().all()
+    }
+    params = []
+    for name, default in gl.CONFIG_DEFAULTS.items():
+        unit, desc = gl.CONFIG_META.get(name, ("", ""))
+        row = rows.get(name)
+        params.append({
+            "name": name,
+            "value": float(row.value) if row is not None else default,
+            "default": default,
+            "unit": unit,
+            "description": desc,
+            "is_default": row is None,
+            "updated_by": row.updated_by if row is not None else None,
+        })
+    return {"namespace": _RISK_NS, "params": params}
+
+
+@router.get("/risk-config")
+async def get_risk_config(db: DbDep) -> dict[str, Any]:
+    """Effective greek-limit policy = code defaults overlaid by config_scalar."""
+    return await _risk_config_payload(db)
+
+
+@router.put("/risk-config", dependencies=[Depends(require_write)])
+async def put_risk_config(req: RiskConfigPatch, db: DbDep) -> dict[str, Any]:
+    """Upsert greek-limit policy params (hot-applied on the next /greek-limits)."""
+    if not req.updates:
+        raise HTTPException(status_code=422, detail="no updates provided")
+    existing = {
+        r.name: r
+        for r in (await db.execute(
+            select(AppConfigScalar).where(AppConfigScalar.namespace == _RISK_NS)
+        )).scalars().all()
+    }
+    for name, value in req.updates.items():
+        _validate_risk_param(name, float(value))
+        unit, desc = gl.CONFIG_META.get(name, ("", ""))
+        row = existing.get(name)
+        if row is not None:
+            row.value = float(value)
+            row.updated_by = req.user
+        else:
+            db.add(AppConfigScalar(
+                namespace=_RISK_NS, name=name, value=float(value),
+                unit=unit, description=desc, is_active=True, updated_by=req.user,
+            ))
+    await db.commit()
+    return await _risk_config_payload(db)

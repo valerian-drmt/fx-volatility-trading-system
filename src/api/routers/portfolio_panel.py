@@ -29,6 +29,7 @@ from core.risk.var_factors import factor_var_breakdown
 from core.risk.vega_pca import N_CELLS, PC_NAMES, cell_index, project_vega
 from persistence.models import (  # noqa: F401
     AccountHistory,
+    AppConfigScalar,
     BookedPosition,
     OpenPosition,
     OpenPositionHistory,
@@ -1399,10 +1400,22 @@ async def greek_limits(db: DbDep) -> dict[str, Any]:
         .order_by(desc(VolSurface.timestamp)).limit(1)
     )).scalar_one_or_none()
 
-    nav_b = gl.nav_base(nav_series) or 0.0
+    # Live policy from the Risk settings panel (config_scalar 'greek_limits'),
+    # falling back to the code defaults for any key not set in the DB.
+    rows = (await db.execute(
+        select(AppConfigScalar.name, AppConfigScalar.value)
+        .where(AppConfigScalar.namespace == "greek_limits")
+    )).all()
+    params = {name: float(val) for name, val in rows if name in gl.CONFIG_DEFAULTS}
+
+    nav_b = gl.nav_base(
+        nav_series,
+        hwm_floor=params.get("nav_hwm_floor", gl.CONFIG_DEFAULTS["nav_hwm_floor"]),
+        halflife=params.get("nav_halflife_days", gl.CONFIG_DEFAULTS["nav_halflife_days"]),
+    ) or 0.0
     spot_f = float(spot) if spot is not None else 0.0
     regime = 1.0  # TODO §8: implied_vol / calm_baseline, clamped [1,3]
-    caps = gl.compute_caps(nav_b, spot_f, regime)
+    caps = gl.compute_caps(nav_b, spot_f, regime, params=params)
     return {
         "computed_at": datetime.now(UTC).isoformat(),
         "nav_base_usd": round(caps.nav_base_usd, 2),
