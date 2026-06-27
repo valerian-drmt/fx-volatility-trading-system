@@ -812,7 +812,8 @@ input,select{font-family:inherit;font-size:13px}
 .pb-table tbody .grp-att{background:color-mix(in srgb,#2dd4bf 8%,transparent)}
 .pb-table thead th{border-bottom:2px solid var(--border)}
 .ladder-panel .dt tbody td{font-size:13.5px}
-.pb-table tbody td{font-size:13.5px;font-weight:400}
+/* match Open-positions (base .dt) sizing — beat .ladder-panel .dt tbody td */
+.pb-table.dt tbody td{font-size:12px;font-weight:400}
 .pb-table tbody td .sym{font-weight:400}
 .pb-table tbody td .substruct{font-size:11px}
 .pb-table thead .grp-grk{color:var(--accent)}
