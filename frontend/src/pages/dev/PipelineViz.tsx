@@ -582,7 +582,7 @@ function Stage({ pipe, statuses, resolveNode, asOf, domainFresh }: { pipe: Panel
         <span style={{ fontSize: 14, fontWeight: 600, color: "#eef1f6" }}>{pipe.panel}</span>
         <span className="pp-mono" style={{ fontSize: 9, letterSpacing: ".14em", color: "#5a606e" }}>{pipe.isolated || pipe.id === "ticker" ? "PANEL" : "VIEW"} · {VIEW_LABEL[pipe.view]}</span>
         <span style={{ flex: 1 }} />
-        <span className="pp-mono" style={{ fontSize: 11.5, fontWeight: 600, color: "#9fe0b6", background: "rgba(62,196,109,.12)", border: "1px solid rgba(62,196,109,.32)", borderRadius: 6, padding: "3px 10px", letterSpacing: ".02em" }} title="how often this panel's data refreshes in the desk">↻ refresh {CADENCE[pipe.domain]}</span>
+        <span className="pp-mono" style={{ fontSize: 11.5, fontWeight: 600, color: "#9fe0b6", background: "rgba(62,196,109,.12)", border: "1px solid rgba(62,196,109,.32)", borderRadius: 6, padding: "3px 10px", letterSpacing: ".02em" }} title="how often this panel's data refreshes in the desk">↻ refresh {pipe.cadence ?? CADENCE[pipe.domain]}</span>
         <span className="pp-mono" style={{ fontSize: 11, color: stampColor }}>{stampText}</span>
       </div>
 

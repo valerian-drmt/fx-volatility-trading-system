@@ -54,6 +54,13 @@ export interface PanelPipe {
    * api). The flat `nodes`/`edges` stay for the sidebar health roll-up.
    */
   dag?: PipeDag;
+  /**
+   * Per-panel refresh cadence shown in the schema header. Overrides the coarse
+   * per-domain default — needed where a panel polls on its own (stress/ladders/
+   * marginal/pin ~120s) or its data changes on a slow schedule (macro ~24h)
+   * even though the front re-reads it on the domain beat.
+   */
+  cadence?: string;
 }
 
 /** A node in the full data-flow DAG. `terminal` = the displayed panel. */
@@ -357,31 +364,31 @@ export const PIPELINES: PanelPipe[] = [
     dag: dagReval([xPg("open_position · net greeks"), xPg("account_history · nav_base + margin")], ["read greeks", "read account"], "GET /portfolio/greek-limits (L*=α·nav) + /account margin", "Risk utilization"),
   },
   {
-    id: "pin-risk", panel: "Pin risk", view: "risk", domain: "risk", isolated: true,
+    id: "pin-risk", panel: "Pin risk", view: "risk", domain: "risk", isolated: true, cadence: "~120s · poll",
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Pin risk")],
     edges: ["UPDATE book", "read options", "GET /portfolio/pin-risk (reval)", "render"],
     dag: dagReval([xPg("open_position · options"), xRedis("latest_vol_surface")], ["read options", "read surface"], "GET /portfolio/pin-risk · reval at strike", "Pin risk"),
   },
   {
-    id: "marginal-var", panel: "Marginal VaR", view: "risk", domain: "risk", isolated: true,
+    id: "marginal-var", panel: "Marginal VaR", view: "risk", domain: "risk", isolated: true, cadence: "~120s · poll",
     nodes: [eng("risk-engine", "per-pos pnl /2s"), pg("open_position_history"), API, FE, panel("Marginal VaR")],
     edges: ["INSERT snapshot", "daily pnl series", "GET /portfolio/marginal-var (Euler)", "render"],
     dag: dagPersist(xEng("risk-engine", "per-pos pnl /2s", "risk-engine"), "positions", "INSERT snapshot", "open_position_history", "GET /portfolio/marginal-var · Euler allocation", "Marginal VaR", "transform"),
   },
   {
-    id: "stress", panel: "Stress grids", view: "risk", domain: "risk", isolated: true,
+    id: "stress", panel: "Stress grids", view: "risk", domain: "risk", isolated: true, cadence: "~120s · poll",
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Stress grids")],
     edges: ["UPDATE book", "read book", "GET /portfolio/stress-grid (reval ×4)", "render"],
     dag: dagReval([xPg("open_position · book"), xRedis("latest_vol_surface")], ["read book", "read surface"], "GET /portfolio/stress-grid · reval_book ×4 axes", "Stress grids"),
   },
   {
-    id: "greeks-ladder", panel: "Greeks ladders", view: "risk", domain: "risk", isolated: true,
+    id: "greeks-ladder", panel: "Greeks ladders", view: "risk", domain: "risk", isolated: true, cadence: "~120s · poll",
     nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Greeks ladders")],
     edges: ["UPDATE book", "read book", "GET /portfolio/greeks-ladder (reval ×5)", "render"],
     dag: dagReval([xPg("open_position · book"), xRedis("latest_vol_surface")], ["read book", "read surface"], "GET /portfolio/greeks-ladder · full-BS reval ×5 axes", "Greeks ladders"),
   },
   {
-    id: "risk-macro", panel: "Macro events", view: "risk", domain: "trade", isolated: true,
+    id: "risk-macro", panel: "Macro events", view: "risk", domain: "trade", isolated: true, cadence: "~24h · events scheduler",
     nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Macro events")],
     edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
     dag: dagEvents("Macro events"),
