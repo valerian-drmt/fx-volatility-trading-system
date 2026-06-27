@@ -4,7 +4,7 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useEffect, useRef, useState } from "react";
-import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fetchVarFactors, fetchVegaPca } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fetchVarFactors } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -14,7 +14,7 @@ import { fmt } from "../data";
 import type { Position, VarFactor } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, adaptVarFactors, adaptVegaPca, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, adaptVarFactors, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -28,39 +28,6 @@ const ordinal = (n: number): string => {
     v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]!);
 };
-
-interface DivBarRow {
-  label: string;
-  v: number;
-  sub?: string;
-  neutral?: boolean;
-  flag?: string | null;
-}
-
-// ---- diverging bars centered on zero — for SIGNED exposures (vanna, volga, vega-by-mode) ----
-// scale="sqrt" keeps small buckets legible when one tenor dominates; rows can be `neutral` (no rich/cheap color).
-function DivBars({ rows, unit = "", scale = "linear" }: { rows: DivBarRow[]; unit?: string; scale?: "linear" | "sqrt" }): JSX.Element {
-  const mag = (v: number): number => (scale === "sqrt" ? Math.sqrt(Math.abs(v)) : Math.abs(v));
-  const max = Math.max(...rows.map((r) => mag(r.v))) || 1;
-  return (
-    <div className="divbars">
-      {rows.map((r) => {
-        const pos = r.v >= 0,
-          w = (mag(r.v) / max) * 50;
-        return (
-          <div key={r.label} className="divbar-row">
-            <span className="divbar-lbl"><span className="mono">{r.label}</span>{r.sub && <span className="divbar-sub dim mono">{r.sub}</span>}</span>
-            <div className="divbar-track">
-              <span className="divbar-mid" />
-              <span className={"divbar-fill " + (r.neutral ? "neu" : pos ? "pos" : "neg")} style={{ left: pos ? "50%" : (50 - w) + "%", width: w + "%" }} />
-            </div>
-            <span className={"divbar-val mono " + (r.neutral ? "dim" : pos ? "pos" : "neg")}>{(pos ? "+" : "−") + Math.abs(r.v) + unit}{r.flag && <span className="divbar-flag" title={r.flag}>▲</span>}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // neutral "risk-only" badge — marks surfaces that carry exposure but NO signal (skew). Never the signal palette.
 function RiskOnly({ text = "risk-only" }: { text?: string }): JSX.Element {
@@ -494,51 +461,53 @@ function StressEngine(): JSX.Element {
   );
 }
 
-// ---- event & expiry calendar : roll-off / pin risk + dated macro ----
-function CalendarPanel(): JSX.Element {
-  const impactTone: Record<string, Tone> = { high: "danger", medium: "warn", low: "neutral" };
+// ---- Expiries & roll-off (pin risk) — own panel for the Greeks 2×2 grid ----
+function PinRiskTable(): JSX.Element {
   const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + "k" : Math.round(Math.abs(v)));
   const pin = useFetch<PinRiskRow[]>(() => fetchPinRisk().then(adaptPinRisk), 120_000);
   const pinRows = pin.data ?? [];
+  return (
+    <Panel title="Expiries & roll-off" dataPp="pin-risk" right={<PanelLive status={pin.status} />} className="trade-block" pad={false}>
+      <div className="table-scroll">
+        <table className="dt">
+          <thead><tr><th className="l">Option</th><th className="r">Strike</th><th className="r">DTE</th><th className="r">Dist pip</th><th className="r">P&L now</th><th className="r">if pin</th></tr></thead>
+          <tbody>
+            {pinRows.length === 0 ? (
+              <tr><td className="l dim mono small" colSpan={6}>{pin.status === "missing" ? "no open options" : "loading…"}</td></tr>
+            ) : pinRows.map((p, i) => (
+              <tr key={i} className={p.distPips <= 10 ? "row-now" : ""}>
+                <td className="l mono">{p.product}</td>
+                <td className="r mono dim">{p.strike.toFixed(4)}</td>
+                <td className="r mono dim">{p.dte}d</td>
+                <td className={"r mono " + (p.distPips <= 10 ? "warn" : "dim")}>{p.distPips}</td>
+                <td className={"r mono " + pnlCls(p.pnlNow)}>{kk(p.pnlNow)}</td>
+                <td className={"r mono " + pnlCls(p.pnlAtPin)}>{kk(p.pnlAtPin)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+// ---- macro events calendar ----
+function CalendarPanel(): JSX.Element {
+  const impactTone: Record<string, Tone> = { high: "danger", medium: "warn", low: "neutral" };
   const { trade } = useDeskData();
   const events = trade.data?.events ?? [];
   return (
-    <Panel title="Calendar — events & expiries" dataPp="risk-calendar-wrap" right={<PanelLive status={pin.status} />} pad className="ladder-panel">
-      <div className="risk-cards2">
-        <Panel title="Expiries & roll-off" dataPp="pin-risk" className="trade-block" pad={false}>
-          <div className="table-scroll">
-            <table className="dt">
-              <thead><tr><th className="l">Option</th><th className="r">Strike</th><th className="r">DTE</th><th className="r">Dist pip</th><th className="r">P&L now</th><th className="r">if pin</th></tr></thead>
-              <tbody>
-                {pinRows.length === 0 ? (
-                  <tr><td className="l dim mono small" colSpan={6}>{pin.status === "missing" ? "no open options" : "loading…"}</td></tr>
-                ) : pinRows.map((p, i) => (
-                  <tr key={i} className={p.distPips <= 10 ? "row-now" : ""}>
-                    <td className="l mono">{p.product}</td>
-                    <td className="r mono dim">{p.strike.toFixed(4)}</td>
-                    <td className="r mono dim">{p.dte}d</td>
-                    <td className={"r mono " + (p.distPips <= 10 ? "warn" : "dim")}>{p.distPips}</td>
-                    <td className={"r mono " + pnlCls(p.pnlNow)}>{kk(p.pnlNow)}</td>
-                    <td className={"r mono " + pnlCls(p.pnlAtPin)}>{kk(p.pnlAtPin)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <Panel title="Macro events" dataPp="risk-macro" right={<PanelLive status={trade.status} />} className="ladder-panel">
+      <div className="evt-list">
+        {events.length === 0 ? (
+          <div className="dim mono small">no scheduled events</div>
+        ) : events.map((e, i) => (
+          <div key={i} className="evt-item">
+            <div className="evt-when mono"><span className="evt-in accent">{e.in}</span><span className="dim small">{e.date.split(",")[0]}</span></div>
+            <div className="evt-body"><span className="evt-code mono">{e.code}</span><span className="evt-name">{e.content}</span><span className="dim mono small"> · {e.country}</span></div>
+            <Tag tone={impactTone[e.impact] ?? "neutral"}>{e.impact}</Tag>
           </div>
-        </Panel>
-        <Panel title="Macro events" dataPp="risk-macro" className="trade-block">
-          <div className="evt-list">
-            {events.length === 0 ? (
-              <div className="dim mono small">no scheduled events</div>
-            ) : events.map((e, i) => (
-              <div key={i} className="evt-item">
-                <div className="evt-when mono"><span className="evt-in accent">{e.in}</span><span className="dim small">{e.date.split(",")[0]}</span></div>
-                <div className="evt-body"><span className="evt-code mono">{e.code}</span><span className="evt-name">{e.content}</span><span className="dim mono small"> · {e.country}</span></div>
-                <Tag tone={impactTone[e.impact] ?? "neutral"}>{e.impact}</Tag>
-              </div>
-            ))}
-          </div>
-        </Panel>
+        ))}
       </div>
     </Panel>
   );
@@ -643,7 +612,6 @@ function LiveLadders(): JSX.Element {
 
 export function RiskView(): JSX.Element {
   const { risk, portfolio, trade } = useDeskData();
-  const vpca = useFetch<VegaPcaRow[]>(() => fetchVegaPca().then(adaptVegaPca), 120_000).data ?? [];
   // All live. Net greeks + caps from the trade domain; account from portfolio.
   // No DATA mock fallback — absent data reads as 0 / "—", never fabricated.
   const ng = trade.data?.greeks;
@@ -673,65 +641,61 @@ export function RiskView(): JSX.Element {
   void ReturnsBars;
   return (
     <div className="risk-grid">
-      <Panel title="Portfolio risk" dataPp="risk-portfolio-wrap" className="stress-panel">
-        <div className="risk-overview2">
-          <Panel title="Greeks & risk utilization" dataPp="greeks-util" right={<PanelLive status={risk.status} />} className="trade-block">
-            <div className="gu-row">
-              <div className="gu-col">
-                <table className="dt greeks-table">
-                  <thead><tr><th className="l">Greek</th><th className="r">Net value</th></tr></thead>
-                  <tbody>
-                    <tr><td className="l">Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(nd)}>{gk$(nd)}</td></tr>
-                    <tr><td className="l">Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(ngm)}>{gk$(ngm)}</td></tr>
-                    <tr><td className="l">Vega <em className="unit">$/vp</em></td><td className={"r mono " + pnlCls(nv)}>{gk$(nv)}</td></tr>
-                    <tr><td className="l">Θ <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(nt)}>{gk$(nt)}</td></tr>
-                    <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(netVanna)}>{fmt.sgn(netVanna, 0)}k</td></tr>
-                    <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(netVolga)}>{fmt.sgn(netVolga, 0)}k</td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="gu-col">
-                <table className="dt util-table">
-                  <thead><tr><th className="l">Limit</th><th>Used / cap</th><th className="r">%</th></tr></thead>
-                  <tbody>
-                    {utilRows.map((r) => (
-                      <tr key={r.label}>
-                        <td className="l">{r.label}</td>
-                        <td className="util-bar-cell">
-                          <div className="util-track"><div className="util-fill" style={{ width: Math.min(100, r.pct) + "%", background: utilColor(r.pct) }} /></div>
-                          <span className="util-frac dim mono">{r.used} / {r.limit}</span>
-                        </td>
-                        <td className="r mono util-pct" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="gs-section-lbl util-lbl">Vega / Vanna / Volga <span className="dim">· by tenor · signed · $k</span></div>
-            <table className="dt greeks-table">
-              <thead><tr><th className="l">Tenor</th><th className="r">Vega</th><th className="r">Vanna</th><th className="r">Volga</th></tr></thead>
-              <tbody>
-                {pt.length === 0 && <tr><td colSpan={4} className="l dim small mono">no book</td></tr>}
-                {pt.map((r) => (
-                  <tr key={r.tenor}>
-                    <td className="l">{r.tenor}</td>
-                    <td className={"r mono " + pnlCls(r.vega)}>{fmt.sgn(r.vega, 1)}k</td>
-                    <td className={"r mono " + pnlCls(r.vanna)}>{fmt.sgn(r.vanna, 1)}k</td>
-                    <td className={"r mono " + pnlCls(r.volga)}>{fmt.sgn(r.volga, 2)}k</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="gs-section-lbl util-lbl">vega → PCA mode <span className="dim">· the signal base ($k)</span></div>
-            <DivBars rows={vpca.map((p) => ({ label: p.mode, sub: p.name + " · " + p.var + "%", v: p.vega }))} unit="k" />
-          </Panel>
-          <div className="var-col">
-            <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a?.netLiq ?? 0} hist={vd.hist} fresh={risk} />
-            <MarginalVarPanel />
+      <div className="risk-row1">
+        <Panel title="Greeks" dataPp="greeks-wrap" right={<PanelLive status={risk.status} />} className="stress-panel">
+          <div className="greeks-2x2">
+            <Panel title="Portfolio greeks" dataPp="greeks-net" right={<PanelLive status={trade.status} />} className="trade-block">
+              <table className="dt greeks-table">
+                <thead><tr><th className="l">Greek</th><th className="r">Net value</th></tr></thead>
+                <tbody>
+                  <tr><td className="l">Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(nd)}>{gk$(nd)}</td></tr>
+                  <tr><td className="l">Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(ngm)}>{gk$(ngm)}</td></tr>
+                  <tr><td className="l">Vega <em className="unit">$/vp</em></td><td className={"r mono " + pnlCls(nv)}>{gk$(nv)}</td></tr>
+                  <tr><td className="l">Θ <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(nt)}>{gk$(nt)}</td></tr>
+                  <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(netVanna)}>{fmt.sgn(netVanna, 0)}k</td></tr>
+                  <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(netVolga)}>{fmt.sgn(netVolga, 0)}k</td></tr>
+                </tbody>
+              </table>
+            </Panel>
+            <Panel title="Risk utilization" dataPp="risk-util" right={<PanelLive status={portfolio.status} />} className="trade-block">
+              <table className="dt util-table">
+                <thead><tr><th className="l">Limit</th><th>Used / cap</th><th className="r">%</th></tr></thead>
+                <tbody>
+                  {utilRows.map((r) => (
+                    <tr key={r.label}>
+                      <td className="l">{r.label}</td>
+                      <td className="util-bar-cell">
+                        <div className="util-track"><div className="util-fill" style={{ width: Math.min(100, r.pct) + "%", background: utilColor(r.pct) }} /></div>
+                        <span className="util-frac dim mono">{r.used} / {r.limit}</span>
+                      </td>
+                      <td className="r mono util-pct" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+            <PinRiskTable />
+            <Panel title="Vega / Vanna / Volga" dataPp="vvv-tenor" right={<PanelLive status={risk.status} />} className="trade-block">
+              <table className="dt greeks-table">
+                <thead><tr><th className="l">Tenor</th><th className="r">Vega</th><th className="r">Vanna</th><th className="r">Volga</th></tr></thead>
+                <tbody>
+                  {pt.length === 0 && <tr><td colSpan={4} className="l dim small mono">no book</td></tr>}
+                  {pt.map((r) => (
+                    <tr key={r.tenor}>
+                      <td className="l">{r.tenor}</td>
+                      <td className={"r mono " + pnlCls(r.vega)}>{fmt.sgn(r.vega, 1)}k</td>
+                      <td className={"r mono " + pnlCls(r.vanna)}>{fmt.sgn(r.vanna, 1)}k</td>
+                      <td className={"r mono " + pnlCls(r.volga)}>{fmt.sgn(r.volga, 2)}k</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
           </div>
-        </div>
-      </Panel>
+        </Panel>
+        <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a?.netLiq ?? 0} hist={vd.hist} fresh={risk} />
+      </div>
+      <MarginalVarPanel />
       <StressEngine />
       <LiveLadders />
       <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status={portfolio.status} />} pad={false} className="ladder-panel">
