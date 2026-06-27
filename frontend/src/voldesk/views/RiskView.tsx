@@ -11,7 +11,7 @@ import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
 import { DATA, fmt } from "../data";
-import type { VarFactor } from "../data";
+import type { Position, VarFactor } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
 import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, adaptVarFactors, adaptVegaPca, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
@@ -401,8 +401,8 @@ const STRESS_AXES = ["spot-time", "spot-vol", "spot-skew", "spot-fly"] as const;
 // Stress engine: one output toggle drives P&L or any greek across the four
 // spot-x grids. Owns the fetch so it can show a live indicator; refetches on
 // output change (the four axes in parallel).
-function PositionBreakdown(): JSX.Element {
-  const rows = DATA.positions;
+function PositionBreakdown({ positions }: { positions: Position[] }): JSX.Element {
+  const rows = positions;
   const k = (v: number | null, d = 2): string => v == null ? "—" : (v >= 0 ? "+" : "-") + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(2) + "k" : Math.abs(v).toFixed(d));
   const dC = (p: typeof rows[number]): number => Math.round(p.delta * 0.35);
   const tC = (p: typeof rows[number]): number | null => p.iv ? +(p.theta * 0.07).toFixed(2) : null;
@@ -415,7 +415,7 @@ function PositionBreakdown(): JSX.Element {
         <table className="dt pb-table">
           <thead>
             <tr>
-              <th className="l grp-fix">Position</th><th className="l grp-fix">Side</th>
+              <th className="l grp-fix">Trade</th><th className="l grp-fix">Contract</th><th className="l grp-fix">Product</th><th className="l grp-fix">Structure</th><th className="l grp-fix">Side</th>
               <th className="r grp-fix">Tenor</th><th className="r grp-fix">IV</th><th className="r grp-fix">Nominal €</th>
               <th className="r grp-grk col-grp">Δ$</th><th className="r grp-grk">Γ</th><th className="r grp-grk">Vega</th><th className="r grp-grk">Θ</th><th className="r grp-grk">Vanna</th><th className="r grp-grk col-grp-end">Volga</th>
               <th className="r grp-pnl col-grp">P&L 1d</th><th className="r grp-pnl">P&L 1w</th><th className="r grp-pnl col-grp-end">P&L 1M</th>
@@ -425,7 +425,10 @@ function PositionBreakdown(): JSX.Element {
           <tbody>
             {rows.map((p) => (
               <tr key={p.id}>
-                <td className="l grp-fix"><span className="sym">{p.structure}</span><span className="substruct">{p.packageId} · {p.expiry}</span></td>
+                <td className="l grp-fix mono dim">{p.tradeId || p.packageId || "—"}</td>
+                <td className="l grp-fix mono dim">{p.conId || "—"}</td>
+                <td className="l grp-fix">{p.product || "—"}</td>
+                <td className="l grp-fix"><span className="sym">{p.structure}</span></td>
                 <td className="l grp-fix"><span className={"side-pill " + (p.side === "BUY" ? "long" : "short")}>{p.side}</span></td>
                 <td className="r mono dim grp-fix">{p.tenor || "—"}</td>
                 <td className="r mono dim grp-fix">{p.iv ? p.iv.toFixed(1) : "—"}</td>
@@ -744,8 +747,8 @@ export function RiskView(): JSX.Element {
       </Panel>
       <StressEngine />
       <LiveLadders />
-      <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status="mock" />} pad={false} className="ladder-panel">
-        <PositionBreakdown />
+      <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status={portfolio.data?.positions?.length ? portfolio.status : "mock"} />} pad={false} className="ladder-panel">
+        <PositionBreakdown positions={portfolio.data?.positions ?? DATA.positions} />
       </Panel>
       <CalendarPanel />
     </div>
