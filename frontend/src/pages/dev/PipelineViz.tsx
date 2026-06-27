@@ -325,7 +325,7 @@ function DagSchema({ dag, pipe, resolveNode }: {
 }): JSX.Element {
   const [hover, setHover] = useState<string | null>(null);
   const sizeOf = (n: DagNode): { w: number; h: number } =>
-    n.terminal ? { w: 640, h: 460 } : n.kind === "external" ? { w: 210, h: 178 } : { w: 188, h: 178 };
+    n.terminal ? { w: 640, h: 760 } : n.kind === "external" ? { w: 210, h: 178 } : { w: 188, h: 178 };
 
   const layout = useMemo(() => {
     const g = new dagre.graphlib.Graph();

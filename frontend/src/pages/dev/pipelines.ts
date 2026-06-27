@@ -322,7 +322,12 @@ export const PIPELINES: PanelPipe[] = [
   // Rebuild in progress — one pipeline per DATA PATH (endpoint), not per visual
   // panel (Stress grids / Greeks ladders collapse to one each; the Greeks 2×2
   // splits by source). No schemas yet → the canvas renders blank for these.
-  { id: "var", panel: "VaR", view: "risk", domain: "risk", nodes: [], edges: [] },
+  {
+    id: "var", panel: "VaR", view: "risk", domain: "risk", isolated: true,
+    nodes: [IB, IBG, eng("execution-engine", "account snaps"), DBW, pg("account_history (504d)"), API, FE, panel("VaR")],
+    edges: ["account summary", "reqAccountSummary", "db_events", "INSERT", "504d sim", "GET /portfolio/var", "render"],
+    dag: dagPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history (504d)", "GET /portfolio/var · sim", "VaR", "transform"),
+  },
   { id: "per-tenor-greeks", panel: "Per-tenor greeks", view: "risk", domain: "risk", nodes: [], edges: [] },
   { id: "net-greeks", panel: "Net greeks", view: "risk", domain: "trade", nodes: [], edges: [] },
   { id: "risk-utilization", panel: "Risk utilization", view: "risk", domain: "portfolio", nodes: [], edges: [] },
