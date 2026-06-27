@@ -447,7 +447,7 @@ function StressEngine(): JSX.Element {
   }, [out, reload]);
   const g = live.data ?? [null, null, null, null];
   return (
-    <Panel title="Stress test — scenario engine" dataPp="stress" right={<><span className="dim mono small">factor base spans skew & curvature</span> <PanelLive status={live.status} /></>} className="stress-panel">
+    <Panel title="Stress test — scenario engine" dataPp="stress" right={<PanelLive status={live.status} />} className="stress-panel">
       <div className="greek-btns">
         {opts.map((o) => (
           <button key={o} className={"chip " + (out === o ? "on" : "")} onClick={() => setOut(o)}>{labels[o]}</button>
@@ -536,7 +536,7 @@ function MarginalVarPanel(): JSX.Element {
                 <td className="l mono"><span className="mvar-dot" style={{ background: facColor[m.factor] ?? "var(--muted)" }} title={"driver: " + m.factor} />{m.label}</td>
                 <td className="r mono dim">{money(m.standalone)}</td>
                 <td className={"r mono " + (m.component >= 0 ? "neg" : "pos")}>{money(m.component)}</td>
-                <td className="r"><div className="mvar-pct"><div className="mvar-bar" style={{ width: Math.max(0, m.pct) + "%" }} /><span className="mono">{m.pct.toFixed(1)}%</span></div></td>
+                <td className="r mono">{m.pct.toFixed(1)}%</td>
               </tr>
             ))}
           </tbody>
