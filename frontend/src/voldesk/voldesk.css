@@ -803,7 +803,7 @@ input,select{font-family:inherit;font-size:13px}
 .pb-table{table-layout:fixed;min-width:1320px}
 .pb-table th,.pb-table td{overflow:hidden;text-overflow:ellipsis}
 .pb-table th:not(:first-child),.pb-table td:not(:first-child){text-align:center}
-.pb-table th:first-child,.pb-table td:first-child{width:160px}
+.pb-table th:first-child,.pb-table td:first-child{width:90px}
 .pb-table th:nth-child(2),.pb-table td:nth-child(2){width:54px}
 .pb-table th:not(:first-child):not(:nth-child(2)){width:74px}
 /* group tints + outlines */
