@@ -1182,14 +1182,18 @@ def _var_stats(deltas: list[float]) -> dict[str, float] | None:
     return {"var_95": var95, "var_99": var99, "es_99": es99, "n": float(len(deltas))}
 
 
-def _histogram(values: list[float], nbins: int = 21) -> list[dict[str, float]]:
+def _histogram(values: list[float], nbins: int = 0) -> list[dict[str, float]]:
     """Equal-width histogram bins ``[{lo, hi, count}]`` over `values`. Empty
-    when < 2 points or zero range."""
+    when < 2 points or zero range. ``nbins<=0`` ⇒ Sturges' rule
+    (``1 + ⌈log2 n⌉``, clamped 5..21) so sparse series don't shatter into many
+    empty bins."""
     if len(values) < 2:
         return []
     lo, hi = min(values), max(values)
     if hi <= lo:
         return []
+    if nbins <= 0:
+        nbins = max(5, min(21, 1 + len(values).bit_length()))
     width = (hi - lo) / nbins
     counts = [0] * nbins
     for v in values:

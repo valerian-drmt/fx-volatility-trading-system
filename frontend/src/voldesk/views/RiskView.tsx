@@ -155,8 +155,10 @@ function EmpiricalHist({ hist, var95, var99, es99, retk, letter, h = 88 }: { his
   // −95% loss tail we plot here).
   const l95 = -Math.abs(var95), l99 = -Math.abs(var99), les = -Math.abs(es99);
   const marks = [0, l95, l99, les, retk];
-  const lo = Math.min(...hist.map((b) => b.lo), ...marks);
-  const hi = Math.max(...hist.map((b) => b.hi), ...marks);
+  // Symmetric range about 0 so the mean (µ) line is centered; the widest of the
+  // bins / VaR marks sets the half-width.
+  const span = Math.max(...hist.flatMap((b) => [Math.abs(b.lo), Math.abs(b.hi)]), ...marks.map((m) => Math.abs(m)), 1);
+  const lo = -span, hi = span;
   const rng = hi - lo || 1;
   const padL = 12, padR = 8;
   const px = (v: number): number => padL + ((v - lo) / rng) * (w - padL - padR);
