@@ -56,9 +56,9 @@ function RiskSettingsPanel(): JSX.Element {
     }
   };
   return (
-    <Panel title="Risk settings" right={<FreshBadge fresh={live} label="greek-limit policy · hot-applied" />} className="config-edit">
+    <Panel title="Paramètres de risque" right={<FreshBadge fresh={live} label="politique des limites greeks · appliqué à chaud" />} className="config-edit">
       <div className="dim small" style={{ marginBottom: 10 }}>
-        Arbitrary policy knobs behind the greek caps — stress-loss budget α, axis weights β, 1-day shocks, nav-base anchor. Editing recomputes the live Risk-utilization caps.
+        Réglages de politique derrière les caps greeks — budget de perte de stress α, poids par axe β, chocs à 1 jour, ancre nav-base. Modifier recalcule les caps live du panneau Risk utilization.
       </div>
       <div className="cfg-sections">
         <div className="cfg-section">
@@ -82,7 +82,7 @@ function RiskSettingsPanel(): JSX.Element {
                   }
                 />
               ) : (
-                <span className="cfg-val mono accent">{p.value}{p.isDefault && <span className="dim small"> · default</span>}</span>
+                <span className="cfg-val mono accent">{p.value}{p.isDefault && <span className="dim small"> · défaut</span>}</span>
               )}
             </div>
           ))}
@@ -92,14 +92,14 @@ function RiskSettingsPanel(): JSX.Element {
       {canEdit ? (
         <div className="cfg-commit-bar">
           <button className="btn-primary" disabled={busy || dirty === 0} onClick={onCommit}>
-            {busy ? "Saving…" : dirty > 0 ? `Save ${dirty} change${dirty > 1 ? "s" : ""}` : "Save"}
+            {busy ? "Enregistrement…" : dirty > 0 ? `Enregistrer ${dirty} modif${dirty > 1 ? "s" : ""}` : "Enregistrer"}
           </button>
-          {dirty > 0 && <button className="row-close" disabled={busy} onClick={() => setEdits({})}>reset</button>}
+          {dirty > 0 && <button className="row-close" disabled={busy} onClick={() => setEdits({})}>réinitialiser</button>}
         </div>
       ) : null}
       <div className="dim small" style={{ marginTop: 10 }}>
         {canEdit
-          ? "Édition par champ · Save = upsert config_scalar (namespace greek_limits), appliqué au prochain calcul des caps."
+          ? "Édition par champ · Enregistrer = mise à jour de config_scalar (namespace greek_limits), appliqué au prochain calcul des caps."
           : "Lecture seule · connecte-toi (bouton en haut à droite) pour modifier ces valeurs."}
       </div>
     </Panel>
@@ -172,8 +172,8 @@ export function SettingsView(): JSX.Element {
   return (
     <div className="settings-grid">
       <Panel
-        title="Configuration — version history"
-        right={<FreshBadge fresh={config} label="versioned · append-only · hot-reload" />}
+        title="Configuration — historique des versions"
+        right={<FreshBadge fresh={config} label="versionné · ajout-seul · rechargement à chaud" />}
         pad={false}
         className="config-panel"
       >
@@ -182,9 +182,9 @@ export function SettingsView(): JSX.Element {
             <thead>
               <tr>
                 <th className="r">Ver</th>
-                <th className="l">Changed by</th>
-                <th className="l">Comment</th>
-                <th className="l">When</th>
+                <th className="l">Modifié par</th>
+                <th className="l">Commentaire</th>
+                <th className="l">Quand</th>
                 <th></th>
               </tr>
             </thead>
@@ -199,10 +199,10 @@ export function SettingsView(): JSX.Element {
                     <button
                       className="row-close"
                       disabled={!WRITE_ENABLED || busy}
-                      title={WRITE_ENABLED ? `revert to v${h.version}` : GATE_TITLE}
+                      title={WRITE_ENABLED ? `rétablir v${h.version}` : GATE_TITLE}
                       onClick={() => onRevert(h.version)}
                     >
-                      revert
+                      rétablir
                     </button>
                   </td>
                 </tr>
@@ -218,7 +218,7 @@ export function SettingsView(): JSX.Element {
           </table>
         </div>
       </Panel>
-      <Panel title={"Current config" + (data ? ` · v${data.currentVersion}` : "")} className="config-edit">
+      <Panel title={"Config actuelle" + (data ? ` · v${data.currentVersion}` : "")} className="config-edit">
         {!data ? (
           <div className="close-empty">config indisponible.</div>
         ) : (
@@ -260,14 +260,14 @@ export function SettingsView(): JSX.Element {
                 <button
                   className="btn-primary"
                   disabled={busy || dirty === 0}
-                  title={dirty === 0 ? "aucune modification" : `commit ${dirty} champ(s)`}
+                  title={dirty === 0 ? "aucune modification" : `valider ${dirty} champ(s)`}
                   onClick={onCommit}
                 >
-                  {busy ? "…" : dirty > 0 ? `Commit ${dirty} change${dirty > 1 ? "s" : ""}` : "No changes"}
+                  {busy ? "…" : dirty > 0 ? `Valider ${dirty} modif${dirty > 1 ? "s" : ""}` : "Aucune modif"}
                 </button>
                 {dirty > 0 && (
                   <button className="row-close" disabled={busy} onClick={() => setEdits({})}>
-                    reset
+                    réinitialiser
                   </button>
                 )}
               </div>

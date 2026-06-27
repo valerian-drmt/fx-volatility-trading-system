@@ -237,7 +237,11 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
       const target = root.querySelector<HTMLElement>(`[data-pp="${window.CSS.escape(pipe.id)}"]`);
       const tagged = root.querySelectorAll<HTMLElement>("[data-pp]");
       tagged.forEach((el) => {
-        if (!target || el === target || el.contains(target)) el.style.removeProperty("display");
+        // Keep the target, its ancestors (el contains target) AND its
+        // descendants (target contains el) — the latter matters for panels with
+        // nested data-pp sub-panels (e.g. "var" → var-table / var-chart /
+        // marginal-var), which were otherwise hidden, leaving an empty shell.
+        if (!target || el === target || el.contains(target) || target.contains(el)) el.style.removeProperty("display");
         else el.style.setProperty("display", "none", "important");
       });
     };
