@@ -374,20 +374,23 @@ function LiveStressGrid({ d, status }: { d: StressGridData | null; status: Fresh
   const max = Math.max(...d.grid.flat().map(Math.abs)) || 1;
   const rowLbl = (v: number): string => (d.rowUnit === "d" ? v + "d" : (v > 0 ? "+" : "") + v + "vp");
   return (
+    // Transposed: ΔSpot on the ROWS, the secondary axis (vol/time/skew/fly) on
+    // the columns. cell(si, ri) = grid[ri][si].
     <table className="heatmap stress">
       <thead>
         <tr>
-          <th className="corner">Δ{STRESS_AXIS_LABEL[d.axis] ?? d.axis} \ ΔSpot</th>
-          {d.spotBins.map((s) => <th key={s}>{s > 0 ? "+" : ""}{s}bp<span className="th-sub">&nbsp;</span></th>)}
+          <th className="corner">ΔSpot \ Δ{STRESS_AXIS_LABEL[d.axis] ?? d.axis}</th>
+          {d.rowBins.map((r, ri) => <th key={ri}>{rowLbl(r)}<span className="th-sub">&nbsp;</span></th>)}
         </tr>
       </thead>
       <tbody>
-        {d.grid.map((row, ri) => (
-          <tr key={ri}>
-            <th>{rowLbl(d.rowBins[ri] ?? 0)}</th>
-            {row.map((v, ci) => {
-              const center = (d.rowBins[ri] ?? NaN) === 0 && (d.spotBins[ci] ?? NaN) === 0;
-              return <td key={ci} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : stressCell(v, max) }}>{stressKg(v)}</td>;
+        {d.spotBins.map((s, si) => (
+          <tr key={si}>
+            <th>{s > 0 ? "+" : ""}{s}bp</th>
+            {d.rowBins.map((r, ri) => {
+              const v = d.grid[ri]?.[si] ?? NaN;
+              const center = (r ?? NaN) === 0 && (s ?? NaN) === 0;
+              return <td key={ri} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : stressCell(v, max) }}>{stressKg(v)}</td>;
             })}
           </tr>
         ))}
