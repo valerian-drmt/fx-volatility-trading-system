@@ -4,7 +4,7 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useEffect, useRef, useState } from "react";
-import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
+import { fetchGreekLimits, fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -14,7 +14,7 @@ import { fmt } from "../data";
 import type { Position } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
+import { adaptGreekLimits, adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type GreekLimits, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -593,7 +593,6 @@ export function RiskView(): JSX.Element {
   // All live. Net greeks + caps from the trade domain; account from portfolio.
   // No DATA mock fallback — absent data reads as 0 / "—", never fabricated.
   const ng = trade.data?.greeks;
-  const lim = trade.data?.limits;
   const a = portfolio.data?.account;
   const nd = ng?.netDelta ?? 0, ngm = ng?.netGamma ?? 0, nv = ng?.netVega ?? 0, nt = ng?.netTheta ?? 0;
   // No live VaR yet (history < min window → backend returns null): show honest
@@ -603,20 +602,16 @@ export function RiskView(): JSX.Element {
   // net 2nd-order greeks = Σ of their tenor buckets (live), by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
   const netVolga = pt.reduce((s, r) => s + r.volga, 0);
-  const utilColor = (p: number): string => (p > 80 ? "var(--neg)" : p > 60 ? "var(--warn)" : "var(--pos)");
-  const pctOf = (used: number, cap: number | undefined): number => (cap && cap > 0 ? Math.min(100, (Math.abs(used) / cap) * 100) : 0);
-  // Greek caps — desk risk policy, all anchored to LIVE inputs (no mock):
-  //   • Δ band  = DELTA_BAND_PCT of net-liq (NLV). A vol book is delta-hedged;
-  //               the band is the rehedge/alert trigger, sized to capital.
-  //   • Vega    = the configured max book vega (risk config max_book_vega_usd).
-  //   • Γ cap   = Δ band / GAMMA_STRESS_PIPS, i.e. a 1-big-figure spot move must
-  //               not drift delta (Γ·ΔS) beyond the Δ band.
-  const NLV = a?.netLiq ?? 0;
-  const DELTA_BAND_PCT = 0.10;     // 10% of capital
-  const GAMMA_STRESS_PIPS = 100;   // 1 big figure
-  const deltaCap = DELTA_BAND_PCT * NLV;
-  const vegaCap = lim?.vegaCapUsd ?? 0;
-  const gammaCap = deltaCap / GAMMA_STRESS_PIPS;
+  // §7: show the TRUE utilization (never clamp to 100); colour flags a breach.
+  const utilColor = (p: number): string => (p > 100 ? "var(--neg)" : p > 80 ? "var(--warn)" : "var(--pos)");
+  const pctOf = (used: number, cap: number | undefined): number => (cap && cap > 0 ? (Math.abs(used) / cap) * 100 : 0);
+  // Greek caps are DERIVED from one stress-loss budget, not configured: the
+  // /portfolio/greek-limits endpoint projects L*=α·nav_base onto each axis
+  // (greek-limits-spec §2/§6). All live; "—" until nav_base + spot resolve.
+  const glim = useFetch<GreekLimits>(() => fetchGreekLimits().then(adaptGreekLimits), 60_000).data;
+  const deltaCap = glim?.deltaCapUsd ?? 0;
+  const vegaCap = glim?.vegaCapUsd ?? 0;
+  const gammaCap = glim?.gammaCapPip ?? 0;
   const capk = (c: number): string => (c > 0 ? fmt.usdk(c) : "—");
   // Risk-utilization rows : name · used / cap · % (used vs the cap). All live.
   const utilRows = [

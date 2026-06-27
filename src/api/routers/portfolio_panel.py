@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
+from core.risk import greek_limits as gl
 from core.risk.marginal_var import component_var
 from core.risk.stress import reval_book
 from core.risk.var_factors import factor_var_breakdown
@@ -1364,6 +1365,52 @@ async def value_at_risk(db: DbDep) -> dict[str, Any]:
         "var_99_usd": round(stats["var_99"], 2) if stats else None,
         "es_99_usd": round(stats["es_99"], 2) if stats else None,
         "hist": _histogram(deltas),
+    }
+
+
+@router.get("/greek-limits")
+async def greek_limits(db: DbDep) -> dict[str, Any]:
+    """Derived greek caps from the stress-loss budget (greek-limits-spec §2/§6/§8).
+
+    Caps are *computed, not configured*: ``L* = ALPHA·nav_base`` is projected
+    onto delta/vega/gamma/cross by inverting each axis' shock. ``nav_base`` is
+    the slow anchor (0.9·high-water-mark ∨ EWMA-20d of the daily net-liq series)
+    so a drawdown does not procyclically tighten every cap at once. The live NAV
+    is returned for display only. ``regime_mult`` is 1.0 until the vol-regime
+    feed is wired (§8). Fields are 0 until ~enough net-liq history + a spot exist.
+    """
+    nl_sql = text("""
+        WITH daily AS (
+          SELECT DISTINCT ON (date_trunc('day', timestamp))
+                 date_trunc('day', timestamp) AS day, net_liq_usd
+            FROM account_history
+           WHERE timestamp >= NOW() - INTERVAL '504 days' AND net_liq_usd IS NOT NULL
+           ORDER BY date_trunc('day', timestamp), timestamp DESC
+        )
+        SELECT net_liq_usd FROM daily ORDER BY day
+    """)
+    nav_series = [float(r[0]) for r in (await db.execute(nl_sql)).all()]
+    spot = (await db.execute(
+        select(VolSurface.spot).where(VolSurface.underlying == "EURUSD")
+        .order_by(desc(VolSurface.timestamp)).limit(1)
+    )).scalar_one_or_none()
+
+    nav_b = gl.nav_base(nav_series) or 0.0
+    spot_f = float(spot) if spot is not None else 0.0
+    regime = 1.0  # TODO §8: implied_vol / calm_baseline, clamped [1,3]
+    caps = gl.compute_caps(nav_b, spot_f, regime)
+    return {
+        "computed_at": datetime.now(UTC).isoformat(),
+        "nav_base_usd": round(caps.nav_base_usd, 2),
+        "nav_live_usd": round(nav_series[-1], 2) if nav_series else None,
+        "spot": caps.spot or None,
+        "regime_mult": caps.regime_mult,
+        "alpha": gl.ALPHA,
+        "loss_budget_usd": round(caps.loss_budget_usd, 2),
+        "delta_cap_usd": round(caps.delta_usd, 2),
+        "vega_cap_usd": round(caps.vega_usd, 2),
+        "gamma_cap_pip": round(caps.gamma_pip, 2),
+        "cross_budget_usd": round(caps.cross_usd, 2),
     }
 
 

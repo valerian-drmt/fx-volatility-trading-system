@@ -987,9 +987,10 @@ export interface paths {
          *
          *     Source : the latest ``account_history.currencies`` JSONB (currency → settled
          *     cash balance, written by the execution-engine). USD value uses the latest
-         *     EURUSD spot from ``vol_surface_history`` (USD per EUR) ; USD is 1:1 ; other
-         *     currencies have no rate here → ``usd_value=None``. Unsettled cash is not
-         *     tracked upstream → always ``None``.
+         *     Per-currency cash from the latest ``account_history`` snapshot. Each entry is
+         *     IB's tag dict (``CashBalance`` = settled). USD is 1:1; EUR converts via the
+         *     EURUSD surface spot; any other currency → ``usd_value=None``. Unsettled cash
+         *     isn't tracked upstream → always ``None``.
          */
         get: operations["cash_holdings_api_v1_portfolio_cash_get"];
         put?: never;
@@ -1041,6 +1042,33 @@ export interface paths {
          *     PR (they need greeks × shock attribution, not just the net-liq series).
          */
         get: operations["value_at_risk_api_v1_portfolio_var_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/greek-limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Greek Limits
+         * @description Derived greek caps from the stress-loss budget (greek-limits-spec §2/§6/§8).
+         *
+         *     Caps are *computed, not configured*: ``L* = ALPHA·nav_base`` is projected
+         *     onto delta/vega/gamma/cross by inverting each axis' shock. ``nav_base`` is
+         *     the slow anchor (0.9·high-water-mark ∨ EWMA-20d of the daily net-liq series)
+         *     so a drawdown does not procyclically tighten every cap at once. The live NAV
+         *     is returned for display only. ``regime_mult`` is 1.0 until the vol-regime
+         *     feed is wired (§8). Fields are 0 until ~enough net-liq history + a spot exist.
+         */
+        get: operations["greek_limits_api_v1_portfolio_greek_limits_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4380,6 +4408,28 @@ export interface operations {
         };
     };
     value_at_risk_api_v1_portfolio_var_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    greek_limits_api_v1_portfolio_greek_limits_get: {
         parameters: {
             query?: never;
             header?: never;

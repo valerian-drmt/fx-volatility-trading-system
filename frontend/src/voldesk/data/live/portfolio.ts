@@ -391,6 +391,41 @@ export function adaptVegaPca(raw: unknown): VegaPcaRow[] {
   }));
 }
 
+export interface GreekLimits {
+  deltaCapUsd: number;
+  vegaCapUsd: number;
+  gammaCapPip: number;
+  crossBudgetUsd: number;
+  lossBudgetUsd: number;
+  navBaseUsd: number;
+  navLiveUsd: number;
+  regimeMult: number;
+}
+
+/** /portfolio/greek-limits → derived stress-loss caps (greek-limits-spec §2). */
+export function adaptGreekLimits(raw: unknown): GreekLimits {
+  const o = (raw ?? {}) as {
+    delta_cap_usd?: number | null;
+    vega_cap_usd?: number | null;
+    gamma_cap_pip?: number | null;
+    cross_budget_usd?: number | null;
+    loss_budget_usd?: number | null;
+    nav_base_usd?: number | null;
+    nav_live_usd?: number | null;
+    regime_mult?: number | null;
+  };
+  return {
+    deltaCapUsd: n(o.delta_cap_usd),
+    vegaCapUsd: n(o.vega_cap_usd),
+    gammaCapPip: n(o.gamma_cap_pip),
+    crossBudgetUsd: n(o.cross_budget_usd),
+    lossBudgetUsd: n(o.loss_budget_usd),
+    navBaseUsd: n(o.nav_base_usd),
+    navLiveUsd: n(o.nav_live_usd),
+    regimeMult: o.regime_mult ?? 1,
+  };
+}
+
 export interface MarginalVarRow {
   trade: string; // trade / package id (T-… / PKG-…) or "—"
   label: string; // product label
