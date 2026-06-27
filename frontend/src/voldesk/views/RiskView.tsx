@@ -461,23 +461,6 @@ function PositionBreakdown({ positions }: { positions: Position[] }): JSX.Elemen
   );
 }
 
-// ---- vega bucketed by tenor : the curve-risk ladder (a term-structure desk's #1 risk) ----
-function VegaTenorLadder({ rows }: { rows: { tenor: string; vega: number; n: number }[] }): JSX.Element {
-  const max = Math.max(1, ...rows.map((r) => r.vega));
-  return (
-    <div className="vtl">
-      {rows.map((r) => (
-        <div key={r.tenor} className="vtl-row">
-          <span className="vtl-ten mono">{r.tenor}</span>
-          <div className="vtl-track"><div className="vtl-fill" style={{ width: (r.vega / max) * 100 + "%" }} /></div>
-          <span className="vtl-val mono">${r.vega.toFixed(1)}k</span>
-          <span className="vtl-n mono dim">{r.n} pos</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function StressEngine(): JSX.Element {
   const [out, setOut] = useState<"pnl" | GreekKey>("pnl");
   const labels: Record<"pnl" | GreekKey, string> = { pnl: "P&L", delta: "Δ Delta", gamma: "Γ Gamma", vega: "Vega", theta: "Θ Theta", vanna: "Vanna", volga: "Volga" };
@@ -725,16 +708,23 @@ export function RiskView(): JSX.Element {
                 </table>
               </div>
             </div>
-            <div className="gs-section-lbl util-lbl">Vega exposure <span className="dim">· by tenor (curve) & by signal mode (PCA)</span></div>
-            <div className="gs-2col">
-              <div className="gs-sub"><div className="gs-sublbl mono dim">vega by tenor · curve 1M–6M (magnitude)</div><VegaTenorLadder rows={pt} /></div>
-              <div className="gs-sub"><div className="gs-sublbl mono dim">vega → PCA mode · the signal base ($k)</div><DivBars rows={vpca.map((p) => ({ label: p.mode, sub: p.name + " · " + p.var + "%", v: p.vega }))} unit="k" /></div>
-            </div>
-            <div className="gs-section-lbl util-lbl">Vanna / Volga by tenor <span className="dim">· skew & convexity risk, signed · $k/vp · échelle √</span></div>
-            <div className="gs-2col">
-              <div className="gs-sub"><div className="gs-sublbl mono dim">vanna by tenor · dVega/dSpot (where RR lives)</div><DivBars rows={pt.map((r) => ({ label: r.tenor, v: r.vanna, flag: Math.abs(r.vanna) >= 150 ? "outlier — RR 2M domine" : null }))} unit="k" scale="sqrt" /></div>
-              <div className="gs-sub"><div className="gs-sublbl mono dim">volga by tenor · dVega/dVol (where BF lives)</div><DivBars rows={pt.map((r) => ({ label: r.tenor, v: r.volga }))} unit="k" scale="sqrt" /></div>
-            </div>
+            <div className="gs-section-lbl util-lbl">Vega / Vanna / Volga <span className="dim">· by tenor · signed · $k</span></div>
+            <table className="dt greeks-table">
+              <thead><tr><th className="l">Tenor</th><th className="r">Vega</th><th className="r">Vanna</th><th className="r">Volga</th></tr></thead>
+              <tbody>
+                {pt.length === 0 && <tr><td colSpan={4} className="l dim small mono">no book</td></tr>}
+                {pt.map((r) => (
+                  <tr key={r.tenor}>
+                    <td className="l">{r.tenor}</td>
+                    <td className={"r mono " + pnlCls(r.vega)}>{fmt.sgn(r.vega, 1)}k</td>
+                    <td className={"r mono " + pnlCls(r.vanna)}>{fmt.sgn(r.vanna, 1)}k</td>
+                    <td className={"r mono " + pnlCls(r.volga)}>{fmt.sgn(r.volga, 2)}k</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="gs-section-lbl util-lbl">vega → PCA mode <span className="dim">· the signal base ($k)</span></div>
+            <DivBars rows={vpca.map((p) => ({ label: p.mode, sub: p.name + " · " + p.var + "%", v: p.vega }))} unit="k" />
           </Panel>
           <div className="var-col">
             <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a?.netLiq ?? 0} hist={vd.hist} fresh={risk} />
