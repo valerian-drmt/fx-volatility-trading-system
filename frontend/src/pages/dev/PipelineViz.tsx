@@ -48,6 +48,19 @@ const TERMINAL_H = 760;
 const VIEW_LABEL: Record<ViewId, string> = {
   dashboard: "Dashboard", trade: "Trade", signals: "Signal", risk: "Risk", portfolio: "Portfolio",
 };
+// How often each domain's panels actually refresh in the desk (DataProvider):
+// ticks = realtime WS; trade/portfolio re-fetch on the risk-engine WS beat (~2s);
+// risk (VaR/per-tenor) polls ~60s; surface/pca/term refresh on the vol cycle (~3min).
+const CADENCE: Record<DomainId, string> = {
+  ticks: "realtime · WS",
+  trade: "~2s · risk beat",
+  portfolio: "~2s · risk beat",
+  risk: "~60s · poll",
+  surface: "~3 min · vol cycle",
+  pca: "~3 min · vol cycle",
+  termStructure: "~3 min · vol cycle",
+  system: "~10s · poll",
+};
 // Each block's single data-flow archetype → tag term, glyph and colour. The
 // term replaces the old CONTAINER/EXTERNAL tag; the glyph changes with it.
 const ROLE_META: Record<Role, { term: string; glyph: string; label: string; color: string }> = {
@@ -563,6 +576,8 @@ function Stage({ pipe, statuses, resolveNode, asOf, domainFresh }: { pipe: Panel
         <span style={{ fontSize: 14, fontWeight: 600, color: "#eef1f6" }}>{pipe.panel}</span>
         <span className="pp-mono" style={{ fontSize: 9, letterSpacing: ".14em", color: "#5a606e" }}>{pipe.isolated || pipe.id === "ticker" ? "PANEL" : "VIEW"} · {VIEW_LABEL[pipe.view]}</span>
         <span style={{ flex: 1 }} />
+        <span className="pp-mono" style={{ fontSize: 10.5, color: "#7b8494" }} title="how often this panel's data refreshes in the desk">↻ {CADENCE[pipe.domain]}</span>
+        <span className="pp-mono" style={{ fontSize: 11, color: "#3a3f49" }}>·</span>
         <span className="pp-mono" style={{ fontSize: 11, color: stampColor }}>{stampText}</span>
       </div>
 
