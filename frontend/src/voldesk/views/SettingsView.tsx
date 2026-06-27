@@ -13,6 +13,7 @@ import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { useDeskData } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
+import { useAuthStore } from "../../store/authStore";
 
 interface RiskParam { name: string; value: number; default: number; unit: string; description: string; isDefault: boolean; }
 
@@ -32,13 +33,15 @@ function adaptRiskParams(raw: unknown): RiskParam[] {
 
 /** Risk settings — editable greek-limit policy knobs (config_scalar 'greek_limits'). */
 function RiskSettingsPanel(): JSX.Element {
+  // Editable as soon as you're logged in (the PUT is cookie-gated server-side).
+  const canEdit = useAuthStore((s) => s.authenticated);
   const live = useFetch<RiskParam[]>(() => fetchRiskConfig().then(adaptRiskParams), 600_000);
   const params = live.data ?? [];
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const dirty = Object.keys(edits).length;
   const onCommit = async (): Promise<void> => {
-    if (busy || !WRITE_ENABLED || dirty === 0) return;
+    if (busy || !canEdit || dirty === 0) return;
     setBusy(true);
     const updates: Record<string, number> = {};
     for (const [k, v] of Object.entries(edits)) {
@@ -62,9 +65,11 @@ function RiskSettingsPanel(): JSX.Element {
           {params.map((p) => (
             <div key={p.name} className="cfg-field" title={p.description}>
               <span className="cfg-key mono dim">{p.name}{p.unit && <span className="dim"> · {p.unit}</span>}</span>
-              {WRITE_ENABLED ? (
+              {canEdit ? (
                 <input
                   className="cfg-val-input mono"
+                  type="number"
+                  step="any"
                   value={edits[p.name] ?? String(p.value)}
                   disabled={busy}
                   onChange={(e) =>
@@ -84,18 +89,18 @@ function RiskSettingsPanel(): JSX.Element {
           {params.length === 0 && <div className="dim small">indisponible.</div>}
         </div>
       </div>
-      {WRITE_ENABLED && (
+      {canEdit ? (
         <div className="cfg-commit-bar">
           <button className="btn-primary" disabled={busy || dirty === 0} onClick={onCommit}>
-            {busy ? "…" : dirty > 0 ? `Commit ${dirty} change${dirty > 1 ? "s" : ""}` : "No changes"}
+            {busy ? "Saving…" : dirty > 0 ? `Save ${dirty} change${dirty > 1 ? "s" : ""}` : "Save"}
           </button>
           {dirty > 0 && <button className="row-close" disabled={busy} onClick={() => setEdits({})}>reset</button>}
         </div>
-      )}
+      ) : null}
       <div className="dim small" style={{ marginTop: 10 }}>
-        {WRITE_ENABLED
-          ? "Édition par champ · commit = upsert config_scalar (namespace greek_limits), appliqué au prochain calcul des caps."
-          : "Lecture seule · l'édition arrive avec l'auth (Phase 2)."}
+        {canEdit
+          ? "Édition par champ · Save = upsert config_scalar (namespace greek_limits), appliqué au prochain calcul des caps."
+          : "Lecture seule · connecte-toi (bouton en haut à droite) pour modifier ces valeurs."}
       </div>
     </Panel>
   );
