@@ -748,7 +748,7 @@ input,select{font-family:inherit;font-size:13px}
 .hl-cap{font-size:10px;font-weight:700}
 .hl-bar{flex:0 0 180px;height:9px;border-radius:3px;background:linear-gradient(90deg,oklch(0.58 0.17 25),var(--bg-3) 50%,oklch(0.62 0.15 150))}
 .hl-note{font-size:10px;margin-left:auto}
-.pb-table thead th{border-bottom:2px solid var(--border);white-space:normal;line-height:1.15;vertical-align:bottom}
+.pb-table thead th{border-bottom:2px solid var(--border);white-space:nowrap;line-height:1.15;vertical-align:bottom}
 .risk-top{grid-column:1/-1;display:grid;grid-template-columns:2fr 1fr;gap:12px;align-items:stretch}
 .risk-top{grid-column:1/-1;display:grid;grid-template-columns:1.5fr 1fr;gap:12px;align-items:stretch}
 .risk-tiles6{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:8px}
@@ -800,12 +800,12 @@ input,select{font-family:inherit;font-size:13px}
 .attr-note{font-size:11px;color:var(--text-faint);flex:1;min-width:200px}
 .pb-table .col-grp{border-left:1px solid color-mix(in srgb,var(--fg) 22%,var(--border))}
 .pb-table .col-grp-end{border-right:1px solid color-mix(in srgb,var(--fg) 22%,var(--border))}
-.pb-table{table-layout:fixed;min-width:1320px}
-.pb-table th,.pb-table td{overflow:hidden;text-overflow:ellipsis}
+/* Auto-fit: each column is as wide as its widest single-line cell (Excel
+   double-click). width:max-content sizes to content; min-width:100% still
+   fills the panel when the table is narrow; .table-scroll handles overflow. */
+.pb-table{table-layout:auto;width:max-content;min-width:100%}
+.pb-table th,.pb-table td{white-space:nowrap}
 .pb-table th:not(:first-child),.pb-table td:not(:first-child){text-align:center}
-.pb-table th:first-child,.pb-table td:first-child{width:90px}
-.pb-table th:nth-child(2),.pb-table td:nth-child(2){width:54px}
-.pb-table th:not(:first-child):not(:nth-child(2)){width:74px}
 /* group tints + outlines */
 .pb-table tbody .grp-grk{background:color-mix(in srgb,var(--accent) 6%,transparent)}
 .pb-table tbody .grp-pnl{background:color-mix(in srgb,#a78bfa 9%,transparent)}
