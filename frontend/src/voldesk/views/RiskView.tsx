@@ -4,17 +4,17 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useEffect, useRef, useState } from "react";
-import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fetchVarFactors } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
 import { fmt } from "../data";
-import type { Position, VarFactor } from "../data";
+import type { Position } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, adaptVarFactors, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -50,28 +50,6 @@ function PanelLive({ status }: { status: Fresh<unknown>["status"] | "mock" }): J
     >
       <span className={"status-dot" + (cfg.pulse ? " pulse" : "")} style={{ background: cfg.c }} /> {cfg.t}
     </span>
-  );
-}
-
-// ---- stacked factor decomposition bar (VaR by factor: spot / vol / skew / curvature) ----
-function FactorStack({ factors, compact }: { factors: VarFactor[]; compact?: boolean }): JSX.Element {
-  const sorted = [...factors].sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
-  const tot = sorted.reduce((s, f) => s + Math.abs(f.v), 0) || 1;
-  return (
-    <div className={"facstack" + (compact ? " compact" : "")}>
-      <div className="facstack-bar">
-        {sorted.map((f) => <span key={f.key || f.label} className="facstack-seg" style={{ width: (Math.abs(f.v) / tot * 100) + "%", background: f.color }} title={f.label} />)}
-      </div>
-      <div className="facstack-leg">
-        {sorted.map((f) => (
-          <span key={f.key || f.label} className="facstack-item">
-            <i style={{ background: f.color }} /><span className="dim">{f.label}</span>
-            {f.incident && <span className="incident-tag">incident · à neutraliser</span>}
-            <b className="mono neg">−${Math.abs(f.v)}k</b><span className="dim mono fs-pct">{(Math.abs(f.v) / tot * 100).toFixed(0)}%</span>
-          </span>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -225,7 +203,6 @@ interface VarCalc {
 }
 
 function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; var99: number; es99: number; netLiq: number; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
-  const factorsLive = useFetch<VarFactor[]>(() => fetchVarFactors().then(adaptVarFactors), 120_000).data ?? [];
   const base95 = var95,
     base99 = var99;
   const NL = netLiq;
@@ -290,10 +267,6 @@ function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; v
           </div>
         </Panel>
         <Panel title="P&L distribution" dataPp="var-chart" right={<FreshBadge fresh={fresh} label="empirical" />} className="trade-block">
-          <div className="var-factors">
-            <div className="vf-lbl dim small mono">VaR by factor <span className="dim">· which factor carries the tail (ties to marginal-VaR panel)</span></div>
-            <FactorStack factors={factorsLive} compact />
-          </div>
           <div className="ret-chart">
             <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · empirical</span></div>
             <EmpiricalHist hist={histScaled} var95={c.v95} var99={c.v99} es99={c.es} retk={c.retk} letter={letter} />
@@ -447,7 +420,7 @@ function StressEngine(): JSX.Element {
   }, [out, reload]);
   const g = live.data ?? [null, null, null, null];
   return (
-    <Panel title="Stress test — scenario engine" dataPp="stress" right={<PanelLive status={live.status} />} className="stress-panel">
+    <Panel title="Stress test" dataPp="stress" right={<PanelLive status={live.status} />} className="stress-panel">
       <div className="greek-btns">
         {opts.map((o) => (
           <button key={o} className={"chip " + (out === o ? "on" : "")} onClick={() => setOut(o)}>{labels[o]}</button>
@@ -606,7 +579,7 @@ function LiveLadders(): JSX.Element {
         <LiveLadderTable title="vs Vol ∥ ATM" right={<span className="dim mono small">level</span>} axisLbl="Vol" d={at(1)} status={live.status} />
         <LiveLadderTable title="vs Time" axisLbl="Time" d={at(2)} status={live.status} />
         <LiveLadderTable title="vs Skew (ΔRR)" right={<RiskOnly />} axisLbl="RR" d={at(3)} status={live.status} />
-        <LiveLadderTable title="vs Fly (ΔBF)" right={<span className="accent mono small">PC3</span>} axisLbl="BF" d={at(4)} status={live.status} />
+        <LiveLadderTable title="vs Fly (ΔBF)" axisLbl="BF" d={at(4)} status={live.status} />
       </div>
     </Panel>
   );
