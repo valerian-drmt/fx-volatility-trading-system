@@ -37,6 +37,14 @@ const GREEN = "#3ec46d", AMBER = "#d9a441", RED = "#e0564f";
 type H = "up" | "warn" | "down";
 const HCOLOR: Record<H, string> = { up: GREEN, warn: AMBER, down: RED };
 
+// Terminal "screen" width = the isolated panel's LIVE width. The Risk view is a
+// 2-column grid, so its panels live at ~half the desk content width
+// ((viewport − rail 152 − ~24 padding − gap 12) / 2). The panel is then spanned
+// to fill the frame (see isolation below), so it renders at its live size with
+// no empty/black sibling column. Measured at load; reload after a big resize.
+const TERMINAL_W = Math.max(560, ((typeof window !== "undefined" ? window.innerWidth : 1440) - 188) / 2);
+const TERMINAL_H = 760;
+
 const VIEW_LABEL: Record<ViewId, string> = {
   dashboard: "Dashboard", trade: "Trade", signals: "Signal", risk: "Risk", portfolio: "Portfolio",
 };
@@ -243,7 +251,15 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
         // marginal-var), which were otherwise hidden, leaving an empty shell.
         if (!target || el === target || el.contains(target) || target.contains(el)) el.style.removeProperty("display");
         else el.style.setProperty("display", "none", "important");
+        el.style.removeProperty("grid-column"); // clear any span from a previous selection
       });
+      // Make the isolated panel FILL the frame: span every grid ancestor up to
+      // the root, so a hidden sibling column (e.g. risk-row1's empty left column
+      // of Greeks/Macro) doesn't leave a black gap. No px width is forced — the
+      // panel keeps its intrinsic layout, just at the terminal width (its live width).
+      for (let n: HTMLElement | null = target; n && n !== root; n = n.parentElement) {
+        n.style.setProperty("grid-column", "1 / -1");
+      }
     };
     apply();
     const obs = new MutationObserver(apply);
@@ -252,7 +268,7 @@ function Terminal({ pipe, live }: { pipe: PanelPipe; live: boolean }): JSX.Eleme
   }, [pipe.id, pipe.isolated]);
 
   return (
-    <div style={{ flex: "none", alignSelf: "stretch", width: 640, minHeight: 420, display: "flex", flexDirection: "column", border: `1px solid ${hexa(accent, live ? 0.55 : 0.5)}`, borderRadius: 9, overflow: "hidden", background: "#0f1115", boxShadow: live ? "0 0 0 1px rgba(62,196,109,.25),0 0 28px rgba(62,196,109,.18)" : "inset 0 0 26px rgba(217,164,65,.05)", animation: live ? "pphalo 2.6s ease-in-out infinite" : "none" }}>
+    <div style={{ flex: "none", alignSelf: "stretch", width: TERMINAL_W, minHeight: 420, display: "flex", flexDirection: "column", border: `1px solid ${hexa(accent, live ? 0.55 : 0.5)}`, borderRadius: 9, overflow: "hidden", background: "#0f1115", boxShadow: live ? "0 0 0 1px rgba(62,196,109,.25),0 0 28px rgba(62,196,109,.18)" : "inset 0 0 26px rgba(217,164,65,.05)", animation: live ? "pphalo 2.6s ease-in-out infinite" : "none" }}>
       <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", borderBottom: `1px solid ${hexa(accent, 0.3)}`, background: "#13171c" }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: accent, boxShadow: `0 0 7px ${hexa(accent, 0.85)}`, animation: live ? "pppulse 1.4s ease-in-out infinite" : "none" }} />
         <span style={{ fontSize: 14, fontWeight: 600, color: "#eef1f6" }}>{pipe.panel}</span>
@@ -329,7 +345,7 @@ function DagSchema({ dag, pipe, resolveNode }: {
 }): JSX.Element {
   const [hover, setHover] = useState<string | null>(null);
   const sizeOf = (n: DagNode): { w: number; h: number } =>
-    n.terminal ? { w: 640, h: 760 } : n.kind === "external" ? { w: 210, h: 178 } : { w: 188, h: 178 };
+    n.terminal ? { w: TERMINAL_W, h: TERMINAL_H } : n.kind === "external" ? { w: 210, h: 178 } : { w: 188, h: 178 };
 
   const layout = useMemo(() => {
     const g = new dagre.graphlib.Graph();

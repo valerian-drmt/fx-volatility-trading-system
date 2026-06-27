@@ -56,9 +56,9 @@ function RiskSettingsPanel(): JSX.Element {
     }
   };
   return (
-    <Panel title="Paramètres de risque" right={<FreshBadge fresh={live} label="politique des limites greeks · appliqué à chaud" />} className="config-edit">
+    <Panel title="Risk settings" right={<FreshBadge fresh={live} label="greek-limit policy · hot-applied" />} className="config-edit">
       <div className="dim small" style={{ marginBottom: 10 }}>
-        Réglages de politique derrière les caps greeks — budget de perte de stress α, poids par axe β, chocs à 1 jour, ancre nav-base. Modifier recalcule les caps live du panneau Risk utilization.
+        Policy knobs behind the greek caps — stress-loss budget α, per-axis weights β, 1-day shocks, nav-base anchor. Editing recomputes the live Risk-utilization caps.
       </div>
       <div className="cfg-sections">
         <div className="cfg-section">
@@ -82,31 +82,31 @@ function RiskSettingsPanel(): JSX.Element {
                   }
                 />
               ) : (
-                <span className="cfg-val mono accent">{p.value}{p.isDefault && <span className="dim small"> · défaut</span>}</span>
+                <span className="cfg-val mono accent">{p.value}{p.isDefault && <span className="dim small"> · default</span>}</span>
               )}
             </div>
           ))}
-          {params.length === 0 && <div className="dim small">indisponible.</div>}
+          {params.length === 0 && <div className="dim small">unavailable.</div>}
         </div>
       </div>
       {canEdit ? (
         <div className="cfg-commit-bar">
           <button className="btn-primary" disabled={busy || dirty === 0} onClick={onCommit}>
-            {busy ? "Enregistrement…" : dirty > 0 ? `Enregistrer ${dirty} modif${dirty > 1 ? "s" : ""}` : "Enregistrer"}
+            {busy ? "Saving…" : dirty > 0 ? `Save ${dirty} change${dirty > 1 ? "s" : ""}` : "Save"}
           </button>
-          {dirty > 0 && <button className="row-close" disabled={busy} onClick={() => setEdits({})}>réinitialiser</button>}
+          {dirty > 0 && <button className="row-close" disabled={busy} onClick={() => setEdits({})}>reset</button>}
         </div>
       ) : null}
       <div className="dim small" style={{ marginTop: 10 }}>
         {canEdit
-          ? "Édition par champ · Enregistrer = mise à jour de config_scalar (namespace greek_limits), appliqué au prochain calcul des caps."
-          : "Lecture seule · connecte-toi (bouton en haut à droite) pour modifier ces valeurs."}
+          ? "Per-field editing · Save = upsert config_scalar (namespace greek_limits), applied on the next cap computation."
+          : "Read-only · log in (top-right button) to edit these values."}
       </div>
     </Panel>
   );
 }
 
-const GATE_TITLE = "écriture désactivée — auth requise (Phase 2)";
+const GATE_TITLE = "writes disabled — auth required (Phase 2)";
 const SEP = "␟"; // edits-map key separator: `${section}${SEP}${dotted.field.key}`
 
 /** "1.5"→1.5, "true/false"→bool, else string. Best-effort; Pydantic re-validates server-side. */
@@ -172,8 +172,8 @@ export function SettingsView(): JSX.Element {
   return (
     <div className="settings-grid">
       <Panel
-        title="Configuration — historique des versions"
-        right={<FreshBadge fresh={config} label="versionné · ajout-seul · rechargement à chaud" />}
+        title="Configuration — version history"
+        right={<FreshBadge fresh={config} label="versioned · append-only · hot-reload" />}
         pad={false}
         className="config-panel"
       >
@@ -182,9 +182,9 @@ export function SettingsView(): JSX.Element {
             <thead>
               <tr>
                 <th className="r">Ver</th>
-                <th className="l">Modifié par</th>
-                <th className="l">Commentaire</th>
-                <th className="l">Quand</th>
+                <th className="l">Changed by</th>
+                <th className="l">Comment</th>
+                <th className="l">When</th>
                 <th></th>
               </tr>
             </thead>
@@ -199,10 +199,10 @@ export function SettingsView(): JSX.Element {
                     <button
                       className="row-close"
                       disabled={!WRITE_ENABLED || busy}
-                      title={WRITE_ENABLED ? `rétablir v${h.version}` : GATE_TITLE}
+                      title={WRITE_ENABLED ? `revert to v${h.version}` : GATE_TITLE}
                       onClick={() => onRevert(h.version)}
                     >
-                      rétablir
+                      revert
                     </button>
                   </td>
                 </tr>
@@ -210,7 +210,7 @@ export function SettingsView(): JSX.Element {
               {(!data || data.history.length === 0) && (
                 <tr>
                   <td colSpan={5} className="dim small ivz-empty">
-                    aucune version enregistrée (config par défaut)
+                    no version recorded (default config)
                   </td>
                 </tr>
               )}
@@ -218,9 +218,9 @@ export function SettingsView(): JSX.Element {
           </table>
         </div>
       </Panel>
-      <Panel title={"Config actuelle" + (data ? ` · v${data.currentVersion}` : "")} className="config-edit">
+      <Panel title={"Current config" + (data ? ` · v${data.currentVersion}` : "")} className="config-edit">
         {!data ? (
-          <div className="close-empty">config indisponible.</div>
+          <div className="close-empty">config unavailable.</div>
         ) : (
           <>
             <div className="cfg-sections">
@@ -260,22 +260,22 @@ export function SettingsView(): JSX.Element {
                 <button
                   className="btn-primary"
                   disabled={busy || dirty === 0}
-                  title={dirty === 0 ? "aucune modification" : `valider ${dirty} champ(s)`}
+                  title={dirty === 0 ? "no changes" : `commit ${dirty} field(s)`}
                   onClick={onCommit}
                 >
-                  {busy ? "…" : dirty > 0 ? `Valider ${dirty} modif${dirty > 1 ? "s" : ""}` : "Aucune modif"}
+                  {busy ? "…" : dirty > 0 ? `Commit ${dirty} change${dirty > 1 ? "s" : ""}` : "No changes"}
                 </button>
                 {dirty > 0 && (
                   <button className="row-close" disabled={busy} onClick={() => setEdits({})}>
-                    réinitialiser
+                    reset
                   </button>
                 )}
               </div>
             )}
             <div className="dim small" style={{ marginTop: 10 }}>
               {WRITE_ENABLED
-                ? "Édition par champ · commit append une nouvelle version + hot-reload (Pydantic valide les types côté serveur)."
-                : "Lecture seule · l'édition de la config (commit/revert) arrive avec l'auth (Phase 2)."}
+                ? "Per-field editing · commit appends a new version + hot-reload (Pydantic validates types server-side)."
+                : "Read-only · config editing (commit/revert) arrives with auth (Phase 2)."}
             </div>
           </>
         )}
