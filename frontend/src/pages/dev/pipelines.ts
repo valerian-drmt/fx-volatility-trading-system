@@ -149,6 +149,16 @@ function dagLive(engine: PipeNode, redisSub: string, e0: string, e1: string, api
     ],
   };
 }
+// computed on demand by the api from several converging sources (no store).
+function dagReval(sources: PipeNode[], sourceEdges: string[], apiSub: string, panelName: string): PipeDag {
+  return {
+    nodes: [...sources.map((s, i) => toDag(s, `s${i}`)), dApi(apiSub, "transform"), toDag(xFE, "fe"), dPanel(panelName)],
+    edges: [
+      ...sources.map((_, i): DagEdge => ({ from: `s${i}`, to: "api", label: sourceEdges[i] ?? "" })),
+      { from: "api", to: "fe", label: "JSON" }, { from: "fe", to: "panel", label: "render" },
+    ],
+  };
+}
 // macro events: providers → scheduler → Postgres → api serve (Postgres dual-role).
 function dagEvents(panelName: string): PipeDag {
   return {
@@ -328,15 +338,60 @@ export const PIPELINES: PanelPipe[] = [
     edges: ["account summary", "reqAccountSummary", "db_events", "INSERT", "504d sim", "GET /portfolio/var", "render"],
     dag: dagPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history (504d)", "GET /portfolio/var · sim", "VaR", "transform"),
   },
-  { id: "per-tenor-greeks", panel: "Per-tenor greeks", view: "risk", domain: "risk", nodes: [], edges: [] },
-  { id: "net-greeks", panel: "Net greeks", view: "risk", domain: "trade", nodes: [], edges: [] },
-  { id: "risk-utilization", panel: "Risk utilization", view: "risk", domain: "portfolio", nodes: [], edges: [] },
-  { id: "pin-risk", panel: "Pin risk", view: "risk", domain: "risk", nodes: [], edges: [] },
-  { id: "marginal-var", panel: "Marginal VaR", view: "risk", domain: "risk", nodes: [], edges: [] },
-  { id: "stress-grids", panel: "Stress grids", view: "risk", domain: "risk", nodes: [], edges: [] },
-  { id: "greeks-ladders", panel: "Greeks ladders", view: "risk", domain: "risk", nodes: [], edges: [] },
-  { id: "macro-events", panel: "Macro events", view: "risk", domain: "trade", nodes: [], edges: [] },
-  { id: "positions", panel: "Positions", view: "risk", domain: "portfolio", nodes: [], edges: [] },
+  {
+    id: "greeks-net", panel: "Net greeks", view: "risk", domain: "trade", isolated: true,
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Net greeks")],
+    edges: ["UPDATE greeks", "read book", "GET /positions/open (Σ)", "render"],
+    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /positions/open · Σ net greeks", "Net greeks"),
+  },
+  {
+    id: "vvv-tenor", panel: "Per-tenor greeks", view: "risk", domain: "risk", isolated: true,
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Per-tenor greeks")],
+    edges: ["UPDATE book", "read book", "GET /portfolio/risk-per-tenor", "render"],
+    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE book", "open_position", "GET /portfolio/risk-per-tenor · vega/vanna/volga", "Per-tenor greeks"),
+  },
+  {
+    id: "risk-util", panel: "Risk utilization", view: "risk", domain: "portfolio", isolated: true,
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position · account_history"), API, FE, panel("Risk utilization")],
+    edges: ["UPDATE book", "read greeks + account", "GET /portfolio/greek-limits + /account", "render"],
+    dag: dagReval([xPg("open_position · net greeks"), xPg("account_history · nav_base + margin")], ["read greeks", "read account"], "GET /portfolio/greek-limits (L*=α·nav) + /account margin", "Risk utilization"),
+  },
+  {
+    id: "pin-risk", panel: "Pin risk", view: "risk", domain: "risk", isolated: true,
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Pin risk")],
+    edges: ["UPDATE book", "read options", "GET /portfolio/pin-risk (reval)", "render"],
+    dag: dagReval([xPg("open_position · options"), xRedis("latest_vol_surface")], ["read options", "read surface"], "GET /portfolio/pin-risk · reval at strike", "Pin risk"),
+  },
+  {
+    id: "marginal-var", panel: "Marginal VaR", view: "risk", domain: "risk", isolated: true,
+    nodes: [eng("risk-engine", "per-pos pnl /2s"), pg("open_position_history"), API, FE, panel("Marginal VaR")],
+    edges: ["INSERT snapshot", "daily pnl series", "GET /portfolio/marginal-var (Euler)", "render"],
+    dag: dagPersist(xEng("risk-engine", "per-pos pnl /2s", "risk-engine"), "positions", "INSERT snapshot", "open_position_history", "GET /portfolio/marginal-var · Euler allocation", "Marginal VaR", "transform"),
+  },
+  {
+    id: "stress", panel: "Stress grids", view: "risk", domain: "risk", isolated: true,
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Stress grids")],
+    edges: ["UPDATE book", "read book", "GET /portfolio/stress-grid (reval ×4)", "render"],
+    dag: dagReval([xPg("open_position · book"), xRedis("latest_vol_surface")], ["read book", "read surface"], "GET /portfolio/stress-grid · reval_book ×4 axes", "Stress grids"),
+  },
+  {
+    id: "greeks-ladder", panel: "Greeks ladders", view: "risk", domain: "risk", isolated: true,
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Greeks ladders")],
+    edges: ["UPDATE book", "read book", "GET /portfolio/greeks-ladder (reval ×5)", "render"],
+    dag: dagReval([xPg("open_position · book"), xRedis("latest_vol_surface")], ["read book", "read surface"], "GET /portfolio/greeks-ladder · full-BS reval ×5 axes", "Greeks ladders"),
+  },
+  {
+    id: "risk-macro", panel: "Macro events", view: "risk", domain: "trade", isolated: true,
+    nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Macro events")],
+    edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
+    dag: dagEvents("Macro events"),
+  },
+  {
+    id: "position-breakdown", panel: "Positions", view: "risk", domain: "portfolio", isolated: true,
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Positions")],
+    edges: ["UPDATE greeks", "read book", "GET /positions/open", "render"],
+    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /positions/open · per-position greeks", "Positions"),
+  },
 
   // ───────────────────────── Portfolio ─────────────────────────
   {
