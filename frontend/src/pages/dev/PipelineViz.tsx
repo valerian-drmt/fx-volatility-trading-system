@@ -557,7 +557,7 @@ function Stage({ pipe, statuses, resolveNode, asOf, domainFresh }: { pipe: Panel
           <div ref={contentRef} style={pipe.dag ? undefined : { display: "flex", alignItems: "stretch" }}>
             {pipe.dag ? (
               <DagSchema dag={pipe.dag} pipe={pipe} resolveNode={resolveNode} />
-            ) : (
+            ) : pipe.nodes.length === 0 ? null : (
               <>
                 {infra.map((n, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center" }}>
