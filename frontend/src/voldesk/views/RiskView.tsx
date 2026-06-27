@@ -340,6 +340,9 @@ function LiveStressGrid({ d, status }: { d: StressGridData | null; status: Fresh
   }
   const max = Math.max(...d.grid.flat().map(Math.abs)) || 1;
   const rowLbl = (v: number): string => (d.rowUnit === "d" ? v + "d" : (v > 0 ? "+" : "") + v + "vp");
+  // Column display order = secondary axis ascending, so the smallest bucket
+  // (e.g. 0d for the time grid) is leftmost; cell lookups follow the same ri.
+  const cols = d.rowBins.map((r, ri) => ({ r, ri })).sort((x, y) => x.r - y.r);
   return (
     // Transposed: ΔSpot on the ROWS, the secondary axis (vol/time/skew/fly) on
     // the columns. cell(si, ri) = grid[ri][si].
@@ -347,14 +350,14 @@ function LiveStressGrid({ d, status }: { d: StressGridData | null; status: Fresh
       <thead>
         <tr>
           <th className="corner">ΔSpot \ Δ{STRESS_AXIS_LABEL[d.axis] ?? d.axis}</th>
-          {d.rowBins.map((r, ri) => <th key={ri}>{rowLbl(r)}<span className="th-sub">&nbsp;</span></th>)}
+          {cols.map(({ r, ri }) => <th key={ri}>{rowLbl(r)}<span className="th-sub">&nbsp;</span></th>)}
         </tr>
       </thead>
       <tbody>
         {d.spotBins.map((s, si) => (
           <tr key={si}>
             <th>{s > 0 ? "+" : ""}{s}bp</th>
-            {d.rowBins.map((r, ri) => {
+            {cols.map(({ r, ri }) => {
               const v = d.grid[ri]?.[si] ?? NaN;
               const center = (r ?? NaN) === 0 && (s ?? NaN) === 0;
               return <td key={ri} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : stressCell(v, max) }}>{stressKg(v)}</td>;
@@ -658,17 +661,14 @@ export function RiskView(): JSX.Element {
               </table>
             </Panel>
             <Panel title="Risk utilization" dataPp="risk-util" right={<PanelLive status={portfolio.status} />} className="trade-block">
-              <table className="dt util-table">
-                <thead><tr><th className="l">Limit</th><th>Used / cap</th><th className="r">%</th></tr></thead>
+              <table className="dt greeks-table">
+                <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th><th className="r">%</th></tr></thead>
                 <tbody>
                   {utilRows.map((r) => (
                     <tr key={r.label}>
                       <td className="l">{r.label}</td>
-                      <td className="util-bar-cell">
-                        <div className="util-track"><div className="util-fill" style={{ width: Math.min(100, r.pct) + "%", background: utilColor(r.pct) }} /></div>
-                        <span className="util-frac dim mono">{r.used} / {r.limit}</span>
-                      </td>
-                      <td className="r mono util-pct" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
+                      <td className="r mono dim">{r.used} / {r.limit}</td>
+                      <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
                     </tr>
                   ))}
                 </tbody>
