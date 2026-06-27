@@ -20,12 +20,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Protocol
 
 import numpy as np
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys, publisher
@@ -64,6 +64,13 @@ CYCLE_SECONDS = 2.0
 PNL_CHART_POINTS = 120
 PNL_CHART_RANGE_PCT = 0.02  # ±2% around spot
 FALLBACK_IV = 0.08          # fallback when the surface has no matching tenor
+# open_position_history is read only at daily resolution (marginal-var,
+# pnl-attribution), so persist a snapshot every ~30s instead of every cycle
+# (≈15× less write volume / table bloat). The LIVE greeks still publish to Redis
+# every CYCLE_SECONDS. Retention then prunes anything past the window.
+HISTORY_PERSIST_CYCLES = 15   # 15 × CYCLE_SECONDS ≈ 30s
+HISTORY_RETENTION_DAYS = 90
+PRUNE_EVERY_CYCLES = 43_200   # 43_200 × 2s ≈ 24h
 
 
 class _RedisLike(Protocol):
@@ -103,6 +110,9 @@ class RiskEngine:
         self._fetch_positions = fetch_positions
         self._sessionmaker = sessionmaker
         self._stop = asyncio.Event()
+        # history-write throttle + retention bookkeeping (see module constants)
+        self._cycle = 0
+        self._cycles_since_prune = PRUNE_EVERY_CYCLES  # prune on first loop, then ~daily
 
     def request_stop(self) -> None:
         self._stop.set()
@@ -118,6 +128,17 @@ class RiskEngine:
         try:
             while not self._stop.is_set():
                 await publisher.set_heartbeat(self.redis, keys.ENGINE_RISK)
+                # Retention: prune old history once at startup, then ~daily.
+                if (
+                    self._sessionmaker is not None
+                    and self._cycles_since_prune >= PRUNE_EVERY_CYCLES
+                ):
+                    self._cycles_since_prune = 0
+                    try:
+                        await self._prune_history()
+                    except Exception:
+                        logger.exception("prune_history_failed")
+                self._cycles_since_prune += 1
                 # P0 obs : cycle_id propagated to structlog + metrics emitted.
                 with observed_cycle("risk_engine"):
                     await self.run_cycle()
@@ -133,6 +154,7 @@ class RiskEngine:
         """P2 obs : child spans per stage. service.name=risk_engine."""
         from opentelemetry import trace as _otel
         tracer = _otel.get_tracer(__name__)
+        self._cycle += 1
 
         with tracer.start_as_current_span("risk_read_spot") as span:
             F = await self._read_spot()
@@ -161,8 +183,14 @@ class RiskEngine:
             pnl_curve = self._compute_pnl_curve(positions, F, surface) if positions else None
             span.set_attribute("n_positions", len(positions))
 
-        # Persist per-position greeks to DB.
-        if positions and self._sessionmaker is not None:
+        # Persist per-position greeks to DB — THROTTLED: history is read only at
+        # daily resolution, so snapshot every HISTORY_PERSIST_CYCLES (~30s), not
+        # every 2s. The live greeks still publish to Redis below each cycle.
+        if (
+            positions
+            and self._sessionmaker is not None
+            and (self._cycle - 1) % HISTORY_PERSIST_CYCLES == 0  # 1st cycle, then every ~30s
+        ):
             with tracer.start_as_current_span("risk_persist_snapshots") as span:
                 try:
                     n = await self._persist_position_snapshots(positions, F, surface)
@@ -180,6 +208,26 @@ class RiskEngine:
             except Exception:
                 logger.exception("publish_risk_update_failed")
                 return False
+
+    async def _prune_history(self) -> None:
+        """Retention — delete history rows older than HISTORY_RETENTION_DAYS so the
+        append-only tables don't grow unbounded. Nothing reads beyond this window
+        (all readers downsample to daily). Shared maintenance over both history
+        tables; uses literal SQL (static table names, parameterised cutoff)."""
+        if self._sessionmaker is None:
+            return
+        cutoff = datetime.now(UTC) - timedelta(days=HISTORY_RETENTION_DAYS)
+        async with self._sessionmaker() as db:
+            await db.execute(
+                text("DELETE FROM open_position_history WHERE timestamp < :cutoff"),
+                {"cutoff": cutoff},
+            )
+            await db.execute(
+                text("DELETE FROM account_history WHERE timestamp < :cutoff"),
+                {"cutoff": cutoff},
+            )
+            await db.commit()
+        logger.info("history_pruned", extra={"retention_days": HISTORY_RETENTION_DAYS})
 
     async def _load_positions(self) -> list[dict]:
         """Read OPEN positions from DB and shape them for the BS compute path.
