@@ -53,92 +53,6 @@ function PanelLive({ status }: { status: Fresh<unknown>["status"] | "mock" }): J
   );
 }
 
-interface ReturnPoint {
-  z: number;
-  label: string;
-  breach?: boolean;
-}
-
-// ---- VaR distribution bell curve (loss tail shaded), PC-card visual family ----
-function VarCurve({ var95, var99, w = 280, h = 104, points = [] }: { var95: number; var99: number; w?: number; h?: number; points?: ReturnPoint[] }): JSX.Element {
-  const z95 = -1.645,
-    z99 = -2.326;
-  const xs: number[] = [];
-  for (let i = 0; i <= 80; i++) xs.push(-3.4 + (6.8 * i) / 80);
-  const pdf = (x: number): number => Math.exp(-0.5 * x * x);
-  const px = (x: number): number => ((x + 3.4) / 6.8) * w;
-  const py = (p: number): number => h - 16 - p * (h - 28);
-  const d = xs.map((x, i) => (i ? "L" : "M") + px(x).toFixed(1) + " " + py(pdf(x)).toFixed(1)).join(" ");
-  const areaPath = (pts: number[]): string => pts.length ? "M" + px(pts[0]!).toFixed(1) + " " + (h - 16) + " " + pts.map((x) => "L" + px(x).toFixed(1) + " " + py(pdf(x)).toFixed(1)).join(" ") + " L" + px(pts[pts.length - 1]!).toFixed(1) + " " + (h - 16) + " Z" : "";
-  const tail95 = areaPath(xs.filter((x) => x <= z95));
-  const tail99 = areaPath(xs.filter((x) => x <= z99));
-  const kk = (v: number): string => "-$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + "M" : Math.abs(v) + "k");
-  return (
-    <svg className="var-curve-svg" width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      {tail95 && <path d={tail95} fill="var(--neg)" fillOpacity="0.13" />}
-      {tail99 && <path d={tail99} fill="var(--neg)" fillOpacity="0.3" />}
-      {[-2, -1, 0, 1, 2].map((t) => (
-        <line key={t} x1={px(t)} x2={px(t)} y1="6" y2={h - 16} stroke="var(--line)" strokeWidth="1" opacity={t === 0 ? 0.7 : 0.32} />
-      ))}
-      <path d={d} fill="none" stroke="var(--muted)" strokeWidth="1.5" />
-      <line x1={px(z95)} x2={px(z95)} y1="14" y2={h - 16} stroke="var(--warn)" strokeWidth="1.5" strokeDasharray="3 2" />
-      <line x1={px(z99)} x2={px(z99)} y1="14" y2={h - 16} stroke="var(--neg)" strokeWidth="1.5" strokeDasharray="3 2" />
-      <text x={px(z95) + 3} y="12" fill="var(--warn)" fontSize="8.5" fontFamily="var(--mono)" textAnchor="start">95%</text>
-      <text x={px(z99) - 3} y="12" fill="var(--neg)" fontSize="8.5" fontFamily="var(--mono)" textAnchor="end">99%</text>
-      <text x={px(z95)} y={h - 3} fill="var(--warn)" fontSize="8.5" fontFamily="var(--mono)" textAnchor="middle">{kk(var95)}</text>
-      <text x={px(z99)} y={h - 3} fill="var(--neg)" fontSize="8.5" fontFamily="var(--mono)" textAnchor="middle">{kk(var99)}</text>
-      <text x={px(0)} y={h - 3} fill="var(--text-faint)" fontSize="8.5" fontFamily="var(--mono)" textAnchor="middle">mean</text>
-      {/* realized return points */}
-      {points.map((pt, i) => {
-        const z = Math.max(-3.3, Math.min(3.3, pt.z));
-        const cx = px(z),
-          cy = py(pdf(z));
-        const c = pt.breach ? "var(--neg)" : "var(--fg)";
-        return (
-          <g key={i}>
-            <line x1={cx} x2={cx} y1={cy} y2={h - 16} stroke={c} strokeWidth="1" opacity="0.5" />
-            <circle cx={cx} cy={cy} r="4" fill={c} stroke="var(--bg)" strokeWidth="1.4" />
-            <text x={cx} y={cy - 8} fill={c} fontSize="8.5" fontWeight="700" fontFamily="var(--mono)" textAnchor="middle">{pt.label}</text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-interface RetDatum {
-  ret: number;
-  label: string;
-}
-
-function ReturnsBars({ data, h = 130 }: { data: RetDatum[]; h?: number }): JSX.Element {
-  const w = 330,
-    padB = 24,
-    padT = 16;
-  const max = Math.max(...data.map((d) => Math.abs(d.ret))) || 1;
-  const midY = padT + (h - padT - padB) / 2;
-  const bw = (w - 40) / data.length;
-  const scale = (h - padT - padB) / 2 / max;
-  return (
-    <svg className="ret-svg" width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
-      <line x1="20" x2={w - 20} y1={midY} y2={midY} stroke="var(--line)" strokeWidth="1" />
-      {data.map((d, i) => {
-        const cx = 20 + bw * i + bw / 2;
-        const hgt = Math.abs(d.ret) * scale;
-        const up = d.ret >= 0;
-        const y = up ? midY - hgt : midY;
-        const col = up ? "var(--up)" : "var(--down)";
-        return (
-          <g key={i}>
-            <rect x={cx - bw * 0.32} y={y} width={bw * 0.64} height={Math.max(1, hgt)} rx="2" fill={col} fillOpacity="0.82" />
-            <text x={cx} y={up ? y - 4 : y + hgt + 12} fill={col} fontSize="11" fontWeight="700" fontFamily="var(--mono)" textAnchor="middle">{(d.ret >= 0 ? "+" : "") + d.ret.toFixed(1) + "%"}</text>
-            <text x={cx} y={h - 8} fill="var(--text-faint)" fontSize="9.5" fontFamily="var(--mono)" textAnchor="middle">{d.label}</text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
 
 function EmpiricalHist({ hist, var95, var99, es99, retk, letter, h = 88 }: { hist: HistBin[]; var95: number; var99: number; es99: number; retk: number; letter: string; h?: number }): JSX.Element {
   const w = 340;
@@ -624,10 +538,6 @@ export function RiskView(): JSX.Element {
     { label: "Vega", used: fmt.usdk(Math.abs(nv)), limit: capk(vegaCap), pct: pctOf(nv, vegaCap) },
     { label: "Γ exposure", used: fmt.usdk(Math.abs(ngm)), limit: capk(gammaCap), pct: pctOf(ngm, gammaCap) },
   ];
-  // these sub-components are defined in the prototype but not rendered in this
-  // view; referenced here to keep the 1:1 port without tripping noUnusedLocals.
-  void VarCurve;
-  void ReturnsBars;
   return (
     <div className="risk-grid">
       <div className="risk-row1">
