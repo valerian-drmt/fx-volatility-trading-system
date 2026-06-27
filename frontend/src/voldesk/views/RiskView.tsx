@@ -262,7 +262,7 @@ function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; v
                 className={"chip " + (r.id === tf ? "on" : "")}
                 onClick={() => setTf(r.id)}
               >
-                {r.id} <span className="dim">{r.lbl}</span>
+                {r.id}
               </button>
             ))}
           </div>
@@ -660,21 +660,6 @@ export function RiskView(): JSX.Element {
                 </tbody>
               </table>
             </Panel>
-            <Panel title="Risk utilization" dataPp="risk-util" right={<PanelLive status={portfolio.status} />} className="trade-block">
-              <table className="dt greeks-table">
-                <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th><th className="r">%</th></tr></thead>
-                <tbody>
-                  {utilRows.map((r) => (
-                    <tr key={r.label}>
-                      <td className="l">{r.label}</td>
-                      <td className="r mono"><span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span></td>
-                      <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Panel>
-            <PinRiskTable />
             <Panel title="Vega / Vanna / Volga" dataPp="vvv-tenor" right={<PanelLive status={risk.status} />} className="trade-block">
               <table className="dt greeks-table">
                 <thead><tr><th className="l">Tenor</th><th className="r">Vega</th><th className="r">Vanna</th><th className="r">Volga</th></tr></thead>
@@ -691,6 +676,21 @@ export function RiskView(): JSX.Element {
                 </tbody>
               </table>
             </Panel>
+            <Panel title="Risk utilization" dataPp="risk-util" right={<PanelLive status={portfolio.status} />} className="trade-block">
+              <table className="dt greeks-table">
+                <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th><th className="r">%</th></tr></thead>
+                <tbody>
+                  {utilRows.map((r) => (
+                    <tr key={r.label}>
+                      <td className="l">{r.label}</td>
+                      <td className="r mono"><span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span></td>
+                      <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+            <PinRiskTable />
           </div>
         </Panel>
           <CalendarPanel />
