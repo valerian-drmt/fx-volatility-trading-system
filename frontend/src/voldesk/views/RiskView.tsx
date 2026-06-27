@@ -253,7 +253,7 @@ interface VarCalc {
   esZ: number;
 }
 
-function VarCard({ var95, var99, es99, netLiq, hist, fresh, nDays }: { var95: number; var99: number; es99: number; netLiq: number; hist: HistBin[]; fresh: Fresh<unknown>; nDays: number }): JSX.Element {
+function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; var99: number; es99: number; netLiq: number; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
   const factorsLive = useFetch<VarFactor[]>(() => fetchVarFactors().then(adaptVarFactors), 120_000).data ?? [];
   const base95 = var95,
     base99 = var99;
@@ -282,13 +282,6 @@ function VarCard({ var95, var99, es99, netLiq, hist, fresh, nDays }: { var95: nu
   const letter = ({ "1d": "D", "1w": "W", "1M": "M", "1Y": "Y" } as Record<string, string>)[sel.id] ?? "D";
   return (
     <Panel title="Value at Risk" dataPp="var" right={<FreshBadge fresh={fresh} label="historical 1d" />} pad={false} className="trade-block">
-      <div className="var-meta">
-        <span className="var-method">historical sim</span>
-        <span>{nDays > 0 ? `${nDays} obs · ${nDays}d window` : "building window…"}</span>
-        <span>scale √t · 252d</span>
-        <span className="var-frozen" title="le scaling √t suppose une exposition gelée — faux pour un book non-linéaire (vanna 2M +152k, theta bleed, roll-down du gamma). Lire 1M/1Y avec prudence.">⚠ exposition gelée</span>
-        <span className="var-live"><span className="status-dot pulse" style={{ background: "var(--pos)" }} />live</span>
-      </div>
       <div className="var-tf-group">
         {rows.map((r) => (
           <button
@@ -502,7 +495,7 @@ function StressEngine(): JSX.Element {
         <Panel title="Spot × Time" right={<span className="dim mono small">decay</span>} className="trade-block"><LiveStressGrid d={g[0] ?? null} status={live.status} /></Panel>
         <Panel title="Spot × ΔVol ∥ ATM" right={<span className="dim mono small">level only</span>} className="trade-block"><LiveStressGrid d={g[1] ?? null} status={live.status} /></Panel>
         <Panel title="Spot × Skew (ΔRR)" right={<RiskOnly text="risk-only · pas de signal" />} className="trade-block"><LiveStressGrid d={g[2] ?? null} status={live.status} /></Panel>
-        <Panel title="Spot × Fly (ΔBF)" right={<span className="accent mono small">curvature · PC3</span>} className="trade-block"><LiveStressGrid d={g[3] ?? null} status={live.status} /></Panel>
+        <Panel title="Spot × Fly (ΔBF)" className="trade-block"><LiveStressGrid d={g[3] ?? null} status={live.status} /></Panel>
       </div>
       <HeatLegend note={(out === "pnl" ? "portfolio P&L" : labels[out] + " value") + " · value printed in cell · color normalized per grid · RR is ~vega-neutral in Spot×Vol → its risk only shows in Spot×Skew"} />
     </Panel>
@@ -693,14 +686,13 @@ export function RiskView(): JSX.Element {
           <Panel title="Greeks & risk utilization" dataPp="greeks-util" right={<PanelLive status={risk.status} />} className="trade-block">
             <div className="gu-row">
               <div className="gu-col">
-                <div className="gs-section-lbl">Portfolio greeks <span className="dim">· risk stock</span></div>
                 <table className="dt greeks-table">
                   <thead><tr><th className="l">Greek</th><th className="r">Net value</th></tr></thead>
                   <tbody>
-                    <tr><td className="l">Net Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(g.delta)}>{fmt.usdk(g.delta * 1000)}</td></tr>
-                    <tr><td className="l">Net Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(g.gamma)}>{g.gamma.toFixed(1)}k</td></tr>
-                    <tr><td className="l">Net Vega <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(g.vega)}>${g.vega.toFixed(0)}k</td></tr>
-                    <tr><td className="l">Net Θ <em className="unit">$k/day</em></td><td className={"r mono " + pnlCls(g.theta)}>${g.theta.toFixed(1)}k</td></tr>
+                    <tr><td className="l">Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(g.delta)}>{fmt.usdk(g.delta * 1000)}</td></tr>
+                    <tr><td className="l">Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(g.gamma)}>{g.gamma.toFixed(1)}k</td></tr>
+                    <tr><td className="l">Vega <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(g.vega)}>${g.vega.toFixed(0)}k</td></tr>
+                    <tr><td className="l">Θ <em className="unit">$k/day</em></td><td className={"r mono " + pnlCls(g.theta)}>${g.theta.toFixed(1)}k</td></tr>
                     <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(netVanna)}>{fmt.sgn(netVanna, 0)}k</td></tr>
                     <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(netVolga)}>{fmt.sgn(netVolga, 0)}k</td></tr>
                     <tr><td className="l">Charm <em className="unit">$k Δ/day</em></td><td className={"r mono " + pnlCls(g.charm)}>{fmt.sgn(g.charm, 2)}k</td></tr>
@@ -708,7 +700,6 @@ export function RiskView(): JSX.Element {
                 </table>
               </div>
               <div className="gu-col">
-                <div className="gs-section-lbl util-lbl">Risk utilization <span className="dim">· used vs limit</span></div>
                 <table className="dt util-table">
                   <thead><tr><th className="l">Limit</th><th>Used / cap</th><th className="r">%</th></tr></thead>
                   <tbody>
@@ -746,7 +737,7 @@ export function RiskView(): JSX.Element {
             </div>
           </Panel>
           <div className="var-col">
-            <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} nDays={vd.nDays} />
+            <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} />
             <MarginalVarPanel />
           </div>
         </div>
