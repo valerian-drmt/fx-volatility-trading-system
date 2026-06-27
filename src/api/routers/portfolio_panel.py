@@ -1337,25 +1337,32 @@ async def value_at_risk(db: DbDep) -> dict[str, Any]:
     (skew/level/curvature) + per-position marginal-VaR remain a separate G-risk
     PR (they need greeks × shock attribution, not just the net-liq series).
     """
+    # Portfolio settings (editable): VaR lookback window + max day-gap.
+    pf = {name: float(val) for name, val in (await db.execute(
+        select(AppConfigScalar.name, AppConfigScalar.value)
+        .where(AppConfigScalar.namespace == "portfolio")
+    )).all()}
+    lookback = int(pf.get("var_lookback_days", 504))
+    max_gap = int(pf.get("var_max_gap_days", _VAR_MAX_GAP_DAYS))
     nl_sql = text("""
         WITH daily AS (
           SELECT DISTINCT ON (date_trunc('day', timestamp))
                  date_trunc('day', timestamp) AS day, net_liq_usd
             FROM account_history
-           WHERE timestamp >= NOW() - INTERVAL '504 days' AND net_liq_usd IS NOT NULL
+           WHERE timestamp >= NOW() - make_interval(days => :lookback) AND net_liq_usd IS NOT NULL
            ORDER BY date_trunc('day', timestamp), timestamp DESC
         )
         SELECT day, net_liq_usd FROM daily ORDER BY day
     """)
-    rows = [(r[0], float(r[1])) for r in (await db.execute(nl_sql)).all()]
+    rows = [(r[0], float(r[1])) for r in (await db.execute(nl_sql, {"lookback": lookback})).all()]
     # Only consecutive trading-day samples form a genuine 1-day P&L delta. A
     # multi-day hole (system downtime, capital deposit/withdrawal) is NOT a daily
     # loss — including it injects a huge phantom tail that dominates VaR/ES and
-    # the histogram. Skip any step spanning more than a long weekend.
+    # the histogram. Skip any step spanning more than the configured gap.
     deltas = [
         rows[i][1] - rows[i - 1][1]
         for i in range(1, len(rows))
-        if (rows[i][0] - rows[i - 1][0]).days <= _VAR_MAX_GAP_DAYS
+        if (rows[i][0] - rows[i - 1][0]).days <= max_gap
     ]
     stats = _var_stats(deltas)
     mean_daily = sum(deltas) / len(deltas) if deltas else None

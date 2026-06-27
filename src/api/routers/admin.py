@@ -26,7 +26,7 @@ from api.auth import require_write
 from api.dependencies import get_db_session, get_redis
 from api.orchestration import config_service
 from api.schemas.admin import ConfigPatchRequest, ConfigResponse, ConfigRevertRequest
-from core.risk import greek_limits as gl
+from core import config_catalog as cc
 from persistence.models import AppConfigScalar
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
@@ -101,83 +101,75 @@ async def revert_config(
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Risk settings — greek-limit policy params (config_scalar 'greek_limits')
+# Domain settings — editable policy knobs per desk domain (config_scalar).
+# Catalog in core.config_catalog; consumers read the same rows so edits are live.
 # ──────────────────────────────────────────────────────────────────────
 
-_RISK_NS = "greek_limits"
 
-
-class RiskConfigPatch(BaseModel):
+class DomainSettingsPatch(BaseModel):
     updates: dict[str, float] = Field(default_factory=dict)
     user: str = "desk"
-    comment: str | None = None
 
 
-def _validate_risk_param(name: str, value: float) -> None:
-    """Light bounds — these are policy knobs, not free numbers."""
-    if name not in gl.CONFIG_DEFAULTS:
-        raise HTTPException(status_code=422, detail=f"unknown risk param: {name}")
-    if name == "alpha" and not 0 < value <= 1:
-        raise HTTPException(status_code=422, detail="alpha must be in (0, 1]")
-    if name.startswith("beta_") and not 0 <= value <= 1:
-        raise HTTPException(status_code=422, detail=f"{name} must be in [0, 1]")
-    if name in {"shock_spot", "shock_vol", "nav_halflife_days"} and value <= 0:
-        raise HTTPException(status_code=422, detail=f"{name} must be > 0")
-    if name == "nav_hwm_floor" and not 0 < value <= 1:
-        raise HTTPException(status_code=422, detail="nav_hwm_floor must be in (0, 1]")
-
-
-async def _risk_config_payload(db: AsyncSession) -> dict[str, Any]:
-    rows = {
-        r.name: r
+async def _domain_payload(db: AsyncSession, domain: str) -> dict[str, Any]:
+    spec = cc.DOMAINS[domain]
+    namespaces = {p.namespace for p in spec}
+    rows: dict[tuple[str, str], AppConfigScalar] = {}
+    for ns in namespaces:
         for r in (await db.execute(
-            select(AppConfigScalar).where(AppConfigScalar.namespace == _RISK_NS)
-        )).scalars().all()
-    }
+            select(AppConfigScalar).where(AppConfigScalar.namespace == ns)
+        )).scalars().all():
+            rows[(ns, r.name)] = r
     params = []
-    for name, default in gl.CONFIG_DEFAULTS.items():
-        unit, desc = gl.CONFIG_META.get(name, ("", ""))
-        row = rows.get(name)
+    for p in spec:
+        row = rows.get((p.namespace, p.name))
         params.append({
-            "name": name,
-            "value": float(row.value) if row is not None else default,
-            "default": default,
-            "unit": unit,
-            "description": desc,
+            "name": p.name,
+            "namespace": p.namespace,
+            "value": float(row.value) if row is not None else p.default,
+            "default": p.default,
+            "unit": p.unit,
+            "description": p.description,
             "is_default": row is None,
             "updated_by": row.updated_by if row is not None else None,
         })
-    return {"namespace": _RISK_NS, "params": params}
+    return {"domain": domain, "title": cc.DOMAIN_TITLES.get(domain, domain), "params": params}
 
 
-@router.get("/risk-config")
-async def get_risk_config(db: DbDep) -> dict[str, Any]:
-    """Effective greek-limit policy = code defaults overlaid by config_scalar."""
-    return await _risk_config_payload(db)
+@router.get("/settings/{domain}")
+async def get_domain_settings(domain: str, db: DbDep) -> dict[str, Any]:
+    """Effective settings for a domain = code defaults overlaid by config_scalar."""
+    if domain not in cc.DOMAINS:
+        raise HTTPException(status_code=404, detail=f"unknown settings domain: {domain}")
+    return await _domain_payload(db, domain)
 
 
-@router.put("/risk-config", dependencies=[Depends(require_write)])
-async def put_risk_config(req: RiskConfigPatch, db: DbDep) -> dict[str, Any]:
-    """Upsert greek-limit policy params (hot-applied on the next /greek-limits)."""
+@router.put("/settings/{domain}", dependencies=[Depends(require_write)])
+async def put_domain_settings(domain: str, req: DomainSettingsPatch, db: DbDep) -> dict[str, Any]:
+    """Upsert a domain's policy knobs — applied live by the consuming endpoints."""
+    if domain not in cc.DOMAINS:
+        raise HTTPException(status_code=404, detail=f"unknown settings domain: {domain}")
     if not req.updates:
         raise HTTPException(status_code=422, detail="no updates provided")
-    existing = {
-        r.name: r
-        for r in (await db.execute(
-            select(AppConfigScalar).where(AppConfigScalar.namespace == _RISK_NS)
-        )).scalars().all()
-    }
     for name, value in req.updates.items():
-        _validate_risk_param(name, float(value))
-        unit, desc = gl.CONFIG_META.get(name, ("", ""))
-        row = existing.get(name)
+        p = cc.param(domain, name)
+        if p is None:
+            raise HTTPException(status_code=422, detail=f"unknown param '{name}' for domain '{domain}'")
+        err = cc.validate(p, float(value))
+        if err is not None:
+            raise HTTPException(status_code=422, detail=err)
+        row = (await db.execute(
+            select(AppConfigScalar).where(
+                AppConfigScalar.namespace == p.namespace, AppConfigScalar.name == name,
+            )
+        )).scalar_one_or_none()
         if row is not None:
             row.value = float(value)
             row.updated_by = req.user
         else:
             db.add(AppConfigScalar(
-                namespace=_RISK_NS, name=name, value=float(value),
-                unit=unit, description=desc, is_active=True, updated_by=req.user,
+                namespace=p.namespace, name=name, value=float(value),
+                unit=p.unit, description=p.description, is_active=True, updated_by=req.user,
             ))
     await db.commit()
-    return await _risk_config_payload(db)
+    return await _domain_payload(db, domain)

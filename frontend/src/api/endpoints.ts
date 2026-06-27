@@ -168,9 +168,10 @@ export const revertConfig = (version: number, comment?: string) =>
   apiPost<unknown>(`/api/v1/admin/config/revert/${version}`, { user: "trader", comment });
 export const putConfig = (patch: Record<string, unknown>, comment?: string) =>
   apiPut<unknown>("/api/v1/admin/config", { patch, user: "trader", comment });
-export const fetchRiskConfig = () => apiGet<unknown>("/api/v1/admin/risk-config");
-export const putRiskConfig = (updates: Record<string, number>, comment?: string) =>
-  apiPut<unknown>("/api/v1/admin/risk-config", { updates, user: "trader", comment });
+export const fetchDomainSettings = (domain: string) =>
+  apiGet<unknown>(`/api/v1/admin/settings/${domain}`);
+export const putDomainSettings = (domain: string, updates: Record<string, number>) =>
+  apiPut<unknown>(`/api/v1/admin/settings/${domain}`, { updates, user: "trader" });
 
 // ── Trade write (Phase 2 / 6w) — submit + close ──────────────────────────────
 // Paper-first: `execution_mode:"live"` routes to the IB *paper* account (the

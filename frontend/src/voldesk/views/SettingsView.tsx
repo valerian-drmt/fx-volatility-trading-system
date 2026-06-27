@@ -7,7 +7,7 @@
  * Read-only : revert/commit are gated behind WRITE_ENABLED (auth, Phase 2/2w).
  */
 import { useState } from "react";
-import { fetchRiskConfig, putConfig, putRiskConfig, revertConfig } from "../../api/endpoints";
+import { fetchDomainSettings, putConfig, putDomainSettings, revertConfig } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -15,28 +15,33 @@ import { useDeskData } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
 
-interface RiskParam { name: string; value: number; default: number; unit: string; description: string; isDefault: boolean; }
+interface SettingParam { name: string; value: number; default: number; unit: string; description: string; isDefault: boolean; }
+interface DomainSettings { title: string; params: SettingParam[]; }
 
-function adaptRiskParams(raw: unknown): RiskParam[] {
-  const ps = ((raw ?? {}) as {
+function adaptDomainSettings(raw: unknown): DomainSettings {
+  const o = (raw ?? {}) as {
+    title?: string;
     params?: { name?: string; value?: number; default?: number; unit?: string; description?: string; is_default?: boolean }[];
-  }).params ?? [];
-  return ps.map((p) => ({
-    name: p.name ?? "",
-    value: Number(p.value ?? 0),
-    default: Number(p.default ?? 0),
-    unit: p.unit ?? "",
-    description: p.description ?? "",
-    isDefault: !!p.is_default,
-  }));
+  };
+  return {
+    title: o.title ?? "Settings",
+    params: (o.params ?? []).map((p) => ({
+      name: p.name ?? "",
+      value: Number(p.value ?? 0),
+      default: Number(p.default ?? 0),
+      unit: p.unit ?? "",
+      description: p.description ?? "",
+      isDefault: !!p.is_default,
+    })),
+  };
 }
 
-/** Risk settings — editable greek-limit policy knobs (config_scalar 'greek_limits'). */
-function RiskSettingsPanel(): JSX.Element {
+/** Editable policy knobs for one desk domain (config_scalar, hot-applied). */
+function DomainSettingsPanel({ domain }: { domain: string }): JSX.Element {
   // Editable as soon as you're logged in (the PUT is cookie-gated server-side).
   const canEdit = useAuthStore((s) => s.authenticated);
-  const live = useFetch<RiskParam[]>(() => fetchRiskConfig().then(adaptRiskParams), 600_000);
-  const params = live.data ?? [];
+  const live = useFetch<DomainSettings>(() => fetchDomainSettings(domain).then(adaptDomainSettings), 600_000);
+  const params = live.data?.params ?? [];
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const dirty = Object.keys(edits).length;
@@ -49,17 +54,14 @@ function RiskSettingsPanel(): JSX.Element {
       if (!Number.isNaN(num)) updates[k] = num;
     }
     try {
-      await putRiskConfig(updates, `risk settings: ${dirty} field${dirty > 1 ? "s" : ""}`);
+      await putDomainSettings(domain, updates);
       window.location.reload();
     } catch {
       setBusy(false);
     }
   };
   return (
-    <Panel title="Risk settings" right={<FreshBadge fresh={live} label="greek-limit policy · hot-applied" />} className="config-edit">
-      <div className="dim small" style={{ marginBottom: 10 }}>
-        Policy knobs behind the greek caps — stress-loss budget α, per-axis weights β, 1-day shocks, nav-base anchor. Editing recomputes the live Risk-utilization caps.
-      </div>
+    <Panel title={live.data?.title ?? domain} right={<FreshBadge fresh={live} label="hot-applied" />} className="config-edit settings-domain">
       <div className="cfg-sections">
         <div className="cfg-section">
           {params.map((p) => (
@@ -99,7 +101,7 @@ function RiskSettingsPanel(): JSX.Element {
       ) : null}
       <div className="dim small" style={{ marginTop: 10 }}>
         {canEdit
-          ? "Per-field editing · Save = upsert config_scalar (namespace greek_limits), applied on the next cap computation."
+          ? "Per-field editing · Save upserts config_scalar, applied live by the consuming endpoints."
           : "Read-only · log in (top-right button) to edit these values."}
       </div>
     </Panel>
@@ -170,6 +172,7 @@ export function SettingsView(): JSX.Element {
     }
   };
   return (
+    <div className="settings-view">
     <div className="settings-grid">
       <Panel
         title="Configuration — version history"
@@ -280,7 +283,13 @@ export function SettingsView(): JSX.Element {
           </>
         )}
       </Panel>
-      <RiskSettingsPanel />
+      </div>
+      <div className="settings-domains">
+        <DomainSettingsPanel domain="trade" />
+        <DomainSettingsPanel domain="signal" />
+        <DomainSettingsPanel domain="risk" />
+        <DomainSettingsPanel domain="portfolio" />
+      </div>
     </div>
   );
 }

@@ -1268,7 +1268,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/risk-config": {
+    "/api/v1/admin/settings/{domain}": {
         parameters: {
             query?: never;
             header?: never;
@@ -1276,15 +1276,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Risk Config
-         * @description Effective greek-limit policy = code defaults overlaid by config_scalar.
+         * Get Domain Settings
+         * @description Effective settings for a domain = code defaults overlaid by config_scalar.
          */
-        get: operations["get_risk_config_api_v1_admin_risk_config_get"];
+        get: operations["get_domain_settings_api_v1_admin_settings__domain__get"];
         /**
-         * Put Risk Config
-         * @description Upsert greek-limit policy params (hot-applied on the next /greek-limits).
+         * Put Domain Settings
+         * @description Upsert a domain's policy knobs — applied live by the consuming endpoints.
          */
-        put: operations["put_risk_config_api_v1_admin_risk_config_put"];
+        put: operations["put_domain_settings_api_v1_admin_settings__domain__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2298,6 +2298,18 @@ export interface components {
              */
             scheduled_interval_minutes: number;
         };
+        /** DomainSettingsPatch */
+        DomainSettingsPatch: {
+            /** Updates */
+            updates?: {
+                [key: string]: number;
+            };
+            /**
+             * User
+             * @default desk
+             */
+            user: string;
+        };
         /** EngineStats */
         EngineStats: {
             /** Name */
@@ -2822,20 +2834,6 @@ export interface components {
             probabilities?: {
                 [key: string]: number;
             } | null;
-        };
-        /** RiskConfigPatch */
-        RiskConfigPatch: {
-            /** Updates */
-            updates?: {
-                [key: string]: number;
-            };
-            /**
-             * User
-             * @default desk
-             */
-            user: string;
-            /** Comment */
-            comment?: string | null;
         };
         /**
          * SignalConfig
@@ -4794,11 +4792,13 @@ export interface operations {
             };
         };
     };
-    get_risk_config_api_v1_admin_risk_config_get: {
+    get_domain_settings_api_v1_admin_settings__domain__get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                domain: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -4814,20 +4814,31 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    put_risk_config_api_v1_admin_risk_config_put: {
+    put_domain_settings_api_v1_admin_settings__domain__put: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                domain: string;
+            };
             cookie?: {
                 fxvol_auth?: string | null;
             };
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RiskConfigPatch"];
+                "application/json": components["schemas"]["DomainSettingsPatch"];
             };
         };
         responses: {
