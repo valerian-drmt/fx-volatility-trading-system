@@ -248,53 +248,60 @@ function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; v
   const histScaled = hist.map((b) => ({ lo: b.lo * sel.m, hi: b.hi * sel.m, count: b.count }));
   const letter = ({ "1d": "D", "1w": "W", "1M": "M", "1Y": "Y" } as Record<string, string>)[sel.id] ?? "D";
   return (
-    <Panel title="Value at Risk" dataPp="var" right={<FreshBadge fresh={fresh} label="historical 1d" />} pad={false} className="trade-block">
-      <div className="var-tf-group">
-        {rows.map((r) => (
-          <button
-            key={r.id}
-            className={"chip " + (r.id === tf ? "on" : "")}
-            onClick={() => setTf(r.id)}
-          >
-            {r.id} <span className="dim">{r.lbl}</span>
-          </button>
-        ))}
-      </div>
-      <div className="table-scroll">
-        <table className="dt var-table">
-          <thead><tr>
-            <th className="l">Horizon</th><th className="r">exp. return μt</th><th className="r">VaR 95%</th><th className="r">VaR 99%</th><th className="r">ES 97.5%</th><th className="r">ES/VaR</th>
-          </tr></thead>
-          <tbody>
-            {rows.map((r) => {
-              const x = calc(r);
-              return (
-                <tr key={r.id} className={"var-row " + (r.id === tf ? "row-now" : "")} onClick={() => setTf(r.id)}>
-                  <td className="l mono">{r.id} <span className="dim">{r.lbl}</span></td>
-                  <td className={"r mono " + pnlCls(x.retk)}>{kc(x.retk)} <span className="dim">({ordinal(Math.round(normCdf(x.muZ) * 100))})</span></td>
-                  <td className="r mono neg">{kc(x.v95)}</td>
-                  <td className="r mono neg">{kc(x.v99)}</td>
-                  <td className="r mono neg">{kc(x.es)}</td>
-                  <td className={"r mono " + (r.ratio >= 1.25 ? "warn" : "dim")}>{r.ratio.toFixed(2)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <div className="var-factors">
-        <div className="vf-lbl dim small mono">VaR by factor <span className="dim">· which factor carries the tail (ties to marginal-VaR panel)</span></div>
-        <FactorStack factors={factorsLive} compact />
-      </div>
-      <div className="ret-chart">
-        <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · empirical</span></div>
-        <EmpiricalHist hist={histScaled} var95={c.v95} var99={c.v99} es99={c.es} retk={c.retk} letter={letter} />
-        <div className="hist-leg dim mono">
-          <span><i className="lg-line mu" />return (D/W/M/Y)</span>
-          <span><i className="lg-line w" />VaR 95%</span>
-          <span><i className="lg-line n" />VaR 99%</span>
-          <span><i className="lg-dot" />ES (tail mean)</span>
-        </div>
+    <Panel title="Value at Risk" dataPp="var" right={<PanelLive status={fresh.status} />} className="stress-panel">
+      <div className="var-1x3">
+        <Panel title="VaR table" dataPp="var-table" right={<FreshBadge fresh={fresh} label="historical 1d" />} className="trade-block" pad={false}>
+          <div className="var-tf-group">
+            {rows.map((r) => (
+              <button
+                key={r.id}
+                className={"chip " + (r.id === tf ? "on" : "")}
+                onClick={() => setTf(r.id)}
+              >
+                {r.id} <span className="dim">{r.lbl}</span>
+              </button>
+            ))}
+          </div>
+          <div className="table-scroll">
+            <table className="dt var-table">
+              <thead><tr>
+                <th className="l">Horizon</th><th className="r">exp. return μt</th><th className="r">VaR 95%</th><th className="r">VaR 99%</th><th className="r">ES 97.5%</th><th className="r">ES/VaR</th>
+              </tr></thead>
+              <tbody>
+                {rows.map((r) => {
+                  const x = calc(r);
+                  return (
+                    <tr key={r.id} className={"var-row " + (r.id === tf ? "row-now" : "")} onClick={() => setTf(r.id)}>
+                      <td className="l mono">{r.id} <span className="dim">{r.lbl}</span></td>
+                      <td className={"r mono " + pnlCls(x.retk)}>{kc(x.retk)} <span className="dim">({ordinal(Math.round(normCdf(x.muZ) * 100))})</span></td>
+                      <td className="r mono neg">{kc(x.v95)}</td>
+                      <td className="r mono neg">{kc(x.v99)}</td>
+                      <td className="r mono neg">{kc(x.es)}</td>
+                      <td className={"r mono " + (r.ratio >= 1.25 ? "warn" : "dim")}>{r.ratio.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+        <Panel title="P&L distribution" dataPp="var-chart" right={<FreshBadge fresh={fresh} label="empirical" />} className="trade-block">
+          <div className="var-factors">
+            <div className="vf-lbl dim small mono">VaR by factor <span className="dim">· which factor carries the tail (ties to marginal-VaR panel)</span></div>
+            <FactorStack factors={factorsLive} compact />
+          </div>
+          <div className="ret-chart">
+            <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · empirical</span></div>
+            <EmpiricalHist hist={histScaled} var95={c.v95} var99={c.v99} es99={c.es} retk={c.retk} letter={letter} />
+            <div className="hist-leg dim mono">
+              <span><i className="lg-line mu" />return (D/W/M/Y)</span>
+              <span><i className="lg-line w" />VaR 95%</span>
+              <span><i className="lg-line n" />VaR 99%</span>
+              <span><i className="lg-dot" />ES (tail mean)</span>
+            </div>
+          </div>
+        </Panel>
+        <MarginalVarPanel />
       </div>
     </Panel>
   );
@@ -667,7 +674,7 @@ export function RiskView(): JSX.Element {
                   {utilRows.map((r) => (
                     <tr key={r.label}>
                       <td className="l">{r.label}</td>
-                      <td className="r mono dim">{r.used} / {r.limit}</td>
+                      <td className="r mono"><span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span></td>
                       <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
                     </tr>
                   ))}
@@ -695,7 +702,6 @@ export function RiskView(): JSX.Element {
         </Panel>
         <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a?.netLiq ?? 0} hist={vd.hist} fresh={risk} />
       </div>
-      <MarginalVarPanel />
       <StressEngine />
       <LiveLadders />
       <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status={portfolio.status} />} pad={false} className="ladder-panel">
