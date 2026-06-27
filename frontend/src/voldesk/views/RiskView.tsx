@@ -576,7 +576,7 @@ function LiveLadders(): JSX.Element {
   const L = live.data ?? [];
   const at = (i: number): LiveLadder | null => L[i] ?? null;
   return (
-    <Panel title="Greeks ladder" dataPp="greeks-ladder" right={<><span className="dim mono small">5 axes · full BS reval</span> <PanelLive status={live.status} /></>} pad className="ladder-panel">
+    <Panel title="Greeks ladder" dataPp="greeks-ladder" right={<PanelLive status={live.status} />} pad className="ladder-panel">
       <div className="ladder-grid">
         <LiveLadderTable title="vs Spot" axisLbl="Spot" d={at(0)} status={live.status} />
         <LiveLadderTable title="vs Vol ∥ ATM" right={<span className="dim mono small">level</span>} axisLbl="Vol" d={at(1)} status={live.status} />
