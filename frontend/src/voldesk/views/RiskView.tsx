@@ -691,18 +691,41 @@ export function RiskView(): JSX.Element {
       <Panel title="Portfolio risk" dataPp="risk-portfolio-wrap" className="stress-panel">
         <div className="risk-overview2">
           <Panel title="Greeks & risk utilization" dataPp="greeks-util" right={<PanelLive status={risk.status} />} className="trade-block">
-            <div className="gs-section-lbl">Portfolio greeks <span className="dim">· risk stock</span></div>
-            <table className="dt greeks-table">
-              <tbody>
-                <tr><td className="l">Net Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(g.delta)}>{fmt.usdk(g.delta * 1000)}</td></tr>
-                <tr><td className="l">Net Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(g.gamma)}>{g.gamma.toFixed(1)}k</td></tr>
-                <tr><td className="l">Net Vega <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(g.vega)}>${g.vega.toFixed(0)}k</td></tr>
-                <tr><td className="l">Net Θ <em className="unit">$k/day</em></td><td className={"r mono " + pnlCls(g.theta)}>${g.theta.toFixed(1)}k</td></tr>
-                <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(netVanna)}>{fmt.sgn(netVanna, 0)}k</td></tr>
-                <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(netVolga)}>{fmt.sgn(netVolga, 0)}k</td></tr>
-                <tr><td className="l">Charm <em className="unit">$k Δ/day</em></td><td className={"r mono " + pnlCls(g.charm)}>{fmt.sgn(g.charm, 2)}k</td></tr>
-              </tbody>
-            </table>
+            <div className="gu-row">
+              <div className="gu-col">
+                <div className="gs-section-lbl">Portfolio greeks <span className="dim">· risk stock</span></div>
+                <table className="dt greeks-table">
+                  <thead><tr><th className="l">Greek</th><th className="r">Net value</th></tr></thead>
+                  <tbody>
+                    <tr><td className="l">Net Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(g.delta)}>{fmt.usdk(g.delta * 1000)}</td></tr>
+                    <tr><td className="l">Net Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(g.gamma)}>{g.gamma.toFixed(1)}k</td></tr>
+                    <tr><td className="l">Net Vega <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(g.vega)}>${g.vega.toFixed(0)}k</td></tr>
+                    <tr><td className="l">Net Θ <em className="unit">$k/day</em></td><td className={"r mono " + pnlCls(g.theta)}>${g.theta.toFixed(1)}k</td></tr>
+                    <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(netVanna)}>{fmt.sgn(netVanna, 0)}k</td></tr>
+                    <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(netVolga)}>{fmt.sgn(netVolga, 0)}k</td></tr>
+                    <tr><td className="l">Charm <em className="unit">$k Δ/day</em></td><td className={"r mono " + pnlCls(g.charm)}>{fmt.sgn(g.charm, 2)}k</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="gu-col">
+                <div className="gs-section-lbl util-lbl">Risk utilization <span className="dim">· used vs limit</span></div>
+                <table className="dt util-table">
+                  <thead><tr><th className="l">Limit</th><th>Used / cap</th><th className="r">%</th></tr></thead>
+                  <tbody>
+                    {utilRows.map((r) => (
+                      <tr key={r.label}>
+                        <td className="l">{r.label}</td>
+                        <td className="util-bar-cell">
+                          <div className="util-track"><div className="util-fill" style={{ width: Math.min(100, r.pct) + "%", background: utilColor(r.pct) }} /></div>
+                          <span className="util-frac dim mono">{r.used} / {r.limit}</span>
+                        </td>
+                        <td className="r mono util-pct" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
             <div className="be-tile">
               <div className="be-l"><span className="be-lbl mono">breakeven γ–θ</span><span className="be-formula mono dim">move_BE = √(2Θ/Γ)</span></div>
               <div className="be-vals">
@@ -721,21 +744,6 @@ export function RiskView(): JSX.Element {
               <div className="gs-sub"><div className="gs-sublbl mono dim">vanna by tenor · dVega/dSpot (where RR lives)</div><DivBars rows={pt.map((r) => ({ label: r.tenor, v: r.vanna, flag: Math.abs(r.vanna) >= 150 ? "outlier — RR 2M domine" : null }))} unit="k" scale="sqrt" /></div>
               <div className="gs-sub"><div className="gs-sublbl mono dim">volga by tenor · dVega/dVol (where BF lives)</div><DivBars rows={pt.map((r) => ({ label: r.tenor, v: r.volga }))} unit="k" scale="sqrt" /></div>
             </div>
-            <div className="gs-section-lbl util-lbl">Risk utilization <span className="dim">· used vs limit</span></div>
-            <table className="dt util-table">
-              <tbody>
-                {utilRows.map((r) => (
-                  <tr key={r.label}>
-                    <td className="l">{r.label}</td>
-                    <td className="util-bar-cell">
-                      <div className="util-track"><div className="util-fill" style={{ width: Math.min(100, r.pct) + "%", background: utilColor(r.pct) }} /></div>
-                      <span className="util-frac dim mono">{r.used} / {r.limit}</span>
-                    </td>
-                    <td className="r mono util-pct" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </Panel>
           <div className="var-col">
             <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} nDays={vd.nDays} />

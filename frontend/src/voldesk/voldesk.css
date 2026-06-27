@@ -1326,6 +1326,13 @@ input,select{font-family:inherit;font-size:13px}
 .var-tf-group{display:flex;gap:6px;padding:8px 12px 2px;flex-wrap:wrap}
 .var-tf-group .chip{font-size:12px}
 
+/* Risk · greeks (left) + utilization (right) side by side */
+.gu-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.gu-col{min-width:0}
+@media(max-width:900px){.gu-row{grid-template-columns:1fr}}
+.greeks-table thead th,.util-table thead th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-dim);padding:4px 10px;border-bottom:1px solid var(--line);text-align:left}
+.greeks-table thead th.r,.util-table thead th.r{text-align:right}
+
 /* Risk · simplified greeks (2-col) + utilization (3-col) tables — bigger/scannable */
 .greeks-table{width:100%;margin:4px 0 10px}
 .greeks-table td{padding:8px 10px;font-size:14px;border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
