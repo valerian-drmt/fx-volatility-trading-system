@@ -4,9 +4,9 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useEffect, useRef, useState } from "react";
-import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchScenarios, fetchStressGrid, fetchVarFactors, fetchVegaPca } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fetchVarFactors, fetchVegaPca } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
-import { Bar, Panel, Tag } from "../components/common";
+import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
@@ -14,7 +14,7 @@ import { DATA, fmt } from "../data";
 import type { VarFactor } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptScenarios, adaptStressGrid, adaptVarFactors, adaptVegaPca, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, adaptVarFactors, adaptVegaPca, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData, type VegaPcaRow } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -351,60 +351,6 @@ function HeatLegend({ note }: { note: string }): JSX.Element {
   );
 }
 
-interface ScenarioDatum {
-  x: number;
-  pnl: number;
-  delta: number;
-  gamma: number;
-  vega: number;
-  theta: number;
-}
-
-function ScenarioMini({ data, keyName, color, label }: { data: ScenarioDatum[]; keyName: keyof ScenarioDatum; color: string; label: string }): JSX.Element {
-  const w = 200,
-    h = 84,
-    pad = 6;
-  const vals = data.map((d) => d[keyName]);
-  const lo = Math.min(...vals),
-    hi = Math.max(...vals),
-    rng = hi - lo || 1;
-  const X = (i: number): number => pad + (i / (data.length - 1)) * (w - 2 * pad);
-  const Y = (v: number): number => pad + (1 - (v - lo) / rng) * (h - 2 * pad);
-  const d = data.map((p, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(p[keyName]).toFixed(1)).join(" ");
-  const zeroY = lo < 0 && hi > 0 ? Y(0) : null;
-  return (
-    <div className="scen-mini">
-      <div className="scen-label">{label}</div>
-      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`}>
-        {zeroY != null && <line x1={pad} x2={w - pad} y1={zeroY} y2={zeroY} stroke="var(--line)" strokeDasharray="2 2" />}
-        <path d={d} fill="none" stroke={color} strokeWidth="1.8" />
-      </svg>
-    </div>
-  );
-}
-
-function ScenariosPanel(): JSX.Element {
-  const live = useFetch(() => fetchScenarios().then(adaptScenarios), 120_000);
-  const data = live.data ?? [];
-  return (
-    <Panel title="Scenarios" dataPp="scenarios" right={<span className="dim mono small">full reval · spot ±%</span>}>
-      {data.length < 2 ? (
-        <div className="dim small mono ivz-empty">
-          {live.status === "missing" ? "aucune position ouverte" : "chargement…"}
-        </div>
-      ) : (
-        <div className="scen-grid">
-          <ScenarioMini data={data} keyName="pnl" color="var(--accent)" label="P&L" />
-          <ScenarioMini data={data} keyName="delta" color="var(--pos)" label="Δ Delta" />
-          <ScenarioMini data={data} keyName="gamma" color="var(--warn)" label="Γ Gamma" />
-          <ScenarioMini data={data} keyName="vega" color="#a78bfa" label="Vega" />
-          <ScenarioMini data={data} keyName="theta" color="var(--neg)" label="Θ Theta" />
-        </div>
-      )}
-    </Panel>
-  );
-}
-
 type GreekKey = "delta" | "gamma" | "vega" | "theta" | "vanna" | "volga";
 
 // Per-axis 2nd-dimension label for the live stress grids.
@@ -724,19 +670,20 @@ export function RiskView(): JSX.Element {
   // reconciliation (§1): net 2nd-order greeks = Σ of their tenor buckets, by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
   const netVolga = pt.reduce((s, r) => s + r.volga, 0);
-  const netVega = +pt.reduce((s, r) => s + r.vega, 0).toFixed(1); // live net vega = Σ tenor buckets
-  const sumPC = +vpca.reduce((s, p) => s + p.vega, 0).toFixed(1);
-  const skewResid = +(netVega - sumPC).toFixed(1); // vega outside the 3 signal modes = incident skew
-  const SKEW_THR = 5; // |residual| above this = a leak to investigate
-  const skewLeak = Math.abs(skewResid) > SKEW_THR;
-  const rrToFlat = Math.round(Math.abs(netVanna) / 8); // RR 25Δ contracts to flatten net vanna (mechanical hedge)
   const rvDaily = +(DATA.termStructure[0]!.rv / Math.sqrt(252)).toFixed(2); // realized 1M (YZ) → daily %
   const beMove = +(Math.sqrt(2 * Math.abs(g.theta) / g.gamma) * 0.225).toFixed(2); // move_BE = √(2Θ/Γ), %/day
   const beCovered = rvDaily >= beMove;
   const utilColor = (p: number): string => (p > 80 ? "var(--neg)" : p > 60 ? "var(--warn)" : "var(--pos)");
+  // Risk-utilization rows : name · used/limit (the bar) · % (used vs the cap).
+  const utilRows = [
+    { label: "Init margin", used: fmt.usd(a.marginInit), limit: fmt.usd(a.netLiq), pct: a.marginInitPct },
+    { label: "Maint margin", used: fmt.usd(a.marginMaint), limit: fmt.usd(a.netLiq), pct: a.marginMaintPct },
+    { label: "Δ exposure", used: "$1.18M", limit: "$4.22M", pct: 28 },
+    { label: "Vega", used: "$32k", limit: "$62k", pct: 52 },
+    { label: "Γ exposure", used: "14.5k", limit: "20.4k", pct: 71 },
+  ];
   // these sub-components are defined in the prototype but not rendered in this
   // view; referenced here to keep the 1:1 port without tripping noUnusedLocals.
-  void utilColor;
   void VarCurve;
   void ReturnsBars;
   return (
@@ -745,18 +692,17 @@ export function RiskView(): JSX.Element {
         <div className="risk-overview2">
           <Panel title="Greeks & risk utilization" dataPp="greeks-util" right={<PanelLive status={risk.status} />} className="trade-block">
             <div className="gs-section-lbl">Portfolio greeks <span className="dim">· risk stock</span></div>
-            <div className="greeks-summary gs-g4">
-              <div className="gs-item"><span className="gs-lbl">Net Δ</span><b className={"mono " + pnlCls(g.delta)}>{fmt.usdk(g.delta * 1000)}</b><span className="gs-sub mono">{fmt.sgn(g.dDelta24h, 1)}k / 24h</span></div>
-              <div className="gs-item"><span className="gs-lbl">Net Γ</span><b className={"mono " + pnlCls(g.gamma)}>{g.gamma.toFixed(1)}k</b><span className="gs-sub mono">USD/pip</span></div>
-              <div className="gs-item"><span className="gs-lbl">Net Vega</span><b className={"mono " + pnlCls(g.vega)}>${g.vega.toFixed(0)}k</b><span className="gs-sub mono">{fmt.sgn(g.dVega24h, 1)}k / 24h</span></div>
-              <div className="gs-item"><span className="gs-lbl">Net Θ</span><b className={"mono " + pnlCls(g.theta)}>${g.theta.toFixed(1)}k</b><span className="gs-sub mono">/ day</span></div>
-            </div>
-            <div className="gs-section-lbl">2nd-order greeks <span className="dim">· net = Σ tenor buckets · unit $k per 1vp·1 big-fig</span></div>
-            <div className="greeks-summary gs-g3">
-              <div className="gs-item"><span className="gs-lbl">Vanna</span><b className={"mono " + pnlCls(netVanna)}>{fmt.sgn(netVanna, 0)}k</b><span className="gs-sub mono">$k/vp·fig · Σ tenor</span></div>
-              <div className="gs-item"><span className="gs-lbl">Volga</span><b className={"mono " + pnlCls(netVolga)}>{fmt.sgn(netVolga, 0)}k</b><span className="gs-sub mono">$k/vp · Σ tenor</span></div>
-              <div className="gs-item"><span className="gs-lbl">Charm</span><b className={"mono " + pnlCls(g.charm)}>{fmt.sgn(g.charm, 2)}k</b><span className="gs-sub mono">Δ drift / day</span></div>
-            </div>
+            <table className="dt greeks-table">
+              <tbody>
+                <tr><td className="l">Net Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(g.delta)}>{fmt.usdk(g.delta * 1000)}</td></tr>
+                <tr><td className="l">Net Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(g.gamma)}>{g.gamma.toFixed(1)}k</td></tr>
+                <tr><td className="l">Net Vega <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(g.vega)}>${g.vega.toFixed(0)}k</td></tr>
+                <tr><td className="l">Net Θ <em className="unit">$k/day</em></td><td className={"r mono " + pnlCls(g.theta)}>${g.theta.toFixed(1)}k</td></tr>
+                <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(netVanna)}>{fmt.sgn(netVanna, 0)}k</td></tr>
+                <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(netVolga)}>{fmt.sgn(netVolga, 0)}k</td></tr>
+                <tr><td className="l">Charm <em className="unit">$k Δ/day</em></td><td className={"r mono " + pnlCls(g.charm)}>{fmt.sgn(g.charm, 2)}k</td></tr>
+              </tbody>
+            </table>
             <div className="be-tile">
               <div className="be-l"><span className="be-lbl mono">breakeven γ–θ</span><span className="be-formula mono dim">move_BE = √(2Θ/Γ)</span></div>
               <div className="be-vals">
@@ -770,32 +716,26 @@ export function RiskView(): JSX.Element {
               <div className="gs-sub"><div className="gs-sublbl mono dim">vega by tenor · curve 1M–6M (magnitude)</div><VegaTenorLadder rows={pt} /></div>
               <div className="gs-sub"><div className="gs-sublbl mono dim">vega → PCA mode · the signal base ($k)</div><DivBars rows={vpca.map((p) => ({ label: p.mode, sub: p.name + " · " + p.var + "%", v: p.vega }))} unit="k" /></div>
             </div>
-            <div className="skew-resid">
-              <div className="sr-head">
-                <span className="sr-lbl mono">skew · hors-signal</span>
-                <RiskOnly />
-                <span className={"sr-val mono " + (skewLeak ? "warn" : "dim")}>{fmt.sgn(skewResid, 1)}k</span>
-                <span className="sr-eq dim small mono">ΣPC ({sumPC}k) + skew = net vega ({netVega}k)</span>
-              </div>
-              <div className="sr-bar"><div className="sr-fill" style={{ width: Math.min(100, Math.abs(skewResid) / (netVega || 1) * 100) + "%" }} /></div>
-              {skewLeak
-                ? <div className="sr-alert"><span className="flag-dot" />skew incident à revoir · |résiduel| &gt; {SKEW_THR}k — fuite (structure asymétrique / fill déséquilibré), pas une position</div>
-                : <div className="sr-ok dim small mono">dans le seuil (≈ 0) · aucune vue de skew au book</div>}
-              <div className="sr-neut dim small mono">neutraliser : ≈ <b>{rrToFlat} RR 25Δ 2M</b> remettent la barre à ~0 · hedge mécanique, pas une reco directionnelle</div>
-            </div>
             <div className="gs-section-lbl util-lbl">Vanna / Volga by tenor <span className="dim">· skew & convexity risk, signed · $k/vp · échelle √</span></div>
             <div className="gs-2col">
               <div className="gs-sub"><div className="gs-sublbl mono dim">vanna by tenor · dVega/dSpot (where RR lives)</div><DivBars rows={pt.map((r) => ({ label: r.tenor, v: r.vanna, flag: Math.abs(r.vanna) >= 150 ? "outlier — RR 2M domine" : null }))} unit="k" scale="sqrt" /></div>
               <div className="gs-sub"><div className="gs-sublbl mono dim">volga by tenor · dVega/dVol (where BF lives)</div><DivBars rows={pt.map((r) => ({ label: r.tenor, v: r.volga }))} unit="k" scale="sqrt" /></div>
             </div>
             <div className="gs-section-lbl util-lbl">Risk utilization <span className="dim">· used vs limit</span></div>
-            <div className="util-bars">
-              <Bar label="Init margin" used={fmt.usd(a.marginInit)} limit={fmt.usd(a.netLiq)} pct={a.marginInitPct} value={a.marginInitPct.toFixed(0) + "%"} tone="auto" />
-              <Bar label="Maint margin" used={fmt.usd(a.marginMaint)} limit={fmt.usd(a.netLiq)} pct={a.marginMaintPct} value={a.marginMaintPct.toFixed(0) + "%"} tone="auto" />
-              <Bar label="Δ exposure" used="$1.18M" limit="$4.22M" pct={28} value="28%" tone="auto" />
-              <Bar label="Vega" used="$32k" limit="$62k" pct={52} value="52%" tone="auto" />
-              <Bar label="Γ exposure" used="14.5k" limit="20.4k" pct={71} value="71%" tone="auto" />
-            </div>
+            <table className="dt util-table">
+              <tbody>
+                {utilRows.map((r) => (
+                  <tr key={r.label}>
+                    <td className="l">{r.label}</td>
+                    <td className="util-bar-cell">
+                      <div className="util-track"><div className="util-fill" style={{ width: Math.min(100, r.pct) + "%", background: utilColor(r.pct) }} /></div>
+                      <span className="util-frac dim mono">{r.used} / {r.limit}</span>
+                    </td>
+                    <td className="r mono util-pct" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </Panel>
           <div className="var-col">
             <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a.netLiq} hist={vd.hist} fresh={risk} nDays={vd.nDays} />
@@ -805,7 +745,6 @@ export function RiskView(): JSX.Element {
       </Panel>
       <StressEngine />
       <LiveLadders />
-      <ScenariosPanel />
       <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status="mock" />} pad={false} className="ladder-panel">
         <PositionBreakdown />
       </Panel>
