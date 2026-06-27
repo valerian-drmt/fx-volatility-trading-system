@@ -485,9 +485,10 @@ function DataInspector({ pipe, fresh }: {
         {chan ? <button onClick={() => setTab("ws")} style={tabStyle(view === "ws")}>WS {chan.label}</button> : null}
         {cycleCapable ? <button onClick={() => setTab("cycle")} style={tabStyle(view === "cycle")}>Cycle</button> : null}
         <span style={{ flex: 1 }} />
-        {view === "json" ? (
-          <span className="pp-mono" style={{ fontSize: 10.5, color: sc }}>{fresh.status}{fresh.asOf ? " · " + clk(new Date(fresh.asOf)) : ""}</span>
-        ) : null}
+        <span className="pp-mono" style={{ fontSize: 10.5 }}>
+          <span style={{ color: sc }}>{fresh.status}</span>
+          {fresh.asOf ? <span style={{ color: "#9aa1ae" }}> · last update {clk(new Date(fresh.asOf))}</span> : null}
+        </span>
         <button onClick={() => setOpen((o) => !o)} className="pp-mono" style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, border: "1px solid #23272f", background: "transparent", color: "#8a909c", cursor: "pointer" }}>{open ? "▾ hide" : "▸ data"}</button>
       </div>
       {open ? (
@@ -581,8 +582,7 @@ function Stage({ pipe, statuses, resolveNode, asOf, domainFresh }: { pipe: Panel
         <span style={{ fontSize: 14, fontWeight: 600, color: "#eef1f6" }}>{pipe.panel}</span>
         <span className="pp-mono" style={{ fontSize: 9, letterSpacing: ".14em", color: "#5a606e" }}>{pipe.isolated || pipe.id === "ticker" ? "PANEL" : "VIEW"} · {VIEW_LABEL[pipe.view]}</span>
         <span style={{ flex: 1 }} />
-        <span className="pp-mono" style={{ fontSize: 10.5, color: "#7b8494" }} title="how often this panel's data refreshes in the desk">↻ {CADENCE[pipe.domain]}</span>
-        <span className="pp-mono" style={{ fontSize: 11, color: "#3a3f49" }}>·</span>
+        <span className="pp-mono" style={{ fontSize: 11.5, fontWeight: 600, color: "#9fe0b6", background: "rgba(62,196,109,.12)", border: "1px solid rgba(62,196,109,.32)", borderRadius: 6, padding: "3px 10px", letterSpacing: ".02em" }} title="how often this panel's data refreshes in the desk">↻ refresh {CADENCE[pipe.domain]}</span>
         <span className="pp-mono" style={{ fontSize: 11, color: stampColor }}>{stampText}</span>
       </div>
 
