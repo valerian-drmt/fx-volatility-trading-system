@@ -429,7 +429,7 @@ function StressEngine(): JSX.Element {
       <div className="stress-2x2">
         <Panel title="Spot × Time" right={<span className="dim mono small">decay</span>} className="trade-block"><LiveStressGrid d={g[0] ?? null} status={live.status} /></Panel>
         <Panel title="Spot × ΔVol ∥ ATM" right={<span className="dim mono small">level only</span>} className="trade-block"><LiveStressGrid d={g[1] ?? null} status={live.status} /></Panel>
-        <Panel title="Spot × Skew (ΔRR)" right={<RiskOnly text="risk-only · pas de signal" />} className="trade-block"><LiveStressGrid d={g[2] ?? null} status={live.status} /></Panel>
+        <Panel title="Spot × Skew (ΔRR)" className="trade-block"><LiveStressGrid d={g[2] ?? null} status={live.status} /></Panel>
         <Panel title="Spot × Fly (ΔBF)" className="trade-block"><LiveStressGrid d={g[3] ?? null} status={live.status} /></Panel>
       </div>
     </Panel>
@@ -603,13 +603,26 @@ export function RiskView(): JSX.Element {
   const netVolga = pt.reduce((s, r) => s + r.volga, 0);
   const utilColor = (p: number): string => (p > 80 ? "var(--neg)" : p > 60 ? "var(--warn)" : "var(--pos)");
   const pctOf = (used: number, cap: number | undefined): number => (cap && cap > 0 ? Math.min(100, (Math.abs(used) / cap) * 100) : 0);
-  // Risk-utilization rows : name · used/limit (the bar) · % (used vs the cap). All live.
+  // Greek caps — desk risk policy, all anchored to LIVE inputs (no mock):
+  //   • Δ band  = DELTA_BAND_PCT of net-liq (NLV). A vol book is delta-hedged;
+  //               the band is the rehedge/alert trigger, sized to capital.
+  //   • Vega    = the configured max book vega (risk config max_book_vega_usd).
+  //   • Γ cap   = Δ band / GAMMA_STRESS_PIPS, i.e. a 1-big-figure spot move must
+  //               not drift delta (Γ·ΔS) beyond the Δ band.
+  const NLV = a?.netLiq ?? 0;
+  const DELTA_BAND_PCT = 0.10;     // 10% of capital
+  const GAMMA_STRESS_PIPS = 100;   // 1 big figure
+  const deltaCap = DELTA_BAND_PCT * NLV;
+  const vegaCap = lim?.vegaCapUsd ?? 0;
+  const gammaCap = deltaCap / GAMMA_STRESS_PIPS;
+  const capk = (c: number): string => (c > 0 ? fmt.usdk(c) : "—");
+  // Risk-utilization rows : name · used / cap · % (used vs the cap). All live.
   const utilRows = [
     { label: "Init margin", used: a ? fmt.usd(a.marginInit) : "—", limit: a ? fmt.usd(a.netLiq) : "—", pct: a?.marginInitPct ?? 0 },
     { label: "Maint margin", used: a ? fmt.usd(a.marginMaint) : "—", limit: a ? fmt.usd(a.netLiq) : "—", pct: a?.marginMaintPct ?? 0 },
-    { label: "Δ exposure", used: fmt.usdk(Math.abs(nd)), limit: lim ? fmt.usdk(lim.deltaBandUsd) : "—", pct: pctOf(nd, lim?.deltaBandUsd) },
-    { label: "Vega", used: fmt.usdk(Math.abs(nv)), limit: lim ? fmt.usdk(lim.vega.cap) : "—", pct: pctOf(nv, lim?.vega.cap) },
-    { label: "Γ exposure", used: fmt.usdk(Math.abs(ngm)), limit: lim ? fmt.usdk(lim.gamma.cap) : "—", pct: pctOf(ngm, lim?.gamma.cap) },
+    { label: "Δ exposure", used: fmt.usdk(Math.abs(nd)), limit: capk(deltaCap), pct: pctOf(nd, deltaCap) },
+    { label: "Vega", used: fmt.usdk(Math.abs(nv)), limit: capk(vegaCap), pct: pctOf(nv, vegaCap) },
+    { label: "Γ exposure", used: fmt.usdk(Math.abs(ngm)), limit: capk(gammaCap), pct: pctOf(ngm, gammaCap) },
   ];
   // these sub-components are defined in the prototype but not rendered in this
   // view; referenced here to keep the 1:1 port without tripping noUnusedLocals.
