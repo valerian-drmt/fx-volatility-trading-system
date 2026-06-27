@@ -4,7 +4,7 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { useEffect, useRef, useState } from "react";
-import { fetchGreekLimits, fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
+import { fetchGreekLimits, fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchPnlAttribution, fetchStressGrid } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -14,7 +14,7 @@ import { fmt } from "../data";
 import type { Position } from "../data";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreekLimits, adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type GreekLimits, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
+import { adaptGreekLimits, adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptPnlAttributionByPosition, adaptStressGrid, type GreekLimits, type LiveLadder, type MarginalVarData, type PinRiskRow, type PositionAttrib, type StressGridData } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -191,9 +191,7 @@ function EmpiricalHist({ hist, var95, var99, es99, retk, letter, h = 88 }: { his
 interface VarRow {
   id: string;
   lbl: string;
-  m: number;
-  ret: number;
-  ratio: number;
+  days: number; // horizon in trading days → √t scaling (1 / 5 / 21 / 252)
 }
 interface VarCalc {
   v95: number;
@@ -201,34 +199,37 @@ interface VarCalc {
   es: number;
   retk: number;
   muZ: number;
-  esZ: number;
 }
 
-function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; var99: number; es99: number; netLiq: number; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
+function VarCard({ var95, var99, es99, meanDaily, hist, fresh }: { var95: number; var99: number; es99: number; meanDaily: number; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
   const base95 = var95,
     base99 = var99;
-  const NL = netLiq;
   const rows: VarRow[] = [
-    { id: "1d", lbl: "Daily", m: 1, ret: 0.92, ratio: 1.16 },
-    { id: "1w", lbl: "Weekly", m: 2.6, ret: 2.1, ratio: 1.19 },
-    { id: "1M", lbl: "Monthly", m: 4.8, ret: 4.6, ratio: 1.25 },
-    { id: "1Y", lbl: "Yearly", m: 15.9, ret: 18.3, ratio: 1.34 },
+    { id: "1d", lbl: "Daily", days: 1 },
+    { id: "1w", lbl: "Weekly", days: 5 },
+    { id: "1M", lbl: "Monthly", days: 21 },
+    { id: "1Y", lbl: "Yearly", days: 252 },
   ];
+  // ES/VaR is horizon-invariant under √t scaling → the live 1d ratio holds for
+  // every row (no hardcoded per-horizon ratio).
+  const ratio = base99 ? es99 / base99 : 0;
   const [tf, setTf] = useState("1d");
   const kc = (vk: number): string => { const s = vk < 0 ? "−" : "+"; const a = Math.abs(vk); return s + "$" + (a >= 1000 ? (a / 1000).toFixed(2) + "M" : Math.round(a) + "k"); };
   const calc = (r: VarRow): VarCalc => {
-    const v95 = base95 * r.m,
-      v99 = base99 * r.m,
-      // live 1d ES from the endpoint; longer horizons use the √t-scaled ES/VaR ratio.
-      es = r.id === "1d" ? es99 : v99 * r.ratio;
-    const retk = (r.ret / 100) * NL / 1000;
+    // √t scaling derived from the horizon (not hardcoded multipliers).
+    const m = Math.sqrt(r.days);
+    const v95 = base95 * m,
+      v99 = base99 * m,
+      es = es99 * m;                          // live 1d ES, √t-scaled
+    const retk = meanDaily * r.days;          // live mean daily P&L ($k) × horizon
     const sig = Math.abs(v95) / 1.645;
-    return { v95, v99, es, retk, muZ: retk / sig, esZ: -2.326 * r.ratio };
+    return { v95, v99, es, retk, muZ: sig ? retk / sig : 0 };
   };
   const sel = rows.find((r) => r.id === tf) ?? rows[0]!,
     c = calc(sel);
   // empirical 1d distribution scaled to the selected horizon (same √t the table uses).
-  const histScaled = hist.map((b) => ({ lo: b.lo * sel.m, hi: b.hi * sel.m, count: b.count }));
+  const selM = Math.sqrt(sel.days);
+  const histScaled = hist.map((b) => ({ lo: b.lo * selM, hi: b.hi * selM, count: b.count }));
   const letter = ({ "1d": "D", "1w": "W", "1M": "M", "1Y": "Y" } as Record<string, string>)[sel.id] ?? "D";
   return (
     <Panel title="Value at Risk" dataPp="var" right={<PanelLive status={fresh.status} />} className="stress-panel">
@@ -260,7 +261,7 @@ function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; v
                       <td className="r mono neg">{kc(x.v95)}</td>
                       <td className="r mono neg">{kc(x.v99)}</td>
                       <td className="r mono neg">{kc(x.es)}</td>
-                      <td className={"r mono " + (r.ratio >= 1.25 ? "warn" : "dim")}>{r.ratio.toFixed(2)}</td>
+                      <td className={"r mono " + (ratio >= 1.25 ? "warn" : "dim")}>{ratio.toFixed(2)}</td>
                     </tr>
                   );
                 })}
@@ -351,11 +352,12 @@ const STRESS_AXES = ["spot-time", "spot-vol", "spot-skew", "spot-fly"] as const;
 // output change (the four axes in parallel).
 function PositionBreakdown({ positions }: { positions: Position[] }): JSX.Element {
   const rows = positions;
+  // Live per-position P&L attribution over the last 24h (Taylor decomposition
+  // from /pnl-attribution) — replaces the old hardcoded 0.35/0.07/0.003 factors.
+  const attrib = useFetch<Record<string, PositionAttrib>>(
+    () => fetchPnlAttribution(24).then(adaptPnlAttributionByPosition), 60_000,
+  ).data ?? {};
   const k = (v: number | null, d = 2): string => v == null ? "—" : (v >= 0 ? "+" : "-") + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(2) + "k" : Math.abs(v).toFixed(d));
-  const dC = (p: typeof rows[number]): number => Math.round(p.delta * 0.35);
-  const tC = (p: typeof rows[number]): number | null => p.iv ? +(p.theta * 0.07).toFixed(2) : null;
-  const vC = (p: typeof rows[number]): number | null => p.iv ? +(p.vega * 0.003).toFixed(2) : null;
-  const resid = (p: typeof rows[number]): number => Math.round(p.pnl - dC(p) - (tC(p) || 0));
   const col = (v: number | null): string => "r mono " + (v == null ? "dim" : pnlCls(v));
   return (
     <>
@@ -366,15 +368,17 @@ function PositionBreakdown({ positions }: { positions: Position[] }): JSX.Elemen
               <th className="l grp-fix">Trade</th><th className="l grp-fix">Contract</th><th className="l grp-fix">Product</th><th className="l grp-fix">Structure</th><th className="l grp-fix">Side</th>
               <th className="r grp-fix">Tenor</th><th className="r grp-fix">IV</th><th className="r grp-fix">Nominal €</th>
               <th className="r grp-grk col-grp">Δ$</th><th className="r grp-grk">Γ</th><th className="r grp-grk">Vega</th><th className="r grp-grk">Θ</th><th className="r grp-grk">Vanna</th><th className="r grp-grk col-grp-end">Volga</th>
-              <th className="r grp-pnl col-grp">P&L 1d</th><th className="r grp-pnl">P&L 1w</th><th className="r grp-pnl col-grp-end">P&L 1M</th>
-              <th className="r grp-att col-grp">Δ contrib</th><th className="r grp-att">Θ contrib</th><th className="r grp-att">Vega contrib</th><th className="r grp-att col-grp-end">Residual</th>
+              <th className="r grp-pnl col-grp col-grp-end">P&L 1d</th>
+              <th className="r grp-att col-grp">Δ contrib</th><th className="r grp-att">Θ contrib</th><th className="r grp-att">Vega contrib</th><th className="r grp-att col-grp-end">Residual <span className="th-sub">24h</span></th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={22} className="l dim small mono" style={{ padding: "16px 10px" }}>no open positions</td></tr>
+              <tr><td colSpan={19} className="l dim small mono" style={{ padding: "16px 10px" }}>no open positions</td></tr>
             )}
-            {rows.map((p) => (
+            {rows.map((p) => {
+              const at = attrib[p.id];
+              return (
               <tr key={p.id}>
                 <td className="l grp-fix mono dim">{p.tradeId || p.packageId || "—"}</td>
                 <td className="l grp-fix mono dim">{p.conId || "—"}</td>
@@ -390,15 +394,14 @@ function PositionBreakdown({ positions }: { positions: Position[] }): JSX.Elemen
                 <td className={(p.iv ? col(p.theta) : "r mono dim") + " grp-grk"}>{p.iv ? k(p.theta) : "—"}</td>
                 <td className={(p.iv ? col(p.vanna) : "r mono dim") + " grp-grk"}>{p.iv ? k(p.vanna) : "—"}</td>
                 <td className={(p.iv ? col(p.volga) : "r mono dim") + " grp-grk col-grp-end"}>{p.iv ? k(p.volga) : "—"}</td>
-                <td className={col(p.pnl) + " grp-pnl col-grp"}>{fmt.usdk(p.pnl)}</td>
-                <td className={col(Math.round(p.pnl * 2.6)) + " grp-pnl"}>{fmt.usdk(Math.round(p.pnl * 2.6))}</td>
-                <td className={col(Math.round(p.pnl * 4.8)) + " grp-pnl col-grp-end"}>{fmt.usdk(Math.round(p.pnl * 4.8))}</td>
-                <td className={col(dC(p)) + " grp-att col-grp"}>{k(dC(p))}</td>
-                <td className={col(tC(p)) + " grp-att"}>{k(tC(p))}</td>
-                <td className={col(vC(p)) + " grp-att"}>{k(vC(p))}</td>
-                <td className={col(resid(p)) + " grp-att col-grp-end"}>{k(resid(p))}</td>
+                <td className={col(p.pnl) + " grp-pnl col-grp col-grp-end"}>{fmt.usdk(p.pnl)}</td>
+                <td className={col(at?.deltaPnl ?? null) + " grp-att col-grp"}>{k(at?.deltaPnl ?? null)}</td>
+                <td className={col(at?.thetaPnl ?? null) + " grp-att"}>{k(at?.thetaPnl ?? null)}</td>
+                <td className={col(at?.vegaPnl ?? null) + " grp-att"}>{k(at?.vegaPnl ?? null)}</td>
+                <td className={col(at?.residual ?? null) + " grp-att col-grp-end"}>{k(at?.residual ?? null)}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -597,7 +600,7 @@ export function RiskView(): JSX.Element {
   const nd = ng?.netDelta ?? 0, ngm = ng?.netGamma ?? 0, nv = ng?.netVega ?? 0, nt = ng?.netTheta ?? 0;
   // No live VaR yet (history < min window → backend returns null): show honest
   // zeros + "building window…", NOT a fabricated mock VaR scaled across horizons.
-  const vd = risk.data ?? { var95: 0, var99: 0, es99: 0, nDays: 0, hist: [], perTenor: [] };
+  const vd = risk.data ?? { var95: 0, var99: 0, es99: 0, meanDaily: 0, nDays: 0, hist: [], perTenor: [] };
   const pt = vd.perTenor; // vega/vanna/volga by tenor ($k) — live (PR 5)
   // net 2nd-order greeks = Σ of their tenor buckets (live), by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
@@ -679,7 +682,7 @@ export function RiskView(): JSX.Element {
         </Panel>
           <CalendarPanel />
         </div>
-        <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} netLiq={a?.netLiq ?? 0} hist={vd.hist} fresh={risk} />
+        <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} hist={vd.hist} fresh={risk} />
       </div>
       <StressEngine />
       <LiveLadders />

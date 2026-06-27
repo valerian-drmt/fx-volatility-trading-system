@@ -171,6 +171,7 @@ export function adaptVar(raw: unknown): VarData {
     var_95_usd?: number | null;
     var_99_usd?: number | null;
     es_99_usd?: number | null;
+    mean_daily_usd?: number | null;
     n_days?: number | null;
     hist?: { lo?: number; hi?: number; count?: number }[];
   };
@@ -183,6 +184,7 @@ export function adaptVar(raw: unknown): VarData {
     var95: n(v.var_95_usd) / 1000,
     var99: n(v.var_99_usd) / 1000,
     es99: n(v.es_99_usd) / 1000,
+    meanDaily: n(v.mean_daily_usd) / 1000,
     nDays: v.n_days ?? 0,
     hist,
     perTenor: [],
@@ -389,6 +391,40 @@ export function adaptVegaPca(raw: unknown): VegaPcaRow[] {
     vega: r1(n(p.vega_usd) / 1000),
     var: n(p.variance_pct),
   }));
+}
+
+export interface PositionAttrib {
+  deltaPnl: number | null;
+  gammaPnl: number | null;
+  vegaPnl: number | null;
+  thetaPnl: number | null;
+  residual: number | null;
+}
+
+/** /portfolio/pnl-attribution per_position → live Taylor P&L decomposition by
+ * position id (Δ/Γ/Vega/Θ contributions + residual over the lookback window). */
+export function adaptPnlAttributionByPosition(raw: unknown): Record<string, PositionAttrib> {
+  const rows = ((raw ?? {}) as {
+    per_position?: {
+      id?: number | string;
+      delta_pnl_usd?: number | null;
+      gamma_pnl_usd?: number | null;
+      vega_pnl_usd?: number | null;
+      theta_pnl_usd?: number | null;
+      residual_usd?: number | null;
+    }[];
+  }).per_position ?? [];
+  const out: Record<string, PositionAttrib> = {};
+  for (const r of rows) {
+    out[String(r.id ?? "")] = {
+      deltaPnl: r.delta_pnl_usd ?? null,
+      gammaPnl: r.gamma_pnl_usd ?? null,
+      vegaPnl: r.vega_pnl_usd ?? null,
+      thetaPnl: r.theta_pnl_usd ?? null,
+      residual: r.residual_usd ?? null,
+    };
+  }
+  return out;
 }
 
 export interface GreekLimits {

@@ -1357,10 +1357,14 @@ async def value_at_risk(db: DbDep) -> dict[str, Any]:
         if (rows[i][0] - rows[i - 1][0]).days <= _VAR_MAX_GAP_DAYS
     ]
     stats = _var_stats(deltas)
+    mean_daily = sum(deltas) / len(deltas) if deltas else None
     return {
         "computed_at": datetime.now(UTC).isoformat(),
         "method": "historical",
         "n_days": len(deltas),
+        # live mean daily P&L → the table's expected-return column (× horizon),
+        # no longer a hardcoded assumed return.
+        "mean_daily_usd": round(mean_daily, 2) if mean_daily is not None else None,
         "var_95_usd": round(stats["var_95"], 2) if stats else None,
         "var_99_usd": round(stats["var_99"], 2) if stats else None,
         "es_99_usd": round(stats["es_99"], 2) if stats else None,

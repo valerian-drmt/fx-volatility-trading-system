@@ -43,6 +43,7 @@ export interface VarData {
   var95: number;
   var99: number;
   es99: number;
+  meanDaily: number; // live mean daily P&L ($k) — drives the expected-return column
   nDays: number;
   hist: HistBin[];
   perTenor: TenorRisk[];
