@@ -1362,13 +1362,13 @@ input,select{font-family:inherit;font-size:13px}
 /* Risk · simplified greeks (2-col) + utilization (3-col) tables — bigger/scannable */
 .greeks-table{width:100%;margin:4px 0 10px}
 .greeks-table td{padding:6px 10px;font-size:12.5px;border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
-.greeks-table td.l{color:var(--fg);font-weight:600}
+.greeks-table td.l{color:var(--fg);font-weight:400}
 .greeks-table td.l .unit,.util-table td.l .unit{font-weight:400;color:var(--text-dim);font-size:10.5px;margin-left:4px;font-style:normal}
-.greeks-table td.r{font-size:13px;font-weight:700;text-align:right}
+.greeks-table td.r{font-size:13px;font-weight:400;text-align:right}
 .util-table{width:100%;margin:4px 0 6px}
 .util-table td{padding:6px 10px;font-size:12.5px;vertical-align:middle}
-.util-table td.l{color:var(--fg);font-weight:600;white-space:nowrap}
-.util-table td.util-pct{font-size:13px;font-weight:700;text-align:right;white-space:nowrap}
+.util-table td.l{color:var(--fg);font-weight:400;white-space:nowrap}
+.util-table td.util-pct{font-size:13px;font-weight:400;text-align:right;white-space:nowrap}
 .util-bar-cell{width:99%}
 .util-track{height:9px;border-radius:5px;background:color-mix(in srgb,var(--line) 60%,transparent);overflow:hidden}
 .util-fill{height:100%;border-radius:5px;transition:width .2s}
