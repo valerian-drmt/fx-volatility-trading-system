@@ -392,7 +392,8 @@ export function adaptVegaPca(raw: unknown): VegaPcaRow[] {
 }
 
 export interface MarginalVarRow {
-  label: string;
+  trade: string; // trade / package id (T-… / PKG-…) or "—"
+  label: string; // product label
   factor: string; // dominant greek: spot | level | skew | curv
   standalone: number; // USD loss
   component: number; // USD contribution to portfolio VaR (signed)
@@ -409,6 +410,7 @@ export interface MarginalVarData {
 interface MVarResp {
   positions?: {
     label?: string;
+    trade?: string | null;
     factor?: string;
     standalone_usd?: number | null;
     component_usd?: number | null;
@@ -422,6 +424,7 @@ interface MVarResp {
 export function adaptMarginalVar(raw: unknown): MarginalVarData {
   const o = (raw ?? {}) as MVarResp;
   const rows = (o.positions ?? []).map((r) => ({
+    trade: r.trade ?? "—",
     label: r.label ?? "",
     factor: r.factor ?? "spot",
     standalone: n(r.standalone_usd),

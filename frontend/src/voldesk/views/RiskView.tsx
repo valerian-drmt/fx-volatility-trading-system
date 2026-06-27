@@ -494,19 +494,19 @@ function MarginalVarPanel(): JSX.Element {
   const live = useFetch<MarginalVarData>(() => fetchMarginalVar().then(adaptMarginalVar), 120_000);
   const d = live.data;
   const rows = d?.rows ?? [];
-  const facColor: Record<string, string> = { skew: "#a78bfa", level: "var(--accent)", spot: "var(--warn)", curv: "var(--pos)" };
   const money = (v: number): string => { const a = Math.abs(v); const m = a >= 1000 ? (a / 1000).toFixed(1) + "k" : Math.round(a).toString(); return (v >= 0 ? "-$" : "+$") + m; };
   return (
     <Panel title="Marginal contribution to VaR" dataPp="marginal-var" right={<PanelLive status={live.status} />} className="trade-block" pad={false}>
       <div className="table-scroll">
         <table className="dt">
-          <thead><tr><th className="l">Position</th><th className="r">standalone</th><th className="r">component</th><th className="r">% VaR</th></tr></thead>
+          <thead><tr><th className="l">Trade</th><th className="l">Product</th><th className="r">standalone</th><th className="r">component</th><th className="r">% VaR</th></tr></thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td className="l dim mono small" colSpan={4}>{live.status === "missing" ? "no open book" : d && d.nDays < 5 ? "accumulating history (≈5d)…" : "loading…"}</td></tr>
+              <tr><td className="l dim mono small" colSpan={5}>{live.status === "missing" ? "no open book" : d && d.nDays < 5 ? "accumulating history (≈5d)…" : "loading…"}</td></tr>
             ) : rows.map((m, i) => (
               <tr key={i}>
-                <td className="l mono"><span className="mvar-dot" style={{ background: facColor[m.factor] ?? "var(--muted)" }} title={"driver: " + m.factor} />{m.label}</td>
+                <td className="l mono dim">{m.trade}</td>
+                <td className="l mono">{m.label}</td>
                 <td className="r mono dim">{money(m.standalone)}</td>
                 <td className={"r mono " + (m.component >= 0 ? "neg" : "pos")}>{money(m.component)}</td>
                 <td className="r mono">{m.pct.toFixed(1)}%</td>
@@ -515,7 +515,8 @@ function MarginalVarPanel(): JSX.Element {
           </tbody>
           {rows.length > 0 && d ? (
             <tfoot><tr>
-              <td className="l mono">Portfolio <span className="dim">· diversif. {d.diversification}%</span></td>
+              <td className="l mono" />
+              <td className="l mono">Total</td>
               <td className="r mono dim">—</td>
               <td className="r mono neg">{money(d.portfolioVar)}</td>
               <td className="r mono">100%</td>

@@ -650,6 +650,11 @@ async def marginal_var(db: DbDep) -> dict[str, Any]:
         }
         meta[str(pos.id)] = {
             "label": pos.product_label or pos.structure,
+            "trade": (
+                f"T-{pos.trade_id}" if pos.trade_id is not None
+                else f"PKG-{pos.package_id}" if pos.package_id is not None
+                else None
+            ),
             "factor": max(cand, key=lambda k: cand[k]),
         }
     rows = (await db.execute(text("""
@@ -673,6 +678,7 @@ async def marginal_var(db: DbDep) -> dict[str, Any]:
     res = component_var(series_by_id)
     out = [
         {**row, "label": meta.get(row["id"], {}).get("label", row["id"]),
+         "trade": meta.get(row["id"], {}).get("trade"),
          "factor": meta.get(row["id"], {}).get("factor", "spot")}
         for row in res["positions"]
     ]
