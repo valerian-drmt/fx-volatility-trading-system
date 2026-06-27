@@ -524,6 +524,9 @@ function Stage({ pipe, statuses, resolveNode, asOf, domainFresh }: { pipe: Panel
   };
   const onMouseUp = (): void => { dragRef.current = null; setGrabbing(false); };
   const onWheel = (e: React.WheelEvent): void => {
+    // Over the live panel screen → let it scroll natively (no canvas zoom).
+    // Anywhere else on the canvas → zoom. Avoids the scroll+zoom double effect.
+    if ((e.target as HTMLElement).closest?.(".pp-screen")) return;
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
     const px = e.clientX - rect.left;
