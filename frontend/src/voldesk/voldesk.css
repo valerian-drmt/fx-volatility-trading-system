@@ -1329,13 +1329,16 @@ input,select{font-family:inherit;font-size:13px}
 .var-tf-group{display:flex;gap:6px;padding:8px 12px 2px;flex-wrap:wrap}
 .var-tf-group .chip{font-size:12px}
 
-/* Risk · row 1 — Greeks panel (left) + Value at Risk (right), same width */
-.risk-row1{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
-.risk-row1 > .panel{margin-bottom:0}
-.greeks-2x2{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+/* Risk · row 1 — Greeks panel (left) + Value at Risk (right), same width.
+   minmax(0,1fr) (not the default minmax(auto,1fr)) keeps each half at 50% even
+   when an inner table is wider than the track — it scrolls instead of pushing
+   the Value-at-Risk panel onto the next row. */
+.risk-row1{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}
+.risk-row1 > .panel{margin-bottom:0;min-width:0}
+.greeks-2x2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
+.greeks-2x2 > .panel{min-width:0}
 /* Value at Risk column — table / graph / marginal contribution stacked 1x3 */
 .var-1x3{display:flex;flex-direction:column;gap:10px}
-@media(max-width:1100px){.risk-row1,.greeks-2x2{grid-template-columns:1fr}}
 
 /* Risk · greeks (left) + utilization (right) side by side */
 .gu-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
