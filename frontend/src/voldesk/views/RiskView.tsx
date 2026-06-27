@@ -307,17 +307,6 @@ function VarCard({ var95, var99, es99, netLiq, hist, fresh }: { var95: number; v
   );
 }
 
-function HeatLegend({ note }: { note: string }): JSX.Element {
-  return (
-    <div className="heat-legend">
-      <span className="hl-cap mono neg">− loss</span>
-      <div className="hl-bar" />
-      <span className="hl-cap mono pos">gain +</span>
-      <span className="hl-note dim mono">{note}</span>
-    </div>
-  );
-}
-
 type GreekKey = "delta" | "gamma" | "vega" | "theta" | "vanna" | "volga";
 
 // Per-axis 2nd-dimension label for the live stress grids.
@@ -466,7 +455,6 @@ function StressEngine(): JSX.Element {
         <Panel title="Spot × Skew (ΔRR)" right={<RiskOnly text="risk-only · pas de signal" />} className="trade-block"><LiveStressGrid d={g[2] ?? null} status={live.status} /></Panel>
         <Panel title="Spot × Fly (ΔBF)" className="trade-block"><LiveStressGrid d={g[3] ?? null} status={live.status} /></Panel>
       </div>
-      <HeatLegend note={(out === "pnl" ? "portfolio P&L" : labels[out] + " value") + " · value printed in cell · color normalized per grid · RR is ~vega-neutral in Spot×Vol → its risk only shows in Spot×Skew"} />
     </Panel>
   );
 }
