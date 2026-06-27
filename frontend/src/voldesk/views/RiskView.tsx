@@ -606,7 +606,7 @@ function LiveLadderTable({ title, right, axisLbl, d, status }: {
   status: Fresh<unknown>["status"];
 }): JSX.Element {
   const kg = (v: number): string => { const s = v >= 0 ? "+" : "-"; const a = Math.abs(v); return a >= 1000 ? s + (a / 1000).toFixed(1) + "k" : s + Math.round(a); };
-  const heads = ["P&L", "Δ", "Γ", "Vega", "Hedge Δ"];
+  const heads = ["P&L", "Δ", "Γ", "Vega"];
   const rows = d?.rows ?? [];
   return (
     <Panel title={title} right={right} className="trade-block" pad={false}>
@@ -615,7 +615,7 @@ function LiveLadderTable({ title, right, axisLbl, d, status }: {
           <thead><tr><th className="l">{axisLbl}</th>{heads.map((h) => <th key={h} className="r">{h}</th>)}</tr></thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td className="l dim mono small" colSpan={6}>{status === "missing" ? "no book / no spot" : "loading…"}</td></tr>
+              <tr><td className="l dim mono small" colSpan={5}>{status === "missing" ? "no book / no spot" : "loading…"}</td></tr>
             ) : rows.map((l, i) => (
               <tr key={i} className={l.isNow ? "row-now ladder-anchor" : ""}>
                 <td className="l mono">{l.label}{l.spot != null ? <span className="dim"> {l.spot.toFixed(4)}</span> : null}</td>
@@ -623,7 +623,6 @@ function LiveLadderTable({ title, right, axisLbl, d, status }: {
                 <td className={"r mono " + pnlCls(l.delta)}>{kg(l.delta)}</td>
                 <td className={"r mono " + pnlCls(l.gamma)}>{kg(l.gamma)}</td>
                 <td className={"r mono " + pnlCls(l.vega)}>{kg(l.vega)}</td>
-                <td className={"r mono " + pnlCls(l.hedge)}>{kg(l.hedge)}</td>
               </tr>
             ))}
           </tbody>
