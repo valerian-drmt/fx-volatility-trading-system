@@ -37,8 +37,9 @@ export interface TenorRisk {
   n: number;
 }
 /** Risk view live data (PR 5): VaR values ($k) + empirical histogram + 2nd-order
- * by tenor. factors/marginal/vega-PCA + the stress grids/ladders remain mock
- * (separate G-risk frontend wiring) → flagged in 09. */
+ * by tenor. Stress grids, greeks ladders, marginal-VaR and pin-risk are now all
+ * wired to live endpoints (fetchStressGrid / fetchGreeksLadder / fetchMarginalVar
+ * / fetchPinRisk) — no longer mock. */
 export interface VarData {
   var95: number;
   var99: number;
@@ -135,7 +136,8 @@ export interface DeskData {
   trade: Fresh<TradeData>;
   /** Portfolio : capital, perf-stats, attribution, book composition. Live (PR 3). */
   portfolio: Fresh<PortfolioData>;
-  /** Risk : 1-day VaR card values (PR 5). Stress grids/ladders/factors stay mock. */
+  /** Risk : 1-day VaR card values (PR 5). Stress grids / ladders / marginal-VaR
+   * / pin-risk are all live now (their own fetch hooks), not mock. */
   risk: Fresh<VarData>;
   /** Live EURUSD spot tick (bid/ask/mid) via /ws/ticks (RT.1). */
   ticks: Fresh<TickMsg>;
