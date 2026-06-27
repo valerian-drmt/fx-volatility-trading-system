@@ -13,6 +13,7 @@ P1 + P2 + P3 shipped.
 """
 from __future__ import annotations
 
+import statistics
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
@@ -34,6 +35,7 @@ from persistence.models import (  # noqa: F401
     OpenPosition,
     OpenPositionHistory,
     PcaModel,
+    RegimeSnapshot,
     VolSurface,
 )
 from shared.contracts import parse_local_symbol
@@ -1388,8 +1390,9 @@ async def greek_limits(db: DbDep) -> dict[str, Any]:
     onto delta/vega/gamma/cross by inverting each axis' shock. ``nav_base`` is
     the slow anchor (0.9·high-water-mark ∨ EWMA-20d of the daily net-liq series)
     so a drawdown does not procyclically tighten every cap at once. The live NAV
-    is returned for display only. ``regime_mult`` is 1.0 until the vol-regime
-    feed is wired (§8). Fields are 0 until ~enough net-liq history + a spot exist.
+    is returned for display only. ``regime_mult`` (§8) scales the caps down as the
+    prevailing vol rises above its recent typical level. Fields are 0 until
+    ~enough net-liq history + a spot exist.
     """
     nl_sql = text("""
         WITH daily AS (
@@ -1421,7 +1424,25 @@ async def greek_limits(db: DbDep) -> dict[str, Any]:
         halflife=params.get("nav_halflife_days", gl.CONFIG_DEFAULTS["nav_halflife_days"]),
     ) or 0.0
     spot_f = float(spot) if spot is not None else 0.0
-    regime = 1.0  # TODO §8: implied_vol / calm_baseline, clamped [1,3]
+    # §8 — regime scaling: tighten caps when current vol is elevated vs its recent
+    # typical level. regime_mult = clamp(current / median(last 90d), 1, 3), both
+    # read from regime_snapshot.vol_level_pct so the ratio is unit-independent (no
+    # calm-baseline constant to guess). Falls back to 1.0 when history is thin.
+    vol_levels = [
+        float(r[0]) for r in (await db.execute(
+            select(RegimeSnapshot.vol_level_pct)
+            .where(
+                RegimeSnapshot.vol_level_pct.is_not(None),
+                RegimeSnapshot.timestamp >= datetime.now(UTC) - timedelta(days=90),
+            )
+            .order_by(RegimeSnapshot.timestamp)
+        )).all()
+    ]
+    regime = 1.0
+    if len(vol_levels) >= 10:
+        baseline = statistics.median(vol_levels)
+        if baseline > 0:
+            regime = max(1.0, min(3.0, vol_levels[-1] / baseline))
     caps = gl.compute_caps(nav_b, spot_f, regime, params=params)
     return {
         "computed_at": datetime.now(UTC).isoformat(),
