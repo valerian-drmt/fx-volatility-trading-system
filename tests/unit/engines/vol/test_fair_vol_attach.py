@@ -69,3 +69,58 @@ async def test_attach_fair_vol_awaits_async_fetcher():
     out = {"1M": {"atm": {"iv": 0.065}, "dte": 30}}
     await eng._attach_fair_vol(out)
     assert out.get("_rv_full_pct", 0) > 0
+
+
+async def test_attach_fair_vol_caches_block_on_unchanged_bars(monkeypatch):
+    """P0/P1 : the heavy OHLC block (RV windows + GARCH + HAR) is computed once
+    per new bar and reused verbatim on unchanged OHLC — the second cycle must
+    NOT re-run the fits, yet produce identical fair-vol fields."""
+    import engines.vol.engine as mod
+
+    df = _ohlc()
+    eng = _engine(lambda: df)
+
+    calls = {"n": 0}
+    real = mod._compute_fair_vol_block
+
+    def _counting(ohlc, tenor_t):
+        calls["n"] += 1
+        return real(ohlc, tenor_t)
+
+    monkeypatch.setattr(mod, "_compute_fair_vol_block", _counting)
+
+    out1 = {"1M": {"atm": {"iv": 0.065}, "dte": 30}, "6M": {"atm": {"iv": 0.085}, "dte": 180}}
+    await eng._attach_fair_vol(out1)
+    out2 = {"1M": {"atm": {"iv": 0.065}, "dte": 30}, "6M": {"atm": {"iv": 0.085}, "dte": 180}}
+    await eng._attach_fair_vol(out2)
+
+    # Heavy block computed exactly once across the two unchanged cycles.
+    assert calls["n"] == 1
+    # Outputs identical on the cached cycle.
+    assert out1["_rv_full_pct"] == out2["_rv_full_pct"]
+    assert out1["1M"]["rv_pct"] == out2["1M"]["rv_pct"]
+    assert out1.get("_garch") == out2.get("_garch")
+
+
+async def test_attach_fair_vol_refits_on_new_bar(monkeypatch):
+    """A genuinely new daily bar (length / latest value changes) busts the
+    cache and triggers a recompute."""
+    import engines.vol.engine as mod
+
+    eng = _engine(lambda: _ohlc(n=300, seed=3))
+
+    calls = {"n": 0}
+    real = mod._compute_fair_vol_block
+
+    def _counting(ohlc, tenor_t):
+        calls["n"] += 1
+        return real(ohlc, tenor_t)
+
+    monkeypatch.setattr(mod, "_compute_fair_vol_block", _counting)
+
+    await eng._attach_fair_vol({"1M": {"atm": {"iv": 0.065}, "dte": 30}})
+    # Swap in a longer (new-bar) series → cache key changes → refit.
+    eng._fetch_ohlc = lambda: _ohlc(n=301, seed=3)
+    await eng._attach_fair_vol({"1M": {"atm": {"iv": 0.065}, "dte": 30}})
+
+    assert calls["n"] == 2
