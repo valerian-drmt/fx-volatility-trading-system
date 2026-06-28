@@ -280,9 +280,9 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
               <th className="r">Fair</th>
               <th className="r">Spread</th>
               <th className="r fv-skew col-grp">25Δ BF</th>
-              <th className="r fv-skew dim">10Δ BF</th>
+              <th className="r fv-skew">10Δ BF</th>
               <th className="r fv-skew">25Δ RR</th>
-              <th className="r fv-skew dim col-grp-end">10Δ RR</th>
+              <th className="r fv-skew col-grp-end">10Δ RR</th>
             </tr>
           </thead>
           <tbody>
@@ -295,13 +295,13 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
                 <tr key={t.tenor}>
                   <td className="l mono">{t.tenor}</td>
                   <td className="r mono">{t.atm.toFixed(2)}</td>
-                  <td className="r mono dim">{t.rv.toFixed(2)}</td>
-                  <td className="r mono warn">{t.fair.toFixed(2)}</td>
+                  <td className="r mono">{t.rv.toFixed(2)}</td>
+                  <td className="r mono">{t.fair.toFixed(2)}</td>
                   <td className={"r mono " + (rich ? "pos" : "neg")}>{fmt.sgn(spread, 2)}</td>
-                  <td className="r mono dim fv-skew col-grp">{fly(t.bf25)}</td>
-                  <td className="r mono dim fv-skew fv-wing">{fly(t.bf10)}</td>
-                  <td className="r mono neg fv-skew">{rr(t.rr25)}</td>
-                  <td className="r mono neg fv-skew fv-wing col-grp-end">{rr(t.rr10)}</td>
+                  <td className="r mono fv-skew col-grp">{fly(t.bf25)}</td>
+                  <td className="r mono fv-skew">{fly(t.bf10)}</td>
+                  <td className="r mono fv-skew">{rr(t.rr25)}</td>
+                  <td className="r mono fv-skew col-grp-end">{rr(t.rr10)}</td>
                 </tr>
               );
             })}
