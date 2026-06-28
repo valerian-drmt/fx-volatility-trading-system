@@ -119,20 +119,6 @@ const dApi = (sub: string, role: Role = "hub"): DagNode => ({ id: "api", kind: "
 const dPanel = (name: string): DagNode => ({ id: "panel", kind: "panel", label: name, sub: "displayed panel", role: "receive", terminal: true });
 
 // ── DAG topology builders (same call sites as the old tree builders) ──
-// engine → persisted → api serves the LIVE value from the Redis cache. Redis
-// fans out (db-writer + api), Postgres written-then-read (dual role), api 2 inputs.
-function dagFork(engine: PipeNode, redisSub: string, e0: string, e1: string, pgSub: string, apiSub: string, panelName: string, apiRole: Role = "hub"): PipeDag {
-  return {
-    nodes: [toDag(xIB, "ib"), toDag(xIBG, "ibg"), toDag(engine, "eng"), toDag(xRedis(redisSub), "redis"), toDag(xDBW, "dbw"), toDag(xPg(pgSub), "pg"), dApi(apiSub, apiRole), toDag(xFE, "fe"), dPanel(panelName)],
-    edges: [
-      { from: "ib", to: "ibg", label: e0 }, { from: "ibg", to: "eng", label: e1 },
-      { from: "eng", to: "redis", label: "SET + db_events" },
-      { from: "redis", to: "dbw", label: "db_events" }, { from: "dbw", to: "pg", label: "INSERT" },
-      { from: "redis", to: "api", label: "read latest (live)" }, { from: "pg", to: "api", label: "history" },
-      { from: "api", to: "fe", label: "JSON" }, { from: "fe", to: "panel", label: "render" },
-    ],
-  };
-}
 // engine → persisted → api READS it back from Postgres (linear; Postgres in+out = dual role).
 function dagPersist(engine: PipeNode, e0: string, e1: string, pgSub: string, apiSub: string, panelName: string, apiRole: Role = "hub"): PipeDag {
   return {
@@ -320,35 +306,85 @@ export const PIPELINES: PanelPipe[] = [
     id: "fair-vol", panel: "Fair vol", view: "signals", domain: "termStructure", isolated: true,
     nodes: [eng("vol-engine", "YZ-RV · HAR/GARCH · VRP"), redis("latest_vol_surface"), API, FE, panel("Fair vol")],
     edges: ["σ_fair^Q (SET)", "read", "GET /vol/term-structure", "render"],
-    dag: dagFork(xEng("vol-engine", "YZ-RV · HAR/GARCH · VRP", "vol-engine"), "latest_vol_surface (σ_fair)", "FOP chain", "reqMktData", "vol_surface_history", "GET /vol/term-structure", "Fair vol"),
-  },
-  {
-    id: "pca-modes", panel: "PCA engine — surface modes", view: "signals", domain: "pca", isolated: true,
-    cadence: "~3 min read · refit hourly (≥6 snaps)",
-    nodes: [eng("vol-engine", "fit ≥6 snaps + project"), DBW, pg("snapshot_history → pca_model"), API, FE, panel("PCA modes")],
-    edges: ["snap + fit (db_events)", "INSERT", "read model + count", "GET /signals/pca/*", "render"],
+    // Decomposed σ_fair^Q math (build_fair_q): per-tenor Yang-Zhang RV is the
+    // preferred σ^P; HAR-RV / GARCH(1,1) are fallbacks; regime comes from the
+    // live ATM level + 1M↔6M slope; VRP(tenor,regime) is added → σ_fair^Q.
     dag: {
       nodes: [
         { id: "ib", kind: "external", label: "IB", sub: "Interactive Brokers", role: "emit", health: "IB Gateway" },
         { id: "ibg", kind: "container", label: "ib-gateway", sub: "broker session · clientId 1–5", role: "hub", health: "IB Gateway" },
-        { id: "vol", kind: "container", label: "vol-engine", sub: "clientId 2 · hourly snap + PCA fit (≥6)", role: "transform", health: "vol-engine" },
-        { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
-        { id: "dbw", kind: "container", label: "db-writer", sub: "db_events → batch INSERT", role: "receive", health: "db-writer" },
-        { id: "pgsnap", kind: "store", label: "Postgres", sub: "pca_surface_snapshot_history (hourly)", role: "receive", health: "postgres" },
-        { id: "pgmodel", kind: "store", label: "Postgres", sub: "pca_model · pca_signal_history", role: "receive", health: "postgres" },
-        { id: "api", kind: "api", label: "api", sub: "GET /signals/pca/model · /state · /history", role: "hub", health: "__api" },
+        { id: "vol", kind: "container", label: "vol-engine", sub: "clientId 2 · live IV pillars (ATM/BF/RR)", role: "transform", health: "vol-engine" },
+        { id: "ohlc", kind: "store", label: "OHLC daily", sub: "historical_fetcher · cached", role: "hub", health: "vol-engine" },
+        { id: "yz", kind: "container", label: "Yang-Zhang RV", sub: "vol-engine · per-tenor σ^P (preferred)", role: "transform", health: "vol-engine" },
+        { id: "har", kind: "container", label: "HAR-RV", sub: "vol-engine · σ^P fallback (d/w/m OLS)", role: "transform", health: "vol-engine" },
+        { id: "garch", kind: "container", label: "GARCH(1,1)", sub: "vol-engine · σ^P fallback (arch MLE)", role: "transform", health: "vol-engine" },
+        { id: "vrp", kind: "container", label: "VRP curve", sub: "vol-engine · by tenor × regime", role: "transform", health: "vol-engine" },
+        { id: "fairq", kind: "container", label: "build_fair_q", sub: "vol-engine · σ_fair^Q = σ^P + VRP", role: "transform", health: "vol-engine" },
+        { id: "redis", kind: "store", label: "Redis", sub: "latest_vol_surface (σ_fair^Q)", role: "hub", health: "redis" },
+        { id: "api", kind: "api", label: "api", sub: "GET /vol/term-structure", role: "hub", health: "__api" },
         { id: "fe", kind: "frontend", label: "frontend", sub: "React · fetch", role: "receive", health: "__self" },
-        { id: "panel", kind: "panel", label: "PCA modes", sub: "displayed panel", role: "receive", terminal: true },
+        { id: "panel", kind: "panel", label: "Fair vol", sub: "curves + table", role: "receive", terminal: true },
       ],
       edges: [
         { from: "ib", to: "ibg", label: "FOP chain" },
         { from: "ibg", to: "vol", label: "reqMktData" },
-        { from: "vol", to: "redis", label: "hourly snap + fit (db_events)" },
+        { from: "ibg", to: "ohlc", label: "reqHistoricalData (daily)" },
+        { from: "ohlc", to: "yz", label: "daily OHLC" },
+        { from: "ohlc", to: "har", label: "daily OHLC" },
+        { from: "ohlc", to: "garch", label: "daily OHLC" },
+        { from: "yz", to: "fairq", label: "σ^P (rv_tenor)" },
+        { from: "har", to: "fairq", label: "σ^P fallback" },
+        { from: "garch", to: "fairq", label: "σ^P fallback" },
+        { from: "vol", to: "fairq", label: "ATM + slope → regime" },
+        { from: "vrp", to: "fairq", label: "+VRP pts" },
+        { from: "fairq", to: "redis", label: "σ_fair^Q SET" },
+        { from: "redis", to: "api", label: "read" },
+        { from: "api", to: "fe", label: "JSON" },
+        { from: "fe", to: "panel", label: "render" },
+      ],
+    },
+  },
+  {
+    id: "pca-modes", panel: "PCA engine — surface modes", view: "signals", domain: "pca", isolated: true,
+    cadence: "~3 min read · refit weekly (≥6 snaps)",
+    nodes: [eng("vol-engine", "snapshot + project"), DBW, pg("snapshot → model → signal"), API, FE, panel("PCA modes")],
+    edges: ["snap + z/label (db_events)", "INSERT", "read model + signals", "GET /signals/pca/*", "render"],
+    // Decomposed PCA path: ① hourly 30-dim snapshot accumulates; ② weekly SVD
+    // refit (api scheduler, ≥6 snaps) → means/stds/loadings; ③ per-cycle the
+    // vol-engine projects the live surface (raw = loadings·x_std), z-scores it
+    // vs history, and labels CHEAP/FAIR/EXPENSIVE through the 7 actionable gates.
+    dag: {
+      nodes: [
+        { id: "ib", kind: "external", label: "IB", sub: "Interactive Brokers", role: "emit", health: "IB Gateway" },
+        { id: "ibg", kind: "container", label: "ib-gateway", sub: "broker session · clientId 1–5", role: "hub", health: "IB Gateway" },
+        { id: "vol", kind: "container", label: "vol-engine", sub: "clientId 2 · surface → 30-dim x", role: "transform", health: "vol-engine" },
+        { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
+        { id: "dbw", kind: "container", label: "db-writer", sub: "db_events → batch INSERT", role: "receive", health: "db-writer" },
+        { id: "pgsnap", kind: "store", label: "Postgres", sub: "pca_surface_snapshot_history (hourly)", role: "receive", health: "postgres" },
+        { id: "fit", kind: "api", label: "PCA refit · SVD", sub: "api scheduler · ≥6 snaps → loadings/eigvals", role: "transform", health: "__api" },
+        { id: "pgmodel", kind: "store", label: "Postgres", sub: "pca_model (loadings · variance)", role: "receive", health: "postgres" },
+        { id: "proj", kind: "container", label: "project", sub: "vol-engine · raw = loadings · x_std", role: "transform", health: "vol-engine" },
+        { id: "zlabel", kind: "container", label: "z + label", sub: "vol-engine · z vs hist → CHEAP/FAIR/EXP · 7 gates", role: "transform", health: "vol-engine" },
+        { id: "pgsig", kind: "store", label: "Postgres", sub: "pca_signal_history (z_score · label)", role: "receive", health: "postgres" },
+        { id: "api", kind: "api", label: "api", sub: "GET /signals/pca/state · /history · /model", role: "hub", health: "__api" },
+        { id: "fe", kind: "frontend", label: "frontend", sub: "React · fetch", role: "receive", health: "__self" },
+        { id: "panel", kind: "panel", label: "PCA modes", sub: "cards · z-history · loadings", role: "receive", terminal: true },
+      ],
+      edges: [
+        { from: "ib", to: "ibg", label: "FOP chain" },
+        { from: "ibg", to: "vol", label: "reqMktData" },
+        { from: "vol", to: "redis", label: "hourly snap (db_events)" },
         { from: "redis", to: "dbw", label: "db_events" },
         { from: "dbw", to: "pgsnap", label: "INSERT hourly" },
-        { from: "dbw", to: "pgmodel", label: "INSERT on refit (≥6)" },
+        { from: "pgsnap", to: "fit", label: "read ≥6 snaps" },
+        { from: "fit", to: "pgmodel", label: "INSERT model (weekly)" },
+        { from: "pgmodel", to: "proj", label: "active loadings" },
+        { from: "vol", to: "proj", label: "current surface x" },
+        { from: "proj", to: "zlabel", label: "raw_score" },
+        { from: "zlabel", to: "pgsig", label: "INSERT z/label · per cycle" },
         { from: "pgsnap", to: "api", label: "snapshot count" },
-        { from: "pgmodel", to: "api", label: "read pcs + state" },
+        { from: "pgmodel", to: "api", label: "variance · loadings_grid" },
+        { from: "pgsig", to: "api", label: "z_score · label" },
         { from: "api", to: "fe", label: "JSON" },
         { from: "fe", to: "panel", label: "render" },
       ],
