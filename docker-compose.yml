@@ -77,9 +77,11 @@ services:
       AUTH_SALT: ${AUTH_SALT:-fxvol}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
-      # PCA model refit cadence (hours). Default hourly; lower it (e.g. 0.1 ≈ 6min)
-      # to bootstrap fast locally alongside PCA_SNAPSHOT_INTERVAL_MIN on vol-engine.
-      PCA_REFIT_INTERVAL_HOURS: ${PCA_REFIT_INTERVAL_HOURS:-1.0}
+      # PCA model refit cadence (hours). Default weekly (168h); lower it (e.g.
+      # 0.1 ≈ 6min) to bootstrap fast locally alongside PCA_SNAPSHOT_INTERVAL_MIN
+      # on vol-engine. A refit re-projects the whole snapshot window, so hourly
+      # refits churn pca_signal_history — keep it slow in steady state.
+      PCA_REFIT_INTERVAL_HOURS: ${PCA_REFIT_INTERVAL_HOURS:-168.0}
     depends_on:
       postgres:
         condition: service_healthy
