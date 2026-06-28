@@ -14,8 +14,9 @@ Behaviour :
   - if not enough hourly snapshots → log and skip, retry next interval
   - any other failure → log and continue (loop never dies)
 
-Defaults are sandbox-friendly (1h interval). For prod, set ``PCA_REFIT_INTERVAL_HOURS``
-to ``168`` (= weekly) per spec §7.1.
+Default cadence is weekly (168h) per spec §7.1 — a full re-projection of the
+snapshot history per refit is expensive, so we refit rarely. Override with
+``PCA_REFIT_INTERVAL_HOURS`` (e.g. ``1`` for sandbox manual testing).
 """
 from __future__ import annotations
 
@@ -37,7 +38,7 @@ class PcaRefitScheduler:
         sessionmaker_factory: Callable[[], async_sessionmaker[AsyncSession]],
         refit_fn: Callable[[AsyncSession, str], Awaitable[dict[str, Any]]],
         symbol: str = "EURUSD",
-        interval_hours: float = 1.0,
+        interval_hours: float = 168.0,
         jitter_minutes: float = 5.0,
         startup_delay_s: float = 60.0,
     ):
@@ -99,7 +100,7 @@ def build_pca_refit_scheduler() -> PcaRefitScheduler:
     from api.routers.signals import perform_refit
     from persistence.db import get_sessionmaker
 
-    interval_h = float(os.environ.get("PCA_REFIT_INTERVAL_HOURS", "1.0"))
+    interval_h = float(os.environ.get("PCA_REFIT_INTERVAL_HOURS", "168.0"))
     jitter_m = float(os.environ.get("PCA_REFIT_JITTER_MIN", "5.0"))
     startup_s = float(os.environ.get("PCA_REFIT_STARTUP_DELAY_S", "60.0"))
     symbol = os.environ.get("PCA_REFIT_SYMBOL", "EURUSD")

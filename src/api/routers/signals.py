@@ -7,12 +7,13 @@ POST /api/v1/admin/pca/refit                trigger PCA refit (manual MVP)
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import desc, select, update
+from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
@@ -68,19 +69,17 @@ async def state(
     if model is None:
         return {"state": "bootstrap", "model_version": None, "signals": {}}
 
-    # Latest signal per PC for this symbol + active model.
-    rows: list[PcaSignal] = []
-    for pc_id in (1, 2, 3):
-        row = (await db.execute(
-            select(PcaSignal)
-            .where(PcaSignal.symbol == symbol)
-            .where(PcaSignal.pca_model_id == model.id)
-            .where(PcaSignal.pc_id == pc_id)
-            .order_by(desc(PcaSignal.timestamp))
-            .limit(1)
-        )).scalar_one_or_none()
-        if row is not None:
-            rows.append(row)
+    # Latest signal per PC for this symbol + active model, in one round-trip.
+    # DISTINCT ON (pc_id) + ORDER BY pc_id, timestamp DESC keeps the most-recent
+    # row per PC (Postgres) — replaces the previous per-PC N+1 loop.
+    rows: list[PcaSignal] = list((await db.execute(
+        select(PcaSignal)
+        .where(PcaSignal.symbol == symbol)
+        .where(PcaSignal.pca_model_id == model.id)
+        .where(PcaSignal.pc_id.in_((1, 2, 3)))
+        .distinct(PcaSignal.pc_id)
+        .order_by(PcaSignal.pc_id, desc(PcaSignal.timestamp))
+    )).scalars().all())
 
     if not rows:
         # Active model exists but the vol-engine hasn't projected any cycle
@@ -174,14 +173,20 @@ async def history(
 
 
 @router.get("/signals/pca/model")
-async def active_model(db: DbDep) -> dict[str, Any]:
+async def active_model(
+    db: DbDep,
+    symbol: str = Query("EURUSD", min_length=3, max_length=20),
+) -> dict[str, Any]:
     model = (await db.execute(
         select(PcaModel).where(PcaModel.is_active.is_(True)).limit(1)
     )).scalar_one_or_none()
-    snap_count_row = (await db.execute(
-        select(SurfaceSnapshotHourly.id)
-    )).scalars().all()
-    n_snaps_total = len(snap_count_row)
+    # COUNT(*) pushed to the DB (was: SELECT id of the whole table → Python len()).
+    # Scoped by symbol to match what perform_refit actually consumes.
+    n_snaps_total = int((await db.execute(
+        select(func.count())
+        .select_from(SurfaceSnapshotHourly)
+        .where(SurfaceSnapshotHourly.symbol == symbol)
+    )).scalar_one())
     return {
         "active": model is not None,
         "version": model.version if model else None,
@@ -236,8 +241,12 @@ async def perform_refit(db: AsyncSession, symbol: str = "EURUSD") -> dict[str, A
     )).scalar_one_or_none()
     prev_loadings = np.asarray(prev.loadings, dtype=float) if prev else None
 
-    fit = fit_pca_svd(X, n_components=N_COMPONENTS)
-    corrected, cos_sims, flips = sign_correct_loadings(fit.loadings, prev_loadings)
+    # SVD + sign-correction are pure CPU-bound numpy — offload off the event
+    # loop so the api stays responsive during a refit.
+    fit = await asyncio.to_thread(fit_pca_svd, X, n_components=N_COMPONENTS)
+    corrected, cos_sims, flips = await asyncio.to_thread(
+        sign_correct_loadings, fit.loadings, prev_loadings
+    )
 
     now = datetime.now(UTC)
     version = f"pca_v1_{now.strftime('%Y_%m_%d_%H%M%S')}"
@@ -286,6 +295,17 @@ async def perform_refit(db: AsyncSession, symbol: str = "EURUSD") -> dict[str, A
         symbol=symbol,
     )
 
+    # Drop the signals of all superseded models for this symbol — the unique
+    # key includes pca_model_id, so without this each refit's full-window
+    # re-projection would accumulate forever (T×3 dead rows per refit, never
+    # dedup'd, never deleted). /state + /history read the active model only, so
+    # only the just-backfilled rows are live. Same transaction as the refit.
+    await db.execute(
+        delete(PcaSignal)
+        .where(PcaSignal.symbol == symbol)
+        .where(PcaSignal.pca_model_id != new.id)
+    )
+
     await db.commit()
     await db.refresh(new)
     return {
@@ -307,20 +327,16 @@ async def refit(db: DbDep, symbol: str = Query("EURUSD")) -> dict[str, Any]:
     return await perform_refit(db, symbol)
 
 
-async def _backfill_signals_from_fit(
-    *, db: AsyncSession, model: PcaModel, X: np.ndarray,
-    snapshot_timestamps: list[datetime], symbol: str,
-) -> None:
-    """Project each row of the fit window X through the new loadings, compute
-    z-scores per PC across the full history, and INSERT one PcaSignal per
-    (snapshot, pc_id ∈ {1,2,3}) so the panel has data immediately.
+def _compute_backfill_rows(
+    *, X: np.ndarray, means: np.ndarray, stds: np.ndarray, loadings: np.ndarray,
+    var_ratio: list[float], cos_sims: list[float | None], n_obs: int,
+) -> list[dict[str, Any]]:
+    """Pure CPU-bound projection : returns one payload dict per (snapshot, pc_id).
+
+    Offloaded via ``asyncio.to_thread`` by the async wrapper. No I/O, no ORM —
+    keeps the numpy/core work off the event loop.
     """
-    means = np.asarray(model.means, dtype=float)
-    stds = np.asarray(model.stds, dtype=float)
-    loadings = np.asarray(model.loadings, dtype=float)
-    var_ratio = list(model.variance_explained_ratio or [])
     cum_var = float(sum(var_ratio[:3])) if var_ratio else 0.0
-    n_obs = int(model.n_obs_used)
 
     X_std = (X - means) / stds
     raw = X_std @ loadings.T  # (T, n_components)
@@ -331,7 +347,16 @@ async def _backfill_signals_from_fit(
     z = (raw - mu) / sigma
 
     T = X.shape[0]
-    rows_to_add: list[PcaSignal] = []
+
+    # PC3 sub-metrics : compute the per-snapshot skew / convexity columns ONCE
+    # (was O(T²) — recomputed for every t inside the loop).
+    sub_all = np.array([pc3_sub_metrics(X[k]) for k in range(T)])  # (T, 2)
+    skew_col, conv_col = sub_all[:, 0], sub_all[:, 1]
+    skew_mean, conv_mean = float(skew_col.mean()), float(conv_col.mean())
+    skew_sigma = float(skew_col.std(ddof=1)) or 1.0
+    conv_sigma = float(conv_col.std(ddof=1)) or 1.0
+
+    payloads: list[dict[str, Any]] = []
     for t in range(T):
         for pc_id in (1, 2, 3):
             idx = pc_id - 1
@@ -339,7 +364,7 @@ async def _backfill_signals_from_fit(
             raw_t = float(raw[t, idx])
             label = classify_label(z_t)
 
-            cos_sim = getattr(model, f"cosine_similarity_pc{pc_id}", None)
+            cos_sim = cos_sims[idx] if idx < len(cos_sims) else None
             stable = cos_sim is None or float(cos_sim) >= 0.85
             ve = float(var_ratio[idx]) if idx < len(var_ratio) else 0.0
 
@@ -355,24 +380,51 @@ async def _backfill_signals_from_fit(
             )
             sub = None
             if pc_id == 3:
-                s, c = pc3_sub_metrics(X[t])
-                # z over the column distribution
-                skew_col = np.array([pc3_sub_metrics(X[k])[0] for k in range(T)])
-                conv_col = np.array([pc3_sub_metrics(X[k])[1] for k in range(T)])
-                skew_sigma = float(skew_col.std(ddof=1)) or 1.0
-                conv_sigma = float(conv_col.std(ddof=1)) or 1.0
                 sub = {
-                    "skew_z": float((s - skew_col.mean()) / skew_sigma),
-                    "convex_z": float((c - conv_col.mean()) / conv_sigma),
+                    "skew_z": float((skew_col[t] - skew_mean) / skew_sigma),
+                    "convex_z": float((conv_col[t] - conv_mean) / conv_sigma),
                 }
 
-            rows_to_add.append(PcaSignal(
-                timestamp=snapshot_timestamps[t], symbol=symbol,
-                pca_model_id=int(model.id), pc_id=pc_id,
-                raw_score=raw_t, z_score=z_t, label=label,
-                actionable=flag.actionable, actionable_reason=flag.reason,
-                sub_signals=sub,
-            ))
+            payloads.append({
+                "t": t, "pc_id": pc_id, "raw_score": raw_t, "z_score": z_t,
+                "label": label, "actionable": flag.actionable,
+                "actionable_reason": flag.reason, "sub_signals": sub,
+            })
+    return payloads
+
+
+async def _backfill_signals_from_fit(
+    *, db: AsyncSession, model: PcaModel, X: np.ndarray,
+    snapshot_timestamps: list[datetime], symbol: str,
+) -> None:
+    """Project each row of the fit window X through the new loadings, compute
+    z-scores per PC across the full history, and INSERT one PcaSignal per
+    (snapshot, pc_id ∈ {1,2,3}) so the panel has data immediately.
+    """
+    cos_sims = [
+        getattr(model, f"cosine_similarity_pc{pc}", None) for pc in (1, 2, 3)
+    ]
+    payloads = await asyncio.to_thread(
+        _compute_backfill_rows,
+        X=X,
+        means=np.asarray(model.means, dtype=float),
+        stds=np.asarray(model.stds, dtype=float),
+        loadings=np.asarray(model.loadings, dtype=float),
+        var_ratio=list(model.variance_explained_ratio or []),
+        cos_sims=cos_sims,
+        n_obs=int(model.n_obs_used),
+    )
+    model_id = int(model.id)
+    rows_to_add = [
+        PcaSignal(
+            timestamp=snapshot_timestamps[p["t"]], symbol=symbol,
+            pca_model_id=model_id, pc_id=p["pc_id"],
+            raw_score=p["raw_score"], z_score=p["z_score"], label=p["label"],
+            actionable=p["actionable"], actionable_reason=p["actionable_reason"],
+            sub_signals=p["sub_signals"],
+        )
+        for p in payloads
+    ]
     db.add_all(rows_to_add)
     await db.flush()
 
