@@ -108,7 +108,7 @@ export const fetchPcaState = (symbol = "EURUSD") =>
   apiGet<PcaState>("/api/v1/signals/pca/state", { query: { symbol } });
 export const fetchPcaModel = () => apiGet<PcaModel>("/api/v1/signals/pca/model");
 export type PcaHistory = Get<"/api/v1/signals/pca/history", 200>;
-export const fetchPcaHistory = (pcId: number, n = 180, symbol = "EURUSD") =>
+export const fetchPcaHistory = (pcId: number, n = 120, symbol = "EURUSD") =>
   apiGet<PcaHistory>("/api/v1/signals/pca/history", { query: { symbol, pc_id: pcId, n } });
 
 // Positions (Step 5)

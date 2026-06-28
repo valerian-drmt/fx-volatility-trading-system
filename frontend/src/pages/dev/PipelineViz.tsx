@@ -14,7 +14,8 @@ import dagre from "@dagrejs/dagre";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWsLog } from "../../hooks/useWsLog";
 import { DataProvider } from "../../voldesk/data/provider";
-import { type SystemData, useDeskData } from "../../voldesk/data/deskData";
+import { type SystemData, useDeskData, useTicks } from "../../voldesk/data/deskData";
+import type { Fresh } from "../../voldesk/data/freshness";
 import { DashboardView } from "../../voldesk/views/DashboardView";
 import { PortfolioView } from "../../voldesk/views/PortfolioView";
 import { RiskView } from "../../voldesk/views/RiskView";
@@ -210,7 +211,7 @@ function Pipe({ label, state, hover, onEnter, onLeave }: {
 // EURUSD spot ticker — bespoke terminal screen (no real Dashboard `Panel` to
 // isolate: bid/ask lives in the app header). Reads the live /ws/ticks feed.
 function TickerScreen({ live }: { live: boolean }): JSX.Element {
-  const { ticks } = useDeskData();
+  const ticks = useTicks();
   const d = ticks.data;
   const bid = d?.bid;
   const ask = d?.ask;
@@ -638,12 +639,16 @@ function Stage({ pipe, statuses, resolveNode, asOf, domainFresh }: { pipe: Panel
 function PipelineLive(): JSX.Element {
   const [id, setId] = useState<string>(PIPELINES[0]?.id ?? "");
   const desk = useDeskData();
+  const ticks = useTicks();
   const hmap = buildHealthMap(desk.system.data);
-  const ws = normStatus(desk.ticks.status);
+  const ws = normStatus(ticks.status);
   // api is up the moment it responds (system probe came back, or ticks flow) —
   // independent of the stack's global DEGRADED flag.
   const apiUp: H = desk.system.status !== "missing" || ws === "up" ? "up" : "down";
-  const resolveFor = (p: PanelPipe, n: PipeNode): H => resolve(n, hmap, normStatus(desk[p.domain].status), ws, apiUp);
+  // The "ticks" domain lives in its own context (RT.1) ; the rest read off the
+  // desk-data value. Resolve a domain id to its `Fresh` slice uniformly.
+  const freshFor = (domain: DomainId): Fresh<unknown> => (domain === "ticks" ? ticks : desk[domain]);
+  const resolveFor = (p: PanelPipe, n: PipeNode): H => resolve(n, hmap, normStatus(freshFor(p.domain).status), ws, apiUp);
   // Resolve over the rendered topology (DAG when present) so the sidebar pill
   // and the header stamp count the same blocks the schema draws.
   const statusesOf = (p: PanelPipe): H[] => (p.dag ? p.dag.nodes : p.nodes).map((n) => resolveFor(p, n));
@@ -653,13 +658,14 @@ function PipelineLive(): JSX.Element {
 
   const pipe = PIPELINES.find((p) => p.id === id) ?? PIPELINES[0]!;
   const statuses = statusesOf(pipe);
-  const asOf = desk[pipe.domain].asOf ?? desk.ticks.asOf;
+  const domainFresh = freshFor(pipe.domain);
+  const asOf = domainFresh.asOf ?? ticks.asOf;
 
   return (
     <div className="pp-root">
       <style>{CSS}</style>
       <Sidebar id={id} setId={setId} healthById={healthById} />
-      <Stage pipe={pipe} statuses={statuses} resolveNode={(n) => resolveFor(pipe, n)} asOf={asOf} domainFresh={desk[pipe.domain]} />
+      <Stage pipe={pipe} statuses={statuses} resolveNode={(n) => resolveFor(pipe, n)} asOf={asOf} domainFresh={domainFresh} />
     </div>
   );
 }

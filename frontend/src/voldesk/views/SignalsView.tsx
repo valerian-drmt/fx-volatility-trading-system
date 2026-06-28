@@ -8,7 +8,7 @@
  * tabs to consume; they have no in-view consumer, so they are not ported here
  * (this module exports only the `SignalsView` component).
  */
-import { Fragment, useState } from "react";
+import { Fragment, memo, useMemo, useState } from "react";
 import { Heatmap } from "../components/charts";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -33,12 +33,36 @@ function sigDivZ(z: number): string {
     `rgb(${c0.map((v, i) => Math.round(v + (c1[i]! - v) * f)).join(",")})`;
   return t < 0.5 ? mix(A, M, t / 0.5) : mix(M, B, (t - 0.5) / 0.5);
 }
-function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
-  if (!data) {
+// memo: the IV surface only changes on a vol cycle (~3 min), but the panel sits
+// in a tree that re-renders far more often — skip the 30-cell colour/title work
+// when `data` (a memoized surface object) is unchanged.
+const IVSurfaceZ = memo(function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
+  // 30 cells × {colour mix, NaN check, title string} — derived once per surface.
+  const cells = useMemo(() => {
+    if (!data) return null;
+    const deltas = data.deltas;
+    const C = deltas.length;
+    return data.ivSurface.map((row, i) =>
+      row.map((v, j) => {
+        const zz = data.ivZ[i]![j]!;
+        const missing = Number.isNaN(v);
+        const wing = j === 0 || j === C - 1;
+        return {
+          className: "gz-cell" + (wing ? " wing" : "") + (missing ? " gz-missing" : ""),
+          style: missing ? undefined : { background: sigDivZ(zz) },
+          title: missing
+            ? `${data.tenors[i]} ${deltas[j]} · no data`
+            : `${data.tenors[i]} ${deltas[j]} · IV ${v.toFixed(1)} · ${zz > 0 ? "+" : ""}${zz.toFixed(1)}σ`,
+          missing,
+          label: missing ? "—" : v.toFixed(1),
+        };
+      }),
+    );
+  }, [data]);
+  if (!data || !cells) {
     return <div className="dim small mono ivz-empty">surface unavailable (market closed / no vol cycle)</div>;
   }
   const surf = data.ivSurface,
-    z = data.ivZ,
     deltas = data.deltas,
     tenors = data.tenors,
     sources = data.sources ?? [];
@@ -61,25 +85,11 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
                 <span className="interp-mark" title="interpolated — no listed contract at this tenor">~</span>
               )}
             </div>
-            {row.map((v, j) => {
-              const zz = z[i]![j]!;
-              const missing = Number.isNaN(v);
+            {row.map((_v, j) => {
+              const cell = cells[i]![j]!;
               return (
-                <div
-                  key={j}
-                  className={"gz-cell" + (j === 0 || j === C - 1 ? " wing" : "") + (missing ? " gz-missing" : "")}
-                  style={missing ? undefined : { background: sigDivZ(zz) }}
-                  title={
-                    missing
-                      ? `${tenors[i]} ${deltas[j]} · no data`
-                      : `${tenors[i]} ${deltas[j]} · IV ${v.toFixed(1)} · ${zz > 0 ? "+" : ""}${zz.toFixed(1)}σ`
-                  }
-                >
-                  {missing ? (
-                    <span className="gz-iv mono dim">—</span>
-                  ) : (
-                    <span className="gz-iv mono">{v.toFixed(1)}</span>
-                  )}
+                <div key={j} className={cell.className} style={cell.style} title={cell.title}>
+                  <span className={"gz-iv mono" + (cell.missing ? " dim" : "")}>{cell.label}</span>
                 </div>
               );
             })}
@@ -101,7 +111,7 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
       )}
     </div>
   );
-}
+});
 
 // ATM term curve with σ_fair overlay (the level / gate visual)
 function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
@@ -111,42 +121,55 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
     pr = 16,
     pt = 14,
     pb = 26;
-  // RV (realized) is horizon-matched per tenor (Yang-Zhang over a trailing window
-  // ≈ each tenor) → a realized-vol curve aligned with the IV / σ_fair curves.
-  const hasRv = ts.some((t) => t.rv > 0);
-  const all = ts.flatMap((t) => (hasRv ? [t.atm, t.fair, t.rv] : [t.atm, t.fair]));
-  const lo = Math.min(...all) - 0.15,
-    hi = Math.max(...all) + 0.15,
-    rng = hi - lo || 1;
-  const X = (i: number): number => pl + (i / (ts.length - 1)) * (w - pl - pr);
-  const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
-  const line = (key: "atm" | "fair" | "rv"): string =>
-    ts.map((t, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(t[key]).toFixed(1)).join(" ");
-  const ticks: number[] = [];
-  for (let v = Math.ceil(lo); v <= hi; v += 0.5) ticks.push(v);
+  // SVG scale + path strings derived once per term-structure (the chart sits in
+  // a tree that re-renders far more often than the vol cycle that moves `ts`).
+  const geo = useMemo(() => {
+    // RV (realized) is horizon-matched per tenor (Yang-Zhang over a trailing
+    // window ≈ each tenor) → a realized-vol curve aligned with IV / σ_fair.
+    const hasRv = ts.some((t) => t.rv > 0);
+    const all = ts.flatMap((t) => (hasRv ? [t.atm, t.fair, t.rv] : [t.atm, t.fair]));
+    const lo = Math.min(...all) - 0.15,
+      hi = Math.max(...all) + 0.15,
+      rng = hi - lo || 1;
+    const X = (i: number): number => pl + (i / (ts.length - 1)) * (w - pl - pr);
+    const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
+    const line = (key: "atm" | "fair" | "rv"): string =>
+      ts.map((t, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(t[key]).toFixed(1)).join(" ");
+    const ticks: number[] = [];
+    for (let v = Math.ceil(lo); v <= hi; v += 0.5) ticks.push(v);
+    return {
+      hasRv,
+      atm: line("atm"),
+      fair: line("fair"),
+      rv: line("rv"),
+      ticks: ticks.map((v) => ({ v, y: Y(v) })),
+      pts: ts.map((t, i) => ({ tenor: t.tenor, x: X(i), y: Y(t.atm) })),
+    };
+  }, [ts]);
+  const { hasRv } = geo;
   return (
     <div>
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
         {/* axes — X baseline + Y axis (made prominent) */}
         <line x1={pl} x2={pl} y1={pt} y2={h - pb} stroke="var(--border)" strokeWidth="1.3" />
         <line x1={pl} x2={w - pr} y1={h - pb} y2={h - pb} stroke="var(--border)" strokeWidth="1.3" />
-        {ticks.map((v, i) => (
+        {geo.ticks.map((tk, i) => (
           <g key={i}>
-            <line x1={pl} x2={w - pr} y1={Y(v)} y2={Y(v)} stroke="var(--line)" opacity="0.6" />
-            <text x={6} y={Y(v) + 3} fill="var(--text-dim)" fontSize="10" fontWeight={600} fontFamily="var(--mono)">
-              {v.toFixed(1)}
+            <line x1={pl} x2={w - pr} y1={tk.y} y2={tk.y} stroke="var(--line)" opacity="0.6" />
+            <text x={6} y={tk.y + 3} fill="var(--text-dim)" fontSize="10" fontWeight={600} fontFamily="var(--mono)">
+              {tk.v.toFixed(1)}
             </text>
           </g>
         ))}
-        {hasRv && <path d={line("rv")} stroke="var(--muted)" strokeDasharray="2 2" fill="none" strokeWidth="1.4" />}
-        <path d={line("fair")} stroke={FAIR_COL} strokeDasharray="5 3" fill="none" strokeWidth="1.8" />
-        <path d={line("atm")} stroke="var(--accent)" fill="none" strokeWidth="2.2" />
-        {ts.map((t, i) => (
-          <circle key={i} cx={X(i)} cy={Y(t.atm)} r="2.6" fill="var(--accent)" stroke="var(--bg)" strokeWidth="1.2" />
+        {hasRv && <path d={geo.rv} stroke="var(--muted)" strokeDasharray="2 2" fill="none" strokeWidth="1.4" />}
+        <path d={geo.fair} stroke={FAIR_COL} strokeDasharray="5 3" fill="none" strokeWidth="1.8" />
+        <path d={geo.atm} stroke="var(--accent)" fill="none" strokeWidth="2.2" />
+        {geo.pts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="2.6" fill="var(--accent)" stroke="var(--bg)" strokeWidth="1.2" />
         ))}
-        {ts.map((t, i) => (
-          <text key={"l" + i} x={X(i)} y={h - 6} fill="var(--fg)" fontSize="11" fontWeight={600} fontFamily="var(--mono)" textAnchor="middle">
-            {t.tenor}
+        {geo.pts.map((p, i) => (
+          <text key={"l" + i} x={p.x} y={h - 6} fill="var(--fg)" fontSize="11" fontWeight={600} fontFamily="var(--mono)" textAnchor="middle">
+            {p.tenor}
           </text>
         ))}
       </svg>
@@ -229,7 +252,10 @@ function ZSeriesChart({ pc, view, series }: { pc: Pc; view: string; series?: num
 }
 
 // PCA surface-mode card — the RELATIVE signal only (z vs history, loadings). The level gate lives in its own Fair vol panel.
-function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
+// memo: one card per PC; its props (pc, view) only change on a vol cycle or a
+// timeframe toggle, so skip the SVG z-series + loadings heatmap re-render on
+// unrelated desk ticks.
+const ModeCard = memo(function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
   const tone: Tone =
     pc.label === "CHEAP" ? "good" : pc.label === "EXPENSIVE" || pc.label === "RICH" ? "danger" : "neutral";
   return (
@@ -255,12 +281,13 @@ function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
       <Heatmap rows={DATA.tenors} cols={DATA.deltas} matrix={pc.load} />
     </div>
   );
-}
+});
 
 // (Mode stability panel removed — eigengap diagnostics dropped from the desk.)
 // (Expressions moved to the Order builder as an exposure reference — see order_builder.jsx)
 
-function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
+// memo: the fair-vol gate (term chart + skew table) only moves on a vol cycle.
+const FairVolGate = memo(function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
   if (!ts) {
     return <div className="dim small mono ivz-empty">term structure unavailable (market closed / no vol cycle)</div>;
   }
@@ -310,7 +337,7 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
       </div>
     </div>
   );
-}
+});
 
 export function SignalsView(): JSX.Element {
   const [view, setView] = useState<string>("3M");

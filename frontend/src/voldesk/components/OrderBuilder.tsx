@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { gk$, pnlCls } from "./format";
 import { DATA, DATA2, fmt } from "../data";
-import { useDeskData } from "../data/deskData";
+import { useDeskData, useTicks } from "../data/deskData";
 import { ApiError } from "../../api/client";
 import { createTradePreview, submitTrade, type TradePreview } from "../../api/endpoints";
 import { WRITE_ENABLED } from "../data/writeEnabled";
@@ -237,7 +237,8 @@ interface OrderBuilderProps {
 export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderProps): JSX.Element {
   // Live spot for the MARKET display block (RT.1). The structure pricing/preview
   // still uses the mock spot until the live preview lands (6r.2).
-  const { ticks, surface } = useDeskData();
+  const { surface } = useDeskData();
+  const ticks = useTicks();
   // Tenors with no listed contract (server-interpolated). Selecting one is allowed
   // but warns: the order routes to the nearest listed expiry (snap, backend).
   const interpTenors = new Set(

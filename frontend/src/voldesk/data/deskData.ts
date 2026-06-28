@@ -139,8 +139,6 @@ export interface DeskData {
   /** Risk : 1-day VaR card values (PR 5). Stress grids / ladders / marginal-VaR
    * / pin-risk are all live now (their own fetch hooks), not mock. */
   risk: Fresh<VarData>;
-  /** Live EURUSD spot tick (bid/ask/mid) via /ws/ticks (RT.1). */
-  ticks: Fresh<TickMsg>;
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);
@@ -149,6 +147,23 @@ export function useDeskData(): DeskData {
   const ctx = useContext(DeskDataContext);
   if (ctx === null) {
     throw new Error("useDeskData must be used within <DataProvider>");
+  }
+  return ctx;
+}
+
+/**
+ * Live EURUSD spot tick (bid/ask/mid) via /ws/ticks (RT.1). Kept in its OWN
+ * context, separate from `DeskDataContext`: the tick stream fires ~1 Hz, so
+ * folding it into the desk-data value object would re-render every
+ * `useDeskData()` consumer (the slow vol domains) on each spot tick. Only the
+ * components that actually display spot subscribe via `useTicks()`.
+ */
+export const TicksContext = createContext<Fresh<TickMsg> | null>(null);
+
+export function useTicks(): Fresh<TickMsg> {
+  const ctx = useContext(TicksContext);
+  if (ctx === null) {
+    throw new Error("useTicks must be used within <DataProvider>");
   }
   return ctx;
 }

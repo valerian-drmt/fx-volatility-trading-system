@@ -12,7 +12,7 @@ export interface FetchResult<T> extends Fresh<T> {
 }
 
 export function useFetch<T>(
-  fetcher: () => Promise<T>,
+  fetcher: (signal: AbortSignal) => Promise<T>,
   warnMs: number,
   enabled = true,
   pollMs = 0,
@@ -29,19 +29,25 @@ export function useFetch<T>(
 
   useEffect(() => {
     if (!enabled) return;
+    // Abort the in-flight request on cleanup / re-fetch so a superseded fetch
+    // can't land late (and fetchers that thread `signal` actually cancel the
+    // HTTP call). `cancelled` still guards setState in case the fetcher ignores
+    // the signal.
+    const controller = new AbortController();
     let cancelled = false;
     void fetcherRef
-      .current()
+      .current(controller.signal)
       .then((d) => {
         if (!cancelled) setState(makeFresh<T>(d, Date.now(), warnMs));
       })
-      .catch(() => {
-        if (!cancelled) {
-          setState({ data: null, status: "missing", asOf: null, ageMs: null });
-        }
+      .catch((err) => {
+        // Aborted fetch: caller moved on, keep last-known state untouched.
+        if (cancelled || (err instanceof DOMException && err.name === "AbortError")) return;
+        setState({ data: null, status: "missing", asOf: null, ageMs: null });
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [tick, warnMs, enabled]);
 

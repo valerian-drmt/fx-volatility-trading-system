@@ -8,7 +8,7 @@
  * yet (cold start / market closed) the domain is simply `missing`/`stale` via
  * the `Fresh<T>` contract and the views render the empty/neutral state.
  */
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useMemo } from "react";
 import {
   fetchConfig,
   fetchConfigHistory,
@@ -16,7 +16,6 @@ import {
   fetchHealthExtended,
   fetchOpenPositions,
   fetchPcaHistory,
-  fetchPcaModel,
   fetchPcaState,
   fetchPnlAttribution,
   fetchPortfolioAccount,
@@ -43,6 +42,7 @@ import {
   type PortfolioData,
   type SurfaceData,
   type SystemData,
+  TicksContext,
   type TradeData,
   type VarData,
 } from "./deskData";
@@ -89,14 +89,17 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
   );
   const livePca = useFetch<PcaData>(
     async () => {
-      const [state, model, h1, h2, h3] = await Promise.all([
+      // /signals/pca/model (variance_explained eigen bars) is no longer fetched:
+      // the mode-stability / eigengap panel was dropped from the Signal tab, so
+      // nothing rendered consumes `pca.model`. The cards (`pca.pcs`) only need
+      // state + history; eigen meta falls back to the state's top-3 variance.
+      const [state, h1, h2, h3] = await Promise.all([
         fetchPcaState(),
-        fetchPcaModel(),
         fetchPcaHistory(1),
         fetchPcaHistory(2),
         fetchPcaHistory(3),
       ]);
-      return adaptPca(state, model, [h1, h2, h3]);
+      return adaptPca(state, null, [h1, h2, h3]);
     },
     VOL_WARN_MS,
   );
@@ -196,11 +199,10 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
     }
   }, [vol.asOf, reloadTerm, reloadSurface, reloadPca]);
 
-  // RT.1 — live EURUSD spot (/ws/ticks). RT.2/RT.3 — the risk-engine cycle (~2s)
-  // is the realtime heartbeat: its raw greeks payload isn't USD-scaled, so we use
-  // it only to invalidate trade+portfolio -> re-fetch the USD-scaled REST snapshot
-  // (greeks + positions mtm) = correct numbers, updated live.
-  const ticks: Fresh<TickMsg> = useTicks();
+  // RT.2/RT.3 — the risk-engine cycle (~2s) is the realtime heartbeat: its raw
+  // greeks payload isn't USD-scaled, so we use it only to invalidate
+  // trade+portfolio -> re-fetch the USD-scaled REST snapshot (greeks + positions
+  // mtm) = correct numbers, updated live.
   const riskBeat = useRiskStream();
   const reloadTrade = liveTrade.reload;
   const reloadPortfolio = livePortfolio.reload;
@@ -211,31 +213,56 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
     }
   }, [riskBeat.asOf, reloadTrade, reloadPortfolio]);
 
-  const surface: Fresh<SurfaceData> = {
-    status: liveSurface.status,
-    asOf: liveSurface.asOf,
-    ageMs: liveSurface.ageMs,
-    data: liveSurface.data
-      ? {
-          ivSurface: liveSurface.data.ivSurface,
-          ivZ: liveSurface.data.ivZ,
-          tenors: liveSurface.data.tenors,
-          deltas: DELTA_LABELS,
-          sources: liveSurface.data.sources,
-        }
-      : null,
-  };
+  // Derived `surface` object — memoized on the live slice so its identity stays
+  // stable when the surface data is unchanged (memo on the Signal panels is
+  // otherwise defeated by a fresh object every render).
+  const surface = useMemo<Fresh<SurfaceData>>(
+    () => ({
+      status: liveSurface.status,
+      asOf: liveSurface.asOf,
+      ageMs: liveSurface.ageMs,
+      data: liveSurface.data
+        ? {
+            ivSurface: liveSurface.data.ivSurface,
+            ivZ: liveSurface.data.ivZ,
+            tenors: liveSurface.data.tenors,
+            deltas: DELTA_LABELS,
+            sources: liveSurface.data.sources,
+          }
+        : null,
+    }),
+    [liveSurface.status, liveSurface.asOf, liveSurface.ageMs, liveSurface.data],
+  );
 
-  const value: DeskData = {
-    termStructure: liveTerm,
-    surface,
-    pca: livePca,
-    system: liveSystem,
-    config: liveConfig,
-    trade: liveTrade,
-    portfolio: livePortfolio,
-    risk: liveRisk,
-    ticks,
-  };
-  return <DeskDataContext.Provider value={value}>{children}</DeskDataContext.Provider>;
+  // Memoize the desk-data value on the actual `Fresh` slices so the context
+  // object identity is stable across renders that don't change any slice. This
+  // is what keeps `useDeskData()` consumers from re-rendering on every tick.
+  const value = useMemo<DeskData>(
+    () => ({
+      termStructure: liveTerm,
+      surface,
+      pca: livePca,
+      system: liveSystem,
+      config: liveConfig,
+      trade: liveTrade,
+      portfolio: livePortfolio,
+      risk: liveRisk,
+    }),
+    [liveTerm, surface, livePca, liveSystem, liveConfig, liveTrade, livePortfolio, liveRisk],
+  );
+  return (
+    <DeskDataContext.Provider value={value}>
+      <TicksProvider>{children}</TicksProvider>
+    </DeskDataContext.Provider>
+  );
+}
+
+/**
+ * High-frequency tick provider, kept separate from `DataProvider`'s value so the
+ * ~1 Hz spot stream only re-renders the components that subscribe via
+ * `useTicks()` — not every `useDeskData()` consumer (RT.1).
+ */
+function TicksProvider({ children }: { children: ReactNode }): JSX.Element {
+  const ticks: Fresh<TickMsg> = useTicks();
+  return <TicksContext.Provider value={ticks}>{children}</TicksContext.Provider>;
 }
