@@ -78,15 +78,7 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
                   {missing ? (
                     <span className="gz-iv mono dim">—</span>
                   ) : (
-                    <>
-                      <span className="gz-iv mono">{v.toFixed(1)}</span>
-                      {Math.abs(zz) >= 0.05 && (
-                        <span className="gz-z mono">
-                          {zz > 0 ? "+" : ""}
-                          {zz.toFixed(1)}σ
-                        </span>
-                      )}
-                    </>
+                    <span className="gz-iv mono">{v.toFixed(1)}</span>
                   )}
                 </div>
               );
@@ -114,11 +106,11 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
 // ATM term curve with σ_fair overlay (the level / gate visual)
 function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
   const w = 560,
-    h = 168,
+    h = 140,
     pl = 38,
     pr = 16,
-    pt = 16,
-    pb = 28;
+    pt = 14,
+    pb = 26;
   // RV (realized) is horizon-matched per tenor (Yang-Zhang over a trailing window
   // ≈ each tenor) → a realized-vol curve aligned with the IV / σ_fair curves.
   const hasRv = ts.some((t) => t.rv > 0);
@@ -135,10 +127,13 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
   return (
     <div>
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+        {/* axes — X baseline + Y axis (made prominent) */}
+        <line x1={pl} x2={pl} y1={pt} y2={h - pb} stroke="var(--border)" strokeWidth="1.3" />
+        <line x1={pl} x2={w - pr} y1={h - pb} y2={h - pb} stroke="var(--border)" strokeWidth="1.3" />
         {ticks.map((v, i) => (
           <g key={i}>
-            <line x1={pl} x2={w - pr} y1={Y(v)} y2={Y(v)} stroke="var(--line)" opacity="0.45" />
-            <text x={5} y={Y(v) + 3} fill="var(--text-faint)" fontSize="8.5" fontFamily="var(--mono)">
+            <line x1={pl} x2={w - pr} y1={Y(v)} y2={Y(v)} stroke="var(--line)" opacity="0.6" />
+            <text x={6} y={Y(v) + 3} fill="var(--text-dim)" fontSize="10" fontWeight={600} fontFamily="var(--mono)">
               {v.toFixed(1)}
             </text>
           </g>
@@ -150,7 +145,7 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
           <circle key={i} cx={X(i)} cy={Y(t.atm)} r="2.6" fill="var(--accent)" stroke="var(--bg)" strokeWidth="1.2" />
         ))}
         {ts.map((t, i) => (
-          <text key={"l" + i} x={X(i)} y={h - 7} fill="var(--text-dim)" fontSize="9.5" fontFamily="var(--mono)" textAnchor="middle">
+          <text key={"l" + i} x={X(i)} y={h - 6} fill="var(--fg)" fontSize="11" fontWeight={600} fontFamily="var(--mono)" textAnchor="middle">
             {t.tenor}
           </text>
         ))}
@@ -162,7 +157,7 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
         </span>
         <span>
           <i className="lg-line fair" style={{ borderColor: FAIR_COL }} />
-          σ_fair · level gate
+          σ_fair
         </span>
         {hasRv && (
           <span>
@@ -272,7 +267,7 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
   return (
     <div>
       <div className="fv-chart">
-        <div className="surf-curve-lbl dim small mono">ATM level vs σ_fair</div>
+        <div className="surf-curve-lbl dim small mono">IV vs fair</div>
         <ATMTermChart ts={ts} />
       </div>
       <div className="table-scroll fv-table-wrap">
@@ -281,13 +276,13 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
             <tr>
               <th className="l">Tenor</th>
               <th className="r">ATM</th>
-              <th className="r">25Δ BF</th>
-              <th className="r dim">10Δ BF</th>
-              <th className="r">25Δ RR</th>
-              <th className="r dim">10Δ RR</th>
-              <th className="r">σ_fair</th>
-              <th className="r">IV−fair</th>
               <th className="r">RV</th>
+              <th className="r">Fair</th>
+              <th className="r">Spread</th>
+              <th className="r fv-skew col-grp">25Δ BF</th>
+              <th className="r fv-skew dim">10Δ BF</th>
+              <th className="r fv-skew">25Δ RR</th>
+              <th className="r fv-skew dim col-grp-end">10Δ RR</th>
             </tr>
           </thead>
           <tbody>
@@ -300,13 +295,13 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
                 <tr key={t.tenor}>
                   <td className="l mono">{t.tenor}</td>
                   <td className="r mono">{t.atm.toFixed(2)}</td>
-                  <td className="r mono dim">{fly(t.bf25)}</td>
-                  <td className="r mono dim fv-wing">{fly(t.bf10)}</td>
-                  <td className="r mono neg">{rr(t.rr25)}</td>
-                  <td className="r mono neg fv-wing">{rr(t.rr10)}</td>
+                  <td className="r mono dim">{t.rv.toFixed(2)}</td>
                   <td className="r mono warn">{t.fair.toFixed(2)}</td>
                   <td className={"r mono " + (rich ? "pos" : "neg")}>{fmt.sgn(spread, 2)}</td>
-                  <td className="r mono dim">{t.rv.toFixed(2)}</td>
+                  <td className="r mono dim fv-skew col-grp">{fly(t.bf25)}</td>
+                  <td className="r mono dim fv-skew fv-wing">{fly(t.bf10)}</td>
+                  <td className="r mono neg fv-skew">{rr(t.rr25)}</td>
+                  <td className="r mono neg fv-skew fv-wing col-grp-end">{rr(t.rr10)}</td>
                 </tr>
               );
             })}
@@ -325,11 +320,11 @@ export function SignalsView(): JSX.Element {
     <div className="ts-grid">
       <div className="sig-cluster">
         <div className="sig-left">
-          <Panel title="IV surface" dataPp="iv-surface" right={<FreshBadge fresh={surface} label="EURUSD · z-score field" />} className="ts-curve-panel">
+          <Panel title="IV surface" dataPp="iv-surface" right={<FreshBadge fresh={surface} label="" />} className="ts-curve-panel">
             <IVSurfaceZ data={surface.data} />
           </Panel>
         </div>
-        <Panel title="Fair vol — level gate" dataPp="fair-vol" right={<FreshBadge fresh={termStructure} label="RV / GARCH" />} className="ts-fv-panel sig-fv" pad>
+        <Panel title="Fair vol" dataPp="fair-vol" right={<FreshBadge fresh={termStructure} label="RV / GARCH" />} className="ts-fv-panel sig-fv" pad>
           <FairVolGate ts={termStructure.data} />
         </Panel>
       </div>
