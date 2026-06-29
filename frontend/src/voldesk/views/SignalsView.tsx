@@ -8,14 +8,14 @@
  * tabs to consume; they have no in-view consumer, so they are not ported here
  * (this module exports only the `SignalsView` component).
  */
-import { Fragment, useState } from "react";
+import { Fragment, memo, useMemo, useState } from "react";
 import { Heatmap } from "../components/charts";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { type Tone } from "../components/format";
 import { DATA, fmt } from "../data";
 import type { Pc, TermPoint } from "../data";
-import type { PcaCard, PcaModelMeta, SurfaceData } from "../data/deskData";
+import type { PcaCard, SurfaceData } from "../data/deskData";
 import { useDeskData } from "../data/deskData";
 
 const FAIR_COL = "#46b3d6"; // distinct cool color for the σ_fair curve (vs orange accent for ATM)
@@ -33,15 +33,41 @@ function sigDivZ(z: number): string {
     `rgb(${c0.map((v, i) => Math.round(v + (c1[i]! - v) * f)).join(",")})`;
   return t < 0.5 ? mix(A, M, t / 0.5) : mix(M, B, (t - 0.5) / 0.5);
 }
-function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
-  if (!data) {
+// memo: the IV surface only changes on a vol cycle (~3 min), but the panel sits
+// in a tree that re-renders far more often — skip the 30-cell colour/title work
+// when `data` (a memoized surface object) is unchanged.
+const IVSurfaceZ = memo(function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
+  // 30 cells × {colour mix, NaN check, title string} — derived once per surface.
+  const cells = useMemo(() => {
+    if (!data) return null;
+    const deltas = data.deltas;
+    const C = deltas.length;
+    return data.ivSurface.map((row, i) =>
+      row.map((v, j) => {
+        const zz = data.ivZ[i]![j]!;
+        const missing = Number.isNaN(v);
+        const wing = j === 0 || j === C - 1;
+        return {
+          className: "gz-cell" + (wing ? " wing" : "") + (missing ? " gz-missing" : ""),
+          style: missing ? undefined : { background: sigDivZ(zz) },
+          title: missing
+            ? `${data.tenors[i]} ${deltas[j]} · no data`
+            : `${data.tenors[i]} ${deltas[j]} · IV ${v.toFixed(1)} · ${zz > 0 ? "+" : ""}${zz.toFixed(1)}σ`,
+          missing,
+          label: missing ? "—" : v.toFixed(1),
+        };
+      }),
+    );
+  }, [data]);
+  if (!data || !cells) {
     return <div className="dim small mono ivz-empty">surface unavailable (market closed / no vol cycle)</div>;
   }
   const surf = data.ivSurface,
-    z = data.ivZ,
     deltas = data.deltas,
-    tenors = data.tenors;
+    tenors = data.tenors,
+    sources = data.sources ?? [];
   const C = deltas.length;
+  const hasInterp = sources.includes("interp");
   return (
     <div className="ivz">
       <div className="gz ivz-grid" style={{ gridTemplateColumns: `42px repeat(${C}, 1fr)` }}>
@@ -53,23 +79,17 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
         ))}
         {surf.map((row, i) => (
           <Fragment key={i}>
-            <div className="gz-rowh mono">{tenors[i]}</div>
-            {row.map((v, j) => {
-              const zz = z[i]![j]!;
+            <div className={"gz-rowh mono" + (sources[i] === "interp" ? " gz-rowh-interp" : "")}>
+              {tenors[i]}
+              {sources[i] === "interp" && (
+                <span className="interp-mark" title="interpolated — no listed contract at this tenor">~</span>
+              )}
+            </div>
+            {row.map((_v, j) => {
+              const cell = cells[i]![j]!;
               return (
-                <div
-                  key={j}
-                  className={"gz-cell" + (j === 0 || j === C - 1 ? " wing" : "")}
-                  style={{ background: sigDivZ(zz) }}
-                  title={`${tenors[i]} ${deltas[j]} · IV ${v.toFixed(1)} · ${zz > 0 ? "+" : ""}${zz.toFixed(1)}σ`}
-                >
-                  <span className="gz-iv mono">{v.toFixed(1)}</span>
-                  {Math.abs(zz) >= 0.05 && (
-                    <span className="gz-z mono">
-                      {zz > 0 ? "+" : ""}
-                      {zz.toFixed(1)}σ
-                    </span>
-                  )}
+                <div key={j} className={cell.className} style={cell.style} title={cell.title}>
+                  <span className={"gz-iv mono" + (cell.missing ? " dim" : "")}>{cell.label}</span>
                 </div>
               );
             })}
@@ -83,51 +103,73 @@ function IVSurfaceZ({ data }: { data: SurfaceData | null }): JSX.Element {
           <span className="mono small dim">rich</span>
         </div>
       </div>
+      {hasInterp && (
+        <div className="ivz-interp-note small">
+          <span className="interp-mark">~</span> interpolated tenor — no listed CME contract at that maturity;
+          IV is modelled from the listed expiries. A read-only estimate, not a market quote.
+        </div>
+      )}
     </div>
   );
-}
+});
 
 // ATM term curve with σ_fair overlay (the level / gate visual)
 function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
   const w = 560,
-    h = 168,
+    h = 140,
     pl = 38,
     pr = 16,
-    pt = 16,
-    pb = 28;
-  // RV (realized) is horizon-matched per tenor (Yang-Zhang over a trailing window
-  // ≈ each tenor) → a realized-vol curve aligned with the IV / σ_fair curves.
-  const hasRv = ts.some((t) => t.rv > 0);
-  const all = ts.flatMap((t) => (hasRv ? [t.atm, t.fair, t.rv] : [t.atm, t.fair]));
-  const lo = Math.min(...all) - 0.15,
-    hi = Math.max(...all) + 0.15,
-    rng = hi - lo || 1;
-  const X = (i: number): number => pl + (i / (ts.length - 1)) * (w - pl - pr);
-  const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
-  const line = (key: "atm" | "fair" | "rv"): string =>
-    ts.map((t, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(t[key]).toFixed(1)).join(" ");
-  const ticks: number[] = [];
-  for (let v = Math.ceil(lo); v <= hi; v += 0.5) ticks.push(v);
+    pt = 14,
+    pb = 26;
+  // SVG scale + path strings derived once per term-structure (the chart sits in
+  // a tree that re-renders far more often than the vol cycle that moves `ts`).
+  const geo = useMemo(() => {
+    // RV (realized) is horizon-matched per tenor (Yang-Zhang over a trailing
+    // window ≈ each tenor) → a realized-vol curve aligned with IV / σ_fair.
+    const hasRv = ts.some((t) => t.rv > 0);
+    const all = ts.flatMap((t) => (hasRv ? [t.atm, t.fair, t.rv] : [t.atm, t.fair]));
+    const lo = Math.min(...all) - 0.15,
+      hi = Math.max(...all) + 0.15,
+      rng = hi - lo || 1;
+    const X = (i: number): number => pl + (i / (ts.length - 1)) * (w - pl - pr);
+    const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
+    const line = (key: "atm" | "fair" | "rv"): string =>
+      ts.map((t, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(t[key]).toFixed(1)).join(" ");
+    const ticks: number[] = [];
+    for (let v = Math.ceil(lo); v <= hi; v += 0.5) ticks.push(v);
+    return {
+      hasRv,
+      atm: line("atm"),
+      fair: line("fair"),
+      rv: line("rv"),
+      ticks: ticks.map((v) => ({ v, y: Y(v) })),
+      pts: ts.map((t, i) => ({ tenor: t.tenor, x: X(i), y: Y(t.atm) })),
+    };
+  }, [ts]);
+  const { hasRv } = geo;
   return (
     <div>
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-        {ticks.map((v, i) => (
+        {/* axes — X baseline + Y axis (made prominent) */}
+        <line x1={pl} x2={pl} y1={pt} y2={h - pb} stroke="var(--border)" strokeWidth="1.3" />
+        <line x1={pl} x2={w - pr} y1={h - pb} y2={h - pb} stroke="var(--border)" strokeWidth="1.3" />
+        {geo.ticks.map((tk, i) => (
           <g key={i}>
-            <line x1={pl} x2={w - pr} y1={Y(v)} y2={Y(v)} stroke="var(--line)" opacity="0.45" />
-            <text x={5} y={Y(v) + 3} fill="var(--text-faint)" fontSize="8.5" fontFamily="var(--mono)">
-              {v.toFixed(1)}
+            <line x1={pl} x2={w - pr} y1={tk.y} y2={tk.y} stroke="var(--line)" opacity="0.6" />
+            <text x={6} y={tk.y + 3} fill="var(--text-dim)" fontSize="10" fontWeight={600} fontFamily="var(--mono)">
+              {tk.v.toFixed(1)}
             </text>
           </g>
         ))}
-        {hasRv && <path d={line("rv")} stroke="var(--muted)" strokeDasharray="2 2" fill="none" strokeWidth="1.4" />}
-        <path d={line("fair")} stroke={FAIR_COL} strokeDasharray="5 3" fill="none" strokeWidth="1.8" />
-        <path d={line("atm")} stroke="var(--accent)" fill="none" strokeWidth="2.2" />
-        {ts.map((t, i) => (
-          <circle key={i} cx={X(i)} cy={Y(t.atm)} r="2.6" fill="var(--accent)" stroke="var(--bg)" strokeWidth="1.2" />
+        {hasRv && <path d={geo.rv} stroke="var(--muted)" strokeDasharray="2 2" fill="none" strokeWidth="1.4" />}
+        <path d={geo.fair} stroke={FAIR_COL} strokeDasharray="5 3" fill="none" strokeWidth="1.8" />
+        <path d={geo.atm} stroke="var(--accent)" fill="none" strokeWidth="2.2" />
+        {geo.pts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="2.6" fill="var(--accent)" stroke="var(--bg)" strokeWidth="1.2" />
         ))}
-        {ts.map((t, i) => (
-          <text key={"l" + i} x={X(i)} y={h - 7} fill="var(--text-dim)" fontSize="9.5" fontFamily="var(--mono)" textAnchor="middle">
-            {t.tenor}
+        {geo.pts.map((p, i) => (
+          <text key={"l" + i} x={p.x} y={h - 6} fill="var(--fg)" fontSize="11" fontWeight={600} fontFamily="var(--mono)" textAnchor="middle">
+            {p.tenor}
           </text>
         ))}
       </svg>
@@ -138,7 +180,7 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
         </span>
         <span>
           <i className="lg-line fair" style={{ borderColor: FAIR_COL }} />
-          σ_fair · level gate
+          σ_fair
         </span>
         {hasRv && (
           <span>
@@ -210,7 +252,10 @@ function ZSeriesChart({ pc, view, series }: { pc: Pc; view: string; series?: num
 }
 
 // PCA surface-mode card — the RELATIVE signal only (z vs history, loadings). The level gate lives in its own Fair vol panel.
-function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
+// memo: one card per PC; its props (pc, view) only change on a vol cycle or a
+// timeframe toggle, so skip the SVG z-series + loadings heatmap re-render on
+// unrelated desk ticks.
+const ModeCard = memo(function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
   const tone: Tone =
     pc.label === "CHEAP" ? "good" : pc.label === "EXPENSIVE" || pc.label === "RICH" ? "danger" : "neutral";
   return (
@@ -236,55 +281,20 @@ function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
       <Heatmap rows={DATA.tenors} cols={DATA.deltas} matrix={pc.load} />
     </div>
   );
-}
+});
 
-// mode stability — eigengap λ2−λ3; warns when slope/curvature identities may rotate
-function ModeStability({ model }: { model: PcaModelMeta | null }): JSX.Element {
-  if (!model) {
-    return <div className="dim small mono ivz-empty">PCA model not loaded (no active fit)</div>;
-  }
-  const e = model.eigen,
-    // only the 3 traded modes (PC1/2/3) ; drop the higher eigenvalues (4-6).
-    lam = e.lambda.slice(0, 3);
-  const max = Math.max(...lam) || 1;
-  const degenerate = e.ratio23 < 2;
-  return (
-    <div className="stab">
-      <div className="stab-eigs">
-        {lam.map((l, i) => (
-          <div key={i} className="stab-row">
-            <span className="stab-lbl mono">λ{i + 1}</span>
-            <div className="stab-track">
-              <div className={"stab-fill pc" + (i + 1)} style={{ width: Math.max(2, (l / max) * 100) + "%" }} />
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="stab-gap">
-        <div className="stab-gap-item">
-          <span className="gs-lbl">eigengap λ2−λ3</span>
-          <b className="mono">{e.gap23.toFixed(1)} pts</b>
-        </div>
-        <div className="stab-gap-item">
-          <span className="gs-lbl">ratio λ2/λ3</span>
-          <b className={"mono " + (degenerate ? "warn" : "pos")}>{e.ratio23.toFixed(2)}×</b>
-        </div>
-        <Tag tone={degenerate ? "danger" : "good"}>{degenerate ? "narrow — degenerate risk" : "stable"}</Tag>
-      </div>
-    </div>
-  );
-}
-
+// (Mode stability panel removed — eigengap diagnostics dropped from the desk.)
 // (Expressions moved to the Order builder as an exposure reference — see order_builder.jsx)
 
-function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
+// memo: the fair-vol gate (term chart + skew table) only moves on a vol cycle.
+const FairVolGate = memo(function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
   if (!ts) {
     return <div className="dim small mono ivz-empty">term structure unavailable (market closed / no vol cycle)</div>;
   }
   return (
     <div>
       <div className="fv-chart">
-        <div className="surf-curve-lbl dim small mono">ATM level vs σ_fair</div>
+        <div className="surf-curve-lbl dim small mono">IV vs fair</div>
         <ATMTermChart ts={ts} />
       </div>
       <div className="table-scroll fv-table-wrap">
@@ -293,13 +303,13 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
             <tr>
               <th className="l">Tenor</th>
               <th className="r">ATM</th>
-              <th className="r">25Δ BF</th>
-              <th className="r dim">10Δ BF</th>
-              <th className="r">25Δ RR</th>
-              <th className="r dim">10Δ RR</th>
-              <th className="r">σ_fair</th>
-              <th className="r">IV−fair</th>
               <th className="r">RV</th>
+              <th className="r">Fair</th>
+              <th className="r">Spread</th>
+              <th className="r fv-skew col-grp">25Δ BF</th>
+              <th className="r fv-skew">10Δ BF</th>
+              <th className="r fv-skew">25Δ RR</th>
+              <th className="r fv-skew col-grp-end">10Δ RR</th>
             </tr>
           </thead>
           <tbody>
@@ -312,13 +322,13 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
                 <tr key={t.tenor}>
                   <td className="l mono">{t.tenor}</td>
                   <td className="r mono">{t.atm.toFixed(2)}</td>
-                  <td className="r mono dim">{fly(t.bf25)}</td>
-                  <td className="r mono dim fv-wing">{fly(t.bf10)}</td>
-                  <td className="r mono neg">{rr(t.rr25)}</td>
-                  <td className="r mono neg fv-wing">{rr(t.rr10)}</td>
-                  <td className="r mono warn">{t.fair.toFixed(2)}</td>
+                  <td className="r mono">{t.rv.toFixed(2)}</td>
+                  <td className="r mono">{t.fair.toFixed(2)}</td>
                   <td className={"r mono " + (rich ? "pos" : "neg")}>{fmt.sgn(spread, 2)}</td>
-                  <td className="r mono dim">{t.rv.toFixed(2)}</td>
+                  <td className="r mono fv-skew col-grp">{fly(t.bf25)}</td>
+                  <td className="r mono fv-skew">{fly(t.bf10)}</td>
+                  <td className="r mono fv-skew">{rr(t.rr25)}</td>
+                  <td className="r mono fv-skew col-grp-end">{rr(t.rr10)}</td>
                 </tr>
               );
             })}
@@ -327,25 +337,21 @@ function FairVolGate({ ts }: { ts: TermPoint[] | null }): JSX.Element {
       </div>
     </div>
   );
-}
+});
 
 export function SignalsView(): JSX.Element {
   const [view, setView] = useState<string>("3M");
   const { surface, termStructure, pca } = useDeskData();
-  const m = pca.data?.model ?? null;
   const pcsList = pca.data?.pcs ?? [];
   return (
     <div className="ts-grid">
       <div className="sig-cluster">
         <div className="sig-left">
-          <Panel title="IV surface" dataPp="iv-surface" right={<FreshBadge fresh={surface} label="EURUSD · z-score field" />} className="ts-curve-panel">
+          <Panel title="IV surface" dataPp="iv-surface" right={<FreshBadge fresh={surface} label="" />} className="ts-curve-panel">
             <IVSurfaceZ data={surface.data} />
           </Panel>
-          <Panel title="Mode stability" dataPp="mode-stability" right={<FreshBadge fresh={pca} label="eigengap" />} className="ts-stab-panel">
-            <ModeStability model={m} />
-          </Panel>
         </div>
-        <Panel title="Fair vol — level gate" dataPp="fair-vol" right={<FreshBadge fresh={termStructure} label="RV / GARCH" />} className="ts-fv-panel sig-fv" pad>
+        <Panel title="Fair vol" dataPp="fair-vol" right={<FreshBadge fresh={termStructure} label="RV / GARCH" />} className="ts-fv-panel sig-fv" pad>
           <FairVolGate ts={termStructure.data} />
         </Panel>
       </div>
