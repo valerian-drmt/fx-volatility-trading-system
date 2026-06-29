@@ -416,6 +416,9 @@ export const limits = {
   var99: { cap: 420, unit: "$k" },
   deltaBandUsd: 5000,
   skewVarPct: 20,
+  // Live vega budget from risk config (config_scalar 'max_book_vega_usd'); 0
+  // until the config row resolves — never a mock fallback.
+  vegaCapUsd: 0,
 };
 /** Inline-const shapes reused by the live Trade adapter (R11 PR 6r). */
 export type AccountState = typeof account;

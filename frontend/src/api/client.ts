@@ -1,8 +1,8 @@
-// Typed fetch wrapper. The project lives under the deploy base
-// (import.meta.env.BASE_URL, e.g. "/fx-volatility-trading-system/"), so API
-// calls are prefixed with it: Nginx routes <base>/api → api:8000 (prod) and the
-// Vite proxy forwards <base>/api in dev. At the root / in tests BASE_URL is "/"
-// → empty prefix → "/api/...". Override the whole base via VITE_API_BASE_URL.
+// Typed fetch wrapper. The whole project (UI + API) lives under the deploy base
+// (import.meta.env.BASE_URL, e.g. "/fx-volatility-trading-system/"), so API calls
+// are prefixed with it: Nginx routes <base>/api → api:8000 (prod) and the Vite
+// proxy forwards <base>/api in dev. In tests/at the root BASE_URL is "/" → empty
+// prefix → "/api/...". Override the whole base via VITE_API_BASE_URL.
 const BASE_URL =
   import.meta.env["VITE_API_BASE_URL"] ?? import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -66,6 +66,23 @@ export async function apiPost<T>(
   const url = buildUrl(path, opts.query);
   const init: RequestInit = {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  };
+  const res = await fetch(url, buildInit(init, opts.signal));
+  const body = await parseBody(res);
+  if (!res.ok) throw new ApiError(res.status, url, body);
+  return body as T;
+}
+
+export async function apiPut<T>(
+  path: string,
+  payload: unknown,
+  opts: RequestOptions = {},
+): Promise<T> {
+  const url = buildUrl(path, opts.query);
+  const init: RequestInit = {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   };

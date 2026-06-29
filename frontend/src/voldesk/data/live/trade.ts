@@ -162,6 +162,8 @@ export function adaptLimits(raw: unknown): Limits {
     var99: cap("var99", mockLimits.var99),
     deltaBandUsd: scalar("deltaBandUsd", mockLimits.deltaBandUsd),
     skewVarPct: scalar("skewVarPct", mockLimits.skewVarPct),
+    // Live vega budget — the desk's configured max book vega (no mock fallback).
+    vegaCapUsd: scalar("max_book_vega_usd", 0),
   };
 }
 

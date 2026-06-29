@@ -418,7 +418,7 @@ function PortfolioProbe(): JSX.Element {
 }
 
 describe("DataProvider (live-only)", () => {
-  it("fetches + adapts the surface ; ivZ grid is always 6 rows (neutral when no fair)", async () => {
+  it("fetches + adapts the surface ; grid always carries the 6 canonical tenors (missing cells = NaN → '—')", async () => {
     server.use(
       http.get("*/api/v1/vol/surface", () =>
         HttpResponse.json({
@@ -437,12 +437,12 @@ describe("DataProvider (live-only)", () => {
     );
     await waitFor(() => expect(screen.getByTestId("s-iv00").textContent).toBe("11"));
     expect(screen.getByTestId("s-status").textContent).toBe("live");
-    // ivZ is live (surface `.z`); the grid is always 6 rows, neutral (0) when
-    // the payload carries no fair-richness yet.
+    // The grid always holds the 6 canonical tenors (1M…6M) so 6M is shown;
+    // cells the engine didn't emit come back as NaN and render "—" (not 0.0).
     expect(Number(screen.getByTestId("s-hasz").textContent)).toBe(6);
   });
 
-  it("live mode fetches state/model/history + adapts the mode cards", async () => {
+  it("live mode fetches state/history + adapts the mode cards (no model round-trip)", async () => {
     server.use(
       http.get("*/api/v1/signals/pca/state", () =>
         HttpResponse.json({
@@ -459,9 +459,9 @@ describe("DataProvider (live-only)", () => {
           coherence: { all_coherent: true, contradictions: [] },
         }),
       ),
-      http.get("*/api/v1/signals/pca/model", () =>
-        HttpResponse.json({ active: true, version: "v9", n_obs_used: 1200, variance_explained: [0.96, 0.02, 0.01] }),
-      ),
+      // /signals/pca/model is no longer fetched on the Signal path (P2): its
+      // variance_explained eigen bars aren't rendered. The cards build from
+      // state + history alone.
       http.get("*/api/v1/signals/pca/history", () => HttpResponse.json([{ z_score: -1.4 }, { z_score: -1.0 }])),
     );
     render(

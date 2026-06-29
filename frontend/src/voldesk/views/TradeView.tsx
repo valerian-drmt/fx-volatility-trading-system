@@ -14,7 +14,7 @@ import { OpenPositionsTable } from "../components/PositionsTable";
 import { OrderBuilder, type BuilderState } from "../components/OrderBuilder";
 import { DATA, fmt } from "../data";
 import type { AccountState, Cash, Greeks, Limits, MacroEvent, Position } from "../data";
-import { useDeskData } from "../data/deskData";
+import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 
 const GATE_TITLE = "écriture désactivée — auth requise (Phase 2)";
@@ -587,7 +587,8 @@ function HedgeStrip({ greeks, limits }: { greeks: Greeks; limits: Limits }): JSX
 export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const [closing, setClosing] = useState<Position | null>(null);
   const [builder, setBuilder] = useState<BuilderState | null>(null);
-  const { trade, ticks } = useDeskData();
+  const { trade } = useDeskData();
+  const ticks = useTicks();
   const td = trade.data;
   const positions = td?.positions ?? DATA.positions;
   const greeks = td?.greeks ?? DATA.greeks;

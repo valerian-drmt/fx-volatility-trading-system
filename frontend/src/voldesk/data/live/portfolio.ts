@@ -171,6 +171,7 @@ export function adaptVar(raw: unknown): VarData {
     var_95_usd?: number | null;
     var_99_usd?: number | null;
     es_99_usd?: number | null;
+    mean_daily_usd?: number | null;
     n_days?: number | null;
     hist?: { lo?: number; hi?: number; count?: number }[];
   };
@@ -183,6 +184,7 @@ export function adaptVar(raw: unknown): VarData {
     var95: n(v.var_95_usd) / 1000,
     var99: n(v.var_99_usd) / 1000,
     es99: n(v.es_99_usd) / 1000,
+    meanDaily: n(v.mean_daily_usd) / 1000,
     nDays: v.n_days ?? 0,
     hist,
     perTenor: [],
@@ -391,8 +393,78 @@ export function adaptVegaPca(raw: unknown): VegaPcaRow[] {
   }));
 }
 
+export interface PositionAttrib {
+  deltaPnl: number | null;
+  gammaPnl: number | null;
+  vegaPnl: number | null;
+  thetaPnl: number | null;
+  residual: number | null;
+}
+
+/** /portfolio/pnl-attribution per_position → live Taylor P&L decomposition by
+ * position id (Δ/Γ/Vega/Θ contributions + residual over the lookback window). */
+export function adaptPnlAttributionByPosition(raw: unknown): Record<string, PositionAttrib> {
+  const rows = ((raw ?? {}) as {
+    per_position?: {
+      id?: number | string;
+      delta_pnl_usd?: number | null;
+      gamma_pnl_usd?: number | null;
+      vega_pnl_usd?: number | null;
+      theta_pnl_usd?: number | null;
+      residual_usd?: number | null;
+    }[];
+  }).per_position ?? [];
+  const out: Record<string, PositionAttrib> = {};
+  for (const r of rows) {
+    out[String(r.id ?? "")] = {
+      deltaPnl: r.delta_pnl_usd ?? null,
+      gammaPnl: r.gamma_pnl_usd ?? null,
+      vegaPnl: r.vega_pnl_usd ?? null,
+      thetaPnl: r.theta_pnl_usd ?? null,
+      residual: r.residual_usd ?? null,
+    };
+  }
+  return out;
+}
+
+export interface GreekLimits {
+  deltaCapUsd: number;
+  vegaCapUsd: number;
+  gammaCapPip: number;
+  crossBudgetUsd: number;
+  lossBudgetUsd: number;
+  navBaseUsd: number;
+  navLiveUsd: number;
+  regimeMult: number;
+}
+
+/** /portfolio/greek-limits → derived stress-loss caps (greek-limits-spec §2). */
+export function adaptGreekLimits(raw: unknown): GreekLimits {
+  const o = (raw ?? {}) as {
+    delta_cap_usd?: number | null;
+    vega_cap_usd?: number | null;
+    gamma_cap_pip?: number | null;
+    cross_budget_usd?: number | null;
+    loss_budget_usd?: number | null;
+    nav_base_usd?: number | null;
+    nav_live_usd?: number | null;
+    regime_mult?: number | null;
+  };
+  return {
+    deltaCapUsd: n(o.delta_cap_usd),
+    vegaCapUsd: n(o.vega_cap_usd),
+    gammaCapPip: n(o.gamma_cap_pip),
+    crossBudgetUsd: n(o.cross_budget_usd),
+    lossBudgetUsd: n(o.loss_budget_usd),
+    navBaseUsd: n(o.nav_base_usd),
+    navLiveUsd: n(o.nav_live_usd),
+    regimeMult: o.regime_mult ?? 1,
+  };
+}
+
 export interface MarginalVarRow {
-  label: string;
+  trade: string; // trade / package id (T-… / PKG-…) or "—"
+  label: string; // product label
   factor: string; // dominant greek: spot | level | skew | curv
   standalone: number; // USD loss
   component: number; // USD contribution to portfolio VaR (signed)
@@ -409,6 +481,7 @@ export interface MarginalVarData {
 interface MVarResp {
   positions?: {
     label?: string;
+    trade?: string | null;
     factor?: string;
     standalone_usd?: number | null;
     component_usd?: number | null;
@@ -422,6 +495,7 @@ interface MVarResp {
 export function adaptMarginalVar(raw: unknown): MarginalVarData {
   const o = (raw ?? {}) as MVarResp;
   const rows = (o.positions ?? []).map((r) => ({
+    trade: r.trade ?? "—",
     label: r.label ?? "",
     factor: r.factor ?? "spot",
     standalone: n(r.standalone_usd),

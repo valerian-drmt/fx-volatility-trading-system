@@ -16,7 +16,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./voldesk.css";
 import { useAuthStore } from "../store/authStore";
 import { LoginModal } from "./auth/LoginModal";
-import { useDeskData } from "./data/deskData";
+import { useTicks } from "./data/deskData";
 import { useTweaks } from "./useTweaks";
 import { DashboardView } from "./views/DashboardView";
 import { TradeView } from "./views/TradeView";
@@ -227,7 +227,7 @@ export default function VoldeskApp(): JSX.Element {
   const [route, setRoute] = useState<string>(() => location.hash.slice(1) || "dashboard");
   const [clock, setClock] = useState<string>("");
   // Live EURUSD ticks via the shared desk domain (/ws/ticks, one WS connection).
-  const { ticks: tick } = useDeskData();
+  const tick = useTicks();
   const prevMidRef = useRef<number | null>(null);
   // setTweak is wired for the (not-yet-ported) Settings/Tweaks UI.
   void setTweak;

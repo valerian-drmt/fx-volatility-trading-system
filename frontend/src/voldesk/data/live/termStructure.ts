@@ -15,11 +15,6 @@ interface SmileFields {
   bf_25d_pct?: number | null;
   rr_10d_pct?: number | null;
   bf_10d_pct?: number | null;
-  // fair-vol enrichment post-dates the committed schema.d.ts (lands with the
-  // vol-enrichment backend PR before the Signals view); null until then.
-  sigma_fair_q_pct?: number | null;
-  sigma_fair_pct?: number | null;
-  rv_pct?: number | null;
 }
 
 export function adaptTermStructure(resp: TermStructure): TermPoint[] {
@@ -28,8 +23,8 @@ export function adaptTermStructure(resp: TermStructure): TermPoint[] {
     return {
       tenor: p.tenor,
       atm: p.sigma_atm_pct ?? 0,
-      fair: s.sigma_fair_q_pct ?? s.sigma_fair_pct ?? p.sigma_atm_pct ?? 0,
-      rv: s.rv_pct ?? 0,
+      fair: p.sigma_fair_q_pct ?? p.sigma_fair_pct ?? p.sigma_atm_pct ?? 0,
+      rv: p.rv_pct ?? 0,
       bf25: s.bf_25d_pct ?? 0,
       bf10: s.bf_10d_pct ?? 0,
       rr25: s.rr_25d_pct ?? 0,

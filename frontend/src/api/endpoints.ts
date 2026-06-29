@@ -2,7 +2,7 @@
 // FastAPI Pydantic models and `schema.d.ts` is caught at `tsc --noEmit` time
 // (or earlier by `npm run gen:api:check` in CI).
 import type { paths } from "./schema";
-import { apiGet, apiPost } from "./client";
+import { apiGet, apiPost, apiPut } from "./client";
 export { ApiError } from "./client";
 
 type Get<P extends keyof paths, S extends 200> = paths[P] extends {
@@ -23,22 +23,22 @@ type PostBody<P extends keyof paths> = paths[P] extends {
   ? B
   : never;
 
-// ── Health ────────────────────────────────────────────────────────────────
-export type Health = Get<"/api/v1/health", 200>;
-export type HealthExtended = Get<"/api/v1/health/extended", 200>;
-export const fetchHealth = () => apiGet<Health>("/api/v1/health");
-export const fetchHealthExtended = () =>
-  apiGet<HealthExtended>("/api/v1/health/extended");
-
-// ── Auth (single-trader write boundary) ─────────────────────────────────────
-// Reads stay public; write endpoints 401 without a valid cookie. login sets the
-// httpOnly cookie (sent automatically — client.ts uses credentials:"include").
+// ── Auth (single-trader) ─────────────────────────────────────────────────────
+// Reads are public; logging in sets the httpOnly fxvol_auth cookie that unlocks
+// the write endpoints (require_write). `credentials:"include"` (client.ts) sends it.
 export type AuthStatus = Get<"/api/v1/auth/me", 200>;
 export type LoginBody = PostBody<"/api/v1/auth/login">;
 export const fetchAuthMe = () => apiGet<AuthStatus>("/api/v1/auth/me");
 export const postLogin = (body: LoginBody) =>
   apiPost<AuthStatus>("/api/v1/auth/login", body);
 export const postLogout = () => apiPost<AuthStatus>("/api/v1/auth/logout", {});
+
+// ── Health ────────────────────────────────────────────────────────────────
+export type Health = Get<"/api/v1/health", 200>;
+export type HealthExtended = Get<"/api/v1/health/extended", 200>;
+export const fetchHealth = () => apiGet<Health>("/api/v1/health");
+export const fetchHealthExtended = () =>
+  apiGet<HealthExtended>("/api/v1/health/extended");
 
 // ── Pricing ───────────────────────────────────────────────────────────────
 export type PriceRequest = PostBody<"/api/v1/price">;
@@ -108,7 +108,7 @@ export const fetchPcaState = (symbol = "EURUSD") =>
   apiGet<PcaState>("/api/v1/signals/pca/state", { query: { symbol } });
 export const fetchPcaModel = () => apiGet<PcaModel>("/api/v1/signals/pca/model");
 export type PcaHistory = Get<"/api/v1/signals/pca/history", 200>;
-export const fetchPcaHistory = (pcId: number, n = 180, symbol = "EURUSD") =>
+export const fetchPcaHistory = (pcId: number, n = 120, symbol = "EURUSD") =>
   apiGet<PcaHistory>("/api/v1/signals/pca/history", { query: { symbol, pc_id: pcId, n } });
 
 // Positions (Step 5)
@@ -125,6 +125,7 @@ export const fetchPortfolioDailyPnl = (days = 90) =>
   apiGet<unknown>("/api/v1/portfolio/daily-pnl", { query: { days } });
 export const fetchPortfolioStats = () => apiGet<unknown>("/api/v1/portfolio/stats");
 export const fetchPortfolioVar = () => apiGet<unknown>("/api/v1/portfolio/var");
+export const fetchGreekLimits = () => apiGet<unknown>("/api/v1/portfolio/greek-limits");
 export const fetchRiskPerTenor = () => apiGet<unknown>("/api/v1/portfolio/risk-per-tenor");
 export const fetchEquityCurve = (window = "30d") =>
   apiGet<unknown>("/api/v1/portfolio/equity-curve", { query: { window } });
@@ -162,6 +163,67 @@ export const fetchConfig = () => apiGet<ConfigResponse>("/api/v1/admin/config");
 export const fetchConfigSchema = () => apiGet<unknown>("/api/v1/admin/config/schema");
 export const fetchConfigHistory = (limit = 50) =>
   apiGet<unknown>("/api/v1/admin/config/history", { query: { limit } });
+// Settings write (Phase 2 / 2w) — gated by auth in prod (require_write), free locally.
+export const revertConfig = (version: number, comment?: string) =>
+  apiPost<unknown>(`/api/v1/admin/config/revert/${version}`, { user: "trader", comment });
+export const putConfig = (patch: Record<string, unknown>, comment?: string) =>
+  apiPut<unknown>("/api/v1/admin/config", { patch, user: "trader", comment });
+export const fetchDomainSettings = (domain: string) =>
+  apiGet<unknown>(`/api/v1/admin/settings/${domain}`);
+export const putDomainSettings = (domain: string, updates: Record<string, number>) =>
+  apiPut<unknown>(`/api/v1/admin/settings/${domain}`, { updates, user: "trader" });
+
+// ── Trade write (Phase 2 / 6w) — submit + close ──────────────────────────────
+// Paper-first: `execution_mode:"live"` routes to the IB *paper* account (the
+// system stays READ_ONLY_API until an explicit go-live, see docs/strategy.md §5).
+// Gated by auth in prod (require_write); free locally behind VITE_WRITE_ENABLED.
+
+/** One free-composed leg sent to POST /trade/preview (mirrors backend LegSpec). */
+export interface PreviewLeg {
+  contract_type: "call" | "put" | "future";
+  side: "BUY" | "SELL";
+  tenor: string;
+  delta_pillar?: string;                 // 10dp/25dp/atm/25dc/10dc (options)
+  strike?: number;                       // explicit strike override (options)
+  qty_factor?: number;                   // relative weight; ×base_qty at sizing
+  future_contract_size?: "full" | "micro";
+}
+
+/** Subset of the /trade/preview payload the desk reads (server returns a dict). */
+export interface TradePreview {
+  preview_id: string;
+  state: string;                         // "valid_for_submit" | "blocked" | …
+  blocking_reasons?: string[];
+  structure?: { type?: string };
+  pricing?: {
+    premium_paid_usd?: number;
+    max_loss_usd?: number;
+    max_loss_at_expiry_only?: boolean;
+  };
+  greeks_net?: Record<string, number | Record<string, number>>;
+}
+
+export const createTradePreview = (legs: PreviewLeg[], qty: number, symbol = "EURUSD") =>
+  apiPost<TradePreview>("/api/v1/trade/preview", { legs, qty }, { query: { symbol } });
+
+/** Submit a previewed structure. execution_mode "live" = IB paper account. */
+export const submitTrade = (previewId: string, executionMode: "live" | "mock" = "live") =>
+  apiPost<Record<string, unknown>>("/api/v1/trade/submit", {
+    preview_id: previewId,
+    execution_mode: executionMode,
+  });
+
+export const cancelTradePreview = (previewId: string) =>
+  apiPost<unknown>(`/api/v1/trade/preview/${encodeURIComponent(previewId)}/cancel`, {});
+
+/** Close a single leg (OpenPosition.id). Partial close via `qty`. */
+export const closeContract = (positionId: number, qty: number) =>
+  apiPost<Record<string, unknown>>(`/api/v1/positions/${positionId}/close`, { qty });
+
+/** Close every open leg of a trade (OpenPosition.trade_id). */
+export const closeTrade = (tradeId: number) =>
+  apiPost<Record<string, unknown>>(`/api/v1/trades/${tradeId}/close`, {});
 
 // Dev / system
 export const fetchDevEngines = () => apiGet<unknown>("/api/v1/dev/engines");
+export const fetchCycleProgress = () => apiGet<unknown>("/api/v1/dev/cycle-progress");
