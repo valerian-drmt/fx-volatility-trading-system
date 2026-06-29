@@ -37,12 +37,14 @@ export interface TenorRisk {
   n: number;
 }
 /** Risk view live data (PR 5): VaR values ($k) + empirical histogram + 2nd-order
- * by tenor. factors/marginal/vega-PCA + the stress grids/ladders remain mock
- * (separate G-risk frontend wiring) → flagged in 09. */
+ * by tenor. Stress grids, greeks ladders, marginal-VaR and pin-risk are now all
+ * wired to live endpoints (fetchStressGrid / fetchGreeksLadder / fetchMarginalVar
+ * / fetchPinRisk) — no longer mock. */
 export interface VarData {
   var95: number;
   var99: number;
   es99: number;
+  meanDaily: number; // live mean daily P&L ($k) — drives the expected-return column
   nDays: number;
   hist: HistBin[];
   perTenor: TenorRisk[];
@@ -104,6 +106,9 @@ export interface SurfaceData {
   ivZ: number[][];
   tenors: string[];
   deltas: string[];
+  /** Per-tenor source aligned with `tenors`: "listed" (real contract), "interp"
+   * (no listed contract — IV interpolated server-side) or "missing". */
+  sources?: ("listed" | "interp" | "missing")[];
 }
 
 /** A mode card = the mock `Pc` plus its real z trajectory (empty in mock mode). */
@@ -131,10 +136,9 @@ export interface DeskData {
   trade: Fresh<TradeData>;
   /** Portfolio : capital, perf-stats, attribution, book composition. Live (PR 3). */
   portfolio: Fresh<PortfolioData>;
-  /** Risk : 1-day VaR card values (PR 5). Stress grids/ladders/factors stay mock. */
+  /** Risk : 1-day VaR card values (PR 5). Stress grids / ladders / marginal-VaR
+   * / pin-risk are all live now (their own fetch hooks), not mock. */
   risk: Fresh<VarData>;
-  /** Live EURUSD spot tick (bid/ask/mid) via /ws/ticks (RT.1). */
-  ticks: Fresh<TickMsg>;
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);
@@ -143,6 +147,23 @@ export function useDeskData(): DeskData {
   const ctx = useContext(DeskDataContext);
   if (ctx === null) {
     throw new Error("useDeskData must be used within <DataProvider>");
+  }
+  return ctx;
+}
+
+/**
+ * Live EURUSD spot tick (bid/ask/mid) via /ws/ticks (RT.1). Kept in its OWN
+ * context, separate from `DeskDataContext`: the tick stream fires ~1 Hz, so
+ * folding it into the desk-data value object would re-render every
+ * `useDeskData()` consumer (the slow vol domains) on each spot tick. Only the
+ * components that actually display spot subscribe via `useTicks()`.
+ */
+export const TicksContext = createContext<Fresh<TickMsg> | null>(null);
+
+export function useTicks(): Fresh<TickMsg> {
+  const ctx = useContext(TicksContext);
+  if (ctx === null) {
+    throw new Error("useTicks must be used within <DataProvider>");
   }
   return ctx;
 }

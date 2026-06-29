@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { gk$, pnlCls } from "./format";
 import { DATA, DATA2, fmt } from "../data";
-import { useDeskData } from "../data/deskData";
+import { useTicks } from "../data/deskData";
 
 const PRODUCTS = ["Vanilla Call", "Vanilla Put", "Straddle", "Strangle", "Butterfly", "Risk Reversal", "Calendar", "Future"];
 const TENORS = DATA.tenors;
@@ -217,7 +217,7 @@ interface OrderBuilderProps {
 export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderProps): JSX.Element {
   // Live spot for the MARKET display block (RT.1). The structure pricing/preview
   // still uses the mock spot until the live preview lands (6r.2).
-  const { ticks } = useDeskData();
+  const ticks = useTicks();
   const [product, setProduct] = useState("Risk Reversal");
   const [side, setSide] = useState("BUY");
   const [tenor, setTenor] = useState("2M");

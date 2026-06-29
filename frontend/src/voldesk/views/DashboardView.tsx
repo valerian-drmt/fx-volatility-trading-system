@@ -10,7 +10,7 @@ import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
 import { DATA, DATA2, fmt } from "../data";
 import type { Pc, TermPoint, WorkingOrder } from "../data";
-import { useDeskData } from "../data/deskData";
+import { useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
 import { adaptCoverage } from "../data/live/portfolio";
 
@@ -61,7 +61,8 @@ function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
 
 export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element | null {
   // Composition view: read the already-wired desk domains, fall back to mock.
-  const { pca, portfolio, trade, termStructure, ticks } = useDeskData();
+  const { pca, portfolio, trade, termStructure } = useDeskData();
+  const ticks = useTicks();
   const a = portfolio.data?.account ?? DATA.account,
     g = portfolio.data?.greeks ?? DATA.greeks,
     L = trade.data?.limits ?? DATA.limits,
