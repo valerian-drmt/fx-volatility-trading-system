@@ -5,7 +5,12 @@ import { setupServer } from "msw/node";
 export const handlers = [
   http.get("*/api/v1/health", () => HttpResponse.json({ status: "OK" })),
 
-  // Dashboard live-wiring defaults (regime gate, working orders, coverage) — empty/neutral.
+  // Auth (single-trader) — store/LoginModal tests drive these.
+  http.get("*/api/v1/auth/me", () => HttpResponse.json({ authenticated: false })),
+  http.post("*/api/v1/auth/login", () => HttpResponse.json({ authenticated: true })),
+  http.post("*/api/v1/auth/logout", () => HttpResponse.json({ authenticated: false })),
+
+  // Live-wiring defaults (regime gate, working orders, scenarios) — empty/neutral.
   http.get("*/api/v1/regime/state", () =>
     HttpResponse.json({ gate: { authorized: true, reason: "calm", size_mult: 1 } }),
   ),
@@ -17,11 +22,12 @@ export const handlers = [
       per_position: [],
     }),
   ),
-
-  // Auth — default logged-out; tests override with server.use(...) as needed.
-  http.get("*/api/v1/auth/me", () => HttpResponse.json({ authenticated: false })),
-  http.post("*/api/v1/auth/login", () => HttpResponse.json({ authenticated: true })),
-  http.post("*/api/v1/auth/logout", () => HttpResponse.json({ authenticated: false })),
+  http.get("*/api/v1/dev/cycle-progress", () =>
+    HttpResponse.json({ cycle_started_at: null, stage: null, task: null, completed: [] }),
+  ),
+  http.get("*/api/v1/portfolio/scenarios", () =>
+    HttpResponse.json({ by_spot: [], by_iv: [], n_positions: 0 }),
+  ),
 
   http.get("*/api/v1/vol/surface", ({ request }) => {
     const url = new URL(request.url);
