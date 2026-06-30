@@ -9,14 +9,22 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { gk$, pnlCls } from "./format";
-import { DATA, DATA2, fmt } from "../data";
-import { useTicks } from "../data/deskData";
+import { DATA, fmt } from "../data";
+import { useDeskData, useTicks } from "../data/deskData";
+import { ApiError } from "../../api/client";
+import { createTradePreview, submitTrade, type TradePreview } from "../../api/endpoints";
+import { WRITE_ENABLED } from "../data/writeEnabled";
+import { builderToLegs } from "./orderLegs";
 
+const GATE_TITLE = "write disabled — auth required (Phase 2)";
 const PRODUCTS = ["Vanilla Call", "Vanilla Put", "Straddle", "Strangle", "Butterfly", "Risk Reversal", "Calendar", "Future"];
 const TENORS = DATA.tenors;
 const PILLARS = DATA.deltas;
 const CONTRACTS: Record<string, number> = { "6E (€125k)": 125000, "M6E (€12.5k)": 12500 };
 const DELTA_PER_6E = 1250; // $ delta flattened per 1 contract of 6E (1 big-fig)
+
+// notional → compact <sym>k / <sym>M label (sym = € or $)
+const fmtCcy = (v: number, sym: string): string => (Math.abs(v) >= 1e6 ? sym + (v / 1e6).toFixed(2) + "M" : sym + Math.round(v / 1e3) + "k");
 
 type GreekKey = "d" | "g" | "v" | "t" | "vn" | "vg";
 
@@ -73,15 +81,6 @@ interface NetGreeks {
   detail: LegDetail[];
 }
 
-interface BookRow {
-  k: string;
-  unit: string;
-  b: number;
-  a: number;
-  f: (v: number) => string;
-  lead?: boolean;
-}
-
 interface Booked {
   side: string;
   product: string;
@@ -132,9 +131,13 @@ function buildLegs(
   qty: number,
   wing: string,
 ): Leg[] {
+  // `wing` is a full delta pillar ("25Δc" / "ATM"); symmetric wings use its level
+  // ("25Δ"), single-strike structures (straddle/calendar) use the pillar itself.
   const atm = +pillarStrike(tenor, "ATM").toFixed(4);
-  const wc = +pillarStrike(tenor, wing + "c").toFixed(4);
-  const wp = +pillarStrike(tenor, wing + "p").toFixed(4);
+  const level = wing === "ATM" ? "ATM" : wing.replace(/[pc]$/, "");
+  const wc = level === "ATM" ? atm : +pillarStrike(tenor, level + "c").toFixed(4);
+  const wp = level === "ATM" ? atm : +pillarStrike(tenor, level + "p").toFixed(4);
+  const sharedK = wing === "ATM" ? atm : +pillarStrike(tenor, wing).toFixed(4);
   const opp = side === "BUY" ? "SELL" : "BUY";
   const mk = (typ: string, sd: string, k: number, ten: string, q?: number): Leg => {
     const iv = ivAt(ten, k);
@@ -147,7 +150,7 @@ function buildLegs(
     case "Vanilla Put":
       return [mk("Put", side, strike, tenor)];
     case "Straddle":
-      return [mk("Call", side, atm, tenor), mk("Put", side, atm, tenor)];
+      return [mk("Call", side, sharedK, tenor), mk("Put", side, sharedK, tenor)];
     case "Strangle":
       return [mk("Put", side, wp, tenor), mk("Call", side, wc, tenor)];
     case "Butterfly":
@@ -155,12 +158,27 @@ function buildLegs(
     case "Risk Reversal":
       return [mk("Call", side, wc, tenor), mk("Put", opp, wp, tenor)];
     case "Calendar":
-      return [mk("Call", opp, atm, tenor), mk("Call", side, atm, farTenor)];
+      return [mk("Call", opp, sharedK, tenor), mk("Call", side, sharedK, farTenor)];
     case "Future":
       return [{ instrument: "EURUSD", type: "Future", side, qty, strike: DATA.SPOT, tenor: "Sep26", iv: 0, prem: 0 }];
     default:
       return [];
   }
+}
+
+// Surface a backend error as one readable line (handles the structured
+// {detail:{message}} the submit endpoint returns, plain {detail}, and network).
+function errMsg(e: unknown): string {
+  if (e instanceof ApiError) {
+    const detail = (e.body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === "string") return detail;
+    if (detail && typeof detail === "object") {
+      const msg = (detail as { message?: unknown }).message;
+      if (typeof msg === "string") return msg;
+    }
+    return `broker/API error ${e.status}`;
+  }
+  return e instanceof Error ? e.message : "unknown error";
 }
 
 // per-leg greeks → structure net. Vanna/volga are first-class (§1): a long-call/short-put RR ADDS
@@ -217,19 +235,36 @@ interface OrderBuilderProps {
 export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderProps): JSX.Element {
   // Live spot for the MARKET display block (RT.1). The structure pricing/preview
   // still uses the mock spot until the live preview lands (6r.2).
+  const { surface } = useDeskData();
   const ticks = useTicks();
+  // Tenors with no listed contract (server-interpolated). Selecting one is allowed
+  // but warns: the order routes to the nearest listed expiry (snap, backend).
+  const interpTenors = new Set(
+    (surface.data?.tenors ?? []).filter((_, i) => surface.data?.sources?.[i] === "interp"),
+  );
   const [product, setProduct] = useState("Risk Reversal");
   const [side, setSide] = useState("BUY");
   const [tenor, setTenor] = useState("2M");
   const [farTenor, setFarTenor] = useState("4M");
   const [strike, setStrike] = useState(1.0842);
-  const [wing, setWing] = useState("25Δ");
+  const [wing, setWing] = useState("25Δc"); // one of the 5 delta pillars
   const [qty, setQty] = useState(25);
   const [csize, setCsize] = useState("6E (€125k)");
   const [bundleHedge, setBundleHedge] = useState(false);
   const [stage, setStage] = useState("build"); // build | preview | booked
   const [booked, setBooked] = useState<Booked | null>(null);
-  const reset = (): void => setStage("build");
+  // 6w — real submit path. The preview is server-validated (POST /trade/preview);
+  // "Place order" routes to the IB paper account (execution_mode "live").
+  const [server, setServer] = useState<TradePreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [placed, setPlaced] = useState<Record<string, unknown> | null>(null);
+  const reset = (): void => {
+    setStage("build");
+    setServer(null);
+    setErr(null);
+    setPlaced(null);
+  };
 
   useEffect(() => {
     if (prefill) {
@@ -241,12 +276,26 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
     }
   }, [prefill]);
 
-  const mult = CONTRACTS[csize]!;
   const meta = STRUCT[product]!;
   const isFut = product === "Future";
   const isCal = product === "Calendar";
+  // contract size is only a choice for futures; options always trade the full 6E lot
+  const mult = isFut ? CONTRACTS[csize]! : CONTRACTS["6E (€125k)"]!;
+  // notional is sized in EUR (the 6E/M6E contracts are EUR-denominated); show its
+  // USD leg too so the panel stays coherent whichever side is the call.
+  const spotMid = ((ticks.data?.bid ?? DATA.SPOT) + (ticks.data?.ask ?? DATA.SPOT)) / 2;
+  const nominalEur = qty * mult;
+  const nominalUsd = nominalEur * spotMid;
+  // The wing buttons expose all 5 delta pillars; the strike engine works off the
+  // symmetric level ("25Δc"/"25Δp" → "25Δ"), with ATM as its own degenerate wing.
+  const wingLevel = wing === "ATM" ? "ATM" : wing.replace(/[pc]$/, "");
 
   const legs = useMemo(() => buildLegs(product, side, tenor, farTenor, strike, qty, wing), [product, side, tenor, farTenor, strike, qty, wing]);
+  // EUR/USD call = right to buy EUR vs USD → "EUR Call / USD Put" (and the inverse for a put)
+  const callPutLabel = [
+    legs.some((l) => l.type === "Call") ? "EUR Call / USD Put" : null,
+    legs.some((l) => l.type === "Put") ? "USD Call / EUR Put" : null,
+  ].filter(Boolean).join(" · ") || "—";
   const net = useMemo(() => previewGreeks(legs, mult), [legs, mult]);
 
   const commission = Math.round(legs.length * qty * 2.1);
@@ -258,41 +307,69 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
   const hedgedDelta = Math.round(net.d - Math.sign(net.d) * hedgeQty * DELTA_PER_6E); // delta once the bundle is applied
   const afterDelta = bundleHedge ? hedgedDelta : net.d;
 
-  // ---- pre-trade book impact (§2): single-engine net + structure → after ----
-  const g = DATA.greeks;
-  const VAR_TOTAL = Math.abs(g.var1d99); // $312k 1d/99
-  const skewBefore = Math.abs((DATA2.varFactors.find((f) => f.key === "skew") || { v: 0 }).v || 0); // 106k
-  const addedSkewVar = Math.round(Math.abs(net.vn) * 0.6);
-  const marginalVar = Math.round(addedSkewVar + (Math.abs(net.v) / 1000) * 1.1 + (Math.abs(afterDelta) / 1000) * 0.35);
-  const varAfter = VAR_TOTAL + marginalVar;
-  const skewPctBefore = (skewBefore / VAR_TOTAL) * 100;
-  const skewPctAfter = ((skewBefore + addedSkewVar) / varAfter) * 100;
-  const book: BookRow[] = [
-    { k: "Δ", unit: "$", b: g.netDelta, a: g.netDelta + afterDelta, f: gk$ },
-    { k: "Γ", unit: "$/pip", b: g.netGamma, a: g.netGamma + net.g, f: gk$ },
-    { k: "Vega", unit: "$/vp", b: g.netVega, a: g.netVega + net.v, f: gk$ },
-    { k: "Vanna", unit: "$k/vp·fig", b: g.netVanna, a: Math.round(g.netVanna + net.vn), f: (x) => fmt.sgn(x, 0) + "k", ...(meta.skew ? { lead: true } : {}) },
-    { k: "Volga", unit: "$k/vp", b: g.netVolga, a: Math.round(g.netVolga + net.vg), f: (x) => fmt.sgn(x, 0) + "k" },
-  ];
-
-  // structure-relevant greek read order (§1)
+  // greek value formatter — still used by the order ticket's lead-greek line
   const greekVal = (key: GreekKey): string =>
     ({ d: gk$(net.d), g: gk$(net.g), v: gk$(net.v), t: gk$(net.t), vn: fmt.sgn(net.vn, 1) + "k", vg: fmt.sgn(net.vg, 1) + "k" })[key];
-  const greekRaw = (key: GreekKey): number => ({ d: net.d, g: net.g, v: net.v, t: net.t, vn: net.vn, vg: net.vg })[key];
+
+  // structure value + book before/after, one row per greek (and the cash legs below)
+  const g = DATA.greeks;
+  const kfmt = (x: number): string => fmt.sgn(x, 0) + "k";
+  const netCash = (isCredit ? premiumAbs : -premiumAbs) - commission;
+  const impactRows = [
+    { name: "Δ", unit: "USD", val: net.d, before: g.netDelta, after: g.netDelta + afterDelta, f: gk$ },
+    { name: "Γ", unit: "USD/pip", val: net.g, before: g.netGamma, after: g.netGamma + net.g, f: gk$ },
+    { name: "Vega", unit: "$/vp", val: net.v, before: g.netVega, after: g.netVega + net.v, f: gk$ },
+    { name: "Θ", unit: "$/day", val: net.t, before: g.netTheta, after: g.netTheta + net.t, f: gk$ },
+    { name: "Vanna", unit: "$k/vp·fig", val: net.vn, before: g.netVanna, after: g.netVanna + net.vn, f: kfmt },
+    { name: "Volga", unit: "$k/vp", val: net.vg, before: g.netVolga, after: g.netVolga + net.vg, f: kfmt },
+  ];
 
   // stress-truth tail figure for naked structures — read this, not a false finite max-loss
   const shortNotionalEur = qty * mult;
   const stressLoss = -Math.round(shortNotionalEur * 400 * 0.0001 * 0.78 + Math.abs(net.v) * 4);
-
-  const wc = +pillarStrike(tenor, wing + "c").toFixed(4);
-  const wp = +pillarStrike(tenor, wing + "p").toFixed(4);
-  const atmK = +pillarStrike(tenor, "ATM").toFixed(4);
 
   // report the live structure up so the Indicators pre-trade check reads the SAME engine (state, not signal)
   useEffect(() => {
     if (onState) onState({ active: stage === "preview", product, side, tenor, farTenor, qty, isCal, isFut, net, naked });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, product, side, tenor, farTenor, qty, isCal, isFut, net, naked]);
+
+  // Preview = server-priced validation. Read-only desk (no auth) still shows the
+  // client-side risk truth, just without a server preview_id / submit.
+  const onPreview = async (): Promise<void> => {
+    if (!WRITE_ENABLED) { setStage("preview"); return; }
+    setBusy(true);
+    setErr(null);
+    setServer(null);
+    try {
+      const resp = await createTradePreview(builderToLegs(product, side, tenor, farTenor, strike, wing, csize), qty);
+      setServer(resp);
+    } catch (e) {
+      setErr(errMsg(e));
+    } finally {
+      setBusy(false);
+      setStage("preview");
+    }
+  };
+  // Place = submit the server-validated preview to the IB paper account.
+  const onPlace = async (): Promise<void> => {
+    if (!WRITE_ENABLED || !server || server.state !== "valid_for_submit" || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const result = await submitTrade(server.preview_id, "live");
+      setPlaced(result);
+      setBooked({ side, product, qty, tenor, bundleHedge, hedgeQty, hedgeSide });
+      setStage("booked");
+    } catch (e) {
+      setErr(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const canPlace = WRITE_ENABLED && server?.state === "valid_for_submit" && !busy;
+  const stateText = !WRITE_ENABLED ? "auth required" : busy && !server ? "pricing…" : (server?.state ?? "—");
+  const stateCls = server?.state === "valid_for_submit" ? "pos" : server?.state ? "warn" : "dim";
 
   return (
     <div className="builder">
@@ -306,89 +383,83 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
         </div>
       )}
 
-      {/* INPUTS (green) — product-driven (§6) */}
+      {/* CONTRACT DETAILS (green) — product-driven (§6) */}
       <div className="builder-block block-in">
-        <div className="block-tag">INPUTS</div>
-        <div className="ob-side">
-          <button className={"side-btn buy " + (side === "BUY" ? "on" : "")} onClick={() => { setSide("BUY"); reset(); }}>BUY</button>
-          <button className={"side-btn sell " + (side === "SELL" ? "on" : "")} onClick={() => { setSide("SELL"); reset(); }}>SELL</button>
+        <div className="block-tag">CONTRACT DETAILS</div>
+        <div className="ob-info-row"><span>Currency pair</span><b className="mono">EUR/USD</b></div>
+        <div className="field tenor-field"><span>Side</span>
+          <div className="tenor-btns">
+            <button type="button" className={"tenor-btn buy " + (side === "BUY" ? "on" : "")} onClick={() => { setSide("BUY"); reset(); }}>BUY</button>
+            <button type="button" className={"tenor-btn sell " + (side === "SELL" ? "on" : "")} onClick={() => { setSide("SELL"); reset(); }}>SELL</button>
+          </div>
         </div>
         <label className="field"><span>Product</span>
-          <select value={product} onChange={(e) => { setProduct(e.target.value); reset(); }}>
+          <select value={product} onChange={(e) => {
+            const p = e.target.value;
+            setProduct(p);
+            const m = STRUCT[p];
+            // wing structures default to a 25Δ wing; everything else defaults to ATM
+            if (m) setWing(m.mode === "wing" || m.mode === "flywing" ? "25Δc" : "ATM");
+            reset();
+          }}>
             {PRODUCTS.map((p) => <option key={p}>{p}</option>)}
           </select>
         </label>
+        {!isFut && <div className="ob-info-row"><span>Call / Put</span><b className="mono">{callPutLabel}</b></div>}
 
-        {/* tenor(s) — calendar exposes two expiries */}
-        <div className="field-row">
-          <label className="field"><span>{isCal ? "Near tenor" : "Tenor"}</span>
-            <select value={tenor} onChange={(e) => { setTenor(e.target.value); reset(); }}>{TENORS.map((t) => <option key={t}>{t}</option>)}</select>
-          </label>
-          {isCal && <label className="field"><span>Far tenor</span>
-            <select value={farTenor} onChange={(e) => { setFarTenor(e.target.value); reset(); }}>{TENORS.map((t) => <option key={t}>{t}</option>)}</select>
-          </label>}
+        {/* tenor(s) — all 6 always visible as buttons; calendar exposes two expiries */}
+        <div className="field tenor-field"><span>{isCal ? "Near tenor" : "Tenor"}</span>
+          <div className="tenor-btns">
+            {TENORS.map((t) => <button key={t} type="button" className={"tenor-btn " + (tenor === t ? "on" : "")} onClick={() => { setTenor(t); reset(); }}>{t}</button>)}
+          </div>
         </div>
+        {isCal && <div className="field tenor-field"><span>Far tenor</span>
+          <div className="tenor-btns">
+            {TENORS.map((t) => <button key={t} type="button" className={"tenor-btn " + (farTenor === t ? "on" : "")} onClick={() => { setFarTenor(t); reset(); }}>{t}</button>)}
+          </div>
+        </div>}
+        {!isFut && (interpTenors.has(tenor) || (isCal && interpTenors.has(farTenor))) && (
+          <div className="ob-interp-warn mono small">
+            ⚠ {[tenor, isCal ? farTenor : null].filter((t) => t && interpTenors.has(t)).join(" / ")} interpolated —
+            no listed contract; the order routes to the nearest listed expiry.
+          </div>
+        )}
 
-        {/* strike control — driven by the structure, not a single ATM input (§6) */}
+        {/* manual strike — only the single-strike vanillas expose a hand-typed strike */}
         {meta.mode === "single" && (
-          <>
-            <label className="field"><span>Strike <em className="unit">USD</em></span>
-              <div className="field-input"><input type="number" step="0.0001" value={strike} onChange={(e) => { setStrike(+e.target.value); reset(); }} /><em>USD</em></div>
-            </label>
-            <div className="pillars-wrap">
-              <div className="pillars-lbl mono">snap to pillar · discretionary override</div>
-              <div className="pillars">
-                {PILLARS.map((p) => <button key={p} className="pillar" onClick={() => { setStrike(+pillarStrike(tenor, p).toFixed(4)); reset(); }}>{p}</button>)}
-              </div>
-            </div>
-          </>
+          <label className="field"><span>Strike <em className="unit">USD</em></span>
+            <div className="field-input"><input type="number" step="0.0001" value={strike} onChange={(e) => { setStrike(+e.target.value); reset(); }} /><em>USD</em></div>
+          </label>
         )}
-        {meta.mode === "atm" && (
-          <div className="strike-driven">
-            <div className="sd-head"><span>Strikes</span><span className="dim mono small">straddle → ATM pillar</span></div>
-            <div className="leg-strikes"><span className="lstrike">Call <b className="mono">{atmK.toFixed(4)}</b></span><span className="lstrike">Put <b className="mono">{atmK.toFixed(4)}</b></span><span className="pillar-lock mono">ATM</span></div>
-          </div>
-        )}
-        {(meta.mode === "wing" || meta.mode === "flywing") && (
-          <div className="strike-driven">
-            <div className="sd-head"><span>Wings</span><span className="dim mono small">{product === "Risk Reversal" ? "RR → Δ-paired call / put" : meta.mode === "flywing" ? "fly → wings + ATM body" : "strangle → Δ-paired"}</span></div>
-            <div className="ob-side small wing-sel">
-              {["25Δ", "10Δ"].map((w) => <button key={w} className={"side-btn " + (wing === w ? "on" : "")} onClick={() => { setWing(w); reset(); }}>{w}</button>)}
+
+        {/* wings / strike Δ — available on every product (all 5 delta pillars) */}
+        {!isFut && (
+          <div className="field tenor-field"><span>{meta.mode === "wing" || meta.mode === "flywing" ? "Wings" : "Strike Δ"}</span>
+            <div className="tenor-btns">
+              {PILLARS.map((w) => (
+                <button key={w} type="button" className={"tenor-btn " + (wing === w ? "on" : "")}
+                  onClick={() => { setWing(w); if (meta.mode === "single") setStrike(+pillarStrike(tenor, w).toFixed(4)); reset(); }}>{w}</button>
+              ))}
             </div>
-            <div className="leg-strikes">
-              <span className="lstrike">Call <b className="mono">{wc.toFixed(4)}</b><em>{wing}c</em></span>
-              {meta.mode === "flywing" && <span className="lstrike">Body <b className="mono">{atmK.toFixed(4)}</b><em>ATM ×2</em></span>}
-              <span className="lstrike">Put <b className="mono">{wp.toFixed(4)}</b><em>{wing}p</em></span>
-            </div>
-          </div>
-        )}
-        {meta.mode === "cal" && (
-          <div className="strike-driven">
-            <div className="sd-head"><span>Strikes</span><span className="dim mono small">calendar → shared ATM, 2 expiries</span></div>
-            <div className="leg-strikes"><span className="lstrike">{tenor} <b className="mono">{atmK.toFixed(4)}</b></span><span className="lstrike">{farTenor} <b className="mono">{atmK.toFixed(4)}</b></span></div>
           </div>
         )}
 
-        <div className="field-row">
-          <label className="field"><span>Size <em className="unit">contracts</em></span>
+        {isFut ? (
+          <div className="field-row">
+            <label className="field"><span>Size <em className="unit">contracts</em></span>
+              <div className="field-input"><input type="number" value={qty} onChange={(e) => { setQty(+e.target.value); reset(); }} /><em>ct</em></div>
+            </label>
+            <label className="field"><span>Contract</span>
+              <select value={csize} onChange={(e) => { setCsize(e.target.value); reset(); }}>{Object.keys(CONTRACTS).map((c) => <option key={c}>{c}</option>)}</select>
+            </label>
+          </div>
+        ) : (
+          <label className="field"><span>Size <em className="unit">contracts · {fmtCcy(mult, "€")} / ct</em></span>
             <div className="field-input"><input type="number" value={qty} onChange={(e) => { setQty(+e.target.value); reset(); }} /><em>ct</em></div>
           </label>
-          <label className="field"><span>Contract</span>
-            <select value={csize} onChange={(e) => { setCsize(e.target.value); reset(); }}>{Object.keys(CONTRACTS).map((c) => <option key={c}>{c}</option>)}</select>
-          </label>
-        </div>
-      </div>
-
-      {/* EXPOSURE REFERENCE — what the closed set expresses (reference, not a recommendation) */}
-      <div className="exposure-ref">
-        <div className="exp-ref-head"><span>Exposure reference</span><span className="dim mono small">closed set</span></div>
-        <div className="exp-ref-list">
-          <div className="exp-ref-row"><b>Straddle</b><span className="dim">vega · level (PC1)</span></div>
-          <div className="exp-ref-row"><b>Calendar</b><span className="dim">vega-slope · theta (PC2)</span></div>
-          <div className="exp-ref-row"><b>Butterfly</b><span className="dim">volga · curvature (PC3)</span></div>
-          <div className="exp-ref-row"><b>Risk Reversal</b><span className="dim warn">vanna · skew — off by default</span></div>
-        </div>
-        <div className="dim small exp-ref-note">RR is risk-only: the desk does not signal-trade skew.</div>
+        )}
+        {/* nominal traded = size × contract notional — shown in both legs (EUR base / USD) */}
+        <div className="ob-info-row"><span>Nominal <em className="unit">EUR / USD</em></span><b className="mono">{fmtCcy(nominalEur, "€")} <span className="dim">/</span> {fmtCcy(nominalUsd, "$")}</b></div>
       </div>
 
       {/* MARKET (yellow) */}
@@ -396,19 +467,14 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
         <div className="block-tag">MARKET</div>
         <div className="mkt-rows">
           <div><span>Spot bid/ask</span><b className="mono">{(ticks.data?.bid ?? DATA.SPOT - 0.0001).toFixed(5)}/{(ticks.data?.ask ?? DATA.SPOT + 0.0001).toFixed(5)}</b></div>
-          <div><span>ATM curve age</span><b className="mono warn">38s</b></div>
           <div><span>ATM IV {tenor}</span><b className="mono">{DATA.ivSurface[tenorIdx(tenor)]![2]!.toFixed(1)}%</b></div>
           <div><span>Fwd {tenor}</span><b className="mono">{DATA.smileFor(tenorIdx(tenor)).fwd.toFixed(4)}</b></div>
         </div>
       </div>
 
-      {/* OUTPUTS (red) */}
-      <div className={"builder-block block-out " + (stage === "build" ? "muted" : "")}>
+      {/* OUTPUTS (red) — always priced client-side; preview only adds the server validation */}
+      <div className="builder-block block-out">
         <div className="block-tag">OUTPUTS</div>
-        {stage === "build" ? (
-          <div className="out-empty">Run preview to price the structure & see book impact</div>
-        ) : (
-          <>
             <table className="dt legs">
               <thead><tr><th className="l">Leg</th><th>Side</th><th className="r">K</th><th className="r">IV</th><th className="r">Prem $</th></tr></thead>
               <tbody>
@@ -424,114 +490,101 @@ export function OrderBuilder({ prefill, onClearPrefill, onState }: OrderBuilderP
               </tbody>
             </table>
 
-            {/* §1 — greeks ordered by relevance to the structure; the lead greek is the one that matters */}
-            {!isFut && <>
-              <div className="greek-read-lbl mono">structure greeks <span className="dim">· ordered by relevance · {GREEK_INFO[meta.order[0]!].name} leads</span></div>
-              <div className="greek-read">
-                {meta.order.map((key, i) => (
-                  <div key={key} className={"greek-cell " + (i === 0 ? "lead" : "") + " " + pnlCls(greekRaw(key))}>
-                    <span className="gc-lbl">{GREEK_INFO[key].label}</span>
-                    <b className="gc-val mono">{greekVal(key)}</b>
-                    <span className="gc-unit mono">{GREEK_INFO[key].unit}</span>
-                  </div>
+            {/* structure values + book before → after, plus the cash legs */}
+            <table className="dt bi-table impact-table">
+              <thead><tr><th className="l">Item</th><th className="r">Value</th><th className="r">Book before</th><th className="r after-col">Book after</th></tr></thead>
+              <tbody>
+                {impactRows.map((r) => (
+                  <tr key={r.name}>
+                    <td className="l">{r.name} <em className="unit mono">{r.unit}</em></td>
+                    <td className={"r mono " + pnlCls(r.val)}>{r.f(r.val)}</td>
+                    <td className={"r mono " + pnlCls(r.before)}>{r.f(r.before)}</td>
+                    <td className={"r mono after-col " + pnlCls(r.after)}>{r.f(r.after)}</td>
+                  </tr>
                 ))}
-              </div>
-            </>}
+                <tr className="impact-sep">
+                  <td className="l">Net premium <em className="unit mono">Σ legs</em></td>
+                  <td className={"r mono " + (isCredit ? "pos" : "neg")}>{isCredit ? "+" : "−"}{fmt.usd(premiumAbs)}</td>
+                  <td className="r mono dim">—</td>
+                  <td className="r mono dim after-col">—</td>
+                </tr>
+                <tr>
+                  <td className="l">Commission</td>
+                  <td className="r mono neg">−{fmt.usd(commission)}</td>
+                  <td className="r mono dim">—</td>
+                  <td className="r mono dim after-col">—</td>
+                </tr>
+                <tr className="impact-total">
+                  <td className="l">Net cash</td>
+                  <td className={"r mono " + (netCash >= 0 ? "pos" : "neg")}>{gk$(netCash)}</td>
+                  <td className="r mono dim">—</td>
+                  <td className="r mono dim after-col">—</td>
+                </tr>
+              </tbody>
+            </table>
 
-            {/* §3 — skew flag for RR (risk-only) */}
-            {meta.skew && (
-              <div className="skew-flag">
-                <span className="flag-dot" />
-                <div><b>Adds skew · no signal</b><span className="dim"> — tracked as incident risk, not a traded mode. Vanna added <b className="mono warn">{fmt.sgn(net.vn, 0)}k</b> → skew share {skewPctBefore.toFixed(0)}% → <b className="mono">{skewPctAfter.toFixed(0)}%</b> of VaR.</span></div>
-              </div>
-            )}
-
-            {/* §5 — premium, credit/debit explicit, reconciles to Σ leg prem */}
-            <div className="cost-rows">
-              <div><span>Net premium <em className="unit">Σ legs</em></span><b className={"mono " + (isCredit ? "pos" : "neg")}>{isCredit ? "+" : "−"}{fmt.usd(premiumAbs)} <em className="paytag">{isCredit ? "credit" : "debit"}</em></b></div>
-              <div><span>Commission</span><b className="mono neg">−{fmt.usd(commission)} <em className="paytag">debit</em></b></div>
-              <div className="cost-total"><span>Net cash</span><b className={"mono " + ((isCredit ? premiumAbs : -premiumAbs) - commission >= 0 ? "pos" : "neg")}>{gk$((isCredit ? premiumAbs : -premiumAbs) - commission)}</b></div>
-            </div>
-
-            {/* §0 — MAX LOSS SAFETY: never a finite max-loss when a sold leg is uncovered */}
-            <div className={"maxloss " + (naked ? "unbounded" : "bounded")}>
-              {naked ? (
-                <>
-                  <div className="ml-head"><span className="ml-badge mono">⚠ TAIL RISK · UNBOUNDED</span><span className="dim small">sold leg uncovered</span></div>
-                  <div className="ml-row"><span>Max loss</span><b className="neg">unbounded · see stress</b></div>
-                  <div className="ml-row"><span>Stress −400bp / +6vp</span><b className="mono neg">{gk$(stressLoss)}</b></div>
-                  <div className="ml-row"><span>Premium at risk</span><b className="mono dim">{fmt.usd(premiumAbs)} <em className="paytag">{isCredit ? "credit" : "debit"} — not the max loss</em></b></div>
-                </>
-              ) : (
-                <>
-                  <div className="ml-row"><span>Max loss <em className="unit">debit structure</em></span><b className="mono">{fmt.usd(premiumAbs + commission)}</b></div>
-                  <div className="ml-row dim small">bounded — long premium, no naked sold leg</div>
-                </>
-              )}
-            </div>
-
-            {/* §4 — delta hedge, bundleable */}
+            {/* delta-hedge bundle (no "Δ unhedged" row) */}
             {!isFut && (
               <div className="hedge-bundle">
-                <div className="hb-row"><span>Δ unhedged</span><b className={"mono " + pnlCls(net.d)}>{gk$(net.d)}</b></div>
                 <label className="hb-toggle">
                   <input type="checkbox" checked={bundleHedge} onChange={(e) => setBundleHedge(e.target.checked)} />
                   <span>Bundle hedge: <b className="mono">{hedgeSide} {hedgeQty}× 6E</b> → Δ {gk$(hedgedDelta)}</span>
                 </label>
               </div>
             )}
-
-            {/* §2 — pre-trade book impact (symmetric with Close), from the single greeks engine */}
-            <div className="book-impact">
-              <div className="bi-head"><span>Book impact <em className="unit">before → after</em></span><span className="dim mono small">PC1/2/3 + skew-incident base</span></div>
-              <table className="dt bi-table">
-                <thead><tr><th className="l">Net greek</th><th className="r">Before</th><th className="r after-col">After</th></tr></thead>
-                <tbody>
-                  {book.map((r) => (
-                    <tr key={r.k} className={r.lead ? "bi-lead" : ""}>
-                      <td className="l">{r.k} <em className="unit mono">{r.unit}</em></td>
-                      <td className={"r mono " + pnlCls(r.b)}>{r.f(r.b)}</td>
-                      <td className={"r mono after-col " + pnlCls(r.a)}>{r.f(r.a)}</td>
-                    </tr>
-                  ))}
-                  <tr className="bi-var">
-                    <td className="l">VaR 1d/99 <em className="unit mono">$k</em></td>
-                    <td className="r mono neg">-${VAR_TOTAL}k</td>
-                    <td className="r mono neg after-col">-${varAfter}k <span className="bi-marg mono">(marg {gk$(-marginalVar * 1000)})</span></td>
-                  </tr>
-                </tbody>
-              </table>
-              <div className="bi-skew dim small mono">skew factor {skewPctBefore.toFixed(0)}% → <b className={skewPctAfter > skewPctBefore + 1 ? "warn" : ""}>{skewPctAfter.toFixed(0)}%</b> of VaR{meta.skew ? " · RR is the book's #1 factor" : ""}</div>
-            </div>
-          </>
-        )}
       </div>
 
       {/* ACTIONS */}
       <div className="builder-actions">
-        {stage === "build" && <button className="btn-preview" onClick={() => setStage("preview")}>Preview pricing & impact<span className="arr">→</span></button>}
+        {stage === "build" && (
+          <button className="btn-preview" disabled={busy} onClick={onPreview}>
+            {busy ? "Pricing…" : <>Preview pricing &amp; impact<span className="arr">→</span></>}
+          </button>
+        )}
         {stage === "preview" && (
           <div className="book-panel draft">
-            <div className="book-head"><span className="draft-title"><span className="draft-doc" />Order draft{bundleHedge ? " + hedge" : ""}</span><span className="badge-paper">PAPER</span></div>
+            <div className="book-head">
+              <span className="draft-title"><span className="draft-doc" />Order ticket{bundleHedge ? " + hedge" : ""}</span>
+              <span className="badge-paper" title="orders route to the IB paper account">PAPER ACCOUNT</span>
+            </div>
             <div className="book-kv">
-              <div><span>Structure</span><b>{side} {qty}× {product} {tenor}{isCal ? "/" + farTenor : ""}{!isFut && STRUCT[product]!.mode.includes("wing") ? " " + wing : ""}</b></div>
-              <div><span>Preview id</span><b className="mono dim">tp_9425a798e686</b></div>
-              <div><span>State</span><b className="mono pos">valid_for_submit</b></div>
-              <div><span>Net cash</span><b className={"mono " + (isCredit ? "pos" : "neg")}>{isCredit ? "+" : "−"}{fmt.usd(premiumAbs)} {isCredit ? "credit" : "debit"}</b></div>
+              <div><span>Structure</span><b>{side} {qty}× {product} {tenor}{isCal ? "/" + farTenor : ""}{!isFut && STRUCT[product]!.mode.includes("wing") ? " " + wingLevel : ""}</b></div>
+              <div><span>Preview id</span><b className="mono dim">{server?.preview_id ?? "—"}</b></div>
+              <div><span>State</span><b className={"mono " + stateCls}>{stateText}</b></div>
+              <div><span>Net cash <em className="unit">indicative</em></span><b className={"mono " + (isCredit ? "pos" : "neg")}>{isCredit ? "+" : "−"}{fmt.usd(premiumAbs)} {isCredit ? "credit" : "debit"}</b></div>
               <div><span>Max loss</span>{naked ? <b className="mono neg">unbounded · stress {gk$(stressLoss)}</b> : <b className="mono">{fmt.usd(premiumAbs + commission)}</b>}</div>
               <div><span>{meta.order[0] === "vn" ? "Vanna (lead)" : "Lead greek"}</span><b className="mono">{GREEK_INFO[meta.order[0]!].label} {greekVal(meta.order[0]!)}</b></div>
               <div><span>Δ after hedge</span><b className="mono">{gk$(afterDelta)}</b></div>
             </div>
+            {server?.blocking_reasons && server.blocking_reasons.length > 0 && (
+              <div className="ob-blocking mono small">⛔ {server.blocking_reasons.join(" · ")}</div>
+            )}
+            {err && <div className="ob-error mono small">⚠ {err}</div>}
             <div className="book-btns">
-              <button className="btn-draft-send" onClick={() => { setBooked({ side, product, qty, tenor, bundleHedge, hedgeQty, hedgeSide }); setStage("booked"); }}>Send{bundleHedge ? " bundle" : ""}</button>
-              <button className="btn-draft-cancel" onClick={reset}>Cancel</button>
+              <button
+                className="btn-draft-send"
+                disabled={!canPlace}
+                title={WRITE_ENABLED ? (canPlace ? "submit to IB paper account" : "preview must be valid_for_submit") : GATE_TITLE}
+                onClick={onPlace}
+              >
+                {busy ? "Placing…" : "Place order"}
+              </button>
+              <button className="btn-draft-cancel" disabled={busy} onClick={reset}>Cancel</button>
             </div>
+            {!WRITE_ENABLED && <div className="dim small ob-readonly-note">Read-only desk · placing orders requires auth (Phase 2).</div>}
           </div>
         )}
         {stage === "booked" && booked && (
           <div className="book-result">
             <div className="result-icon">✓</div>
-            <div><b>Order sent</b><span className="mono">{booked.side} {booked.qty}× {booked.product} {booked.tenor}{booked.bundleHedge ? " + " + booked.hedgeSide + " " + booked.hedgeQty + "× 6E" : ""} · PAPER · filled @ market</span></div>
+            <div>
+              <b>Order submitted</b>
+              <span className="mono">
+                {booked.side} {booked.qty}× {booked.product} {booked.tenor}
+                {booked.bundleHedge ? " + " + booked.hedgeSide + " " + booked.hedgeQty + "× 6E" : ""} · IB paper account
+                {typeof placed?.["structure_id"] === "number" ? " · #" + String(placed["structure_id"]) : ""}
+              </span>
+            </div>
             <button className="btn-ghost" onClick={reset}>New order</button>
           </div>
         )}

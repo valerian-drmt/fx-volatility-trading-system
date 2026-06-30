@@ -16,8 +16,19 @@ import { DATA, fmt } from "../data";
 import type { AccountState, Cash, Greeks, Limits, MacroEvent, Position } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
+import { ApiError } from "../../api/client";
+import { closeContract, closeTrade } from "../../api/endpoints";
 
-const GATE_TITLE = "écriture désactivée — auth requise (Phase 2)";
+const GATE_TITLE = "write disabled — auth required (Phase 2)";
+
+function closeErr(e: unknown): string {
+  if (e instanceof ApiError) {
+    const detail = (e.body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === "string") return detail;
+    return `broker/API error ${e.status}`;
+  }
+  return e instanceof Error ? e.message : "unknown error";
+}
 
 interface TradeTweaks {
   density: string;
@@ -42,6 +53,8 @@ function ClosePanel({
   const [contractId, setContractId] = useState("");
   const [tradeId, setTradeId] = useState("");
   const [qty, setQty] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
     if (pos) {
       setType("contract");
@@ -107,6 +120,28 @@ function ClosePanel({
         var99: Math.round(before.var99! * (1 - 0.14 * c.frac)),
       }
     : null;
+
+  // Real close → IB paper account. Contract = one leg (OpenPosition.id, partial
+  // via qty); trade = every leg sharing the trade_id. Parent refreshes on poll.
+  const onExec = async (): Promise<void> => {
+    if (!sel || !WRITE_ENABLED || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      if (type === "contract") {
+        await closeContract(Number(contractId), qty);
+      } else {
+        const leg = positions.find((p) => p.packageId === tradeId);
+        if (!leg?.tradeId) throw new Error("no backend trade id for this package");
+        await closeTrade(Number(leg.tradeId));
+      }
+      onDone();
+    } catch (e) {
+      setErr(closeErr(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const m = (v: number): string => (v < 0 ? "-" : "") + "$" + Math.abs(Math.round(v)).toLocaleString("en-US");
   const rows: [string, string, string][] = [
@@ -191,14 +226,16 @@ function ClosePanel({
           ))}
         </tbody>
       </table>
+      {err && <div className="ob-error mono small">⚠ {err}</div>}
       <button
         className="btn-close-exec"
-        disabled={!sel || !WRITE_ENABLED}
-        title={WRITE_ENABLED ? "" : GATE_TITLE}
-        onClick={onDone}
+        disabled={!sel || !WRITE_ENABLED || busy}
+        title={WRITE_ENABLED ? "submit close to IB paper account" : GATE_TITLE}
+        onClick={onExec}
       >
-        {sel ? (type === "trade" ? "Close trade" : `Close ${qty} ct`) : "Close"}
+        {busy ? "Closing…" : sel ? (type === "trade" ? "Close trade" : `Close ${qty} ct`) : "Close"}
       </button>
+      {!WRITE_ENABLED && <div className="dim small ob-readonly-note">Read-only desk · closing requires auth (Phase 2).</div>}
     </div>
   );
 }
@@ -217,7 +254,6 @@ function HoldingsStrip({ cash, spotBid, spotAsk }: { cash: Cash[]; spotBid: numb
   return (
     <div className="hold-strip">
       <div className="hold-legend">
-        <span className="hold-lbl">Cash holdings</span>
         <div className="hl-row">
           <i style={{ background: "var(--pos)" }} />
           <span className="hl-ccy">EUR</span>
@@ -318,6 +354,39 @@ function BudgetBar({ label, used, cap, unit, fmtv, add = 0 }: BudgetBarProps): J
   );
 }
 
+// FX session windows (UTC). Bubble: green = open, orange = pre/post (±1h edge),
+// red = closed. Derived from the wall clock — no backend feed needed.
+const SESSIONS: { code: string; open: number; close: number }[] = [
+  { code: "London", open: 7, close: 16 },
+  { code: "New York", open: 12, close: 21 },
+  { code: "Hong Kong", open: 1, close: 9 },
+];
+function sessionState(hUtc: number, open: number, close: number): "open" | "edge" | "closed" {
+  if (hUtc >= open && hUtc < close) return "open";
+  if ((hUtc >= open - 1 && hUtc < open) || (hUtc >= close && hUtc < close + 1)) return "edge";
+  return "closed";
+}
+function MarketSessions(): JSX.Element {
+  const now = new Date();
+  const h = now.getUTCHours() + now.getUTCMinutes() / 60;
+  const tone: Record<string, string> = { open: "var(--pos)", edge: "var(--warn)", closed: "var(--neg)" };
+  const word: Record<string, string> = { open: "open", edge: "pre/post", closed: "closed" };
+  return (
+    <div className="mkt-sessions">
+      {SESSIONS.map((s) => {
+        const st = sessionState(h, s.open, s.close);
+        return (
+          <div key={s.code} className="mkt-sess" title={`${s.code} · ${word[st]}`}>
+            <span className="sess-dot" style={{ background: tone[st] }} />
+            <span className="sess-code">{s.code}</span>
+            <span className="sess-state mono dim">{word[st]}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function IndicatorsPanel({
   builder,
   greeks,
@@ -325,6 +394,7 @@ function IndicatorsPanel({
   limits,
   events,
   cash,
+  positions,
   spotBid,
   spotAsk,
 }: {
@@ -334,6 +404,7 @@ function IndicatorsPanel({
   limits: Limits;
   events: MacroEvent[];
   cash: Cash[];
+  positions: Position[];
   spotBid: number;
   spotAsk: number;
 }): JSX.Element {
@@ -342,8 +413,6 @@ function IndicatorsPanel({
     L = limits;
   const eur = cash.find((c) => c.ccy === "EUR"),
     usd = cash.find((c) => c.ccy === "USD");
-  const bid = spotBid.toFixed(5),
-    ask = spotAsk.toFixed(5);
   const evt = nextHighImpact(events);
   const isActive = !!(builder && builder.active && !builder.isFut);
   const add = isActive && builder ? builder.net : null;
@@ -353,7 +422,6 @@ function IndicatorsPanel({
   const evtInWindow = !!(isActive && evt && tradedDte != null && (evt.dt.getTime() - Date.now()) / 8.64e7 <= tradedDte);
 
   const kM = (v: number): string => (v >= 1e6 ? "$" + (v / 1e6).toFixed(2) + "M" : "$" + Math.round(v / 1e3) + "k");
-  const drift = Math.abs(g.netDelta) > L.deltaBandUsd;
   const usedMarginPct = a.marginInitPct;
   const pct = (added: number, used: number, cap: number): number => {
     const rem = cap - used;
@@ -362,88 +430,66 @@ function IndicatorsPanel({
 
   return (
     <div className="ind-grid">
+      {/* 0 — cash holdings (moved out of the Order builder) */}
+      <div className="ind-fam">
+        <div className="ind-fam-head">Cash holdings</div>
+        <HoldingsStrip cash={cash} spotBid={spotBid} spotAsk={spotAsk} />
+      </div>
+
       {/* 1 — market microstructure */}
       <div className="ind-fam">
         <div className="ind-fam-head">Market microstructure</div>
         <div className="ind-rows">
           <div className="ind-row">
-            <span>Spot bid/ask</span>
-            <b className="mono">
-              {bid} / {ask}
-            </b>
-          </div>
-          <div className="ind-row">
             <span>Fwd {tradedTenor || "2M"}</span>
             <b className="mono">{DATA.smileFor(tenIx).fwd.toFixed(4)}</b>
           </div>
-          <div className="ind-row">
-            <span>Surface freshness</span>
-            <b className="mono">
-              <span className="state-chip fresh">fresh · 38s</span>
-            </b>
-          </div>
-          <div className="ind-row">
-            <span>Session</span>
-            <b className="mono">
-              London <span className="dim">· liquid</span>
-            </b>
-          </div>
         </div>
+        <MarketSessions />
       </div>
 
-      {/* 2 — book state */}
+      {/* 2 — book net (= Risk) : Δ-band monitor + net greeks + book totals.
+          Moved out of the Open-positions panel so "open positions" (the legs)
+          and "book net" (the aggregate) read as distinct blocks. */}
       <div className="ind-fam">
         <div className="ind-fam-head">
-          Book state <span className="dim">· one engine</span>
+          Book net <span className="dim">· {positions.length} legs · one engine · = Risk</span>
         </div>
+        <HedgeStrip greeks={greeks} limits={limits} />
         <div className="ind-greeks">
           <div className="indg">
-            <span className="indg-l">
-              Δ net <em className="unit">$</em>
-            </span>
-            <b className="mono">{gk$(g.netDelta)}</b>
+            <span className="indg-l">Δ net <em className="unit">$</em></span>
+            <b className={"mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</b>
           </div>
           <div className="indg">
-            <span className="indg-l">
-              Γ net <em className="unit">$/pip</em>
-            </span>
-            <b className="mono">{gk$(g.netGamma)}</b>
+            <span className="indg-l">Γ net <em className="unit">$/pip</em></span>
+            <b className={"mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</b>
           </div>
           <div className="indg">
-            <span className="indg-l">
-              Vega net <em className="unit">$/vp</em>
-            </span>
-            <b className="mono">{gk$(g.netVega)}</b>
+            <span className="indg-l">Vega net <em className="unit">$/vp</em></span>
+            <b className={"mono " + pnlCls(g.netVega)}>{gk$(g.netVega)}</b>
           </div>
           <div className="indg">
-            <span className="indg-l">
-              Vanna net <em className="unit">$k</em>
-            </span>
-            <b className="mono">{fmt.sgn(g.netVanna, 0)}k</b>
+            <span className="indg-l">Vanna net <em className="unit">$k/vp·fig</em></span>
+            <b className={"mono " + pnlCls(g.netVanna)}>{fmt.sgn(g.netVanna, 0)}k</b>
           </div>
           <div className="indg">
-            <span className="indg-l">
-              Θ net <em className="unit">$/day</em>
-            </span>
-            <b className="mono">{gk$(g.netTheta)}</b>
+            <span className="indg-l">Volga net <em className="unit">$k/vp</em></span>
+            <b className={"mono " + pnlCls(g.netVolga)}>{fmt.sgn(g.netVolga, 0)}k</b>
+          </div>
+          <div className="indg">
+            <span className="indg-l">Θ net <em className="unit">$/day</em></span>
+            <b className={"mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</b>
           </div>
         </div>
         <div className="ind-rows">
           <div className="ind-row">
-            <span>Δ drift vs band</span>
-            <b className={"mono " + (drift ? "warn" : "pos")}>
-              {drift
-                ? "+" +
-                  Math.round((Math.abs(g.netDelta) / L.deltaBandUsd - 1) * 100) +
-                  "% beyond ±$" +
-                  (L.deltaBandUsd / 1000).toFixed(1) +
-                  "k"
-                : "within band"}
-            </b>
+            <span>Nominal <em className="unit">€</em></span>
+            <b className="mono">{(g.netNominal / 1e6).toFixed(1)}M</b>
           </div>
           <div className="ind-row">
-            <span>Last hedge</span>
-            <b className="mono dim">11:48:02</b>
+            <span>Unrealized P&L</span>
+            <b className={"mono " + pnlCls(g.netUnreal)}>{fmt.usdk(g.netUnreal)}</b>
           </div>
         </div>
       </div>
@@ -550,8 +596,10 @@ function IndicatorsPanel({
 
 // ---------------- HedgeStrip ----------------
 function HedgeStrip({ greeks, limits }: { greeks: Greeks; limits: Limits }): JSX.Element {
-  const [hedged, setHedged] = useState(false);
-  const resid = hedged ? 120 : greeks.netDelta;
+  // Read-only Δ-band monitor. One-click "hedge to flat" execution belongs to the
+  // auto-hedge phase (R12+, docs/strategy.md §1) — no backend endpoint yet, so we
+  // surface the residual honestly rather than fake a re-center.
+  const resid = greeks.netDelta;
   const band = limits.deltaBandUsd;
   const drift = Math.abs(resid) > band;
   const over = Math.round((Math.abs(resid) / band - 1) * 100);
@@ -566,19 +614,14 @@ function HedgeStrip({ greeks, limits }: { greeks: Greeks; limits: Limits }): JSX
       </div>
       <div className="hs-item">
         <span className="gs-lbl">Band ±{bandTxt}</span>
-        <b className={"mono " + (drift ? "warn" : "pos")}>{hedged ? "within band" : "+" + over + "% beyond"}</b>
+        <b className={"mono " + (drift ? "warn" : "pos")}>{drift ? "+" + over + "% beyond" : "within band"}</b>
       </div>
       <div className="hs-item">
-        <span className="gs-lbl">Last hedge</span>
-        <b className="mono dim">{hedged ? "just now" : "11:48:02"}</b>
+        <span className="gs-lbl">Hedge</span>
+        <b className="mono dim">manual · via order builder</b>
       </div>
-      <button
-        className="btn-hedge"
-        disabled={hedged || !WRITE_ENABLED}
-        title={WRITE_ENABLED ? "" : GATE_TITLE}
-        onClick={() => setHedged(true)}
-      >
-        {hedged ? "✓ re-centered" : "hedge to flat"}
+      <button className="btn-hedge" disabled title="auto delta-hedge lands in R12 (docs/strategy.md §1)">
+        hedge to flat
       </button>
     </div>
   );
@@ -602,31 +645,28 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
 
   return (
     <div className={"trade-grid " + (tweaks.density || "regular")}>
-      <div className="trade-main">
+      <div className="trade-top">
         <Panel title="Indicators" dataPp="trade-indicators" right={<FreshBadge fresh={trade} label="state for execution · not a signal" />} className="trade-block">
-          <IndicatorsPanel builder={builder} greeks={greeks} account={account} limits={limits} events={events} cash={cash} spotBid={spotBid} spotAsk={spotAsk} />
+          <IndicatorsPanel builder={builder} greeks={greeks} account={account} limits={limits} events={events} cash={cash} positions={positions} spotBid={spotBid} spotAsk={spotAsk} />
         </Panel>
-        <Panel title="Open positions" dataPp="trade-open" pad={false} className="trade-block open-pos-panel">
-          <HedgeStrip greeks={greeks} limits={limits} />
-          <OpenPositionsTable
-            showGreeks={tweaks.showGreeks}
-            extended={tweaks.showGreeks}
-            onClose={setClosing}
-            dense={tweaks.density === "compact"}
-            positions={positions}
-            greeks={greeks}
-          />
-        </Panel>
-      </div>
-      <div className="trade-side">
-        <Panel title="Order builder" dataPp="trade-builder" className="trade-block">
-          <HoldingsStrip cash={cash} spotBid={spotBid} spotAsk={spotAsk} />
+        <Panel title="Order" dataPp="trade-builder" className="trade-block">
           <OrderBuilder onState={setBuilder} />
         </Panel>
         <Panel title="Close position" dataPp="trade-close" className="trade-block close-block">
           <ClosePanel pos={closing} onDone={() => setClosing(null)} positions={positions} greeks={greeks} account={account} />
         </Panel>
       </div>
+      <Panel title="Open positions" dataPp="trade-open" pad={false} className="trade-block open-pos-panel">
+        <OpenPositionsTable
+          showGreeks={tweaks.showGreeks}
+          extended={tweaks.showGreeks}
+          onClose={setClosing}
+          dense={tweaks.density === "compact"}
+          positions={positions}
+          greeks={greeks}
+          showNet={false}
+        />
+      </Panel>
     </div>
   );
 }
