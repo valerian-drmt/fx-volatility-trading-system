@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import date
+from functools import reduce
+from math import gcd
 
 # IB FOP trading_class for EUR/USD options (cf. STEP4 §6).
 _FOP_TRADING_CLASS = {"EUR": "EUU"}
@@ -185,3 +187,63 @@ def can_use_combo(legs: Sequence[Mapping[str, object]]) -> bool:
             if leg.get(key) != first.get(key):
                 return False
     return True
+
+
+def build_combo(
+    *,
+    symbol: str,
+    exchange: str,
+    currency: str,
+    legs: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """Assemble a single IB BAG (combo) from already-QUALIFIED leg contracts so a
+    multi-leg structure fills all-or-nothing (no naked half-fill).
+
+    ``legs`` : ``[{conId, side ('BUY'|'SELL'), qty, limit_price, exchange?}]`` — one
+    per structure leg, each with the qualified IB ``conId``.
+
+    Ratios are the leg quantities reduced by their GCD (a Risk Reversal 25×25 →
+    1:1 with ``totalQuantity=25`` ; a Butterfly 25/50/25 → 1:2:1 with 25). The net
+    combo limit price is the signed sum ``Σ ±ratio·limit`` (BUY +, SELL −) — a
+    positive net is a debit, a negative net a credit ; the package is always
+    expressed as a BUY, so a credit rides as a negative ``lmtPrice`` (IB accepts).
+
+    Returns dialect-free dicts (no ib_insync import) so this is unit-testable ;
+    the engine wraps ``comboLegs`` into ``ib_insync.ComboLeg`` and the order into
+    ``LimitOrder`` at runtime.
+    """
+    legs = list(legs)
+    if len(legs) < 2:
+        raise ValueError("combo needs at least 2 legs")
+    qtys = [int(leg["qty"]) for leg in legs]  # type: ignore[call-overload]
+    if any(q <= 0 for q in qtys):
+        raise ValueError("all leg quantities must be positive")
+    base = reduce(gcd, qtys)
+    if base <= 0:
+        base = 1
+
+    combo_legs: list[dict[str, object]] = []
+    net = 0.0
+    for leg in legs:
+        action = str(leg["side"]).upper()
+        if action not in ("BUY", "SELL"):
+            raise ValueError(f"side must be BUY or SELL, got {leg['side']!r}")
+        ratio = int(leg["qty"]) // base  # type: ignore[call-overload]
+        combo_legs.append({
+            "conId": int(leg["conId"]),  # type: ignore[call-overload]
+            "ratio": ratio,
+            "action": action,
+            "exchange": str(leg.get("exchange") or exchange),
+        })
+        sign = 1.0 if action == "BUY" else -1.0
+        net += sign * ratio * float(leg["limit_price"])  # type: ignore[arg-type]
+
+    return {
+        "contract": {
+            "symbol": symbol, "secType": "BAG",
+            "exchange": exchange, "currency": currency,
+            "comboLegs": combo_legs,
+        },
+        "order": {"action": "BUY", "totalQuantity": base, "lmtPrice": round(net, 4)},
+        "base_qty": base,
+    }

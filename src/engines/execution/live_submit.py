@@ -14,8 +14,11 @@ API flow
 
 Combo support
 -------------
-``can_use_combo`` is checked. If true → TODO (BAG) ; for V1 we still issue
-separate orders but log it. Spec §14 limitation 5 acknowledges this.
+``can_use_combo`` is checked. When ``use_combo=True`` (env ``EXECUTION_USE_COMBO``)
+and the legs are combo-eligible options, they are placed as a single IB BAG so the
+structure fills all-or-nothing (no naked half-fill — cf. the RR whose put filled
+while the call didn't). Otherwise (default, futures, or a single leg) we fall back
+to one order per leg. Combo assembly lives in ``core.execution.build_combo``.
 """
 from __future__ import annotations
 
@@ -27,11 +30,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.execution.contract_builder import (
+    build_combo,
     build_contract_kwargs,
     build_order_kwargs,
     can_use_combo,
 )
-from engines.execution.fills_handler import attach_fill_handlers
+from engines.execution.fills_handler import (
+    attach_combo_fill_handlers,
+    attach_fill_handlers,
+)
 from persistence.models import (
     StructureOrder,
     TradeEvent,
@@ -50,15 +57,19 @@ async def submit_structure_live(
     sessionmaker_factory: async_sessionmaker[AsyncSession],
     executor: Any,                  # OrderExecutor
     structure_id: int,
+    use_combo: bool = False,
 ) -> dict[str, Any]:
-    """Place all entry orders of a structure and wire fills handlers.
+    """Place a structure's entry orders and wire fills handlers.
 
-    Returns a summary dict — final state arrives via events, not via this call.
+    ``use_combo`` (off by default) : if the legs are combo-eligible options, place
+    them as a single IB BAG so they fill all-or-nothing (no naked half-fill).
+    Otherwise (or for futures) fall back to one order per leg. Returns a summary
+    dict — final state arrives via events, not via this call.
     """
     if not executor.is_connected():
         raise LiveSubmitError("IB Gateway not connected")
 
-    from ib_insync import Contract, LimitOrder, MarketOrder
+    from ib_insync import ComboLeg, Contract, LimitOrder, MarketOrder
 
     sm = sessionmaker_factory
     async with sm() as db:
@@ -95,6 +106,68 @@ async def submit_structure_live(
         ))
 
         ib = executor._ensure()
+
+        # ── Combo (BAG) path — atomic all-or-nothing fill for multi-leg options ──
+        all_options = all(o.contract_type.lower() != "future" for o in orders)
+        if use_combo and combo_eligible and all_options and len(orders) >= 2:
+            conid_to_order: dict[int, int] = {}
+            combo_input: list[dict[str, Any]] = []
+            for order in orders:
+                if order.contract_expiry is None or order.contract_strike is None:
+                    raise LiveSubmitError(f"order {order.id} missing expiry/strike for combo")
+                if order.limit_price is None:
+                    raise LiveSubmitError(f"order {order.id} missing limit_price for combo")
+                ck = build_contract_kwargs(
+                    contract_type=order.contract_type, expiry=order.contract_expiry,
+                    strike=float(order.contract_strike), symbol=order.contract_symbol,
+                    exchange=order.contract_exchange, currency=order.contract_currency,
+                )
+                qualified = await ib.qualifyContractsAsync(Contract(**ck))
+                if not qualified:
+                    raise LiveSubmitError(f"combo leg not qualified for order {order.id} (sent: {ck})")
+                qc = qualified[0]
+                conid_to_order[int(qc.conId)] = order.id
+                combo_input.append({
+                    "conId": int(qc.conId), "side": order.side, "qty": int(order.qty),
+                    "limit_price": float(order.limit_price),
+                    "exchange": getattr(qc, "exchange", None) or order.contract_exchange,
+                })
+            first = orders[0]
+            combo = build_combo(
+                symbol=first.contract_symbol, exchange=first.contract_exchange,
+                currency=first.contract_currency, legs=combo_input,
+            )
+            cc = combo["contract"]  # type: ignore[index]
+            co = combo["order"]     # type: ignore[index]
+            bag = Contract(
+                symbol=cc["symbol"], secType="BAG", exchange=cc["exchange"], currency=cc["currency"],
+                comboLegs=[ComboLeg(**cl) for cl in cc["comboLegs"]],
+            )
+            combo_order = LimitOrder(co["action"], co["totalQuantity"], co["lmtPrice"])
+            combo_order.tif = first.time_in_force or "DAY"
+            trade = ib.placeOrder(bag, combo_order)
+            attach_combo_fill_handlers(
+                trade=trade, conid_to_order=conid_to_order, sessionmaker_factory=sm,
+            )
+            now = datetime.now(UTC)
+            for order in orders:
+                order.ib_order_id = str(trade.order.orderId)
+                order.ib_perm_id = str(trade.order.permId) if trade.order.permId else None
+                order.state = "submitted"
+                order.submitted_at = now
+            db.add(TradeEvent(
+                structure_id=structure_id, event_type="live_submit_combo", severity="info",
+                description=f"placed BAG combo net={co['lmtPrice']} base_qty={co['totalQuantity']}",
+                payload={"net_price": co["lmtPrice"], "base_qty": co["totalQuantity"], "n_legs": len(orders)},
+            ))
+            await db.commit()
+            return {
+                "structure_id": structure_id, "n_orders_placed": len(orders),
+                "combo": True, "combo_eligible": combo_eligible,
+                "orders": [{"leg_idx": o.leg_idx, "order_id": o.id, "ib_order_id": o.ib_order_id} for o in orders],
+            }
+
+        # ── Per-leg path (default / futures / non-combo) ──
         placed: list[dict[str, Any]] = []
         for order in orders:
             is_future = order.contract_type.lower() == "future"

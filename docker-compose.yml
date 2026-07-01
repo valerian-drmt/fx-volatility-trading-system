@@ -290,6 +290,10 @@ services:
       # 5 s = compromis : UI poll à 5 s côté front, charge IB modérée
       # (12 calls/min). Surchargeable via la var d'env EXECUTION_SYNC_INTERVAL_S.
       SYNC_INTERVAL_S: ${EXECUTION_SYNC_INTERVAL_S:-5.0}
+      # Place combo-eligible option structures as a single IB BAG (all-or-nothing
+      # fill, no naked half-fill). OFF by default — the per-leg path is the tested
+      # fallback ; flip to 1 once validated on the paper account.
+      EXECUTION_USE_COMBO: ${EXECUTION_USE_COMBO:-0}
     depends_on:
       postgres:
         condition: service_healthy

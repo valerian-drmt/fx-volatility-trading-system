@@ -60,6 +60,11 @@ HEARTBEAT_INTERVAL_S = float(os.getenv("HEARTBEAT_INTERVAL_S", "10.0"))
 STUCK_WATCH_INTERVAL_S = float(os.getenv("STUCK_WATCH_INTERVAL_S", "60.0"))
 STUCK_AFTER_S = float(os.getenv("STUCK_AFTER_S", "600.0"))
 
+# Combo (BAG) execution : place combo-eligible option structures as a single IB
+# BAG so multi-leg trades fill all-or-nothing (no naked half-fill). OFF by default
+# — the per-leg path stays the tested fallback until validated on paper.
+EXECUTION_USE_COMBO = os.getenv("EXECUTION_USE_COMBO", "0").lower() in ("1", "true", "yes")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -427,6 +432,7 @@ async def submit_structure(
         result = await submit_structure_live(
             sessionmaker_factory=sm, executor=ex,
             structure_id=body.structure_id,
+            use_combo=EXECUTION_USE_COMBO,
         )
         logger.info(
             "live_submit_ok structure_id=%s body=%s",
