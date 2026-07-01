@@ -5,8 +5,8 @@
  *
  * Base URL: same-origin under the deploy base in prod (Nginx) and dev (Vite
  * proxy), i.e. wss://host<base>/ws/... where <base> = import.meta.env.BASE_URL
- * (e.g. "/fx-volatility-trading-system/"; "/" at the root and in tests → no
- * prefix). Override via VITE_WS_BASE_URL. `path` = null disables the connection.
+ * (e.g. "/fx-volatility-trading-system/"). Override via VITE_WS_BASE_URL.
+ * `path` = null disables the connection (mock mode).
  */
 import { useEffect, useRef, useState } from "react";
 

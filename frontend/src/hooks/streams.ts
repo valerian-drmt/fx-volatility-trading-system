@@ -5,10 +5,7 @@
  *
  * Staleness thresholds reflect each engine's cadence: ticks fast, vol ~3 min.
  */
-// Coexistence (R11 PR F): the rewritten base hook ships as `useWsChannel` so it
-// can sit alongside the legacy `useWebSocket` until the legacy frontend is
-// dropped (A5), at which point this reverts to `./useWebSocket`.
-import { useWebSocket } from "./useWsChannel";
+import { useWebSocket } from "./useWebSocket";
 import { type Fresh, makeFresh } from "../voldesk/data/freshness";
 
 const WARN_MS = {
