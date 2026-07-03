@@ -268,19 +268,6 @@ function ClosePanel({
 
   return (
     <div className="close-draft">
-      {done ? (
-        // Close accepted → the confirmation REPLACES the form ; the operator
-        // must Dismiss to return to the form (prevents an accidental re-close
-        // on a stale selection).
-        <div className="book-result close-result close-result-solo">
-          <div>
-            <b className="close-result-title">Close submitted ✓</b>
-            <span className="mono">{done}</span>
-          </div>
-          <button className="btn-ghost" onClick={() => setDone(null)}>Dismiss</button>
-        </div>
-      ) : (
-      <>
       <div className="close-fields">
         <label className="field">
           <span>Type</span>
@@ -361,15 +348,26 @@ function ClosePanel({
         </tbody>
       </table>
       {err && <div className="ob-error mono small">⚠ {err}</div>}
-      <button
-        className="btn-close-exec"
-        disabled={!sel || !canWrite || busy}
-        title={canWrite ? "submit close to IB paper account" : GATE_TITLE}
-        onClick={onExec}
-      >
-        {busy ? "Closing…" : sel ? (type === "trade" ? "Close trade" : `Close ${qty} ct`) : "Close"}
-      </button>
-      </>
+      {done ? (
+        // Close accepted → the confirmation takes the Close button's place ; the
+        // form stays visible, but the operator must Dismiss before closing again
+        // (no accidental re-close on a stale selection).
+        <div className="book-result close-result">
+          <div>
+            <b className="close-result-title">Close submitted ✓</b>
+            <span className="mono">{done}</span>
+          </div>
+          <button className="btn-ghost" onClick={() => setDone(null)}>Dismiss</button>
+        </div>
+      ) : (
+        <button
+          className="btn-close-exec"
+          disabled={!sel || !canWrite || busy}
+          title={canWrite ? "submit close to IB paper account" : GATE_TITLE}
+          onClick={onExec}
+        >
+          {busy ? "Closing…" : sel ? (type === "trade" ? "Close trade" : `Close ${qty} ct`) : "Close"}
+        </button>
       )}
       {!canWrite && <div className="dim small ob-readonly-note">Read-only desk · log in to close positions.</div>}
     </div>
