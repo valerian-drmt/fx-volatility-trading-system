@@ -117,29 +117,65 @@ function prettyProduct(s: SubmittedTrade): string {
   return formatStructLabel(s.product_label ?? s.structure_type) ?? "Structure";
 }
 
-// Infer a structure's name from its booked legs (contract_type + side + strike).
-// Used when the backend persisted a non-canonical structure_type ("custom") — a
-// straddle then still reads "Straddle". Works off the FULL leg set, so it's right
-// even when only some legs have filled.
-function inferStructureName(legs: Array<{ contract_type: string; side: string; strike: number | null }>): string {
-  if (legs.some((l) => /future/i.test(l.contract_type))) return "Future";
-  const calls = legs.filter((l) => /call/i.test(l.contract_type));
-  const puts = legs.filter((l) => /put/i.test(l.contract_type));
-  const n = legs.length;
-  if (n === 1) return calls.length ? "Vanilla Call" : puts.length ? "Vanilla Put" : "Option";
-  if (n === 2 && calls.length === 1 && puts.length === 1) {
-    if (calls[0]!.side !== puts[0]!.side) return "Risk Reversal";
-    // same strike (or unknown) → Straddle ; only call it a Strangle when the two
-    // strikes are demonstrably apart (free-leg builds often leave strike null).
-    const ck = calls[0]!.strike, pk = puts[0]!.strike;
-    if (ck != null && pk != null && Math.abs(ck - pk) >= 0.005) return "Strangle";
-    return "Straddle";
+// Single source of truth for Open positions : turn the server-joined
+// /positions/structured payload into the panel's rows + per-structure context.
+// Identity + terms come from the DB structure (trade_structure), the live values
+// from the IB mirror it already joined — NO client-side inference of what a
+// structure "is" (that would let the broker feed define our own booking). Only
+// legs IB actually holds (`linked`) become rows ; unlinked IB holdings still
+// show as their own singletons so nothing the broker reports disappears.
+function structuredToRows(
+  data: StructuredPositions | null,
+): { positions: Position[]; ctx: Record<string, StructureCtx> } {
+  const positions: Position[] = [];
+  const ctx: Record<string, StructureCtx> = {};
+  if (!data) return { positions, ctx };
+  const now = Date.now();
+  const dteOf = (e: string): number => {
+    const t = Date.parse(e);
+    return Number.isNaN(t) ? 0 : Math.max(0, Math.round((t - now) / 86_400_000));
+  };
+  const legProduct = (ct: string): string =>
+    ct === "call" ? "Vanilla Call" : ct === "put" ? "Vanilla Put" : ct === "future" ? "Future" : ct;
+  for (const s of data.structures) {
+    const tid = String(s.structure_id);
+    const filled = s.legs.filter((l) => l.linked).length;
+    const naked =
+      s.legs.some((l) => l.side === "SELL" && l.linked) &&
+      s.legs.some((l) => l.side === "BUY" && !l.linked);
+    ctx[tid] = {
+      name: PRODUCT_NAMES[s.structure_type] ?? formatStructLabel(s.product_label) ?? "Structure",
+      filled, total: s.legs.length, naked,
+    };
+    for (const l of s.legs) {
+      if (!l.linked || l.position_id == null) continue; // render only what IB holds
+      const nominal = l.nominal_eur ?? 0, pnl = l.pnl_usd ?? 0;
+      positions.push({
+        id: String(l.position_id), packageId: "", tradeId: tid, conId: l.con_id ?? 0,
+        product: legProduct(l.contract_type), structure: l.ib_local_symbol ?? "—",
+        side: l.held_side ?? l.side, qty: l.held_qty ?? l.qty,
+        tenor: l.tenor ?? s.tenor ?? "", expiry: l.expiry ?? "", strike: l.strike ?? 0,
+        entry: l.entry ?? 0, mark: l.mark ?? 0, iv: (l.iv ?? 0) * 100, pnl, nominal,
+        delta: l.delta_usd ?? 0, gamma: l.gamma_usd ?? 0, vega: l.vega_usd ?? 0, theta: l.theta_usd ?? 0,
+        vanna: (l.vanna_usd ?? 0) / 1000, volga: (l.volga_usd ?? 0) / 1000,
+        updated: l.updated ?? "", opened: l.opened ?? "",
+        pnlPct: nominal ? (pnl / nominal) * 100 : 0, dte: dteOf(l.expiry ?? ""),
+      });
+    }
   }
-  if (n === 2 && calls.length === 2) return "Call Spread";
-  if (n === 2 && puts.length === 2) return "Put Spread";
-  if (n === 3) return "Butterfly";
-  if (n === 4) return "Condor";
-  return `Structure · ${n} legs`;
+  for (const u of data.unlinked) {
+    const pnl = u.pnl_usd ?? 0;
+    positions.push({
+      id: String(u.id), packageId: "", tradeId: "", conId: 0,
+      product: u.product_label ?? "—", structure: u.symbol ?? "—",
+      side: u.side ?? "BUY", qty: u.qty ?? 0, tenor: u.tenor ?? "", expiry: u.expiry ?? "",
+      strike: 0, entry: 0, mark: u.mark ?? 0, iv: (u.iv ?? 0) * 100, pnl, nominal: 0,
+      delta: u.delta_usd ?? 0, gamma: u.gamma_usd ?? 0, vega: u.vega_usd ?? 0, theta: u.theta_usd ?? 0,
+      vanna: (u.vanna_usd ?? 0) / 1000, volga: (u.volga_usd ?? 0) / 1000,
+      updated: "", opened: "", pnlPct: 0, dte: dteOf(u.expiry ?? ""),
+    });
+  }
+  return { positions, ctx };
 }
 
 // ---------------- ClosePanel ----------------
@@ -504,32 +540,15 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   // Order blotter: persisted submitted structures from the DB (survive refresh) +
   // ephemeral session rejects (failed sends aren't persisted server-side).
   const submitted = useFetch<SubmittedTrade[]>(() => fetchSubmitted(50), 120_000, true, 30_000);
-  // Booking context so Open positions can label a partially-filled multi-leg trade
-  // by its real structure (e.g. "Risk Reversal · 1/2 filled ⚠ naked") instead of
-  // the single leg that happened to fill. Keyed by trade_id (as string).
-  // Poll in lockstep with the positions mirror (TRADE_POLL_MS) so the leg rows and
-  // their structure labels/naked flags never drift out of sync (a slower poll here
-  // made the group name fall back to inferStructureName for up to ~45 s after a fill).
+  // Open positions = a SINGLE server-joined read (/positions/structured). It
+  // carries the DB structure (identity + terms) already joined to the live IB
+  // mirror, so the panel renders straight from it — no second fetch, no
+  // client-side inference of what a structure is (the broker feed never defines
+  // our own booking). `structuredToRows` yields both the leg rows and the
+  // per-structure context (name / N-of-M / naked).
   const structured = useFetch<StructuredPositions>(() => fetchStructuredPositions(), 15_000, true, 30_000);
-  const structureCtx = useMemo(() => {
-    const m: Record<string, StructureCtx> = {};
-    for (const s of structured.data?.structures ?? []) {
-      // Count legs that are CURRENTLY open (linked to a live position), not just
-      // ever-filled — a since-closed leg shouldn't count, and a sold leg left open
-      // without its long cover is a naked residual.
-      const filled = s.legs.filter((l) => l.linked).length;
-      const naked =
-        s.legs.some((l) => l.side === "SELL" && l.linked) &&
-        s.legs.some((l) => l.side === "BUY" && !l.linked);
-      // Free-leg builds persist structure_type as "custom"/a free label → not in
-      // PRODUCT_NAMES. Fall back to the product_label, else INFER the structure
-      // from the full booked leg set (call/put/side/strike) so a straddle reads
-      // "Straddle" instead of "Structure".
-      const name = PRODUCT_NAMES[s.structure_type] ?? formatStructLabel(s.product_label) ?? inferStructureName(s.legs);
-      m[String(s.structure_id)] = { name, filled, total: s.legs.length, naked };
-    }
-    return m;
-  }, [structured.data]);
+  const structRows = useMemo(() => structuredToRows(structured.data), [structured.data]);
+  const structureCtx = structRows.ctx;
   const [rejects, setRejects] = useState<BlotterRow[]>([]);
   const seq = useRef(0);
   const addOrder = (rec: OrderRecord): void => {
@@ -564,7 +583,12 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const orders = [...rejects, ...dbRows].sort((a, b) => b.tsSort - a.tsSort).slice(0, 60);
   const ticks = useTicks();
   const td = trade.data;
-  const positions = td?.positions ?? DATA.positions;
+  // Open positions render from the structured read. Fall back to the raw IB
+  // mirror only when there are no structures at all (and to the mock when there's
+  // no live data), so a genuinely-flat live book shows empty, not mock rows.
+  const positions = structRows.positions.length
+    ? structRows.positions
+    : (td?.positions ?? DATA.positions);
   const greeks = td?.greeks ?? DATA.greeks;
   // Drop a "closing" lock once its position has cleared from the panel (fill +
   // sync ~30 s) or after a 90 s TTL (safety net so a close that never fills

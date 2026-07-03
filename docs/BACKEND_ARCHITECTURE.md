@@ -54,17 +54,20 @@ guessing) means the desk's own booking is not the truth — the broker is. Wrong
   `linked` flag + a `naked` break flag.
 
 ### What to do
-1. **The Open positions panel reads ONE endpoint** (`/positions/structured`) and maps
-   over `structures[].legs`. Delete the second data source (raw mirror leg rows) and the
-   `inferStructureName()` fallback. → one fetch, zero client-side inference, terms straight
-   from the DB.
+1. ✅ **DONE** — the Open positions panel reads ONE endpoint (`/positions/structured`) and
+   maps over `structures[].legs`. The raw mirror leg rows + `inferStructureName()` fallback
+   are deleted; `structuredToRows()` builds both the rows and the per-structure context from
+   the single joined payload. The endpoint now hydrates each leg with the IB-mirror identity
+   (`position_id`, `con_id`, held qty, entry, nominal, timestamps) so the panel closes by
+   `position_id` without a second source. → one fetch, zero client-side inference.
 2. **IB stays the reconciliation feed**: it supplies live qty / marks / greeks and powers
    the `naked` / break flags — it never supplies *identity*.
 3. **Do not denormalize the structure name onto `open_position`.** It is a property of the
    package, not the contract; a copy on the contract row is a stale cache of the wrong
    grain. Reference (`trade_id`) and join.
-4. Integrity: make `open_position.trade_id` a real FK to `trade_structure.id` so a
-   position can never dangle.
+4. ✅ **ALREADY DONE** (migration 034, "Murex-aligned identity stack"):
+   `open_position.trade_id` is a real FK to `trade_structure.id` (+ `contract_id`,
+   `package_id`). A position cannot dangle.
 
 ### What the big systems do (Murex, Calypso, OpenLink/Findur, FIS Front Arena, Charles River, Bloomberg AIM)
 - The **trade is the system of record**, booked with full economic terms **and a
@@ -211,10 +214,10 @@ A change is done when:
 
 ## 5. Immediate, concrete next steps for THIS repo
 
-1. **Point Open positions at `/positions/structured` as its sole source**; delete the raw
-   mirror leg rows + `inferStructureName()` fallback (§1 ①). Low risk, high value.
-2. **FK `open_position.trade_id → trade_structure.id`** (§1 ④).
-3. **Add a reconciliation/break view** endpoint (book vs IB, per structure) (§2.6).
+1. ✅ **DONE** — Open positions reads `/positions/structured` as its sole source; raw mirror
+   leg rows + `inferStructureName()` deleted (§1 ①).
+2. ✅ **ALREADY DONE** — `open_position.trade_id` FK → `trade_structure.id` (migration 034).
+3. **Add a reconciliation/break view** endpoint (book vs IB, per structure) (§2.6). ← next
 4. **Thread a correlation id** request → order → fill → position (§2.11).
 5. **Later**: fold positions/P&L from `trade_fill` events for audit-grade numbers (§2.4).
 

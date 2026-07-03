@@ -396,6 +396,33 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             "iv": _f(p.iv) if p else None,
         }
 
+    def _leg_dict(lg: StructureOrder, lp: OpenPosition | None) -> dict[str, Any]:
+        # One hydrated leg : DB identity/terms (from the StructureOrder) + the live
+        # IB mirror (from the linked open_position). This is the SINGLE payload the
+        # Open positions panel renders — no client-side inference, no second fetch.
+        return {
+            "leg_idx": lg.leg_idx, "contract_type": lg.contract_type, "side": lg.side, "qty": lg.qty,
+            "strike": _f(lg.contract_strike),
+            "expiry": lg.contract_expiry.isoformat() if lg.contract_expiry else None,
+            "state": lg.state, "qty_filled": lg.qty_filled, "ib_local_symbol": lg.ib_local_symbol,
+            # linked = THIS structure has a live IB position for this leg's contract.
+            # Keyed within the structure's own positions, so a contract shared with
+            # another structure can't produce a false "filled".
+            "linked": lp is not None,
+            # Live IB-mirror identity — present only when a real position backs this
+            # leg. position_id is the open_position row the UI closes by.
+            "position_id": lp.id if lp else None,
+            "con_id": lp.contract_id if lp else None,
+            "held_qty": _f(lp.quantity) if lp else None,
+            "held_side": lp.side if lp else None,
+            "entry": _f(lp.contract_price_entry) if lp else None,
+            "nominal_eur": _f(lp.nominal_eur) if lp else None,
+            "tenor": (lp.tenor if lp and lp.tenor else None),
+            "opened": lp.entry_timestamp.isoformat() if (lp and lp.entry_timestamp) else None,
+            "updated": lp.timestamp.isoformat() if (lp and lp.timestamp) else None,
+            **_marks(lp),
+        }
+
     for p in positions:
         sid = p.trade_id if p.trade_id in struct_by_id else symbol_to_struct.get(p.structure)
         if sid is None:
@@ -418,16 +445,10 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
         "structure_id": s.id, "structure_type": s.structure_type, "product_label": s.product_label,
         "tenor": s.reference_tenor, "state": s.state, "base_qty": s.base_qty,
         "created_at": s.created_at.isoformat() if s.created_at else None,
-        "legs": [{
-            "leg_idx": lg.leg_idx, "contract_type": lg.contract_type, "side": lg.side, "qty": lg.qty,
-            "strike": _f(lg.contract_strike), "expiry": lg.contract_expiry.isoformat() if lg.contract_expiry else None,
-            "state": lg.state, "qty_filled": lg.qty_filled, "ib_local_symbol": lg.ib_local_symbol,
-            # linked = THIS structure has a live IB position for this leg's contract.
-            # Keyed within the structure's own positions, so a contract shared with
-            # another structure can't produce a false "filled".
-            "linked": pos_by_struct.get(s.id, {}).get(lg.ib_local_symbol or "") is not None,
-            **_marks(pos_by_struct.get(s.id, {}).get(lg.ib_local_symbol or "")),
-        } for lg in legs_by_struct.get(s.id, [])],
+        "legs": [
+            _leg_dict(lg, pos_by_struct.get(s.id, {}).get(lg.ib_local_symbol or ""))
+            for lg in legs_by_struct.get(s.id, [])
+        ],
         "net": net_by_struct[s.id],
     } for s in structs if net_by_struct[s.id]["n_linked"] > 0]  # actually-open only
     return {"structures": out_structs, "unlinked": unlinked}

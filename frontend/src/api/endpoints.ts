@@ -87,6 +87,19 @@ export type SystemStats = Get<"/api/v1/system-stats", 200>;
 export const fetchVolHistory = (symbol = "EURUSD", limit = 50) =>
   apiGet<VolHistory>("/api/v1/vol-history", { query: { symbol, limit } });
 
+// Real OHLC candles from the market-data engine's Redis cache (IB reqHistoricalData).
+// Typed by hand (not via schema.d.ts) until `npm run gen:api` is regenerated
+// against the running backend; `t` = bar-open epoch ms (UTC).
+export interface Bar {
+  t: number;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+}
+export const fetchBars = (symbol = "EURUSD", tf = "1h", limit = 48) =>
+  apiGet<Bar[]>("/api/v1/bars", { query: { symbol, tf, limit } });
+
 export const fetchSystemStats = () => apiGet<SystemStats>("/api/v1/system-stats");
 
 // ── R11 voldesk wiring (read) ───────────────────────────────────────────────
@@ -215,6 +228,54 @@ export const submitTrade = (previewId: string, executionMode: "live" | "mock" = 
 
 export const cancelTradePreview = (previewId: string) =>
   apiPost<unknown>(`/api/v1/trade/preview/${encodeURIComponent(previewId)}/cancel`, {});
+
+// Persisted submitted structures (DB: trade_structure + booked_position). Read-only,
+// so the Orders blotter survives refresh and reflects the real DB state.
+export interface SubmittedTrade {
+  id: number;
+  created_at: string;
+  structure_type: string | null;
+  product_label: string | null;
+  reference_tenor: string | null;
+  base_qty: number | null;
+  state: string | null;
+  execution_mode: string | null;
+  position_state: string | null;
+  order_role: string | null; // entry / closing / unwind / hedge
+}
+export const fetchSubmitted = (limit = 50) =>
+  apiGet<SubmittedTrade[]>("/api/v1/trade/submitted", { query: { limit } });
+
+// Booking-driven positions: structures grouped by trade_structure (real product +
+// tenor + legs), live marks attached, plus IB positions not tied to any booking.
+export interface StructuredLeg {
+  leg_idx: number; contract_type: string; side: string; qty: number;
+  strike: number | null; expiry: string | null; state: string; qty_filled: number;
+  ib_local_symbol: string | null; linked: boolean; mark: number | null; pnl_usd: number | null;
+  delta_usd: number | null; gamma_usd: number | null; vega_usd: number | null;
+  theta_usd: number | null; vanna_usd: number | null; volga_usd: number | null; iv: number | null;
+  // Live IB-mirror identity (present only when `linked`). position_id is the
+  // open_position row the UI closes by.
+  position_id: number | null; con_id: number | null; held_qty: number | null; held_side: string | null;
+  entry: number | null; nominal_eur: number | null; tenor: string | null;
+  opened: string | null; updated: string | null;
+}
+export interface StructuredStructure {
+  structure_id: number; structure_type: string; product_label: string | null;
+  tenor: string; state: string; base_qty: number; created_at: string | null;
+  legs: StructuredLeg[];
+  net: { delta_usd: number; gamma_usd: number; vega_usd: number; theta_usd: number; pnl_usd: number; n_linked: number };
+}
+export interface UnlinkedPosition {
+  id: number; symbol: string; product_label: string | null; side: string;
+  qty: number | null; tenor: string | null; expiry: string | null;
+  mark: number | null; pnl_usd: number | null; delta_usd: number | null;
+  gamma_usd: number | null; vega_usd: number | null; theta_usd: number | null;
+  vanna_usd: number | null; volga_usd: number | null; iv: number | null;
+}
+export interface StructuredPositions { structures: StructuredStructure[]; unlinked: UnlinkedPosition[] }
+export const fetchStructuredPositions = () =>
+  apiGet<StructuredPositions>("/api/v1/positions/structured");
 
 /** Close a single leg (OpenPosition.id). Partial close via `qty`. */
 export const closeContract = (positionId: number, qty: number) =>
