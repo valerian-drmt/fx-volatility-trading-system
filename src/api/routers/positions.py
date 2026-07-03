@@ -46,6 +46,7 @@ from persistence.models import (
     TradeStructure,
 )
 from shared.contracts import multiplier_for, parse_local_symbol
+from shared.trace import current_trace_id, trace_headers
 
 router = APIRouter(prefix="/api/v1/positions", tags=["positions"])
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -1047,7 +1048,7 @@ async def close_one_open_position(
     url = f"{exec_url}/internal/positions/close-by-symbol"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.post(url, json=payload)
+            r = await client.post(url, json=payload, headers=trace_headers())
     except httpx.HTTPError as e:
         # Mark the closing structure as failed so the operator sees it.
         closing_struct.state = "partial_fail"
@@ -1088,6 +1089,7 @@ async def close_one_open_position(
         "limit_price": limit_price,
         "structure_id": closing_struct.id,
         "order_id": closing_order.id,
+        "trace_id": current_trace_id(),  # copy into a ticket to trace this close end-to-end
         "ib": ib_response,
     }
 

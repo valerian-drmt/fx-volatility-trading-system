@@ -161,10 +161,17 @@ The API surface is a **contract**, drift-checked.
   (see `CLAUDE.md`). Write endpoints are auth-gated.
 - **Do**: no secret in logs, error messages, `docker inspect`, or test fixtures. Ever.
 
-### 2.11 Observability — 🟡
+### 2.11 Observability — 🟡→✅ (correlation id added)
 Structured logs (structlog), health endpoints, engine heartbeats, `docs/observability/`.
-- Gap: no consistent **correlation id** threaded request → order → fill → position, and no
-  metrics on fill latency / reconcile breaks.
+- **Added**: a **correlation `trace_id`** (`shared/trace.py`). The API mints one per request
+  (or honours an inbound `X-Trace-ID`), binds it to the structlog contextvars so *every* log
+  line carries it, echoes it in the response header, and **propagates it via `X-Trace-ID`** to
+  the execution-engine — whose middleware re-binds it, so IB order placement + fills there log
+  under the *same* id. `submit` / `close` responses return the `trace_id`. → "what happened to
+  order N" is a single `grep <trace_id>` across both services' logs.
+- Remaining: **persist** `trace_id` on `trade_structure` / `trade_order` / `trade_fill` so the
+  async fill/reconcile background loops (outside the request context) re-bind it too; and add
+  metrics on fill latency / reconcile-break count.
 - **Do**: one id follows a trade end-to-end so you can answer "what happened to order N"
   from logs alone.
 
@@ -224,7 +231,9 @@ A change is done when:
 2. ✅ **ALREADY DONE** — `open_position.trade_id` FK → `trade_structure.id` (migration 034).
 3. ✅ **DONE (endpoint)** — `GET /positions/reconciliation` returns per-contract book-vs-IB
    breaks, classified (§2.6). Remaining: schedule + a UI chip on Open positions.
-4. **Thread a correlation id** request → order → fill → position (§2.11). ← next
+4. ✅ **DONE (request path)** — correlation `trace_id` minted at the API edge, on every log
+   line, propagated to the execution-engine, returned in submit/close responses (§2.11).
+   Remaining: persist it on the trade rows so async fills/reconcile re-bind it.
 5. **Later**: fold positions/P&L from `trade_fill` events for audit-grade numbers (§2.4).
 
 Related: `docs/ORDER_PIPELINE.md` (execution path), `docs/db_schema_drift_workflow.md`

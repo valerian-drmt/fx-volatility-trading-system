@@ -10,6 +10,7 @@ GET  /api/v1/trade/book                 current book state snapshot
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 import traceback
 from datetime import UTC, date, datetime, timedelta
@@ -53,8 +54,17 @@ from persistence.models import (
     TradePreviewRow,
     TradeStructure,
 )
+from shared.trace import current_trace_id
 
 logger = logging.getLogger(__name__)
+
+# Option legs go out as MARKETABLE LIMIT orders (fill instantly at the touch,
+# behaviourally a market order) rather than raw MKT. A market order on an option
+# hits IB's price-cap protection, which leaves BUY legs "Inactive" on wide spreads
+# → naked half-fills. We cross the spread off the preview premium : BUY pays up
+# (+buffer), SELL accepts down (−buffer). The buffer only guarantees the cross ;
+# the fill is still at the NBBO touch. Futures stay MKT (deep, tight book).
+_MARKETABLE_LIMIT_BUFFER = float(os.getenv("MARKETABLE_LIMIT_BUFFER", "0.25"))
 
 
 def _scrub(value: object) -> str:
@@ -207,11 +217,13 @@ async def _post_execution_engine(path: str, body: dict[str, Any]) -> dict[str, A
     import os
 
     import httpx
+
+    from shared.trace import trace_headers
     base = os.environ.get("EXECUTION_ENGINE_URL", "http://execution-engine:8001")
     url = f"{base.rstrip('/')}{path}"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, json=body)
+            resp = await client.post(url, json=body, headers=trace_headers())
         if resp.status_code >= 400:
             raise HTTPException(
                 502,
@@ -938,12 +950,30 @@ async def _submit_preview_impl(
                         preview_price = float(spot_from_preview)
                     else:
                         preview_price = 1.0  # last-resort to keep flow alive
-            # Both futures and options go out as MKT orders — immediate
-            # fills, no LMT wait. The slippage tolerance compute is
-            # bypassed entirely. live_submit translates order_type='MKT'
-            # into ib_insync.MarketOrder.
-            order_type_db = "MKT"
-            limit_price = None
+            # Futures : MKT. Options : MARKETABLE LIMIT crossing the spread from the
+            # preview premium so the BUY legs don't die on IB's option price-cap
+            # (→ naked half-fills). ``preview_price`` is already the premium in price
+            # points (CONTRACT_MULTIPLIER=1) — exactly IB's lmtPrice unit, no scaling.
+            # Falls back to MKT if there's no premium (or it rounds to zero).
+            if contract_type == "future" or not (preview_price and preview_price > 0):
+                order_type_db = "MKT"
+                limit_price = None
+            else:
+                buf = _MARKETABLE_LIMIT_BUFFER
+                # Snap to the CME EUR-FOP price tick (0.0001) or IB rejects with
+                # error 110 "price does not conform to minimum price variation"
+                # and the order sticks at PendingSubmit. Round to 4 dp (a 0.0001
+                # multiple is valid on both the 0.0001 and 0.00005 grids).
+                lp = round(
+                    preview_price * (1 + buf) if side == "BUY" else preview_price * (1 - buf),
+                    4,
+                )
+                if lp > 0:
+                    order_type_db = "LMT"
+                    limit_price = lp
+                else:
+                    order_type_db = "MKT"
+                    limit_price = None
             db.add(StructureOrder(
                 structure_id=structure.id, leg_idx=i, order_role="entry",
                 contract_type=contract_type, contract_expiry=contract_expiry,
@@ -986,6 +1016,7 @@ async def _submit_preview_impl(
             "n_orders_submitted": len(legs),
             "execution_mode": "live",
             "state": "submitted",
+            "trace_id": current_trace_id(),        # trace this submit across services
             "execution_engine": ee_result,
             "fully_filled_at": None,
         }
@@ -1126,11 +1157,18 @@ async def list_submitted_structures(
         position = (await db.execute(
             select(BookedPosition).where(BookedPosition.structure_id == s.id).limit(1)
         )).scalar_one_or_none()
+        # Order role = the desk's real taxonomy (entry / closing / unwind / hedge).
+        # A closing structure (from a position close) carries role 'closing', an
+        # opener 'entry' — so the blotter can label open vs close correctly.
+        order_role = (await db.execute(
+            select(StructureOrder.order_role).where(StructureOrder.structure_id == s.id).limit(1)
+        )).scalar_one_or_none()
         out.append({
             "id": s.id, "created_at": s.created_at, "structure_type": s.structure_type,
             "product_label": s.product_label,
             "reference_tenor": s.reference_tenor, "base_qty": s.base_qty, "state": s.state,
             "execution_mode": s.execution_mode,
+            "order_role": order_role or "entry",
             "total_premium_paid_usd": s.total_premium_paid_usd,
             "total_commission_usd": s.total_commission_usd,
             "total_entry_cost_usd": s.total_entry_cost_usd,

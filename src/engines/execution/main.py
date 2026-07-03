@@ -37,6 +37,7 @@ from engines.execution.order_executor import (
     OrderRequest,
     trade_to_dict,
 )
+from engines.execution.order_reconciler import reconcile_loop, reconcile_stuck_orders
 from engines.execution.position_sync import position_sync_loop, sync_positions_from_ib
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
@@ -59,6 +60,7 @@ SYNC_INTERVAL_S = float(os.getenv("SYNC_INTERVAL_S", "1.0"))
 HEARTBEAT_INTERVAL_S = float(os.getenv("HEARTBEAT_INTERVAL_S", "10.0"))
 STUCK_WATCH_INTERVAL_S = float(os.getenv("STUCK_WATCH_INTERVAL_S", "60.0"))
 STUCK_AFTER_S = float(os.getenv("STUCK_AFTER_S", "600.0"))
+RECONCILE_INTERVAL_S = float(os.getenv("RECONCILE_INTERVAL_S", "60.0"))
 
 # Combo (BAG) execution : place combo-eligible option structures as a single IB
 # BAG so multi-leg trades fill all-or-nothing (no naked half-fill). OFF by default
@@ -107,6 +109,13 @@ async def lifespan(app: FastAPI):
         ),
         name="stuck_order_watcher_loop",
     )
+    # Backfill stuck combo legs from the live IB positions (gateway truth). Combo
+    # BAG fills report on the combo conId → the per-leg router can miss them ; this
+    # flips a submitted leg to filled once IB actually holds that contract.
+    reconcile_task = asyncio.create_task(
+        reconcile_loop(sm, interval_s=RECONCILE_INTERVAL_S),
+        name="order_reconcile_loop",
+    )
     logger.info(
         "execution_startup ib_connected=%s sync_interval=%.1fs heartbeat=%.1fs",
         executor.is_connected(), SYNC_INTERVAL_S, HEARTBEAT_INTERVAL_S,
@@ -114,9 +123,9 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        for task in (sync_task, heartbeat_task, stuck_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -133,6 +142,22 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="fxvol execution-engine", version="0.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def _trace_middleware(request: Request, call_next):
+    """Bind the caller's correlation id (X-Trace-ID) for this request so IB order
+    placement / fills logged here share the API's trace_id — one grep spans both
+    services. Mints one if the caller didn't send it (direct /internal call)."""
+    from shared.trace import TRACE_HEADER, bind_trace_id, clear_trace_id, new_trace_id
+    trace_id = request.headers.get(TRACE_HEADER) or new_trace_id()
+    bind_trace_id(trace_id)
+    try:
+        response = await call_next(request)
+        response.headers[TRACE_HEADER] = trace_id
+        return response
+    finally:
+        clear_trace_id()
 
 
 @app.get("/health")
@@ -409,6 +434,16 @@ class HedgeOrderBody(BaseModel):
     hedge_order_id: int = Field(gt=0)
     front_month_expiry: str | None = Field(None, pattern=r"^\d{6,8}$")
     limit_price: float | None = Field(None, gt=0)
+
+
+@router.post("/reconcile")
+async def reconcile_now(
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Run one reconciliation pass NOW (on top of the 60s loop) — flip stuck
+    orders to filled where the IB gateway actually holds the position. Useful to
+    catch up the backlog immediately after a deploy."""
+    return await reconcile_stuck_orders(sm)
 
 
 @router.post("/structure/submit")
