@@ -11,10 +11,49 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_OPT_TICK = 0.0001  # CME EUR-FOP minimum price variation
+
+
+def _pos_num(x: Any) -> float | None:
+    """Positive finite float, else None (drops NaN / <=0)."""
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if v == v and v > 0 else None
+
+
+async def _marketable_close_price(ib: Any, contract: Any, side: str) -> float | None:
+    """Marketable close limit off IB's LIVE quote (SELL→bid, BUY→ask), tick-snapped.
+    Returns None when no quote is available → caller uses a plain market order.
+    Options need this : a market close hits IB's price-cap and hangs 'submitted'."""
+    try:
+        tickers = await asyncio.wait_for(ib.reqTickersAsync(contract), timeout=3.0)
+    except Exception:
+        tickers = None
+    t = tickers[0] if tickers else None
+    bid = _pos_num(getattr(t, "bid", None)) if t is not None else None
+    ask = _pos_num(getattr(t, "ask", None)) if t is not None else None
+    mkt = None
+    if t is not None:
+        try:
+            mkt = _pos_num(t.marketPrice())
+        except Exception:
+            mkt = None
+    if side.upper() == "BUY":
+        ref = ask or mkt
+        return round(math.ceil(ref / _OPT_TICK) * _OPT_TICK, 6) if ref else None
+    ref = bid or mkt
+    if not ref:
+        return None
+    lp = math.floor(ref / _OPT_TICK) * _OPT_TICK
+    return round(lp, 6) if lp > 0 else None
 
 
 @dataclass
@@ -65,6 +104,13 @@ class OrderExecutor:
                 self._ib = None
                 return
             self._ib = ib
+            # Explicitly subscribe to the positions feed so ``ib.positions()``
+            # populates after a reconnect (some gateways don't auto-push it).
+            # Best-effort : the portfolio fallback in list_positions covers a miss.
+            try:
+                await asyncio.wait_for(ib.reqPositionsAsync(), timeout=timeout)
+            except Exception as e:
+                logger.warning("ib_reqpositions_failed: %s", e)
             logger.info("ib_connected host=%s port=%s clientId=%s", self.host, self.port, self.client_id)
 
     async def disconnect(self) -> None:
@@ -75,6 +121,18 @@ class OrderExecutor:
 
     def is_connected(self) -> bool:
         return self._ib is not None and self._ib.isConnected()
+
+    def account_is_reporting(self) -> bool:
+        """True when IB is actively streaming this account's data (account values
+        present) — so an EMPTY position list means the account is genuinely FLAT,
+        not a dead/transient feed. Reconciliation uses this to safely distinguish
+        "close the stale book" from "don't touch it, IB is unreachable"."""
+        if not self.is_connected():
+            return False
+        try:
+            return bool(self._ib.accountValues()) or bool(self._ib.portfolio())
+        except Exception:
+            return False
 
     def _ensure(self) -> Any:
         if not self.is_connected():
@@ -170,14 +228,26 @@ class OrderExecutor:
         return out
 
     async def list_positions(self) -> list[dict[str, Any]]:
-        """Return live positions from IB (= broker truth, not our DB cache)."""
+        """Return live positions from IB (= broker truth, not our DB cache).
+
+        Primary source is ``ib.positions()`` (reqPositions). That subscription can
+        come back EMPTY right after a reconnect even while the per-account portfolio
+        feed (reqAccountUpdates) is live and holding the same positions — so we fall
+        back to ``ib.portfolio()`` to avoid a phantom "flat account". PortfolioItem
+        uses ``averageCost`` where Position uses ``avgCost`` — read both.
+        """
         ib = self._ensure()
-        positions = ib.positions()
+        raw = list(ib.positions())
+        if not raw:
+            raw = [p for p in ib.portfolio() if abs(float(getattr(p, "position", 0) or 0)) > 0]
         out = []
-        for p in positions:
+        for p in raw:
             c = p.contract
+            avg = getattr(p, "avgCost", None)
+            if avg is None:
+                avg = getattr(p, "averageCost", 0.0)
             out.append({
-                "account": p.account,
+                "account": getattr(p, "account", None),
                 "symbol": c.symbol,
                 "sec_type": c.secType,
                 "expiry": c.lastTradeDateOrContractMonth or None,
@@ -188,7 +258,7 @@ class OrderExecutor:
                 "local_symbol": c.localSymbol,
                 "con_id": c.conId,
                 "position": float(p.position),
-                "avg_cost": float(p.avgCost),
+                "avg_cost": float(avg or 0.0),
             })
         return out
 
@@ -309,10 +379,21 @@ class OrderExecutor:
                     f"Contract could not be qualified for close : {local_symbol!r}",
                 )
             contract = qualified[0]
-        if limit_price is None:
-            order = MarketOrder(side, close_qty)
+        if getattr(contract, "secType", "") == "FOP":
+            # Options : never a plain market order (IB's option price-cap makes it
+            # dribble / hang, exactly like opening SELL legs). Price off the LIVE
+            # quote (BUY->ask, SELL->bid, a tick through) so it reaches the actual
+            # touch even on a wide spread — this is what fills easiest. Only fall
+            # back to the API's mark-based limit when IB returns no quote (common on
+            # paper), and to a market order only if we have neither.
+            lp = await _marketable_close_price(ib, contract, side)
+            if lp is None:
+                lp = limit_price
+            order = LimitOrder(side, close_qty, lp) if lp else MarketOrder(side, close_qty)
+        elif limit_price is not None:
+            order = LimitOrder(side, close_qty, limit_price)  # future outside RTH
         else:
-            order = LimitOrder(side, close_qty, limit_price)
+            order = MarketOrder(side, close_qty)               # future in RTH
         return ib.placeOrder(contract, order)
 
 
