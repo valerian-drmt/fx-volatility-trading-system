@@ -76,6 +76,30 @@ def _fit_svi_from_triples(
     return fit_svi(strikes, ivs, forward=float(forward), tenor_years=float(tenor_years))
 
 
+def _fit_svi_params_by_tenor(
+    pillars_by_tenor: dict[str, Any],
+    forward: float,
+    tenor_years: dict[str, float],
+) -> dict[str, Any]:
+    """Fit SVI on each tenor's raw triples (<= 6 least-squares fits).
+
+    Pure, CPU-bound, no I/O — factored out of ``_compute_surface`` so the whole
+    per-tenor fit phase runs off the event loop via ``asyncio.to_thread`` instead
+    of blocking it (numpy releases the GIL for the linalg). Behaviour is identical
+    to the previous inline loop: returns ``{tenor: SviParams}`` for every tenor
+    whose fit succeeds, skipping tenors with no known year fraction.
+    """
+    out: dict[str, Any] = {}
+    for tenor, obs in pillars_by_tenor.items():
+        T = tenor_years.get(tenor)
+        if T is None:
+            continue
+        params = _fit_svi_from_triples(obs, forward=forward, tenor_years=T)
+        if params is not None:
+            out[tenor] = params
+    return out
+
+
 def _build_svi_fallback(
     params: Any,
     forward: float,
@@ -633,14 +657,12 @@ class VolEngine:
         # downstream consumers. Skip the fallback for tenors whose fit
         # implies negative risk-neutral density (butterfly_g_min < 0) —
         # propagating that noise would be worse than leaving the pillar None.
-        svi_params_by_tenor: dict[str, Any] = {}
-        for tenor, obs in pillars_by_tenor.items():
-            T = self.tenor_t.get(tenor)
-            if T is None:
-                continue
-            params = _fit_svi_from_triples(obs, forward=F, tenor_years=T)
-            if params is not None:
-                svi_params_by_tenor[tenor] = params
+        # Heavy least-squares — run the whole per-tenor SVI fit phase off the
+        # event loop via asyncio.to_thread so it doesn't block heartbeats/other
+        # awaits. Result is identical to the previous inline loop.
+        svi_params_by_tenor: dict[str, Any] = await asyncio.to_thread(
+            _fit_svi_params_by_tenor, pillars_by_tenor, F, self.tenor_t
+        )
 
         await self._publish_progress("vol_surface", "pchip_smile")
         pillar_source_counts: dict[str, int] = {"pchip": 0, "svi_fallback": 0, "none": 0}
@@ -679,7 +701,10 @@ class VolEngine:
         # SSVI surface-level fit (Phase P2.2).
         await self._publish_progress("vol_surface", "ssvi_surface")
         try:
-            ssvi = _fit_ssvi_surface(surface=out, forward=F, tenor_years=self.tenor_t)
+            # Surface-level least-squares — also off-loop (see the SVI fit above).
+            ssvi = await asyncio.to_thread(
+                _fit_ssvi_surface, surface=out, forward=F, tenor_years=self.tenor_t
+            )
             if ssvi is not None:
                 out["_ssvi"] = ssvi
         except Exception:
