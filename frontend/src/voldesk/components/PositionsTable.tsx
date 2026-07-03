@@ -230,10 +230,12 @@ export function OpenPositionsTable({
   const g = greeks;
   const total = g.netUnreal,
     tNom = g.netNominal;
-  // Which multi-leg trades are collapsed (legs hidden). Default = all expanded.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Which multi-leg trades are EXPANDED (legs shown). Default = empty → every
+  // trade lands collapsed (caret ▸, legs hidden) ; the operator opens the ones
+  // they care about.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggle = (key: string): void =>
-    setCollapsed((prev) => {
+    setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -358,7 +360,7 @@ export function OpenPositionsTable({
               const tradeClosing = grp.tradeId != null && closing.has("t:" + grp.tradeId);
               const name = ctx?.name ?? structureName(grp.legs);
               const a = aggregate(grp.legs);
-              const isOpen = !collapsed.has(grp.key);
+              const isOpen = expanded.has(grp.key);
               const legsLabel = ctx ? `${ctx.filled}/${ctx.total} legs` : `${grp.legs.length} legs`;
               return (
                 <Fragment key={grp.key}>
