@@ -151,10 +151,31 @@ leg rows were present but the structure context wasn't → the group name fell b
 
 `closeContract(pos_id, qty)` (one leg) / `closeTrade(trade_id)` (all open legs) →
 `close_one_open_position` → execution‑engine `/internal/positions/close-by-symbol`.
-The reverse order (SELL to close a long) is priced the **same marketable way**:
-options → marketable `LMT` off the live quote (`_marketable_close_price`, SELL→bid /
-BUY→ask, tick‑snapped); futures → `MKT`. Without this, option closes hit the same IB
-cap and hang `submitted`.
+The reverse order (SELL to close a long) is priced the **same marketable way** as an
+entry.
+
+**Options always cross with a marketable `LMT`, in RTH too.** The API prices the
+close off the position's **mark** — `_marketable_close_from_mark`: closing a long →
+SELL at `mark × (1 − MARKETABLE_LIMIT_BUFFER)` (through the bid), closing a short →
+BUY at `mark × (1 + buffer)` (through the ask), snapped to the 0.0001 tick. Futures
+inside RTH → `MKT`; futures outside RTH → `LMT` at `mark × (1 ± 5 bps)`.
+
+> **Why not a plain MKT during RTH?** A market order on an option hits IB's option
+> **price‑cap** and only *dribbles* partial fills (e.g. 7 of 17 over ~15 min), resting
+> `Submitted` and never completing — the cap is not an RTH thing. The exec‑engine's
+> `_marketable_close_price` (off the live quote) *tries* to fix this, but IB **paper
+> returns no bid/ask** for these FOPs, so it degraded to a `MarketOrder` → same hang.
+> Pricing off the **mark we already hold** (not a live quote that may be empty)
+> guarantees a real crossing limit reaches IB.
+
+**Stacking guard.** A close only reads `filled` once IB fills it (~30 s for options),
+but the panel still shows the open position meanwhile — so the operator re‑clicks and
+each click used to stack **another full‑size close** (seen live: ~7 overlapping SELL
+orders on one 18‑lot, 24 orders resting at IB). `close_one_open_position` now sums the
+**live closing qty already covering this exact contract** (`order_role='closing'`,
+reverse side, same expiry+strike, state ∈ pending/submitted/partially_filled) and
+returns **409** if `already_closing + qty > open_qty` — refusing to over‑close /
+flip the book. Cancel a stuck close via `DELETE /internal/orders/{id}` (exec‑engine).
 
 ---
 
