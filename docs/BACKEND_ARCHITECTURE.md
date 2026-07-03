@@ -124,11 +124,16 @@ Any operation that hits the broker must be safe to retry and must not stack.
 - **Do**: every submit/close carries a client intent key; the server dedupes. "The user
   double-clicked" must never become "we sent two orders".
 
-### 2.6 Reconciliation is a first-class feature — 🟡
-Book vs broker is compared on a schedule; drift is surfaced, not hidden.
+### 2.6 Reconciliation is a first-class feature — 🟡→✅ (endpoint added)
+Book vs broker is compared explicitly; drift is surfaced, not hidden.
 - Have: `order_reconciler` (stuck order → filled when IB holds it), `reconcile_trade_positions`
   (auto-close stale bookings), `account_is_reporting()` (distinguish flat vs dead feed).
-- Gap: no explicit **break view** ("book says X, IB says Y, diff = Z"). That's the §1 ③ end-state.
+- **Added**: `GET /positions/reconciliation` — a **break view**. It nets the book (filled
+  `trade_order` qty, entries − closes) vs the broker (`open_position`) **per contract** and
+  returns each break classified: `missing_at_ib` / `unbooked_at_ib` / `direction` / `quantity`.
+  Pure diff logic (`_compute_breaks`) is unit-tested without a DB.
+- Remaining: schedule it + surface breaks in the UI (a chip on Open positions), and give a
+  break an owner/workflow rather than a passive read.
 - **Do**: treat "we disagree with the broker" as a monitored state with an owner, not an
   exception to swallow.
 
@@ -217,8 +222,9 @@ A change is done when:
 1. ✅ **DONE** — Open positions reads `/positions/structured` as its sole source; raw mirror
    leg rows + `inferStructureName()` deleted (§1 ①).
 2. ✅ **ALREADY DONE** — `open_position.trade_id` FK → `trade_structure.id` (migration 034).
-3. **Add a reconciliation/break view** endpoint (book vs IB, per structure) (§2.6). ← next
-4. **Thread a correlation id** request → order → fill → position (§2.11).
+3. ✅ **DONE (endpoint)** — `GET /positions/reconciliation` returns per-contract book-vs-IB
+   breaks, classified (§2.6). Remaining: schedule + a UI chip on Open positions.
+4. **Thread a correlation id** request → order → fill → position (§2.11). ← next
 5. **Later**: fold positions/P&L from `trade_fill` events for audit-grade numbers (§2.4).
 
 Related: `docs/ORDER_PIPELINE.md` (execution path), `docs/db_schema_drift_workflow.md`
