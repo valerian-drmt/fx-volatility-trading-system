@@ -399,12 +399,31 @@ def build_structure(
     )
 
 
-def classify_legs(legs: list[Leg]) -> str:
+def _strangle_delta_bucket(opts: list[Leg], spot: float | None) -> str:
+    """Nearest quoted Δ bucket ("10d" / "25d") for a strangle's OTM legs, from
+    their BS |delta|. "" when it can't be computed (no spot / no IV)."""
+    if spot is None:
+        return ""
+    ds: list[float] = []
+    for leg in opts:
+        if leg.strike is None or leg.entry_iv_pct is None:
+            continue
+        d = bs_greeks(spot, leg.strike, max(leg.dte, 0) / 365.0,
+                      leg.entry_iv_pct / 100.0, leg.contract_type)["delta"]
+        ds.append(abs(d))
+    if not ds:
+        return ""
+    avg = sum(ds) / len(ds)
+    return "10d" if avg < 0.175 else "25d" if avg < 0.375 else ""
+
+
+def classify_legs(legs: list[Leg], spot: float | None = None) -> str:
     """Name what a free leg-set *expresses* — vocabulary, not prescription
     (cf. docs/strategy.md §4). Returns ``"custom"`` when no common shape matches.
 
     Pure display: the trader composes freely; this only labels the result so the
     preview can say "this reads as a long strangle" without ever imposing it.
+    ``spot`` (optional) lets a strangle carry its Δ bucket → "long strangle 25d".
     """
     opts = [leg for leg in legs if leg.contract_type in ("call", "put")]
     futs = [leg for leg in legs if leg.contract_type == "future"]
@@ -417,16 +436,26 @@ def classify_legs(legs: list[Leg]) -> str:
         if n == 1:
             leg = opts[0]
             return f"{'long' if leg.side == 'BUY' else 'short'} {leg.contract_type}"
+        # Calendar : same type, two expiries — regardless of side. A real calendar
+        # is OPPOSITE-side (sell near / buy far), so this must come before the
+        # side-based branches (which only match same-side structures) or it falls
+        # through to "custom".
+        if n == 2 and len(types) == 1 and len(tenors) == 2:
+            return "calendar"
         if n == 2 and side is not None:
-            if len(tenors) == 2 and len(types) == 1:
-                return f"{side} calendar"
             if types == {"call", "put"}:
                 strikes = {leg.strike for leg in opts if leg.strike is not None}
-                return f"{side} {'straddle' if len(strikes) <= 1 else 'strangle'}"
+                if len(strikes) <= 1:
+                    return f"{side} straddle"
+                bucket = _strangle_delta_bucket(opts, spot)
+                return f"{side} strangle{(' ' + bucket) if bucket else ''}"
             if len(types) == 1:
                 return f"{side} vertical spread"
         if n == 2 and side is None and types == {"call", "put"}:
             return "risk reversal"
+        # opposite sides, one type, one tenor → a vertical (call/put) spread
+        if n == 2 and side is None and len(types) == 1 and len(tenors) == 1:
+            return f"{next(iter(types))} spread"
         if n == 3 and len(types) == 1 and len({leg.side for leg in opts}) == 2:
             return "butterfly"
     if futs and not opts:
@@ -521,7 +550,7 @@ def build_from_legs(
         requires_delta_hedge=has_option,
         vega_sign=vega_sign,
         future_contract_size=fcs,
-        product_label=classify_legs(legs),
+        product_label=classify_legs(legs, _spot_from_surface(surface)),
     )
 
 

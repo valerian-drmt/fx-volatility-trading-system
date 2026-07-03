@@ -542,6 +542,9 @@ def test_build_from_legs_pricing_matches_template_equivalent():
         ([("call", "BUY", "atm"), ("put", "BUY", "atm")], "long straddle"),
         ([("call", "BUY", "25dc"), ("put", "BUY", "25dp")], "long strangle"),
         ([("call", "BUY", "25dc"), ("put", "SELL", "25dp")], "risk reversal"),
+        # vertical spreads : same type, opposite sides, one tenor
+        ([("call", "BUY", "atm"), ("call", "SELL", "25dc")], "call spread"),
+        ([("put", "BUY", "atm"), ("put", "SELL", "25dp")], "put spread"),
     ],
 )
 def test_classify_legs_names_common_shapes(legs, expected):
@@ -550,12 +553,53 @@ def test_classify_legs_names_common_shapes(legs, expected):
     assert classify_legs(s.legs) == expected
 
 
+def test_classify_strangle_vs_straddle_and_delta_bucket():
+    from core.trade_preview import Leg, _strangle_delta_bucket
+
+    # different strikes → strangle ; same ATM strike → straddle
+    strangle = build_from_legs(
+        [
+            {"contract_type": "put", "side": "BUY", "tenor": "1M", "delta_pillar": "25dp"},
+            {"contract_type": "call", "side": "BUY", "tenor": "1M", "delta_pillar": "25dc"},
+        ],
+        _mock_surface(),
+    )
+    assert strangle.product_label.startswith("long strangle")
+    straddle = build_from_legs(
+        [
+            {"contract_type": "call", "side": "BUY", "tenor": "1M", "delta_pillar": "atm"},
+            {"contract_type": "put", "side": "BUY", "tenor": "1M", "delta_pillar": "atm"},
+        ],
+        _mock_surface(),
+    )
+    assert straddle.product_label == "long straddle"
+
+    # bucket from real deltas : wide OTM legs → ~10Δ ; no spot → no bucket
+    def _leg(ct: str, k: float) -> Leg:
+        return Leg(leg_idx=0, contract_type=ct, tenor="1M", expiry="", dte=30,
+                   strike=k, qty_factor=1, side="BUY", entry_iv_pct=7.0)
+    assert _strangle_delta_bucket([_leg("put", 1.00), _leg("call", 1.20)], 1.10) == "10d"
+    assert _strangle_delta_bucket([_leg("put", 1.00), _leg("call", 1.20)], None) == ""
+
+
 def test_classify_legs_calendar_two_tenors():
-    s = build_from_legs(
+    # a calendar = one type, two expiries — regardless of side. Both the
+    # (theoretical) same-side shape and the REAL opposite-side shape the order
+    # builder sends (sell near / buy far) must classify as a calendar, not
+    # fall through to "custom".
+    same_side = build_from_legs(
         [
             {"contract_type": "call", "side": "BUY", "tenor": "1M", "delta_pillar": "atm"},
             {"contract_type": "call", "side": "BUY", "tenor": "3M", "delta_pillar": "atm"},
         ],
         _mock_surface(),
     )
-    assert classify_legs(s.legs) == "long calendar"
+    assert classify_legs(same_side.legs) == "calendar"
+    real = build_from_legs(
+        [
+            {"contract_type": "call", "side": "SELL", "tenor": "1M", "delta_pillar": "atm"},
+            {"contract_type": "call", "side": "BUY", "tenor": "3M", "delta_pillar": "atm"},
+        ],
+        _mock_surface(),
+    )
+    assert classify_legs(real.legs) == "calendar"
