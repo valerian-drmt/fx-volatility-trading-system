@@ -134,6 +134,10 @@ export interface DeskData {
   config: Fresh<ConfigData>;
   /** Trade read part : positions + book greeks + caps + events. Live (PR 6r.1, polled). */
   trade: Fresh<TradeData>;
+  /** Force an immediate refetch of the `trade` slice (positions mirror + book
+   *  greeks). Called right after a send so Open positions updates in one step
+   *  instead of waiting for the next poll. */
+  reloadTrade: () => void;
   /** Portfolio : capital, perf-stats, attribution, book composition. Live (PR 3). */
   portfolio: Fresh<PortfolioData>;
   /** Risk : 1-day VaR card values (PR 5). Stress grids / ladders / marginal-VaR

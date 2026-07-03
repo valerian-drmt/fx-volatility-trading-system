@@ -245,10 +245,11 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
       system: liveSystem,
       config: liveConfig,
       trade: liveTrade,
+      reloadTrade,
       portfolio: livePortfolio,
       risk: liveRisk,
     }),
-    [liveTerm, surface, livePca, liveSystem, liveConfig, liveTrade, livePortfolio, liveRisk],
+    [liveTerm, surface, livePca, liveSystem, liveConfig, liveTrade, reloadTrade, livePortfolio, liveRisk],
   );
   return (
     <DeskDataContext.Provider value={value}>
