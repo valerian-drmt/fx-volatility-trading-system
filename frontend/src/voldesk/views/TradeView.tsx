@@ -97,24 +97,38 @@ const PRODUCT_NAMES: Record<string, string> = {
   butterfly: "Butterfly", risk_reversal: "Risk Reversal", calendar: "Calendar", future: "Future",
   "call spread": "Call Spread", "put spread": "Put Spread",
 };
-// Format a classifier label into a clean product name. Strangles carry their Δ
-// bucket ("long strangle 25d" → "Strangle 25Δ") ; straddles drop the long/short.
-// Returns null for empty / "custom" so callers can fall back to leg inference.
+// Format a classifier label (the stored structure_type / product_label) into a
+// clean product name. The backend stores classify_legs' verdict with a
+// long/short prefix + Δ bucket — e.g. "long strangle 25d", "long straddle",
+// "long future", "long call". This maps those to the dropdown's product names.
+// Returns null only for empty / "custom" so callers can fall through.
 function formatStructLabel(label: string | null | undefined): string | null {
   if (!label) return null;
   const l = label.toLowerCase().trim();
-  if (l === "custom") return null;
+  if (l === "custom" || l === "") return null;
   const sm = /strangle\s*(\d+)\s*d/.exec(l);
   if (sm) return `Strangle ${sm[1]}Δ`;
   if (l.includes("strangle")) return "Strangle";
   if (l.includes("straddle")) return "Straddle";
+  if (l.includes("risk reversal")) return "Risk Reversal";
+  if (l.includes("butterfly")) return "Butterfly";
+  if (l.includes("calendar")) return "Calendar";
+  if (l.includes("call spread")) return "Call Spread";
+  if (l.includes("put spread")) return "Put Spread";
+  if (l.includes("vertical spread")) return "Vertical Spread";
+  if (l.includes("future")) return "Future";
+  const bare = l.replace(/^(long|short)\s+/, "");  // vanilla single-leg
+  if (bare === "call") return "Vanilla Call";
+  if (bare === "put") return "Vanilla Put";
   return label.replace(/_/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function prettyProduct(s: SubmittedTrade): string {
   const st = (s.structure_type ?? "").toLowerCase();
   if (PRODUCT_NAMES[st]) return PRODUCT_NAMES[st];
-  return formatStructLabel(s.product_label ?? s.structure_type) ?? "Structure";
+  // product_label is often empty for free-leg builds → format structure_type
+  // (the classifier verdict) as the fallback, not "" (which would read Structure).
+  return formatStructLabel(s.product_label) ?? formatStructLabel(s.structure_type) ?? "Structure";
 }
 
 // Single source of truth for Open positions : turn the server-joined
@@ -144,7 +158,13 @@ function structuredToRows(
       s.legs.some((l) => l.side === "SELL" && l.linked) &&
       s.legs.some((l) => l.side === "BUY" && !l.linked);
     ctx[tid] = {
-      name: PRODUCT_NAMES[s.structure_type] ?? formatStructLabel(s.product_label) ?? "Structure",
+      // Identity from the DB structure : the canonical type, else the stored
+      // product_label, else the classifier's structure_type verdict formatted
+      // (e.g. "long strangle 25d" → "Strangle 25Δ"). Never leg-inference.
+      name: PRODUCT_NAMES[s.structure_type]
+        ?? formatStructLabel(s.product_label)
+        ?? formatStructLabel(s.structure_type)
+        ?? "Structure",
       filled, total: s.legs.length, naked,
     };
     for (const l of s.legs) {
