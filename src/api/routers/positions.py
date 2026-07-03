@@ -24,7 +24,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
@@ -703,6 +703,12 @@ def _close_limit_from_mark(mark: float, side: str) -> float:
 _OPT_TICK = 0.0001
 _MKT_CLOSE_BUFFER = float(os.getenv("MARKETABLE_LIMIT_BUFFER", "0.25"))
 
+# How long a closing order counts as "in flight" for the stacking guard. Past
+# this, an unfilled close is treated as stuck/cancelled and no longer blocks a
+# fresh close (a cancelled order's DB row isn't always flipped terminal). A real
+# option close fills in ~30 s, so 3 min is a generous ceiling.
+_INFLIGHT_CLOSE_WINDOW = timedelta(minutes=float(os.getenv("CLOSE_INFLIGHT_WINDOW_MIN", "3")))
+
 
 def _marketable_close_from_mark(mark: float, pos_side: str) -> float | None:
     """Aggressive, tick-snapped LMT that crosses the spread to close.
@@ -802,15 +808,24 @@ async def close_one_open_position(
     # operator re-clicks and every click used to stack ANOTHER full-size close.
     # Refuse if live closing orders on this exact contract already cover the open
     # qty (prevents over-closing / flipping the book with a pile of market orders).
+    # Self-healing : only count RECENT closing orders. A close that's been
+    # submitted longer than the window without filling is stuck/cancelled at IB
+    # (its DB row may never get flipped terminal), so it must not block a fresh
+    # close forever — otherwise a cancelled order permanently locks the position.
     spec = parse_local_symbol(pos.structure)
     is_option = spec is not None and spec.instrument_type == "OPTION"
     strike_val = float(spec.strike) if (spec and spec.strike is not None) else None
     reverse_side = "SELL" if pos.side == "BUY" else "BUY"
+    inflight_cutoff = datetime.now(UTC) - _INFLIGHT_CLOSE_WINDOW
     inflight_conds = [
         StructureOrder.order_role == "closing",
         StructureOrder.side == reverse_side,
         StructureOrder.contract_expiry == pos.expiry,
         StructureOrder.state.in_(("pending", "submitted", "partially_filled")),
+        or_(
+            StructureOrder.submitted_at.is_(None),          # just created, not yet sent
+            StructureOrder.submitted_at >= inflight_cutoff,  # genuinely in flight
+        ),
     ]
     if strike_val is not None:
         inflight_conds.append(StructureOrder.contract_strike == strike_val)
