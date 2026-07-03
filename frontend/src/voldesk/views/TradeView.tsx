@@ -152,12 +152,17 @@ function ClosePanel({
   req,
   onDone,
   onOrder,
+  onClosing,
   positions,
   greeks,
 }: {
   req: CloseReq | null;
   onDone: () => void;
   onOrder: (rec: OrderRecord) => void;
+  /** Signal that a close was accepted for this key so the panel/table can lock
+   *  its Close button until the position clears. Key = position id, or
+   *  "t:<tradeId>" for a whole-trade close. */
+  onClosing: (key: string) => void;
   positions: Position[];
   greeks: Greeks;
 }): JSX.Element {
@@ -238,9 +243,11 @@ function ClosePanel({
     try {
       if (type === "contract") {
         await closeContract(Number(contractId), qty);
+        onClosing(String(contractId));
       } else {
         if (!tradeId || Number.isNaN(Number(tradeId))) throw new Error("no backend trade id for this trade");
         await closeTrade(Number(tradeId));
+        onClosing("t:" + String(tradeId));
       }
       onOrder({ action: "close", label, side: "—", qty: oqty, state: "sent" });
       setDone(`${type === "contract" ? qty + " ct" : "all legs"} · ${label} · realized ${gk$(c.pnl)} · IB paper account`);
@@ -465,6 +472,12 @@ function IndicatorsPanel({
 
 export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const [closeReq, setCloseReq] = useState<CloseReq | null>(null);
+  // Keys with a close in flight (accepted by IB but the position hasn't cleared
+  // yet). Key = position id, or "t:<tradeId>" for a whole-trade close → maps to
+  // epoch ms fired. Locks the matching Close button so a slow fill can't be
+  // re-clicked into a stack of duplicate orders (the backend also 409s, this is
+  // the UX layer). Pruned when the position clears or after a TTL safety net.
+  const [closingKeys, setClosingKeys] = useState<Record<string, number>>({});
   // On a close request (from Open positions), scroll the pre-filled Close panel
   // into view and flash it, so the operator just confirms with one click.
   useEffect(() => {
@@ -545,6 +558,26 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const td = trade.data;
   const positions = td?.positions ?? DATA.positions;
   const greeks = td?.greeks ?? DATA.greeks;
+  // Drop a "closing" lock once its position has cleared from the panel (fill +
+  // sync ~30 s) or after a 90 s TTL (safety net so a close that never fills
+  // doesn't lock the button forever — the operator can retry / cancel). Runs on
+  // each positions poll (~15 s), which also covers the TTL check.
+  useEffect(() => {
+    const now = Date.now();
+    setClosingKeys((prev) => {
+      const next: Record<string, number> = {};
+      let changed = false;
+      for (const [k, ts] of Object.entries(prev)) {
+        const gone = k.startsWith("t:")
+          ? !positions.some((p) => "t:" + p.tradeId === k)
+          : !positions.some((p) => p.id === k);
+        if (gone || now - ts > 90_000) { changed = true; continue; }
+        next[k] = ts;
+      }
+      return changed ? next : prev;
+    });
+  }, [positions]);
+  const closing = useMemo(() => new Set(Object.keys(closingKeys)), [closingKeys]);
   const account = td?.account ?? DATA.account;
   const cash = td?.cash ?? DATA.cash;
   // Live EURUSD bid/ask (RT.1) ; fallback to a synthetic spread around the mock spot.
@@ -561,7 +594,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
           <OrderBuilder onOrder={addOrder} />
         </Panel>
         <Panel title="Close position" dataPp="trade-close" className="trade-block">
-          <ClosePanel req={closeReq} onDone={() => setCloseReq(null)} onOrder={addOrder} positions={positions} greeks={greeks} />
+          <ClosePanel req={closeReq} onDone={() => setCloseReq(null)} onOrder={addOrder} onClosing={(k) => setClosingKeys((p) => ({ ...p, [k]: Date.now() }))} positions={positions} greeks={greeks} />
         </Panel>
       </div>
       <Panel title="Open positions" dataPp="trade-open" pad={false} className="trade-block open-pos-panel">
@@ -571,6 +604,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
           onClose={(p) => setCloseReq({ kind: "contract", pos: p })}
           onCloseTrade={(legs) => setCloseReq({ kind: "trade", legs })}
           structureContext={structureCtx}
+          closing={closing}
           dense={tweaks.density === "compact"}
           positions={positions}
           greeks={greeks}

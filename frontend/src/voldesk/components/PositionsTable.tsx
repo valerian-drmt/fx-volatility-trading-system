@@ -4,6 +4,7 @@
  * Portfolio. Net greeks read the single reconciled store (DATA.greeks), so the
  * book foots identically to Risk.
  */
+import { Fragment, useState } from "react";
 import { pnlCls } from "./format";
 import { DATA, fmt } from "../data";
 import type { Greeks, Position } from "../data";
@@ -19,10 +20,191 @@ function gkc(v: number | null | undefined): string {
   return s + Math.round(a);
 }
 
+// ── Trade grouping : one main line per trade + its legs as sub-rows ──
+// The flat backend feed is per-leg (Vanilla Call / Vanilla Put …) all tagged
+// with the same trade_id. We group by trade so a Risk Reversal reads as ONE
+// summary line (net greeks / P&L) with the two legs indented under it.
+interface PosGroup {
+  key: string;
+  tradeId: string;
+  legs: Position[];
+}
+
+function groupByTrade(rows: Position[]): PosGroup[] {
+  const groups: PosGroup[] = [];
+  const idx: Record<string, number> = {};
+  for (const p of rows) {
+    // rows with no trade_id (unlinked IB positions) stay their own singleton
+    const key = p.tradeId ? "T" + p.tradeId : "S" + p.id;
+    if (idx[key] === undefined) {
+      idx[key] = groups.length;
+      groups.push({ key, tradeId: p.tradeId, legs: [] });
+    }
+    groups[idx[key]]!.legs.push(p);
+  }
+  return groups;
+}
+
+const _gcd = (a: number, b: number): number => (b === 0 ? a : _gcd(b, a % b));
+
+// Structure name for the main line. Prefer a shared explicit label (the mock and
+// any backend that fills `structure` with a real name); otherwise infer it from
+// the legs (real per-leg rows carry product_label + side + strike, not a name).
+function structureName(legs: Position[]): string {
+  const s0 = legs[0]!.structure;
+  if (s0 && s0 !== "—" && legs.every((l) => l.structure === s0)) return s0;
+  if (legs.length === 1) return legs[0]!.product || s0 || "—";
+  const calls = legs.filter((l) => /call/i.test(l.product));
+  const puts = legs.filter((l) => /put/i.test(l.product));
+  const n = legs.length;
+  if (n === 2 && calls.length === 1 && puts.length === 1) {
+    if (calls[0]!.side !== puts[0]!.side) return "Risk Reversal";
+    return calls[0]!.strike && calls[0]!.strike === puts[0]!.strike ? "Straddle" : "Strangle";
+  }
+  if (n === 2 && calls.length === 2) return "Call Spread";
+  if (n === 2 && puts.length === 2) return "Put Spread";
+  if (n === 3) return "Butterfly";
+  if (n === 4) return "Condor";
+  return `Structure · ${n} legs`;
+}
+
+interface GroupAgg {
+  qty: number;
+  tenor: string;
+  dte: number;
+  delta: number;
+  gamma: number;
+  vega: number;
+  theta: number;
+  vanna: number;
+  volga: number;
+  nominal: number;
+  pnl: number;
+}
+
+function aggregate(legs: Position[]): GroupAgg {
+  const sum = (f: (p: Position) => number): number => legs.reduce((s, p) => s + f(p), 0);
+  const qtys = legs.map((l) => Math.abs(l.qty)).filter((q) => q > 0);
+  const baseQty = qtys.length ? qtys.reduce((a, b) => _gcd(a, b)) : 0;
+  const tenors = new Set(legs.map((l) => l.tenor).filter(Boolean));
+  return {
+    qty: baseQty,
+    tenor: tenors.size === 1 ? [...tenors][0]! : "—",
+    dte: legs[0]!.dte,
+    delta: sum((p) => p.delta),
+    gamma: sum((p) => p.gamma),
+    vega: sum((p) => p.vega),
+    theta: sum((p) => p.theta),
+    vanna: sum((p) => p.vanna),
+    volga: sum((p) => p.volga),
+    nominal: sum((p) => p.nominal),
+    pnl: sum((p) => p.pnl),
+  };
+}
+
+// One leg row. `main=true` renders it as a standalone (single-leg trade) line;
+// Strike for a leg : the live feed carries no strike column, but the IB
+// localSymbol encodes it ("EUUQ6 C1145" → 1.1450). Falls back to p.strike (mock).
+function legStrike(p: Position): string {
+  if (p.strike && p.strike > 0) return p.strike.toFixed(4);
+  const m = /\s[CP](\d{3,5})$/.exec(p.structure || "");
+  if (m) return (parseInt(m[1]!, 10) / 1000).toFixed(4);
+  return "—";
+}
+
+// Fill date in English format ("02 Jul 2026, 14:30"). Falls back to the raw value
+// for the mock's pre-formatted strings, "" when absent.
+function fmtFillDate(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+    + ", " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+// Stable empty default for the `closing` prop (avoids a new Set each render).
+const EMPTY_CLOSING: Set<string> = new Set();
+
+// `main=false` renders it indented under its trade's summary line.
+function legRow(
+  p: Position,
+  opts: { showGreeks: boolean; extended: boolean; onClose: ((p: Position) => void) | undefined; main: boolean; closing: Set<string> },
+): JSX.Element {
+  const { showGreeks, extended, onClose, main, closing } = opts;
+  // Locked while this leg (or its whole trade) has a close in flight.
+  const isClosing = closing.has(p.id) || (p.tradeId != null && closing.has("t:" + p.tradeId));
+  return (
+    <tr key={p.id} className={main ? "pkg-start" : "pos-leg"}>
+      <td className="l mono dim">{main ? (p.tradeId ? "#" + p.tradeId : "—") : ""}</td>
+      <td className="l mono dim">{p.conId ? p.conId : "—"}</td>
+      <td className="l">
+        <span className="sym">{main ? "" : "↳ "}{p.product || "—"}</span>
+        {fmtFillDate(p.opened) && (
+          <span className="substruct">filled {fmtFillDate(p.opened)}</span>
+        )}
+      </td>
+      <td className="l mono dim">{p.structure || "—"}</td>
+      <td className="r mono dim">{legStrike(p)}</td>
+      <td>
+        <span className={"side-pill " + (p.side === "BUY" ? "long" : "short")}>{p.side}</span>
+      </td>
+      <td className="r mono">{p.qty}</td>
+      <td className="r mono dim">{p.tenor}</td>
+      <td className="r mono dim">{p.iv ? p.dte + "d" : "—"}</td>
+      <td className="r mono">{p.entry ? p.entry.toFixed(p.entry > 1.5 ? 4 : 5) : "—"}</td>
+      <td className="r mono">{p.mark ? p.mark.toFixed(p.mark > 1.5 ? 4 : 5) : "—"}</td>
+      <td className="r mono dim">{p.iv ? p.iv.toFixed(1) : "—"}</td>
+      {showGreeks && (
+        <>
+          <td className={"r mono " + pnlCls(p.delta)}>{gkc(p.delta)}</td>
+          <td className="r mono dim">{p.iv ? gkc(p.gamma) : "—"}</td>
+          <td className="r mono dim">{p.iv ? gkc(p.vega) : "—"}</td>
+          <td className="r mono dim">{p.iv ? gkc(p.theta) : "—"}</td>
+        </>
+      )}
+      {showGreeks && extended && (
+        <>
+          <td className="r mono dim">{p.iv ? fmt.sgn(p.vanna, 0) + "k" : "—"}</td>
+          <td className="r mono dim">{p.iv ? fmt.sgn(p.volga, 0) + "k" : "—"}</td>
+        </>
+      )}
+      <td className="r mono dim">{(p.nominal / 1e6).toFixed(2)}M</td>
+      <td className={"r mono " + pnlCls(p.pnl)}>{fmt.usdk(p.pnl)}</td>
+      <td className="r">
+        <button
+          className="row-close"
+          disabled={isClosing}
+          title={isClosing ? "a close for this position is already in flight" : undefined}
+          onClick={() => onClose && onClose(p)}
+        >
+          {isClosing ? "Closing…" : "Close"}
+        </button>
+      </td>
+    </tr>
+  );
+}
+
+// Booking context per trade (from /positions/structured) : the real structure
+// name + fill status, so a partially-filled multi-leg trade reads as e.g.
+// "Risk Reversal · 1/2 filled ⚠ naked" instead of a bare filled leg.
+export interface StructureCtx {
+  name: string;
+  filled: number;
+  total: number;
+  naked: boolean;
+}
+
 interface OpenPositionsTableProps {
   showGreeks?: boolean;
   extended?: boolean;
   onClose?: (p: Position) => void;
+  /** Close a whole multi-leg trade at once (main summary line). */
+  onCloseTrade?: (legs: Position[]) => void;
+  /** trade_id → booking context (name + fill status), keyed as a string. */
+  structureContext?: Record<string, StructureCtx>;
+  /** Keys with a close in flight → lock the matching Close button. Key = a
+   *  position id, or "t:<tradeId>" for a whole-trade close. */
+  closing?: Set<string>;
   dense?: boolean;
   /** Live positions + book greeks (PR 6r). Default to the mock when omitted. */
   positions?: Position[];
@@ -36,6 +218,9 @@ export function OpenPositionsTable({
   showGreeks = true,
   extended = false,
   onClose,
+  onCloseTrade,
+  structureContext,
+  closing = EMPTY_CLOSING,
   dense = false,
   positions = DATA.positions,
   greeks = DATA.greeks,
@@ -45,6 +230,15 @@ export function OpenPositionsTable({
   const g = greeks;
   const total = g.netUnreal,
     tNom = g.netNominal;
+  // Which multi-leg trades are collapsed (legs hidden). Default = all expanded.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggle = (key: string): void =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   return (
     <div className="positions-wrap">
       {showNet && (
@@ -112,8 +306,9 @@ export function OpenPositionsTable({
               <th className="l">Contract</th>
               <th className="l">Product</th>
               <th className="l">Structure</th>
+              <th className="r">Strike</th>
               <th>Side</th>
-              <th className="r">Qty</th>
+              <th className="r">Contracts</th>
               <th className="r">Tenor</th>
               <th className="r">DTE</th>
               <th className="r">Entry</th>
@@ -122,7 +317,7 @@ export function OpenPositionsTable({
               {showGreeks && (
                 <>
                   <th className="r" title="USD">
-                    Δ$
+                    Δ
                   </th>
                   <th className="r" title="USD/pip">
                     Γ
@@ -151,51 +346,79 @@ export function OpenPositionsTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((p, i) => {
-              const newPkg = i === 0 || rows[i - 1]!.packageId !== p.packageId;
+            {groupByTrade(rows).map((grp) => {
+              const ctx = grp.tradeId ? structureContext?.[grp.tradeId] : undefined;
+              // A trade is "multi" if it has >1 filled leg OR the booking says it's
+              // a multi-leg structure (so a partially-filled RR still reads as an RR,
+              // not the one leg that happened to fill).
+              const isMulti = grp.legs.length > 1 || (ctx != null && ctx.total > 1);
+              if (!isMulti) {
+                return legRow(grp.legs[0]!, { showGreeks, extended, onClose, main: true, closing });
+              }
+              const tradeClosing = grp.tradeId != null && closing.has("t:" + grp.tradeId);
+              const name = ctx?.name ?? structureName(grp.legs);
+              const a = aggregate(grp.legs);
+              const isOpen = !collapsed.has(grp.key);
+              const legsLabel = ctx ? `${ctx.filled}/${ctx.total} legs` : `${grp.legs.length} legs`;
               return (
-                <tr key={p.id} className={newPkg ? "pkg-start" : ""}>
-                  <td className="l mono dim">{p.tradeId ? "#" + p.tradeId : "—"}</td>
-                  <td className="l mono dim">{p.conId ? p.conId : "—"}</td>
-                  <td className="l">
-                    <span className="sym">{p.product || "—"}</span>
-                    <span className="substruct">
-                      {p.packageId ? p.packageId + " · " : ""}{p.expiry}
-                      {p.strike ? " · K " + p.strike.toFixed(4) : ""}
-                    </span>
-                  </td>
-                  <td className="l mono dim">{p.structure || "—"}</td>
-                  <td>
-                    <span className={"side-pill " + (p.side === "BUY" ? "long" : "short")}>{p.side}</span>
-                  </td>
-                  <td className="r mono">{p.qty}</td>
-                  <td className="r mono dim">{p.tenor}</td>
-                  <td className="r mono dim">{p.iv ? p.dte + "d" : "—"}</td>
-                  <td className="r mono">{p.entry ? p.entry.toFixed(p.entry > 1.5 ? 4 : 5) : "—"}</td>
-                  <td className="r mono">{p.mark ? p.mark.toFixed(p.mark > 1.5 ? 4 : 5) : "—"}</td>
-                  <td className="r mono dim">{p.iv ? p.iv.toFixed(1) : "—"}</td>
-                  {showGreeks && (
-                    <>
-                      <td className={"r mono " + pnlCls(p.delta)}>{gkc(p.delta)}</td>
-                      <td className="r mono dim">{p.iv ? gkc(p.gamma) : "—"}</td>
-                      <td className="r mono dim">{p.iv ? gkc(p.vega) : "—"}</td>
-                      <td className="r mono dim">{p.iv ? gkc(p.theta) : "—"}</td>
-                    </>
-                  )}
-                  {showGreeks && extended && (
-                    <>
-                      <td className="r mono dim">{p.iv ? fmt.sgn(p.vanna, 0) + "k" : "—"}</td>
-                      <td className="r mono dim">{p.iv ? fmt.sgn(p.volga, 0) + "k" : "—"}</td>
-                    </>
-                  )}
-                  <td className="r mono dim">{(p.nominal / 1e6).toFixed(2)}M</td>
-                  <td className={"r mono " + pnlCls(p.pnl)}>{fmt.usdk(p.pnl)}</td>
-                  <td className="r">
-                    <button className="row-close" onClick={() => onClose && onClose(p)}>
-                      Close
-                    </button>
-                  </td>
-                </tr>
+                <Fragment key={grp.key}>
+                  <tr className={"pkg-start pos-main" + (isOpen ? " open" : "")} onClick={() => toggle(grp.key)}>
+                    <td className="l mono dim">
+                      <button
+                        className="pos-caret"
+                        onClick={(e) => { e.stopPropagation(); toggle(grp.key); }}
+                        aria-label={isOpen ? "collapse legs" : "expand legs"}
+                        aria-expanded={isOpen}
+                      >
+                        {isOpen ? "▾" : "▸"}
+                      </button>
+                      {grp.tradeId ? "#" + grp.tradeId : "—"}
+                    </td>
+                    <td className="l mono dim">{legsLabel}</td>
+                    <td className="l">
+                      <span className="sym">{name}</span>
+                      {ctx?.naked && (
+                        <span className="pos-naked" title="a sold leg filled but its long hedge leg hasn't — unbounded tail until it fills or is cancelled"> ⚠ naked</span>
+                      )}
+                    </td>
+                    <td className="l mono dim">—</td>
+                    <td className="r mono dim">—</td>
+                    <td><span className="dim small">—</span></td>
+                    <td className="r mono">{a.qty || "—"}</td>
+                    <td className="r mono dim">{a.tenor}</td>
+                    <td className="r mono dim">{a.dte ? a.dte + "d" : "—"}</td>
+                    <td className="r mono dim">—</td>
+                    <td className="r mono dim">—</td>
+                    <td className="r mono dim">—</td>
+                    {showGreeks && (
+                      <>
+                        <td className={"r mono " + pnlCls(a.delta)}>{gkc(a.delta)}</td>
+                        <td className={"r mono " + pnlCls(a.gamma)}>{gkc(a.gamma)}</td>
+                        <td className={"r mono " + pnlCls(a.vega)}>{gkc(a.vega)}</td>
+                        <td className={"r mono " + pnlCls(a.theta)}>{gkc(a.theta)}</td>
+                      </>
+                    )}
+                    {showGreeks && extended && (
+                      <>
+                        <td className="r mono dim">{fmt.sgn(a.vanna, 0) + "k"}</td>
+                        <td className="r mono dim">{fmt.sgn(a.volga, 0) + "k"}</td>
+                      </>
+                    )}
+                    <td className="r mono dim">{(a.nominal / 1e6).toFixed(2)}M</td>
+                    <td className={"r mono " + pnlCls(a.pnl)}>{fmt.usdk(a.pnl)}</td>
+                    <td className="r">
+                      <button
+                        className="row-close"
+                        disabled={tradeClosing}
+                        title={tradeClosing ? "a close for this trade is already in flight" : `close all ${grp.legs.length} legs of this trade`}
+                        onClick={(e) => { e.stopPropagation(); onCloseTrade && onCloseTrade(grp.legs); }}
+                      >
+                        {tradeClosing ? "Closing…" : "Close all"}
+                      </button>
+                    </td>
+                  </tr>
+                  {isOpen && grp.legs.map((p) => legRow(p, { showGreeks, extended, onClose, main: false, closing }))}
+                </Fragment>
               );
             })}
           </tbody>
