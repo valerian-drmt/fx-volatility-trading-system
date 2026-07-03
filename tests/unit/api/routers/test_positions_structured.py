@@ -282,3 +282,47 @@ async def test_reconciliation_endpoint_flags_a_quantity_break():
         assert out["n_breaks"] == 2
     finally:
         await engine.dispose()
+
+
+async def test_ledger_folds_fills_into_realized_pnl():
+    """A BUY-to-open then SELL-to-close on the same contract (two orders) folds to
+    flat with realised P&L = premium diff × qty × multiplier − commissions."""
+    from datetime import timedelta
+
+    from api.routers.positions import ledger
+    from persistence.models import StructureFill, StructureOrder, TradeStructure
+    from shared.contracts import multiplier_for
+
+    maker, engine = await _make_session()
+    try:
+        async with maker() as db:
+            s = TradeStructure(structure_type="vanilla_call", reference_tenor="3M",
+                               base_qty=10, state="fully_filled")
+            db.add(s)
+            await db.flush()
+            entry = StructureOrder(structure_id=s.id, leg_idx=0, order_role="entry",
+                                   contract_type="call", side="BUY", qty=10, state="filled",
+                                   ib_local_symbol="EUUV6 C1130", contract_symbol="EUR")
+            close = StructureOrder(structure_id=s.id, leg_idx=1, order_role="closing",
+                                   contract_type="call", side="SELL", qty=10, state="filled",
+                                   ib_local_symbol="EUUV6 C1130", contract_symbol="EUR")
+            db.add_all([entry, close])
+            await db.flush()
+            t0 = datetime.now(UTC)
+            db.add_all([
+                StructureFill(order_id=entry.id, ib_execution_id="e1", timestamp=t0,
+                              qty_filled=10, fill_price=0.02, commission_usd=5.0, side="BUY"),
+                StructureFill(order_id=close.id, ib_execution_id="e2", timestamp=t0 + timedelta(seconds=1),
+                              qty_filled=10, fill_price=0.03, commission_usd=5.0, side="SELL"),
+            ])
+            await db.commit()
+            out = await ledger(db)
+
+        p = {x["contract"]: x for x in out["positions"]}["EUUV6 C1130"]
+        mult = multiplier_for("EUR")
+        assert p["net_qty"] == 0.0
+        assert p["realized_pnl"] == pytest.approx((0.03 - 0.02) * 10 * mult - 10.0, abs=0.01)
+        assert out["totals"]["commission"] == pytest.approx(10.0)
+        assert out["totals"]["realized_pnl"] == pytest.approx((0.03 - 0.02) * 10 * mult - 10.0, abs=0.01)
+    finally:
+        await engine.dispose()

@@ -107,13 +107,17 @@ Clients read **hydrated, purpose-built views**; they never reconstruct domain fa
 - **Do**: one screen → ideally one endpoint that returns exactly what it renders. Push
   joins/aggregation into the API, never the client.
 
-### 2.4 Money-touching state is event-sourced & immutable — 🟡
+### 2.4 Money-touching state is event-sourced & immutable — 🟡→✅ (derived P&L added)
 Fills, orders, cash movements are **append-only events**; positions/P&L are **derived**.
 This gives you an audit trail and reproducible P&L.
 - Have: `trade_fill` is append-only; `VolConfig` is versioned append-only.
-- Gap: `open_position` is mutated in place (mirror), and P&L is read off it rather than
-  derived from fills. Fine for a mirror; **not** fine if you ever want audit-grade P&L —
-  then positions become a fold over `trade_fill`.
+- **Added**: `core/ledger.py` folds the `trade_fill` log (average-cost) into per-contract
+  net qty + **realised P&L** + avg cost + commissions — pure, heavily unit-tested. Exposed at
+  `GET /positions/ledger` (unrealised P&L via the mirror's mark). This is the **audit-grade,
+  reproducible-from-events** answer to "what did we make", parallel to the mutable IB mirror;
+  its net qty is the `expected` side of `/reconciliation`.
+- Remaining: this is a read-side projection — `open_position` is still the operational mirror.
+  The full end-state makes the ledger the *primary* position store (mirror only reconciles).
 - **Do**: never UPDATE a financial event row. Correct with a new compensating event.
 
 ### 2.5 Idempotency on every external side-effect — 🟡 (just fixed a violation)
@@ -236,8 +240,10 @@ A change is done when:
 4. ✅ **DONE** — correlation `trace_id` end-to-end: minted at the API edge, on every log line,
    propagated to the execution-engine, persisted on the trade rows (migration 046) and re-bound
    by the async fill callbacks, returned in submit/close responses (§2.11).
-5. **Next / later**: fold positions/P&L from `trade_fill` events for audit-grade numbers (§2.4);
-   metrics (fill latency, reconcile breaks) + error tracking keyed by `trace_id` (§2.11).
+5. ✅ **DONE (projection)** — `core/ledger.py` + `GET /positions/ledger` fold positions & P&L
+   from the `trade_fill` event log, audit-grade (§2.4). Remaining end-state: make the ledger the
+   primary position store (mirror only reconciles).
+6. **Later**: metrics (fill latency, reconcile breaks) + error tracking keyed by `trace_id` (§2.11).
 
 Related: `docs/ORDER_PIPELINE.md` (execution path), `docs/db_schema_drift_workflow.md`
 (migrations), `.importlinter` (layer contracts), `CLAUDE.md` (secrets + workflow rules).
