@@ -292,7 +292,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const [product, setProduct] = useState(PRODUCTS[0]!); // alphabetical first = default
   const [side, setSide] = useState("BUY");
   const [tenor, setTenor] = useState("3M");
-  const [farTenor, setFarTenor] = useState("4M");
+  const [farTenor, setFarTenor] = useState("6M"); // far enough from the 3M near to land in a different contract month (adjacent tenors collapse to one CME monthly)
   const [strike, setStrike] = useState(1.0842);
   // true once the trader hand-picks a vanilla strike → stop auto-anchoring it to
   // the live ATM. Reset on product change.
