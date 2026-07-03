@@ -205,3 +205,42 @@ async def test_full_fill_creates_position_and_marks_structure():
         assert pos.state == "open"
     finally:
         await engine.dispose()
+
+
+async def test_fill_inherits_and_binds_the_order_trace_id():
+    """An async fill stamps the originating request's trace_id onto the fill row
+    (re-binding it so the fill's logs share the id) and doesn't leak it after."""
+    from engines.execution.fills_handler import _on_execution
+    from persistence.models import StructureFill, StructureOrder, TradeStructure
+    from shared.trace import current_trace_id
+
+    maker, engine = await _make_session()
+    try:
+        async with maker() as db:
+            s = TradeStructure(structure_type="straddle", reference_tenor="3M",
+                               base_qty=5, state="submitted", execution_mode="live",
+                               trace_id="cafebabecafebabe")
+            db.add(s)
+            await db.flush()
+            o = StructureOrder(structure_id=s.id, leg_idx=0, order_role="entry",
+                               contract_type="call", side="BUY", qty=5, order_type="LMT",
+                               limit_price=1.2, preview_price=1.2, state="submitted",
+                               trace_id="cafebabecafebabe")
+            db.add(o)
+            await db.flush()
+            oid = o.id
+            await db.commit()
+
+        await _on_execution(_fake_trade(), _fake_fill(
+            exec_id="t1", qty=5, price=1.2, commission=1.0,
+        ), oid, maker)
+
+        assert current_trace_id() is None  # cleared after the callback (no leak)
+        async with maker() as db:
+            from sqlalchemy import select
+            fill = (await db.execute(
+                select(StructureFill).where(StructureFill.order_id == oid)
+            )).scalar_one()
+        assert fill.trace_id == "cafebabecafebabe"  # stamped from the order
+    finally:
+        await engine.dispose()

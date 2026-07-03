@@ -161,17 +161,19 @@ The API surface is a **contract**, drift-checked.
   (see `CLAUDE.md`). Write endpoints are auth-gated.
 - **Do**: no secret in logs, error messages, `docker inspect`, or test fixtures. Ever.
 
-### 2.11 Observability — 🟡→✅ (correlation id added)
+### 2.11 Observability — ✅ (correlation id, request + async)
 Structured logs (structlog), health endpoints, engine heartbeats, `docs/observability/`.
-- **Added**: a **correlation `trace_id`** (`shared/trace.py`). The API mints one per request
-  (or honours an inbound `X-Trace-ID`), binds it to the structlog contextvars so *every* log
-  line carries it, echoes it in the response header, and **propagates it via `X-Trace-ID`** to
-  the execution-engine — whose middleware re-binds it, so IB order placement + fills there log
-  under the *same* id. `submit` / `close` responses return the `trace_id`. → "what happened to
-  order N" is a single `grep <trace_id>` across both services' logs.
-- Remaining: **persist** `trace_id` on `trade_structure` / `trade_order` / `trade_fill` so the
-  async fill/reconcile background loops (outside the request context) re-bind it too; and add
-  metrics on fill latency / reconcile-break count.
+- **Correlation `trace_id`** (`shared/trace.py`). The API mints one per request (or honours an
+  inbound `X-Trace-ID`), binds it to the structlog contextvars so *every* log line carries it,
+  echoes it in the response header, and **propagates it via `X-Trace-ID`** to the
+  execution-engine — whose middleware re-binds it, so IB order placement + fills there log under
+  the *same* id. `submit` / `close` responses return the `trace_id`.
+- **Persisted** on `trade_structure` / `trade_order` / `trade_fill` (migration 046). The **async
+  fill callbacks re-bind it** from the order they load, so a fill that lands seconds after the
+  request still logs under the originating `trace_id` — the async path is covered, not just the
+  synchronous one. → "what happened to order N" is a single `grep <trace_id>` across both
+  services' logs, request through fill.
+- Remaining: metrics on fill latency / reconcile-break count; error tracking keyed by the id.
 - **Do**: one id follows a trade end-to-end so you can answer "what happened to order N"
   from logs alone.
 
@@ -231,10 +233,11 @@ A change is done when:
 2. ✅ **ALREADY DONE** — `open_position.trade_id` FK → `trade_structure.id` (migration 034).
 3. ✅ **DONE (endpoint)** — `GET /positions/reconciliation` returns per-contract book-vs-IB
    breaks, classified (§2.6). Remaining: schedule + a UI chip on Open positions.
-4. ✅ **DONE (request path)** — correlation `trace_id` minted at the API edge, on every log
-   line, propagated to the execution-engine, returned in submit/close responses (§2.11).
-   Remaining: persist it on the trade rows so async fills/reconcile re-bind it.
-5. **Later**: fold positions/P&L from `trade_fill` events for audit-grade numbers (§2.4).
+4. ✅ **DONE** — correlation `trace_id` end-to-end: minted at the API edge, on every log line,
+   propagated to the execution-engine, persisted on the trade rows (migration 046) and re-bound
+   by the async fill callbacks, returned in submit/close responses (§2.11).
+5. **Next / later**: fold positions/P&L from `trade_fill` events for audit-grade numbers (§2.4);
+   metrics (fill latency, reconcile breaks) + error tracking keyed by `trace_id` (§2.11).
 
 Related: `docs/ORDER_PIPELINE.md` (execution path), `docs/db_schema_drift_workflow.md`
 (migrations), `.importlinter` (layer contracts), `CLAUDE.md` (secrets + workflow rules).

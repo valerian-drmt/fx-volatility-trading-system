@@ -986,6 +986,7 @@ async def close_one_open_position(
     # ── 1. Persist trade_structure + trade_order rows (audit + UI). ──
     structure_type = _structure_type_for_close(pos.structure, pos.side)
     product_label  = product_label_from_symbol(pos.structure, structure_type)
+    trace_id = current_trace_id()  # correlation id of this close request
     closing_struct = TradeStructure(
         structure_type=structure_type,
         product_label=product_label,
@@ -994,6 +995,7 @@ async def close_one_open_position(
         base_qty=qty,
         state="submitted",
         execution_mode="live",
+        trace_id=trace_id,
     )
     db.add(closing_struct)
     await db.flush()  # populates closing_struct.id
@@ -1006,6 +1008,7 @@ async def close_one_open_position(
         order_type=order_type, limit_price=limit_price,
         contract_expiry=pos.expiry,
         state="pending",
+        trace_id=trace_id,
         **contract_fields,
     )
     db.add(closing_order)

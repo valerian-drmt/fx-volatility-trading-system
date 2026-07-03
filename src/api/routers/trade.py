@@ -882,6 +882,7 @@ async def _submit_preview_impl(
             pass
 
     # 1. Create structure (state=submitted initially, flipped to fully_filled below)
+    trace_id = current_trace_id()  # correlation id of this Submit request
     structure = TradeStructure(
         preview_id=preview_id,
         pca_signal_id=preview.pca_signal_id,
@@ -895,6 +896,7 @@ async def _submit_preview_impl(
         base_qty=base_qty,
         state="submitted",
         execution_mode=execution_mode,
+        trace_id=trace_id,
     )
     db.add(structure)
     await db.flush()
@@ -984,6 +986,7 @@ async def _submit_preview_impl(
                 preview_iv_pct=leg.get("entry_iv_pct"),
                 preview_price=preview_price,
                 state="pending",
+                trace_id=trace_id,
                 **extra_kwargs,
             ))
         preview.user_action = "submitted"
@@ -1071,6 +1074,7 @@ async def _submit_preview_impl(
             slippage_per_contract=0.0,
             total_slippage_usd=0.0,
             total_commission_usd=qty * commission_per_contract,
+            trace_id=trace_id,
         )
         db.add(order)
         await db.flush()

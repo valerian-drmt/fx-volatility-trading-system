@@ -42,6 +42,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from shared.trace import bind_trace_id, clear_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,8 @@ async def _on_order_status(
             if order is None:
                 logger.warning("order_status_event_for_missing_order id=%s", order_id)
                 return
+            if order.trace_id:  # this status event's logs share the request's id
+                bind_trace_id(order.trace_id)
             old_state = order.state
             now = datetime.now(UTC)
             ws_event: dict | None = None
@@ -135,6 +138,8 @@ async def _on_order_status(
                 await _publish_order_safe(order.structure_id, ws_event)
     except Exception:
         logger.exception("on_order_status_failed order_id=%s", order_id)
+    finally:
+        clear_trace_id()  # don't leak this order's trace_id to the next event
 
 
 async def _on_execution(
@@ -146,6 +151,8 @@ async def _on_execution(
         await _persist_fill(fill, order_id, sm)
     except Exception:
         logger.exception("on_execution_failed order_id=%s", order_id)
+    finally:
+        clear_trace_id()  # _persist_fill bound the order's trace_id; don't leak it
 
 
 async def _persist_fill(
@@ -171,19 +178,26 @@ async def _persist_fill(
             logger.info("fill_skipped_duplicate exec_id=%s", exec_id)
             return
 
-        db.add(StructureFill(
+        fill_row = StructureFill(
             order_id=order_id, ib_execution_id=exec_id,
             timestamp=ts if isinstance(ts, datetime) else datetime.now(UTC),
             qty_filled=qty, fill_price=price, commission_usd=commission,
             exchange=exchange, side=side,
             spot_at_fill=None, bid_at_fill=None, ask_at_fill=None,
-        ))
+        )
+        db.add(fill_row)
         await db.flush()
 
         order = await db.get(StructureOrder, order_id)
         if order is None:
             await db.commit()
             return
+        # Re-bind the originating request's correlation id so THIS async fill's
+        # logs carry the same trace_id as the Submit that created the order — one
+        # grep spans request → placement → fill. Also stamp it on the fill row.
+        if order.trace_id:
+            bind_trace_id(order.trace_id)
+            fill_row.trace_id = order.trace_id
         # Record the IB localSymbol of the FILLED contract on first fill.
         # ``fill.contract`` is the executed leg contract for BOTH the per-leg
         # trade and a BAG combo leg (the combo Trade's own contract is the BAG).
@@ -243,13 +257,16 @@ def attach_combo_fill_handlers(
         _on_combo_status(t, order_ids, sessionmaker_factory)
     )
 
-    def _route(_t: Any, fill: Any) -> None:
+    def _route(_t: Any, fill: Any) -> Any:
+        # Per-leg executions route by leg conId. A BAG-level fill (combo's own
+        # conId) can't match — it's booked instead via the Filled status handler
+        # (_book_combo_filled), so here we just note it and move on.
         conid = getattr(getattr(fill, "contract", None), "conId", None)
         oid = conid_to_order.get(int(conid)) if conid else None
         if oid is None:
-            logger.warning("combo_fill_unmatched conId=%s", conid)
-            return
-        asyncio.create_task(_persist_fill_safe(fill, oid, sessionmaker_factory))
+            logger.info("combo_fill_on_bag_conid conId=%s (booked via status)", conid)
+            return None
+        return asyncio.create_task(_persist_fill_safe(fill, oid, sessionmaker_factory))
 
     trade.fillEvent += _route
 
@@ -261,14 +278,28 @@ async def _persist_fill_safe(
         await _persist_fill(fill, order_id, sm)
     except Exception:
         logger.exception("combo_persist_fill_failed order_id=%s", order_id)
+    finally:
+        clear_trace_id()  # _persist_fill bound the order's trace_id; don't leak it
 
 
 async def _on_combo_status(
     trade: Any, order_ids: list[int], sm: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Combo-level status → apply cancel/reject to all legs (fills flip state)."""
+    """Combo-level status → cancel/reject applies to all legs, and a terminal
+    ``Filled`` books every leg.
+
+    IB frequently reports a BAG fill on the combo's OWN conId (tradingClass
+    ``COMB``), not per leg — so the conId router can't match it and drops it
+    (``combo_fill_unmatched``). We therefore book the legs off the combo's
+    terminal ``Filled`` status instead, using each leg's ``preview_price`` as the
+    fill price (live marks come from position_sync). Idempotent : legs already
+    filled by real per-leg executions are skipped."""
     try:
-        new_state = _map_status(trade.orderStatus.status)
+        status = getattr(trade.orderStatus, "status", "")
+        new_state = _map_status(status)
+        if new_state == "filled":
+            await _book_combo_filled(trade, order_ids, sm)
+            return
         if new_state not in ("cancelled", "rejected"):
             return
         async with sm() as db:
@@ -280,10 +311,53 @@ async def _on_combo_status(
                 if new_state == "rejected":
                     o.rejected_at = datetime.now(UTC)
                 _audit(db, o, f"order_{new_state}", "warning",
-                       f"combo ib status={trade.orderStatus.status}", {})
+                       f"combo ib status={status}", {})
             await db.commit()
     except Exception:
         logger.exception("on_combo_status_failed")
+
+
+async def _book_combo_filled(
+    trade: Any, order_ids: list[int], sm: async_sessionmaker[AsyncSession],
+) -> None:
+    """Mark every not-yet-filled leg of a filled BAG as filled, then cascade.
+
+    Fill price = the leg's ``preview_price`` (the aggregate BAG fill carries only a
+    NET price, not per-leg) ; a synthetic idempotent ``ib_execution_id`` keyed on
+    the combo permId + leg id keeps re-fires from double-booking."""
+    now = datetime.now(UTC)
+    perm = str(getattr(trade.order, "permId", "") or getattr(trade.order, "orderId", "") or "combo")
+    structure_id: int | None = None
+    async with sm() as db:
+        for oid in order_ids:
+            o = await db.get(StructureOrder, oid)
+            if o is None:
+                continue
+            structure_id = o.structure_id
+            if o.state == "filled":
+                continue
+            exec_id = f"combo-{perm}-{oid}"
+            existing = (await db.execute(
+                select(StructureFill.ib_execution_id).where(StructureFill.order_id == oid)
+            )).scalars().all()
+            price = float(o.preview_price) if o.preview_price is not None else 0.0
+            if exec_id not in existing:
+                db.add(StructureFill(
+                    order_id=oid, ib_execution_id=exec_id, timestamp=now,
+                    qty_filled=int(o.qty), fill_price=price, commission_usd=0.0,
+                    exchange=o.contract_exchange, side=o.side,
+                    spot_at_fill=None, bid_at_fill=None, ask_at_fill=None,
+                ))
+            o.qty_filled = int(o.qty)
+            if o.avg_fill_price is None:
+                o.avg_fill_price = price
+            o.state = "filled"
+            o.fully_filled_at = now
+            _audit(db, o, "order_filled", "info",
+                   f"combo BAG filled (aggregate) status={getattr(trade.orderStatus, 'status', '')}", {})
+        await db.commit()
+    if structure_id is not None:
+        await maybe_complete_structure(sm, structure_id)
 
 
 # --------------------------------------------------------------------------

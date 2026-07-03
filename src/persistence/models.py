@@ -627,6 +627,9 @@ class TradeStructure(Base):
     fully_filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     close_reason: Mapped[str | None] = mapped_column(String(80))
+    # Migration 046 : correlation id of the request that created this trade, so a
+    # trade's whole story (API → exec-engine → fills) is one `grep <trace_id>`.
+    trace_id: Mapped[str | None] = mapped_column(String(32))
 
 
 class StructureOrder(Base):
@@ -685,6 +688,10 @@ class StructureOrder(Base):
     fully_filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     slippage_per_contract: Mapped[float | None] = mapped_column(Float)
     total_slippage_usd: Mapped[float | None] = mapped_column(Float)
+    # Migration 046 : correlation id (denormalised from the parent structure) so
+    # the async fill callbacks can re-bind it — their logs then carry the same id
+    # as the originating request. See shared.trace.
+    trace_id: Mapped[str | None] = mapped_column(String(32))
 
 
 class StructureFill(Base):
@@ -706,6 +713,9 @@ class StructureFill(Base):
     ask_at_fill: Mapped[float | None] = mapped_column(Float)
     iv_implied_from_fill: Mapped[float | None] = mapped_column(Float)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # Migration 046 : correlation id (denormalised from the order) so a fill row
+    # points straight back to its request's logs. See shared.trace.
+    trace_id: Mapped[str | None] = mapped_column(String(32))
 
 
 class BookedPosition(Base):
