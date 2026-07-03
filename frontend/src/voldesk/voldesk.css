@@ -401,6 +401,11 @@ input,select{font-family:inherit;font-size:13px}
 /* close confirmation — same banner as the order, in red */
 .book-result.close-result{border-color:color-mix(in srgb,var(--neg) 40%,transparent);border-left-color:var(--neg);background:color-mix(in srgb,var(--neg) 8%,transparent)}
 .close-result-title{color:var(--neg)}
+/* Solo variant : the confirmation stands in for the whole close form until
+   Dismiss, so give it presence (breathing room + a slightly larger title). */
+.close-result.close-result-solo{padding:18px 16px;min-height:120px}
+.close-result.close-result-solo .close-result-title{font-size:13.5px}
+.close-result.close-result-solo span{font-size:11px;margin-top:3px}
 .close-empty,.close-panel{font-size:12px}
 .close-empty{color:var(--text-faint);padding:8px 0}
 .close-block{border-color:color-mix(in srgb,var(--neg) 50%,var(--border))!important;box-shadow:0 0 0 1px color-mix(in srgb,var(--neg) 12%,transparent),0 4px 16px rgba(0,0,0,.3)!important}

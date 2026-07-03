@@ -177,6 +177,10 @@ function ClosePanel({
   const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
   useEffect(() => {
     if (!req) return;
+    // A fresh close request (Close / Close all clicked in Open positions) always
+    // returns to the form, clearing any leftover confirmation / error.
+    setDone(null);
+    setErr(null);
     if (req.kind === "contract") {
       setType("contract");
       setContractId(req.pos.id);
@@ -264,6 +268,19 @@ function ClosePanel({
 
   return (
     <div className="close-draft">
+      {done ? (
+        // Close accepted → the confirmation REPLACES the form ; the operator
+        // must Dismiss to return to the form (prevents an accidental re-close
+        // on a stale selection).
+        <div className="book-result close-result close-result-solo">
+          <div>
+            <b className="close-result-title">Close submitted ✓</b>
+            <span className="mono">{done}</span>
+          </div>
+          <button className="btn-ghost" onClick={() => setDone(null)}>Dismiss</button>
+        </div>
+      ) : (
+      <>
       <div className="close-fields">
         <label className="field">
           <span>Type</span>
@@ -352,14 +369,7 @@ function ClosePanel({
       >
         {busy ? "Closing…" : sel ? (type === "trade" ? "Close trade" : `Close ${qty} ct`) : "Close"}
       </button>
-      {done && (
-        <div className="book-result close-result">
-          <div>
-            <b className="close-result-title">Position closed</b>
-            <span className="mono">{done}</span>
-          </div>
-          <button className="btn-ghost" onClick={() => setDone(null)}>Dismiss</button>
-        </div>
+      </>
       )}
       {!canWrite && <div className="dim small ob-readonly-note">Read-only desk · log in to close positions.</div>}
     </div>
