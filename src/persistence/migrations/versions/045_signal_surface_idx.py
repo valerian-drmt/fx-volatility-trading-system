@@ -14,16 +14,21 @@ Two covering indexes, both serving latest-by-symbol lookups :
 
 Index-only, additive, no column change → no writer/reader/payload cascade.
 
-Revision ID: 045_pca_signal_vol_surface_indexes
+Revision ID: 045_signal_surface_idx
 Revises: 044_index_open_position_history
 Create Date: 2026-06-28
+
+NOTE: revision id shortened from ``045_pca_signal_vol_surface_indexes`` (34 chars)
+to fit Alembic's ``alembic_version.version_num`` VARCHAR(32) — the long id raised
+StringDataRightTruncationError on ``upgrade head``. This migration had never
+applied anywhere (it always failed to record), so the rename is safe.
 """
 from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "045_pca_signal_vol_surface_indexes"
+revision: str = "045_signal_surface_idx"
 down_revision: str | None = "044_index_open_position_history"
 branch_labels: str | None = None
 depends_on: str | None = None

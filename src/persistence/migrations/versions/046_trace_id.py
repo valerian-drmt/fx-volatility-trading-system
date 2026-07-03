@@ -8,7 +8,7 @@ fill callbacks (which load the order, not the structure) can re-bind it.
 Additive, nullable, no index → no writer/reader/payload cascade, no backfill.
 
 Revision ID: 046_trace_id
-Revises: 045_pca_signal_vol_surface_indexes
+Revises: 045_signal_surface_idx
 Create Date: 2026-07-03
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "046_trace_id"
-down_revision: str | None = "045_pca_signal_vol_surface_indexes"
+down_revision: str | None = "045_signal_surface_idx"
 branch_labels: str | None = None
 depends_on: str | None = None
 
