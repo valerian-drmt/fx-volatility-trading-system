@@ -291,14 +291,14 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   );
   const [product, setProduct] = useState(PRODUCTS[0]!); // alphabetical first = default
   const [side, setSide] = useState("BUY");
-  const [tenor, setTenor] = useState("2M");
+  const [tenor, setTenor] = useState("3M");
   const [farTenor, setFarTenor] = useState("4M");
   const [strike, setStrike] = useState(1.0842);
   // true once the trader hand-picks a vanilla strike → stop auto-anchoring it to
   // the live ATM. Reset on product change.
   const userStrikeRef = useRef(false);
-  const [wing, setWing] = useState("25Δc"); // one of the 5 delta pillars
-  const [qty, setQty] = useState(25);
+  const [wing, setWing] = useState("ATM"); // default strike Δ ; one of the 5 delta pillars
+  const [qty, setQty] = useState(10);
   const [csize, setCsize] = useState("6E (€125k)");
   const [bundleHedge, setBundleHedge] = useState(false);
   const [stage, setStage] = useState("build"); // build | preview | booked
@@ -514,8 +514,10 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
             const p = e.target.value;
             setProduct(p);
             const m = STRUCT[p];
-            // wing / spread / straddle-strangle default to a 25Δ strike; else ATM
-            if (m) setWing(["wing", "flywing", "spread", "ss"].includes(m.mode) ? "25Δc" : "ATM");
+            // strangle / butterfly / RR / spreads NEED non-ATM wings (ATM collapses
+            // them) → default 25Δ ; everything else (Straddle/Strangle, vanilla,
+            // calendar) defaults to ATM.
+            if (m) setWing(["wing", "flywing", "spread"].includes(m.mode) ? "25Δc" : "ATM");
             userStrikeRef.current = false; // re-anchor the vanilla strike to live ATM
             reset();
           }}>
