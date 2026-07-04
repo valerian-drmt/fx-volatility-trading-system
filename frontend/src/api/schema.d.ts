@@ -1394,6 +1394,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/positions/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ledger
+         * @description Positions + realised / unrealised P&L folded from the append-only
+         *     ``trade_fill`` event log (average-cost — see ``core.ledger``).
+         *
+         *     Audit-grade and **reproducible from events**, independent of the mutable IB
+         *     mirror (``open_position``). Fills are folded in **execution order** (by fill
+         *     timestamp) ; the mirror's ``market_price`` supplies the mark for unrealised
+         *     MTM of the open quantity.
+         */
+        get: operations["ledger_api_v1_positions_ledger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/positions/exit-rules-config": {
         parameters: {
             query?: never;
@@ -4718,6 +4744,28 @@ export interface operations {
         };
     };
     aggregate_greeks_api_v1_positions_aggregate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    ledger_api_v1_positions_ledger_get: {
         parameters: {
             query?: never;
             header?: never;
