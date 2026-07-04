@@ -1420,6 +1420,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/positions/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reconciliation
+         * @description Book vs broker reconciliation — the desk's own record vs what IB holds.
+         *
+         *     The book (``trade_order`` filled qty, entries + closes netting out) is the
+         *     system of record for what we *should* hold ; the IB mirror (``open_position``)
+         *     is what the broker says we *do* hold. This surfaces the **breaks** between
+         *     them instead of silently trusting either side. Read-only diagnostic.
+         *
+         *     Reconciliation is done **per contract** (IB ``localSymbol``) because IB nets
+         *     by contract ; a break is then attributed to a structure for display.
+         */
+        get: operations["reconciliation_api_v1_positions_reconciliation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/positions/exit-rules-config": {
         parameters: {
             query?: never;
@@ -4766,6 +4794,28 @@ export interface operations {
         };
     };
     ledger_api_v1_positions_ledger_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    reconciliation_api_v1_positions_reconciliation_get: {
         parameters: {
             query?: never;
             header?: never;
