@@ -10,6 +10,7 @@ POST /api/v1/positions/{id}/close-manual      mark for manual close (mock — St
 POST /api/v1/positions/monitor/run-once       trigger 1 cycle on demand (dev/debug)
 GET  /api/v1/positions/aggregate              greeks aggregate across open positions
 GET  /api/v1/positions/ledger                 positions + P&L folded from the trade_fill event log
+GET  /api/v1/positions/reconciliation         book (filled orders) vs broker (IB mirror) breaks
 GET  /api/v1/positions/exit-rules-config      hot-reload config visibility
 GET  /api/v1/positions/delta-hedge-config     hot-reload config visibility
 """
@@ -459,6 +460,98 @@ async def ledger(db: DbDep) -> dict[str, Any]:
             "unrealized_pnl": round(tot_unreal, 2),
             "commission": round(tot_comm, 2),
         },
+    }
+
+
+# Below this, an expected − actual difference is rounding noise, not a break.
+_BREAK_EPS = 1e-4
+
+
+def _compute_breaks(
+    expected: dict[str, float],
+    actual: dict[str, float],
+    struct_by_symbol: dict[str, int | None],
+) -> list[dict[str, Any]]:
+    """Reconcile book (``expected`` net qty per contract, from filled orders) vs
+    broker (``actual`` net qty per contract, from the IB mirror). Pure — the
+    endpoint just gathers the two dicts; the diff logic is here so it's testable
+    without a DB.
+
+    ``expected`` / ``actual`` are **signed** nets keyed by IB ``localSymbol``
+    (BUY = +, SELL = −). A non-zero ``expected − actual`` is a *break*, classified:
+      - ``missing_at_ib``   book holds it, IB is flat (fill not reflected / recon lag)
+      - ``unbooked_at_ib``  IB holds it, the book has no record (manual/orphan)
+      - ``direction``       signs disagree (we think long, IB is short)
+      - ``quantity``        both hold it, sizes differ
+    """
+    breaks: list[dict[str, Any]] = []
+    for sym in sorted(set(expected) | set(actual)):
+        exp = round(expected.get(sym, 0.0), 4)
+        act = round(actual.get(sym, 0.0), 4)
+        diff = round(exp - act, 4)
+        if abs(diff) <= _BREAK_EPS:
+            continue
+        if act == 0:
+            kind = "missing_at_ib"
+        elif exp == 0:
+            kind = "unbooked_at_ib"
+        elif (exp > 0) != (act > 0):
+            kind = "direction"
+        else:
+            kind = "quantity"
+        breaks.append({
+            "contract": sym, "expected_net": exp, "actual_net": act,
+            "break": diff, "kind": kind, "structure_id": struct_by_symbol.get(sym),
+        })
+    return breaks
+
+
+@router.get("/reconciliation")
+async def reconciliation(db: DbDep) -> dict[str, Any]:
+    """Book vs broker reconciliation — the desk's own record vs what IB holds.
+
+    The book (``trade_order`` filled qty, entries + closes netting out) is the
+    system of record for what we *should* hold ; the IB mirror (``open_position``)
+    is what the broker says we *do* hold. This surfaces the **breaks** between
+    them instead of silently trusting either side. Read-only diagnostic.
+
+    Reconciliation is done **per contract** (IB ``localSymbol``) because IB nets
+    by contract ; a break is then attributed to a structure for display.
+    """
+    # 1. Expected net per contract, from FILLED orders. Entries add in their
+    #    direction, closes (opposite side) subtract — so the net is what the book
+    #    thinks is live. qty_filled reflects real executions even if the order row
+    #    was later cancelled, so we don't gate on order state here.
+    orders = (await db.execute(
+        select(StructureOrder).where(StructureOrder.ib_local_symbol.is_not(None))
+    )).scalars().all()
+    expected: dict[str, float] = {}
+    struct_by_symbol: dict[str, int | None] = {}
+    for o in orders:
+        sym = o.ib_local_symbol
+        if sym is None:
+            continue
+        qf = float(o.qty_filled or 0)
+        if qf == 0:
+            continue
+        expected[sym] = expected.get(sym, 0.0) + (qf if o.side == "BUY" else -qf)
+        if o.order_role != "closing":  # attribute the contract to its ENTRY structure
+            struct_by_symbol.setdefault(sym, o.structure_id)
+
+    # 2. Actual net per contract, from the IB mirror.
+    positions = (await db.execute(select(OpenPosition))).scalars().all()
+    actual: dict[str, float] = {}
+    for p in positions:
+        signed = float(p.quantity) if p.side == "BUY" else -float(p.quantity)
+        actual[p.structure] = actual.get(p.structure, 0.0) + signed
+        struct_by_symbol.setdefault(p.structure, p.trade_id)
+
+    breaks = _compute_breaks(expected, actual, struct_by_symbol)
+    return {
+        "as_of": datetime.now(UTC).isoformat(),
+        "n_contracts": len(set(expected) | set(actual)),
+        "n_breaks": len(breaks),
+        "breaks": breaks,
     }
 
 
