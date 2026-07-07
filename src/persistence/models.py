@@ -692,6 +692,12 @@ class StructureOrder(Base):
     # the async fill callbacks can re-bind it — their logs then carry the same id
     # as the originating request. See shared.trace.
     trace_id: Mapped[str | None] = mapped_column(String(32))
+    # Migration 047 (OMS P2) : for a closing order (order_role='closing'), the
+    # entry order/leg it closes. Lets the reservation ledger attribute
+    # reserved_qty to the exact leg (I5). NULL for entry/hedge orders.
+    closes_order_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("trade_order.id")
+    )
 
 
 class StructureFill(Base):
@@ -716,6 +722,33 @@ class StructureFill(Base):
     # Migration 046 : correlation id (denormalised from the order) so a fill row
     # points straight back to its request's logs. See shared.trace.
     trace_id: Mapped[str | None] = mapped_column(String(32))
+
+
+class LegPosition(Base):
+    """Forward per-leg position — the BOOK (OMS P1, invariants I3/I7).
+
+    One row per ``trade_order`` (a leg). ``open_qty`` is a *pure signed fold of
+    that leg's fills* (Σ +buy/−sell over ``trade_fill.order_id == order.id``),
+    rebuilt by ``persistence.projection`` — never back-attributed from the netted
+    IB mirror (``open_position``). This is the authority for "what we hold"; the
+    mirror is demoted to a reconciliation checksum (I7). ``reserved_qty`` is the
+    materialised close-in-flight reservation (I5, P2); ``available = |open_qty| −
+    reserved_qty`` must stay ≥ 0.
+    """
+
+    __tablename__ = "leg_position"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("trade_order.id"), nullable=False, unique=True,
+    )
+    open_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False, default=0)
+    reserved_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False, default=0)
+    avg_price: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
+    realized_pnl_usd: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False, default=0)
+    rebuilt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
 
 
 class BookedPosition(Base):

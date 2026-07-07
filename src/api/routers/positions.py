@@ -41,6 +41,7 @@ from persistence.models import (
     ExitAlert,
     ExitRulesConfig,
     HedgeOrder,
+    LegPosition,
     OpenPosition,
     OpenPositionHistory,
     StructureFill,
@@ -339,6 +340,51 @@ async def list_open(db: DbDep) -> list[dict[str, Any]]:
         "timestamp": r.timestamp.isoformat() if r.timestamp else None,
         "entry_timestamp": r.entry_timestamp.isoformat() if r.entry_timestamp else None,
     } for r in rows]
+
+
+@router.get("/book")
+async def list_book(db: DbDep) -> list[dict[str, Any]]:
+    """The BOOK — one row per leg, position folded forward from that leg's fills.
+
+    This is the authority for "what we hold" (invariants I3/I7): ``open_qty`` is a
+    pure signed fold of the leg's ``trade_fill`` rows (via ``leg_position``, the
+    ``position_projector`` output), never back-attributed from the netted IB mirror
+    (``open_position``, which /open exposes and which stays a reconciliation
+    checksum only). ``available = |open_qty| − reserved_qty`` is the close-guard
+    headroom (I5). Additive read; the frontend is untouched.
+    """
+    rows = (await db.execute(
+        select(LegPosition, StructureOrder, TradeStructure)
+        .join(StructureOrder, LegPosition.order_id == StructureOrder.id)
+        .join(TradeStructure, StructureOrder.structure_id == TradeStructure.id, isouter=True)
+        .order_by(desc(LegPosition.rebuilt_at))
+    )).all()
+
+    def _f(v):  # Decimal → float for JSON
+        return float(v) if v is not None else None
+
+    out: list[dict[str, Any]] = []
+    for lp, order, struct in rows:
+        open_qty = float(lp.open_qty or 0)
+        reserved = float(lp.reserved_qty or 0)
+        out.append({
+            "order_id": order.id,
+            "structure_id": order.structure_id,
+            "structure_type": struct.structure_type if struct else None,
+            "leg_idx": order.leg_idx,
+            "order_role": order.order_role,
+            "side": order.side,
+            "contract_type": order.contract_type,
+            "contract_strike": _f(order.contract_strike),
+            "contract_expiry": order.contract_expiry.isoformat() if order.contract_expiry else None,
+            "ib_local_symbol": order.ib_local_symbol,
+            "open_qty": open_qty,
+            "reserved_qty": reserved,
+            "available": abs(open_qty) - reserved,
+            "avg_price": _f(lp.avg_price),
+            "rebuilt_at": lp.rebuilt_at.isoformat() if lp.rebuilt_at else None,
+        })
+    return out
 
 
 @router.get("/structured")

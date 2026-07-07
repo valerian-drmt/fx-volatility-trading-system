@@ -44,6 +44,7 @@ from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
 from persistence.models import TradeEvent
+from persistence.projection import rebuild_all
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
 from shared.tracing import init_tracing
@@ -94,6 +95,17 @@ async def lifespan(app: FastAPI):
 
     sm = get_sessionmaker()
     app.state.sessionmaker = sm
+
+    # Seed the forward projection (leg_position) from the fill log so the book is
+    # current before the first fill event this session (I3). Best-effort — never
+    # block startup on it.
+    try:
+        async with sm() as db:
+            n_legs = await rebuild_all(db)
+            await db.commit()
+        logger.info("leg_projection_seeded legs=%s", n_legs)
+    except Exception:
+        logger.exception("leg_projection_seed_failed")
 
     sync_task = asyncio.create_task(
         position_sync_loop(sm, executor, redis=redis, interval_s=SYNC_INTERVAL_S)
