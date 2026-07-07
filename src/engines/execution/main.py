@@ -36,6 +36,7 @@ from engines.execution.order_executor import (
     OrderRequest,
 )
 from engines.execution.position_sync import position_sync_loop
+from engines.execution.reaper import reaper_loop
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
@@ -59,6 +60,10 @@ SYNC_INTERVAL_S = float(os.getenv("SYNC_INTERVAL_S", "5.0"))
 HEARTBEAT_INTERVAL_S = float(os.getenv("HEARTBEAT_INTERVAL_S", "10.0"))
 STUCK_WATCH_INTERVAL_S = float(os.getenv("STUCK_WATCH_INTERVAL_S", "60.0"))
 STUCK_AFTER_S = float(os.getenv("STUCK_AFTER_S", "600.0"))
+# Order FSM liveness (invariant I2) : reaper terminalises working orders that
+# exceed REAPER_TAU_S and are no longer live at IB. Spec §6.2.
+REAPER_INTERVAL_S = float(os.getenv("REAPER_INTERVAL_S", "30.0"))
+REAPER_TAU_S = float(os.getenv("REAPER_TAU_S", "300.0"))
 
 
 @asynccontextmanager
@@ -102,6 +107,15 @@ async def lifespan(app: FastAPI):
         ),
         name="stuck_order_watcher_loop",
     )
+    reaper_task = asyncio.create_task(
+        reaper_loop(
+            sm,
+            executor,
+            interval_s=REAPER_INTERVAL_S,
+            tau_stale_s=REAPER_TAU_S,
+        ),
+        name="order_reaper_loop",
+    )
     logger.info(
         "execution_startup ib_connected=%s sync_interval=%.1fs heartbeat=%.1fs",
         executor.is_connected(), SYNC_INTERVAL_S, HEARTBEAT_INTERVAL_S,
@@ -109,9 +123,9 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        for task in (sync_task, heartbeat_task, stuck_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reaper_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reaper_task):
             try:
                 await task
             except asyncio.CancelledError:

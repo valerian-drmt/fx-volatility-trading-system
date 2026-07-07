@@ -76,6 +76,48 @@ class OrderExecutor:
     def is_connected(self) -> bool:
         return self._ib is not None and self._ib.isConnected()
 
+    def account_is_reporting(self) -> bool:
+        """True when IB is actively streaming this account's data (account values
+        present) — so an EMPTY position list means the account is genuinely FLAT,
+        not a dead/transient feed. The reaper / reconciliation loops use this to
+        distinguish "safe to act on the snapshot" from "IB is unreachable"."""
+        if not self.is_connected():
+            return False
+        try:
+            return bool(self._ib.accountValues()) or bool(self._ib.portfolio())
+        except Exception:
+            return False
+
+    async def is_order_live(self, ib_order_id: str | int | None) -> bool:
+        """True if the order is still among IB's open trades (legitimately resting)."""
+        if ib_order_id is None or not self.is_connected():
+            return False
+        try:
+            return any(
+                str(t.order.orderId) == str(ib_order_id) for t in self._ib.openTrades()
+            )
+        except Exception:
+            return False
+
+    async def held_contracts(self) -> dict[str, float]:
+        """IB's net holdings keyed by localSymbol (signed qty). Broker truth."""
+        ib = self._ensure()
+        out: dict[str, float] = {}
+        for p in ib.positions():
+            sym = p.contract.localSymbol
+            if sym:
+                out[sym] = out.get(sym, 0.0) + float(p.position)
+        return out
+
+    async def recent_fills(self) -> list[Any]:
+        """ib_insync ``Fill`` objects IB still reports for this session/day.
+        Used by the reaper to replay execution events the handler missed."""
+        ib = self._ensure()
+        try:
+            return list(ib.fills())
+        except Exception:
+            return []
+
     def _ensure(self) -> Any:
         if not self.is_connected():
             raise OrderExecutorUnavailable("IB Gateway not connected")
