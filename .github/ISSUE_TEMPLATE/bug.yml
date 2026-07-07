@@ -1,0 +1,54 @@
+name: "🐛 Bug"
+description: "Incorrect behavior to fix"
+title: "[Bug] "
+labels: ["type:bug"]
+projects: ["valerian-drmt/5"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **No secrets** in this issue (keys, passwords, `DATABASE_URL`, `.env` contents).
+        Procedure: [`.github/WORKFLOW.md`](https://github.com/valerian-drmt/fx-volatility-trading-system/blob/main/.github/WORKFLOW.md).
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [API, Core, Engines, Persistence, Bus, Frontend, Infra/AWS, Ops/CI]
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options: ["P0 — Critical", "P1 — High", "P2 — Normal", "P3 — Low"]
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Logs / context
+      description: "⚠️ Redact any secret before pasting."
+    validations:
+      required: false

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
@@ -26,6 +27,9 @@ logger = logging.getLogger(__name__)
 # just drains whatever accumulated since the last iteration.
 POLL_INTERVAL_S = 0.1
 HEARTBEAT_EVERY_N_POLLS = 10  # ~1s at default cadence
+# Historical bars change slowly and IB paces reqHistoricalData — refresh the
+# cache every 15 min (well under IB's ~60-req/10-min budget for 3 timeframes).
+BARS_REFRESH_S = 15 * 60
 
 
 class _RedisLike(Protocol):
@@ -53,6 +57,8 @@ class MarketDataEngine:
         client_id: int,
         fetch_latest_tick: Any,
         post_connect_hook: Callable[[], Awaitable[None]] | None = None,
+        refresh_bars: Callable[[], Awaitable[None]] | None = None,
+        bars_refresh_s: float = BARS_REFRESH_S,
     ) -> None:
         self.ib = ib
         self.redis = redis
@@ -65,6 +71,11 @@ class MarketDataEngine:
         self._fetch_latest_tick = fetch_latest_tick
         # Called once after IB is connected — use it to reqMktData etc.
         self._post_connect_hook = post_connect_hook
+        # Optional periodic historical-bars refresh (IB → Redis cache). None in
+        # unit tests; wired in main.py. Failures never break the tick loop.
+        self._refresh_bars = refresh_bars
+        self._bars_refresh_s = bars_refresh_s
+        self._last_bars = 0.0
         self._stop = asyncio.Event()
 
     def request_stop(self) -> None:
@@ -84,6 +95,7 @@ class MarketDataEngine:
                 await self._post_connect_hook()
             except Exception:
                 logger.exception("post_connect_hook_failed")
+        await self._maybe_refresh_bars(force=True)
         logger.info("market_data_engine_started", extra={"symbol": self.symbol})
 
         try:
@@ -97,6 +109,7 @@ class MarketDataEngine:
                 poll += 1
                 if poll % HEARTBEAT_EVERY_N_POLLS == 0:
                     await publisher.set_heartbeat(self.redis, keys.ENGINE_MARKET_DATA)
+                await self._maybe_refresh_bars()
                 try:
                     await asyncio.wait_for(self._stop.wait(), timeout=POLL_INTERVAL_S)
                     break  # stop requested during sleep
@@ -104,6 +117,20 @@ class MarketDataEngine:
                     continue  # normal — no stop requested, loop
         finally:
             self._teardown()
+
+    async def _maybe_refresh_bars(self, *, force: bool = False) -> None:
+        """Refresh the historical-bars Redis cache on a timer. Best-effort: any
+        failure is logged and swallowed so ticks keep flowing."""
+        if self._refresh_bars is None:
+            return
+        now = time.monotonic()
+        if not force and now - self._last_bars < self._bars_refresh_s:
+            return
+        self._last_bars = now
+        try:
+            await self._refresh_bars()
+        except Exception:
+            logger.exception("refresh_bars_failed")
 
     async def _poll_once(self) -> None:
         tick = self._fetch_latest_tick()

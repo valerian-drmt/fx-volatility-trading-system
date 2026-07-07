@@ -1,0 +1,11 @@
+{ "Version":"2012-10-17","Statement":[
+  {"Sid":"PutPayload","Effect":"Allow","Action":["s3:PutObject"],
+   "Resource":"arn:aws:s3:::fxvol-deploy/*"},
+  {"Sid":"SendDeployCommand","Effect":"Allow","Action":["ssm:SendCommand"],
+   "Resource":[
+     "arn:aws:ec2:eu-west-1:552269855056:instance/i-082e72f0186c9d019",
+     "arn:aws:ssm:eu-west-1::document/AWS-RunShellScript"]},
+  {"Sid":"ReadCommandResult","Effect":"Allow",
+   "Action":["ssm:GetCommandInvocation","ssm:ListCommandInvocations","ssm:ListCommands"],
+   "Resource":"*"}
+]}

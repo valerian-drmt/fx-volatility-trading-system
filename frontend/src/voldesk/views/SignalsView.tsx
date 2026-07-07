@@ -197,9 +197,11 @@ function ATMTermChart({ ts }: { ts: TermPoint[] }): JSX.Element {
 // `series` = the real backend z-history (oldest→newest, /signals/pca/history).
 // Empty state until ≥2 points are persisted — no synthetic fallback.
 function ZSeriesChart({ pc, view, series }: { pc: Pc; view: string; series?: number[] }): JSX.Element {
-  const data = series && series.length >= 2 ? series.slice(view === "1W" ? -120 : -65) : [];
+  // Single daily z-history → the two views are just different daily windows
+  // (1M ≈ 22 pts vs 3M ≈ 65 pts). No hourly series exists, so no "hourly" view.
+  const data = series && series.length >= 2 ? series.slice(view === "1M" ? -22 : -65) : [];
   const w = 300,
-    h = 150,
+    h = 110,
     pl = 4,
     pr = 34,
     pt = 10,
@@ -245,7 +247,7 @@ function ZSeriesChart({ pc, view, series }: { pc: Pc; view: string; series?: num
       <path d={path} fill="none" stroke={tone} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
       <circle cx={X(n - 1)} cy={Y(data[n - 1]!)} r="3" fill={tone} stroke="var(--surface)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
       <text x={pl} y={h - 4} fill="var(--text-faint)" fontSize={fs} fontFamily="var(--mono)">
-        {view === "1W" ? "1W · hourly →" : "3M · daily →"}
+        {view === "1M" ? "1M · daily →" : "3M · daily →"}
       </text>
     </svg>
   );
@@ -362,9 +364,9 @@ export function SignalsView(): JSX.Element {
         right={
           <div className="pca-head-right">
             <div className="tf-group">
-              {["3M", "1W"].map((v) => (
+              {["3M", "1M"].map((v) => (
                 <button key={v} className={"chip " + (view === v ? "on" : "")} onClick={() => setView(v)}>
-                  {v === "3M" ? "3M daily" : "1W hourly"}
+                  {v === "3M" ? "3M daily" : "1M daily"}
                 </button>
               ))}
             </div>

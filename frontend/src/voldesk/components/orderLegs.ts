@@ -13,31 +13,57 @@ export function builderToLegs(
 ): PreviewLeg[] {
   const sd = side as "BUY" | "SELL";
   const opp: "BUY" | "SELL" = side === "BUY" ? "SELL" : "BUY";
-  const lvl = wing.replace("Δ", "").trim();   // "25Δ" → "25"
-  const dc = `${lvl}dc`, dp = `${lvl}dp`;
+  // `wing` is a delta pillar ("25Δc"/"ATM") or a bare level ("25Δ"). Symmetric
+  // wings use the level → put/call pillars; single-strike structures
+  // (straddle/calendar) use the chosen pillar directly.
+  const atmWing = wing === "ATM";
+  const lvl = atmWing ? "" : wing.replace(/[pc]$/, "").replace("Δ", "").trim(); // "25Δc"/"25Δ" → "25"
+  const dc = atmWing ? "atm" : `${lvl}dc`, dp = atmWing ? "atm" : `${lvl}dp`;
+  const single = atmWing ? "atm" : wing.toLowerCase().replace("δ", "d");        // "25Δc" → "25dc"
   switch (product) {
     case "Vanilla Call": return [{ contract_type: "call", side: sd, tenor, strike }];
     case "Vanilla Put":  return [{ contract_type: "put",  side: sd, tenor, strike }];
     case "Straddle": return [
-      { contract_type: "call", side: sd, tenor, delta_pillar: "atm" },
-      { contract_type: "put",  side: sd, tenor, delta_pillar: "atm" },
+      { contract_type: "call", side: sd, tenor, delta_pillar: single },
+      { contract_type: "put",  side: sd, tenor, delta_pillar: single },
     ];
     case "Strangle": return [
-      { contract_type: "put",  side: sd, tenor, delta_pillar: dp },
-      { contract_type: "call", side: sd, tenor, delta_pillar: dc },
+      // put + call at different strikes ; force 25Δ if ATM (else it's a straddle)
+      { contract_type: "put",  side: sd, tenor, delta_pillar: atmWing ? "25dp" : dp },
+      { contract_type: "call", side: sd, tenor, delta_pillar: atmWing ? "25dc" : dc },
     ];
+    case "Straddle/Strangle": return atmWing
+      ? [ // 50Δ (ATM) → straddle : call + put at the same ATM strike
+          { contract_type: "call", side: sd, tenor, delta_pillar: "atm" },
+          { contract_type: "put",  side: sd, tenor, delta_pillar: "atm" },
+        ]
+      : [ // 10Δ / 25Δ → strangle : OTM put + OTM call
+          { contract_type: "put",  side: sd, tenor, delta_pillar: dp },
+          { contract_type: "call", side: sd, tenor, delta_pillar: dc },
+        ];
     case "Butterfly": return [
-      { contract_type: "call", side: sd,  tenor, delta_pillar: dc },
+      // 3 calls (low + 2× ATM body + high) → classifier names it "butterfly".
+      // Force 25Δ wings if ATM is picked, else the 3 legs collapse onto ATM.
+      { contract_type: "call", side: sd,  tenor, delta_pillar: atmWing ? "25dp" : dp },
       { contract_type: "call", side: opp, tenor, delta_pillar: "atm", qty_factor: 2 },
-      { contract_type: "put",  side: sd,  tenor, delta_pillar: dp },
+      { contract_type: "call", side: sd,  tenor, delta_pillar: atmWing ? "25dc" : dc },
     ];
     case "Risk Reversal": return [
       { contract_type: "call", side: sd,  tenor, delta_pillar: dc },
       { contract_type: "put",  side: opp, tenor, delta_pillar: dp },
     ];
+    case "Call Spread": return [
+      // long ATM, short OTM call ; never ATM/ATM (zero-width) → force 25Δ if ATM
+      { contract_type: "call", side: sd,  tenor, delta_pillar: "atm" },
+      { contract_type: "call", side: opp, tenor, delta_pillar: atmWing ? "25dc" : dc },
+    ];
+    case "Put Spread": return [
+      { contract_type: "put", side: sd,  tenor, delta_pillar: "atm" },
+      { contract_type: "put", side: opp, tenor, delta_pillar: atmWing ? "25dp" : dp },
+    ];
     case "Calendar": return [
-      { contract_type: "call", side: opp, tenor, delta_pillar: "atm" },
-      { contract_type: "call", side: sd,  tenor: farTenor, delta_pillar: "atm" },
+      { contract_type: "call", side: opp, tenor, delta_pillar: single },
+      { contract_type: "call", side: sd,  tenor: farTenor, delta_pillar: single },
     ];
     case "Future": return [
       { contract_type: "future", side: sd, tenor, future_contract_size: csize.startsWith("M6E") ? "micro" : "full" },

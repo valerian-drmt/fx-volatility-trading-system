@@ -17,12 +17,15 @@ describe("builderToLegs", () => {
     ]);
   });
 
-  it("straddle = ATM call + ATM put, same side", () => {
-    const legs = builderToLegs("Straddle", "BUY", "1M", "4M", 0, "25Δ", "6E (€125k)");
-    expect(legs.map((l) => [l.contract_type, l.side, l.delta_pillar])).toEqual([
+  it("straddle = same-strike call + put (ATM by default, any pillar allowed)", () => {
+    const atm = builderToLegs("Straddle", "BUY", "1M", "4M", 0, "ATM", "6E (€125k)");
+    expect(atm.map((l) => [l.contract_type, l.side, l.delta_pillar])).toEqual([
       ["call", "BUY", "atm"],
       ["put", "BUY", "atm"],
     ]);
+    // off-ATM straddle: both legs share the chosen pillar
+    const off = builderToLegs("Straddle", "BUY", "1M", "4M", 0, "25Δc", "6E (€125k)");
+    expect(off.map((l) => l.delta_pillar)).toEqual(["25dc", "25dc"]);
   });
 
   it("strangle maps the wing level onto put/call pillars", () => {
@@ -30,12 +33,12 @@ describe("builderToLegs", () => {
     expect(legs.map((l) => l.delta_pillar)).toEqual(["10dp", "10dc"]);
   });
 
-  it("butterfly = long wings + opposite ATM body at qty_factor 2", () => {
+  it("butterfly = 3 calls (low + 2× ATM body + high), one type", () => {
     const legs = builderToLegs("Butterfly", "BUY", "3M", "4M", 0, "25Δ", "6E (€125k)");
     expect(legs).toEqual([
-      { contract_type: "call", side: "BUY", tenor: "3M", delta_pillar: "25dc" },
+      { contract_type: "call", side: "BUY", tenor: "3M", delta_pillar: "25dp" },
       { contract_type: "call", side: "SELL", tenor: "3M", delta_pillar: "atm", qty_factor: 2 },
-      { contract_type: "put", side: "BUY", tenor: "3M", delta_pillar: "25dp" },
+      { contract_type: "call", side: "BUY", tenor: "3M", delta_pillar: "25dc" },
     ]);
   });
 
@@ -48,7 +51,7 @@ describe("builderToLegs", () => {
   });
 
   it("calendar uses two tenors with opposite near/far sides", () => {
-    const legs = builderToLegs("Calendar", "BUY", "1M", "3M", 0, "25Δ", "6E (€125k)");
+    const legs = builderToLegs("Calendar", "BUY", "1M", "3M", 0, "ATM", "6E (€125k)");
     expect(legs).toEqual([
       { contract_type: "call", side: "SELL", tenor: "1M", delta_pillar: "atm" },
       { contract_type: "call", side: "BUY", tenor: "3M", delta_pillar: "atm" },

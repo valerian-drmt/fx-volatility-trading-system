@@ -36,6 +36,10 @@ LATEST_PNL_CURVE: str = "latest_pnl_curve"
 # Account snapshot (Market Data → FastAPI)
 ACCOUNT_SNAPSHOT: str = "account_snapshot"
 
+# Historical OHLC bars per symbol+timeframe (Market Data → FastAPI ticker).
+# Value = JSON list of {t, o, h, l, c}. Broker-backed cache, refreshed on a timer.
+BARS: str = "bars:{symbol}:{timeframe}"
+
 # Market open/closed state per symbol (Market Data → everyone)
 MARKET_STATUS: str = "market_status:{symbol}"
 
@@ -66,6 +70,10 @@ TTL_ACCOUNT: int = 60
 # 10 minutes so a skipped or slow scan does not blank the UI.
 TTL_VOL_SURFACE: int = 600
 TTL_SIGNALS: int = 600
+
+# Bars are a broker-backed cache refreshed every ~15 min; 6h TTL keeps the
+# chart populated through a missed refresh / brief engine restart.
+TTL_BARS: int = 6 * 60 * 60
 
 # Semi-static : market_status rarely flips, 5 min refresh is fine.
 TTL_MARKET_STATUS: int = 300

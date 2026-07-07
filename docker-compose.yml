@@ -290,10 +290,16 @@ services:
       # 5 s = compromis : UI poll à 5 s côté front, charge IB modérée
       # (12 calls/min). Surchargeable via la var d'env EXECUTION_SYNC_INTERVAL_S.
       SYNC_INTERVAL_S: ${EXECUTION_SYNC_INTERVAL_S:-5.0}
-      # Place combo-eligible option structures as a single IB BAG (all-or-nothing
-      # fill, no naked half-fill). OFF by default — the per-leg path is the tested
-      # fallback ; flip to 1 once validated on the paper account.
+      # Combo (BAG) execution : atomic all-or-nothing fill, no naked half-fill.
+      # OFF by default — the IB PAPER simulator handles BAGs poorly (legs fill then
+      # go flat, booking drifts from the account), so the transparent per-leg path
+      # is the reliable default + the naked-residual flag surfaces the risk. Set
+      # EXECUTION_USE_COMBO=1 to re-enable once validated on a combo-friendly venue.
       EXECUTION_USE_COMBO: ${EXECUTION_USE_COMBO:-0}
+      # Reconcile the book to IB : auto-close booked positions the broker no longer
+      # holds (guarded against transient/disconnected IB snapshots). Set to 0 to
+      # only warn (trade_position_unreconciled) instead of closing.
+      RECONCILE_AUTOCLOSE: ${RECONCILE_AUTOCLOSE:-1}
     depends_on:
       postgres:
         condition: service_healthy

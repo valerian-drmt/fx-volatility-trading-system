@@ -11,7 +11,9 @@ __pycache__/
 src/*.egg-info/
 CLAUDE.md
 .claude
-.idea
+# IDE : ignore everything except the shared run/debug configurations
+.idea/*
+!.idea/runConfigurations/
 .env
 .env.local
 releases

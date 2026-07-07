@@ -19,9 +19,11 @@ container orchestrator sees a clean stop instead of a killed process.
 from __future__ import annotations
 
 import asyncio
+import json
 import signal
 from typing import Any
 
+from bus import keys
 from bus.client import get_async_redis
 from shared.config import get_settings
 from shared.logging import configure_logging
@@ -72,6 +74,21 @@ async def run() -> None:
     async def _post_connect_subscribe() -> None:
         await _subscribe_ib_ticks(ib, _on_ticker_update, settings.MARKET_SYMBOL)
 
+    async def _refresh_bars() -> None:
+        # Pull real OHLC bars from IB and cache them per timeframe in Redis so the
+        # API can serve the ticker without any IB access of its own.
+        from engines.market_data.bars_fetcher import fetch_bars
+
+        by_tf = await fetch_bars(ib, settings.MARKET_SYMBOL)
+        for tf, rows in by_tf.items():
+            if not rows:
+                continue
+            await redis.set(
+                keys.BARS.format(symbol=settings.MARKET_SYMBOL, timeframe=tf),
+                json.dumps(rows, separators=(",", ":")),
+                ex=keys.TTL_BARS,
+            )
+
     engine = MarketDataEngine(
         ib=ib,
         redis=redis,
@@ -81,6 +98,7 @@ async def run() -> None:
         client_id=settings.IB_CLIENT_ID,
         fetch_latest_tick=_fetch_latest_tick,
         post_connect_hook=_post_connect_subscribe,
+        refresh_bars=_refresh_bars,
     )
 
     loop = asyncio.get_running_loop()

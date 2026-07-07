@@ -136,10 +136,12 @@ export function SettingsView(): JSX.Element {
   const { config } = useDeskData();
   const data = config.data;
   const [busy, setBusy] = useState(false);
+  // Write gate = real login state (auth cookie) OR the local-dev build bypass.
+  const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
   // Revert = the first write (Phase 2 / 2w): duplicates a past version as the new
   // head + hot-reloads the engine. Gated by WRITE_ENABLED (auth in prod, free local).
   const onRevert = async (version: number): Promise<void> => {
-    if (busy || !WRITE_ENABLED) return;
+    if (busy || !canWrite) return;
     setBusy(true);
     try {
       await revertConfig(version, `revert to v${version} (desk)`);
@@ -153,7 +155,7 @@ export function SettingsView(): JSX.Element {
   const [edits, setEdits] = useState<Record<string, string>>({});
   const dirty = Object.keys(edits).length;
   const onCommit = async (): Promise<void> => {
-    if (busy || !WRITE_ENABLED || dirty === 0) return;
+    if (busy || !canWrite || dirty === 0) return;
     setBusy(true);
     const patch: Record<string, unknown> = {};
     for (const [mapKey, raw] of Object.entries(edits)) {
@@ -201,8 +203,8 @@ export function SettingsView(): JSX.Element {
                   <td className="r">
                     <button
                       className="row-close"
-                      disabled={!WRITE_ENABLED || busy}
-                      title={WRITE_ENABLED ? `revert to v${h.version}` : GATE_TITLE}
+                      disabled={!canWrite || busy}
+                      title={canWrite ? `revert to v${h.version}` : GATE_TITLE}
                       onClick={() => onRevert(h.version)}
                     >
                       revert
@@ -235,7 +237,7 @@ export function SettingsView(): JSX.Element {
                     return (
                       <div key={f.key} className="cfg-field">
                         <span className="cfg-key mono dim">{f.key}</span>
-                        {WRITE_ENABLED ? (
+                        {canWrite ? (
                           <input
                             className="cfg-val-input mono"
                             value={edits[mapKey] ?? f.value}
@@ -258,7 +260,7 @@ export function SettingsView(): JSX.Element {
                 </div>
               ))}
             </div>
-            {WRITE_ENABLED && (
+            {canWrite && (
               <div className="cfg-commit-bar">
                 <button
                   className="btn-primary"
@@ -276,7 +278,7 @@ export function SettingsView(): JSX.Element {
               </div>
             )}
             <div className="dim small" style={{ marginTop: 10 }}>
-              {WRITE_ENABLED
+              {canWrite
                 ? "Per-field editing · commit appends a new version + hot-reload (Pydantic validates types server-side)."
                 : "Read-only · config editing (commit/revert) arrives with auth (Phase 2)."}
             </div>

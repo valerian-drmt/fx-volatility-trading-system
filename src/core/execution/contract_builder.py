@@ -203,10 +203,13 @@ def build_combo(
     per structure leg, each with the qualified IB ``conId``.
 
     Ratios are the leg quantities reduced by their GCD (a Risk Reversal 25×25 →
-    1:1 with ``totalQuantity=25`` ; a Butterfly 25/50/25 → 1:2:1 with 25). The net
-    combo limit price is the signed sum ``Σ ±ratio·limit`` (BUY +, SELL −) — a
-    positive net is a debit, a negative net a credit ; the package is always
-    expressed as a BUY, so a credit rides as a negative ``lmtPrice`` (IB accepts).
+    1:1 with ``totalQuantity=25`` ; a Butterfly 25/50/25 → 1:2:1 with 25). If every
+    leg has a ``limit_price`` the net combo limit is the signed sum
+    ``Σ ±ratio·limit`` (BUY +, SELL −) and is returned as ``order['lmtPrice']`` — a
+    positive net is a debit, a negative a credit (the package is a BUY, so a credit
+    rides as a negative ``lmtPrice``, which IB accepts). If ANY leg has no price
+    (``limit_price=None`` — the desk sends legs as market orders) the ``lmtPrice``
+    key is OMITTED and the caller places a market BAG.
 
     Returns dialect-free dicts (no ib_insync import) so this is unit-testable ;
     the engine wraps ``comboLegs`` into ``ib_insync.ComboLeg`` and the order into
@@ -224,6 +227,7 @@ def build_combo(
 
     combo_legs: list[dict[str, object]] = []
     net = 0.0
+    have_prices = True
     for leg in legs:
         action = str(leg["side"]).upper()
         if action not in ("BUY", "SELL"):
@@ -235,15 +239,25 @@ def build_combo(
             "action": action,
             "exchange": str(leg.get("exchange") or exchange),
         })
-        sign = 1.0 if action == "BUY" else -1.0
-        net += sign * ratio * float(leg["limit_price"])  # type: ignore[arg-type]
+        # Net limit is only meaningful if EVERY leg has a limit price. The desk
+        # sends legs as market orders (limit_price=None) → the combo rides as a
+        # market BAG (no lmtPrice), so we skip the net entirely in that case.
+        lp = leg.get("limit_price")
+        if lp is None:
+            have_prices = False
+        else:
+            sign = 1.0 if action == "BUY" else -1.0
+            net += sign * ratio * float(lp)  # type: ignore[arg-type]
 
+    order: dict[str, object] = {"action": "BUY", "totalQuantity": base}
+    if have_prices:
+        order["lmtPrice"] = round(net, 4)   # debit > 0, credit < 0
     return {
         "contract": {
             "symbol": symbol, "secType": "BAG",
             "exchange": exchange, "currency": currency,
             "comboLegs": combo_legs,
         },
-        "order": {"action": "BUY", "totalQuantity": base, "lmtPrice": round(net, 4)},
+        "order": order,
         "base_qty": base,
     }

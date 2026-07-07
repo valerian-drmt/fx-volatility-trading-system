@@ -62,6 +62,10 @@ export function genCandles(n: number, start: number, vol: number, seed: number, 
 }
 
 export const SPOT = 1.0842;
+// Mock deltas were authored on the old "$ per big-figure" scale (notional × 0.01).
+// Multiply by this to reach cash dollar-delta (notional × spot), matching the
+// backend `delta_usd` and the OrderBuilder preview. Factor = spot / 0.01 = spot×100.
+const DELTA_CASH = SPOT * 100;
 export const tenors = ["1M", "2M", "3M", "4M", "5M", "6M"];
 export const deltas = ["10Δp", "25Δp", "ATM", "25Δc", "10Δc"];
 
@@ -316,7 +320,8 @@ function leg(pkgId: number, struct: string, spec: LegSpec): Position {
     iv,
     pnl,
     nominal: qty * 125000,
-    delta: g.d,
+    delta: g.d * DELTA_CASH, // authored per-figure → cash dollar-delta
+
     gamma: g.g,
     vega: g.v,
     theta: g.t,
@@ -414,7 +419,7 @@ export const limits = {
   vega: { cap: 48000, unit: "$/vp" },
   vanna: { cap: 260, unit: "$k/vp·fig" },
   var99: { cap: 420, unit: "$k" },
-  deltaBandUsd: 5000,
+  deltaBandUsd: Math.round(5000 * DELTA_CASH), // cash dollar-delta band
   skewVarPct: 20,
   // Live vega budget from risk config (config_scalar 'max_book_vega_usd'); 0
   // until the config row resolves — never a mock fallback.
@@ -440,7 +445,7 @@ export const workingOrders: WorkingOrder[] = [
 
 // ---- SINGLE GREEKS ENGINE: reconcile per-leg greeks so the book foots to the canonical net.
 const GREEKS_NET = {
-  delta: greeks.delta * 1000, gamma: greeks.gamma * 1000, vega: greeks.vega * 1000,
+  delta: greeks.delta * 1000 * DELTA_CASH, gamma: greeks.gamma * 1000, vega: greeks.vega * 1000,
   theta: greeks.theta * 1000, vanna: 177, volga: 42,
 };
 (function reconcileBookGreeks(): void {

@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -30,9 +31,15 @@ from persistence.models import (
     BookedPosition,
     OpenPosition,
     StructureOrder,
+    TradeEvent,
     TradeStructure,
 )
 from shared.contracts import multiplier_for, parse_local_symbol
+
+# Auto-close booked positions the broker no longer holds (book ↔ IB reconciliation).
+# ON by default ; a stale booking that IB shows flat (for >1h) is closed with an
+# audit trail. Guarded so it NEVER fires on an empty/disconnected IB snapshot.
+_AUTOCLOSE_STALE = os.getenv("RECONCILE_AUTOCLOSE", "1").lower() in ("1", "true", "yes")
 
 logger = logging.getLogger(__name__)
 
@@ -471,6 +478,11 @@ async def reconcile_trade_positions(
 
     now = datetime.now(UTC)
     reconciled = 0
+    closed = 0
+    # "flat at IB" is only actionable when IB is actively reporting the account
+    # (account values streaming). Then an empty position list = genuinely flat →
+    # safe to close the stale book. If the feed is dead we never touch it.
+    ib_data_live = executor.account_is_reporting()
     for tp in open_trade_positions:
         legs = (await db.execute(
             select(StructureOrder).where(
@@ -491,13 +503,32 @@ async def reconcile_trade_positions(
         tp.ib_qty_diff = booked_qty_total - ib_qty_total
         reconciled += 1
         if ib_qty_total == 0 and tp.opened_at < now - timedelta(hours=1):
-            logger.warning(
-                "trade_position_unreconciled id=%d opened_at=%s booked_qty=%d",
-                tp.id, tp.opened_at.isoformat(), booked_qty_total,
-            )
+            if _AUTOCLOSE_STALE and ib_data_live:
+                # broker holds none of this booking's legs → close it (audited)
+                tp.state = "closed"
+                tp.closed_at = now
+                tp.state_updated_at = now
+                tp.close_reason = "reconciled_flat_at_ib"
+                closed += 1
+                db.add(TradeEvent(
+                    structure_id=tp.structure_id,
+                    event_type="position_reconciled_closed", severity="info",
+                    description=(
+                        f"booked position {tp.id} flat at IB (booked {booked_qty_total}) "
+                        "→ closed by reconciliation"
+                    ),
+                    payload={"booked_position_id": tp.id, "booked_qty": booked_qty_total},
+                ))
+            else:
+                logger.warning(
+                    "trade_position_unreconciled id=%d opened_at=%s booked_qty=%d",
+                    tp.id, tp.opened_at.isoformat(), booked_qty_total,
+                )
 
     await db.commit()
-    return {"reconciled": reconciled}
+    if closed:
+        logger.info("reconcile_closed_stale count=%d", closed)
+    return {"reconciled": reconciled, "closed": closed}
 
 
 async def position_sync_loop(

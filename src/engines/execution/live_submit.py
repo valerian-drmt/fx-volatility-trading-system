@@ -22,7 +22,9 @@ to one order per leg. Combo assembly lives in ``core.execution.build_combo``.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -50,6 +52,47 @@ logger = logging.getLogger(__name__)
 
 class LiveSubmitError(RuntimeError):
     """Raised when live submit cannot proceed (IB down, contract unqualified)."""
+
+
+_OPT_TICK = 0.0001  # CME EUR-FOP minimum price variation
+
+
+def _num(x: Any) -> float | None:
+    """Coerce to a positive finite float, else None (drops NaN / <=0)."""
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if v == v and v > 0 else None
+
+
+async def _marketable_limit(ib: Any, contract: Any, side: str, fallback: float) -> float:
+    """Price a marketable limit off IB's LIVE quote so the order fills at the touch
+    (BUY → ask, SELL → bid), snapped to the tick. The theoretical preview premium
+    misprices real options (esp. OTM), leaving SELL limits above the bid → they
+    never cross. Falls back to ``fallback`` (the preview limit) if no quote."""
+    try:
+        tickers = await asyncio.wait_for(ib.reqTickersAsync(contract), timeout=3.0)
+    except Exception:
+        tickers = None
+    t = tickers[0] if tickers else None
+    bid = _num(getattr(t, "bid", None)) if t is not None else None
+    ask = _num(getattr(t, "ask", None)) if t is not None else None
+    mkt = None
+    if t is not None:
+        try:
+            mkt = _num(t.marketPrice())
+        except Exception:
+            mkt = None
+
+    if side.upper() == "BUY":
+        ref = ask or mkt
+        return round(math.ceil(ref / _OPT_TICK) * _OPT_TICK, 6) if ref else fallback
+    ref = bid or mkt
+    if not ref:
+        return fallback
+    lp = math.floor(ref / _OPT_TICK) * _OPT_TICK
+    return round(lp, 6) if lp > 0 else fallback
 
 
 async def submit_structure_live(
@@ -115,8 +158,6 @@ async def submit_structure_live(
             for order in orders:
                 if order.contract_expiry is None or order.contract_strike is None:
                     raise LiveSubmitError(f"order {order.id} missing expiry/strike for combo")
-                if order.limit_price is None:
-                    raise LiveSubmitError(f"order {order.id} missing limit_price for combo")
                 ck = build_contract_kwargs(
                     contract_type=order.contract_type, expiry=order.contract_expiry,
                     strike=float(order.contract_strike), symbol=order.contract_symbol,
@@ -129,7 +170,8 @@ async def submit_structure_live(
                 conid_to_order[int(qc.conId)] = order.id
                 combo_input.append({
                     "conId": int(qc.conId), "side": order.side, "qty": int(order.qty),
-                    "limit_price": float(order.limit_price),
+                    # None when the desk sends the leg as a market order → market BAG
+                    "limit_price": float(order.limit_price) if order.limit_price is not None else None,
                     "exchange": getattr(qc, "exchange", None) or order.contract_exchange,
                 })
             first = orders[0]
@@ -143,7 +185,12 @@ async def submit_structure_live(
                 symbol=cc["symbol"], secType="BAG", exchange=cc["exchange"], currency=cc["currency"],
                 comboLegs=[ComboLeg(**cl) for cl in cc["comboLegs"]],
             )
-            combo_order = LimitOrder(co["action"], co["totalQuantity"], co["lmtPrice"])
+            # LimitOrder only when every leg had a price ; otherwise a market BAG
+            # (matches the desk sending legs as MKT — see api trade.submit).
+            if "lmtPrice" in co:
+                combo_order = LimitOrder(co["action"], co["totalQuantity"], co["lmtPrice"])
+            else:
+                combo_order = MarketOrder(co["action"], co["totalQuantity"])
             combo_order.tif = first.time_in_force or "DAY"
             trade = ib.placeOrder(bag, combo_order)
             attach_combo_fill_handlers(
@@ -155,10 +202,11 @@ async def submit_structure_live(
                 order.ib_perm_id = str(trade.order.permId) if trade.order.permId else None
                 order.state = "submitted"
                 order.submitted_at = now
+            net_price = co.get("lmtPrice")  # None for a market BAG
             db.add(TradeEvent(
                 structure_id=structure_id, event_type="live_submit_combo", severity="info",
-                description=f"placed BAG combo net={co['lmtPrice']} base_qty={co['totalQuantity']}",
-                payload={"net_price": co["lmtPrice"], "base_qty": co["totalQuantity"], "n_legs": len(orders)},
+                description=f"placed BAG combo net={net_price if net_price is not None else 'MKT'} base_qty={co['totalQuantity']}",
+                payload={"net_price": net_price, "base_qty": co["totalQuantity"], "n_legs": len(orders)},
             ))
             await db.commit()
             return {
@@ -231,10 +279,15 @@ async def submit_structure_live(
                 ib_order = MarketOrder(order.side, int(order.qty))
                 ib_order.tif = tif
             else:
+                # Re-price the marketable limit off IB's LIVE quote (BUY→ask,
+                # SELL→bid) so it actually crosses ; the stored preview limit is
+                # only a fallback when no quote is available.
+                lp = await _marketable_limit(
+                    ib, contract, order.side, float(order.limit_price),
+                )
+                order.limit_price = lp
                 ok = build_order_kwargs(
-                    side=order.side, qty=order.qty,
-                    limit_price=float(order.limit_price),
-                    time_in_force=tif,
+                    side=order.side, qty=order.qty, limit_price=lp, time_in_force=tif,
                 )
                 ib_order = LimitOrder(ok["action"], ok["totalQuantity"], ok["lmtPrice"])
                 ib_order.tif = ok["tif"]

@@ -1,39 +1,45 @@
-## Résumé
+## Summary
 
-<!-- 1-2 phrases sur le but du PR -->
+<!-- 1-2 sentences on the purpose of this PR -->
 
-## Release concernée
+## Linked issue
 
-- **Milestone** : R<X> — <titre>
-- **Spec** : `releases/r<X>-<slug>.md`
-- **Tag cible** : `vX.Y.Z`
+Closes #<N>
+<!-- REQUIRED: closes the issue + moves the board card to ✅ Done on merge. -->
 
-## Changements
+## Release
+
+- **Release (board)**: R<X>
+- **Target tag**: `vX.Y.Z`
+
+## Changes
 
 - <item 1>
 - <item 2>
 
-## Tests effectués
+## Tests performed
 
 - [ ] `python -m pytest -m "not integration"` OK
 - [ ] `python -m ruff check src tests` OK
 - [ ] `python -m compileall -q src` OK
 - [ ] `PYTHONPATH=src lint-imports` OK (architecture contracts)
-- [ ] Tests manuels : <scénario>
-- [ ] (si frontend) `npm run test` + `npm run test:e2e` OK
+- [ ] Manual test: <scenario>
+- [ ] (if frontend) `npm run test` + `npm run test:e2e` OK
 
 ## Feature flag
 
-- [ ] Pas de flag (feature complète)
-- [ ] Caché derrière `FF_<NOM>` (désactivé par défaut)
+- [ ] No flag (complete feature)
+- [ ] Behind `FF_<NAME>` (disabled by default)
 
-## Screenshots (si UI)
+## Screenshots (if UI)
 
 <!-- drag & drop -->
 
-## Checklist de merge
+## Merge checklist
 
-- [ ] CI verte
-- [ ] Branche à jour avec `main` (rebase si nécessaire)
-- [ ] Conventional Commits respectés
-- [ ] Aucun `Co-Authored-By` dans les messages de commit
+- [ ] `Closes #N` present (closes the issue + card → ✅ Done)
+- [ ] CI green
+- [ ] Branch up to date with `main` (rebase if needed)
+- [ ] Conventional Commits respected
+- [ ] No `Co-Authored-By` / bot name in commit messages
+- [ ] No secret exposed (issue, PR, commit, log)

@@ -154,14 +154,18 @@ function Topbar({
         {stateLabel}
       </span>
       <span className="tb-badge paper">PAPER</span>
-      <button
-        className={"tb-badge auth" + (authed ? " in" : "")}
-        onClick={onAuthClick}
-        title={authed ? "Sign out" : "Sign in"}
-        data-testid="auth-btn"
-      >
-        {authed ? "● Trader" : "Sign in"}
-      </button>
+      {authed ? (
+        <>
+          <span className="tb-badge auth in">● Trader</span>
+          <button className="tb-badge auth-out" onClick={onAuthClick} title="Sign out" data-testid="auth-btn">
+            Sign out
+          </button>
+        </>
+      ) : (
+        <button className="tb-badge auth" onClick={onAuthClick} title="Sign in" data-testid="auth-btn">
+          Sign in
+        </button>
+      )}
       <span className="tb-clock mono">
         {clock} <span className="dim">UTC+1</span>
       </span>

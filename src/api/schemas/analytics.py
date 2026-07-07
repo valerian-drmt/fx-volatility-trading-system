@@ -18,6 +18,16 @@ class VolHistoryRow(BaseModel):
     forward: Decimal | None
 
 
+class BarRow(BaseModel):
+    """One OHLC candle. ``t`` = bar-open epoch milliseconds (UTC)."""
+
+    t: int
+    o: float
+    h: float
+    l: float  # noqa: E741 — compact OHLC wire key, matches the engine/frontend
+    c: float
+
+
 class EngineStats(BaseModel):
     name: str
     state: str   # OK | STALE (Ns) | DOWN

@@ -125,6 +125,32 @@ def test_build_combo_butterfly_1_2_1():
     assert out["order"]["lmtPrice"] == pytest.approx(0.001)
 
 
+def test_build_combo_market_when_no_leg_prices():
+    """Legs with no limit_price (desk sends MKT) → no lmtPrice → market BAG."""
+    out = build_combo(
+        symbol="EUR", exchange="CME", currency="USD",
+        legs=[
+            {"conId": 1, "side": "BUY", "qty": 25, "limit_price": None},
+            {"conId": 2, "side": "BUY", "qty": 25, "limit_price": None},
+        ],
+    )
+    assert "lmtPrice" not in out["order"]
+    assert out["order"] == {"action": "BUY", "totalQuantity": 25}
+    assert [lg["ratio"] for lg in out["contract"]["comboLegs"]] == [1, 1]
+
+
+def test_build_combo_partial_prices_still_market():
+    """Mixed (some priced, some not) → treated as market (no partial net)."""
+    out = build_combo(
+        symbol="EUR", exchange="CME", currency="USD",
+        legs=[
+            {"conId": 1, "side": "BUY", "qty": 10, "limit_price": 0.01},
+            {"conId": 2, "side": "SELL", "qty": 10, "limit_price": None},
+        ],
+    )
+    assert "lmtPrice" not in out["order"]
+
+
 def test_build_combo_net_credit_is_negative():
     """SELL-rich structure → signed net < 0 (credit), rides as negative lmtPrice."""
     out = build_combo(

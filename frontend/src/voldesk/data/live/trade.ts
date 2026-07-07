@@ -84,7 +84,7 @@ export function adaptPositions(raw: unknown, now: number): Position[] {
       strike: 0, // backend row carries no strike → table omits the "K" hint
       entry: n(r.contract_price_entry),
       mark: n(r.market_price),
-      iv: n(r.iv),
+      iv: n(r.iv) * 100, // backend stores IV as a fraction (0.054) → show percent (5.4)
       pnl,
       nominal,
       // δ/Γ/vega/θ stay in $ (the view auto-scales via gkc/gk$). vanna/volga

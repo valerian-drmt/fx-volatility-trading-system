@@ -1,0 +1,8 @@
+{ "Version":"2012-10-17","Statement":[
+  {"Sid":"GetDeployPayload","Effect":"Allow","Action":["s3:GetObject"],
+   "Resource":"arn:aws:s3:::fxvol-deploy/*"},
+  {"Sid":"ReadProdParams","Effect":"Allow","Action":["ssm:GetParameter","ssm:GetParameters"],
+   "Resource":"arn:aws:ssm:eu-west-1:552269855056:parameter/fxvol/prod/*"},
+  {"Sid":"DecryptSecrets","Effect":"Allow","Action":["kms:Decrypt"],
+   "Resource":"arn:aws:kms:eu-west-1:552269855056:key/bbc7ef4a-0b3e-4019-a7db-4502c4662f30"}
+]}
