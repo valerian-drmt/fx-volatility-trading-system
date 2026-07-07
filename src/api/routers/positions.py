@@ -39,6 +39,7 @@ from persistence.models import (
     ExitAlert,
     ExitRulesConfig,
     HedgeOrder,
+    LegPosition,
     OpenPosition,
     OpenPositionHistory,
     StructureFill,
@@ -332,6 +333,93 @@ async def list_open(db: DbDep) -> list[dict[str, Any]]:
         "timestamp": r.timestamp.isoformat() if r.timestamp else None,
         "entry_timestamp": r.entry_timestamp.isoformat() if r.entry_timestamp else None,
     } for r in rows]
+
+
+@router.get("/book")
+async def list_book(db: DbDep) -> list[dict[str, Any]]:
+    """The BOOK positions — the forward projection, one row per open leg.
+
+    Identity, quantity and trade attribution come from ``leg_position``
+    (the pure fold of each leg's own fills via FK — invariants I3/I7) ;
+    the IB mirror (``open_position``) contributes **marks and greeks
+    only**, as pricing enrichment, never as the authority on who holds
+    what. Rows keep the same column names as ``/positions/open`` so the
+    panel adapter is source-agnostic ; book-specific fields
+    (``contract`` / ``open_qty`` / ``reserved_qty`` / ``available``) ride
+    alongside.
+    """
+    rows = (await db.execute(
+        select(LegPosition, StructureOrder, TradeStructure)
+        .join(StructureOrder, LegPosition.order_id == StructureOrder.id)
+        .join(TradeStructure, StructureOrder.structure_id == TradeStructure.id)
+        .order_by(desc(LegPosition.id))
+    )).all()
+    mirror: dict[str, OpenPosition] = {
+        p.structure: p
+        for p in (await db.execute(select(OpenPosition))).scalars().all()
+    }
+
+    def _f(v):  # Decimal → float for JSON
+        return float(v) if v is not None else None
+
+    out: list[dict[str, Any]] = []
+    for leg, order, struct in rows:
+        open_qty = float(leg.open_qty or 0)
+        reserved = float(leg.reserved_qty or 0)
+        if open_qty == 0 and reserved == 0:
+            continue                      # flat and unencumbered → not a holding
+        contract = order.ib_local_symbol
+        mir = mirror.get(contract) if contract else None
+        mark = _f(mir.market_price) if mir is not None else None
+        avg = leg.avg_price
+        unreal = None
+        if mark is not None and avg is not None and open_qty != 0:
+            unreal = round(
+                (mark - avg) * open_qty * multiplier_for(order.contract_symbol), 2,
+            )
+        out.append({
+            # ── Book identity (exact, forward attribution) ──
+            "order_id": order.id,
+            "trade_id": struct.id,
+            "leg_idx": order.leg_idx,
+            "contract": contract,
+            "open_qty": open_qty,
+            "reserved_qty": reserved,
+            "available": abs(open_qty) - reserved,
+            "avg_price": avg,
+            "realized_pnl_usd": leg.realized_pnl_usd,
+            "rebuilt_at": leg.rebuilt_at.isoformat() if leg.rebuilt_at else None,
+            # ── Panel-compatible keys (same shape as /positions/open) ──
+            "id": mir.id if mir is not None else None,
+            "package_id": struct.package_id,
+            "product_label": struct.product_label or struct.structure_type,
+            "structure": contract or (struct.product_label or struct.structure_type),
+            "side": "BUY" if open_qty >= 0 else "SELL",
+            "quantity": abs(open_qty),
+            "tenor": _tenor_bucket(order.contract_expiry),
+            "expiry": order.contract_expiry.isoformat() if order.contract_expiry else None,
+            "contract_id": mir.contract_id if mir is not None else None,
+            "contract_price_entry": avg,
+            # ── Mirror enrichment : PRICING only, never attribution ──
+            "market_price": mark,
+            "current_pnl_usd": unreal,
+            "nominal_eur": _f(mir.nominal_eur) if mir is not None else None,
+            "delta_usd": _f(mir.delta_usd) if mir is not None else None,
+            "gamma_usd": _f(mir.gamma_usd) if mir is not None else None,
+            "vega_usd": _f(mir.vega_usd) if mir is not None else None,
+            "theta_usd": _f(mir.theta_usd) if mir is not None else None,
+            "iv": _f(mir.iv) if mir is not None else None,
+            "vanna_usd": _f(mir.vanna_usd) if mir is not None else None,
+            "volga_usd": _f(mir.volga_usd) if mir is not None else None,
+            "timestamp": (
+                mir.updated_at.isoformat() if mir is not None and mir.updated_at else None
+            ),
+            "entry_timestamp": (
+                struct.first_fill_at.isoformat() if struct.first_fill_at
+                else struct.created_at.isoformat() if struct.created_at else None
+            ),
+        })
+    return out
 
 
 @router.get("/active")
@@ -697,6 +785,11 @@ class ClosePositionRequest(BaseModel):
     # The operator only sets this field when they want a specific
     # price (e.g. cleanup of a stuck order).
     limit_price: float | None = Field(default=None, gt=0)
+    # Forward attribution (invariant I3) : the entry trade_order (= the leg)
+    # this close reduces. The book panel sends it explicitly ; when omitted
+    # the API resolves it from the position's trade + contract at close
+    # creation time. Never reconstructed later from the netted mirror.
+    entry_order_id: int | None = Field(default=None, gt=0)
 
 
 # Slippage applied to the close LimitOrder when we fall back outside
@@ -788,12 +881,42 @@ def _structure_type_for_close(local_symbol: str, side: str) -> str:
     return "future_buy" if side == "BUY" else "future_sell"
 
 
+async def _resolve_entry_leg_id(
+    db: AsyncSession, pos: OpenPosition, explicit_id: int | None,
+) -> int | None:
+    """The entry ``trade_order`` (= leg) a close of ``pos`` reduces.
+
+    Explicit id (sent by the book panel) wins after validation ; otherwise
+    resolve from the position's trade + contract. Returns None when the
+    close is unattributable (orphan contract) — the book then keeps the leg
+    open and reconciliation surfaces the gap instead of guessing.
+    """
+    if explicit_id is not None:
+        entry = await db.get(StructureOrder, explicit_id)
+        if entry is None or entry.order_role != "entry":
+            raise HTTPException(400, f"entry_order_id {explicit_id} is not an entry leg")
+        return entry.id
+    if pos.trade_id is None:
+        return None
+    return (await db.execute(
+        select(StructureOrder.id)
+        .where(
+            StructureOrder.structure_id == pos.trade_id,
+            StructureOrder.order_role == "entry",
+            StructureOrder.ib_local_symbol == pos.structure,
+        )
+        .order_by(StructureOrder.id)
+        .limit(1)
+    )).scalar_one_or_none()
+
+
 async def close_one_open_position(
     *,
     db: AsyncSession,
     pos: OpenPosition,
     qty: int,
     limit_price_override: float | None = None,
+    entry_order_id: int | None = None,
 ) -> dict[str, Any]:
     """Close ``qty`` contracts of a single ``open_position`` row.
 
@@ -855,6 +978,7 @@ async def close_one_open_position(
     await db.flush()  # populates closing_struct.id
 
     contract_fields = _contract_fields_from_symbol(pos.structure, pos.side)
+    closes_order_id = await _resolve_entry_leg_id(db, pos, entry_order_id)
     closing_order = StructureOrder(
         structure_id=closing_struct.id,
         leg_idx=0, order_role="closing",
@@ -862,6 +986,7 @@ async def close_one_open_position(
         order_type=order_type, limit_price=limit_price,
         contract_expiry=pos.expiry,
         state="pending",
+        closes_order_id=closes_order_id,
         **contract_fields,
     )
     db.add(closing_order)
@@ -966,6 +1091,7 @@ async def close_live_position(
         raise HTTPException(404, f"position #{position_id} not found")
     return await close_one_open_position(
         db=db, pos=pos, qty=body.qty, limit_price_override=body.limit_price,
+        entry_order_id=body.entry_order_id,
     )
 
 

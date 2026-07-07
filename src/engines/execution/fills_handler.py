@@ -34,6 +34,7 @@ from core.execution.fills import (
     apply_fill_idempotent,
     update_order_aggregates,
 )
+from engines.execution.position_projector import rebuild_for_order
 from engines.execution.redis_state import get_client as _get_redis
 from persistence.models import (
     BookedPosition,
@@ -221,6 +222,11 @@ async def _on_execution(
                 "avg_fill_price": agg.avg_fill_price,
                 "state": order.state,
             })
+
+            # Forward projection (invariant I3) : fold the affected leg's book
+            # position from its fill log — entry leg, or the leg a closing
+            # order points at via closes_order_id.
+            await rebuild_for_order(sm, order_id)
 
             # Outside the same transaction : structure cascade may write
             # trade_positions row.

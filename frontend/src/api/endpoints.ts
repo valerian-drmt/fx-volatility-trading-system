@@ -113,6 +113,9 @@ export const fetchPcaHistory = (pcId: number, n = 120, symbol = "EURUSD") =>
 
 // Positions (Step 5)
 export const fetchOpenPositions = () => apiGet<unknown>("/api/v1/positions/open");
+// The BOOK projection (OMS invariant I7) : holdings from the forward fold of
+// our own fills ; the IB mirror only contributes marks. Panels read THIS.
+export const fetchBookPositions = () => apiGet<unknown>("/api/v1/positions/book");
 export const fetchActivePositions = () => apiGet<unknown>("/api/v1/positions/active");
 export const fetchPositionsAggregate = () =>
   apiGet<unknown>("/api/v1/positions/aggregate");

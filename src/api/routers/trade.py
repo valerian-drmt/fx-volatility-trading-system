@@ -53,6 +53,7 @@ from persistence.models import (
     TradePreviewRow,
     TradeStructure,
 )
+from persistence.projection import rebuild_leg
 
 logger = logging.getLogger(__name__)
 
@@ -1017,6 +1018,11 @@ async def _submit_preview_impl(
         sign = +1 if side == "BUY" else -1
         total_premium += sign * preview_price * qty
         total_commission += qty * commission_per_contract
+
+        # Book projection (invariant I3) : materialise the leg's position
+        # from its (synthetic) fill — same fold as the live path.
+        await db.flush()
+        await rebuild_leg(db, order_id=order.id)
 
     # 3. Mark structure fully_filled + aggregate
     structure.state = "fully_filled"

@@ -1352,6 +1352,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/positions/book": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Book
+         * @description The BOOK positions — the forward projection, one row per open leg.
+         *
+         *     Identity, quantity and trade attribution come from ``leg_position``
+         *     (the pure fold of each leg's own fills via FK — invariants I3/I7) ;
+         *     the IB mirror (``open_position``) contributes **marks and greeks
+         *     only**, as pricing enrichment, never as the authority on who holds
+         *     what. Rows keep the same column names as ``/positions/open`` so the
+         *     panel adapter is source-agnostic ; book-specific fields
+         *     (``contract`` / ``open_qty`` / ``reserved_qty`` / ``available``) ride
+         *     alongside.
+         */
+        get: operations["list_book_api_v1_positions_book_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/positions/active": {
         parameters: {
             query?: never;
@@ -2008,6 +2037,8 @@ export interface components {
             qty: number;
             /** Limit Price */
             limit_price?: number | null;
+            /** Entry Order Id */
+            entry_order_id?: number | null;
         };
         /** CloseTradeRequest */
         CloseTradeRequest: {
@@ -4728,6 +4759,28 @@ export interface operations {
         };
     };
     list_open_api_v1_positions_open_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    list_book_api_v1_positions_book_get: {
         parameters: {
             query?: never;
             header?: never;
