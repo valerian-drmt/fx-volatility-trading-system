@@ -132,7 +132,6 @@ def test_i3_position_is_signed_fold_of_fills() -> None:
 # ── I4 · reconciliation — every book⊖broker gap is a materialised break ───────
 
 
-@pytest.mark.xfail(strict=True, reason="P1 reconciliation not yet implemented")
 def test_i4_breaks_classified_and_signed() -> None:
     from core.execution.reconciliation import classify_break, compute_breaks
 

@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
+from core.execution.reconciliation import classify_break
 from core.ledger import LedgerFill, fold_fills, unrealized_pnl
 from core.products import product_label_from_symbol
 from persistence.models import (
@@ -44,6 +45,7 @@ from persistence.models import (
     LegPosition,
     OpenPosition,
     OpenPositionHistory,
+    ReconciliationBreak,
     StructureFill,
     StructureOrder,
     TradeEvent,
@@ -385,6 +387,33 @@ async def list_book(db: DbDep) -> list[dict[str, Any]]:
             "rebuilt_at": lp.rebuilt_at.isoformat() if lp.rebuilt_at else None,
         })
     return out
+
+
+@router.get("/breaks")
+async def list_breaks(db: DbDep, include_resolved: bool = Query(False)) -> list[dict[str, Any]]:
+    """Materialised reconciliation breaks (I4) — book (leg_position) vs broker
+    (IB mirror) gaps. Open breaks (``resolved_at`` NULL) by default; a break is
+    data that lives and resolves, never a silent discrepancy. Written by the
+    execution-engine ``reconcile_positions_loop``. Additive read."""
+    stmt = select(ReconciliationBreak)
+    if not include_resolved:
+        stmt = stmt.where(ReconciliationBreak.resolved_at.is_(None))
+    rows = (await db.execute(stmt.order_by(desc(ReconciliationBreak.detected_at)))).scalars().all()
+
+    def _f(v):
+        return float(v) if v is not None else None
+
+    return [{
+        "id": r.id,
+        "contract": r.local_symbol,
+        "book_qty": _f(r.book_qty),
+        "broker_qty": _f(r.broker_qty),
+        "diff": _f(r.diff),
+        "break_type": r.break_type,
+        "detected_at": r.detected_at.isoformat() if r.detected_at else None,
+        "last_seen_at": r.last_seen_at.isoformat() if r.last_seen_at else None,
+        "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None,
+    } for r in rows]
 
 
 @router.get("/structured")
@@ -903,20 +932,13 @@ def _compute_breaks(
     for sym in sorted(set(expected) | set(actual)):
         exp = round(expected.get(sym, 0.0), 4)
         act = round(actual.get(sym, 0.0), 4)
-        diff = round(exp - act, 4)
-        if abs(diff) <= _BREAK_EPS:
+        kind = classify_break(exp, act)  # shared with the materialising reconciler
+        if kind is None:
             continue
-        if act == 0:
-            kind = "missing_at_ib"
-        elif exp == 0:
-            kind = "unbooked_at_ib"
-        elif (exp > 0) != (act > 0):
-            kind = "direction"
-        else:
-            kind = "quantity"
         breaks.append({
             "contract": sym, "expected_net": exp, "actual_net": act,
-            "break": diff, "kind": kind, "structure_id": struct_by_symbol.get(sym),
+            "break": round(exp - act, 4), "kind": kind,
+            "structure_id": struct_by_symbol.get(sym),
         })
     return breaks
 

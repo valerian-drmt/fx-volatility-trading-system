@@ -751,6 +751,39 @@ class LegPosition(Base):
     )
 
 
+class ReconciliationBreak(Base):
+    """Materialised book⊖broker gap per contract (OMS P1, invariant I4).
+
+    Writer = ``engines.execution.reconciler``. A break is *data*, not an
+    exception: ``resolved_at IS NULL`` is an open break; it is stamped when the
+    gap closes. At most one open row per ``local_symbol`` at a time. ``book_qty``
+    is Σ ``leg_position.open_qty`` for the contract (our truth); ``broker_qty`` is
+    the netted IB mirror (checksum) — the mirror only ever appears here (I7).
+    """
+
+    __tablename__ = "reconciliation_break"
+    __table_args__ = (
+        CheckConstraint(
+            "break_type IN ('missing_at_ib','unbooked_at_ib','direction','quantity')",
+            name="ck_reconciliation_break_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    local_symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    book_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    broker_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    diff: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    break_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    detected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class BookedPosition(Base):
     """OpenPosition created when a TradeStructure is fully_filled (renamed from
     TradePosition in migration 026 Theme 2). Distinct from `OpenPosition` which
