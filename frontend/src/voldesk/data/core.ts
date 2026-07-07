@@ -255,6 +255,9 @@ export interface Position {
   id: string;
   packageId: string;
   tradeId: string;
+  /** Entry trade_order id (the leg) from the book projection — sent as
+   *  entry_order_id on close so the reservation lands on the exact leg. */
+  orderId?: number | undefined;
   conId: number;
   product: string;
   structure: string;

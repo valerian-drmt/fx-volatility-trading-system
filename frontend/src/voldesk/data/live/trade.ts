@@ -33,6 +33,7 @@ interface BackendPosition {
   id?: number;
   package_id?: string | null;
   trade_id?: string | null;
+  order_id?: number | null;
   contract_id?: number | null;
   product_label?: string | null;
   structure?: string | null;
@@ -74,6 +75,7 @@ export function adaptPositions(raw: unknown, now: number): Position[] {
       id: String(r.id ?? ""),
       packageId: r.package_id ?? "",
       tradeId: r.trade_id ?? "",
+      orderId: typeof r.order_id === "number" ? r.order_id : undefined,
       conId: r.contract_id ?? 0,
       product: r.product_label ?? "",
       structure: r.structure ?? r.product_label ?? "—",

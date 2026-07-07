@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from persistence.models import StructureOrder
 from persistence.projection import LegProjection, project_leg, rebuild_all, rebuild_leg
+from persistence.reservation import recompute_reservation
 
 __all__ = ["LegProjection", "project_leg", "rebuild_all_legs", "rebuild_for_order"]
 
@@ -51,6 +52,10 @@ async def rebuild_for_order(
                 )
                 return
             await rebuild_leg(db, order_id=leg_id)
+            if order.order_role == "closing":
+                # A closing fill releases its share of the reservation (I5) :
+                # re-fold reserved from the leg's non-terminal closes.
+                await recompute_reservation(db, leg_order_id=leg_id)
             await db.commit()
     except Exception:
         logger.exception("projection_rebuild_failed order_id=%s", order_id)

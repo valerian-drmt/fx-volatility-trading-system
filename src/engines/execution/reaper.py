@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from engines.execution.fills_handler import _on_execution, maybe_complete_structure
 from persistence.models import StructureOrder, TradeEvent
+from persistence.reservation import recompute_reservation
 from shared.contracts import parse_local_symbol
 
 logger = logging.getLogger(__name__)
@@ -200,6 +201,10 @@ async def reap_stale_orders(
                 ))
             structure_id = db_order.structure_id
             terminal_as_filled = db_order.state == "filled"
+            if db_order.closes_order_id is not None:
+                # Terminalising a close releases its residual reservation
+                # (spec §6.2 release_reservation / I5).
+                await recompute_reservation(db, leg_order_id=db_order.closes_order_id)
             await db.commit()
         reaped += 1
         if terminal_as_filled:

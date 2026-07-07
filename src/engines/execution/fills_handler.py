@@ -43,6 +43,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.reservation import recompute_reservation
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,12 @@ async def _on_order_status(
                 ws_event = {"event_type": "order_cancelled"}
             # Filled is handled in _on_execution after fill aggregates ; we
             # don't transition here to avoid races.
+            if (
+                order.state in ("rejected", "cancelled")
+                and order.closes_order_id is not None
+            ):
+                # A dead close releases its residual reservation (I5, spec §8).
+                await recompute_reservation(db, leg_order_id=order.closes_order_id)
             await db.commit()
 
             if ws_event is not None:

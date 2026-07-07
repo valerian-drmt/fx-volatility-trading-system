@@ -1,21 +1,19 @@
 """OMS invariants I1..I7 — executable spec of docs/order-pipeline/OMS_ARCHITECTURE_CIBLE.md §3.2.
 
-Phase-0 red baseline (spec §11.3 step 1). Two invariants already hold on the
-current schema and pass today:
+Phase-0 red baseline (spec §11.3 step 1) : I1 and I6 held on the original
+schema ; I2/I3/I4/I5/I7 encoded the root defects D1..D4 as strict xfails,
+each turned green by the phase that fixed it (the marker had to be removed
+in the same PR — an unexpected pass fails CI, so the baseline could not rot).
 
-  * I1 — projection consistency  (order.qty_filled == Σ its fills)
-  * I6 — execution idempotency   (unique ib_execution_id, replay-safe)
+ALL SEVEN INVARIANTS ARE NOW ENFORCED GREEN :
 
-The five others are the root defects D1..D4 made executable. They are marked
-``xfail(strict=True)`` : they FAIL today (missing module / model / endpoint),
-and the phase that fixes each one MUST remove its marker in the same PR
-(a strict xfail that unexpectedly passes fails CI — the marker cannot rot).
-
-  * I2 — liveness / terminalisation        → GREEN since P0 (terminal FSM + reaper, spec §6)
-  * I3 — forward attribution               → GREEN since P1 (position projector, spec §7.1)
-  * I4 — reconciliation breaks materialised → GREEN since P1 (reconcile(), spec §7.2)
-  * I5 — reservation ledger, available ≥ 0 → phase P2  (reserved_qty, spec §8)
-  * I7 — mirror never display authority    → GREEN since P1 (panel reads the book, spec §7.1)
+  * I1 — projection consistency            (fill handler, original schema)
+  * I2 — liveness / terminalisation        → P0  (terminal FSM + reaper, spec §6)
+  * I3 — forward attribution               → P1  (position projector, spec §7.1)
+  * I4 — reconciliation breaks materialised → P1  (reconcile(), spec §7.2)
+  * I5 — reservation ledger, available ≥ 0 → P2  (reserved_qty, spec §8)
+  * I6 — execution idempotency             (unique ib_execution_id, original schema)
+  * I7 — mirror never display authority    → P1  (panel reads the book, spec §7.1)
 
 Contracts pinned by these tests (later phases implement to match):
   * engines.execution.reaper.reap_stale_orders(sessionmaker_factory=, executor=, tau_stale_s=) -> int
@@ -278,10 +276,6 @@ async def test_i4_book_vs_broker_gap_is_materialised_then_resolved():
 # I5 — reservation ledger : available = open − reserved ≥ 0, race-free
 # ──────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D4 — no reserved_qty ledger yet ; goes green in P2 (spec §8)",
-)
 async def test_i5_reservation_ledger_prevents_over_close():
     """The double-click over-close : reserving 7 of 10 leaves available 3 ;
     a second close for 5 must be refused by the invariant, not by a

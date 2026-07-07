@@ -49,6 +49,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.reservation import recompute_reservation, try_reserve_on_leg
 from shared.contracts import multiplier_for, parse_local_symbol
 
 router = APIRouter(prefix="/api/v1/positions", tags=["positions"])
@@ -990,6 +991,17 @@ async def close_one_open_position(
 
     contract_fields = _contract_fields_from_symbol(pos.structure, pos.side)
     closes_order_id = await _resolve_entry_leg_id(db, pos, entry_order_id)
+    # Reservation ledger (invariant I5, spec §8) : atomically reserve the
+    # close qty on the target leg. Two racing closes cannot both pass — the
+    # over-close is refused by construction, not by a stateless re-sum.
+    if closes_order_id is not None and not await try_reserve_on_leg(
+        db, leg_order_id=closes_order_id, qty=float(qty),
+    ):
+        raise HTTPException(
+            409,
+            f"close of {qty} exceeds available quantity on leg #{closes_order_id} "
+            "(open − reserved) ; another close is already in flight",
+        )
     closing_order = StructureOrder(
         structure_id=closing_struct.id,
         leg_idx=0, order_role="closing",
@@ -1046,6 +1058,8 @@ async def close_one_open_position(
         closing_struct.state = "partial_fail"
         closing_order.state = "rejected"
         closing_order.rejection_text = f"execution-engine unreachable: {e}"[:300]
+        if closes_order_id is not None:      # release the reservation (I5)
+            await recompute_reservation(db, leg_order_id=closes_order_id)
         await db.commit()
         raise HTTPException(503, f"execution-engine unreachable: {e}") from e
     if r.status_code >= 400:
@@ -1056,6 +1070,8 @@ async def close_one_open_position(
         closing_struct.state = "partial_fail"
         closing_order.state = "rejected"
         closing_order.rejection_text = str(detail)[:300]
+        if closes_order_id is not None:      # release the reservation (I5)
+            await recompute_reservation(db, leg_order_id=closes_order_id)
         await db.commit()
         raise HTTPException(r.status_code, detail)
 

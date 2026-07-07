@@ -219,9 +219,14 @@ export const submitTrade = (previewId: string, executionMode: "live" | "mock" = 
 export const cancelTradePreview = (previewId: string) =>
   apiPost<unknown>(`/api/v1/trade/preview/${encodeURIComponent(previewId)}/cancel`, {});
 
-/** Close a single leg (OpenPosition.id). Partial close via `qty`. */
-export const closeContract = (positionId: number, qty: number) =>
-  apiPost<Record<string, unknown>>(`/api/v1/positions/${positionId}/close`, { qty });
+/** Close a single leg (OpenPosition.id). Partial close via `qty`.
+ *  `entryOrderId` (the book leg, Position.orderId) pins the close to the
+ *  exact leg so the backend reservation ledger guards it (OMS I5). */
+export const closeContract = (positionId: number, qty: number, entryOrderId?: number) =>
+  apiPost<Record<string, unknown>>(`/api/v1/positions/${positionId}/close`, {
+    qty,
+    ...(entryOrderId !== undefined ? { entry_order_id: entryOrderId } : {}),
+  });
 
 /** Close every open leg of a trade (OpenPosition.trade_id). */
 export const closeTrade = (tradeId: number) =>

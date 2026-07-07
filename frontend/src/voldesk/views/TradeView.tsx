@@ -129,7 +129,8 @@ function ClosePanel({
     setErr(null);
     try {
       if (type === "contract") {
-        await closeContract(Number(contractId), qty);
+        const leg = positions.find((x) => x.id === contractId);
+        await closeContract(Number(contractId), qty, leg?.orderId);
       } else {
         const leg = positions.find((p) => p.packageId === tradeId);
         if (!leg?.tradeId) throw new Error("no backend trade id for this package");
