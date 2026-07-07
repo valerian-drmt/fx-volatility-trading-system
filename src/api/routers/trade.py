@@ -1167,9 +1167,24 @@ async def list_submitted_structures(
         order_role = (await db.execute(
             select(StructureOrder.order_role).where(StructureOrder.structure_id == s.id).limit(1)
         )).scalar_one_or_none()
+        # Contract(s) traded : the IB localSymbol(s) of the structure's legs. One
+        # symbol for a single-leg order (a close, a vanilla) ; "sym +N" for a
+        # multi-leg structure (butterfly / strangle). None until the first fill
+        # stamps ib_local_symbol.
+        leg_syms = (await db.execute(
+            select(StructureOrder.ib_local_symbol)
+            .where(StructureOrder.structure_id == s.id, StructureOrder.ib_local_symbol.is_not(None))
+            .order_by(StructureOrder.leg_idx)
+        )).scalars().all()
+        uniq_syms = list(dict.fromkeys(leg_syms))  # distinct, order-preserving
+        contract = (
+            None if not uniq_syms
+            else uniq_syms[0] if len(uniq_syms) == 1
+            else f"{uniq_syms[0]} +{len(uniq_syms) - 1}"
+        )
         out.append({
             "id": s.id, "created_at": s.created_at, "structure_type": s.structure_type,
-            "product_label": s.product_label,
+            "product_label": s.product_label, "contract": contract,
             "reference_tenor": s.reference_tenor, "base_qty": s.base_qty, "state": s.state,
             "execution_mode": s.execution_mode,
             "order_role": order_role or "entry",

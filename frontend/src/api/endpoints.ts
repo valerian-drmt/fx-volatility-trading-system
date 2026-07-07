@@ -236,6 +236,7 @@ export interface SubmittedTrade {
   created_at: string;
   structure_type: string | null;
   product_label: string | null;
+  contract: string | null; // IB localSymbol(s) of the legs ("EUUV6 C1130", or "… +N")
   reference_tenor: string | null;
   base_qty: number | null;
   state: string | null;

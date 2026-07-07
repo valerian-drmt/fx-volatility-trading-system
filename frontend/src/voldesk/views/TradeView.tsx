@@ -50,6 +50,7 @@ export interface OrderRecord {
 interface BlotterRow {
   id: string;
   tradeNo?: number; // the assigned trade_structure id (DB rows only; session rejects have none)
+  contract?: string; // IB localSymbol(s) of the legs ("EUUV6 C1130" / "… +N")
   ts: string;
   tsSort: number;
   action: "open" | "close";
@@ -591,6 +592,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const dbRows: BlotterRow[] = (submitted.data ?? []).map((s) => ({
     id: "s" + s.id,
     tradeNo: s.id,
+    ...(s.contract ? { contract: s.contract } : {}),
     ts: new Date(s.created_at).toLocaleTimeString("en-GB", { hour12: false }),
     tsSort: Date.parse(s.created_at) || 0,
     action: s.order_role === "closing" || s.order_role === "unwind" ? "close" : "open",
@@ -670,7 +672,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
           <div className="table-scroll orders-scroll">
             <table className="dt orders-table">
               <thead>
-                <tr><th>Time</th><th>Trade</th><th>Product</th><th>Type</th><th>Contracts</th><th>State</th></tr>
+                <tr><th>Time</th><th>Trade</th><th>Contract</th><th>Product</th><th>Type</th><th>Contracts</th><th>State</th></tr>
               </thead>
               <tbody>
                 {orders.map((o) => {
@@ -681,6 +683,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
                     <tr key={o.id}>
                       <td className="mono dim">{o.ts}</td>
                       <td className="mono dim">{o.tradeNo != null ? "#" + o.tradeNo : "—"}</td>
+                      <td className="mono dim">{o.contract ?? "—"}</td>
                       <td>
                         {o.label}
                         {o.note && <span className="dim small"> · {o.note}</span>}
