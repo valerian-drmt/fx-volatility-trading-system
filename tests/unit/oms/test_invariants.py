@@ -68,7 +68,6 @@ def test_i6_schema_enforces_unique_exec_id() -> None:
 # ── I2 · liveness — ∀ order: age > τ_max ⇒ state ∈ TERMINAL ───────────────────
 
 
-@pytest.mark.xfail(strict=True, reason="P0 reaper not yet implemented")
 def test_i2_reaper_terminalises_every_stale_order() -> None:
     from core.execution.reaper_policy import (
         REAPABLE_STATES,
