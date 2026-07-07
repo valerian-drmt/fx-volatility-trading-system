@@ -34,6 +34,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.reservation import recompute_reservation
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,12 @@ async def initiate_position_close(
         db.add(closing_struct)
         await db.flush()
 
+        # OMS P2 : link each closing leg to the entry leg it closes (by leg_idx)
+        # so the reservation ledger can attribute reserved_qty to that leg (I5).
+        entry_by_leg = {int(e.leg_idx): int(e.id) for e in entries}
+        touched_entries: set[int] = set()
         for leg in closing_legs:
+            entry_id = entry_by_leg.get(int(leg.leg_idx))
             db.add(StructureOrder(
                 structure_id=closing_struct.id,
                 leg_idx=leg.leg_idx, order_role="closing",
@@ -125,7 +131,13 @@ async def initiate_position_close(
                 preview_iv_pct=leg.preview_iv_pct,
                 preview_price=leg.preview_price,
                 state="pending",
+                closes_order_id=entry_id,
             ))
+            if entry_id is not None:
+                touched_entries.add(entry_id)
+        await db.flush()  # closing orders queryable before we fold the reservation
+        for eid in touched_entries:
+            await recompute_reservation(db, entry_order_id=eid)
 
         # OpenPosition transitions to 'closing' immediately ; final flip to
         # 'closed' happens inside the fills cascade.
