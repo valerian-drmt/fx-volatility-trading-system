@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
+from core.execution.reconciliation import compute_breaks as compute_break_rows
 from core.ledger import LedgerFill, fold_fills, unrealized_pnl
 from core.products import product_label_from_symbol
 from persistence.models import (
@@ -42,6 +43,7 @@ from persistence.models import (
     LegPosition,
     OpenPosition,
     OpenPositionHistory,
+    ReconciliationBreak,
     StructureFill,
     StructureOrder,
     TradeEvent,
@@ -551,10 +553,6 @@ async def ledger(db: DbDep) -> dict[str, Any]:
     }
 
 
-# Below this, an expected − actual difference is rounding noise, not a break.
-_BREAK_EPS = 1e-4
-
-
 def _compute_breaks(
     expected: dict[str, float],
     actual: dict[str, float],
@@ -572,26 +570,11 @@ def _compute_breaks(
       - ``direction``       signs disagree (we think long, IB is short)
       - ``quantity``        both hold it, sizes differ
     """
-    breaks: list[dict[str, Any]] = []
-    for sym in sorted(set(expected) | set(actual)):
-        exp = round(expected.get(sym, 0.0), 4)
-        act = round(actual.get(sym, 0.0), 4)
-        diff = round(exp - act, 4)
-        if abs(diff) <= _BREAK_EPS:
-            continue
-        if act == 0:
-            kind = "missing_at_ib"
-        elif exp == 0:
-            kind = "unbooked_at_ib"
-        elif (exp > 0) != (act > 0):
-            kind = "direction"
-        else:
-            kind = "quantity"
-        breaks.append({
-            "contract": sym, "expected_net": exp, "actual_net": act,
-            "break": diff, "kind": kind, "structure_id": struct_by_symbol.get(sym),
-        })
-    return breaks
+    return [{
+        "contract": b.contract, "expected_net": b.book_qty,
+        "actual_net": b.broker_qty, "break": b.diff, "kind": b.break_type,
+        "structure_id": struct_by_symbol.get(b.contract),
+    } for b in compute_break_rows(expected, actual)]
 
 
 @router.get("/reconciliation")
@@ -641,6 +624,34 @@ async def reconciliation(db: DbDep) -> dict[str, Any]:
         "n_breaks": len(breaks),
         "breaks": breaks,
     }
+
+
+@router.get("/breaks")
+async def list_breaks(
+    db: DbDep,
+    include_resolved: bool = Query(False),
+    limit: int = Query(200, ge=1, le=1000),
+) -> list[dict[str, Any]]:
+    """The MATERIALISED break log (invariant I4) — written by the engine's
+    reconcile loop. Unlike ``/reconciliation`` (an on-request diff), these
+    rows have a lifecycle : detected → updated while they persist → resolved.
+    A break is a datum ; it lives, resolves, and audits.
+    """
+    q = select(ReconciliationBreak).order_by(desc(ReconciliationBreak.id)).limit(limit)
+    if not include_resolved:
+        q = q.where(ReconciliationBreak.resolved_at.is_(None))
+    rows = (await db.execute(q)).scalars().all()
+    return [{
+        "id": r.id,
+        "contract": r.local_symbol,
+        "book_qty": float(r.book_qty),
+        "broker_qty": float(r.broker_qty),
+        "diff": float(r.diff),
+        "break_type": r.break_type,
+        "detected_at": r.detected_at.isoformat() if r.detected_at else None,
+        "last_seen_at": r.last_seen_at.isoformat() if r.last_seen_at else None,
+        "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None,
+    } for r in rows]
 
 
 @router.get("/exit-rules-config")

@@ -660,6 +660,39 @@ class LegPosition(Base):
     )
 
 
+class ReconciliationBreak(Base):
+    """One materialised book↔broker divergence on one contract (invariant I4).
+
+    Written only by ``engines.execution.reconciler`` : at most ONE open row
+    (``resolved_at IS NULL``) per contract, updated while the gap persists,
+    stamped ``resolved_at`` when the two sides agree again. A later re-break
+    opens a NEW row — history is preserved for audit. A break is a datum,
+    never an exception.
+    """
+
+    __tablename__ = "reconciliation_break"
+    __table_args__ = (
+        CheckConstraint(
+            "break_type IN ('missing_at_ib','unbooked_at_ib','direction','quantity')",
+            name="ck_reconciliation_break_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    local_symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    book_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    broker_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    diff: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    break_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    detected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class IbConnectionState(Base):
     """Singleton broker connectivity row. UPDATE in place ; never INSERT a new
     row past the migration seed. Heartbeat loop in execution-engine populates."""
