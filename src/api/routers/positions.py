@@ -9,6 +9,7 @@ GET  /api/v1/positions/{id}/signal-tracking   signal vs entry trail
 POST /api/v1/positions/{id}/close-manual      mark for manual close (mock — Step 5 phase 1)
 POST /api/v1/positions/monitor/run-once       trigger 1 cycle on demand (dev/debug)
 GET  /api/v1/positions/aggregate              greeks aggregate across open positions
+GET  /api/v1/positions/ledger                 positions + P&L folded from the trade_fill event log
 GET  /api/v1/positions/exit-rules-config      hot-reload config visibility
 GET  /api/v1/positions/delta-hedge-config     hot-reload config visibility
 """
@@ -28,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
+from core.ledger import LedgerFill, fold_fills, unrealized_pnl
 from core.products import product_label_from_symbol
 from persistence.models import (
     AppConfigScalar,
@@ -38,6 +40,7 @@ from persistence.models import (
     HedgeOrder,
     OpenPosition,
     OpenPositionHistory,
+    StructureFill,
     StructureOrder,
     TradeEvent,
     TradeStructure,
@@ -394,6 +397,68 @@ async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
         "total_gamma_usd_per_pip2": round(total_gamma, 4),
         "total_theta_usd_per_day": round(total_theta, 2),
         "total_delta_unhedged": round(total_delta, 4),
+    }
+
+
+@router.get("/ledger")
+async def ledger(db: DbDep) -> dict[str, Any]:
+    """Positions + realised / unrealised P&L folded from the append-only
+    ``trade_fill`` event log (average-cost — see ``core.ledger``).
+
+    Audit-grade and **reproducible from events**, independent of the mutable IB
+    mirror (``open_position``). Fills are folded in **execution order** (by fill
+    timestamp) ; the mirror's ``market_price`` supplies the mark for unrealised
+    MTM of the open quantity.
+    """
+    rows = (await db.execute(
+        select(StructureFill, StructureOrder)
+        .join(StructureOrder, StructureFill.order_id == StructureOrder.id)
+        .order_by(StructureFill.timestamp, StructureFill.id)
+    )).all()
+    fills: list[LedgerFill] = []
+    for fill, order in rows:
+        sym = order.ib_local_symbol
+        if not sym:  # can't attribute a fill with no contract symbol
+            continue
+        fills.append(LedgerFill(
+            contract=sym, side=fill.side, qty=float(fill.qty_filled),
+            price=float(fill.fill_price), commission=float(fill.commission_usd or 0),
+            multiplier=multiplier_for(order.contract_symbol),
+        ))
+    book = fold_fills(fills)
+
+    # Current marks from the IB mirror, only for mark-to-market of the open qty.
+    marks = {
+        p.structure: (float(p.market_price) if p.market_price is not None else None)
+        for p in (await db.execute(select(OpenPosition))).scalars().all()
+    }
+
+    positions: list[dict[str, Any]] = []
+    tot_real = tot_unreal = tot_comm = 0.0
+    for sym, led in sorted(book.items()):
+        if led.net_qty == 0 and led.realized_pnl == 0:
+            continue  # never held, nothing realised → nothing to show
+        u = unrealized_pnl(led, marks.get(sym))
+        tot_real += led.realized_pnl
+        tot_comm += led.commission
+        tot_unreal += u or 0.0
+        positions.append({
+            "contract": sym,
+            "net_qty": round(led.net_qty, 4),
+            "avg_cost": round(led.avg_cost, 6),
+            "realized_pnl": round(led.realized_pnl, 2),
+            "unrealized_pnl": None if u is None else round(u, 2),
+            "commission": round(led.commission, 2),
+            "multiplier": led.multiplier,
+        })
+    return {
+        "as_of": datetime.now(UTC).isoformat(),
+        "positions": positions,
+        "totals": {
+            "realized_pnl": round(tot_real, 2),
+            "unrealized_pnl": round(tot_unreal, 2),
+            "commission": round(tot_comm, 2),
+        },
     }
 
 
