@@ -11,7 +11,7 @@ The five others are the root defects D1..D4 made executable. They are marked
 and the phase that fixes each one MUST remove its marker in the same PR
 (a strict xfail that unexpectedly passes fails CI — the marker cannot rot).
 
-  * I2 — liveness / terminalisation        → phase P0  (terminal FSM + reaper, spec §6)
+  * I2 — liveness / terminalisation        → GREEN since P0 (terminal FSM + reaper, spec §6)
   * I3 — forward attribution               → phase P1  (position projector, spec §7.1)
   * I4 — reconciliation breaks materialised → phase P1  (reconcile(), spec §7.2)
   * I5 — reservation ledger, available ≥ 0 → phase P2  (reserved_qty, spec §8)
@@ -123,10 +123,10 @@ class _StubExecutor:
 
     def __init__(self, *, reporting: bool = True,
                  live_order_ids: tuple[str, ...] = (),
-                 held_local_symbols: tuple[str, ...] = ()) -> None:
+                 held: dict[str, float] | None = None) -> None:
         self._reporting = reporting
         self._live = set(live_order_ids)
-        self._held = set(held_local_symbols)
+        self._held = dict(held or {})
 
     def account_is_reporting(self) -> bool:
         return self._reporting
@@ -134,8 +134,11 @@ class _StubExecutor:
     async def is_order_live(self, ib_order_id: str | None) -> bool:
         return ib_order_id is not None and str(ib_order_id) in self._live
 
-    async def held_contracts(self) -> set[str]:
-        return set(self._held)
+    async def held_contracts(self) -> dict[str, float]:
+        return dict(self._held)
+
+    async def recent_fills(self) -> list:
+        return []
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -172,10 +175,6 @@ async def test_i1_order_qty_filled_equals_sum_of_its_fills():
 # I2 — liveness : every order older than τ_max reaches a TERMINAL state
 # ──────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D1 — no terminal FSM / reaper yet ; goes green in P0 (spec §6.2)",
-)
 async def test_i2_stale_working_order_is_terminalised_by_the_reaper():
     """An order working for > τ_max that IB neither works nor holds must be
     driven to the absorbing state ``expired`` — never left alive (the 91h bug)."""
