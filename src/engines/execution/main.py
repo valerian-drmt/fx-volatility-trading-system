@@ -38,6 +38,7 @@ from engines.execution.order_executor import (
 from engines.execution.position_projector import rebuild_all_legs
 from engines.execution.position_sync import position_sync_loop
 from engines.execution.reaper import reaper_loop
+from engines.execution.reconciler import reconcile_loop
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
@@ -65,6 +66,8 @@ STUCK_AFTER_S = float(os.getenv("STUCK_AFTER_S", "600.0"))
 # exceed REAPER_TAU_S and are no longer live at IB. Spec §6.2.
 REAPER_INTERVAL_S = float(os.getenv("REAPER_INTERVAL_S", "30.0"))
 REAPER_TAU_S = float(os.getenv("REAPER_TAU_S", "300.0"))
+# Book↔broker reconciliation (invariant I4) : breaks become rows. Spec §7.2.
+RECONCILE_INTERVAL_S = float(os.getenv("RECONCILE_INTERVAL_S", "60.0"))
 
 
 @asynccontextmanager
@@ -122,6 +125,10 @@ async def lifespan(app: FastAPI):
         ),
         name="order_reaper_loop",
     )
+    reconcile_task = asyncio.create_task(
+        reconcile_loop(sm, executor, interval_s=RECONCILE_INTERVAL_S),
+        name="position_reconcile_loop",
+    )
     logger.info(
         "execution_startup ib_connected=%s sync_interval=%.1fs heartbeat=%.1fs",
         executor.is_connected(), SYNC_INTERVAL_S, HEARTBEAT_INTERVAL_S,
@@ -129,9 +136,11 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        for task in (sync_task, heartbeat_task, stuck_task, reaper_task, projection_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reaper_task,
+                     projection_task, reconcile_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task, reaper_task, projection_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reaper_task,
+                     projection_task, reconcile_task):
             try:
                 await task
             except asyncio.CancelledError:

@@ -1477,6 +1477,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/positions/breaks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Breaks
+         * @description The MATERIALISED break log (invariant I4) — written by the engine's
+         *     reconcile loop. Unlike ``/reconciliation`` (an on-request diff), these
+         *     rows have a lifecycle : detected → updated while they persist → resolved.
+         *     A break is a datum ; it lives, resolves, and audits.
+         */
+        get: operations["list_breaks_api_v1_positions_breaks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/positions/exit-rules-config": {
         parameters: {
             query?: never;
@@ -4886,6 +4909,40 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_breaks_api_v1_positions_breaks_get: {
+        parameters: {
+            query?: {
+                include_resolved?: boolean;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

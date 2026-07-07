@@ -13,7 +13,7 @@ and the phase that fixes each one MUST remove its marker in the same PR
 
   * I2 — liveness / terminalisation        → GREEN since P0 (terminal FSM + reaper, spec §6)
   * I3 — forward attribution               → GREEN since P1 (position projector, spec §7.1)
-  * I4 — reconciliation breaks materialised → phase P1  (reconcile(), spec §7.2)
+  * I4 — reconciliation breaks materialised → GREEN since P1 (reconcile(), spec §7.2)
   * I5 — reservation ledger, available ≥ 0 → phase P2  (reserved_qty, spec §8)
   * I7 — mirror never display authority    → GREEN since P1 (panel reads the book, spec §7.1)
 
@@ -236,10 +236,6 @@ async def test_i3_leg_position_is_a_pure_fold_of_its_own_fills():
 # I4 — reconciliation : any book↔broker gap is materialised as a break row
 # ──────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D3 — no reconciliation_break table / reconcile() yet ; goes green in P1 (spec §7.2)",
-)
 async def test_i4_book_vs_broker_gap_is_materialised_then_resolved():
     """Book holds +10 of a contract, the mirror says +6 : reconcile() must
     write a ``quantity`` break with diff 4 (never a silent divergence), and
