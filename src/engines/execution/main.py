@@ -35,6 +35,7 @@ from engines.execution.order_executor import (
     OrderExecutorUnavailable,
     OrderRequest,
 )
+from engines.execution.position_projector import rebuild_all_legs
 from engines.execution.position_sync import position_sync_loop
 from engines.execution.reaper import reaper_loop
 from engines.execution.redis_state import set_client as set_redis_client
@@ -92,6 +93,11 @@ async def lifespan(app: FastAPI):
     sm = get_sessionmaker()
     app.state.sessionmaker = sm
 
+    # Book projection (I3) : one full rebuild at startup — after that the
+    # fill cascade keeps leg_position current (the projection only changes
+    # when a fill lands ; no polling loop needed).
+    projection_task = asyncio.create_task(rebuild_all_legs(sm), name="projection_rebuild")
+
     sync_task = asyncio.create_task(
         position_sync_loop(sm, executor, redis=redis, interval_s=SYNC_INTERVAL_S)
     )
@@ -123,9 +129,9 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        for task in (sync_task, heartbeat_task, stuck_task, reaper_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reaper_task, projection_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task, reaper_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reaper_task, projection_task):
             try:
                 await task
             except asyncio.CancelledError:

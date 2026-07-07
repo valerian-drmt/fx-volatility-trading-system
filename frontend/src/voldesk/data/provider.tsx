@@ -12,9 +12,9 @@ import { type ReactNode, useEffect, useMemo } from "react";
 import {
   fetchConfig,
   fetchConfigHistory,
+  fetchBookPositions,
   fetchDevEngines,
   fetchHealthExtended,
-  fetchOpenPositions,
   fetchPcaHistory,
   fetchPcaState,
   fetchPnlAttribution,
@@ -127,7 +127,7 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
       // the Open-positions pipeline). The four secondary reads degrade on their
       // own (caps/cash/events/book): a single one 404-ing in read-only mode must
       // NOT take the whole trade domain "missing" and red-out the pipeline.
-      const pos = await fetchOpenPositions();
+      const pos = await fetchBookPositions();
       const [lim, evts, book, cash] = await Promise.all([
         fetchTradeLimits().catch(() => null),
         fetchRegimeEvents().catch(() => null),
@@ -157,7 +157,7 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
         fetchPortfolioStats(),
         fetchPortfolioDailyPnl(),
         fetchPnlAttribution(),
-        fetchOpenPositions(),
+        fetchBookPositions(),
       ]);
       const positions = adaptPositions(pos, Date.now());
       return {

@@ -12,10 +12,10 @@ and the phase that fixes each one MUST remove its marker in the same PR
 (a strict xfail that unexpectedly passes fails CI — the marker cannot rot).
 
   * I2 — liveness / terminalisation        → GREEN since P0 (terminal FSM + reaper, spec §6)
-  * I3 — forward attribution               → phase P1  (position projector, spec §7.1)
+  * I3 — forward attribution               → GREEN since P1 (position projector, spec §7.1)
   * I4 — reconciliation breaks materialised → phase P1  (reconcile(), spec §7.2)
   * I5 — reservation ledger, available ≥ 0 → phase P2  (reserved_qty, spec §8)
-  * I7 — mirror never display authority    → phase P1  (panel reads the book, spec §7.1)
+  * I7 — mirror never display authority    → GREEN since P1 (panel reads the book, spec §7.1)
 
 Contracts pinned by these tests (later phases implement to match):
   * engines.execution.reaper.reap_stale_orders(sessionmaker_factory=, executor=, tau_stale_s=) -> int
@@ -206,10 +206,6 @@ async def test_i2_stale_working_order_is_terminalised_by_the_reaper():
 # I3 — forward attribution : leg position == fold of ITS fills (via FK)
 # ──────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D2 — no forward position projector yet ; goes green in P1 (spec §7.1)",
-)
 async def test_i3_leg_position_is_a_pure_fold_of_its_own_fills():
     """Two structures trade the SAME contract (one long 10, one short 4).
     Forward attribution must give +10 and −4 per leg — never the netted +6
@@ -346,10 +342,6 @@ async def test_i6_execution_id_is_unique_and_replay_safe():
 # I7 — the mirror is never the display authority
 # ──────────────────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="D3 — the panel still reads the open_position mirror ; goes green in P1 (spec §7.1 / I7)",
-)
 async def test_i7_panel_reads_the_book_projection_not_the_mirror():
     """The book projection says we hold +10 ; the mirror is EMPTY (sync lag,
     feed flap...). The panel read must still show the +10 — holdings come

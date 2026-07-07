@@ -565,6 +565,13 @@ class StructureOrder(Base):
     fully_filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     slippage_per_contract: Mapped[float | None] = mapped_column(Float)
     total_slippage_usd: Mapped[float | None] = mapped_column(Float)
+    # Forward attribution of closes (OMS refactor, invariant I3) : a closing
+    # order points at the ENTRY order (= the leg) it reduces. Stamped when the
+    # close is created — from explicit intent, never reconstructed from the
+    # netted mirror. NULL on entry/hedge orders and on unattributable closes.
+    closes_order_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("trade_order.id", ondelete="SET NULL"),
+    )
 
 
 class StructureFill(Base):
@@ -622,6 +629,35 @@ class BookedPosition(Base):
     ib_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ib_qty_total: Mapped[int | None] = mapped_column(Integer)
     ib_qty_diff: Mapped[int | None] = mapped_column(Integer)
+
+
+class LegPosition(Base):
+    """The BOOK position of one leg — a pure forward projection (invariant I3).
+
+    One row per ENTRY ``trade_order`` : ``open_qty`` is the signed fold of that
+    leg's own executions (its fills + the fills of closing orders whose
+    ``closes_order_id`` points at it), via FK only — never derived from the
+    netted IB mirror. Fully rebuildable by replaying ``trade_fill`` (T8) ;
+    ``open_position`` remains a reconciliation checksum, not a source.
+
+    Single writer : ``engines.execution.position_projector``.
+    ``reserved_qty`` is the close-reservation ledger (invariant I5, spec §8).
+    """
+
+    __tablename__ = "leg_position"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("trade_order.id", ondelete="CASCADE"),
+        nullable=False, unique=True,
+    )
+    open_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False, default=0)
+    reserved_qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False, default=0)
+    avg_price: Mapped[float | None] = mapped_column(Float)
+    realized_pnl_usd: Mapped[float | None] = mapped_column(Float)
+    rebuilt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
 
 
 class IbConnectionState(Base):

@@ -556,7 +556,7 @@ describe("DataProvider (live-only)", () => {
 
   it("live mode fetches positions + derives the book net delta", async () => {
     server.use(
-      http.get("*/api/v1/positions/open", () =>
+      http.get("*/api/v1/positions/book", () =>
         HttpResponse.json([
           { id: 1, side: "BUY", quantity: 2, delta_usd: 40, vega_usd: 5, current_pnl_usd: 10, expiry: "2026-08-01T00:00:00Z" },
           { id: 2, side: "SELL", quantity: 1, delta_usd: -15, vega_usd: 2, current_pnl_usd: -3, expiry: "2026-08-01T00:00:00Z" },
