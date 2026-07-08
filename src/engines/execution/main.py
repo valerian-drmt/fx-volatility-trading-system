@@ -40,10 +40,12 @@ from engines.execution.order_executor import (
 from engines.execution.order_reconciler import reconcile_loop, reconcile_stuck_orders
 from engines.execution.position_sync import position_sync_loop, sync_positions_from_ib
 from engines.execution.reaper import reap_stale_orders, reaper_loop
+from engines.execution.reconciler import reconcile_positions, reconcile_positions_loop
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
 from persistence.models import TradeEvent
+from persistence.projection import rebuild_all
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
 from shared.tracing import init_tracing
@@ -95,6 +97,17 @@ async def lifespan(app: FastAPI):
     sm = get_sessionmaker()
     app.state.sessionmaker = sm
 
+    # Seed the forward projection (leg_position) from the fill log so the book is
+    # current before the first fill event this session (I3). Best-effort — never
+    # block startup on it.
+    try:
+        async with sm() as db:
+            n_legs = await rebuild_all(db)
+            await db.commit()
+        logger.info("leg_projection_seeded legs=%s", n_legs)
+    except Exception:
+        logger.exception("leg_projection_seed_failed")
+
     sync_task = asyncio.create_task(
         position_sync_loop(sm, executor, redis=redis, interval_s=SYNC_INTERVAL_S)
     )
@@ -123,6 +136,12 @@ async def lifespan(app: FastAPI):
         reaper_loop(sm, executor),
         name="order_reaper_loop",
     )
+    # Reconciliation (I4 / D3) : materialise book (leg_position) vs broker (mirror)
+    # breaks. Guarded by account_is_reporting. Setpoint = break 0.
+    reconcile_pos_task = asyncio.create_task(
+        reconcile_positions_loop(sm, executor),
+        name="position_reconcile_loop",
+    )
     logger.info(
         "execution_startup ib_connected=%s sync_interval=%.1fs heartbeat=%.1fs",
         executor.is_connected(), SYNC_INTERVAL_S, HEARTBEAT_INTERVAL_S,
@@ -130,9 +149,9 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -462,6 +481,17 @@ async def reap_now(
     orders IB does not hold to `expired` (liveness / I2). Guarded by
     account_is_reporting, so a dead feed is a no-op."""
     return await reap_stale_orders(sm, ex)
+
+
+@router.post("/reconcile-positions")
+async def reconcile_positions_now(
+    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Run one position-reconciliation pass NOW (on top of the loop) —
+    materialise book (leg_position) vs broker (mirror) breaks (I4). Guarded by
+    account_is_reporting, so a dead feed is a no-op."""
+    return await reconcile_positions(sm, ex)
 
 
 @router.post("/structure/submit")

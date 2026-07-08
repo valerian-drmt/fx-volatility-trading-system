@@ -113,7 +113,6 @@ def test_i2_reaper_terminalises_every_stale_order() -> None:
 # ── I3 · forward attribution — position(leg) = pure signed fold of ITS fills ──
 
 
-@pytest.mark.xfail(strict=True, reason="P1 forward projection not yet implemented")
 def test_i3_position_is_signed_fold_of_fills() -> None:
     from core.execution.projection import Fill, fold_fills, signed
 
@@ -133,7 +132,6 @@ def test_i3_position_is_signed_fold_of_fills() -> None:
 # ── I4 · reconciliation — every book⊖broker gap is a materialised break ───────
 
 
-@pytest.mark.xfail(strict=True, reason="P1 reconciliation not yet implemented")
 def test_i4_breaks_classified_and_signed() -> None:
     from core.execution.reconciliation import classify_break, compute_breaks
 
@@ -177,7 +175,6 @@ def test_i5_available_never_negative() -> None:
 # an input — and rebuilding from fills reproduces it exactly (T8, pure fold).
 
 
-@pytest.mark.xfail(strict=True, reason="P1 book projection authority not yet implemented")
 def test_i7_book_projection_is_mirror_independent() -> None:
     import inspect
 
