@@ -1,4 +1,4 @@
-"""Unit tests for scripts.dev.seed_regime_lookup.expand_patterns()."""
+"""Unit tests for scripts.db.seed_regime_lookup.expand_patterns()."""
 from __future__ import annotations
 
 import sys
@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT))
 
-from scripts.dev.seed_regime_lookup import (  # noqa: E402
+from scripts.db.seed_regime_lookup import (  # noqa: E402
     BASE_PATTERNS,
     expand_patterns,
 )

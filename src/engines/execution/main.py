@@ -39,6 +39,7 @@ from engines.execution.order_executor import (
 )
 from engines.execution.order_reconciler import reconcile_loop, reconcile_stuck_orders
 from engines.execution.position_sync import position_sync_loop, sync_positions_from_ib
+from engines.execution.reaper import reap_stale_orders, reaper_loop
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
@@ -116,6 +117,12 @@ async def lifespan(app: FastAPI):
         reconcile_loop(sm, interval_s=RECONCILE_INTERVAL_S),
         name="order_reconcile_loop",
     )
+    # Liveness (I2 / D1) : terminalise stale orders IB does not hold to `expired`.
+    # Guarded by account_is_reporting ; the filled backfill stays in reconcile_loop.
+    reaper_task = asyncio.create_task(
+        reaper_loop(sm, executor),
+        name="order_reaper_loop",
+    )
     logger.info(
         "execution_startup ib_connected=%s sync_interval=%.1fs heartbeat=%.1fs",
         executor.is_connected(), SYNC_INTERVAL_S, HEARTBEAT_INTERVAL_S,
@@ -123,9 +130,9 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -444,6 +451,17 @@ async def reconcile_now(
     orders to filled where the IB gateway actually holds the position. Useful to
     catch up the backlog immediately after a deploy."""
     return await reconcile_stuck_orders(sm)
+
+
+@router.post("/reap")
+async def reap_now(
+    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Run one reaper pass NOW (on top of the 30s loop) — terminalise stale
+    orders IB does not hold to `expired` (liveness / I2). Guarded by
+    account_is_reporting, so a dead feed is a no-op."""
+    return await reap_stale_orders(sm, ex)
 
 
 @router.post("/structure/submit")
