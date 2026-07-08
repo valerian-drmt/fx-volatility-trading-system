@@ -150,7 +150,6 @@ def test_i4_breaks_classified_and_signed() -> None:
 # ── I5 · non-over-close — available = |open| − reserved ≥ 0 (always) ──────────
 
 
-@pytest.mark.xfail(strict=True, reason="P2 reservation ledger not yet implemented")
 def test_i5_available_never_negative() -> None:
     from core.execution.reservation import OverReserveError, available, try_reserve
 

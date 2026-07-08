@@ -136,14 +136,13 @@ function legRow(
   return (
     <tr key={p.id} className={main ? "pkg-start" : "pos-leg"}>
       <td className="l mono dim">{main ? (p.tradeId ? "#" + p.tradeId : "—") : ""}</td>
-      <td className="l mono dim">{p.conId ? p.conId : "—"}</td>
+      <td className="l mono dim">{p.structure || "—"}</td>
       <td className="l">
         <span className="sym">{main ? "" : "↳ "}{p.product || "—"}</span>
         {fmtFillDate(p.opened) && (
           <span className="substruct">filled {fmtFillDate(p.opened)}</span>
         )}
       </td>
-      <td className="l mono dim">{p.structure || "—"}</td>
       <td className="r mono dim">{legStrike(p)}</td>
       <td>
         <span className={"side-pill " + (p.side === "BUY" ? "long" : "short")}>{p.side}</span>
@@ -307,7 +306,6 @@ export function OpenPositionsTable({
               <th className="l">Trade</th>
               <th className="l">Contract</th>
               <th className="l">Product</th>
-              <th className="l">Structure</th>
               <th className="r">Strike</th>
               <th>Side</th>
               <th className="r">Contracts</th>
@@ -383,7 +381,6 @@ export function OpenPositionsTable({
                         <span className="pos-naked" title="a sold leg filled but its long hedge leg hasn't — unbounded tail until it fills or is cancelled"> ⚠ naked</span>
                       )}
                     </td>
-                    <td className="l mono dim">—</td>
                     <td className="r mono dim">—</td>
                     <td><span className="dim small">—</span></td>
                     <td className="r mono">{a.qty || "—"}</td>

@@ -43,6 +43,7 @@ from persistence.models import (
     TradeStructure,
 )
 from persistence.projection import rebuild_leg
+from persistence.reservation import recompute_reservation
 from shared.trace import bind_trace_id, clear_trace_id
 
 logger = logging.getLogger(__name__)
@@ -233,6 +234,9 @@ async def _persist_fill(
         # Keep the forward projection (the book) current: this leg's position is
         # a pure fold of its fills (I3). Single writer = persistence.projection.
         await rebuild_leg(db, order_id=order_id)
+        # Release the entry leg's reservation as this close fills (I5).
+        if order.order_role == "closing" and order.closes_order_id is not None:
+            await recompute_reservation(db, entry_order_id=order.closes_order_id)
         structure_id = order.structure_id
         await db.commit()
 
@@ -360,6 +364,8 @@ async def _book_combo_filled(
             _audit(db, o, "order_filled", "info",
                    f"combo BAG filled (aggregate) status={getattr(trade.orderStatus, 'status', '')}", {})
             await rebuild_leg(db, order_id=oid)  # keep the book current (I3)
+            if o.order_role == "closing" and o.closes_order_id is not None:
+                await recompute_reservation(db, entry_order_id=o.closes_order_id)
         await db.commit()
     if structure_id is not None:
         await maybe_complete_structure(sm, structure_id)

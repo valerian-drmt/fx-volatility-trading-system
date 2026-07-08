@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.execution.reaper_policy import REAPABLE_STATES, decide_reap
 from engines.execution.order_reconciler import _leg_matches_position
 from persistence.models import OpenPosition, StructureOrder, TradeEvent
+from persistence.reservation import recompute_reservation
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,9 @@ async def reap_stale_orders(
                 o.state = "expired"
                 o.state_updated_at = now
                 expired_ids.append(int(o.id))
+                # Release the reservation this dead close was holding (I5, spec §6.2).
+                if o.order_role == "closing" and o.closes_order_id is not None:
+                    await recompute_reservation(db, entry_order_id=o.closes_order_id)
 
         await db.commit()
 

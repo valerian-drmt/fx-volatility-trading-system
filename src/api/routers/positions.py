@@ -51,6 +51,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.reservation import recompute_reservation
 from shared.contracts import multiplier_for, parse_local_symbol
 from shared.trace import current_trace_id, trace_headers
 
@@ -1134,6 +1135,19 @@ async def close_one_open_position(
     await db.flush()  # populates closing_struct.id
 
     contract_fields = _contract_fields_from_symbol(pos.structure, pos.side)
+    # OMS P2 : best-effort link to the entry leg this close covers, so the
+    # reservation ledger can materialise reserved_qty on it (I5). The stateless
+    # over-close guard above stays the admission gate; this makes the reservation
+    # persistent + race-visible. NULL when the entry leg can't be resolved.
+    entry_order_id: int | None = None
+    if pos.trade_id is not None:
+        entry_order_id = (await db.execute(
+            select(StructureOrder.id)
+            .where(StructureOrder.structure_id == pos.trade_id)
+            .where(StructureOrder.order_role != "closing")
+            .where(StructureOrder.ib_local_symbol == pos.structure)
+            .limit(1)
+        )).scalar_one_or_none()
     closing_order = StructureOrder(
         structure_id=closing_struct.id,
         leg_idx=0, order_role="closing",
@@ -1142,9 +1156,13 @@ async def close_one_open_position(
         contract_expiry=pos.expiry,
         state="pending",
         trace_id=trace_id,
+        closes_order_id=entry_order_id,
         **contract_fields,
     )
     db.add(closing_order)
+    if entry_order_id is not None:
+        await db.flush()  # closing order queryable before folding the reservation
+        await recompute_reservation(db, entry_order_id=entry_order_id)
 
     # NOTE: TradeEvent.position_id FKs to booked_position.id, not the
     # IB-live ``position`` table — leave it NULL and store the live
