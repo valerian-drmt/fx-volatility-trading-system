@@ -11,8 +11,6 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-import httpx
-
 from api.orchestration.events.sources.base import EventSource, Impact, RawEvent
 
 # Whitelist of FRED release_id → (event_type, impact). Verified via
@@ -68,6 +66,7 @@ class FREDSource(EventSource):
             "limit": 10000,
             "sort_order": "asc",
         }
+        import httpx  # lazy: keep the module importable without the [api] extra (unit tests run on [dev])
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             resp = await client.get(f"{self.BASE_URL}/releases/dates", params=params)
             resp.raise_for_status()

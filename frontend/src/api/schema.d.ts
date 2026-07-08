@@ -272,6 +272,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/positions/book": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Book
+         * @description The BOOK — one row per leg, position folded forward from that leg's fills.
+         *
+         *     This is the authority for "what we hold" (invariants I3/I7): ``open_qty`` is a
+         *     pure signed fold of the leg's ``trade_fill`` rows (via ``leg_position``, the
+         *     ``position_projector`` output), never back-attributed from the netted IB mirror
+         *     (``open_position``, which /open exposes and which stays a reconciliation
+         *     checksum only). ``available = |open_qty| − reserved_qty`` is the close-guard
+         *     headroom (I5). Additive read; the frontend is untouched.
+         */
+        get: operations["list_book_api_v1_positions_book_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/breaks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Breaks
+         * @description Materialised reconciliation breaks (I4) — book (leg_position) vs broker
+         *     (IB mirror) gaps. Open breaks (``resolved_at`` NULL) by default; a break is
+         *     data that lives and resolves, never a silent discrepancy. Written by the
+         *     execution-engine ``reconcile_positions_loop``. Additive read.
+         */
+        get: operations["list_breaks_api_v1_positions_breaks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/structured": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Structured
+         * @description Open positions grouped by the booked ``trade_structure`` — so a Risk
+         *     Reversal reads as ONE 2-leg group labelled from ``structure_type`` +
+         *     ``reference_tenor`` (the values you actually traded), not re-parsed from the
+         *     IB ``localSymbol``. Live marks/greeks are attached from ``open_position`` when
+         *     a leg matches (by ``ib_local_symbol`` or the ``trade_id`` FK). IB-account
+         *     positions not tied to any booked leg are returned separately as ``unlinked``.
+         *
+         *     This is the desk view; ``/open`` stays the raw IB mirror.
+         *
+         *     Only structures with at least one **actually-open** leg (a linked
+         *     ``open_position`` row) are returned — a purely-``submitted`` structure whose
+         *     legs never filled is an *order*, not a position, and stays in the Orders
+         *     blotter. This keeps Open positions from mixing pending orders with real
+         *     positions. A half-filled structure (e.g. an RR whose put filled but call
+         *     didn't) still shows here, flagged as a naked residual.
+         */
+        get: operations["list_structured_api_v1_positions_structured_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Reconciliation
+         * @description Book vs broker reconciliation — the desk's own record vs what IB holds.
+         *
+         *     The book (``trade_order`` filled qty, entries + closes netting out) is the
+         *     system of record for what we *should* hold ; the IB mirror (``open_position``)
+         *     is what the broker says we *do* hold. This surfaces the **breaks** between
+         *     them (§2.6 of docs/BACKEND_ARCHITECTURE.md) instead of silently trusting
+         *     either side. Read-only diagnostic.
+         *
+         *     Reconciliation is done **per contract** (IB ``localSymbol``) because IB nets
+         *     by contract ; a break is then attributed to a structure for display.
+         */
+        get: operations["reconciliation_api_v1_positions_reconciliation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/positions/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ledger
+         * @description Positions + realised / unrealised P&L folded from the append-only
+         *     ``trade_fill`` event log (average-cost — see ``core.ledger``).
+         *
+         *     Audit-grade and **reproducible from events**, independent of the mutable IB
+         *     mirror (§2.4 of docs/BACKEND_ARCHITECTURE.md). Its net qty per contract is
+         *     what ``/reconciliation`` calls ``expected`` — this endpoint adds the money.
+         *     Fills are folded in **execution order** (by fill timestamp).
+         */
+        get: operations["ledger_api_v1_positions_ledger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/positions/active": {
         parameters: {
             query?: never;
@@ -1065,8 +1204,9 @@ export interface paths {
          *     onto delta/vega/gamma/cross by inverting each axis' shock. ``nav_base`` is
          *     the slow anchor (0.9·high-water-mark ∨ EWMA-20d of the daily net-liq series)
          *     so a drawdown does not procyclically tighten every cap at once. The live NAV
-         *     is returned for display only. ``regime_mult`` is 1.0 until the vol-regime
-         *     feed is wired (§8). Fields are 0 until ~enough net-liq history + a spot exist.
+         *     is returned for display only. ``regime_mult`` (§8) scales the caps down as the
+         *     prevailing vol rises above its recent typical level. Fields are 0 until
+         *     ~enough net-liq history + a spot exist.
          */
         get: operations["greek_limits_api_v1_portfolio_greek_limits_get"];
         put?: never;
@@ -1114,6 +1254,28 @@ export interface paths {
          * @description N most recent vol_surface_snapshot rows for ``symbol`` — headline fields only.
          */
         get: operations["vol_history_api_v1_vol_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bars": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bars
+         * @description Real OHLC candles for ``symbol``/``tf`` (range preset 1D/1W/1M) from the
+         *     market-data engine's Redis cache (IB ``reqHistoricalData``, MIDPOINT). Empty
+         *     list until the engine has populated the cache (needs IB Gateway + engines).
+         */
+        get: operations["bars_api_v1_bars_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2163,6 +2325,22 @@ export interface components {
         AuthStatus: {
             /** Authenticated */
             authenticated: boolean;
+        };
+        /**
+         * BarRow
+         * @description One OHLC candle. ``t`` = bar-open epoch milliseconds (UTC).
+         */
+        BarRow: {
+            /** T */
+            t: number;
+            /** O */
+            o: number;
+            /** H */
+            h: number;
+            /** L */
+            l: number;
+            /** C */
+            c: number;
         };
         /**
          * CalibrationConfig
@@ -3542,6 +3720,138 @@ export interface operations {
             };
         };
     };
+    list_book_api_v1_positions_book_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    list_breaks_api_v1_positions_breaks_get: {
+        parameters: {
+            query?: {
+                include_resolved?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_structured_api_v1_positions_structured_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconciliation_api_v1_positions_reconciliation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    ledger_api_v1_positions_ledger_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     list_active_api_v1_positions_active_get: {
         parameters: {
             query?: never;
@@ -4528,6 +4838,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VolHistoryRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bars_api_v1_bars_get: {
+        parameters: {
+            query?: {
+                symbol?: string;
+                tf?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarRow"][];
                 };
             };
             /** @description Validation Error */
@@ -5748,7 +6091,9 @@ export interface operations {
     };
     active_model_api_v1_signals_pca_model_get: {
         parameters: {
-            query?: never;
+            query?: {
+                symbol?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5764,6 +6109,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
