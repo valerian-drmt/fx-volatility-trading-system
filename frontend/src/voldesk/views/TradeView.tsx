@@ -594,7 +594,8 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   };
   const dbRows: BlotterRow[] = (submitted.data ?? []).map((s) => ({
     id: "s" + s.id,
-    tradeNo: s.id,
+    // a close shows the trade it closes (#30), not this new closing structure (#31)
+    tradeNo: s.closes_trade_id ?? s.id,
     ...(s.contract ? { contract: s.contract } : {}),
     ts: new Date(s.created_at).toLocaleTimeString("en-GB", { hour12: false }),
     tsSort: Date.parse(s.created_at) || 0,

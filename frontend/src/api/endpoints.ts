@@ -243,6 +243,7 @@ export interface SubmittedTrade {
   execution_mode: string | null;
   position_state: string | null;
   order_role: string | null; // entry / closing / unwind / hedge
+  closes_trade_id?: number | null; // for a close: the original trade it closes (#30, not this #31)
 }
 export const fetchSubmitted = (limit = 50) =>
   apiGet<SubmittedTrade[]>("/api/v1/trade/submitted", { query: { limit } });
