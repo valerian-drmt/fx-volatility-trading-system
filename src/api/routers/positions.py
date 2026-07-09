@@ -1030,6 +1030,7 @@ async def close_one_open_position(
     pos: OpenPosition,
     qty: int,
     limit_price_override: float | None = None,
+    entry_order_id_override: int | None = None,
 ) -> dict[str, Any]:
     """Close ``qty`` contracts of a single ``open_position`` row.
 
@@ -1139,8 +1140,11 @@ async def close_one_open_position(
     # reservation ledger can materialise reserved_qty on it (I5). The stateless
     # over-close guard above stays the admission gate; this makes the reservation
     # persistent + race-visible. NULL when the entry leg can't be resolved.
-    entry_order_id: int | None = None
-    if pos.trade_id is not None:
+    # A trade-level close passes the EXACT entry leg it targets
+    # (entry_order_id_override) so a shared-contract sibling can't be mis-linked.
+    # Otherwise fall back to a best-effort match by the mirror's (netted) trade_id.
+    entry_order_id: int | None = entry_order_id_override
+    if entry_order_id is None and pos.trade_id is not None:
         entry_order_id = (await db.execute(
             select(StructureOrder.id)
             .where(StructureOrder.structure_id == pos.trade_id)
