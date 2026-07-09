@@ -198,18 +198,29 @@ def plan_structure_terminal_state(order_states: list[str]) -> str | None:
 @router.post("/{trade_id}/cancel", dependencies=[Depends(require_write)])
 async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
     """Cancel every non-terminal order of ``trade_id`` at IB, then terminalise the
-    structure. Frees a stuck 'submitted' trade — a resting wing that won't fill,
-    or a DAY order IB already dropped. Idempotent : an order IB no longer holds
-    (404 from the engine) is treated as already gone and flipped to ``cancelled``.
+    structure. Frees a stuck 'submitted' trade in two ways :
+
+      * live orders resting at IB (a wing that won't fill, a DAY order IB already
+        dropped) are DELETE-d at the engine and flipped to ``cancelled`` ;
+      * a *ghost* structure — orders already terminal (all filled, or filled after
+        a close) but ``trade_structure.state`` never advanced past ``submitted`` —
+        is terminalised from its current leg states even though nothing is
+        cancellable. This is the missing FSM transition, not a no-op.
+
+    Idempotent : an order IB no longer holds (404 from the engine) is treated as
+    already gone. 404 only when the structure doesn't exist ; 409 when a leg is
+    still genuinely in flight in a state we can neither cancel nor terminalise.
     """
+    struct = await db.get(TradeStructure, trade_id)
+    if struct is None:
+        raise HTTPException(404, f"trade #{trade_id} not found")
+
     orders = (await db.execute(
         select(StructureOrder)
         .where(StructureOrder.structure_id == trade_id)
         .where(StructureOrder.state.in_(_CANCELLABLE_STATES))
         .order_by(StructureOrder.leg_idx)
     )).scalars().all()
-    if not orders:
-        raise HTTPException(404, f"no cancellable orders for trade #{trade_id}")
 
     now = datetime.now(UTC)
     results: list[dict[str, Any]] = []
@@ -250,13 +261,22 @@ async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
         select(StructureOrder.state).where(StructureOrder.structure_id == trade_id)
     )).scalars().all()
     new_state = plan_structure_terminal_state(list(all_states))
-    if new_state is not None:
-        struct = await db.get(TradeStructure, trade_id)
-        if struct is not None and struct.state != new_state:
-            struct.state = new_state
-            struct.state_updated_at = now
+    if new_state is not None and struct.state != new_state:
+        struct.state = new_state
+        struct.state_updated_at = now
+
+    # Nothing cancellable and can't terminalise → a leg is still genuinely in
+    # flight (a non-cancellable, non-terminal state). Don't pretend we acted.
+    if not orders and new_state is None:
+        await db.rollback()
+        raise HTTPException(
+            409,
+            f"trade #{trade_id}: nothing to cancel and not terminal "
+            f"(structure state '{struct.state}')",
+        )
+
     await db.commit()
     return {
         "trade_id": trade_id, "cancelled": cancelled, "failed": failed,
-        "structure_state": new_state, "results": results,
+        "structure_state": struct.state, "results": results,
     }
