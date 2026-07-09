@@ -239,6 +239,8 @@ export interface SubmittedTrade {
   contract: string | null; // IB localSymbol(s) of the legs ("EUUV6 C1130", or "… +N")
   reference_tenor: string | null;
   base_qty: number | null;
+  qty_total?: number | null; // total contracts across the structure's legs
+  qty_filled?: number | null; // contracts filled so far (for in-flight progress)
   state: string | null;
   execution_mode: string | null;
   position_state: string | null;
