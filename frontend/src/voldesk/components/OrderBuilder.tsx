@@ -566,8 +566,23 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
           </div>
         )}
 
+        {/* Risk Reversal : wing Δ selector — 10Δ / 25Δ only. Same principle as
+            Straddle/Strangle, minus ATM: a 50Δ RR is degenerate (both strikes
+            collapse onto the forward). Shares the 25Δ strikes with a strangle;
+            only the leg signs differ (long call / short put). */}
+        {meta.skew && (
+          <div className="field tenor-field"><span>Wings</span>
+            <div className="tenor-btns">
+              {[["10Δ", "10Δc"], ["25Δ", "25Δc"]].map(([lbl, w]) => (
+                <button key={w} type="button" className={"tenor-btn " + (wing === w ? "on" : "")}
+                  onClick={() => { setWing(w!); reset(); }}>{lbl}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* wings / strike Δ — every other option product (all 5 delta pillars) */}
-        {!isFut && meta.mode !== "ss" && (
+        {!isFut && meta.mode !== "ss" && !meta.skew && (
           <div className="field tenor-field"><span>{meta.mode === "wing" || meta.mode === "flywing" ? "Wings" : "Strike Δ"}</span>
             <div className="tenor-btns">
               {PILLARS.map((w) => (
