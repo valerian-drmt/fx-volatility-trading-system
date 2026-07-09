@@ -6,7 +6,12 @@ so no real DB/IB is needed.
 """
 from __future__ import annotations
 
-from core.execution.reaper_policy import REAPABLE_STATES, TERMINAL_STATES, decide_reap
+from core.execution.reaper_policy import (
+    REAPABLE_STATES,
+    TERMINAL_STATES,
+    decide_reap,
+    plan_structure_terminal_state,
+)
 
 
 def test_t1_stale_and_not_held_expires() -> None:
@@ -64,6 +69,16 @@ def test_live_ib_order_keys_keeps_only_working_orders() -> None:
     assert "20" in keys and "555873420" in keys
     # filled / cancelled / fully-done → excluded
     assert "64" not in keys and "99" not in keys and "12" not in keys
+
+
+def test_reaper_terminalises_structure_once_all_legs_terminal() -> None:
+    # After the reaper expires a never-filled 10-delta wing, the strangle's legs
+    # are e.g. [filled, expired] -> the structure must leave 'submitted', not sit
+    # there forever (the ghost bug). A leg still in flight blocks terminalisation.
+    assert plan_structure_terminal_state(["filled", "submitted"]) is None
+    assert plan_structure_terminal_state(["filled", "expired"]) == "partial_fail"
+    assert plan_structure_terminal_state(["expired", "expired"]) == "fully_failed"
+    assert plan_structure_terminal_state(["filled", "filled"]) == "fully_filled"
 
 
 async def test_t7_dead_feed_is_a_no_op() -> None:

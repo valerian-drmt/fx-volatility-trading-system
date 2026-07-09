@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.dependencies import get_db_session
 from api.routers.positions import close_one_open_position
-from core.execution.reaper_policy import TERMINAL_STATES
+from core.execution.reaper_policy import plan_structure_terminal_state
 from persistence.models import OpenPosition, StructureOrder, TradeStructure
 
 _EXECUTION_URL = os.getenv("EXECUTION_URL", "http://execution-engine:8001")
@@ -181,18 +181,6 @@ async def close_trade(
         "failed_legs": failed_count,
         "results": results,
     }
-
-
-def plan_structure_terminal_state(order_states: list[str]) -> str | None:
-    """Terminal ``trade_structure`` state from its orders' states, or ``None`` if
-    any order is still in flight (pure/testable). All filled → ``fully_filled`` ;
-    none filled → ``fully_failed`` ; mixed → ``partial_fail``."""
-    if not order_states or any(s not in TERMINAL_STATES for s in order_states):
-        return None
-    filled = sum(1 for s in order_states if s == "filled")
-    if filled == len(order_states):
-        return "fully_filled"
-    return "fully_failed" if filled == 0 else "partial_fail"
 
 
 @router.post("/{trade_id}/cancel", dependencies=[Depends(require_write)])
