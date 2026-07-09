@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from api.auth import require_write
 from api.dependencies import get_db_session, get_redis_client_or_none
@@ -1167,6 +1168,20 @@ async def list_submitted_structures(
         order_role = (await db.execute(
             select(StructureOrder.order_role).where(StructureOrder.structure_id == s.id).limit(1)
         )).scalar_one_or_none()
+        # For a closing structure, the ORIGINAL trade it closes: the closing order's
+        # closes_order_id -> the entry order -> its structure_id. Lets the blotter
+        # show "#30" (the trade being closed), not "#31" (this new closing
+        # structure). NULL when the close wasn't linked to an entry leg.
+        closes_trade_id = None
+        if order_role in ("closing", "unwind"):
+            _entry = aliased(StructureOrder)
+            closes_trade_id = (await db.execute(
+                select(_entry.structure_id)
+                .select_from(StructureOrder)
+                .join(_entry, StructureOrder.closes_order_id == _entry.id)
+                .where(StructureOrder.structure_id == s.id)
+                .limit(1)
+            )).scalar_one_or_none()
         # Contract(s) traded : the IB localSymbol(s) of the structure's legs. One
         # symbol for a single-leg order (a close, a vanilla) ; "sym +N" for a
         # multi-leg structure (butterfly / strangle). None until the first fill
@@ -1188,6 +1203,7 @@ async def list_submitted_structures(
             "reference_tenor": s.reference_tenor, "base_qty": s.base_qty, "state": s.state,
             "execution_mode": s.execution_mode,
             "order_role": order_role or "entry",
+            "closes_trade_id": closes_trade_id,
             "total_premium_paid_usd": s.total_premium_paid_usd,
             "total_commission_usd": s.total_commission_usd,
             "total_entry_cost_usd": s.total_entry_cost_usd,
