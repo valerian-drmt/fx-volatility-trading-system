@@ -232,16 +232,32 @@ async def sync_positions_from_ib(
             db.add(row)
             opened += 1
 
-    # Closed positions = simply DELETE the row. The audit trail lives in
-    # ``trades`` (fills) and ``position_snapshots`` (history).
+    # Closed positions = DELETE the row (audit trail lives in fills + snapshots).
+    # BUT gate the deletes on a TRUSTWORTHY snapshot (T7 — same guard the reaper and
+    # reconciler use): a dead/stale IB feed, or a transient empty ``list_positions()``
+    # while positions are actually open, must NOT flatten the mirror — that's how a
+    # spread leg vanishes minutes after it filled (deleted here, re-added next cycle).
+    # Upserts above are always safe (they only add/refresh what IB reported); only the
+    # deletes need the guard. A genuinely-flat account (reporting, empty snapshot) still
+    # deletes correctly because account_is_reporting() is True.
+    trustworthy = executor.account_is_reporting() and not (not ib_active and db_by_key)
     closed = 0
-    for key, db_row in db_by_key.items():
-        if key not in ib_by_key:
-            await db.delete(db_row)
-            closed += 1
+    if trustworthy:
+        for key, db_row in db_by_key.items():
+            if key not in ib_by_key:
+                await db.delete(db_row)
+                closed += 1
+    elif any(k not in ib_by_key for k in db_by_key):
+        logger.warning(
+            "position_sync_skip_deletes untrusted_snapshot reporting=%s ib_active=%d db_rows=%d",
+            executor.account_is_reporting(), len(ib_active), len(db_by_key),
+        )
 
     await db.commit()
-    return {"synced": len(ib_active), "opened": opened, "closed": closed, "unchanged": unchanged}
+    return {
+        "synced": len(ib_active), "opened": opened, "closed": closed,
+        "unchanged": unchanged, "deletes_skipped": not trustworthy,
+    }
 
 
 async def publish_portfolio_to_redis(
