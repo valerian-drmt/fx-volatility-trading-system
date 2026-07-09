@@ -231,6 +231,16 @@ export const cancelTradePreview = (previewId: string) =>
 
 // Persisted submitted structures (DB: trade_structure + booked_position). Read-only,
 // so the Orders blotter survives refresh and reflects the real DB state.
+export interface SubmittedLeg {
+  leg_idx: number;
+  contract: string | null; // IB localSymbol of the leg ("EUUV6 C1130")
+  contract_type: string | null; // "call" / "put" / "future"
+  strike: number | null;
+  side: string | null; // "BUY" / "SELL"
+  qty: number; // ordered contracts for this leg
+  qty_filled: number; // filled so far
+  state: string; // per-leg order state
+}
 export interface SubmittedTrade {
   id: number;
   created_at: string;
@@ -241,6 +251,7 @@ export interface SubmittedTrade {
   base_qty: number | null;
   qty_total?: number | null; // total contracts across the structure's legs
   qty_filled?: number | null; // contracts filled so far (for in-flight progress)
+  legs?: SubmittedLeg[]; // per-leg detail — the blotter renders one row per leg
   state: string | null;
   execution_mode: string | null;
   position_state: string | null;
