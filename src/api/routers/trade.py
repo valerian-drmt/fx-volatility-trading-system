@@ -18,7 +18,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -1197,10 +1197,19 @@ async def list_submitted_structures(
             else uniq_syms[0] if len(uniq_syms) == 1
             else f"{uniq_syms[0]} +{len(uniq_syms) - 1}"
         )
+        # Fill progress across the structure's legs — lets the blotter show
+        # "3/8" while a slow close (or a multi-leg entry) fills leg by leg.
+        qty_agg = (await db.execute(
+            select(
+                func.coalesce(func.sum(StructureOrder.qty), 0),
+                func.coalesce(func.sum(StructureOrder.qty_filled), 0),
+            ).where(StructureOrder.structure_id == s.id)
+        )).one()
         out.append({
             "id": s.id, "created_at": s.created_at, "structure_type": s.structure_type,
             "product_label": s.product_label, "contract": contract,
             "reference_tenor": s.reference_tenor, "base_qty": s.base_qty, "state": s.state,
+            "qty_total": int(qty_agg[0] or 0), "qty_filled": int(qty_agg[1] or 0),
             "execution_mode": s.execution_mode,
             "order_role": order_role or "entry",
             "closes_trade_id": closes_trade_id,

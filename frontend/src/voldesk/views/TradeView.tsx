@@ -58,6 +58,8 @@ interface BlotterRow {
   role: string; // desk order role : entry / closing / unwind / hedge
   label: string;
   qty: number;
+  qtyFilled?: number; // contracts filled so far — shown as "filled/total" while in flight
+  qtyTotal?: number; // total contracts across the structure's legs
   state: string; // "sent"/"rejected" (session) or the DB state ("active", "closed", …)
   note?: string;
 }
@@ -636,6 +638,8 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     role: s.order_role ?? "entry",
     label: `${prettyProduct(s)}${s.reference_tenor ? " " + s.reference_tenor : ""}`,
     qty: s.base_qty ?? 0,
+    ...(s.qty_total != null ? { qtyTotal: s.qty_total } : {}),
+    ...(s.qty_filled != null ? { qtyFilled: s.qty_filled } : {}),
     state: s.position_state ?? s.state ?? "—",
     ...(s.execution_mode === "mock" ? { note: "paper" } : {}),
   }));
@@ -733,7 +737,11 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
                         {o.note && <span className="dim small"> · {o.note}</span>}
                       </td>
                       <td><span className={"ord-dir " + roleTone(o.role)}>{roleLabel(o.role)}</span></td>
-                      <td className="mono">{o.qty}</td>
+                      <td className="mono">
+                        {isWaitingState(o.state) && o.qtyTotal != null
+                          ? `${o.qtyFilled ?? 0}/${o.qtyTotal}`
+                          : o.qty}
+                      </td>
                       <td>
                         <span className={"ord-state " + tone}>{o.state}</span>
                         {stale && (
