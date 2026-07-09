@@ -38,3 +38,21 @@ def decide_reap(
     if held_at_ib and matches_contract:
         return "filled"
     return "expired"
+
+
+def plan_structure_terminal_state(order_states: list[str]) -> str | None:
+    """Terminal ``trade_structure`` state from its orders' states, or ``None`` if
+    any order is still in flight (pure/testable). All filled → ``fully_filled`` ;
+    none filled → ``fully_failed`` ; mixed → ``partial_fail``.
+
+    This is the FSM edge defect D1 lacked at the *structure* level : the happy
+    path only ever set ``fully_filled`` when EVERY leg filled, so a structure
+    with a leg that expired / rejected / never filled sat ``submitted`` forever.
+    The reaper (order edge) and the manual cancel both drive it here.
+    """
+    if not order_states or any(s not in TERMINAL_STATES for s in order_states):
+        return None
+    filled = sum(1 for s in order_states if s == "filled")
+    if filled == len(order_states):
+        return "fully_filled"
+    return "fully_failed" if filled == 0 else "partial_fail"
