@@ -18,7 +18,7 @@ import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
 import { ApiError } from "../../api/client";
-import { cancelTrade, closeContract, closeTrade, fetchGreekLimits, fetchStructuredPositions, fetchSubmitted, type StructuredPositions, type SubmittedTrade } from "../../api/endpoints";
+import { cancelTrade, closeContract, closeTrade, fetchGreekLimits, fetchStructuredPositions, fetchSubmitted, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
 import { adaptGreekLimits, type GreekLimits } from "../data/live/portfolio";
 import { useFetch } from "../../hooks/useFetch";
 
@@ -59,7 +59,9 @@ interface BlotterRow {
   label: string;
   qty: number;
   qtyFilled?: number; // contracts filled so far — shown as "filled/total" while in flight
-  qtyTotal?: number; // total contracts across the structure's legs
+  qtyTotal?: number; // total contracts (this leg, or the whole structure for 1-row entries)
+  legIdx?: number; // leg position — keeps a structure's leg rows contiguous + ordered
+  groupWaiting?: boolean; // is ANY leg of this structure still working (for the sort)
   state: string; // "sent"/"rejected" (session) or the DB state ("active", "closed", …)
   note?: string;
 }
@@ -147,6 +149,20 @@ function prettyProduct(s: SubmittedTrade): string {
   // product_label is often empty for free-leg builds → format structure_type
   // (the classifier verdict) as the fallback, not "" (which would read Structure).
   return formatStructLabel(s.product_label) ?? formatStructLabel(s.structure_type) ?? "Structure";
+}
+
+// Per-leg blotter label, e.g. "Butterfly 3M · Sell Call 1130". The structure
+// name + tenor prefix keeps every leg row tied to its product; the suffix
+// (side + Call/Put/Fut + strike) says which leg this row is. Single-leg orders
+// (a vanilla, a future, a close) need no suffix — the product already says it.
+function legBlotterLabel(s: SubmittedTrade, leg: SubmittedLeg): string {
+  const base = `${prettyProduct(s)}${s.reference_tenor ? " " + s.reference_tenor : ""}`;
+  if ((s.legs?.length ?? 1) <= 1) return base;
+  const verb = leg.side === "SELL" ? "Sell" : "Buy";
+  const ct = (leg.contract_type ?? "").toLowerCase();
+  const kind = ct === "call" ? "Call" : ct === "put" ? "Put" : "Fut";
+  const strike = leg.strike != null ? " " + leg.strike : "";
+  return `${base} · ${verb} ${kind}${strike}`;
 }
 
 // Single source of truth for Open positions : turn the server-joined
@@ -625,32 +641,64 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
       setCancelling((s) => { const n = new Set(s); n.delete(structureId); return n; });
     }
   };
-  const dbRows: BlotterRow[] = (submitted.data ?? []).map((s) => ({
-    id: "s" + s.id,
-    // a close shows the trade it closes (#30), not this new closing structure (#31)
-    tradeNo: s.closes_trade_id ?? s.id,
-    structureId: s.id, // the real structure — cancel must target THIS, not the display #
-
-    ...(s.contract ? { contract: s.contract } : {}),
-    ts: fmtBlotterTs(new Date(s.created_at)),
-    tsSort: Date.parse(s.created_at) || 0,
-    action: s.order_role === "closing" || s.order_role === "unwind" ? "close" : "open",
-    role: s.order_role ?? "entry",
-    label: `${prettyProduct(s)}${s.reference_tenor ? " " + s.reference_tenor : ""}`,
-    qty: s.base_qty ?? 0,
-    ...(s.qty_total != null ? { qtyTotal: s.qty_total } : {}),
-    ...(s.qty_filled != null ? { qtyFilled: s.qty_filled } : {}),
-    state: s.position_state ?? s.state ?? "—",
-    ...(s.execution_mode === "mock" ? { note: "paper" } : {}),
-  }));
+  // One blotter row PER LEG: a butterfly = 3 rows sharing the trade #, each with
+  // its own contract, volume (filled/total), and state. Single-leg orders stay one
+  // row. groupWaiting (any leg still working) sorts the whole structure, keeping
+  // its legs contiguous.
+  const dbRows: BlotterRow[] = (submitted.data ?? []).flatMap((s) => {
+    const legs = s.legs && s.legs.length > 0 ? s.legs : null;
+    const groupWaiting = legs
+      ? legs.some((l) => isWaitingState(l.state))
+      : isWaitingState(s.position_state ?? s.state ?? "");
+    const common = {
+      // a close shows the trade it closes (#30), not this closing structure (#31)
+      tradeNo: s.closes_trade_id ?? s.id,
+      structureId: s.id, // the real structure — cancel targets THIS, not the display #
+      ts: fmtBlotterTs(new Date(s.created_at)),
+      tsSort: Date.parse(s.created_at) || 0,
+      action: (s.order_role === "closing" || s.order_role === "unwind" ? "close" : "open") as "open" | "close",
+      role: s.order_role ?? "entry",
+      groupWaiting,
+      ...(s.execution_mode === "mock" ? { note: "paper" } : {}),
+    };
+    if (!legs) {
+      return [{
+        id: "s" + s.id,
+        ...common,
+        ...(s.contract ? { contract: s.contract } : {}),
+        label: `${prettyProduct(s)}${s.reference_tenor ? " " + s.reference_tenor : ""}`,
+        qty: s.base_qty ?? 0,
+        ...(s.qty_total != null ? { qtyTotal: s.qty_total } : {}),
+        ...(s.qty_filled != null ? { qtyFilled: s.qty_filled } : {}),
+        legIdx: 0,
+        state: s.position_state ?? s.state ?? "—",
+      }];
+    }
+    return legs.map((leg) => ({
+      id: "s" + s.id + "-" + leg.leg_idx,
+      ...common,
+      ...(leg.contract ? { contract: leg.contract } : s.contract ? { contract: s.contract } : {}),
+      label: legBlotterLabel(s, leg),
+      qty: leg.qty,
+      qtyTotal: leg.qty,
+      qtyFilled: leg.qty_filled,
+      legIdx: leg.leg_idx,
+      state: leg.state,
+    }));
+  });
   const orders = [...rejects, ...dbRows]
     .sort((a, b) => {
-      // waiting (submitted / partial) first, then resolved — each newest-first.
-      const wa = isWaitingState(a.state) ? 0 : 1;
-      const wb = isWaitingState(b.state) ? 0 : 1;
-      return wa !== wb ? wa - wb : b.tsSort - a.tsSort;
+      // working structures first, newest-first; a structure's legs stay together
+      // (same structureId) and in leg order.
+      const wa = a.groupWaiting ? 0 : 1;
+      const wb = b.groupWaiting ? 0 : 1;
+      if (wa !== wb) return wa - wb;
+      if (b.tsSort !== a.tsSort) return b.tsSort - a.tsSort;
+      const sa = a.structureId ?? -1, sb = b.structureId ?? -1;
+      if (sa !== sb) return sb - sa;
+      return (a.legIdx ?? 0) - (b.legIdx ?? 0);
     })
-    .slice(0, 60);
+    .slice(0, 120);
   const ticks = useTicks();
   const td = trade.data;
   // Open positions render from the structured read. Fall back to the raw IB
