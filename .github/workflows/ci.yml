@@ -373,7 +373,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,writer]"
+          pip install -e ".[dev,api,quant,writer]"
 
       - name: Run alembic upgrade head
         run: python -m alembic -c src/persistence/alembic.ini upgrade head
