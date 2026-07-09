@@ -64,6 +64,13 @@ interface BlotterRow {
 const ROLE_LABEL: Record<string, string> = { entry: "Entry", closing: "Closing", unwind: "Unwind", hedge: "Hedge" };
 function roleLabel(role: string): string { return ROLE_LABEL[role] ?? "Entry"; }
 function roleTone(role: string): "open" | "close" { return role === "closing" || role === "unwind" ? "close" : "open"; }
+// In-flight (waiting) order states — pinned above resolved rows in the blotter,
+// since "submitted" / partial fills are pending, not final (fully_filled / *_fail).
+const _WAITING_STATES = new Set([
+  "submitted", "pending", "acknowledged", "partial_fill", "partially_filled", "submitting", "closing",
+]);
+const isWaitingState = (s: string | null | undefined): boolean =>
+  _WAITING_STATES.has((s ?? "").toLowerCase());
 // map any order/position state → a distinct badge tone (one colour per lifecycle stage)
 // Three buckets, by outcome — matches the operator's mental model:
 //   red    = rejected / failed / expired (never became a live position)
@@ -606,7 +613,14 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     state: s.position_state ?? s.state ?? "—",
     ...(s.execution_mode === "mock" ? { note: "paper" } : {}),
   }));
-  const orders = [...rejects, ...dbRows].sort((a, b) => b.tsSort - a.tsSort).slice(0, 60);
+  const orders = [...rejects, ...dbRows]
+    .sort((a, b) => {
+      // waiting (submitted / partial) first, then resolved — each newest-first.
+      const wa = isWaitingState(a.state) ? 0 : 1;
+      const wb = isWaitingState(b.state) ? 0 : 1;
+      return wa !== wb ? wa - wb : b.tsSort - a.tsSort;
+    })
+    .slice(0, 60);
   const ticks = useTicks();
   const td = trade.data;
   // Open positions render from the structured read. Fall back to the raw IB
