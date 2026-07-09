@@ -679,7 +679,10 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     return legs.map((leg) => ({
       id: "s" + s.id + "-" + leg.leg_idx,
       ...common,
-      ...(leg.contract ? { contract: leg.contract } : s.contract ? { contract: s.contract } : {}),
+      // Each leg shows its OWN contract — never the structure's rolled-up symbol,
+      // which would make an unfilled leg borrow a filled sibling's localSymbol (a
+      // spread's two strikes would then read identical). "—" until IB assigns one.
+      ...(leg.contract ? { contract: leg.contract } : {}),
       label: legBlotterLabel(s, leg),
       qty: leg.qty,
       qtyTotal: leg.qty,
