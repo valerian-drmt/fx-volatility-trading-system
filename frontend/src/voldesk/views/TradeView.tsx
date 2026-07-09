@@ -71,6 +71,13 @@ const _WAITING_STATES = new Set([
 ]);
 const isWaitingState = (s: string | null | undefined): boolean =>
   _WAITING_STATES.has((s ?? "").toLowerCase());
+// Blotter timestamp — date + time, so rows that span days (a still-open order
+// from yesterday) are unambiguous, not just an hour:min:sec.
+const fmtBlotterTs = (d: Date): string =>
+  d.toLocaleString("en-GB", {
+    day: "2-digit", month: "short",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
 // map any order/position state → a distinct badge tone (one colour per lifecycle stage)
 // Three buckets, by outcome — matches the operator's mental model:
 //   red    = rejected / failed / expired (never became a live position)
@@ -586,7 +593,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     if (rec.state === "rejected") {
       const now = Date.now();
       setRejects((prev) => [{
-        id: "r" + seq.current++, ts: new Date().toLocaleTimeString("en-GB", { hour12: false }), tsSort: now,
+        id: "r" + seq.current++, ts: fmtBlotterTs(new Date()), tsSort: now,
         action: rec.action, role: rec.action === "close" ? "closing" : "entry",
         label: rec.label, qty: rec.qty, state: "rejected", ...(rec.note ? { note: rec.note } : {}),
       }, ...prev].slice(0, 10));
@@ -604,7 +611,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     // a close shows the trade it closes (#30), not this new closing structure (#31)
     tradeNo: s.closes_trade_id ?? s.id,
     ...(s.contract ? { contract: s.contract } : {}),
-    ts: new Date(s.created_at).toLocaleTimeString("en-GB", { hour12: false }),
+    ts: fmtBlotterTs(new Date(s.created_at)),
     tsSort: Date.parse(s.created_at) || 0,
     action: s.order_role === "closing" || s.order_role === "unwind" ? "close" : "open",
     role: s.order_role ?? "entry",
