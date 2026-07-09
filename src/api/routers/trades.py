@@ -12,8 +12,11 @@ POST /api/v1/trades/{trade_id}/close
 from __future__ import annotations
 
 import logging
+import os
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -22,7 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.dependencies import get_db_session
 from api.routers.positions import close_one_open_position
-from persistence.models import OpenPosition, StructureOrder
+from core.execution.reaper_policy import TERMINAL_STATES
+from persistence.models import OpenPosition, StructureOrder, TradeStructure
+
+_EXECUTION_URL = os.getenv("EXECUTION_URL", "http://execution-engine:8001")
+# Non-terminal order states an operator can cancel from the blotter.
+_CANCELLABLE_STATES = ("pending", "submitted", "acknowledged", "partially_filled")
 
 router = APIRouter(prefix="/api/v1/trades", tags=["trades"])
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -172,4 +180,83 @@ async def close_trade(
         "closed_legs": closed_count,
         "failed_legs": failed_count,
         "results": results,
+    }
+
+
+def plan_structure_terminal_state(order_states: list[str]) -> str | None:
+    """Terminal ``trade_structure`` state from its orders' states, or ``None`` if
+    any order is still in flight (pure/testable). All filled → ``fully_filled`` ;
+    none filled → ``fully_failed`` ; mixed → ``partial_fail``."""
+    if not order_states or any(s not in TERMINAL_STATES for s in order_states):
+        return None
+    filled = sum(1 for s in order_states if s == "filled")
+    if filled == len(order_states):
+        return "fully_filled"
+    return "fully_failed" if filled == 0 else "partial_fail"
+
+
+@router.post("/{trade_id}/cancel", dependencies=[Depends(require_write)])
+async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
+    """Cancel every non-terminal order of ``trade_id`` at IB, then terminalise the
+    structure. Frees a stuck 'submitted' trade — a resting wing that won't fill,
+    or a DAY order IB already dropped. Idempotent : an order IB no longer holds
+    (404 from the engine) is treated as already gone and flipped to ``cancelled``.
+    """
+    orders = (await db.execute(
+        select(StructureOrder)
+        .where(StructureOrder.structure_id == trade_id)
+        .where(StructureOrder.state.in_(_CANCELLABLE_STATES))
+        .order_by(StructureOrder.leg_idx)
+    )).scalars().all()
+    if not orders:
+        raise HTTPException(404, f"no cancellable orders for trade #{trade_id}")
+
+    now = datetime.now(UTC)
+    results: list[dict[str, Any]] = []
+    cancelled = 0
+    failed = 0
+    for o in orders:
+        try:
+            if o.ib_order_id:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    r = await client.delete(
+                        f"{_EXECUTION_URL}/internal/orders/{int(o.ib_order_id)}"
+                    )
+                # 404 = the order isn't live at IB anymore (already gone) → OK.
+                if r.status_code >= 400 and r.status_code != 404:
+                    raise HTTPException(r.status_code, str(r.text)[:300])
+            o.state = "cancelled"
+            o.state_updated_at = now
+            results.append({
+                "order_id": o.id, "ib_order_id": o.ib_order_id, "ok": True,
+            })
+            cancelled += 1
+        except HTTPException as e:
+            results.append({
+                "order_id": o.id, "ok": False,
+                "error": f"{e.status_code} : {e.detail}"[:300],
+            })
+            failed += 1
+        except httpx.HTTPError as e:
+            results.append({
+                "order_id": o.id, "ok": False,
+                "error": f"execution-engine unreachable: {e}"[:300],
+            })
+            failed += 1
+
+    # Terminalise the structure once all its orders are terminal (the missing
+    # transition — a structure only reached 'fully_filled' when ALL legs filled).
+    all_states = (await db.execute(
+        select(StructureOrder.state).where(StructureOrder.structure_id == trade_id)
+    )).scalars().all()
+    new_state = plan_structure_terminal_state(list(all_states))
+    if new_state is not None:
+        struct = await db.get(TradeStructure, trade_id)
+        if struct is not None and struct.state != new_state:
+            struct.state = new_state
+            struct.state_updated_at = now
+    await db.commit()
+    return {
+        "trade_id": trade_id, "cancelled": cancelled, "failed": failed,
+        "structure_state": new_state, "results": results,
     }

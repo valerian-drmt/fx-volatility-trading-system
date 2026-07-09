@@ -18,7 +18,7 @@ import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
 import { ApiError } from "../../api/client";
-import { closeContract, closeTrade, fetchGreekLimits, fetchStructuredPositions, fetchSubmitted, type StructuredPositions, type SubmittedTrade } from "../../api/endpoints";
+import { cancelTrade, closeContract, closeTrade, fetchGreekLimits, fetchStructuredPositions, fetchSubmitted, type StructuredPositions, type SubmittedTrade } from "../../api/endpoints";
 import { adaptGreekLimits, type GreekLimits } from "../data/live/portfolio";
 import { useFetch } from "../../hooks/useFetch";
 
@@ -50,6 +50,7 @@ export interface OrderRecord {
 interface BlotterRow {
   id: string;
   tradeNo?: number; // the assigned trade_structure id (DB rows only; session rejects have none)
+  structureId?: number; // the ACTUAL structure id (for cancel actions; tradeNo may show the closed trade)
   contract?: string; // IB localSymbol(s) of the legs ("EUUV6 C1130" / "… +N")
   ts: string;
   tsSort: number;
@@ -588,6 +589,8 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const structRows = useMemo(() => structuredToRows(structured.data), [structured.data]);
   const structureCtx = structRows.ctx;
   const [rejects, setRejects] = useState<BlotterRow[]>([]);
+  const [cancelling, setCancelling] = useState<Set<number>>(new Set());
+  const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
   const seq = useRef(0);
   const addOrder = (rec: OrderRecord): void => {
     if (rec.state === "rejected") {
@@ -606,10 +609,26 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
       reloadTrade();          // open_position mirror (leg rows)
     }
   };
+  // Cancel a stuck order/structure at IB + terminalise it, then refresh the
+  // blotter + positions. Failures surface as a session reject row.
+  const onCancelOrder = async (structureId: number): Promise<void> => {
+    setCancelling((s) => new Set(s).add(structureId));
+    try {
+      await cancelTrade(structureId);
+      submitted.reload();
+      reloadTrade();
+    } catch (e) {
+      addOrder({ action: "close", label: `cancel #${structureId}`, side: "—", qty: 0, state: "rejected", note: closeErr(e) });
+    } finally {
+      setCancelling((s) => { const n = new Set(s); n.delete(structureId); return n; });
+    }
+  };
   const dbRows: BlotterRow[] = (submitted.data ?? []).map((s) => ({
     id: "s" + s.id,
     // a close shows the trade it closes (#30), not this new closing structure (#31)
     tradeNo: s.closes_trade_id ?? s.id,
+    structureId: s.id, // the real structure — cancel must target THIS, not the display #
+
     ...(s.contract ? { contract: s.contract } : {}),
     ts: fmtBlotterTs(new Date(s.created_at)),
     tsSort: Date.parse(s.created_at) || 0,
@@ -697,7 +716,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
           <div className="table-scroll orders-scroll">
             <table className="dt orders-table">
               <thead>
-                <tr><th>Time</th><th>Trade</th><th>Contract</th><th>Product</th><th>Type</th><th>Contracts</th><th>State</th></tr>
+                <tr><th>Time</th><th>Trade</th><th>Contract</th><th>Product</th><th>Type</th><th>Contracts</th><th>State</th><th></th></tr>
               </thead>
               <tbody>
                 {orders.map((o) => {
@@ -721,6 +740,18 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
                           <span className="ord-stale mono" title="working > 10 min with no fill — review or cancel">
                             ⏱ {fmtAge(ageMs)}
                           </span>
+                        )}
+                      </td>
+                      <td className="right">
+                        {canWrite && o.structureId != null && isWaitingState(o.state) && (
+                          <button
+                            className="row-close"
+                            disabled={cancelling.has(o.structureId)}
+                            title="Cancel this order at IB and terminalise the trade"
+                            onClick={() => o.structureId != null && onCancelOrder(o.structureId)}
+                          >
+                            {cancelling.has(o.structureId) ? "…" : "Cancel"}
+                          </button>
                         )}
                       </td>
                     </tr>
