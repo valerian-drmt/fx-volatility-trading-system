@@ -227,6 +227,10 @@ jobs:
     env:
       DB_PASSWORD: fxvol
       VNC_PASSWORD: ci-placeholder
+      # ib-gateway is not started here (no `ib` profile), but compose still
+      # interpolates its ${IB_USERID:?}/${IB_PASSWORD:?} at parse time.
+      IB_USERID: ci-placeholder
+      IB_PASSWORD: ci-placeholder
       PLAYWRIGHT_BASE_URL: http://localhost
 
     steps:
