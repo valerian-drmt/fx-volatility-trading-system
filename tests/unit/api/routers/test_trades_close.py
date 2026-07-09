@@ -7,7 +7,7 @@ OWN filled qty, capped at the live mirror qty.
 """
 from __future__ import annotations
 
-from api.routers.trades import plan_trade_close
+from api.routers.trades import plan_structure_terminal_state, plan_trade_close
 
 
 def test_shared_contract_closes_only_own_qty() -> None:
@@ -42,3 +42,16 @@ def test_skips_unfilled_and_missing_and_zero() -> None:
     assert "unfilled" in reasons[100]
     assert "no live mirror position" in reasons[101]
     assert "zero qty" in reasons[102]
+
+
+def test_structure_terminal_state_after_cancel() -> None:
+    # in flight → leave the structure as-is
+    assert plan_structure_terminal_state(["filled", "submitted"]) is None
+    assert plan_structure_terminal_state([]) is None
+    # all legs terminal, all filled → fully_filled
+    assert plan_structure_terminal_state(["filled", "filled"]) == "fully_filled"
+    # some filled, rest cancelled/expired → partial_fail (a half-filled strangle)
+    assert plan_structure_terminal_state(["filled", "cancelled"]) == "partial_fail"
+    assert plan_structure_terminal_state(["filled", "expired"]) == "partial_fail"
+    # none filled → fully_failed
+    assert plan_structure_terminal_state(["cancelled", "rejected"]) == "fully_failed"

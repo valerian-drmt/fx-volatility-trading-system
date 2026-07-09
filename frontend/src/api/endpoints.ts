@@ -287,6 +287,10 @@ export const closeContract = (positionId: number, qty: number) =>
 export const closeTrade = (tradeId: number) =>
   apiPost<Record<string, unknown>>(`/api/v1/trades/${tradeId}/close`, {});
 
+/** Cancel every non-terminal order of a trade at IB + terminalise the structure. */
+export const cancelTrade = (structureId: number) =>
+  apiPost<Record<string, unknown>>(`/api/v1/trades/${structureId}/cancel`, {});
+
 // Dev / system
 export const fetchDevEngines = () => apiGet<unknown>("/api/v1/dev/engines");
 export const fetchCycleProgress = () => apiGet<unknown>("/api/v1/dev/cycle-progress");
