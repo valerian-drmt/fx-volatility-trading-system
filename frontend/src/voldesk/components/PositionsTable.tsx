@@ -157,13 +157,28 @@ function legStrike(p: Position): string {
   return "—";
 }
 
-// Leg product with its wing pillar appended ("Vanilla Put" → "Vanilla Put 25Δ")
-// so each leg row says which wing it is — the trader name, not the raw strike —
-// matching the Orders blotter's per-leg labels. Skips if the product already
-// carries a wing tag.
-function legProductLabel(p: Position): string {
+// The wing for a leg comes from the STRUCTURE's declared wings (parsed from its
+// name, e.g. "Strangle 25Δ"), NOT from bucketing the live strike against the mock
+// smile (spot 1.0842) — that snaps every live strike to the outermost pillar, so
+// a 25Δ strangle would read 10Δ. One wing → all legs share it; two wings (a
+// spread) → assign by strike rank (near→far), calls low-strike-first, puts high.
+function legWingFor(p: Position, siblings: Position[], wings: string[]): string {
+  if (wings.length <= 1) return wings[0] ?? "";
+  const isCall = /call/i.test(p.product);
+  const peers = siblings
+    .filter((l) => /call/i.test(l.product) === isCall)
+    .map((l) => ({ id: l.id, k: _legStrikeNum(l) }))
+    .filter((x): x is { id: string; k: number } => x.k != null)
+    .sort((a, b) => (isCall ? a.k - b.k : b.k - a.k));
+  const idx = peers.findIndex((x) => x.id === p.id);
+  return wings[Math.min(idx < 0 ? 0 : idx, wings.length - 1)]!;
+}
+
+// Leg product with its wing appended ("Vanilla Put" → "Vanilla Put 25Δ") so each
+// leg row says which wing it is, consistent with the structure's main-row name.
+// Skips if the product already carries a wing tag.
+function legProductLabel(p: Position, wing: string): string {
   const prod = p.product || "—";
-  const wing = DATA.strikeToWing(_legStrikeNum(p), p.tenor);
   return wing && !/\d+Δ|ATM/.test(prod) ? `${prod} ${wing}` : prod;
 }
 
@@ -183,9 +198,9 @@ const EMPTY_CLOSING: Set<string> = new Set();
 // `main=false` renders it indented under its trade's summary line.
 function legRow(
   p: Position,
-  opts: { showGreeks: boolean; extended: boolean; onClose: ((p: Position) => void) | undefined; main: boolean; closing: Set<string> },
+  opts: { showGreeks: boolean; extended: boolean; onClose: ((p: Position) => void) | undefined; main: boolean; closing: Set<string>; legWing?: string },
 ): JSX.Element {
-  const { showGreeks, extended, onClose, main, closing } = opts;
+  const { showGreeks, extended, onClose, main, closing, legWing = "" } = opts;
   // Locked while this leg (or its whole trade) has a close in flight.
   const isClosing = closing.has(p.id) || (p.tradeId != null && closing.has("t:" + p.tradeId));
   return (
@@ -193,7 +208,7 @@ function legRow(
       <td className="l mono dim">{main ? (p.tradeId ? "#" + p.tradeId : "—") : ""}</td>
       <td className="l mono dim">{p.structure || "—"}</td>
       <td className="l">
-        <span className="sym">{main ? "" : "↳ "}{legProductLabel(p)}</span>
+        <span className="sym">{main ? "" : "↳ "}{legProductLabel(p, legWing)}</span>
         {fmtFillDate(p.opened) && (
           <span className="substruct">filled {fmtFillDate(p.opened)}</span>
         )}
@@ -412,6 +427,7 @@ export function OpenPositionsTable({
               }
               const tradeClosing = grp.tradeId != null && closing.has("t:" + grp.tradeId);
               const name = ctx?.name ?? structureName(grp.legs);
+              const wings = name.match(/\d+Δ|ATM/g) ?? []; // structure's declared wings
               const a = aggregate(grp.legs);
               const sSide = structureSide(grp.legs);
               const isOpen = expanded.has(grp.key);
@@ -472,7 +488,7 @@ export function OpenPositionsTable({
                       </button>
                     </td>
                   </tr>
-                  {isOpen && grp.legs.map((p) => legRow(p, { showGreeks, extended, onClose, main: false, closing }))}
+                  {isOpen && grp.legs.map((p) => legRow(p, { showGreeks, extended, onClose, main: false, closing, legWing: legWingFor(p, grp.legs, wings) }))}
                 </Fragment>
               );
             })}
