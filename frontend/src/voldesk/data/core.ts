@@ -152,6 +152,22 @@ export function smileFor(tenorIdx: number): Smile {
   return { pts, fit, fair: tp.fair, rv: tp.rv, fwd };
 }
 
+// Bucket a raw strike into its nearest smile pillar for a tenor, returning the
+// wing tag ("ATM" / "25Δ" / "10Δ") — the trader-facing name for a leg instead of
+// a raw calibrated strike like 1.15068…. null when there's no usable strike.
+export function strikeToWing(strike: number | null | undefined, tenor: string): string | null {
+  if (!strike || strike <= 0) return null;
+  const s = smileFor(Math.max(0, tenors.indexOf(tenor)));
+  let best = 0, bestD = Infinity;
+  for (let j = 0; j < deltas.length; j++) {
+    const k = s.pts[j] ? s.pts[j]!.strike : SPOT;
+    const d = Math.abs(k - strike);
+    if (d < bestD) { bestD = d; best = j; }
+  }
+  const pillar = deltas[best]!;
+  return pillar === "ATM" ? "ATM" : pillar.replace(/[pc]$/, ""); // "25Δc" → "25Δ"
+}
+
 // PCA loadings
 const pc1Load: number[][] = tenors.map((_, i) => deltas.map(() => (i === 5 ? 0.17 : 0.18)));
 const pc2Load: number[][] = [
@@ -489,6 +505,6 @@ export const equityCurve = (window_: string): number[] => {
 export const watch = [{ sym: "EURUSD", last: SPOT, chg: 0.31 }];
 
 export const DATA = {
-  SPOT, tenors, deltas, ivSurface, ivZ, termStructure, smileFor, pcs, pcaModel, regime,
+  SPOT, tenors, deltas, ivSurface, ivZ, termStructure, smileFor, strikeToWing, pcs, pcaModel, regime,
   events, positions, cash, account, greeks, limits, feed, workingOrders, equityCurve, watch,
 };
