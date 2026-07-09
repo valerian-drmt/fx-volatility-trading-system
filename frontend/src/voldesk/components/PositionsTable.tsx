@@ -114,6 +114,18 @@ function structureName(legs: Position[]): string {
   return base;
 }
 
+// Structure-level side (BUY/SELL) — structures have a side too. All legs agree
+// (strangle/straddle) → that side ; a count majority (butterfly: 2 long wings vs
+// 1 short body) → the majority ; a 2-leg split (RR / spread) → the first (entry)
+// leg's side.
+function structureSide(legs: Position[]): string {
+  const buys = legs.filter((l) => l.side === "BUY").length;
+  const sells = legs.length - buys;
+  if (buys > sells) return "BUY";
+  if (sells > buys) return "SELL";
+  return legs[0]?.side ?? "—";
+}
+
 interface GroupAgg {
   qty: number;
   tenor: string;
@@ -404,6 +416,7 @@ export function OpenPositionsTable({
               const tradeClosing = grp.tradeId != null && closing.has("t:" + grp.tradeId);
               const name = ctx?.name ?? structureName(grp.legs);
               const a = aggregate(grp.legs);
+              const sSide = structureSide(grp.legs);
               const isOpen = expanded.has(grp.key);
               const legsLabel = ctx ? `${ctx.filled}/${ctx.total} legs` : `${grp.legs.length} legs`;
               return (
@@ -428,7 +441,7 @@ export function OpenPositionsTable({
                       )}
                     </td>
                     <td className="r mono dim">—</td>
-                    <td><span className="dim small">—</span></td>
+                    <td><span className={"side-pill " + (sSide === "BUY" ? "long" : "short")}>{sSide}</span></td>
                     <td className="r mono">{a.qty || "—"}</td>
                     <td className="r mono dim">{a.tenor}</td>
                     <td className="r mono dim">{a.dte ? a.dte + "d" : "—"}</td>
