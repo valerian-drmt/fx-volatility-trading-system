@@ -697,6 +697,9 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
             });
             cols[best]!.push(l);
           }
+          // multiplier relative to the base (smallest) leg qty → a doubled leg
+          // (e.g. a butterfly's 2× ATM body) reads "2× Call 3M Short".
+          const baseQty = Math.min(...legs.map((l) => l.qty));
           return (
             <div className="strike-ladder">
               <div className="sl-title"><span>Legs on the smile</span><em className="unit mono">spot {DATA.SPOT.toFixed(4)}</em></div>
@@ -708,7 +711,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
                     <div className="sl-legs">
                       {cols[i]!.map((l, j) => (
                         <span key={j} className={"sl-leg " + (l.side === "BUY" ? "long" : "short")}>
-                          {l.type} {l.tenor} {l.side === "BUY" ? "Long" : "Short"}
+                          {l.qty > baseQty ? `${Math.round(l.qty / baseQty)}× ` : ""}{l.type} {l.tenor} {l.side === "BUY" ? "Long" : "Short"}
                         </span>
                       ))}
                     </div>
