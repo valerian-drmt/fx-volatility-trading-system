@@ -711,6 +711,41 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
               </div>
             )}
 
+            {/* strike ladder — where each leg sits across the 5 delta pillars
+                (spot line + a tick per wing; legs stacked under their strike). */}
+            {!isFut && legs.length > 0 && (() => {
+              const cols: Leg[][] = PILLARS.map(() => []);
+              for (const l of legs) {
+                if (l.type === "Future") continue;
+                let best = 0, bestD = Infinity;
+                PILLARS.forEach((p, i) => {
+                  const d = Math.abs(pillarStrike(l.tenor, p) - l.strike);
+                  if (d < bestD) { bestD = d; best = i; }
+                });
+                cols[best]!.push(l);
+              }
+              return (
+                <div className="strike-ladder">
+                  <div className="sl-title"><span>Legs on the smile</span><em className="unit mono">spot {DATA.SPOT.toFixed(4)}</em></div>
+                  <div className="sl-axis">
+                    {PILLARS.map((p, i) => (
+                      <div key={p} className="sl-col">
+                        <span className="sl-label">{p}</span>
+                        <div className="sl-mark"><span className="sl-tick" /></div>
+                        <div className="sl-legs">
+                          {cols[i]!.map((l, j) => (
+                            <span key={j} className={"sl-leg " + (l.side === "BUY" ? "long" : "short")}>
+                              {l.type} {l.tenor} {l.side === "BUY" ? "Long" : "Short"}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* preview identity + validation state — below the hedge toggle */}
             <div className="book-kv ob-preview-meta">
               <div><span>Preview id</span><b className="mono dim">{server?.preview_id ?? "—"}</b></div>
