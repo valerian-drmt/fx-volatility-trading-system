@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
@@ -960,6 +960,31 @@ _MKT_CLOSE_BUFFER = float(os.getenv("MARKETABLE_LIMIT_BUFFER", "0.25"))
 _INFLIGHT_CLOSE_WINDOW = timedelta(minutes=float(os.getenv("CLOSE_INFLIGHT_WINDOW_MIN", "3")))
 
 
+def close_inflight_remaining(
+    qty: int,
+    qty_filled: int | None,
+    submitted_at: datetime | None,
+    state_updated_at: datetime | None,
+    now: datetime,
+    window: timedelta,
+) -> int:
+    """Unfilled qty of a close order that still counts against the stacking guard
+    (pure/testable). Returns 0 (self-healed) once the order is older than
+    ``window``, so a stuck close never locks the position forever.
+
+    Age is measured from ``submitted_at`` when the order was dispatched, else from
+    ``state_updated_at`` — the crucial case: a close CREATED but never dispatched
+    (``submitted_at IS NULL``, e.g. the engine was down) keeps a NULL
+    ``submitted_at`` indefinitely, so without the ``state_updated_at`` fallback it
+    would be counted as in-flight forever and permanently block every new close.
+    """
+    cutoff = now - window
+    age_ts = submitted_at if submitted_at is not None else state_updated_at
+    if age_ts is not None and age_ts < cutoff:
+        return 0  # stuck / cancelled at IB, or never dispatched — don't block
+    return max(0, int(qty) - int(qty_filled or 0))
+
+
 def _marketable_close_from_mark(mark: float, pos_side: str) -> float | None:
     """Aggressive, tick-snapped LMT that crosses the spread to close.
 
@@ -1067,24 +1092,28 @@ async def close_one_open_position(
     is_option = spec is not None and spec.instrument_type == "OPTION"
     strike_val = float(spec.strike) if (spec and spec.strike is not None) else None
     reverse_side = "SELL" if pos.side == "BUY" else "BUY"
-    inflight_cutoff = datetime.now(UTC) - _INFLIGHT_CLOSE_WINDOW
+    now = datetime.now(UTC)
     inflight_conds = [
         StructureOrder.order_role == "closing",
         StructureOrder.side == reverse_side,
         StructureOrder.contract_expiry == pos.expiry,
         StructureOrder.state.in_(("pending", "submitted", "partially_filled")),
-        or_(
-            StructureOrder.submitted_at.is_(None),          # just created, not yet sent
-            StructureOrder.submitted_at >= inflight_cutoff,  # genuinely in flight
-        ),
     ]
     if strike_val is not None:
         inflight_conds.append(StructureOrder.contract_strike == strike_val)
-    already_closing = int((await db.execute(
-        select(func.coalesce(
-            func.sum(StructureOrder.qty - func.coalesce(StructureOrder.qty_filled, 0)), 0,
-        )).where(*inflight_conds)
-    )).scalar_one() or 0)
+    # Sum the still-in-flight remaining qty in Python via the pure predicate — the
+    # self-heal boundary (incl. the never-dispatched submitted_at IS NULL case)
+    # lives in one tested place instead of drifting inside a SQL expression.
+    close_orders = (await db.execute(
+        select(StructureOrder).where(*inflight_conds)
+    )).scalars().all()
+    already_closing = sum(
+        close_inflight_remaining(
+            o.qty, o.qty_filled, o.submitted_at, o.state_updated_at,
+            now, _INFLIGHT_CLOSE_WINDOW,
+        )
+        for o in close_orders
+    )
     if already_closing + qty > open_qty:
         raise HTTPException(
             409,
