@@ -298,6 +298,9 @@ export interface Position {
   opened: string;
   pnlPct: number;
   dte: number;
+  // Open per the book but netted-away at IB (no mirror row) → can't be closed by
+  // the per-contract path; the individual Close is disabled (use the trade close).
+  netted?: boolean;
 }
 
 interface LegGreeks {

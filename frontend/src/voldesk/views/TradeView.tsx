@@ -211,12 +211,18 @@ function structuredToRows(
   };
   const legProduct = (ct: string): string =>
     ct === "call" ? "Vanilla Call" : ct === "put" ? "Vanilla Put" : ct === "future" ? "Future" : ct;
+  // A leg is shown/counted on the BOOK ("open"), not the netted IB mirror
+  // ("linked") — so a leg netted-away at IB (its contract held opposite by another
+  // trade) still shows instead of vanishing / collapsing the trade to a lone
+  // "Vanilla Call". Falls back to `linked` when the backend didn't send `open`.
+  const isOpen = (l: StructuredPositions["structures"][number]["legs"][number]): boolean =>
+    l.open ?? l.linked;
   for (const s of data.structures) {
     const tid = String(s.structure_id);
-    const filled = s.legs.filter((l) => l.linked).length;
+    const filled = s.legs.filter(isOpen).length;
     const naked =
-      s.legs.some((l) => l.side === "SELL" && l.linked) &&
-      s.legs.some((l) => l.side === "BUY" && !l.linked);
+      s.legs.some((l) => l.side === "SELL" && isOpen(l)) &&
+      s.legs.some((l) => l.side === "BUY" && !isOpen(l));
     ctx[tid] = {
       // Identity from the DB structure : the canonical type, else the stored
       // product_label, else the classifier's structure_type verdict formatted
@@ -228,18 +234,22 @@ function structuredToRows(
       filled, total: s.legs.length, naked,
     };
     for (const l of s.legs) {
-      if (!l.linked || l.position_id == null) continue; // render only what IB holds
+      if (!isOpen(l)) continue; // render every leg the BOOK holds (not just IB-linked)
       const nominal = l.nominal_eur ?? 0, pnl = l.pnl_usd ?? 0;
+      // Netted leg: open per book but no IB mirror row → no position_id to close by.
+      const netted = l.position_id == null;
       positions.push({
-        id: String(l.position_id), packageId: "", tradeId: tid, conId: l.con_id ?? 0,
+        id: netted ? `${tid}-l${l.leg_idx}` : String(l.position_id),
+        packageId: "", tradeId: tid, conId: l.con_id ?? 0,
         product: legProduct(l.contract_type), structure: l.ib_local_symbol ?? "—",
-        side: l.held_side ?? l.side, qty: l.held_qty ?? l.qty,
+        side: l.held_side ?? l.side, qty: l.held_qty ?? (Math.abs(l.open_qty ?? 0) || l.qty),
         tenor: l.tenor ?? s.tenor ?? "", expiry: l.expiry ?? "", strike: l.strike ?? 0,
         entry: l.entry ?? 0, mark: l.mark ?? 0, iv: (l.iv ?? 0) * 100, pnl, nominal,
         delta: l.delta_usd ?? 0, gamma: l.gamma_usd ?? 0, vega: l.vega_usd ?? 0, theta: l.theta_usd ?? 0,
         vanna: (l.vanna_usd ?? 0) / 1000, volga: (l.volga_usd ?? 0) / 1000,
         updated: l.updated ?? "", opened: l.opened ?? "",
         pnlPct: nominal ? (pnl / nominal) * 100 : 0, dte: dteOf(l.expiry ?? ""),
+        netted,
       });
     }
   }

@@ -456,6 +456,32 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             if lg.ib_local_symbol:
                 symbol_to_struct[lg.ib_local_symbol] = lg.structure_id
 
+    # 1b. the BOOK (leg_position) — the authority for what each leg holds (I3/I7).
+    # A leg is "open" if its book open_qty != 0, EVEN when the netted IB mirror has
+    # no row for it: two trades on opposite sides of one contract net to zero at IB,
+    # so the mirror can't show either leg — but the book knows both are real. Without
+    # this the surviving leg reads as a detached "Vanilla Call" and the netted-away
+    # leg vanishes entirely.
+    book_by_order: dict[int, LegPosition] = {}
+    order_ids = [lg.id for lgs in legs_by_struct.values() for lg in lgs]
+    if order_ids:
+        book_by_order = {
+            int(bp.order_id): bp for bp in (await db.execute(
+                select(LegPosition).where(LegPosition.order_id.in_(order_ids))
+            )).scalars().all()
+        }
+
+    def _book_open_qty(lg: StructureOrder) -> float | None:
+        bp = book_by_order.get(lg.id)
+        return float(bp.open_qty) if bp and bp.open_qty is not None else None
+
+    def _leg_is_open(lg: StructureOrder, lp: OpenPosition | None) -> bool:
+        # Open if the netted mirror links it OR the book holds a non-zero qty.
+        if lp is not None:
+            return True
+        q = _book_open_qty(lg)
+        return q is not None and abs(q) > 1e-9
+
     # 2. live IB mirror → link each row to a structure (FK or leg symbol); the rest is "unlinked"
     positions = (await db.execute(select(OpenPosition))).scalars().all()
     struct_by_id = {s.id: s for s in structs}
@@ -490,13 +516,21 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             # Keyed within the structure's own positions, so a contract shared with
             # another structure can't produce a false "filled".
             "linked": lp is not None,
+            # open = the leg is really held per the BOOK (leg_position), independent of
+            # whether IB's netted mirror can show it. This is what the panel renders on
+            # so a netted leg doesn't vanish. open_qty is the signed book holding.
+            "open": _leg_is_open(lg, lp),
+            "open_qty": _book_open_qty(lg),
             # Live IB-mirror identity — present only when a real position backs this
             # leg. position_id is the open_position row the UI closes by.
             "position_id": lp.id if lp else None,
             "con_id": lp.contract_id if lp else None,
             "held_qty": _f(lp.quantity) if lp else None,
             "held_side": lp.side if lp else None,
-            "entry": _f(lp.contract_price_entry) if lp else None,
+            # entry price: the mirror's when linked, else the book's avg fill price.
+            "entry": _f(lp.contract_price_entry) if lp else (
+                _f(book_by_order[lg.id].avg_price) if lg.id in book_by_order else None
+            ),
             "nominal_eur": _f(lp.nominal_eur) if lp else None,
             "tenor": (lp.tenor if lp and lp.tenor else None),
             "opened": lp.entry_timestamp.isoformat() if (lp and lp.entry_timestamp) else None,
@@ -522,6 +556,17 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
         n["n_linked"] += 1
         pos_by_struct.setdefault(sid, {})[p.structure] = p
 
+    # A structure is shown if ANY leg is open per the book (or mirror-linked) — so a
+    # structure whose only remaining leg is netted-away at IB still shows, instead of
+    # collapsing to a detached single-leg "Vanilla Call".
+    def _struct_has_open_leg(sid: int) -> bool:
+        if net_by_struct[sid]["n_linked"] > 0:
+            return True
+        return any(
+            _leg_is_open(lg, pos_by_struct.get(sid, {}).get(lg.ib_local_symbol or ""))
+            for lg in legs_by_struct.get(sid, [])
+        )
+
     out_structs = [{
         "structure_id": s.id, "structure_type": s.structure_type, "product_label": s.product_label,
         "tenor": s.reference_tenor, "state": s.state, "base_qty": s.base_qty,
@@ -531,7 +576,7 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             for lg in legs_by_struct.get(s.id, [])
         ],
         "net": net_by_struct[s.id],
-    } for s in structs if net_by_struct[s.id]["n_linked"] > 0]  # actually-open only
+    } for s in structs if _struct_has_open_leg(s.id)]
     return {"structures": out_structs, "unlinked": unlinked}
 
 
