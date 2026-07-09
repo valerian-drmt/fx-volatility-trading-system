@@ -556,17 +556,11 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
         n["n_linked"] += 1
         pos_by_struct.setdefault(sid, {})[p.structure] = p
 
-    # A structure is shown if ANY leg is open per the book (or mirror-linked) — so a
-    # structure whose only remaining leg is netted-away at IB still shows, instead of
-    # collapsing to a detached single-leg "Vanilla Call".
-    def _struct_has_open_leg(sid: int) -> bool:
-        if net_by_struct[sid]["n_linked"] > 0:
-            return True
-        return any(
-            _leg_is_open(lg, pos_by_struct.get(sid, {}).get(lg.ib_local_symbol or ""))
-            for lg in legs_by_struct.get(sid, [])
-        )
-
+    # Show a structure only if it has LIVE IB presence (>=1 mirror-linked leg) — a
+    # fully-netted trade (every leg offset flat at IB by an opposite trade) carries
+    # zero live risk and would otherwise flood the panel with all-zero rows. WITHIN a
+    # shown structure we still render every book-open leg (below), so a live spread
+    # shows both legs including a netted-away sibling — the actual fix.
     out_structs = [{
         "structure_id": s.id, "structure_type": s.structure_type, "product_label": s.product_label,
         "tenor": s.reference_tenor, "state": s.state, "base_qty": s.base_qty,
@@ -576,7 +570,7 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             for lg in legs_by_struct.get(s.id, [])
         ],
         "net": net_by_struct[s.id],
-    } for s in structs if _struct_has_open_leg(s.id)]
+    } for s in structs if net_by_struct[s.id]["n_linked"] > 0]
     return {"structures": out_structs, "unlinked": unlinked}
 
 
