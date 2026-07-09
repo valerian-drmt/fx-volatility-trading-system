@@ -40,6 +40,26 @@ logger = logging.getLogger(__name__)
 REAPER_INTERVAL_S = float(os.getenv("REAPER_INTERVAL_S", "30.0"))
 REAPER_TAU_STALE_S = float(os.getenv("REAPER_TAU_STALE_S", "300.0"))
 
+# IB order statuses that mean the order is still WORKING. A resting limit that
+# hasn't filled (e.g. a thin OTM wing) is neither held nor dead — the reaper must
+# leave it alone (spec §6.2 `if at_ib: continue`).
+_LIVE_IB_STATUSES = frozenset(
+    {"Submitted", "PreSubmitted", "PendingSubmit", "ApiPending"}
+)
+
+
+def live_ib_order_keys(ib_trades: list[dict[str, Any]]) -> set[str]:
+    """Order ids (+ perm ids) of trades still working at IB. Pure/testable: the
+    reaper skips any DB order whose ib_order_id or ib_perm_id is in this set."""
+    keys: set[str] = set()
+    for t in ib_trades:
+        if t.get("status") in _LIVE_IB_STATUSES and float(t.get("remaining") or 0) > 0:
+            for field in ("order_id", "perm_id"):
+                val = t.get(field)
+                if val is not None:
+                    keys.add(str(val))
+    return keys
+
 
 async def reap_stale_orders(
     sm: async_sessionmaker[AsyncSession],
@@ -68,6 +88,16 @@ async def reap_stale_orders(
         if not stale:
             return {"reaped": 0, "expired": []}
 
+        # Which of our orders are still WORKING at IB? A resting limit that hasn't
+        # filled is neither held nor dead — leave it (spec §6.2 `if at_ib`). If we
+        # can't confirm liveness, do NOT reap this cycle: never expire an order we
+        # can't prove is dead.
+        try:
+            live_at_ib = live_ib_order_keys(await executor.list_all_trades())
+        except Exception:
+            logger.warning("reaper_skip_ib_trades_unavailable")
+            return {"reaped": 0, "expired": [], "skipped": "ib_trades_unavailable"}
+
         struct_ids = {int(o.structure_id) for o in stale}
         positions = (await db.execute(
             select(OpenPosition).where(OpenPosition.trade_id.in_(struct_ids))
@@ -79,6 +109,12 @@ async def reap_stale_orders(
 
         used: set[int] = set()  # each mirror row claims at most one leg
         for o in stale:
+            # Still working at IB -> legitimately resting (e.g. a thin OTM wing
+            # that hasn't been hit), not a ghost. Leave it (spec §6.2).
+            if (o.ib_order_id and str(o.ib_order_id) in live_at_ib) or (
+                o.ib_perm_id and str(o.ib_perm_id) in live_at_ib
+            ):
+                continue
             cands = pos_by_struct.get(int(o.structure_id), [])
             match = next(
                 (p for p in cands if p.id not in used and _leg_matches_position(o, p)),
