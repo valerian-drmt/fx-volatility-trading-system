@@ -10,6 +10,7 @@ import type { PreviewLeg } from "../../api/endpoints";
 export function builderToLegs(
   product: string, side: string, tenor: string, farTenor: string,
   strike: number, wing: string, csize: string,
+  spreadSide = "call", spreadNear = "ATM", spreadFar = "25Δ",
 ): PreviewLeg[] {
   const sd = side as "BUY" | "SELL";
   const opp: "BUY" | "SELL" = side === "BUY" ? "SELL" : "BUY";
@@ -61,6 +62,17 @@ export function builderToLegs(
       { contract_type: "put", side: sd,  tenor, delta_pillar: "atm" },
       { contract_type: "put", side: opp, tenor, delta_pillar: atmWing ? "25dp" : dp },
     ];
+    case "Call/Put Spread": {
+      // 2 same-type legs on one wing : near = long (higher |Δ|), far = short
+      // (lower |Δ|). Side swaps roles. "25Δ" → "25dc"/"25dp" ; "ATM" → "atm".
+      const t: "call" | "put" = spreadSide === "call" ? "call" : "put";
+      const suf = spreadSide === "call" ? "dc" : "dp";
+      const pil = (l: string): string => (l === "ATM" ? "atm" : l.replace(/[Δδ]/, "") + suf);
+      return [
+        { contract_type: t, side: sd,  tenor, delta_pillar: pil(spreadNear) },
+        { contract_type: t, side: opp, tenor, delta_pillar: pil(spreadFar) },
+      ];
+    }
     case "Calendar": return [
       { contract_type: "call", side: opp, tenor, delta_pillar: single },
       { contract_type: "call", side: sd,  tenor: farTenor, delta_pillar: single },
