@@ -18,11 +18,13 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from core.execution.fills import state_from_recorded_fills
 from engines.execution.fills_handler import maybe_complete_structure
-from persistence.models import OpenPosition, StructureOrder, TradeEvent
+from persistence.models import OpenPosition, StructureFill, StructureOrder, TradeEvent
+from persistence.projection import rebuild_leg
 from shared.contracts import parse_local_symbol
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,36 @@ async def reconcile_stuck_orders(
         if not stuck:
             return {"stuck": 0, "filled": 0, "structures": []}
 
+        # ── Pass 1 : book-consistency (the authority the netted mirror can't be) ──
+        # An order whose OWN recorded fills already cover its qty, but whose state
+        # never advanced (a missed state update, or a fill on a contract IB later
+        # netted to zero so pass 2 below can't confirm it) is repaired from the book.
+        # Never invents a fill: only orders with recorded StructureFill rows move.
+        stuck_ids = [int(o.id) for o in stuck]
+        recorded_rows = (await db.execute(
+            select(StructureFill.order_id, func.coalesce(func.sum(StructureFill.qty_filled), 0))
+            .where(StructureFill.order_id.in_(stuck_ids))
+            .group_by(StructureFill.order_id)
+        )).all()
+        recorded_by_order = {int(oid): int(q or 0) for oid, q in recorded_rows}
+        resolved: set[int] = set()
+        for o in stuck:
+            new_state = state_from_recorded_fills(
+                recorded_by_order.get(int(o.id), 0), int(o.qty), o.state,
+            )
+            if new_state is None:
+                continue
+            o.state = new_state
+            o.qty_filled = min(recorded_by_order.get(int(o.id), 0), int(o.qty))
+            await rebuild_leg(db, order_id=int(o.id))  # keep the projection in step (I3)
+            if new_state == "filled":
+                o.fully_filled_at = now
+                filled_ids.append(int(o.id))
+                affected.add(int(o.structure_id))
+            resolved.add(int(o.id))
+        # Only orders still stuck after the book pass go to the IB-mirror pass.
+        stuck = [o for o in stuck if int(o.id) not in resolved]
+
         struct_ids = {int(o.structure_id) for o in stuck}
         positions = (await db.execute(
             select(OpenPosition).where(OpenPosition.trade_id.in_(struct_ids))
@@ -100,7 +132,7 @@ async def reconcile_stuck_orders(
         for sid in affected:
             db.add(TradeEvent(
                 structure_id=sid, event_type="order_reconciled_from_ib", severity="info",
-                description="stuck leg(s) matched to a live IB position → marked filled",
+                description="stuck leg(s) reconciled to filled (own recorded fills, or a live IB position)",
                 payload={"filled_order_ids": [i for i in filled_ids]},
             ))
         await db.commit()
