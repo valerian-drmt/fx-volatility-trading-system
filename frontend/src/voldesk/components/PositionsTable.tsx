@@ -52,26 +52,13 @@ const _gcd = (a: number, b: number): number => (b === 0 ? a : _gcd(b, a % b));
 // backend product_label carries the wing for some structures (Strangle) but not
 // all; we recover it from the strikes with the same nearest-pillar bucketing as
 // the order-ticket strike ladder.
-const _DELTAS = DATA.deltas; // ["10Δp","25Δp","ATM","25Δc","10Δc"]
-function _pillarStrike(tenor: string, j: number): number {
-  const s = DATA.smileFor(Math.max(0, DATA.tenors.indexOf(tenor)));
-  return s.pts[j] ? s.pts[j]!.strike : DATA.SPOT;
-}
 function _legStrikeNum(p: Position): number | null {
   if (p.strike && p.strike > 0) return p.strike;
   const m = /\s[CP](\d{3,5})$/.exec(p.structure || "");
   return m ? parseInt(m[1]!, 10) / 1000 : null;
 }
 function _legLevel(p: Position): string | null {
-  const k = _legStrikeNum(p);
-  if (k == null) return null;
-  let best = 0, bestD = Infinity;
-  for (let j = 0; j < _DELTAS.length; j++) {
-    const d = Math.abs(_pillarStrike(p.tenor, j) - k);
-    if (d < bestD) { bestD = d; best = j; }
-  }
-  const pillar = _DELTAS[best]!;
-  return pillar === "ATM" ? "ATM" : pillar.replace(/[pc]$/, ""); // "25Δc" → "25Δ"
+  return DATA.strikeToWing(_legStrikeNum(p), p.tenor);
 }
 const _rank = (lvl: string): number => (lvl === "ATM" ? 50 : parseInt(lvl, 10));
 function deriveWing(legs: Position[], base: string): string | null {
@@ -170,6 +157,16 @@ function legStrike(p: Position): string {
   return "—";
 }
 
+// Leg product with its wing pillar appended ("Vanilla Put" → "Vanilla Put 25Δ")
+// so each leg row says which wing it is — the trader name, not the raw strike —
+// matching the Orders blotter's per-leg labels. Skips if the product already
+// carries a wing tag.
+function legProductLabel(p: Position): string {
+  const prod = p.product || "—";
+  const wing = DATA.strikeToWing(_legStrikeNum(p), p.tenor);
+  return wing && !/\d+Δ|ATM/.test(prod) ? `${prod} ${wing}` : prod;
+}
+
 // Fill date in English format ("02 Jul 2026, 14:30"). Falls back to the raw value
 // for the mock's pre-formatted strings, "" when absent.
 function fmtFillDate(iso: string): string {
@@ -196,7 +193,7 @@ function legRow(
       <td className="l mono dim">{main ? (p.tradeId ? "#" + p.tradeId : "—") : ""}</td>
       <td className="l mono dim">{p.structure || "—"}</td>
       <td className="l">
-        <span className="sym">{main ? "" : "↳ "}{p.product || "—"}</span>
+        <span className="sym">{main ? "" : "↳ "}{legProductLabel(p)}</span>
         {fmtFillDate(p.opened) && (
           <span className="substruct">filled {fmtFillDate(p.opened)}</span>
         )}

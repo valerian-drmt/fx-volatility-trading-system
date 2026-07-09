@@ -161,8 +161,10 @@ function legBlotterLabel(s: SubmittedTrade, leg: SubmittedLeg): string {
   const verb = leg.side === "SELL" ? "Sell" : "Buy";
   const ct = (leg.contract_type ?? "").toLowerCase();
   const kind = ct === "call" ? "Call" : ct === "put" ? "Put" : "Fut";
-  const strike = leg.strike != null ? " " + leg.strike : "";
-  return `${base} · ${verb} ${kind}${strike}`;
+  // The wing pillar (ATM / 25Δ / 10Δ) is the trader name for the leg — never the
+  // raw calibrated strike (1.15068…).
+  const wing = DATA.strikeToWing(leg.strike, s.reference_tenor ?? "");
+  return `${base} · ${verb} ${kind}${wing ? " " + wing : ""}`;
 }
 
 // Single source of truth for Open positions : turn the server-joined
