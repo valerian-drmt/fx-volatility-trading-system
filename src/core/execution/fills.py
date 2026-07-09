@@ -43,6 +43,32 @@ def apply_fill_idempotent(seen_execution_ids: Iterable[str], new_id: str) -> boo
     return new_id not in set(seen_execution_ids)
 
 
+def state_from_recorded_fills(
+    recorded_filled: int, target_qty: int, current_state: str,
+) -> str | None:
+    """Repair a stuck order's state from its OWN recorded fills (the book), or
+    ``None`` to leave it. This is the reconciliation authority when the netted IB
+    mirror can't confirm a fill — e.g. two trades holding opposite sides of the
+    same contract net to zero at IB, so the mirror shows nothing even though the
+    leg really executed (a 25Δ put bought against another trade's short).
+
+    Book-only, never invents a fill:
+      - recorded fills cover the qty, but the state never left non-terminal
+        → ``"filled"`` (the '10/10 still submitted' case) ;
+      - some recorded but the order is still ``"submitted"`` (never even reached
+        ``partially_filled``) → ``"partially_filled"`` ;
+      - nothing recorded (``recorded_filled <= 0``) → ``None`` — no evidence, so
+        we NEVER fabricate a fill from the netted mirror here.
+    """
+    if recorded_filled <= 0:
+        return None
+    if recorded_filled >= target_qty and current_state != "filled":
+        return "filled"
+    if current_state == "submitted":
+        return "partially_filled"
+    return None
+
+
 def update_order_aggregates(
     fills: Iterable[FillEvent],
     *,
