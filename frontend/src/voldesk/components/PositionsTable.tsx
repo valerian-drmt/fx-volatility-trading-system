@@ -242,8 +242,11 @@ function legRow(
       <td className="r">
         <button
           className="row-close"
-          disabled={isClosing}
-          title={isClosing ? "a close for this position is already in flight" : undefined}
+          disabled={isClosing || p.netted}
+          title={
+            p.netted ? "netted flat at IB (held opposite by another trade) — nothing to close on this contract"
+              : isClosing ? "a close for this position is already in flight" : undefined
+          }
           onClick={() => onClose && onClose(p)}
         >
           {isClosing ? "Closing…" : "Close"}

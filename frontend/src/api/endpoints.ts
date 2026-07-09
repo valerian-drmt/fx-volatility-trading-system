@@ -266,7 +266,12 @@ export const fetchSubmitted = (limit = 50) =>
 export interface StructuredLeg {
   leg_idx: number; contract_type: string; side: string; qty: number;
   strike: number | null; expiry: string | null; state: string; qty_filled: number;
-  ib_local_symbol: string | null; linked: boolean; mark: number | null; pnl_usd: number | null;
+  ib_local_symbol: string | null; linked: boolean;
+  // open = really held per the BOOK (leg_position), even when the netted IB mirror
+  // can't show it (two trades on opposite sides of one contract net to 0 at IB).
+  // open_qty is the signed book holding. Render on `open`, not `linked`.
+  open?: boolean; open_qty?: number | null;
+  mark: number | null; pnl_usd: number | null;
   delta_usd: number | null; gamma_usd: number | null; vega_usd: number | null;
   theta_usd: number | null; vanna_usd: number | null; volga_usd: number | null; iv: number | null;
   // Live IB-mirror identity (present only when `linked`). position_id is the
