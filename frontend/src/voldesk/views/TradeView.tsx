@@ -155,15 +155,39 @@ function prettyProduct(s: SubmittedTrade): string {
 // name + tenor prefix keeps every leg row tied to its product; the suffix
 // (side + Call/Put/Fut + strike) says which leg this row is. Single-leg orders
 // (a vanilla, a future, a close) need no suffix — the product already says it.
+// Wing tokens the structure itself declares ("Strangle 25Δ" → ["25Δ"],
+// "Call Spread ATM/10Δ" → ["ATM","10Δ"]). This is AUTHORITATIVE — it's the delta
+// the order was built against — unlike bucketing a live strike against the mock
+// smile (spot 1.0842) which snaps every live strike to the outermost pillar.
+function structureWings(s: SubmittedTrade): string[] {
+  return prettyProduct(s).match(/\d+Δ|ATM/g) ?? [];
+}
+
+// Assign a two-wing structure's declared wings to a leg by strike rank. Tokens
+// are ordered near→far (e.g. "ATM/10Δ"); the leg nearer the money (higher |Δ|)
+// takes the first — for calls that's the lower strike, for puts the higher.
+function assignLegWing(legs: SubmittedLeg[], leg: SubmittedLeg, wings: string[]): string {
+  const isCall = (leg.contract_type ?? "").toLowerCase() === "call";
+  const peers = legs
+    .filter((l) => l.contract_type === leg.contract_type && l.strike != null)
+    .sort((a, b) => (isCall ? a.strike! - b.strike! : b.strike! - a.strike!));
+  const idx = peers.findIndex((l) => l.leg_idx === leg.leg_idx);
+  return wings[Math.min(idx < 0 ? 0 : idx, wings.length - 1)]!;
+}
+
 function legBlotterLabel(s: SubmittedTrade, leg: SubmittedLeg): string {
   const base = `${prettyProduct(s)}${s.reference_tenor ? " " + s.reference_tenor : ""}`;
   if ((s.legs?.length ?? 1) <= 1) return base;
   const verb = leg.side === "SELL" ? "Sell" : "Buy";
   const ct = (leg.contract_type ?? "").toLowerCase();
   const kind = ct === "call" ? "Call" : ct === "put" ? "Put" : "Fut";
-  // The wing pillar (ATM / 25Δ / 10Δ) is the trader name for the leg — never the
-  // raw calibrated strike (1.15068…).
-  const wing = DATA.strikeToWing(leg.strike, s.reference_tenor ?? "");
+  // Prefer the structure's declared wing; fall back to strike-bucketing only when
+  // it declares none — so a "25Δ" strangle never shows 10Δ legs.
+  const wings = structureWings(s);
+  let wing: string | null = null;
+  if (wings.length === 1) wing = wings[0]!;
+  else if (wings.length >= 2 && s.legs) wing = assignLegWing(s.legs, leg, wings);
+  else wing = DATA.strikeToWing(leg.strike, s.reference_tenor ?? "");
   return `${base} · ${verb} ${kind}${wing ? " " + wing : ""}`;
 }
 
