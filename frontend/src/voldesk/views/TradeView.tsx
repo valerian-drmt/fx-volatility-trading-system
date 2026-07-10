@@ -18,7 +18,7 @@ import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
 import { ApiError } from "../../api/client";
-import { closeContract, closeTrade, fetchGreekLimits, fetchStructuredPositions, fetchSubmitted, type StructuredPositions, type SubmittedTrade } from "../../api/endpoints";
+import { cancelTrade, closeContract, closeTrade, fetchGreekLimits, fetchStructuredPositions, fetchSubmitted, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
 import { adaptGreekLimits, type GreekLimits } from "../data/live/portfolio";
 import { useFetch } from "../../hooks/useFetch";
 
@@ -50,6 +50,7 @@ export interface OrderRecord {
 interface BlotterRow {
   id: string;
   tradeNo?: number; // the assigned trade_structure id (DB rows only; session rejects have none)
+  structureId?: number; // the ACTUAL structure id (for cancel actions; tradeNo may show the closed trade)
   contract?: string; // IB localSymbol(s) of the legs ("EUUV6 C1130" / "… +N")
   ts: string;
   tsSort: number;
@@ -57,6 +58,10 @@ interface BlotterRow {
   role: string; // desk order role : entry / closing / unwind / hedge
   label: string;
   qty: number;
+  qtyFilled?: number; // contracts filled so far — shown as "filled/total" while in flight
+  qtyTotal?: number; // total contracts (this leg, or the whole structure for 1-row entries)
+  legIdx?: number; // leg position — keeps a structure's leg rows contiguous + ordered
+  groupWaiting?: boolean; // is ANY leg of this structure still working (for the sort)
   state: string; // "sent"/"rejected" (session) or the DB state ("active", "closed", …)
   note?: string;
 }
@@ -64,6 +69,20 @@ interface BlotterRow {
 const ROLE_LABEL: Record<string, string> = { entry: "Entry", closing: "Closing", unwind: "Unwind", hedge: "Hedge" };
 function roleLabel(role: string): string { return ROLE_LABEL[role] ?? "Entry"; }
 function roleTone(role: string): "open" | "close" { return role === "closing" || role === "unwind" ? "close" : "open"; }
+// In-flight (waiting) order states — pinned above resolved rows in the blotter,
+// since "submitted" / partial fills are pending, not final (fully_filled / *_fail).
+const _WAITING_STATES = new Set([
+  "submitted", "pending", "acknowledged", "partial_fill", "partially_filled", "submitting", "closing",
+]);
+const isWaitingState = (s: string | null | undefined): boolean =>
+  _WAITING_STATES.has((s ?? "").toLowerCase());
+// Blotter timestamp — date + time, so rows that span days (a still-open order
+// from yesterday) are unambiguous, not just an hour:min:sec.
+const fmtBlotterTs = (d: Date): string =>
+  d.toLocaleString("en-GB", {
+    day: "2-digit", month: "short",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
 // map any order/position state → a distinct badge tone (one colour per lifecycle stage)
 // Three buckets, by outcome — matches the operator's mental model:
 //   red    = rejected / failed / expired (never became a live position)
@@ -132,6 +151,46 @@ function prettyProduct(s: SubmittedTrade): string {
   return formatStructLabel(s.product_label) ?? formatStructLabel(s.structure_type) ?? "Structure";
 }
 
+// Per-leg blotter label, e.g. "Butterfly 3M · Sell Call 1130". The structure
+// name + tenor prefix keeps every leg row tied to its product; the suffix
+// (side + Call/Put/Fut + strike) says which leg this row is. Single-leg orders
+// (a vanilla, a future, a close) need no suffix — the product already says it.
+// Wing tokens the structure itself declares ("Strangle 25Δ" → ["25Δ"],
+// "Call Spread ATM/10Δ" → ["ATM","10Δ"]). This is AUTHORITATIVE — it's the delta
+// the order was built against — unlike bucketing a live strike against the mock
+// smile (spot 1.0842) which snaps every live strike to the outermost pillar.
+function structureWings(s: SubmittedTrade): string[] {
+  return prettyProduct(s).match(/\d+Δ|ATM/g) ?? [];
+}
+
+// Assign a two-wing structure's declared wings to a leg by strike rank. Tokens
+// are ordered near→far (e.g. "ATM/10Δ"); the leg nearer the money (higher |Δ|)
+// takes the first — for calls that's the lower strike, for puts the higher.
+function assignLegWing(legs: SubmittedLeg[], leg: SubmittedLeg, wings: string[]): string {
+  const isCall = (leg.contract_type ?? "").toLowerCase() === "call";
+  const peers = legs
+    .filter((l) => l.contract_type === leg.contract_type && l.strike != null)
+    .sort((a, b) => (isCall ? a.strike! - b.strike! : b.strike! - a.strike!));
+  const idx = peers.findIndex((l) => l.leg_idx === leg.leg_idx);
+  return wings[Math.min(idx < 0 ? 0 : idx, wings.length - 1)]!;
+}
+
+function legBlotterLabel(s: SubmittedTrade, leg: SubmittedLeg): string {
+  const base = `${prettyProduct(s)}${s.reference_tenor ? " " + s.reference_tenor : ""}`;
+  if ((s.legs?.length ?? 1) <= 1) return base;
+  const verb = leg.side === "SELL" ? "Sell" : "Buy";
+  const ct = (leg.contract_type ?? "").toLowerCase();
+  const kind = ct === "call" ? "Call" : ct === "put" ? "Put" : "Fut";
+  // Prefer the structure's declared wing; fall back to strike-bucketing only when
+  // it declares none — so a "25Δ" strangle never shows 10Δ legs.
+  const wings = structureWings(s);
+  let wing: string | null = null;
+  if (wings.length === 1) wing = wings[0]!;
+  else if (wings.length >= 2 && s.legs) wing = assignLegWing(s.legs, leg, wings);
+  else wing = DATA.strikeToWing(leg.strike, s.reference_tenor ?? "");
+  return `${base} · ${verb} ${kind}${wing ? " " + wing : ""}`;
+}
+
 // Single source of truth for Open positions : turn the server-joined
 // /positions/structured payload into the panel's rows + per-structure context.
 // Identity + terms come from the DB structure (trade_structure), the live values
@@ -152,12 +211,18 @@ function structuredToRows(
   };
   const legProduct = (ct: string): string =>
     ct === "call" ? "Vanilla Call" : ct === "put" ? "Vanilla Put" : ct === "future" ? "Future" : ct;
+  // A leg is shown/counted on the BOOK ("open"), not the netted IB mirror
+  // ("linked") — so a leg netted-away at IB (its contract held opposite by another
+  // trade) still shows instead of vanishing / collapsing the trade to a lone
+  // "Vanilla Call". Falls back to `linked` when the backend didn't send `open`.
+  const isOpen = (l: StructuredPositions["structures"][number]["legs"][number]): boolean =>
+    l.open ?? l.linked;
   for (const s of data.structures) {
     const tid = String(s.structure_id);
-    const filled = s.legs.filter((l) => l.linked).length;
+    const filled = s.legs.filter(isOpen).length;
     const naked =
-      s.legs.some((l) => l.side === "SELL" && l.linked) &&
-      s.legs.some((l) => l.side === "BUY" && !l.linked);
+      s.legs.some((l) => l.side === "SELL" && isOpen(l)) &&
+      s.legs.some((l) => l.side === "BUY" && !isOpen(l));
     ctx[tid] = {
       // Identity from the DB structure : the canonical type, else the stored
       // product_label, else the classifier's structure_type verdict formatted
@@ -169,18 +234,22 @@ function structuredToRows(
       filled, total: s.legs.length, naked,
     };
     for (const l of s.legs) {
-      if (!l.linked || l.position_id == null) continue; // render only what IB holds
+      if (!isOpen(l)) continue; // render every leg the BOOK holds (not just IB-linked)
       const nominal = l.nominal_eur ?? 0, pnl = l.pnl_usd ?? 0;
+      // Netted leg: open per book but no IB mirror row → no position_id to close by.
+      const netted = l.position_id == null;
       positions.push({
-        id: String(l.position_id), packageId: "", tradeId: tid, conId: l.con_id ?? 0,
+        id: netted ? `${tid}-l${l.leg_idx}` : String(l.position_id),
+        packageId: "", tradeId: tid, conId: l.con_id ?? 0,
         product: legProduct(l.contract_type), structure: l.ib_local_symbol ?? "—",
-        side: l.held_side ?? l.side, qty: l.held_qty ?? l.qty,
+        side: l.held_side ?? l.side, qty: l.held_qty ?? (Math.abs(l.open_qty ?? 0) || l.qty),
         tenor: l.tenor ?? s.tenor ?? "", expiry: l.expiry ?? "", strike: l.strike ?? 0,
         entry: l.entry ?? 0, mark: l.mark ?? 0, iv: (l.iv ?? 0) * 100, pnl, nominal,
         delta: l.delta_usd ?? 0, gamma: l.gamma_usd ?? 0, vega: l.vega_usd ?? 0, theta: l.theta_usd ?? 0,
         vanna: (l.vanna_usd ?? 0) / 1000, volga: (l.volga_usd ?? 0) / 1000,
         updated: l.updated ?? "", opened: l.opened ?? "",
         pnlPct: nominal ? (pnl / nominal) * 100 : 0, dte: dteOf(l.expiry ?? ""),
+        netted,
       });
     }
   }
@@ -574,12 +643,14 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const structRows = useMemo(() => structuredToRows(structured.data), [structured.data]);
   const structureCtx = structRows.ctx;
   const [rejects, setRejects] = useState<BlotterRow[]>([]);
+  const [cancelling, setCancelling] = useState<Set<number>>(new Set());
+  const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
   const seq = useRef(0);
   const addOrder = (rec: OrderRecord): void => {
     if (rec.state === "rejected") {
       const now = Date.now();
       setRejects((prev) => [{
-        id: "r" + seq.current++, ts: new Date().toLocaleTimeString("en-GB", { hour12: false }), tsSort: now,
+        id: "r" + seq.current++, ts: fmtBlotterTs(new Date()), tsSort: now,
         action: rec.action, role: rec.action === "close" ? "closing" : "entry",
         label: rec.label, qty: rec.qty, state: "rejected", ...(rec.note ? { note: rec.note } : {}),
       }, ...prev].slice(0, 10));
@@ -592,20 +663,81 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
       reloadTrade();          // open_position mirror (leg rows)
     }
   };
-  const dbRows: BlotterRow[] = (submitted.data ?? []).map((s) => ({
-    id: "s" + s.id,
-    tradeNo: s.id,
-    ...(s.contract ? { contract: s.contract } : {}),
-    ts: new Date(s.created_at).toLocaleTimeString("en-GB", { hour12: false }),
-    tsSort: Date.parse(s.created_at) || 0,
-    action: s.order_role === "closing" || s.order_role === "unwind" ? "close" : "open",
-    role: s.order_role ?? "entry",
-    label: `${prettyProduct(s)}${s.reference_tenor ? " " + s.reference_tenor : ""}`,
-    qty: s.base_qty ?? 0,
-    state: s.position_state ?? s.state ?? "—",
-    ...(s.execution_mode === "mock" ? { note: "paper" } : {}),
-  }));
-  const orders = [...rejects, ...dbRows].sort((a, b) => b.tsSort - a.tsSort).slice(0, 60);
+  // Cancel a stuck order/structure at IB + terminalise it, then refresh the
+  // blotter + positions. Failures surface as a session reject row.
+  const onCancelOrder = async (structureId: number): Promise<void> => {
+    setCancelling((s) => new Set(s).add(structureId));
+    try {
+      await cancelTrade(structureId);
+      submitted.reload();
+      reloadTrade();
+    } catch (e) {
+      addOrder({ action: "close", label: `cancel #${structureId}`, side: "—", qty: 0, state: "rejected", note: closeErr(e) });
+    } finally {
+      setCancelling((s) => { const n = new Set(s); n.delete(structureId); return n; });
+    }
+  };
+  // One blotter row PER LEG: a butterfly = 3 rows sharing the trade #, each with
+  // its own contract, volume (filled/total), and state. Single-leg orders stay one
+  // row. groupWaiting (any leg still working) sorts the whole structure, keeping
+  // its legs contiguous.
+  const dbRows: BlotterRow[] = (submitted.data ?? []).flatMap((s) => {
+    const legs = s.legs && s.legs.length > 0 ? s.legs : null;
+    const groupWaiting = legs
+      ? legs.some((l) => isWaitingState(l.state))
+      : isWaitingState(s.position_state ?? s.state ?? "");
+    const common = {
+      // a close shows the trade it closes (#30), not this closing structure (#31)
+      tradeNo: s.closes_trade_id ?? s.id,
+      structureId: s.id, // the real structure — cancel targets THIS, not the display #
+      ts: fmtBlotterTs(new Date(s.created_at)),
+      tsSort: Date.parse(s.created_at) || 0,
+      action: (s.order_role === "closing" || s.order_role === "unwind" ? "close" : "open") as "open" | "close",
+      role: s.order_role ?? "entry",
+      groupWaiting,
+      ...(s.execution_mode === "mock" ? { note: "paper" } : {}),
+    };
+    if (!legs) {
+      return [{
+        id: "s" + s.id,
+        ...common,
+        ...(s.contract ? { contract: s.contract } : {}),
+        label: `${prettyProduct(s)}${s.reference_tenor ? " " + s.reference_tenor : ""}`,
+        qty: s.base_qty ?? 0,
+        ...(s.qty_total != null ? { qtyTotal: s.qty_total } : {}),
+        ...(s.qty_filled != null ? { qtyFilled: s.qty_filled } : {}),
+        legIdx: 0,
+        state: s.position_state ?? s.state ?? "—",
+      }];
+    }
+    return legs.map((leg) => ({
+      id: "s" + s.id + "-" + leg.leg_idx,
+      ...common,
+      // Each leg shows its OWN contract — never the structure's rolled-up symbol,
+      // which would make an unfilled leg borrow a filled sibling's localSymbol (a
+      // spread's two strikes would then read identical). "—" until IB assigns one.
+      ...(leg.contract ? { contract: leg.contract } : {}),
+      label: legBlotterLabel(s, leg),
+      qty: leg.qty,
+      qtyTotal: leg.qty,
+      qtyFilled: leg.qty_filled,
+      legIdx: leg.leg_idx,
+      state: leg.state,
+    }));
+  });
+  const orders = [...rejects, ...dbRows]
+    .sort((a, b) => {
+      // working structures first, newest-first; a structure's legs stay together
+      // (same structureId) and in leg order.
+      const wa = a.groupWaiting ? 0 : 1;
+      const wb = b.groupWaiting ? 0 : 1;
+      if (wa !== wb) return wa - wb;
+      if (b.tsSort !== a.tsSort) return b.tsSort - a.tsSort;
+      const sa = a.structureId ?? -1, sb = b.structureId ?? -1;
+      if (sa !== sb) return sb - sa;
+      return (a.legIdx ?? 0) - (b.legIdx ?? 0);
+    })
+    .slice(0, 120);
   const ticks = useTicks();
   const td = trade.data;
   // Open positions render from the structured read. Fall back to the raw IB
@@ -675,7 +807,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
           <div className="table-scroll orders-scroll">
             <table className="dt orders-table">
               <thead>
-                <tr><th>Time</th><th>Trade</th><th>Contract</th><th>Product</th><th>Type</th><th>Contracts</th><th>State</th></tr>
+                <tr><th>Time</th><th>Trade</th><th>Contract</th><th>Product</th><th>Type</th><th>Contracts</th><th>State</th><th></th></tr>
               </thead>
               <tbody>
                 {orders.map((o) => {
@@ -692,13 +824,29 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
                         {o.note && <span className="dim small"> · {o.note}</span>}
                       </td>
                       <td><span className={"ord-dir " + roleTone(o.role)}>{roleLabel(o.role)}</span></td>
-                      <td className="mono">{o.qty}</td>
+                      <td className="mono">
+                        {isWaitingState(o.state) && o.qtyTotal != null
+                          ? `${o.qtyFilled ?? 0}/${o.qtyTotal}`
+                          : o.qty}
+                      </td>
                       <td>
                         <span className={"ord-state " + tone}>{o.state}</span>
                         {stale && (
                           <span className="ord-stale mono" title="working > 10 min with no fill — review or cancel">
                             ⏱ {fmtAge(ageMs)}
                           </span>
+                        )}
+                      </td>
+                      <td className="right">
+                        {canWrite && o.structureId != null && isWaitingState(o.state) && (
+                          <button
+                            className="row-close"
+                            disabled={cancelling.has(o.structureId)}
+                            title="Cancel this order at IB and terminalise the trade"
+                            onClick={() => o.structureId != null && onCancelOrder(o.structureId)}
+                          >
+                            {cancelling.has(o.structureId) ? "…" : "Cancel"}
+                          </button>
                         )}
                       </td>
                     </tr>

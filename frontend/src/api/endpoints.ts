@@ -231,6 +231,16 @@ export const cancelTradePreview = (previewId: string) =>
 
 // Persisted submitted structures (DB: trade_structure + booked_position). Read-only,
 // so the Orders blotter survives refresh and reflects the real DB state.
+export interface SubmittedLeg {
+  leg_idx: number;
+  contract: string | null; // IB localSymbol of the leg ("EUUV6 C1130")
+  contract_type: string | null; // "call" / "put" / "future"
+  strike: number | null;
+  side: string | null; // "BUY" / "SELL"
+  qty: number; // ordered contracts for this leg
+  qty_filled: number; // filled so far
+  state: string; // per-leg order state
+}
 export interface SubmittedTrade {
   id: number;
   created_at: string;
@@ -239,10 +249,14 @@ export interface SubmittedTrade {
   contract: string | null; // IB localSymbol(s) of the legs ("EUUV6 C1130", or "… +N")
   reference_tenor: string | null;
   base_qty: number | null;
+  qty_total?: number | null; // total contracts across the structure's legs
+  qty_filled?: number | null; // contracts filled so far (for in-flight progress)
+  legs?: SubmittedLeg[]; // per-leg detail — the blotter renders one row per leg
   state: string | null;
   execution_mode: string | null;
   position_state: string | null;
   order_role: string | null; // entry / closing / unwind / hedge
+  closes_trade_id?: number | null; // for a close: the original trade it closes (#30, not this #31)
 }
 export const fetchSubmitted = (limit = 50) =>
   apiGet<SubmittedTrade[]>("/api/v1/trade/submitted", { query: { limit } });
@@ -252,7 +266,12 @@ export const fetchSubmitted = (limit = 50) =>
 export interface StructuredLeg {
   leg_idx: number; contract_type: string; side: string; qty: number;
   strike: number | null; expiry: string | null; state: string; qty_filled: number;
-  ib_local_symbol: string | null; linked: boolean; mark: number | null; pnl_usd: number | null;
+  ib_local_symbol: string | null; linked: boolean;
+  // open = really held per the BOOK (leg_position), even when the netted IB mirror
+  // can't show it (two trades on opposite sides of one contract net to 0 at IB).
+  // open_qty is the signed book holding. Render on `open`, not `linked`.
+  open?: boolean; open_qty?: number | null;
+  mark: number | null; pnl_usd: number | null;
   delta_usd: number | null; gamma_usd: number | null; vega_usd: number | null;
   theta_usd: number | null; vanna_usd: number | null; volga_usd: number | null; iv: number | null;
   // Live IB-mirror identity (present only when `linked`). position_id is the
@@ -285,6 +304,10 @@ export const closeContract = (positionId: number, qty: number) =>
 /** Close every open leg of a trade (OpenPosition.trade_id). */
 export const closeTrade = (tradeId: number) =>
   apiPost<Record<string, unknown>>(`/api/v1/trades/${tradeId}/close`, {});
+
+/** Cancel every non-terminal order of a trade at IB + terminalise the structure. */
+export const cancelTrade = (structureId: number) =>
+  apiPost<Record<string, unknown>>(`/api/v1/trades/${structureId}/cancel`, {});
 
 // Dev / system
 export const fetchDevEngines = () => apiGet<unknown>("/api/v1/dev/engines");

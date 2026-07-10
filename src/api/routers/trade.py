@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from api.auth import require_write
 from api.dependencies import get_db_session, get_redis_client_or_none
@@ -54,6 +55,7 @@ from persistence.models import (
     TradePreviewRow,
     TradeStructure,
 )
+from shared.contracts import build_ib_local_symbol
 from shared.trace import current_trace_id
 
 logger = logging.getLogger(__name__)
@@ -221,8 +223,14 @@ async def _post_execution_engine(path: str, body: dict[str, Any]) -> dict[str, A
     from shared.trace import trace_headers
     base = os.environ.get("EXECUTION_ENGINE_URL", "http://execution-engine:8001")
     url = f"{base.rstrip('/')}{path}"
+    # A live submit runs synchronously in the engine: per leg it does an IB
+    # qualify + quote + place round-trip, so a multi-leg order with cold option
+    # quotes legitimately takes tens of seconds. A tight client timeout would give
+    # up while the engine is still placing the orders — a FALSE "unreachable" that
+    # also risks a double-submit on retry. Keep it generous (env-tunable).
+    timeout_s = float(os.environ.get("EXECUTION_SUBMIT_TIMEOUT_S", "45"))
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
             resp = await client.post(url, json=body, headers=trace_headers())
         if resp.status_code >= 400:
             raise HTTPException(
@@ -1167,27 +1175,66 @@ async def list_submitted_structures(
         order_role = (await db.execute(
             select(StructureOrder.order_role).where(StructureOrder.structure_id == s.id).limit(1)
         )).scalar_one_or_none()
-        # Contract(s) traded : the IB localSymbol(s) of the structure's legs. One
-        # symbol for a single-leg order (a close, a vanilla) ; "sym +N" for a
-        # multi-leg structure (butterfly / strangle). None until the first fill
-        # stamps ib_local_symbol.
-        leg_syms = (await db.execute(
-            select(StructureOrder.ib_local_symbol)
-            .where(StructureOrder.structure_id == s.id, StructureOrder.ib_local_symbol.is_not(None))
+        # For a closing structure, the ORIGINAL trade it closes: the closing order's
+        # closes_order_id -> the entry order -> its structure_id. Lets the blotter
+        # show "#30" (the trade being closed), not "#31" (this new closing
+        # structure). NULL when the close wasn't linked to an entry leg.
+        closes_trade_id = None
+        if order_role in ("closing", "unwind"):
+            _entry = aliased(StructureOrder)
+            closes_trade_id = (await db.execute(
+                select(_entry.structure_id)
+                .select_from(StructureOrder)
+                .join(_entry, StructureOrder.closes_order_id == _entry.id)
+                .where(StructureOrder.structure_id == s.id)
+                .limit(1)
+            )).scalar_one_or_none()
+        # All legs of the structure, ordered — the blotter explodes a multi-leg
+        # order into one row PER LEG (a butterfly = 3 rows, same trade #), each
+        # showing its own contract, side, per-leg volume + fill, and state.
+        legs_rows = (await db.execute(
+            select(StructureOrder)
+            .where(StructureOrder.structure_id == s.id)
             .order_by(StructureOrder.leg_idx)
         )).scalars().all()
-        uniq_syms = list(dict.fromkeys(leg_syms))  # distinct, order-preserving
+        # Contract(s) traded : the IB localSymbol(s) of the legs. One symbol for a
+        # single-leg order, "sym +N" for a multi-leg structure. None until the
+        # first fill stamps ib_local_symbol.
+        uniq_syms = list(dict.fromkeys(
+            o.ib_local_symbol for o in legs_rows if o.ib_local_symbol
+        ))
         contract = (
             None if not uniq_syms
             else uniq_syms[0] if len(uniq_syms) == 1
             else f"{uniq_syms[0]} +{len(uniq_syms) - 1}"
         )
+        # Fill progress across the legs — the blotter shows "3/8" per leg while a
+        # slow close (or a multi-leg entry) fills leg by leg.
+        qty_total = sum(int(o.qty or 0) for o in legs_rows)
+        qty_filled = sum(int(o.qty_filled or 0) for o in legs_rows)
+        legs_out = [{
+            "leg_idx": o.leg_idx,
+            # Real IB localSymbol once filled; else the provisional symbol derived
+            # from the leg's own contract fields, so an unfilled leg still shows its
+            # contract (e.g. "EUUV6 C1160") instead of "—".
+            "contract": o.ib_local_symbol or build_ib_local_symbol(
+                o.contract_type, o.contract_expiry, o.contract_strike, o.contract_symbol,
+            ),
+            "contract_type": o.contract_type,   # "call" / "put" / "future"
+            "strike": o.contract_strike,
+            "side": o.side,                      # "BUY" / "SELL"
+            "qty": int(o.qty or 0),
+            "qty_filled": int(o.qty_filled or 0),
+            "state": o.state,
+        } for o in legs_rows]
         out.append({
             "id": s.id, "created_at": s.created_at, "structure_type": s.structure_type,
             "product_label": s.product_label, "contract": contract,
             "reference_tenor": s.reference_tenor, "base_qty": s.base_qty, "state": s.state,
+            "qty_total": qty_total, "qty_filled": qty_filled, "legs": legs_out,
             "execution_mode": s.execution_mode,
             "order_role": order_role or "entry",
+            "closes_trade_id": closes_trade_id,
             "total_premium_paid_usd": s.total_premium_paid_usd,
             "total_commission_usd": s.total_commission_usd,
             "total_entry_cost_usd": s.total_entry_cost_usd,

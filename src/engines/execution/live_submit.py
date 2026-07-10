@@ -66,33 +66,71 @@ def _num(x: Any) -> float | None:
     return v if v == v and v > 0 else None
 
 
-async def _marketable_limit(ib: Any, contract: Any, side: str, fallback: float) -> float:
-    """Price a marketable limit off IB's LIVE quote so the order fills at the touch
-    (BUY → ask, SELL → bid), snapped to the tick. The theoretical preview premium
-    misprices real options (esp. OTM), leaving SELL limits above the bid → they
-    never cross. Falls back to ``fallback`` (the preview limit) if no quote."""
-    try:
-        tickers = await asyncio.wait_for(ib.reqTickersAsync(contract), timeout=3.0)
-    except Exception:
-        tickers = None
-    t = tickers[0] if tickers else None
-    bid = _num(getattr(t, "bid", None)) if t is not None else None
-    ask = _num(getattr(t, "ask", None)) if t is not None else None
-    mkt = None
-    if t is not None:
-        try:
-            mkt = _num(t.marketPrice())
-        except Exception:
-            mkt = None
-
+def marketable_from_quote(
+    side: str,
+    bid: float | None,
+    ask: float | None,
+    mkt: float | None,
+    fallback: float,
+    tick: float = _OPT_TICK,
+) -> float:
+    """Pure: marketable limit at the touch (BUY → ask, SELL → bid), snapped to the
+    tick. Falls back to the theoretical ``fallback`` (preview premium) only when the
+    live quote's relevant side is absent — a BUY fallback sits BELOW the ask and a
+    SELL fallback ABOVE the bid, so neither crosses; that non-marketable rest is
+    exactly why a leg with no live quote hangs 'submitted' for a long time."""
     if side.upper() == "BUY":
         ref = ask or mkt
-        return round(math.ceil(ref / _OPT_TICK) * _OPT_TICK, 6) if ref else fallback
+        return round(math.ceil(ref / tick) * tick, 6) if ref else fallback
     ref = bid or mkt
     if not ref:
         return fallback
-    lp = math.floor(ref / _OPT_TICK) * _OPT_TICK
+    lp = math.floor(ref / tick) * tick
     return round(lp, 6) if lp > 0 else fallback
+
+
+async def _live_quote(
+    ib: Any, contract: Any, *, attempts: int = 3, gap_s: float = 0.3, timeout_s: float = 2.0,
+) -> tuple[float | None, float | None, float | None]:
+    """Fetch (bid, ask, mkt) for an option, RETRYING until a side populates. A cold
+    market-data line — a leg's strike that never streamed before, the common case
+    for the 2nd+ leg of a multi-leg order (a strangle/spread) — returns nothing on
+    the first snapshot within the timeout, so a single try leaves the leg to fall
+    back to a non-marketable theoretical limit and hang. Warming it with a few
+    retries lets the leg price at the live touch and fill like a standalone."""
+    for i in range(attempts):
+        try:
+            tickers = await asyncio.wait_for(ib.reqTickersAsync(contract), timeout=timeout_s)
+        except Exception:
+            tickers = None
+        t = tickers[0] if tickers else None
+        bid = _num(getattr(t, "bid", None)) if t is not None else None
+        ask = _num(getattr(t, "ask", None)) if t is not None else None
+        mkt = None
+        if t is not None:
+            try:
+                mkt = _num(t.marketPrice())
+            except Exception:
+                mkt = None
+        if bid is not None or ask is not None or mkt is not None:
+            return bid, ask, mkt
+        if i < attempts - 1:
+            await asyncio.sleep(gap_s)
+    return None, None, None
+
+
+async def _marketable_limit(ib: Any, contract: Any, side: str, fallback: float) -> float:
+    """Price a marketable limit off IB's LIVE quote so the order fills at the touch
+    (BUY → ask, SELL → bid), snapped to the tick. The theoretical preview premium
+    misprices real options (esp. OTM), so a limit at it never crosses. Warms the
+    quote with retries first (see ``_live_quote``) before falling back to it."""
+    bid, ask, mkt = await _live_quote(ib, contract)
+    if ask is None and bid is None and mkt is None:
+        logger.warning(
+            "live_submit_no_quote side=%s localSymbol=%s -> resting at theoretical "
+            "limit (may fill slowly)", side, getattr(contract, "localSymbol", "?"),
+        )
+    return marketable_from_quote(side, bid, ask, mkt, fallback)
 
 
 async def submit_structure_live(

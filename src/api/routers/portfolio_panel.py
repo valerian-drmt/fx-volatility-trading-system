@@ -32,6 +32,7 @@ from persistence.models import (  # noqa: F401
     AccountHistory,
     AppConfigScalar,
     BookedPosition,
+    IbConnectionState,
     OpenPosition,
     OpenPositionHistory,
     PcaModel,
@@ -115,9 +116,18 @@ async def get_account(db: DbDep) -> dict[str, Any]:
             .order_by(desc(AccountHistory.timestamp)).limit(1)
         )).scalar_one_or_none()
 
+    # Buying power / available funds aren't in account_history (the summary snap
+    # doesn't keep those IB tags) — read them from the live IB heartbeat row, which
+    # the execution-engine refreshes with every connectivity beat.
+    hb = (await db.execute(
+        select(IbConnectionState).order_by(desc(IbConnectionState.last_heartbeat)).limit(1)
+    )).scalar_one_or_none()
+
     return {
         "latest": _serialize_snap(latest),
         "prev_24h": _serialize_snap(prev),
+        "buying_power_usd": float(hb.buying_power_usd) if hb and hb.buying_power_usd is not None else None,
+        "available_funds_usd": float(hb.available_funds_usd) if hb and hb.available_funds_usd is not None else None,
         "freshness": _freshness(latest.timestamp if latest else None),
     }
 

@@ -30,9 +30,18 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from core.execution.reaper_policy import REAPABLE_STATES, decide_reap
+from core.execution.reaper_policy import (
+    REAPABLE_STATES,
+    decide_reap,
+    plan_structure_terminal_state,
+)
 from engines.execution.order_reconciler import _leg_matches_position
-from persistence.models import OpenPosition, StructureOrder, TradeEvent
+from persistence.models import (
+    OpenPosition,
+    StructureOrder,
+    TradeEvent,
+    TradeStructure,
+)
 from persistence.reservation import recompute_reservation
 
 logger = logging.getLogger(__name__)
@@ -153,6 +162,29 @@ async def reap_stale_orders(
                 # Release the reservation this dead close was holding (I5, spec §6.2).
                 if o.order_role == "closing" and o.closes_order_id is not None:
                     await recompute_reservation(db, entry_order_id=o.closes_order_id)
+
+        # Propagate to the STRUCTURE FSM (D1 at the structure level). Expiring a
+        # leg can make every order of its structure terminal — but the happy path
+        # (fills_handler) only ever set 'fully_filled' when ALL legs filled, so a
+        # structure with an expired/never-filled leg would sit 'submitted' forever.
+        # Terminalise any affected structure whose orders are now all terminal.
+        for sid in {int(o.structure_id) for o in stale if int(o.id) in expired_ids}:
+            all_states = (await db.execute(
+                select(StructureOrder.state).where(StructureOrder.structure_id == sid)
+            )).scalars().all()
+            new_state = plan_structure_terminal_state(list(all_states))
+            if new_state is None:
+                continue
+            struct = await db.get(TradeStructure, sid)
+            if struct is not None and struct.state != new_state:
+                struct.state = new_state
+                struct.state_updated_at = now
+                db.add(TradeEvent(
+                    structure_id=sid, order_id=None,
+                    event_type="structure_terminalised", severity="info",
+                    description=f"structure {sid} -> {new_state} (all legs terminal)",
+                    payload={"structure_id": sid, "new_state": new_state},
+                ))
 
         await db.commit()
 

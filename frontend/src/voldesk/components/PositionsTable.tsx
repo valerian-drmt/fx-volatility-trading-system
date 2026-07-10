@@ -7,7 +7,7 @@
 import { Fragment, useState } from "react";
 import { pnlCls } from "./format";
 import { DATA, fmt } from "../data";
-import type { Greeks, Position } from "../data";
+import type { Cash, Greeks, Position } from "../data";
 
 // compact signed formatter for per-leg / net greek cells (±N · ±N.Nk · ±N.NNM).
 // NOTE: distinct from common's gk$ — this one omits the "$" prefix by design.
@@ -52,26 +52,13 @@ const _gcd = (a: number, b: number): number => (b === 0 ? a : _gcd(b, a % b));
 // backend product_label carries the wing for some structures (Strangle) but not
 // all; we recover it from the strikes with the same nearest-pillar bucketing as
 // the order-ticket strike ladder.
-const _DELTAS = DATA.deltas; // ["10Δp","25Δp","ATM","25Δc","10Δc"]
-function _pillarStrike(tenor: string, j: number): number {
-  const s = DATA.smileFor(Math.max(0, DATA.tenors.indexOf(tenor)));
-  return s.pts[j] ? s.pts[j]!.strike : DATA.SPOT;
-}
 function _legStrikeNum(p: Position): number | null {
   if (p.strike && p.strike > 0) return p.strike;
   const m = /\s[CP](\d{3,5})$/.exec(p.structure || "");
   return m ? parseInt(m[1]!, 10) / 1000 : null;
 }
 function _legLevel(p: Position): string | null {
-  const k = _legStrikeNum(p);
-  if (k == null) return null;
-  let best = 0, bestD = Infinity;
-  for (let j = 0; j < _DELTAS.length; j++) {
-    const d = Math.abs(_pillarStrike(p.tenor, j) - k);
-    if (d < bestD) { bestD = d; best = j; }
-  }
-  const pillar = _DELTAS[best]!;
-  return pillar === "ATM" ? "ATM" : pillar.replace(/[pc]$/, ""); // "25Δc" → "25Δ"
+  return DATA.strikeToWing(_legStrikeNum(p), p.tenor);
 }
 const _rank = (lvl: string): number => (lvl === "ATM" ? 50 : parseInt(lvl, 10));
 function deriveWing(legs: Position[], base: string): string | null {
@@ -112,6 +99,18 @@ function structureName(legs: Position[]): string {
     if (wing) return `${base} ${wing}`;
   }
   return base;
+}
+
+// Structure-level side (BUY/SELL) — structures have a side too. All legs agree
+// (strangle/straddle) → that side ; a count majority (butterfly: 2 long wings vs
+// 1 short body) → the majority ; a 2-leg split (RR / spread) → the first (entry)
+// leg's side.
+function structureSide(legs: Position[]): string {
+  const buys = legs.filter((l) => l.side === "BUY").length;
+  const sells = legs.length - buys;
+  if (buys > sells) return "BUY";
+  if (sells > buys) return "SELL";
+  return legs[0]?.side ?? "—";
 }
 
 interface GroupAgg {
@@ -158,6 +157,31 @@ function legStrike(p: Position): string {
   return "—";
 }
 
+// The wing for a leg comes from the STRUCTURE's declared wings (parsed from its
+// name, e.g. "Strangle 25Δ"), NOT from bucketing the live strike against the mock
+// smile (spot 1.0842) — that snaps every live strike to the outermost pillar, so
+// a 25Δ strangle would read 10Δ. One wing → all legs share it; two wings (a
+// spread) → assign by strike rank (near→far), calls low-strike-first, puts high.
+function legWingFor(p: Position, siblings: Position[], wings: string[]): string {
+  if (wings.length <= 1) return wings[0] ?? "";
+  const isCall = /call/i.test(p.product);
+  const peers = siblings
+    .filter((l) => /call/i.test(l.product) === isCall)
+    .map((l) => ({ id: l.id, k: _legStrikeNum(l) }))
+    .filter((x): x is { id: string; k: number } => x.k != null)
+    .sort((a, b) => (isCall ? a.k - b.k : b.k - a.k));
+  const idx = peers.findIndex((x) => x.id === p.id);
+  return wings[Math.min(idx < 0 ? 0 : idx, wings.length - 1)]!;
+}
+
+// Leg product with its wing appended ("Vanilla Put" → "Vanilla Put 25Δ") so each
+// leg row says which wing it is, consistent with the structure's main-row name.
+// Skips if the product already carries a wing tag.
+function legProductLabel(p: Position, wing: string): string {
+  const prod = p.product || "—";
+  return wing && !/\d+Δ|ATM/.test(prod) ? `${prod} ${wing}` : prod;
+}
+
 // Fill date in English format ("02 Jul 2026, 14:30"). Falls back to the raw value
 // for the mock's pre-formatted strings, "" when absent.
 function fmtFillDate(iso: string): string {
@@ -174,9 +198,9 @@ const EMPTY_CLOSING: Set<string> = new Set();
 // `main=false` renders it indented under its trade's summary line.
 function legRow(
   p: Position,
-  opts: { showGreeks: boolean; extended: boolean; onClose: ((p: Position) => void) | undefined; main: boolean; closing: Set<string> },
+  opts: { showGreeks: boolean; extended: boolean; onClose: ((p: Position) => void) | undefined; main: boolean; closing: Set<string>; legWing?: string },
 ): JSX.Element {
-  const { showGreeks, extended, onClose, main, closing } = opts;
+  const { showGreeks, extended, onClose, main, closing, legWing = "" } = opts;
   // Locked while this leg (or its whole trade) has a close in flight.
   const isClosing = closing.has(p.id) || (p.tradeId != null && closing.has("t:" + p.tradeId));
   return (
@@ -184,7 +208,7 @@ function legRow(
       <td className="l mono dim">{main ? (p.tradeId ? "#" + p.tradeId : "—") : ""}</td>
       <td className="l mono dim">{p.structure || "—"}</td>
       <td className="l">
-        <span className="sym">{main ? "" : "↳ "}{p.product || "—"}</span>
+        <span className="sym">{main ? "" : "↳ "}{legProductLabel(p, legWing)}</span>
         {fmtFillDate(p.opened) && (
           <span className="substruct">filled {fmtFillDate(p.opened)}</span>
         )}
@@ -218,8 +242,11 @@ function legRow(
       <td className="r">
         <button
           className="row-close"
-          disabled={isClosing}
-          title={isClosing ? "a close for this position is already in flight" : undefined}
+          disabled={isClosing || p.netted}
+          title={
+            p.netted ? "netted flat at IB (held opposite by another trade) — nothing to close on this contract"
+              : isClosing ? "a close for this position is already in flight" : undefined
+          }
           onClick={() => onClose && onClose(p)}
         >
           {isClosing ? "Closing…" : "Close"}
@@ -403,7 +430,9 @@ export function OpenPositionsTable({
               }
               const tradeClosing = grp.tradeId != null && closing.has("t:" + grp.tradeId);
               const name = ctx?.name ?? structureName(grp.legs);
+              const wings = name.match(/\d+Δ|ATM/g) ?? []; // structure's declared wings
               const a = aggregate(grp.legs);
+              const sSide = structureSide(grp.legs);
               const isOpen = expanded.has(grp.key);
               const legsLabel = ctx ? `${ctx.filled}/${ctx.total} legs` : `${grp.legs.length} legs`;
               return (
@@ -428,7 +457,7 @@ export function OpenPositionsTable({
                       )}
                     </td>
                     <td className="r mono dim">—</td>
-                    <td><span className="dim small">—</span></td>
+                    <td><span className={"side-pill " + (sSide === "BUY" ? "long" : "short")}>{sSide}</span></td>
                     <td className="r mono">{a.qty || "—"}</td>
                     <td className="r mono dim">{a.tenor}</td>
                     <td className="r mono dim">{a.dte ? a.dte + "d" : "—"}</td>
@@ -462,7 +491,7 @@ export function OpenPositionsTable({
                       </button>
                     </td>
                   </tr>
-                  {isOpen && grp.legs.map((p) => legRow(p, { showGreeks, extended, onClose, main: false, closing }))}
+                  {isOpen && grp.legs.map((p) => legRow(p, { showGreeks, extended, onClose, main: false, closing, legWing: legWingFor(p, grp.legs, wings) }))}
                 </Fragment>
               );
             })}
@@ -473,8 +502,11 @@ export function OpenPositionsTable({
   );
 }
 
-export function CashHoldings({ compact = false }: { compact?: boolean }): JSX.Element {
-  const total = DATA.cash.reduce((s, c) => s + c.usd, 0);
+export function CashHoldings({ compact = false, cash }: { compact?: boolean; cash?: Cash[] }): JSX.Element {
+  // Live per-currency balances (from /portfolio/cash via the trade slice) when
+  // present; the mock only until the account snapshot has been written.
+  const rows = cash && cash.length > 0 ? cash : DATA.cash;
+  const total = rows.reduce((s, c) => s + c.usd, 0);
   return (
     <div className="table-scroll">
       <table className="dt cash">
@@ -488,7 +520,7 @@ export function CashHoldings({ compact = false }: { compact?: boolean }): JSX.El
           </tr>
         </thead>
         <tbody>
-          {DATA.cash.map((c, i) => (
+          {rows.map((c, i) => (
             <tr key={i}>
               <td className="l">
                 <span className="ccy-dot" />

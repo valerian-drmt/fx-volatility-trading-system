@@ -1163,6 +1163,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portfolio/pnl-attribution-pivot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pnl Attribution Pivot
+         * @description Realized P&L bridged by a NON-greek axis (structure type or tenor).
+         *
+         *     Groups closed booked positions' ``net_pnl_usd`` by the chosen ``trade_structure``
+         *     column — the "by structure" / "by tenor" pivots of the attribution waterfall
+         *     (the "by greek" pivot is the Taylor decomposition on /pnl-attribution; "by mode"
+         *     (PCA) is a separate research feature, not served here). Steps are in USD; the
+         *     frontend scales to $k.
+         */
+        get: operations["pnl_attribution_pivot_api_v1_portfolio_pnl_attribution_pivot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portfolio/var": {
         parameters: {
             query?: never;
@@ -2311,6 +2337,38 @@ export interface paths {
          *         }
          */
         post: operations["close_trade_api_v1_trades__trade_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trades/{trade_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Trade
+         * @description Cancel every non-terminal order of ``trade_id`` at IB, then terminalise the
+         *     structure. Frees a stuck 'submitted' trade in two ways :
+         *
+         *       * live orders resting at IB (a wing that won't fill, a DAY order IB already
+         *         dropped) are DELETE-d at the engine and flipped to ``cancelled`` ;
+         *       * a *ghost* structure — orders already terminal (all filled, or filled after
+         *         a close) but ``trade_structure.state`` never advanced past ``submitted`` —
+         *         is terminalised from its current leg states even though nothing is
+         *         cancellable. This is the missing FSM transition, not a no-op.
+         *
+         *     Idempotent : an order IB no longer holds (404 from the engine) is treated as
+         *     already gone. 404 only when the structure doesn't exist ; 409 when a leg is
+         *     still genuinely in flight in a state we can neither cancel nor terminalise.
+         */
+        post: operations["cancel_trade_api_v1_trades__trade_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4753,6 +4811,40 @@ export interface operations {
             };
         };
     };
+    pnl_attribution_pivot_api_v1_portfolio_pnl_attribution_pivot_get: {
+        parameters: {
+            query?: {
+                by?: string;
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     value_at_risk_api_v1_portfolio_var_get: {
         parameters: {
             query?: never;
@@ -6431,6 +6523,41 @@ export interface operations {
                 "application/json": components["schemas"]["CloseTradeRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_trade_api_v1_trades__trade_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trade_id: number;
+            };
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

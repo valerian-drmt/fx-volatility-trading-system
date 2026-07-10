@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
@@ -456,6 +456,32 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             if lg.ib_local_symbol:
                 symbol_to_struct[lg.ib_local_symbol] = lg.structure_id
 
+    # 1b. the BOOK (leg_position) — the authority for what each leg holds (I3/I7).
+    # A leg is "open" if its book open_qty != 0, EVEN when the netted IB mirror has
+    # no row for it: two trades on opposite sides of one contract net to zero at IB,
+    # so the mirror can't show either leg — but the book knows both are real. Without
+    # this the surviving leg reads as a detached "Vanilla Call" and the netted-away
+    # leg vanishes entirely.
+    book_by_order: dict[int, LegPosition] = {}
+    order_ids = [lg.id for lgs in legs_by_struct.values() for lg in lgs]
+    if order_ids:
+        book_by_order = {
+            int(bp.order_id): bp for bp in (await db.execute(
+                select(LegPosition).where(LegPosition.order_id.in_(order_ids))
+            )).scalars().all()
+        }
+
+    def _book_open_qty(lg: StructureOrder) -> float | None:
+        bp = book_by_order.get(lg.id)
+        return float(bp.open_qty) if bp and bp.open_qty is not None else None
+
+    def _leg_is_open(lg: StructureOrder, lp: OpenPosition | None) -> bool:
+        # Open if the netted mirror links it OR the book holds a non-zero qty.
+        if lp is not None:
+            return True
+        q = _book_open_qty(lg)
+        return q is not None and abs(q) > 1e-9
+
     # 2. live IB mirror → link each row to a structure (FK or leg symbol); the rest is "unlinked"
     positions = (await db.execute(select(OpenPosition))).scalars().all()
     struct_by_id = {s.id: s for s in structs}
@@ -490,13 +516,21 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             # Keyed within the structure's own positions, so a contract shared with
             # another structure can't produce a false "filled".
             "linked": lp is not None,
+            # open = the leg is really held per the BOOK (leg_position), independent of
+            # whether IB's netted mirror can show it. This is what the panel renders on
+            # so a netted leg doesn't vanish. open_qty is the signed book holding.
+            "open": _leg_is_open(lg, lp),
+            "open_qty": _book_open_qty(lg),
             # Live IB-mirror identity — present only when a real position backs this
             # leg. position_id is the open_position row the UI closes by.
             "position_id": lp.id if lp else None,
             "con_id": lp.contract_id if lp else None,
             "held_qty": _f(lp.quantity) if lp else None,
             "held_side": lp.side if lp else None,
-            "entry": _f(lp.contract_price_entry) if lp else None,
+            # entry price: the mirror's when linked, else the book's avg fill price.
+            "entry": _f(lp.contract_price_entry) if lp else (
+                _f(book_by_order[lg.id].avg_price) if lg.id in book_by_order else None
+            ),
             "nominal_eur": _f(lp.nominal_eur) if lp else None,
             "tenor": (lp.tenor if lp and lp.tenor else None),
             "opened": lp.entry_timestamp.isoformat() if (lp and lp.entry_timestamp) else None,
@@ -522,6 +556,11 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
         n["n_linked"] += 1
         pos_by_struct.setdefault(sid, {})[p.structure] = p
 
+    # Show a structure only if it has LIVE IB presence (>=1 mirror-linked leg) — a
+    # fully-netted trade (every leg offset flat at IB by an opposite trade) carries
+    # zero live risk and would otherwise flood the panel with all-zero rows. WITHIN a
+    # shown structure we still render every book-open leg (below), so a live spread
+    # shows both legs including a netted-away sibling — the actual fix.
     out_structs = [{
         "structure_id": s.id, "structure_type": s.structure_type, "product_label": s.product_label,
         "tenor": s.reference_tenor, "state": s.state, "base_qty": s.base_qty,
@@ -531,7 +570,7 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             for lg in legs_by_struct.get(s.id, [])
         ],
         "net": net_by_struct[s.id],
-    } for s in structs if net_by_struct[s.id]["n_linked"] > 0]  # actually-open only
+    } for s in structs if net_by_struct[s.id]["n_linked"] > 0]
     return {"structures": out_structs, "unlinked": unlinked}
 
 
@@ -960,6 +999,31 @@ _MKT_CLOSE_BUFFER = float(os.getenv("MARKETABLE_LIMIT_BUFFER", "0.25"))
 _INFLIGHT_CLOSE_WINDOW = timedelta(minutes=float(os.getenv("CLOSE_INFLIGHT_WINDOW_MIN", "3")))
 
 
+def close_inflight_remaining(
+    qty: int,
+    qty_filled: int | None,
+    submitted_at: datetime | None,
+    state_updated_at: datetime | None,
+    now: datetime,
+    window: timedelta,
+) -> int:
+    """Unfilled qty of a close order that still counts against the stacking guard
+    (pure/testable). Returns 0 (self-healed) once the order is older than
+    ``window``, so a stuck close never locks the position forever.
+
+    Age is measured from ``submitted_at`` when the order was dispatched, else from
+    ``state_updated_at`` — the crucial case: a close CREATED but never dispatched
+    (``submitted_at IS NULL``, e.g. the engine was down) keeps a NULL
+    ``submitted_at`` indefinitely, so without the ``state_updated_at`` fallback it
+    would be counted as in-flight forever and permanently block every new close.
+    """
+    cutoff = now - window
+    age_ts = submitted_at if submitted_at is not None else state_updated_at
+    if age_ts is not None and age_ts < cutoff:
+        return 0  # stuck / cancelled at IB, or never dispatched — don't block
+    return max(0, int(qty) - int(qty_filled or 0))
+
+
 def _marketable_close_from_mark(mark: float, pos_side: str) -> float | None:
     """Aggressive, tick-snapped LMT that crosses the spread to close.
 
@@ -1030,6 +1094,7 @@ async def close_one_open_position(
     pos: OpenPosition,
     qty: int,
     limit_price_override: float | None = None,
+    entry_order_id_override: int | None = None,
 ) -> dict[str, Any]:
     """Close ``qty`` contracts of a single ``open_position`` row.
 
@@ -1066,24 +1131,28 @@ async def close_one_open_position(
     is_option = spec is not None and spec.instrument_type == "OPTION"
     strike_val = float(spec.strike) if (spec and spec.strike is not None) else None
     reverse_side = "SELL" if pos.side == "BUY" else "BUY"
-    inflight_cutoff = datetime.now(UTC) - _INFLIGHT_CLOSE_WINDOW
+    now = datetime.now(UTC)
     inflight_conds = [
         StructureOrder.order_role == "closing",
         StructureOrder.side == reverse_side,
         StructureOrder.contract_expiry == pos.expiry,
         StructureOrder.state.in_(("pending", "submitted", "partially_filled")),
-        or_(
-            StructureOrder.submitted_at.is_(None),          # just created, not yet sent
-            StructureOrder.submitted_at >= inflight_cutoff,  # genuinely in flight
-        ),
     ]
     if strike_val is not None:
         inflight_conds.append(StructureOrder.contract_strike == strike_val)
-    already_closing = int((await db.execute(
-        select(func.coalesce(
-            func.sum(StructureOrder.qty - func.coalesce(StructureOrder.qty_filled, 0)), 0,
-        )).where(*inflight_conds)
-    )).scalar_one() or 0)
+    # Sum the still-in-flight remaining qty in Python via the pure predicate — the
+    # self-heal boundary (incl. the never-dispatched submitted_at IS NULL case)
+    # lives in one tested place instead of drifting inside a SQL expression.
+    close_orders = (await db.execute(
+        select(StructureOrder).where(*inflight_conds)
+    )).scalars().all()
+    already_closing = sum(
+        close_inflight_remaining(
+            o.qty, o.qty_filled, o.submitted_at, o.state_updated_at,
+            now, _INFLIGHT_CLOSE_WINDOW,
+        )
+        for o in close_orders
+    )
     if already_closing + qty > open_qty:
         raise HTTPException(
             409,
@@ -1139,8 +1208,11 @@ async def close_one_open_position(
     # reservation ledger can materialise reserved_qty on it (I5). The stateless
     # over-close guard above stays the admission gate; this makes the reservation
     # persistent + race-visible. NULL when the entry leg can't be resolved.
-    entry_order_id: int | None = None
-    if pos.trade_id is not None:
+    # A trade-level close passes the EXACT entry leg it targets
+    # (entry_order_id_override) so a shared-contract sibling can't be mis-linked.
+    # Otherwise fall back to a best-effort match by the mirror's (netted) trade_id.
+    entry_order_id: int | None = entry_order_id_override
+    if entry_order_id is None and pos.trade_id is not None:
         entry_order_id = (await db.execute(
             select(StructureOrder.id)
             .where(StructureOrder.structure_id == pos.trade_id)

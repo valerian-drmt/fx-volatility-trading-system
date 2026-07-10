@@ -34,7 +34,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
-from shared.contracts import multiplier_for, parse_local_symbol
+from shared.contracts import build_ib_local_symbol, multiplier_for, parse_local_symbol
 
 # Auto-close booked positions the broker no longer holds (book ↔ IB reconciliation).
 # ON by default ; a stale booking that IB shows flat (for >1h) is closed with an
@@ -232,16 +232,32 @@ async def sync_positions_from_ib(
             db.add(row)
             opened += 1
 
-    # Closed positions = simply DELETE the row. The audit trail lives in
-    # ``trades`` (fills) and ``position_snapshots`` (history).
+    # Closed positions = DELETE the row (audit trail lives in fills + snapshots).
+    # BUT gate the deletes on a TRUSTWORTHY snapshot (T7 — same guard the reaper and
+    # reconciler use): a dead/stale IB feed, or a transient empty ``list_positions()``
+    # while positions are actually open, must NOT flatten the mirror — that's how a
+    # spread leg vanishes minutes after it filled (deleted here, re-added next cycle).
+    # Upserts above are always safe (they only add/refresh what IB reported); only the
+    # deletes need the guard. A genuinely-flat account (reporting, empty snapshot) still
+    # deletes correctly because account_is_reporting() is True.
+    trustworthy = executor.account_is_reporting() and not (not ib_active and db_by_key)
     closed = 0
-    for key, db_row in db_by_key.items():
-        if key not in ib_by_key:
-            await db.delete(db_row)
-            closed += 1
+    if trustworthy:
+        for key, db_row in db_by_key.items():
+            if key not in ib_by_key:
+                await db.delete(db_row)
+                closed += 1
+    elif any(k not in ib_by_key for k in db_by_key):
+        logger.warning(
+            "position_sync_skip_deletes untrusted_snapshot reporting=%s ib_active=%d db_rows=%d",
+            executor.account_is_reporting(), len(ib_active), len(db_by_key),
+        )
 
     await db.commit()
-    return {"synced": len(ib_active), "opened": opened, "closed": closed, "unchanged": unchanged}
+    return {
+        "synced": len(ib_active), "opened": opened, "closed": closed,
+        "unchanged": unchanged, "deletes_skipped": not trustworthy,
+    }
 
 
 async def publish_portfolio_to_redis(
@@ -419,28 +435,15 @@ async def _build_leg_to_trade_map(
 def _structure_order_to_ib_key(leg: StructureOrder) -> str | None:
     """Best-guess IB ``localSymbol`` rebuilt from a leg's contract fields.
 
-    Used only as the **fallback** when ``leg.ib_local_symbol`` hasn't
-    been filled in yet (pre-fill legs). The reconstruction may miss
-    when the calibrated strike rounds to a different IB tick than what
-    IB picked, but a miss is better than the multi-candidate over-claim
-    of the previous implementation.
+    Used only as the **fallback** when ``leg.ib_local_symbol`` hasn't been filled
+    in yet (pre-fill legs). Delegates to the shared builder (single source of truth
+    with the /trade/submitted blotter symbol) — the reconstruction may miss when the
+    calibrated strike rounds to a different IB tick than IB picked, but a miss is
+    better than the multi-candidate over-claim of the previous implementation.
     """
-    if not leg.contract_expiry:
-        return None
-    try:
-        month_letter = "FGHJKMNQUVXZ"[leg.contract_expiry.month - 1]
-        year_digit = str(leg.contract_expiry.year)[-1]
-    except (AttributeError, IndexError):
-        return None
-    contract_type = (leg.contract_type or "").lower()
-    if contract_type == "future":
-        cls = "M6E" if leg.contract_symbol == "M6E" else "6E"
-        return f"{cls}{month_letter}{year_digit}"
-    if contract_type in ("call", "put") and leg.contract_strike:
-        right = "C" if contract_type == "call" else "P"
-        strike_code = f"{int(float(leg.contract_strike) * 1000):04d}"
-        return f"EUU{month_letter}{year_digit} {right}{strike_code}"
-    return None
+    return build_ib_local_symbol(
+        leg.contract_type, leg.contract_expiry, leg.contract_strike, leg.contract_symbol,
+    )
 
 
 async def reconcile_trade_positions(

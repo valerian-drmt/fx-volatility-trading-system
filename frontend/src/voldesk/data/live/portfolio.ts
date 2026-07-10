@@ -41,7 +41,10 @@ interface AccountSnap {
 
 /** /portfolio/account → the mock `account` shape (deltas from prev_24h). */
 export function adaptAccount(raw: unknown): AccountState {
-  const o = (raw ?? {}) as { latest?: AccountSnap | null; prev_24h?: AccountSnap | null };
+  const o = (raw ?? {}) as {
+    latest?: AccountSnap | null; prev_24h?: AccountSnap | null;
+    buying_power_usd?: number | null; available_funds_usd?: number | null;
+  };
   const L = o.latest ?? {};
   const P = o.prev_24h ?? null;
   const netLiq = n(L.net_liq_usd);
@@ -58,6 +61,8 @@ export function adaptAccount(raw: unknown): AccountState {
     excessLiq: n(L.excess_liquidity),
     cushion: n(L.cushion),
     nPositions: L.open_positions_count ?? mockAccount.nPositions,
+    buyingPower: o.buying_power_usd != null ? n(o.buying_power_usd) : mockAccount.buyingPower,
+    availableFunds: o.available_funds_usd != null ? n(o.available_funds_usd) : mockAccount.availableFunds,
     marginInitPct: netLiq > 0 ? r1((initM / netLiq) * 100) : mockAccount.marginInitPct,
     marginMaintPct: netLiq > 0 ? r1((maintM / netLiq) * 100) : mockAccount.marginMaintPct,
     dNetLiq: P ? r2(dPct(netLiq, n(P.net_liq_usd))) : mockAccount.dNetLiq,
