@@ -154,6 +154,9 @@ export const fetchPnlAttribution = (lookbackHours = 24) =>
   apiGet<unknown>("/api/v1/portfolio/pnl-attribution", {
     query: { lookback_hours: lookbackHours },
   });
+// Realized-P&L bridge grouped by a non-greek axis (structure type / tenor).
+export const fetchPnlAttributionPivot = (by: string, days = 90) =>
+  apiGet<unknown>("/api/v1/portfolio/pnl-attribution-pivot", { query: { by, days } });
 export const fetchPinRisk = () => apiGet<unknown>("/api/v1/portfolio/pin-risk");
 export const fetchVegaPca = () => apiGet<unknown>("/api/v1/portfolio/vega-pca");
 export const fetchMarginalVar = () => apiGet<unknown>("/api/v1/portfolio/marginal-var");

@@ -5,7 +5,7 @@
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
 import { useState } from "react";
-import { fetchEquityCurve, fetchPnlAttribution } from "../../api/endpoints";
+import { fetchEquityCurve, fetchPnlAttribution, fetchPnlAttributionPivot } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
 import { Panel, MetricTile, Tag } from "../components/common";
@@ -15,7 +15,7 @@ import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
 import type { BookComposition, Position, VegaTenor, WaterfallStep } from "../data";
 import { useDeskData } from "../data/deskData";
-import { adaptCoverage, adaptEquityCurve } from "../data/live/portfolio";
+import { adaptCoverage, adaptEquityCurve, adaptWaterfallPivot } from "../data/live/portfolio";
 
 // equity curve + drawdown band. Window-parameterised → fetched here (per-window
 // state) rather than in the provider. Live-only: empty state until data exists.
@@ -512,6 +512,15 @@ export function PortfolioView(): JSX.Element {
     ps = pd?.perfStats ?? DATA2.perfStats,
     g = pd?.greeks ?? DATA.greeks;
   const dailyPnlData = pd?.dailyPnl ?? DATA2.dailyPnl;
+  // Non-greek attribution pivots (by structure / by tenor) — realized P&L bridged
+  // from closed booked positions. Fetched once; "by mode" (PCA) stays deferred.
+  const pivotLive = useFetch(async () => {
+    const [structure, tenor] = await Promise.all([
+      fetchPnlAttributionPivot("structure").then(adaptWaterfallPivot),
+      fetchPnlAttributionPivot("tenor").then(adaptWaterfallPivot),
+    ]);
+    return { structure, tenor };
+  }, 120_000).data;
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
@@ -659,7 +668,14 @@ export function PortfolioView(): JSX.Element {
           }
           className="wf-panel"
         >
-          <Waterfall steps={pivot === "greek" ? (pd?.waterfallGreek ?? DATA2.waterfall["greek"] ?? []) : (DATA2.waterfall[pivot] ?? [])} />
+          <Waterfall
+            steps={
+              pivot === "greek" ? (pd?.waterfallGreek ?? DATA2.waterfall["greek"] ?? [])
+                : pivot === "structure" ? (pivotLive?.structure ?? DATA2.waterfall["structure"] ?? [])
+                : pivot === "tenor" ? (pivotLive?.tenor ?? DATA2.waterfall["tenor"] ?? [])
+                : (DATA2.waterfall[pivot] ?? []) // "mode" (PCA) — deferred research feature
+            }
+          />
           {pivot === "mode" ? (
             <div className="attrib-note dim small">
               signal → structure → realized P&L, mapped to PC1/2/3 (the modes traded) · forward realized tracking, not a

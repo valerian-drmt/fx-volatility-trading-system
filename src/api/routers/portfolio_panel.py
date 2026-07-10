@@ -1339,6 +1339,46 @@ async def daily_pnl(db: DbDep, days: int = Query(90, ge=1, le=730)) -> dict[str,
     return {"days": days, "series": series, "total_realized_usd": round(cum, 2)}
 
 
+# Realized-P&L pivot axes → the trade_structure column each groups by. Whitelisted
+# (never interpolate the client value into SQL).
+_PNL_PIVOT_COLS = {"structure": "structure_type", "tenor": "reference_tenor"}
+
+
+@router.get("/pnl-attribution-pivot")
+async def pnl_attribution_pivot(
+    db: DbDep, by: str = Query("structure"), days: int = Query(90, ge=1, le=730),
+) -> dict[str, Any]:
+    """Realized P&L bridged by a NON-greek axis (structure type or tenor).
+
+    Groups closed booked positions' ``net_pnl_usd`` by the chosen ``trade_structure``
+    column — the "by structure" / "by tenor" pivots of the attribution waterfall
+    (the "by greek" pivot is the Taylor decomposition on /pnl-attribution; "by mode"
+    (PCA) is a separate research feature, not served here). Steps are in USD; the
+    frontend scales to $k.
+    """
+    col = _PNL_PIVOT_COLS.get(by)
+    if col is None:
+        raise HTTPException(400, f"unknown pivot '{by}' (expected {sorted(_PNL_PIVOT_COLS)})")
+    sql = text(f"""
+        SELECT COALESCE(ts.{col}, 'other') AS grp,
+               COALESCE(SUM(bp.net_pnl_usd), 0) AS pnl,
+               COUNT(*) AS n_closed
+          FROM booked_position bp
+          JOIN trade_structure ts ON bp.structure_id = ts.id
+         WHERE bp.state = 'closed' AND bp.closed_at IS NOT NULL
+           AND bp.closed_at >= NOW() - make_interval(days => :days)
+         GROUP BY 1
+         ORDER BY pnl DESC
+    """)  # col is whitelisted above (_PNL_PIVOT_COLS), never raw user input
+    rows = (await db.execute(sql, {"days": days})).all()
+    groups = [
+        {"label": str(r.grp), "pnl_usd": round(float(r.pnl or 0.0), 2), "n_closed": int(r.n_closed)}
+        for r in rows
+    ]
+    total = round(sum(g["pnl_usd"] for g in groups), 2)
+    return {"by": by, "days": days, "groups": groups, "total_usd": total}
+
+
 @router.get("/var")
 async def value_at_risk(db: DbDep) -> dict[str, Any]:
     """Historical 1-day Value-at-Risk (R11 G-risk).

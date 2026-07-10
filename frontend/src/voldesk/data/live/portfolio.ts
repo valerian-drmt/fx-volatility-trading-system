@@ -125,6 +125,23 @@ interface AttribTotals {
   residual?: number | null;
 }
 
+/** /portfolio/pnl-attribution-pivot → a by-structure / by-tenor bridge ($ → $k).
+ * Start → one signed step per group → Net. */
+export function adaptWaterfallPivot(raw: unknown): WaterfallStep[] {
+  const o = (raw ?? {}) as { groups?: { label?: string; pnl_usd?: number | null }[] };
+  const groups = o.groups ?? [];
+  const k = (v: number | null | undefined): number => r1(n(v) / 1000);
+  const steps: WaterfallStep[] = [{ label: "Start", v: 0, type: "start" }];
+  let net = 0;
+  for (const gr of groups) {
+    const v = n(gr.pnl_usd);
+    net += v;
+    steps.push({ label: String(gr.label ?? "—"), v: k(v), type: v >= 0 ? "pos" : "neg" });
+  }
+  steps.push({ label: "Net", v: k(net), type: "net" });
+  return steps;
+}
+
 /** /portfolio/pnl-attribution totals → the greek-pivot waterfall ($ → $k). */
 export function adaptWaterfallGreek(raw: unknown): WaterfallStep[] {
   const t = ((raw ?? {}) as { totals?: AttribTotals }).totals ?? {};
