@@ -8,7 +8,7 @@ import { useState } from "react";
 import { fetchEquityCurve, fetchPnlAttribution, fetchPnlAttributionPivot } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
-import { Panel, MetricTile, Tag } from "../components/common";
+import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls, gk$ } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
@@ -503,6 +503,17 @@ function BookComposition({
   );
 }
 
+// ▲/▼ change pill (percent), coloured like P&L — matches the account-tile deltas.
+function deltaPill(d: number | null | undefined): JSX.Element | null {
+  if (d == null || !Number.isFinite(d)) return null;
+  const neg = d < 0;
+  return (
+    <span className={"acct-delta " + (neg ? "neg" : "pos")}>
+      {neg ? "▼" : "▲"} {Math.abs(d).toFixed(2)}%
+    </span>
+  );
+}
+
 export function PortfolioView(): JSX.Element {
   const [win, setWin] = useState<string>("7D");
   const [pivot, setPivot] = useState<string>("greek");
@@ -551,45 +562,57 @@ export function PortfolioView(): JSX.Element {
   return (
     <div className="portfolio-grid">
       <Panel title="Account & capital" dataPp="account" right={<FreshBadge fresh={portfolio} label="IB account" />} className="acct-panel">
-        <div className="acct-tiles">
-          <MetricTile big label="Net liquidation" value={fmt.usd(a.netLiq)} delta={a.dNetLiq} />
-          <MetricTile label="Cash" value={fmt.usd(a.cash)} delta={a.dCash} />
-          <MetricTile label="Init margin" value={fmt.usd(a.marginInit)} sub={a.marginInitPct + "% used"} />
-          <MetricTile label="Maint margin" value={fmt.usd(a.marginMaint)} sub={a.marginMaintPct + "% used"} />
-          <MetricTile label="Excess liquidity" value={fmt.usd(a.excessLiq)} tone="pos" />
-          <MetricTile label="Cushion" value={(a.cushion * 100).toFixed(1) + "%"} sub={a.nPositions + " positions"} />
+        <div className="acct-tables">
+          <table className="dt greeks-table acct-cap">
+            <thead><tr><th className="l">Capital</th><th className="r">Value</th></tr></thead>
+            <tbody>
+              <tr>
+                <td className="l">Net liquidation</td>
+                <td className="r mono">{fmt.usd(a.netLiq)} {deltaPill(a.dNetLiq)}</td>
+              </tr>
+              <tr>
+                <td className="l">Cash</td>
+                <td className="r mono">{fmt.usd(a.cash)} {deltaPill(a.dCash)}</td>
+              </tr>
+              <tr>
+                <td className="l">Init margin</td>
+                <td className="r mono">{fmt.usd(a.marginInit)} <span className="acct-sub">{a.marginInitPct}% used</span></td>
+              </tr>
+              <tr>
+                <td className="l">Maint margin</td>
+                <td className="r mono">{fmt.usd(a.marginMaint)} <span className="acct-sub">{a.marginMaintPct}% used</span></td>
+              </tr>
+              <tr>
+                <td className="l">Excess liquidity</td>
+                <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
+              </tr>
+              <tr>
+                <td className="l">Cushion</td>
+                <td className="r mono">{(a.cushion * 100).toFixed(1)}% <span className="acct-sub">{a.nPositions} positions</span></td>
+              </tr>
+              <tr className="acct-sep">
+                <td className="l">Gross leverage</td>
+                <td className="r mono">{lev.gross.toFixed(1)}M € <span className="acct-sub">{grossX}× net liq · €{(netLiqEur / 1e6).toFixed(2)}M</span></td>
+              </tr>
+              <tr>
+                <td className="l">Net leverage</td>
+                <td className="r mono">{lev.net.toFixed(1)}M € <span className="acct-sub">{netX}× net liq</span></td>
+              </tr>
+              <tr>
+                <td className="l">Buying power</td>
+                <td className="r mono pos">${lev.buyingPower.toFixed(2)}M <span className="acct-sub">available</span></td>
+              </tr>
+              <tr>
+                <td className="l">FX residual <em className="unit">cash</em></td>
+                <td className="r mono">
+                  GBP <span className="pos">{gk$(gbp?.usd)}</span> · JPY <span className="neg">{gk$(jpy?.usd)}</span>
+                  <span className="acct-sub">settlement residue · not an option Δ</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <CashHoldings cash={cashRows} />
         </div>
-        <div className="lev-strip">
-          <div className="lev-item">
-            <span className="gs-lbl">Gross leverage</span>
-            <b className="mono">{lev.gross.toFixed(1)}M €</b>
-            <span className="gs-sub mono dim">
-              {grossX}× net liq <em className="unit">€{(netLiqEur / 1e6).toFixed(2)}M</em>
-            </span>
-          </div>
-          <div className="lev-item">
-            <span className="gs-lbl">Net leverage</span>
-            <b className="mono">{lev.net.toFixed(1)}M €</b>
-            <span className="gs-sub mono dim">
-              {netX}× net liq <em className="unit">€</em>
-            </span>
-          </div>
-          <div className="lev-item">
-            <span className="gs-lbl">Buying power</span>
-            <b className="mono pos">${lev.buyingPower.toFixed(2)}M</b>
-            <span className="gs-sub mono dim">available</span>
-          </div>
-          <div className="lev-item lev-fx">
-            <span className="gs-lbl">
-              FX residual <em className="unit">cash</em>
-            </span>
-            <b className="mono">
-              GBP <span className="pos">{gk$(gbp?.usd)}</span> · JPY <span className="neg">{gk$(jpy?.usd)}</span>
-            </b>
-            <span className="gs-sub mono dim">settlement residue · not an option Δ</span>
-          </div>
-        </div>
-        <CashHoldings cash={cashRows} />
       </Panel>
 
       <Panel
