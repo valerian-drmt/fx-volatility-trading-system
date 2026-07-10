@@ -90,7 +90,7 @@ def marketable_from_quote(
 
 
 async def _live_quote(
-    ib: Any, contract: Any, *, attempts: int = 3, gap_s: float = 0.5, timeout_s: float = 3.0,
+    ib: Any, contract: Any, *, attempts: int = 3, gap_s: float = 0.3, timeout_s: float = 2.0,
 ) -> tuple[float | None, float | None, float | None]:
     """Fetch (bid, ask, mkt) for an option, RETRYING until a side populates. A cold
     market-data line — a leg's strike that never streamed before, the common case

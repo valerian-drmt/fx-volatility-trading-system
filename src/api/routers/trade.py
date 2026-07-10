@@ -222,8 +222,14 @@ async def _post_execution_engine(path: str, body: dict[str, Any]) -> dict[str, A
     from shared.trace import trace_headers
     base = os.environ.get("EXECUTION_ENGINE_URL", "http://execution-engine:8001")
     url = f"{base.rstrip('/')}{path}"
+    # A live submit runs synchronously in the engine: per leg it does an IB
+    # qualify + quote + place round-trip, so a multi-leg order with cold option
+    # quotes legitimately takes tens of seconds. A tight client timeout would give
+    # up while the engine is still placing the orders — a FALSE "unreachable" that
+    # also risks a double-submit on retry. Keep it generous (env-tunable).
+    timeout_s = float(os.environ.get("EXECUTION_SUBMIT_TIMEOUT_S", "45"))
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
             resp = await client.post(url, json=body, headers=trace_headers())
         if resp.status_code >= 400:
             raise HTTPException(
