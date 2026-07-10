@@ -25,7 +25,9 @@ from api.main import create_app  # noqa: E402
 def main() -> None:
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("openapi.json")
     schema = create_app().openapi()
-    out.write_text(json.dumps(schema, indent=2))
+    # sort_keys makes the dump canonical so the schema.d.ts drift check is
+    # stable across machines (route-insertion order differs Windows/Linux).
+    out.write_text(json.dumps(schema, indent=2, sort_keys=True))
     print(f"OpenAPI schema written to {out} ({len(schema['paths'])} paths)")
 
 
