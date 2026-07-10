@@ -10,7 +10,7 @@ import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
-import { pnlCls, gk$ } from "../components/format";
+import { pnlCls } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
 import type { BookComposition, Position, VegaTenor, WaterfallStep } from "../data";
@@ -551,9 +551,6 @@ export function PortfolioView(): JSX.Element {
   const netX = netLiqEur ? (lev.net / (netLiqEur / 1e6)).toFixed(2) : "—";
   // §P1 unrealized single source: read the one engine (= Open positions = Risk = Close)
   const unreal = g.netUnreal;
-  // §P3 cash FX residual — non-pair balances (GBP long, JPY short), separate from option Δ
-  const gbp = cashRows.find((c) => c.ccy === "GBP"),
-    jpy = cashRows.find((c) => c.ccy === "JPY");
   // §P3 P&L skew — a long-gamma book should show positive skew (many small theta losses, occasional gamma spikes)
   const dp = dailyPnlData,
     mean = dp.length ? dp.reduce((x, y) => x + y, 0) / dp.length : 0;
@@ -601,13 +598,6 @@ export function PortfolioView(): JSX.Element {
               <tr>
                 <td className="l">Buying power</td>
                 <td className="r mono pos">${lev.buyingPower.toFixed(2)}M <span className="acct-sub">available</span></td>
-              </tr>
-              <tr>
-                <td className="l">FX residual <em className="unit">cash</em></td>
-                <td className="r mono">
-                  GBP <span className="pos">{gk$(gbp?.usd)}</span> · JPY <span className="neg">{gk$(jpy?.usd)}</span>
-                  <span className="acct-sub">settlement residue · not an option Δ</span>
-                </td>
               </tr>
             </tbody>
           </table>
