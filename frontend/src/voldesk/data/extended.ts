@@ -358,6 +358,10 @@ export const perfStats = {
   currentDd: -1.4,
   sharpe: 1.84,
   hitRate: (dailyPnl.filter((v) => v > 0).length / dailyPnl.length) * 100,
+  nClosed: 0, // genuine trade closes
+  nReconciledFlat: 0, // netting/reconciliation adjustments (not trades)
+  netLiqChange: 0, // ground-truth Δ net-liq over the window ($k)
+  hitRateNull: false, // true when there are no genuine closes → show "—"
 };
 /** Shape reused by the live Portfolio adapter (R11 PR 3). */
 export type PerfStats = typeof perfStats;

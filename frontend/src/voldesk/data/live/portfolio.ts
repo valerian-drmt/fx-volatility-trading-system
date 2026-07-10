@@ -95,6 +95,9 @@ interface StatsResp {
   hit_rate?: number | null;
   cum_realized_usd?: number | null;
   cum_unrealized_usd?: number | null;
+  n_closed?: number | null;
+  n_reconciled_flat?: number | null;
+  net_liq_change_usd?: number | null;
 }
 
 /** /portfolio/stats → mock perfStats ($ → $k ; hit_rate ratio → %). */
@@ -107,13 +110,18 @@ export function adaptPerfStats(raw: unknown): PerfStats {
     currentDd: n(s.current_drawdown_pct),
     sharpe: n(s.sharpe),
     hitRate: n(s.hit_rate) * 100,
+    nClosed: n(s.n_closed),
+    nReconciledFlat: n(s.n_reconciled_flat),
+    netLiqChange: r1(n(s.net_liq_change_usd) / 1000),
+    hitRateNull: s.hit_rate == null, // no genuine closes → hit-rate is undefined, not 0%
   };
 }
 
-/** /portfolio/daily-pnl → number[] of realized P&L per day, in $k. */
+/** /portfolio/daily-pnl → number[] of MARK-TO-MARKET P&L per day, in $k (Δ net-liq).
+ * Realized-on-close reads flat while the book is open, so the bars are MTM. */
 export function adaptDailyPnl(raw: unknown): number[] {
-  const series = ((raw ?? {}) as { series?: { realized_usd?: number | null }[] }).series ?? [];
-  return series.map((d) => r1(n(d.realized_usd) / 1000));
+  const series = ((raw ?? {}) as { series?: { mtm_usd?: number | null }[] }).series ?? [];
+  return series.map((d) => r1(n(d.mtm_usd) / 1000));
 }
 
 interface AttribTotals {

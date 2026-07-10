@@ -29,6 +29,7 @@ from engines.execution.order_executor import OrderExecutor
 from persistence.models import (
     AccountHistory,
     BookedPosition,
+    BookedPositionMetricHistory,
     OpenPosition,
     StructureOrder,
     TradeEvent,
@@ -507,7 +508,18 @@ async def reconcile_trade_positions(
         reconciled += 1
         if ib_qty_total == 0 and tp.opened_at < now - timedelta(hours=1):
             if _AUTOCLOSE_STALE and ib_data_live:
-                # broker holds none of this booking's legs → close it (audited)
+                # broker holds none of this booking's legs → close it (audited).
+                # This is a book-vs-broker adjustment, NOT a trade: leave net_pnl_usd
+                # NULL so it never pollutes realized/hit-rate stats. But CAPTURE the
+                # last-known mark P&L in the audit event so the P&L that dissolved via
+                # netting is attributable — it's what explains the portfolio-stats
+                # "reconciliation gap" (Δ net-liq that isn't realized + unrealized).
+                last_mark = (await db.execute(
+                    select(BookedPositionMetricHistory.current_pnl_net_usd)
+                    .where(BookedPositionMetricHistory.position_id == tp.id)
+                    .order_by(BookedPositionMetricHistory.timestamp.desc())
+                    .limit(1)
+                )).scalar_one_or_none()
                 tp.state = "closed"
                 tp.closed_at = now
                 tp.state_updated_at = now
@@ -520,7 +532,14 @@ async def reconcile_trade_positions(
                         f"booked position {tp.id} flat at IB (booked {booked_qty_total}) "
                         "→ closed by reconciliation"
                     ),
-                    payload={"booked_position_id": tp.id, "booked_qty": booked_qty_total},
+                    payload={
+                        "booked_position_id": tp.id,
+                        "booked_qty": booked_qty_total,
+                        # P&L dissolved via netting (audit only — NOT realized P&L).
+                        "dissolved_mark_pnl_usd": (
+                            round(float(last_mark), 2) if last_mark is not None else None
+                        ),
+                    },
                 ))
             else:
                 logger.warning(

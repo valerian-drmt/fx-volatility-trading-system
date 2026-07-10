@@ -1310,33 +1310,55 @@ async def cash_holdings(db: DbDep) -> dict[str, Any]:
 
 @router.get("/daily-pnl")
 async def daily_pnl(db: DbDep, days: int = Query(90, ge=1, le=730)) -> dict[str, Any]:
-    """Realized P&L aggregated per UTC day (R11 G-portfolio).
+    """Daily P&L — MARK-TO-MARKET (R11 G-portfolio).
 
-    From closed booked positions : ``SUM(net_pnl_usd)`` grouped by the day of
-    ``closed_at``, plus a running cumulative. Empty list when no closes yet.
+    A vol trader holds positions for weeks, so "realized on close" reads flat while
+    the book is open. The headline daily P&L is therefore the day-over-day change in
+    EOD net-liquidation (``account_history``) — the honest total P&L, footing to the
+    equity curve. ``realized_usd`` (genuine closes only) is returned alongside for the
+    realized/unrealized split, NOT as the bar height.
     """
-    sql = text("""
-        SELECT date_trunc('day', closed_at) AS day,
+    # 1) MTM: last net-liq per UTC day → day-over-day delta.
+    mtm_rows = (await db.execute(text("""
+        WITH eod AS (
+          SELECT DISTINCT ON (date_trunc('day', timestamp))
+                 date_trunc('day', timestamp)::date AS day, net_liq_usd
+            FROM account_history
+           WHERE timestamp >= NOW() - make_interval(days => :days)
+             AND net_liq_usd IS NOT NULL
+           ORDER BY date_trunc('day', timestamp), timestamp DESC
+        )
+        SELECT day, net_liq_usd,
+               net_liq_usd - LAG(net_liq_usd) OVER (ORDER BY day) AS mtm
+          FROM eod ORDER BY day
+    """), {"days": days})).all()
+    # 2) Realized per day from GENUINE closes only (net_pnl_usd computed).
+    real_rows = (await db.execute(text("""
+        SELECT date_trunc('day', closed_at)::date AS day,
                COALESCE(SUM(net_pnl_usd), 0) AS realized,
-               COUNT(*)                      AS n_closed
+               COUNT(*) FILTER (WHERE net_pnl_usd IS NOT NULL) AS n_closed
           FROM booked_position
          WHERE state = 'closed' AND closed_at IS NOT NULL
            AND closed_at >= NOW() - make_interval(days => :days)
-         GROUP BY 1 ORDER BY 1
-    """)
-    rows = (await db.execute(sql, {"days": days})).all()
+         GROUP BY 1
+    """), {"days": days})).all()
+    real_by_day = {r.day.isoformat(): (float(r.realized or 0.0), int(r.n_closed)) for r in real_rows}
+
     series: list[dict[str, Any]] = []
     cum = 0.0
-    for r in rows:
-        realized = float(r.realized or 0.0)
-        cum += realized
+    for r in mtm_rows:
+        mtm = float(r.mtm) if r.mtm is not None else 0.0
+        cum += mtm
+        day = r.day.isoformat()
+        realized, n_closed = real_by_day.get(day, (0.0, 0))
         series.append({
-            "day": r.day.date().isoformat(),
+            "day": day,
+            "mtm_usd": round(mtm, 2),
             "realized_usd": round(realized, 2),
             "cumulative_usd": round(cum, 2),
-            "n_closed": int(r.n_closed),
+            "n_closed": n_closed,
         })
-    return {"days": days, "series": series, "total_realized_usd": round(cum, 2)}
+    return {"days": days, "series": series, "total_mtm_usd": round(cum, 2)}
 
 
 # Realized-P&L pivot axes → the trade_structure column each groups by. Whitelisted
@@ -1531,10 +1553,16 @@ async def portfolio_stats(db: DbDep) -> dict[str, Any]:
     nl = [float(r[0]) for r in (await db.execute(nl_sql)).all()]
     sharpe, max_dd, current_dd = _sharpe_and_drawdown(nl)
 
+    # GENUINE closes only for realized / hit-rate: a real close has net_pnl_usd
+    # computed by the finaliser. A position that netted flat at IB is auto-closed by
+    # reconciliation with net_pnl_usd NULL (close_reason 'reconciled_flat_at_ib') —
+    # it's a book-vs-broker adjustment, NOT a trade, so counting it would poison the
+    # hit-rate (all-zero) and realized total. Track those separately for transparency.
     closed = (await db.execute(text("""
-        SELECT COUNT(*) AS n,
+        SELECT COUNT(*) FILTER (WHERE net_pnl_usd IS NOT NULL) AS n,
                COUNT(*) FILTER (WHERE net_pnl_usd > 0) AS wins,
-               COALESCE(SUM(net_pnl_usd), 0) AS cum_real
+               COALESCE(SUM(net_pnl_usd), 0) AS cum_real,
+               COUNT(*) FILTER (WHERE close_reason = 'reconciled_flat_at_ib') AS n_recon
           FROM booked_position WHERE state = 'closed'
     """))).one()
     n_closed = int(closed.n or 0)
@@ -1544,15 +1572,21 @@ async def portfolio_stats(db: DbDep) -> dict[str, Any]:
         "SELECT COALESCE(SUM(current_pnl_usd), 0) AS u, COUNT(*) AS n FROM open_position"
     ))).one()
 
+    # Ground-truth account change over the series (net-liq is the source of truth).
+    # The frontend foots it: Δnet-liq ≈ realized + Δunrealized + (reconciliation gap).
+    net_liq_change = (nl[-1] - nl[0]) if len(nl) >= 2 else None
+
     return {
         "computed_at": datetime.now(UTC).isoformat(),
         "sharpe": round(sharpe, 3) if sharpe is not None else None,
         "max_drawdown_pct": round(max_dd * 100, 2) if max_dd is not None else None,
         "current_drawdown_pct": round(current_dd * 100, 2) if current_dd is not None else None,
         "hit_rate": round(hit_rate, 4) if hit_rate is not None else None,
-        "n_closed": n_closed,
+        "n_closed": n_closed,                       # genuine trade closes only
+        "n_reconciled_flat": int(closed.n_recon or 0),  # netting/reconciliation adjustments
         "cum_realized_usd": round(float(closed.cum_real), 2),
         "cum_unrealized_usd": round(float(openp.u), 2),
+        "net_liq_change_usd": round(net_liq_change, 2) if net_liq_change is not None else None,
         "n_open": int(openp.n or 0),
         "n_days": len(nl),
     }

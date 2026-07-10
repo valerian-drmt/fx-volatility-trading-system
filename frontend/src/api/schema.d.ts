@@ -826,10 +826,13 @@ export interface paths {
         };
         /**
          * Daily Pnl
-         * @description Realized P&L aggregated per UTC day (R11 G-portfolio).
+         * @description Daily P&L — MARK-TO-MARKET (R11 G-portfolio).
          *
-         *     From closed booked positions : ``SUM(net_pnl_usd)`` grouped by the day of
-         *     ``closed_at``, plus a running cumulative. Empty list when no closes yet.
+         *     A vol trader holds positions for weeks, so "realized on close" reads flat while
+         *     the book is open. The headline daily P&L is therefore the day-over-day change in
+         *     EOD net-liquidation (``account_history``) — the honest total P&L, footing to the
+         *     equity curve. ``realized_usd`` (genuine closes only) is returned alongside for the
+         *     realized/unrealized split, NOT as the bar height.
          */
         get: operations["daily_pnl_api_v1_portfolio_daily_pnl_get"];
         put?: never;

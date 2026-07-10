@@ -634,14 +634,15 @@ export function PortfolioView(): JSX.Element {
             <EquityChart window={win} />
           </div>
           <div className="perf-daily">
-            <div className="perf-sub mono dim">daily realized P&L · hit rate {ps.hitRate.toFixed(0)}%</div>
+            <div className="perf-sub mono dim">daily P&L <em className="unit">mark-to-market · Δ net-liq</em></div>
             <DailyPnlBars data={dailyPnlData} />
           </div>
         </div>
         <div className="perf-stats">
           <div className="ps-item">
-            <span className="gs-lbl">Cumulative realized</span>
-            <b className="mono pos">+${ps.cumRealized}k</b>
+            <span className="gs-lbl">Realized <em className="unit">genuine closes</em></span>
+            <b className={"mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
+            <span className="gs-sub mono dim">{ps.nClosed} closed</span>
           </div>
           <div className="ps-item">
             <span className="gs-lbl">
@@ -659,15 +660,28 @@ export function PortfolioView(): JSX.Element {
           </div>
           <div className="ps-item">
             <span className="gs-lbl">
-              Realized Sharpe <em className="unit">daily ann. · 22 sess.</em>
+              Hit rate <em className="unit">realized Sharpe {ps.sharpe.toFixed(2)}</em>
             </span>
-            <b className="mono">{ps.sharpe.toFixed(2)}</b>
+            <b className="mono">{ps.hitRateNull ? "—" : ps.hitRate.toFixed(0) + "%"}</b>
           </div>
           <div className="ps-item">
             <span className="gs-lbl">P&L skew</span>
             <b className={"mono " + (pnlSkew >= 0 ? "pos" : "neg")}>{fmt.sgn(pnlSkew, 2)}</b>
             <span className="gs-sub mono dim">{pnlSkew >= 0 ? "long-γ signature ✓" : "⚠ vs long-γ"}</span>
           </div>
+        </div>
+        {/* P&L reconciliation identity (CTO audit hook): Δ net-liq should ≈ realized +
+            unrealized. The gap is what dissolved via netting / reconciliation. */}
+        <div className="perf-recon mono">
+          <span className="dim">P&L foots:</span>{" "}
+          <b className={pnlCls(ps.netLiqChange)}>{fmt.sgn(ps.netLiqChange, 1)}k</b>{" "}
+          <span className="dim">Δ net-liq</span>{" = "}
+          <span className={pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</span> realized{" + "}
+          <span className={pnlCls(ps.cumUnrealized)}>{fmt.sgn(ps.cumUnrealized, 1)}k</span> unrealized{" + "}
+          <span className={pnlCls(ps.netLiqChange - ps.cumRealized - ps.cumUnrealized)}>
+            {fmt.sgn(ps.netLiqChange - ps.cumRealized - ps.cumUnrealized, 1)}k
+          </span>{" "}
+          <span className="dim">reconciliation gap{ps.nReconciledFlat > 0 ? ` · ${ps.nReconciledFlat} netted flat` : ""}</span>
         </div>
       </Panel>
 
