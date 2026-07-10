@@ -55,6 +55,7 @@ from persistence.models import (
     TradePreviewRow,
     TradeStructure,
 )
+from shared.contracts import build_ib_local_symbol
 from shared.trace import current_trace_id
 
 logger = logging.getLogger(__name__)
@@ -1213,7 +1214,12 @@ async def list_submitted_structures(
         qty_filled = sum(int(o.qty_filled or 0) for o in legs_rows)
         legs_out = [{
             "leg_idx": o.leg_idx,
-            "contract": o.ib_local_symbol,
+            # Real IB localSymbol once filled; else the provisional symbol derived
+            # from the leg's own contract fields, so an unfilled leg still shows its
+            # contract (e.g. "EUUV6 C1160") instead of "—".
+            "contract": o.ib_local_symbol or build_ib_local_symbol(
+                o.contract_type, o.contract_expiry, o.contract_strike, o.contract_symbol,
+            ),
             "contract_type": o.contract_type,   # "call" / "put" / "future"
             "strike": o.contract_strike,
             "side": o.side,                      # "BUY" / "SELL"

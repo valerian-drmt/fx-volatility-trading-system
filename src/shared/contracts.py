@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 
 # IB ``contract.multiplier`` for each symbol the system can hold.
 # - "EUR" : standard EUR FX future + FOP options (CME, multiplier 125 000)
@@ -86,4 +87,36 @@ def parse_local_symbol(ls: str | None) -> ContractSpec | None:
             strike=None,
             option_type=None,
         )
+    return None
+
+
+def build_ib_local_symbol(
+    contract_type: str | None,
+    expiry: date | None,
+    strike: float | None,
+    symbol: str | None = "EUR",
+) -> str | None:
+    """Construct the IB ``localSymbol`` a leg WILL trade, from its contract fields —
+    the inverse of :func:`parse_local_symbol`. Lets the UI show a not-yet-filled
+    leg's contract (e.g. ``EUUV6 C1160``) BEFORE IB stamps ``ib_local_symbol`` on
+    the first fill. Returns None when the fields are insufficient.
+
+    Note: the calibrated strike may round to a slightly different IB tick than what
+    IB ultimately picks, so this is a best-effort DISPLAY symbol; the authoritative
+    value is still the one stamped on fill.
+    """
+    if expiry is None:
+        return None
+    try:
+        month_letter = _FUT_MONTH_LETTERS[expiry.month - 1]
+        year_digit = str(expiry.year)[-1]
+    except (AttributeError, IndexError):
+        return None
+    ct = (contract_type or "").lower()
+    if ct == "future":
+        cls = "M6E" if symbol == "M6E" else "6E"
+        return f"{cls}{month_letter}{year_digit}"
+    if ct in ("call", "put") and strike:
+        right = "C" if ct == "call" else "P"
+        return f"EUU{month_letter}{year_digit} {right}{int(float(strike) * 1000):04d}"
     return None

@@ -34,7 +34,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
-from shared.contracts import multiplier_for, parse_local_symbol
+from shared.contracts import build_ib_local_symbol, multiplier_for, parse_local_symbol
 
 # Auto-close booked positions the broker no longer holds (book ↔ IB reconciliation).
 # ON by default ; a stale booking that IB shows flat (for >1h) is closed with an
@@ -435,28 +435,15 @@ async def _build_leg_to_trade_map(
 def _structure_order_to_ib_key(leg: StructureOrder) -> str | None:
     """Best-guess IB ``localSymbol`` rebuilt from a leg's contract fields.
 
-    Used only as the **fallback** when ``leg.ib_local_symbol`` hasn't
-    been filled in yet (pre-fill legs). The reconstruction may miss
-    when the calibrated strike rounds to a different IB tick than what
-    IB picked, but a miss is better than the multi-candidate over-claim
-    of the previous implementation.
+    Used only as the **fallback** when ``leg.ib_local_symbol`` hasn't been filled
+    in yet (pre-fill legs). Delegates to the shared builder (single source of truth
+    with the /trade/submitted blotter symbol) — the reconstruction may miss when the
+    calibrated strike rounds to a different IB tick than IB picked, but a miss is
+    better than the multi-candidate over-claim of the previous implementation.
     """
-    if not leg.contract_expiry:
-        return None
-    try:
-        month_letter = "FGHJKMNQUVXZ"[leg.contract_expiry.month - 1]
-        year_digit = str(leg.contract_expiry.year)[-1]
-    except (AttributeError, IndexError):
-        return None
-    contract_type = (leg.contract_type or "").lower()
-    if contract_type == "future":
-        cls = "M6E" if leg.contract_symbol == "M6E" else "6E"
-        return f"{cls}{month_letter}{year_digit}"
-    if contract_type in ("call", "put") and leg.contract_strike:
-        right = "C" if contract_type == "call" else "P"
-        strike_code = f"{int(float(leg.contract_strike) * 1000):04d}"
-        return f"EUU{month_letter}{year_digit} {right}{strike_code}"
-    return None
+    return build_ib_local_symbol(
+        leg.contract_type, leg.contract_expiry, leg.contract_strike, leg.contract_symbol,
+    )
 
 
 async def reconcile_trade_positions(
