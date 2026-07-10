@@ -7,7 +7,7 @@
 import { Fragment, useState } from "react";
 import { pnlCls } from "./format";
 import { DATA, fmt } from "../data";
-import type { Greeks, Position } from "../data";
+import type { Cash, Greeks, Position } from "../data";
 
 // compact signed formatter for per-leg / net greek cells (±N · ±N.Nk · ±N.NNM).
 // NOTE: distinct from common's gk$ — this one omits the "$" prefix by design.
@@ -502,8 +502,11 @@ export function OpenPositionsTable({
   );
 }
 
-export function CashHoldings({ compact = false }: { compact?: boolean }): JSX.Element {
-  const total = DATA.cash.reduce((s, c) => s + c.usd, 0);
+export function CashHoldings({ compact = false, cash }: { compact?: boolean; cash?: Cash[] }): JSX.Element {
+  // Live per-currency balances (from /portfolio/cash via the trade slice) when
+  // present; the mock only until the account snapshot has been written.
+  const rows = cash && cash.length > 0 ? cash : DATA.cash;
+  const total = rows.reduce((s, c) => s + c.usd, 0);
   return (
     <div className="table-scroll">
       <table className="dt cash">
@@ -517,7 +520,7 @@ export function CashHoldings({ compact = false }: { compact?: boolean }): JSX.El
           </tr>
         </thead>
         <tbody>
-          {DATA.cash.map((c, i) => (
+          {rows.map((c, i) => (
             <tr key={i}>
               <td className="l">
                 <span className="ccy-dot" />

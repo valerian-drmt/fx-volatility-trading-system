@@ -417,6 +417,7 @@ export const account = {
   unrealized: 38420, dayPnl: 38420, dayPnlPct: 0.92, realized: 12180,
   marginInit: 1842000, marginMaint: 1284000, marginInitPct: 43.6, marginMaintPct: 30.4,
   excessLiq: 2934640, cushion: 0.696, nPositions: positions.length, dPositions: 2,
+  buyingPower: 8740000, availableFunds: 2934640,
 };
 
 export interface Greeks {

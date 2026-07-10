@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { fetchEquityCurve, fetchPnlAttribution } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
+import { useTicks } from "../../hooks/streams";
 import { Panel, MetricTile, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls, gk$ } from "../components/format";
@@ -181,10 +182,13 @@ function CoverageHero(): JSX.Element {
   const c = { ...DATA2.coverage, ...(covLive ?? {}) };
   const ok = c.ratio >= c.threshold;
   const tot = c.convexity + c.carry;
-  // forward breakeven (implied): move_BE = √(2Θ/Γ) vs current RV — complements the realized ratio
-  const g = DATA.greeks;
-  const beMove = Math.sqrt((2 * Math.abs(g.theta)) / g.gamma) * 0.225;
-  const rvDaily = DATA.termStructure[0]!.rv / Math.sqrt(252);
+  // forward breakeven (implied): move_BE = √(2Θ/Γ) vs current RV — from the LIVE book
+  // greeks + live ATM RV (mock only until they load).
+  const { portfolio: pf, termStructure: term } = useDeskData();
+  const g = pf.data?.greeks ?? DATA.greeks;
+  const rvNear = term.data?.[0]?.rv ?? DATA.termStructure[0]!.rv;
+  const beMove = g.gamma ? Math.sqrt((2 * Math.abs(g.theta)) / g.gamma) * 0.225 : 0;
+  const rvDaily = rvNear / Math.sqrt(252);
   const beCovered = rvDaily >= beMove;
   return (
     <>
@@ -502,22 +506,34 @@ function BookComposition({
 export function PortfolioView(): JSX.Element {
   const [win, setWin] = useState<string>("7D");
   const [pivot, setPivot] = useState<string>("greek");
-  const { portfolio } = useDeskData();
+  const { portfolio, trade } = useDeskData();
   const pd = portfolio.data;
   const a = pd?.account ?? DATA.account,
     ps = pd?.perfStats ?? DATA2.perfStats,
     g = pd?.greeks ?? DATA.greeks;
   const dailyPnlData = pd?.dailyPnl ?? DATA2.dailyPnl;
-  const lev = { gross: 28.5, net: 18.2, buyingPower: 8.74 };
+  // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
+  const spot = useTicks().data?.mid ?? DATA.SPOT;
+  // Live per-currency cash balances (from /portfolio/cash via the trade slice).
+  const liveCash = trade.data?.cash;
+  const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
+  // Leverage from the live book: gross = Σ|notional|, net = |Σ signed notional| (€),
+  // buying power from the IB heartbeat ($). Mock only until positions/account load.
+  const posForLev = pd?.positions ?? DATA.positions;
+  const grossNotional = posForLev.reduce((s, p) => s + Math.abs(p.nominal), 0);
+  const netNotional = Math.abs(
+    posForLev.reduce((s, p) => s + (p.side === "BUY" ? p.nominal : -p.nominal), 0),
+  );
+  const lev = { gross: grossNotional / 1e6, net: netNotional / 1e6, buyingPower: a.buyingPower / 1e6 };
   // §P1 leverage unit bug: notional is in €, net liq in $ — convert to one ccy before dividing
-  const netLiqEur = a.netLiq / DATA.SPOT; // $4.22M → €3.89M
-  const grossX = (lev.gross / (netLiqEur / 1e6)).toFixed(2);
-  const netX = (lev.net / (netLiqEur / 1e6)).toFixed(2);
+  const netLiqEur = a.netLiq / spot; // $ net liq → €
+  const grossX = netLiqEur ? (lev.gross / (netLiqEur / 1e6)).toFixed(2) : "—";
+  const netX = netLiqEur ? (lev.net / (netLiqEur / 1e6)).toFixed(2) : "—";
   // §P1 unrealized single source: read the one engine (= Open positions = Risk = Close)
   const unreal = g.netUnreal;
   // §P3 cash FX residual — non-pair balances (GBP long, JPY short), separate from option Δ
-  const gbp = DATA.cash.find((c) => c.ccy === "GBP"),
-    jpy = DATA.cash.find((c) => c.ccy === "JPY");
+  const gbp = cashRows.find((c) => c.ccy === "GBP"),
+    jpy = cashRows.find((c) => c.ccy === "JPY");
   // §P3 P&L skew — a long-gamma book should show positive skew (many small theta losses, occasional gamma spikes)
   const dp = dailyPnlData,
     mean = dp.length ? dp.reduce((x, y) => x + y, 0) / dp.length : 0;
@@ -564,7 +580,7 @@ export function PortfolioView(): JSX.Element {
             <span className="gs-sub mono dim">settlement residue · not an option Δ</span>
           </div>
         </div>
-        <CashHoldings />
+        <CashHoldings cash={cashRows} />
       </Panel>
 
       <Panel
