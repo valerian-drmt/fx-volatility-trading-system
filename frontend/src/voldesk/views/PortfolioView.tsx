@@ -561,43 +561,52 @@ export function PortfolioView(): JSX.Element {
       <Panel title="Account & capital" dataPp="account" right={<FreshBadge fresh={portfolio} label="IB account" />} className="acct-panel">
         <div className="acct-tables">
           <table className="dt greeks-table acct-cap">
-            <thead><tr><th className="l">Capital</th><th className="r">Value</th></tr></thead>
+            <thead><tr><th className="l">Capital</th><th className="r">Value</th><th className="r">Note</th></tr></thead>
             <tbody>
               <tr>
                 <td className="l">Net liquidation</td>
-                <td className="r mono">{fmt.usd(a.netLiq)} {deltaPill(a.dNetLiq)}</td>
+                <td className="r mono">{fmt.usd(a.netLiq)}</td>
+                <td className="r">{deltaPill(a.dNetLiq)}</td>
               </tr>
               <tr>
                 <td className="l">Cash</td>
-                <td className="r mono">{fmt.usd(a.cash)} {deltaPill(a.dCash)}</td>
+                <td className="r mono">{fmt.usd(a.cash)}</td>
+                <td className="r">{deltaPill(a.dCash)}</td>
               </tr>
               <tr>
                 <td className="l">Init margin</td>
-                <td className="r mono">{fmt.usd(a.marginInit)} <span className="acct-sub">{a.marginInitPct}% used</span></td>
+                <td className="r mono">{fmt.usd(a.marginInit)}</td>
+                <td className="r acct-note">{a.marginInitPct}% used</td>
               </tr>
               <tr>
                 <td className="l">Maint margin</td>
-                <td className="r mono">{fmt.usd(a.marginMaint)} <span className="acct-sub">{a.marginMaintPct}% used</span></td>
+                <td className="r mono">{fmt.usd(a.marginMaint)}</td>
+                <td className="r acct-note">{a.marginMaintPct}% used</td>
               </tr>
               <tr>
                 <td className="l">Excess liquidity</td>
                 <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
+                <td className="r acct-note">—</td>
               </tr>
               <tr>
                 <td className="l">Cushion</td>
-                <td className="r mono">{(a.cushion * 100).toFixed(1)}% <span className="acct-sub">{a.nPositions} positions</span></td>
+                <td className="r mono">{(a.cushion * 100).toFixed(1)}%</td>
+                <td className="r acct-note">{a.nPositions} positions</td>
               </tr>
               <tr className="acct-sep">
                 <td className="l">Gross leverage</td>
-                <td className="r mono">{lev.gross.toFixed(1)}M € <span className="acct-sub">{grossX}× net liq · €{(netLiqEur / 1e6).toFixed(2)}M</span></td>
+                <td className="r mono">{lev.gross.toFixed(1)}M €</td>
+                <td className="r acct-note">{grossX}× net liq · €{(netLiqEur / 1e6).toFixed(2)}M</td>
               </tr>
               <tr>
                 <td className="l">Net leverage</td>
-                <td className="r mono">{lev.net.toFixed(1)}M € <span className="acct-sub">{netX}× net liq</span></td>
+                <td className="r mono">{lev.net.toFixed(1)}M €</td>
+                <td className="r acct-note">{netX}× net liq</td>
               </tr>
               <tr>
                 <td className="l">Buying power</td>
-                <td className="r mono pos">${lev.buyingPower.toFixed(2)}M <span className="acct-sub">available</span></td>
+                <td className="r mono pos">${lev.buyingPower.toFixed(2)}M</td>
+                <td className="r acct-note">available</td>
               </tr>
             </tbody>
           </table>
