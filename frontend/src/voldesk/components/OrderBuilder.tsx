@@ -21,7 +21,7 @@ const GATE_TITLE = "write disabled — auth required (Phase 2)";
 // Alphabetical order for the product dropdown; the first entry is the default.
 // "Straddle/Strangle" is one product — a Δ selector (10Δ/25Δ/50Δ) picks between a
 // strangle (10Δ/25Δ) and a straddle (50Δ = ATM).
-const PRODUCTS = ["Butterfly", "Calendar", "Call Spread", "Future", "Put Spread", "Risk Reversal", "Straddle/Strangle", "Vanilla Call", "Vanilla Put"];
+const PRODUCTS = ["Butterfly", "Calendar", "Call/Put Spread", "Future", "Risk Reversal", "Straddle/Strangle", "Vanilla Call", "Vanilla Put"];
 const TENORS = DATA.tenors;
 const PILLARS = DATA.deltas;
 const CONTRACTS: Record<string, number> = { "6E (€125k)": 125000, "M6E (€12.5k)": 12500 };
@@ -52,6 +52,9 @@ const STRUCT: Record<string, StructMeta> = {
   "Risk Reversal": { mode: "wing", order: ["vn", "vg", "d", "v"], naked: () => true, skew: true },
   "Call Spread": { mode: "spread", order: ["d", "v", "g", "t"], naked: () => false },
   "Put Spread": { mode: "spread", order: ["d", "v", "g", "t"], naked: () => false },
+  // Combined vertical spread — a Call/Put toggle + two wings on that side
+  // (near = long / far = short for BUY ; Side swaps roles). mode "vspread".
+  "Call/Put Spread": { mode: "vspread", order: ["d", "v", "g", "t"], naked: () => false },
   "Calendar": { mode: "cal", order: ["v", "t", "vn", "g"], naked: () => false },
   "Future": { mode: "future", order: ["d"], naked: () => false },
 };
@@ -130,6 +133,9 @@ function buildLegs(
   strike: number,
   qty: number,
   wing: string,
+  spreadSide: string,
+  spreadNear: string,
+  spreadFar: string,
 ): Leg[] {
   // `wing` is a full delta pillar ("25Δc" / "ATM"); symmetric wings use its level
   // ("25Δ"), single-strike structures (straddle/calendar) use the pillar itself.
@@ -177,6 +183,15 @@ function buildLegs(
     case "Put Spread":
       // vertical : long ATM put, short lower-strike put (defined risk)
       return [mk("Put", side, atm, tenor), mk("Put", opp, spStrike, tenor)];
+    case "Call/Put Spread": {
+      // 2 same-type legs on one wing : near = long (higher |Δ|, closer to F),
+      // far = short (lower |Δ|). Side swaps long/short (debit ⇄ credit).
+      const suf = spreadSide === "call" ? "c" : "p";
+      const typ = spreadSide === "call" ? "Call" : "Put";
+      const kFor = (lvl: string): number =>
+        lvl === "ATM" ? atm : +pillarStrike(tenor, lvl + suf).toFixed(4);
+      return [mk(typ, side, kFor(spreadNear), tenor), mk(typ, opp, kFor(spreadFar), tenor)];
+    }
     case "Calendar":
       return [mk("Call", opp, sharedK, tenor), mk("Call", side, sharedK, farTenor)];
     case "Future":
@@ -298,6 +313,11 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   // the live ATM. Reset on product change.
   const userStrikeRef = useRef(false);
   const [wing, setWing] = useState("ATM"); // default strike Δ ; one of the 5 delta pillars
+  // Call/Put Spread : which wing (call/put) + the two legs by |Δ| level. near =
+  // near-money (higher |Δ|, long for BUY) ; far = OTM wing (lower |Δ|, short).
+  const [spreadSide, setSpreadSide] = useState("call");
+  const [spreadNear, setSpreadNear] = useState("ATM");
+  const [spreadFar, setSpreadFar] = useState("25Δ");
   const [qty, setQty] = useState(10);
   const [csize, setCsize] = useState("6E (€125k)");
   const [bundleHedge, setBundleHedge] = useState(false);
@@ -343,14 +363,18 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   // The wing buttons expose all 5 delta pillars; the strike engine works off the
   // symmetric level ("25Δc"/"25Δp" → "25Δ"), with ATM as its own degenerate wing.
   const wingLevel = wing === "ATM" ? "ATM" : wing.replace(/[pc]$/, "");
+  // For the vertical spread, IV/labels track the near leg's wing (not `wing`).
+  const activeWing = meta.mode === "vspread"
+    ? (spreadNear === "ATM" ? "ATM" : spreadNear + (spreadSide === "call" ? "c" : "p"))
+    : wing;
   // MARKET IV tracks the strike Δ chosen in contract details (not fixed to ATM) :
   // single-strike vanillas read the hand-typed strike, everything else the wing.
-  const mktIvStrike = meta.mode === "single" ? strike : pillarStrike(tenor, wing);
+  const mktIvStrike = meta.mode === "single" ? strike : pillarStrike(tenor, activeWing);
   const mktIv = ivAt(tenor, mktIvStrike);
-  const mktIvLabel = meta.mode === "single" ? `IV ${tenor}` : `${wing} IV ${tenor}`;
+  const mktIvLabel = meta.mode === "single" ? `IV ${tenor}` : `${activeWing} IV ${tenor}`;
   // Calendar has two expiries → also surface the far-tenor IV in MARKET.
-  const farIv = ivAt(farTenor, pillarStrike(farTenor, wing));
-  const farIvLabel = `${wing} IV ${farTenor}`;
+  const farIv = ivAt(farTenor, pillarStrike(farTenor, activeWing));
+  const farIvLabel = `${activeWing} IV ${farTenor}`;
   // Products whose two legs sit on different-Δ strikes → different IVs, so the
   // skew IS the trade variable : show BOTH wing IVs (e.g. "25Δc IV 3M" + "25Δp
   // IV 3M"). Strangle + a non-ATM Straddle/Strangle, and the Risk Reversal
@@ -378,7 +402,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveAtm, meta.mode, tenor]);
 
-  const legs = useMemo(() => buildLegs(product, side, tenor, farTenor, strike, qty, wing), [product, side, tenor, farTenor, strike, qty, wing]);
+  const legs = useMemo(() => buildLegs(product, side, tenor, farTenor, strike, qty, wing, spreadSide, spreadNear, spreadFar), [product, side, tenor, farTenor, strike, qty, wing, spreadSide, spreadNear, spreadFar]);
   // EUR/USD call = right to buy EUR vs USD → "EUR Call / USD Put" (and the inverse for a put)
   const callPutLabel = [
     legs.some((l) => l.type === "Call") ? "EUR Call / USD Put" : null,
@@ -431,7 +455,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
     setErr(null);
     setServer(null);
     try {
-      const resp = await createTradePreview(builderToLegs(product, side, tenor, farTenor, strike, wing, csize), qty);
+      const resp = await createTradePreview(builderToLegs(product, side, tenor, farTenor, strike, wing, csize, spreadSide, spreadNear, spreadFar), qty);
       setServer(resp);
     } catch (e) {
       setErr(errMsg(e));
@@ -518,6 +542,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
             // them) → default 25Δ ; everything else (Straddle/Strangle, vanilla,
             // calendar) defaults to ATM.
             if (m) setWing(["wing", "flywing", "spread"].includes(m.mode) ? "25Δc" : "ATM");
+            if (p === "Call/Put Spread") { setSpreadSide("call"); setSpreadNear("ATM"); setSpreadFar("25Δ"); }
             userStrikeRef.current = false; // re-anchor the vanilla strike to live ATM
             reset();
           }}>
@@ -566,9 +591,55 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
           </div>
         )}
 
+        {/* Wing Δ selector — 10Δ / 25Δ only — for the symmetric-wing structures:
+            Risk Reversal (call/put at the level) and Butterfly (both wings at the
+            level around the ATM body). No ATM: it degenerates the width. */}
+        {(meta.skew || meta.mode === "flywing") && (
+          <div className="field tenor-field"><span>Wings</span>
+            <div className="tenor-btns">
+              {[["10Δ", "10Δc"], ["25Δ", "25Δc"]].map(([lbl, w]) => (
+                <button key={w} type="button" className={"tenor-btn " + (wing === w ? "on" : "")}
+                  onClick={() => { setWing(w!); reset(); }}>{lbl}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Call/Put Spread : Call/Put toggle + two wings on that side. Near = long
+            (higher |Δ|, closer to F) ; Far = short (lower |Δ|). Side swaps roles;
+            the guard keeps near |Δ| > far |Δ| so the width is never degenerate. */}
+        {meta.mode === "vspread" && (
+          <>
+            <div className="field tenor-field"><span>Wing</span>
+              <div className="tenor-btns">
+                {[["Call", "call"], ["Put", "put"]].map(([lbl, w]) => (
+                  <button key={w} type="button" className={"tenor-btn " + (spreadSide === w ? "on" : "")}
+                    onClick={() => { setSpreadSide(w!); setSpreadNear("ATM"); setSpreadFar("25Δ"); reset(); }}>{lbl}</button>
+                ))}
+              </div>
+            </div>
+            <div className="field tenor-field"><span>Near ▸ long</span>
+              <div className="tenor-btns">
+                {["ATM", "25Δ"].map((w) => (
+                  <button key={w} type="button" className={"tenor-btn " + (spreadNear === w ? "on" : "")}
+                    onClick={() => { setSpreadNear(w); if (w === "25Δ" && spreadFar === "25Δ") setSpreadFar("10Δ"); reset(); }}>{w}</button>
+                ))}
+              </div>
+            </div>
+            <div className="field tenor-field"><span>Far ▸ short</span>
+              <div className="tenor-btns">
+                {["25Δ", "10Δ"].map((w) => (
+                  <button key={w} type="button" className={"tenor-btn " + (spreadFar === w ? "on" : "")}
+                    onClick={() => { setSpreadFar(w); if (w === "25Δ" && spreadNear === "25Δ") setSpreadNear("ATM"); reset(); }}>{w}</button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
         {/* wings / strike Δ — every other option product (all 5 delta pillars) */}
-        {!isFut && meta.mode !== "ss" && (
-          <div className="field tenor-field"><span>{meta.mode === "wing" || meta.mode === "flywing" ? "Wings" : "Strike Δ"}</span>
+        {!isFut && meta.mode !== "ss" && !meta.skew && meta.mode !== "vspread" && meta.mode !== "flywing" && (
+          <div className="field tenor-field"><span>{meta.mode === "wing" ? "Wings" : "Strike Δ"}</span>
             <div className="tenor-btns">
               {PILLARS.map((w) => (
                 <button key={w} type="button" className={"tenor-btn " + (wing === w ? "on" : "")}
@@ -611,6 +682,44 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
         {/* nominal traded = size × contract notional ; signed by side so a SELL
             reads "short €" / "long $" (selling EUR = buying dollars) */}
         <div className="ob-info-row"><span>Nominal <em className="unit">EUR / USD</em></span><b className="mono"><span className={eurSigned >= 0 ? "pos" : "neg"}>{fmtCcySigned(eurSigned, "€")}</span> <span className="dim">/</span> <span className={usdSigned >= 0 ? "pos" : "neg"}>{fmtCcySigned(usdSigned, "$")}</span></b></div>
+        {/* strike ladder — where each leg sits across the 5 delta pillars (spot
+            line + a tick per wing; legs stacked under their strike). Bottom of
+            the INPUTS block so it updates live as the structure is configured. */}
+        {!isFut && legs.length > 0 && (() => {
+          const cols: Leg[][] = PILLARS.map(() => []);
+          for (const l of legs) {
+            if (l.type === "Future") continue;
+            let best = 0, bestD = Infinity;
+            PILLARS.forEach((p, i) => {
+              const d = Math.abs(pillarStrike(l.tenor, p) - l.strike);
+              if (d < bestD) { bestD = d; best = i; }
+            });
+            cols[best]!.push(l);
+          }
+          // multiplier relative to the base (smallest) leg qty → a doubled leg
+          // (e.g. a butterfly's 2× ATM body) reads "2× Call 3M Short".
+          const baseQty = Math.min(...legs.map((l) => l.qty));
+          return (
+            <div className="strike-ladder">
+              <div className="sl-title"><span>Legs on the smile</span><em className="unit mono">spot {DATA.SPOT.toFixed(4)}</em></div>
+              <div className="sl-axis">
+                {PILLARS.map((p, i) => (
+                  <div key={p} className="sl-col">
+                    <span className="sl-label">{p}</span>
+                    <div className="sl-mark"><span className="sl-tick" /></div>
+                    <div className="sl-legs">
+                      {cols[i]!.map((l, j) => (
+                        <span key={j} className={"sl-leg " + (l.side === "BUY" ? "long" : "short")}>
+                          {l.qty > baseQty ? `${Math.round(l.qty / baseQty)}× ` : ""}{l.type} {l.tenor} {l.side === "BUY" ? "Long" : "Short"}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* MARKET (yellow) */}

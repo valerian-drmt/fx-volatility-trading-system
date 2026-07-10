@@ -50,6 +50,21 @@ describe("builderToLegs", () => {
     ]);
   });
 
+  it("call/put spread = two same-type legs, near long / far short (Side swaps)", () => {
+    // Call side, ATM/25Δ, BUY → long ATM call (near), short 25Δ call (far) = debit.
+    const cs = builderToLegs("Call/Put Spread", "BUY", "3M", "4M", 0, "ATM", "6E (€125k)", "call", "ATM", "25Δ");
+    expect(cs).toEqual([
+      { contract_type: "call", side: "BUY", tenor: "3M", delta_pillar: "atm" },
+      { contract_type: "call", side: "SELL", tenor: "3M", delta_pillar: "25dc" },
+    ]);
+    // Put side, 25Δ/10Δ, SELL → Side swaps: near becomes short, far becomes long.
+    const ps = builderToLegs("Call/Put Spread", "SELL", "2M", "4M", 0, "ATM", "6E (€125k)", "put", "25Δ", "10Δ");
+    expect(ps).toEqual([
+      { contract_type: "put", side: "SELL", tenor: "2M", delta_pillar: "25dp" },
+      { contract_type: "put", side: "BUY", tenor: "2M", delta_pillar: "10dp" },
+    ]);
+  });
+
   it("calendar uses two tenors with opposite near/far sides", () => {
     const legs = builderToLegs("Calendar", "BUY", "1M", "3M", 0, "ATM", "6E (€125k)");
     expect(legs).toEqual([

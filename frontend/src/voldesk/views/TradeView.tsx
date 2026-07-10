@@ -212,6 +212,7 @@ function ClosePanel({
   onClosing,
   positions,
   greeks,
+  ctx,
 }: {
   req: CloseReq | null;
   onDone: () => void;
@@ -222,6 +223,7 @@ function ClosePanel({
   onClosing: (key: string) => void;
   positions: Position[];
   greeks: Greeks;
+  ctx: Record<string, StructureCtx>;
 }): JSX.Element {
   const [type, setType] = useState<"contract" | "trade">("contract");
   const [contractId, setContractId] = useState("");
@@ -253,7 +255,8 @@ function ClosePanel({
   // "#135"), so a "Close all" selection matches the dropdown and the backend.
   const trades = [...new Set(positions.map((p) => p.tradeId).filter(Boolean))].map((id) => ({
     id,
-    struct: positions.find((p) => p.tradeId === id)?.structure ?? "",
+    // the trade's PRODUCT name ("Risk Reversal 25Δ"), not a leg's contract symbol
+    struct: ctx[id]?.name ?? positions.find((p) => p.tradeId === id)?.structure ?? "",
   }));
   const g = greeks;
   let sel: Position | { trade: true } | null = null;
@@ -648,7 +651,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
           <OrderBuilder onOrder={addOrder} />
         </Panel>
         <Panel title="Close position" dataPp="trade-close" className="trade-block">
-          <ClosePanel req={closeReq} onDone={() => setCloseReq(null)} onOrder={addOrder} onClosing={(k) => setClosingKeys((p) => ({ ...p, [k]: Date.now() }))} positions={positions} greeks={greeks} />
+          <ClosePanel req={closeReq} onDone={() => setCloseReq(null)} onOrder={addOrder} onClosing={(k) => setClosingKeys((p) => ({ ...p, [k]: Date.now() }))} positions={positions} greeks={greeks} ctx={structureCtx} />
         </Panel>
       </div>
       <Panel title="Open positions" dataPp="trade-open" pad={false} className="trade-block open-pos-panel">
