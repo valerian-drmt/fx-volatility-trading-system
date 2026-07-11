@@ -351,14 +351,13 @@ function TradeTable({ steps }: { steps: WaterfallStep[] }): JSX.Element {
   };
   return (
     <table className="dt greeks-table acct-cap">
-      <thead><tr><th className="l">Trade</th><th className="r">P&L <em className="unit">% of gain/loss</em></th></tr></thead>
+      <thead><tr><th className="l">Trade</th><th className="r">P&L</th><th className="r">% <em className="unit">gain/loss</em></th></tr></thead>
       <tbody>
         {rows.map((s, i) => (
           <tr key={i}>
             <td className="l">{s.label}{s.sub && <em className="unit">{s.sub}</em>}</td>
-            <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>
-              {fmtk(s.v)} <span className="dim">({pct(s.v)}%)</span>
-            </td>
+            <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>{fmtk(s.v)}</td>
+            <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>{(s.v >= 0 ? "+" : "−") + pct(s.v) + "%"}</td>
           </tr>
         ))}
       </tbody>
