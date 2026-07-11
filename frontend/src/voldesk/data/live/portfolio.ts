@@ -153,6 +153,29 @@ export function adaptWaterfallPivot(raw: unknown): WaterfallStep[] {
   return steps;
 }
 
+/** Rich per-structure-type row: P&L + nominal + 2nd-order greeks (raw USD/EUR). */
+export interface StructureRow {
+  label: string;
+  pnl: number;
+  nominal: number;
+  vanna: number;
+  volga: number;
+}
+
+/** /portfolio/pnl-attribution-pivot?by=structure → rich rows for the breakdown table. */
+export function adaptStructureRows(raw: unknown): StructureRow[] {
+  const groups = ((raw ?? {}) as {
+    groups?: { label?: string; pnl_usd?: number | null; nominal_eur?: number | null; vanna_usd?: number | null; volga_usd?: number | null }[];
+  }).groups ?? [];
+  return groups.map((g) => ({
+    label: String(g.label ?? "—"),
+    pnl: n(g.pnl_usd),
+    nominal: n(g.nominal_eur),
+    vanna: n(g.vanna_usd),
+    volga: n(g.volga_usd),
+  }));
+}
+
 /** /portfolio/pnl-attribution totals → the greek-pivot waterfall ($ → $k). */
 export function adaptWaterfallGreek(raw: unknown): WaterfallStep[] {
   const t = ((raw ?? {}) as { totals?: AttribTotals }).totals ?? {};

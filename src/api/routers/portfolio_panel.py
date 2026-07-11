@@ -1397,6 +1397,38 @@ async def pnl_attribution_pivot(
              "pnl_usd": round(float(r.pnl or 0.0), 2), "n": int(r.n)}
             for r in rows
         ]
+    elif by == "structure":
+        # Rich per-structure-type breakdown: P&L + nominal + 2nd-order greeks, for
+        # a Position-breakdown-style table (Structure | P&L% | Nominal% | Vanna | Volga).
+        sql = text("""
+            SELECT COALESCE(ts.structure_type, 'other') AS grp,
+                   COALESCE(SUM(op.current_pnl_usd), 0) AS pnl,
+                   COALESCE(SUM(op.nominal_eur), 0) AS nominal,
+                   COALESCE(SUM(op.vanna_usd), 0) AS vanna,
+                   COALESCE(SUM(op.volga_usd), 0) AS volga,
+                   COUNT(*) AS n
+              FROM open_position op
+              JOIN trade_structure ts ON op.trade_id = ts.id
+             GROUP BY 1
+            HAVING COALESCE(SUM(op.current_pnl_usd), 0) <> 0
+                OR COALESCE(SUM(op.nominal_eur), 0) <> 0
+             ORDER BY nominal DESC
+        """)
+        rows = (await db.execute(sql)).all()
+        groups = [
+            {"label": str(r.grp),
+             "pnl_usd": round(float(r.pnl or 0.0), 2),
+             "nominal_eur": round(float(r.nominal or 0.0), 2),
+             "vanna_usd": round(float(r.vanna or 0.0), 2),
+             "volga_usd": round(float(r.volga or 0.0), 2),
+             "n": int(r.n)}
+            for r in rows
+        ]
+        return {
+            "by": by, "groups": groups,
+            "total_usd": round(sum(g["pnl_usd"] for g in groups), 2),
+            "total_nominal_eur": round(sum(g["nominal_eur"] for g in groups), 2),
+        }
     else:
         col = _PNL_PIVOT_COLS.get(by)
         if col is None:

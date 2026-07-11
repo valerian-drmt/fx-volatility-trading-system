@@ -13,9 +13,9 @@ import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
-import type { BookComposition, PerfStats, Position, VegaTenor, WaterfallStep } from "../data";
+import type { PerfStats, VegaTenor, WaterfallStep } from "../data";
 import { useDeskData } from "../data/deskData";
-import { adaptCoverage, adaptEquityCurve, adaptWaterfallPivot } from "../data/live/portfolio";
+import { adaptCoverage, adaptEquityCurve, adaptStructureRows, adaptWaterfallPivot, type StructureRow } from "../data/live/portfolio";
 
 // Equity curve (cumulative P&L) — the top graph. Live-only: empty until data.
 function EquityLineSvg({ data, status }: { data: number[]; status: string }): JSX.Element {
@@ -365,39 +365,49 @@ function TradeTable({ steps }: { steps: WaterfallStep[] }): JSX.Element {
   );
 }
 
-interface StructureFam {
-  name: string;
-  color: string;
-  vanna: number;
-  volga: number;
+// By-structure breakdown — Position-breakdown-styled table: P&L (%), nominal (%),
+// and the two 2nd-order greeks (vanna / volga) per structure type.
+function StructureTable({ rows }: { rows: StructureRow[] }): JSX.Element {
+  if (rows.length === 0) return <div className="hbar-empty dim small mono">no positions</div>;
+  const gains = rows.filter((r) => r.pnl > 0).reduce((s, r) => s + r.pnl, 0);
+  const losses = rows.filter((r) => r.pnl < 0).reduce((s, r) => s + Math.abs(r.pnl), 0);
+  const totNom = rows.reduce((s, r) => s + Math.abs(r.nominal), 0) || 1;
+  const pnlPct = (v: number): string => {
+    const base = v >= 0 ? gains : losses;
+    return (v >= 0 ? "+" : "−") + (base ? Math.round((Math.abs(v) / base) * 100) : 0) + "%";
+  };
+  return (
+    <div className="table-scroll">
+      <table className="dt pb-table wf-structure">
+        <thead>
+          <tr>
+            <th className="l grp-fix">Structure</th>
+            <th className="r grp-pnl col-grp">P&L</th><th className="r grp-pnl col-grp-end">%</th>
+            <th className="r grp-fix col-grp">Nominal €</th><th className="r grp-fix col-grp-end">%</th>
+            <th className="r grp-grk col-grp">Vanna</th><th className="r grp-grk col-grp-end">Volga</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td className="l grp-fix"><span className="sym">{r.label}</span></td>
+              <td className={"r mono grp-pnl col-grp " + pnlCls(r.pnl)}>{fmt.usdk(r.pnl)}</td>
+              <td className={"r mono grp-pnl col-grp-end " + pnlCls(r.pnl)}>{pnlPct(r.pnl)}</td>
+              <td className="r mono dim grp-fix col-grp">{(r.nominal / 1e6).toFixed(2)}M</td>
+              <td className="r mono dim grp-fix col-grp-end">{Math.round((Math.abs(r.nominal) / totNom) * 100)}%</td>
+              <td className={"r mono grp-grk col-grp " + pnlCls(r.vanna)}>{fmt.sgn(r.vanna / 1000, 0)}k</td>
+              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>{fmt.sgn(r.volga / 1000, 0)}k</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
-function BookComposition({
-  vegaPerTenor,
-  bookComposition,
-  positions,
-  netVanna,
-}: {
-  vegaPerTenor: VegaTenor[];
-  bookComposition: BookComposition;
-  positions: Position[];
-  netVanna: number;
-}): JSX.Element {
+function BookComposition({ vegaPerTenor }: { vegaPerTenor: VegaTenor[] }): JSX.Element {
   const vt = vegaPerTenor,
     maxV = Math.max(1, ...vt.map((r) => r.vega));
-  const bc = bookComposition;
-  // 2nd-order by structure — which structure carries the skew (vanna) and the vol-convexity (volga)
-  const fam: StructureFam[] = bc.byStructure.map((s) => {
-    const legs = positions.filter(
-      (p) => p.structure.startsWith(s.name) || p.structure.split(" ")[0] === s.name.split(" ")[0]
-    );
-    return {
-      name: s.name,
-      color: s.color,
-      vanna: legs.reduce((a, p) => a + (p.vanna || 0), 0),
-      volga: legs.reduce((a, p) => a + (p.volga || 0), 0),
-    };
-  });
   return (
     <div className="bookcomp">
       <div className="gs-section-lbl">
@@ -413,63 +423,6 @@ function BookComposition({
             <span className="vtl-val mono">${r.vega.toFixed(1)}k</span>
           </div>
         ))}
-      </div>
-      <div className="gs-section-lbl util-lbl">
-        Nominal by structure{" "}
-        <span className="dim">
-          · {bc.totalNominal.toFixed(1)}M € · {bc.legs} legs
-        </span>
-      </div>
-      <div className="comp-stack">
-        {bc.byStructure.map((s) => (
-          <div key={s.name} className="comp-seg" style={{ width: s.pct + "%", background: s.color }} title={s.name} />
-        ))}
-      </div>
-      <div className="comp-legend">
-        {bc.byStructure.map((s) => (
-          <div key={s.name} className="comp-leg-item">
-            <i style={{ background: s.color }} />
-            <span className="comp-leg-name">{s.name}</span>
-            <span className="mono dim">
-              {s.nominal.toFixed(2)}M · {s.legs}L
-            </span>
-          </div>
-        ))}
-      </div>
-      <div className="gs-section-lbl util-lbl">
-        2nd-order by structure <span className="dim">· who carries skew / convexity</span>
-      </div>
-      <table className="dt dense so-table">
-        <thead>
-          <tr>
-            <th className="l">Structure</th>
-            <th className="r">
-              Vanna <em className="unit">$k</em>
-            </th>
-            <th className="r">
-              Volga <em className="unit">$k</em>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {fam.map((f) => (
-            <tr key={f.name}>
-              <td className="l">
-                <span className="so-dot" style={{ background: f.color }} />
-                {f.name}
-              </td>
-              <td className={"r mono " + (Math.abs(f.vanna) >= 80 ? "warn" : "dim")}>
-                {Math.abs(f.vanna) >= 0.5 ? fmt.sgn(f.vanna, 0) + "k" : "—"}
-                {Math.abs(f.vanna) >= 80 ? " ·skew" : ""}
-              </td>
-              <td className={"r mono dim"}>{Math.abs(f.volga) >= 0.5 ? fmt.sgn(f.volga, 0) + "k" : "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="dim small" style={{ marginTop: "6px" }}>
-        RR carries the incident skew (net vanna) — the book's #1 VaR factor. Reconciles to Risk net vanna +
-        {netVanna}k.
       </div>
     </div>
   );
@@ -499,7 +452,7 @@ export function PortfolioView(): JSX.Element {
   // stays deferred.
   const pivotLive = useFetch(async () => {
     const [structure, tenor, trade] = await Promise.all([
-      fetchPnlAttributionPivot("structure").then(adaptWaterfallPivot),
+      fetchPnlAttributionPivot("structure").then(adaptStructureRows),
       fetchPnlAttributionPivot("tenor").then(adaptWaterfallPivot),
       fetchPnlAttributionPivot("trade").then(adaptWaterfallPivot),
     ]);
@@ -618,6 +571,10 @@ export function PortfolioView(): JSX.Element {
       </Panel>
 
       <Panel title="Realized P&L attribution — bridge" dataPp="pnl-attribution" className="wf-panel">
+        <div className="wf-cell wf-structure-cell">
+          <div className="perf-sub mono dim">by structure <em className="unit">P&L · nominal · 2nd-order</em></div>
+          <StructureTable rows={pivotLive?.structure ?? []} />
+        </div>
         <div className="wf-2col">
           <div className="wf-cell wf-trade">
             <div className="perf-sub mono dim">by trade</div>
@@ -627,10 +584,6 @@ export function PortfolioView(): JSX.Element {
             <div className="wf-cell">
               <div className="perf-sub mono dim">by greek</div>
               <HBarList steps={pd?.waterfallGreek ?? []} />
-            </div>
-            <div className="wf-cell">
-              <div className="perf-sub mono dim">by structure</div>
-              <HBarList steps={pivotLive?.structure ?? []} />
             </div>
             <div className="wf-cell">
               <div className="perf-sub mono dim">by tenor</div>
@@ -645,12 +598,7 @@ export function PortfolioView(): JSX.Element {
       </Panel>
 
       <Panel title="Book composition" dataPp="book-composition" right={<FreshBadge fresh={portfolio} />} className="bookcomp-panel">
-        <BookComposition
-          vegaPerTenor={pd?.vegaPerTenor ?? DATA2.vegaPerTenor}
-          bookComposition={pd?.bookComposition ?? DATA2.bookComposition}
-          positions={pd?.positions ?? DATA.positions}
-          netVanna={g.netVanna}
-        />
+        <BookComposition vegaPerTenor={pd?.vegaPerTenor ?? DATA2.vegaPerTenor} />
       </Panel>
     </div>
   );

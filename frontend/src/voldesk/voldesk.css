@@ -1024,6 +1024,9 @@ input,select{font-family:inherit;font-size:13px}
 .wf-cell{border:1px solid var(--border);border-radius:8px;padding:10px 12px;min-width:0;background:color-mix(in srgb,var(--line) 22%,transparent)}
 .wf-cell .perf-sub{margin-bottom:6px}
 .wf-trade .acct-cap{margin:0}
+.wf-structure-cell{margin-bottom:18px}
+.wf-structure-cell .table-scroll{margin-top:2px}
+.wf-structure th,.wf-structure td{font-size:12px;padding:3px 8px}
 @media (max-width:720px){.wf-2col{grid-template-columns:1fr}}
 /* Horizontal diverging bars for categorical attribution (structure/tenor/trade). */
 .hbar-list{display:flex;flex-direction:column;gap:5px}
