@@ -125,18 +125,19 @@ export function adaptDailyPnl(raw: unknown): number[] {
 }
 
 interface AttribTotals {
-  actual_pnl?: number | null;
-  delta_pnl?: number | null;
-  gamma_pnl?: number | null;
-  vega_pnl?: number | null;
-  theta_pnl?: number | null;
-  residual?: number | null;
+  actual_pnl_usd?: number | null;
+  delta_pnl_usd?: number | null;
+  gamma_pnl_usd?: number | null;
+  vega_pnl_usd?: number | null;
+  theta_pnl_usd?: number | null;
+  residual_usd?: number | null;
 }
 
-/** /portfolio/pnl-attribution-pivot → a by-structure / by-tenor bridge ($ → $k).
- * Start → one signed step per group → Net. */
+/** /portfolio/pnl-attribution-pivot → a by-structure / by-tenor / by-trade bridge
+ * ($ → $k). Start → one signed step per group → Net. `sub` carries the structure
+ * type for the by-trade axis (label = "#id"). */
 export function adaptWaterfallPivot(raw: unknown): WaterfallStep[] {
-  const o = (raw ?? {}) as { groups?: { label?: string; pnl_usd?: number | null }[] };
+  const o = (raw ?? {}) as { groups?: { label?: string; sub?: string; pnl_usd?: number | null }[] };
   const groups = o.groups ?? [];
   const k = (v: number | null | undefined): number => r1(n(v) / 1000);
   const steps: WaterfallStep[] = [{ label: "Start", v: 0, type: "start" }];
@@ -144,10 +145,58 @@ export function adaptWaterfallPivot(raw: unknown): WaterfallStep[] {
   for (const gr of groups) {
     const v = n(gr.pnl_usd);
     net += v;
-    steps.push({ label: String(gr.label ?? "—"), v: k(v), type: v >= 0 ? "pos" : "neg" });
+    const step: WaterfallStep = { label: String(gr.label ?? "—"), v: k(v), type: v >= 0 ? "pos" : "neg" };
+    if (gr.sub) step.sub = gr.sub;
+    steps.push(step);
   }
   steps.push({ label: "Net", v: k(net), type: "net" });
   return steps;
+}
+
+/** Rich per-structure-type row: P&L + nominal + 2nd-order greeks (raw USD/EUR). */
+export interface StructureRow {
+  label: string;
+  pnl: number;
+  nominal: number;
+  vanna: number;
+  volga: number;
+}
+
+/** /portfolio/pnl-attribution-pivot?by=structure → rich rows for the breakdown table. */
+export function adaptStructureRows(raw: unknown): StructureRow[] {
+  const groups = ((raw ?? {}) as {
+    groups?: { label?: string; pnl_usd?: number | null; nominal_eur?: number | null; vanna_usd?: number | null; volga_usd?: number | null }[];
+  }).groups ?? [];
+  return groups.map((g) => ({
+    label: String(g.label ?? "—"),
+    pnl: n(g.pnl_usd),
+    nominal: n(g.nominal_eur),
+    vanna: n(g.vanna_usd),
+    volga: n(g.volga_usd),
+  }));
+}
+
+/** Rich per-reference-tenor row: P&L + vega + 2nd-order greeks (raw USD). */
+export interface TenorRow {
+  label: string;
+  pnl: number;
+  vega: number;
+  vanna: number;
+  volga: number;
+}
+
+/** /portfolio/pnl-attribution-pivot?by=tenor → rich rows for the breakdown table. */
+export function adaptTenorRows(raw: unknown): TenorRow[] {
+  const groups = ((raw ?? {}) as {
+    groups?: { label?: string; pnl_usd?: number | null; vega_usd?: number | null; vanna_usd?: number | null; volga_usd?: number | null }[];
+  }).groups ?? [];
+  return groups.map((g) => ({
+    label: String(g.label ?? "—"),
+    pnl: n(g.pnl_usd),
+    vega: n(g.vega_usd),
+    vanna: n(g.vanna_usd),
+    volga: n(g.volga_usd),
+  }));
 }
 
 /** /portfolio/pnl-attribution totals → the greek-pivot waterfall ($ → $k). */
@@ -155,13 +204,14 @@ export function adaptWaterfallGreek(raw: unknown): WaterfallStep[] {
   const t = ((raw ?? {}) as { totals?: AttribTotals }).totals ?? {};
   const k = (v: number | null | undefined): number => r1(n(v) / 1000);
   return [
+    // Δ, Γ, Vega, Θ — same order as the Risk tab's Portfolio greeks panel.
     { label: "Start", v: 0, type: "start" },
-    { label: "+Γ", sub: "½Γ(dS)²", v: k(t.gamma_pnl), type: "pos" },
-    { label: "+V", sub: "V·dσ", v: k(t.vega_pnl), type: "pos" },
-    { label: "−Θ", sub: "Θ·dt", v: k(t.theta_pnl), type: "neg" },
-    { label: "±Δ", sub: "Δ·dS", v: k(t.delta_pnl), type: "neg" },
-    { label: "residual", sub: "unexplained", v: k(t.residual), type: "resid" },
-    { label: "Net", v: k(t.actual_pnl), type: "net" },
+    { label: "Δ", sub: "Δ·dS", v: k(t.delta_pnl_usd), type: "neg" },
+    { label: "Γ", sub: "½Γ(dS)²", v: k(t.gamma_pnl_usd), type: "pos" },
+    { label: "Vega", sub: "V·dσ", v: k(t.vega_pnl_usd), type: "pos" },
+    { label: "Θ", sub: "Θ·dt", v: k(t.theta_pnl_usd), type: "neg" },
+    { label: "residual", sub: "unexplained", v: k(t.residual_usd), type: "resid" },
+    { label: "Net", v: k(t.actual_pnl_usd), type: "net" },
   ];
 }
 

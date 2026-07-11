@@ -1080,13 +1080,17 @@ export interface paths {
         };
         /**
          * Pnl Attribution Pivot
-         * @description Realized P&L bridged by a NON-greek axis (structure type or tenor).
+         * @description LIVE book P&L bridged by a NON-greek axis (structure type / tenor / trade).
          *
-         *     Groups closed booked positions' ``net_pnl_usd`` by the chosen ``trade_structure``
-         *     column — the "by structure" / "by tenor" pivots of the attribution waterfall
-         *     (the "by greek" pivot is the Taylor decomposition on /pnl-attribution; "by mode"
-         *     (PCA) is a separate research feature, not served here). Steps are in USD; the
-         *     frontend scales to $k.
+         *     Attributes the OPEN book's current unrealized P&L (``open_position.current_pnl_usd``)
+         *     grouped by the chosen ``trade_structure`` axis — realized-close attribution reads
+         *     flat while positions net flat at IB, so the meaningful bridge for a live desk is
+         *     the current book. ``by=trade`` gives one bar per structure, labelled ``#<id>`` with
+         *     the structure type as the sub-label. ``by=structure`` and ``by=tenor`` return the
+         *     rich Position-breakdown shape (P&L + nominal/vega + vanna + volga per group) for a
+         *     tabular view. Steps are USD; the frontend scales to $k.
+         *     (``by greek`` is the Taylor decomposition on /pnl-attribution; ``by mode`` (PCA)
+         *     is a separate research feature.)
          */
         get: operations["pnl_attribution_pivot_api_v1_portfolio_pnl_attribution_pivot_get"];
         put?: never;

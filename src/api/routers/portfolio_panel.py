@@ -1361,8 +1361,8 @@ async def daily_pnl(db: DbDep, days: int = Query(90, ge=1, le=730)) -> dict[str,
     return {"days": days, "series": series, "total_mtm_usd": round(cum, 2)}
 
 
-# Realized-P&L pivot axes → the trade_structure column each groups by. Whitelisted
-# (never interpolate the client value into SQL).
+# Non-greek P&L pivot axes → the trade_structure column each groups by. Whitelisted
+# (never interpolate the client value into SQL). "trade" groups per structure id.
 _PNL_PIVOT_COLS = {"structure": "structure_type", "tenor": "reference_tenor"}
 
 
@@ -1370,35 +1370,107 @@ _PNL_PIVOT_COLS = {"structure": "structure_type", "tenor": "reference_tenor"}
 async def pnl_attribution_pivot(
     db: DbDep, by: str = Query("structure"), days: int = Query(90, ge=1, le=730),
 ) -> dict[str, Any]:
-    """Realized P&L bridged by a NON-greek axis (structure type or tenor).
+    """LIVE book P&L bridged by a NON-greek axis (structure type / tenor / trade).
 
-    Groups closed booked positions' ``net_pnl_usd`` by the chosen ``trade_structure``
-    column — the "by structure" / "by tenor" pivots of the attribution waterfall
-    (the "by greek" pivot is the Taylor decomposition on /pnl-attribution; "by mode"
-    (PCA) is a separate research feature, not served here). Steps are in USD; the
-    frontend scales to $k.
+    Attributes the OPEN book's current unrealized P&L (``open_position.current_pnl_usd``)
+    grouped by the chosen ``trade_structure`` axis — realized-close attribution reads
+    flat while positions net flat at IB, so the meaningful bridge for a live desk is
+    the current book. ``by=trade`` gives one bar per structure, labelled ``#<id>`` with
+    the structure type as the sub-label. ``by=structure`` and ``by=tenor`` return the
+    rich Position-breakdown shape (P&L + nominal/vega + vanna + volga per group) for a
+    tabular view. Steps are USD; the frontend scales to $k.
+    (``by greek`` is the Taylor decomposition on /pnl-attribution; ``by mode`` (PCA)
+    is a separate research feature.)
     """
-    col = _PNL_PIVOT_COLS.get(by)
-    if col is None:
-        raise HTTPException(400, f"unknown pivot '{by}' (expected {sorted(_PNL_PIVOT_COLS)})")
-    sql = text(f"""
-        SELECT COALESCE(ts.{col}, 'other') AS grp,
-               COALESCE(SUM(bp.net_pnl_usd), 0) AS pnl,
-               COUNT(*) AS n_closed
-          FROM booked_position bp
-          JOIN trade_structure ts ON bp.structure_id = ts.id
-         WHERE bp.state = 'closed' AND bp.closed_at IS NOT NULL
-           AND bp.closed_at >= NOW() - make_interval(days => :days)
-         GROUP BY 1
-         ORDER BY pnl DESC
-    """)  # col is whitelisted above (_PNL_PIVOT_COLS), never raw user input
-    rows = (await db.execute(sql, {"days": days})).all()
-    groups = [
-        {"label": str(r.grp), "pnl_usd": round(float(r.pnl or 0.0), 2), "n_closed": int(r.n_closed)}
-        for r in rows
-    ]
+    if by == "trade":
+        sql = text("""
+            SELECT ts.id AS gid, ts.structure_type AS stype,
+                   COALESCE(SUM(op.current_pnl_usd), 0) AS pnl,
+                   COUNT(*) AS n
+              FROM open_position op
+              JOIN trade_structure ts ON op.trade_id = ts.id
+             GROUP BY ts.id, ts.structure_type
+            HAVING COALESCE(SUM(op.current_pnl_usd), 0) <> 0
+             ORDER BY pnl DESC
+        """)
+        rows = (await db.execute(sql)).all()
+        groups = [
+            {"label": f"#{int(r.gid)}", "sub": str(r.stype or ""),
+             "pnl_usd": round(float(r.pnl or 0.0), 2), "n": int(r.n)}
+            for r in rows
+        ]
+    elif by == "structure":
+        # Rich per-structure-type breakdown: P&L + nominal + 2nd-order greeks, for
+        # a Position-breakdown-style table (Structure | P&L% | Nominal% | Vanna | Volga).
+        sql = text("""
+            SELECT COALESCE(ts.structure_type, 'other') AS grp,
+                   COALESCE(SUM(op.current_pnl_usd), 0) AS pnl,
+                   COALESCE(SUM(op.nominal_eur), 0) AS nominal,
+                   COALESCE(SUM(op.vanna_usd), 0) AS vanna,
+                   COALESCE(SUM(op.volga_usd), 0) AS volga,
+                   COUNT(*) AS n
+              FROM open_position op
+              JOIN trade_structure ts ON op.trade_id = ts.id
+             GROUP BY 1
+            HAVING COALESCE(SUM(op.current_pnl_usd), 0) <> 0
+                OR COALESCE(SUM(op.nominal_eur), 0) <> 0
+             ORDER BY nominal DESC
+        """)
+        rows = (await db.execute(sql)).all()
+        groups = [
+            {"label": str(r.grp),
+             "pnl_usd": round(float(r.pnl or 0.0), 2),
+             "nominal_eur": round(float(r.nominal or 0.0), 2),
+             "vanna_usd": round(float(r.vanna or 0.0), 2),
+             "volga_usd": round(float(r.volga or 0.0), 2),
+             "n": int(r.n)}
+            for r in rows
+        ]
+        return {
+            "by": by, "groups": groups,
+            "total_usd": round(sum(g["pnl_usd"] for g in groups), 2),
+            "total_nominal_eur": round(sum(g["nominal_eur"] for g in groups), 2),
+        }
+    elif by == "tenor":
+        # Rich per-reference-tenor breakdown: P&L + vega + 2nd-order greeks on the
+        # SAME axis, for a Position-breakdown-style table (Tenor | P&L% | Vega% |
+        # Vanna | Volga). Full tenor ladder incl. buckets at 0 so it reads as a
+        # complete term-structure.
+        sql = text("""
+            SELECT COALESCE(ts.reference_tenor, 'other') AS grp,
+                   COALESCE(SUM(op.current_pnl_usd), 0) AS pnl,
+                   COALESCE(SUM(op.vega_usd), 0) AS vega,
+                   COALESCE(SUM(op.vanna_usd), 0) AS vanna,
+                   COALESCE(SUM(op.volga_usd), 0) AS volga,
+                   COUNT(*) AS n
+              FROM open_position op
+              JOIN trade_structure ts ON op.trade_id = ts.id
+             GROUP BY 1
+        """)
+        rows = (await db.execute(sql)).all()
+        by_grp = {
+            str(r.grp): {
+                "pnl_usd": round(float(r.pnl or 0.0), 2),
+                "vega_usd": round(float(r.vega or 0.0), 2),
+                "vanna_usd": round(float(r.vanna or 0.0), 2),
+                "volga_usd": round(float(r.volga or 0.0), 2),
+                "n": int(r.n),
+            }
+            for r in rows
+        }
+        ladder = ["1M", "2M", "3M", "4M", "5M", "6M", "9M", "1Y"]
+        extra = sorted(g for g in by_grp if g not in ladder)
+        zero = {"pnl_usd": 0.0, "vega_usd": 0.0, "vanna_usd": 0.0, "volga_usd": 0.0, "n": 0}
+        groups = [{"label": t, **by_grp.get(t, zero)} for t in ladder + extra]
+        return {
+            "by": by, "groups": groups,
+            "total_usd": round(sum(g["pnl_usd"] for g in groups), 2),
+            "total_vega_usd": round(sum(g["vega_usd"] for g in groups), 2),
+        }
+    else:
+        raise HTTPException(400, f"unknown pivot '{by}' (expected {[*_PNL_PIVOT_COLS, 'trade']})")
     total = round(sum(g["pnl_usd"] for g in groups), 2)
-    return {"by": by, "days": days, "groups": groups, "total_usd": total}
+    return {"by": by, "groups": groups, "total_usd": total}
 
 
 @router.get("/var")
