@@ -531,8 +531,10 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
+      # started, NOT healthy: promtail retries pushing to Loki, so waiting on
+      # Loki's slow health (start_period 45s) only made `up` race and fail.
       loki:
-        condition: service_healthy
+        condition: service_started
     networks:
       - fxvol-internal
 
@@ -566,8 +568,10 @@ services:
     volumes:
       - ./obs/otel-collector.yml:/etc/otel-collector.yml:ro
     depends_on:
+      # started, NOT healthy: the collector retries its OTLP export to Tempo, so
+      # it needn't wait on Tempo's health (start_period 30s) — that raced `up`.
       tempo:
-        condition: service_healthy
+        condition: service_started
     networks:
       - fxvol-internal
     expose:
@@ -592,10 +596,14 @@ services:
       - ./obs/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./obs/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
+      # started, NOT healthy: Grafana retries its datasource connections, so it
+      # doesn't need Prometheus/Loki healthy at boot — waiting on Loki's slow
+      # health (start_period 45s) is what made `up` fail while everything else
+      # came up. Grafana's own healthcheck still gates anything depending on IT.
       prometheus:
-        condition: service_healthy
+        condition: service_started
       loki:
-        condition: service_healthy
+        condition: service_started
     networks:
       - fxvol-internal
     # Host port 3000 mapping pour ouverture browser directe en dev.
