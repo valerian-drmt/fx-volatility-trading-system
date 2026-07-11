@@ -56,12 +56,7 @@ function EquityLineSvg({ data, status }: { data: number[]; status: string }): JS
         );
       })}
       <path d={d + ` L${X(data.length - 1)} ${h - pb} L${pl} ${h - pb} Z`} fill="url(#eqg)" />
-      <path d={d} fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round" />
-      {/* last value marker + label — the current account value */}
-      <circle cx={X(data.length - 1)} cy={Y(last)} r="3.2" fill={col} />
-      <text x={X(data.length - 1) - 4} y={Y(last) - 6} textAnchor="end" fill={col} fontSize="10" fontFamily="var(--mono)" fontWeight="600">
-        {(last / 1e6).toFixed(2)}M
-      </text>
+      <path d={d} fill="none" stroke={col} strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
@@ -81,31 +76,30 @@ function DrawdownSvg({ data, status }: { data: number[]; status: string }): JSX.
   let peak = data[0]!;
   const dd = data.map((v) => { peak = Math.max(peak, v); return (v - peak) / peak; });
   const ddMin = Math.min(...dd, -0.0001);
-  const cur = dd[dd.length - 1]!;
   const X = (i: number): number => pl + (i / (data.length - 1)) * (w - pl - pr);
   const base = pt; // 0% at the top — the underwater surface
   const floor = h - pb;
   const Y = (x: number): number => base + (x / ddMin) * (floor - base); // 0 → top, ddMin → bottom
   const line = dd.map((x, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ");
-  // Underwater area: fill DOWN from the 0% surface to the drawdown curve (solid, no gradient).
+  // Underwater area: a bold SOLID fill hanging DOWN from the 0% surface (fill-forward
+  // style, distinct from the equity line-forward chart).
   const area = "M" + X(0).toFixed(1) + " " + base + " " + dd.map((x, i) => "L" + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ") + " L" + X(data.length - 1).toFixed(1) + " " + base + " Z";
-  const yMax = Y(ddMin);
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      {/* underwater fill (solid) + curve */}
-      <path d={area} fill="var(--neg)" fillOpacity="0.30" />
-      <path d={line} fill="none" stroke="var(--neg)" strokeWidth="1.4" />
-      {/* 0% water surface (emphasised) */}
-      <line x1={pl} x2={w - pr} y1={base} y2={base} stroke="var(--line)" opacity="0.9" />
-      <text x={4} y={base + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">0%</text>
-      {/* max-drawdown reference line (dashed) */}
-      <line x1={pl} x2={w - pr} y1={yMax} y2={yMax} stroke="var(--neg)" strokeWidth="1" strokeDasharray="4 3" opacity="0.55" />
-      <text x={4} y={yMax + 3} fill="var(--neg)" fontSize="9" fontFamily="var(--mono)">{(ddMin * 100).toFixed(1)}%</text>
-      {/* current drawdown marker + label */}
-      <circle cx={X(data.length - 1)} cy={Y(cur)} r="3" fill="var(--neg)" />
-      <text x={X(data.length - 1) - 4} y={Y(cur) + (cur > ddMin * 0.5 ? 12 : -6)} textAnchor="end" fill="var(--neg)" fontSize="10" fontFamily="var(--mono)" fontWeight="600">
-        {(cur * 100).toFixed(1)}%
-      </text>
+      {/* scale: 0% water surface (emphasised) + floor */}
+      {[0, 1].map((f, i) => {
+        const yy = base + f * (floor - base);
+        return (
+          <g key={i}>
+            <line x1={pl} x2={w - pr} y1={yy} y2={yy} stroke="var(--line)" opacity={f === 0 ? 0.9 : 0.5} />
+            <text x={4} y={yy + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
+              {f === 0 ? "0%" : (ddMin * 100).toFixed(1) + "%"}
+            </text>
+          </g>
+        );
+      })}
+      <path d={area} fill="var(--neg)" fillOpacity="0.34" />
+      <path d={line} fill="none" stroke="var(--neg)" strokeWidth="1.2" opacity="0.75" />
     </svg>
   );
 }
