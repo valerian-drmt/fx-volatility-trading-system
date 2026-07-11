@@ -303,14 +303,13 @@ interface WaterfallBar extends WaterfallStep {
 // realized P&L attribution bridge (waterfall)
 function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element {
   const steps = rawSteps.filter((s) => s.type !== "start"); // no "Start" baseline bar
-  // Wide, short viewBox so the bridge fills the full-width panel at a controlled
-  // height (a square-ish box would letterbox; auto-height would blow up too tall).
-  const w = 1040,
-    h = 230,
-    pt = 30,
-    pb = 54,
-    pl = 8,
-    pr = 8;
+  // Compact viewBox — one of four in a 2×2 grid; account-panel-sized text.
+  const w = 520,
+    h = 210,
+    pt = 24,
+    pb = 44,
+    pl = 6,
+    pr = 6;
   let run = 0;
   const bars: WaterfallBar[] = steps.map((s) => {
     if (s.type === "start") return { ...s, base: 0, top: 0 };
@@ -383,7 +382,7 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
                 x={cx}
                 y={top - 6}
                 fill={col(s)}
-                fontSize="16"
+                fontSize="12.5"
                 fontWeight="700"
                 fontFamily="var(--mono)"
                 textAnchor="middle"
@@ -395,20 +394,20 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
               x={cx}
               y={h - pb + 20}
               fill="var(--fg)"
-              fontSize="17"
+              fontSize="13"
               fontWeight="700"
               fontFamily="var(--mono)"
               textAnchor="middle"
             >
-              {trunc(s.label, 14)}
+              {trunc(s.label, 13)}
               <title>{s.label}{s.sub ? " · " + s.sub : ""}</title>
             </text>
             {s.sub && (
               <text
                 x={cx}
-                y={h - pb + 36}
+                y={h - pb + 33}
                 fill="var(--text-faint)"
-                fontSize="13"
+                fontSize="10.5"
                 fontFamily="var(--mono)"
                 textAnchor="middle"
               >
@@ -546,7 +545,6 @@ function deltaPill(d: number | null | undefined): JSX.Element | null {
 
 export function PortfolioView(): JSX.Element {
   const [win, setWin] = useState<string>("7D");
-  const [pivot, setPivot] = useState<string>("greek");
   const { portfolio, trade } = useDeskData();
   const pd = portfolio.data;
   const a = pd?.account ?? DATA.account,
@@ -676,35 +674,25 @@ export function PortfolioView(): JSX.Element {
         </div>
       </Panel>
 
-      <Panel
-        title="Realized P&L attribution — bridge"
-        dataPp="pnl-attribution"
-        right={
-          <div className="tf-group">
-            {["greek", "structure", "tenor", "trade", "mode"].map((p) => (
-              <button key={p} className={"chip " + (pivot === p ? "on" : "")} onClick={() => setPivot(p)}>
-                by {p}
-              </button>
-            ))}
+      <Panel title="Realized P&L attribution — bridge" dataPp="pnl-attribution" className="wf-panel">
+        <div className="wf-grid">
+          <div className="wf-cell">
+            <div className="perf-sub mono dim">by greek</div>
+            <Waterfall steps={pd?.waterfallGreek ?? []} />
           </div>
-        }
-        className="wf-panel"
-      >
-        <Waterfall
-          steps={
-            pivot === "greek" ? (pd?.waterfallGreek ?? DATA2.waterfall["greek"] ?? [])
-              : pivot === "structure" ? (pivotLive?.structure ?? [])
-              : pivot === "tenor" ? (pivotLive?.tenor ?? [])
-              : pivot === "trade" ? (pivotLive?.trade ?? [])
-              : (DATA2.waterfall[pivot] ?? []) // "mode" (PCA) — deferred research feature
-          }
-        />
-        {pivot === "mode" && (
-          <div className="attrib-note dim small">
-            signal → structure → realized P&L, mapped to PC1/2/3 (the modes traded) · forward realized tracking, not a
-            backtest · feeds conviction weighting in Signal · skew = incident
+          <div className="wf-cell">
+            <div className="perf-sub mono dim">by structure</div>
+            <Waterfall steps={pivotLive?.structure ?? []} />
           </div>
-        )}
+          <div className="wf-cell">
+            <div className="perf-sub mono dim">by tenor</div>
+            <Waterfall steps={pivotLive?.tenor ?? []} />
+          </div>
+          <div className="wf-cell">
+            <div className="perf-sub mono dim">by trade</div>
+            <Waterfall steps={pivotLive?.trade ?? []} />
+          </div>
+        </div>
       </Panel>
 
       <Panel title="Carry vs convexity — survival metric" dataPp="carry-convex" className="cov-panel">
