@@ -324,6 +324,12 @@ function Waterfall({ steps }: { steps: WaterfallStep[] }): JSX.Element {
   const n = steps.length,
     slot = (w - pl - pr) / n,
     bw = slot * 0.56;
+  // Truncate a label to what fits its slot (mono ≈ 0.6em/char) so long structure
+  // names don't overlap; the full text stays on hover via <title>.
+  const trunc = (s: string, font: number): string => {
+    const maxCh = Math.max(3, Math.floor((slot - 2) / (font * 0.6)));
+    return s.length > maxCh ? s.slice(0, maxCh - 1) + "…" : s;
+  };
   const col = (s: WaterfallBar): string =>
     s.color
       ? s.color
@@ -391,7 +397,8 @@ function Waterfall({ steps }: { steps: WaterfallStep[] }): JSX.Element {
               fontFamily="var(--mono)"
               textAnchor="middle"
             >
-              {s.label}
+              {trunc(s.label, 14)}
+              <title>{s.label}{s.sub ? " · " + s.sub : ""}</title>
             </text>
             {s.sub && (
               <text
@@ -402,7 +409,8 @@ function Waterfall({ steps }: { steps: WaterfallStep[] }): JSX.Element {
                 fontFamily="var(--mono)"
                 textAnchor="middle"
               >
-                {s.sub}
+                {trunc(s.sub, 10.5)}
+                <title>{s.sub}</title>
               </text>
             )}
           </g>
@@ -546,11 +554,12 @@ export function PortfolioView(): JSX.Element {
   // from closed booked positions. Polled so the bridge stays live; "by mode" (PCA)
   // stays deferred.
   const pivotLive = useFetch(async () => {
-    const [structure, tenor] = await Promise.all([
+    const [structure, tenor, trade] = await Promise.all([
       fetchPnlAttributionPivot("structure").then(adaptWaterfallPivot),
       fetchPnlAttributionPivot("tenor").then(adaptWaterfallPivot),
+      fetchPnlAttributionPivot("trade").then(adaptWaterfallPivot),
     ]);
-    return { structure, tenor };
+    return { structure, tenor, trade };
   }, 120_000, true, 60_000).data;
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
@@ -669,7 +678,7 @@ export function PortfolioView(): JSX.Element {
         dataPp="pnl-attribution"
         right={
           <div className="tf-group">
-            {["greek", "structure", "tenor", "mode"].map((p) => (
+            {["greek", "structure", "tenor", "trade", "mode"].map((p) => (
               <button key={p} className={"chip " + (pivot === p ? "on" : "")} onClick={() => setPivot(p)}>
                 by {p}
               </button>
@@ -681,8 +690,9 @@ export function PortfolioView(): JSX.Element {
         <Waterfall
           steps={
             pivot === "greek" ? (pd?.waterfallGreek ?? DATA2.waterfall["greek"] ?? [])
-              : pivot === "structure" ? (pivotLive?.structure ?? DATA2.waterfall["structure"] ?? [])
-              : pivot === "tenor" ? (pivotLive?.tenor ?? DATA2.waterfall["tenor"] ?? [])
+              : pivot === "structure" ? (pivotLive?.structure ?? [])
+              : pivot === "tenor" ? (pivotLive?.tenor ?? [])
+              : pivot === "trade" ? (pivotLive?.trade ?? [])
               : (DATA2.waterfall[pivot] ?? []) // "mode" (PCA) — deferred research feature
           }
         />

@@ -133,10 +133,11 @@ interface AttribTotals {
   residual_usd?: number | null;
 }
 
-/** /portfolio/pnl-attribution-pivot → a by-structure / by-tenor bridge ($ → $k).
- * Start → one signed step per group → Net. */
+/** /portfolio/pnl-attribution-pivot → a by-structure / by-tenor / by-trade bridge
+ * ($ → $k). Start → one signed step per group → Net. `sub` carries the structure
+ * type for the by-trade axis (label = "#id"). */
 export function adaptWaterfallPivot(raw: unknown): WaterfallStep[] {
-  const o = (raw ?? {}) as { groups?: { label?: string; pnl_usd?: number | null }[] };
+  const o = (raw ?? {}) as { groups?: { label?: string; sub?: string; pnl_usd?: number | null }[] };
   const groups = o.groups ?? [];
   const k = (v: number | null | undefined): number => r1(n(v) / 1000);
   const steps: WaterfallStep[] = [{ label: "Start", v: 0, type: "start" }];
@@ -144,7 +145,9 @@ export function adaptWaterfallPivot(raw: unknown): WaterfallStep[] {
   for (const gr of groups) {
     const v = n(gr.pnl_usd);
     net += v;
-    steps.push({ label: String(gr.label ?? "—"), v: k(v), type: v >= 0 ? "pos" : "neg" });
+    const step: WaterfallStep = { label: String(gr.label ?? "—"), v: k(v), type: v >= 0 ? "pos" : "neg" };
+    if (gr.sub) step.sub = gr.sub;
+    steps.push(step);
   }
   steps.push({ label: "Net", v: k(net), type: "net" });
   return steps;
