@@ -1086,7 +1086,9 @@ export interface paths {
          *     grouped by the chosen ``trade_structure`` axis — realized-close attribution reads
          *     flat while positions net flat at IB, so the meaningful bridge for a live desk is
          *     the current book. ``by=trade`` gives one bar per structure, labelled ``#<id>`` with
-         *     the structure type as the sub-label. Steps are USD; the frontend scales to $k.
+         *     the structure type as the sub-label. ``by=structure`` and ``by=tenor`` return the
+         *     rich Position-breakdown shape (P&L + nominal/vega + vanna + volga per group) for a
+         *     tabular view. Steps are USD; the frontend scales to $k.
          *     (``by greek`` is the Taylor decomposition on /pnl-attribution; ``by mode`` (PCA)
          *     is a separate research feature.)
          */

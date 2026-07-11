@@ -1376,7 +1376,9 @@ async def pnl_attribution_pivot(
     grouped by the chosen ``trade_structure`` axis — realized-close attribution reads
     flat while positions net flat at IB, so the meaningful bridge for a live desk is
     the current book. ``by=trade`` gives one bar per structure, labelled ``#<id>`` with
-    the structure type as the sub-label. Steps are USD; the frontend scales to $k.
+    the structure type as the sub-label. ``by=structure`` and ``by=tenor`` return the
+    rich Position-breakdown shape (P&L + nominal/vega + vanna + volga per group) for a
+    tabular view. Steps are USD; the frontend scales to $k.
     (``by greek`` is the Taylor decomposition on /pnl-attribution; ``by mode`` (PCA)
     is a separate research feature.)
     """
@@ -1429,38 +1431,44 @@ async def pnl_attribution_pivot(
             "total_usd": round(sum(g["pnl_usd"] for g in groups), 2),
             "total_nominal_eur": round(sum(g["nominal_eur"] for g in groups), 2),
         }
-    else:
-        col = _PNL_PIVOT_COLS.get(by)
-        if col is None:
-            raise HTTPException(400, f"unknown pivot '{by}' (expected {[*_PNL_PIVOT_COLS, 'trade']})")
-        # tenor shows the FULL tenor ladder (incl. buckets at 0) so it reads as a
-        # complete term-structure axis; structure drops the empty ones.
-        having = "" if by == "tenor" else "HAVING COALESCE(SUM(op.current_pnl_usd), 0) <> 0"
-        order = "grp" if by == "tenor" else "pnl DESC"
-        sql = text(f"""
-            SELECT COALESCE(ts.{col}, 'other') AS grp,
+    elif by == "tenor":
+        # Rich per-reference-tenor breakdown: P&L + vega + 2nd-order greeks on the
+        # SAME axis, for a Position-breakdown-style table (Tenor | P&L% | Vega% |
+        # Vanna | Volga). Full tenor ladder incl. buckets at 0 so it reads as a
+        # complete term-structure.
+        sql = text("""
+            SELECT COALESCE(ts.reference_tenor, 'other') AS grp,
                    COALESCE(SUM(op.current_pnl_usd), 0) AS pnl,
+                   COALESCE(SUM(op.vega_usd), 0) AS vega,
+                   COALESCE(SUM(op.vanna_usd), 0) AS vanna,
+                   COALESCE(SUM(op.volga_usd), 0) AS volga,
                    COUNT(*) AS n
               FROM open_position op
               JOIN trade_structure ts ON op.trade_id = ts.id
              GROUP BY 1
-             {having}
-             ORDER BY {order}
-        """)  # col is whitelisted above (_PNL_PIVOT_COLS), never raw user input
+        """)
         rows = (await db.execute(sql)).all()
-        by_grp = {str(r.grp): (round(float(r.pnl or 0.0), 2), int(r.n)) for r in rows}
-        if by == "tenor":
-            ladder = ["1M", "2M", "3M", "4M", "5M", "6M", "9M", "1Y"]
-            extra = sorted(g for g in by_grp if g not in ladder)
-            groups = [
-                {"label": t, "pnl_usd": by_grp.get(t, (0.0, 0))[0], "n": by_grp.get(t, (0.0, 0))[1]}
-                for t in ladder + extra
-            ]
-        else:
-            groups = [
-                {"label": str(r.grp), "pnl_usd": round(float(r.pnl or 0.0), 2), "n": int(r.n)}
-                for r in rows
-            ]
+        by_grp = {
+            str(r.grp): {
+                "pnl_usd": round(float(r.pnl or 0.0), 2),
+                "vega_usd": round(float(r.vega or 0.0), 2),
+                "vanna_usd": round(float(r.vanna or 0.0), 2),
+                "volga_usd": round(float(r.volga or 0.0), 2),
+                "n": int(r.n),
+            }
+            for r in rows
+        }
+        ladder = ["1M", "2M", "3M", "4M", "5M", "6M", "9M", "1Y"]
+        extra = sorted(g for g in by_grp if g not in ladder)
+        zero = {"pnl_usd": 0.0, "vega_usd": 0.0, "vanna_usd": 0.0, "volga_usd": 0.0, "n": 0}
+        groups = [{"label": t, **by_grp.get(t, zero)} for t in ladder + extra]
+        return {
+            "by": by, "groups": groups,
+            "total_usd": round(sum(g["pnl_usd"] for g in groups), 2),
+            "total_vega_usd": round(sum(g["vega_usd"] for g in groups), 2),
+        }
+    else:
+        raise HTTPException(400, f"unknown pivot '{by}' (expected {[*_PNL_PIVOT_COLS, 'trade']})")
     total = round(sum(g["pnl_usd"] for g in groups), 2)
     return {"by": by, "groups": groups, "total_usd": total}
 

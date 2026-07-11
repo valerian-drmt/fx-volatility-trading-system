@@ -13,9 +13,17 @@ import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
-import type { PerfStats, VegaTenor, WaterfallStep } from "../data";
+import type { PerfStats, WaterfallStep } from "../data";
 import { useDeskData } from "../data/deskData";
-import { adaptCoverage, adaptEquityCurve, adaptStructureRows, adaptWaterfallPivot, type StructureRow } from "../data/live/portfolio";
+import {
+  adaptCoverage,
+  adaptEquityCurve,
+  adaptStructureRows,
+  adaptTenorRows,
+  adaptWaterfallPivot,
+  type StructureRow,
+  type TenorRow,
+} from "../data/live/portfolio";
 
 // Equity curve (cumulative P&L) — the top graph. Live-only: empty until data.
 function EquityLineSvg({ data, status }: { data: number[]; status: string }): JSX.Element {
@@ -405,25 +413,43 @@ function StructureTable({ rows }: { rows: StructureRow[] }): JSX.Element {
   );
 }
 
-function BookComposition({ vegaPerTenor }: { vegaPerTenor: VegaTenor[] }): JSX.Element {
-  const vt = vegaPerTenor,
-    maxV = Math.max(1, ...vt.map((r) => r.vega));
+// By-tenor breakdown — same Position-breakdown-styled table as StructureTable, with
+// the vega-by-tenor data folded in: P&L (%), vega (%), and the 2nd-order greeks
+// (vanna / volga) per reference tenor.
+function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
+  if (rows.length === 0) return <div className="hbar-empty dim small mono">no positions</div>;
+  const gains = rows.filter((r) => r.pnl > 0).reduce((s, r) => s + r.pnl, 0);
+  const losses = rows.filter((r) => r.pnl < 0).reduce((s, r) => s + Math.abs(r.pnl), 0);
+  const totVega = rows.reduce((s, r) => s + Math.abs(r.vega), 0) || 1;
+  const pnlPct = (v: number): string => {
+    const base = v >= 0 ? gains : losses;
+    return (v >= 0 ? "+" : "−") + (base ? Math.round((Math.abs(v) / base) * 100) : 0) + "%";
+  };
   return (
-    <div className="bookcomp">
-      <div className="gs-section-lbl">
-        Vega by tenor <span className="dim">· 1M–6M</span>
-      </div>
-      <div className="vtl">
-        {vt.map((r) => (
-          <div key={r.tenor} className="vtl-row">
-            <span className="vtl-ten mono">{r.tenor}</span>
-            <div className="vtl-track">
-              <div className="vtl-fill" style={{ width: (r.vega / maxV) * 100 + "%" }} />
-            </div>
-            <span className="vtl-val mono">${r.vega.toFixed(1)}k</span>
-          </div>
-        ))}
-      </div>
+    <div className="table-scroll">
+      <table className="dt pb-table wf-structure">
+        <thead>
+          <tr>
+            <th className="l grp-fix">Tenor</th>
+            <th className="r grp-pnl col-grp">P&L</th><th className="r grp-pnl col-grp-end">%</th>
+            <th className="r grp-fix col-grp">Vega</th><th className="r grp-fix col-grp-end">%</th>
+            <th className="r grp-grk col-grp">Vanna</th><th className="r grp-grk col-grp-end">Volga</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td className="l grp-fix"><span className="sym">{r.label}</span></td>
+              <td className={"r mono grp-pnl col-grp " + pnlCls(r.pnl)}>{fmt.usdk(r.pnl)}</td>
+              <td className={"r mono grp-pnl col-grp-end " + pnlCls(r.pnl)}>{pnlPct(r.pnl)}</td>
+              <td className={"r mono grp-fix col-grp " + pnlCls(r.vega)}>{fmt.sgn(r.vega / 1000, 1)}k</td>
+              <td className="r mono dim grp-fix col-grp-end">{Math.round((Math.abs(r.vega) / totVega) * 100)}%</td>
+              <td className={"r mono grp-grk col-grp " + pnlCls(r.vanna)}>{fmt.sgn(r.vanna / 1000, 0)}k</td>
+              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>{fmt.sgn(r.volga / 1000, 0)}k</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -453,7 +479,7 @@ export function PortfolioView(): JSX.Element {
   const pivotLive = useFetch(async () => {
     const [structure, tenor, trade] = await Promise.all([
       fetchPnlAttributionPivot("structure").then(adaptStructureRows),
-      fetchPnlAttributionPivot("tenor").then(adaptWaterfallPivot),
+      fetchPnlAttributionPivot("tenor").then(adaptTenorRows),
       fetchPnlAttributionPivot("trade").then(adaptWaterfallPivot),
     ]);
     return { structure, tenor, trade };
@@ -575,30 +601,24 @@ export function PortfolioView(): JSX.Element {
           <div className="perf-sub mono dim">by structure <em className="unit">P&L · nominal · 2nd-order</em></div>
           <StructureTable rows={pivotLive?.structure ?? []} />
         </div>
+        <div className="wf-cell wf-structure-cell">
+          <div className="perf-sub mono dim">by tenor <em className="unit">P&L · vega · 2nd-order</em></div>
+          <TenorTable rows={pivotLive?.tenor ?? []} />
+        </div>
         <div className="wf-2col">
           <div className="wf-cell wf-trade">
             <div className="perf-sub mono dim">by trade</div>
             <TradeTable steps={pivotLive?.trade ?? []} />
           </div>
-          <div className="wf-col">
-            <div className="wf-cell">
-              <div className="perf-sub mono dim">by greek</div>
-              <HBarList steps={pd?.waterfallGreek ?? []} />
-            </div>
-            <div className="wf-cell">
-              <div className="perf-sub mono dim">by tenor</div>
-              <HBarList steps={pivotLive?.tenor ?? []} />
-            </div>
+          <div className="wf-cell">
+            <div className="perf-sub mono dim">by greek</div>
+            <HBarList steps={pd?.waterfallGreek ?? []} />
           </div>
         </div>
       </Panel>
 
       <Panel title="Carry vs convexity — survival metric" dataPp="carry-convex" className="cov-panel">
         <CoverageHero />
-      </Panel>
-
-      <Panel title="Book composition" dataPp="book-composition" right={<FreshBadge fresh={portfolio} />} className="bookcomp-panel">
-        <BookComposition vegaPerTenor={pd?.vegaPerTenor ?? DATA2.vegaPerTenor} />
       </Panel>
     </div>
   );

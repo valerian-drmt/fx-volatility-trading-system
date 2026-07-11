@@ -176,6 +176,29 @@ export function adaptStructureRows(raw: unknown): StructureRow[] {
   }));
 }
 
+/** Rich per-reference-tenor row: P&L + vega + 2nd-order greeks (raw USD). */
+export interface TenorRow {
+  label: string;
+  pnl: number;
+  vega: number;
+  vanna: number;
+  volga: number;
+}
+
+/** /portfolio/pnl-attribution-pivot?by=tenor → rich rows for the breakdown table. */
+export function adaptTenorRows(raw: unknown): TenorRow[] {
+  const groups = ((raw ?? {}) as {
+    groups?: { label?: string; pnl_usd?: number | null; vega_usd?: number | null; vanna_usd?: number | null; volga_usd?: number | null }[];
+  }).groups ?? [];
+  return groups.map((g) => ({
+    label: String(g.label ?? "—"),
+    pnl: n(g.pnl_usd),
+    vega: n(g.vega_usd),
+    vanna: n(g.vanna_usd),
+    volga: n(g.volga_usd),
+  }));
+}
+
 /** /portfolio/pnl-attribution totals → the greek-pivot waterfall ($ → $k). */
 export function adaptWaterfallGreek(raw: unknown): WaterfallStep[] {
   const t = ((raw ?? {}) as { totals?: AttribTotals }).totals ?? {};
