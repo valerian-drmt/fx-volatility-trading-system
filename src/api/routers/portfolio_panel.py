@@ -1401,6 +1401,10 @@ async def pnl_attribution_pivot(
         col = _PNL_PIVOT_COLS.get(by)
         if col is None:
             raise HTTPException(400, f"unknown pivot '{by}' (expected {[*_PNL_PIVOT_COLS, 'trade']})")
+        # tenor shows the FULL tenor ladder (incl. buckets at 0) so it reads as a
+        # complete term-structure axis; structure drops the empty ones.
+        having = "" if by == "tenor" else "HAVING COALESCE(SUM(op.current_pnl_usd), 0) <> 0"
+        order = "grp" if by == "tenor" else "pnl DESC"
         sql = text(f"""
             SELECT COALESCE(ts.{col}, 'other') AS grp,
                    COALESCE(SUM(op.current_pnl_usd), 0) AS pnl,
@@ -1408,14 +1412,23 @@ async def pnl_attribution_pivot(
               FROM open_position op
               JOIN trade_structure ts ON op.trade_id = ts.id
              GROUP BY 1
-            HAVING COALESCE(SUM(op.current_pnl_usd), 0) <> 0
-             ORDER BY pnl DESC
+             {having}
+             ORDER BY {order}
         """)  # col is whitelisted above (_PNL_PIVOT_COLS), never raw user input
         rows = (await db.execute(sql)).all()
-        groups = [
-            {"label": str(r.grp), "pnl_usd": round(float(r.pnl or 0.0), 2), "n": int(r.n)}
-            for r in rows
-        ]
+        by_grp = {str(r.grp): (round(float(r.pnl or 0.0), 2), int(r.n)) for r in rows}
+        if by == "tenor":
+            ladder = ["1M", "2M", "3M", "4M", "5M", "6M", "9M", "1Y"]
+            extra = sorted(g for g in by_grp if g not in ladder)
+            groups = [
+                {"label": t, "pnl_usd": by_grp.get(t, (0.0, 0))[0], "n": by_grp.get(t, (0.0, 0))[1]}
+                for t in ladder + extra
+            ]
+        else:
+            groups = [
+                {"label": str(r.grp), "pnl_usd": round(float(r.pnl or 0.0), 2), "n": int(r.n)}
+                for r in rows
+            ]
     total = round(sum(g["pnl_usd"] for g in groups), 2)
     return {"by": by, "groups": groups, "total_usd": total}
 

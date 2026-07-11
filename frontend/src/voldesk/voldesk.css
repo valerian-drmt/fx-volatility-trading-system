@@ -1034,7 +1034,9 @@ input,select{font-family:inherit;font-size:13px}
 .hbar-fill{position:absolute;top:1.5px;bottom:1.5px;border-radius:2px}
 .hbar-fill.pos{background:var(--pos)}
 .hbar-fill.neg{background:var(--neg)}
+.hbar-fill.resid{background:var(--muted)}
 .hbar-val{text-align:right}
+.hbar-val.resid{color:var(--muted)}
 .hbar-net{border-top:1px solid var(--border);padding-top:6px;margin-top:2px;font-weight:700}
 .attrib{display:flex;flex-direction:column;gap:7px}
 .attrib-legend{display:flex;gap:14px;font-size:10.5px;color:var(--text-dim);margin-bottom:4px}

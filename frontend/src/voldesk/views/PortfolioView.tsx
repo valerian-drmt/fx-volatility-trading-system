@@ -294,134 +294,6 @@ function CoverageHero(): JSX.Element {
   );
 }
 
-interface WaterfallBar extends WaterfallStep {
-  base: number;
-  top: number;
-  isTotal?: boolean;
-}
-
-// realized P&L attribution bridge (waterfall)
-function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element {
-  const steps = rawSteps.filter((s) => s.type !== "start"); // no "Start" baseline bar
-  // Compact viewBox — one of four in a 2×2 grid; account-panel-sized text.
-  const w = 520,
-    h = 210,
-    pt = 24,
-    pb = 44,
-    pl = 6,
-    pr = 6;
-  let run = 0;
-  const bars: WaterfallBar[] = steps.map((s) => {
-    if (s.type === "start") return { ...s, base: 0, top: 0 };
-    if (s.type === "net") return { ...s, base: 0, top: s.v, isTotal: true };
-    const base = run;
-    run += s.v;
-    return { ...s, base, top: run };
-  });
-  const vals = bars.flatMap((b) => [b.base, b.top]).concat(0);
-  const lo = Math.min(...vals),
-    hi = Math.max(...vals),
-    rng = hi - lo || 1;
-  const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
-  const n = steps.length,
-    slot = (w - pl - pr) / n,
-    bw = slot * 0.62;
-  // Truncate a label to what fits its slot (mono ≈ 0.6em/char) so long structure
-  // names don't overlap; the full text stays on hover via <title>.
-  const trunc = (s: string, font: number): string => {
-    const maxCh = Math.max(3, Math.floor((slot - 2) / (font * 0.6)));
-    return s.length > maxCh ? s.slice(0, maxCh - 1) + "…" : s;
-  };
-  const col = (s: WaterfallBar): string =>
-    s.color
-      ? s.color
-      : s.type === "net"
-        ? "var(--accent)"
-        : s.type === "resid"
-          ? "var(--muted)"
-          : s.v >= 0
-            ? "var(--pos)"
-            : "var(--neg)";
-  const k = (v: number): string => (v >= 0 ? "+" : "−") + "$" + Math.abs(v).toFixed(1) + "k";
-  return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block", height: "auto" }}>
-      <line x1={pl} x2={w - pr} y1={Y(0)} y2={Y(0)} stroke="var(--line)" />
-      {bars.map((s, i) => {
-        const cx = pl + slot * i + slot / 2;
-        const y0 = Y(s.base),
-          y1 = Y(s.top);
-        const top = Math.min(y0, y1),
-          height = Math.max(2, Math.abs(y1 - y0));
-        const isStart = s.type === "start";
-        return (
-          <g key={i}>
-            {i > 0 && !isStart && (
-              <line
-                x1={pl + slot * (i - 1) + slot / 2 + bw / 2}
-                x2={cx - bw / 2}
-                y1={Y(bars[i - 1]!.type === "start" ? 0 : bars[i - 1]!.top)}
-                y2={Y(s.type === "net" ? 0 : s.base)}
-                stroke="var(--text-faint)"
-                strokeDasharray="2 2"
-                opacity="0.7"
-              />
-            )}
-            {!isStart && (
-              <rect
-                x={cx - bw / 2}
-                y={top}
-                width={bw}
-                height={height}
-                rx="2"
-                fill={col(s)}
-                fillOpacity={s.type === "net" ? 0.9 : 0.78}
-              />
-            )}
-            {!isStart && (
-              <text
-                x={cx}
-                y={top - 6}
-                fill={col(s)}
-                fontSize="11"
-                fontWeight="700"
-                fontFamily="var(--mono)"
-                textAnchor="middle"
-              >
-                {s.type === "net" ? k(s.v) : k(s.v)}
-              </text>
-            )}
-            <text
-              x={cx}
-              y={h - pb + 20}
-              fill="var(--fg)"
-              fontSize="11.5"
-              fontWeight="700"
-              fontFamily="var(--mono)"
-              textAnchor="middle"
-            >
-              {trunc(s.label, 13)}
-              <title>{s.label}{s.sub ? " · " + s.sub : ""}</title>
-            </text>
-            {s.sub && (
-              <text
-                x={cx}
-                y={h - pb + 33}
-                fill="var(--text-faint)"
-                fontSize="9.5"
-                fontFamily="var(--mono)"
-                textAnchor="middle"
-              >
-                {trunc(s.sub, 10.5)}
-                <title>{s.sub}</title>
-              </text>
-            )}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
 // Horizontal diverging bars — the right chart for CATEGORICAL P&L attribution
 // (by structure / tenor / trade): full names in a left column, a bar left/right of
 // zero, value at the end. Crisp HTML text (no SVG scaling), handles many rows.
@@ -436,6 +308,7 @@ function HBarList({ steps }: { steps: WaterfallStep[] }): JSX.Element {
       {rows.map((s, i) => {
         const wpct = (Math.abs(s.v) / max) * 50;
         const pos = s.v >= 0;
+        const tone = s.type === "resid" ? "resid" : pos ? "pos" : "neg";
         return (
           <div className="hbar-row" key={i}>
             <span className="hbar-lbl mono" title={s.label + (s.sub ? " · " + s.sub : "")}>
@@ -445,11 +318,11 @@ function HBarList({ steps }: { steps: WaterfallStep[] }): JSX.Element {
             <span className="hbar-track">
               <span className="hbar-zero" />
               <span
-                className={"hbar-fill " + (pos ? "pos" : "neg")}
+                className={"hbar-fill " + tone}
                 style={pos ? { left: "50%", width: wpct + "%" } : { right: "50%", width: wpct + "%" }}
               />
             </span>
-            <span className={"hbar-val mono " + (pos ? "pos" : "neg")}>{fmtk(s.v)}</span>
+            <span className={"hbar-val mono " + tone}>{fmtk(s.v)}</span>
           </div>
         );
       })}
@@ -719,8 +592,8 @@ export function PortfolioView(): JSX.Element {
       <Panel title="Realized P&L attribution — bridge" dataPp="pnl-attribution" className="wf-panel">
         <div className="wf-grid">
           <div className="wf-cell">
-            <div className="perf-sub mono dim">by greek <em className="unit">sequential bridge</em></div>
-            <Waterfall steps={pd?.waterfallGreek ?? []} />
+            <div className="perf-sub mono dim">by greek</div>
+            <HBarList steps={pd?.waterfallGreek ?? []} />
           </div>
           <div className="wf-cell">
             <div className="perf-sub mono dim">by structure</div>
