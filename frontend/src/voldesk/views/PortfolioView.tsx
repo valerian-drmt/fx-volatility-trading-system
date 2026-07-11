@@ -33,9 +33,8 @@ function EquityLineSvg({ data, status }: { data: number[]; status: string }): JS
   const X = (i: number): number => pl + (i / (data.length - 1)) * (w - pl - pr);
   const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
   const d = data.map((v, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
-  const last = data[data.length - 1]!;
-  const up = last >= data[0]!;
-  const col = up ? "var(--pos)" : "var(--neg)";
+  // Neutral colour — the equity line shouldn't imply good/bad by its slope.
+  const col = "var(--accent)";
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
       <defs>
