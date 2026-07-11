@@ -13,63 +13,28 @@ import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
-import type { BookComposition, Position, VegaTenor, WaterfallStep } from "../data";
+import type { BookComposition, PerfStats, Position, VegaTenor, WaterfallStep } from "../data";
 import { useDeskData } from "../data/deskData";
 import { adaptCoverage, adaptEquityCurve, adaptWaterfallPivot } from "../data/live/portfolio";
 
-// equity curve + drawdown band. Window-parameterised → fetched here (per-window
-// state) rather than in the provider. Live-only: empty state until data exists.
-function EquityChart({ window: win }: { window: string }): JSX.Element {
-  const live = useFetch<number[]>(
-    () => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve),
-    120_000,
-  );
-  const data = live.data ?? [];
-  const w = 760,
-    h = 230,
-    pl = 52,
-    pr = 12,
-    pt = 14,
-    pb = 40;
+// Equity curve (cumulative P&L) — the top graph. Live-only: empty until data.
+function EquityLineSvg({ data, status }: { data: number[]; status: string }): JSX.Element {
+  const w = 760, h = 168, pl = 52, pr = 12, pt = 14, pb = 22;
   if (data.length < 2) {
     return (
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
         <text x={w / 2} y={h / 2} textAnchor="middle" fill="var(--text-faint)" fontSize="11" fontFamily="var(--mono)">
-          {live.status === "missing" ? "no equity history" : "loading…"}
+          {status === "missing" ? "no equity history" : "loading…"}
         </text>
       </svg>
     );
   }
-  const lo = Math.min(...data),
-    hi = Math.max(...data),
-    rng = hi - lo || 1;
+  const lo = Math.min(...data), hi = Math.max(...data), rng = hi - lo || 1;
   const X = (i: number): number => pl + (i / (data.length - 1)) * (w - pl - pr);
   const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
   const d = data.map((v, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
   const up = data[data.length - 1]! >= data[0]!;
   const col = up ? "var(--pos)" : "var(--neg)";
-  // drawdown (% from running peak) drawn as a band at the bottom
-  let peak = data[0]!;
-  const dd = data.map((v) => {
-    peak = Math.max(peak, v);
-    return (v - peak) / peak;
-  });
-  const ddMin = Math.min(...dd) || -1;
-  const ddTop = h - pb + 6,
-    ddH = pb - 14;
-  const DY = (x: number): number => ddTop + (x / (ddMin || -1)) * ddH;
-  const ddPath =
-    "M" +
-    X(0) +
-    " " +
-    ddTop +
-    " " +
-    dd.map((x, i) => "L" + X(i).toFixed(1) + " " + DY(x).toFixed(1)).join(" ") +
-    " L" +
-    X(data.length - 1) +
-    " " +
-    ddTop +
-    " Z";
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
       <defs>
@@ -82,14 +47,7 @@ function EquityChart({ window: win }: { window: string }): JSX.Element {
         const v = lo + rng * (1 - f);
         return (
           <g key={i}>
-            <line
-              x1={pl}
-              x2={w - pr}
-              y1={pt + f * (h - pt - pb)}
-              y2={pt + f * (h - pt - pb)}
-              stroke="var(--line)"
-              opacity="0.5"
-            />
+            <line x1={pl} x2={w - pr} y1={pt + f * (h - pt - pb)} y2={pt + f * (h - pt - pb)} stroke="var(--line)" opacity="0.5" />
             <text x={4} y={pt + f * (h - pt - pb) + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
               {(v / 1e6).toFixed(2)}M
             </text>
@@ -98,52 +56,92 @@ function EquityChart({ window: win }: { window: string }): JSX.Element {
       })}
       <path d={d + ` L${X(data.length - 1)} ${h - pb} L${pl} ${h - pb} Z`} fill="url(#eqg)" />
       <path d={d} fill="none" stroke={col} strokeWidth="1.8" />
-      {/* drawdown band */}
-      <path d={ddPath} fill="var(--neg)" fillOpacity="0.16" />
-      <line x1={pl} x2={w - pr} y1={ddTop} y2={ddTop} stroke="var(--line)" opacity="0.6" />
-      <text x={4} y={ddTop + 3} fill="var(--text-faint)" fontSize="8" fontFamily="var(--mono)">
-        DD 0%
-      </text>
-      <text x={4} y={ddTop + ddH + 2} fill="var(--neg)" fontSize="8" fontFamily="var(--mono)">
-        {(ddMin * 100).toFixed(1)}%
-      </text>
     </svg>
   );
 }
 
-// daily realized P&L bars
-function DailyPnlBars({ data }: { data: number[] }): JSX.Element {
-  const w = 360,
-    h = 150,
-    pt = 14,
-    pb = 18;
-  const max = Math.max(1, ...data.map(Math.abs));
-  const bw = (w - 8) / data.length,
-    mid = pt + (h - pt - pb) / 2;
-  const sc = (h - pt - pb) / 2 / max;
+// Drawdown (% from running peak) — the bottom graph, from the same equity series.
+function DrawdownSvg({ data, status }: { data: number[]; status: string }): JSX.Element {
+  const w = 760, h = 148, pl = 52, pr = 12, pt = 14, pb = 22;
+  if (data.length < 2) {
+    return (
+      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+        <text x={w / 2} y={h / 2} textAnchor="middle" fill="var(--text-faint)" fontSize="11" fontFamily="var(--mono)">
+          {status === "missing" ? "no equity history" : "loading…"}
+        </text>
+      </svg>
+    );
+  }
+  let peak = data[0]!;
+  const dd = data.map((v) => { peak = Math.max(peak, v); return (v - peak) / peak; });
+  const ddMin = Math.min(...dd, -0.0001);
+  const X = (i: number): number => pl + (i / (data.length - 1)) * (w - pl - pr);
+  const Y = (x: number): number => pt + (x / ddMin) * (h - pt - pb); // 0 → top, ddMin → bottom
+  const line = dd.map((x, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ");
+  const area = "M" + X(0).toFixed(1) + " " + pt + " " + dd.map((x, i) => "L" + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ") + " L" + X(data.length - 1).toFixed(1) + " " + pt + " Z";
   return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" style={{ display: "block" }}>
-      <line x1="2" x2={w - 2} y1={mid} y2={mid} stroke="var(--line)" />
-      {data.map((v, i) => {
-        const cx = 4 + bw * i + bw / 2,
-          hh = Math.abs(v) * sc,
-          up = v >= 0;
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+      {[0, 1].map((f, i) => {
+        const yy = pt + f * (h - pt - pb);
         return (
-          <rect
-            key={i}
-            x={cx - bw * 0.34}
-            y={up ? mid - hh : mid}
-            width={bw * 0.68}
-            height={Math.max(1, hh)}
-            rx="1"
-            fill={up ? "var(--pos)" : "var(--neg)"}
-            fillOpacity="0.85"
-          />
+          <g key={i}>
+            <line x1={pl} x2={w - pr} y1={yy} y2={yy} stroke="var(--line)" opacity="0.5" />
+            <text x={4} y={yy + 3} fill={f === 0 ? "var(--text-faint)" : "var(--neg)"} fontSize="9" fontFamily="var(--mono)">
+              {f === 0 ? "0%" : (ddMin * 100).toFixed(1) + "%"}
+            </text>
+          </g>
         );
       })}
+      <path d={area} fill="var(--neg)" fillOpacity="0.16" />
+      <path d={line} fill="none" stroke="var(--neg)" strokeWidth="1.6" />
     </svg>
   );
 }
+
+// Performance charts — two stacked rows (P&L / Drawdown), each with its two stats
+// on the left. Both share ONE windowed equity fetch; remount via key on the window.
+function PerfCharts({ window: win, ps, unreal }: { window: string; ps: PerfStats; unreal: number }): JSX.Element {
+  const live = useFetch<number[]>(() => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve), 120_000);
+  const data = live.data ?? [];
+  return (
+    <div className="perf-v">
+      <div className="perf-row">
+        <div className="perf-side">
+          <div className="ps-item">
+            <span className="gs-lbl">Realized <em className="unit">genuine closes</em></span>
+            <b className={"mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
+            <span className="gs-sub mono dim">{ps.nClosed} closed</span>
+          </div>
+          <div className="ps-item">
+            <span className="gs-lbl">Unrealized <em className="unit">one engine</em></span>
+            <b className={"mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</b>
+          </div>
+        </div>
+        <div className="perf-chart">
+          <div className="perf-sub mono dim">P&L <em className="unit">equity curve</em></div>
+          <EquityLineSvg data={data} status={live.status} />
+        </div>
+      </div>
+      <div className="perf-row">
+        <div className="perf-side">
+          <div className="ps-item">
+            <span className="gs-lbl">Max drawdown</span>
+            <b className="mono neg">{ps.maxDd}%</b>
+          </div>
+          <div className="ps-item">
+            <span className="gs-lbl">Current DD</span>
+            <b className="mono neg">{ps.currentDd}%</b>
+          </div>
+        </div>
+        <div className="perf-chart">
+          <div className="perf-sub mono dim">Drawdown <em className="unit">% from peak</em></div>
+          <DrawdownSvg data={data} status={live.status} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function CovSpark({
   data,
@@ -628,36 +626,8 @@ export function PortfolioView(): JSX.Element {
         }
         className="perf-panel"
       >
-        <div className="perf-grid">
-          <div className="perf-eq">
-            <div className="perf-sub mono dim">equity curve · drawdown band</div>
-            <EquityChart window={win} />
-          </div>
-          <div className="perf-daily">
-            <div className="perf-sub mono dim">daily P&L <em className="unit">mark-to-market · Δ net-liq</em></div>
-            <DailyPnlBars data={dailyPnlData} />
-          </div>
-        </div>
-        <div className="perf-stats">
-          <div className="ps-item">
-            <span className="gs-lbl">Realized <em className="unit">genuine closes</em></span>
-            <b className={"mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
-            <span className="gs-sub mono dim">{ps.nClosed} closed</span>
-          </div>
-          <div className="ps-item">
-            <span className="gs-lbl">
-              Unrealized <em className="unit">one engine</em>
-            </span>
-            <b className={"mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</b>
-          </div>
-          <div className="ps-item">
-            <span className="gs-lbl">Max drawdown</span>
-            <b className="mono neg">{ps.maxDd}%</b>
-          </div>
-          <div className="ps-item">
-            <span className="gs-lbl">Current DD</span>
-            <b className="mono neg">{ps.currentDd}%</b>
-          </div>
+        <PerfCharts key={win} window={win} ps={ps} unreal={unreal} />
+        <div className="perf-foot">
           <div className="ps-item">
             <span className="gs-lbl">
               Hit rate <em className="unit">realized Sharpe {ps.sharpe.toFixed(2)}</em>
