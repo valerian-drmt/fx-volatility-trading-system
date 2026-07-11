@@ -208,7 +208,6 @@ function CoverageHero(): JSX.Element {
   const covLive = useFetch(() => fetchPnlAttribution().then(adaptCoverage), 60_000).data;
   const c = { ...DATA2.coverage, ...(covLive ?? {}) };
   const ok = c.ratio >= c.threshold;
-  const tot = c.convexity + c.carry;
   // forward breakeven (implied): move_BE = √(2Θ/Γ) vs current RV — from the LIVE book
   // greeks + live ATM RV (mock only until they load).
   const { portfolio: pf, termStructure: term } = useDeskData();
@@ -217,88 +216,104 @@ function CoverageHero(): JSX.Element {
   const beMove = g.gamma ? Math.sqrt((2 * Math.abs(g.theta)) / g.gamma) * 0.225 : 0;
   const rvDaily = rvNear / Math.sqrt(252);
   const beCovered = rvDaily >= beMove;
+  // REALIZED (backward) — earned vs paid on a shared scale, so the ratio is visible.
+  const earned = c.convexity,
+    paid = c.carry;
+  const maxSide = Math.max(1, Math.abs(earned), Math.abs(paid));
+  const untested = Math.abs(earned) < 0.05 && Math.abs(paid) < 0.05;
+  // FORWARD (implied) — breakeven move vs realized daily move, on a shared scale.
+  const maxMove = Math.max(1e-4, beMove, rvDaily);
+  const fwdRatio = beMove > 0 ? rvDaily / beMove : null;
   return (
-    <>
-      <div className="cov-hero">
-        <div className="cov-main">
-          <span className="cov-lbl mono">
-            coverage ratio <span className="dim">· convexity ÷ theta-carry · realized</span>
-          </span>
-          <div className="cov-num-row">
-            <b className={"cov-num mono " + (ok ? "pos" : "neg")}>{c.ratio.toFixed(2)}×</b>
+    <div className="cov2">
+      <div className="cov2-head">
+        <span className="cov2-title mono">is gamma paying its rent?</span>
+        <Tag tone="good">{c.posture}</Tag>
+      </div>
+      <div className="cov2-grid">
+        {/* REALIZED · backward — did it pay? */}
+        <div className="cov2-cell">
+          <div className="cov2-cell-hd mono dim">
+            realized <em className="unit">did it pay?</em>
+          </div>
+          <div className="cov2-num-row">
+            <b
+              className={"cov2-num mono " + (ok ? "pos" : "neg")}
+              title={`(Σ½Γ(dS)² + ΣV·dσ) ÷ ΣΘ·dt · ${c.windowLabel}`}
+            >
+              {c.ratio.toFixed(2)}×
+            </b>
             <span className={"cov-verdict " + (ok ? "ok" : "bad")}>
               {ok ? "convexity paid the carry" : "carry not covered"}
             </span>
           </div>
-          <span className="cov-formula mono dim">
-            (Σ½Γ(dS)² + ΣV·dσ) ÷ ΣΘ·dt · {c.windowLabel}
-          </span>
+          {untested ? (
+            <div className="cov2-empty dim small mono">gamma untested · no move booked this {c.windowLabel}</div>
+          ) : (
+            <div className="cov2-tug">
+              <div className="cov2-tug-row">
+                <span className="cov2-tug-lbl mono">earned</span>
+                <span className="cov2-tug-track">
+                  <span className="cov2-tug-fill pos" style={{ width: (Math.abs(earned) / maxSide) * 100 + "%" }} />
+                </span>
+                <span className="cov2-tug-val mono pos">+${earned.toFixed(0)}k</span>
+              </div>
+              <div className="cov2-tug-row">
+                <span className="cov2-tug-lbl mono">paid</span>
+                <span className="cov2-tug-track">
+                  <span className="cov2-tug-fill neg" style={{ width: (Math.abs(paid) / maxSide) * 100 + "%" }} />
+                </span>
+                <span className="cov2-tug-val mono neg">−${paid.toFixed(0)}k</span>
+              </div>
+            </div>
+          )}
+          <div className="cov2-foot dim mono">
+            Γ +${c.gammaPnl}k · Vega +${c.vegaPnl}k · Θ −${c.thetaPaid}k
+          </div>
         </div>
-        <div className="cov-spark">
-          <CovSpark data={c.history} threshold={c.threshold} />
-          <span className="dim small mono">threshold 1.0</span>
-        </div>
-      </div>
-      <div className="c2">
-        <div className="cov-bars">
-          <div className="cov-bar-row">
-            <span className="mono">convexity earned</span>
-            <span className="mono pos">+${c.convexity.toFixed(0)}k</span>
+        {/* FORWARD · implied — does it pay now? */}
+        <div className="cov2-cell">
+          <div className="cov2-cell-hd mono dim">
+            forward <em className="unit">does it pay now?</em>
           </div>
-          <div className="cov-bar-track">
-            <div className="cov-bar-fill pos" style={{ width: (c.convexity / tot) * 100 + "%" }} />
-          </div>
-          <div className="cov-bar-sub dim mono">
-            Γ +${c.gammaPnl}k · Vega +${c.vegaPnl}k
-          </div>
-          <div className="cov-bar-row">
-            <span className="mono">
-              theta-carry paid <span className="dim">· theta-only</span>
+          <div className="cov2-num-row">
+            <b className={"cov2-num mono " + (beCovered ? "pos" : "neg")}>
+              {fwdRatio == null ? "—" : fwdRatio.toFixed(2) + "×"}
+            </b>
+            <span className={"cov-verdict " + (beCovered ? "ok" : "bad")}>
+              {fwdRatio == null ? "no gamma" : beCovered ? "gamma pays now" : "carry bleeds now"}
             </span>
-            <span className="mono neg">−${c.carry.toFixed(0)}k</span>
           </div>
-          <div className="cov-bar-track">
-            <div className="cov-bar-fill neg" style={{ width: (c.carry / tot) * 100 + "%" }} />
+          <div className="cov2-tug">
+            <div className="cov2-tug-row">
+              <span className="cov2-tug-lbl mono">
+                need <em className="unit">BE</em>
+              </span>
+              <span className="cov2-tug-track">
+                <span className="cov2-tug-fill neg" style={{ width: (beMove / maxMove) * 100 + "%" }} />
+              </span>
+              <span className="cov2-tug-val mono">{beMove.toFixed(2)}%</span>
+            </div>
+            <div className="cov2-tug-row">
+              <span className="cov2-tug-lbl mono">
+                have <em className="unit">RV</em>
+              </span>
+              <span className="cov2-tug-track">
+                <span className="cov2-tug-fill pos" style={{ width: (rvDaily / maxMove) * 100 + "%" }} />
+              </span>
+              <span className="cov2-tug-val mono">{rvDaily.toFixed(2)}%</span>
+            </div>
           </div>
-          <div className="cov-bar-sub dim mono">
-            Θ −${c.thetaPaid}k / {c.windowLabel} · excl. 6E/JPY funding
+          <div className="cov2-foot dim mono">
+            move<sub>BE</sub> = √(2Θ/Γ) %/day · vs realized daily vol
           </div>
         </div>
-        <div className="cov-ror" title="realized performance — needs trading history (deferred R12+)">
-          <div className="ror-item">
-            <span className="gs-lbl">P&L / margin</span>
-            <b className="mono dim">—</b>
-          </div>
-          <div className="ror-item">
-            <span className="gs-lbl">P&L / VaR</span>
-            <b className="mono dim">—</b>
-          </div>
-          <div className="ror-item">
-            <span className="gs-lbl">
-              Realized Sharpe <em className="unit">daily ann.</em>
-            </span>
-            <b className="mono dim">—</b>
-          </div>
-        </div>
       </div>
-      <div className="cov-fwd">
-        <span className="dim mono">
-          forward breakeven <span className="dim">· implied, complements realized</span>
-        </span>
-        <span className="cov-fwd-eq mono">
-          move<sub>BE</sub> = √(2Θ/Γ) = <b>{beMove.toFixed(2)}%/day</b> <span className="dim">vs</span> RV{" "}
-          <b>{rvDaily.toFixed(2)}%/day</b>
-        </span>
-        <Tag tone={beCovered ? "good" : "danger"}>{beCovered ? "convexity pays now" : "carry bleeds now"}</Tag>
+      <div className="cov2-spark">
+        <CovSpark data={c.history} threshold={c.threshold} w={260} />
+        <span className="dim small mono">coverage vs threshold 1.0 · {c.windowLabel}</span>
       </div>
-      <div className="cov-posture">
-        <span className="dim mono">measured posture</span>
-        <Tag tone="good">{c.posture}</Tag>
-        <span className="dim small">
-          realized = backward (it paid) · forward = breakeven (does it pay now) · full breakdown → bridge
-        </span>
-      </div>
-    </>
+    </div>
   );
 }
 
