@@ -382,7 +382,7 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
                 x={cx}
                 y={top - 6}
                 fill={col(s)}
-                fontSize="12.5"
+                fontSize="11"
                 fontWeight="700"
                 fontFamily="var(--mono)"
                 textAnchor="middle"
@@ -394,7 +394,7 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
               x={cx}
               y={h - pb + 20}
               fill="var(--fg)"
-              fontSize="13"
+              fontSize="11.5"
               fontWeight="700"
               fontFamily="var(--mono)"
               textAnchor="middle"
@@ -407,7 +407,7 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
                 x={cx}
                 y={h - pb + 33}
                 fill="var(--text-faint)"
-                fontSize="10.5"
+                fontSize="9.5"
                 fontFamily="var(--mono)"
                 textAnchor="middle"
               >
@@ -419,6 +419,48 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
         );
       })}
     </svg>
+  );
+}
+
+// Horizontal diverging bars — the right chart for CATEGORICAL P&L attribution
+// (by structure / tenor / trade): full names in a left column, a bar left/right of
+// zero, value at the end. Crisp HTML text (no SVG scaling), handles many rows.
+function HBarList({ steps }: { steps: WaterfallStep[] }): JSX.Element {
+  const rows = steps.filter((s) => s.type !== "start" && s.type !== "net");
+  const net = steps.find((s) => s.type === "net");
+  const max = Math.max(1, ...rows.map((r) => Math.abs(r.v)));
+  const fmtk = (v: number): string => (v >= 0 ? "+" : "−") + "$" + Math.abs(v).toFixed(1) + "k";
+  if (rows.length === 0) return <div className="hbar-empty dim small mono">no P&L yet</div>;
+  return (
+    <div className="hbar-list">
+      {rows.map((s, i) => {
+        const wpct = (Math.abs(s.v) / max) * 50;
+        const pos = s.v >= 0;
+        return (
+          <div className="hbar-row" key={i}>
+            <span className="hbar-lbl mono" title={s.label + (s.sub ? " · " + s.sub : "")}>
+              {s.label}
+              {s.sub && <em className="hbar-sub">{s.sub}</em>}
+            </span>
+            <span className="hbar-track">
+              <span className="hbar-zero" />
+              <span
+                className={"hbar-fill " + (pos ? "pos" : "neg")}
+                style={pos ? { left: "50%", width: wpct + "%" } : { right: "50%", width: wpct + "%" }}
+              />
+            </span>
+            <span className={"hbar-val mono " + (pos ? "pos" : "neg")}>{fmtk(s.v)}</span>
+          </div>
+        );
+      })}
+      {net && (
+        <div className="hbar-row hbar-net">
+          <span className="hbar-lbl mono">Net</span>
+          <span className="hbar-track" />
+          <span className={"hbar-val mono " + (net.v >= 0 ? "pos" : "neg")}>{fmtk(net.v)}</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -677,20 +719,20 @@ export function PortfolioView(): JSX.Element {
       <Panel title="Realized P&L attribution — bridge" dataPp="pnl-attribution" className="wf-panel">
         <div className="wf-grid">
           <div className="wf-cell">
-            <div className="perf-sub mono dim">by greek</div>
+            <div className="perf-sub mono dim">by greek <em className="unit">sequential bridge</em></div>
             <Waterfall steps={pd?.waterfallGreek ?? []} />
           </div>
           <div className="wf-cell">
             <div className="perf-sub mono dim">by structure</div>
-            <Waterfall steps={pivotLive?.structure ?? []} />
+            <HBarList steps={pivotLive?.structure ?? []} />
           </div>
           <div className="wf-cell">
             <div className="perf-sub mono dim">by tenor</div>
-            <Waterfall steps={pivotLive?.tenor ?? []} />
+            <HBarList steps={pivotLive?.tenor ?? []} />
           </div>
           <div className="wf-cell">
             <div className="perf-sub mono dim">by trade</div>
-            <Waterfall steps={pivotLive?.trade ?? []} />
+            <HBarList steps={pivotLive?.trade ?? []} />
           </div>
         </div>
       </Panel>

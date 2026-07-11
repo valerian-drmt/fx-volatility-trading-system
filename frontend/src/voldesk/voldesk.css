@@ -1018,11 +1018,24 @@ input,select{font-family:inherit;font-size:13px}
 .comp-leg-name{flex:1}
 .pf-row2{display:grid;grid-template-columns:1.5fr 1fr;gap:12px;align-items:start}
 .pf-row2 .panel{margin-bottom:0}
-/* Attribution bridge → 2×2 of four sub-panels (by greek / structure / tenor / trade). */
-.wf-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.wf-cell{border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0;background:color-mix(in srgb,var(--line) 22%,transparent)}
-.wf-cell .perf-sub{margin-bottom:2px}
+/* Attribution → 2×2 of four sub-panels (by greek / structure / tenor / trade). */
+.wf-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.wf-cell{border:1px solid var(--border);border-radius:8px;padding:10px 12px;min-width:0;background:color-mix(in srgb,var(--line) 22%,transparent)}
+.wf-cell .perf-sub{margin-bottom:6px}
 @media (max-width:720px){.wf-grid{grid-template-columns:1fr}}
+/* Horizontal diverging bars for categorical attribution (structure/tenor/trade). */
+.hbar-list{display:flex;flex-direction:column;gap:5px}
+.hbar-empty{padding:20px 0;text-align:center}
+.hbar-row{display:grid;grid-template-columns:minmax(72px,38%) 1fr 58px;gap:9px;align-items:center;font-size:11px}
+.hbar-lbl{color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbar-sub{color:var(--text-dim);font-style:normal;margin-left:5px;font-size:9.5px}
+.hbar-track{position:relative;height:13px;background:color-mix(in srgb,var(--line) 45%,transparent);border-radius:3px}
+.hbar-zero{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--text-faint);opacity:.55}
+.hbar-fill{position:absolute;top:1.5px;bottom:1.5px;border-radius:2px}
+.hbar-fill.pos{background:var(--pos)}
+.hbar-fill.neg{background:var(--neg)}
+.hbar-val{text-align:right}
+.hbar-net{border-top:1px solid var(--border);padding-top:6px;margin-top:2px;font-weight:700}
 .attrib{display:flex;flex-direction:column;gap:7px}
 .attrib-legend{display:flex;gap:14px;font-size:10.5px;color:var(--text-dim);margin-bottom:4px}
 .attrib-legend span{display:flex;align-items:center;gap:5px}
