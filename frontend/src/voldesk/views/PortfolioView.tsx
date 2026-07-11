@@ -5,7 +5,11 @@
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
 import { useEffect, useRef, useState } from "react";
-import { fetchEquityCurve, fetchPnlAttribution, fetchPnlAttributionPivot } from "../../api/endpoints";
+import {
+  fetchEquityCurve,
+  fetchPnlAttribution,
+  fetchPnlAttributionPivot,
+} from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
 import { Panel, Tag } from "../components/common";
@@ -27,20 +31,36 @@ import {
 
 // Equity curve (cumulative P&L) — the top graph. Live-only: empty until data.
 function EquityLineSvg({ data, status }: { data: number[]; status: string }): JSX.Element {
-  const w = 760, h = 168, pl = 52, pr = 12, pt = 14, pb = 22;
+  const w = 760,
+    h = 168,
+    pl = 52,
+    pr = 12,
+    pt = 14,
+    pb = 22;
   if (data.length < 2) {
     return (
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-        <text x={w / 2} y={h / 2} textAnchor="middle" fill="var(--text-faint)" fontSize="11" fontFamily="var(--mono)">
+        <text
+          x={w / 2}
+          y={h / 2}
+          textAnchor="middle"
+          fill="var(--text-faint)"
+          fontSize="11"
+          fontFamily="var(--mono)"
+        >
           {status === "missing" ? "no equity history" : "loading…"}
         </text>
       </svg>
     );
   }
-  const lo = Math.min(...data), hi = Math.max(...data), rng = hi - lo || 1;
+  const lo = Math.min(...data),
+    hi = Math.max(...data),
+    rng = hi - lo || 1;
   const X = (i: number): number => pl + (i / (data.length - 1)) * (w - pl - pr);
   const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
-  const d = data.map((v, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
+  const d = data
+    .map((v, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(v).toFixed(1))
+    .join(" ");
   // Neutral colour — the equity line shouldn't imply good/bad by its slope.
   const col = "var(--accent)";
   return (
@@ -55,42 +75,90 @@ function EquityLineSvg({ data, status }: { data: number[]; status: string }): JS
         const v = lo + rng * (1 - f);
         return (
           <g key={i}>
-            <line x1={pl} x2={w - pr} y1={pt + f * (h - pt - pb)} y2={pt + f * (h - pt - pb)} stroke="var(--line)" opacity="0.5" />
-            <text x={4} y={pt + f * (h - pt - pb) + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
+            <line
+              x1={pl}
+              x2={w - pr}
+              y1={pt + f * (h - pt - pb)}
+              y2={pt + f * (h - pt - pb)}
+              stroke="var(--line)"
+              opacity="0.5"
+            />
+            <text
+              x={4}
+              y={pt + f * (h - pt - pb) + 3}
+              fill="var(--text-faint)"
+              fontSize="9"
+              fontFamily="var(--mono)"
+            >
               {(v / 1e6).toFixed(2)}M
             </text>
           </g>
         );
       })}
       <path d={d + ` L${X(data.length - 1)} ${h - pb} L${pl} ${h - pb} Z`} fill="url(#eqg)" />
-      <path d={d} fill="none" stroke={col} strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
+      <path
+        d={d}
+        fill="none"
+        stroke={col}
+        strokeWidth="2.2"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
 
 // Drawdown (% from running peak) — the bottom graph, from the same equity series.
 function DrawdownSvg({ data, status }: { data: number[]; status: string }): JSX.Element {
-  const w = 760, h = 148, pl = 52, pr = 12, pt = 14, pb = 22;
+  const w = 760,
+    h = 148,
+    pl = 52,
+    pr = 12,
+    pt = 14,
+    pb = 22;
   if (data.length < 2) {
     return (
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-        <text x={w / 2} y={h / 2} textAnchor="middle" fill="var(--text-faint)" fontSize="11" fontFamily="var(--mono)">
+        <text
+          x={w / 2}
+          y={h / 2}
+          textAnchor="middle"
+          fill="var(--text-faint)"
+          fontSize="11"
+          fontFamily="var(--mono)"
+        >
           {status === "missing" ? "no equity history" : "loading…"}
         </text>
       </svg>
     );
   }
   let peak = data[0]!;
-  const dd = data.map((v) => { peak = Math.max(peak, v); return (v - peak) / peak; });
+  const dd = data.map((v) => {
+    peak = Math.max(peak, v);
+    return (v - peak) / peak;
+  });
   const ddMin = Math.min(...dd, -0.0001);
   const X = (i: number): number => pl + (i / (data.length - 1)) * (w - pl - pr);
   const base = pt; // 0% at the top — the underwater surface
   const floor = h - pb;
   const Y = (x: number): number => base + (x / ddMin) * (floor - base); // 0 → top, ddMin → bottom
-  const line = dd.map((x, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ");
+  const line = dd
+    .map((x, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(x).toFixed(1))
+    .join(" ");
   // Underwater area: a bold SOLID fill hanging DOWN from the 0% surface (fill-forward
   // style, distinct from the equity line-forward chart).
-  const area = "M" + X(0).toFixed(1) + " " + base + " " + dd.map((x, i) => "L" + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ") + " L" + X(data.length - 1).toFixed(1) + " " + base + " Z";
+  const area =
+    "M" +
+    X(0).toFixed(1) +
+    " " +
+    base +
+    " " +
+    dd.map((x, i) => "L" + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ") +
+    " L" +
+    X(data.length - 1).toFixed(1) +
+    " " +
+    base +
+    " Z";
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
       {/* scale: 0% water surface (emphasised) + floor */}
@@ -98,7 +166,14 @@ function DrawdownSvg({ data, status }: { data: number[]; status: string }): JSX.
         const yy = base + f * (floor - base);
         return (
           <g key={i}>
-            <line x1={pl} x2={w - pr} y1={yy} y2={yy} stroke="var(--line)" opacity={f === 0 ? 0.9 : 0.5} />
+            <line
+              x1={pl}
+              x2={w - pr}
+              y1={yy}
+              y2={yy}
+              stroke="var(--line)"
+              opacity={f === 0 ? 0.9 : 0.5}
+            />
             <text x={4} y={yy + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
               {f === 0 ? "0%" : (ddMin * 100).toFixed(1) + "%"}
             </text>
@@ -113,15 +188,29 @@ function DrawdownSvg({ data, status }: { data: number[]; status: string }): JSX.
 
 // Performance charts — two stacked rows (P&L / Drawdown), each with its two stats
 // on the left. Both share ONE windowed equity fetch; remount via key on the window.
-function PerfCharts({ window: win, ps, unreal }: { window: string; ps: PerfStats; unreal: number }): JSX.Element {
-  const live = useFetch<number[]>(() => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve), 120_000);
+function PerfCharts({
+  window: win,
+  ps,
+  unreal,
+}: {
+  window: string;
+  ps: PerfStats;
+  unreal: number;
+}): JSX.Element {
+  const live = useFetch<number[]>(
+    () => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve),
+    120_000,
+  );
   // useFetch only refires on its own tick/poll, so a window change alone wouldn't
   // refetch — reload explicitly when the window switches (skip the initial mount,
   // which useFetch already fetched).
   const reload = live.reload;
   const first = useRef(true);
   useEffect(() => {
-    if (first.current) { first.current = false; return; }
+    if (first.current) {
+      first.current = false;
+      return;
+    }
     reload();
   }, [win, reload]);
   const data = live.data ?? [];
@@ -133,7 +222,9 @@ function PerfCharts({ window: win, ps, unreal }: { window: string; ps: PerfStats
             <tbody>
               <tr>
                 <td className="l">Realized</td>
-                <td className={"r mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</td>
+                <td className={"r mono " + pnlCls(ps.cumRealized)}>
+                  {fmt.sgn(ps.cumRealized, 1)}k
+                </td>
               </tr>
               <tr>
                 <td className="l">Unrealized</td>
@@ -143,7 +234,9 @@ function PerfCharts({ window: win, ps, unreal }: { window: string; ps: PerfStats
           </table>
         </div>
         <div className="perf-chart">
-          <div className="perf-sub mono dim">P&L <em className="unit">equity curve</em></div>
+          <div className="perf-sub mono dim">
+            P&L <em className="unit">equity curve</em>
+          </div>
           <EquityLineSvg data={data} status={live.status} />
         </div>
       </div>
@@ -163,14 +256,15 @@ function PerfCharts({ window: win, ps, unreal }: { window: string; ps: PerfStats
           </table>
         </div>
         <div className="perf-chart">
-          <div className="perf-sub mono dim">Drawdown <em className="unit">% from peak</em></div>
+          <div className="perf-sub mono dim">
+            Drawdown <em className="unit">% from peak</em>
+          </div>
           <DrawdownSvg data={data} status={live.status} />
         </div>
       </div>
     </div>
   );
 }
-
 
 function CovSpark({
   data,
@@ -193,10 +287,27 @@ function CovSpark({
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
       {threshold != null && (
-        <line x1="0" x2={w} y1={Y(threshold)} y2={Y(threshold)} stroke="var(--text-faint)" strokeDasharray="3 2" />
+        <line
+          x1="0"
+          x2={w}
+          y1={Y(threshold)}
+          y2={Y(threshold)}
+          stroke="var(--text-faint)"
+          strokeDasharray="3 2"
+        />
       )}
-      <path d={d} fill="none" stroke={last >= threshold ? "var(--pos)" : "var(--neg)"} strokeWidth="1.6" />
-      <circle cx={X(data.length - 1)} cy={Y(last)} r="2.6" fill={last >= threshold ? "var(--pos)" : "var(--neg)"} />
+      <path
+        d={d}
+        fill="none"
+        stroke={last >= threshold ? "var(--pos)" : "var(--neg)"}
+        strokeWidth="1.6"
+      />
+      <circle
+        cx={X(data.length - 1)}
+        cy={Y(last)}
+        r="2.6"
+        fill={last >= threshold ? "var(--pos)" : "var(--neg)"}
+      />
     </svg>
   );
 }
@@ -248,20 +359,28 @@ function CoverageHero(): JSX.Element {
             </span>
           </div>
           {untested ? (
-            <div className="cov2-empty dim small mono">gamma untested · no move booked this {c.windowLabel}</div>
+            <div className="cov2-empty dim small mono">
+              gamma untested · no move booked this {c.windowLabel}
+            </div>
           ) : (
             <div className="cov2-tug">
               <div className="cov2-tug-row">
                 <span className="cov2-tug-lbl mono">earned</span>
                 <span className="cov2-tug-track">
-                  <span className="cov2-tug-fill pos" style={{ width: (Math.abs(earned) / maxSide) * 100 + "%" }} />
+                  <span
+                    className="cov2-tug-fill pos"
+                    style={{ width: (Math.abs(earned) / maxSide) * 100 + "%" }}
+                  />
                 </span>
                 <span className="cov2-tug-val mono pos">+${earned.toFixed(0)}k</span>
               </div>
               <div className="cov2-tug-row">
                 <span className="cov2-tug-lbl mono">paid</span>
                 <span className="cov2-tug-track">
-                  <span className="cov2-tug-fill neg" style={{ width: (Math.abs(paid) / maxSide) * 100 + "%" }} />
+                  <span
+                    className="cov2-tug-fill neg"
+                    style={{ width: (Math.abs(paid) / maxSide) * 100 + "%" }}
+                  />
                 </span>
                 <span className="cov2-tug-val mono neg">−${paid.toFixed(0)}k</span>
               </div>
@@ -290,7 +409,10 @@ function CoverageHero(): JSX.Element {
                 need <em className="unit">BE</em>
               </span>
               <span className="cov2-tug-track">
-                <span className="cov2-tug-fill neg" style={{ width: (beMove / maxMove) * 100 + "%" }} />
+                <span
+                  className="cov2-tug-fill neg"
+                  style={{ width: (beMove / maxMove) * 100 + "%" }}
+                />
               </span>
               <span className="cov2-tug-val mono">{beMove.toFixed(2)}%</span>
             </div>
@@ -299,7 +421,10 @@ function CoverageHero(): JSX.Element {
                 have <em className="unit">RV</em>
               </span>
               <span className="cov2-tug-track">
-                <span className="cov2-tug-fill pos" style={{ width: (rvDaily / maxMove) * 100 + "%" }} />
+                <span
+                  className="cov2-tug-fill pos"
+                  style={{ width: (rvDaily / maxMove) * 100 + "%" }}
+                />
               </span>
               <span className="cov2-tug-val mono">{rvDaily.toFixed(2)}%</span>
             </div>
@@ -317,11 +442,16 @@ function CoverageHero(): JSX.Element {
   );
 }
 
-
 // Attribution as a 2-column table (name | P&L | % gain/loss). Reused for both the
 // by-trade and by-greek axes (same WaterfallStep shape). The % is the row's share of
 // the total GAINS if it's a winner, or of the total LOSSES if it's a loser.
-function TradeTable({ steps, col = "Trade" }: { steps: WaterfallStep[]; col?: string }): JSX.Element {
+function TradeTable({
+  steps,
+  col = "Trade",
+}: {
+  steps: WaterfallStep[];
+  col?: string;
+}): JSX.Element {
   const rows = steps.filter((s) => s.type !== "start" && s.type !== "net");
   if (rows.length === 0) return <div className="hbar-empty dim small mono">no P&L yet</div>;
   const gains = rows.filter((r) => r.v > 0).reduce((s, r) => s + r.v, 0);
@@ -333,13 +463,26 @@ function TradeTable({ steps, col = "Trade" }: { steps: WaterfallStep[]; col?: st
   };
   return (
     <table className="dt greeks-table acct-cap">
-      <thead><tr><th className="l">{col}</th><th className="r">P&L</th><th className="r">% <em className="unit">gain/loss</em></th></tr></thead>
+      <thead>
+        <tr>
+          <th className="l">{col}</th>
+          <th className="r">P&L</th>
+          <th className="r">
+            % <em className="unit">gain/loss</em>
+          </th>
+        </tr>
+      </thead>
       <tbody>
         {rows.map((s, i) => (
           <tr key={i}>
-            <td className="l">{s.label}{s.sub && <em className="unit">{s.sub}</em>}</td>
+            <td className="l">
+              {s.label}
+              {s.sub && <em className="unit">{s.sub}</em>}
+            </td>
             <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>{fmtk(s.v)}</td>
-            <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>{(s.v >= 0 ? "+" : "−") + pct(s.v) + "%"}</td>
+            <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>
+              {(s.v >= 0 ? "+" : "−") + pct(s.v) + "%"}
+            </td>
           </tr>
         ))}
       </tbody>
@@ -364,21 +507,32 @@ function StructureTable({ rows }: { rows: StructureRow[] }): JSX.Element {
         <thead>
           <tr>
             <th className="l grp-fix">Structure</th>
-            <th className="r grp-pnl col-grp">P&L</th><th className="r grp-pnl col-grp-end">%</th>
-            <th className="r grp-fix col-grp">Nominal €</th><th className="r grp-fix col-grp-end">%</th>
-            <th className="r grp-grk col-grp">Vanna</th><th className="r grp-grk col-grp-end">Volga</th>
+            <th className="r grp-pnl col-grp">P&L</th>
+            <th className="r grp-pnl col-grp-end">%</th>
+            <th className="r grp-fix col-grp">Nominal €</th>
+            <th className="r grp-fix col-grp-end">%</th>
+            <th className="r grp-grk col-grp">Vanna</th>
+            <th className="r grp-grk col-grp-end">Volga</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={i}>
-              <td className="l grp-fix"><span className="sym">{r.label}</span></td>
+              <td className="l grp-fix">
+                <span className="sym">{r.label}</span>
+              </td>
               <td className={"r mono grp-pnl col-grp " + pnlCls(r.pnl)}>{fmt.usdk(r.pnl)}</td>
               <td className={"r mono grp-pnl col-grp-end " + pnlCls(r.pnl)}>{pnlPct(r.pnl)}</td>
               <td className="r mono dim grp-fix col-grp">{(r.nominal / 1e6).toFixed(2)}M</td>
-              <td className="r mono dim grp-fix col-grp-end">{Math.round((Math.abs(r.nominal) / totNom) * 100)}%</td>
-              <td className={"r mono grp-grk col-grp " + pnlCls(r.vanna)}>{fmt.sgn(r.vanna / 1000, 0)}k</td>
-              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>{fmt.sgn(r.volga / 1000, 0)}k</td>
+              <td className="r mono dim grp-fix col-grp-end">
+                {Math.round((Math.abs(r.nominal) / totNom) * 100)}%
+              </td>
+              <td className={"r mono grp-grk col-grp " + pnlCls(r.vanna)}>
+                {fmt.sgn(r.vanna / 1000, 0)}k
+              </td>
+              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>
+                {fmt.sgn(r.volga / 1000, 0)}k
+              </td>
             </tr>
           ))}
         </tbody>
@@ -405,21 +559,34 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
         <thead>
           <tr>
             <th className="l grp-fix">Tenor</th>
-            <th className="r grp-pnl col-grp">P&L</th><th className="r grp-pnl col-grp-end">%</th>
-            <th className="r grp-fix col-grp">Vega</th><th className="r grp-fix col-grp-end">%</th>
-            <th className="r grp-grk col-grp">Vanna</th><th className="r grp-grk col-grp-end">Volga</th>
+            <th className="r grp-pnl col-grp">P&L</th>
+            <th className="r grp-pnl col-grp-end">%</th>
+            <th className="r grp-fix col-grp">Vega</th>
+            <th className="r grp-fix col-grp-end">%</th>
+            <th className="r grp-grk col-grp">Vanna</th>
+            <th className="r grp-grk col-grp-end">Volga</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={i}>
-              <td className="l grp-fix"><span className="sym">{r.label}</span></td>
+              <td className="l grp-fix">
+                <span className="sym">{r.label}</span>
+              </td>
               <td className={"r mono grp-pnl col-grp " + pnlCls(r.pnl)}>{fmt.usdk(r.pnl)}</td>
               <td className={"r mono grp-pnl col-grp-end " + pnlCls(r.pnl)}>{pnlPct(r.pnl)}</td>
-              <td className={"r mono grp-fix col-grp " + pnlCls(r.vega)}>{fmt.sgn(r.vega / 1000, 1)}k</td>
-              <td className="r mono dim grp-fix col-grp-end">{Math.round((Math.abs(r.vega) / totVega) * 100)}%</td>
-              <td className={"r mono grp-grk col-grp " + pnlCls(r.vanna)}>{fmt.sgn(r.vanna / 1000, 0)}k</td>
-              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>{fmt.sgn(r.volga / 1000, 0)}k</td>
+              <td className={"r mono grp-fix col-grp " + pnlCls(r.vega)}>
+                {fmt.sgn(r.vega / 1000, 1)}k
+              </td>
+              <td className="r mono dim grp-fix col-grp-end">
+                {Math.round((Math.abs(r.vega) / totVega) * 100)}%
+              </td>
+              <td className={"r mono grp-grk col-grp " + pnlCls(r.vanna)}>
+                {fmt.sgn(r.vanna / 1000, 0)}k
+              </td>
+              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>
+                {fmt.sgn(r.volga / 1000, 0)}k
+              </td>
             </tr>
           ))}
         </tbody>
@@ -450,14 +617,19 @@ export function PortfolioView(): JSX.Element {
   // Non-greek attribution pivots (by structure / by tenor) — realized P&L bridged
   // from closed booked positions. Polled so the bridge stays live; "by mode" (PCA)
   // stays deferred.
-  const pivotLive = useFetch(async () => {
-    const [structure, tenor, trade] = await Promise.all([
-      fetchPnlAttributionPivot("structure").then(adaptStructureRows),
-      fetchPnlAttributionPivot("tenor").then(adaptTenorRows),
-      fetchPnlAttributionPivot("trade").then(adaptWaterfallPivot),
-    ]);
-    return { structure, tenor, trade };
-  }, 120_000, true, 60_000).data;
+  const pivotLive = useFetch(
+    async () => {
+      const [structure, tenor, trade] = await Promise.all([
+        fetchPnlAttributionPivot("structure").then(adaptStructureRows),
+        fetchPnlAttributionPivot("tenor").then(adaptTenorRows),
+        fetchPnlAttributionPivot("trade").then(adaptWaterfallPivot),
+      ]);
+      return { structure, tenor, trade };
+    },
+    120_000,
+    true,
+    60_000,
+  ).data;
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
@@ -470,7 +642,11 @@ export function PortfolioView(): JSX.Element {
   const netNotional = Math.abs(
     posForLev.reduce((s, p) => s + (p.side === "BUY" ? p.nominal : -p.nominal), 0),
   );
-  const lev = { gross: grossNotional / 1e6, net: netNotional / 1e6, buyingPower: a.buyingPower / 1e6 };
+  const lev = {
+    gross: grossNotional / 1e6,
+    net: netNotional / 1e6,
+    buyingPower: a.buyingPower / 1e6,
+  };
   // §P1 leverage unit bug: notional is in €, net liq in $ — convert to one ccy before dividing
   const netLiqEur = a.netLiq / spot; // $ net liq → €
   const grossX = netLiqEur ? (lev.gross / (netLiqEur / 1e6)).toFixed(2) : "—";
@@ -484,10 +660,21 @@ export function PortfolioView(): JSX.Element {
   const pnlSkew = dp.reduce((x, y) => x + ((y - mean) / sd) ** 3, 0) / dp.length;
   return (
     <div className="portfolio-grid">
-      <Panel title="Account & capital" dataPp="account" right={<FreshBadge fresh={portfolio} label="IB account" />} className="acct-panel">
+      <Panel
+        title="Account & capital"
+        dataPp="account"
+        right={<FreshBadge fresh={portfolio} label="IB account" />}
+        className="acct-panel"
+      >
         <div className="acct-tables">
           <table className="dt greeks-table acct-cap">
-            <thead><tr><th className="l">Capital</th><th className="r">Value</th><th className="r">Note</th></tr></thead>
+            <thead>
+              <tr>
+                <th className="l">Capital</th>
+                <th className="r">Value</th>
+                <th className="r">Note</th>
+              </tr>
+            </thead>
             <tbody>
               <tr>
                 <td className="l">Net liquidation</td>
@@ -522,7 +709,9 @@ export function PortfolioView(): JSX.Element {
               <tr className="acct-sep">
                 <td className="l">Gross leverage</td>
                 <td className="r mono">{lev.gross.toFixed(1)}M €</td>
-                <td className="r acct-note">{grossX}× net liq · €{(netLiqEur / 1e6).toFixed(2)}M</td>
+                <td className="r acct-note">
+                  {grossX}× net liq · €{(netLiqEur / 1e6).toFixed(2)}M
+                </td>
               </tr>
               <tr>
                 <td className="l">Net leverage</td>
@@ -540,43 +729,66 @@ export function PortfolioView(): JSX.Element {
         </div>
       </Panel>
 
-      <Panel
-        title="Performance"
-        dataPp="perf"
-        right={
-          <div className="tf-group">
-            {["1D", "7D", "30D", "1Y", "all"].map((wn) => (
-              <button key={wn} className={"chip " + (win === wn ? "on" : "")} onClick={() => setWin(wn)}>
-                {wn}
-              </button>
-            ))}
+      <div className="pf-perf-row">
+        <Panel
+          title="Performance"
+          dataPp="perf"
+          right={
+            <div className="tf-group">
+              {["1D", "7D", "30D", "1Y", "all"].map((wn) => (
+                <button
+                  key={wn}
+                  className={"chip " + (win === wn ? "on" : "")}
+                  onClick={() => setWin(wn)}
+                >
+                  {wn}
+                </button>
+              ))}
+            </div>
+          }
+          className="perf-panel"
+        >
+          <PerfCharts window={win} ps={ps} unreal={unreal} />
+          <div className="perf-foot">
+            <div className="ps-item">
+              <span className="gs-lbl">
+                Hit rate <em className="unit">realized Sharpe {ps.sharpe.toFixed(2)}</em>
+              </span>
+              <b className="mono">{ps.hitRateNull ? "—" : ps.hitRate.toFixed(0) + "%"}</b>
+            </div>
+            <div className="ps-item">
+              <span className="gs-lbl">P&L skew</span>
+              <b className={"mono " + (pnlSkew >= 0 ? "pos" : "neg")}>{fmt.sgn(pnlSkew, 2)}</b>
+              <span className="gs-sub mono dim">
+                {pnlSkew >= 0 ? "long-γ signature ✓" : "⚠ vs long-γ"}
+              </span>
+            </div>
           </div>
-        }
-        className="perf-panel"
-      >
-        <PerfCharts window={win} ps={ps} unreal={unreal} />
-        <div className="perf-foot">
-          <div className="ps-item">
-            <span className="gs-lbl">
-              Hit rate <em className="unit">realized Sharpe {ps.sharpe.toFixed(2)}</em>
-            </span>
-            <b className="mono">{ps.hitRateNull ? "—" : ps.hitRate.toFixed(0) + "%"}</b>
-          </div>
-          <div className="ps-item">
-            <span className="gs-lbl">P&L skew</span>
-            <b className={"mono " + (pnlSkew >= 0 ? "pos" : "neg")}>{fmt.sgn(pnlSkew, 2)}</b>
-            <span className="gs-sub mono dim">{pnlSkew >= 0 ? "long-γ signature ✓" : "⚠ vs long-γ"}</span>
-          </div>
-        </div>
-      </Panel>
+        </Panel>
+        <Panel
+          title="Carry vs convexity — survival metric"
+          dataPp="carry-convex"
+          className="cov-panel"
+        >
+          <CoverageHero />
+        </Panel>
+      </div>
 
-      <Panel title="Realized P&L attribution — bridge" dataPp="pnl-attribution" className="wf-panel">
+      <Panel
+        title="Realized P&L attribution — bridge"
+        dataPp="pnl-attribution"
+        className="wf-panel"
+      >
         <div className="wf-cell wf-structure-cell">
-          <div className="perf-sub mono dim">by structure <em className="unit">P&L · nominal · 2nd-order</em></div>
+          <div className="perf-sub mono dim">
+            by structure <em className="unit">P&L · nominal · 2nd-order</em>
+          </div>
           <StructureTable rows={pivotLive?.structure ?? []} />
         </div>
         <div className="wf-cell wf-structure-cell">
-          <div className="perf-sub mono dim">by tenor <em className="unit">P&L · vega · 2nd-order</em></div>
+          <div className="perf-sub mono dim">
+            by tenor <em className="unit">P&L · vega · 2nd-order</em>
+          </div>
           <TenorTable rows={pivotLive?.tenor ?? []} />
         </div>
         <div className="wf-2col">
@@ -589,10 +801,6 @@ export function PortfolioView(): JSX.Element {
             <TradeTable steps={pd?.waterfallGreek ?? []} col="Greek" />
           </div>
         </div>
-      </Panel>
-
-      <Panel title="Carry vs convexity — survival metric" dataPp="carry-convex" className="cov-panel">
-        <CoverageHero />
       </Panel>
     </div>
   );
