@@ -1018,11 +1018,13 @@ input,select{font-family:inherit;font-size:13px}
 .comp-leg-name{flex:1}
 .pf-row2{display:grid;grid-template-columns:1.5fr 1fr;gap:12px;align-items:start}
 .pf-row2 .panel{margin-bottom:0}
-/* Attribution → 2×2 of four sub-panels (by greek / structure / tenor / trade). */
-.wf-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+/* Attribution → by-trade table (left) + greek/structure/tenor bars stacked (right). */
+.wf-2col{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.wf-col{display:flex;flex-direction:column;gap:18px;min-width:0}
 .wf-cell{border:1px solid var(--border);border-radius:8px;padding:10px 12px;min-width:0;background:color-mix(in srgb,var(--line) 22%,transparent)}
 .wf-cell .perf-sub{margin-bottom:6px}
-@media (max-width:720px){.wf-grid{grid-template-columns:1fr}}
+.wf-trade .acct-cap{margin:0}
+@media (max-width:720px){.wf-2col{grid-template-columns:1fr}}
 /* Horizontal diverging bars for categorical attribution (structure/tenor/trade). */
 .hbar-list{display:flex;flex-direction:column;gap:5px}
 .hbar-empty{padding:20px 0;text-align:center}

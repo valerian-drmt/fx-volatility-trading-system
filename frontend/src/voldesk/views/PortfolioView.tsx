@@ -337,6 +337,35 @@ function HBarList({ steps }: { steps: WaterfallStep[] }): JSX.Element {
   );
 }
 
+// By-trade attribution as a 2-column table (name | P&L). The % is the trade's share
+// of the total GAINS if it's a winner, or of the total LOSSES if it's a loser.
+function TradeTable({ steps }: { steps: WaterfallStep[] }): JSX.Element {
+  const rows = steps.filter((s) => s.type !== "start" && s.type !== "net");
+  if (rows.length === 0) return <div className="hbar-empty dim small mono">no P&L yet</div>;
+  const gains = rows.filter((r) => r.v > 0).reduce((s, r) => s + r.v, 0);
+  const losses = rows.filter((r) => r.v < 0).reduce((s, r) => s + Math.abs(r.v), 0);
+  const fmtk = (v: number): string => (v >= 0 ? "+" : "−") + "$" + Math.abs(v).toFixed(1) + "k";
+  const pct = (v: number): number => {
+    const base = v >= 0 ? gains : losses;
+    return base ? Math.round((Math.abs(v) / base) * 100) : 0;
+  };
+  return (
+    <table className="dt greeks-table acct-cap">
+      <thead><tr><th className="l">Trade</th><th className="r">P&L <em className="unit">% of gain/loss</em></th></tr></thead>
+      <tbody>
+        {rows.map((s, i) => (
+          <tr key={i}>
+            <td className="l">{s.label}{s.sub && <em className="unit">{s.sub}</em>}</td>
+            <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>
+              {fmtk(s.v)} <span className="dim">({pct(s.v)}%)</span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 interface StructureFam {
   name: string;
   color: string;
@@ -590,22 +619,24 @@ export function PortfolioView(): JSX.Element {
       </Panel>
 
       <Panel title="Realized P&L attribution — bridge" dataPp="pnl-attribution" className="wf-panel">
-        <div className="wf-grid">
-          <div className="wf-cell">
-            <div className="perf-sub mono dim">by greek</div>
-            <HBarList steps={pd?.waterfallGreek ?? []} />
-          </div>
-          <div className="wf-cell">
-            <div className="perf-sub mono dim">by structure</div>
-            <HBarList steps={pivotLive?.structure ?? []} />
-          </div>
-          <div className="wf-cell">
-            <div className="perf-sub mono dim">by tenor</div>
-            <HBarList steps={pivotLive?.tenor ?? []} />
-          </div>
-          <div className="wf-cell">
+        <div className="wf-2col">
+          <div className="wf-cell wf-trade">
             <div className="perf-sub mono dim">by trade</div>
-            <HBarList steps={pivotLive?.trade ?? []} />
+            <TradeTable steps={pivotLive?.trade ?? []} />
+          </div>
+          <div className="wf-col">
+            <div className="wf-cell">
+              <div className="perf-sub mono dim">by greek</div>
+              <HBarList steps={pd?.waterfallGreek ?? []} />
+            </div>
+            <div className="wf-cell">
+              <div className="perf-sub mono dim">by structure</div>
+              <HBarList steps={pivotLive?.structure ?? []} />
+            </div>
+            <div className="wf-cell">
+              <div className="perf-sub mono dim">by tenor</div>
+              <HBarList steps={pivotLive?.tenor ?? []} />
+            </div>
           </div>
         </div>
       </Panel>
