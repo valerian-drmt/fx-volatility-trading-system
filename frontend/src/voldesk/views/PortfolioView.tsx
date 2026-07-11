@@ -317,52 +317,11 @@ function CoverageHero(): JSX.Element {
   );
 }
 
-// Horizontal diverging bars — the right chart for CATEGORICAL P&L attribution
-// (by structure / tenor / trade): full names in a left column, a bar left/right of
-// zero, value at the end. Crisp HTML text (no SVG scaling), handles many rows.
-function HBarList({ steps }: { steps: WaterfallStep[] }): JSX.Element {
-  const rows = steps.filter((s) => s.type !== "start" && s.type !== "net");
-  const net = steps.find((s) => s.type === "net");
-  const max = Math.max(1, ...rows.map((r) => Math.abs(r.v)));
-  const fmtk = (v: number): string => (v >= 0 ? "+" : "−") + "$" + Math.abs(v).toFixed(1) + "k";
-  if (rows.length === 0) return <div className="hbar-empty dim small mono">no P&L yet</div>;
-  return (
-    <div className="hbar-list">
-      {rows.map((s, i) => {
-        const wpct = (Math.abs(s.v) / max) * 50;
-        const pos = s.v >= 0;
-        const tone = s.type === "resid" ? "resid" : pos ? "pos" : "neg";
-        return (
-          <div className="hbar-row" key={i}>
-            <span className="hbar-lbl mono" title={s.label + (s.sub ? " · " + s.sub : "")}>
-              {s.label}
-              {s.sub && <em className="hbar-sub">{s.sub}</em>}
-            </span>
-            <span className="hbar-track">
-              <span className="hbar-zero" />
-              <span
-                className={"hbar-fill " + tone}
-                style={pos ? { left: "50%", width: wpct + "%" } : { right: "50%", width: wpct + "%" }}
-              />
-            </span>
-            <span className={"hbar-val mono " + tone}>{fmtk(s.v)}</span>
-          </div>
-        );
-      })}
-      {net && (
-        <div className="hbar-row hbar-net">
-          <span className="hbar-lbl mono">Net</span>
-          <span className="hbar-track" />
-          <span className={"hbar-val mono " + (net.v >= 0 ? "pos" : "neg")}>{fmtk(net.v)}</span>
-        </div>
-      )}
-    </div>
-  );
-}
 
-// By-trade attribution as a 2-column table (name | P&L). The % is the trade's share
-// of the total GAINS if it's a winner, or of the total LOSSES if it's a loser.
-function TradeTable({ steps }: { steps: WaterfallStep[] }): JSX.Element {
+// Attribution as a 2-column table (name | P&L | % gain/loss). Reused for both the
+// by-trade and by-greek axes (same WaterfallStep shape). The % is the row's share of
+// the total GAINS if it's a winner, or of the total LOSSES if it's a loser.
+function TradeTable({ steps, col = "Trade" }: { steps: WaterfallStep[]; col?: string }): JSX.Element {
   const rows = steps.filter((s) => s.type !== "start" && s.type !== "net");
   if (rows.length === 0) return <div className="hbar-empty dim small mono">no P&L yet</div>;
   const gains = rows.filter((r) => r.v > 0).reduce((s, r) => s + r.v, 0);
@@ -374,7 +333,7 @@ function TradeTable({ steps }: { steps: WaterfallStep[] }): JSX.Element {
   };
   return (
     <table className="dt greeks-table acct-cap">
-      <thead><tr><th className="l">Trade</th><th className="r">P&L</th><th className="r">% <em className="unit">gain/loss</em></th></tr></thead>
+      <thead><tr><th className="l">{col}</th><th className="r">P&L</th><th className="r">% <em className="unit">gain/loss</em></th></tr></thead>
       <tbody>
         {rows.map((s, i) => (
           <tr key={i}>
@@ -627,7 +586,7 @@ export function PortfolioView(): JSX.Element {
           </div>
           <div className="wf-cell">
             <div className="perf-sub mono dim">by greek</div>
-            <HBarList steps={pd?.waterfallGreek ?? []} />
+            <TradeTable steps={pd?.waterfallGreek ?? []} col="Greek" />
           </div>
         </div>
       </Panel>
