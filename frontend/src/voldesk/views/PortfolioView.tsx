@@ -301,13 +301,14 @@ interface WaterfallBar extends WaterfallStep {
 }
 
 // realized P&L attribution bridge (waterfall)
-function Waterfall({ steps }: { steps: WaterfallStep[] }): JSX.Element {
+function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element {
+  const steps = rawSteps.filter((s) => s.type !== "start"); // no "Start" baseline bar
   const w = 660,
     h = 250,
     pt = 30,
     pb = 54,
-    pl = 8,
-    pr = 8;
+    pl = 6,
+    pr = 6;
   let run = 0;
   const bars: WaterfallBar[] = steps.map((s) => {
     if (s.type === "start") return { ...s, base: 0, top: 0 };
@@ -323,7 +324,7 @@ function Waterfall({ steps }: { steps: WaterfallStep[] }): JSX.Element {
   const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
   const n = steps.length,
     slot = (w - pl - pr) / n,
-    bw = slot * 0.56;
+    bw = slot * 0.62;
   // Truncate a label to what fits its slot (mono ≈ 0.6em/char) so long structure
   // names don't overlap; the full text stays on hover via <title>.
   const trunc = (s: string, font: number): string => {
@@ -342,7 +343,7 @@ function Waterfall({ steps }: { steps: WaterfallStep[] }): JSX.Element {
             : "var(--neg)";
   const k = (v: number): string => (v >= 0 ? "+" : "−") + "$" + Math.abs(v).toFixed(1) + "k";
   return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block", height: "auto" }}>
       <line x1={pl} x2={w - pr} y1={Y(0)} y2={Y(0)} stroke="var(--line)" />
       {bars.map((s, i) => {
         const cx = pl + slot * i + slot / 2;
