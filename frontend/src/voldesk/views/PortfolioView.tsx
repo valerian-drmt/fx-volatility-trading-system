@@ -4,7 +4,7 @@
  * `js/views_portfolio.jsx` (global-window pattern) into typed ES modules.
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchEquityCurve, fetchPnlAttribution, fetchPnlAttributionPivot } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
@@ -108,6 +108,15 @@ function DrawdownSvg({ data, status }: { data: number[]; status: string }): JSX.
 // on the left. Both share ONE windowed equity fetch; remount via key on the window.
 function PerfCharts({ window: win, ps, unreal }: { window: string; ps: PerfStats; unreal: number }): JSX.Element {
   const live = useFetch<number[]>(() => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve), 120_000);
+  // useFetch only refires on its own tick/poll, so a window change alone wouldn't
+  // refetch — reload explicitly when the window switches (skip the initial mount,
+  // which useFetch already fetched).
+  const reload = live.reload;
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    reload();
+  }, [win, reload]);
   const data = live.data ?? [];
   return (
     <div className="perf-v">
@@ -639,7 +648,7 @@ export function PortfolioView(): JSX.Element {
         }
         className="perf-panel"
       >
-        <PerfCharts key={win} window={win} ps={ps} unreal={unreal} />
+        <PerfCharts window={win} ps={ps} unreal={unreal} />
         <div className="perf-foot">
           <div className="ps-item">
             <span className="gs-lbl">
