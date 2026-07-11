@@ -543,14 +543,15 @@ export function PortfolioView(): JSX.Element {
     g = pd?.greeks ?? DATA.greeks;
   const dailyPnlData = pd?.dailyPnl ?? DATA2.dailyPnl;
   // Non-greek attribution pivots (by structure / by tenor) — realized P&L bridged
-  // from closed booked positions. Fetched once; "by mode" (PCA) stays deferred.
+  // from closed booked positions. Polled so the bridge stays live; "by mode" (PCA)
+  // stays deferred.
   const pivotLive = useFetch(async () => {
     const [structure, tenor] = await Promise.all([
       fetchPnlAttributionPivot("structure").then(adaptWaterfallPivot),
       fetchPnlAttributionPivot("tenor").then(adaptWaterfallPivot),
     ]);
     return { structure, tenor };
-  }, 120_000).data;
+  }, 120_000, true, 60_000).data;
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
@@ -663,54 +664,48 @@ export function PortfolioView(): JSX.Element {
         </div>
       </Panel>
 
+      <Panel
+        title="Realized P&L attribution — bridge"
+        dataPp="pnl-attribution"
+        right={
+          <div className="tf-group">
+            {["greek", "structure", "tenor", "mode"].map((p) => (
+              <button key={p} className={"chip " + (pivot === p ? "on" : "")} onClick={() => setPivot(p)}>
+                by {p}
+              </button>
+            ))}
+          </div>
+        }
+        className="wf-panel"
+      >
+        <Waterfall
+          steps={
+            pivot === "greek" ? (pd?.waterfallGreek ?? DATA2.waterfall["greek"] ?? [])
+              : pivot === "structure" ? (pivotLive?.structure ?? DATA2.waterfall["structure"] ?? [])
+              : pivot === "tenor" ? (pivotLive?.tenor ?? DATA2.waterfall["tenor"] ?? [])
+              : (DATA2.waterfall[pivot] ?? []) // "mode" (PCA) — deferred research feature
+          }
+        />
+        {pivot === "mode" && (
+          <div className="attrib-note dim small">
+            signal → structure → realized P&L, mapped to PC1/2/3 (the modes traded) · forward realized tracking, not a
+            backtest · feeds conviction weighting in Signal · skew = incident
+          </div>
+        )}
+      </Panel>
+
       <Panel title="Carry vs convexity — survival metric" dataPp="carry-convex" className="cov-panel">
         <CoverageHero />
       </Panel>
 
-      <div className="row2 pf-row2">
-        <Panel
-          title="Realized P&L attribution — bridge"
-          dataPp="pnl-attribution"
-          right={
-            <div className="tf-group">
-              {["greek", "structure", "tenor", "mode"].map((p) => (
-                <button key={p} className={"chip " + (pivot === p ? "on" : "")} onClick={() => setPivot(p)}>
-                  by {p}
-                </button>
-              ))}
-            </div>
-          }
-          className="wf-panel"
-        >
-          <Waterfall
-            steps={
-              pivot === "greek" ? (pd?.waterfallGreek ?? DATA2.waterfall["greek"] ?? [])
-                : pivot === "structure" ? (pivotLive?.structure ?? DATA2.waterfall["structure"] ?? [])
-                : pivot === "tenor" ? (pivotLive?.tenor ?? DATA2.waterfall["tenor"] ?? [])
-                : (DATA2.waterfall[pivot] ?? []) // "mode" (PCA) — deferred research feature
-            }
-          />
-          {pivot === "mode" ? (
-            <div className="attrib-note dim small">
-              signal → structure → realized P&L, mapped to PC1/2/3 (the modes traded) · forward realized tracking, not a
-              backtest · feeds conviction weighting in Signal · skew = incident
-            </div>
-          ) : (
-            <div className="attrib-note dim small">
-              residual = explained vs realized — greeks health check (large residual = model drift) · base matches Risk
-              (Γ/V/Θ/Δ + vanna/volga) so residual is truly unexplained · lookback {DATA2.coverage.windowLabel}
-            </div>
-          )}
-        </Panel>
-        <Panel title="Book composition" dataPp="book-composition" right={<FreshBadge fresh={portfolio} />} className="bookcomp-panel">
-          <BookComposition
-            vegaPerTenor={pd?.vegaPerTenor ?? DATA2.vegaPerTenor}
-            bookComposition={pd?.bookComposition ?? DATA2.bookComposition}
-            positions={pd?.positions ?? DATA.positions}
-            netVanna={g.netVanna}
-          />
-        </Panel>
-      </div>
+      <Panel title="Book composition" dataPp="book-composition" right={<FreshBadge fresh={portfolio} />} className="bookcomp-panel">
+        <BookComposition
+          vegaPerTenor={pd?.vegaPerTenor ?? DATA2.vegaPerTenor}
+          bookComposition={pd?.bookComposition ?? DATA2.bookComposition}
+          positions={pd?.positions ?? DATA.positions}
+          netVanna={g.netVanna}
+        />
+      </Panel>
     </div>
   );
 }
