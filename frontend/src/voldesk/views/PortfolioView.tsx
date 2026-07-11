@@ -33,13 +33,14 @@ function EquityLineSvg({ data, status }: { data: number[]; status: string }): JS
   const X = (i: number): number => pl + (i / (data.length - 1)) * (w - pl - pr);
   const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
   const d = data.map((v, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
-  const up = data[data.length - 1]! >= data[0]!;
+  const last = data[data.length - 1]!;
+  const up = last >= data[0]!;
   const col = up ? "var(--pos)" : "var(--neg)";
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
       <defs>
         <linearGradient id="eqg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={col} stopOpacity="0.22" />
+          <stop offset="0%" stopColor={col} stopOpacity="0.20" />
           <stop offset="100%" stopColor={col} stopOpacity="0" />
         </linearGradient>
       </defs>
@@ -55,7 +56,12 @@ function EquityLineSvg({ data, status }: { data: number[]; status: string }): JS
         );
       })}
       <path d={d + ` L${X(data.length - 1)} ${h - pb} L${pl} ${h - pb} Z`} fill="url(#eqg)" />
-      <path d={d} fill="none" stroke={col} strokeWidth="1.8" />
+      <path d={d} fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round" />
+      {/* last value marker + label — the current account value */}
+      <circle cx={X(data.length - 1)} cy={Y(last)} r="3.2" fill={col} />
+      <text x={X(data.length - 1) - 4} y={Y(last) - 6} textAnchor="end" fill={col} fontSize="10" fontFamily="var(--mono)" fontWeight="600">
+        {(last / 1e6).toFixed(2)}M
+      </text>
     </svg>
   );
 }
@@ -75,25 +81,31 @@ function DrawdownSvg({ data, status }: { data: number[]; status: string }): JSX.
   let peak = data[0]!;
   const dd = data.map((v) => { peak = Math.max(peak, v); return (v - peak) / peak; });
   const ddMin = Math.min(...dd, -0.0001);
+  const cur = dd[dd.length - 1]!;
   const X = (i: number): number => pl + (i / (data.length - 1)) * (w - pl - pr);
-  const Y = (x: number): number => pt + (x / ddMin) * (h - pt - pb); // 0 → top, ddMin → bottom
+  const base = pt; // 0% at the top — the underwater surface
+  const floor = h - pb;
+  const Y = (x: number): number => base + (x / ddMin) * (floor - base); // 0 → top, ddMin → bottom
   const line = dd.map((x, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ");
-  const area = "M" + X(0).toFixed(1) + " " + pt + " " + dd.map((x, i) => "L" + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ") + " L" + X(data.length - 1).toFixed(1) + " " + pt + " Z";
+  // Underwater area: fill DOWN from the 0% surface to the drawdown curve (solid, no gradient).
+  const area = "M" + X(0).toFixed(1) + " " + base + " " + dd.map((x, i) => "L" + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ") + " L" + X(data.length - 1).toFixed(1) + " " + base + " Z";
+  const yMax = Y(ddMin);
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      {[0, 1].map((f, i) => {
-        const yy = pt + f * (h - pt - pb);
-        return (
-          <g key={i}>
-            <line x1={pl} x2={w - pr} y1={yy} y2={yy} stroke="var(--line)" opacity="0.5" />
-            <text x={4} y={yy + 3} fill={f === 0 ? "var(--text-faint)" : "var(--neg)"} fontSize="9" fontFamily="var(--mono)">
-              {f === 0 ? "0%" : (ddMin * 100).toFixed(1) + "%"}
-            </text>
-          </g>
-        );
-      })}
-      <path d={area} fill="var(--neg)" fillOpacity="0.16" />
-      <path d={line} fill="none" stroke="var(--neg)" strokeWidth="1.6" />
+      {/* underwater fill (solid) + curve */}
+      <path d={area} fill="var(--neg)" fillOpacity="0.30" />
+      <path d={line} fill="none" stroke="var(--neg)" strokeWidth="1.4" />
+      {/* 0% water surface (emphasised) */}
+      <line x1={pl} x2={w - pr} y1={base} y2={base} stroke="var(--line)" opacity="0.9" />
+      <text x={4} y={base + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">0%</text>
+      {/* max-drawdown reference line (dashed) */}
+      <line x1={pl} x2={w - pr} y1={yMax} y2={yMax} stroke="var(--neg)" strokeWidth="1" strokeDasharray="4 3" opacity="0.55" />
+      <text x={4} y={yMax + 3} fill="var(--neg)" fontSize="9" fontFamily="var(--mono)">{(ddMin * 100).toFixed(1)}%</text>
+      {/* current drawdown marker + label */}
+      <circle cx={X(data.length - 1)} cy={Y(cur)} r="3" fill="var(--neg)" />
+      <text x={X(data.length - 1) - 4} y={Y(cur) + (cur > ddMin * 0.5 ? 12 : -6)} textAnchor="end" fill="var(--neg)" fontSize="10" fontFamily="var(--mono)" fontWeight="600">
+        {(cur * 100).toFixed(1)}%
+      </text>
     </svg>
   );
 }
