@@ -967,7 +967,7 @@ input,select{font-family:inherit;font-size:13px}
 .perf-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)}
 /* Stacked P&L / Drawdown graphs, each with its two stats on the left. */
 .perf-v{display:flex;flex-direction:column;gap:14px}
-.perf-row{display:grid;grid-template-columns:minmax(240px,270px) minmax(0,1fr);gap:18px;align-items:center}
+.perf-row{display:grid;grid-template-columns:minmax(190px,220px) minmax(0,1fr);gap:18px;align-items:center}
 .perf-row + .perf-row{padding-top:14px;border-top:1px solid var(--border)}
 .perf-side{display:flex;flex-direction:column;justify-content:center}
 .perf-side .acct-cap{margin:0}

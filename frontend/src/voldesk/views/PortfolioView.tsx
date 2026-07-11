@@ -118,12 +118,10 @@ function PerfCharts({ window: win, ps, unreal }: { window: string; ps: PerfStats
               <tr>
                 <td className="l">Realized</td>
                 <td className={"r mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</td>
-                <td className="r acct-note">{ps.nClosed} closed</td>
               </tr>
               <tr>
                 <td className="l">Unrealized</td>
                 <td className={"r mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</td>
-                <td className="r acct-note">one engine</td>
               </tr>
             </tbody>
           </table>
@@ -140,12 +138,10 @@ function PerfCharts({ window: win, ps, unreal }: { window: string; ps: PerfStats
               <tr>
                 <td className="l">Max drawdown</td>
                 <td className="r mono neg">{ps.maxDd}%</td>
-                <td className="r acct-note">—</td>
               </tr>
               <tr>
                 <td className="l">Current DD</td>
                 <td className="r mono neg">{ps.currentDd}%</td>
-                <td className="r acct-note">—</td>
               </tr>
             </tbody>
           </table>
