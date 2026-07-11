@@ -125,12 +125,12 @@ export function adaptDailyPnl(raw: unknown): number[] {
 }
 
 interface AttribTotals {
-  actual_pnl?: number | null;
-  delta_pnl?: number | null;
-  gamma_pnl?: number | null;
-  vega_pnl?: number | null;
-  theta_pnl?: number | null;
-  residual?: number | null;
+  actual_pnl_usd?: number | null;
+  delta_pnl_usd?: number | null;
+  gamma_pnl_usd?: number | null;
+  vega_pnl_usd?: number | null;
+  theta_pnl_usd?: number | null;
+  residual_usd?: number | null;
 }
 
 /** /portfolio/pnl-attribution-pivot → a by-structure / by-tenor bridge ($ → $k).
@@ -156,12 +156,12 @@ export function adaptWaterfallGreek(raw: unknown): WaterfallStep[] {
   const k = (v: number | null | undefined): number => r1(n(v) / 1000);
   return [
     { label: "Start", v: 0, type: "start" },
-    { label: "+Γ", sub: "½Γ(dS)²", v: k(t.gamma_pnl), type: "pos" },
-    { label: "+V", sub: "V·dσ", v: k(t.vega_pnl), type: "pos" },
-    { label: "−Θ", sub: "Θ·dt", v: k(t.theta_pnl), type: "neg" },
-    { label: "±Δ", sub: "Δ·dS", v: k(t.delta_pnl), type: "neg" },
-    { label: "residual", sub: "unexplained", v: k(t.residual), type: "resid" },
-    { label: "Net", v: k(t.actual_pnl), type: "net" },
+    { label: "+Γ", sub: "½Γ(dS)²", v: k(t.gamma_pnl_usd), type: "pos" },
+    { label: "+V", sub: "V·dσ", v: k(t.vega_pnl_usd), type: "pos" },
+    { label: "−Θ", sub: "Θ·dt", v: k(t.theta_pnl_usd), type: "neg" },
+    { label: "±Δ", sub: "Δ·dS", v: k(t.delta_pnl_usd), type: "neg" },
+    { label: "residual", sub: "unexplained", v: k(t.residual_usd), type: "resid" },
+    { label: "Net", v: k(t.actual_pnl_usd), type: "net" },
   ];
 }
 

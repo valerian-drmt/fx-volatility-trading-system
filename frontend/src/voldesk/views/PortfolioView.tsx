@@ -303,9 +303,9 @@ interface WaterfallBar extends WaterfallStep {
 // realized P&L attribution bridge (waterfall)
 function Waterfall({ steps }: { steps: WaterfallStep[] }): JSX.Element {
   const w = 660,
-    h = 230,
-    pt = 26,
-    pb = 44,
+    h = 250,
+    pt = 30,
+    pb = 54,
     pl = 8,
     pr = 8;
   let run = 0;
@@ -372,9 +372,9 @@ function Waterfall({ steps }: { steps: WaterfallStep[] }): JSX.Element {
             {!isStart && (
               <text
                 x={cx}
-                y={top - 5}
+                y={top - 6}
                 fill={col(s)}
-                fontSize="9.5"
+                fontSize="13"
                 fontWeight="700"
                 fontFamily="var(--mono)"
                 textAnchor="middle"
@@ -384,9 +384,9 @@ function Waterfall({ steps }: { steps: WaterfallStep[] }): JSX.Element {
             )}
             <text
               x={cx}
-              y={h - pb + 16}
+              y={h - pb + 20}
               fill="var(--fg)"
-              fontSize="10.5"
+              fontSize="14"
               fontWeight="700"
               fontFamily="var(--mono)"
               textAnchor="middle"
@@ -396,9 +396,9 @@ function Waterfall({ steps }: { steps: WaterfallStep[] }): JSX.Element {
             {s.sub && (
               <text
                 x={cx}
-                y={h - pb + 28}
+                y={h - pb + 36}
                 fill="var(--text-faint)"
-                fontSize="8"
+                fontSize="10.5"
                 fontFamily="var(--mono)"
                 textAnchor="middle"
               >
