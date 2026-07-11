@@ -670,19 +670,6 @@ export function PortfolioView(): JSX.Element {
             <span className="gs-sub mono dim">{pnlSkew >= 0 ? "long-γ signature ✓" : "⚠ vs long-γ"}</span>
           </div>
         </div>
-        {/* P&L reconciliation identity (CTO audit hook): Δ net-liq should ≈ realized +
-            unrealized. The gap is what dissolved via netting / reconciliation. */}
-        <div className="perf-recon mono">
-          <span className="dim">P&L foots:</span>{" "}
-          <b className={pnlCls(ps.netLiqChange)}>{fmt.sgn(ps.netLiqChange, 1)}k</b>{" "}
-          <span className="dim">Δ net-liq</span>{" = "}
-          <span className={pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</span> realized{" + "}
-          <span className={pnlCls(ps.cumUnrealized)}>{fmt.sgn(ps.cumUnrealized, 1)}k</span> unrealized{" + "}
-          <span className={pnlCls(ps.netLiqChange - ps.cumRealized - ps.cumUnrealized)}>
-            {fmt.sgn(ps.netLiqChange - ps.cumRealized - ps.cumUnrealized, 1)}k
-          </span>{" "}
-          <span className="dim">reconciliation gap{ps.nReconciledFlat > 0 ? ` · ${ps.nReconciledFlat} netted flat` : ""}</span>
-        </div>
       </Panel>
 
       <Panel title="Carry vs convexity — survival metric" dataPp="carry-convex" className="cov-panel">
