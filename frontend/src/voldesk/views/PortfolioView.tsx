@@ -344,7 +344,7 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
             : "var(--neg)";
   const k = (v: number): string => (v >= 0 ? "+" : "−") + "$" + Math.abs(v).toFixed(1) + "k";
   return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block", height: "auto" }}>
       <line x1={pl} x2={w - pr} y1={Y(0)} y2={Y(0)} stroke="var(--line)" />
       {bars.map((s, i) => {
         const cx = pl + slot * i + slot / 2;
