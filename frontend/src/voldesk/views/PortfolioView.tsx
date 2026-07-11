@@ -303,12 +303,14 @@ interface WaterfallBar extends WaterfallStep {
 // realized P&L attribution bridge (waterfall)
 function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element {
   const steps = rawSteps.filter((s) => s.type !== "start"); // no "Start" baseline bar
-  const w = 660,
-    h = 250,
+  // Wide, short viewBox so the bridge fills the full-width panel at a controlled
+  // height (a square-ish box would letterbox; auto-height would blow up too tall).
+  const w = 1040,
+    h = 230,
     pt = 30,
     pb = 54,
-    pl = 6,
-    pr = 6;
+    pl = 8,
+    pr = 8;
   let run = 0;
   const bars: WaterfallBar[] = steps.map((s) => {
     if (s.type === "start") return { ...s, base: 0, top: 0 };
@@ -343,7 +345,7 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
             : "var(--neg)";
   const k = (v: number): string => (v >= 0 ? "+" : "−") + "$" + Math.abs(v).toFixed(1) + "k";
   return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block", height: "auto" }}>
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
       <line x1={pl} x2={w - pr} y1={Y(0)} y2={Y(0)} stroke="var(--line)" />
       {bars.map((s, i) => {
         const cx = pl + slot * i + slot / 2;
@@ -381,7 +383,7 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
                 x={cx}
                 y={top - 6}
                 fill={col(s)}
-                fontSize="13"
+                fontSize="16"
                 fontWeight="700"
                 fontFamily="var(--mono)"
                 textAnchor="middle"
@@ -393,7 +395,7 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
               x={cx}
               y={h - pb + 20}
               fill="var(--fg)"
-              fontSize="14"
+              fontSize="17"
               fontWeight="700"
               fontFamily="var(--mono)"
               textAnchor="middle"
@@ -406,7 +408,7 @@ function Waterfall({ steps: rawSteps }: { steps: WaterfallStep[] }): JSX.Element
                 x={cx}
                 y={h - pb + 36}
                 fill="var(--text-faint)"
-                fontSize="10.5"
+                fontSize="13"
                 fontFamily="var(--mono)"
                 textAnchor="middle"
               >
