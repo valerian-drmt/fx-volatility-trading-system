@@ -113,15 +113,20 @@ function PerfCharts({ window: win, ps, unreal }: { window: string; ps: PerfStats
     <div className="perf-v">
       <div className="perf-row">
         <div className="perf-side">
-          <div className="ps-item">
-            <span className="gs-lbl">Realized <em className="unit">genuine closes</em></span>
-            <b className={"mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
-            <span className="gs-sub mono dim">{ps.nClosed} closed</span>
-          </div>
-          <div className="ps-item">
-            <span className="gs-lbl">Unrealized <em className="unit">one engine</em></span>
-            <b className={"mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</b>
-          </div>
+          <table className="dt greeks-table acct-cap">
+            <tbody>
+              <tr>
+                <td className="l">Realized</td>
+                <td className={"r mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</td>
+                <td className="r acct-note">{ps.nClosed} closed</td>
+              </tr>
+              <tr>
+                <td className="l">Unrealized</td>
+                <td className={"r mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</td>
+                <td className="r acct-note">one engine</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
         <div className="perf-chart">
           <div className="perf-sub mono dim">P&L <em className="unit">equity curve</em></div>
@@ -130,14 +135,20 @@ function PerfCharts({ window: win, ps, unreal }: { window: string; ps: PerfStats
       </div>
       <div className="perf-row">
         <div className="perf-side">
-          <div className="ps-item">
-            <span className="gs-lbl">Max drawdown</span>
-            <b className="mono neg">{ps.maxDd}%</b>
-          </div>
-          <div className="ps-item">
-            <span className="gs-lbl">Current DD</span>
-            <b className="mono neg">{ps.currentDd}%</b>
-          </div>
+          <table className="dt greeks-table acct-cap">
+            <tbody>
+              <tr>
+                <td className="l">Max drawdown</td>
+                <td className="r mono neg">{ps.maxDd}%</td>
+                <td className="r acct-note">—</td>
+              </tr>
+              <tr>
+                <td className="l">Current DD</td>
+                <td className="r mono neg">{ps.currentDd}%</td>
+                <td className="r acct-note">—</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
         <div className="perf-chart">
           <div className="perf-sub mono dim">Drawdown <em className="unit">% from peak</em></div>
