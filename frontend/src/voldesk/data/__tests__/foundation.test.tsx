@@ -297,8 +297,8 @@ describe("portfolio adapters", () => {
     expect(ps.hitRate).toBeCloseTo(58, 1);
   });
 
-  it("daily-pnl: realized series → $k", () => {
-    const d = adaptDailyPnl({ series: [{ realized_usd: 48000 }, { realized_usd: -4000 }] });
+  it("daily-pnl: mark-to-market series → $k", () => {
+    const d = adaptDailyPnl({ series: [{ mtm_usd: 48000 }, { mtm_usd: -4000 }] });
     expect(d).toEqual([48, -4]);
   });
 
