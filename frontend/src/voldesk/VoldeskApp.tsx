@@ -101,7 +101,7 @@ const TITLES: Record<string, [string, string]> = {
   trade: ["Trade", ""],
   signals: ["Signal", "IV surface · PCA modes · fair vol gate"],
   risk: ["Risk", ""],
-  portfolio: ["Portfolio", "Account · equity · attribution"],
+  portfolio: ["Portfolio", ""],
   system: ["System", "Infrastructure & diagnostics"],
   settings: ["Settings", "Versioned configuration"],
 };

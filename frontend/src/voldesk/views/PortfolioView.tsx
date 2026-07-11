@@ -10,7 +10,7 @@ import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
-import { pnlCls, gk$ } from "../components/format";
+import { pnlCls } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
 import type { BookComposition, Position, VegaTenor, WaterfallStep } from "../data";
@@ -551,9 +551,6 @@ export function PortfolioView(): JSX.Element {
   const netX = netLiqEur ? (lev.net / (netLiqEur / 1e6)).toFixed(2) : "—";
   // §P1 unrealized single source: read the one engine (= Open positions = Risk = Close)
   const unreal = g.netUnreal;
-  // §P3 cash FX residual — non-pair balances (GBP long, JPY short), separate from option Δ
-  const gbp = cashRows.find((c) => c.ccy === "GBP"),
-    jpy = cashRows.find((c) => c.ccy === "JPY");
   // §P3 P&L skew — a long-gamma book should show positive skew (many small theta losses, occasional gamma spikes)
   const dp = dailyPnlData,
     mean = dp.length ? dp.reduce((x, y) => x + y, 0) / dp.length : 0;
@@ -564,50 +561,52 @@ export function PortfolioView(): JSX.Element {
       <Panel title="Account & capital" dataPp="account" right={<FreshBadge fresh={portfolio} label="IB account" />} className="acct-panel">
         <div className="acct-tables">
           <table className="dt greeks-table acct-cap">
-            <thead><tr><th className="l">Capital</th><th className="r">Value</th></tr></thead>
+            <thead><tr><th className="l">Capital</th><th className="r">Value</th><th className="r">Note</th></tr></thead>
             <tbody>
               <tr>
                 <td className="l">Net liquidation</td>
-                <td className="r mono">{fmt.usd(a.netLiq)} {deltaPill(a.dNetLiq)}</td>
+                <td className="r mono">{fmt.usd(a.netLiq)}</td>
+                <td className="r">{deltaPill(a.dNetLiq)}</td>
               </tr>
               <tr>
                 <td className="l">Cash</td>
-                <td className="r mono">{fmt.usd(a.cash)} {deltaPill(a.dCash)}</td>
+                <td className="r mono">{fmt.usd(a.cash)}</td>
+                <td className="r">{deltaPill(a.dCash)}</td>
               </tr>
               <tr>
                 <td className="l">Init margin</td>
-                <td className="r mono">{fmt.usd(a.marginInit)} <span className="acct-sub">{a.marginInitPct}% used</span></td>
+                <td className="r mono">{fmt.usd(a.marginInit)}</td>
+                <td className="r acct-note">{a.marginInitPct}% used</td>
               </tr>
               <tr>
                 <td className="l">Maint margin</td>
-                <td className="r mono">{fmt.usd(a.marginMaint)} <span className="acct-sub">{a.marginMaintPct}% used</span></td>
+                <td className="r mono">{fmt.usd(a.marginMaint)}</td>
+                <td className="r acct-note">{a.marginMaintPct}% used</td>
               </tr>
               <tr>
                 <td className="l">Excess liquidity</td>
                 <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
+                <td className="r acct-note">—</td>
               </tr>
               <tr>
                 <td className="l">Cushion</td>
-                <td className="r mono">{(a.cushion * 100).toFixed(1)}% <span className="acct-sub">{a.nPositions} positions</span></td>
+                <td className="r mono">{(a.cushion * 100).toFixed(1)}%</td>
+                <td className="r acct-note">{a.nPositions} positions</td>
               </tr>
               <tr className="acct-sep">
                 <td className="l">Gross leverage</td>
-                <td className="r mono">{lev.gross.toFixed(1)}M € <span className="acct-sub">{grossX}× net liq · €{(netLiqEur / 1e6).toFixed(2)}M</span></td>
+                <td className="r mono">{lev.gross.toFixed(1)}M €</td>
+                <td className="r acct-note">{grossX}× net liq · €{(netLiqEur / 1e6).toFixed(2)}M</td>
               </tr>
               <tr>
                 <td className="l">Net leverage</td>
-                <td className="r mono">{lev.net.toFixed(1)}M € <span className="acct-sub">{netX}× net liq</span></td>
+                <td className="r mono">{lev.net.toFixed(1)}M €</td>
+                <td className="r acct-note">{netX}× net liq</td>
               </tr>
               <tr>
                 <td className="l">Buying power</td>
-                <td className="r mono pos">${lev.buyingPower.toFixed(2)}M <span className="acct-sub">available</span></td>
-              </tr>
-              <tr>
-                <td className="l">FX residual <em className="unit">cash</em></td>
-                <td className="r mono">
-                  GBP <span className="pos">{gk$(gbp?.usd)}</span> · JPY <span className="neg">{gk$(jpy?.usd)}</span>
-                  <span className="acct-sub">settlement residue · not an option Δ</span>
-                </td>
+                <td className="r mono pos">${lev.buyingPower.toFixed(2)}M</td>
+                <td className="r acct-note">available</td>
               </tr>
             </tbody>
           </table>
@@ -635,14 +634,15 @@ export function PortfolioView(): JSX.Element {
             <EquityChart window={win} />
           </div>
           <div className="perf-daily">
-            <div className="perf-sub mono dim">daily realized P&L · hit rate {ps.hitRate.toFixed(0)}%</div>
+            <div className="perf-sub mono dim">daily P&L <em className="unit">mark-to-market · Δ net-liq</em></div>
             <DailyPnlBars data={dailyPnlData} />
           </div>
         </div>
         <div className="perf-stats">
           <div className="ps-item">
-            <span className="gs-lbl">Cumulative realized</span>
-            <b className="mono pos">+${ps.cumRealized}k</b>
+            <span className="gs-lbl">Realized <em className="unit">genuine closes</em></span>
+            <b className={"mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
+            <span className="gs-sub mono dim">{ps.nClosed} closed</span>
           </div>
           <div className="ps-item">
             <span className="gs-lbl">
@@ -660,9 +660,9 @@ export function PortfolioView(): JSX.Element {
           </div>
           <div className="ps-item">
             <span className="gs-lbl">
-              Realized Sharpe <em className="unit">daily ann. · 22 sess.</em>
+              Hit rate <em className="unit">realized Sharpe {ps.sharpe.toFixed(2)}</em>
             </span>
-            <b className="mono">{ps.sharpe.toFixed(2)}</b>
+            <b className="mono">{ps.hitRateNull ? "—" : ps.hitRate.toFixed(0) + "%"}</b>
           </div>
           <div className="ps-item">
             <span className="gs-lbl">P&L skew</span>
