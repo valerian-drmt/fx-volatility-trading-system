@@ -176,10 +176,11 @@ export function adaptStructureRows(raw: unknown): StructureRow[] {
   }));
 }
 
-/** Rich per-reference-tenor row: P&L + the full 6 greeks (raw USD). */
+/** Rich per-reference-tenor row: P&L + nominal + the full 6 greeks (raw USD/EUR). */
 export interface TenorRow {
   label: string;
   pnl: number;
+  nominal: number;
   delta: number;
   gamma: number;
   vega: number;
@@ -194,6 +195,7 @@ export function adaptTenorRows(raw: unknown): TenorRow[] {
     groups?: {
       label?: string;
       pnl_usd?: number | null;
+      nominal_eur?: number | null;
       delta_usd?: number | null;
       gamma_usd?: number | null;
       vega_usd?: number | null;
@@ -205,6 +207,7 @@ export function adaptTenorRows(raw: unknown): TenorRow[] {
   return groups.map((g) => ({
     label: String(g.label ?? "—"),
     pnl: n(g.pnl_usd),
+    nominal: n(g.nominal_eur),
     delta: n(g.delta_usd),
     gamma: n(g.gamma_usd),
     vega: n(g.vega_usd),

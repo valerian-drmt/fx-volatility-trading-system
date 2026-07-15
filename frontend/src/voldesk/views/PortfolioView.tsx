@@ -602,6 +602,7 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
   const gains = rows.filter((r) => r.pnl > 0).reduce((s, r) => s + r.pnl, 0);
   const losses = rows.filter((r) => r.pnl < 0).reduce((s, r) => s + Math.abs(r.pnl), 0);
   const totVega = rows.reduce((s, r) => s + Math.abs(r.vega), 0) || 1;
+  const totNom = rows.reduce((s, r) => s + Math.abs(r.nominal), 0) || 1;
   const pnlPct = (v: number): string => {
     const base = v >= 0 ? gains : losses;
     return (v >= 0 ? "+" : "−") + (base ? Math.round((Math.abs(v) / base) * 100) : 0) + "%";
@@ -614,6 +615,9 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
             <th className="l grp-fix">Tenor</th>
             <th className="r grp-pnl col-grp col-grp-end">
               P&L <em className="unit">(%)</em>
+            </th>
+            <th className="r grp-fix col-grp col-grp-end">
+              Nominal € <em className="unit">(%)</em>
             </th>
             <th className="r grp-grk col-grp">Δ</th>
             <th className="r grp-grk">Γ</th>
@@ -633,6 +637,10 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
               </td>
               <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.pnl)}>
                 <b>{fmt.usdk(r.pnl)}</b> <span className="pb-rel">({pnlPct(r.pnl)})</span>
+              </td>
+              <td className="r mono dim grp-fix col-grp col-grp-end">
+                <b>{(r.nominal / 1e6).toFixed(2)}M</b>{" "}
+                <span className="pb-rel">({Math.round((Math.abs(r.nominal) / totNom) * 100)}%)</span>
               </td>
               <td className={"r mono grp-grk col-grp " + pnlCls(r.delta)}>{fmt.sgn(r.delta / 1000, 0)}k</td>
               <td className={"r mono grp-grk " + pnlCls(r.gamma)}>{fmt.sgn(r.gamma / 1000, 0)}k</td>
@@ -819,7 +827,7 @@ export function PortfolioView(): JSX.Element {
       >
         <div className="wf-cell wf-structure-cell">
           <div className="perf-sub mono dim">
-            by tenor <em className="unit">P&L · Δ Γ Vega Θ Vanna Volga</em>
+            by tenor <em className="unit">P&L · nominal · Δ Γ Vega Θ Vanna Volga</em>
           </div>
           <TenorTable rows={pivotTenor} />
         </div>

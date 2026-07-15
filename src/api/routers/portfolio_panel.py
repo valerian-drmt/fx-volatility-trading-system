@@ -1522,6 +1522,7 @@ async def pnl_attribution_pivot(
         sql = text("""
             SELECT COALESCE(ts.reference_tenor, 'other') AS grp,
                    COALESCE(SUM(op.current_pnl_usd), 0) AS pnl,
+                   COALESCE(SUM(op.nominal_eur), 0) AS nominal,
                    COALESCE(SUM(op.delta_usd), 0) AS delta,
                    COALESCE(SUM(op.gamma_usd), 0) AS gamma,
                    COALESCE(SUM(op.vega_usd), 0) AS vega,
@@ -1537,6 +1538,7 @@ async def pnl_attribution_pivot(
         by_grp = {
             str(r.grp): {
                 "pnl_usd": round(float(r.pnl or 0.0), 2),
+                "nominal_eur": round(float(r.nominal or 0.0), 2),
                 "delta_usd": round(float(r.delta or 0.0), 2),
                 "gamma_usd": round(float(r.gamma or 0.0), 2),
                 "vega_usd": round(float(r.vega or 0.0), 2),
@@ -1550,13 +1552,14 @@ async def pnl_attribution_pivot(
         ladder = ["1M", "2M", "3M", "4M", "5M", "6M", "9M", "1Y"]
         extra = sorted(g for g in by_grp if g not in ladder)
         zero = {
-            "pnl_usd": 0.0, "delta_usd": 0.0, "gamma_usd": 0.0, "vega_usd": 0.0,
-            "theta_usd": 0.0, "vanna_usd": 0.0, "volga_usd": 0.0, "n": 0,
+            "pnl_usd": 0.0, "nominal_eur": 0.0, "delta_usd": 0.0, "gamma_usd": 0.0,
+            "vega_usd": 0.0, "theta_usd": 0.0, "vanna_usd": 0.0, "volga_usd": 0.0, "n": 0,
         }
         groups = [{"label": t, **by_grp.get(t, zero)} for t in ladder + extra]
         return {
             "by": by, "groups": groups,
             "total_usd": round(sum(g["pnl_usd"] for g in groups), 2),
+            "total_nominal_eur": round(sum(g["nominal_eur"] for g in groups), 2),
             "total_vega_usd": round(sum(g["vega_usd"] for g in groups), 2),
         }
     else:
