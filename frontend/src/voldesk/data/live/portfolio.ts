@@ -176,11 +176,15 @@ export function adaptStructureRows(raw: unknown): StructureRow[] {
   }));
 }
 
-/** Rich per-reference-tenor row: P&L + vega + 2nd-order greeks (raw USD). */
+/** Rich per-reference-tenor row: P&L + nominal + the full 6 greeks (raw USD/EUR). */
 export interface TenorRow {
   label: string;
   pnl: number;
+  nominal: number;
+  delta: number;
+  gamma: number;
   vega: number;
+  theta: number;
   vanna: number;
   volga: number;
 }
@@ -188,12 +192,26 @@ export interface TenorRow {
 /** /portfolio/pnl-attribution-pivot?by=tenor → rich rows for the breakdown table. */
 export function adaptTenorRows(raw: unknown): TenorRow[] {
   const groups = ((raw ?? {}) as {
-    groups?: { label?: string; pnl_usd?: number | null; vega_usd?: number | null; vanna_usd?: number | null; volga_usd?: number | null }[];
+    groups?: {
+      label?: string;
+      pnl_usd?: number | null;
+      nominal_eur?: number | null;
+      delta_usd?: number | null;
+      gamma_usd?: number | null;
+      vega_usd?: number | null;
+      theta_usd?: number | null;
+      vanna_usd?: number | null;
+      volga_usd?: number | null;
+    }[];
   }).groups ?? [];
   return groups.map((g) => ({
     label: String(g.label ?? "—"),
     pnl: n(g.pnl_usd),
+    nominal: n(g.nominal_eur),
+    delta: n(g.delta_usd),
+    gamma: n(g.gamma_usd),
     vega: n(g.vega_usd),
+    theta: n(g.theta_usd),
     vanna: n(g.vanna_usd),
     volga: n(g.volga_usd),
   }));
@@ -204,12 +222,12 @@ export function adaptWaterfallGreek(raw: unknown): WaterfallStep[] {
   const t = ((raw ?? {}) as { totals?: AttribTotals }).totals ?? {};
   const k = (v: number | null | undefined): number => r1(n(v) / 1000);
   return [
-    // Δ, Γ, Vega, Θ — same order as the Risk tab's Portfolio greeks panel.
+    // Delta, Gamma, Vega, Theta — same order as the Risk tab's Portfolio greeks panel.
     { label: "Start", v: 0, type: "start" },
-    { label: "Δ", sub: "Δ·dS", v: k(t.delta_pnl_usd), type: "neg" },
-    { label: "Γ", sub: "½Γ(dS)²", v: k(t.gamma_pnl_usd), type: "pos" },
-    { label: "Vega", sub: "V·dσ", v: k(t.vega_pnl_usd), type: "pos" },
-    { label: "Θ", sub: "Θ·dt", v: k(t.theta_pnl_usd), type: "neg" },
+    { label: "Delta", sub: "Delta·dS", v: k(t.delta_pnl_usd), type: "neg" },
+    { label: "Gamma", sub: "½Gamma(dS)²", v: k(t.gamma_pnl_usd), type: "pos" },
+    { label: "Vega", sub: "Vega·dσ", v: k(t.vega_pnl_usd), type: "pos" },
+    { label: "Theta", sub: "Theta·dt", v: k(t.theta_pnl_usd), type: "neg" },
     { label: "residual", sub: "unexplained", v: k(t.residual_usd), type: "resid" },
     { label: "Net", v: k(t.actual_pnl_usd), type: "net" },
   ];
@@ -420,7 +438,7 @@ export function adaptCoverage(raw: unknown): LiveCoverage {
   const hrs = Number(t.lookback_hours ?? 24);
   return {
     convexity, carry: thetaPaid, ratio, gammaPnl, vegaPnl, thetaPaid,
-    posture: gammaPnl >= 0 ? "long gamma · Θ−" : "short gamma · Θ+",
+    posture: gammaPnl >= 0 ? "long gamma · Theta−" : "short gamma · Theta+",
     windowLabel: hrs >= 24 ? `${Math.round(hrs / 24)}j` : `${hrs}h`,
   };
 }

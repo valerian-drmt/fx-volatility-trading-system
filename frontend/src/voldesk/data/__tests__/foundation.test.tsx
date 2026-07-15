@@ -305,8 +305,8 @@ describe("portfolio adapters", () => {
   it("waterfall greek: totals → bridge steps in $k", () => {
     const w = adaptWaterfallGreek({ totals: { actual_pnl_usd: 24900, gamma_pnl_usd: 88200, vega_pnl_usd: 54100, theta_pnl_usd: -118400, delta_pnl_usd: -5900, residual_usd: 1300 } });
     const byLabel = Object.fromEntries(w.map((s) => [s.label, s.v]));
-    expect(byLabel["Γ"]).toBe(88.2);
-    expect(byLabel["Θ"]).toBe(-118.4);
+    expect(byLabel["Gamma"]).toBe(88.2);
+    expect(byLabel["Theta"]).toBe(-118.4);
     expect(byLabel["Net"]).toBe(24.9);
     expect(w[0]).toMatchObject({ label: "Start", type: "start" });
   });

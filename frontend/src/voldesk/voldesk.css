@@ -882,7 +882,7 @@ input,select{font-family:inherit;font-size:13px}
 .pb-table th,.pb-table td{white-space:nowrap}
 .pb-table th:not(:first-child),.pb-table td:not(:first-child){text-align:center}
 /* group tints + outlines */
-.pb-table tbody .grp-grk{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.pb-table tbody .grp-grk{background:color-mix(in srgb,var(--warn) 10%,transparent)}
 .pb-table tbody .grp-pnl{background:color-mix(in srgb,#a78bfa 9%,transparent)}
 .pb-table tbody .grp-att{background:color-mix(in srgb,#2dd4bf 8%,transparent)}
 .pb-table thead th{border-bottom:2px solid var(--border)}
@@ -891,7 +891,7 @@ input,select{font-family:inherit;font-size:13px}
 .pb-table.dt tbody td{font-size:12px;font-weight:400}
 .pb-table tbody td .sym{font-weight:400}
 .pb-table tbody td .substruct{font-size:11px}
-.pb-table thead .grp-grk{color:var(--accent)}
+.pb-table thead .grp-grk{color:var(--warn)}
 .pb-table thead .grp-pnl{color:#a78bfa}
 .pb-table thead .grp-att{color:#2dd4bf}
 .risk-cards2{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:stretch}
@@ -949,10 +949,13 @@ input,select{font-family:inherit;font-size:13px}
 /* Account & capital → two side-by-side tables (capital metrics | cash holdings),
    both in the greeks-table look. */
 .acct-tables{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+.perf-greek-attr .perf-sub{margin-bottom:5px}
 @media (max-width:900px){.acct-tables{grid-template-columns:1fr}}
 .acct-cap{margin-top:0}
-.acct-cap td.r{white-space:nowrap}
+.acct-cap td.r{white-space:normal}
 .acct-note{font-size:10.5px;color:var(--text-dim);font-weight:400}
+/* inline parenthetical note in the merged Capital value cell (dim, smaller). */
+.acct-sub{color:var(--text-dim);font-weight:400;font-size:.85em}
 .acct-delta{font-size:11px;font-weight:500}
 .acct-delta.pos{color:var(--pos)}
 .acct-delta.neg{color:var(--neg)}
@@ -966,11 +969,11 @@ input,select{font-family:inherit;font-size:13px}
 .perf-sub{font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
 .perf-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)}
 /* Stacked P&L / Drawdown graphs, each with its two stats on the left. */
-/* Performance panel split: P&L + drawdown (left) · greek timeline (right). */
-.perf-split{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
-.perf-split-l,.perf-split-r{min-width:0}
+/* Performance panel: P&L + drawdown on top, then by-greek table | greek chart. */
+.perf-greek-row{display:grid;grid-template-columns:minmax(240px,340px) minmax(0,1fr);gap:18px;align-items:start;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.perf-greek-attr,.perf-greek-chart{min-width:0}
 .greek-tl{display:flex;flex-direction:column;gap:8px}
-@media (max-width:1000px){.perf-split{grid-template-columns:1fr}}
+@media (max-width:900px){.perf-greek-row{grid-template-columns:1fr}}
 .perf-v{display:flex;flex-direction:column;gap:14px}
 .perf-row{display:grid;grid-template-columns:minmax(112px,150px) minmax(0,1fr);gap:14px;align-items:center}
 .perf-row + .perf-row{padding-top:14px;border-top:1px solid var(--border)}
@@ -1006,6 +1009,8 @@ input,select{font-family:inherit;font-size:13px}
 .wf-structure-cell{margin-bottom:18px}
 .wf-structure-cell .table-scroll{margin-top:2px}
 .wf-structure th,.wf-structure td{font-size:12px;padding:3px 8px}
+/* merged value + relative-% cell: raw value bold, (%) lighter, same colour. */
+.pb-rel{font-weight:400;font-size:.85em}
 @media (max-width:720px){.wf-2col{grid-template-columns:1fr}}
 /* Shared empty-state for the attribution tables (by structure / tenor / trade / greek). */
 .hbar-empty{padding:20px 0;text-align:center}

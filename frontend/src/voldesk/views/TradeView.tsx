@@ -355,10 +355,10 @@ function ClosePanel({
   const closeComm = sel ? Math.round(closeContracts * 2.1) : 0;
   const closeNetCash = c.pnl - closeComm;
   const impactRows = [
-    { name: "Δ", unit: "USD", val: -c.d, before: g.netDelta, after: g.netDelta - c.d, f: gk$ },
-    { name: "Γ", unit: "USD/pip", val: -c.g, before: g.netGamma, after: g.netGamma - c.g, f: gk$ },
+    { name: "Delta", unit: "USD", val: -c.d, before: g.netDelta, after: g.netDelta - c.d, f: gk$ },
+    { name: "Gamma", unit: "USD/pip", val: -c.g, before: g.netGamma, after: g.netGamma - c.g, f: gk$ },
     { name: "Vega", unit: "$/vp", val: -c.v, before: g.netVega, after: g.netVega - c.v, f: gk$ },
-    { name: "Θ", unit: "$/day", val: -c.t, before: g.netTheta, after: g.netTheta - c.t, f: gk$ },
+    { name: "Theta", unit: "$/day", val: -c.t, before: g.netTheta, after: g.netTheta - c.t, f: gk$ },
     { name: "Vanna", unit: "$k/vp·fig", val: -c.vn, before: g.netVanna, after: g.netVanna - c.vn, f: kfmt },
     { name: "Volga", unit: "$k/vp", val: -c.vg, before: g.netVolga, after: g.netVolga - c.vg, f: kfmt },
   ];
@@ -552,9 +552,9 @@ function IndicatorsPanel({
   const utilRows = [
     { label: "Init margin", used: fmt.usd(account.marginInit), limit: fmt.usd(account.netLiq), pct: account.marginInitPct },
     { label: "Maint margin", used: fmt.usd(account.marginMaint), limit: fmt.usd(account.netLiq), pct: account.marginMaintPct },
-    { label: "Δ exposure", used: fmt.usdk(Math.abs(g.netDelta)), limit: capk(deltaCap), pct: pctOf(g.netDelta, deltaCap) },
+    { label: "Delta exposure", used: fmt.usdk(Math.abs(g.netDelta)), limit: capk(deltaCap), pct: pctOf(g.netDelta, deltaCap) },
     { label: "Vega", used: fmt.usdk(Math.abs(g.netVega)), limit: capk(vegaCap), pct: pctOf(g.netVega, vegaCap) },
-    { label: "Γ exposure", used: fmt.usdk(Math.abs(g.netGamma)), limit: capk(gammaCap), pct: pctOf(g.netGamma, gammaCap) },
+    { label: "Gamma exposure", used: fmt.usdk(Math.abs(g.netGamma)), limit: capk(gammaCap), pct: pctOf(g.netGamma, gammaCap) },
   ];
 
   return (
@@ -577,10 +577,10 @@ function IndicatorsPanel({
         <table className="dt greeks-table">
           <thead><tr><th className="l">Greek</th><th className="r">Net value</th></tr></thead>
           <tbody>
-            <tr><td className="l">Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</td></tr>
-            <tr><td className="l">Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</td></tr>
+            <tr><td className="l">Delta <em className="unit">USD</em></td><td className={"r mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</td></tr>
+            <tr><td className="l">Gamma <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</td></tr>
             <tr><td className="l">Vega <em className="unit">$/vp</em></td><td className={"r mono " + pnlCls(g.netVega)}>{gk$(g.netVega)}</td></tr>
-            <tr><td className="l">Θ <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</td></tr>
+            <tr><td className="l">Theta <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</td></tr>
             <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(g.netVanna)}>{fmt.sgn(g.netVanna, 1)}k</td></tr>
             <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(g.netVolga)}>{fmt.sgn(g.netVolga, 1)}k</td></tr>
           </tbody>

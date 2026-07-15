@@ -116,13 +116,13 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const bandTxt = "$" + (band / 1000).toFixed(1) + "k";
   const breach = {
     cat: "Hedge",
-    msg: "Δ residual " + gk$(resid) + " vs ±" + bandTxt + " band",
+    msg: "Delta residual " + gk$(resid) + " vs ±" + bandTxt + " band",
     detail: "+" + overPct + "% beyond band · last hedge 11:48:02",
     action: "hedge in Trade",
     tab: "trade",
   };
   const watches = [
-    { cat: "Limit · Γ", msg: "Gamma 71% of cap", detail: "14.5k / 20.4k · approaching", action: "Risk", tab: "risk" },
+    { cat: "Limit · Gamma", msg: "Gamma 71% of cap", detail: "14.5k / 20.4k · approaching", action: "Risk", tab: "risk" },
     ...(skewWatch
       ? [
           {
@@ -302,13 +302,13 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           <div className="greeks-summary gs-g5">
             <div className="gs-item">
               <span className="gs-lbl">
-                Net Δ <em className="unit">$</em>
+                Net Delta <em className="unit">$</em>
               </span>
               <b className={"mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</b>
             </div>
             <div className="gs-item">
               <span className="gs-lbl">
-                Net Γ <em className="unit">$/pip</em>
+                Net Gamma <em className="unit">$/pip</em>
               </span>
               <b className={"mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</b>
             </div>
@@ -326,7 +326,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
             </div>
             <div className="gs-item">
               <span className="gs-lbl">
-                Net Θ <em className="unit">$/day</em>
+                Net Theta <em className="unit">$/day</em>
               </span>
               <b className={"mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</b>
             </div>
@@ -348,7 +348,8 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
               <span className="gs-sub dim">open MTM</span>
             </div>
             <div className="bs-item">
-              <span className="gs-lbl">Γ util.</span>
+
+              <span className="gs-lbl">Gamma util.</span>
               <b className="mono warn">71%</b>
               <span className="gs-sub dim">of cap</span>
             </div>

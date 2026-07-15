@@ -4,7 +4,7 @@
  * `js/views_portfolio.jsx` (global-window pattern) into typed ES modules.
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchEquityCurve,
   fetchGreeksHistory,
@@ -15,7 +15,8 @@ import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
-import { pnlCls } from "../components/format";
+import { gk$, pnlCls } from "../components/format";
+import { PositionBreakdown } from "../components/PositionBreakdown";
 import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
 import type { PerfStats, WaterfallStep } from "../data";
@@ -25,7 +26,6 @@ import {
   adaptGreeksHistory,
   adaptTenorRows,
   adaptTradeMarkers,
-  adaptWaterfallPivot,
   type EquityPoint,
   type GreekKey,
   type GreekSeries,
@@ -503,10 +503,10 @@ function GreekChart({ grid, status, markers }: { grid: EqGrid; status: string; m
 }
 
 const GREEKS: { key: GreekKey; label: string }[] = [
-  { key: "delta", label: "Δ Delta" },
-  { key: "gamma", label: "Γ Gamma" },
+  { key: "delta", label: "Delta" },
+  { key: "gamma", label: "Gamma" },
   { key: "vega", label: "Vega" },
-  { key: "theta", label: "Θ Theta" },
+  { key: "theta", label: "Theta" },
 ];
 
 // Right half of the Performance panel — Δ/Γ/Vega/Θ selector (stress-test button
@@ -546,9 +546,9 @@ function GreekTimeline({ window: win, markers }: { window: string; markers: Trad
   );
 }
 
-// Attribution as a 2-column table (name | P&L | % gain/loss). Reused for both the
-// by-trade and by-greek axes (same WaterfallStep shape). The % is the row's share of
-// the total GAINS if it's a winner, or of the total LOSSES if it's a loser.
+// Attribution as a 2-column table (name | P&L (%)), for the by-greek axis. P&L and
+// its % share of the TOTAL (net) P&L are merged into one cell: value bold, (%) lighter,
+// same colour. The % is signed relative to |Σ rows| so the contributions foot to ±100%.
 function TradeTable({
   steps,
   col = "Trade",
@@ -558,21 +558,20 @@ function TradeTable({
 }): JSX.Element {
   const rows = steps.filter((s) => s.type !== "start" && s.type !== "net");
   if (rows.length === 0) return <div className="hbar-empty dim small mono">no P&L yet</div>;
-  const gains = rows.filter((r) => r.v > 0).reduce((s, r) => s + r.v, 0);
-  const losses = rows.filter((r) => r.v < 0).reduce((s, r) => s + Math.abs(r.v), 0);
+  const total = rows.reduce((s, r) => s + r.v, 0);
+  const base = Math.abs(total) || 1;
   const fmtk = (v: number): string => (v >= 0 ? "+" : "−") + "$" + Math.abs(v).toFixed(1) + "k";
-  const pct = (v: number): number => {
-    const base = v >= 0 ? gains : losses;
-    return base ? Math.round((Math.abs(v) / base) * 100) : 0;
+  const pct = (v: number): string => {
+    const p = Math.round((v / base) * 100);
+    return (p >= 0 ? "+" : "−") + Math.abs(p) + "%";
   };
   return (
     <table className="dt greeks-table acct-cap">
       <thead>
         <tr>
           <th className="l">{col}</th>
-          <th className="r">P&L</th>
           <th className="r">
-            % <em className="unit">gain/loss</em>
+            P&L <em className="unit">(% of total)</em>
           </th>
         </tr>
       </thead>
@@ -583,9 +582,8 @@ function TradeTable({
               {s.label}
               {s.sub && <em className="unit">{s.sub}</em>}
             </td>
-            <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>{fmtk(s.v)}</td>
             <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>
-              {(s.v >= 0 ? "+" : "−") + pct(s.v) + "%"}
+              <b>{fmtk(s.v)}</b> <span className="pb-rel">({pct(s.v)})</span>
             </td>
           </tr>
         ))}
@@ -601,22 +599,51 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
   if (rows.length === 0) return <div className="hbar-empty dim small mono">no positions</div>;
   const gains = rows.filter((r) => r.pnl > 0).reduce((s, r) => s + r.pnl, 0);
   const losses = rows.filter((r) => r.pnl < 0).reduce((s, r) => s + Math.abs(r.pnl), 0);
-  const totVega = rows.reduce((s, r) => s + Math.abs(r.vega), 0) || 1;
+  // Each greek's per-tenor share is |cell| / Σ|column| — how much of the book's total
+  // exposure to that factor sits at this expiry (bounded 0..100%).
+  const colAbs = (sel: (r: TenorRow) => number): number =>
+    rows.reduce((s, r) => s + Math.abs(sel(r)), 0) || 1;
+  const totNom = colAbs((r) => r.nominal);
+  const tot = {
+    delta: colAbs((r) => r.delta),
+    gamma: colAbs((r) => r.gamma),
+    vega: colAbs((r) => r.vega),
+    theta: colAbs((r) => r.theta),
+    vanna: colAbs((r) => r.vanna),
+    volga: colAbs((r) => r.volga),
+  };
   const pnlPct = (v: number): string => {
     const base = v >= 0 ? gains : losses;
     return (v >= 0 ? "+" : "−") + (base ? Math.round((Math.abs(v) / base) * 100) : 0) + "%";
   };
+  // A greek cell in the by-greek design: raw $ value bold + (% of column) lighter, same colour.
+  const gkCell = (v: number, colTot: number): JSX.Element => (
+    <>
+      <b>{gk$(v)}</b>{" "}
+      <span className="pb-rel">
+        ({(v >= 0 ? "+" : "−") + Math.round((Math.abs(v) / colTot) * 100)}%)
+      </span>
+    </>
+  );
   return (
     <div className="table-scroll">
       <table className="dt pb-table wf-structure">
         <thead>
           <tr>
             <th className="l grp-fix">Tenor</th>
-            <th className="r grp-pnl col-grp">P&L</th>
-            <th className="r grp-pnl col-grp-end">%</th>
-            <th className="r grp-fix col-grp">Vega</th>
-            <th className="r grp-fix col-grp-end">%</th>
-            <th className="r grp-grk col-grp">Vanna</th>
+            <th className="r grp-pnl col-grp col-grp-end">
+              P&L <em className="unit">(%)</em>
+            </th>
+            <th className="r grp-fix col-grp col-grp-end">
+              Nominal € <em className="unit">(%)</em>
+            </th>
+            <th className="r grp-grk col-grp">Delta</th>
+            <th className="r grp-grk">Gamma</th>
+            <th className="r grp-grk">
+              Vega <em className="unit">(%)</em>
+            </th>
+            <th className="r grp-grk">Theta</th>
+            <th className="r grp-grk">Vanna</th>
             <th className="r grp-grk col-grp-end">Volga</th>
           </tr>
         </thead>
@@ -626,20 +653,19 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
               <td className="l grp-fix">
                 <span className="sym">{r.label}</span>
               </td>
-              <td className={"r mono grp-pnl col-grp " + pnlCls(r.pnl)}>{fmt.usdk(r.pnl)}</td>
-              <td className={"r mono grp-pnl col-grp-end " + pnlCls(r.pnl)}>{pnlPct(r.pnl)}</td>
-              <td className={"r mono grp-fix col-grp " + pnlCls(r.vega)}>
-                {fmt.sgn(r.vega / 1000, 1)}k
+              <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.pnl)}>
+                <b>{fmt.usdk(r.pnl)}</b> <span className="pb-rel">({pnlPct(r.pnl)})</span>
               </td>
-              <td className="r mono dim grp-fix col-grp-end">
-                {Math.round((Math.abs(r.vega) / totVega) * 100)}%
+              <td className="r mono dim grp-fix col-grp col-grp-end">
+                <b>{(r.nominal / 1e6).toFixed(2)}M</b>{" "}
+                <span className="pb-rel">({Math.round((Math.abs(r.nominal) / totNom) * 100)}%)</span>
               </td>
-              <td className={"r mono grp-grk col-grp " + pnlCls(r.vanna)}>
-                {fmt.sgn(r.vanna / 1000, 0)}k
-              </td>
-              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>
-                {fmt.sgn(r.volga / 1000, 0)}k
-              </td>
+              <td className={"r mono grp-grk col-grp " + pnlCls(r.delta)}>{gkCell(r.delta, tot.delta)}</td>
+              <td className={"r mono grp-grk " + pnlCls(r.gamma)}>{gkCell(r.gamma, tot.gamma)}</td>
+              <td className={"r mono grp-grk " + pnlCls(r.vega)}>{gkCell(r.vega, tot.vega)}</td>
+              <td className={"r mono grp-grk " + pnlCls(r.theta)}>{gkCell(r.theta, tot.theta)}</td>
+              <td className={"r mono grp-grk " + pnlCls(r.vanna)}>{gkCell(r.vanna, tot.vanna)}</td>
+              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>{gkCell(r.volga, tot.volga)}</td>
             </tr>
           ))}
         </tbody>
@@ -659,6 +685,11 @@ function deltaPill(d: number | null | undefined): JSX.Element | null {
   );
 }
 
+// Parenthetical note appended to the value in the merged Capital cell; nothing if empty.
+function acctNote(note: ReactNode): JSX.Element | null {
+  return note ? <span className="acct-sub"> ({note})</span> : null;
+}
+
 export function PortfolioView(): JSX.Element {
   const [win, setWin] = useState<string>("7D");
   const { portfolio, trade } = useDeskData();
@@ -666,21 +697,10 @@ export function PortfolioView(): JSX.Element {
   const a = pd?.account ?? DATA.account,
     ps = pd?.perfStats ?? DATA2.perfStats,
     g = pd?.greeks ?? DATA.greeks;
-  // Non-greek attribution pivots (by structure / by tenor) — realized P&L bridged
-  // from closed booked positions. Polled so the bridge stays live; "by mode" (PCA)
-  // stays deferred.
-  const pivotLive = useFetch(
-    async () => {
-      const [tenor, trade] = await Promise.all([
-        fetchPnlAttributionPivot("tenor").then(adaptTenorRows),
-        fetchPnlAttributionPivot("trade").then(adaptWaterfallPivot),
-      ]);
-      return { tenor, trade };
-    },
-    120_000,
-    true,
-    60_000,
-  ).data;
+  // By-tenor attribution — the OPEN book's current unrealized P&L (current_pnl_usd),
+  // since realized-on-close reads flat while positions net flat at IB. Polled live.
+  const pivotTenor =
+    useFetch(() => fetchPnlAttributionPivot("tenor").then(adaptTenorRows), 120_000, true, 60_000).data ?? [];
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
   // Trade open/close markers overlaid on the Performance P&L + greek charts (covers 1Y).
@@ -721,56 +741,64 @@ export function PortfolioView(): JSX.Element {
               <tr>
                 <th className="l">Capital</th>
                 <th className="r">Value</th>
-                <th className="r">Note</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td className="l">Net liquidation</td>
-                <td className="r mono">{fmt.usd(a.netLiq)}</td>
-                <td className="r">{deltaPill(a.dNetLiq)}</td>
+                <td className="r mono">
+                  {fmt.usd(a.netLiq)}
+                  {acctNote(deltaPill(a.dNetLiq))}
+                </td>
               </tr>
               <tr>
                 <td className="l">Cash</td>
-                <td className="r mono">{fmt.usd(a.cash)}</td>
-                <td className="r">{deltaPill(a.dCash)}</td>
+                <td className="r mono">
+                  {fmt.usd(a.cash)}
+                  {acctNote(deltaPill(a.dCash))}
+                </td>
               </tr>
               <tr>
                 <td className="l">Init margin</td>
-                <td className="r mono">{fmt.usd(a.marginInit)}</td>
-                <td className="r acct-note">{a.marginInitPct}% used</td>
+                <td className="r mono">
+                  {fmt.usd(a.marginInit)}
+                  {acctNote(`${a.marginInitPct}% used`)}
+                </td>
               </tr>
               <tr>
                 <td className="l">Maint margin</td>
-                <td className="r mono">{fmt.usd(a.marginMaint)}</td>
-                <td className="r acct-note">{a.marginMaintPct}% used</td>
+                <td className="r mono">
+                  {fmt.usd(a.marginMaint)}
+                  {acctNote(`${a.marginMaintPct}% used`)}
+                </td>
               </tr>
               <tr>
                 <td className="l">Excess liquidity</td>
                 <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
-                <td className="r acct-note">—</td>
               </tr>
               <tr>
                 <td className="l">Cushion</td>
-                <td className="r mono">{(a.cushion * 100).toFixed(1)}%</td>
-                <td className="r acct-note">{a.nPositions} positions</td>
+                <td className="r mono">
+                  {(a.cushion * 100).toFixed(1)}%{acctNote(`${a.nPositions} positions`)}
+                </td>
               </tr>
               <tr className="acct-sep">
                 <td className="l">Gross leverage</td>
-                <td className="r mono">{lev.gross.toFixed(1)}M €</td>
-                <td className="r acct-note">
-                  {grossX}× net liq · €{(netLiqEur / 1e6).toFixed(2)}M
+                <td className="r mono">
+                  {lev.gross.toFixed(1)}M €{acctNote(`${grossX}× net liq · €${(netLiqEur / 1e6).toFixed(2)}M`)}
                 </td>
               </tr>
               <tr>
                 <td className="l">Net leverage</td>
-                <td className="r mono">{lev.net.toFixed(1)}M €</td>
-                <td className="r acct-note">{netX}× net liq</td>
+                <td className="r mono">
+                  {lev.net.toFixed(1)}M €{acctNote(`${netX}× net liq`)}
+                </td>
               </tr>
               <tr>
                 <td className="l">Buying power</td>
-                <td className="r mono pos">${lev.buyingPower.toFixed(2)}M</td>
-                <td className="r acct-note">available</td>
+                <td className="r mono pos">
+                  ${lev.buyingPower.toFixed(2)}M{acctNote("available")}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -802,36 +830,33 @@ export function PortfolioView(): JSX.Element {
         }
         className="perf-panel"
       >
-        <div className="perf-split">
-          <div className="perf-split-l">
-            <PerfCharts window={win} ps={ps} unreal={unreal} markers={tradeMarkers} />
+        <PerfCharts window={win} ps={ps} unreal={unreal} markers={tradeMarkers} />
+        <div className="perf-greek-row">
+          <div className="perf-greek-attr">
+            <div className="perf-sub mono dim">
+              by greek <em className="unit">P&L · % gain/loss</em>
+            </div>
+            <TradeTable steps={pd?.waterfallGreek ?? []} col="Greek" />
           </div>
-          <div className="perf-split-r">
+          <div className="perf-greek-chart">
             <GreekTimeline window={win} markers={tradeMarkers} />
           </div>
         </div>
       </Panel>
 
       <Panel
-        title="Realized P&L attribution — bridge"
+        title="Open book breakdown"
         dataPp="pnl-attribution"
         className="wf-panel"
       >
         <div className="wf-cell wf-structure-cell">
-          <div className="perf-sub mono dim">
-            by tenor <em className="unit">P&L · vega · 2nd-order</em>
-          </div>
-          <TenorTable rows={pivotLive?.tenor ?? []} />
+          <TenorTable rows={pivotTenor} />
         </div>
-        <div className="wf-2col">
-          <div className="wf-cell wf-trade">
-            <div className="perf-sub mono dim">by trade</div>
-            <TradeTable steps={pivotLive?.trade ?? []} />
+        <div className="wf-cell">
+          <div className="perf-sub mono dim">
+            by trade <em className="unit">position breakdown</em>
           </div>
-          <div className="wf-cell">
-            <div className="perf-sub mono dim">by greek</div>
-            <TradeTable steps={pd?.waterfallGreek ?? []} col="Greek" />
-          </div>
+          <PositionBreakdown positions={pd?.positions ?? []} />
         </div>
       </Panel>
     </div>
