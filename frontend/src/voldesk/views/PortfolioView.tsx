@@ -787,15 +787,7 @@ export function PortfolioView(): JSX.Element {
               </tr>
             </tbody>
           </table>
-          <div className="acct-col">
-            <CashHoldings cash={cashRows} />
-            <div className="acct-greek">
-              <div className="perf-sub mono dim">
-                by greek <em className="unit">P&L · % gain/loss</em>
-              </div>
-              <TradeTable steps={pd?.waterfallGreek ?? []} col="Greek" />
-            </div>
-          </div>
+          <CashHoldings cash={cashRows} />
         </div>
       </Panel>
 
@@ -823,11 +815,15 @@ export function PortfolioView(): JSX.Element {
         }
         className="perf-panel"
       >
-        <div className="perf-split">
-          <div className="perf-split-l">
-            <PerfCharts window={win} ps={ps} unreal={unreal} markers={tradeMarkers} />
+        <PerfCharts window={win} ps={ps} unreal={unreal} markers={tradeMarkers} />
+        <div className="perf-greek-row">
+          <div className="perf-greek-attr">
+            <div className="perf-sub mono dim">
+              by greek <em className="unit">P&L · % gain/loss</em>
+            </div>
+            <TradeTable steps={pd?.waterfallGreek ?? []} col="Greek" />
           </div>
-          <div className="perf-split-r">
+          <div className="perf-greek-chart">
             <GreekTimeline window={win} markers={tradeMarkers} />
           </div>
         </div>

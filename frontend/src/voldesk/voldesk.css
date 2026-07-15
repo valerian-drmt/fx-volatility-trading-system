@@ -949,8 +949,7 @@ input,select{font-family:inherit;font-size:13px}
 /* Account & capital → two side-by-side tables (capital metrics | cash holdings),
    both in the greeks-table look. */
 .acct-tables{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
-.acct-col{display:flex;flex-direction:column;gap:14px;min-width:0}
-.acct-greek .perf-sub{margin-bottom:5px}
+.perf-greek-attr .perf-sub{margin-bottom:5px}
 @media (max-width:900px){.acct-tables{grid-template-columns:1fr}}
 .acct-cap{margin-top:0}
 .acct-cap td.r{white-space:normal}
@@ -970,11 +969,11 @@ input,select{font-family:inherit;font-size:13px}
 .perf-sub{font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
 .perf-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)}
 /* Stacked P&L / Drawdown graphs, each with its two stats on the left. */
-/* Performance panel split: P&L + drawdown (left) · greek timeline (right). */
-.perf-split{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
-.perf-split-l,.perf-split-r{min-width:0}
+/* Performance panel: P&L + drawdown on top, then by-greek table | greek chart. */
+.perf-greek-row{display:grid;grid-template-columns:minmax(240px,340px) minmax(0,1fr);gap:18px;align-items:start;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.perf-greek-attr,.perf-greek-chart{min-width:0}
 .greek-tl{display:flex;flex-direction:column;gap:8px}
-@media (max-width:1000px){.perf-split{grid-template-columns:1fr}}
+@media (max-width:900px){.perf-greek-row{grid-template-columns:1fr}}
 .perf-v{display:flex;flex-direction:column;gap:14px}
 .perf-row{display:grid;grid-template-columns:minmax(112px,150px) minmax(0,1fr);gap:14px;align-items:center}
 .perf-row + .perf-row{padding-top:14px;border-top:1px solid var(--border)}
