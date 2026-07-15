@@ -803,11 +803,9 @@ export function PortfolioView(): JSX.Element {
   // Trade open/close markers overlaid on the Performance P&L + greek charts (covers 1Y).
   const tradeMarkers =
     useFetch(() => fetchTradeMarkers(366).then(adaptTradeMarkers), 120_000, true, 60_000).data ?? [];
-  // P&L-attribution matrices: greek P&L bucketed by tenor / by wing, and one per leg.
+  // P&L-attribution matrices: greek P&L bucketed by tenor, and one per leg.
   const attribTenor =
     useFetch(() => fetchPnlAttributionMatrix("tenor").then(adaptAttributionMatrix), 120_000, true, 60_000).data ?? null;
-  const attribWing =
-    useFetch(() => fetchPnlAttributionMatrix("wing").then(adaptAttributionMatrix), 120_000, true, 60_000).data ?? null;
   const attribByLeg =
     useFetch(() => fetchPnlAttribution().then(adaptPositionAttribution), 120_000, true, 60_000).data ?? null;
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
@@ -950,10 +948,6 @@ export function PortfolioView(): JSX.Element {
 
       <Panel title="P&L attribution by tenor" dataPp="attrib-tenor" className="wf-panel">
         <AttributionMatrix m={attribTenor} axisLabel="Tenor" />
-      </Panel>
-
-      <Panel title="P&L attribution by wing" dataPp="attrib-wing" className="wf-panel">
-        <AttributionMatrix m={attribWing} axisLabel="Wing" />
       </Panel>
 
       <Panel title="P&L attribution by trade" dataPp="attrib-leg" className="wf-panel">
