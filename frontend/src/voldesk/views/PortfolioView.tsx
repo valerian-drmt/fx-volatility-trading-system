@@ -546,9 +546,9 @@ function GreekTimeline({ window: win, markers }: { window: string; markers: Trad
   );
 }
 
-// Attribution as a 2-column table (name | P&L | % gain/loss). Reused for both the
-// by-trade and by-greek axes (same WaterfallStep shape). The % is the row's share of
-// the total GAINS if it's a winner, or of the total LOSSES if it's a loser.
+// Attribution as a 2-column table (name | P&L (%)), for the by-greek axis. P&L and
+// its % share of the TOTAL (net) P&L are merged into one cell: value bold, (%) lighter,
+// same colour. The % is signed relative to |Σ rows| so the contributions foot to ±100%.
 function TradeTable({
   steps,
   col = "Trade",
@@ -558,21 +558,20 @@ function TradeTable({
 }): JSX.Element {
   const rows = steps.filter((s) => s.type !== "start" && s.type !== "net");
   if (rows.length === 0) return <div className="hbar-empty dim small mono">no P&L yet</div>;
-  const gains = rows.filter((r) => r.v > 0).reduce((s, r) => s + r.v, 0);
-  const losses = rows.filter((r) => r.v < 0).reduce((s, r) => s + Math.abs(r.v), 0);
+  const total = rows.reduce((s, r) => s + r.v, 0);
+  const base = Math.abs(total) || 1;
   const fmtk = (v: number): string => (v >= 0 ? "+" : "−") + "$" + Math.abs(v).toFixed(1) + "k";
-  const pct = (v: number): number => {
-    const base = v >= 0 ? gains : losses;
-    return base ? Math.round((Math.abs(v) / base) * 100) : 0;
+  const pct = (v: number): string => {
+    const p = Math.round((v / base) * 100);
+    return (p >= 0 ? "+" : "−") + Math.abs(p) + "%";
   };
   return (
     <table className="dt greeks-table acct-cap">
       <thead>
         <tr>
           <th className="l">{col}</th>
-          <th className="r">P&L</th>
           <th className="r">
-            % <em className="unit">gain/loss</em>
+            P&L <em className="unit">(% of total)</em>
           </th>
         </tr>
       </thead>
@@ -583,9 +582,8 @@ function TradeTable({
               {s.label}
               {s.sub && <em className="unit">{s.sub}</em>}
             </td>
-            <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>{fmtk(s.v)}</td>
             <td className={"r mono " + (s.v >= 0 ? "pos" : "neg")}>
-              {(s.v >= 0 ? "+" : "−") + pct(s.v) + "%"}
+              <b>{fmtk(s.v)}</b> <span className="pb-rel">({pct(s.v)})</span>
             </td>
           </tr>
         ))}
