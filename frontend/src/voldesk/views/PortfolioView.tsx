@@ -16,6 +16,7 @@ import { useTicks } from "../../hooks/streams";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
+import { PositionBreakdown } from "../components/PositionBreakdown";
 import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
 import type { PerfStats, WaterfallStep } from "../data";
@@ -25,7 +26,6 @@ import {
   adaptGreeksHistory,
   adaptTenorRows,
   adaptTradeMarkers,
-  adaptWaterfallPivot,
   type EquityPoint,
   type GreekKey,
   type GreekSeries,
@@ -669,18 +669,8 @@ export function PortfolioView(): JSX.Element {
   // Non-greek attribution pivots (by structure / by tenor) — realized P&L bridged
   // from closed booked positions. Polled so the bridge stays live; "by mode" (PCA)
   // stays deferred.
-  const pivotLive = useFetch(
-    async () => {
-      const [tenor, trade] = await Promise.all([
-        fetchPnlAttributionPivot("tenor").then(adaptTenorRows),
-        fetchPnlAttributionPivot("trade").then(adaptWaterfallPivot),
-      ]);
-      return { tenor, trade };
-    },
-    120_000,
-    true,
-    60_000,
-  ).data;
+  const pivotTenor =
+    useFetch(() => fetchPnlAttributionPivot("tenor").then(adaptTenorRows), 120_000, true, 60_000).data ?? [];
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
   // Trade open/close markers overlaid on the Performance P&L + greek charts (covers 1Y).
@@ -829,11 +819,13 @@ export function PortfolioView(): JSX.Element {
           <div className="perf-sub mono dim">
             by tenor <em className="unit">P&L · vega · 2nd-order</em>
           </div>
-          <TenorTable rows={pivotLive?.tenor ?? []} />
+          <TenorTable rows={pivotTenor} />
         </div>
-        <div className="wf-cell wf-trade">
-          <div className="perf-sub mono dim">by trade</div>
-          <TradeTable steps={pivotLive?.trade ?? []} />
+        <div className="wf-cell">
+          <div className="perf-sub mono dim">
+            by trade <em className="unit">position breakdown</em>
+          </div>
+          <PositionBreakdown positions={pd?.positions ?? []} />
         </div>
       </Panel>
     </div>
