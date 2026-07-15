@@ -619,14 +619,14 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
       <td className="l grp-fix">
         <span className="sym">{r.label}</span>
       </td>
+      <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.actual)}>
+        <b>{fmt.usdk(r.actual)}</b>
+      </td>
       {cell(r.delta, r.actual, "grp-grk col-grp")}
       {cell(r.gamma, r.actual, "grp-grk")}
       {cell(r.vega, r.actual, "grp-grk")}
       {cell(r.theta, r.actual, "grp-grk col-grp-end")}
       {cell(r.residual, r.actual, "grp-att col-grp col-grp-end")}
-      <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.actual)}>
-        <b>{fmt.usdk(r.actual)}</b>
-      </td>
     </tr>
   );
   const t = m.totals;
@@ -636,14 +636,14 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
         <thead>
           <tr>
             <th className="l grp-fix">{axisLabel}</th>
+            <th className="r grp-pnl col-grp col-grp-end">
+              P&L <em className="unit">Σ</em>
+            </th>
             <th className="r grp-grk col-grp">Delta·dS</th>
             <th className="r grp-grk">½Γ·dS²</th>
             <th className="r grp-grk">Vega·dσ</th>
             <th className="r grp-grk col-grp-end">Theta·dt</th>
             <th className="r grp-att col-grp col-grp-end">residual</th>
-            <th className="r grp-pnl col-grp col-grp-end">
-              P&L <em className="unit">Σ</em>
-            </th>
           </tr>
         </thead>
         <tbody>
@@ -651,6 +651,9 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
           <tr className="wf-total">
             <td className="l grp-fix">
               <span className="sym">Total</span>
+            </td>
+            <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(t.actual)}>
+              <b>{fmt.usdk(t.actual)}</b>
             </td>
             <td className={"r mono grp-grk col-grp " + pnlCls(t.delta)}>
               <b>{gk$(t.delta)}</b>
@@ -666,9 +669,6 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
             </td>
             <td className={"r mono grp-att col-grp col-grp-end " + pnlCls(t.residual)}>
               <b>{gk$(t.residual)}</b>
-            </td>
-            <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(t.actual)}>
-              <b>{fmt.usdk(t.actual)}</b>
             </td>
           </tr>
         </tbody>
