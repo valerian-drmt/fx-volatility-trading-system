@@ -22,11 +22,9 @@ import { useDeskData } from "../data/deskData";
 import {
   adaptCoverage,
   adaptEquityCurve,
-  adaptStructureRows,
   adaptTenorRows,
   adaptWaterfallPivot,
   type EquityPoint,
-  type StructureRow,
   type TenorRow,
 } from "../data/live/portfolio";
 
@@ -548,58 +546,7 @@ function TradeTable({
   );
 }
 
-// By-structure breakdown — Position-breakdown-styled table: P&L (%), nominal (%),
-// and the two 2nd-order greeks (vanna / volga) per structure type.
-function StructureTable({ rows }: { rows: StructureRow[] }): JSX.Element {
-  if (rows.length === 0) return <div className="hbar-empty dim small mono">no positions</div>;
-  const gains = rows.filter((r) => r.pnl > 0).reduce((s, r) => s + r.pnl, 0);
-  const losses = rows.filter((r) => r.pnl < 0).reduce((s, r) => s + Math.abs(r.pnl), 0);
-  const totNom = rows.reduce((s, r) => s + Math.abs(r.nominal), 0) || 1;
-  const pnlPct = (v: number): string => {
-    const base = v >= 0 ? gains : losses;
-    return (v >= 0 ? "+" : "−") + (base ? Math.round((Math.abs(v) / base) * 100) : 0) + "%";
-  };
-  return (
-    <div className="table-scroll">
-      <table className="dt pb-table wf-structure">
-        <thead>
-          <tr>
-            <th className="l grp-fix">Structure</th>
-            <th className="r grp-pnl col-grp">P&L</th>
-            <th className="r grp-pnl col-grp-end">%</th>
-            <th className="r grp-fix col-grp">Nominal €</th>
-            <th className="r grp-fix col-grp-end">%</th>
-            <th className="r grp-grk col-grp">Vanna</th>
-            <th className="r grp-grk col-grp-end">Volga</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              <td className="l grp-fix">
-                <span className="sym">{r.label}</span>
-              </td>
-              <td className={"r mono grp-pnl col-grp " + pnlCls(r.pnl)}>{fmt.usdk(r.pnl)}</td>
-              <td className={"r mono grp-pnl col-grp-end " + pnlCls(r.pnl)}>{pnlPct(r.pnl)}</td>
-              <td className="r mono dim grp-fix col-grp">{(r.nominal / 1e6).toFixed(2)}M</td>
-              <td className="r mono dim grp-fix col-grp-end">
-                {Math.round((Math.abs(r.nominal) / totNom) * 100)}%
-              </td>
-              <td className={"r mono grp-grk col-grp " + pnlCls(r.vanna)}>
-                {fmt.sgn(r.vanna / 1000, 0)}k
-              </td>
-              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>
-                {fmt.sgn(r.volga / 1000, 0)}k
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// By-tenor breakdown — same Position-breakdown-styled table as StructureTable, with
+// By-tenor breakdown — Position-breakdown-styled table, with
 // the vega-by-tenor data folded in: P&L (%), vega (%), and the 2nd-order greeks
 // (vanna / volga) per reference tenor.
 function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
@@ -676,12 +623,11 @@ export function PortfolioView(): JSX.Element {
   // stays deferred.
   const pivotLive = useFetch(
     async () => {
-      const [structure, tenor, trade] = await Promise.all([
-        fetchPnlAttributionPivot("structure").then(adaptStructureRows),
+      const [tenor, trade] = await Promise.all([
         fetchPnlAttributionPivot("tenor").then(adaptTenorRows),
         fetchPnlAttributionPivot("trade").then(adaptWaterfallPivot),
       ]);
-      return { structure, tenor, trade };
+      return { tenor, trade };
     },
     120_000,
     true,
@@ -816,12 +762,6 @@ export function PortfolioView(): JSX.Element {
         dataPp="pnl-attribution"
         className="wf-panel"
       >
-        <div className="wf-cell wf-structure-cell">
-          <div className="perf-sub mono dim">
-            by structure <em className="unit">P&L · nominal · 2nd-order</em>
-          </div>
-          <StructureTable rows={pivotLive?.structure ?? []} />
-        </div>
         <div className="wf-cell wf-structure-cell">
           <div className="perf-sub mono dim">
             by tenor <em className="unit">P&L · vega · 2nd-order</em>
