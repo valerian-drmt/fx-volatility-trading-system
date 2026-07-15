@@ -356,6 +356,106 @@ export function adaptGreeksHistory(raw: unknown): GreekSeries {
   return out;
 }
 
+/** One row of the greek-P&L attribution matrix (all $): the Taylor terms of a group's
+ * P&L over the window, plus the group's actual P&L (Σ). Terms foot to actual (± residual). */
+export interface AttribRow {
+  label: string;
+  delta: number; // δ·dS
+  gamma: number; // ½Γ·dS²
+  vega: number; // V·dσ
+  theta: number; // Θ·dt
+  residual: number;
+  actual: number; // realized P&L over the window
+}
+export interface AttribMatrix {
+  rows: AttribRow[];
+  totals: AttribRow; // Σ over rows per column (= the by-greek bridge)
+}
+
+/** /portfolio/pnl-attribution?group_by= → greek-P&L × axis matrix (all $). */
+export function adaptAttributionMatrix(raw: unknown): AttribMatrix {
+  const o = (raw ?? {}) as {
+    groups?: Record<string, number | string | null>[];
+    totals?: Record<string, number | null>;
+  };
+  const row = (g: Record<string, number | string | null>, label: string): AttribRow => ({
+    label,
+    delta: n(g.delta_pnl_usd),
+    gamma: n(g.gamma_pnl_usd),
+    vega: n(g.vega_pnl_usd),
+    theta: n(g.theta_pnl_usd),
+    residual: n(g.residual_usd),
+    actual: n(g.actual_pnl_usd),
+  });
+  return {
+    rows: (o.groups ?? []).map((g) => row(g, String(g.label ?? "—"))),
+    totals: row(o.totals ?? {}, "Total"),
+  };
+}
+
+/** Per-position attribution row: position metadata + the Taylor P&L terms ($). */
+export interface PositionAttribRow {
+  id: number;
+  tradeId: number | null;
+  contractId: number | null;
+  product: string;
+  type: string; // trade_structure.structure_type (the booked classifier verdict)
+  structure: string;
+  side: string;
+  tenor: string;
+  iv: number; // %
+  nominal: number; // €
+  actual: number;
+  delta: number;
+  gamma: number;
+  vega: number;
+  theta: number;
+  residual: number;
+}
+export interface PositionAttribMatrix {
+  rows: PositionAttribRow[];
+  totals: AttribRow;
+}
+
+/** /portfolio/pnl-attribution (no group_by) → per-leg attribution matrix (IB legs). */
+export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
+  const o = (raw ?? {}) as { per_position?: Record<string, unknown>[] };
+  const rows: PositionAttribRow[] = (o.per_position ?? [])
+    .filter((r) => r.source === "ib_live")
+    .map((r) => ({
+      id: n(r.id),
+      tradeId: r.trade_id == null ? null : n(r.trade_id),
+      contractId: r.contract_id == null ? null : n(r.contract_id),
+      product: String(r.product_label ?? "—"),
+      type: String(r.structure_type ?? ""),
+      structure: String(r.structure ?? "—"),
+      side: String(r.side ?? "—"),
+      tenor: String(r.tenor ?? "—"),
+      iv: n(r.iv) * 100,
+      nominal: n(r.nominal_eur),
+      actual: n(r.actual_pnl_usd),
+      delta: n(r.delta_pnl_usd),
+      gamma: n(r.gamma_pnl_usd),
+      vega: n(r.vega_pnl_usd),
+      theta: n(r.theta_pnl_usd),
+      residual: n(r.residual_usd),
+    }));
+  // Total footed on the visible IB legs (not the endpoint totals, which include booked).
+  const s = (sel: (r: PositionAttribRow) => number): number => rows.reduce((a, r) => a + sel(r), 0);
+  return {
+    rows,
+    totals: {
+      label: "Total",
+      actual: s((r) => r.actual),
+      delta: s((r) => r.delta),
+      gamma: s((r) => r.gamma),
+      vega: s((r) => r.vega),
+      theta: s((r) => r.theta),
+      residual: s((r) => r.residual),
+    },
+  };
+}
+
 /** A trade open/close event for the EUR/USD ticker overlay (one entry per side). */
 export interface TradeEvent {
   t: number; // epoch ms of the event

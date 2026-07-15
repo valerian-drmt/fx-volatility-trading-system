@@ -813,6 +813,7 @@ async def var_factors(db: DbDep) -> dict[str, Any]:
 async def pnl_attribution(
     db: DbDep,
     lookback_hours: int = Query(24, ge=1, le=168),  # 1h..7d
+    group_by: str | None = Query(None),  # None → totals+per_position ; tenor → matrix
 ) -> dict[str, Any]:
     """Decompose realized P&L into greek contributions over the window.
 
@@ -856,7 +857,9 @@ async def pnl_attribution(
            WHERE timestamp <= :cutoff
            ORDER BY position_id, timestamp DESC
         )
-        SELECT p.id, p.structure, p.product_label, p.side,
+        SELECT p.id, p.structure, p.product_label, p.side, p.tenor,
+               p.trade_id, p.contract_id, p.nominal_eur,
+               ts.structure_type AS structure_type,
                p.current_pnl_usd AS pnl_now,
                p.market_price    AS spot_now,
                p.iv              AS iv_now,
@@ -870,6 +873,7 @@ async def pnl_attribution(
                t1.timestamp       AS t_then
           FROM open_position p
           LEFT JOIN t1 ON t1.position_id = p.id
+          LEFT JOIN trade_structure ts ON ts.id = p.trade_id
     """)
     ib_rows = (await db.execute(ib_sql, {"cutoff": cutoff})).all()
 
@@ -899,6 +903,8 @@ async def pnl_attribution(
         )
         SELECT bp.id, bp.state,
                ts.product_label AS product_label,
+               ts.reference_tenor AS tenor,
+               ts.structure_type AS structure_type,
                latest.current_pnl_gross_usd AS pnl_now,
                latest.spot                  AS spot_now,
                latest.iv_avg_legs_pct       AS iv_now,
@@ -918,6 +924,22 @@ async def pnl_attribution(
     """)
     booked_rows = (await db.execute(booked_sql, {"cutoff": cutoff})).all()
 
+    # Wing classification for the by-wing axis: parse the IB leg's local symbol
+    # (strike + right) and bucket by strike vs forward (≈ spot) — put wing (below),
+    # body (ATM ±50 bp), call wing (above). Futures / unparseable legs fall back.
+    def _wing(local_symbol: str | None, forward: float | None) -> str:
+        spec = parse_local_symbol(local_symbol)
+        if spec is None:
+            return "other"
+        if spec.instrument_type == "FUTURE" or spec.strike is None:
+            return "Future / delta-1"
+        if forward is None or forward <= 0:
+            return "other"
+        moneyness = spec.strike / forward - 1.0
+        if abs(moneyness) <= 0.005:
+            return "Body (ATM)"
+        return "Put wing" if moneyness < 0 else "Call wing"
+
     # 3. Decompose each row. None on any input → return Nones (caller
     #    displays "—") so partial data doesn't poison aggregates.
     def _decompose(
@@ -929,6 +951,14 @@ async def pnl_attribution(
         t_then: datetime | None,
     ) -> dict[str, float | None]:
         actual = (pnl_now - pnl_then) if (pnl_now is not None and pnl_then is not None) else None
+        # No t-1 snapshot → the leg's realized P&L over the window is unmeasurable,
+        # so there is nothing to attribute. Suppress every term (else a theoretical
+        # delta·dS would show against a $0 actual and pollute the trade/tenor sums).
+        if actual is None:
+            return dict.fromkeys(
+                ("actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd", "residual_usd"),
+                None,
+            )
         dspot = (spot_now - spot_then) if (spot_now is not None and spot_then is not None) else None
         div_pts = (iv_now - iv_then) if (iv_now is not None and iv_then is not None) else None
         dt_days = ((now - t_then).total_seconds() / 86400.0) if t_then is not None else None
@@ -954,13 +984,31 @@ async def pnl_attribution(
             "residual_usd": round(residual, 2) if residual is not None else None,
         }
 
+    # Book-level UNDERLYING spot = the EUR future's market price (the FOP
+    # underlying), now and at t-1. Option legs decompose against THIS, not their
+    # own market_price (which is the premium) — else dS is the premium change, so
+    # delta·dS is garbage, ½Γ·dS² collapses to 0 and the residual eats the P&L.
+    fwd_row = (await db.execute(text(
+        "SELECT market_price FROM open_position "
+        "WHERE structure LIKE '6E%' AND market_price IS NOT NULL ORDER BY id DESC LIMIT 1"
+    ))).first()
+    forward = float(fwd_row[0]) if fwd_row and fwd_row[0] is not None else None
+    fwd_then_row = (await db.execute(text(
+        "SELECT oph.market_price FROM open_position_history oph "
+        "JOIN open_position op ON op.id = oph.position_id "
+        "WHERE op.structure LIKE '6E%' AND oph.timestamp <= :cutoff AND oph.market_price IS NOT NULL "
+        "ORDER BY oph.timestamp DESC LIMIT 1"
+    ), {"cutoff": cutoff})).first()
+    forward_then = float(fwd_then_row[0]) if fwd_then_row and fwd_then_row[0] is not None else None
+
     per_position: list[dict[str, Any]] = []
     for r in ib_rows:
         decomp = _decompose(
             pnl_now=float(r.pnl_now) if r.pnl_now is not None else None,
             pnl_then=float(r.pnl_then) if r.pnl_then is not None else None,
-            spot_now=float(r.spot_now) if r.spot_now is not None else None,
-            spot_then=float(r.spot_then) if r.spot_then is not None else None,
+            # underlying spot (future price), NOT the per-leg premium
+            spot_now=forward,
+            spot_then=forward_then,
             iv_now=float(r.iv_now) if r.iv_now is not None else None,
             iv_then=float(r.iv_then) if r.iv_then is not None else None,
             delta=float(r.delta_now) if r.delta_now is not None else None,
@@ -972,7 +1020,13 @@ async def pnl_attribution(
         per_position.append({
             "id": int(r.id), "source": "ib_live",
             "structure": r.structure, "product_label": r.product_label,
-            "side": r.side,
+            "side": r.side, "tenor": r.tenor,
+            "trade_id": int(r.trade_id) if r.trade_id is not None else None,
+            "contract_id": int(r.contract_id) if r.contract_id is not None else None,
+            "nominal_eur": float(r.nominal_eur) if r.nominal_eur is not None else None,
+            "iv": float(r.iv_now) if r.iv_now is not None else None,
+            "structure_type": r.structure_type,
+            "wing": _wing(r.structure, forward),
             **decomp,
         })
     for r in booked_rows:
@@ -992,9 +1046,58 @@ async def pnl_attribution(
         per_position.append({
             "id": int(r.id), "source": "booked",
             "structure": None, "product_label": r.product_label,
-            "side": None,
+            "side": None, "tenor": r.tenor,
+            "structure_type": r.structure_type, "wing": "other",
             **decomp,
         })
+
+    # 4b. Pivot mode : bucket the per-position Taylor terms by a grouping key into a
+    #     P&L-attribution matrix (rows = groups, cols = greek P&L). The residual is
+    #     re-derived per bucket (actual − Σ explained) so every row foots exactly.
+    if group_by is not None:
+        key_col = {"tenor": "tenor", "structure": "structure_type", "wing": "wing"}.get(group_by)
+        if key_col is None:
+            raise HTTPException(400, f"unknown group_by '{group_by}' (expected tenor / structure / wing)")
+        sum_cols = ["actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd"]
+        buckets: dict[str, dict[str, float]] = {}
+        for row in per_position:
+            label = str(row.get(key_col) or "other")
+            b = buckets.setdefault(label, dict.fromkeys(sum_cols, 0.0))
+            for c in sum_cols:
+                if row[c] is not None:
+                    b[c] += float(row[c])
+
+        def _mk(label: str, b: dict[str, float]) -> dict[str, Any]:
+            explained = b["delta_pnl_usd"] + b["gamma_pnl_usd"] + b["vega_pnl_usd"] + b["theta_pnl_usd"]
+            return {
+                "label": label,
+                "actual_pnl_usd": round(b["actual_pnl_usd"], 2),
+                "delta_pnl_usd": round(b["delta_pnl_usd"], 2),
+                "gamma_pnl_usd": round(b["gamma_pnl_usd"], 2),
+                "vega_pnl_usd": round(b["vega_pnl_usd"], 2),
+                "theta_pnl_usd": round(b["theta_pnl_usd"], 2),
+                "residual_usd": round(b["actual_pnl_usd"] - explained, 2),
+            }
+
+        if group_by == "tenor":
+            ladder = ["1M", "2M", "3M", "4M", "5M", "6M"]
+            extra = sorted(g for g in buckets if g not in ladder)
+            zero = dict.fromkeys(sum_cols, 0.0)
+            groups = [_mk(t, buckets.get(t, zero)) for t in ladder + extra]
+        elif group_by == "wing":
+            # smile order: downside → ATM → upside, then linear / catch-all.
+            wing_order = ["Put wing", "Body (ATM)", "Call wing", "Future / delta-1", "other"]
+            extra = sorted(g for g in buckets if g not in wing_order)
+            groups = [_mk(t, buckets[t]) for t in wing_order + extra if t in buckets]
+        else:
+            order = sorted(buckets, key=lambda g: abs(buckets[g]["actual_pnl_usd"]), reverse=True)
+            groups = [_mk(t, buckets[t]) for t in order]
+        cols = ["actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd", "residual_usd"]
+        totals = {c: round(sum(g[c] for g in groups), 2) for c in cols}
+        return {
+            "group_by": group_by, "lookback_hours": lookback_hours,
+            "computed_at": now.isoformat(), "groups": groups, "totals": totals,
+        }
 
     # 4. Aggregate. Sum across positions where the term is not None.
     def _sum(key: str) -> float | None:

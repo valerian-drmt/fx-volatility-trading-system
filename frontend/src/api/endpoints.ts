@@ -178,6 +178,12 @@ export const fetchPnlAttribution = (lookbackHours = 24) =>
   apiGet<unknown>("/api/v1/portfolio/pnl-attribution", {
     query: { lookback_hours: lookbackHours },
   });
+
+// Same decomposition, bucketed by an axis (tenor / structure) → P&L-attribution matrix.
+export const fetchPnlAttributionMatrix = (groupBy = "tenor", lookbackHours = 24) =>
+  apiGet<unknown>("/api/v1/portfolio/pnl-attribution", {
+    query: { group_by: groupBy, lookback_hours: lookbackHours },
+  });
 // Realized-P&L bridge grouped by a non-greek axis (structure type / tenor).
 export const fetchPnlAttributionPivot = (by: string, days = 90) =>
   apiGet<unknown>("/api/v1/portfolio/pnl-attribution-pivot", { query: { by, days } });
