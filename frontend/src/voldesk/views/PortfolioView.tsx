@@ -612,6 +612,18 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
     vanna: colAbs((r) => r.vanna),
     volga: colAbs((r) => r.volga),
   };
+  // Net (signed) column sums for the Total row: net book P&L, gross nominal, net greeks.
+  const sum = (sel: (r: TenorRow) => number): number => rows.reduce((s, r) => s + sel(r), 0);
+  const net = {
+    pnl: sum((r) => r.pnl),
+    nominal: sum((r) => r.nominal),
+    delta: sum((r) => r.delta),
+    gamma: sum((r) => r.gamma),
+    vega: sum((r) => r.vega),
+    theta: sum((r) => r.theta),
+    vanna: sum((r) => r.vanna),
+    volga: sum((r) => r.volga),
+  };
   const pnlPct = (v: number): string => {
     const base = v >= 0 ? gains : losses;
     return (v >= 0 ? "+" : "−") + (base ? Math.round((Math.abs(v) / base) * 100) : 0) + "%";
@@ -668,6 +680,35 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
               <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>{gkCell(r.volga, tot.volga)}</td>
             </tr>
           ))}
+          <tr className="wf-total">
+            <td className="l grp-fix">
+              <span className="sym">Total</span>
+            </td>
+            <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(net.pnl)}>
+              <b>{fmt.usdk(net.pnl)}</b>
+            </td>
+            <td className="r mono dim grp-fix col-grp col-grp-end">
+              <b>{(net.nominal / 1e6).toFixed(2)}M</b>
+            </td>
+            <td className={"r mono grp-grk col-grp " + pnlCls(net.delta)}>
+              <b>{gk$(net.delta)}</b>
+            </td>
+            <td className={"r mono grp-grk " + pnlCls(net.gamma)}>
+              <b>{gk$(net.gamma)}</b>
+            </td>
+            <td className={"r mono grp-grk " + pnlCls(net.vega)}>
+              <b>{gk$(net.vega)}</b>
+            </td>
+            <td className={"r mono grp-grk " + pnlCls(net.theta)}>
+              <b>{gk$(net.theta)}</b>
+            </td>
+            <td className={"r mono grp-grk " + pnlCls(net.vanna)}>
+              <b>{gk$(net.vanna)}</b>
+            </td>
+            <td className={"r mono grp-grk col-grp-end " + pnlCls(net.volga)}>
+              <b>{gk$(net.volga)}</b>
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>
