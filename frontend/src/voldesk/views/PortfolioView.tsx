@@ -845,19 +845,19 @@ export function PortfolioView(): JSX.Element {
       </Panel>
 
       <Panel
-        title="Open book breakdown"
-        dataPp="pnl-attribution"
+        title="Unrealized P&L & risk by tenor"
+        dataPp="book-by-tenor"
         className="wf-panel"
       >
-        <div className="wf-cell wf-structure-cell">
-          <TenorTable rows={pivotTenor} />
-        </div>
-        <div className="wf-cell">
-          <div className="perf-sub mono dim">
-            by trade <em className="unit">position breakdown</em>
-          </div>
-          <PositionBreakdown positions={pd?.positions ?? []} />
-        </div>
+        <TenorTable rows={pivotTenor} />
+      </Panel>
+
+      <Panel
+        title="Open positions — per-leg greeks & P&L"
+        dataPp="position-breakdown"
+        className="wf-panel"
+      >
+        <PositionBreakdown positions={pd?.positions ?? []} />
       </Panel>
     </div>
   );
