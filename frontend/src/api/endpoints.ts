@@ -100,6 +100,19 @@ export interface Bar {
 export const fetchBars = (symbol = "EURUSD", tf = "1h", limit = 48) =>
   apiGet<Bar[]>("/api/v1/bars", { query: { symbol, tf, limit } });
 
+// Trade open/close events for the Performance ticker overlay (booked positions).
+export interface TradeMarkerRaw {
+  id: number;
+  type: string;
+  opened_at: string | null;
+  entry_spot: number | null;
+  closed_at: string | null;
+  net_pnl_usd: number | null;
+  state: string;
+}
+export const fetchTradeMarkers = (days = 30) =>
+  apiGet<TradeMarkerRaw[]>("/api/v1/portfolio/trade-markers", { query: { days } });
+
 export const fetchSystemStats = () => apiGet<SystemStats>("/api/v1/system-stats");
 
 // ── R11 voldesk wiring (read) ───────────────────────────────────────────────

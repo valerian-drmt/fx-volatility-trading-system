@@ -9,6 +9,7 @@ import {
   fetchEquityCurve,
   fetchPnlAttribution,
   fetchPnlAttributionPivot,
+  fetchTradeMarkers,
 } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
@@ -16,6 +17,7 @@ import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
+import { TickerChart } from "../components/TickerChart";
 import { DATA, DATA2, fmt } from "../data";
 import type { PerfStats, WaterfallStep } from "../data";
 import { useDeskData } from "../data/deskData";
@@ -23,6 +25,7 @@ import {
   adaptCoverage,
   adaptEquityCurve,
   adaptTenorRows,
+  adaptTradeMarkers,
   adaptWaterfallPivot,
   type EquityPoint,
   type TenorRow,
@@ -635,6 +638,8 @@ export function PortfolioView(): JSX.Element {
   ).data;
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
+  // Trade open/close markers overlaid on the Performance ticker (covers the 1M preset).
+  const tradeMarkers = useFetch(() => fetchTradeMarkers(31).then(adaptTradeMarkers), 120_000, true, 60_000).data ?? [];
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
   const liveCash = trade.data?.cash;
   const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
@@ -752,6 +757,12 @@ export function PortfolioView(): JSX.Element {
           }
           className="perf-panel"
         >
+          <div className="perf-ticker">
+            <div className="perf-sub mono dim">
+              EUR/USD <em className="unit">your trades — ▲ open · ● close</em>
+            </div>
+            <TickerChart spot={spot} markers={tradeMarkers} />
+          </div>
           <PerfCharts window={win} ps={ps} unreal={unreal} />
         </Panel>
         <Panel

@@ -288,6 +288,44 @@ async def equity_curve(
     ]
 
 
+@router.get("/trade-markers")
+async def trade_markers(
+    db: DbDep,
+    days: int = Query(30, ge=1, le=730),
+) -> list[dict[str, Any]]:
+    """Trade open/close events for the Performance EUR/USD ticker overlay.
+
+    One row per booked position whose open OR close falls within the window. The
+    frontend drops a marker at ``opened_at`` (anchored to ``entry_spot``) and, once
+    the trade is closed, a second marker at ``closed_at`` — the tooltip carries the
+    structure type and realized P&L.
+    """
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    sql = text("""
+        SELECT bp.id,
+               COALESCE(ts.structure_type, 'trade') AS stype,
+               bp.opened_at, bp.entry_spot, bp.closed_at,
+               bp.net_pnl_usd, bp.state
+          FROM booked_position bp
+          LEFT JOIN trade_structure ts ON bp.structure_id = ts.id
+         WHERE bp.opened_at >= :cutoff OR bp.closed_at >= :cutoff
+         ORDER BY bp.opened_at
+    """)
+    rows = (await db.execute(sql, {"cutoff": cutoff})).all()
+    return [
+        {
+            "id": int(r.id),
+            "type": str(r.stype),
+            "opened_at": r.opened_at.replace(tzinfo=UTC).isoformat() if r.opened_at else None,
+            "entry_spot": float(r.entry_spot) if r.entry_spot is not None else None,
+            "closed_at": r.closed_at.replace(tzinfo=UTC).isoformat() if r.closed_at else None,
+            "net_pnl_usd": float(r.net_pnl_usd) if r.net_pnl_usd is not None else None,
+            "state": str(r.state),
+        }
+        for r in rows
+    ]
+
+
 @router.get("/aggregate-greeks")
 async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
     """Σ Δ Γ V Θ across all OPEN positions (latest snap per position).

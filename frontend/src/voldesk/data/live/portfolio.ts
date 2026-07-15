@@ -311,6 +311,38 @@ export function adaptEquityCurve(raw: unknown): EquityPoint[] {
     .filter((p) => p.v > 0 && Number.isFinite(p.t));
 }
 
+/** A trade open/close event for the EUR/USD ticker overlay (one entry per side). */
+export interface TradeEvent {
+  t: number; // epoch ms of the event
+  kind: "open" | "close";
+  id: number;
+  type: string;
+  spot: number | null; // entry_spot on opens (else the marker anchors to the candle)
+  pnl: number | null; // realized net P&L (closes)
+}
+
+/** /portfolio/trade-markers → flat open/close events for the ticker overlay. */
+export function adaptTradeMarkers(raw: unknown): TradeEvent[] {
+  const rows = Array.isArray(raw)
+    ? (raw as {
+        id?: number;
+        type?: string;
+        opened_at?: string | null;
+        entry_spot?: number | null;
+        closed_at?: string | null;
+        net_pnl_usd?: number | null;
+      }[])
+    : [];
+  const out: TradeEvent[] = [];
+  for (const r of rows) {
+    const id = Number(r.id ?? 0);
+    const type = String(r.type ?? "trade");
+    if (r.opened_at) out.push({ t: Date.parse(r.opened_at), kind: "open", id, type, spot: r.entry_spot ?? null, pnl: null });
+    if (r.closed_at) out.push({ t: Date.parse(r.closed_at), kind: "close", id, type, spot: null, pnl: r.net_pnl_usd ?? null });
+  }
+  return out.filter((e) => Number.isFinite(e.t));
+}
+
 export type StressAxis = "spot-vol" | "spot-time" | "spot-skew" | "spot-fly";
 
 export interface StressGridData {
