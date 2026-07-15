@@ -437,47 +437,48 @@ export function OpenPositionsTable({
   );
 }
 
-export function CashHoldings({ compact = false, cash }: { compact?: boolean; cash?: Cash[] }): JSX.Element {
+export function CashHoldings({ cash }: { cash?: Cash[] }): JSX.Element {
   // Live per-currency balances (from /portfolio/cash via the trade slice) when
   // present; the mock only until the account snapshot has been written.
   const rows = cash && cash.length > 0 ? cash : DATA.cash;
   const total = rows.reduce((s, c) => s + c.usd, 0);
+  const base = Math.abs(total) || 1;
+  // Each ccy's USD value as a signed share of |net cash| — same reading as the
+  // by-greek attribution table: an FX leg can overshoot ±100% when another
+  // currency offsets it (e.g. long EUR funded by a USD debit).
+  const pct = (v: number): string => {
+    const p = Math.round((v / base) * 100);
+    return (p >= 0 ? "+" : "−") + Math.abs(p) + "%";
+  };
   return (
-    <div className="table-scroll">
-      <table className="dt cash">
-        <thead>
-          <tr>
-            <th className="l">Ccy</th>
-            <th className="r">Settled</th>
-            {!compact && <th className="r">Unsettled</th>}
-            <th className="r">Rate</th>
-            <th className="r">USD value</th>
+    <table className="dt greeks-table acct-cap">
+      <thead>
+        <tr>
+          <th className="l">Ccy</th>
+          <th className="r">
+            USD value <em className="unit">(% of net)</em>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((c, i) => (
+          <tr key={i}>
+            <td className="l">
+              <span className="ccy-dot" />
+              {c.ccy}
+            </td>
+            <td className={"r mono " + pnlCls(c.usd)}>
+              <b>{fmt.usd(c.usd)}</b> <span className="pb-rel">({pct(c.usd)})</span>
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {rows.map((c, i) => (
-            <tr key={i}>
-              <td className="l">
-                <span className="ccy-dot" />
-                {c.ccy}
-              </td>
-              <td className={"r mono " + pnlCls(c.settled)}>{fmt.num(c.settled, 0)}</td>
-              {!compact && (
-                <td className={"r mono " + (c.unsettled ? pnlCls(c.unsettled) : "dim")}>
-                  {c.unsettled ? fmt.num(c.unsettled, 0) : "—"}
-                </td>
-              )}
-              <td className="r mono dim">{c.rate.toFixed(4)}</td>
-              <td className={"r mono " + pnlCls(c.usd)}>{fmt.usd(c.usd)}</td>
-            </tr>
-          ))}
-          <tr className="total-row">
-            <td className="l">Net cash (USD)</td>
-            <td className="r mono" colSpan={compact ? 2 : 3}></td>
-            <td className="r mono">{fmt.usd(total)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+        ))}
+        <tr className="acct-sep total-row">
+          <td className="l">Net cash (USD)</td>
+          <td className={"r mono " + pnlCls(total)}>
+            <b>{fmt.usd(total)}</b>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 }
