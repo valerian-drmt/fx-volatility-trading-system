@@ -5,15 +5,10 @@
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
 import { useEffect, useRef, useState } from "react";
-import {
-  fetchEquityCurve,
-  fetchPnlAttribution,
-  fetchPnlAttributionPivot,
-  fetchTradeMarkers,
-} from "../../api/endpoints";
+import { fetchEquityCurve, fetchPnlAttributionPivot, fetchTradeMarkers } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
-import { Panel, Tag } from "../components/common";
+import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
@@ -22,7 +17,6 @@ import { DATA, DATA2, fmt } from "../data";
 import type { PerfStats, WaterfallStep } from "../data";
 import { useDeskData } from "../data/deskData";
 import {
-  adaptCoverage,
   adaptEquityCurve,
   adaptTenorRows,
   adaptTradeMarkers,
@@ -39,7 +33,13 @@ import {
 // timeframe therefore renders the same number of samples on the same-shaped axis.
 const GRID_N = 90;
 const DAY_MS = 86_400_000;
-const WINDOW_DAYS: Record<string, number | null> = { "1D": 1, "7D": 7, "30D": 30, "1Y": 365, all: null };
+const WINDOW_DAYS: Record<string, number | null> = {
+  "1D": 1,
+  "7D": 7,
+  "30D": 30,
+  "1Y": 365,
+  all: null,
+};
 
 interface EqGrid {
   series: (number | null)[]; // GRID_N samples across the fixed domain (null = no data)
@@ -72,7 +72,8 @@ function buildEquityGrid(points: EquityPoint[], windowDays: number | null, now: 
       const ago = windowDays * (1 - f);
       ticks.push({
         f,
-        label: f === 1 ? "now" : windowDays <= 1 ? `-${Math.round(ago * 24)}h` : `-${Math.round(ago)}d`,
+        label:
+          f === 1 ? "now" : windowDays <= 1 ? `-${Math.round(ago * 24)}h` : `-${Math.round(ago)}d`,
       });
     }
   } else {
@@ -82,7 +83,11 @@ function buildEquityGrid(points: EquityPoint[], windowDays: number | null, now: 
 }
 
 // SVG line path that breaks at nulls (missing spans render as empty gaps).
-function gappedLine(series: (number | null)[], X: (i: number) => number, Y: (v: number) => number): string {
+function gappedLine(
+  series: (number | null)[],
+  X: (i: number) => number,
+  Y: (v: number) => number,
+): string {
   let d = "";
   let pen = false;
   series.forEach((v, i) => {
@@ -163,7 +168,14 @@ function XAxis({
 function emptyChart(w: number, h: number, status: string): JSX.Element {
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      <text x={w / 2} y={h / 2} textAnchor="middle" fill="var(--text-faint)" fontSize="11" fontFamily="var(--mono)">
+      <text
+        x={w / 2}
+        y={h / 2}
+        textAnchor="middle"
+        fill="var(--text-faint)"
+        fontSize="11"
+        fontFamily="var(--mono)"
+      >
         {status === "missing" ? "no equity history" : "loading…"}
       </text>
     </svg>
@@ -198,8 +210,21 @@ function EquityLineSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.
         const v = lo + rng * (1 - f);
         return (
           <g key={i}>
-            <line x1={pl} x2={w - pr} y1={pt + f * (h - pt - pb)} y2={pt + f * (h - pt - pb)} stroke="var(--line)" opacity="0.5" />
-            <text x={4} y={pt + f * (h - pt - pb) + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
+            <line
+              x1={pl}
+              x2={w - pr}
+              y1={pt + f * (h - pt - pb)}
+              y2={pt + f * (h - pt - pb)}
+              stroke="var(--line)"
+              opacity="0.5"
+            />
+            <text
+              x={4}
+              y={pt + f * (h - pt - pb) + 3}
+              fill="var(--text-faint)"
+              fontSize="9"
+              fontFamily="var(--mono)"
+            >
               {(v / 1e6).toFixed(2)}M
             </text>
           </g>
@@ -207,7 +232,14 @@ function EquityLineSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.
       })}
       <XAxis ticks={grid.ticks} pl={pl} pr={pr} pt={pt} pb={pb} w={w} h={h} />
       <path d={gappedArea(grid.series, X, Y, h - pb)} fill="url(#eqg)" />
-      <path d={gappedLine(grid.series, X, Y)} fill="none" stroke={col} strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
+      <path
+        d={gappedLine(grid.series, X, Y)}
+        fill="none"
+        stroke={col}
+        strokeWidth="2.2"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -239,7 +271,14 @@ function DrawdownSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.El
         const yy = base + f * (floor - base);
         return (
           <g key={i}>
-            <line x1={pl} x2={w - pr} y1={yy} y2={yy} stroke="var(--line)" opacity={f === 0 ? 0.9 : 0.5} />
+            <line
+              x1={pl}
+              x2={w - pr}
+              y1={yy}
+              y2={yy}
+              stroke="var(--line)"
+              opacity={f === 0 ? 0.9 : 0.5}
+            />
             <text x={4} y={yy + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
               {f === 0 ? "0%" : (ddMin * 100).toFixed(1) + "%"}
             </text>
@@ -248,7 +287,13 @@ function DrawdownSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.El
       })}
       <XAxis ticks={grid.ticks} pl={pl} pr={pr} pt={pt} pb={pb} w={w} h={h} />
       <path d={gappedArea(dd, X, Y, base)} fill="var(--neg)" fillOpacity="0.34" />
-      <path d={gappedLine(dd, X, Y)} fill="none" stroke="var(--neg)" strokeWidth="1.2" opacity="0.75" />
+      <path
+        d={gappedLine(dd, X, Y)}
+        fill="none"
+        stroke="var(--neg)"
+        strokeWidth="1.2"
+        opacity="0.75"
+      />
     </svg>
   );
 }
@@ -289,7 +334,9 @@ function PerfCharts({
         <div className="perf-side">
           <div className="pstat">
             <span className="pstat-lbl mono dim">Realized</span>
-            <b className={"pstat-val mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
+            <b className={"pstat-val mono " + pnlCls(ps.cumRealized)}>
+              {fmt.sgn(ps.cumRealized, 1)}k
+            </b>
           </div>
           <div className="pstat">
             <span className="pstat-lbl mono dim">Unrealized</span>
@@ -320,182 +367,6 @@ function PerfCharts({
           </div>
           <DrawdownSvg grid={grid} status={live.status} />
         </div>
-      </div>
-    </div>
-  );
-}
-
-function CovSpark({
-  data,
-  threshold,
-  w = 150,
-  h = 34,
-}: {
-  data: number[];
-  threshold: number;
-  w?: number;
-  h?: number;
-}): JSX.Element {
-  const lo = Math.min(...data, threshold),
-    hi = Math.max(...data, threshold),
-    rng = hi - lo || 1;
-  const X = (i: number): number => (i / (data.length - 1)) * w;
-  const Y = (v: number): number => 3 + (1 - (v - lo) / rng) * (h - 6);
-  const d = data.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
-  const last = data[data.length - 1]!;
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      {threshold != null && (
-        <line
-          x1="0"
-          x2={w}
-          y1={Y(threshold)}
-          y2={Y(threshold)}
-          stroke="var(--text-faint)"
-          strokeDasharray="3 2"
-        />
-      )}
-      <path
-        d={d}
-        fill="none"
-        stroke={last >= threshold ? "var(--pos)" : "var(--neg)"}
-        strokeWidth="1.6"
-      />
-      <circle
-        cx={X(data.length - 1)}
-        cy={Y(last)}
-        r="2.6"
-        fill={last >= threshold ? "var(--pos)" : "var(--neg)"}
-      />
-    </svg>
-  );
-}
-
-// carry vs convexity — survival hero
-function CoverageHero(): JSX.Element {
-  // convexity/carry/ratio/greek-PnL/posture live (from /pnl-attribution totals). The perf
-  // trio (RoM/RoVaR/Sharpe) needs realized trading history → deferred (R12+, like backtest).
-  const covLive = useFetch(() => fetchPnlAttribution().then(adaptCoverage), 60_000).data;
-  const c = { ...DATA2.coverage, ...(covLive ?? {}) };
-  const ok = c.ratio >= c.threshold;
-  // forward breakeven (implied): move_BE = √(2Θ/Γ) vs current RV — from the LIVE book
-  // greeks + live ATM RV (mock only until they load).
-  const { portfolio: pf, termStructure: term } = useDeskData();
-  const g = pf.data?.greeks ?? DATA.greeks;
-  const rvNear = term.data?.[0]?.rv ?? DATA.termStructure[0]!.rv;
-  const beMove = g.gamma ? Math.sqrt((2 * Math.abs(g.theta)) / g.gamma) * 0.225 : 0;
-  const rvDaily = rvNear / Math.sqrt(252);
-  const beCovered = rvDaily >= beMove;
-  // REALIZED (backward) — earned vs paid on a shared scale, so the ratio is visible.
-  const earned = c.convexity,
-    paid = c.carry;
-  const maxSide = Math.max(1, Math.abs(earned), Math.abs(paid));
-  const untested = Math.abs(earned) < 0.05 && Math.abs(paid) < 0.05;
-  // FORWARD (implied) — breakeven move vs realized daily move, on a shared scale.
-  const maxMove = Math.max(1e-4, beMove, rvDaily);
-  const fwdRatio = beMove > 0 ? rvDaily / beMove : null;
-  return (
-    <div className="cov2">
-      <div className="cov2-head">
-        <span className="cov2-title mono">is gamma paying its rent?</span>
-        <Tag tone="good">{c.posture}</Tag>
-      </div>
-      <div className="cov2-grid">
-        {/* REALIZED · backward — did it pay? */}
-        <div className="cov2-cell">
-          <div className="cov2-cell-hd mono dim">
-            realized <em className="unit">did it pay?</em>
-          </div>
-          <div className="cov2-num-row">
-            <b
-              className={"cov2-num mono " + (ok ? "pos" : "neg")}
-              title={`(Σ½Γ(dS)² + ΣV·dσ) ÷ ΣΘ·dt · ${c.windowLabel}`}
-            >
-              {c.ratio.toFixed(2)}×
-            </b>
-            <span className={"cov-verdict " + (ok ? "ok" : "bad")}>
-              {ok ? "convexity paid the carry" : "carry not covered"}
-            </span>
-          </div>
-          {untested ? (
-            <div className="cov2-empty dim small mono">
-              gamma untested · no move booked this {c.windowLabel}
-            </div>
-          ) : (
-            <div className="cov2-tug">
-              <div className="cov2-tug-row">
-                <span className="cov2-tug-lbl mono">earned</span>
-                <span className="cov2-tug-track">
-                  <span
-                    className="cov2-tug-fill pos"
-                    style={{ width: (Math.abs(earned) / maxSide) * 100 + "%" }}
-                  />
-                </span>
-                <span className="cov2-tug-val mono pos">+${earned.toFixed(0)}k</span>
-              </div>
-              <div className="cov2-tug-row">
-                <span className="cov2-tug-lbl mono">paid</span>
-                <span className="cov2-tug-track">
-                  <span
-                    className="cov2-tug-fill neg"
-                    style={{ width: (Math.abs(paid) / maxSide) * 100 + "%" }}
-                  />
-                </span>
-                <span className="cov2-tug-val mono neg">−${paid.toFixed(0)}k</span>
-              </div>
-            </div>
-          )}
-          <div className="cov2-foot dim mono">
-            Γ +${c.gammaPnl}k · Vega +${c.vegaPnl}k · Θ −${c.thetaPaid}k
-          </div>
-        </div>
-        {/* FORWARD · implied — does it pay now? */}
-        <div className="cov2-cell">
-          <div className="cov2-cell-hd mono dim">
-            forward <em className="unit">does it pay now?</em>
-          </div>
-          <div className="cov2-num-row">
-            <b className={"cov2-num mono " + (beCovered ? "pos" : "neg")}>
-              {fwdRatio == null ? "—" : fwdRatio.toFixed(2) + "×"}
-            </b>
-            <span className={"cov-verdict " + (beCovered ? "ok" : "bad")}>
-              {fwdRatio == null ? "no gamma" : beCovered ? "gamma pays now" : "carry bleeds now"}
-            </span>
-          </div>
-          <div className="cov2-tug">
-            <div className="cov2-tug-row">
-              <span className="cov2-tug-lbl mono">
-                need <em className="unit">BE</em>
-              </span>
-              <span className="cov2-tug-track">
-                <span
-                  className="cov2-tug-fill neg"
-                  style={{ width: (beMove / maxMove) * 100 + "%" }}
-                />
-              </span>
-              <span className="cov2-tug-val mono">{beMove.toFixed(2)}%</span>
-            </div>
-            <div className="cov2-tug-row">
-              <span className="cov2-tug-lbl mono">
-                have <em className="unit">RV</em>
-              </span>
-              <span className="cov2-tug-track">
-                <span
-                  className="cov2-tug-fill pos"
-                  style={{ width: (rvDaily / maxMove) * 100 + "%" }}
-                />
-              </span>
-              <span className="cov2-tug-val mono">{rvDaily.toFixed(2)}%</span>
-            </div>
-          </div>
-          <div className="cov2-foot dim mono">
-            move<sub>BE</sub> = √(2Θ/Γ) %/day · vs realized daily vol
-          </div>
-        </div>
-      </div>
-      <div className="cov2-spark">
-        <CovSpark data={c.history} threshold={c.threshold} w={260} />
-        <span className="dim small mono">coverage vs threshold 1.0 · {c.windowLabel}</span>
       </div>
     </div>
   );
@@ -639,7 +510,8 @@ export function PortfolioView(): JSX.Element {
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
   // Trade open/close markers overlaid on the Performance ticker (covers the 1M preset).
-  const tradeMarkers = useFetch(() => fetchTradeMarkers(31).then(adaptTradeMarkers), 120_000, true, 60_000).data ?? [];
+  const tradeMarkers =
+    useFetch(() => fetchTradeMarkers(31).then(adaptTradeMarkers), 120_000, true, 60_000).data ?? [];
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
   const liveCash = trade.data?.cash;
   const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
@@ -732,47 +604,38 @@ export function PortfolioView(): JSX.Element {
         </div>
       </Panel>
 
-      <div className="pf-perf-row">
-        <Panel
-          title="Performance"
-          dataPp="perf"
-          right={
-            <div className="tf-group">
-              {[
-                { v: "1D", l: "1D" },
-                { v: "7D", l: "7D" },
-                { v: "30D", l: "1M" },
-                { v: "1Y", l: "1Y" },
-                { v: "all", l: "all" },
-              ].map((wn) => (
-                <button
-                  key={wn.v}
-                  className={"chip " + (win === wn.v ? "on" : "")}
-                  onClick={() => setWin(wn.v)}
-                >
-                  {wn.l}
-                </button>
-              ))}
-            </div>
-          }
-          className="perf-panel"
-        >
-          <div className="perf-ticker">
-            <div className="perf-sub mono dim">
-              EUR/USD <em className="unit">your trades — ▲ open · ● close</em>
-            </div>
-            <TickerChart spot={spot} markers={tradeMarkers} />
+      <Panel
+        title="Performance"
+        dataPp="perf"
+        right={
+          <div className="tf-group">
+            {[
+              { v: "1D", l: "1D" },
+              { v: "7D", l: "7D" },
+              { v: "30D", l: "1M" },
+              { v: "1Y", l: "1Y" },
+              { v: "all", l: "all" },
+            ].map((wn) => (
+              <button
+                key={wn.v}
+                className={"chip " + (win === wn.v ? "on" : "")}
+                onClick={() => setWin(wn.v)}
+              >
+                {wn.l}
+              </button>
+            ))}
           </div>
-          <PerfCharts window={win} ps={ps} unreal={unreal} />
-        </Panel>
-        <Panel
-          title="Carry vs convexity — survival metric"
-          dataPp="carry-convex"
-          className="cov-panel"
-        >
-          <CoverageHero />
-        </Panel>
-      </div>
+        }
+        className="perf-panel"
+      >
+        <div className="perf-ticker">
+          <div className="perf-sub mono dim">
+            EUR/USD <em className="unit">your trades — ▲ open · ● close</em>
+          </div>
+          <TickerChart spot={spot} markers={tradeMarkers} />
+        </div>
+        <PerfCharts window={win} ps={ps} unreal={unreal} />
+      </Panel>
 
       <Panel
         title="Realized P&L attribution — bridge"
