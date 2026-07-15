@@ -611,10 +611,13 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
     `color-mix(in srgb, ${v >= 0 ? "var(--pos)" : "var(--neg)"} ${Math.round(Math.min(1, Math.abs(v) / maxAbs) * 26)}%, transparent)`;
   // term cell: value $ bold + (% of the row's realized P&L) lighter, same colour.
   const cell = (v: number, rowActual: number, extra: string): JSX.Element => {
-    const p = Math.round((v / (Math.abs(rowActual) || 1)) * 100);
+    // % of the row's realized P&L — undefined when the row P&L is ~0 (would divide
+    // by ≈0 into a nonsense %), shown as "—" then.
+    const p = Math.abs(rowActual) < 1 ? null : Math.round((v / Math.abs(rowActual)) * 100);
     return (
       <td className={"r mono " + extra + " " + pnlCls(v)} style={{ background: bg(v) }}>
-        <b>{gk$(v)}</b> <span className="pb-rel">({(p >= 0 ? "+" : "−") + Math.abs(p)}%)</span>
+        <b>{gk$(v)}</b>{" "}
+        <span className="pb-rel">({p == null ? "—" : (p >= 0 ? "+" : "−") + Math.abs(p) + "%"})</span>
       </td>
     );
   };
@@ -701,10 +704,13 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
     `color-mix(in srgb, ${v >= 0 ? "var(--pos)" : "var(--neg)"} ${Math.round(Math.min(1, Math.abs(v) / maxAbs) * 26)}%, transparent)`;
   // one greek-P&L cell: value $ bold + (% of the row's realized P&L), heatmap tint.
   const cell = (v: number, rowActual: number, extra: string): JSX.Element => {
-    const p = Math.round((v / (Math.abs(rowActual) || 1)) * 100);
+    // % of the row's realized P&L — undefined when the row P&L is ~0 (would divide
+    // by ≈0 into a nonsense %), shown as "—" then.
+    const p = Math.abs(rowActual) < 1 ? null : Math.round((v / Math.abs(rowActual)) * 100);
     return (
       <td className={"r mono " + extra + " " + pnlCls(v)} style={{ background: bg(v) }}>
-        <b>{gk$(v)}</b> <span className="pb-rel">({(p >= 0 ? "+" : "−") + Math.abs(p)}%)</span>
+        <b>{gk$(v)}</b>{" "}
+        <span className="pb-rel">({p == null ? "—" : (p >= 0 ? "+" : "−") + Math.abs(p) + "%"})</span>
       </td>
     );
   };

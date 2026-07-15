@@ -951,6 +951,14 @@ async def pnl_attribution(
         t_then: datetime | None,
     ) -> dict[str, float | None]:
         actual = (pnl_now - pnl_then) if (pnl_now is not None and pnl_then is not None) else None
+        # No t-1 snapshot → the leg's realized P&L over the window is unmeasurable,
+        # so there is nothing to attribute. Suppress every term (else a theoretical
+        # delta·dS would show against a $0 actual and pollute the trade/tenor sums).
+        if actual is None:
+            return dict.fromkeys(
+                ("actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd", "residual_usd"),
+                None,
+            )
         dspot = (spot_now - spot_then) if (spot_now is not None and spot_then is not None) else None
         div_pts = (iv_now - iv_then) if (iv_now is not None and iv_then is not None) else None
         dt_days = ((now - t_then).total_seconds() / 86400.0) if t_then is not None else None
