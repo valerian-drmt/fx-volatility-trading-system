@@ -103,22 +103,26 @@ const fmtTs = (t: number): string => {
 // hover shows the tooltip. Reused by the P&L and greek charts (same time domain).
 function ChartMarkers({
   markers,
-  grid,
+  series,
+  t0,
+  t1,
   X,
   Y,
 }: {
   markers: TradeEvent[];
-  grid: EqGrid;
+  series: (number | null)[];
+  t0: number;
+  t1: number;
   X: (i: number) => number;
   Y: (v: number) => number;
 }): JSX.Element {
-  const span = grid.t1 - grid.t0 || 1;
+  const span = t1 - t0 || 1;
   return (
     <g>
       {markers.map((m, idx) => {
-        const fi = ((m.t - grid.t0) / span) * (GRID_N - 1);
+        const fi = ((m.t - t0) / span) * (GRID_N - 1);
         if (fi < -0.5 || fi > GRID_N - 0.5) return null;
-        const v = grid.series[Math.max(0, Math.min(GRID_N - 1, Math.round(fi)))];
+        const v = series[Math.max(0, Math.min(GRID_N - 1, Math.round(fi)))];
         if (v == null) return null;
         const x = X(fi),
           y = Y(v);
@@ -208,13 +212,14 @@ function XAxis({
         const x = pl + t.f * span;
         return (
           <g key={i}>
-            <line x1={x} x2={x} y1={pt} y2={h - pb} stroke="var(--line)" opacity="0.3" />
+            <line x1={x} x2={x} y1={pt} y2={h - pb} stroke="var(--line)" opacity="0.5" />
             <text
               x={x}
               y={h - 4}
               textAnchor={t.f === 0 ? "start" : t.f === 1 ? "end" : "middle"}
-              fill="var(--text-faint)"
-              fontSize="9"
+              fill="var(--text-dim)"
+              fontSize="11"
+              fontWeight={600}
               fontFamily="var(--mono)"
             >
               {t.label}
@@ -243,65 +248,98 @@ function emptyChart(w: number, h: number, status: string): JSX.Element {
   );
 }
 
-// Equity curve (net liq) — top graph, plotted on the fixed time axis + trade markers.
-function EquityLineSvg({ grid, status, markers = [] }: { grid: EqGrid; status: string; markers?: TradeEvent[] }): JSX.Element {
-  const w = 760,
-    h = 172,
-    pl = 52,
-    pr = 12,
-    pt = 14,
-    pb = 26;
-  const vals = grid.series.filter((v): v is number => v != null);
-  if (vals.length < 2) return emptyChart(w, h, status);
-  const lo = Math.min(...vals),
-    hi = Math.max(...vals),
-    rng = hi - lo || 1;
-  const X = (i: number): number => pl + (i / (GRID_N - 1)) * (w - pl - pr);
-  const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
-  const col = "var(--accent)"; // neutral — slope shouldn't imply good/bad
+// Reusable y-axis $ label formatter (M / k / units).
+const fmtAxis = (v: number): string =>
+  Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + "M" : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(0) + "k" : v.toFixed(0);
+
+// Y-axis gridlines + $ labels (5 ticks), brightened for legibility.
+function YGrid({ lo, hi, w, pl, pr, pt, pb, h }: { lo: number; hi: number; w: number; pl: number; pr: number; pt: number; pb: number; h: number }): JSX.Element {
+  const rng = hi - lo || 1;
   return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      <defs>
-        <linearGradient id="eqg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={col} stopOpacity="0.20" />
-          <stop offset="100%" stopColor={col} stopOpacity="0" />
-        </linearGradient>
-      </defs>
+    <g>
       {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
-        const v = lo + rng * (1 - f);
+        const y = pt + f * (h - pt - pb);
         return (
           <g key={i}>
-            <line
-              x1={pl}
-              x2={w - pr}
-              y1={pt + f * (h - pt - pb)}
-              y2={pt + f * (h - pt - pb)}
-              stroke="var(--line)"
-              opacity="0.5"
-            />
-            <text
-              x={4}
-              y={pt + f * (h - pt - pb) + 3}
-              fill="var(--text-faint)"
-              fontSize="9"
-              fontFamily="var(--mono)"
-            >
-              {(v / 1e6).toFixed(2)}M
+            <line x1={pl} x2={w - pr} y1={y} y2={y} stroke="var(--line)" opacity="0.55" />
+            <text x={4} y={y + 3} fill="var(--text-dim)" fontSize="10.5" fontFamily="var(--mono)">
+              {fmtAxis(lo + rng * (1 - f))}
             </text>
           </g>
         );
       })}
+    </g>
+  );
+}
+
+// Green-above-zero / red-below-zero line + area, clipped exactly at the zero line.
+function SignedSeries({
+  series,
+  X,
+  Y,
+  zeroY,
+  w,
+  top,
+  bottom,
+  id,
+}: {
+  series: (number | null)[];
+  X: (i: number) => number;
+  Y: (v: number) => number;
+  zeroY: number;
+  w: number;
+  top: number;
+  bottom: number;
+  id: string;
+}): JSX.Element {
+  const line = gappedLine(series, X, Y);
+  const area = gappedArea(series, X, Y, zeroY);
+  return (
+    <g>
+      <defs>
+        <clipPath id={`${id}-pos`}>
+          <rect x={0} y={top} width={w} height={Math.max(0, zeroY - top)} />
+        </clipPath>
+        <clipPath id={`${id}-neg`}>
+          <rect x={0} y={zeroY} width={w} height={Math.max(0, bottom - zeroY)} />
+        </clipPath>
+      </defs>
+      <path d={area} fill="var(--pos)" fillOpacity="0.16" clipPath={`url(#${id}-pos)`} />
+      <path d={area} fill="var(--neg)" fillOpacity="0.16" clipPath={`url(#${id}-neg)`} />
+      <path d={line} fill="none" stroke="var(--pos)" strokeWidth="2.1" strokeLinejoin="round" strokeLinecap="round" clipPath={`url(#${id}-pos)`} />
+      <path d={line} fill="none" stroke="var(--neg)" strokeWidth="2.1" strokeLinejoin="round" strokeLinecap="round" clipPath={`url(#${id}-neg)`} />
+    </g>
+  );
+}
+
+// P&L curve — cumulative P&L since the window start (rebased to 0), coloured green
+// above / red below the zero baseline, on the fixed time axis + trade markers.
+function EquityLineSvg({ grid, status, markers = [] }: { grid: EqGrid; status: string; markers?: TradeEvent[] }): JSX.Element {
+  const w = 760,
+    h = 172,
+    pl = 56,
+    pr = 12,
+    pt = 14,
+    pb = 26;
+  const firstIdx = grid.series.findIndex((v) => v != null);
+  if (firstIdx < 0) return emptyChart(w, h, status);
+  const base = grid.series[firstIdx]!;
+  const pnl = grid.series.map((v) => (v == null ? null : v - base));
+  const vals = pnl.filter((v): v is number => v != null);
+  if (vals.length < 2) return emptyChart(w, h, status);
+  const lo = Math.min(...vals, 0),
+    hi = Math.max(...vals, 0),
+    rng = hi - lo || 1;
+  const X = (i: number): number => pl + (i / (GRID_N - 1)) * (w - pl - pr);
+  const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
+  const zeroY = Y(0);
+  return (
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+      <YGrid lo={lo} hi={hi} w={w} pl={pl} pr={pr} pt={pt} pb={pb} h={h} />
+      <line x1={pl} x2={w - pr} y1={zeroY} y2={zeroY} stroke="var(--text-faint)" strokeWidth="1" opacity="0.85" />
       <XAxis ticks={grid.ticks} pl={pl} pr={pr} pt={pt} pb={pb} w={w} h={h} />
-      <path d={gappedArea(grid.series, X, Y, h - pb)} fill="url(#eqg)" />
-      <path
-        d={gappedLine(grid.series, X, Y)}
-        fill="none"
-        stroke={col}
-        strokeWidth="2.2"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-      <ChartMarkers markers={markers} grid={grid} X={X} Y={Y} />
+      <SignedSeries series={pnl} X={X} Y={Y} zeroY={zeroY} w={w} top={pt} bottom={h - pb} id="eqpnl" />
+      <ChartMarkers markers={markers} series={pnl} t0={grid.t0} t1={grid.t1} X={X} Y={Y} />
     </svg>
   );
 }
@@ -341,7 +379,7 @@ function DrawdownSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.El
               stroke="var(--line)"
               opacity={f === 0 ? 0.9 : 0.5}
             />
-            <text x={4} y={yy + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
+            <text x={4} y={yy + 3} fill="var(--text-dim)" fontSize="10.5" fontFamily="var(--mono)">
               {f === 0 ? "0%" : (ddMin * 100).toFixed(1) + "%"}
             </text>
           </g>
@@ -409,7 +447,7 @@ function PerfCharts({
         </div>
         <div className="perf-chart">
           <div className="perf-sub mono dim">
-            P&L <em className="unit">equity curve</em>
+            P&L <em className="unit">cumulative $ · ▲ open · ● close</em>
           </div>
           <EquityLineSvg grid={grid} status={live.status} markers={markers} />
         </div>
@@ -448,32 +486,18 @@ function GreekChart({ grid, status, markers }: { grid: EqGrid; status: string; m
   const vals = grid.series.filter((v): v is number => v != null);
   if (vals.length < 2) return emptyChart(w, h, status);
   const lo = Math.min(...vals, 0),
-    hi = Math.max(...vals, 0),
-    rng = hi - lo || 1;
+    hi = Math.max(...vals, 0);
   const X = (i: number): number => pl + (i / (GRID_N - 1)) * (w - pl - pr);
-  const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
-  const gk = (v: number): string =>
-    Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(1) + "M" : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(0) + "k" : v.toFixed(0);
+  const Y = (v: number): number => pt + (1 - (v - lo) / (hi - lo || 1)) * (h - pt - pb);
   const zeroY = Y(0);
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
-        const v = lo + rng * (1 - f);
-        return (
-          <g key={i}>
-            <line x1={pl} x2={w - pr} y1={pt + f * (h - pt - pb)} y2={pt + f * (h - pt - pb)} stroke="var(--line)" opacity="0.4" />
-            <text x={4} y={pt + f * (h - pt - pb) + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
-              {gk(v)}
-            </text>
-          </g>
-        );
-      })}
+      <YGrid lo={lo} hi={hi} w={w} pl={pl} pr={pr} pt={pt} pb={pb} h={h} />
       {/* zero baseline (emphasised) */}
-      <line x1={pl} x2={w - pr} y1={zeroY} y2={zeroY} stroke="var(--text-faint)" strokeWidth="1" opacity="0.8" />
+      <line x1={pl} x2={w - pr} y1={zeroY} y2={zeroY} stroke="var(--text-faint)" strokeWidth="1" opacity="0.85" />
       <XAxis ticks={grid.ticks} pl={pl} pr={pr} pt={pt} pb={pb} w={w} h={h} />
-      <path d={gappedArea(grid.series, X, Y, zeroY)} fill="var(--accent)" fillOpacity="0.12" />
-      <path d={gappedLine(grid.series, X, Y)} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-      <ChartMarkers markers={markers} grid={grid} X={X} Y={Y} />
+      <SignedSeries series={grid.series} X={X} Y={Y} zeroY={zeroY} w={w} top={pt} bottom={h - pb} id="gk" />
+      <ChartMarkers markers={markers} series={grid.series} t0={grid.t0} t1={grid.t1} X={X} Y={Y} />
     </svg>
   );
 }
