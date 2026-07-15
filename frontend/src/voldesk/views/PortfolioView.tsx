@@ -733,13 +733,19 @@ export function PortfolioView(): JSX.Element {
           dataPp="perf"
           right={
             <div className="tf-group">
-              {["1D", "7D", "30D", "1Y", "all"].map((wn) => (
+              {[
+                { v: "1D", l: "1D" },
+                { v: "7D", l: "7D" },
+                { v: "30D", l: "1M" },
+                { v: "1Y", l: "1Y" },
+                { v: "all", l: "all" },
+              ].map((wn) => (
                 <button
-                  key={wn}
-                  className={"chip " + (win === wn ? "on" : "")}
-                  onClick={() => setWin(wn)}
+                  key={wn.v}
+                  className={"chip " + (win === wn.v ? "on" : "")}
+                  onClick={() => setWin(wn.v)}
                 >
-                  {wn}
+                  {wn.l}
                 </button>
               ))}
             </div>
