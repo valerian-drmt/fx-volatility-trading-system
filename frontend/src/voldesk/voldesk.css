@@ -953,8 +953,10 @@ input,select{font-family:inherit;font-size:13px}
 .acct-greek .perf-sub{margin-bottom:5px}
 @media (max-width:900px){.acct-tables{grid-template-columns:1fr}}
 .acct-cap{margin-top:0}
-.acct-cap td.r{white-space:nowrap}
+.acct-cap td.r{white-space:normal}
 .acct-note{font-size:10.5px;color:var(--text-dim);font-weight:400}
+/* inline parenthetical note in the merged Capital value cell (dim, smaller). */
+.acct-sub{color:var(--text-dim);font-weight:400;font-size:.85em}
 .acct-delta{font-size:11px;font-weight:500}
 .acct-delta.pos{color:var(--pos)}
 .acct-delta.neg{color:var(--neg)}

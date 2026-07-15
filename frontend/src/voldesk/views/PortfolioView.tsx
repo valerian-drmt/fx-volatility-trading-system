@@ -4,7 +4,7 @@
  * `js/views_portfolio.jsx` (global-window pattern) into typed ES modules.
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchEquityCurve,
   fetchGreeksHistory,
@@ -670,6 +670,11 @@ function deltaPill(d: number | null | undefined): JSX.Element | null {
   );
 }
 
+// Parenthetical note appended to the value in the merged Capital cell; nothing if empty.
+function acctNote(note: ReactNode): JSX.Element | null {
+  return note ? <span className="acct-sub"> ({note})</span> : null;
+}
+
 export function PortfolioView(): JSX.Element {
   const [win, setWin] = useState<string>("7D");
   const { portfolio, trade } = useDeskData();
@@ -721,56 +726,64 @@ export function PortfolioView(): JSX.Element {
               <tr>
                 <th className="l">Capital</th>
                 <th className="r">Value</th>
-                <th className="r">Note</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td className="l">Net liquidation</td>
-                <td className="r mono">{fmt.usd(a.netLiq)}</td>
-                <td className="r">{deltaPill(a.dNetLiq)}</td>
+                <td className="r mono">
+                  {fmt.usd(a.netLiq)}
+                  {acctNote(deltaPill(a.dNetLiq))}
+                </td>
               </tr>
               <tr>
                 <td className="l">Cash</td>
-                <td className="r mono">{fmt.usd(a.cash)}</td>
-                <td className="r">{deltaPill(a.dCash)}</td>
+                <td className="r mono">
+                  {fmt.usd(a.cash)}
+                  {acctNote(deltaPill(a.dCash))}
+                </td>
               </tr>
               <tr>
                 <td className="l">Init margin</td>
-                <td className="r mono">{fmt.usd(a.marginInit)}</td>
-                <td className="r acct-note">{a.marginInitPct}% used</td>
+                <td className="r mono">
+                  {fmt.usd(a.marginInit)}
+                  {acctNote(`${a.marginInitPct}% used`)}
+                </td>
               </tr>
               <tr>
                 <td className="l">Maint margin</td>
-                <td className="r mono">{fmt.usd(a.marginMaint)}</td>
-                <td className="r acct-note">{a.marginMaintPct}% used</td>
+                <td className="r mono">
+                  {fmt.usd(a.marginMaint)}
+                  {acctNote(`${a.marginMaintPct}% used`)}
+                </td>
               </tr>
               <tr>
                 <td className="l">Excess liquidity</td>
                 <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
-                <td className="r acct-note">—</td>
               </tr>
               <tr>
                 <td className="l">Cushion</td>
-                <td className="r mono">{(a.cushion * 100).toFixed(1)}%</td>
-                <td className="r acct-note">{a.nPositions} positions</td>
+                <td className="r mono">
+                  {(a.cushion * 100).toFixed(1)}%{acctNote(`${a.nPositions} positions`)}
+                </td>
               </tr>
               <tr className="acct-sep">
                 <td className="l">Gross leverage</td>
-                <td className="r mono">{lev.gross.toFixed(1)}M €</td>
-                <td className="r acct-note">
-                  {grossX}× net liq · €{(netLiqEur / 1e6).toFixed(2)}M
+                <td className="r mono">
+                  {lev.gross.toFixed(1)}M €{acctNote(`${grossX}× net liq · €${(netLiqEur / 1e6).toFixed(2)}M`)}
                 </td>
               </tr>
               <tr>
                 <td className="l">Net leverage</td>
-                <td className="r mono">{lev.net.toFixed(1)}M €</td>
-                <td className="r acct-note">{netX}× net liq</td>
+                <td className="r mono">
+                  {lev.net.toFixed(1)}M €{acctNote(`${netX}× net liq`)}
+                </td>
               </tr>
               <tr>
                 <td className="l">Buying power</td>
-                <td className="r mono pos">${lev.buyingPower.toFixed(2)}M</td>
-                <td className="r acct-note">available</td>
+                <td className="r mono pos">
+                  ${lev.buyingPower.toFixed(2)}M{acctNote("available")}
+                </td>
               </tr>
             </tbody>
           </table>
