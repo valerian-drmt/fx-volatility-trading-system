@@ -612,10 +612,12 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
         <thead>
           <tr>
             <th className="l grp-fix">Tenor</th>
-            <th className="r grp-pnl col-grp">P&L</th>
-            <th className="r grp-pnl col-grp-end">%</th>
-            <th className="r grp-fix col-grp">Vega</th>
-            <th className="r grp-fix col-grp-end">%</th>
+            <th className="r grp-pnl col-grp col-grp-end">
+              P&L <em className="unit">(%)</em>
+            </th>
+            <th className="r grp-grk col-grp col-grp-end">
+              Vega <em className="unit">(%)</em>
+            </th>
             <th className="r grp-grk col-grp">Vanna</th>
             <th className="r grp-grk col-grp-end">Volga</th>
           </tr>
@@ -626,13 +628,12 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
               <td className="l grp-fix">
                 <span className="sym">{r.label}</span>
               </td>
-              <td className={"r mono grp-pnl col-grp " + pnlCls(r.pnl)}>{fmt.usdk(r.pnl)}</td>
-              <td className={"r mono grp-pnl col-grp-end " + pnlCls(r.pnl)}>{pnlPct(r.pnl)}</td>
-              <td className={"r mono grp-fix col-grp " + pnlCls(r.vega)}>
-                {fmt.sgn(r.vega / 1000, 1)}k
+              <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.pnl)}>
+                <b>{fmt.usdk(r.pnl)}</b> <span className="pb-rel">({pnlPct(r.pnl)})</span>
               </td>
-              <td className="r mono dim grp-fix col-grp-end">
-                {Math.round((Math.abs(r.vega) / totVega) * 100)}%
+              <td className={"r mono grp-grk col-grp col-grp-end " + pnlCls(r.vega)}>
+                <b>{fmt.sgn(r.vega / 1000, 1)}k</b>{" "}
+                <span className="pb-rel">({Math.round((Math.abs(r.vega) / totVega) * 100)}%)</span>
               </td>
               <td className={"r mono grp-grk col-grp " + pnlCls(r.vanna)}>
                 {fmt.sgn(r.vanna / 1000, 0)}k

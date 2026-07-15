@@ -882,7 +882,7 @@ input,select{font-family:inherit;font-size:13px}
 .pb-table th,.pb-table td{white-space:nowrap}
 .pb-table th:not(:first-child),.pb-table td:not(:first-child){text-align:center}
 /* group tints + outlines */
-.pb-table tbody .grp-grk{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.pb-table tbody .grp-grk{background:color-mix(in srgb,var(--warn) 10%,transparent)}
 .pb-table tbody .grp-pnl{background:color-mix(in srgb,#a78bfa 9%,transparent)}
 .pb-table tbody .grp-att{background:color-mix(in srgb,#2dd4bf 8%,transparent)}
 .pb-table thead th{border-bottom:2px solid var(--border)}
@@ -891,7 +891,7 @@ input,select{font-family:inherit;font-size:13px}
 .pb-table.dt tbody td{font-size:12px;font-weight:400}
 .pb-table tbody td .sym{font-weight:400}
 .pb-table tbody td .substruct{font-size:11px}
-.pb-table thead .grp-grk{color:var(--accent)}
+.pb-table thead .grp-grk{color:var(--warn)}
 .pb-table thead .grp-pnl{color:#a78bfa}
 .pb-table thead .grp-att{color:#2dd4bf}
 .risk-cards2{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:stretch}
@@ -1008,6 +1008,8 @@ input,select{font-family:inherit;font-size:13px}
 .wf-structure-cell{margin-bottom:18px}
 .wf-structure-cell .table-scroll{margin-top:2px}
 .wf-structure th,.wf-structure td{font-size:12px;padding:3px 8px}
+/* merged value + relative-% cell: raw value bold, (%) lighter, same colour. */
+.pb-rel{font-weight:400;font-size:.85em}
 @media (max-width:720px){.wf-2col{grid-template-columns:1fr}}
 /* Shared empty-state for the attribution tables (by structure / tenor / trade / greek). */
 .hbar-empty{padding:20px 0;text-align:center}
