@@ -4843,6 +4843,7 @@ export interface operations {
         parameters: {
             query?: {
                 lookback_hours?: number;
+                group_by?: string | null;
             };
             header?: never;
             path?: never;

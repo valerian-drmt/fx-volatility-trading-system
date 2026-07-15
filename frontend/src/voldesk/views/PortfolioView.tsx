@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchEquityCurve,
   fetchGreeksHistory,
-  fetchPnlAttributionPivot,
+  fetchPnlAttributionMatrix,
   fetchTradeMarkers,
 } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
@@ -22,14 +22,15 @@ import { DATA, DATA2, fmt } from "../data";
 import type { PerfStats, WaterfallStep } from "../data";
 import { useDeskData } from "../data/deskData";
 import {
+  adaptAttributionMatrix,
   adaptEquityCurve,
   adaptGreeksHistory,
-  adaptTenorRows,
   adaptTradeMarkers,
+  type AttribMatrix,
+  type AttribRow,
   type EquityPoint,
   type GreekKey,
   type GreekSeries,
-  type TenorRow,
   type TradeEvent,
 } from "../data/live/portfolio";
 
@@ -592,121 +593,82 @@ function TradeTable({
   );
 }
 
-// By-tenor breakdown — Position-breakdown-styled table, with
-// the vega-by-tenor data folded in: P&L (%), vega (%), and the 2nd-order greeks
-// (vanna / volga) per reference tenor.
-function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
-  if (rows.length === 0) return <div className="hbar-empty dim small mono">no positions</div>;
-  const gains = rows.filter((r) => r.pnl > 0).reduce((s, r) => s + r.pnl, 0);
-  const losses = rows.filter((r) => r.pnl < 0).reduce((s, r) => s + Math.abs(r.pnl), 0);
-  // Each greek's per-tenor share is |cell| / Σ|column| — how much of the book's total
-  // exposure to that factor sits at this expiry (bounded 0..100%).
-  const colAbs = (sel: (r: TenorRow) => number): number =>
-    rows.reduce((s, r) => s + Math.abs(sel(r)), 0) || 1;
-  const totNom = colAbs((r) => r.nominal);
-  const tot = {
-    delta: colAbs((r) => r.delta),
-    gamma: colAbs((r) => r.gamma),
-    vega: colAbs((r) => r.vega),
-    theta: colAbs((r) => r.theta),
-    vanna: colAbs((r) => r.vanna),
-    volga: colAbs((r) => r.volga),
+// P&L attribution matrix — greek P&L (Taylor terms) × axis (tenor), all in $. Each
+// cell shows the term value + its share of that row's realized P&L; a divergent
+// heatmap tints cells by magnitude. Rows foot to P&L Σ (± residual); the Total row
+// (Σ over rows) equals the by-greek bridge.
+function AttributionMatrix({ m }: { m: AttribMatrix | null }): JSX.Element {
+  if (!m || m.rows.length === 0)
+    return <div className="hbar-empty dim small mono">no attribution yet</div>;
+  const terms = m.rows.flatMap((r) => [r.delta, r.gamma, r.vega, r.theta, r.residual]);
+  const maxAbs = Math.max(1, ...terms.map(Math.abs));
+  // divergent heatmap: green (>0) / red (<0), opacity by |value| vs the matrix max.
+  const bg = (v: number): string =>
+    `color-mix(in srgb, ${v >= 0 ? "var(--pos)" : "var(--neg)"} ${Math.round(Math.min(1, Math.abs(v) / maxAbs) * 26)}%, transparent)`;
+  // term cell: value $ bold + (% of the row's realized P&L) lighter, same colour.
+  const cell = (v: number, rowActual: number, extra: string): JSX.Element => {
+    const p = Math.round((v / (Math.abs(rowActual) || 1)) * 100);
+    return (
+      <td className={"r mono " + extra + " " + pnlCls(v)} style={{ background: bg(v) }}>
+        <b>{gk$(v)}</b> <span className="pb-rel">({(p >= 0 ? "+" : "−") + Math.abs(p)}%)</span>
+      </td>
+    );
   };
-  // Net (signed) column sums for the Total row: net book P&L, gross nominal, net greeks.
-  const sum = (sel: (r: TenorRow) => number): number => rows.reduce((s, r) => s + sel(r), 0);
-  const net = {
-    pnl: sum((r) => r.pnl),
-    nominal: sum((r) => r.nominal),
-    delta: sum((r) => r.delta),
-    gamma: sum((r) => r.gamma),
-    vega: sum((r) => r.vega),
-    theta: sum((r) => r.theta),
-    vanna: sum((r) => r.vanna),
-    volga: sum((r) => r.volga),
-  };
-  const pnlPct = (v: number): string => {
-    const base = v >= 0 ? gains : losses;
-    return (v >= 0 ? "+" : "−") + (base ? Math.round((Math.abs(v) / base) * 100) : 0) + "%";
-  };
-  // A greek cell in the by-greek design: raw $ value bold + (% of column) lighter, same colour.
-  const gkCell = (v: number, colTot: number): JSX.Element => (
-    <>
-      <b>{gk$(v)}</b>{" "}
-      <span className="pb-rel">
-        ({(v >= 0 ? "+" : "−") + Math.round((Math.abs(v) / colTot) * 100)}%)
-      </span>
-    </>
+  const dataRow = (r: AttribRow, i: number): JSX.Element => (
+    <tr key={i}>
+      <td className="l grp-fix">
+        <span className="sym">{r.label}</span>
+      </td>
+      {cell(r.delta, r.actual, "grp-grk col-grp")}
+      {cell(r.gamma, r.actual, "grp-grk")}
+      {cell(r.vega, r.actual, "grp-grk")}
+      {cell(r.theta, r.actual, "grp-grk col-grp-end")}
+      {cell(r.residual, r.actual, "grp-att col-grp col-grp-end")}
+      <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.actual)}>
+        <b>{fmt.usdk(r.actual)}</b>
+      </td>
+    </tr>
   );
+  const t = m.totals;
   return (
     <div className="table-scroll">
       <table className="dt pb-table wf-structure">
         <thead>
           <tr>
             <th className="l grp-fix">Tenor</th>
+            <th className="r grp-grk col-grp">Delta·dS</th>
+            <th className="r grp-grk">½Γ·dS²</th>
+            <th className="r grp-grk">Vega·dσ</th>
+            <th className="r grp-grk col-grp-end">Theta·dt</th>
+            <th className="r grp-att col-grp col-grp-end">residual</th>
             <th className="r grp-pnl col-grp col-grp-end">
-              P&L <em className="unit">(%)</em>
+              P&L <em className="unit">Σ</em>
             </th>
-            <th className="r grp-fix col-grp col-grp-end">
-              Nominal € <em className="unit">(%)</em>
-            </th>
-            <th className="r grp-grk col-grp">Delta</th>
-            <th className="r grp-grk">Gamma</th>
-            <th className="r grp-grk">
-              Vega <em className="unit">(%)</em>
-            </th>
-            <th className="r grp-grk">Theta</th>
-            <th className="r grp-grk">Vanna</th>
-            <th className="r grp-grk col-grp-end">Volga</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              <td className="l grp-fix">
-                <span className="sym">{r.label}</span>
-              </td>
-              <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.pnl)}>
-                <b>{fmt.usdk(r.pnl)}</b> <span className="pb-rel">({pnlPct(r.pnl)})</span>
-              </td>
-              <td className="r mono dim grp-fix col-grp col-grp-end">
-                <b>{(r.nominal / 1e6).toFixed(2)}M</b>{" "}
-                <span className="pb-rel">({Math.round((Math.abs(r.nominal) / totNom) * 100)}%)</span>
-              </td>
-              <td className={"r mono grp-grk col-grp " + pnlCls(r.delta)}>{gkCell(r.delta, tot.delta)}</td>
-              <td className={"r mono grp-grk " + pnlCls(r.gamma)}>{gkCell(r.gamma, tot.gamma)}</td>
-              <td className={"r mono grp-grk " + pnlCls(r.vega)}>{gkCell(r.vega, tot.vega)}</td>
-              <td className={"r mono grp-grk " + pnlCls(r.theta)}>{gkCell(r.theta, tot.theta)}</td>
-              <td className={"r mono grp-grk " + pnlCls(r.vanna)}>{gkCell(r.vanna, tot.vanna)}</td>
-              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>{gkCell(r.volga, tot.volga)}</td>
-            </tr>
-          ))}
+          {m.rows.map(dataRow)}
           <tr className="wf-total">
             <td className="l grp-fix">
               <span className="sym">Total</span>
             </td>
-            <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(net.pnl)}>
-              <b>{fmt.usdk(net.pnl)}</b>
+            <td className={"r mono grp-grk col-grp " + pnlCls(t.delta)}>
+              <b>{gk$(t.delta)}</b>
             </td>
-            <td className="r mono dim grp-fix col-grp col-grp-end">
-              <b>{(net.nominal / 1e6).toFixed(2)}M</b>
+            <td className={"r mono grp-grk " + pnlCls(t.gamma)}>
+              <b>{gk$(t.gamma)}</b>
             </td>
-            <td className={"r mono grp-grk col-grp " + pnlCls(net.delta)}>
-              <b>{gk$(net.delta)}</b>
+            <td className={"r mono grp-grk " + pnlCls(t.vega)}>
+              <b>{gk$(t.vega)}</b>
             </td>
-            <td className={"r mono grp-grk " + pnlCls(net.gamma)}>
-              <b>{gk$(net.gamma)}</b>
+            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.theta)}>
+              <b>{gk$(t.theta)}</b>
             </td>
-            <td className={"r mono grp-grk " + pnlCls(net.vega)}>
-              <b>{gk$(net.vega)}</b>
+            <td className={"r mono grp-att col-grp col-grp-end " + pnlCls(t.residual)}>
+              <b>{gk$(t.residual)}</b>
             </td>
-            <td className={"r mono grp-grk " + pnlCls(net.theta)}>
-              <b>{gk$(net.theta)}</b>
-            </td>
-            <td className={"r mono grp-grk " + pnlCls(net.vanna)}>
-              <b>{gk$(net.vanna)}</b>
-            </td>
-            <td className={"r mono grp-grk col-grp-end " + pnlCls(net.volga)}>
-              <b>{gk$(net.volga)}</b>
+            <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(t.actual)}>
+              <b>{fmt.usdk(t.actual)}</b>
             </td>
           </tr>
         </tbody>
@@ -740,8 +702,8 @@ export function PortfolioView(): JSX.Element {
     g = pd?.greeks ?? DATA.greeks;
   // By-tenor attribution — the OPEN book's current unrealized P&L (current_pnl_usd),
   // since realized-on-close reads flat while positions net flat at IB. Polled live.
-  const pivotTenor =
-    useFetch(() => fetchPnlAttributionPivot("tenor").then(adaptTenorRows), 120_000, true, 60_000).data ?? [];
+  const attribMatrix =
+    useFetch(() => fetchPnlAttributionMatrix("tenor").then(adaptAttributionMatrix), 120_000, true, 60_000).data ?? null;
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
   // Trade open/close markers overlaid on the Performance P&L + greek charts (covers 1Y).
@@ -886,11 +848,11 @@ export function PortfolioView(): JSX.Element {
       </Panel>
 
       <Panel
-        title="Unrealized P&L & risk by tenor"
+        title="P&L attribution by tenor"
         dataPp="book-by-tenor"
         className="wf-panel"
       >
-        <TenorTable rows={pivotTenor} />
+        <AttributionMatrix m={attribMatrix} />
       </Panel>
 
       <Panel

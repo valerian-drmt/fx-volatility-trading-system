@@ -813,6 +813,7 @@ async def var_factors(db: DbDep) -> dict[str, Any]:
 async def pnl_attribution(
     db: DbDep,
     lookback_hours: int = Query(24, ge=1, le=168),  # 1h..7d
+    group_by: str | None = Query(None),  # None → totals+per_position ; tenor → matrix
 ) -> dict[str, Any]:
     """Decompose realized P&L into greek contributions over the window.
 
@@ -856,7 +857,7 @@ async def pnl_attribution(
            WHERE timestamp <= :cutoff
            ORDER BY position_id, timestamp DESC
         )
-        SELECT p.id, p.structure, p.product_label, p.side,
+        SELECT p.id, p.structure, p.product_label, p.side, p.tenor,
                p.current_pnl_usd AS pnl_now,
                p.market_price    AS spot_now,
                p.iv              AS iv_now,
@@ -899,6 +900,7 @@ async def pnl_attribution(
         )
         SELECT bp.id, bp.state,
                ts.product_label AS product_label,
+               ts.reference_tenor AS tenor,
                latest.current_pnl_gross_usd AS pnl_now,
                latest.spot                  AS spot_now,
                latest.iv_avg_legs_pct       AS iv_now,
@@ -972,7 +974,7 @@ async def pnl_attribution(
         per_position.append({
             "id": int(r.id), "source": "ib_live",
             "structure": r.structure, "product_label": r.product_label,
-            "side": r.side,
+            "side": r.side, "tenor": r.tenor,
             **decomp,
         })
     for r in booked_rows:
@@ -992,9 +994,52 @@ async def pnl_attribution(
         per_position.append({
             "id": int(r.id), "source": "booked",
             "structure": None, "product_label": r.product_label,
-            "side": None,
+            "side": None, "tenor": r.tenor,
             **decomp,
         })
+
+    # 4b. Pivot mode : bucket the per-position Taylor terms by a grouping key into a
+    #     P&L-attribution matrix (rows = groups, cols = greek P&L). The residual is
+    #     re-derived per bucket (actual − Σ explained) so every row foots exactly.
+    if group_by is not None:
+        key_col = {"tenor": "tenor", "structure": "structure"}.get(group_by)
+        if key_col is None:
+            raise HTTPException(400, f"unknown group_by '{group_by}' (expected tenor / structure)")
+        sum_cols = ["actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd"]
+        buckets: dict[str, dict[str, float]] = {}
+        for row in per_position:
+            label = str(row.get(key_col) or "other")
+            b = buckets.setdefault(label, dict.fromkeys(sum_cols, 0.0))
+            for c in sum_cols:
+                if row[c] is not None:
+                    b[c] += float(row[c])
+
+        def _mk(label: str, b: dict[str, float]) -> dict[str, Any]:
+            explained = b["delta_pnl_usd"] + b["gamma_pnl_usd"] + b["vega_pnl_usd"] + b["theta_pnl_usd"]
+            return {
+                "label": label,
+                "actual_pnl_usd": round(b["actual_pnl_usd"], 2),
+                "delta_pnl_usd": round(b["delta_pnl_usd"], 2),
+                "gamma_pnl_usd": round(b["gamma_pnl_usd"], 2),
+                "vega_pnl_usd": round(b["vega_pnl_usd"], 2),
+                "theta_pnl_usd": round(b["theta_pnl_usd"], 2),
+                "residual_usd": round(b["actual_pnl_usd"] - explained, 2),
+            }
+
+        if group_by == "tenor":
+            ladder = ["1M", "2M", "3M", "4M", "5M", "6M"]
+            extra = sorted(g for g in buckets if g not in ladder)
+            zero = dict.fromkeys(sum_cols, 0.0)
+            groups = [_mk(t, buckets.get(t, zero)) for t in ladder + extra]
+        else:
+            order = sorted(buckets, key=lambda g: abs(buckets[g]["actual_pnl_usd"]), reverse=True)
+            groups = [_mk(t, buckets[t]) for t in order]
+        cols = ["actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd", "residual_usd"]
+        totals = {c: round(sum(g[c] for g in groups), 2) for c in cols}
+        return {
+            "group_by": group_by, "lookback_hours": lookback_hours,
+            "computed_at": now.isoformat(), "groups": groups, "totals": totals,
+        }
 
     # 4. Aggregate. Sum across positions where the term is not None.
     def _sum(key: str) -> float | None:
