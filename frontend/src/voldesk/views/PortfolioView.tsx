@@ -15,7 +15,7 @@ import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
-import { pnlCls } from "../components/format";
+import { gk$, pnlCls } from "../components/format";
 import { PositionBreakdown } from "../components/PositionBreakdown";
 import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
@@ -599,12 +599,32 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
   if (rows.length === 0) return <div className="hbar-empty dim small mono">no positions</div>;
   const gains = rows.filter((r) => r.pnl > 0).reduce((s, r) => s + r.pnl, 0);
   const losses = rows.filter((r) => r.pnl < 0).reduce((s, r) => s + Math.abs(r.pnl), 0);
-  const totVega = rows.reduce((s, r) => s + Math.abs(r.vega), 0) || 1;
-  const totNom = rows.reduce((s, r) => s + Math.abs(r.nominal), 0) || 1;
+  // Each greek's per-tenor share is |cell| / Σ|column| — how much of the book's total
+  // exposure to that factor sits at this expiry (bounded 0..100%).
+  const colAbs = (sel: (r: TenorRow) => number): number =>
+    rows.reduce((s, r) => s + Math.abs(sel(r)), 0) || 1;
+  const totNom = colAbs((r) => r.nominal);
+  const tot = {
+    delta: colAbs((r) => r.delta),
+    gamma: colAbs((r) => r.gamma),
+    vega: colAbs((r) => r.vega),
+    theta: colAbs((r) => r.theta),
+    vanna: colAbs((r) => r.vanna),
+    volga: colAbs((r) => r.volga),
+  };
   const pnlPct = (v: number): string => {
     const base = v >= 0 ? gains : losses;
     return (v >= 0 ? "+" : "−") + (base ? Math.round((Math.abs(v) / base) * 100) : 0) + "%";
   };
+  // A greek cell in the by-greek design: raw $ value bold + (% of column) lighter, same colour.
+  const gkCell = (v: number, colTot: number): JSX.Element => (
+    <>
+      <b>{gk$(v)}</b>{" "}
+      <span className="pb-rel">
+        ({(v >= 0 ? "+" : "−") + Math.round((Math.abs(v) / colTot) * 100)}%)
+      </span>
+    </>
+  );
   return (
     <div className="table-scroll">
       <table className="dt pb-table wf-structure">
@@ -640,15 +660,12 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
                 <b>{(r.nominal / 1e6).toFixed(2)}M</b>{" "}
                 <span className="pb-rel">({Math.round((Math.abs(r.nominal) / totNom) * 100)}%)</span>
               </td>
-              <td className={"r mono grp-grk col-grp " + pnlCls(r.delta)}>{fmt.sgn(r.delta / 1000, 0)}k</td>
-              <td className={"r mono grp-grk " + pnlCls(r.gamma)}>{fmt.sgn(r.gamma / 1000, 0)}k</td>
-              <td className={"r mono grp-grk " + pnlCls(r.vega)}>
-                <b>{fmt.sgn(r.vega / 1000, 1)}k</b>{" "}
-                <span className="pb-rel">({Math.round((Math.abs(r.vega) / totVega) * 100)}%)</span>
-              </td>
-              <td className={"r mono grp-grk " + pnlCls(r.theta)}>{fmt.sgn(r.theta / 1000, 0)}k</td>
-              <td className={"r mono grp-grk " + pnlCls(r.vanna)}>{fmt.sgn(r.vanna / 1000, 0)}k</td>
-              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>{fmt.sgn(r.volga / 1000, 0)}k</td>
+              <td className={"r mono grp-grk col-grp " + pnlCls(r.delta)}>{gkCell(r.delta, tot.delta)}</td>
+              <td className={"r mono grp-grk " + pnlCls(r.gamma)}>{gkCell(r.gamma, tot.gamma)}</td>
+              <td className={"r mono grp-grk " + pnlCls(r.vega)}>{gkCell(r.vega, tot.vega)}</td>
+              <td className={"r mono grp-grk " + pnlCls(r.theta)}>{gkCell(r.theta, tot.theta)}</td>
+              <td className={"r mono grp-grk " + pnlCls(r.vanna)}>{gkCell(r.vanna, tot.vanna)}</td>
+              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>{gkCell(r.volga, tot.volga)}</td>
             </tr>
           ))}
         </tbody>
