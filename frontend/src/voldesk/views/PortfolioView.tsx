@@ -666,9 +666,8 @@ export function PortfolioView(): JSX.Element {
   const a = pd?.account ?? DATA.account,
     ps = pd?.perfStats ?? DATA2.perfStats,
     g = pd?.greeks ?? DATA.greeks;
-  // Non-greek attribution pivots (by structure / by tenor) — realized P&L bridged
-  // from closed booked positions. Polled so the bridge stays live; "by mode" (PCA)
-  // stays deferred.
+  // By-tenor attribution — the OPEN book's current unrealized P&L (current_pnl_usd),
+  // since realized-on-close reads flat while positions net flat at IB. Polled live.
   const pivotTenor =
     useFetch(() => fetchPnlAttributionPivot("tenor").then(adaptTenorRows), 120_000, true, 60_000).data ?? [];
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
@@ -811,7 +810,7 @@ export function PortfolioView(): JSX.Element {
       </Panel>
 
       <Panel
-        title="Realized P&L attribution — bridge"
+        title="Unrealized P&L attribution — bridge"
         dataPp="pnl-attribution"
         className="wf-panel"
       >
