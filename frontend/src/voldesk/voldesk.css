@@ -1011,8 +1011,9 @@ input,select{font-family:inherit;font-size:13px}
 .wf-structure th,.wf-structure td{font-size:12px;padding:3px 8px}
 /* merged value + relative-% cell: raw value bold, (%) lighter, same colour. */
 .pb-rel{font-weight:400;font-size:.85em}
-/* Total row: net column sums, separated by a heavier top border. */
-.pb-table tbody tr.wf-total td{border-top:2px solid var(--border);font-weight:700}
+/* Total row: net column sums — a single neutral-grey band (overrides the per-column
+   group tints) with a heavier top border, so it stands apart from the tenor rows. */
+.pb-table tbody tr.wf-total td{border-top:2px solid var(--border);font-weight:700;background:color-mix(in srgb,var(--fg) 10%,transparent)}
 @media (max-width:720px){.wf-2col{grid-template-columns:1fr}}
 /* Shared empty-state for the attribution tables (by structure / tenor / trade / greek). */
 .hbar-empty{padding:20px 0;text-align:center}
