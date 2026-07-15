@@ -858,6 +858,7 @@ async def pnl_attribution(
            ORDER BY position_id, timestamp DESC
         )
         SELECT p.id, p.structure, p.product_label, p.side, p.tenor,
+               ts.structure_type AS structure_type,
                p.current_pnl_usd AS pnl_now,
                p.market_price    AS spot_now,
                p.iv              AS iv_now,
@@ -871,6 +872,7 @@ async def pnl_attribution(
                t1.timestamp       AS t_then
           FROM open_position p
           LEFT JOIN t1 ON t1.position_id = p.id
+          LEFT JOIN trade_structure ts ON ts.id = p.trade_id
     """)
     ib_rows = (await db.execute(ib_sql, {"cutoff": cutoff})).all()
 
@@ -901,6 +903,7 @@ async def pnl_attribution(
         SELECT bp.id, bp.state,
                ts.product_label AS product_label,
                ts.reference_tenor AS tenor,
+               ts.structure_type AS structure_type,
                latest.current_pnl_gross_usd AS pnl_now,
                latest.spot                  AS spot_now,
                latest.iv_avg_legs_pct       AS iv_now,
@@ -919,6 +922,22 @@ async def pnl_attribution(
          WHERE bp.state = 'open'
     """)
     booked_rows = (await db.execute(booked_sql, {"cutoff": cutoff})).all()
+
+    # Wing classification for the by-wing axis: parse the IB leg's local symbol
+    # (strike + right) and bucket by strike vs forward (≈ spot) — put wing (below),
+    # body (ATM ±50 bp), call wing (above). Futures / unparseable legs fall back.
+    def _wing(local_symbol: str | None, forward: float | None) -> str:
+        spec = parse_local_symbol(local_symbol)
+        if spec is None:
+            return "other"
+        if spec.instrument_type == "FUTURE" or spec.strike is None:
+            return "Future / delta-1"
+        if forward is None or forward <= 0:
+            return "other"
+        moneyness = spec.strike / forward - 1.0
+        if abs(moneyness) <= 0.005:
+            return "Body (ATM)"
+        return "Put wing" if moneyness < 0 else "Call wing"
 
     # 3. Decompose each row. None on any input → return Nones (caller
     #    displays "—") so partial data doesn't poison aggregates.
@@ -956,6 +975,14 @@ async def pnl_attribution(
             "residual_usd": round(residual, 2) if residual is not None else None,
         }
 
+    # Book-level forward for wing classification = the EUR future's market price
+    # (the FOP underlying), not the per-leg option premium.
+    fwd_row = (await db.execute(text(
+        "SELECT market_price FROM open_position "
+        "WHERE structure LIKE '6E%' AND market_price IS NOT NULL ORDER BY id DESC LIMIT 1"
+    ))).first()
+    forward = float(fwd_row[0]) if fwd_row and fwd_row[0] is not None else None
+
     per_position: list[dict[str, Any]] = []
     for r in ib_rows:
         decomp = _decompose(
@@ -975,6 +1002,8 @@ async def pnl_attribution(
             "id": int(r.id), "source": "ib_live",
             "structure": r.structure, "product_label": r.product_label,
             "side": r.side, "tenor": r.tenor,
+            "structure_type": r.structure_type,
+            "wing": _wing(r.structure, forward),
             **decomp,
         })
     for r in booked_rows:
@@ -995,6 +1024,7 @@ async def pnl_attribution(
             "id": int(r.id), "source": "booked",
             "structure": None, "product_label": r.product_label,
             "side": None, "tenor": r.tenor,
+            "structure_type": r.structure_type, "wing": "other",
             **decomp,
         })
 
@@ -1002,9 +1032,9 @@ async def pnl_attribution(
     #     P&L-attribution matrix (rows = groups, cols = greek P&L). The residual is
     #     re-derived per bucket (actual − Σ explained) so every row foots exactly.
     if group_by is not None:
-        key_col = {"tenor": "tenor", "structure": "structure"}.get(group_by)
+        key_col = {"tenor": "tenor", "structure": "structure_type", "wing": "wing"}.get(group_by)
         if key_col is None:
-            raise HTTPException(400, f"unknown group_by '{group_by}' (expected tenor / structure)")
+            raise HTTPException(400, f"unknown group_by '{group_by}' (expected tenor / structure / wing)")
         sum_cols = ["actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd"]
         buckets: dict[str, dict[str, float]] = {}
         for row in per_position:
@@ -1031,6 +1061,11 @@ async def pnl_attribution(
             extra = sorted(g for g in buckets if g not in ladder)
             zero = dict.fromkeys(sum_cols, 0.0)
             groups = [_mk(t, buckets.get(t, zero)) for t in ladder + extra]
+        elif group_by == "wing":
+            # smile order: downside → ATM → upside, then linear / catch-all.
+            wing_order = ["Put wing", "Body (ATM)", "Call wing", "Future / delta-1", "other"]
+            extra = sorted(g for g in buckets if g not in wing_order)
+            groups = [_mk(t, buckets[t]) for t in wing_order + extra if t in buckets]
         else:
             order = sorted(buckets, key=lambda g: abs(buckets[g]["actual_pnl_usd"]), reverse=True)
             groups = [_mk(t, buckets[t]) for t in order]

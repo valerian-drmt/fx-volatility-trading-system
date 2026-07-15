@@ -597,7 +597,7 @@ function TradeTable({
 // cell shows the term value + its share of that row's realized P&L; a divergent
 // heatmap tints cells by magnitude. Rows foot to P&L Σ (± residual); the Total row
 // (Σ over rows) equals the by-greek bridge.
-function AttributionMatrix({ m }: { m: AttribMatrix | null }): JSX.Element {
+function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel: string }): JSX.Element {
   if (!m || m.rows.length === 0)
     return <div className="hbar-empty dim small mono">no attribution yet</div>;
   const terms = m.rows.flatMap((r) => [r.delta, r.gamma, r.vega, r.theta, r.residual]);
@@ -635,7 +635,7 @@ function AttributionMatrix({ m }: { m: AttribMatrix | null }): JSX.Element {
       <table className="dt pb-table wf-structure">
         <thead>
           <tr>
-            <th className="l grp-fix">Tenor</th>
+            <th className="l grp-fix">{axisLabel}</th>
             <th className="r grp-grk col-grp">Delta·dS</th>
             <th className="r grp-grk">½Γ·dS²</th>
             <th className="r grp-grk">Vega·dσ</th>
@@ -677,6 +677,44 @@ function AttributionMatrix({ m }: { m: AttribMatrix | null }): JSX.Element {
   );
 }
 
+// One decomposition, three pivots: the same attribution matrix with a by tenor /
+// structure / wing axis selector (stress-test chip style). Refetches on axis change.
+const ATTRIB_AXES: { key: string; label: string; col: string }[] = [
+  { key: "tenor", label: "by tenor", col: "Tenor" },
+  { key: "structure", label: "by structure", col: "Structure" },
+  { key: "wing", label: "by wing", col: "Wing" },
+];
+
+function AttributionByAxis(): JSX.Element {
+  const [axis, setAxis] = useState("tenor");
+  const live = useFetch<AttribMatrix>(
+    () => fetchPnlAttributionMatrix(axis).then(adaptAttributionMatrix),
+    120_000,
+  );
+  const reload = live.reload;
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    reload();
+  }, [axis, reload]);
+  const col = ATTRIB_AXES.find((a) => a.key === axis)?.col ?? "Axis";
+  return (
+    <div className="attrib-axis">
+      <div className="greek-btns">
+        {ATTRIB_AXES.map((a) => (
+          <button key={a.key} className={"chip " + (axis === a.key ? "on" : "")} onClick={() => setAxis(a.key)}>
+            {a.label}
+          </button>
+        ))}
+      </div>
+      <AttributionMatrix m={live.data ?? null} axisLabel={col} />
+    </div>
+  );
+}
+
 // ▲/▼ change pill (percent), coloured like P&L — matches the account-tile deltas.
 function deltaPill(d: number | null | undefined): JSX.Element | null {
   if (d == null || !Number.isFinite(d)) return null;
@@ -700,10 +738,6 @@ export function PortfolioView(): JSX.Element {
   const a = pd?.account ?? DATA.account,
     ps = pd?.perfStats ?? DATA2.perfStats,
     g = pd?.greeks ?? DATA.greeks;
-  // By-tenor attribution — the OPEN book's current unrealized P&L (current_pnl_usd),
-  // since realized-on-close reads flat while positions net flat at IB. Polled live.
-  const attribMatrix =
-    useFetch(() => fetchPnlAttributionMatrix("tenor").then(adaptAttributionMatrix), 120_000, true, 60_000).data ?? null;
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
   // Trade open/close markers overlaid on the Performance P&L + greek charts (covers 1Y).
@@ -848,11 +882,11 @@ export function PortfolioView(): JSX.Element {
       </Panel>
 
       <Panel
-        title="P&L attribution by tenor"
+        title="P&L attribution — greek × axis"
         dataPp="book-by-tenor"
         className="wf-panel"
       >
-        <AttributionMatrix m={attribMatrix} />
+        <AttributionByAxis />
       </Panel>
 
       <Panel
