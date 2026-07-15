@@ -774,7 +774,15 @@ export function PortfolioView(): JSX.Element {
               </tr>
             </tbody>
           </table>
-          <CashHoldings cash={cashRows} />
+          <div className="acct-col">
+            <CashHoldings cash={cashRows} />
+            <div className="acct-greek">
+              <div className="perf-sub mono dim">
+                by greek <em className="unit">P&L · % gain/loss</em>
+              </div>
+              <TradeTable steps={pd?.waterfallGreek ?? []} col="Greek" />
+            </div>
+          </div>
         </div>
       </Panel>
 
@@ -823,15 +831,9 @@ export function PortfolioView(): JSX.Element {
           </div>
           <TenorTable rows={pivotLive?.tenor ?? []} />
         </div>
-        <div className="wf-2col">
-          <div className="wf-cell wf-trade">
-            <div className="perf-sub mono dim">by trade</div>
-            <TradeTable steps={pivotLive?.trade ?? []} />
-          </div>
-          <div className="wf-cell">
-            <div className="perf-sub mono dim">by greek</div>
-            <TradeTable steps={pd?.waterfallGreek ?? []} col="Greek" />
-          </div>
+        <div className="wf-cell wf-trade">
+          <div className="perf-sub mono dim">by trade</div>
+          <TradeTable steps={pivotLive?.trade ?? []} />
         </div>
       </Panel>
     </div>
