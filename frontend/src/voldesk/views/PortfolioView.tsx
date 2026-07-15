@@ -4,7 +4,7 @@
  * `js/views_portfolio.jsx` (global-window pattern) into typed ES modules.
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchEquityCurve,
   fetchGreeksHistory,
@@ -18,6 +18,7 @@ import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
+import { groupByTradeId, structureName, structureSide } from "../components/tradeGrouping";
 import { DATA, DATA2, fmt } from "../data";
 import type { PerfStats, WaterfallStep } from "../data";
 import { useDeskData } from "../data/deskData";
@@ -33,6 +34,7 @@ import {
   type GreekKey,
   type GreekSeries,
   type PositionAttribMatrix,
+  type PositionAttribRow,
   type TradeEvent,
 } from "../data/live/portfolio";
 
@@ -679,16 +681,25 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
   );
 }
 
-// Per-position P&L-attribution matrix — same greek-P&L columns as AttributionMatrix
-// but with the full leg metadata (trade / contract / product / structure / side /
-// tenor / IV / nominal) leading each row. Rows = IB legs, bottom Total foots.
+// Per-trade P&L-attribution matrix — grouped by trade like Open positions: a
+// collapsible summary line per multi-leg trade (caret ▸, aggregated greek-P&L)
+// with its legs indented, single-leg trades as one row. Bottom Total foots.
 function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): JSX.Element {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (k: string): void =>
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
   if (!m || m.rows.length === 0)
     return <div className="hbar-empty dim small mono">no attribution yet</div>;
   const terms = m.rows.flatMap((r) => [r.delta, r.gamma, r.vega, r.theta, r.residual]);
   const maxAbs = Math.max(1, ...terms.map(Math.abs));
   const bg = (v: number): string =>
     `color-mix(in srgb, ${v >= 0 ? "var(--pos)" : "var(--neg)"} ${Math.round(Math.min(1, Math.abs(v) / maxAbs) * 26)}%, transparent)`;
+  // one greek-P&L cell: value $ bold + (% of the row's realized P&L), heatmap tint.
   const cell = (v: number, rowActual: number, extra: string): JSX.Element => {
     const p = Math.round((v / (Math.abs(rowActual) || 1)) * 100);
     return (
@@ -697,6 +708,40 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
       </td>
     );
   };
+  // the 6 attribution cells (P&L Σ + 4 terms + residual), shared by leg & summary rows.
+  const attribCells = (r: {
+    actual: number; delta: number; gamma: number; vega: number; theta: number; residual: number;
+  }): JSX.Element => (
+    <>
+      <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.actual)}>
+        <b>{fmt.usdk(r.actual)}</b>
+      </td>
+      {cell(r.delta, r.actual, "grp-grk col-grp")}
+      {cell(r.gamma, r.actual, "grp-grk")}
+      {cell(r.vega, r.actual, "grp-grk")}
+      {cell(r.theta, r.actual, "grp-grk col-grp-end")}
+      {cell(r.residual, r.actual, "grp-att col-grp col-grp-end")}
+    </>
+  );
+  const legRow = (r: PositionAttribRow, main: boolean): JSX.Element => (
+    <tr key={r.id} className={main ? undefined : "pos-leg"}>
+      <td className="l grp-fix mono dim">{main ? (r.tradeId != null ? "#" + r.tradeId : "—") : ""}</td>
+      <td className="l grp-fix mono dim">{r.contractId ?? "—"}</td>
+      <td className="l grp-fix">
+        <span className="sym">{main ? "" : "↳ "}{r.product}</span>
+      </td>
+      <td className="l grp-fix">
+        <span className="sym">{r.structure}</span>
+      </td>
+      <td className="l grp-fix">
+        <span className={"side-pill " + (r.side === "BUY" ? "long" : "short")}>{r.side}</span>
+      </td>
+      <td className="r mono dim grp-fix">{r.tenor}</td>
+      <td className="r mono dim grp-fix">{r.iv ? r.iv.toFixed(1) : "—"}</td>
+      <td className="r mono dim grp-fix col-grp-end">{(r.nominal / 1e6).toFixed(2)}M</td>
+      {attribCells(r)}
+    </tr>
+  );
   const t = m.totals;
   return (
     <div className="table-scroll">
@@ -722,30 +767,46 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
           </tr>
         </thead>
         <tbody>
-          {m.rows.map((r) => (
-            <tr key={r.id}>
-              <td className="l grp-fix mono dim">{r.tradeId ?? "—"}</td>
-              <td className="l grp-fix mono dim">{r.contractId ?? "—"}</td>
-              <td className="l grp-fix">{r.product}</td>
-              <td className="l grp-fix">
-                <span className="sym">{r.structure}</span>
-              </td>
-              <td className="l grp-fix">
-                <span className={"side-pill " + (r.side === "BUY" ? "long" : "short")}>{r.side}</span>
-              </td>
-              <td className="r mono dim grp-fix">{r.tenor}</td>
-              <td className="r mono dim grp-fix">{r.iv ? r.iv.toFixed(1) : "—"}</td>
-              <td className="r mono dim grp-fix col-grp-end">{(r.nominal / 1e6).toFixed(2)}M</td>
-              <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.actual)}>
-                <b>{fmt.usdk(r.actual)}</b>
-              </td>
-              {cell(r.delta, r.actual, "grp-grk col-grp")}
-              {cell(r.gamma, r.actual, "grp-grk")}
-              {cell(r.vega, r.actual, "grp-grk")}
-              {cell(r.theta, r.actual, "grp-grk col-grp-end")}
-              {cell(r.residual, r.actual, "grp-att col-grp col-grp-end")}
-            </tr>
-          ))}
+          {groupByTradeId(m.rows).map((grp) => {
+            if (grp.legs.length === 1) return legRow(grp.legs[0]!, true);
+            const isOpen = expanded.has(grp.key);
+            const sum = (sel: (r: PositionAttribRow) => number): number => grp.legs.reduce((a, r) => a + sel(r), 0);
+            const agg = {
+              actual: sum((r) => r.actual), delta: sum((r) => r.delta), gamma: sum((r) => r.gamma),
+              vega: sum((r) => r.vega), theta: sum((r) => r.theta), residual: sum((r) => r.residual),
+            };
+            const tenors = new Set(grp.legs.map((l) => l.tenor));
+            const side = structureSide(grp.legs);
+            return (
+              <Fragment key={grp.key}>
+                <tr className={"pos-main" + (isOpen ? " open" : "")} onClick={() => toggle(grp.key)}>
+                  <td className="l grp-fix mono dim">
+                    <button
+                      className="pos-caret"
+                      onClick={(e) => { e.stopPropagation(); toggle(grp.key); }}
+                      aria-expanded={isOpen}
+                    >
+                      {isOpen ? "▾" : "▸"}
+                    </button>
+                    {grp.tradeId ? "#" + grp.tradeId : "—"}
+                  </td>
+                  <td className="l grp-fix mono dim">{grp.legs.length} legs</td>
+                  <td className="l grp-fix">
+                    <span className="sym">{structureName(grp.legs)}</span>
+                  </td>
+                  <td className="l grp-fix mono dim">—</td>
+                  <td className="l grp-fix">
+                    <span className={"side-pill " + (side === "BUY" ? "long" : "short")}>{side}</span>
+                  </td>
+                  <td className="r mono dim grp-fix">{tenors.size === 1 ? [...tenors][0] : "—"}</td>
+                  <td className="r mono dim grp-fix">—</td>
+                  <td className="r mono dim grp-fix col-grp-end">{(sum((r) => r.nominal) / 1e6).toFixed(2)}M</td>
+                  {attribCells(agg)}
+                </tr>
+                {isOpen && grp.legs.map((r) => legRow(r, false))}
+              </Fragment>
+            );
+          })}
           <tr className="wf-total">
             <td className="l grp-fix" colSpan={8}>
               <span className="sym">Total</span>

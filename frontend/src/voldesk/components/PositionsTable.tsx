@@ -6,6 +6,7 @@
  */
 import { Fragment, useState } from "react";
 import { pnlCls } from "./format";
+import { legStrikeNum, structureName, structureSide } from "./tradeGrouping";
 import { DATA, fmt } from "../data";
 import type { Cash, Greeks, Position } from "../data";
 
@@ -46,72 +47,6 @@ function groupByTrade(rows: Position[]): PosGroup[] {
 }
 
 const _gcd = (a: number, b: number): number => (b === 0 ? a : _gcd(b, a % b));
-
-// Wing derivation — bucket each leg's strike into a smile delta pillar so the
-// vertical structures read like "Call Spread ATM/10Δ" / "Risk Reversal 25Δ". The
-// backend product_label carries the wing for some structures (Strangle) but not
-// all; we recover it from the strikes with the same nearest-pillar bucketing as
-// the order-ticket strike ladder.
-function _legStrikeNum(p: Position): number | null {
-  if (p.strike && p.strike > 0) return p.strike;
-  const m = /\s[CP](\d{3,5})$/.exec(p.structure || "");
-  return m ? parseInt(m[1]!, 10) / 1000 : null;
-}
-function _legLevel(p: Position): string | null {
-  return DATA.strikeToWing(_legStrikeNum(p), p.tenor);
-}
-const _rank = (lvl: string): number => (lvl === "ATM" ? 50 : parseInt(lvl, 10));
-function deriveWing(legs: Position[], base: string): string | null {
-  const levels = legs.map(_legLevel).filter((x): x is string => x != null);
-  if (levels.length < 2) return null;
-  if (/Strangle|Risk Reversal/.test(base)) return levels[0]!; // symmetric → one Δ
-  // vertical spread : near (higher |Δ|, closer to F) / far (lower |Δ|)
-  const uniq = [...new Set(levels)].sort((a, b) => _rank(b) - _rank(a));
-  return uniq.length >= 2 ? `${uniq[0]}/${uniq[1]}` : (uniq[0] ?? null);
-}
-
-// Structure name for the main line. Prefer a shared explicit label (the mock and
-// any backend that fills `structure` with a real name); otherwise infer it from
-// the legs (real per-leg rows carry product_label + side + strike, not a name).
-function structureName(legs: Position[]): string {
-  const base = ((): string => {
-    const s0 = legs[0]!.structure;
-    if (s0 && s0 !== "—" && legs.every((l) => l.structure === s0)) return s0;
-    if (legs.length === 1) return legs[0]!.product || s0 || "—";
-    const calls = legs.filter((l) => /call/i.test(l.product));
-    const puts = legs.filter((l) => /put/i.test(l.product));
-    const n = legs.length;
-    if (n === 2 && calls.length === 1 && puts.length === 1) {
-      if (calls[0]!.side !== puts[0]!.side) return "Risk Reversal";
-      return calls[0]!.strike && calls[0]!.strike === puts[0]!.strike ? "Straddle" : "Strangle";
-    }
-    if (n === 2 && calls.length === 2) return "Call Spread";
-    if (n === 2 && puts.length === 2) return "Put Spread";
-    if (n === 3) return "Butterfly";
-    if (n === 4) return "Condor";
-    return `Structure · ${n} legs`;
-  })();
-  // Append the wing pillars for the wing-bearing verticals when the label doesn't
-  // already carry them (e.g. "Risk Reversal" → "Risk Reversal 25Δ", "Call Spread"
-  // → "Call Spread ATM/10Δ" ; a backend "Strangle 10Δ" already has it → skip).
-  if (!/\d+Δ|ATM/.test(base) && /^(Risk Reversal|Call Spread|Put Spread|Strangle)\b/.test(base)) {
-    const wing = deriveWing(legs, base);
-    if (wing) return `${base} ${wing}`;
-  }
-  return base;
-}
-
-// Structure-level side (BUY/SELL) — structures have a side too. All legs agree
-// (strangle/straddle) → that side ; a count majority (butterfly: 2 long wings vs
-// 1 short body) → the majority ; a 2-leg split (RR / spread) → the first (entry)
-// leg's side.
-function structureSide(legs: Position[]): string {
-  const buys = legs.filter((l) => l.side === "BUY").length;
-  const sells = legs.length - buys;
-  if (buys > sells) return "BUY";
-  if (sells > buys) return "SELL";
-  return legs[0]?.side ?? "—";
-}
 
 interface GroupAgg {
   qty: number;
@@ -167,7 +102,7 @@ function legWingFor(p: Position, siblings: Position[], wings: string[]): string 
   const isCall = /call/i.test(p.product);
   const peers = siblings
     .filter((l) => /call/i.test(l.product) === isCall)
-    .map((l) => ({ id: l.id, k: _legStrikeNum(l) }))
+    .map((l) => ({ id: l.id, k: legStrikeNum(l) }))
     .filter((x): x is { id: string; k: number } => x.k != null)
     .sort((a, b) => (isCall ? a.k - b.k : b.k - a.k));
   const idx = peers.findIndex((x) => x.id === p.id);
