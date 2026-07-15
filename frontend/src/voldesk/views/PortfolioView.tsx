@@ -615,10 +615,13 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
             <th className="r grp-pnl col-grp col-grp-end">
               P&L <em className="unit">(%)</em>
             </th>
-            <th className="r grp-grk col-grp col-grp-end">
+            <th className="r grp-grk col-grp">Δ</th>
+            <th className="r grp-grk">Γ</th>
+            <th className="r grp-grk">
               Vega <em className="unit">(%)</em>
             </th>
-            <th className="r grp-grk col-grp">Vanna</th>
+            <th className="r grp-grk">Θ</th>
+            <th className="r grp-grk">Vanna</th>
             <th className="r grp-grk col-grp-end">Volga</th>
           </tr>
         </thead>
@@ -631,16 +634,15 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
               <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.pnl)}>
                 <b>{fmt.usdk(r.pnl)}</b> <span className="pb-rel">({pnlPct(r.pnl)})</span>
               </td>
-              <td className={"r mono grp-grk col-grp col-grp-end " + pnlCls(r.vega)}>
+              <td className={"r mono grp-grk col-grp " + pnlCls(r.delta)}>{fmt.sgn(r.delta / 1000, 0)}k</td>
+              <td className={"r mono grp-grk " + pnlCls(r.gamma)}>{fmt.sgn(r.gamma / 1000, 0)}k</td>
+              <td className={"r mono grp-grk " + pnlCls(r.vega)}>
                 <b>{fmt.sgn(r.vega / 1000, 1)}k</b>{" "}
                 <span className="pb-rel">({Math.round((Math.abs(r.vega) / totVega) * 100)}%)</span>
               </td>
-              <td className={"r mono grp-grk col-grp " + pnlCls(r.vanna)}>
-                {fmt.sgn(r.vanna / 1000, 0)}k
-              </td>
-              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>
-                {fmt.sgn(r.volga / 1000, 0)}k
-              </td>
+              <td className={"r mono grp-grk " + pnlCls(r.theta)}>{fmt.sgn(r.theta / 1000, 0)}k</td>
+              <td className={"r mono grp-grk " + pnlCls(r.vanna)}>{fmt.sgn(r.vanna / 1000, 0)}k</td>
+              <td className={"r mono grp-grk col-grp-end " + pnlCls(r.volga)}>{fmt.sgn(r.volga / 1000, 0)}k</td>
             </tr>
           ))}
         </tbody>
@@ -817,7 +819,7 @@ export function PortfolioView(): JSX.Element {
       >
         <div className="wf-cell wf-structure-cell">
           <div className="perf-sub mono dim">
-            by tenor <em className="unit">P&L · vega · 2nd-order</em>
+            by tenor <em className="unit">P&L · Δ Γ Vega Θ Vanna Volga</em>
           </div>
           <TenorTable rows={pivotTenor} />
         </div>

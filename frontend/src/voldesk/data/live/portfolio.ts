@@ -176,11 +176,14 @@ export function adaptStructureRows(raw: unknown): StructureRow[] {
   }));
 }
 
-/** Rich per-reference-tenor row: P&L + vega + 2nd-order greeks (raw USD). */
+/** Rich per-reference-tenor row: P&L + the full 6 greeks (raw USD). */
 export interface TenorRow {
   label: string;
   pnl: number;
+  delta: number;
+  gamma: number;
   vega: number;
+  theta: number;
   vanna: number;
   volga: number;
 }
@@ -188,12 +191,24 @@ export interface TenorRow {
 /** /portfolio/pnl-attribution-pivot?by=tenor → rich rows for the breakdown table. */
 export function adaptTenorRows(raw: unknown): TenorRow[] {
   const groups = ((raw ?? {}) as {
-    groups?: { label?: string; pnl_usd?: number | null; vega_usd?: number | null; vanna_usd?: number | null; volga_usd?: number | null }[];
+    groups?: {
+      label?: string;
+      pnl_usd?: number | null;
+      delta_usd?: number | null;
+      gamma_usd?: number | null;
+      vega_usd?: number | null;
+      theta_usd?: number | null;
+      vanna_usd?: number | null;
+      volga_usd?: number | null;
+    }[];
   }).groups ?? [];
   return groups.map((g) => ({
     label: String(g.label ?? "—"),
     pnl: n(g.pnl_usd),
+    delta: n(g.delta_usd),
+    gamma: n(g.gamma_usd),
     vega: n(g.vega_usd),
+    theta: n(g.theta_usd),
     vanna: n(g.vanna_usd),
     volga: n(g.volga_usd),
   }));
