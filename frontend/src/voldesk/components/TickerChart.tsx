@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchBars, type Bar } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
+import type { TradeEvent } from "../data/live/portfolio";
 
 // UTC trading windows + one distinct colour per market (non-overlapping rows).
 const SESSIONS = [
@@ -35,7 +36,7 @@ const LIMIT = 250; // upper bound on bars fetched (backend caps at ≤500)
 const isOpen = (hour: number, open: number, close: number): boolean => hour >= open && hour < close;
 const pad2 = (n: number): string => String(n).padStart(2, "0");
 
-export function TickerChart({ spot }: { spot: number }): JSX.Element {
+export function TickerChart({ spot, markers = [] }: { spot: number; markers?: TradeEvent[] }): JSX.Element {
   const [tf, setTf] = useState("1D");
   const preset = PRESETS.find((p) => p.key === tf)!;
   // real OHLC candles from the market-data engine's IB cache (poll every 60s)
@@ -109,6 +110,23 @@ export function TickerChart({ spot }: { spot: number }): JSX.Element {
   for (let i = 0; i <= 4; i++) ticks.push(yLo + ((yHi - yLo) / 4) * i);
   const labelEvery = Math.ceil(N / 8);
 
+  // Trade markers: map an event timestamp to a fractional candle x (null if it
+  // falls outside the visible range), anchored to entry_spot or the candle close.
+  const t0 = candles[0]!.t,
+    tN = candles[N - 1]!.t;
+  const interval = N > 1 ? (tN - t0) / (N - 1) : 3_600_000;
+  const markerX = (t: number): number | null =>
+    t < t0 - interval / 2 || t > tN + interval / 2 ? null : X((t - t0) / interval);
+  const priceAt = (t: number): number =>
+    candles[Math.max(0, Math.min(N - 1, Math.round((t - t0) / interval)))]!.c;
+  const fmtTs = (t: number): string => {
+    const d = new Date(t);
+    return `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)} ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+  };
+  const visibleMarkers = markers
+    .map((m) => ({ m, x: markerX(m.t) }))
+    .filter((e): e is { m: TradeEvent; x: number } => e.x != null);
+
   return (
     <div className="ticker">
       {tfButtons}
@@ -142,6 +160,26 @@ export function TickerChart({ spot }: { spot: number }): JSX.Element {
         <text x={W - pr} y={Y(last) - 3} textAnchor="end" fontSize="9.5" fontWeight={700} fontFamily="var(--mono)" fill="var(--accent)">
           {last.toFixed(5)}
         </text>
+        {/* trade markers — ▲ open (entry) / ● close (coloured by realized P&L), hover = tooltip */}
+        {visibleMarkers.map(({ m, x }, i) => {
+          const y = m.spot != null ? Y(m.spot) : Y(priceAt(m.t));
+          const col =
+            m.kind === "open" ? "var(--accent)" : m.pnl == null ? "var(--muted)" : m.pnl >= 0 ? "var(--pos)" : "var(--neg)";
+          const tip =
+            m.kind === "open"
+              ? `Opened #${m.id} ${m.type}${m.spot != null ? " @ " + m.spot.toFixed(4) : ""} · ${fmtTs(m.t)}`
+              : `Closed #${m.id} ${m.type}${m.pnl != null ? " " + (m.pnl >= 0 ? "+" : "−") + "$" + Math.abs(m.pnl / 1000).toFixed(1) + "k" : ""} · ${fmtTs(m.t)}`;
+          return (
+            <g key={"m" + i} style={{ cursor: "pointer" }}>
+              <title>{tip}</title>
+              {m.kind === "open" ? (
+                <path d={`M${x} ${y - 5.5} L${x + 4.5} ${y + 3} L${x - 4.5} ${y + 3} Z`} fill="none" stroke={col} strokeWidth="1.7" />
+              ) : (
+                <circle cx={x} cy={y} r="3.7" fill={col} stroke="var(--bg)" strokeWidth="1" />
+              )}
+            </g>
+          );
+        })}
         {/* session bands — one non-overlapping row per market */}
         {SESSIONS.map((s, si) => {
           const y = bandsTop + si * (bandH + bandGap);

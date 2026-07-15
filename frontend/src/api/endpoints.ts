@@ -100,6 +100,30 @@ export interface Bar {
 export const fetchBars = (symbol = "EURUSD", tf = "1h", limit = 48) =>
   apiGet<Bar[]>("/api/v1/bars", { query: { symbol, tf, limit } });
 
+// Trade open/close events for the Performance ticker overlay (booked positions).
+export interface TradeMarkerRaw {
+  id: number;
+  type: string;
+  opened_at: string | null;
+  entry_spot: number | null;
+  closed_at: string | null;
+  net_pnl_usd: number | null;
+  state: string;
+}
+export const fetchTradeMarkers = (days = 30) =>
+  apiGet<TradeMarkerRaw[]>("/api/v1/portfolio/trade-markers", { query: { days } });
+
+// Portfolio Σ greeks (Δ/Γ/Vega/Θ) time series for the Performance greek chart.
+export interface GreekHistoryRaw {
+  timestamp: string;
+  delta_usd: number;
+  gamma_usd: number;
+  vega_usd: number;
+  theta_usd: number;
+}
+export const fetchGreeksHistory = (window = "30d") =>
+  apiGet<GreekHistoryRaw[]>("/api/v1/portfolio/greeks-history", { query: { window } });
+
 export const fetchSystemStats = () => apiGet<SystemStats>("/api/v1/system-stats");
 
 // ── R11 voldesk wiring (read) ───────────────────────────────────────────────

@@ -292,10 +292,82 @@ export function adaptRiskPerTenor(raw: unknown): TenorRisk[] {
   }));
 }
 
-/** /portfolio/equity-curve → net-liq series for the equity chart. */
-export function adaptEquityCurve(raw: unknown): number[] {
-  const rows = Array.isArray(raw) ? (raw as { net_liq_usd?: number | null }[]) : [];
-  return rows.map((p) => n(p.net_liq_usd)).filter((v) => v > 0);
+/** A net-liq sample: epoch-ms timestamp + value ($). */
+export interface EquityPoint {
+  t: number;
+  v: number;
+}
+
+/** /portfolio/equity-curve → timestamped net-liq series for the equity chart.
+ * The timestamp is kept so the chart can plot on a FIXED time axis (0→N days) with
+ * empty zones where the window has no data, instead of stretching whatever points
+ * exist across the full width. */
+export function adaptEquityCurve(raw: unknown): EquityPoint[] {
+  const rows = Array.isArray(raw)
+    ? (raw as { timestamp?: string; net_liq_usd?: number | null }[])
+    : [];
+  return rows
+    .map((p) => ({ t: p.timestamp ? Date.parse(p.timestamp) : NaN, v: n(p.net_liq_usd) }))
+    .filter((p) => p.v > 0 && Number.isFinite(p.t));
+}
+
+/** Portfolio greek time-series — one timestamped ($) series per greek. */
+export type GreekKey = "delta" | "gamma" | "vega" | "theta";
+export type GreekSeries = Record<GreekKey, EquityPoint[]>;
+
+/** /portfolio/greeks-history → four timestamped Σ-greek series ($) for the chart. */
+export function adaptGreeksHistory(raw: unknown): GreekSeries {
+  const rows = Array.isArray(raw)
+    ? (raw as {
+        timestamp?: string;
+        delta_usd?: number | null;
+        gamma_usd?: number | null;
+        vega_usd?: number | null;
+        theta_usd?: number | null;
+      }[])
+    : [];
+  const out: GreekSeries = { delta: [], gamma: [], vega: [], theta: [] };
+  for (const r of rows) {
+    const t = r.timestamp ? Date.parse(r.timestamp) : NaN;
+    if (!Number.isFinite(t)) continue;
+    out.delta.push({ t, v: n(r.delta_usd) });
+    out.gamma.push({ t, v: n(r.gamma_usd) });
+    out.vega.push({ t, v: n(r.vega_usd) });
+    out.theta.push({ t, v: n(r.theta_usd) });
+  }
+  return out;
+}
+
+/** A trade open/close event for the EUR/USD ticker overlay (one entry per side). */
+export interface TradeEvent {
+  t: number; // epoch ms of the event
+  kind: "open" | "close";
+  id: number;
+  type: string;
+  spot: number | null; // entry_spot on opens (else the marker anchors to the candle)
+  pnl: number | null; // realized net P&L (closes)
+}
+
+/** /portfolio/trade-markers → flat open/close events for the ticker overlay. */
+export function adaptTradeMarkers(raw: unknown): TradeEvent[] {
+  const rows = Array.isArray(raw)
+    ? (raw as {
+        id?: number;
+        type?: string;
+        opened_at?: string | null;
+        entry_spot?: number | null;
+        closed_at?: string | null;
+        net_pnl_usd?: number | null;
+      }[])
+    : [];
+  const out: TradeEvent[] = [];
+  for (const r of rows) {
+    const id = Number(r.id ?? 0);
+    const type = String(r.type ?? "trade");
+    if (r.opened_at) out.push({ t: Date.parse(r.opened_at), kind: "open", id, type, spot: r.entry_spot ?? null, pnl: null });
+    if (r.closed_at) out.push({ t: Date.parse(r.closed_at), kind: "close", id, type, spot: null, pnl: r.net_pnl_usd ?? null });
+  }
+  return out.filter((e) => Number.isFinite(e.t));
 }
 
 export type StressAxis = "spot-vol" | "spot-time" | "spot-skew" | "spot-fly";

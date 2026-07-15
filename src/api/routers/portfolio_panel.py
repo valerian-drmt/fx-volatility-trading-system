@@ -288,6 +288,89 @@ async def equity_curve(
     ]
 
 
+@router.get("/trade-markers")
+async def trade_markers(
+    db: DbDep,
+    days: int = Query(30, ge=1, le=730),
+) -> list[dict[str, Any]]:
+    """Trade open/close events for the Performance EUR/USD ticker overlay.
+
+    One row per booked position whose open OR close falls within the window. The
+    frontend drops a marker at ``opened_at`` (anchored to ``entry_spot``) and, once
+    the trade is closed, a second marker at ``closed_at`` — the tooltip carries the
+    structure type and realized P&L.
+    """
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    sql = text("""
+        SELECT bp.id,
+               COALESCE(ts.structure_type, 'trade') AS stype,
+               bp.opened_at, bp.entry_spot, bp.closed_at,
+               bp.net_pnl_usd, bp.state
+          FROM booked_position bp
+          LEFT JOIN trade_structure ts ON bp.structure_id = ts.id
+         WHERE bp.opened_at >= :cutoff OR bp.closed_at >= :cutoff
+         ORDER BY bp.opened_at
+    """)
+    rows = (await db.execute(sql, {"cutoff": cutoff})).all()
+    return [
+        {
+            "id": int(r.id),
+            "type": str(r.stype),
+            "opened_at": r.opened_at.replace(tzinfo=UTC).isoformat() if r.opened_at else None,
+            "entry_spot": float(r.entry_spot) if r.entry_spot is not None else None,
+            "closed_at": r.closed_at.replace(tzinfo=UTC).isoformat() if r.closed_at else None,
+            "net_pnl_usd": float(r.net_pnl_usd) if r.net_pnl_usd is not None else None,
+            "state": str(r.state),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/greeks-history")
+async def greeks_history(
+    db: DbDep,
+    window: Literal["1d", "7d", "30d", "1y", "all"] = Query("30d"),
+) -> list[dict[str, Any]]:
+    """Portfolio Σ greeks (Δ/Γ/Vega/Θ) time series, server-side downsampled.
+
+    Per time bucket the latest snapshot of each open leg (``open_position_history``,
+    written ~every 2s by the risk-engine) is summed → one Σ-greek point per bucket.
+    Lets the Performance panel show how each open/close moves the book's greeks.
+    """
+    lookback, bucket_secs = _WINDOW_SPECS[window]
+    cutoff = datetime.now(UTC) - lookback
+    sql = text("""
+        WITH per_pos AS (
+          SELECT DISTINCT ON (bucket_ts, position_id)
+                 to_timestamp(floor(extract(epoch FROM timestamp) / :bucket) * :bucket)
+                     AT TIME ZONE 'UTC' AS bucket_ts,
+                 position_id, delta_usd, gamma_usd, vega_usd, theta_usd
+            FROM open_position_history
+           WHERE timestamp >= :cutoff
+           ORDER BY bucket_ts, position_id, timestamp DESC
+        )
+        SELECT bucket_ts,
+               COALESCE(SUM(delta_usd), 0) AS d,
+               COALESCE(SUM(gamma_usd), 0) AS g,
+               COALESCE(SUM(vega_usd), 0)  AS v,
+               COALESCE(SUM(theta_usd), 0) AS th
+          FROM per_pos
+         GROUP BY bucket_ts
+         ORDER BY bucket_ts
+    """)
+    rs = (await db.execute(sql, {"bucket": bucket_secs, "cutoff": cutoff})).all()
+    return [
+        {
+            "timestamp": r.bucket_ts.replace(tzinfo=UTC).isoformat(),
+            "delta_usd": float(r.d),
+            "gamma_usd": float(r.g),
+            "vega_usd": float(r.v),
+            "theta_usd": float(r.th),
+        }
+        for r in rs
+    ]
+
+
 @router.get("/aggregate-greeks")
 async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
     """Σ Δ Γ V Θ across all OPEN positions (latest snap per position).

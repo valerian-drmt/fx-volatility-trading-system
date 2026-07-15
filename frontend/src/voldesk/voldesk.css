@@ -944,10 +944,6 @@ input,select{font-family:inherit;font-size:13px}
 
 /* ---------- portfolio ---------- */
 .portfolio-grid{display:flex;flex-direction:column;gap:12px;align-items:stretch}
-/* Performance (wide) beside Carry-vs-convexity (narrow, vertical cells). */
-.pf-perf-row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:12px;align-items:stretch}
-.pf-perf-row > .panel{margin:0}
-@media (max-width:900px){.pf-perf-row{grid-template-columns:1fr}}
 .acct-tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
 .lev-strip{display:grid;grid-template-columns:1fr 1fr 1fr 1.5fr;gap:8px;margin-top:9px;padding-top:10px;border-top:1px solid var(--border)}
 /* Account & capital → two side-by-side tables (capital metrics | cash holdings),
@@ -970,64 +966,21 @@ input,select{font-family:inherit;font-size:13px}
 .perf-sub{font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
 .perf-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)}
 /* Stacked P&L / Drawdown graphs, each with its two stats on the left. */
+/* Performance panel split: P&L + drawdown (left) · greek timeline (right). */
+.perf-split{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.perf-split-l,.perf-split-r{min-width:0}
+.greek-tl{display:flex;flex-direction:column;gap:8px}
+@media (max-width:1000px){.perf-split{grid-template-columns:1fr}}
 .perf-v{display:flex;flex-direction:column;gap:14px}
-.perf-row{display:grid;grid-template-columns:minmax(190px,220px) minmax(0,1fr);gap:18px;align-items:center}
+.perf-row{display:grid;grid-template-columns:minmax(112px,150px) minmax(0,1fr);gap:14px;align-items:center}
 .perf-row + .perf-row{padding-top:14px;border-top:1px solid var(--border)}
-.perf-side{display:flex;flex-direction:column;justify-content:center}
-.perf-side .acct-cap{margin:0}
+.perf-side{display:flex;flex-direction:column;justify-content:center;gap:8px}
 .perf-chart{min-width:0}
-.perf-foot{display:flex;gap:28px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)}
+/* Rounded stat tiles beside each perf graph (Realized/Unrealized, Max/Current DD). */
+.pstat{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--line) 20%,transparent)}
+.pstat-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.03em}
+.pstat-val{font-size:16px;font-weight:700;line-height:1.15}
 @media (max-width:720px){.perf-row{grid-template-columns:1fr}}
-.ps-item{display:flex;flex-direction:column;gap:1px}
-.ps-item b{font-size:15px;font-weight:700}
-/* coverage / survival */
-.cov-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 15px;background:var(--bg-3);border:1px solid var(--border);border-radius:8px;margin-bottom:10px}
-.cov-main{display:flex;flex-direction:column;gap:3px}
-.cov-lbl{font-size:11px}
-.cov-num-row{display:flex;align-items:baseline;gap:12px}
-.cov-num{font-size:42px;font-weight:800;line-height:1}
-.cov-verdict{font-size:12px;font-weight:700;padding:3px 9px;border-radius:5px;white-space:nowrap}
-.cov-verdict.ok{color:var(--pos);background:color-mix(in srgb,var(--pos) 14%,transparent)}
-.cov-verdict.bad{color:var(--neg);background:color-mix(in srgb,var(--neg) 14%,transparent)}
-.cov-formula{font-size:10.5px}
-.cov-spark{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
-.cov-bars{display:flex;flex-direction:column;gap:3px}
-.cov-bar-row{display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;margin-top:5px}
-.cov-bar-track{height:11px;border-radius:4px;background:var(--bg-3);overflow:hidden}
-.cov-bar-fill{height:100%;border-radius:4px}
-.cov-bar-fill.pos{background:var(--pos)}.cov-bar-fill.neg{background:var(--neg)}
-.cov-bar-sub{font-size:10px}
-.cov-ror{display:flex;flex-direction:column;justify-content:center;gap:10px;padding-left:16px;border-left:1px solid var(--border)}
-.ror-item{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
-.ror-item b{font-size:16px;font-weight:700}
-.cov-posture{display:flex;align-items:center;gap:10px;margin-top:11px;padding-top:10px;border-top:1px solid var(--border)}
-/* forward breakeven complement to the realized ratio */
-.cov-fwd{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:11px;padding:9px 11px;background:var(--bg-3);border:1px solid var(--border);border-radius:6px}
-.cov-fwd-eq{font-size:12px;color:var(--text-dim)}
-.cov-fwd-eq b{color:var(--fg);font-weight:700}
-.cov-fwd-eq sub{font-size:.7em}
-/* Carry-vs-convexity diptych — realized (backward) | forward (implied). Each cell
-   is a shared-scale tug-of-war so the ratio is legible at a glance. */
-.cov2{display:flex;flex-direction:column;gap:11px}
-.cov2-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.cov2-title{font-size:12px;font-weight:700;color:var(--fg)}
-.cov2-grid{display:grid;grid-template-columns:1fr;gap:10px}
-.cov2-cell{display:flex;flex-direction:column;gap:8px;padding:11px 13px;background:var(--bg-3);border:1px solid var(--border);border-radius:8px}
-.cov2-cell-hd{font-size:11px;letter-spacing:.02em;text-transform:uppercase}
-.cov2-num-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.cov2-num{font-size:34px;font-weight:800;line-height:1}
-.cov2-tug{display:flex;flex-direction:column;gap:5px}
-.cov2-tug-row{display:grid;grid-template-columns:52px 1fr 62px;gap:8px;align-items:center;font-size:11px}
-.cov2-tug-lbl{color:var(--text-dim)}
-.cov2-tug-track{height:10px;border-radius:4px;background:color-mix(in srgb,var(--border) 55%,transparent);overflow:hidden}
-.cov2-tug-fill{height:100%;border-radius:4px;min-width:2px}
-.cov2-tug-fill.pos{background:var(--pos)}
-.cov2-tug-fill.neg{background:var(--neg)}
-.cov2-tug-val{text-align:right;font-weight:700}
-.cov2-foot{font-size:10px}
-.cov2-foot sub{font-size:.72em}
-.cov2-empty{padding:14px 0;text-align:center}
-.cov2-spark{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid var(--border)}
 /* 2nd-order by structure table */
 .so-table{margin-top:6px}
 .so-table td,.so-table th{padding:4px 8px}

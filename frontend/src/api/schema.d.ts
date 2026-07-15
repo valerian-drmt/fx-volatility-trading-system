@@ -896,6 +896,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portfolio/greeks-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Greeks History
+         * @description Portfolio Σ greeks (Δ/Γ/Vega/Θ) time series, server-side downsampled.
+         *
+         *     Per time bucket the latest snapshot of each open leg (``open_position_history``,
+         *     written ~every 2s by the risk-engine) is summed → one Σ-greek point per bucket.
+         *     Lets the Performance panel show how each open/close moves the book's greeks.
+         */
+        get: operations["greeks_history_api_v1_portfolio_greeks_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portfolio/greeks-ladder": {
         parameters: {
             query?: never;
@@ -1192,6 +1216,31 @@ export interface paths {
          *     output=pnl`` reproduces the legacy 5×7 grid (``vol_bins_vps`` kept for compat).
          */
         get: operations["stress_grid_api_v1_portfolio_stress_grid_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portfolio/trade-markers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trade Markers
+         * @description Trade open/close events for the Performance EUR/USD ticker overlay.
+         *
+         *     One row per booked position whose open OR close falls within the window. The
+         *     frontend drops a marker at ``opened_at`` (anchored to ``entry_spot``) and, once
+         *     the trade is closed, a second marker at ``closed_at`` — the tooltip carries the
+         *     structure type and realized P&L.
+         */
+        get: operations["trade_markers_api_v1_portfolio_trade_markers_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4636,6 +4685,39 @@ export interface operations {
             };
         };
     };
+    greeks_history_api_v1_portfolio_greeks_history_get: {
+        parameters: {
+            query?: {
+                window?: "1d" | "7d" | "30d" | "1y" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     greeks_ladder_api_v1_portfolio_greeks_ladder_get: {
         parameters: {
             query?: {
@@ -4911,6 +4993,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    trade_markers_api_v1_portfolio_trade_markers_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Validation Error */
