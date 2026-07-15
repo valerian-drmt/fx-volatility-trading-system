@@ -218,20 +218,14 @@ function PerfCharts({
     <div className="perf-v">
       <div className="perf-row">
         <div className="perf-side">
-          <table className="dt greeks-table acct-cap">
-            <tbody>
-              <tr>
-                <td className="l">Realized</td>
-                <td className={"r mono " + pnlCls(ps.cumRealized)}>
-                  {fmt.sgn(ps.cumRealized, 1)}k
-                </td>
-              </tr>
-              <tr>
-                <td className="l">Unrealized</td>
-                <td className={"r mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="pstat">
+            <span className="pstat-lbl mono dim">Realized</span>
+            <b className={"pstat-val mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
+          </div>
+          <div className="pstat">
+            <span className="pstat-lbl mono dim">Unrealized</span>
+            <b className={"pstat-val mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</b>
+          </div>
         </div>
         <div className="perf-chart">
           <div className="perf-sub mono dim">
@@ -242,18 +236,14 @@ function PerfCharts({
       </div>
       <div className="perf-row">
         <div className="perf-side">
-          <table className="dt greeks-table acct-cap">
-            <tbody>
-              <tr>
-                <td className="l">Max drawdown</td>
-                <td className="r mono neg">{ps.maxDd}%</td>
-              </tr>
-              <tr>
-                <td className="l">Current DD</td>
-                <td className="r mono neg">{ps.currentDd}%</td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="pstat">
+            <span className="pstat-lbl mono dim">Max drawdown</span>
+            <b className="pstat-val mono neg">{ps.maxDd}%</b>
+          </div>
+          <div className="pstat">
+            <span className="pstat-lbl mono dim">Current DD</span>
+            <b className="pstat-val mono neg">{ps.currentDd}%</b>
+          </div>
         </div>
         <div className="perf-chart">
           <div className="perf-sub mono dim">
@@ -613,7 +603,6 @@ export function PortfolioView(): JSX.Element {
   const a = pd?.account ?? DATA.account,
     ps = pd?.perfStats ?? DATA2.perfStats,
     g = pd?.greeks ?? DATA.greeks;
-  const dailyPnlData = pd?.dailyPnl ?? DATA2.dailyPnl;
   // Non-greek attribution pivots (by structure / by tenor) — realized P&L bridged
   // from closed booked positions. Polled so the bridge stays live; "by mode" (PCA)
   // stays deferred.
@@ -653,11 +642,6 @@ export function PortfolioView(): JSX.Element {
   const netX = netLiqEur ? (lev.net / (netLiqEur / 1e6)).toFixed(2) : "—";
   // §P1 unrealized single source: read the one engine (= Open positions = Risk = Close)
   const unreal = g.netUnreal;
-  // §P3 P&L skew — a long-gamma book should show positive skew (many small theta losses, occasional gamma spikes)
-  const dp = dailyPnlData,
-    mean = dp.length ? dp.reduce((x, y) => x + y, 0) / dp.length : 0;
-  const sd = Math.sqrt(dp.reduce((x, y) => x + (y - mean) ** 2, 0) / dp.length) || 1;
-  const pnlSkew = dp.reduce((x, y) => x + ((y - mean) / sd) ** 3, 0) / dp.length;
   return (
     <div className="portfolio-grid">
       <Panel
@@ -749,21 +733,6 @@ export function PortfolioView(): JSX.Element {
           className="perf-panel"
         >
           <PerfCharts window={win} ps={ps} unreal={unreal} />
-          <div className="perf-foot">
-            <div className="ps-item">
-              <span className="gs-lbl">
-                Hit rate <em className="unit">realized Sharpe {ps.sharpe.toFixed(2)}</em>
-              </span>
-              <b className="mono">{ps.hitRateNull ? "—" : ps.hitRate.toFixed(0) + "%"}</b>
-            </div>
-            <div className="ps-item">
-              <span className="gs-lbl">P&L skew</span>
-              <b className={"mono " + (pnlSkew >= 0 ? "pos" : "neg")}>{fmt.sgn(pnlSkew, 2)}</b>
-              <span className="gs-sub mono dim">
-                {pnlSkew >= 0 ? "long-γ signature ✓" : "⚠ vs long-γ"}
-              </span>
-            </div>
-          </div>
         </Panel>
         <Panel
           title="Carry vs convexity — survival metric"

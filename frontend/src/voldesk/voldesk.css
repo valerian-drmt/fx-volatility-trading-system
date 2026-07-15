@@ -973,13 +973,13 @@ input,select{font-family:inherit;font-size:13px}
 .perf-v{display:flex;flex-direction:column;gap:14px}
 .perf-row{display:grid;grid-template-columns:minmax(190px,220px) minmax(0,1fr);gap:18px;align-items:center}
 .perf-row + .perf-row{padding-top:14px;border-top:1px solid var(--border)}
-.perf-side{display:flex;flex-direction:column;justify-content:center}
-.perf-side .acct-cap{margin:0}
+.perf-side{display:flex;flex-direction:column;justify-content:center;gap:8px}
 .perf-chart{min-width:0}
-.perf-foot{display:flex;gap:28px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)}
+/* Rounded stat tiles beside each perf graph (Realized/Unrealized, Max/Current DD). */
+.pstat{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--line) 20%,transparent)}
+.pstat-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.03em}
+.pstat-val{font-size:16px;font-weight:700;line-height:1.15}
 @media (max-width:720px){.perf-row{grid-template-columns:1fr}}
-.ps-item{display:flex;flex-direction:column;gap:1px}
-.ps-item b{font-size:15px;font-weight:700}
 /* coverage / survival */
 .cov-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:13px 15px;background:var(--bg-3);border:1px solid var(--border);border-radius:8px;margin-bottom:10px}
 .cov-main{display:flex;flex-direction:column;gap:3px}
