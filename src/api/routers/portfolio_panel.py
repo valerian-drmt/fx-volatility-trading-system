@@ -976,21 +976,31 @@ async def pnl_attribution(
             "residual_usd": round(residual, 2) if residual is not None else None,
         }
 
-    # Book-level forward for wing classification = the EUR future's market price
-    # (the FOP underlying), not the per-leg option premium.
+    # Book-level UNDERLYING spot = the EUR future's market price (the FOP
+    # underlying), now and at t-1. Option legs decompose against THIS, not their
+    # own market_price (which is the premium) — else dS is the premium change, so
+    # delta·dS is garbage, ½Γ·dS² collapses to 0 and the residual eats the P&L.
     fwd_row = (await db.execute(text(
         "SELECT market_price FROM open_position "
         "WHERE structure LIKE '6E%' AND market_price IS NOT NULL ORDER BY id DESC LIMIT 1"
     ))).first()
     forward = float(fwd_row[0]) if fwd_row and fwd_row[0] is not None else None
+    fwd_then_row = (await db.execute(text(
+        "SELECT oph.market_price FROM open_position_history oph "
+        "JOIN open_position op ON op.id = oph.position_id "
+        "WHERE op.structure LIKE '6E%' AND oph.timestamp <= :cutoff AND oph.market_price IS NOT NULL "
+        "ORDER BY oph.timestamp DESC LIMIT 1"
+    ), {"cutoff": cutoff})).first()
+    forward_then = float(fwd_then_row[0]) if fwd_then_row and fwd_then_row[0] is not None else None
 
     per_position: list[dict[str, Any]] = []
     for r in ib_rows:
         decomp = _decompose(
             pnl_now=float(r.pnl_now) if r.pnl_now is not None else None,
             pnl_then=float(r.pnl_then) if r.pnl_then is not None else None,
-            spot_now=float(r.spot_now) if r.spot_now is not None else None,
-            spot_then=float(r.spot_then) if r.spot_then is not None else None,
+            # underlying spot (future price), NOT the per-leg premium
+            spot_now=forward,
+            spot_then=forward_then,
             iv_now=float(r.iv_now) if r.iv_now is not None else None,
             iv_then=float(r.iv_then) if r.iv_then is not None else None,
             delta=float(r.delta_now) if r.delta_now is not None else None,
