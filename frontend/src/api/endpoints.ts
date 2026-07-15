@@ -113,6 +113,17 @@ export interface TradeMarkerRaw {
 export const fetchTradeMarkers = (days = 30) =>
   apiGet<TradeMarkerRaw[]>("/api/v1/portfolio/trade-markers", { query: { days } });
 
+// Portfolio Σ greeks (Δ/Γ/Vega/Θ) time series for the Performance greek chart.
+export interface GreekHistoryRaw {
+  timestamp: string;
+  delta_usd: number;
+  gamma_usd: number;
+  vega_usd: number;
+  theta_usd: number;
+}
+export const fetchGreeksHistory = (window = "30d") =>
+  apiGet<GreekHistoryRaw[]>("/api/v1/portfolio/greeks-history", { query: { window } });
+
 export const fetchSystemStats = () => apiGet<SystemStats>("/api/v1/system-stats");
 
 // ── R11 voldesk wiring (read) ───────────────────────────────────────────────

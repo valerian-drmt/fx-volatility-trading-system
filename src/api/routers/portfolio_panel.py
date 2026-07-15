@@ -326,6 +326,51 @@ async def trade_markers(
     ]
 
 
+@router.get("/greeks-history")
+async def greeks_history(
+    db: DbDep,
+    window: Literal["1d", "7d", "30d", "1y", "all"] = Query("30d"),
+) -> list[dict[str, Any]]:
+    """Portfolio Σ greeks (Δ/Γ/Vega/Θ) time series, server-side downsampled.
+
+    Per time bucket the latest snapshot of each open leg (``open_position_history``,
+    written ~every 2s by the risk-engine) is summed → one Σ-greek point per bucket.
+    Lets the Performance panel show how each open/close moves the book's greeks.
+    """
+    lookback, bucket_secs = _WINDOW_SPECS[window]
+    cutoff = datetime.now(UTC) - lookback
+    sql = text("""
+        WITH per_pos AS (
+          SELECT DISTINCT ON (bucket_ts, position_id)
+                 to_timestamp(floor(extract(epoch FROM timestamp) / :bucket) * :bucket)
+                     AT TIME ZONE 'UTC' AS bucket_ts,
+                 position_id, delta_usd, gamma_usd, vega_usd, theta_usd
+            FROM open_position_history
+           WHERE timestamp >= :cutoff
+           ORDER BY bucket_ts, position_id, timestamp DESC
+        )
+        SELECT bucket_ts,
+               COALESCE(SUM(delta_usd), 0) AS d,
+               COALESCE(SUM(gamma_usd), 0) AS g,
+               COALESCE(SUM(vega_usd), 0)  AS v,
+               COALESCE(SUM(theta_usd), 0) AS th
+          FROM per_pos
+         GROUP BY bucket_ts
+         ORDER BY bucket_ts
+    """)
+    rs = (await db.execute(sql, {"bucket": bucket_secs, "cutoff": cutoff})).all()
+    return [
+        {
+            "timestamp": r.bucket_ts.replace(tzinfo=UTC).isoformat(),
+            "delta_usd": float(r.d),
+            "gamma_usd": float(r.g),
+            "vega_usd": float(r.v),
+            "theta_usd": float(r.th),
+        }
+        for r in rs
+    ]
+
+
 @router.get("/aggregate-greeks")
 async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
     """Σ Δ Γ V Θ across all OPEN positions (latest snap per position).

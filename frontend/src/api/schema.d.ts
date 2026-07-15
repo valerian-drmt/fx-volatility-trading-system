@@ -896,6 +896,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portfolio/greeks-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Greeks History
+         * @description Portfolio Σ greeks (Δ/Γ/Vega/Θ) time series, server-side downsampled.
+         *
+         *     Per time bucket the latest snapshot of each open leg (``open_position_history``,
+         *     written ~every 2s by the risk-engine) is summed → one Σ-greek point per bucket.
+         *     Lets the Performance panel show how each open/close moves the book's greeks.
+         */
+        get: operations["greeks_history_api_v1_portfolio_greeks_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portfolio/greeks-ladder": {
         parameters: {
             query?: never;
@@ -4657,6 +4681,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    greeks_history_api_v1_portfolio_greeks_history_get: {
+        parameters: {
+            query?: {
+                window?: "1d" | "7d" | "30d" | "1y" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -311,6 +311,33 @@ export function adaptEquityCurve(raw: unknown): EquityPoint[] {
     .filter((p) => p.v > 0 && Number.isFinite(p.t));
 }
 
+/** Portfolio greek time-series — one timestamped ($) series per greek. */
+export type GreekKey = "delta" | "gamma" | "vega" | "theta";
+export type GreekSeries = Record<GreekKey, EquityPoint[]>;
+
+/** /portfolio/greeks-history → four timestamped Σ-greek series ($) for the chart. */
+export function adaptGreeksHistory(raw: unknown): GreekSeries {
+  const rows = Array.isArray(raw)
+    ? (raw as {
+        timestamp?: string;
+        delta_usd?: number | null;
+        gamma_usd?: number | null;
+        vega_usd?: number | null;
+        theta_usd?: number | null;
+      }[])
+    : [];
+  const out: GreekSeries = { delta: [], gamma: [], vega: [], theta: [] };
+  for (const r of rows) {
+    const t = r.timestamp ? Date.parse(r.timestamp) : NaN;
+    if (!Number.isFinite(t)) continue;
+    out.delta.push({ t, v: n(r.delta_usd) });
+    out.gamma.push({ t, v: n(r.gamma_usd) });
+    out.vega.push({ t, v: n(r.vega_usd) });
+    out.theta.push({ t, v: n(r.theta_usd) });
+  }
+  return out;
+}
+
 /** A trade open/close event for the EUR/USD ticker overlay (one entry per side). */
 export interface TradeEvent {
   t: number; // epoch ms of the event

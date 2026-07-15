@@ -966,9 +966,13 @@ input,select{font-family:inherit;font-size:13px}
 .perf-sub{font-size:10px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px}
 .perf-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)}
 /* Stacked P&L / Drawdown graphs, each with its two stats on the left. */
-.perf-ticker{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+/* Performance panel split: P&L + drawdown (left) · greek timeline (right). */
+.perf-split{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.perf-split-l,.perf-split-r{min-width:0}
+.greek-tl{display:flex;flex-direction:column;gap:8px}
+@media (max-width:1000px){.perf-split{grid-template-columns:1fr}}
 .perf-v{display:flex;flex-direction:column;gap:14px}
-.perf-row{display:grid;grid-template-columns:minmax(190px,220px) minmax(0,1fr);gap:18px;align-items:center}
+.perf-row{display:grid;grid-template-columns:minmax(112px,150px) minmax(0,1fr);gap:14px;align-items:center}
 .perf-row + .perf-row{padding-top:14px;border-top:1px solid var(--border)}
 .perf-side{display:flex;flex-direction:column;justify-content:center;gap:8px}
 .perf-chart{min-width:0}

@@ -5,24 +5,32 @@
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
 import { useEffect, useRef, useState } from "react";
-import { fetchEquityCurve, fetchPnlAttributionPivot, fetchTradeMarkers } from "../../api/endpoints";
+import {
+  fetchEquityCurve,
+  fetchGreeksHistory,
+  fetchPnlAttributionPivot,
+  fetchTradeMarkers,
+} from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { pnlCls } from "../components/format";
 import { CashHoldings } from "../components/PositionsTable";
-import { TickerChart } from "../components/TickerChart";
 import { DATA, DATA2, fmt } from "../data";
 import type { PerfStats, WaterfallStep } from "../data";
 import { useDeskData } from "../data/deskData";
 import {
   adaptEquityCurve,
+  adaptGreeksHistory,
   adaptTenorRows,
   adaptTradeMarkers,
   adaptWaterfallPivot,
   type EquityPoint,
+  type GreekKey,
+  type GreekSeries,
   type TenorRow,
+  type TradeEvent,
 } from "../data/live/portfolio";
 
 // ─── Performance charts: fixed time axis with gaps ───────────────────────────
@@ -44,10 +52,12 @@ const WINDOW_DAYS: Record<string, number | null> = {
 interface EqGrid {
   series: (number | null)[]; // GRID_N samples across the fixed domain (null = no data)
   ticks: { f: number; label: string }[]; // x-axis marks (fraction 0..1 + label)
+  t0: number; // domain start (epoch ms) — for positioning trade markers
+  t1: number; // domain end (epoch ms)
 }
 
 function buildEquityGrid(points: EquityPoint[], windowDays: number | null, now: number): EqGrid {
-  if (points.length === 0) return { series: [], ticks: [] };
+  if (points.length === 0) return { series: [], ticks: [], t0: now, t1: now };
   const firstT = points[0]!.t;
   const lastT = points[points.length - 1]!.t;
   const t1 = windowDays != null ? now : lastT;
@@ -79,7 +89,58 @@ function buildEquityGrid(points: EquityPoint[], windowDays: number | null, now: 
   } else {
     ticks.push({ f: 0, label: "start" }, { f: 1, label: "now" });
   }
-  return { series, ticks };
+  return { series, ticks, t0, t1 };
+}
+
+const p2 = (n: number): string => String(n).padStart(2, "0");
+const fmtTs = (t: number): string => {
+  const d = new Date(t);
+  return `${p2(d.getUTCDate())}/${p2(d.getUTCMonth() + 1)} ${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`;
+};
+
+// Trade open/close markers overlaid on a time-series chart: ▲ open (entry, accent),
+// ● close (coloured by realized P&L). Anchored to the series value at the event time,
+// hover shows the tooltip. Reused by the P&L and greek charts (same time domain).
+function ChartMarkers({
+  markers,
+  grid,
+  X,
+  Y,
+}: {
+  markers: TradeEvent[];
+  grid: EqGrid;
+  X: (i: number) => number;
+  Y: (v: number) => number;
+}): JSX.Element {
+  const span = grid.t1 - grid.t0 || 1;
+  return (
+    <g>
+      {markers.map((m, idx) => {
+        const fi = ((m.t - grid.t0) / span) * (GRID_N - 1);
+        if (fi < -0.5 || fi > GRID_N - 0.5) return null;
+        const v = grid.series[Math.max(0, Math.min(GRID_N - 1, Math.round(fi)))];
+        if (v == null) return null;
+        const x = X(fi),
+          y = Y(v);
+        const col =
+          m.kind === "open" ? "var(--accent)" : m.pnl == null ? "var(--muted)" : m.pnl >= 0 ? "var(--pos)" : "var(--neg)";
+        const tip =
+          m.kind === "open"
+            ? `Opened #${m.id} ${m.type}${m.spot != null ? " @ " + m.spot.toFixed(4) : ""} · ${fmtTs(m.t)}`
+            : `Closed #${m.id} ${m.type}${m.pnl != null ? " " + (m.pnl >= 0 ? "+" : "−") + "$" + Math.abs(m.pnl / 1000).toFixed(1) + "k" : ""} · ${fmtTs(m.t)}`;
+        return (
+          <g key={idx} style={{ cursor: "pointer" }}>
+            <title>{tip}</title>
+            {m.kind === "open" ? (
+              <path d={`M${x} ${y - 5.5} L${x + 4.5} ${y + 3} L${x - 4.5} ${y + 3} Z`} fill={col} stroke="var(--bg)" strokeWidth="0.8" />
+            ) : (
+              <circle cx={x} cy={y} r="3.7" fill={col} stroke="var(--bg)" strokeWidth="1" />
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
 }
 
 // SVG line path that breaks at nulls (missing spans render as empty gaps).
@@ -182,8 +243,8 @@ function emptyChart(w: number, h: number, status: string): JSX.Element {
   );
 }
 
-// Equity curve (net liq) — top graph, plotted on the fixed time axis.
-function EquityLineSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.Element {
+// Equity curve (net liq) — top graph, plotted on the fixed time axis + trade markers.
+function EquityLineSvg({ grid, status, markers = [] }: { grid: EqGrid; status: string; markers?: TradeEvent[] }): JSX.Element {
   const w = 760,
     h = 172,
     pl = 52,
@@ -240,6 +301,7 @@ function EquityLineSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.
         strokeLinejoin="round"
         strokeLinecap="round"
       />
+      <ChartMarkers markers={markers} grid={grid} X={X} Y={Y} />
     </svg>
   );
 }
@@ -304,10 +366,12 @@ function PerfCharts({
   window: win,
   ps,
   unreal,
+  markers = [],
 }: {
   window: string;
   ps: PerfStats;
   unreal: number;
+  markers?: TradeEvent[];
 }): JSX.Element {
   const live = useFetch<EquityPoint[]>(
     () => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve),
@@ -347,7 +411,7 @@ function PerfCharts({
           <div className="perf-sub mono dim">
             P&L <em className="unit">equity curve</em>
           </div>
-          <EquityLineSvg grid={grid} status={live.status} />
+          <EquityLineSvg grid={grid} status={live.status} markers={markers} />
         </div>
       </div>
       <div className="perf-row">
@@ -368,6 +432,92 @@ function PerfCharts({
           <DrawdownSvg grid={grid} status={live.status} />
         </div>
       </div>
+    </div>
+  );
+}
+
+// Portfolio Σ-greek over time — signed line (zero baseline) on the same fixed time
+// axis as the P&L chart, with the trade markers so you can see each open/close move it.
+function GreekChart({ grid, status, markers }: { grid: EqGrid; status: string; markers: TradeEvent[] }): JSX.Element {
+  const w = 760,
+    h = 320,
+    pl = 56,
+    pr = 12,
+    pt = 14,
+    pb = 26;
+  const vals = grid.series.filter((v): v is number => v != null);
+  if (vals.length < 2) return emptyChart(w, h, status);
+  const lo = Math.min(...vals, 0),
+    hi = Math.max(...vals, 0),
+    rng = hi - lo || 1;
+  const X = (i: number): number => pl + (i / (GRID_N - 1)) * (w - pl - pr);
+  const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
+  const gk = (v: number): string =>
+    Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(1) + "M" : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(0) + "k" : v.toFixed(0);
+  const zeroY = Y(0);
+  return (
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+      {[0, 0.25, 0.5, 0.75, 1].map((f, i) => {
+        const v = lo + rng * (1 - f);
+        return (
+          <g key={i}>
+            <line x1={pl} x2={w - pr} y1={pt + f * (h - pt - pb)} y2={pt + f * (h - pt - pb)} stroke="var(--line)" opacity="0.4" />
+            <text x={4} y={pt + f * (h - pt - pb) + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
+              {gk(v)}
+            </text>
+          </g>
+        );
+      })}
+      {/* zero baseline (emphasised) */}
+      <line x1={pl} x2={w - pr} y1={zeroY} y2={zeroY} stroke="var(--text-faint)" strokeWidth="1" opacity="0.8" />
+      <XAxis ticks={grid.ticks} pl={pl} pr={pr} pt={pt} pb={pb} w={w} h={h} />
+      <path d={gappedArea(grid.series, X, Y, zeroY)} fill="var(--accent)" fillOpacity="0.12" />
+      <path d={gappedLine(grid.series, X, Y)} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      <ChartMarkers markers={markers} grid={grid} X={X} Y={Y} />
+    </svg>
+  );
+}
+
+const GREEKS: { key: GreekKey; label: string }[] = [
+  { key: "delta", label: "Δ Delta" },
+  { key: "gamma", label: "Γ Gamma" },
+  { key: "vega", label: "Vega" },
+  { key: "theta", label: "Θ Theta" },
+];
+
+// Right half of the Performance panel — Δ/Γ/Vega/Θ selector (stress-test button
+// style) over a portfolio Σ-greek timeline, sharing the P&L window + trade markers.
+function GreekTimeline({ window: win, markers }: { window: string; markers: TradeEvent[] }): JSX.Element {
+  const [greek, setGreek] = useState<GreekKey>("delta");
+  const live = useFetch<GreekSeries>(
+    () => fetchGreeksHistory(win.toLowerCase()).then(adaptGreeksHistory),
+    120_000,
+  );
+  const reload = live.reload;
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    reload();
+  }, [win, reload]);
+  const hist = live.data ?? { delta: [], gamma: [], vega: [], theta: [] };
+  const grid = buildEquityGrid(hist[greek], WINDOW_DAYS[win] ?? null, Date.now());
+  const label = GREEKS.find((g) => g.key === greek)!.label;
+  return (
+    <div className="greek-tl">
+      <div className="greek-btns">
+        {GREEKS.map((g) => (
+          <button key={g.key} className={"chip " + (greek === g.key ? "on" : "")} onClick={() => setGreek(g.key)}>
+            {g.label}
+          </button>
+        ))}
+      </div>
+      <div className="perf-sub mono dim">
+        {label} <em className="unit">book Σ over time · $ · ▲ open · ● close</em>
+      </div>
+      <GreekChart grid={grid} status={live.status} markers={markers} />
     </div>
   );
 }
@@ -509,9 +659,9 @@ export function PortfolioView(): JSX.Element {
   ).data;
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
-  // Trade open/close markers overlaid on the Performance ticker (covers the 1M preset).
+  // Trade open/close markers overlaid on the Performance P&L + greek charts (covers 1Y).
   const tradeMarkers =
-    useFetch(() => fetchTradeMarkers(31).then(adaptTradeMarkers), 120_000, true, 60_000).data ?? [];
+    useFetch(() => fetchTradeMarkers(366).then(adaptTradeMarkers), 120_000, true, 60_000).data ?? [];
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
   const liveCash = trade.data?.cash;
   const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
@@ -628,13 +778,14 @@ export function PortfolioView(): JSX.Element {
         }
         className="perf-panel"
       >
-        <div className="perf-ticker">
-          <div className="perf-sub mono dim">
-            EUR/USD <em className="unit">your trades — ▲ open · ● close</em>
+        <div className="perf-split">
+          <div className="perf-split-l">
+            <PerfCharts window={win} ps={ps} unreal={unreal} markers={tradeMarkers} />
           </div>
-          <TickerChart spot={spot} markers={tradeMarkers} />
+          <div className="perf-split-r">
+            <GreekTimeline window={win} markers={tradeMarkers} />
+          </div>
         </div>
-        <PerfCharts window={win} ps={ps} unreal={unreal} />
       </Panel>
 
       <Panel
