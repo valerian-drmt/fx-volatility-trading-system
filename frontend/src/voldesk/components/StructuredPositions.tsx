@@ -39,7 +39,7 @@ export function StructuredPositions(): JSX.Element {
         <thead>
           <tr>
             <th className="l">Structure / leg</th><th>Side</th><th className="r">Contracts</th>
-            <th className="r">Strike</th><th className="r">Δ</th><th className="r">Vega</th>
+            <th className="r">Strike</th><th className="r">Delta</th><th className="r">Vega</th>
             <th className="r">P&amp;L</th><th className="l">State</th>
           </tr>
         </thead>

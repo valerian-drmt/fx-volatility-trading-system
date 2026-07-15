@@ -325,13 +325,13 @@ export function OpenPositionsTable({
         <div className="net-tiles">
           <div className="metric">
             <span className="metric-label">
-              Δ net <em className="unit">$</em>
+              Delta net <em className="unit">$</em>
             </span>
             <span className={"metric-value mono " + pnlCls(g.netDelta)}>{gkc(g.netDelta)}</span>
           </div>
           <div className="metric">
             <span className="metric-label">
-              Γ net <em className="unit">$/pip</em>
+              Gamma net <em className="unit">$/pip</em>
             </span>
             <span className={"metric-value mono " + pnlCls(g.netGamma)}>{gkc(g.netGamma)}</span>
           </div>
@@ -355,7 +355,7 @@ export function OpenPositionsTable({
           </div>
           <div className="metric">
             <span className="metric-label">
-              Θ net <em className="unit">$/day</em>
+              Theta net <em className="unit">$/day</em>
             </span>
             <span className={"metric-value mono " + pnlCls(g.netTheta)}>{gkc(g.netTheta)}</span>
           </div>
@@ -390,16 +390,16 @@ export function OpenPositionsTable({
               {showGreeks && (
                 <>
                   <th className="r" title="USD">
-                    Δ
+                    Delta
                   </th>
                   <th className="r" title="USD/pip">
-                    Γ
+                    Gamma
                   </th>
                   <th className="r" title="USD/vol pt">
                     Vega
                   </th>
                   <th className="r" title="USD/day">
-                    Θ
+                    Theta
                   </th>
                 </>
               )}

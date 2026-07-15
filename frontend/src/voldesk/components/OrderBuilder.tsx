@@ -433,10 +433,10 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const kfmt = (x: number): string => fmt.sgn(x, 1) + "k"; // $k greeks — 1 dp so small values don't collapse to "+0k"
   const netCash = (isCredit ? premiumAbs : -premiumAbs) - totalCommission;
   const impactRows = [
-    { name: "Δ", unit: "USD", val: effDelta, before: g.netDelta, after: g.netDelta + effDelta, f: gk$ },
-    { name: "Γ", unit: "USD/pip", val: net.g, before: g.netGamma, after: g.netGamma + net.g, f: gk$ },
+    { name: "Delta", unit: "USD", val: effDelta, before: g.netDelta, after: g.netDelta + effDelta, f: gk$ },
+    { name: "Gamma", unit: "USD/pip", val: net.g, before: g.netGamma, after: g.netGamma + net.g, f: gk$ },
     { name: "Vega", unit: "$/vp", val: net.v, before: g.netVega, after: g.netVega + net.v, f: gk$ },
-    { name: "Θ", unit: "$/day", val: net.t, before: g.netTheta, after: g.netTheta + net.t, f: gk$ },
+    { name: "Theta", unit: "$/day", val: net.t, before: g.netTheta, after: g.netTheta + net.t, f: gk$ },
     { name: "Vanna", unit: "$k/vp·fig", val: net.vn, before: g.netVanna, after: g.netVanna + net.vn, f: kfmt },
     { name: "Volga", unit: "$k/vp", val: net.vg, before: g.netVolga, after: g.netVolga + net.vg, f: kfmt },
   ];
@@ -800,7 +800,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
               <div className="hedge-bundle">
                 <label className="hb-toggle">
                   <input type="checkbox" checked={bundleHedge} onChange={(e) => setBundleHedge(e.target.checked)} />
-                  <span>Delta hedge: <b className="mono">{hedgeSide} {hedgeQty}× 6E</b> → Δ {gk$(hedgedDelta)}</span>
+                  <span>Delta hedge: <b className="mono">{hedgeSide} {hedgeQty}× 6E</b> → Delta {gk$(hedgedDelta)}</span>
                 </label>
               </div>
             )}

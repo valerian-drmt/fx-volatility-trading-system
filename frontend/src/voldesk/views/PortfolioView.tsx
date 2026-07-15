@@ -503,10 +503,10 @@ function GreekChart({ grid, status, markers }: { grid: EqGrid; status: string; m
 }
 
 const GREEKS: { key: GreekKey; label: string }[] = [
-  { key: "delta", label: "Δ Delta" },
-  { key: "gamma", label: "Γ Gamma" },
+  { key: "delta", label: "Delta" },
+  { key: "gamma", label: "Gamma" },
   { key: "vega", label: "Vega" },
-  { key: "theta", label: "Θ Theta" },
+  { key: "theta", label: "Theta" },
 ];
 
 // Right half of the Performance panel — Δ/Γ/Vega/Θ selector (stress-test button
@@ -619,12 +619,12 @@ function TenorTable({ rows }: { rows: TenorRow[] }): JSX.Element {
             <th className="r grp-fix col-grp col-grp-end">
               Nominal € <em className="unit">(%)</em>
             </th>
-            <th className="r grp-grk col-grp">Δ</th>
-            <th className="r grp-grk">Γ</th>
+            <th className="r grp-grk col-grp">Delta</th>
+            <th className="r grp-grk">Gamma</th>
             <th className="r grp-grk">
               Vega <em className="unit">(%)</em>
             </th>
-            <th className="r grp-grk">Θ</th>
+            <th className="r grp-grk">Theta</th>
             <th className="r grp-grk">Vanna</th>
             <th className="r grp-grk col-grp-end">Volga</th>
           </tr>
@@ -827,7 +827,7 @@ export function PortfolioView(): JSX.Element {
       >
         <div className="wf-cell wf-structure-cell">
           <div className="perf-sub mono dim">
-            by tenor <em className="unit">P&L · nominal · Δ Γ Vega Θ Vanna Volga</em>
+            by tenor <em className="unit">P&L · nominal · Delta Gamma Vega Theta Vanna Volga</em>
           </div>
           <TenorTable rows={pivotTenor} />
         </div>

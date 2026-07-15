@@ -222,12 +222,12 @@ export function adaptWaterfallGreek(raw: unknown): WaterfallStep[] {
   const t = ((raw ?? {}) as { totals?: AttribTotals }).totals ?? {};
   const k = (v: number | null | undefined): number => r1(n(v) / 1000);
   return [
-    // Δ, Γ, Vega, Θ — same order as the Risk tab's Portfolio greeks panel.
+    // Delta, Gamma, Vega, Theta — same order as the Risk tab's Portfolio greeks panel.
     { label: "Start", v: 0, type: "start" },
-    { label: "Δ", sub: "Δ·dS", v: k(t.delta_pnl_usd), type: "neg" },
-    { label: "Γ", sub: "½Γ(dS)²", v: k(t.gamma_pnl_usd), type: "pos" },
-    { label: "Vega", sub: "V·dσ", v: k(t.vega_pnl_usd), type: "pos" },
-    { label: "Θ", sub: "Θ·dt", v: k(t.theta_pnl_usd), type: "neg" },
+    { label: "Delta", sub: "Delta·dS", v: k(t.delta_pnl_usd), type: "neg" },
+    { label: "Gamma", sub: "½Gamma(dS)²", v: k(t.gamma_pnl_usd), type: "pos" },
+    { label: "Vega", sub: "Vega·dσ", v: k(t.vega_pnl_usd), type: "pos" },
+    { label: "Theta", sub: "Theta·dt", v: k(t.theta_pnl_usd), type: "neg" },
     { label: "residual", sub: "unexplained", v: k(t.residual_usd), type: "resid" },
     { label: "Net", v: k(t.actual_pnl_usd), type: "net" },
   ];
@@ -438,7 +438,7 @@ export function adaptCoverage(raw: unknown): LiveCoverage {
   const hrs = Number(t.lookback_hours ?? 24);
   return {
     convexity, carry: thetaPaid, ratio, gammaPnl, vegaPnl, thetaPaid,
-    posture: gammaPnl >= 0 ? "long gamma · Θ−" : "short gamma · Θ+",
+    posture: gammaPnl >= 0 ? "long gamma · Theta−" : "short gamma · Theta+",
     windowLabel: hrs >= 24 ? `${Math.round(hrs / 24)}j` : `${hrs}h`,
   };
 }

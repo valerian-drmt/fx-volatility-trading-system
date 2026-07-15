@@ -267,7 +267,7 @@ const STRESS_AXES = ["spot-time", "spot-vol", "spot-skew", "spot-fly"] as const;
 
 function StressEngine(): JSX.Element {
   const [out, setOut] = useState<"pnl" | GreekKey>("pnl");
-  const labels: Record<"pnl" | GreekKey, string> = { pnl: "P&L", delta: "Δ Delta", gamma: "Γ Gamma", vega: "Vega", theta: "Θ Theta", vanna: "Vanna", volga: "Volga" };
+  const labels: Record<"pnl" | GreekKey, string> = { pnl: "P&L", delta: "Delta", gamma: "Gamma", vega: "Vega", theta: "Theta", vanna: "Vanna", volga: "Volga" };
   const opts: ("pnl" | GreekKey)[] = ["pnl", "delta", "gamma", "vega", "theta", "vanna", "volga"];
   const live = useFetch<(StressGridData | null)[]>(
     () => Promise.all(STRESS_AXES.map((a) => fetchStressGrid(a, out).then(adaptStressGrid))),
@@ -398,7 +398,7 @@ function LiveLadderTable({ title, right, axisLbl, d, status }: {
   status: Fresh<unknown>["status"];
 }): JSX.Element {
   const kg = (v: number): string => { const s = v >= 0 ? "+" : "-"; const a = Math.abs(v); return a >= 1000 ? s + (a / 1000).toFixed(1) + "k" : s + Math.round(a); };
-  const heads = ["P&L", "Δ", "Γ", "Vega"];
+  const heads = ["P&L", "Delta", "Gamma", "Vega"];
   const rows = d?.rows ?? [];
   return (
     <Panel title={title} right={right} className="trade-block" pad={false}>
@@ -476,9 +476,9 @@ export function RiskView(): JSX.Element {
   const utilRows = [
     { label: "Init margin", used: a ? fmt.usd(a.marginInit) : "—", limit: a ? fmt.usd(a.netLiq) : "—", pct: a?.marginInitPct ?? 0 },
     { label: "Maint margin", used: a ? fmt.usd(a.marginMaint) : "—", limit: a ? fmt.usd(a.netLiq) : "—", pct: a?.marginMaintPct ?? 0 },
-    { label: "Δ exposure", used: fmt.usdk(Math.abs(nd)), limit: capk(deltaCap), pct: pctOf(nd, deltaCap) },
+    { label: "Delta exposure", used: fmt.usdk(Math.abs(nd)), limit: capk(deltaCap), pct: pctOf(nd, deltaCap) },
     { label: "Vega", used: fmt.usdk(Math.abs(nv)), limit: capk(vegaCap), pct: pctOf(nv, vegaCap) },
-    { label: "Γ exposure", used: fmt.usdk(Math.abs(ngm)), limit: capk(gammaCap), pct: pctOf(ngm, gammaCap) },
+    { label: "Gamma exposure", used: fmt.usdk(Math.abs(ngm)), limit: capk(gammaCap), pct: pctOf(ngm, gammaCap) },
   ];
   return (
     <div className="risk-grid">
@@ -490,10 +490,10 @@ export function RiskView(): JSX.Element {
               <table className="dt greeks-table">
                 <thead><tr><th className="l">Greek</th><th className="r">Net value</th></tr></thead>
                 <tbody>
-                  <tr><td className="l">Δ <em className="unit">USD</em></td><td className={"r mono " + pnlCls(nd)}>{gk$(nd)}</td></tr>
-                  <tr><td className="l">Γ <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(ngm)}>{gk$(ngm)}</td></tr>
+                  <tr><td className="l">Delta <em className="unit">USD</em></td><td className={"r mono " + pnlCls(nd)}>{gk$(nd)}</td></tr>
+                  <tr><td className="l">Gamma <em className="unit">USD/pip</em></td><td className={"r mono " + pnlCls(ngm)}>{gk$(ngm)}</td></tr>
                   <tr><td className="l">Vega <em className="unit">$/vp</em></td><td className={"r mono " + pnlCls(nv)}>{gk$(nv)}</td></tr>
-                  <tr><td className="l">Θ <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(nt)}>{gk$(nt)}</td></tr>
+                  <tr><td className="l">Theta <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(nt)}>{gk$(nt)}</td></tr>
                   <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(netVanna)}>{fmt.sgn(netVanna, 0)}k</td></tr>
                   <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(netVolga)}>{fmt.sgn(netVolga, 0)}k</td></tr>
                 </tbody>

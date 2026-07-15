@@ -347,7 +347,7 @@ export const varFactors: VarFactor[] = [
   { key: "skew", label: "Skew · RR", v: -106, color: "#a78bfa", incident: true },
   { key: "level", label: "Vol level · PC1", v: -85, color: "var(--accent)" },
   { key: "curv", label: "Curvature · PC3", v: -64, color: "var(--pos)" },
-  { key: "spot", label: "Spot · Δ", v: -57, color: "var(--warn)" },
+  { key: "spot", label: "Spot · Delta", v: -57, color: "var(--warn)" },
 ];
 
 export const dailyPnl = [-4, 6, -3, -5, 48, -4, 3, -5, -3, 38, -4, 5, -6, -3, 52, -4, -2, 7, -5, 34, -3, 5];
@@ -387,7 +387,7 @@ export const coverage: Coverage = {
   vegaPnl: 54.1,
   thetaPaid: 118.4,
   threshold: 1.0,
-  posture: "long gamma · Θ−",
+  posture: "long gamma · Theta−",
   returnOnMargin: 4.2,
   returnOnVar: 0.34,
   sharpe: 1.84,
@@ -413,10 +413,10 @@ const _net = 24.9;
 export const waterfall: Record<string, WaterfallStep[]> = {
   greek: [
     { label: "Start", v: 0, type: "start" },
-    { label: "+Γ", sub: "½Γ(dS)²", v: 88.2, type: "pos" },
-    { label: "+V", sub: "V·dσ", v: 54.1, type: "pos" },
-    { label: "−Θ", sub: "Θ·dt", v: -118.4, type: "neg" },
-    { label: "±Δ", sub: "Δ·dS", v: -5.9, type: "neg" },
+    { label: "+Gamma", sub: "½Gamma(dS)²", v: 88.2, type: "pos" },
+    { label: "+Vega", sub: "Vega·dσ", v: 54.1, type: "pos" },
+    { label: "−Theta", sub: "Theta·dt", v: -118.4, type: "neg" },
+    { label: "±Delta", sub: "Delta·dS", v: -5.9, type: "neg" },
     { label: "Vanna", sub: "skew · incident", v: -7.8, type: "neg" },
     { label: "Volga", sub: "vol convexity", v: 13.4, type: "pos" },
     { label: "residual", sub: "unexplained", v: 1.3, type: "resid" },
@@ -428,7 +428,7 @@ export const waterfall: Record<string, WaterfallStep[]> = {
     { label: "PC2", sub: "slope · calendar", v: -7.8, type: "neg", color: "#26c6da" },
     { label: "PC3", sub: "curvature · fly", v: 14.6, type: "pos", color: "#e0b341" },
     { label: "skew", sub: "incident · RR", v: -18.2, type: "neg", color: "#a78bfa" },
-    { label: "Δ hedge", sub: "6E future", v: 4.0, type: "pos", color: "var(--muted)" },
+    { label: "Delta hedge", sub: "6E future", v: 4.0, type: "pos", color: "var(--muted)" },
     { label: "residual", sub: "unexplained", v: 0.9, type: "resid" },
     { label: "Net", v: _net, type: "net" },
   ],
