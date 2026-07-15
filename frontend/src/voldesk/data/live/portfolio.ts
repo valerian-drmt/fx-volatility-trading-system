@@ -399,6 +399,7 @@ export interface PositionAttribRow {
   tradeId: number | null;
   contractId: number | null;
   product: string;
+  type: string; // trade_structure.structure_type (the booked classifier verdict)
   structure: string;
   side: string;
   tenor: string;
@@ -426,6 +427,7 @@ export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
       tradeId: r.trade_id == null ? null : n(r.trade_id),
       contractId: r.contract_id == null ? null : n(r.contract_id),
       product: String(r.product_label ?? "—"),
+      type: String(r.structure_type ?? ""),
       structure: String(r.structure ?? "—"),
       side: String(r.side ?? "—"),
       tenor: String(r.tenor ?? "—"),
