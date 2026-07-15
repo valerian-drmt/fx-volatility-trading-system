@@ -1549,7 +1549,7 @@ async def pnl_attribution_pivot(
             }
             for r in rows
         }
-        ladder = ["1M", "2M", "3M", "4M", "5M", "6M", "9M", "1Y"]
+        ladder = ["1M", "2M", "3M", "4M", "5M", "6M"]
         extra = sorted(g for g in by_grp if g not in ladder)
         zero = {
             "pnl_usd": 0.0, "nominal_eur": 0.0, "delta_usd": 0.0, "gamma_usd": 0.0,

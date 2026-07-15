@@ -828,14 +828,11 @@ export function PortfolioView(): JSX.Element {
       </Panel>
 
       <Panel
-        title="Unrealized P&L attribution — bridge"
+        title="Open book breakdown"
         dataPp="pnl-attribution"
         className="wf-panel"
       >
         <div className="wf-cell wf-structure-cell">
-          <div className="perf-sub mono dim">
-            by tenor <em className="unit">P&L · nominal · Delta Gamma Vega Theta Vanna Volga</em>
-          </div>
           <TenorTable rows={pivotTenor} />
         </div>
         <div className="wf-cell">
