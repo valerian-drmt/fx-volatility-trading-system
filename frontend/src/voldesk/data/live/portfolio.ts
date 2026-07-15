@@ -393,6 +393,67 @@ export function adaptAttributionMatrix(raw: unknown): AttribMatrix {
   };
 }
 
+/** Per-position attribution row: position metadata + the Taylor P&L terms ($). */
+export interface PositionAttribRow {
+  id: number;
+  tradeId: number | null;
+  contractId: number | null;
+  product: string;
+  structure: string;
+  side: string;
+  tenor: string;
+  iv: number; // %
+  nominal: number; // €
+  actual: number;
+  delta: number;
+  gamma: number;
+  vega: number;
+  theta: number;
+  residual: number;
+}
+export interface PositionAttribMatrix {
+  rows: PositionAttribRow[];
+  totals: AttribRow;
+}
+
+/** /portfolio/pnl-attribution (no group_by) → per-leg attribution matrix (IB legs). */
+export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
+  const o = (raw ?? {}) as { per_position?: Record<string, unknown>[] };
+  const rows: PositionAttribRow[] = (o.per_position ?? [])
+    .filter((r) => r.source === "ib_live")
+    .map((r) => ({
+      id: n(r.id),
+      tradeId: r.trade_id == null ? null : n(r.trade_id),
+      contractId: r.contract_id == null ? null : n(r.contract_id),
+      product: String(r.product_label ?? "—"),
+      structure: String(r.structure ?? "—"),
+      side: String(r.side ?? "—"),
+      tenor: String(r.tenor ?? "—"),
+      iv: n(r.iv) * 100,
+      nominal: n(r.nominal_eur),
+      actual: n(r.actual_pnl_usd),
+      delta: n(r.delta_pnl_usd),
+      gamma: n(r.gamma_pnl_usd),
+      vega: n(r.vega_pnl_usd),
+      theta: n(r.theta_pnl_usd),
+      residual: n(r.residual_usd),
+    }));
+  // Total footed on the visible IB legs (not the endpoint totals, which include booked).
+  const s = (sel: (r: PositionAttribRow) => number): number => rows.reduce((a, r) => a + sel(r), 0);
+  return {
+    rows,
+    totals: {
+      label: "Total",
+      actual: s((r) => r.actual),
+      delta: s((r) => r.delta),
+      gamma: s((r) => r.gamma),
+      vega: s((r) => r.vega),
+      theta: s((r) => r.theta),
+      residual: s((r) => r.residual),
+    },
+  };
+}
+
 /** A trade open/close event for the EUR/USD ticker overlay (one entry per side). */
 export interface TradeEvent {
   t: number; // epoch ms of the event

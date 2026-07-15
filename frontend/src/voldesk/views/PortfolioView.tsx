@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchEquityCurve,
   fetchGreeksHistory,
+  fetchPnlAttribution,
   fetchPnlAttributionMatrix,
   fetchTradeMarkers,
 } from "../../api/endpoints";
@@ -16,7 +17,6 @@ import { useTicks } from "../../hooks/streams";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
-import { PositionBreakdown } from "../components/PositionBreakdown";
 import { CashHoldings } from "../components/PositionsTable";
 import { DATA, DATA2, fmt } from "../data";
 import type { PerfStats, WaterfallStep } from "../data";
@@ -25,12 +25,14 @@ import {
   adaptAttributionMatrix,
   adaptEquityCurve,
   adaptGreeksHistory,
+  adaptPositionAttribution,
   adaptTradeMarkers,
   type AttribMatrix,
   type AttribRow,
   type EquityPoint,
   type GreekKey,
   type GreekSeries,
+  type PositionAttribMatrix,
   type TradeEvent,
 } from "../data/live/portfolio";
 
@@ -677,40 +679,98 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
   );
 }
 
-// One decomposition, three pivots: the same attribution matrix with a by tenor /
-// structure / wing axis selector (stress-test chip style). Refetches on axis change.
-const ATTRIB_AXES: { key: string; label: string; col: string }[] = [
-  { key: "tenor", label: "by tenor", col: "Tenor" },
-  { key: "structure", label: "by structure", col: "Structure" },
-  { key: "wing", label: "by wing", col: "Wing" },
-];
-
-function AttributionByAxis(): JSX.Element {
-  const [axis, setAxis] = useState("tenor");
-  const live = useFetch<AttribMatrix>(
-    () => fetchPnlAttributionMatrix(axis).then(adaptAttributionMatrix),
-    120_000,
-  );
-  const reload = live.reload;
-  const first = useRef(true);
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    reload();
-  }, [axis, reload]);
-  const col = ATTRIB_AXES.find((a) => a.key === axis)?.col ?? "Axis";
+// Per-position P&L-attribution matrix — same greek-P&L columns as AttributionMatrix
+// but with the full leg metadata (trade / contract / product / structure / side /
+// tenor / IV / nominal) leading each row. Rows = IB legs, bottom Total foots.
+function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): JSX.Element {
+  if (!m || m.rows.length === 0)
+    return <div className="hbar-empty dim small mono">no attribution yet</div>;
+  const terms = m.rows.flatMap((r) => [r.delta, r.gamma, r.vega, r.theta, r.residual]);
+  const maxAbs = Math.max(1, ...terms.map(Math.abs));
+  const bg = (v: number): string =>
+    `color-mix(in srgb, ${v >= 0 ? "var(--pos)" : "var(--neg)"} ${Math.round(Math.min(1, Math.abs(v) / maxAbs) * 26)}%, transparent)`;
+  const cell = (v: number, rowActual: number, extra: string): JSX.Element => {
+    const p = Math.round((v / (Math.abs(rowActual) || 1)) * 100);
+    return (
+      <td className={"r mono " + extra + " " + pnlCls(v)} style={{ background: bg(v) }}>
+        <b>{gk$(v)}</b> <span className="pb-rel">({(p >= 0 ? "+" : "−") + Math.abs(p)}%)</span>
+      </td>
+    );
+  };
+  const t = m.totals;
   return (
-    <div className="attrib-axis">
-      <div className="greek-btns">
-        {ATTRIB_AXES.map((a) => (
-          <button key={a.key} className={"chip " + (axis === a.key ? "on" : "")} onClick={() => setAxis(a.key)}>
-            {a.label}
-          </button>
-        ))}
-      </div>
-      <AttributionMatrix m={live.data ?? null} axisLabel={col} />
+    <div className="table-scroll">
+      <table className="dt pb-table">
+        <thead>
+          <tr>
+            <th className="l grp-fix">Trade</th>
+            <th className="l grp-fix">Contract</th>
+            <th className="l grp-fix">Product</th>
+            <th className="l grp-fix">Structure</th>
+            <th className="l grp-fix">Side</th>
+            <th className="r grp-fix">Tenor</th>
+            <th className="r grp-fix">IV</th>
+            <th className="r grp-fix col-grp-end">Nominal €</th>
+            <th className="r grp-pnl col-grp col-grp-end">
+              P&L <em className="unit">Σ</em>
+            </th>
+            <th className="r grp-grk col-grp">Delta·dS</th>
+            <th className="r grp-grk">½Γ·dS²</th>
+            <th className="r grp-grk">Vega·dσ</th>
+            <th className="r grp-grk col-grp-end">Theta·dt</th>
+            <th className="r grp-att col-grp col-grp-end">residual</th>
+          </tr>
+        </thead>
+        <tbody>
+          {m.rows.map((r) => (
+            <tr key={r.id}>
+              <td className="l grp-fix mono dim">{r.tradeId ?? "—"}</td>
+              <td className="l grp-fix mono dim">{r.contractId ?? "—"}</td>
+              <td className="l grp-fix">{r.product}</td>
+              <td className="l grp-fix">
+                <span className="sym">{r.structure}</span>
+              </td>
+              <td className="l grp-fix">
+                <span className={"side-pill " + (r.side === "BUY" ? "long" : "short")}>{r.side}</span>
+              </td>
+              <td className="r mono dim grp-fix">{r.tenor}</td>
+              <td className="r mono dim grp-fix">{r.iv ? r.iv.toFixed(1) : "—"}</td>
+              <td className="r mono dim grp-fix col-grp-end">{(r.nominal / 1e6).toFixed(2)}M</td>
+              <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.actual)}>
+                <b>{fmt.usdk(r.actual)}</b>
+              </td>
+              {cell(r.delta, r.actual, "grp-grk col-grp")}
+              {cell(r.gamma, r.actual, "grp-grk")}
+              {cell(r.vega, r.actual, "grp-grk")}
+              {cell(r.theta, r.actual, "grp-grk col-grp-end")}
+              {cell(r.residual, r.actual, "grp-att col-grp col-grp-end")}
+            </tr>
+          ))}
+          <tr className="wf-total">
+            <td className="l grp-fix" colSpan={8}>
+              <span className="sym">Total</span>
+            </td>
+            <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(t.actual)}>
+              <b>{fmt.usdk(t.actual)}</b>
+            </td>
+            <td className={"r mono grp-grk col-grp " + pnlCls(t.delta)}>
+              <b>{gk$(t.delta)}</b>
+            </td>
+            <td className={"r mono grp-grk " + pnlCls(t.gamma)}>
+              <b>{gk$(t.gamma)}</b>
+            </td>
+            <td className={"r mono grp-grk " + pnlCls(t.vega)}>
+              <b>{gk$(t.vega)}</b>
+            </td>
+            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.theta)}>
+              <b>{gk$(t.theta)}</b>
+            </td>
+            <td className={"r mono grp-att col-grp col-grp-end " + pnlCls(t.residual)}>
+              <b>{gk$(t.residual)}</b>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -743,6 +803,13 @@ export function PortfolioView(): JSX.Element {
   // Trade open/close markers overlaid on the Performance P&L + greek charts (covers 1Y).
   const tradeMarkers =
     useFetch(() => fetchTradeMarkers(366).then(adaptTradeMarkers), 120_000, true, 60_000).data ?? [];
+  // P&L-attribution matrices: greek P&L bucketed by tenor / by wing, and one per leg.
+  const attribTenor =
+    useFetch(() => fetchPnlAttributionMatrix("tenor").then(adaptAttributionMatrix), 120_000, true, 60_000).data ?? null;
+  const attribWing =
+    useFetch(() => fetchPnlAttributionMatrix("wing").then(adaptAttributionMatrix), 120_000, true, 60_000).data ?? null;
+  const attribByLeg =
+    useFetch(() => fetchPnlAttribution().then(adaptPositionAttribution), 120_000, true, 60_000).data ?? null;
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
   const liveCash = trade.data?.cash;
   const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
@@ -881,20 +948,16 @@ export function PortfolioView(): JSX.Element {
         </div>
       </Panel>
 
-      <Panel
-        title="P&L attribution — greek × axis"
-        dataPp="book-by-tenor"
-        className="wf-panel"
-      >
-        <AttributionByAxis />
+      <Panel title="P&L attribution by tenor" dataPp="attrib-tenor" className="wf-panel">
+        <AttributionMatrix m={attribTenor} axisLabel="Tenor" />
       </Panel>
 
-      <Panel
-        title="Open positions — per-leg greeks & P&L"
-        dataPp="position-breakdown"
-        className="wf-panel"
-      >
-        <PositionBreakdown positions={pd?.positions ?? []} />
+      <Panel title="P&L attribution by wing" dataPp="attrib-wing" className="wf-panel">
+        <AttributionMatrix m={attribWing} axisLabel="Wing" />
+      </Panel>
+
+      <Panel title="P&L attribution by trade" dataPp="attrib-leg" className="wf-panel">
+        <PositionAttributionMatrix m={attribByLeg} />
       </Panel>
     </div>
   );

@@ -858,6 +858,7 @@ async def pnl_attribution(
            ORDER BY position_id, timestamp DESC
         )
         SELECT p.id, p.structure, p.product_label, p.side, p.tenor,
+               p.trade_id, p.contract_id, p.nominal_eur,
                ts.structure_type AS structure_type,
                p.current_pnl_usd AS pnl_now,
                p.market_price    AS spot_now,
@@ -1002,6 +1003,10 @@ async def pnl_attribution(
             "id": int(r.id), "source": "ib_live",
             "structure": r.structure, "product_label": r.product_label,
             "side": r.side, "tenor": r.tenor,
+            "trade_id": int(r.trade_id) if r.trade_id is not None else None,
+            "contract_id": int(r.contract_id) if r.contract_id is not None else None,
+            "nominal_eur": float(r.nominal_eur) if r.nominal_eur is not None else None,
+            "iv": float(r.iv_now) if r.iv_now is not None else None,
             "structure_type": r.structure_type,
             "wing": _wing(r.structure, forward),
             **decomp,
