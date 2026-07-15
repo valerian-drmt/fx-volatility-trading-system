@@ -292,10 +292,23 @@ export function adaptRiskPerTenor(raw: unknown): TenorRisk[] {
   }));
 }
 
-/** /portfolio/equity-curve → net-liq series for the equity chart. */
-export function adaptEquityCurve(raw: unknown): number[] {
-  const rows = Array.isArray(raw) ? (raw as { net_liq_usd?: number | null }[]) : [];
-  return rows.map((p) => n(p.net_liq_usd)).filter((v) => v > 0);
+/** A net-liq sample: epoch-ms timestamp + value ($). */
+export interface EquityPoint {
+  t: number;
+  v: number;
+}
+
+/** /portfolio/equity-curve → timestamped net-liq series for the equity chart.
+ * The timestamp is kept so the chart can plot on a FIXED time axis (0→N days) with
+ * empty zones where the window has no data, instead of stretching whatever points
+ * exist across the full width. */
+export function adaptEquityCurve(raw: unknown): EquityPoint[] {
+  const rows = Array.isArray(raw)
+    ? (raw as { timestamp?: string; net_liq_usd?: number | null }[])
+    : [];
+  return rows
+    .map((p) => ({ t: p.timestamp ? Date.parse(p.timestamp) : NaN, v: n(p.net_liq_usd) }))
+    .filter((p) => p.v > 0 && Number.isFinite(p.t));
 }
 
 export type StressAxis = "spot-vol" | "spot-time" | "spot-skew" | "spot-fly";

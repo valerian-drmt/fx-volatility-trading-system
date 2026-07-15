@@ -25,44 +25,166 @@ import {
   adaptStructureRows,
   adaptTenorRows,
   adaptWaterfallPivot,
+  type EquityPoint,
   type StructureRow,
   type TenorRow,
 } from "../data/live/portfolio";
 
-// Equity curve (cumulative P&L) — the top graph. Live-only: empty until data.
-function EquityLineSvg({ data, status }: { data: number[]; status: string }): JSX.Element {
+// ─── Performance charts: fixed time axis with gaps ───────────────────────────
+// The net-liq series is resampled onto a FIXED grid of GRID_N samples spanning the
+// window's whole domain [t0, t1] (e.g. "7 days ago → now"). Samples outside the
+// data's real time range stay null, so the line simply stops and leaves an empty
+// zone — no more stretching a handful of points across the full width. Every
+// timeframe therefore renders the same number of samples on the same-shaped axis.
+const GRID_N = 90;
+const DAY_MS = 86_400_000;
+const WINDOW_DAYS: Record<string, number | null> = { "1D": 1, "7D": 7, "30D": 30, "1Y": 365, all: null };
+
+interface EqGrid {
+  series: (number | null)[]; // GRID_N samples across the fixed domain (null = no data)
+  ticks: { f: number; label: string }[]; // x-axis marks (fraction 0..1 + label)
+}
+
+function buildEquityGrid(points: EquityPoint[], windowDays: number | null, now: number): EqGrid {
+  if (points.length === 0) return { series: [], ticks: [] };
+  const firstT = points[0]!.t;
+  const lastT = points[points.length - 1]!.t;
+  const t1 = windowDays != null ? now : lastT;
+  const t0 = windowDays != null ? now - windowDays * DAY_MS : firstT;
+  const span = t1 - t0 || 1;
+  // linear interpolation at absolute time t, or null outside the real data range
+  const at = (t: number): number | null => {
+    if (t < firstT || t > lastT) return null;
+    let k = 1;
+    while (k < points.length && points[k]!.t < t) k++;
+    const a = points[k - 1]!;
+    const b = points[k] ?? a;
+    const f = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
+    return a.v + f * (b.v - a.v);
+  };
+  const series: (number | null)[] = [];
+  for (let i = 0; i < GRID_N; i++) series.push(at(t0 + (i / (GRID_N - 1)) * span));
+  const ticks: { f: number; label: string }[] = [];
+  if (windowDays != null) {
+    const marks = windowDays <= 1 ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1];
+    for (const f of marks) {
+      const ago = windowDays * (1 - f);
+      ticks.push({
+        f,
+        label: f === 1 ? "now" : windowDays <= 1 ? `-${Math.round(ago * 24)}h` : `-${Math.round(ago)}d`,
+      });
+    }
+  } else {
+    ticks.push({ f: 0, label: "start" }, { f: 1, label: "now" });
+  }
+  return { series, ticks };
+}
+
+// SVG line path that breaks at nulls (missing spans render as empty gaps).
+function gappedLine(series: (number | null)[], X: (i: number) => number, Y: (v: number) => number): string {
+  let d = "";
+  let pen = false;
+  series.forEach((v, i) => {
+    if (v == null) {
+      pen = false;
+      return;
+    }
+    d += (pen ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1) + " ";
+    pen = true;
+  });
+  return d.trim();
+}
+
+// Filled area under each contiguous (non-null) run, down to a baseline.
+function gappedArea(
+  series: (number | null)[],
+  X: (i: number) => number,
+  Y: (v: number) => number,
+  baseY: number,
+): string {
+  let d = "";
+  let run: number[] = [];
+  const flush = (): void => {
+    if (run.length === 0) return;
+    d += "M" + X(run[0]!).toFixed(1) + " " + baseY.toFixed(1) + " ";
+    for (const i of run) d += "L" + X(i).toFixed(1) + " " + Y(series[i]!).toFixed(1) + " ";
+    d += "L" + X(run[run.length - 1]!).toFixed(1) + " " + baseY.toFixed(1) + " Z ";
+    run = [];
+  };
+  series.forEach((v, i) => (v == null ? flush() : run.push(i)));
+  flush();
+  return d.trim();
+}
+
+// Fixed x-axis: faint vertical marks + day/hour labels along the time domain.
+function XAxis({
+  ticks,
+  pl,
+  pr,
+  pt,
+  pb,
+  w,
+  h,
+}: {
+  ticks: { f: number; label: string }[];
+  pl: number;
+  pr: number;
+  pt: number;
+  pb: number;
+  w: number;
+  h: number;
+}): JSX.Element {
+  const span = w - pl - pr;
+  return (
+    <g>
+      {ticks.map((t, i) => {
+        const x = pl + t.f * span;
+        return (
+          <g key={i}>
+            <line x1={x} x2={x} y1={pt} y2={h - pb} stroke="var(--line)" opacity="0.3" />
+            <text
+              x={x}
+              y={h - 4}
+              textAnchor={t.f === 0 ? "start" : t.f === 1 ? "end" : "middle"}
+              fill="var(--text-faint)"
+              fontSize="9"
+              fontFamily="var(--mono)"
+            >
+              {t.label}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function emptyChart(w: number, h: number, status: string): JSX.Element {
+  return (
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+      <text x={w / 2} y={h / 2} textAnchor="middle" fill="var(--text-faint)" fontSize="11" fontFamily="var(--mono)">
+        {status === "missing" ? "no equity history" : "loading…"}
+      </text>
+    </svg>
+  );
+}
+
+// Equity curve (net liq) — top graph, plotted on the fixed time axis.
+function EquityLineSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.Element {
   const w = 760,
-    h = 168,
+    h = 172,
     pl = 52,
     pr = 12,
     pt = 14,
-    pb = 22;
-  if (data.length < 2) {
-    return (
-      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-        <text
-          x={w / 2}
-          y={h / 2}
-          textAnchor="middle"
-          fill="var(--text-faint)"
-          fontSize="11"
-          fontFamily="var(--mono)"
-        >
-          {status === "missing" ? "no equity history" : "loading…"}
-        </text>
-      </svg>
-    );
-  }
-  const lo = Math.min(...data),
-    hi = Math.max(...data),
+    pb = 26;
+  const vals = grid.series.filter((v): v is number => v != null);
+  if (vals.length < 2) return emptyChart(w, h, status);
+  const lo = Math.min(...vals),
+    hi = Math.max(...vals),
     rng = hi - lo || 1;
-  const X = (i: number): number => pl + (i / (data.length - 1)) * (w - pl - pr);
+  const X = (i: number): number => pl + (i / (GRID_N - 1)) * (w - pl - pr);
   const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
-  const d = data
-    .map((v, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(v).toFixed(1))
-    .join(" ");
-  // Neutral colour — the equity line shouldn't imply good/bad by its slope.
-  const col = "var(--accent)";
+  const col = "var(--accent)"; // neutral — slope shouldn't imply good/bad
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
       <defs>
@@ -75,113 +197,57 @@ function EquityLineSvg({ data, status }: { data: number[]; status: string }): JS
         const v = lo + rng * (1 - f);
         return (
           <g key={i}>
-            <line
-              x1={pl}
-              x2={w - pr}
-              y1={pt + f * (h - pt - pb)}
-              y2={pt + f * (h - pt - pb)}
-              stroke="var(--line)"
-              opacity="0.5"
-            />
-            <text
-              x={4}
-              y={pt + f * (h - pt - pb) + 3}
-              fill="var(--text-faint)"
-              fontSize="9"
-              fontFamily="var(--mono)"
-            >
+            <line x1={pl} x2={w - pr} y1={pt + f * (h - pt - pb)} y2={pt + f * (h - pt - pb)} stroke="var(--line)" opacity="0.5" />
+            <text x={4} y={pt + f * (h - pt - pb) + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
               {(v / 1e6).toFixed(2)}M
             </text>
           </g>
         );
       })}
-      <path d={d + ` L${X(data.length - 1)} ${h - pb} L${pl} ${h - pb} Z`} fill="url(#eqg)" />
-      <path
-        d={d}
-        fill="none"
-        stroke={col}
-        strokeWidth="2.2"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
+      <XAxis ticks={grid.ticks} pl={pl} pr={pr} pt={pt} pb={pb} w={w} h={h} />
+      <path d={gappedArea(grid.series, X, Y, h - pb)} fill="url(#eqg)" />
+      <path d={gappedLine(grid.series, X, Y)} fill="none" stroke={col} strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
 
-// Drawdown (% from running peak) — the bottom graph, from the same equity series.
-function DrawdownSvg({ data, status }: { data: number[]; status: string }): JSX.Element {
+// Drawdown (% from running peak) — bottom graph, same fixed time axis + gaps.
+function DrawdownSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.Element {
   const w = 760,
-    h = 148,
+    h = 152,
     pl = 52,
     pr = 12,
     pt = 14,
-    pb = 22;
-  if (data.length < 2) {
-    return (
-      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-        <text
-          x={w / 2}
-          y={h / 2}
-          textAnchor="middle"
-          fill="var(--text-faint)"
-          fontSize="11"
-          fontFamily="var(--mono)"
-        >
-          {status === "missing" ? "no equity history" : "loading…"}
-        </text>
-      </svg>
-    );
-  }
-  let peak = data[0]!;
-  const dd = data.map((v) => {
+    pb = 26;
+  const base = pt, // 0% at the top — the underwater surface
+    floor = h - pb;
+  let peak = -Infinity;
+  const dd = grid.series.map((v) => {
+    if (v == null) return null;
     peak = Math.max(peak, v);
     return (v - peak) / peak;
   });
-  const ddMin = Math.min(...dd, -0.0001);
-  const X = (i: number): number => pl + (i / (data.length - 1)) * (w - pl - pr);
-  const base = pt; // 0% at the top — the underwater surface
-  const floor = h - pb;
+  const ddVals = dd.filter((v): v is number => v != null);
+  if (ddVals.length < 2) return emptyChart(w, h, status);
+  const ddMin = Math.min(...ddVals, -0.0001);
+  const X = (i: number): number => pl + (i / (GRID_N - 1)) * (w - pl - pr);
   const Y = (x: number): number => base + (x / ddMin) * (floor - base); // 0 → top, ddMin → bottom
-  const line = dd
-    .map((x, i) => (i === 0 ? "M" : "L") + X(i).toFixed(1) + " " + Y(x).toFixed(1))
-    .join(" ");
-  // Underwater area: a bold SOLID fill hanging DOWN from the 0% surface (fill-forward
-  // style, distinct from the equity line-forward chart).
-  const area =
-    "M" +
-    X(0).toFixed(1) +
-    " " +
-    base +
-    " " +
-    dd.map((x, i) => "L" + X(i).toFixed(1) + " " + Y(x).toFixed(1)).join(" ") +
-    " L" +
-    X(data.length - 1).toFixed(1) +
-    " " +
-    base +
-    " Z";
   return (
     <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      {/* scale: 0% water surface (emphasised) + floor */}
       {[0, 1].map((f, i) => {
         const yy = base + f * (floor - base);
         return (
           <g key={i}>
-            <line
-              x1={pl}
-              x2={w - pr}
-              y1={yy}
-              y2={yy}
-              stroke="var(--line)"
-              opacity={f === 0 ? 0.9 : 0.5}
-            />
+            <line x1={pl} x2={w - pr} y1={yy} y2={yy} stroke="var(--line)" opacity={f === 0 ? 0.9 : 0.5} />
             <text x={4} y={yy + 3} fill="var(--text-faint)" fontSize="9" fontFamily="var(--mono)">
               {f === 0 ? "0%" : (ddMin * 100).toFixed(1) + "%"}
             </text>
           </g>
         );
       })}
-      <path d={area} fill="var(--neg)" fillOpacity="0.34" />
-      <path d={line} fill="none" stroke="var(--neg)" strokeWidth="1.2" opacity="0.75" />
+      <XAxis ticks={grid.ticks} pl={pl} pr={pr} pt={pt} pb={pb} w={w} h={h} />
+      <path d={gappedArea(dd, X, Y, base)} fill="var(--neg)" fillOpacity="0.34" />
+      <path d={gappedLine(dd, X, Y)} fill="none" stroke="var(--neg)" strokeWidth="1.2" opacity="0.75" />
     </svg>
   );
 }
@@ -197,7 +263,7 @@ function PerfCharts({
   ps: PerfStats;
   unreal: number;
 }): JSX.Element {
-  const live = useFetch<number[]>(
+  const live = useFetch<EquityPoint[]>(
     () => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve),
     120_000,
   );
@@ -213,7 +279,9 @@ function PerfCharts({
     }
     reload();
   }, [win, reload]);
-  const data = live.data ?? [];
+  // Resample onto the fixed time domain so every timeframe shows the same number of
+  // samples on a 0→N-day axis, with empty zones where the window has no data.
+  const grid = buildEquityGrid(live.data ?? [], WINDOW_DAYS[win] ?? null, Date.now());
   return (
     <div className="perf-v">
       <div className="perf-row">
@@ -231,7 +299,7 @@ function PerfCharts({
           <div className="perf-sub mono dim">
             P&L <em className="unit">equity curve</em>
           </div>
-          <EquityLineSvg data={data} status={live.status} />
+          <EquityLineSvg grid={grid} status={live.status} />
         </div>
       </div>
       <div className="perf-row">
@@ -249,7 +317,7 @@ function PerfCharts({
           <div className="perf-sub mono dim">
             Drawdown <em className="unit">% from peak</em>
           </div>
-          <DrawdownSvg data={data} status={live.status} />
+          <DrawdownSvg grid={grid} status={live.status} />
         </div>
       </div>
     </div>
