@@ -1395,6 +1395,9 @@ async def pin_risk(db: DbDep) -> dict[str, Any]:
 
         rows.append({
             "id": int(p.id),
+            # Booking linkage — lets the frontend group legs by trade like the
+            # Position breakdown table (NULL for direct-IB positions).
+            "trade_id": int(p.trade_id) if p.trade_id is not None else None,
             "structure": p.structure,
             "product_label": p.product_label,
             "side": p.side,

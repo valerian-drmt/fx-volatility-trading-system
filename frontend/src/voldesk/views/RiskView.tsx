@@ -3,7 +3,7 @@
  * prototype's `js/views_risk.jsx` (global-window JSX) into typed ES modules.
  * Exports only RiskView; all sub-components stay local (lint).
  */
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { fetchGreekLimits, fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, Tag } from "../components/common";
@@ -12,6 +12,8 @@ import { gk$, pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
 import { PositionBreakdown } from "../components/PositionBreakdown";
 import { fmt } from "../data";
+import type { Position } from "../data";
+import { groupByTradeId, structureName } from "../components/tradeGrouping";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
 import { adaptGreekLimits, adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type GreekLimits, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
@@ -298,10 +300,51 @@ function StressEngine(): JSX.Element {
 }
 
 // ---- Expiries & roll-off (pin risk) — own panel for the Greeks 2×2 grid ----
-function PinRiskTable(): JSX.Element {
+// Legs are grouped by trade like the Position breakdown table : a collapsible
+// summary line per multi-leg structure (caret ▸, structure name, P&L rollup)
+// with its legs indented. Ungrouped (direct-IB) legs render flat.
+function PinRiskTable({ positions }: { positions: Position[] }): JSX.Element {
   const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + "k" : Math.round(Math.abs(v)));
   const pin = useFetch<PinRiskRow[]>(() => fetchPinRisk().then(adaptPinRisk), 120_000);
   const pinRows = pin.data ?? [];
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const toggle = (id: number): void =>
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  // Structure names from the same grouping the Position breakdown uses.
+  const nameByTrade = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const grp of groupByTradeId(positions)) {
+      if (grp.tradeId != null && grp.legs.length > 1) m.set(Number(grp.tradeId), structureName(grp.legs));
+    }
+    return m;
+  }, [positions]);
+  // Group pin rows by tradeId, preserving the backend's most-urgent-first order.
+  const groups: { tradeId: number | null; rows: PinRiskRow[] }[] = [];
+  {
+    const at = new Map<number, number>();
+    for (const r of pinRows) {
+      const t = r.tradeId;
+      if (t == null) { groups.push({ tradeId: null, rows: [r] }); continue; }
+      const i = at.get(t);
+      if (i == null) { at.set(t, groups.length); groups.push({ tradeId: t, rows: [r] }); }
+      else groups[i]!.rows.push(r);
+    }
+  }
+  const legRow = (p: PinRiskRow, key: string, indent: boolean): JSX.Element => (
+    <tr key={key} className={(p.distPips <= 10 ? "row-now" : "") + (indent ? " pos-leg" : "")}>
+      <td className="l mono">{indent ? "↳ " : ""}{p.product}</td>
+      <td className="r mono dim">{p.strike.toFixed(4)}</td>
+      <td className="r mono dim">{p.dte}d</td>
+      <td className={"r mono " + (p.distPips <= 10 ? "warn" : "dim")}>{p.distPips}</td>
+      <td className={"r mono " + pnlCls(p.pnlNow)}>{kk(p.pnlNow)}</td>
+      <td className={"r mono " + pnlCls(p.pnlAtPin)}>{kk(p.pnlAtPin)}</td>
+    </tr>
+  );
   return (
     <Panel title="Expiries & roll-off" dataPp="pin-risk" right={<PanelLive status={pin.status} />} className="trade-block" pad={false}>
       <div className="table-scroll">
@@ -310,16 +353,36 @@ function PinRiskTable(): JSX.Element {
           <tbody>
             {pinRows.length === 0 ? (
               <tr><td className="l dim mono small" colSpan={6}>{pin.status === "missing" ? "no open options" : "loading…"}</td></tr>
-            ) : pinRows.map((p, i) => (
-              <tr key={i} className={p.distPips <= 10 ? "row-now" : ""}>
-                <td className="l mono">{p.product}</td>
-                <td className="r mono dim">{p.strike.toFixed(4)}</td>
-                <td className="r mono dim">{p.dte}d</td>
-                <td className={"r mono " + (p.distPips <= 10 ? "warn" : "dim")}>{p.distPips}</td>
-                <td className={"r mono " + pnlCls(p.pnlNow)}>{kk(p.pnlNow)}</td>
-                <td className={"r mono " + pnlCls(p.pnlAtPin)}>{kk(p.pnlAtPin)}</td>
-              </tr>
-            ))}
+            ) : groups.map((grp, gi) => {
+              if (grp.tradeId == null || grp.rows.length === 1) return legRow(grp.rows[0]!, `g${gi}`, false);
+              const isOpen = expanded.has(grp.tradeId);
+              const dtes = new Set(grp.rows.map((r) => r.dte));
+              const pnlSum = grp.rows.reduce((s, r) => s + r.pnlNow, 0);
+              return (
+                <Fragment key={`t${grp.tradeId}`}>
+                  <tr className={"pos-main" + (isOpen ? " open" : "")} onClick={() => toggle(grp.tradeId!)}>
+                    <td className="l">
+                      <button
+                        className="pos-caret"
+                        onClick={(e) => { e.stopPropagation(); toggle(grp.tradeId!); }}
+                        aria-expanded={isOpen}
+                      >
+                        {isOpen ? "▾" : "▸"}
+                      </button>
+                      <span className="sym">{nameByTrade.get(grp.tradeId) ?? `#${grp.tradeId}`}</span>
+                      <span className="dim mono small"> · {grp.rows.length} legs</span>
+                    </td>
+                    <td className="r mono dim">—</td>
+                    <td className="r mono dim">{dtes.size === 1 ? `${[...dtes][0]}d` : "—"}</td>
+                    <td className="r mono dim">—</td>
+                    <td className={"r mono " + pnlCls(pnlSum)}>{kk(pnlSum)}</td>
+                    {/* per-leg pins are different spots — a summed "if pin" would mix scenarios */}
+                    <td className="r mono dim">—</td>
+                  </tr>
+                  {isOpen && grp.rows.map((r, i) => legRow(r, `t${grp.tradeId}-${i}`, true))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -529,7 +592,7 @@ export function RiskView(): JSX.Element {
                 </tbody>
               </table>
             </Panel>
-            <PinRiskTable />
+            <PinRiskTable positions={portfolio.data?.positions ?? []} />
           </div>
         </Panel>
           <CalendarPanel />

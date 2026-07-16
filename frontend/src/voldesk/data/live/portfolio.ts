@@ -676,6 +676,7 @@ export function adaptGreeksLadder(raw: unknown): LiveLadder {
 
 export interface PinRiskRow {
   product: string;
+  tradeId: number | null;
   strike: number;
   distPips: number;
   dte: number;
@@ -685,6 +686,7 @@ export interface PinRiskRow {
 
 interface PinRowResp {
   product_label?: string | null;
+  trade_id?: number | null;
   structure?: string | null;
   strike?: number | null;
   distance_pips?: number | null;
@@ -857,6 +859,7 @@ export function adaptPinRisk(raw: unknown): PinRiskRow[] {
   const rows = ((raw ?? {}) as { rows?: PinRowResp[] }).rows ?? [];
   return rows.map((r) => ({
     product: r.product_label || r.structure || "—",
+    tradeId: r.trade_id ?? null,
     strike: n(r.strike),
     distPips: Math.round(n(r.distance_pips)),
     dte: n(r.dte_days),
