@@ -1535,7 +1535,9 @@ input,select{font-family:inherit;font-size:13px}
    events takes the leftover height and scrolls internally. */
 .risk-left-col{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
 .risk-left-col > .panel{margin-bottom:0;min-width:0}
-.risk-left-col > .risk-macro-panel{flex:1 1 0;min-height:0}
+/* flex-basis 0 = absorb leftover column height only; the floor keeps the
+   panel visible (internal scroll) when the Greeks panel fills the column */
+.risk-left-col > .risk-macro-panel{flex:1 1 0;min-height:240px}
 .risk-macro-panel > .panel-body{flex:1;min-height:0}
 .greeks-2x2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
 .greeks-2x2 > .panel{min-width:0;grid-column:auto}
