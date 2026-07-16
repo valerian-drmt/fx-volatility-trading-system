@@ -546,7 +546,7 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
   };
   const sub = { fontSize: "0.82em", lineHeight: 1.25 };
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }} data-pp="ind-spot-ticket">
       <div style={{ display: "flex", gap: 8 }}>
         <label className="field" style={{ flex: 1 }}>
           <span className="field-label">Volume <em className="unit">EUR</em></span>
@@ -664,7 +664,7 @@ function IndicatorsPanel({
   return (
     <div className="ind-grid">
       {/* cash & margin — above the ticker */}
-      <div className="ind-fam">
+      <div className="ind-fam" data-pp="ind-cash-margin">
         <div className="ind-fam-head">Cash &amp; margin</div>
         <table className="dt greeks-table">
           <thead><tr><th className="l">Cash &amp; margin</th><th className="r">Value</th></tr></thead>
@@ -698,20 +698,20 @@ function IndicatorsPanel({
       </div>
 
       {/* EUR/USD ticker with market-session overlay */}
-      <div className="ind-fam">
+      <div className="ind-fam" data-pp="ind-ticker">
         <div className="ind-fam-head">Ticker <span className="dim">· EUR/USD</span></div>
         <TickerChart spot={(spotBid + spotAsk) / 2} />
       </div>
 
       {/* cash holdings — below the ticker, with the spot EUR⇄USD ticket */}
-      <div className="ind-fam">
+      <div className="ind-fam" data-pp="ind-cash-holdings">
         <div className="ind-fam-head">Cash holdings</div>
         <HoldingsStrip cash={cash} />
         <SpotTicket bid={spotBid} ask={spotAsk} onOrder={onOrder} />
       </div>
 
       {/* portfolio greeks — same table as the Risk tab's "Portfolio greeks" */}
-      <div className="ind-fam">
+      <div className="ind-fam" data-pp="ind-greeks">
         <div className="ind-fam-head">Portfolio greeks</div>
         <table className="dt greeks-table">
           <thead><tr><th className="l">Greek</th><th className="r">Net value</th></tr></thead>

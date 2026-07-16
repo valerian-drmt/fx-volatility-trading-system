@@ -157,6 +157,34 @@ function dagEvents(panelName: string): PipeDag {
   };
 }
 
+// per-currency cash holdings: account snapshot currencies + surface spot for
+// the EUR→$ leg, merging at the api. Shared by the Portfolio "Holdings
+// valuation" block and the Trade "Cash holdings" block.
+function dagCashHoldings(panelName: string): PipeDag {
+  return {
+    nodes: [
+      { id: "exec", kind: "container", label: "execution-engine", sub: "account snaps", role: "transform", health: "exec-engine" },
+      { id: "vol", kind: "container", label: "vol-engine", sub: "calib → surface spot", role: "transform", health: "vol-engine" },
+      { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
+      toDag(xDBW, "dbw"),
+      { id: "pgacct", kind: "store", label: "Postgres", sub: "account_history.currencies (CashBalance)", role: "receive", health: "postgres" },
+      { id: "pgsurf", kind: "store", label: "Postgres", sub: "vol_surface.spot (EURUSD)", role: "receive", health: "postgres" },
+      dApi("GET /portfolio/cash · EUR→$ at surface spot"),
+      toDag(xFE, "fe"), dPanel(panelName),
+    ],
+    edges: [
+      { from: "exec", to: "redis", label: "db_events" },
+      { from: "redis", to: "dbw", label: "db_events" },
+      { from: "dbw", to: "pgacct", label: "INSERT" },
+      { from: "vol", to: "pgsurf", label: "INSERT surface" },
+      { from: "pgacct", to: "api", label: "latest currencies" },
+      { from: "pgsurf", to: "api", label: "read spot" },
+      { from: "api", to: "fe", label: "JSON" },
+      { from: "fe", to: "panel", label: "render" },
+    ],
+  };
+}
+
 // realized P&L attribution (Taylor now-vs-then over a lookback): risk-engine
 // snapshots → per-leg greek terms → grouped rows. Shared by the two Portfolio
 // attribution matrices (by tenor / by trade).
@@ -253,11 +281,67 @@ export const PIPELINES: PanelPipe[] = [
   },
 
   // ───────────────────────── Trade ─────────────────────────
+  // The Indicators panel is a composite of 4 boxed sub-blocks (+ the spot
+  // ticket write path) — one entry each, anchored by their own data-pp.
   {
-    id: "trade-indicators", panel: "Indicators", view: "trade", domain: "trade", isolated: true,
-    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Indicators")],
+    id: "ind-cash-margin", panel: "Cash & margin", view: "trade", domain: "portfolio", isolated: true,
+    nodes: [IB, IBG, eng("execution-engine", "account snaps"), DBW, pg("account_history"), API, FE, panel("Cash & margin")],
+    edges: ["account summary", "reqAccountSummary", "db_events", "INSERT", "latest + prev_24h", "GET /portfolio/account", "render"],
+    dag: dagPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history (latest + prev_24h)", "GET /portfolio/account", "Cash & margin"),
+  },
+  {
+    id: "ind-ticker", panel: "Ticker · EUR/USD", view: "trade", domain: "ticks", isolated: true,
+    nodes: [IB, IBG, eng("market-data", "clientId 1 · tick stream"), redis("latest_spot:EUR · ticks ch."), API, FE, panel("Ticker · EUR/USD")],
+    edges: ["get tick", "reqMktData", "publish ticks", "WS bridge", "WS /ws/ticks", "render"],
+    dag: dagLive(xEng("market-data", "clientId 1 · tick stream", "market-data"), "latest_spot:EUR · ticks ch.", "get tick", "reqMktData", "FastAPI · WS bridge", "Ticker · EUR/USD"),
+  },
+  {
+    id: "ind-cash-holdings", panel: "Cash holdings", view: "trade", domain: "portfolio", isolated: true,
+    nodes: [eng("execution-engine", "account snaps"), pg("account_history.currencies"), API, FE, panel("Cash holdings")],
+    edges: ["INSERT snaps", "CashBalance per ccy", "GET /portfolio/cash", "render"],
+    dag: dagCashHoldings("Cash holdings"),
+  },
+  {
+    id: "ind-spot-ticket", panel: "Spot EUR⇄USD ticket", view: "trade", domain: "portfolio", isolated: true,
+    nodes: [eng("execution-engine", "spot MKT order · account snaps"), pg("account_history"), API, FE, panel("Spot EUR⇄USD ticket")],
+    edges: ["fill → CashBalance", "INSERT snaps", "GET /portfolio/cash", "render"],
+    // WRITE path + feedback loop: the ticket places a CASH market order at IB;
+    // the fill moves the per-currency CashBalance, which flows back into the
+    // Cash holdings lines above the ticket via the account snapshot.
+    dag: {
+      nodes: [
+        { id: "ticket", kind: "frontend", label: "spot ticket", sub: "Buy EUR/usd · Buy USD/eur (market)", role: "emit", health: "__self" },
+        { id: "apiw", kind: "api", label: "api", sub: "POST /api/v1/orders (require_write)", role: "hub", health: "__api" },
+        { id: "exec", kind: "container", label: "execution-engine", sub: "/internal/orders · qualify EUR.USD CASH", role: "transform", health: "exec-engine" },
+        { id: "ibg", kind: "container", label: "ib-gateway", sub: "broker session · clientId 5", role: "hub", health: "IB Gateway" },
+        { id: "ib", kind: "external", label: "IB", sub: "IDEALPRO · MKT fill", role: "emit", health: "IB Gateway" },
+        { id: "snaps", kind: "container", label: "execution-engine", sub: "account snaps (CashBalance per ccy)", role: "transform", health: "exec-engine" },
+        { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
+        toDag(xDBW, "dbw"),
+        { id: "pg", kind: "store", label: "Postgres", sub: "account_history.currencies", role: "receive", health: "postgres" },
+        dApi("GET /portfolio/cash"),
+        toDag(xFE, "fe"), dPanel("Cash holdings (updated)"),
+      ],
+      edges: [
+        { from: "ticket", to: "apiw", label: "POST spot order" },
+        { from: "apiw", to: "exec", label: "forward /internal/orders" },
+        { from: "exec", to: "ibg", label: "placeOrder EUR.USD MKT" },
+        { from: "ibg", to: "ib", label: "route IDEALPRO" },
+        { from: "ib", to: "snaps", label: "fill → account values" },
+        { from: "snaps", to: "redis", label: "db_events" },
+        { from: "redis", to: "dbw", label: "db_events" },
+        { from: "dbw", to: "pg", label: "INSERT" },
+        { from: "pg", to: "api", label: "latest currencies" },
+        { from: "api", to: "fe", label: "JSON" },
+        { from: "fe", to: "panel", label: "render" },
+      ],
+    },
+  },
+  {
+    id: "ind-greeks", panel: "Portfolio greeks", view: "trade", domain: "trade", isolated: true,
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Portfolio greeks")],
     edges: ["UPDATE greeks", "read book", "GET /positions/open (Σ)", "render"],
-    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /positions/open (Σ)", "Indicators"),
+    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /positions/open (Σ)", "Portfolio greeks"),
   },
   {
     id: "trade-open", panel: "Open positions", view: "trade", domain: "trade", isolated: true,
@@ -288,6 +372,30 @@ export const PIPELINES: PanelPipe[] = [
     nodes: [eng("execution-engine", "RTH-aware close"), pg("booked_position · open_position"), API, FE, panel("Close position")],
     edges: ["mark closeable", "read book", "GET /positions/open · POST close", "render + arm"],
     dag: dagPersist(xEng("execution-engine", "RTH-aware close", "exec-engine"), "positions", "mark closeable", "booked_position · open_position", "GET /positions/open · POST close", "Close position"),
+  },
+  {
+    id: "trade-orders", panel: "Orders (blotter)", view: "trade", domain: "trade", isolated: true,
+    nodes: [IB, IBG, eng("execution-engine", "fills_handler · order events"), pg("trade_structure · structure_order"), API, FE, panel("Orders")],
+    edges: ["order status / fills", "callbacks", "UPDATE leg states", "submitted + leg states", "GET /trade/submitted", "render"],
+    // Persisted blotter: one row per submitted structure leg with its live FSM
+    // state (execution-engine writes states straight to the OMS tables).
+    dag: {
+      nodes: [
+        toDag(xIB, "ib"), toDag(xIBG, "ibg"),
+        { id: "exec", kind: "container", label: "execution-engine", sub: "fills_handler · status/fill/cancel events", role: "transform", health: "exec-engine" },
+        { id: "pg", kind: "store", label: "Postgres", sub: "trade_structure · structure_order (FSM states)", role: "receive", health: "postgres" },
+        dApi("GET /trade/submitted"),
+        toDag(xFE, "fe"), dPanel("Orders"),
+      ],
+      edges: [
+        { from: "ib", to: "ibg", label: "order status / fills" },
+        { from: "ibg", to: "exec", label: "callbacks (clientId 5)" },
+        { from: "exec", to: "pg", label: "UPDATE leg states" },
+        { from: "pg", to: "api", label: "submitted + legs" },
+        { from: "api", to: "fe", label: "JSON" },
+        { from: "fe", to: "panel", label: "render blotter" },
+      ],
+    },
   },
 
   // ───────────────────────── Signal ─────────────────────────
@@ -896,28 +1004,7 @@ export const PIPELINES: PanelPipe[] = [
     edges: ["INSERT snaps", "CashBalance per ccy", "GET /portfolio/cash", "render"],
     // Net-liq decomposition: USD cash 1:1, EUR cash valued at the SURFACE spot
     // (second Postgres input), contracts = residual to net liq.
-    dag: {
-      nodes: [
-        { id: "exec", kind: "container", label: "execution-engine", sub: "account snaps", role: "transform", health: "exec-engine" },
-        { id: "vol", kind: "container", label: "vol-engine", sub: "calib → surface spot", role: "transform", health: "vol-engine" },
-        { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
-        toDag(xDBW, "dbw"),
-        { id: "pgacct", kind: "store", label: "Postgres", sub: "account_history.currencies (CashBalance)", role: "receive", health: "postgres" },
-        { id: "pgsurf", kind: "store", label: "Postgres", sub: "vol_surface.spot (EURUSD)", role: "receive", health: "postgres" },
-        dApi("GET /portfolio/cash · EUR→$ at surface spot"),
-        toDag(xFE, "fe"), dPanel("Holdings valuation"),
-      ],
-      edges: [
-        { from: "exec", to: "redis", label: "db_events" },
-        { from: "redis", to: "dbw", label: "db_events" },
-        { from: "dbw", to: "pgacct", label: "INSERT" },
-        { from: "vol", to: "pgsurf", label: "INSERT surface" },
-        { from: "pgacct", to: "api", label: "latest currencies" },
-        { from: "pgsurf", to: "api", label: "read spot" },
-        { from: "api", to: "fe", label: "JSON" },
-        { from: "fe", to: "panel", label: "render" },
-      ],
-    },
+    dag: dagCashHoldings("Holdings valuation"),
   },
   {
     id: "acct-valuation", panel: "Portfolio valuation chart", view: "portfolio", domain: "portfolio", isolated: true,
