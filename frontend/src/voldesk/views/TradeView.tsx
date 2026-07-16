@@ -18,7 +18,7 @@ import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
 import { ApiError } from "../../api/client";
-import { cancelTrade, closeContract, closeTrade, fetchGreekLimits, fetchStructuredPositions, fetchSubmitted, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
+import { cancelTrade, closeContract, closeTrade, fetchGreekLimits, fetchStructuredPositions, fetchSubmitted, postSpotOrder, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
 import { adaptGreekLimits, type GreekLimits } from "../data/live/portfolio";
 import { useFetch } from "../../hooks/useFetch";
 
@@ -503,6 +503,76 @@ function ClosePanel({
   );
 }
 
+// ---------------- SpotPanel ----------------
+// Minimal spot EUR/USD ticket — market order, cash management. A fill moves
+// IB's per-currency CashBalance, which flows into the Cash holdings panel via
+// the account snapshot (account_history.currencies → /portfolio/cash).
+function SpotPanel({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: (rec: OrderRecord) => void }): JSX.Element {
+  const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
+  const [qty, setQty] = useState(100_000);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const valid = qty > 0 && qty <= 5_000_000;
+  const send = async (side: "BUY" | "SELL"): Promise<void> => {
+    if (busy || !canWrite || !valid) return;
+    setBusy(true);
+    setErr(null);
+    setDone(null);
+    try {
+      await postSpotOrder({ symbol: "EUR", sec_type: "CASH", side, qty, exchange: "IDEALPRO", currency: "USD" });
+      setDone(`${side} ${qty.toLocaleString()} EUR.USD @ mkt`);
+      onOrder({ action: "open", label: "EUR.USD spot", side, qty, state: "sent" });
+    } catch (e) {
+      const note = closeErr(e);
+      setErr(note);
+      onOrder({ action: "open", label: "EUR.USD spot", side, qty, state: "rejected", note });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="mono small dim">
+        EUR.USD <span className="pos">{bid.toFixed(5)}</span> / <span className="neg">{ask.toFixed(5)}</span>
+        <em className="unit"> · market order · IDEALPRO</em>
+      </div>
+      <label className="field">
+        <span className="field-label">
+          Qty <em className="unit">EUR notional</em>
+        </span>
+        <div className="field-input">
+          <input type="number" min={0} step={25_000} value={qty} disabled={busy} onChange={(e) => setQty(+e.target.value)} />
+          <em>EUR</em>
+        </div>
+      </label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          className="btn-primary"
+          style={{ flex: 1 }}
+          disabled={!canWrite || busy || !valid}
+          title={canWrite ? "market BUY EUR.USD at IB" : GATE_TITLE}
+          onClick={() => send("BUY")}
+        >
+          {busy ? "…" : "Buy EUR"}
+        </button>
+        <button
+          className="btn-close-exec"
+          style={{ flex: 1 }}
+          disabled={!canWrite || busy || !valid}
+          title={canWrite ? "market SELL EUR.USD at IB" : GATE_TITLE}
+          onClick={() => send("SELL")}
+        >
+          {busy ? "…" : "Sell EUR"}
+        </button>
+      </div>
+      {err && <div className="ob-error mono small">⚠ {err}</div>}
+      {done && <div className="mono small pos">Sent ✓ {done}</div>}
+      {!canWrite && <div className="dim small ob-readonly-note">Read-only desk · log in to trade spot.</div>}
+    </div>
+  );
+}
+
 // ---------------- HoldingsStrip ----------------
 // Two lines, one per currency: "<CCY> <native amount> (<share of book>%)".
 function HoldingsStrip({ cash }: { cash: Cash[] }): JSX.Element {
@@ -782,9 +852,14 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
         <Panel title="Order" dataPp="trade-builder" className="trade-block">
           <OrderBuilder onOrder={addOrder} />
         </Panel>
-        <Panel title="Close position" dataPp="trade-close" className="trade-block">
-          <ClosePanel req={closeReq} onDone={() => setCloseReq(null)} onOrder={addOrder} onClosing={(k) => setClosingKeys((p) => ({ ...p, [k]: Date.now() }))} positions={positions} greeks={greeks} ctx={structureCtx} />
-        </Panel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+          <Panel title="Spot EUR/USD" dataPp="trade-spot" className="trade-block">
+            <SpotPanel bid={spotBid} ask={spotAsk} onOrder={addOrder} />
+          </Panel>
+          <Panel title="Close position" dataPp="trade-close" className="trade-block">
+            <ClosePanel req={closeReq} onDone={() => setCloseReq(null)} onOrder={addOrder} onClosing={(k) => setClosingKeys((p) => ({ ...p, [k]: Date.now() }))} positions={positions} greeks={greeks} ctx={structureCtx} />
+          </Panel>
+        </div>
       </div>
       <Panel title="Open positions" dataPp="trade-open" pad={false} className="trade-block open-pos-panel">
         <OpenPositionsTable

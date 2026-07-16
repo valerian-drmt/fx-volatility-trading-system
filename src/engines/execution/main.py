@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -249,16 +249,33 @@ def _sm_dep(request: Request) -> async_sessionmaker[AsyncSession]:
 
 class PlaceOrderBody(BaseModel):
     symbol: str = Field(min_length=1, max_length=20)
-    sec_type: Literal["FUT", "FOP"]
+    sec_type: Literal["FUT", "FOP", "CASH"]
     side: Literal["BUY", "SELL"]
-    qty: int = Field(gt=0, le=1000)
-    limit_price: float = Field(gt=0)
+    # qty is CONTRACTS for FUT/FOP but base-currency NOTIONAL for CASH
+    # (spot EUR.USD : qty=100_000 = 100k EUR) — hence the per-secType bound
+    # in the validator below instead of a single ``le=``.
+    qty: int = Field(gt=0)
+    # None ⇒ MarketOrder. Only CASH may omit it (spot cash management);
+    # FUT/FOP keep the mandatory limit (IB's option price-cap hangs markets).
+    limit_price: float | None = Field(None, gt=0)
     expiry: str | None = Field(None, pattern=r"^\d{8}$")
     strike: float | None = Field(None, gt=0)
     right: Literal["C", "P"] | None = None
     exchange: str = "CME"
     currency: str = "USD"
     trading_class: str | None = None
+
+    @model_validator(mode="after")
+    def _per_sec_type_bounds(self) -> PlaceOrderBody:
+        if self.sec_type == "CASH":
+            if self.qty > 5_000_000:
+                raise ValueError("spot qty must be <= 5,000,000 (base-ccy notional)")
+        else:
+            if self.qty > 1000:
+                raise ValueError("qty must be <= 1000 contracts")
+            if self.limit_price is None:
+                raise ValueError("limit_price is required for FUT/FOP orders")
+        return self
 
 
 class ClosePositionBody(BaseModel):

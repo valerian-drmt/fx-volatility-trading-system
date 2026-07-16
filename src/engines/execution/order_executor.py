@@ -59,15 +59,15 @@ async def _marketable_close_price(ib: Any, contract: Any, side: str) -> float | 
 @dataclass
 class OrderRequest:
     """Payload normalisé pour place/close. Construit depuis le body API."""
-    symbol: str               # e.g. "EUR" pour FUT, "EUU" pour FOP EUR options
-    sec_type: str             # "FUT" | "FOP"
+    symbol: str               # e.g. "EUR" pour FUT/CASH, "EUU" pour FOP EUR options
+    sec_type: str             # "FUT" | "FOP" | "CASH" (spot FX, e.g. EUR.USD)
     side: str                 # "BUY" | "SELL"
     qty: int
-    limit_price: float
+    limit_price: float | None    # None ⇒ MarketOrder (spot cash management)
     expiry: str | None = None    # YYYYMMDD pour FUT/FOP
     strike: float | None = None  # FOP only
     right: str | None = None     # "C" | "P", FOP only
-    exchange: str = "CME"
+    exchange: str = "CME"        # "IDEALPRO" pour CASH
     currency: str = "USD"
     trading_class: str | None = None  # e.g. "EUU" pour FOP EUR
 
@@ -265,7 +265,7 @@ class OrderExecutor:
     # ---- Mutation operations ------------------------------------------------
 
     async def place_order(self, req: OrderRequest) -> dict[str, Any]:
-        from ib_insync import Contract, LimitOrder
+        from ib_insync import Contract, LimitOrder, MarketOrder
 
         ib = self._ensure()
         contract = Contract(
@@ -289,7 +289,13 @@ class OrderExecutor:
             raise ValueError(f"Contract not qualified by IB: {contract}")
         contract = qualified[0]
 
-        order = LimitOrder(req.side, req.qty, req.limit_price)
+        # limit_price=None ⇒ MarketOrder (spot CASH default — fill at touch,
+        # the panel is for cash management, not price improvement).
+        order = (
+            LimitOrder(req.side, req.qty, req.limit_price)
+            if req.limit_price
+            else MarketOrder(req.side, req.qty)
+        )
         trade = ib.placeOrder(contract, order)
         # Don't wait for fill — return immediately. UI peut poll openOrders.
         return trade_to_dict(trade)
@@ -402,6 +408,11 @@ def trade_to_dict(trade: Any) -> dict[str, Any]:
     o = trade.order
     c = trade.contract
     s = trade.orderStatus
+    # MarketOrder leaves lmtPrice at IB's UNSET_DOUBLE sentinel (float max) —
+    # serialize that as "no limit", not a real price.
+    lmt = float(o.lmtPrice) if o.lmtPrice else None
+    if lmt is not None and lmt >= 1.7e308:
+        lmt = None
     return {
         "order_id": o.orderId,
         "perm_id": o.permId,
@@ -414,7 +425,7 @@ def trade_to_dict(trade: Any) -> dict[str, Any]:
         "con_id": c.conId,
         "side": o.action,
         "qty": float(o.totalQuantity),
-        "limit_price": float(o.lmtPrice) if o.lmtPrice else None,
+        "limit_price": lmt,
         "status": s.status,
         "filled": float(s.filled),
         "remaining": float(s.remaining),

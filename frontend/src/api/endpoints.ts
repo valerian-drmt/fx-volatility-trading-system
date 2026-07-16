@@ -220,6 +220,18 @@ export const fetchHedgeSummary = () =>
 // Trade (read)
 // Working orders = live IB openTrades, proxied via the execution-engine.
 export const fetchOrders = () => apiGet<unknown>("/api/v1/orders");
+// Spot FX (EUR.USD cash) market order — write-gated proxy to the
+// execution-engine (/internal/orders). qty = base-currency notional.
+export interface SpotOrderBody {
+  symbol: string;
+  sec_type: "CASH";
+  side: "BUY" | "SELL";
+  qty: number;
+  exchange: string;
+  currency: string;
+}
+export const postSpotOrder = (body: SpotOrderBody) =>
+  apiPost<unknown>("/api/v1/orders", body);
 export const fetchTradeStructures = () => apiGet<unknown>("/api/v1/trade/structures");
 export const fetchTradeLimits = () => apiGet<unknown>("/api/v1/trade/limits");
 export const fetchTradeBook = (symbol = "EURUSD") =>
