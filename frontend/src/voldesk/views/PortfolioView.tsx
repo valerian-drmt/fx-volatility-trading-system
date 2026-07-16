@@ -658,8 +658,8 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
       {cell(r.delta, r.actual, "grp-grk col-grp")}
       {cell(r.gamma, r.actual, "grp-grk")}
       {cell(r.vega, r.actual, "grp-grk")}
-      {cell(r.theta, r.actual, "grp-grk col-grp-end")}
-      {cell(r.residual, r.actual, "grp-grk col-grp col-grp-end")}
+      {cell(r.theta, r.actual, "grp-grk")}
+      {cell(r.residual, r.actual, "grp-grk col-grp-end")}
     </tr>
   );
   const t = m.totals;
@@ -675,8 +675,8 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
             <th className="r grp-grk col-grp">Delta·dS</th>
             <th className="r grp-grk">½Γ·dS²</th>
             <th className="r grp-grk">Vega·dσ</th>
-            <th className="r grp-grk col-grp-end">Theta·dt</th>
-            <th className="r grp-grk col-grp col-grp-end">residual</th>
+            <th className="r grp-grk">Theta·dt</th>
+            <th className="r grp-grk col-grp-end">residual</th>
           </tr>
         </thead>
         <tbody>
@@ -697,10 +697,10 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
             <td className={"r mono grp-grk " + pnlCls(t.vega)}>
               <b>{gk$(t.vega)}</b>
             </td>
-            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.theta)}>
+            <td className={"r mono grp-grk " + pnlCls(t.theta)}>
               <b>{gk$(t.theta)}</b>
             </td>
-            <td className={"r mono grp-grk col-grp col-grp-end " + pnlCls(t.residual)}>
+            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.residual)}>
               <b>{gk$(t.residual)}</b>
             </td>
           </tr>
@@ -770,8 +770,8 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
       {cell(r.delta, r.actual, "grp-grk col-grp")}
       {cell(r.gamma, r.actual, "grp-grk")}
       {cell(r.vega, r.actual, "grp-grk")}
-      {cell(r.theta, r.actual, "grp-grk col-grp-end")}
-      {cell(r.residual, r.actual, "grp-grk col-grp col-grp-end")}
+      {cell(r.theta, r.actual, "grp-grk")}
+      {cell(r.residual, r.actual, "grp-grk col-grp-end")}
     </>
   );
   const legRow = (r: PositionAttribRow, main: boolean): JSX.Element => (
@@ -813,8 +813,8 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
             <th className="r grp-grk col-grp">Delta·dS</th>
             <th className="r grp-grk">½Γ·dS²</th>
             <th className="r grp-grk">Vega·dσ</th>
-            <th className="r grp-grk col-grp-end">Theta·dt</th>
-            <th className="r grp-grk col-grp col-grp-end">residual</th>
+            <th className="r grp-grk">Theta·dt</th>
+            <th className="r grp-grk col-grp-end">residual</th>
           </tr>
         </thead>
         <tbody>
@@ -874,10 +874,10 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
             <td className={"r mono grp-grk " + pnlCls(t.vega)}>
               <b>{gk$(t.vega)}</b>
             </td>
-            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.theta)}>
+            <td className={"r mono grp-grk " + pnlCls(t.theta)}>
               <b>{gk$(t.theta)}</b>
             </td>
-            <td className={"r mono grp-grk col-grp col-grp-end " + pnlCls(t.residual)}>
+            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.residual)}>
               <b>{gk$(t.residual)}</b>
             </td>
           </tr>
