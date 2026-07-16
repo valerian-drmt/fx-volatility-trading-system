@@ -449,8 +449,9 @@ input,select{font-family:inherit;font-size:13px}
 .hold-line>b{font-size:14px;font-weight:700}
 .hold-line .hl-share{margin-left:-3px}
 /* spot EUR⇄USD ticket (inside Cash holdings) — yellow/orange fill + outline,
-   same intensity on both buttons, no hover effect */
-.spot-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border-radius:5px;background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);color:var(--text-dim);font-weight:700;font-size:13px}
+   same intensity on both buttons; hover deepens the fill like .btn-draft-send */
+.spot-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border-radius:5px;background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);color:var(--text-dim);font-weight:700;font-size:13px;transition:.15s}
+.spot-btn:hover:not(:disabled){background:color-mix(in srgb,var(--warn) 20%,transparent)}
 .spot-btn:disabled{opacity:.45;cursor:not-allowed}
 /* one reserved line so the sent/error message doesn't grow the panel */
 .spot-status{min-height:17px;line-height:17px}
