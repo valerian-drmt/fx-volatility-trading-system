@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Panel } from "../components/common";
-import { gk$, pnlCls } from "../components/format";
+import { fmtCcySigned, gk$, pnlCls } from "../components/format";
 import { FreshBadge } from "../components/FreshBadge";
 import { OpenPositionsTable, type StructureCtx } from "../components/PositionsTable";
 import { OrderBuilder } from "../components/OrderBuilder";
@@ -571,9 +571,11 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
           title={canWrite ? `market order · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO` : GATE_TITLE}
           onClick={() => send("BUY")}
         >
-          <span>Buy <b style={{ fontSize: "1.3em" }}>EUR</b><span style={{ fontSize: "0.8em", opacity: 0.8 }}>/usd</span></span>
-          <span className="mono" style={sub}>Buy {eurQty.toLocaleString()} EUR</span>
-          <span className="mono" style={{ ...sub, opacity: 0.75 }}>Sell {usdQty.toLocaleString()} USD</span>
+          <span style={{ color: "var(--text)" }}>Buy <b style={{ fontSize: "1.3em" }}>EUR</b><span style={{ fontSize: "0.8em" }}>/usd</span></span>
+          {/* nominal legs — same format/colors as the Order builder's Nominal row */}
+          <b className="mono" style={sub}>
+            <span className="pos">{fmtCcySigned(eurQty, "€")}</span> <span className="dim">/</span> <span className="neg">{fmtCcySigned(-usdQty, "$")}</span>
+          </b>
         </button>
         <button
           className="spot-btn"
@@ -581,9 +583,10 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
           title={canWrite ? `market order · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO` : GATE_TITLE}
           onClick={() => send("SELL")}
         >
-          <span>Buy <b style={{ fontSize: "1.3em" }}>USD</b><span style={{ fontSize: "0.8em", opacity: 0.8 }}>/eur</span></span>
-          <span className="mono" style={sub}>Buy {usdQty.toLocaleString()} USD</span>
-          <span className="mono" style={{ ...sub, opacity: 0.75 }}>Sell {eurQty.toLocaleString()} EUR</span>
+          <span style={{ color: "var(--text)" }}>Buy <b style={{ fontSize: "1.3em" }}>USD</b><span style={{ fontSize: "0.8em" }}>/eur</span></span>
+          <b className="mono" style={sub}>
+            <span className="pos">{fmtCcySigned(usdQty, "$")}</span> <span className="dim">/</span> <span className="neg">{fmtCcySigned(-eurQty, "€")}</span>
+          </b>
         </button>
       </div>
       {/* always-rendered status line — reserves its height so a sent/error

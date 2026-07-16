@@ -20,6 +20,14 @@ export function gk$(v: number | null | undefined): string {
   return s + "$" + Math.round(a);
 }
 
+// notional → compact <sym>k / <sym>M label (sym = € or $) — shared by the
+// Order builder's Nominal row and the spot ticket's nominal legs
+export const fmtCcy = (v: number, sym: string): string =>
+  Math.abs(v) >= 1e6 ? sym + (v / 1e6).toFixed(2) + "M" : sym + Math.round(v / 1e3) + "k";
+// signed notional : sign BEFORE the symbol so a short leg reads "−$3.57M"
+export const fmtCcySigned = (v: number, sym: string): string =>
+  (v < 0 ? "−" : "+") + fmtCcy(Math.abs(v), sym);
+
 export const signalTone = (s: string): Tone =>
   (({ tail: "danger", weak: "warn", noise: "neutral", strong: "good", aligned: "good" } as Record<string, Tone>)[s] ||
     "neutral");
