@@ -5,9 +5,9 @@
  * rendered by TradeView — dropped. Order entry is the WRITE path: it stays mock
  * until the auth boundary + backend wiring lands (IMPLEMENTATION.md §3bis/§5).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Panel } from "../components/common";
-import { gk$, pnlCls } from "../components/format";
+import { fmtCcySigned, gk$, pnlCls } from "../components/format";
 import { FreshBadge } from "../components/FreshBadge";
 import { OpenPositionsTable, type StructureCtx } from "../components/PositionsTable";
 import { OrderBuilder } from "../components/OrderBuilder";
@@ -18,8 +18,7 @@ import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
 import { ApiError } from "../../api/client";
-import { cancelTrade, closeContract, closeTrade, fetchGreekLimits, fetchStructuredPositions, fetchSubmitted, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
-import { adaptGreekLimits, type GreekLimits } from "../data/live/portfolio";
+import { cancelTrade, closeContract, closeTrade, fetchStructuredPositions, fetchSubmitted, postSpotOrder, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 
 const GATE_TITLE = "write disabled — auth required (Phase 2)";
@@ -503,6 +502,102 @@ function ClosePanel({
   );
 }
 
+// ---------------- SpotTicket ----------------
+// Linked EUR⇄USD spot ticket inside the Cash holdings block — market orders on
+// EUR.USD (IDEALPRO). Editing one volume recomputes the other at the live mid.
+// A fill moves IB's per-currency CashBalance, which flows back into the
+// holdings lines above via the account snapshot (→ /portfolio/cash).
+function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: (rec: OrderRecord) => void }): JSX.Element {
+  const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
+  const mid = (bid + ask) / 2;
+  const [eurQty, setEurQty] = useState(100_000);
+  const [usdQty, setUsdQty] = useState(() => Math.round(100_000 * ((bid + ask) / 2)));
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const valid = eurQty > 0 && eurQty <= 5_000_000;
+  const onEur = (v: number): void => {
+    setEurQty(v);
+    setUsdQty(Math.round(v * mid));
+  };
+  const onUsd = (v: number): void => {
+    setUsdQty(v);
+    setEurQty(Math.round(v / mid));
+  };
+  // IB quantifies EUR.USD in EUR base units for both directions :
+  // BUY = buy EUR / sell USD, SELL = buy USD / sell EUR.
+  const send = async (side: "BUY" | "SELL"): Promise<void> => {
+    if (busy || !canWrite || !valid) return;
+    setBusy(true);
+    setErr(null);
+    setDone(null);
+    const label = side === "BUY" ? "spot buy EUR/USD" : "spot buy USD/EUR";
+    try {
+      await postSpotOrder({ symbol: "EUR", sec_type: "CASH", side, qty: Math.round(eurQty), exchange: "IDEALPRO", currency: "USD" });
+      setDone(`${label} · ${eurQty.toLocaleString()} EUR @ mkt`);
+      onOrder({ action: "open", label, side, qty: eurQty, state: "sent" });
+    } catch (e) {
+      const note = closeErr(e);
+      setErr(note);
+      onOrder({ action: "open", label, side, qty: eurQty, state: "rejected", note });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const sub = { fontSize: "0.82em", lineHeight: 1.25 };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        <label className="field" style={{ flex: 1 }}>
+          <span className="field-label">Volume <em className="unit">EUR</em></span>
+          <div className="field-input">
+            <input type="number" min={0} step={25_000} value={eurQty} disabled={busy} onChange={(e) => onEur(+e.target.value)} />
+            <em>EUR</em>
+          </div>
+        </label>
+        <label className="field" style={{ flex: 1 }}>
+          <span className="field-label">Volume <em className="unit">USD</em></span>
+          <div className="field-input">
+            <input type="number" min={0} step={25_000} value={usdQty} disabled={busy} onChange={(e) => onUsd(+e.target.value)} />
+            <em>USD</em>
+          </div>
+        </label>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          className="spot-btn"
+          disabled={!canWrite || busy || !valid}
+          title={canWrite ? `market order · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO` : GATE_TITLE}
+          onClick={() => send("BUY")}
+        >
+          <span style={{ color: "var(--text)" }}>Buy <b style={{ fontSize: "1.3em" }}>EUR</b><span style={{ fontSize: "0.8em" }}>/usd</span></span>
+          {/* nominal legs — same format/colors as the Order builder's Nominal row */}
+          <b className="mono" style={sub}>
+            <span className="pos">{fmtCcySigned(eurQty, "€")}</span> <span className="dim">/</span> <span className="neg">{fmtCcySigned(-usdQty, "$")}</span>
+          </b>
+        </button>
+        <button
+          className="spot-btn"
+          disabled={!canWrite || busy || !valid}
+          title={canWrite ? `market order · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO` : GATE_TITLE}
+          onClick={() => send("SELL")}
+        >
+          <span style={{ color: "var(--text)" }}>Buy <b style={{ fontSize: "1.3em" }}>USD</b><span style={{ fontSize: "0.8em" }}>/eur</span></span>
+          <b className="mono" style={sub}>
+            <span className="pos">{fmtCcySigned(usdQty, "$")}</span> <span className="dim">/</span> <span className="neg">{fmtCcySigned(-eurQty, "€")}</span>
+          </b>
+        </button>
+      </div>
+      {/* always-rendered status line — reserves its height so a sent/error
+          message doesn't grow the panel */}
+      <div className={"mono small spot-status " + (err ? "neg" : done ? "pos" : "dim")}>
+        {err ? `⚠ ${err}` : done ? `Sent ✓ ${done}` : " "}
+      </div>
+      {!canWrite && <div className="dim small ob-readonly-note">Read-only desk · log in to trade spot.</div>}
+    </div>
+  );
+}
+
 // ---------------- HoldingsStrip ----------------
 // Two lines, one per currency: "<CCY> <native amount> (<share of book>%)".
 function HoldingsStrip({ cash }: { cash: Cash[] }): JSX.Element {
@@ -528,47 +623,91 @@ function HoldingsStrip({ cash }: { cash: Cash[] }): JSX.Element {
 }
 
 // ---------------- Indicators ----------------
+// ▲/▼ change pill + parenthetical note — same helpers as the Portfolio tab's
+// Cash & margin table (classes .acct-delta / .acct-sub are global).
+function deltaPill(d: number | null | undefined): JSX.Element | null {
+  if (d == null || !Number.isFinite(d)) return null;
+  const neg = d < 0;
+  return (
+    <span className={"acct-delta " + (neg ? "neg" : "pos")}>
+      {neg ? "▼" : "▲"} {Math.abs(d).toFixed(2)}%
+    </span>
+  );
+}
+function acctNote(note: ReactNode): JSX.Element | null {
+  return note ? <span className="acct-sub"> ({note})</span> : null;
+}
+
 function IndicatorsPanel({
   greeks,
   account,
   cash,
   spotBid,
   spotAsk,
+  onOrder,
 }: {
   greeks: Greeks;
   account: AccountState;
   cash: Cash[];
   spotBid: number;
   spotAsk: number;
+  onOrder: (rec: OrderRecord) => void;
 }): JSX.Element {
   const g = greeks;
-  // Risk utilization (same as the Risk tab): margins vs netLiq + greek exposures
-  // vs the /portfolio/greek-limits caps. Live; caps read "—" until they resolve.
-  const glim = useFetch<GreekLimits>(() => fetchGreekLimits().then(adaptGreekLimits), 60_000).data;
-  const utilColor = (p: number): string => (p > 100 ? "var(--neg)" : p > 80 ? "var(--warn)" : "var(--pos)");
-  const pctOf = (used: number, cap: number | undefined): number => (cap && cap > 0 ? (Math.abs(used) / cap) * 100 : 0);
-  const capk = (c: number): string => (c > 0 ? fmt.usdk(c) : "—");
-  const deltaCap = glim?.deltaCapUsd ?? 0, vegaCap = glim?.vegaCapUsd ?? 0, gammaCap = glim?.gammaCapPip ?? 0;
-  const utilRows = [
-    { label: "Init margin", used: fmt.usd(account.marginInit), limit: fmt.usd(account.netLiq), pct: account.marginInitPct },
-    { label: "Maint margin", used: fmt.usd(account.marginMaint), limit: fmt.usd(account.netLiq), pct: account.marginMaintPct },
-    { label: "Delta exposure", used: fmt.usdk(Math.abs(g.netDelta)), limit: capk(deltaCap), pct: pctOf(g.netDelta, deltaCap) },
-    { label: "Vega", used: fmt.usdk(Math.abs(g.netVega)), limit: capk(vegaCap), pct: pctOf(g.netVega, vegaCap) },
-    { label: "Gamma exposure", used: fmt.usdk(Math.abs(g.netGamma)), limit: capk(gammaCap), pct: pctOf(g.netGamma, gammaCap) },
-  ];
+  // Cash & margin — same table (and same live source) as the Portfolio tab's
+  // Account & capital panel : the /portfolio/account snapshot, which carries the
+  // real IB values (the trade slice's account fills only margin fields and pads
+  // the rest with mock). Fall back to the prop, then mock, while loading.
+  const { portfolio } = useDeskData();
+  const a = portfolio.data?.account ?? account;
 
   return (
     <div className="ind-grid">
+      {/* cash & margin — above the ticker */}
+      <div className="ind-fam">
+        <div className="ind-fam-head">Cash &amp; margin</div>
+        <table className="dt greeks-table">
+          <thead><tr><th className="l">Cash &amp; margin</th><th className="r">Value</th></tr></thead>
+          <tbody>
+            <tr>
+              <td className="l">Net liquidation</td>
+              <td className="r mono">{fmt.usd(a.netLiq)}{acctNote(deltaPill(a.dNetLiq))}</td>
+            </tr>
+            <tr>
+              <td className="l">Cash</td>
+              <td className="r mono">{fmt.usd(a.cash)}{acctNote(deltaPill(a.dCash))}</td>
+            </tr>
+            <tr>
+              <td className="l">Init margin</td>
+              <td className="r mono">{fmt.usd(a.marginInit)}{acctNote(`${a.marginInitPct}% used`)}</td>
+            </tr>
+            <tr>
+              <td className="l">Maint margin</td>
+              <td className="r mono">{fmt.usd(a.marginMaint)}{acctNote(`${a.marginMaintPct}% used`)}</td>
+            </tr>
+            <tr>
+              <td className="l">Excess liquidity</td>
+              <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
+            </tr>
+            <tr>
+              <td className="l">Cushion</td>
+              <td className="r mono">{(a.cushion * 100).toFixed(1)}%{acctNote(`${a.nPositions} positions`)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
       {/* EUR/USD ticker with market-session overlay */}
       <div className="ind-fam">
         <div className="ind-fam-head">Ticker <span className="dim">· EUR/USD</span></div>
         <TickerChart spot={(spotBid + spotAsk) / 2} />
       </div>
 
-      {/* cash holdings — below the ticker */}
+      {/* cash holdings — below the ticker, with the spot EUR⇄USD ticket */}
       <div className="ind-fam">
         <div className="ind-fam-head">Cash holdings</div>
         <HoldingsStrip cash={cash} />
+        <SpotTicket bid={spotBid} ask={spotAsk} onOrder={onOrder} />
       </div>
 
       {/* portfolio greeks — same table as the Risk tab's "Portfolio greeks" */}
@@ -583,23 +722,6 @@ function IndicatorsPanel({
             <tr><td className="l">Theta <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</td></tr>
             <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(g.netVanna)}>{fmt.sgn(g.netVanna, 1)}k</td></tr>
             <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(g.netVolga)}>{fmt.sgn(g.netVolga, 1)}k</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* risk utilization — same table as the Risk tab, below Portfolio greeks */}
-      <div className="ind-fam">
-        <div className="ind-fam-head">Risk utilization</div>
-        <table className="dt greeks-table">
-          <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th><th className="r">%</th></tr></thead>
-          <tbody>
-            {utilRows.map((r) => (
-              <tr key={r.label}>
-                <td className="l">{r.label}</td>
-                <td className="r mono"><span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span></td>
-                <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
-              </tr>
-            ))}
           </tbody>
         </table>
       </div>
@@ -777,7 +899,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     <div className={"trade-grid " + (tweaks.density || "regular")}>
       <div className="trade-top">
         <Panel title="Indicators" dataPp="trade-indicators" right={<FreshBadge fresh={trade} label="" />} className="trade-block">
-          <IndicatorsPanel greeks={greeks} account={account} cash={cash} spotBid={spotBid} spotAsk={spotAsk} />
+          <IndicatorsPanel greeks={greeks} account={account} cash={cash} spotBid={spotBid} spotAsk={spotAsk} onOrder={addOrder} />
         </Panel>
         <Panel title="Order" dataPp="trade-builder" className="trade-block">
           <OrderBuilder onOrder={addOrder} />

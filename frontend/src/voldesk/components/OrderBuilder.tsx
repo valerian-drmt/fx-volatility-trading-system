@@ -8,7 +8,7 @@
  * Same JSX / classNames / logic as the prototype — only types + ES modules added.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { gk$, pnlCls } from "./format";
+import { fmtCcy, fmtCcySigned, gk$, pnlCls } from "./format";
 import { DATA, fmt } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import { ApiError } from "../../api/client";
@@ -27,10 +27,6 @@ const PILLARS = DATA.deltas;
 const CONTRACTS: Record<string, number> = { "6E (€125k)": 125000, "M6E (€12.5k)": 12500 };
 const DELTA_PER_6E = 125_000 * DATA.SPOT; // cash $-delta of 1 full 6E contract (notional × spot)
 
-// notional → compact <sym>k / <sym>M label (sym = € or $)
-const fmtCcy = (v: number, sym: string): string => (Math.abs(v) >= 1e6 ? sym + (v / 1e6).toFixed(2) + "M" : sym + Math.round(v / 1e3) + "k");
-// signed notional : sign BEFORE the symbol so a short leg reads "−$3.57M"
-const fmtCcySigned = (v: number, sym: string): string => (v < 0 ? "−" : "+") + fmtCcy(Math.abs(v), sym);
 
 type GreekKey = "d" | "g" | "v" | "t" | "vn" | "vg";
 
