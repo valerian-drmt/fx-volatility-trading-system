@@ -281,6 +281,13 @@ export function SettingsView(): JSX.Element {
   const leftover = sections.filter((s) => !mapped.has(s.name));
   return (
     <div className="settings-view">
+      <div className="settings-domains">
+        <DomainSettingsPanel domain="trade" cfgSections={sectionsFor("trade")} />
+        <DomainSettingsPanel domain="signal" cfgSections={sectionsFor("signal")} />
+        <DomainSettingsPanel domain="risk" cfgSections={sectionsFor("risk")} />
+        <DomainSettingsPanel domain="portfolio" cfgSections={sectionsFor("portfolio")} />
+        {leftover.length > 0 && <OtherConfigPanel sections={leftover} />}
+      </div>
       <Panel
         title={"Configuration — version history" + (data ? ` · current v${data.currentVersion}` : "")}
         right={<FreshBadge fresh={config} label="versioned · append-only · hot-reload" />}
@@ -328,13 +335,6 @@ export function SettingsView(): JSX.Element {
           </table>
         </div>
       </Panel>
-      <div className="settings-domains">
-        <DomainSettingsPanel domain="trade" cfgSections={sectionsFor("trade")} />
-        <DomainSettingsPanel domain="signal" cfgSections={sectionsFor("signal")} />
-        <DomainSettingsPanel domain="risk" cfgSections={sectionsFor("risk")} />
-        <DomainSettingsPanel domain="portfolio" cfgSections={sectionsFor("portfolio")} />
-        {leftover.length > 0 && <OtherConfigPanel sections={leftover} />}
-      </div>
     </div>
   );
 }
