@@ -1548,6 +1548,9 @@ input,select{font-family:inherit;font-size:13px}
 /* .sym is display:block globally — inline it here so the structure name sits
    on the same line as (and to the right of) the ▸ caret */
 .pin-risk-full .dt .sym{display:inline}
+/* cap the table height (internal scroll, sticky header) so expanding legs
+   never stretches the Greeks grid / panel layout */
+.pin-risk-full .table-scroll{max-height:280px}
 /* Value at Risk column — table / graph / marginal contribution stacked 1x3 */
 .var-1x3{display:flex;flex-direction:column;gap:10px}
 
