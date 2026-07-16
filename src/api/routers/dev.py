@@ -22,7 +22,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 from redis import asyncio as aioredis
-from sqlalchemy import text
+from sqlalchemy import Text, cast, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis
@@ -492,10 +492,13 @@ async def read_table(
     # The ``::text`` cast is mandatory because we don't know the column
     # type at parse time and ``WHERE int_col ILIKE '%10%'`` would fail
     # without it. PG's planner pushes the cast cleanly.
-    where_clauses: list[str] = []
-    params: dict[str, Any] = {}
+    #
+    # Built with SQLAlchemy Core expressions — identifiers come from the
+    # ORM metadata objects themselves and every value is a bound parameter,
+    # so no request-derived string ever reaches raw SQL (CWE-089).
+    conditions: list[Any] = []
     if filters:
-        for i, pair in enumerate(filters.split(",")):
+        for pair in filters.split(","):
             if ":" not in pair:
                 continue
             col, val = pair.split(":", 1)
@@ -508,37 +511,30 @@ async def read_table(
                     status_code=400,
                     detail=f"filter column {col!r} is not in {name}",
                 )
-            param_key = f"flt_{i}"
+            col_txt = cast(t.c[col], Text)
             if val.startswith("="):
                 # Exact case-sensitive match.
-                where_clauses.append(f"{col}::text = :{param_key}")
-                params[param_key] = val[1:]
+                conditions.append(col_txt == val[1:])
             elif "%" in val or "_" in val:
                 # Caller-supplied wildcards.
-                where_clauses.append(f"{col}::text ILIKE :{param_key}")
-                params[param_key] = val
+                conditions.append(col_txt.ilike(val))
             else:
                 # Default : implicit substring match, case-insensitive.
-                where_clauses.append(f"{col}::text ILIKE :{param_key}")
-                params[param_key] = f"%{val}%"
-    where_sql = (
-        f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-    )
+                conditions.append(col_txt.ilike(f"%{val}%"))
 
-    order_sql = f"ORDER BY {order_by} {order_dir.upper()}"
+    order_col = t.c[order_by]
+    order_expr = order_col.desc() if order_dir.lower() == "desc" else order_col.asc()
 
     # Total count with same filter applied.
-    count_q = f"SELECT COUNT(*) AS n FROM {name} {where_sql}"
-    count_res = await db.execute(text(count_q), params)
-    total = int(count_res.scalar_one())
+    count_stmt = select(func.count()).select_from(t).where(*conditions)
+    total = int((await db.execute(count_stmt)).scalar_one())
 
     # Rows.
-    rows_q = (
-        f"SELECT * FROM {name} {where_sql} {order_sql} "
-        f"LIMIT :lim OFFSET :off"
+    rows_stmt = (
+        select(t).where(*conditions).order_by(order_expr)
+        .limit(limit).offset(offset)
     )
-    rows_res = await db.execute(text(rows_q),
-                                 {**params, "lim": limit, "off": offset})
+    rows_res = await db.execute(rows_stmt)
     rows = [_reorder_columns(name, dict(r)) for r in rows_res.mappings().all()]
 
     # Column metadata so the front-end can format types correctly.

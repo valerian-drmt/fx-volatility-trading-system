@@ -236,10 +236,13 @@ async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
                 "error": f"{e.status_code} : {e.detail}"[:300],
             })
             failed += 1
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
+            # Don't leak internal exception text (hostnames, ports) to the
+            # API client (CWE-209); log the detail server-side instead.
+            logger.exception("cancel_trade_leg_failed order_id=%s", o.id)
             results.append({
                 "order_id": o.id, "ok": False,
-                "error": f"execution-engine unreachable: {e}"[:300],
+                "error": "execution-engine unreachable",
             })
             failed += 1
 

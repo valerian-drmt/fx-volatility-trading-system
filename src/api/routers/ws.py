@@ -27,7 +27,10 @@ async def _serve(channel: str, ws: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     except Exception:
-        logger.exception("ws_handler_crashed", extra={"channel": channel})
+        # CR/LF-scrub before logging — ``channel`` can embed a client-supplied
+        # path param (``/ws/orders/{structure_id}``), CWE-117.
+        safe_channel = channel.replace("\r", "\\r").replace("\n", "\\n")
+        logger.exception("ws_handler_crashed", extra={"channel": safe_channel})
     finally:
         await manager.disconnect(channel, ws)
 
