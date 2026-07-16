@@ -5,7 +5,7 @@
  * rendered by TradeView — dropped. Order entry is the WRITE path: it stays mock
  * until the auth boundary + backend wiring lands (IMPLEMENTATION.md §3bis/§5).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Panel } from "../components/common";
 import { fmtCcySigned, gk$, pnlCls } from "../components/format";
 import { FreshBadge } from "../components/FreshBadge";
@@ -18,8 +18,7 @@ import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
 import { ApiError } from "../../api/client";
-import { cancelTrade, closeContract, closeTrade, fetchGreekLimits, fetchStructuredPositions, fetchSubmitted, postSpotOrder, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
-import { adaptGreekLimits, type GreekLimits } from "../data/live/portfolio";
+import { cancelTrade, closeContract, closeTrade, fetchStructuredPositions, fetchSubmitted, postSpotOrder, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 
 const GATE_TITLE = "write disabled — auth required (Phase 2)";
@@ -624,6 +623,21 @@ function HoldingsStrip({ cash }: { cash: Cash[] }): JSX.Element {
 }
 
 // ---------------- Indicators ----------------
+// ▲/▼ change pill + parenthetical note — same helpers as the Portfolio tab's
+// Cash & margin table (classes .acct-delta / .acct-sub are global).
+function deltaPill(d: number | null | undefined): JSX.Element | null {
+  if (d == null || !Number.isFinite(d)) return null;
+  const neg = d < 0;
+  return (
+    <span className={"acct-delta " + (neg ? "neg" : "pos")}>
+      {neg ? "▼" : "▲"} {Math.abs(d).toFixed(2)}%
+    </span>
+  );
+}
+function acctNote(note: ReactNode): JSX.Element | null {
+  return note ? <span className="acct-sub"> ({note})</span> : null;
+}
+
 function IndicatorsPanel({
   greeks,
   account,
@@ -640,36 +654,45 @@ function IndicatorsPanel({
   onOrder: (rec: OrderRecord) => void;
 }): JSX.Element {
   const g = greeks;
-  // Risk utilization (same as the Risk tab): margins vs netLiq + greek exposures
-  // vs the /portfolio/greek-limits caps. Live; caps read "—" until they resolve.
-  const glim = useFetch<GreekLimits>(() => fetchGreekLimits().then(adaptGreekLimits), 60_000).data;
-  const utilColor = (p: number): string => (p > 100 ? "var(--neg)" : p > 80 ? "var(--warn)" : "var(--pos)");
-  const pctOf = (used: number, cap: number | undefined): number => (cap && cap > 0 ? (Math.abs(used) / cap) * 100 : 0);
-  const capk = (c: number): string => (c > 0 ? fmt.usdk(c) : "—");
-  const deltaCap = glim?.deltaCapUsd ?? 0, vegaCap = glim?.vegaCapUsd ?? 0, gammaCap = glim?.gammaCapPip ?? 0;
-  const utilRows = [
-    { label: "Init margin", used: fmt.usd(account.marginInit), limit: fmt.usd(account.netLiq), pct: account.marginInitPct },
-    { label: "Maint margin", used: fmt.usd(account.marginMaint), limit: fmt.usd(account.netLiq), pct: account.marginMaintPct },
-    { label: "Delta exposure", used: fmt.usdk(Math.abs(g.netDelta)), limit: capk(deltaCap), pct: pctOf(g.netDelta, deltaCap) },
-    { label: "Vega", used: fmt.usdk(Math.abs(g.netVega)), limit: capk(vegaCap), pct: pctOf(g.netVega, vegaCap) },
-    { label: "Gamma exposure", used: fmt.usdk(Math.abs(g.netGamma)), limit: capk(gammaCap), pct: pctOf(g.netGamma, gammaCap) },
-  ];
+  // Cash & margin — same table (and same live source) as the Portfolio tab's
+  // Account & capital panel : the /portfolio/account snapshot, which carries the
+  // real IB values (the trade slice's account fills only margin fields and pads
+  // the rest with mock). Fall back to the prop, then mock, while loading.
+  const { portfolio } = useDeskData();
+  const a = portfolio.data?.account ?? account;
 
   return (
     <div className="ind-grid">
-      {/* risk utilization — same table as the Risk tab, above the ticker */}
+      {/* cash & margin — above the ticker */}
       <div className="ind-fam">
-        <div className="ind-fam-head">Risk utilization</div>
+        <div className="ind-fam-head">Cash &amp; margin</div>
         <table className="dt greeks-table">
-          <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th><th className="r">%</th></tr></thead>
+          <thead><tr><th className="l">Cash &amp; margin</th><th className="r">Value</th></tr></thead>
           <tbody>
-            {utilRows.map((r) => (
-              <tr key={r.label}>
-                <td className="l">{r.label}</td>
-                <td className="r mono"><span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span></td>
-                <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
-              </tr>
-            ))}
+            <tr>
+              <td className="l">Net liquidation</td>
+              <td className="r mono">{fmt.usd(a.netLiq)}{acctNote(deltaPill(a.dNetLiq))}</td>
+            </tr>
+            <tr>
+              <td className="l">Cash</td>
+              <td className="r mono">{fmt.usd(a.cash)}{acctNote(deltaPill(a.dCash))}</td>
+            </tr>
+            <tr>
+              <td className="l">Init margin</td>
+              <td className="r mono">{fmt.usd(a.marginInit)}{acctNote(`${a.marginInitPct}% used`)}</td>
+            </tr>
+            <tr>
+              <td className="l">Maint margin</td>
+              <td className="r mono">{fmt.usd(a.marginMaint)}{acctNote(`${a.marginMaintPct}% used`)}</td>
+            </tr>
+            <tr>
+              <td className="l">Excess liquidity</td>
+              <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
+            </tr>
+            <tr>
+              <td className="l">Cushion</td>
+              <td className="r mono">{(a.cushion * 100).toFixed(1)}%{acctNote(`${a.nPositions} positions`)}</td>
+            </tr>
           </tbody>
         </table>
       </div>
