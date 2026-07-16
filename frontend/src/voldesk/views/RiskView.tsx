@@ -4,7 +4,7 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { fetchGreekLimits, fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -16,7 +16,7 @@ import type { Position } from "../data";
 import { groupByTradeId, structureName } from "../components/tradeGrouping";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreekLimits, adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type GreekLimits, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -515,7 +515,6 @@ export function RiskView(): JSX.Element {
   // All live. Net greeks + caps from the trade domain; account from portfolio.
   // No DATA mock fallback — absent data reads as 0 / "—", never fabricated.
   const ng = trade.data?.greeks;
-  const a = portfolio.data?.account;
   const nd = ng?.netDelta ?? 0, ngm = ng?.netGamma ?? 0, nv = ng?.netVega ?? 0, nt = ng?.netTheta ?? 0;
   // No live VaR yet (history < min window → backend returns null): show honest
   // zeros + "building window…", NOT a fabricated mock VaR scaled across horizons.
@@ -524,25 +523,6 @@ export function RiskView(): JSX.Element {
   // net 2nd-order greeks = Σ of their tenor buckets (live), by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
   const netVolga = pt.reduce((s, r) => s + r.volga, 0);
-  // §7: show the TRUE utilization (never clamp to 100); colour flags a breach.
-  const utilColor = (p: number): string => (p > 100 ? "var(--neg)" : p > 80 ? "var(--warn)" : "var(--pos)");
-  const pctOf = (used: number, cap: number | undefined): number => (cap && cap > 0 ? (Math.abs(used) / cap) * 100 : 0);
-  // Greek caps are DERIVED from one stress-loss budget, not configured: the
-  // /portfolio/greek-limits endpoint projects L*=α·nav_base onto each axis
-  // (greek-limits-spec §2/§6). All live; "—" until nav_base + spot resolve.
-  const glim = useFetch<GreekLimits>(() => fetchGreekLimits().then(adaptGreekLimits), 60_000).data;
-  const deltaCap = glim?.deltaCapUsd ?? 0;
-  const vegaCap = glim?.vegaCapUsd ?? 0;
-  const gammaCap = glim?.gammaCapPip ?? 0;
-  const capk = (c: number): string => (c > 0 ? fmt.usdk(c) : "—");
-  // Risk-utilization rows : name · used / cap · % (used vs the cap). All live.
-  const utilRows = [
-    { label: "Init margin", used: a ? fmt.usd(a.marginInit) : "—", limit: a ? fmt.usd(a.netLiq) : "—", pct: a?.marginInitPct ?? 0 },
-    { label: "Maint margin", used: a ? fmt.usd(a.marginMaint) : "—", limit: a ? fmt.usd(a.netLiq) : "—", pct: a?.marginMaintPct ?? 0 },
-    { label: "Delta exposure", used: fmt.usdk(Math.abs(nd)), limit: capk(deltaCap), pct: pctOf(nd, deltaCap) },
-    { label: "Vega", used: fmt.usdk(Math.abs(nv)), limit: capk(vegaCap), pct: pctOf(nv, vegaCap) },
-    { label: "Gamma exposure", used: fmt.usdk(Math.abs(ngm)), limit: capk(gammaCap), pct: pctOf(ngm, gammaCap) },
-  ];
   return (
     <div className="risk-grid">
       <div className="risk-row1">
@@ -573,20 +553,6 @@ export function RiskView(): JSX.Element {
                       <td className={"r mono " + pnlCls(r.vega)}>{fmt.sgn(r.vega, 1)}k</td>
                       <td className={"r mono " + pnlCls(r.vanna)}>{fmt.sgn(r.vanna, 1)}k</td>
                       <td className={"r mono " + pnlCls(r.volga)}>{fmt.sgn(r.volga, 2)}k</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Panel>
-            <Panel title="Risk utilization" dataPp="risk-util" right={<PanelLive status={portfolio.status} />} className="trade-block">
-              <table className="dt greeks-table">
-                <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th><th className="r">%</th></tr></thead>
-                <tbody>
-                  {utilRows.map((r) => (
-                    <tr key={r.label}>
-                      <td className="l">{r.label}</td>
-                      <td className="r mono"><span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span></td>
-                      <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
                     </tr>
                   ))}
                 </tbody>
