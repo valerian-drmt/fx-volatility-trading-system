@@ -135,6 +135,17 @@ export interface GreekPnlHistoryRaw {
 export const fetchGreekPnlHistory = (window = "30d") =>
   apiGet<GreekPnlHistoryRaw[]>("/api/v1/portfolio/greek-pnl-history", { query: { window } });
 
+// Net-liq valuation decomposition (USD cash / EUR cash $ / contracts) time series.
+export interface ValuationHistoryRaw {
+  timestamp: string;
+  net_liq_usd: number | null;
+  usd_cash_usd: number | null;
+  eur_cash_usd: number | null;
+  contracts_usd: number | null;
+}
+export const fetchValuationHistory = (window = "30d") =>
+  apiGet<ValuationHistoryRaw[]>("/api/v1/portfolio/valuation-history", { query: { window } });
+
 export const fetchSystemStats = () => apiGet<SystemStats>("/api/v1/system-stats");
 
 // ── R11 voldesk wiring (read) ───────────────────────────────────────────────

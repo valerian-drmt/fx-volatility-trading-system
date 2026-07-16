@@ -946,11 +946,19 @@ input,select{font-family:inherit;font-size:13px}
 .portfolio-grid{display:flex;flex-direction:column;gap:12px;align-items:stretch}
 .acct-tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
 .lev-strip{display:grid;grid-template-columns:1fr 1fr 1fr 1.5fr;gap:8px;margin-top:9px;padding-top:10px;border-top:1px solid var(--border)}
-/* Account & capital → two side-by-side tables (capital metrics | cash holdings),
-   both in the greeks-table look. */
-.acct-tables{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start}
+/* Account & capital → left column stacks two sub-tables (cash & margin, then
+   leverage & buying power); right column = holdings-valuation table + the
+   stacked net-liq decomposition chart. */
+.acct-cols{display:grid;grid-template-columns:minmax(280px,2fr) minmax(0,3fr);gap:14px;align-items:start}
+.acct-col{display:flex;flex-direction:column;gap:14px;min-width:0}
 .perf-greek-attr .perf-sub{margin-bottom:5px}
-@media (max-width:900px){.acct-tables{grid-template-columns:1fr}}
+@media (max-width:900px){.acct-cols{grid-template-columns:1fr}}
+/* holdings-valuation extras: component colour dot + chart legend */
+.val-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:7px;vertical-align:middle}
+.val-legend{display:flex;gap:14px;align-items:center;font-size:11px;margin:4px 0 4px}
+.val-key{display:inline-flex;align-items:center;gap:5px}
+.val-key i{display:inline-block;width:9px;height:9px;border-radius:2px}
+.val-key i.val-key-line{width:13px;height:2px;border-radius:1px;background:var(--fg)}
 .acct-cap{margin-top:0}
 .acct-cap td.r{white-space:normal}
 .acct-note{font-size:10.5px;color:var(--text-dim);font-weight:400}
@@ -1022,7 +1030,7 @@ input,select{font-family:inherit;font-size:13px}
 .pb-rel{font-weight:400;font-size:.85em}
 /* Total row: net column sums — a single neutral-grey band (overrides the per-column
    group tints) with a heavier top border, so it stands apart from the tenor rows. */
-.pb-table tbody tr.wf-total td{border-top:2px solid var(--border);font-weight:700;background:color-mix(in srgb,var(--fg) 10%,transparent)}
+.pb-table tbody tr.wf-total td,.acct-cap tbody tr.wf-total td{border-top:2px solid var(--border);font-weight:700;background:color-mix(in srgb,var(--fg) 10%,transparent)}
 /* Trade-grouped summary line inside a pb-table (like Open positions): bold + a
    heavier top border to lead its indented legs, keeping the per-column tints. */
 .pb-table .pos-main{cursor:pointer}

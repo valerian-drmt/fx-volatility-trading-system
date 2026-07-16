@@ -1277,6 +1277,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portfolio/valuation-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Valuation History
+         * @description Portfolio-valuation decomposition time series for the Account panel chart.
+         *
+         *     Latest ``account_history`` snap per bucket (same downsampling as
+         *     /equity-curve), split by ``_valuation_series`` into USD cash + EUR cash
+         *     (valued at the EURUSD surface spot bucketed the same way) + contracts
+         *     (residual) — three bands footing exactly to the net-liq line.
+         */
+        get: operations["valuation_history_api_v1_portfolio_valuation_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portfolio/var": {
         parameters: {
             query?: never;
@@ -5072,6 +5097,39 @@ export interface operations {
         parameters: {
             query?: {
                 days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    valuation_history_api_v1_portfolio_valuation_history_get: {
+        parameters: {
+            query?: {
+                window?: "1d" | "7d" | "30d" | "1y" | "all";
             };
             header?: never;
             path?: never;

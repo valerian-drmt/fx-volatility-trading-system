@@ -380,6 +380,34 @@ export function adaptGreekPnlHistory(raw: unknown): GreekSeries {
   return out;
 }
 
+/** Net-liq valuation decomposition — one timestamped ($) series per component
+ * (USD cash / EUR cash / contracts) plus the net-liq total they stack to. */
+export type ValuationKey = "usd" | "eur" | "contracts" | "total";
+export type ValuationSeries = Record<ValuationKey, EquityPoint[]>;
+
+/** /portfolio/valuation-history → the Account panel's stacked valuation chart. */
+export function adaptValuationHistory(raw: unknown): ValuationSeries {
+  const rows = Array.isArray(raw)
+    ? (raw as {
+        timestamp?: string;
+        net_liq_usd?: number | null;
+        usd_cash_usd?: number | null;
+        eur_cash_usd?: number | null;
+        contracts_usd?: number | null;
+      }[])
+    : [];
+  const out: ValuationSeries = { usd: [], eur: [], contracts: [], total: [] };
+  for (const r of rows) {
+    const t = r.timestamp ? Date.parse(r.timestamp) : NaN;
+    if (!Number.isFinite(t)) continue;
+    if (r.usd_cash_usd != null) out.usd.push({ t, v: r.usd_cash_usd });
+    if (r.eur_cash_usd != null) out.eur.push({ t, v: r.eur_cash_usd });
+    if (r.contracts_usd != null) out.contracts.push({ t, v: r.contracts_usd });
+    if (r.net_liq_usd != null) out.total.push({ t, v: r.net_liq_usd });
+  }
+  return out;
+}
+
 /** One row of the greek-P&L attribution matrix (all $): the Taylor terms of a group's
  * P&L over the window, plus the group's actual P&L (Σ). Terms foot to actual (± residual). */
 export interface AttribRow {

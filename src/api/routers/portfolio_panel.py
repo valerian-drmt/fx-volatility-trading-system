@@ -289,6 +289,103 @@ async def equity_curve(
     ]
 
 
+def _valuation_series(
+    acct: list[tuple[datetime, float | None, dict | None]],
+    spots: list[tuple[datetime, float]],
+    seed_spot: float | None = None,
+) -> list[dict[str, Any]]:
+    """Decompose each net-liq snapshot into USD cash + EUR cash ($) + contracts.
+
+    ``acct`` = (bucket_ts, net_liq_usd, currencies JSONB) ascending; ``spots`` =
+    (bucket_ts, eurusd) ascending. EUR converts at the latest spot at-or-before
+    the snapshot bucket (forward-filled from ``seed_spot``); a ``currencies``
+    gap carries the last known breakdown. The contracts part is the RESIDUAL
+    net_liq − USD − EUR cash (any other currency implicitly lands there too),
+    so the three parts always stack exactly to net liq. Without a usable spot
+    or breakdown the parts are None (chart gap) but net liq still plots.
+    """
+    out: list[dict[str, Any]] = []
+    si = 0
+    spot = seed_spot
+    last_ccy: dict | None = None
+    for ts, net_liq, currencies in acct:
+        while si < len(spots) and spots[si][0] <= ts:
+            spot = spots[si][1]
+            si += 1
+        if currencies:
+            last_ccy = currencies
+        usd = eur = contracts = None
+        if net_liq is not None and last_ccy is not None and spot is not None:
+            usd = _currency_cash(last_ccy.get("USD"))
+            eur = _currency_cash(last_ccy.get("EUR")) * spot
+            contracts = net_liq - usd - eur
+        out.append({
+            "timestamp": ts.replace(tzinfo=UTC).isoformat(),
+            "net_liq_usd": round(net_liq, 2) if net_liq is not None else None,
+            "usd_cash_usd": round(usd, 2) if usd is not None else None,
+            "eur_cash_usd": round(eur, 2) if eur is not None else None,
+            "contracts_usd": round(contracts, 2) if contracts is not None else None,
+        })
+    return out
+
+
+@router.get("/valuation-history")
+async def valuation_history(
+    db: DbDep,
+    window: Literal["1d", "7d", "30d", "1y", "all"] = Query("30d"),
+) -> list[dict[str, Any]]:
+    """Portfolio-valuation decomposition time series for the Account panel chart.
+
+    Latest ``account_history`` snap per bucket (same downsampling as
+    /equity-curve), split by ``_valuation_series`` into USD cash + EUR cash
+    (valued at the EURUSD surface spot bucketed the same way) + contracts
+    (residual) — three bands footing exactly to the net-liq line.
+    """
+    lookback, bucket_secs = _WINDOW_SPECS[window]
+    cutoff = datetime.now(UTC) - lookback
+    acct_sql = text("""
+        SELECT bucket_ts, net_liq_usd, currencies
+          FROM (
+            SELECT DISTINCT ON (bucket_ts)
+                   to_timestamp(floor(extract(epoch FROM timestamp) / :bucket) * :bucket)
+                       AT TIME ZONE 'UTC' AS bucket_ts,
+                   net_liq_usd, currencies, timestamp
+              FROM account_history
+             WHERE timestamp >= :cutoff
+             ORDER BY bucket_ts, timestamp DESC
+          ) sub
+         ORDER BY bucket_ts
+    """)
+    spot_sql = text("""
+        SELECT bucket_ts, spot
+          FROM (
+            SELECT DISTINCT ON (bucket_ts)
+                   to_timestamp(floor(extract(epoch FROM timestamp) / :bucket) * :bucket)
+                       AT TIME ZONE 'UTC' AS bucket_ts,
+                   spot, timestamp
+              FROM vol_surface_history
+             WHERE underlying = 'EURUSD' AND spot IS NOT NULL AND timestamp >= :cutoff
+             ORDER BY bucket_ts, timestamp DESC
+          ) sub
+         ORDER BY bucket_ts
+    """)
+    seed_sql = text("""
+        SELECT spot FROM vol_surface_history
+         WHERE underlying = 'EURUSD' AND spot IS NOT NULL AND timestamp < :cutoff
+         ORDER BY timestamp DESC LIMIT 1
+    """)
+    params = {"bucket": bucket_secs, "cutoff": cutoff}
+    acct_rows = (await db.execute(acct_sql, params)).all()
+    spot_rows = (await db.execute(spot_sql, params)).all()
+    seed_row = (await db.execute(seed_sql, {"cutoff": cutoff})).first()
+    return _valuation_series(
+        [(r.bucket_ts, float(r.net_liq_usd) if r.net_liq_usd is not None else None, r.currencies)
+         for r in acct_rows],
+        [(r.bucket_ts, float(r.spot)) for r in spot_rows],
+        seed_spot=float(seed_row[0]) if seed_row and seed_row[0] is not None else None,
+    )
+
+
 @router.get("/trade-markers")
 async def trade_markers(
     db: DbDep,
