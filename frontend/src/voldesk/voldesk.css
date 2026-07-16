@@ -1543,6 +1543,9 @@ input,select{font-family:inherit;font-size:13px}
 .greeks-2x2 > .pin-risk-full{grid-column:1 / -1}
 /* cap the Option column so the numeric columns share the freed width */
 .pin-risk-full .dt th.l{width:30%}
+/* .sym is display:block globally — inline it here so the structure name sits
+   on the same line as (and to the right of) the ▸ caret */
+.pin-risk-full .dt .sym{display:inline}
 /* Value at Risk column — table / graph / marginal contribution stacked 1x3 */
 .var-1x3{display:flex;flex-direction:column;gap:10px}
 
