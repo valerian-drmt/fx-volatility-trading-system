@@ -955,6 +955,7 @@ input,select{font-family:inherit;font-size:13px}
 @media (max-width:900px){.acct-cols{grid-template-columns:1fr}}
 /* holdings-valuation extras: component colour dot + chart legend */
 .val-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:7px;vertical-align:middle}
+.val-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .val-legend{display:flex;gap:14px;align-items:center;font-size:11px;margin:4px 0 4px}
 .val-key{display:inline-flex;align-items:center;gap:5px}
 .val-key i{display:inline-block;width:9px;height:9px;border-radius:2px}

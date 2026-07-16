@@ -922,8 +922,16 @@ function bandPath(
 
 // Portfolio-valuation chart — the net-liq area split into the three holdings
 // components as diverging stacked bands (positive parts pile up from 0, negative
-// ones down), with the net-liq total drawn as a line on top. Fixed 30d axis.
-function ValuationChart({ s, status }: { s: ValuationSeries | null; status: string }): JSX.Element {
+// ones down), with the net-liq total drawn as a line on top. Fixed windowed axis.
+function ValuationChart({
+  s,
+  status,
+  win,
+}: {
+  s: ValuationSeries | null;
+  status: string;
+  win: string;
+}): JSX.Element {
   const w = 760,
     h = 250,
     pl = 56,
@@ -931,11 +939,12 @@ function ValuationChart({ s, status }: { s: ValuationSeries | null; status: stri
     pt = 14,
     pb = 26;
   const now = Date.now();
+  const wd = WINDOW_DAYS[win] ?? null;
   const grids: Record<ValuationKey, EqGrid> = {
-    usd: buildEquityGrid(s?.usd ?? [], 30, now),
-    eur: buildEquityGrid(s?.eur ?? [], 30, now),
-    contracts: buildEquityGrid(s?.contracts ?? [], 30, now),
-    total: buildEquityGrid(s?.total ?? [], 30, now),
+    usd: buildEquityGrid(s?.usd ?? [], wd, now),
+    eur: buildEquityGrid(s?.eur ?? [], wd, now),
+    contracts: buildEquityGrid(s?.contracts ?? [], wd, now),
+    total: buildEquityGrid(s?.total ?? [], wd, now),
   };
   const total = grids.total.series;
   if (total.filter((v): v is number => v != null).length < 2) return emptyChart(w, h, status);
@@ -1009,13 +1018,24 @@ export function PortfolioView(): JSX.Element {
     useFetch(() => fetchPnlAttributionMatrix("tenor").then(adaptAttributionMatrix), 120_000, true, 60_000).data ?? null;
   const attribByLeg =
     useFetch(() => fetchPnlAttribution().then(adaptPositionAttribution), 120_000, true, 60_000).data ?? null;
-  // Net-liq valuation decomposition (USD cash / EUR cash / contracts) over 30d.
+  // Net-liq valuation decomposition (USD cash / EUR cash / contracts), windowed.
+  const [valWin, setValWin] = useState<string>("30D");
   const valuation = useFetch<ValuationSeries>(
-    () => fetchValuationHistory("30d").then(adaptValuationHistory),
+    () => fetchValuationHistory(valWin.toLowerCase()).then(adaptValuationHistory),
     120_000,
     true,
     60_000,
   );
+  // useFetch won't refire on a window change alone — reload on switch (skip mount).
+  const reloadVal = valuation.reload;
+  const firstVal = useRef(true);
+  useEffect(() => {
+    if (firstVal.current) {
+      firstVal.current = false;
+      return;
+    }
+    reloadVal();
+  }, [valWin, reloadVal]);
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
   const liveCash = trade.data?.cash;
   const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
@@ -1127,8 +1147,27 @@ export function PortfolioView(): JSX.Element {
           <div className="acct-col">
             <HoldingsValuation netLiq={a.netLiq} cash={cashRows} />
             <div>
-              <div className="perf-sub mono dim">
-                Portfolio valuation <em className="unit">net liq $ · stacked components · 30d</em>
+              <div className="val-head">
+                <div className="perf-sub mono dim">
+                  Portfolio valuation <em className="unit">net liq $ · stacked components</em>
+                </div>
+                <div className="tf-group">
+                  {[
+                    { v: "1D", l: "1D" },
+                    { v: "7D", l: "7D" },
+                    { v: "30D", l: "1M" },
+                    { v: "1Y", l: "1Y" },
+                    { v: "all", l: "all" },
+                  ].map((wn) => (
+                    <button
+                      key={wn.v}
+                      className={"chip " + (valWin === wn.v ? "on" : "")}
+                      onClick={() => setValWin(wn.v)}
+                    >
+                      {wn.l}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="val-legend mono dim">
                 {VAL_PARTS.map((p) => (
@@ -1140,7 +1179,7 @@ export function PortfolioView(): JSX.Element {
                   <i className="val-key-line" /> Net liq
                 </span>
               </div>
-              <ValuationChart s={valuation.data} status={valuation.status} />
+              <ValuationChart s={valuation.data} status={valuation.status} win={valWin} />
             </div>
           </div>
         </div>
