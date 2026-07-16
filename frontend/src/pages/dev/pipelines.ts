@@ -157,6 +157,34 @@ function dagEvents(panelName: string): PipeDag {
   };
 }
 
+// realized P&L attribution (Taylor now-vs-then over a lookback): risk-engine
+// snapshots → per-leg greek terms → grouped rows. Shared by the two Portfolio
+// attribution matrices (by tenor / by trade).
+function dagTaylor(groupSub: string, assembleSub: string, apiSub: string, panelName: string): PipeDag {
+  return {
+    nodes: [
+      { id: "risk", kind: "container", label: "risk-engine", sub: "clientId 3 · per-leg greeks + P&L /2s", role: "transform", health: "risk-engine" },
+      toDag(xRedis("db_events"), "redis"), toDag(xDBW, "dbw"),
+      { id: "pg", kind: "store", label: "Postgres", sub: "open_position_history (pnl · greeks · iv · spot)", role: "receive", health: "postgres" },
+      { id: "pick", kind: "api", label: "now vs then", sub: "latest snap vs snap at lookback start, per leg", role: "transform", health: "__api" },
+      { id: "terms", kind: "api", label: "Taylor terms", sub: "δ·dS · ½Γ·dS² · V·dσ · Θ·dt · residual", role: "transform", health: "__api" },
+      { id: "group", kind: "api", label: groupSub, sub: assembleSub, role: "hub", health: "__api" },
+      dApi(apiSub), toDag(xFE, "fe"), dPanel(panelName),
+    ],
+    edges: [
+      { from: "risk", to: "redis", label: "db_events" },
+      { from: "redis", to: "dbw", label: "db_events" },
+      { from: "dbw", to: "pg", label: "INSERT (~30s)" },
+      { from: "pg", to: "pick", label: "read lookback" },
+      { from: "pick", to: "terms", label: "Δspot · Δiv · Δt · ΔP&L" },
+      { from: "terms", to: "group", label: "per-leg rows" },
+      { from: "group", to: "api", label: "matrix" },
+      { from: "api", to: "fe", label: "JSON" },
+      { from: "fe", to: "panel", label: "render" },
+    ],
+  };
+}
+
 export const PIPELINES: PanelPipe[] = [
   // ───────────────────────── Dashboard ─────────────────────────
   {
@@ -821,34 +849,191 @@ export const PIPELINES: PanelPipe[] = [
   },
 
   // ───────────────────────── Portfolio ─────────────────────────
+  // One entry per panel / sub-panel of the live Portfolio view (see
+  // docs/DEV_PIPELINE_PORTFOLIO.md). Composite panels (Account & capital,
+  // Performance) are split so each entry documents ONE real data flow;
+  // the sub-blocks carry their own data-pp anchors for isolation.
   {
-    id: "account", panel: "Account & capital", view: "portfolio", domain: "portfolio", isolated: true,
-    nodes: [IB, IBG, eng("execution-engine", "account snaps"), DBW, pg("account_history"), API, FE, panel("Account & capital")],
-    edges: ["account summary", "reqAccountSummary", "db_events", "INSERT", "latest + 24h", "GET /portfolio/account", "render"],
-    dag: dagPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history", "GET /portfolio/account", "Account & capital"),
+    id: "acct-cash-margin", panel: "Cash & margin", view: "portfolio", domain: "portfolio", isolated: true,
+    nodes: [IB, IBG, eng("execution-engine", "account snaps"), DBW, pg("account_history"), API, FE, panel("Cash & margin")],
+    edges: ["account summary", "reqAccountSummary", "db_events", "INSERT", "latest + prev_24h", "GET /portfolio/account", "render"],
+    dag: dagPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history (latest + prev_24h)", "GET /portfolio/account", "Cash & margin"),
   },
   {
-    id: "perf", panel: "Performance", view: "portfolio", domain: "portfolio", isolated: true,
-    nodes: [eng("execution-engine", "account + close"), pg("account_history · booked_position"), API, FE, panel("Performance")],
-    edges: ["INSERT", "daily series", "GET /portfolio/stats", "render"],
-    dag: dagPersist(xEng("execution-engine", "account + close", "exec-engine"), "account summary", "publish", "account_history · booked_position", "GET /portfolio/stats", "Performance", "transform"),
+    id: "acct-leverage", panel: "Leverage & buying power", view: "portfolio", domain: "portfolio", isolated: true,
+    nodes: [eng("risk-engine", "book upsert /2s"), pg("open_position"), API, FE, panel("Leverage & buying power")],
+    edges: ["UPDATE book", "read notionals", "GET /positions + /portfolio/account + WS ticks", "render"],
+    // Ratios are computed CLIENT-side: gross=Σ|notional|, net=|Σ signed|, ×net-liq
+    // needs the live spot (notional € vs net liq $) — shown as a frontend transform.
+    dag: {
+      nodes: [
+        { id: "risk", kind: "container", label: "risk-engine", sub: "book upsert /2s", role: "transform", health: "risk-engine" },
+        { id: "exec", kind: "container", label: "execution-engine", sub: "account snaps", role: "transform", health: "exec-engine" },
+        { id: "md", kind: "container", label: "market-data", sub: "clientId 1 · tick stream", role: "transform", health: "market-data" },
+        { id: "pgpos", kind: "store", label: "Postgres", sub: "open_position (nominal_eur · side)", role: "receive", health: "postgres" },
+        { id: "pgacct", kind: "store", label: "Postgres", sub: "account_history (net liq · buying power)", role: "receive", health: "postgres" },
+        { id: "redis", kind: "store", label: "Redis", sub: "ticks channel", role: "hub", health: "redis" },
+        dApi("GET /positions · /portfolio/account · WS /ws/ticks"),
+        { id: "lever", kind: "frontend", label: "leverage ratios", sub: "gross=Σ|notional| · net=|Σ±| · × net-liq € (spot)", role: "transform", health: "__self" },
+        toDag(xFE, "fe"), dPanel("Leverage & buying power"),
+      ],
+      edges: [
+        { from: "risk", to: "pgpos", label: "UPDATE book" },
+        { from: "exec", to: "pgacct", label: "INSERT snaps" },
+        { from: "md", to: "redis", label: "publish ticks" },
+        { from: "pgpos", to: "api", label: "read notionals" },
+        { from: "pgacct", to: "api", label: "read account" },
+        { from: "redis", to: "api", label: "WS bridge" },
+        { from: "api", to: "fe", label: "JSON + ticks" },
+        { from: "fe", to: "lever", label: "positions · account · spot" },
+        { from: "lever", to: "panel", label: "render" },
+      ],
+    },
   },
   {
-    id: "carry-convex", panel: "Carry vs convexity", view: "portfolio", domain: "portfolio", isolated: true,
-    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Carry vs convexity")],
-    edges: ["UPDATE Γ/Θ", "read book", "GET /portfolio/aggregate-greeks", "render"],
-    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE Γ/Θ", "open_position", "GET /portfolio/aggregate-greeks", "Carry vs convexity"),
+    id: "acct-holdings", panel: "Holdings valuation", view: "portfolio", domain: "portfolio", isolated: true,
+    nodes: [eng("execution-engine", "account snaps"), pg("account_history.currencies"), API, FE, panel("Holdings valuation")],
+    edges: ["INSERT snaps", "CashBalance per ccy", "GET /portfolio/cash", "render"],
+    // Net-liq decomposition: USD cash 1:1, EUR cash valued at the SURFACE spot
+    // (second Postgres input), contracts = residual to net liq.
+    dag: {
+      nodes: [
+        { id: "exec", kind: "container", label: "execution-engine", sub: "account snaps", role: "transform", health: "exec-engine" },
+        { id: "vol", kind: "container", label: "vol-engine", sub: "calib → surface spot", role: "transform", health: "vol-engine" },
+        { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
+        toDag(xDBW, "dbw"),
+        { id: "pgacct", kind: "store", label: "Postgres", sub: "account_history.currencies (CashBalance)", role: "receive", health: "postgres" },
+        { id: "pgsurf", kind: "store", label: "Postgres", sub: "vol_surface.spot (EURUSD)", role: "receive", health: "postgres" },
+        dApi("GET /portfolio/cash · EUR→$ at surface spot"),
+        toDag(xFE, "fe"), dPanel("Holdings valuation"),
+      ],
+      edges: [
+        { from: "exec", to: "redis", label: "db_events" },
+        { from: "redis", to: "dbw", label: "db_events" },
+        { from: "dbw", to: "pgacct", label: "INSERT" },
+        { from: "vol", to: "pgsurf", label: "INSERT surface" },
+        { from: "pgacct", to: "api", label: "latest currencies" },
+        { from: "pgsurf", to: "api", label: "read spot" },
+        { from: "api", to: "fe", label: "JSON" },
+        { from: "fe", to: "panel", label: "render" },
+      ],
+    },
   },
   {
-    id: "pnl-attribution", panel: "Realized P&L attribution", view: "portfolio", domain: "portfolio", isolated: true,
-    nodes: [eng("execution-engine", "MTM /2s"), pg("booked_position_metric_history"), API, FE, panel("P&L attribution")],
-    edges: ["INSERT MTM", "Taylor decomp", "GET /portfolio/pnl-attribution", "render"],
-    dag: dagPersist(xEng("execution-engine", "MTM /2s", "exec-engine"), "fills", "INSERT MTM", "booked_position_metric_history", "GET /portfolio/pnl-attribution · Taylor", "P&L attribution", "transform"),
+    id: "acct-valuation", panel: "Portfolio valuation chart", view: "portfolio", domain: "portfolio", isolated: true,
+    cadence: "~120s · poll · windowed",
+    nodes: [eng("execution-engine", "account snaps"), pg("account_history"), API, FE, panel("Portfolio valuation")],
+    edges: ["INSERT snaps", "windowed series", "GET /portfolio/valuation-history", "render"],
+    // Same downsampling as /equity-curve, then split into 3 bands footing to net liq.
+    dag: {
+      nodes: [
+        { id: "exec", kind: "container", label: "execution-engine", sub: "account snaps", role: "transform", health: "exec-engine" },
+        { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
+        toDag(xDBW, "dbw"),
+        { id: "pg", kind: "store", label: "Postgres", sub: "account_history (net liq · currencies)", role: "receive", health: "postgres" },
+        { id: "bucket", kind: "api", label: "bucket window", sub: "DISTINCT ON (bucket) · ~1–2k pts", role: "transform", health: "__api" },
+        { id: "bands", kind: "api", label: "split bands", sub: "USD cash · EUR cash ($ at surface spot) · contracts residual", role: "transform", health: "__api" },
+        dApi("GET /portfolio/valuation-history?window="),
+        toDag(xFE, "fe"), dPanel("Portfolio valuation"),
+      ],
+      edges: [
+        { from: "exec", to: "redis", label: "db_events" },
+        { from: "redis", to: "dbw", label: "db_events" },
+        { from: "dbw", to: "pg", label: "INSERT" },
+        { from: "pg", to: "bucket", label: "read window" },
+        { from: "bucket", to: "bands", label: "snap per bucket" },
+        { from: "bands", to: "api", label: "3 bands + net liq" },
+        { from: "api", to: "fe", label: "JSON" },
+        { from: "fe", to: "panel", label: "render" },
+      ],
+    },
   },
   {
-    id: "book-composition", panel: "Book composition", view: "portfolio", domain: "portfolio", isolated: true,
-    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Book composition")],
-    edges: ["UPDATE book", "read book", "GET /positions/open (grouped)", "render"],
-    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE book", "open_position", "GET /positions/open (grouped)", "Book composition"),
+    id: "perf-equity", panel: "Performance — P&L & drawdown", view: "portfolio", domain: "portfolio", isolated: true,
+    cadence: "~120s · poll · windowed",
+    nodes: [eng("execution-engine", "account + bookings"), pg("account_history · booked_position"), API, FE, panel("P&L & drawdown")],
+    edges: ["INSERT", "equity + markers", "GET /portfolio/equity-curve + /trade-markers", "render"],
+    // Two reads merge in the frontend: the windowed net-liq curve and the
+    // booked open/close events overlaid as ▲/● markers.
+    dag: {
+      nodes: [
+        { id: "exec", kind: "container", label: "execution-engine", sub: "account snaps · books/closes", role: "transform", health: "exec-engine" },
+        { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
+        toDag(xDBW, "dbw"),
+        { id: "pgacct", kind: "store", label: "Postgres", sub: "account_history (net liq)", role: "receive", health: "postgres" },
+        { id: "pgbook", kind: "store", label: "Postgres", sub: "booked_position (opened/closed_at · realized)", role: "receive", health: "postgres" },
+        { id: "curve", kind: "api", label: "equity curve", sub: "DISTINCT ON (bucket) · EOD before 22:00 UTC", role: "transform", health: "__api" },
+        { id: "markers", kind: "api", label: "trade markers", sub: "open/close events in window", role: "transform", health: "__api" },
+        dApi("GET /portfolio/equity-curve · /portfolio/trade-markers"),
+        toDag(xFE, "fe"), dPanel("P&L & drawdown"),
+      ],
+      edges: [
+        { from: "exec", to: "redis", label: "db_events" },
+        { from: "redis", to: "dbw", label: "db_events" },
+        { from: "dbw", to: "pgacct", label: "INSERT snaps" },
+        { from: "dbw", to: "pgbook", label: "INSERT bookings" },
+        { from: "pgacct", to: "curve", label: "read window" },
+        { from: "pgbook", to: "markers", label: "read window" },
+        { from: "curve", to: "api", label: "net-liq series" },
+        { from: "markers", to: "api", label: "▲ open · ● close" },
+        { from: "api", to: "fe", label: "JSON ×2" },
+        { from: "fe", to: "panel", label: "render" },
+      ],
+    },
+  },
+  {
+    id: "perf-greek-pnl", panel: "Performance — greek P&L grid", view: "portfolio", domain: "portfolio", isolated: true,
+    cadence: "~120s · poll · windowed",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position_history"), API, FE, panel("Greek P&L grid")],
+    edges: ["INSERT snapshot", "bucketed snaps", "GET /portfolio/greek-pnl-history (Taylor)", "render"],
+    // Cumulative Taylor terms walked bucket-by-bucket: greeks at interval start,
+    // dS from the 6E forward (fwd-filled), dσ from each leg's own IV.
+    dag: {
+      nodes: [
+        { id: "risk", kind: "container", label: "risk-engine", sub: "clientId 3 · per-leg greeks + IV /2s", role: "transform", health: "risk-engine" },
+        { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
+        toDag(xDBW, "dbw"),
+        { id: "pg", kind: "store", label: "Postgres", sub: "open_position_history (greeks · iv · fut px)", role: "receive", health: "postgres" },
+        { id: "bucket", kind: "api", label: "bucket window", sub: "snap per (leg, bucket) · fwd-fill 6E forward", role: "transform", health: "__api" },
+        { id: "dpnl", kind: "api", label: "δ·dS", sub: "delta term per interval", role: "transform", health: "__api" },
+        { id: "gpnl", kind: "api", label: "½Γ·dS²", sub: "gamma term per interval", role: "transform", health: "__api" },
+        { id: "vpnl", kind: "api", label: "V·dσ", sub: "vega term (leg IV) per interval", role: "transform", health: "__api" },
+        { id: "tpnl", kind: "api", label: "Θ·dt", sub: "theta term per interval", role: "transform", health: "__api" },
+        { id: "cum", kind: "api", label: "cumulate", sub: "Σ per greek → 4 series", role: "hub", health: "__api" },
+        dApi("GET /portfolio/greek-pnl-history?window="),
+        toDag(xFE, "fe"), dPanel("Greek P&L grid"),
+      ],
+      edges: [
+        { from: "risk", to: "redis", label: "db_events" },
+        { from: "redis", to: "dbw", label: "db_events" },
+        { from: "dbw", to: "pg", label: "INSERT (~30s)" },
+        { from: "pg", to: "bucket", label: "read window" },
+        { from: "bucket", to: "dpnl", label: "greeks@start · dS" },
+        { from: "bucket", to: "gpnl", label: "greeks@start · dS" },
+        { from: "bucket", to: "vpnl", label: "vega · dσ" },
+        { from: "bucket", to: "tpnl", label: "theta · dt" },
+        { from: "dpnl", to: "cum", label: "Σ" },
+        { from: "gpnl", to: "cum", label: "Σ" },
+        { from: "vpnl", to: "cum", label: "Σ" },
+        { from: "tpnl", to: "cum", label: "Σ" },
+        { from: "cum", to: "api", label: "4 cumulative series" },
+        { from: "api", to: "fe", label: "JSON" },
+        { from: "fe", to: "panel", label: "render 2×2" },
+      ],
+    },
+  },
+  {
+    id: "attrib-tenor", panel: "P&L attribution by tenor", view: "portfolio", domain: "portfolio", isolated: true,
+    cadence: "~120s · poll · 24h lookback",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position_history"), API, FE, panel("P&L attribution by tenor")],
+    edges: ["INSERT snapshot", "now vs then", "GET /portfolio/pnl-attribution?group_by=tenor", "render"],
+    dag: dagTaylor("group by tenor", "matrix rows per tenor bucket", "GET /portfolio/pnl-attribution?group_by=tenor", "P&L attribution by tenor"),
+  },
+  {
+    id: "attrib-leg", panel: "P&L attribution by trade", view: "portfolio", domain: "portfolio", isolated: true,
+    cadence: "~120s · poll · 24h lookback",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position_history"), API, FE, panel("P&L attribution by trade")],
+    edges: ["INSERT snapshot", "now vs then", "GET /portfolio/pnl-attribution (per leg)", "render"],
+    dag: dagTaylor("per booked leg", "one row per leg · grouped by trade", "GET /portfolio/pnl-attribution", "P&L attribution by trade"),
   },
 ];
