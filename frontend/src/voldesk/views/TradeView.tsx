@@ -654,6 +654,23 @@ function IndicatorsPanel({
 
   return (
     <div className="ind-grid">
+      {/* risk utilization — same table as the Risk tab, above the ticker */}
+      <div className="ind-fam">
+        <div className="ind-fam-head">Risk utilization</div>
+        <table className="dt greeks-table">
+          <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th><th className="r">%</th></tr></thead>
+          <tbody>
+            {utilRows.map((r) => (
+              <tr key={r.label}>
+                <td className="l">{r.label}</td>
+                <td className="r mono"><span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span></td>
+                <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {/* EUR/USD ticker with market-session overlay */}
       <div className="ind-fam">
         <div className="ind-fam-head">Ticker <span className="dim">· EUR/USD</span></div>
@@ -679,23 +696,6 @@ function IndicatorsPanel({
             <tr><td className="l">Theta <em className="unit">$/day</em></td><td className={"r mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</td></tr>
             <tr><td className="l">Vanna <em className="unit">$k/vp·fig</em></td><td className={"r mono " + pnlCls(g.netVanna)}>{fmt.sgn(g.netVanna, 1)}k</td></tr>
             <tr><td className="l">Volga <em className="unit">$k/vp</em></td><td className={"r mono " + pnlCls(g.netVolga)}>{fmt.sgn(g.netVolga, 1)}k</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* risk utilization — same table as the Risk tab, below Portfolio greeks */}
-      <div className="ind-fam">
-        <div className="ind-fam-head">Risk utilization</div>
-        <table className="dt greeks-table">
-          <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th><th className="r">%</th></tr></thead>
-          <tbody>
-            {utilRows.map((r) => (
-              <tr key={r.label}>
-                <td className="l">{r.label}</td>
-                <td className="r mono"><span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span></td>
-                <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
-              </tr>
-            ))}
           </tbody>
         </table>
       </div>
