@@ -661,17 +661,13 @@ function IndicatorsPanel({
       <div className="ind-fam">
         <div className="ind-fam-head">Risk utilization</div>
         <table className="dt greeks-table">
-          <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th></tr></thead>
+          <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th><th className="r">%</th></tr></thead>
           <tbody>
             {utilRows.map((r) => (
               <tr key={r.label}>
                 <td className="l">{r.label}</td>
-                {/* same variables as before (coloured used, dim "/ cap") — the old
-                    % column is merged in as a Cash&margin-style acct-sub note */}
-                <td className="r mono">
-                  <span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span>
-                  <span className="acct-sub"> (<span style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(1)}% used</span>)</span>
-                </td>
+                <td className="r mono"><span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span></td>
+                <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
               </tr>
             ))}
           </tbody>
