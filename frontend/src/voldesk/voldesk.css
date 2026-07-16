@@ -1541,6 +1541,8 @@ input,select{font-family:inherit;font-size:13px}
 .greeks-2x2 > .panel{min-width:0;grid-column:auto}
 /* Expiries & roll-off spans the full Greeks-grid width */
 .greeks-2x2 > .pin-risk-full{grid-column:1 / -1}
+/* cap the Option column so the numeric columns share the freed width */
+.pin-risk-full .dt th.l{width:30%}
 /* Value at Risk column — table / graph / marginal contribution stacked 1x3 */
 .var-1x3{display:flex;flex-direction:column;gap:10px}
 
