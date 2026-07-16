@@ -13,6 +13,7 @@ P1 + P2 + P3 shipped.
 """
 from __future__ import annotations
 
+import itertools
 import statistics
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
@@ -369,6 +370,113 @@ async def greeks_history(
         }
         for r in rs
     ]
+
+
+def _taylor_pnl_series(
+    per_position: dict[int, dict[datetime, dict[str, float | None]]],
+    forward: dict[datetime, float | None],
+    buckets: list[datetime],
+) -> list[dict[str, Any]]:
+    """Walk each position bucket-to-bucket and cumulate the four Taylor terms.
+
+    Each interval's increment freezes the greeks at the interval START :
+        δ_{t-1}·dS   ½Γ_{t-1}·dS²   V_{t-1}·dσ_pts   Θ_{t-1}·dt_days
+    with dS from the shared underlying forward series and dσ from the leg's
+    own IV. Increments are summed across positions per bucket, then cumulated
+    from the window start so every series begins at 0. A missing input just
+    skips that term for that interval (no None poisoning the running sum).
+    """
+    inc: dict[datetime, list[float]] = {b: [0.0, 0.0, 0.0, 0.0] for b in buckets}
+    for snaps in per_position.values():
+        for prev_ts, cur_ts in itertools.pairwise(sorted(snaps)):
+            prev, cur = snaps[prev_ts], snaps[cur_ts]
+            f0, f1 = forward.get(prev_ts), forward.get(cur_ts)
+            ds = (f1 - f0) if (f0 is not None and f1 is not None) else None
+            iv0, iv1 = prev.get("iv"), cur.get("iv")
+            div_pts = (iv1 - iv0) if (iv0 is not None and iv1 is not None) else None
+            dt_days = (cur_ts - prev_ts).total_seconds() / 86400.0
+            b = inc[cur_ts]
+            if prev["delta"] is not None and ds is not None:
+                b[0] += prev["delta"] * ds
+            if prev["gamma"] is not None and ds is not None:
+                b[1] += 0.5 * prev["gamma"] * ds * ds
+            if prev["vega"] is not None and div_pts is not None:
+                b[2] += prev["vega"] * div_pts
+            if prev["theta"] is not None:
+                b[3] += prev["theta"] * dt_days
+    out: list[dict[str, Any]] = []
+    cum = [0.0, 0.0, 0.0, 0.0]
+    for b in buckets:
+        cum = [c + i for c, i in zip(cum, inc[b], strict=True)]
+        out.append({
+            "timestamp": b.replace(tzinfo=UTC).isoformat(),
+            "delta_pnl_usd": round(cum[0], 2),
+            "gamma_pnl_usd": round(cum[1], 2),
+            "vega_pnl_usd": round(cum[2], 2),
+            "theta_pnl_usd": round(cum[3], 2),
+        })
+    return out
+
+
+@router.get("/greek-pnl-history")
+async def greek_pnl_history(
+    db: DbDep,
+    window: Literal["1d", "7d", "30d", "1y", "all"] = Query("30d"),
+) -> list[dict[str, Any]]:
+    """Cumulative greek-P&L (Taylor terms) time series, server-side downsampled.
+
+    Same decomposition as /pnl-attribution (δ·dS, ½Γ·dS², V·dσ, Θ·dt) but walked
+    bucket-by-bucket over the window instead of frozen once over a lookback:
+    per open leg, each interval uses the greeks at the interval start, dS from
+    the book's underlying forward (the 6E future's market price, forward-filled
+    across empty buckets) and dσ from the leg's own IV. Feeds the Performance
+    panel's 2×2 greek-P&L grid. IB-live book only (``open_position_history``),
+    same source and bucketing as /greeks-history.
+    """
+    lookback, bucket_secs = _WINDOW_SPECS[window]
+    cutoff = datetime.now(UTC) - lookback
+    sql = text("""
+        WITH per_pos AS (
+          SELECT DISTINCT ON (bucket_ts, oph.position_id)
+                 to_timestamp(floor(extract(epoch FROM oph.timestamp) / :bucket) * :bucket)
+                     AT TIME ZONE 'UTC' AS bucket_ts,
+                 oph.position_id,
+                 oph.delta_usd, oph.gamma_usd, oph.vega_usd, oph.theta_usd,
+                 oph.iv, oph.market_price,
+                 (op.structure LIKE '6E%') AS is_future
+            FROM open_position_history oph
+            JOIN open_position op ON op.id = oph.position_id
+           WHERE oph.timestamp >= :cutoff
+           ORDER BY bucket_ts, oph.position_id, oph.timestamp DESC
+        )
+        SELECT * FROM per_pos ORDER BY bucket_ts
+    """)
+    rs = (await db.execute(sql, {"bucket": bucket_secs, "cutoff": cutoff})).all()
+    buckets: list[datetime] = []
+    forward: dict[datetime, float | None] = {}
+    per_position: dict[int, dict[datetime, dict[str, float | None]]] = {}
+    for r in rs:
+        ts = r.bucket_ts
+        if not buckets or buckets[-1] != ts:
+            buckets.append(ts)
+        if r.is_future and r.market_price is not None:
+            forward[ts] = float(r.market_price)
+        per_position.setdefault(int(r.position_id), {})[ts] = {
+            "delta": float(r.delta_usd) if r.delta_usd is not None else None,
+            "gamma": float(r.gamma_usd) if r.gamma_usd is not None else None,
+            "vega": float(r.vega_usd) if r.vega_usd is not None else None,
+            "theta": float(r.theta_usd) if r.theta_usd is not None else None,
+            "iv": float(r.iv) if r.iv is not None else None,
+        }
+    # Options decompose against the UNDERLYING forward, not their own premium
+    # (same rule as /pnl-attribution) — forward-fill buckets with no future snap.
+    last: float | None = None
+    for ts in buckets:
+        if forward.get(ts) is not None:
+            last = forward[ts]
+        else:
+            forward[ts] = last
+    return _taylor_pnl_series(per_position, forward, buckets)
 
 
 @router.get("/aggregate-greeks")

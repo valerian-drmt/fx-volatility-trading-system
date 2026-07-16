@@ -7,7 +7,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchEquityCurve,
-  fetchGreeksHistory,
+  fetchGreekPnlHistory,
   fetchPnlAttribution,
   fetchPnlAttributionMatrix,
   fetchTradeMarkers,
@@ -25,7 +25,7 @@ import { useDeskData } from "../data/deskData";
 import {
   adaptAttributionMatrix,
   adaptEquityCurve,
-  adaptGreeksHistory,
+  adaptGreekPnlHistory,
   adaptPositionAttribution,
   adaptTradeMarkers,
   type AttribMatrix,
@@ -403,121 +403,11 @@ function DrawdownSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.El
   );
 }
 
-// Performance panel — 2 configurable slots, each showing one of 3 timeframe-driven
-// parts (P&L curve / Drawdown / Greek Σ) over a shared window. One equity fetch + one
-// greek-history fetch feed both slots.
-type PerfPart = "pnl" | "drawdown" | "greeks";
-const PERF_PARTS: { key: PerfPart; label: string }[] = [
-  { key: "pnl", label: "P&L" },
-  { key: "drawdown", label: "Drawdown" },
-  { key: "greeks", label: "Greeks" },
-];
-
-interface SlotData {
-  equity: EqGrid;
-  equityStatus: string;
-  greekHist: GreekSeries;
-  greekStatus: string;
-  win: string;
-  markers: TradeEvent[];
-  ps: PerfStats;
-  unreal: number;
-}
-
-function PerfSlot({
-  part,
-  onPart,
-  equity,
-  equityStatus,
-  greekHist,
-  greekStatus,
-  win,
-  markers,
-  ps,
-  unreal,
-}: SlotData & { part: PerfPart; onPart: (p: PerfPart) => void }): JSX.Element {
-  const [greek, setGreek] = useState<GreekKey>("delta");
-  const greekGrid = buildEquityGrid(greekHist[greek], WINDOW_DAYS[win] ?? null, Date.now());
-  const greekLabel = GREEKS.find((g) => g.key === greek)!.label;
-  return (
-    <div className="perf-slot">
-      <div className="perf-slot-head">
-        <div className="perf-slot-sel">
-          {PERF_PARTS.map((p) => (
-            <button
-              key={p.key}
-              className={"chip " + (part === p.key ? "on" : "")}
-              onClick={() => onPart(p.key)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        {part === "greeks" && (
-          <div className="greek-btns">
-            {GREEKS.map((g) => (
-              <button
-                key={g.key}
-                className={"chip " + (greek === g.key ? "on" : "")}
-                onClick={() => setGreek(g.key)}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {part === "pnl" && (
-        <>
-          <div className="perf-slot-stats">
-            <div className="pstat">
-              <span className="pstat-lbl mono dim">Realized</span>
-              <b className={"pstat-val mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
-            </div>
-            <div className="pstat">
-              <span className="pstat-lbl mono dim">Unrealized</span>
-              <b className={"pstat-val mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</b>
-            </div>
-          </div>
-          <div className="perf-sub mono dim">
-            P&L <em className="unit">cumulative $ · ▲ open · ● close</em>
-          </div>
-          <EquityLineSvg grid={equity} status={equityStatus} markers={markers} />
-        </>
-      )}
-
-      {part === "drawdown" && (
-        <>
-          <div className="perf-slot-stats">
-            <div className="pstat">
-              <span className="pstat-lbl mono dim">Max drawdown</span>
-              <b className="pstat-val mono neg">{ps.maxDd}%</b>
-            </div>
-            <div className="pstat">
-              <span className="pstat-lbl mono dim">Current DD</span>
-              <b className="pstat-val mono neg">{ps.currentDd}%</b>
-            </div>
-          </div>
-          <div className="perf-sub mono dim">
-            Drawdown <em className="unit">% from peak</em>
-          </div>
-          <DrawdownSvg grid={equity} status={equityStatus} />
-        </>
-      )}
-
-      {part === "greeks" && (
-        <>
-          <div className="perf-sub mono dim">
-            {greekLabel} <em className="unit">book Σ over time · $ · ▲ open · ● close</em>
-          </div>
-          <GreekChart grid={greekGrid} status={greekStatus} markers={markers} />
-        </>
-      )}
-    </div>
-  );
-}
-
+// Performance panel — fixed layout over a shared timeframe: the left half stacks
+// the P&L curve over the drawdown underwater plot; the right half is a 2×2 grid of
+// the four cumulative greek-P&L series (Taylor terms from /greek-pnl-history — the
+// realized decomposition, NOT the book's greek sensitivities). Each left chart is
+// twice the width of a right cell, so both halves foot to the same height.
 function PerformancePanel({
   ps,
   unreal,
@@ -528,15 +418,13 @@ function PerformancePanel({
   markers: TradeEvent[];
 }): JSX.Element {
   const [win, setWin] = useState<string>("7D");
-  const [partA, setPartA] = useState<PerfPart>("pnl");
-  const [partB, setPartB] = useState<PerfPart>("greeks");
-  // One windowed equity fetch + one greek-history fetch, shared by both slots.
+  // One windowed equity fetch + one greek-P&L-history fetch feed both halves.
   const eq = useFetch<EquityPoint[]>(
     () => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve),
     120_000,
   );
   const gk = useFetch<GreekSeries>(
-    () => fetchGreeksHistory(win.toLowerCase()).then(adaptGreeksHistory),
+    () => fetchGreekPnlHistory(win.toLowerCase()).then(adaptGreekPnlHistory),
     120_000,
   );
   // useFetch won't refire on a window change alone — reload both on switch (skip mount).
@@ -551,16 +439,8 @@ function PerformancePanel({
     reloadEq();
     reloadGk();
   }, [win, reloadEq, reloadGk]);
-  const slotData: SlotData = {
-    equity: buildEquityGrid(eq.data ?? [], WINDOW_DAYS[win] ?? null, Date.now()),
-    equityStatus: eq.status,
-    greekHist: gk.data ?? { delta: [], gamma: [], vega: [], theta: [] },
-    greekStatus: gk.status,
-    win,
-    markers,
-    ps,
-    unreal,
-  };
+  const equity = buildEquityGrid(eq.data ?? [], WINDOW_DAYS[win] ?? null, Date.now());
+  const hist: GreekSeries = gk.data ?? { delta: [], gamma: [], vega: [], theta: [] };
   return (
     <Panel
       title="Performance"
@@ -586,23 +466,77 @@ function PerformancePanel({
       }
       className="perf-panel"
     >
-      <div className="perf-slots">
-        <PerfSlot part={partA} onPart={setPartA} {...slotData} />
-        <PerfSlot part={partB} onPart={setPartB} {...slotData} />
+      <div className="perf-cols">
+        <div className="perf-col-left">
+          <div className="perf-slot-stats">
+            <div className="pstat">
+              <span className="pstat-lbl mono dim">Realized</span>
+              <b className={"pstat-val mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
+            </div>
+            <div className="pstat">
+              <span className="pstat-lbl mono dim">Unrealized</span>
+              <b className={"pstat-val mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</b>
+            </div>
+          </div>
+          <div className="perf-sub mono dim">
+            P&L <em className="unit">cumulative $ · ▲ open · ● close</em>
+          </div>
+          <EquityLineSvg grid={equity} status={eq.status} markers={markers} />
+          <div className="perf-slot-stats">
+            <div className="pstat">
+              <span className="pstat-lbl mono dim">Max drawdown</span>
+              <b className="pstat-val mono neg">{ps.maxDd}%</b>
+            </div>
+            <div className="pstat">
+              <span className="pstat-lbl mono dim">Current DD</span>
+              <b className="pstat-val mono neg">{ps.currentDd}%</b>
+            </div>
+          </div>
+          <div className="perf-sub mono dim">
+            Drawdown <em className="unit">% from peak</em>
+          </div>
+          <DrawdownSvg grid={equity} status={eq.status} />
+        </div>
+        <div className="perf-greek-grid">
+          {GREEKS.map((g) => (
+            <div key={g.key} className="perf-greek-cell">
+              <div className="perf-sub mono dim">
+                {g.label} P&L <em className="unit">Taylor · cumulative $</em>
+              </div>
+              <GreekPnlChart
+                grid={buildEquityGrid(hist[g.key], WINDOW_DAYS[win] ?? null, Date.now())}
+                status={gk.status}
+                markers={markers}
+                id={g.key}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </Panel>
   );
 }
 
-// Portfolio Σ-greek over time — signed line (zero baseline) on the same fixed time
-// axis as the P&L chart, with the trade markers so you can see each open/close move it.
-function GreekChart({ grid, status, markers }: { grid: EqGrid; status: string; markers: TradeEvent[] }): JSX.Element {
-  const w = 760,
-    h = 320,
-    pl = 56,
-    pr = 12,
-    pt = 14,
-    pb = 26;
+// One cell of the 2×2 greek-P&L grid — a cumulative Taylor term ($, zero baseline)
+// on the shared fixed time axis. Half-width viewBox so two cells span one left-column
+// chart at the same rendered scale, with the trade markers overlaid.
+function GreekPnlChart({
+  grid,
+  status,
+  markers,
+  id,
+}: {
+  grid: EqGrid;
+  status: string;
+  markers: TradeEvent[];
+  id: string;
+}): JSX.Element {
+  const w = 380,
+    h = 210,
+    pl = 46,
+    pr = 8,
+    pt = 12,
+    pb = 24;
   const vals = grid.series.filter((v): v is number => v != null);
   if (vals.length < 2) return emptyChart(w, h, status);
   const lo = Math.min(...vals, 0),
@@ -613,10 +547,9 @@ function GreekChart({ grid, status, markers }: { grid: EqGrid; status: string; m
   return (
     <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block", height: "auto" }}>
       <YGrid lo={lo} hi={hi} w={w} pl={pl} pr={pr} pt={pt} pb={pb} h={h} />
-      {/* zero baseline (emphasised) */}
       <line x1={pl} x2={w - pr} y1={zeroY} y2={zeroY} stroke="var(--text-faint)" strokeWidth="1" opacity="0.85" />
       <XAxis ticks={grid.ticks} pl={pl} pr={pr} pt={pt} pb={pb} w={w} h={h} />
-      <SignedSeries series={grid.series} X={X} Y={Y} zeroY={zeroY} w={w} top={pt} bottom={h - pb} id="gk" />
+      <SignedSeries series={grid.series} X={X} Y={Y} zeroY={zeroY} w={w} top={pt} bottom={h - pb} id={`gkpnl-${id}`} />
       <ChartMarkers markers={markers} series={grid.series} t0={grid.t0} t1={grid.t1} X={X} Y={Y} />
     </svg>
   );

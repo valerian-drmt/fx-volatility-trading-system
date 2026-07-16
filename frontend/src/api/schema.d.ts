@@ -896,6 +896,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portfolio/greek-pnl-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Greek Pnl History
+         * @description Cumulative greek-P&L (Taylor terms) time series, server-side downsampled.
+         *
+         *     Same decomposition as /pnl-attribution (δ·dS, ½Γ·dS², V·dσ, Θ·dt) but walked
+         *     bucket-by-bucket over the window instead of frozen once over a lookback:
+         *     per open leg, each interval uses the greeks at the interval start, dS from
+         *     the book's underlying forward (the 6E future's market price, forward-filled
+         *     across empty buckets) and dσ from the leg's own IV. Feeds the Performance
+         *     panel's 2×2 greek-P&L grid. IB-live book only (``open_position_history``),
+         *     same source and bucketing as /greeks-history.
+         */
+        get: operations["greek_pnl_history_api_v1_portfolio_greek_pnl_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portfolio/greeks-history": {
         parameters: {
             query?: never;
@@ -4681,6 +4709,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    greek_pnl_history_api_v1_portfolio_greek_pnl_history_get: {
+        parameters: {
+            query?: {
+                window?: "1d" | "7d" | "30d" | "1y" | "all";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

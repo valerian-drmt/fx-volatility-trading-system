@@ -356,6 +356,30 @@ export function adaptGreeksHistory(raw: unknown): GreekSeries {
   return out;
 }
 
+/** /portfolio/greek-pnl-history → four cumulative Taylor-term series ($, start at 0)
+ * for the Performance 2×2 greek-P&L grid. */
+export function adaptGreekPnlHistory(raw: unknown): GreekSeries {
+  const rows = Array.isArray(raw)
+    ? (raw as {
+        timestamp?: string;
+        delta_pnl_usd?: number | null;
+        gamma_pnl_usd?: number | null;
+        vega_pnl_usd?: number | null;
+        theta_pnl_usd?: number | null;
+      }[])
+    : [];
+  const out: GreekSeries = { delta: [], gamma: [], vega: [], theta: [] };
+  for (const r of rows) {
+    const t = r.timestamp ? Date.parse(r.timestamp) : NaN;
+    if (!Number.isFinite(t)) continue;
+    out.delta.push({ t, v: n(r.delta_pnl_usd) });
+    out.gamma.push({ t, v: n(r.gamma_pnl_usd) });
+    out.vega.push({ t, v: n(r.vega_pnl_usd) });
+    out.theta.push({ t, v: n(r.theta_pnl_usd) });
+  }
+  return out;
+}
+
 /** One row of the greek-P&L attribution matrix (all $): the Taylor terms of a group's
  * P&L over the window, plus the group's actual P&L (Σ). Terms foot to actual (± residual). */
 export interface AttribRow {

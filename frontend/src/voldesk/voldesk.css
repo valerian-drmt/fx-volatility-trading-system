@@ -984,6 +984,15 @@ input,select{font-family:inherit;font-size:13px}
 .pstat-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.03em}
 .pstat-val{font-size:16px;font-weight:700;line-height:1.15}
 @media (max-width:720px){.perf-row{grid-template-columns:1fr}}
+/* Performance panel = left half (P&L stacked over drawdown) | right half (2×2
+   greek-P&L grid); each left chart spans two right cells. Shared timeframe. */
+.perf-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.perf-col-left{display:flex;flex-direction:column;gap:8px;min-width:0}
+.perf-greek-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;min-width:0}
+.perf-greek-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
+.perf-slot-stats{display:flex;gap:12px}
+.perf-slot-stats .pstat{flex:1;padding:7px 11px}
+@media (max-width:860px){.perf-cols{grid-template-columns:1fr}}
 /* 2nd-order by structure table */
 .so-table{margin-top:6px}
 .so-table td,.so-table th{padding:4px 8px}
