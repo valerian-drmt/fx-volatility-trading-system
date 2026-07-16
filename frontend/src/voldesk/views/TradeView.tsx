@@ -545,7 +545,6 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
       setBusy(false);
     }
   };
-  const num = { display: "flex", flexDirection: "column" as const, gap: 2 };
   const sub = { fontSize: "0.82em", lineHeight: 1.25 };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
@@ -567,8 +566,7 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <button
-          className="btn-primary"
-          style={{ flex: 1, ...num, alignItems: "center", padding: "6px 4px" }}
+          className="spot-btn"
           disabled={!canWrite || busy || !valid}
           title={canWrite ? `market order · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO` : GATE_TITLE}
           onClick={() => send("BUY")}
@@ -578,8 +576,7 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
           <span className="mono" style={{ ...sub, opacity: 0.75 }}>Sell {usdQty.toLocaleString()} USD</span>
         </button>
         <button
-          className="btn-close-exec"
-          style={{ flex: 1, ...num, alignItems: "center", padding: "6px 4px" }}
+          className="spot-btn"
           disabled={!canWrite || busy || !valid}
           title={canWrite ? `market order · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO` : GATE_TITLE}
           onClick={() => send("SELL")}
@@ -589,8 +586,11 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
           <span className="mono" style={{ ...sub, opacity: 0.75 }}>Sell {eurQty.toLocaleString()} EUR</span>
         </button>
       </div>
-      {err && <div className="ob-error mono small">⚠ {err}</div>}
-      {done && <div className="mono small pos">Sent ✓ {done}</div>}
+      {/* always-rendered status line — reserves its height so a sent/error
+          message doesn't grow the panel */}
+      <div className={"mono small spot-status " + (err ? "neg" : done ? "pos" : "dim")}>
+        {err ? `⚠ ${err}` : done ? `Sent ✓ ${done}` : " "}
+      </div>
       {!canWrite && <div className="dim small ob-readonly-note">Read-only desk · log in to trade spot.</div>}
     </div>
   );

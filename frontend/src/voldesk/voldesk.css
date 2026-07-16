@@ -448,6 +448,13 @@ input,select{font-family:inherit;font-size:13px}
 .hold-line .hl-ccy{font-size:11.5px;font-weight:700;color:var(--text-dim);min-width:30px}
 .hold-line>b{font-size:14px;font-weight:700}
 .hold-line .hl-share{margin-left:-3px}
+/* spot EUR⇄USD ticket (inside Cash holdings) — neutral buttons that take the
+   Place-order green on hover (.btn-draft-send palette) */
+.spot-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border-radius:5px;background:var(--surface-2,rgba(255,255,255,.04));border:1px solid var(--line);color:var(--text-dim);font-weight:700;font-size:13px;transition:.15s}
+.spot-btn:hover:not(:disabled){background:#0f2417;border-color:color-mix(in srgb,var(--pos) 48%,transparent);color:var(--pos)}
+.spot-btn:disabled{opacity:.45;cursor:not-allowed}
+/* one reserved line so the sent/error message doesn't grow the panel */
+.spot-status{min-height:17px;line-height:17px}
 /* EUR/USD candlestick ticker */
 .ticker-tf{display:flex;gap:5px;margin-bottom:6px}
 .ticker-tf-btn{font-size:11px;font-weight:700;font-family:var(--mono);padding:4px 12px;border-radius:5px;background:var(--bg-3);border:1px solid var(--border);color:var(--text-dim);cursor:pointer}
