@@ -503,67 +503,90 @@ function ClosePanel({
   );
 }
 
-// ---------------- SpotPanel ----------------
-// Minimal spot EUR/USD ticket — market order, cash management. A fill moves
-// IB's per-currency CashBalance, which flows into the Cash holdings panel via
-// the account snapshot (account_history.currencies → /portfolio/cash).
-function SpotPanel({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: (rec: OrderRecord) => void }): JSX.Element {
+// ---------------- SpotTicket ----------------
+// Linked EUR⇄USD spot ticket inside the Cash holdings block — market orders on
+// EUR.USD (IDEALPRO). Editing one volume recomputes the other at the live mid.
+// A fill moves IB's per-currency CashBalance, which flows back into the
+// holdings lines above via the account snapshot (→ /portfolio/cash).
+function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: (rec: OrderRecord) => void }): JSX.Element {
   const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
-  const [qty, setQty] = useState(100_000);
+  const mid = (bid + ask) / 2;
+  const [eurQty, setEurQty] = useState(100_000);
+  const [usdQty, setUsdQty] = useState(() => Math.round(100_000 * ((bid + ask) / 2)));
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const valid = qty > 0 && qty <= 5_000_000;
+  const valid = eurQty > 0 && eurQty <= 5_000_000;
+  const onEur = (v: number): void => {
+    setEurQty(v);
+    setUsdQty(Math.round(v * mid));
+  };
+  const onUsd = (v: number): void => {
+    setUsdQty(v);
+    setEurQty(Math.round(v / mid));
+  };
+  // IB quantifies EUR.USD in EUR base units for both directions :
+  // BUY = buy EUR / sell USD, SELL = buy USD / sell EUR.
   const send = async (side: "BUY" | "SELL"): Promise<void> => {
     if (busy || !canWrite || !valid) return;
     setBusy(true);
     setErr(null);
     setDone(null);
+    const label = side === "BUY" ? "spot buy EUR/USD" : "spot buy USD/EUR";
     try {
-      await postSpotOrder({ symbol: "EUR", sec_type: "CASH", side, qty, exchange: "IDEALPRO", currency: "USD" });
-      setDone(`${side} ${qty.toLocaleString()} EUR.USD @ mkt`);
-      onOrder({ action: "open", label: "EUR.USD spot", side, qty, state: "sent" });
+      await postSpotOrder({ symbol: "EUR", sec_type: "CASH", side, qty: Math.round(eurQty), exchange: "IDEALPRO", currency: "USD" });
+      setDone(`${label} · ${eurQty.toLocaleString()} EUR @ mkt`);
+      onOrder({ action: "open", label, side, qty: eurQty, state: "sent" });
     } catch (e) {
       const note = closeErr(e);
       setErr(note);
-      onOrder({ action: "open", label: "EUR.USD spot", side, qty, state: "rejected", note });
+      onOrder({ action: "open", label, side, qty: eurQty, state: "rejected", note });
     } finally {
       setBusy(false);
     }
   };
+  const num = { display: "flex", flexDirection: "column" as const, gap: 2 };
+  const sub = { fontSize: "0.82em", lineHeight: 1.25 };
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div className="mono small dim">
-        EUR.USD <span className="pos">{bid.toFixed(5)}</span> / <span className="neg">{ask.toFixed(5)}</span>
-        <em className="unit"> · market order · IDEALPRO</em>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        <label className="field" style={{ flex: 1 }}>
+          <span className="field-label">Volume <em className="unit">EUR</em></span>
+          <div className="field-input">
+            <input type="number" min={0} step={25_000} value={eurQty} disabled={busy} onChange={(e) => onEur(+e.target.value)} />
+            <em>EUR</em>
+          </div>
+        </label>
+        <label className="field" style={{ flex: 1 }}>
+          <span className="field-label">Volume <em className="unit">USD</em></span>
+          <div className="field-input">
+            <input type="number" min={0} step={25_000} value={usdQty} disabled={busy} onChange={(e) => onUsd(+e.target.value)} />
+            <em>USD</em>
+          </div>
+        </label>
       </div>
-      <label className="field">
-        <span className="field-label">
-          Qty <em className="unit">EUR notional</em>
-        </span>
-        <div className="field-input">
-          <input type="number" min={0} step={25_000} value={qty} disabled={busy} onChange={(e) => setQty(+e.target.value)} />
-          <em>EUR</em>
-        </div>
-      </label>
       <div style={{ display: "flex", gap: 8 }}>
         <button
           className="btn-primary"
-          style={{ flex: 1 }}
+          style={{ flex: 1, ...num, alignItems: "center", padding: "6px 4px" }}
           disabled={!canWrite || busy || !valid}
-          title={canWrite ? "market BUY EUR.USD at IB" : GATE_TITLE}
+          title={canWrite ? `market order · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO` : GATE_TITLE}
           onClick={() => send("BUY")}
         >
-          {busy ? "…" : "Buy EUR"}
+          <span>Buy <b style={{ fontSize: "1.3em" }}>EUR</b><span style={{ fontSize: "0.8em", opacity: 0.8 }}>/usd</span></span>
+          <span className="mono" style={sub}>Buy {eurQty.toLocaleString()} EUR</span>
+          <span className="mono" style={{ ...sub, opacity: 0.75 }}>Sell {usdQty.toLocaleString()} USD</span>
         </button>
         <button
           className="btn-close-exec"
-          style={{ flex: 1 }}
+          style={{ flex: 1, ...num, alignItems: "center", padding: "6px 4px" }}
           disabled={!canWrite || busy || !valid}
-          title={canWrite ? "market SELL EUR.USD at IB" : GATE_TITLE}
+          title={canWrite ? `market order · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO` : GATE_TITLE}
           onClick={() => send("SELL")}
         >
-          {busy ? "…" : "Sell EUR"}
+          <span>Buy <b style={{ fontSize: "1.3em" }}>USD</b><span style={{ fontSize: "0.8em", opacity: 0.8 }}>/eur</span></span>
+          <span className="mono" style={sub}>Buy {usdQty.toLocaleString()} USD</span>
+          <span className="mono" style={{ ...sub, opacity: 0.75 }}>Sell {eurQty.toLocaleString()} EUR</span>
         </button>
       </div>
       {err && <div className="ob-error mono small">⚠ {err}</div>}
@@ -604,12 +627,14 @@ function IndicatorsPanel({
   cash,
   spotBid,
   spotAsk,
+  onOrder,
 }: {
   greeks: Greeks;
   account: AccountState;
   cash: Cash[];
   spotBid: number;
   spotAsk: number;
+  onOrder: (rec: OrderRecord) => void;
 }): JSX.Element {
   const g = greeks;
   // Risk utilization (same as the Risk tab): margins vs netLiq + greek exposures
@@ -635,10 +660,11 @@ function IndicatorsPanel({
         <TickerChart spot={(spotBid + spotAsk) / 2} />
       </div>
 
-      {/* cash holdings — below the ticker */}
+      {/* cash holdings — below the ticker, with the spot EUR⇄USD ticket */}
       <div className="ind-fam">
         <div className="ind-fam-head">Cash holdings</div>
         <HoldingsStrip cash={cash} />
+        <SpotTicket bid={spotBid} ask={spotAsk} onOrder={onOrder} />
       </div>
 
       {/* portfolio greeks — same table as the Risk tab's "Portfolio greeks" */}
@@ -847,19 +873,14 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     <div className={"trade-grid " + (tweaks.density || "regular")}>
       <div className="trade-top">
         <Panel title="Indicators" dataPp="trade-indicators" right={<FreshBadge fresh={trade} label="" />} className="trade-block">
-          <IndicatorsPanel greeks={greeks} account={account} cash={cash} spotBid={spotBid} spotAsk={spotAsk} />
+          <IndicatorsPanel greeks={greeks} account={account} cash={cash} spotBid={spotBid} spotAsk={spotAsk} onOrder={addOrder} />
         </Panel>
         <Panel title="Order" dataPp="trade-builder" className="trade-block">
           <OrderBuilder onOrder={addOrder} />
         </Panel>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
-          <Panel title="Spot EUR/USD" dataPp="trade-spot" className="trade-block">
-            <SpotPanel bid={spotBid} ask={spotAsk} onOrder={addOrder} />
-          </Panel>
-          <Panel title="Close position" dataPp="trade-close" className="trade-block">
-            <ClosePanel req={closeReq} onDone={() => setCloseReq(null)} onOrder={addOrder} onClosing={(k) => setClosingKeys((p) => ({ ...p, [k]: Date.now() }))} positions={positions} greeks={greeks} ctx={structureCtx} />
-          </Panel>
-        </div>
+        <Panel title="Close position" dataPp="trade-close" className="trade-block">
+          <ClosePanel req={closeReq} onDone={() => setCloseReq(null)} onOrder={addOrder} onClosing={(k) => setClosingKeys((p) => ({ ...p, [k]: Date.now() }))} positions={positions} greeks={greeks} ctx={structureCtx} />
+        </Panel>
       </div>
       <Panel title="Open positions" dataPp="trade-open" pad={false} className="trade-block open-pos-panel">
         <OpenPositionsTable
