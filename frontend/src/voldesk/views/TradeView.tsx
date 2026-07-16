@@ -645,13 +645,14 @@ function IndicatorsPanel({
   const glim = useFetch<GreekLimits>(() => fetchGreekLimits().then(adaptGreekLimits), 60_000).data;
   const utilColor = (p: number): string => (p > 100 ? "var(--neg)" : p > 80 ? "var(--warn)" : "var(--pos)");
   const pctOf = (used: number, cap: number | undefined): number => (cap && cap > 0 ? (Math.abs(used) / cap) * 100 : 0);
+  const capk = (c: number): string => (c > 0 ? fmt.usdk(c) : "—");
   const deltaCap = glim?.deltaCapUsd ?? 0, vegaCap = glim?.vegaCapUsd ?? 0, gammaCap = glim?.gammaCapPip ?? 0;
   const utilRows = [
-    { label: "Init margin", used: fmt.usd(account.marginInit), pct: account.marginInitPct },
-    { label: "Maint margin", used: fmt.usd(account.marginMaint), pct: account.marginMaintPct },
-    { label: "Delta exposure", used: fmt.usdk(Math.abs(g.netDelta)), pct: pctOf(g.netDelta, deltaCap) },
-    { label: "Vega", used: fmt.usdk(Math.abs(g.netVega)), pct: pctOf(g.netVega, vegaCap) },
-    { label: "Gamma exposure", used: fmt.usdk(Math.abs(g.netGamma)), pct: pctOf(g.netGamma, gammaCap) },
+    { label: "Init margin", used: fmt.usd(account.marginInit), limit: fmt.usd(account.netLiq), pct: account.marginInitPct },
+    { label: "Maint margin", used: fmt.usd(account.marginMaint), limit: fmt.usd(account.netLiq), pct: account.marginMaintPct },
+    { label: "Delta exposure", used: fmt.usdk(Math.abs(g.netDelta)), limit: capk(deltaCap), pct: pctOf(g.netDelta, deltaCap) },
+    { label: "Vega", used: fmt.usdk(Math.abs(g.netVega)), limit: capk(vegaCap), pct: pctOf(g.netVega, vegaCap) },
+    { label: "Gamma exposure", used: fmt.usdk(Math.abs(g.netGamma)), limit: capk(gammaCap), pct: pctOf(g.netGamma, gammaCap) },
   ];
 
   return (
@@ -660,16 +661,15 @@ function IndicatorsPanel({
       <div className="ind-fam">
         <div className="ind-fam-head">Risk utilization</div>
         <table className="dt greeks-table">
-          <thead><tr><th className="l">Limit</th><th className="r">Used</th></tr></thead>
+          <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th></tr></thead>
           <tbody>
             {utilRows.map((r) => (
               <tr key={r.label}>
                 <td className="l">{r.label}</td>
-                {/* merged value + "(N% used)" note — same style as the Portfolio
-                    tab's Cash & margin table, keeping the utilization color on
-                    the % so a breached cap still reads at a glance */}
+                {/* same variables as before (coloured used, dim "/ cap") — the old
+                    % column is merged in as a Cash&margin-style acct-sub note */}
                 <td className="r mono">
-                  {r.used}
+                  <span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span>
                   <span className="acct-sub"> (<span style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(1)}% used</span>)</span>
                 </td>
               </tr>
