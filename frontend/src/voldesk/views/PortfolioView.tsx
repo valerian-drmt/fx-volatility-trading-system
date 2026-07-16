@@ -921,8 +921,11 @@ function bandPath(
 }
 
 // Portfolio-valuation chart — the net-liq area split into the three holdings
-// components as diverging stacked bands (positive parts pile up from 0, negative
-// ones down), with the net-liq total drawn as a line on top. Fixed windowed axis.
+// components. Positive components (assets) stack up from 0; negative ones (a
+// borrowed currency = debt) are CARVED from the top of the asset stack instead
+// of plotting below zero, so the carved ceiling lands exactly on the net-liq
+// line: the gap between gross assets and net liq IS the debt band. Nothing
+// renders below zero as long as net liq itself stays positive.
 function ValuationChart({
   s,
   status,
@@ -950,8 +953,9 @@ function ValuationChart({
   if (total.filter((v): v is number => v != null).length < 2) return emptyChart(w, h, status);
   const bands = VAL_PARTS.map((p) => ({ ...p, bot: [] as (number | null)[], top: [] as (number | null)[] }));
   for (let i = 0; i < GRID_N; i++) {
-    let pos = 0,
-      neg = 0;
+    // pass 1: assets pile up from 0; debts are deferred to carve from the top.
+    let ceil = 0;
+    const debts: { band: (typeof bands)[number]; v: number }[] = [];
     for (const b of bands) {
       const v = grids[b.key].series[i] ?? null;
       if (v == null) {
@@ -960,14 +964,19 @@ function ValuationChart({
         continue;
       }
       if (v >= 0) {
-        b.bot.push(pos);
-        b.top.push(pos + v);
-        pos += v;
+        b.bot.push(ceil);
+        b.top.push(ceil + v);
+        ceil += v;
       } else {
-        b.bot.push(neg);
-        b.top.push(neg + v);
-        neg += v;
+        debts.push({ band: b, v });
       }
+    }
+    // pass 2: each debt eats downward from the current ceiling; the final
+    // ceiling is exactly Σ parts = net liq, where the total line sits.
+    for (const { band, v } of debts) {
+      band.top.push(ceil);
+      band.bot.push(ceil + v);
+      ceil += v;
     }
   }
   const extents = [...total, ...bands.flatMap((b) => [...b.top, ...b.bot])].filter(
@@ -1149,7 +1158,8 @@ export function PortfolioView(): JSX.Element {
             <div>
               <div className="val-head">
                 <div className="perf-sub mono dim">
-                  Portfolio valuation <em className="unit">net liq $ · stacked components</em>
+                  Portfolio valuation{" "}
+                  <em className="unit">$ · assets stacked from 0 · debts carved from the top down to net liq</em>
                 </div>
                 <div className="tf-group">
                   {[
