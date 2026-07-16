@@ -90,6 +90,8 @@ export const handlers = [
   http.get("*/api/v1/portfolio/daily-pnl", () => HttpResponse.json({ days: 90, series: [], total_realized_usd: 0 })),
   http.get("*/api/v1/portfolio/pnl-attribution", () => HttpResponse.json({ totals: {}, per_position: [] })),
   http.get("*/api/v1/portfolio/equity-curve", () => HttpResponse.json([])),
+  http.get("*/api/v1/portfolio/greek-pnl-history", () => HttpResponse.json([])),
+  http.get("*/api/v1/portfolio/valuation-history", () => HttpResponse.json([])),
   http.get("*/api/v1/portfolio/var", () =>
     HttpResponse.json({ var_95_usd: null, var_99_usd: null, es_99_usd: null, n_days: 0, method: "historical", hist: [] }),
   ),

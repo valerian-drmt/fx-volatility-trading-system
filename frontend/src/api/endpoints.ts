@@ -124,6 +124,28 @@ export interface GreekHistoryRaw {
 export const fetchGreeksHistory = (window = "30d") =>
   apiGet<GreekHistoryRaw[]>("/api/v1/portfolio/greeks-history", { query: { window } });
 
+// Cumulative greek-P&L (Taylor terms) time series for the Performance 2×2 grid.
+export interface GreekPnlHistoryRaw {
+  timestamp: string;
+  delta_pnl_usd: number;
+  gamma_pnl_usd: number;
+  vega_pnl_usd: number;
+  theta_pnl_usd: number;
+}
+export const fetchGreekPnlHistory = (window = "30d") =>
+  apiGet<GreekPnlHistoryRaw[]>("/api/v1/portfolio/greek-pnl-history", { query: { window } });
+
+// Net-liq valuation decomposition (USD cash / EUR cash $ / contracts) time series.
+export interface ValuationHistoryRaw {
+  timestamp: string;
+  net_liq_usd: number | null;
+  usd_cash_usd: number | null;
+  eur_cash_usd: number | null;
+  contracts_usd: number | null;
+}
+export const fetchValuationHistory = (window = "30d") =>
+  apiGet<ValuationHistoryRaw[]>("/api/v1/portfolio/valuation-history", { query: { window } });
+
 export const fetchSystemStats = () => apiGet<SystemStats>("/api/v1/system-stats");
 
 // ── R11 voldesk wiring (read) ───────────────────────────────────────────────

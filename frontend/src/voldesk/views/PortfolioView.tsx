@@ -7,27 +7,28 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchEquityCurve,
-  fetchGreeksHistory,
+  fetchGreekPnlHistory,
   fetchPnlAttribution,
   fetchPnlAttributionMatrix,
   fetchTradeMarkers,
+  fetchValuationHistory,
 } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../../hooks/streams";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
-import { CashHoldings } from "../components/PositionsTable";
 import { groupByTradeId, structureName, structureSide } from "../components/tradeGrouping";
 import { DATA, DATA2, fmt } from "../data";
-import type { PerfStats } from "../data";
+import type { Cash, PerfStats } from "../data";
 import { useDeskData } from "../data/deskData";
 import {
   adaptAttributionMatrix,
   adaptEquityCurve,
-  adaptGreeksHistory,
+  adaptGreekPnlHistory,
   adaptPositionAttribution,
   adaptTradeMarkers,
+  adaptValuationHistory,
   type AttribMatrix,
   type AttribRow,
   type EquityPoint,
@@ -36,6 +37,8 @@ import {
   type PositionAttribMatrix,
   type PositionAttribRow,
   type TradeEvent,
+  type ValuationKey,
+  type ValuationSeries,
 } from "../data/live/portfolio";
 
 // ─── Performance charts: fixed time axis with gaps ───────────────────────────
@@ -403,121 +406,11 @@ function DrawdownSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.El
   );
 }
 
-// Performance panel — 2 configurable slots, each showing one of 3 timeframe-driven
-// parts (P&L curve / Drawdown / Greek Σ) over a shared window. One equity fetch + one
-// greek-history fetch feed both slots.
-type PerfPart = "pnl" | "drawdown" | "greeks";
-const PERF_PARTS: { key: PerfPart; label: string }[] = [
-  { key: "pnl", label: "P&L" },
-  { key: "drawdown", label: "Drawdown" },
-  { key: "greeks", label: "Greeks" },
-];
-
-interface SlotData {
-  equity: EqGrid;
-  equityStatus: string;
-  greekHist: GreekSeries;
-  greekStatus: string;
-  win: string;
-  markers: TradeEvent[];
-  ps: PerfStats;
-  unreal: number;
-}
-
-function PerfSlot({
-  part,
-  onPart,
-  equity,
-  equityStatus,
-  greekHist,
-  greekStatus,
-  win,
-  markers,
-  ps,
-  unreal,
-}: SlotData & { part: PerfPart; onPart: (p: PerfPart) => void }): JSX.Element {
-  const [greek, setGreek] = useState<GreekKey>("delta");
-  const greekGrid = buildEquityGrid(greekHist[greek], WINDOW_DAYS[win] ?? null, Date.now());
-  const greekLabel = GREEKS.find((g) => g.key === greek)!.label;
-  return (
-    <div className="perf-slot">
-      <div className="perf-slot-head">
-        <div className="perf-slot-sel">
-          {PERF_PARTS.map((p) => (
-            <button
-              key={p.key}
-              className={"chip " + (part === p.key ? "on" : "")}
-              onClick={() => onPart(p.key)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        {part === "greeks" && (
-          <div className="greek-btns">
-            {GREEKS.map((g) => (
-              <button
-                key={g.key}
-                className={"chip " + (greek === g.key ? "on" : "")}
-                onClick={() => setGreek(g.key)}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {part === "pnl" && (
-        <>
-          <div className="perf-slot-stats">
-            <div className="pstat">
-              <span className="pstat-lbl mono dim">Realized</span>
-              <b className={"pstat-val mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
-            </div>
-            <div className="pstat">
-              <span className="pstat-lbl mono dim">Unrealized</span>
-              <b className={"pstat-val mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</b>
-            </div>
-          </div>
-          <div className="perf-sub mono dim">
-            P&L <em className="unit">cumulative $ · ▲ open · ● close</em>
-          </div>
-          <EquityLineSvg grid={equity} status={equityStatus} markers={markers} />
-        </>
-      )}
-
-      {part === "drawdown" && (
-        <>
-          <div className="perf-slot-stats">
-            <div className="pstat">
-              <span className="pstat-lbl mono dim">Max drawdown</span>
-              <b className="pstat-val mono neg">{ps.maxDd}%</b>
-            </div>
-            <div className="pstat">
-              <span className="pstat-lbl mono dim">Current DD</span>
-              <b className="pstat-val mono neg">{ps.currentDd}%</b>
-            </div>
-          </div>
-          <div className="perf-sub mono dim">
-            Drawdown <em className="unit">% from peak</em>
-          </div>
-          <DrawdownSvg grid={equity} status={equityStatus} />
-        </>
-      )}
-
-      {part === "greeks" && (
-        <>
-          <div className="perf-sub mono dim">
-            {greekLabel} <em className="unit">book Σ over time · $ · ▲ open · ● close</em>
-          </div>
-          <GreekChart grid={greekGrid} status={greekStatus} markers={markers} />
-        </>
-      )}
-    </div>
-  );
-}
-
+// Performance panel — fixed layout over a shared timeframe: the left half stacks
+// the P&L curve over the drawdown underwater plot; the right half is a 2×2 grid of
+// the four cumulative greek-P&L series (Taylor terms from /greek-pnl-history — the
+// realized decomposition, NOT the book's greek sensitivities). Each left chart is
+// twice the width of a right cell, so both halves foot to the same height.
 function PerformancePanel({
   ps,
   unreal,
@@ -528,15 +421,13 @@ function PerformancePanel({
   markers: TradeEvent[];
 }): JSX.Element {
   const [win, setWin] = useState<string>("7D");
-  const [partA, setPartA] = useState<PerfPart>("pnl");
-  const [partB, setPartB] = useState<PerfPart>("greeks");
-  // One windowed equity fetch + one greek-history fetch, shared by both slots.
+  // One windowed equity fetch + one greek-P&L-history fetch feed both halves.
   const eq = useFetch<EquityPoint[]>(
     () => fetchEquityCurve(win.toLowerCase()).then(adaptEquityCurve),
     120_000,
   );
   const gk = useFetch<GreekSeries>(
-    () => fetchGreeksHistory(win.toLowerCase()).then(adaptGreeksHistory),
+    () => fetchGreekPnlHistory(win.toLowerCase()).then(adaptGreekPnlHistory),
     120_000,
   );
   // useFetch won't refire on a window change alone — reload both on switch (skip mount).
@@ -551,16 +442,8 @@ function PerformancePanel({
     reloadEq();
     reloadGk();
   }, [win, reloadEq, reloadGk]);
-  const slotData: SlotData = {
-    equity: buildEquityGrid(eq.data ?? [], WINDOW_DAYS[win] ?? null, Date.now()),
-    equityStatus: eq.status,
-    greekHist: gk.data ?? { delta: [], gamma: [], vega: [], theta: [] },
-    greekStatus: gk.status,
-    win,
-    markers,
-    ps,
-    unreal,
-  };
+  const equity = buildEquityGrid(eq.data ?? [], WINDOW_DAYS[win] ?? null, Date.now());
+  const hist: GreekSeries = gk.data ?? { delta: [], gamma: [], vega: [], theta: [] };
   return (
     <Panel
       title="Performance"
@@ -586,23 +469,77 @@ function PerformancePanel({
       }
       className="perf-panel"
     >
-      <div className="perf-slots">
-        <PerfSlot part={partA} onPart={setPartA} {...slotData} />
-        <PerfSlot part={partB} onPart={setPartB} {...slotData} />
+      <div className="perf-cols">
+        <div className="perf-col-left">
+          <div className="perf-slot-stats">
+            <div className="pstat">
+              <span className="pstat-lbl mono dim">Realized</span>
+              <b className={"pstat-val mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
+            </div>
+            <div className="pstat">
+              <span className="pstat-lbl mono dim">Unrealized</span>
+              <b className={"pstat-val mono " + pnlCls(unreal)}>{fmt.usdk(unreal)}</b>
+            </div>
+          </div>
+          <div className="perf-sub mono dim">
+            P&L <em className="unit">cumulative $ · ▲ open · ● close</em>
+          </div>
+          <EquityLineSvg grid={equity} status={eq.status} markers={markers} />
+          <div className="perf-slot-stats">
+            <div className="pstat">
+              <span className="pstat-lbl mono dim">Max drawdown</span>
+              <b className="pstat-val mono neg">{ps.maxDd}%</b>
+            </div>
+            <div className="pstat">
+              <span className="pstat-lbl mono dim">Current DD</span>
+              <b className="pstat-val mono neg">{ps.currentDd}%</b>
+            </div>
+          </div>
+          <div className="perf-sub mono dim">
+            Drawdown <em className="unit">% from peak</em>
+          </div>
+          <DrawdownSvg grid={equity} status={eq.status} />
+        </div>
+        <div className="perf-greek-grid">
+          {GREEKS.map((g) => (
+            <div key={g.key} className="perf-greek-cell">
+              <div className="perf-sub mono dim">
+                {g.label} P&L <em className="unit">Taylor · cumulative $</em>
+              </div>
+              <GreekPnlChart
+                grid={buildEquityGrid(hist[g.key], WINDOW_DAYS[win] ?? null, Date.now())}
+                status={gk.status}
+                markers={markers}
+                id={g.key}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </Panel>
   );
 }
 
-// Portfolio Σ-greek over time — signed line (zero baseline) on the same fixed time
-// axis as the P&L chart, with the trade markers so you can see each open/close move it.
-function GreekChart({ grid, status, markers }: { grid: EqGrid; status: string; markers: TradeEvent[] }): JSX.Element {
-  const w = 760,
-    h = 320,
-    pl = 56,
-    pr = 12,
-    pt = 14,
-    pb = 26;
+// One cell of the 2×2 greek-P&L grid — a cumulative Taylor term ($, zero baseline)
+// on the shared fixed time axis. Half-width viewBox so two cells span one left-column
+// chart at the same rendered scale, with the trade markers overlaid.
+function GreekPnlChart({
+  grid,
+  status,
+  markers,
+  id,
+}: {
+  grid: EqGrid;
+  status: string;
+  markers: TradeEvent[];
+  id: string;
+}): JSX.Element {
+  const w = 380,
+    h = 210,
+    pl = 46,
+    pr = 8,
+    pt = 12,
+    pb = 24;
   const vals = grid.series.filter((v): v is number => v != null);
   if (vals.length < 2) return emptyChart(w, h, status);
   const lo = Math.min(...vals, 0),
@@ -613,10 +550,9 @@ function GreekChart({ grid, status, markers }: { grid: EqGrid; status: string; m
   return (
     <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block", height: "auto" }}>
       <YGrid lo={lo} hi={hi} w={w} pl={pl} pr={pr} pt={pt} pb={pb} h={h} />
-      {/* zero baseline (emphasised) */}
       <line x1={pl} x2={w - pr} y1={zeroY} y2={zeroY} stroke="var(--text-faint)" strokeWidth="1" opacity="0.85" />
       <XAxis ticks={grid.ticks} pl={pl} pr={pr} pt={pt} pb={pb} w={w} h={h} />
-      <SignedSeries series={grid.series} X={X} Y={Y} zeroY={zeroY} w={w} top={pt} bottom={h - pb} id="gk" />
+      <SignedSeries series={grid.series} X={X} Y={Y} zeroY={zeroY} w={w} top={pt} bottom={h - pb} id={`gkpnl-${id}`} />
       <ChartMarkers markers={markers} series={grid.series} t0={grid.t0} t1={grid.t1} X={X} Y={Y} />
     </svg>
   );
@@ -658,8 +594,8 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
       {cell(r.delta, r.actual, "grp-grk col-grp")}
       {cell(r.gamma, r.actual, "grp-grk")}
       {cell(r.vega, r.actual, "grp-grk")}
-      {cell(r.theta, r.actual, "grp-grk col-grp-end")}
-      {cell(r.residual, r.actual, "grp-grk col-grp col-grp-end")}
+      {cell(r.theta, r.actual, "grp-grk")}
+      {cell(r.residual, r.actual, "grp-grk col-grp-end")}
     </tr>
   );
   const t = m.totals;
@@ -675,8 +611,8 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
             <th className="r grp-grk col-grp">Delta·dS</th>
             <th className="r grp-grk">½Γ·dS²</th>
             <th className="r grp-grk">Vega·dσ</th>
-            <th className="r grp-grk col-grp-end">Theta·dt</th>
-            <th className="r grp-grk col-grp col-grp-end">residual</th>
+            <th className="r grp-grk">Theta·dt</th>
+            <th className="r grp-grk col-grp-end">residual</th>
           </tr>
         </thead>
         <tbody>
@@ -697,10 +633,10 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
             <td className={"r mono grp-grk " + pnlCls(t.vega)}>
               <b>{gk$(t.vega)}</b>
             </td>
-            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.theta)}>
+            <td className={"r mono grp-grk " + pnlCls(t.theta)}>
               <b>{gk$(t.theta)}</b>
             </td>
-            <td className={"r mono grp-grk col-grp col-grp-end " + pnlCls(t.residual)}>
+            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.residual)}>
               <b>{gk$(t.residual)}</b>
             </td>
           </tr>
@@ -770,8 +706,8 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
       {cell(r.delta, r.actual, "grp-grk col-grp")}
       {cell(r.gamma, r.actual, "grp-grk")}
       {cell(r.vega, r.actual, "grp-grk")}
-      {cell(r.theta, r.actual, "grp-grk col-grp-end")}
-      {cell(r.residual, r.actual, "grp-grk col-grp col-grp-end")}
+      {cell(r.theta, r.actual, "grp-grk")}
+      {cell(r.residual, r.actual, "grp-grk col-grp-end")}
     </>
   );
   const legRow = (r: PositionAttribRow, main: boolean): JSX.Element => (
@@ -813,8 +749,8 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
             <th className="r grp-grk col-grp">Delta·dS</th>
             <th className="r grp-grk">½Γ·dS²</th>
             <th className="r grp-grk">Vega·dσ</th>
-            <th className="r grp-grk col-grp-end">Theta·dt</th>
-            <th className="r grp-grk col-grp col-grp-end">residual</th>
+            <th className="r grp-grk">Theta·dt</th>
+            <th className="r grp-grk col-grp-end">residual</th>
           </tr>
         </thead>
         <tbody>
@@ -874,10 +810,10 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
             <td className={"r mono grp-grk " + pnlCls(t.vega)}>
               <b>{gk$(t.vega)}</b>
             </td>
-            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.theta)}>
+            <td className={"r mono grp-grk " + pnlCls(t.theta)}>
               <b>{gk$(t.theta)}</b>
             </td>
-            <td className={"r mono grp-grk col-grp col-grp-end " + pnlCls(t.residual)}>
+            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.residual)}>
               <b>{gk$(t.residual)}</b>
             </td>
           </tr>
@@ -903,6 +839,178 @@ function acctNote(note: ReactNode): JSX.Element | null {
   return note ? <span className="acct-sub"> ({note})</span> : null;
 }
 
+// ─── Account & capital: holdings valuation (right side) ─────────────────────
+// Net liq decomposed into its three components — USD cash, EUR cash (both in $)
+// and the contracts' market value as the residual net liq − cash, so the parts
+// always foot exactly to net liq (the Total row).
+const VAL_PARTS: { key: ValuationKey; label: string; color: string }[] = [
+  { key: "usd", label: "USD cash", color: "var(--accent)" },
+  { key: "eur", label: "EUR cash", color: "#a78bfa" },
+  { key: "contracts", label: "Contracts", color: "#2dd4bf" },
+];
+
+function HoldingsValuation({ netLiq, cash }: { netLiq: number; cash: Cash[] }): JSX.Element {
+  const usd = cash.find((c) => c.ccy === "USD")?.usd ?? 0;
+  const eur = cash.find((c) => c.ccy === "EUR")?.usd ?? 0;
+  const contracts = netLiq - cash.reduce((s, c) => s + c.usd, 0);
+  const vals: Record<string, number> = { usd, eur, contracts };
+  const base = Math.abs(netLiq) || 1;
+  // signed share of |net liq| — same reading as the attribution tables.
+  const pct = (v: number): string => {
+    const p = Math.round((v / base) * 100);
+    return (p >= 0 ? "+" : "−") + Math.abs(p) + "%";
+  };
+  return (
+    <table className="dt greeks-table acct-cap">
+      <thead>
+        <tr>
+          <th className="l">Holdings</th>
+          <th className="r">
+            USD value <em className="unit">(% of net liq)</em>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {VAL_PARTS.map((p) => (
+          <tr key={p.key}>
+            <td className="l">
+              <span className="val-dot" style={{ background: p.color }} />
+              {p.label}
+            </td>
+            <td className={"r mono " + pnlCls(vals[p.key]!)}>
+              <b>{fmt.usd(vals[p.key]!)}</b> <span className="pb-rel">({pct(vals[p.key]!)})</span>
+            </td>
+          </tr>
+        ))}
+        <tr className="wf-total">
+          <td className="l">
+            <span className="sym">Total</span>
+          </td>
+          <td className={"r mono " + pnlCls(netLiq)}>
+            <b>{fmt.usd(netLiq)}</b>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+// Filled band between two same-length gapped offset polylines (bottom → top).
+function bandPath(
+  bot: (number | null)[],
+  top: (number | null)[],
+  X: (i: number) => number,
+  Y: (v: number) => number,
+): string {
+  let d = "";
+  let run: number[] = [];
+  const flush = (): void => {
+    if (run.length === 0) return;
+    d += "M" + X(run[0]!).toFixed(1) + " " + Y(top[run[0]!]!).toFixed(1) + " ";
+    for (const i of run) d += "L" + X(i).toFixed(1) + " " + Y(top[i]!).toFixed(1) + " ";
+    for (let k = run.length - 1; k >= 0; k--) {
+      const i = run[k]!;
+      d += "L" + X(i).toFixed(1) + " " + Y(bot[i]!).toFixed(1) + " ";
+    }
+    d += "Z ";
+    run = [];
+  };
+  top.forEach((v, i) => (v == null || bot[i] == null ? flush() : run.push(i)));
+  flush();
+  return d.trim();
+}
+
+// Portfolio-valuation chart — the net-liq area split into the three holdings
+// components. Positive components (assets) stack up from 0; negative ones (a
+// borrowed currency = debt) are CARVED from the top of the asset stack instead
+// of plotting below zero, so the carved ceiling lands exactly on the net-liq
+// line: the gap between gross assets and net liq IS the debt band. Nothing
+// renders below zero as long as net liq itself stays positive.
+function ValuationChart({
+  s,
+  status,
+  win,
+}: {
+  s: ValuationSeries | null;
+  status: string;
+  win: string;
+}): JSX.Element {
+  const w = 760,
+    h = 250,
+    pl = 56,
+    pr = 12,
+    pt = 14,
+    pb = 26;
+  const now = Date.now();
+  const wd = WINDOW_DAYS[win] ?? null;
+  const grids: Record<ValuationKey, EqGrid> = {
+    usd: buildEquityGrid(s?.usd ?? [], wd, now),
+    eur: buildEquityGrid(s?.eur ?? [], wd, now),
+    contracts: buildEquityGrid(s?.contracts ?? [], wd, now),
+    total: buildEquityGrid(s?.total ?? [], wd, now),
+  };
+  const total = grids.total.series;
+  if (total.filter((v): v is number => v != null).length < 2) return emptyChart(w, h, status);
+  const bands = VAL_PARTS.map((p) => ({ ...p, bot: [] as (number | null)[], top: [] as (number | null)[] }));
+  for (let i = 0; i < GRID_N; i++) {
+    // pass 1: assets pile up from 0; debts are deferred to carve from the top.
+    let ceil = 0;
+    const debts: { band: (typeof bands)[number]; v: number }[] = [];
+    for (const b of bands) {
+      const v = grids[b.key].series[i] ?? null;
+      if (v == null) {
+        b.bot.push(null);
+        b.top.push(null);
+        continue;
+      }
+      if (v >= 0) {
+        b.bot.push(ceil);
+        b.top.push(ceil + v);
+        ceil += v;
+      } else {
+        debts.push({ band: b, v });
+      }
+    }
+    // pass 2: each debt eats downward from the current ceiling; the final
+    // ceiling is exactly Σ parts = net liq, where the total line sits.
+    for (const { band, v } of debts) {
+      band.top.push(ceil);
+      band.bot.push(ceil + v);
+      ceil += v;
+    }
+  }
+  const extents = [...total, ...bands.flatMap((b) => [...b.top, ...b.bot])].filter(
+    (v): v is number => v != null,
+  );
+  const lo = Math.min(...extents, 0),
+    hi = Math.max(...extents, 0);
+  const X = (i: number): number => pl + (i / (GRID_N - 1)) * (w - pl - pr);
+  const Y = (v: number): number => pt + (1 - (v - lo) / (hi - lo || 1)) * (h - pt - pb);
+  const zeroY = Y(0);
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block", height: "auto" }}>
+      <YGrid lo={lo} hi={hi} w={w} pl={pl} pr={pr} pt={pt} pb={pb} h={h} />
+      <line x1={pl} x2={w - pr} y1={zeroY} y2={zeroY} stroke="var(--text-faint)" strokeWidth="1" opacity="0.85" />
+      <XAxis ticks={grids.total.ticks} pl={pl} pr={pr} pt={pt} pb={pb} w={w} h={h} />
+      {bands.map((b) => (
+        <g key={b.key}>
+          <path d={bandPath(b.bot, b.top, X, Y)} fill={b.color} fillOpacity="0.32" />
+          <path d={gappedLine(b.top, X, Y)} fill="none" stroke={b.color} strokeWidth="1" opacity="0.75" />
+        </g>
+      ))}
+      <path
+        d={gappedLine(total, X, Y)}
+        fill="none"
+        stroke="var(--fg)"
+        strokeWidth="2"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        opacity="0.9"
+      />
+    </svg>
+  );
+}
+
 export function PortfolioView(): JSX.Element {
   const { portfolio, trade } = useDeskData();
   const pd = portfolio.data;
@@ -919,6 +1027,24 @@ export function PortfolioView(): JSX.Element {
     useFetch(() => fetchPnlAttributionMatrix("tenor").then(adaptAttributionMatrix), 120_000, true, 60_000).data ?? null;
   const attribByLeg =
     useFetch(() => fetchPnlAttribution().then(adaptPositionAttribution), 120_000, true, 60_000).data ?? null;
+  // Net-liq valuation decomposition (USD cash / EUR cash / contracts), windowed.
+  const [valWin, setValWin] = useState<string>("30D");
+  const valuation = useFetch<ValuationSeries>(
+    () => fetchValuationHistory(valWin.toLowerCase()).then(adaptValuationHistory),
+    120_000,
+    true,
+    60_000,
+  );
+  // useFetch won't refire on a window change alone — reload on switch (skip mount).
+  const reloadVal = valuation.reload;
+  const firstVal = useRef(true);
+  useEffect(() => {
+    if (firstVal.current) {
+      firstVal.current = false;
+      return;
+    }
+    reloadVal();
+  }, [valWin, reloadVal]);
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
   const liveCash = trade.data?.cash;
   const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
@@ -948,74 +1074,124 @@ export function PortfolioView(): JSX.Element {
         right={<FreshBadge fresh={portfolio} label="IB account" />}
         className="acct-panel"
       >
-        <div className="acct-tables">
-          <table className="dt greeks-table acct-cap">
-            <thead>
-              <tr>
-                <th className="l">Capital</th>
-                <th className="r">Value</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="l">Net liquidation</td>
-                <td className="r mono">
-                  {fmt.usd(a.netLiq)}
-                  {acctNote(deltaPill(a.dNetLiq))}
-                </td>
-              </tr>
-              <tr>
-                <td className="l">Cash</td>
-                <td className="r mono">
-                  {fmt.usd(a.cash)}
-                  {acctNote(deltaPill(a.dCash))}
-                </td>
-              </tr>
-              <tr>
-                <td className="l">Init margin</td>
-                <td className="r mono">
-                  {fmt.usd(a.marginInit)}
-                  {acctNote(`${a.marginInitPct}% used`)}
-                </td>
-              </tr>
-              <tr>
-                <td className="l">Maint margin</td>
-                <td className="r mono">
-                  {fmt.usd(a.marginMaint)}
-                  {acctNote(`${a.marginMaintPct}% used`)}
-                </td>
-              </tr>
-              <tr>
-                <td className="l">Excess liquidity</td>
-                <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
-              </tr>
-              <tr>
-                <td className="l">Cushion</td>
-                <td className="r mono">
-                  {(a.cushion * 100).toFixed(1)}%{acctNote(`${a.nPositions} positions`)}
-                </td>
-              </tr>
-              <tr className="acct-sep">
-                <td className="l">Gross leverage</td>
-                <td className="r mono">
-                  {lev.gross.toFixed(1)}M €{acctNote(`${grossX}× net liq · €${(netLiqEur / 1e6).toFixed(2)}M`)}
-                </td>
-              </tr>
-              <tr>
-                <td className="l">Net leverage</td>
-                <td className="r mono">
-                  {lev.net.toFixed(1)}M €{acctNote(`${netX}× net liq`)}
-                </td>
-              </tr>
-              <tr>
-                <td className="l">Buying power</td>
-                <td className="r mono pos">
-                  ${lev.buyingPower.toFixed(2)}M{acctNote("available")}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <CashHoldings cash={cashRows} />
+        <div className="acct-cols">
+          <div className="acct-col">
+            <table className="dt greeks-table acct-cap">
+              <thead>
+                <tr>
+                  <th className="l">Cash &amp; margin</th>
+                  <th className="r">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="l">Net liquidation</td>
+                  <td className="r mono">
+                    {fmt.usd(a.netLiq)}
+                    {acctNote(deltaPill(a.dNetLiq))}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="l">Cash</td>
+                  <td className="r mono">
+                    {fmt.usd(a.cash)}
+                    {acctNote(deltaPill(a.dCash))}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="l">Init margin</td>
+                  <td className="r mono">
+                    {fmt.usd(a.marginInit)}
+                    {acctNote(`${a.marginInitPct}% used`)}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="l">Maint margin</td>
+                  <td className="r mono">
+                    {fmt.usd(a.marginMaint)}
+                    {acctNote(`${a.marginMaintPct}% used`)}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="l">Excess liquidity</td>
+                  <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
+                </tr>
+                <tr>
+                  <td className="l">Cushion</td>
+                  <td className="r mono">
+                    {(a.cushion * 100).toFixed(1)}%{acctNote(`${a.nPositions} positions`)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <table className="dt greeks-table acct-cap">
+              <thead>
+                <tr>
+                  <th className="l">Leverage &amp; buying power</th>
+                  <th className="r">Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="l">Gross leverage</td>
+                  <td className="r mono">
+                    {lev.gross.toFixed(1)}M €{acctNote(`${grossX}× net liq · €${(netLiqEur / 1e6).toFixed(2)}M`)}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="l">Net leverage</td>
+                  <td className="r mono">
+                    {lev.net.toFixed(1)}M €{acctNote(`${netX}× net liq`)}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="l">Buying power</td>
+                  <td className="r mono pos">
+                    ${lev.buyingPower.toFixed(2)}M{acctNote("available")}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div className="acct-col">
+            <HoldingsValuation netLiq={a.netLiq} cash={cashRows} />
+            <div>
+              <div className="val-head">
+                <div className="perf-sub mono dim">
+                  Portfolio valuation{" "}
+                  <em className="unit">$ · assets stacked from 0 · debts carved from the top down to net liq</em>
+                </div>
+                <div className="tf-group">
+                  {[
+                    { v: "1D", l: "1D" },
+                    { v: "7D", l: "7D" },
+                    { v: "30D", l: "1M" },
+                    { v: "1Y", l: "1Y" },
+                    { v: "all", l: "all" },
+                  ].map((wn) => (
+                    <button
+                      key={wn.v}
+                      className={"chip " + (valWin === wn.v ? "on" : "")}
+                      onClick={() => setValWin(wn.v)}
+                    >
+                      {wn.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="val-legend mono dim">
+                {VAL_PARTS.map((p) => (
+                  <span key={p.key} className="val-key">
+                    <i style={{ background: p.color }} /> {p.label}
+                  </span>
+                ))}
+                <span className="val-key">
+                  <i className="val-key-line" /> Net liq
+                </span>
+              </div>
+              <ValuationChart s={valuation.data} status={valuation.status} win={valWin} />
+            </div>
+          </div>
         </div>
       </Panel>
 

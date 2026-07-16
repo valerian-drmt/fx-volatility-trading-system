@@ -13,6 +13,7 @@ P1 + P2 + P3 shipped.
 """
 from __future__ import annotations
 
+import itertools
 import statistics
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
@@ -288,6 +289,103 @@ async def equity_curve(
     ]
 
 
+def _valuation_series(
+    acct: list[tuple[datetime, float | None, dict | None]],
+    spots: list[tuple[datetime, float]],
+    seed_spot: float | None = None,
+) -> list[dict[str, Any]]:
+    """Decompose each net-liq snapshot into USD cash + EUR cash ($) + contracts.
+
+    ``acct`` = (bucket_ts, net_liq_usd, currencies JSONB) ascending; ``spots`` =
+    (bucket_ts, eurusd) ascending. EUR converts at the latest spot at-or-before
+    the snapshot bucket (forward-filled from ``seed_spot``); a ``currencies``
+    gap carries the last known breakdown. The contracts part is the RESIDUAL
+    net_liq − USD − EUR cash (any other currency implicitly lands there too),
+    so the three parts always stack exactly to net liq. Without a usable spot
+    or breakdown the parts are None (chart gap) but net liq still plots.
+    """
+    out: list[dict[str, Any]] = []
+    si = 0
+    spot = seed_spot
+    last_ccy: dict | None = None
+    for ts, net_liq, currencies in acct:
+        while si < len(spots) and spots[si][0] <= ts:
+            spot = spots[si][1]
+            si += 1
+        if currencies:
+            last_ccy = currencies
+        usd = eur = contracts = None
+        if net_liq is not None and last_ccy is not None and spot is not None:
+            usd = _currency_cash(last_ccy.get("USD"))
+            eur = _currency_cash(last_ccy.get("EUR")) * spot
+            contracts = net_liq - usd - eur
+        out.append({
+            "timestamp": ts.replace(tzinfo=UTC).isoformat(),
+            "net_liq_usd": round(net_liq, 2) if net_liq is not None else None,
+            "usd_cash_usd": round(usd, 2) if usd is not None else None,
+            "eur_cash_usd": round(eur, 2) if eur is not None else None,
+            "contracts_usd": round(contracts, 2) if contracts is not None else None,
+        })
+    return out
+
+
+@router.get("/valuation-history")
+async def valuation_history(
+    db: DbDep,
+    window: Literal["1d", "7d", "30d", "1y", "all"] = Query("30d"),
+) -> list[dict[str, Any]]:
+    """Portfolio-valuation decomposition time series for the Account panel chart.
+
+    Latest ``account_history`` snap per bucket (same downsampling as
+    /equity-curve), split by ``_valuation_series`` into USD cash + EUR cash
+    (valued at the EURUSD surface spot bucketed the same way) + contracts
+    (residual) — three bands footing exactly to the net-liq line.
+    """
+    lookback, bucket_secs = _WINDOW_SPECS[window]
+    cutoff = datetime.now(UTC) - lookback
+    acct_sql = text("""
+        SELECT bucket_ts, net_liq_usd, currencies
+          FROM (
+            SELECT DISTINCT ON (bucket_ts)
+                   to_timestamp(floor(extract(epoch FROM timestamp) / :bucket) * :bucket)
+                       AT TIME ZONE 'UTC' AS bucket_ts,
+                   net_liq_usd, currencies, timestamp
+              FROM account_history
+             WHERE timestamp >= :cutoff
+             ORDER BY bucket_ts, timestamp DESC
+          ) sub
+         ORDER BY bucket_ts
+    """)
+    spot_sql = text("""
+        SELECT bucket_ts, spot
+          FROM (
+            SELECT DISTINCT ON (bucket_ts)
+                   to_timestamp(floor(extract(epoch FROM timestamp) / :bucket) * :bucket)
+                       AT TIME ZONE 'UTC' AS bucket_ts,
+                   spot, timestamp
+              FROM vol_surface_history
+             WHERE underlying = 'EURUSD' AND spot IS NOT NULL AND timestamp >= :cutoff
+             ORDER BY bucket_ts, timestamp DESC
+          ) sub
+         ORDER BY bucket_ts
+    """)
+    seed_sql = text("""
+        SELECT spot FROM vol_surface_history
+         WHERE underlying = 'EURUSD' AND spot IS NOT NULL AND timestamp < :cutoff
+         ORDER BY timestamp DESC LIMIT 1
+    """)
+    params = {"bucket": bucket_secs, "cutoff": cutoff}
+    acct_rows = (await db.execute(acct_sql, params)).all()
+    spot_rows = (await db.execute(spot_sql, params)).all()
+    seed_row = (await db.execute(seed_sql, {"cutoff": cutoff})).first()
+    return _valuation_series(
+        [(r.bucket_ts, float(r.net_liq_usd) if r.net_liq_usd is not None else None, r.currencies)
+         for r in acct_rows],
+        [(r.bucket_ts, float(r.spot)) for r in spot_rows],
+        seed_spot=float(seed_row[0]) if seed_row and seed_row[0] is not None else None,
+    )
+
+
 @router.get("/trade-markers")
 async def trade_markers(
     db: DbDep,
@@ -369,6 +467,113 @@ async def greeks_history(
         }
         for r in rs
     ]
+
+
+def _taylor_pnl_series(
+    per_position: dict[int, dict[datetime, dict[str, float | None]]],
+    forward: dict[datetime, float | None],
+    buckets: list[datetime],
+) -> list[dict[str, Any]]:
+    """Walk each position bucket-to-bucket and cumulate the four Taylor terms.
+
+    Each interval's increment freezes the greeks at the interval START :
+        δ_{t-1}·dS   ½Γ_{t-1}·dS²   V_{t-1}·dσ_pts   Θ_{t-1}·dt_days
+    with dS from the shared underlying forward series and dσ from the leg's
+    own IV. Increments are summed across positions per bucket, then cumulated
+    from the window start so every series begins at 0. A missing input just
+    skips that term for that interval (no None poisoning the running sum).
+    """
+    inc: dict[datetime, list[float]] = {b: [0.0, 0.0, 0.0, 0.0] for b in buckets}
+    for snaps in per_position.values():
+        for prev_ts, cur_ts in itertools.pairwise(sorted(snaps)):
+            prev, cur = snaps[prev_ts], snaps[cur_ts]
+            f0, f1 = forward.get(prev_ts), forward.get(cur_ts)
+            ds = (f1 - f0) if (f0 is not None and f1 is not None) else None
+            iv0, iv1 = prev.get("iv"), cur.get("iv")
+            div_pts = (iv1 - iv0) if (iv0 is not None and iv1 is not None) else None
+            dt_days = (cur_ts - prev_ts).total_seconds() / 86400.0
+            b = inc[cur_ts]
+            if prev["delta"] is not None and ds is not None:
+                b[0] += prev["delta"] * ds
+            if prev["gamma"] is not None and ds is not None:
+                b[1] += 0.5 * prev["gamma"] * ds * ds
+            if prev["vega"] is not None and div_pts is not None:
+                b[2] += prev["vega"] * div_pts
+            if prev["theta"] is not None:
+                b[3] += prev["theta"] * dt_days
+    out: list[dict[str, Any]] = []
+    cum = [0.0, 0.0, 0.0, 0.0]
+    for b in buckets:
+        cum = [c + i for c, i in zip(cum, inc[b], strict=True)]
+        out.append({
+            "timestamp": b.replace(tzinfo=UTC).isoformat(),
+            "delta_pnl_usd": round(cum[0], 2),
+            "gamma_pnl_usd": round(cum[1], 2),
+            "vega_pnl_usd": round(cum[2], 2),
+            "theta_pnl_usd": round(cum[3], 2),
+        })
+    return out
+
+
+@router.get("/greek-pnl-history")
+async def greek_pnl_history(
+    db: DbDep,
+    window: Literal["1d", "7d", "30d", "1y", "all"] = Query("30d"),
+) -> list[dict[str, Any]]:
+    """Cumulative greek-P&L (Taylor terms) time series, server-side downsampled.
+
+    Same decomposition as /pnl-attribution (δ·dS, ½Γ·dS², V·dσ, Θ·dt) but walked
+    bucket-by-bucket over the window instead of frozen once over a lookback:
+    per open leg, each interval uses the greeks at the interval start, dS from
+    the book's underlying forward (the 6E future's market price, forward-filled
+    across empty buckets) and dσ from the leg's own IV. Feeds the Performance
+    panel's 2×2 greek-P&L grid. IB-live book only (``open_position_history``),
+    same source and bucketing as /greeks-history.
+    """
+    lookback, bucket_secs = _WINDOW_SPECS[window]
+    cutoff = datetime.now(UTC) - lookback
+    sql = text("""
+        WITH per_pos AS (
+          SELECT DISTINCT ON (bucket_ts, oph.position_id)
+                 to_timestamp(floor(extract(epoch FROM oph.timestamp) / :bucket) * :bucket)
+                     AT TIME ZONE 'UTC' AS bucket_ts,
+                 oph.position_id,
+                 oph.delta_usd, oph.gamma_usd, oph.vega_usd, oph.theta_usd,
+                 oph.iv, oph.market_price,
+                 (op.structure LIKE '6E%') AS is_future
+            FROM open_position_history oph
+            JOIN open_position op ON op.id = oph.position_id
+           WHERE oph.timestamp >= :cutoff
+           ORDER BY bucket_ts, oph.position_id, oph.timestamp DESC
+        )
+        SELECT * FROM per_pos ORDER BY bucket_ts
+    """)
+    rs = (await db.execute(sql, {"bucket": bucket_secs, "cutoff": cutoff})).all()
+    buckets: list[datetime] = []
+    forward: dict[datetime, float | None] = {}
+    per_position: dict[int, dict[datetime, dict[str, float | None]]] = {}
+    for r in rs:
+        ts = r.bucket_ts
+        if not buckets or buckets[-1] != ts:
+            buckets.append(ts)
+        if r.is_future and r.market_price is not None:
+            forward[ts] = float(r.market_price)
+        per_position.setdefault(int(r.position_id), {})[ts] = {
+            "delta": float(r.delta_usd) if r.delta_usd is not None else None,
+            "gamma": float(r.gamma_usd) if r.gamma_usd is not None else None,
+            "vega": float(r.vega_usd) if r.vega_usd is not None else None,
+            "theta": float(r.theta_usd) if r.theta_usd is not None else None,
+            "iv": float(r.iv) if r.iv is not None else None,
+        }
+    # Options decompose against the UNDERLYING forward, not their own premium
+    # (same rule as /pnl-attribution) — forward-fill buckets with no future snap.
+    last: float | None = None
+    for ts in buckets:
+        if forward.get(ts) is not None:
+            last = forward[ts]
+        else:
+            forward[ts] = last
+    return _taylor_pnl_series(per_position, forward, buckets)
 
 
 @router.get("/aggregate-greeks")
