@@ -346,7 +346,7 @@ function PinRiskTable({ positions }: { positions: Position[] }): JSX.Element {
     </tr>
   );
   return (
-    <Panel title="Expiries & roll-off" dataPp="pin-risk" right={<PanelLive status={pin.status} />} className="trade-block" pad={false}>
+    <Panel title="Expiries & roll-off" dataPp="pin-risk" right={<PanelLive status={pin.status} />} className="trade-block pin-risk-full" pad={false}>
       <div className="table-scroll">
         <table className="dt">
           <thead><tr><th className="l">Option</th><th className="r">Strike</th><th className="r">DTE</th><th className="r">Dist pip</th><th className="r">P&L now</th><th className="r">if pin</th></tr></thead>

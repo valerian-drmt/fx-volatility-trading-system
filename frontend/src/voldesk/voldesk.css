@@ -1539,6 +1539,8 @@ input,select{font-family:inherit;font-size:13px}
 .risk-macro-panel > .panel-body{flex:1;min-height:0}
 .greeks-2x2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
 .greeks-2x2 > .panel{min-width:0;grid-column:auto}
+/* Expiries & roll-off spans the full Greeks-grid width */
+.greeks-2x2 > .pin-risk-full{grid-column:1 / -1}
 /* Value at Risk column — table / graph / marginal contribution stacked 1x3 */
 .var-1x3{display:flex;flex-direction:column;gap:10px}
 
