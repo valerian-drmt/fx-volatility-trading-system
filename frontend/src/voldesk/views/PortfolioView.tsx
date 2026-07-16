@@ -630,24 +630,18 @@ const GREEKS: { key: GreekKey; label: string }[] = [
 ];
 
 // P&L attribution matrix — greek P&L (Taylor terms) × axis (tenor), all in $. Each
-// cell shows the term value + its share of that row's realized P&L; a divergent
-// heatmap tints cells by magnitude. Rows foot to P&L Σ (± residual); the Total row
-// (Σ over rows) equals the by-greek bridge.
+// cell shows the term value + its share of that row's realized P&L. Rows foot to
+// P&L Σ (± residual); the Total row (Σ over rows) equals the by-greek bridge.
 function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel: string }): JSX.Element {
   if (!m || m.rows.length === 0)
     return <div className="hbar-empty dim small mono">no attribution yet</div>;
-  const terms = m.rows.flatMap((r) => [r.delta, r.gamma, r.vega, r.theta, r.residual]);
-  const maxAbs = Math.max(1, ...terms.map(Math.abs));
-  // divergent heatmap: green (>0) / red (<0), opacity by |value| vs the matrix max.
-  const bg = (v: number): string =>
-    `color-mix(in srgb, ${v >= 0 ? "var(--pos)" : "var(--neg)"} ${Math.round(Math.min(1, Math.abs(v) / maxAbs) * 26)}%, transparent)`;
   // term cell: value $ bold + (% of the row's realized P&L) lighter, same colour.
   const cell = (v: number, rowActual: number, extra: string): JSX.Element => {
     // % of the row's realized P&L — undefined when the row P&L is ~0 (would divide
     // by ≈0 into a nonsense %), shown as "—" then.
     const p = Math.abs(rowActual) < 1 ? null : Math.round((v / Math.abs(rowActual)) * 100);
     return (
-      <td className={"r mono " + extra + " " + pnlCls(v)} style={{ background: bg(v) }}>
+      <td className={"r mono " + extra + " " + pnlCls(v)}>
         <b>{gk$(v)}</b>{" "}
         <span className="pb-rel">({p == null ? "—" : (p >= 0 ? "+" : "−") + Math.abs(p) + "%"})</span>
       </td>
@@ -665,7 +659,7 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
       {cell(r.gamma, r.actual, "grp-grk")}
       {cell(r.vega, r.actual, "grp-grk")}
       {cell(r.theta, r.actual, "grp-grk col-grp-end")}
-      {cell(r.residual, r.actual, "grp-att col-grp col-grp-end")}
+      {cell(r.residual, r.actual, "grp-grk col-grp col-grp-end")}
     </tr>
   );
   const t = m.totals;
@@ -682,7 +676,7 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
             <th className="r grp-grk">½Γ·dS²</th>
             <th className="r grp-grk">Vega·dσ</th>
             <th className="r grp-grk col-grp-end">Theta·dt</th>
-            <th className="r grp-att col-grp col-grp-end">residual</th>
+            <th className="r grp-grk col-grp col-grp-end">residual</th>
           </tr>
         </thead>
         <tbody>
@@ -706,7 +700,7 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
             <td className={"r mono grp-grk col-grp-end " + pnlCls(t.theta)}>
               <b>{gk$(t.theta)}</b>
             </td>
-            <td className={"r mono grp-att col-grp col-grp-end " + pnlCls(t.residual)}>
+            <td className={"r mono grp-grk col-grp col-grp-end " + pnlCls(t.residual)}>
               <b>{gk$(t.residual)}</b>
             </td>
           </tr>
@@ -753,17 +747,13 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
     });
   if (!m || m.rows.length === 0)
     return <div className="hbar-empty dim small mono">no attribution yet</div>;
-  const terms = m.rows.flatMap((r) => [r.delta, r.gamma, r.vega, r.theta, r.residual]);
-  const maxAbs = Math.max(1, ...terms.map(Math.abs));
-  const bg = (v: number): string =>
-    `color-mix(in srgb, ${v >= 0 ? "var(--pos)" : "var(--neg)"} ${Math.round(Math.min(1, Math.abs(v) / maxAbs) * 26)}%, transparent)`;
-  // one greek-P&L cell: value $ bold + (% of the row's realized P&L), heatmap tint.
+  // one greek-P&L cell: value $ bold + (% of the row's realized P&L).
   const cell = (v: number, rowActual: number, extra: string): JSX.Element => {
     // % of the row's realized P&L — undefined when the row P&L is ~0 (would divide
     // by ≈0 into a nonsense %), shown as "—" then.
     const p = Math.abs(rowActual) < 1 ? null : Math.round((v / Math.abs(rowActual)) * 100);
     return (
-      <td className={"r mono " + extra + " " + pnlCls(v)} style={{ background: bg(v) }}>
+      <td className={"r mono " + extra + " " + pnlCls(v)}>
         <b>{gk$(v)}</b>{" "}
         <span className="pb-rel">({p == null ? "—" : (p >= 0 ? "+" : "−") + Math.abs(p) + "%"})</span>
       </td>
@@ -781,7 +771,7 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
       {cell(r.gamma, r.actual, "grp-grk")}
       {cell(r.vega, r.actual, "grp-grk")}
       {cell(r.theta, r.actual, "grp-grk col-grp-end")}
-      {cell(r.residual, r.actual, "grp-att col-grp col-grp-end")}
+      {cell(r.residual, r.actual, "grp-grk col-grp col-grp-end")}
     </>
   );
   const legRow = (r: PositionAttribRow, main: boolean): JSX.Element => (
@@ -824,7 +814,7 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
             <th className="r grp-grk">½Γ·dS²</th>
             <th className="r grp-grk">Vega·dσ</th>
             <th className="r grp-grk col-grp-end">Theta·dt</th>
-            <th className="r grp-att col-grp col-grp-end">residual</th>
+            <th className="r grp-grk col-grp col-grp-end">residual</th>
           </tr>
         </thead>
         <tbody>
@@ -887,7 +877,7 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
             <td className={"r mono grp-grk col-grp-end " + pnlCls(t.theta)}>
               <b>{gk$(t.theta)}</b>
             </td>
-            <td className={"r mono grp-att col-grp col-grp-end " + pnlCls(t.residual)}>
+            <td className={"r mono grp-grk col-grp col-grp-end " + pnlCls(t.residual)}>
               <b>{gk$(t.residual)}</b>
             </td>
           </tr>

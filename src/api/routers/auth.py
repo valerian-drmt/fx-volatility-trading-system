@@ -22,7 +22,10 @@ def login(body: LoginBody, response: Response, settings: SettingsDep) -> AuthSta
     )
     if not ok:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid credentials")
-    token = issue_token(body.username, settings.auth_secret, settings.auth_ttl_seconds)
+    # Mint from the server-side username — just checked equal to body.username,
+    # so identical semantics, but no client-supplied bytes can ever reach the
+    # Set-Cookie header (CWE-020).
+    token = issue_token(settings.auth_username, settings.auth_secret, settings.auth_ttl_seconds)
     response.set_cookie(
         COOKIE_NAME,
         token,

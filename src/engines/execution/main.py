@@ -71,6 +71,12 @@ RECONCILE_INTERVAL_S = float(os.getenv("RECONCILE_INTERVAL_S", "60.0"))
 EXECUTION_USE_COMBO = os.getenv("EXECUTION_USE_COMBO", "0").lower() in ("1", "true", "yes")
 
 
+def _scrub(value: Any) -> str:
+    """Neutralise CR/LF in request-derived values before logging (CWE-117),
+    so a crafted payload can't forge extra log lines in Loki."""
+    return str(value).replace("\r", "\\r").replace("\n", "\\n")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # P0 obs : start the Prometheus /metrics HTTP server first thing so the
@@ -413,9 +419,11 @@ async def close_position_by_symbol(
         async with sm() as db:
             sync_summary = await sync_positions_from_ib(db, ex)
             sync_summary["synced"] = True
-    except Exception as e:
-        logger.exception("post_close_sync_failed local_symbol=%s", body.local_symbol)
-        sync_summary = {"synced": False, "error": str(e)[:300]}
+    except Exception:
+        # Full detail goes to the engine log only — exception text in the
+        # response would leak internals to the API client (CWE-209).
+        logger.exception("post_close_sync_failed local_symbol=%s", _scrub(body.local_symbol))
+        sync_summary = {"synced": False, "error": "position sync failed — see engine logs"}
     return {**result, "post_close_sync": sync_summary}
 
 
@@ -509,7 +517,7 @@ async def submit_structure(
     """
     logger.info(
         "live_submit_received structure_id=%s ib_connected=%s",
-        body.structure_id, ex.is_connected(),
+        _scrub(body.structure_id), ex.is_connected(),
     )
     try:
         result = await submit_structure_live(
@@ -519,13 +527,13 @@ async def submit_structure(
         )
         logger.info(
             "live_submit_ok structure_id=%s body=%s",
-            body.structure_id, str(result)[:300],
+            _scrub(body.structure_id), _scrub(str(result)[:300]),
         )
         return result
     except LiveSubmitError as e:
         logger.error(
             "live_submit_failed structure_id=%s reason=%s",
-            body.structure_id, str(e)[:300],
+            _scrub(body.structure_id), _scrub(str(e)[:300]),
         )
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -533,7 +541,7 @@ async def submit_structure(
         tb = _tb.format_exc()
         logger.error(
             "live_submit_failed structure_id=%s exc_type=%s exc=%s\n%s",
-            body.structure_id, type(e).__name__, str(e)[:300], tb,
+            _scrub(body.structure_id), type(e).__name__, _scrub(str(e)[:300]), tb,
         )
         raise HTTPException(
             status_code=500,
