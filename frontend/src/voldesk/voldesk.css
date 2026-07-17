@@ -1145,7 +1145,7 @@ input,select{font-family:inherit;font-size:13px}
 @media(max-width:1400px){.dash-risk-2col{grid-template-columns:1fr}}
 .dash-pf-2col{display:grid;grid-template-columns:1.15fr 1fr;gap:10px;align-items:start}
 @media(max-width:1400px){.dash-pf-2col{grid-template-columns:1fr}}
-.dash-pnl-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-bottom:2px;border-bottom:1px solid var(--line)}
+.dash-pnl-pair{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-bottom:2px;border-bottom:1px solid var(--line)}
 /* holdings valuation donut (Portfolio card) */
 .hold-donut{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .hold-donut svg{flex:0 0 auto}

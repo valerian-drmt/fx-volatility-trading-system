@@ -283,6 +283,10 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                   <span className="gs-lbl">Unrealized</span>
                   <b className={"mono " + pnlCls(g.netUnreal)}>{fmt.usdk(g.netUnreal)}</b>
                 </div>
+                <div className="bs-item">
+                  <span className="gs-lbl">DD</span>
+                  <b className={"mono " + (ps.currentDd < 0 ? "neg" : "dim")}>{ps.currentDd}%</b>
+                </div>
               </div>
               <HoldingsDonut netLiq={a.netLiq} cash={cashRows} />
             </div>
