@@ -257,32 +257,32 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
               <span className="gs-sub dim">of {(L.gamma.cap / 1000).toFixed(1)}k {L.gamma.unit}</span>
             </div>
           </div>
-          <div className="book-surv">
-            <div className="bs-item">
-              <span className="gs-lbl">
-                Net Delta <em className="unit">$</em>
-              </span>
-              <b className={"mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</b>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">
-                Net Gamma <em className="unit">$/pip</em>
-              </span>
-              <b className={"mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</b>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">
-                Net Vega <em className="unit">$/vp</em>
-              </span>
-              <b className={"mono " + pnlCls(g.netVega)}>{gk$(g.netVega)}</b>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">
-                Net Theta <em className="unit">$/day</em>
-              </span>
-              <b className={"mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</b>
-            </div>
-          </div>
+          <table className="dt greeks-table">
+            <thead>
+              <tr>
+                <th className="l">Greek</th>
+                <th className="r">Net value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="l">Delta <em className="unit">USD</em></td>
+                <td className={"r mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</td>
+              </tr>
+              <tr>
+                <td className="l">Gamma <em className="unit">USD/pip</em></td>
+                <td className={"r mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</td>
+              </tr>
+              <tr>
+                <td className="l">Vega <em className="unit">$/vp</em></td>
+                <td className={"r mono " + pnlCls(g.netVega)}>{gk$(g.netVega)}</td>
+              </tr>
+              <tr>
+                <td className="l">Theta <em className="unit">$/day</em></td>
+                <td className={"r mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</td>
+              </tr>
+            </tbody>
+          </table>
           {varCapPct != null && v && (
             <Bar
               label="VaR 99 vs cap"
