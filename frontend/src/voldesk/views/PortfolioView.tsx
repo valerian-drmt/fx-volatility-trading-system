@@ -19,8 +19,8 @@ import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
 import { groupByTradeId, structureName, structureSide } from "../components/tradeGrouping";
-import { DATA, DATA2, fmt } from "../data";
-import type { Cash, PerfStats } from "../data";
+import { DATA, fmt } from "../data";
+import type { Cash } from "../data";
 import { useDeskData } from "../data/deskData";
 import {
   adaptAttributionMatrix,
@@ -454,11 +454,9 @@ function recapRow(w: string, pts: EquityPoint[], gs: GreekSeries): RecapRow {
 // realized decomposition, NOT the book's greek sensitivities). Each left chart is
 // twice the width of a right cell, so both halves foot to the same height.
 function PerformancePanel({
-  ps,
   unreal,
   markers,
 }: {
-  ps: PerfStats;
   unreal: number;
   markers: TradeEvent[];
 }): JSX.Element {
@@ -486,6 +484,9 @@ function PerformancePanel({
   }, [win, reloadEq, reloadGk]);
   const equity = buildEquityGrid(eq.data ?? [], WINDOW_DAYS[win] ?? null, Date.now());
   const hist: GreekSeries = gk.data ?? { delta: [], gamma: [], vega: [], theta: [] };
+  // Header stats follow the selected window (same math as the recap table) —
+  // realized = equity Δ over the window, DDs from the window's running peak.
+  const cur = recapRow(win, eq.data ?? [], hist);
   // Recap table: one sweep over ALL 5 windows (equity + greek P&L per window).
   const recap = useFetch<RecapRow[]>(
     () =>
@@ -530,8 +531,10 @@ function PerformancePanel({
         <div className="perf-col-left" data-pp="perf-equity">
           <div className="perf-slot-stats">
             <div className="pstat">
-              <span className="pstat-lbl mono dim">Realized</span>
-              <b className={"pstat-val mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
+              <span className="pstat-lbl mono dim">Realized · {win}</span>
+              <b className={"pstat-val mono " + (cur.pnl != null ? pnlCls(cur.pnl) : "dim")}>
+                {cur.pnl != null ? fmt.usdk(cur.pnl) : "—"}
+              </b>
             </div>
             <div className="pstat">
               <span className="pstat-lbl mono dim">Unrealized</span>
@@ -544,12 +547,16 @@ function PerformancePanel({
           <EquityLineSvg grid={equity} status={eq.status} markers={markers} />
           <div className="perf-slot-stats">
             <div className="pstat">
-              <span className="pstat-lbl mono dim">Max drawdown</span>
-              <b className="pstat-val mono neg">{ps.maxDd}%</b>
+              <span className="pstat-lbl mono dim">Max drawdown · {win}</span>
+              <b className={"pstat-val mono " + (cur.maxDd != null && cur.maxDd < -0.05 ? "neg" : "dim")}>
+                {cur.maxDd != null ? cur.maxDd.toFixed(1) + "%" : "—"}
+              </b>
             </div>
             <div className="pstat">
               <span className="pstat-lbl mono dim">Current DD</span>
-              <b className="pstat-val mono neg">{ps.currentDd}%</b>
+              <b className={"pstat-val mono " + (cur.curDd != null && cur.curDd < -0.05 ? "neg" : "dim")}>
+                {cur.curDd != null ? cur.curDd.toFixed(1) + "%" : "—"}
+              </b>
             </div>
           </div>
           <div className="perf-sub mono dim">
@@ -1113,7 +1120,6 @@ export function PortfolioView(): JSX.Element {
   const { portfolio, trade } = useDeskData();
   const pd = portfolio.data;
   const a = pd?.account ?? DATA.account,
-    ps = pd?.perfStats ?? DATA2.perfStats,
     g = pd?.greeks ?? DATA.greeks;
   // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
@@ -1295,7 +1301,7 @@ export function PortfolioView(): JSX.Element {
         </div>
       </Panel>
 
-      <PerformancePanel ps={ps} unreal={unreal} markers={tradeMarkers} />
+      <PerformancePanel unreal={unreal} markers={tradeMarkers} />
 
       <Panel title="P&L attribution by tenor" dataPp="attrib-tenor" className="wf-panel">
         <AttributionMatrix m={attribTenor} axisLabel="Tenor" />
