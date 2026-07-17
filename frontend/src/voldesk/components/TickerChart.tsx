@@ -119,17 +119,15 @@ export function TickerChart({
     yHi = hi + pad;
   const X = (i: number): number => pl + (i + 0.5) * colW;
   const Y = (p: number): number => pt + (1 - (p - yLo) / (yHi - yLo)) * (priceBot - pt);
-  const hourOf = (c: Bar): number => new Date(c.t).getUTCHours();
   // intraday → "HHh"; multi-day ranges → "DD/MM"
-  const axisLabel = (c: Bar): string => {
-    const d = new Date(c.t);
+  const axisLabel = (t: number): string => {
+    const d = new Date(t);
     return preset.intraday ? pad2(d.getUTCHours()) + "h" : pad2(d.getUTCDate()) + "/" + pad2(d.getUTCMonth() + 1);
   };
 
   const last = spot || candles[N - 1]!.c;
   const ticks: number[] = [];
   for (let i = 0; i <= 4; i++) ticks.push(yLo + ((yHi - yLo) / 4) * i);
-  const labelEvery = Math.ceil(N / 8);
 
   // Trade markers: map an event timestamp to a fractional candle x (null if it
   // falls outside the visible range), anchored to entry_spot or the candle close.
@@ -162,6 +160,13 @@ export function TickerChart({
     .sort((a, b) => a.t - b.t)
     .map((d) => ({ ...d, x: X((d.t - t0) / interval), future: d.t > tN + interval / 2 }))
     .filter((d) => d.x > pl + 4 && d.x < W - pr - 3);
+
+  // Time slots for the session bands + x-axis: one per candle, then virtual
+  // slots continuing the same interval across the future zone — so market-open
+  // bands and date labels extend past the present, TradingView-style.
+  const nSlots = futFrac > 0 ? Math.floor(plotW / colW) : N;
+  const slotT = (i: number): number => t0 + i * interval;
+  const labelEvery = Math.ceil(nSlots / 8);
 
   return (
     <div className="ticker">
@@ -241,13 +246,22 @@ export function TickerChart({
             />
           </g>
         ))}
-        {/* session bands — one non-overlapping row per market */}
+        {/* session bands — one non-overlapping row per market, extended across
+            the future zone (upcoming opens slightly dimmed) */}
         {SESSIONS.map((s, si) => {
           const y = bandsTop + si * (bandH + bandGap);
           return (
             <g key={s.code}>
-              {candles.map((c, i) => (
-                <rect key={i} x={pl + i * colW} y={y} width={colW} height={bandH} fill={s.color} opacity={isOpen(hourOf(c), s.open, s.close) ? 0.85 : 0.07} />
+              {Array.from({ length: nSlots }, (_, i) => (
+                <rect
+                  key={i}
+                  x={pl + i * colW}
+                  y={y}
+                  width={colW}
+                  height={bandH}
+                  fill={s.color}
+                  opacity={isOpen(new Date(slotT(i)).getUTCHours(), s.open, s.close) ? (i < N ? 0.85 : 0.45) : 0.07}
+                />
               ))}
               <text x={pl - 5} y={y + bandH / 2} dominantBaseline="central" textAnchor="end" fontSize="12.5" fontWeight={800} fontFamily="var(--mono)" fill={s.color}>
                 {s.code}
@@ -255,10 +269,11 @@ export function TickerChart({
             </g>
           );
         })}
-        {/* time axis (UTC) — hour intraday, date for week/month */}
-        {candles.map((c, i) => (i % labelEvery === 0 ? (
+        {/* time axis (UTC) — hour intraday, date for week/month; runs past the
+            present into the future zone */}
+        {Array.from({ length: nSlots }, (_, i) => (i % labelEvery === 0 ? (
           <text key={"h" + i} x={X(i)} y={H - 3} textAnchor="middle" fontSize="8" fontFamily="var(--mono)" fill="var(--text-faint)">
-            {axisLabel(c)}
+            {axisLabel(slotT(i))}
           </text>
         ) : null))}
       </svg>
