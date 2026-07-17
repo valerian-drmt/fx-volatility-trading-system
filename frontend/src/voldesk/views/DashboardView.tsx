@@ -5,21 +5,17 @@
  * the EUR/USD candlestick (session bands + macro-event dots) with the upcoming
  * macro events listed beneath it.
  */
-import {
-  fetchEquityCurve,
-  fetchRegimeEvents,
-  fetchRegimeState,
-} from "../../api/endpoints";
+import type { ReactNode } from "react";
+import { fetchRegimeEvents, fetchRegimeState } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
-import { Bar, Panel, Tag } from "../components/common";
+import { Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
 import { TickerChart } from "../components/TickerChart";
 import { DATA, DATA2, fmt } from "../data";
-import type { Pc, TermPoint } from "../data";
+import type { Cash, Pc, TermPoint } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
-import { adaptEquityCurve, type EquityPoint } from "../data/live/portfolio";
 import { adaptEvents } from "../data/live/trade";
 
 // mini ATM term-structure with σ_fair overlay
@@ -54,27 +50,86 @@ function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
   );
 }
 
-// 7d net-liq sparkline — colour by first→last direction, light area fill.
-function Spark({ pts }: { pts: EquityPoint[] }): JSX.Element {
-  const w = 250,
-    h = 46,
-    pad = 4;
-  if (pts.length < 2) return <div className="dim small mono spark-empty">no equity history</div>;
-  const t0 = pts[0]!.t,
-    t1 = pts[pts.length - 1]!.t;
-  const vals = pts.map((p) => p.v);
-  const lo = Math.min(...vals),
-    hi = Math.max(...vals),
-    rng = hi - lo || 1;
-  const X = (t: number): number => pad + ((t - t0) / (t1 - t0 || 1)) * (w - 2 * pad);
-  const Y = (v: number): number => pad + (1 - (v - lo) / rng) * (h - 2 * pad);
-  const d = pts.map((p, i) => (i ? "L" : "M") + X(p.t).toFixed(1) + " " + Y(p.v).toFixed(1)).join(" ");
-  const col = vals[vals.length - 1]! >= vals[0]! ? "var(--pos)" : "var(--neg)";
+// ▲/▼ change pill + parenthetical note — same helpers as the Portfolio tab's
+// Cash & margin table (classes .acct-delta / .acct-sub are global).
+function deltaPill(d: number | null | undefined): JSX.Element | null {
+  if (d == null || !Number.isFinite(d)) return null;
+  const neg = d < 0;
   return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      <path d={`${d} L ${X(t1).toFixed(1)} ${h - pad} L ${X(t0).toFixed(1)} ${h - pad} Z`} fill={col} fillOpacity="0.12" />
-      <path d={d} fill="none" stroke={col} strokeWidth="1.8" strokeLinejoin="round" />
-    </svg>
+    <span className={"acct-delta " + (neg ? "neg" : "pos")}>
+      {neg ? "▼" : "▲"} {Math.abs(d).toFixed(2)}%
+    </span>
+  );
+}
+function acctNote(note: ReactNode): JSX.Element | null {
+  return note ? <span className="acct-sub"> ({note})</span> : null;
+}
+
+// Holdings valuation as a donut — same decomposition as the Portfolio tab's
+// Holdings table (USD cash / EUR cash / contracts as the residual net liq −
+// cash, so the parts always foot exactly to net liq in the centre).
+const DONUT_PARTS: { key: string; label: string; color: string }[] = [
+  { key: "usd", label: "USD cash", color: "var(--accent)" },
+  { key: "eur", label: "EUR cash", color: "#a78bfa" },
+  { key: "contracts", label: "Contracts", color: "#2dd4bf" },
+];
+
+function HoldingsDonut({ netLiq, cash }: { netLiq: number; cash: Cash[] }): JSX.Element {
+  const usd = cash.find((c) => c.ccy === "USD")?.usd ?? 0;
+  const eur = cash.find((c) => c.ccy === "EUR")?.usd ?? 0;
+  const contracts = netLiq - cash.reduce((s, c) => s + c.usd, 0);
+  const vals: Record<string, number> = { usd, eur, contracts };
+  const totAbs = DONUT_PARTS.reduce((s, p) => s + Math.abs(vals[p.key]!), 0) || 1;
+  const base = Math.abs(netLiq) || 1;
+  // signed share of |net liq| — same reading as the Portfolio tab's table.
+  const pct = (v: number): string => {
+    const p = Math.round((v / base) * 100);
+    return (p >= 0 ? "+" : "−") + Math.abs(p) + "%";
+  };
+  const R = 40;
+  const C = 2 * Math.PI * R;
+  let acc = 0;
+  return (
+    <div className="hold-donut">
+      <svg width="118" height="118" viewBox="0 0 118 118">
+        {DONUT_PARTS.map((p) => {
+          const frac = Math.abs(vals[p.key]!) / totAbs;
+          const off = -acc * C;
+          acc += frac;
+          return (
+            <circle
+              key={p.key}
+              cx="59"
+              cy="59"
+              r={R}
+              fill="none"
+              stroke={p.color}
+              strokeWidth="14"
+              strokeDasharray={`${frac * C} ${C - frac * C}`}
+              strokeDashoffset={off}
+              transform="rotate(-90 59 59)"
+            />
+          );
+        })}
+        <text x="59" y="54" textAnchor="middle" fontSize="9" fill="var(--text-dim)">
+          Total
+        </text>
+        <text x="59" y="67" textAnchor="middle" fontSize="10.5" fontWeight={700} fontFamily="var(--mono)" fill="var(--fg)">
+          {fmt.usd(netLiq)}
+        </text>
+      </svg>
+      <div className="hold-donut-leg">
+        {DONUT_PARTS.map((p) => (
+          <div key={p.key} className="hdl-row">
+            <span className="val-dot" style={{ background: p.color }} />
+            <span className="hdl-lbl dim">{p.label}</span>
+            <span className={"mono " + pnlCls(vals[p.key]!)}>
+              {fmt.usd(vals[p.key]!)} <span className="dim">({pct(vals[p.key]!)})</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -110,7 +165,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const a = portfolio.data?.account ?? DATA.account,
     g = portfolio.data?.greeks ?? DATA.greeks,
     ps = portfolio.data?.perfStats ?? DATA2.perfStats;
-  const positions = trade.data?.positions ?? DATA.positions;
   const events = trade.data?.events ?? DATA.events;
   const ts = termStructure.data ?? DATA.termStructure;
   const spot = ticks.data?.mid ?? DATA.SPOT;
@@ -119,17 +173,14 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const regimeLive = useFetch(() => fetchRegimeState(), 60_000);
   const gate = regimeLive.data?.gate;
   const gateOpen = gate?.authorized ?? DATA.regime.gate.allowed;
-  // per-card fetches: 7d equity sparkline.
-  const equity7 = useFetch(() => fetchEquityCurve("7d").then(adaptEquityCurve), 120_000, true, 60_000).data ?? [];
 
   // surface staleness — degrades the Signal card when the vol surface is down.
   const toTone = (s: FreshStatus): Status => (s === "live" ? "up" : s === "stale" ? "warn" : "down");
   const surfStale = toTone(termStructure.status) === "down";
 
-  // ── Portfolio card numbers
-  const grossNominal = positions.reduce((s, p) => s + Math.abs(p.nominal), 0);
-  const netLiqEur = a.netLiq / spot;
-  const grossX = netLiqEur > 0 ? (grossNominal / netLiqEur).toFixed(2) : "—";
+  // ── Portfolio card: live per-currency cash for the holdings donut.
+  const liveCash = trade.data?.cash;
+  const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
 
   // ── Risk card numbers
   const v = risk.data;
@@ -169,47 +220,73 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           }
           className="dash-card"
         >
-          <div className="book-surv dash-kpis">
-            <div className="bs-item">
-              <span className="gs-lbl">Net liq</span>
-              <b className="mono">{fmt.usd(a.netLiq)}</b>
-              <span className={"gs-sub " + (a.dNetLiq >= 0 ? "pos" : "neg")}>
-                {a.dNetLiq >= 0 ? "▲" : "▼"} {Math.abs(a.dNetLiq).toFixed(2)}% 24h
-              </span>
+          <div className="dash-pf-2col">
+            <div className="ind-fam">
+              <div className="ind-fam-head">Cash &amp; margin</div>
+              <table className="dt greeks-table">
+                <thead>
+                  <tr>
+                    <th className="l">Cash &amp; margin</th>
+                    <th className="r">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="l">Net liquidation</td>
+                    <td className="r mono">
+                      {fmt.usd(a.netLiq)}
+                      {acctNote(deltaPill(a.dNetLiq))}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="l">Cash</td>
+                    <td className="r mono">
+                      {fmt.usd(a.cash)}
+                      {acctNote(deltaPill(a.dCash))}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="l">Init margin</td>
+                    <td className="r mono">
+                      {fmt.usd(a.marginInit)}
+                      {acctNote(`${a.marginInitPct}% used`)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="l">Maint margin</td>
+                    <td className="r mono">
+                      {fmt.usd(a.marginMaint)}
+                      {acctNote(`${a.marginMaintPct}% used`)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="l">Excess liquidity</td>
+                    <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
+                  </tr>
+                  <tr>
+                    <td className="l">Cushion</td>
+                    <td className="r mono">
+                      {(a.cushion * 100).toFixed(1)}%{acctNote(`${a.nPositions} positions`)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Day P&L</span>
-              <b className={"mono " + pnlCls(a.dayPnl)}>{fmt.usdk(a.dayPnl)}</b>
-              <span className="gs-sub dim">session</span>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Unrealized</span>
-              <b className={"mono " + pnlCls(g.netUnreal)}>{fmt.usdk(g.netUnreal)}</b>
-              <span className="gs-sub dim">open MTM</span>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Realized</span>
-              <b className={"mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
-              <span className="gs-sub dim">cumulative</span>
+            <div className="ind-fam">
+              <div className="ind-fam-head">P&amp;L &amp; holdings</div>
+              <div className="dash-pnl-pair">
+                <div className="bs-item">
+                  <span className="gs-lbl">Realized</span>
+                  <b className={"mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
+                </div>
+                <div className="bs-item">
+                  <span className="gs-lbl">Unrealized</span>
+                  <b className={"mono " + pnlCls(g.netUnreal)}>{fmt.usdk(g.netUnreal)}</b>
+                </div>
+              </div>
+              <HoldingsDonut netLiq={a.netLiq} cash={cashRows} />
             </div>
           </div>
-          <Bar
-            label="Margin used"
-            used={fmt.usd(a.marginInit)}
-            limit={fmt.usd(a.netLiq)}
-            pct={a.marginInitPct}
-            value={a.marginInitPct + "%"}
-            tone="auto"
-          />
-          <div className="cap-lev">
-            <span className="dim mono small">
-              cushion {(a.cushion * 100).toFixed(1)}% · gross {grossX}× net liq · {a.nPositions} positions
-            </span>
-          </div>
-          <div className="mkt-term-head">
-            <span className="gs-lbl">Net liq — 7d</span>
-          </div>
-          <Spark pts={equity7} />
         </Panel>
 
         <Panel
