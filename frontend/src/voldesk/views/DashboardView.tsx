@@ -78,12 +78,6 @@ function Spark({ pts }: { pts: EquityPoint[] }): JSX.Element {
   );
 }
 
-// $k loss formatter for VaR/ES values (VarData is in $k, losses by definition).
-const lossK = (vk: number): string => {
-  const a = Math.abs(vk);
-  return "−$" + (a >= 1000 ? (a / 1000).toFixed(2) + "M" : Math.round(a) + "k");
-};
-
 // mini VaR table (Risk card) — same √t scaling + percentile math as the Risk
 // tab's VarCard, compressed to Horizon / exp. return / VaR 95%.
 const VAR_ROWS = [
@@ -115,8 +109,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const ticks = useTicks();
   const a = portfolio.data?.account ?? DATA.account,
     g = portfolio.data?.greeks ?? DATA.greeks,
-    ps = portfolio.data?.perfStats ?? DATA2.perfStats,
-    L = trade.data?.limits ?? DATA.limits;
+    ps = portfolio.data?.perfStats ?? DATA2.perfStats;
   const positions = trade.data?.positions ?? DATA.positions;
   const events = trade.data?.events ?? DATA.events;
   const ts = termStructure.data ?? DATA.termStructure;
@@ -140,7 +133,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
 
   // ── Risk card numbers
   const v = risk.data;
-  const varCapPct = v && L.var99.cap ? Math.round((Math.abs(v.var99) / L.var99.cap) * 100) : null;
 
   // chart events: same calendar but with a 35d past window (covers the 1M
   // range), so past releases show as filled dots. The list below the chart
@@ -261,9 +253,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
               </table>
             </div>
             <div className="ind-fam">
-              <div className="ind-fam-head">
-                VaR table <span className="dim">· historical 1d</span>
-              </div>
+              <div className="ind-fam-head">VaR table</div>
               {v ? (
                 <table className="dt var-table">
                   <thead>
@@ -299,16 +289,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
               )}
             </div>
           </div>
-          {varCapPct != null && v && (
-            <Bar
-              label="VaR 99 vs cap"
-              used={lossK(v.var99)}
-              limit={"$" + L.var99.cap + "k"}
-              pct={varCapPct}
-              value={varCapPct + "%"}
-              tone="auto"
-            />
-          )}
         </Panel>
 
         <Panel
