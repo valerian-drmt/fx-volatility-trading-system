@@ -6,11 +6,7 @@
  * macro events listed beneath it.
  */
 import type { ReactNode } from "react";
-import {
-  fetchEquityCurve,
-  fetchRegimeEvents,
-  fetchRegimeState,
-} from "../../api/endpoints";
+import { fetchEquityCurve, fetchRegimeEvents } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
@@ -18,44 +14,12 @@ import type { Status } from "../components/format";
 import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
 import { TickerChart } from "../components/TickerChart";
 import { DATA, fmt } from "../data";
-import type { Cash, TermPoint } from "../data";
+import type { Cash } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
 import { adaptEquityCurve, type EquityPoint, type GreekSeries } from "../data/live/portfolio";
 import { adaptEvents } from "../data/live/trade";
 import { ModeCard } from "./SignalsView";
-
-// mini ATM term-structure with σ_fair overlay
-function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
-  const w = 250,
-    h = 74,
-    pl = 6,
-    pr = 6,
-    pt = 8,
-    pb = 16;
-  const all = ts.flatMap((t) => [t.atm, t.fair]);
-  const lo = Math.min(...all),
-    hi = Math.max(...all),
-    rng = hi - lo || 1;
-  const X = (i: number): number => pl + (i / (ts.length - 1)) * (w - pl - pr);
-  const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
-  const line = (key: "atm" | "fair"): string =>
-    ts.map((t, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(t[key]).toFixed(1)).join(" ");
-  return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      <path d={line("fair")} stroke="var(--text-faint)" strokeDasharray="3 2" fill="none" strokeWidth="1.4" />
-      <path d={line("atm")} stroke="var(--accent)" fill="none" strokeWidth="1.9" />
-      {ts.map((t, i) => (
-        <circle key={i} cx={X(i)} cy={Y(t.atm)} r="2.2" fill="var(--accent)" />
-      ))}
-      {ts.map((t, i) => (
-        <text key={"l" + i} x={X(i)} y={h - 4} fill="var(--text-faint)" fontSize="8" fontFamily="var(--mono)" textAnchor="middle">
-          {t.tenor}
-        </text>
-      ))}
-    </svg>
-  );
-}
 
 // per-panel data-source indicator (live / stale / no-data) — same look as the
 // Risk tab's PanelLive, driven by a desk-domain freshness status.
@@ -180,13 +144,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const a = portfolio.data?.account ?? DATA.account,
     g = portfolio.data?.greeks ?? DATA.greeks;
   const events = trade.data?.events ?? DATA.events;
-  const ts = termStructure.data ?? DATA.termStructure;
   const spot = ticks.data?.mid ?? DATA.SPOT;
-
-  // regime gate: live decision (/regime/state → gate.authorized), mock fallback.
-  const regimeLive = useFetch(() => fetchRegimeState(), 60_000);
-  const gate = regimeLive.data?.gate;
-  const gateOpen = gate?.authorized ?? DATA.regime.gate.allowed;
 
   // surface staleness — degrades the Signal card when the vol surface is down.
   const toTone = (s: FreshStatus): Status => (s === "live" ? "up" : s === "stale" ? "warn" : "down");
@@ -236,9 +194,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
 
   // ── Signal card — the 3 live PC mode cards (PC1/PC2/PC3, 3M z-history view).
   const pcsLive = pca.data?.pcs ?? [];
-  // IV vs σ_fair per tenor (±0.1 vol-pt threshold) — the Fair-vol gate compressed.
-  const nCheap = ts.filter((t) => t.atm - t.fair <= -0.1).length;
-  const nRich = ts.filter((t) => t.atm - t.fair >= 0.1).length;
 
   return (
     <div className="dash-grid">
@@ -479,30 +434,14 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           className={"dash-card" + (surfStale ? " df-degraded" : "")}
         >
           {pcsLive.length ? (
-            <>
-              <div className="dash-sig-3col">
-                {pcsLive.slice(0, 3).map((pc) => (
-                  <ModeCard key={pc.id} pc={pc} view="3M" showLoadings={false} />
-                ))}
-              </div>
-              <div className="sig-conv dim small mono">
-                gate {gateOpen ? "open" : "blocked"}
-                {gate?.size_mult != null ? ` · size ×${gate.size_mult}` : ""}
-                {gate?.reason ? ` · ${gate.reason}` : ""} · IV vs σ_fair: {nCheap} cheap / {nRich} rich
-              </div>
-            </>
+            <div className="dash-sig-3col">
+              {pcsLive.slice(0, 3).map((pc) => (
+                <ModeCard key={pc.id} pc={pc} view="3M" showLoadings={false} />
+              ))}
+            </div>
           ) : (
             <div className="dim small mono">PCA model unavailable (no fit / market closed)</div>
           )}
-          <div className="mkt-term-head">
-            <span className="gs-lbl">ATM term structure</span>
-            <span className="mkt-term-leg mono dim">
-              <i className="lg-atm" />
-              IV <i className="lg-fair" />
-              σ_fair
-            </span>
-          </div>
-          <MiniTerm ts={ts} />
         </Panel>
       </div>
     </div>
