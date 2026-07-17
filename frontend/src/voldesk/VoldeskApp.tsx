@@ -97,7 +97,7 @@ const NAV: NavItem[] = [
 ];
 
 const TITLES: Record<string, [string, string]> = {
-  dashboard: ["Dashboard", "Command center"],
+  dashboard: ["Dashboard", ""],
   trade: ["Trade", ""],
   signals: ["Signal", "IV surface · PCA modes · fair vol gate"],
   risk: ["Risk", ""],
@@ -286,7 +286,7 @@ export default function VoldeskApp(): JSX.Element {
     document.documentElement.style.setProperty("--accent", t.accent);
   }, [t.accent]);
 
-  const [title, sub] = TITLES[route] ?? (["Dashboard", "Command center"] as [string, string]);
+  const [title, sub] = TITLES[route] ?? (["Dashboard", ""] as [string, string]);
   const tweaks = { density: t.density, showGreeks: t.showGreeks };
 
   return (
