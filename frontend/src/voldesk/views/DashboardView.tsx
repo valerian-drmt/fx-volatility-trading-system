@@ -7,10 +7,8 @@
  */
 import {
   fetchEquityCurve,
-  fetchPinRisk,
   fetchRegimeEvents,
   fetchRegimeState,
-  fetchStressGrid,
 } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
@@ -21,12 +19,7 @@ import { DATA, DATA2, fmt } from "../data";
 import type { Pc, TermPoint } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
-import {
-  adaptEquityCurve,
-  adaptPinRisk,
-  adaptStressGrid,
-  type EquityPoint,
-} from "../data/live/portfolio";
+import { adaptEquityCurve, type EquityPoint } from "../data/live/portfolio";
 import { adaptEvents } from "../data/live/trade";
 
 // mini ATM term-structure with σ_fair overlay
@@ -91,6 +84,32 @@ const lossK = (vk: number): string => {
   return "−$" + (a >= 1000 ? (a / 1000).toFixed(2) + "M" : Math.round(a) + "k");
 };
 
+// mini VaR table (Risk card) — same √t scaling + percentile math as the Risk
+// tab's VarCard, compressed to Horizon / exp. return / VaR 95%.
+const VAR_ROWS = [
+  { id: "1d", lbl: "Daily", days: 1 },
+  { id: "1w", lbl: "Weekly", days: 5 },
+  { id: "1M", lbl: "Monthly", days: 21 },
+  { id: "1Y", lbl: "Yearly", days: 252 },
+];
+const kc = (vk: number): string => {
+  const s = vk < 0 ? "−" : "+";
+  const a = Math.abs(vk);
+  return s + "$" + (a >= 1000 ? (a / 1000).toFixed(2) + "M" : Math.round(a) + "k");
+};
+// standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
+const normCdf = (z: number): number => {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989423 * Math.exp(-z * z / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return z > 0 ? 1 - p : p;
+};
+const ordinal = (n: number): string => {
+  const s = ["th", "st", "nd", "rd"],
+    v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]!);
+};
+
 export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element {
   const { pca, portfolio, trade, termStructure, risk } = useDeskData();
   const ticks = useTicks();
@@ -107,10 +126,8 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const regimeLive = useFetch(() => fetchRegimeState(), 60_000);
   const gate = regimeLive.data?.gate;
   const gateOpen = gate?.authorized ?? DATA.regime.gate.allowed;
-  // per-card fetches: 7d equity sparkline, worst stress cell, nearest expiries.
+  // per-card fetches: 7d equity sparkline.
   const equity7 = useFetch(() => fetchEquityCurve("7d").then(adaptEquityCurve), 120_000, true, 60_000).data ?? [];
-  const stress = useFetch(() => fetchStressGrid("spot-vol").then(adaptStressGrid), 120_000, true, 120_000).data ?? null;
-  const pinRows = useFetch(() => fetchPinRisk().then(adaptPinRisk), 120_000, true, 120_000).data ?? [];
 
   // surface staleness — degrades the Signal card when the vol surface is down.
   const toTone = (s: FreshStatus): Status => (s === "live" ? "up" : s === "stale" ? "warn" : "down");
@@ -123,21 +140,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
 
   // ── Risk card numbers
   const v = risk.data;
-  const gammaPct = L.gamma.cap ? Math.round((Math.abs(g.netGamma) / L.gamma.cap) * 100) : null;
   const varCapPct = v && L.var99.cap ? Math.round((Math.abs(v.var99) / L.var99.cap) * 100) : null;
-  // worst cell of the Spot × ΔVol stress grid (full-BS reval, raw $)
-  let worstCell: { v: number; spotBp: number; rowBin: number; unit: string } | null = null;
-  if (stress) {
-    for (let i = 0; i < stress.grid.length; i++) {
-      const row = stress.grid[i] ?? [];
-      for (let j = 0; j < row.length; j++) {
-        const val = row[j]!;
-        if (worstCell === null || val < worstCell.v)
-          worstCell = { v: val, spotBp: stress.spotBins[j] ?? 0, rowBin: stress.rowBins[i] ?? 0, unit: stress.rowUnit };
-      }
-    }
-  }
-  const nextPin = [...pinRows].sort((x, y) => x.dte - y.dte)[0] ?? null;
 
   // chart events: same calendar but with a 35d past window (covers the 1M
   // range), so past releases show as filled dots. The list below the chart
@@ -159,8 +162,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   // IV vs σ_fair per tenor (±0.1 vol-pt threshold) — the Fair-vol gate compressed.
   const nCheap = ts.filter((t) => t.atm - t.fair <= -0.1).length;
   const nRich = ts.filter((t) => t.atm - t.fair >= 0.1).length;
-
-  const sgnUnit = (x: number, unit: string): string => (x > 0 ? "+" : "") + x + unit;
 
   return (
     <div className="dash-grid">
@@ -229,60 +230,75 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           }
           className="dash-card"
         >
-          <div className="book-surv dash-kpis">
-            <div className="bs-item">
-              <span className="gs-lbl">VaR 99 · 1d</span>
-              <b className="mono neg">{v ? lossK(v.var99) : "—"}</b>
-              <span className="gs-sub dim">{v ? "ES " + lossK(v.es99) + " · " + v.nDays + "d hist" : "accumulating…"}</span>
+          <div className="dash-risk-2col">
+            <div className="ind-fam">
+              <div className="ind-fam-head">Greeks</div>
+              <table className="dt greeks-table">
+                <thead>
+                  <tr>
+                    <th className="l">Greek</th>
+                    <th className="r">Net value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="l">Delta <em className="unit">USD</em></td>
+                    <td className={"r mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</td>
+                  </tr>
+                  <tr>
+                    <td className="l">Gamma <em className="unit">USD/pip</em></td>
+                    <td className={"r mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</td>
+                  </tr>
+                  <tr>
+                    <td className="l">Vega <em className="unit">$/vp</em></td>
+                    <td className={"r mono " + pnlCls(g.netVega)}>{gk$(g.netVega)}</td>
+                  </tr>
+                  <tr>
+                    <td className="l">Theta <em className="unit">$/day</em></td>
+                    <td className={"r mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Worst stress</span>
-              <b className={"mono " + (worstCell ? pnlCls(worstCell.v) : "")}>{worstCell ? gk$(worstCell.v) : "—"}</b>
-              <span className="gs-sub dim">
-                {worstCell
-                  ? `spot ${sgnUnit(worstCell.spotBp, "bp")} · vol ${sgnUnit(worstCell.rowBin, worstCell.unit)}`
-                  : "grid loading"}
-              </span>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Next expiry</span>
-              <b className="mono">{nextPin ? nextPin.dte + " DTE" : "—"}</b>
-              <span className="gs-sub dim">{nextPin ? `${nextPin.product} · pin ${nextPin.distPips} pips` : "no option expiries"}</span>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Gamma util.</span>
-              <b className={"mono " + (gammaPct != null && gammaPct >= 90 ? "neg" : gammaPct != null && gammaPct >= 70 ? "warn" : "")}>
-                {gammaPct != null ? gammaPct + "%" : "—"}
-              </b>
-              <span className="gs-sub dim">of {(L.gamma.cap / 1000).toFixed(1)}k {L.gamma.unit}</span>
+            <div className="ind-fam">
+              <div className="ind-fam-head">
+                VaR table <span className="dim">· historical 1d</span>
+              </div>
+              {v ? (
+                <table className="dt var-table">
+                  <thead>
+                    <tr>
+                      <th className="l">Horizon</th>
+                      <th className="r">exp. return μt</th>
+                      <th className="r">VaR 95%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {VAR_ROWS.map((r) => {
+                      const m = Math.sqrt(r.days);
+                      const v95 = v.var95 * m;
+                      const retk = v.meanDaily * r.days;
+                      const sig = Math.abs(v95) / 1.645;
+                      const muZ = sig ? retk / sig : 0;
+                      return (
+                        <tr key={r.id}>
+                          <td className="l mono">
+                            {r.id} <span className="dim">{r.lbl}</span>
+                          </td>
+                          <td className={"r mono " + pnlCls(retk)}>
+                            {kc(retk)} <span className="dim">({ordinal(Math.round(normCdf(muZ) * 100))})</span>
+                          </td>
+                          <td className="r mono neg">{kc(v95)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="dim small mono">VaR accumulating…</div>
+              )}
             </div>
           </div>
-          <table className="dt greeks-table">
-            <thead>
-              <tr>
-                <th className="l">Greek</th>
-                <th className="r">Net value</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="l">Delta <em className="unit">USD</em></td>
-                <td className={"r mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</td>
-              </tr>
-              <tr>
-                <td className="l">Gamma <em className="unit">USD/pip</em></td>
-                <td className={"r mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</td>
-              </tr>
-              <tr>
-                <td className="l">Vega <em className="unit">$/vp</em></td>
-                <td className={"r mono " + pnlCls(g.netVega)}>{gk$(g.netVega)}</td>
-              </tr>
-              <tr>
-                <td className="l">Theta <em className="unit">$/day</em></td>
-                <td className={"r mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</td>
-              </tr>
-            </tbody>
-          </table>
           {varCapPct != null && v && (
             <Bar
               label="VaR 99 vs cap"

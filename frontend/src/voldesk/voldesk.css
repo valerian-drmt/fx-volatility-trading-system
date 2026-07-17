@@ -1141,6 +1141,8 @@ input,select{font-family:inherit;font-size:13px}
 .dash-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:stretch}
 .dash-cards .panel{margin-bottom:0}
 .dash-card{display:flex;flex-direction:column;gap:10px}
+.dash-risk-2col{display:grid;grid-template-columns:1fr 1.25fr;gap:10px;align-items:start}
+@media(max-width:1400px){.dash-risk-2col{grid-template-columns:1fr}}
 .dash-card .book-surv.dash-kpis{margin-top:0;padding-top:0;border-top:none}
 .dash-pos-pnl{margin-left:auto;font-weight:700;font-size:12px}
 .dash-pos-pnl~.wo-go{margin-left:8px}
