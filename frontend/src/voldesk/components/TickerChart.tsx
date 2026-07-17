@@ -97,7 +97,11 @@ export function TickerChart({
   }
 
   const plotW = W - pl - pr;
-  const colW = plotW / N;
+  // TradingView-style future zone: when macro events are drawn, the candles are
+  // compressed into the left 75% of the plot and the time axis keeps running
+  // into the blank right 25%, so upcoming events sit at their TRUE time.
+  const futFrac = events.length ? 0.25 : 0;
+  const colW = (plotW * (1 - futFrac)) / N;
   const bodyW = Math.max(1, colW * 0.64);
 
   const lo = Math.min(...candles.map((c) => c.l), spot || Infinity);
@@ -136,23 +140,20 @@ export function TickerChart({
     .map((m) => ({ m, x: markerX(m.t) }))
     .filter((e): e is { m: TradeEvent; x: number } => e.x != null);
 
-  // Macro-event dots along the bottom of the price area. Events inside the
-  // candle range sit at their scheduled time (filled); the calendar is mostly
-  // future-only, so upcoming ones are pinned as hollow rings on the right edge
-  // (soonest leftmost, max 4) with the countdown in the tooltip.
+  // Macro-event dots along the bottom of the price area, at their TRUE time on
+  // the axis (the same linear time→x mapping the candles use, extended into the
+  // future zone). Filled dot = past/current, hollow ring = upcoming. Events
+  // beyond the visible window simply don't show — switch to a wider range
+  // (1W/1M) to see further out, like TradingView.
   const evtY = priceBot - 7;
   const evtCol = (impact: string): string =>
     /high/i.test(impact) ? "var(--neg)" : /med/i.test(impact) ? "var(--warn)" : "var(--text-dim)";
-  const parsedEvts = events
+  const evtDots = events
     .map((e) => ({ e, t: Date.parse(e.date) }))
     .filter((d) => !Number.isNaN(d.t) && d.t >= t0 - interval / 2)
-    .sort((a, b) => a.t - b.t);
-  const inRangeEvts = parsedEvts.filter((d) => d.t <= tN + interval / 2);
-  const futureEvts = parsedEvts.filter((d) => d.t > tN + interval / 2).slice(0, 4);
-  const evtDots = [
-    ...inRangeEvts.map((d) => ({ ...d, x: X((d.t - t0) / interval), inRange: true })),
-    ...futureEvts.map((d, i) => ({ ...d, x: W - pr - 6 - 11 * (futureEvts.length - 1 - i), inRange: false })),
-  ].filter((d) => d.x > pl + 4);
+    .sort((a, b) => a.t - b.t)
+    .map((d) => ({ ...d, x: X((d.t - t0) / interval), future: d.t > tN + interval / 2 }))
+    .filter((d) => d.x > pl + 4 && d.x < W - pr - 3);
 
   return (
     <div className="ticker">
@@ -207,17 +208,22 @@ export function TickerChart({
             </g>
           );
         })}
-        {/* macro-event dots — bottom of the price area; hollow ring = upcoming */}
+        {/* "now" divider between the candles and the future zone */}
+        {futFrac > 0 && (
+          <line x1={pl + N * colW} x2={pl + N * colW} y1={pt} y2={priceBot} stroke="var(--line)" strokeDasharray="2 3" />
+        )}
+        {/* macro-event dots — bottom of the price area, at their scheduled time;
+            hollow ring = upcoming */}
         {evtDots.map((d, i) => (
           <g key={"e" + i} style={{ cursor: "pointer" }}>
             <title>
-              {`${d.e.code} · ${d.e.content}${d.inRange ? " · " + fmtTs(d.t) : d.e.in ? " · in " + d.e.in : ""}`}
+              {`${d.e.code} · ${d.e.content} · ${fmtTs(d.t)}${d.future && d.e.in ? " · in " + d.e.in : ""}`}
             </title>
             <circle
               cx={d.x}
               cy={evtY}
               r="3.2"
-              fill={d.inRange ? evtCol(d.e.impact) : "var(--bg)"}
+              fill={d.future ? "var(--bg)" : evtCol(d.e.impact)}
               stroke={evtCol(d.e.impact)}
               strokeWidth="1.4"
             />
