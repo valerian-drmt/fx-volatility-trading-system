@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchBars, type Bar } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
+import type { MacroEvent } from "../data/core";
 import type { TradeEvent } from "../data/live/portfolio";
 
 // UTC trading windows + one distinct colour per market (non-overlapping rows).
@@ -36,7 +37,15 @@ const LIMIT = 250; // upper bound on bars fetched (backend caps at ≤500)
 const isOpen = (hour: number, open: number, close: number): boolean => hour >= open && hour < close;
 const pad2 = (n: number): string => String(n).padStart(2, "0");
 
-export function TickerChart({ spot, markers = [] }: { spot: number; markers?: TradeEvent[] }): JSX.Element {
+export function TickerChart({
+  spot,
+  markers = [],
+  events = [],
+}: {
+  spot: number;
+  markers?: TradeEvent[];
+  events?: MacroEvent[];
+}): JSX.Element {
   const [tf, setTf] = useState("1D");
   const preset = PRESETS.find((p) => p.key === tf)!;
   // real OHLC candles from the market-data engine's IB cache (poll every 60s)
@@ -127,6 +136,24 @@ export function TickerChart({ spot, markers = [] }: { spot: number; markers?: Tr
     .map((m) => ({ m, x: markerX(m.t) }))
     .filter((e): e is { m: TradeEvent; x: number } => e.x != null);
 
+  // Macro-event dots along the bottom of the price area. Events inside the
+  // candle range sit at their scheduled time (filled); the calendar is mostly
+  // future-only, so upcoming ones are pinned as hollow rings on the right edge
+  // (soonest leftmost, max 4) with the countdown in the tooltip.
+  const evtY = priceBot - 7;
+  const evtCol = (impact: string): string =>
+    /high/i.test(impact) ? "var(--neg)" : /med/i.test(impact) ? "var(--warn)" : "var(--text-dim)";
+  const parsedEvts = events
+    .map((e) => ({ e, t: Date.parse(e.date) }))
+    .filter((d) => !Number.isNaN(d.t) && d.t >= t0 - interval / 2)
+    .sort((a, b) => a.t - b.t);
+  const inRangeEvts = parsedEvts.filter((d) => d.t <= tN + interval / 2);
+  const futureEvts = parsedEvts.filter((d) => d.t > tN + interval / 2).slice(0, 4);
+  const evtDots = [
+    ...inRangeEvts.map((d) => ({ ...d, x: X((d.t - t0) / interval), inRange: true })),
+    ...futureEvts.map((d, i) => ({ ...d, x: W - pr - 6 - 11 * (futureEvts.length - 1 - i), inRange: false })),
+  ].filter((d) => d.x > pl + 4);
+
   return (
     <div className="ticker">
       {tfButtons}
@@ -180,6 +207,22 @@ export function TickerChart({ spot, markers = [] }: { spot: number; markers?: Tr
             </g>
           );
         })}
+        {/* macro-event dots — bottom of the price area; hollow ring = upcoming */}
+        {evtDots.map((d, i) => (
+          <g key={"e" + i} style={{ cursor: "pointer" }}>
+            <title>
+              {`${d.e.code} · ${d.e.content}${d.inRange ? " · " + fmtTs(d.t) : d.e.in ? " · in " + d.e.in : ""}`}
+            </title>
+            <circle
+              cx={d.x}
+              cy={evtY}
+              r="3.2"
+              fill={d.inRange ? evtCol(d.e.impact) : "var(--bg)"}
+              stroke={evtCol(d.e.impact)}
+              strokeWidth="1.4"
+            />
+          </g>
+        ))}
         {/* session bands — one non-overlapping row per market */}
         {SESSIONS.map((s, si) => {
           const y = bandsTop + si * (bandH + bandGap);

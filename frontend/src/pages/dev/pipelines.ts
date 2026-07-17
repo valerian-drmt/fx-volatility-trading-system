@@ -142,21 +142,6 @@ function dagLive(engine: PipeNode, redisSub: string, e0: string, e1: string, api
     ],
   };
 }
-// macro events: providers → scheduler → Postgres → api serve (Postgres dual-role).
-function dagEvents(panelName: string): PipeDag {
-  return {
-    nodes: [
-      { id: "ext", kind: "external", label: "macro providers", sub: "FRED · ECB · BoE · FOMC", role: "emit" },
-      { id: "sched", kind: "api", label: "events scheduler", sub: "fetch + dedup", role: "transform", health: "__api" },
-      toDag(xPg("event_calendar"), "pg"), dApi("GET /regime/events"), toDag(xFE, "fe"), dPanel(panelName),
-    ],
-    edges: [
-      { from: "ext", to: "sched", label: "fetch" }, { from: "sched", to: "pg", label: "upsert" },
-      { from: "pg", to: "api", label: "read" }, { from: "api", to: "fe", label: "JSON" }, { from: "fe", to: "panel", label: "render" },
-    ],
-  };
-}
-
 // per-currency cash holdings: account snapshot currencies + surface spot for
 // the EUR→$ leg, merging at the api. Shared by the Portfolio "Holdings
 // valuation" block and the Trade "Cash holdings" block.
@@ -252,12 +237,6 @@ export const PIPELINES: PanelPipe[] = [
     nodes: [eng("execution-engine", "account snaps"), DBW, pg("account_history"), API, FE, panel("Capital")],
     edges: ["account summary", "db_events", "INSERT", "latest", "GET /portfolio/account", "render"],
     dag: dagPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history", "GET /portfolio/account", "Capital"),
-  },
-  {
-    id: "dash-today", panel: "Today — events & expiries", view: "dashboard", domain: "trade", isolated: true,
-    nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Today")],
-    edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
-    dag: dagEvents("Today"),
   },
   {
     id: "dash-attention", panel: "Attention (alerts)", view: "dashboard", domain: "system", isolated: true,

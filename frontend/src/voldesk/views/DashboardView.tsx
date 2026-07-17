@@ -1,12 +1,12 @@
 /**
  * VOLDESK — Dashboard: one live summary card per tab (Portfolio / Risk / Trade /
- * Signal), a freshness strip on top and a "Today" temporal strip below. Each
- * card compresses its tab's headline numbers and routes there via the header
- * link — detail lives in the tabs, never here.
+ * Signal) under a freshness strip. Each card compresses its tab's headline
+ * numbers and routes there via the header link — detail lives in the tabs,
+ * never here. The Trade card shows the EUR/USD candlestick (session bands +
+ * macro-event dots) with the upcoming macro events listed beneath it.
  */
 import {
   fetchEquityCurve,
-  fetchOrders,
   fetchPinRisk,
   fetchRegimeState,
   fetchStressGrid,
@@ -15,8 +15,9 @@ import { useFetch } from "../../hooks/useFetch";
 import { Bar, Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
+import { TickerChart } from "../components/TickerChart";
 import { DATA, DATA2, fmt } from "../data";
-import type { Pc, TermPoint, WorkingOrder } from "../data";
+import type { Pc, TermPoint } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
 import {
@@ -25,19 +26,6 @@ import {
   adaptStressGrid,
   type EquityPoint,
 } from "../data/live/portfolio";
-
-/** /api/v1/orders (live IB openTrades via execution-engine) → WorkingOrder[].
- *  Empty when execution-engine is down or there are no resident orders. */
-function adaptWorkingOrders(raw: unknown): WorkingOrder[] {
-  const rows = (raw as { orders?: Array<Record<string, unknown>> } | null)?.orders ?? [];
-  return rows.map((o) => ({
-    id: String(o["order_id"] ?? o["perm_id"] ?? ""),
-    side: String(o["side"] ?? ""),
-    product: String(o["local_symbol"] ?? o["symbol"] ?? "—"),
-    qty: Number(o["qty"] ?? 0),
-    level: o["limit_price"] != null ? `@ ${String(o["limit_price"])} limit` : String(o["status"] ?? ""),
-  }));
-}
 
 // mini ATM term-structure with σ_fair overlay
 function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
@@ -118,8 +106,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const regimeLive = useFetch(() => fetchRegimeState(), 60_000);
   const gate = regimeLive.data?.gate;
   const gateOpen = gate?.authorized ?? DATA.regime.gate.allowed;
-  // working orders: live resident IB orders (empty when none / execution down).
-  const workingOrders = useFetch(() => fetchOrders().then(adaptWorkingOrders), 30_000).data ?? [];
   // per-card fetches: 7d equity sparkline, worst stress cell, nearest expiries.
   const equity7 = useFetch(() => fetchEquityCurve("7d").then(adaptEquityCurve), 120_000, true, 60_000).data ?? [];
   const stress = useFetch(() => fetchStressGrid("spot-vol").then(adaptStressGrid), 120_000, true, 120_000).data ?? null;
@@ -156,12 +142,11 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
       }
     }
   }
-  const nextPins = [...pinRows].sort((x, y) => x.dte - y.dte);
-  const nextPin = nextPins[0] ?? null;
+  const nextPin = [...pinRows].sort((x, y) => x.dte - y.dte)[0] ?? null;
 
-  // ── Trade card numbers
-  const nTrades = new Set(positions.map((p) => p.tradeId)).size;
-  const topPos = [...positions].sort((x, y) => Math.abs(y.pnl) - Math.abs(x.pnl)).slice(0, 3);
+  // ── Trade card: market open/closed badge — same icon + mapping as the topbar.
+  const mktDot = ticks.status === "live" ? "var(--pos)" : ticks.status === "stale" ? "var(--warn)" : "var(--neg)";
+  const mktLabel = ticks.status === "live" ? "Market open" : ticks.status === "stale" ? "feed stale" : "no feed";
 
   // ── Signal card numbers — conviction-ranked by VARIANCE share (PC1 > PC2 > PC3)
   const ranked = [...(pca.data?.pcs ?? DATA.pcs)].sort((x, y) => (y.variance || 0) - (x.variance || 0));
@@ -333,49 +318,35 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           title="Trade"
           dataPp="dash-trade"
           right={
-            <button className="link-btn" onClick={() => go("trade")}>
-              Trade →
-            </button>
+            <>
+              <span className={"tb-badge " + (ticks.status === "live" ? "open" : "")}>
+                <span className="status-dot" style={{ background: mktDot }} />
+                {mktLabel}
+              </span>
+              <button className="link-btn" onClick={() => go("trade")}>
+                Trade →
+              </button>
+            </>
           }
           className="dash-card"
         >
-          <div className="book-surv dash-kpis">
-            <div className="bs-item">
-              <span className="gs-lbl">Open legs</span>
-              <b className="mono">{positions.length}</b>
-              <span className="gs-sub dim">{nTrades} trades</span>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Gross nominal</span>
-              <b className="mono">{(grossNominal / 1e6).toFixed(1)}M €</b>
-              <span className="gs-sub dim">Σ |legs|</span>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Working orders</span>
-              <b className="mono">{workingOrders.length}</b>
-              <span className="gs-sub dim">resident @ IB</span>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Delta residual</span>
-              <b className={"mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</b>
-              <span className="gs-sub dim">vs ±${(L.deltaBandUsd / 1000).toFixed(1)}k band</span>
-            </div>
+          <TickerChart spot={spot} events={events} />
+          <div className="mkt-term-head">
+            <span className="gs-lbl">Next macro events</span>
           </div>
-          <span className="gs-lbl">Top positions · by |unrealized P&L|</span>
-          {topPos.length ? (
-            topPos.map((p) => (
-              <button key={p.id} className="wo-row" onClick={() => go("trade")}>
-                <span className={"side-pill " + (p.side === "BUY" ? "long" : "short")}>{p.side}</span>
-                <span className="evt-code mono">{p.product}</span>
-                <span className="dim mono">
-                  {p.structure} · {p.tenor}
+          {events.length ? (
+            events.slice(0, 3).map((ev, i) => (
+              <div key={i} className="today-evt">
+                <span className="mono accent">{ev.in}</span>
+                <span className="evt-code mono">{ev.code}</span>
+                <span className="dim">
+                  {ev.content} · {ev.country}
                 </span>
-                <span className={"mono dash-pos-pnl " + pnlCls(p.pnl)}>{fmt.usdk(p.pnl)}</span>
-                <span className="wo-go mono">Trade →</span>
-              </button>
+                <Tag tone={String(ev.impact).toUpperCase().includes("HIGH") ? "danger" : "neutral"}>{ev.impact}</Tag>
+              </div>
             ))
           ) : (
-            <div className="today-evt dim">book flat — no open positions</div>
+            <div className="today-evt dim">no upcoming events</div>
           )}
         </Panel>
 
@@ -439,67 +410,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           <MiniTerm ts={ts} />
         </Panel>
       </div>
-
-      {/* temporal strip */}
-      <Panel title="Today — events, expiries & working orders" dataPp="dash-today" className="dash-today">
-        <div className="today-grid t3">
-          <div className="today-col">
-            <span className="gs-lbl">Next macro events</span>
-            {events.length ? (
-              events.slice(0, 2).map((ev, i) => (
-                <div key={i} className="today-evt">
-                  <span className="mono accent">{ev.in}</span>
-                  <span className="evt-code mono">{ev.code}</span>
-                  <span className="dim">
-                    {ev.content} · {ev.country}
-                  </span>
-                  <Tag tone={String(ev.impact).toUpperCase().includes("HIGH") ? "danger" : "neutral"}>{ev.impact}</Tag>
-                </div>
-              ))
-            ) : (
-              <div className="today-evt dim">no upcoming events</div>
-            )}
-          </div>
-          <div className="today-col">
-            <span className="gs-lbl">Near expiries & roll-off</span>
-            {nextPins.length ? (
-              nextPins.slice(0, 2).map((p, i) => (
-                <div key={i} className="today-evt">
-                  <span className="mono warn">{p.dte} DTE</span>
-                  <span className="evt-code mono">{p.product}</span>
-                  <span className="dim">
-                    @{p.strike} · pin {p.distPips} pips
-                  </span>
-                  <button className="link-btn" onClick={() => go("risk")}>
-                    Risk →
-                  </button>
-                </div>
-              ))
-            ) : (
-              <div className="today-evt dim">no option expiries</div>
-            )}
-          </div>
-          <div className="today-col">
-            <span className="gs-lbl">
-              Working orders <span className="dim">· {workingOrders.length} resident</span>
-            </span>
-            {workingOrders.length ? (
-              workingOrders.map((o) => (
-                <button key={o.id} className="today-evt wo-row" onClick={() => go("trade")}>
-                  <span className={"side-pill " + (o.side === "BUY" ? "long" : "short")}>{o.side}</span>
-                  <span className="evt-code mono">{o.product}</span>
-                  <span className="dim mono">
-                    {o.qty}× · {o.level}
-                  </span>
-                  <span className="wo-go mono">Trade →</span>
-                </button>
-              ))
-            ) : (
-              <div className="today-evt dim">no working orders</div>
-            )}
-          </div>
-        </div>
-      </Panel>
     </div>
   );
 }
