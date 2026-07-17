@@ -573,55 +573,47 @@ function PerformancePanel({
           ))}
         </div>
       </div>
-      <Panel
-        title="Summary"
-        dataPp="perf-recap"
-        right={<span className="dim mono small">per window · greek P&L Taylor</span>}
-        className="trade-block"
-        pad={false}
-      >
-        <div className="table-scroll">
-          <table className="dt var-table">
-            <thead>
-              <tr>
-                <th className="l">Window</th>
-                <th className="r">Realized</th>
-                <th className="r">Unrealized</th>
-                <th className="r">Max DD</th>
-                <th className="r">Current DD</th>
-                <th className="r">Delta P&L</th>
-                <th className="r">Gamma P&L</th>
-                <th className="r">Vega P&L</th>
-                <th className="r">Theta P&L</th>
-              </tr>
-            </thead>
-            <tbody>
-              {PERF_WINS.map((wn) => {
-                const r = recapRows.find((x) => x.w === wn.v);
-                return (
-                  <tr
-                    key={wn.v}
-                    className={"var-row " + (win === wn.v ? "row-now" : "")}
-                    onClick={() => setWin(wn.v)}
-                  >
-                    <td className="l mono">
-                      {wn.l} <span className="dim">{wn.v === "all" ? "since start" : ""}</span>
-                    </td>
-                    <td className="r mono">{money(r?.pnl ?? null)}</td>
-                    <td className="r mono">{money(unreal)}</td>
-                    <td className="r mono">{ddCell(r?.maxDd ?? null)}</td>
-                    <td className="r mono">{ddCell(r?.curDd ?? null)}</td>
-                    <td className="r mono">{money(r?.delta ?? null)}</td>
-                    <td className="r mono">{money(r?.gamma ?? null)}</td>
-                    <td className="r mono">{money(r?.vega ?? null)}</td>
-                    <td className="r mono">{money(r?.theta ?? null)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
+      <div className="table-scroll perf-recap" data-pp="perf-recap">
+        <table className="dt var-table">
+          <thead>
+            <tr>
+              <th className="l">Window</th>
+              <th className="r">Realized</th>
+              <th className="r">Unrealized</th>
+              <th className="r">Max DD</th>
+              <th className="r">Current DD</th>
+              <th className="r">Delta P&L</th>
+              <th className="r">Gamma P&L</th>
+              <th className="r">Vega P&L</th>
+              <th className="r">Theta P&L</th>
+            </tr>
+          </thead>
+          <tbody>
+            {PERF_WINS.map((wn) => {
+              const r = recapRows.find((x) => x.w === wn.v);
+              return (
+                <tr
+                  key={wn.v}
+                  className={"var-row " + (win === wn.v ? "row-now" : "")}
+                  onClick={() => setWin(wn.v)}
+                >
+                  <td className="l mono">
+                    {wn.l} <span className="dim">{wn.v === "all" ? "since start" : ""}</span>
+                  </td>
+                  <td className="r mono">{money(r?.pnl ?? null)}</td>
+                  <td className="r mono">{money(unreal)}</td>
+                  <td className="r mono">{ddCell(r?.maxDd ?? null)}</td>
+                  <td className="r mono">{ddCell(r?.curDd ?? null)}</td>
+                  <td className="r mono">{money(r?.delta ?? null)}</td>
+                  <td className="r mono">{money(r?.gamma ?? null)}</td>
+                  <td className="r mono">{money(r?.vega ?? null)}</td>
+                  <td className="r mono">{money(r?.theta ?? null)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </Panel>
   );
 }

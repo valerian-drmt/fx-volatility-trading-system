@@ -1152,6 +1152,8 @@ input,select{font-family:inherit;font-size:13px}
 .hold-donut-leg{display:flex;flex-direction:column;gap:5px;min-width:0;font-size:11px}
 .hdl-row{display:flex;align-items:center;gap:6px;white-space:nowrap}
 .hdl-row .hdl-lbl{min-width:70px}
+/* Performance recap table — bare table under the perf charts (no sub-panel box) */
+.perf-recap{margin-top:10px;border-top:1px solid var(--line);padding-top:4px}
 .dash-card .book-surv.dash-kpis{margin-top:0;padding-top:0;border-top:none}
 .dash-pos-pnl{margin-left:auto;font-weight:700;font-size:12px}
 .dash-pos-pnl~.wo-go{margin-left:8px}
