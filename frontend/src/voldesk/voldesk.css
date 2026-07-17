@@ -1466,6 +1466,7 @@ input,select{font-family:inherit;font-size:13px}
 /* Risk · VaR horizon button group (replaces the click-the-table-row selector) */
 .var-tf-group{display:flex;gap:6px;padding:8px 12px 2px;flex-wrap:wrap}
 .var-tf-group .chip{font-size:12px}
+.var-tf-group.in-chart{padding:0 0 6px}
 
 /* Risk · row 1 — Greeks panel (left) + Value at Risk (right), same width.
    minmax(0,1fr) (not the default minmax(auto,1fr)) keeps each half at 50% even

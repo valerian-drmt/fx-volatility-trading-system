@@ -151,17 +151,6 @@ function VarCard({ var95, var99, es99, meanDaily, hist, fresh }: { var95: number
     <Panel title="Value at Risk" dataPp="var" right={<PanelLive status={fresh.status} />} className="stress-panel">
       <div className="var-1x3">
         <Panel title="VaR table" dataPp="var-table" right={<FreshBadge fresh={fresh} label="historical 1d" />} className="trade-block" pad={false}>
-          <div className="var-tf-group">
-            {rows.map((r) => (
-              <button
-                key={r.id}
-                className={"chip " + (r.id === tf ? "on" : "")}
-                onClick={() => setTf(r.id)}
-              >
-                {r.id}
-              </button>
-            ))}
-          </div>
           <div className="table-scroll">
             <table className="dt var-table">
               <thead><tr>
@@ -186,6 +175,17 @@ function VarCard({ var95, var99, es99, meanDaily, hist, fresh }: { var95: number
           </div>
         </Panel>
         <Panel title="P&L distribution" dataPp="var-chart" right={<FreshBadge fresh={fresh} label="empirical" />} className="trade-block">
+          <div className="var-tf-group in-chart">
+            {rows.map((r) => (
+              <button
+                key={r.id}
+                className={"chip " + (r.id === tf ? "on" : "")}
+                onClick={() => setTf(r.id)}
+              >
+                {r.id}
+              </button>
+            ))}
+          </div>
           <div className="ret-chart">
             <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · empirical</span></div>
             <EmpiricalHist hist={histScaled} var95={c.v95} var99={c.v99} es99={c.es} retk={c.retk} letter={letter} />
