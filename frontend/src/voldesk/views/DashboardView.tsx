@@ -358,14 +358,19 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
             </div>
           </div>
           <div className="ind-fam dash-perf-block">
-            <div className="ind-fam-head">Performance</div>
+            <div className="ind-fam-head ifh-split">
+              <span>Performance</span>
+              <span className="ifh-right mono">
+                <span className="dim">Unrealized </span>
+                {recapMoney(g.netUnreal)}
+              </span>
+            </div>
             <div className="table-scroll">
               <table className="dt var-table">
                 <thead>
                   <tr>
                     <th className="l">Window</th>
                     <th className="r">Realized</th>
-                    <th className="r">Unrealized</th>
                     <th className="r">Current DD</th>
                   </tr>
                 </thead>
@@ -378,7 +383,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                           {wn.l} <span className="dim">{wn.v === "all" ? "since start" : ""}</span>
                         </td>
                         <td className="r mono">{recapMoney(r?.pnl ?? null)}</td>
-                        <td className="r mono">{recapMoney(g.netUnreal)}</td>
                         <td className="r mono">{recapDd(r?.curDd ?? null)}</td>
                       </tr>
                     );
