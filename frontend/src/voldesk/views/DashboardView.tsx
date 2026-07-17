@@ -252,7 +252,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
             <div className="ind-fam-head">
               Ticker <span className="dim">· EUR/USD</span>
             </div>
-            <TickerChart spot={spot} events={chartEvents} />
+            <TickerChart spot={spot} events={chartEvents} height={232} />
           </div>
           <div className="ind-fam">
             <div className="ind-fam-head">Macro events</div>
@@ -335,7 +335,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
               <HoldingsDonut netLiq={a.netLiq} cash={cashRows} />
             </div>
           </div>
-          <div className="ind-fam">
+          <div className="ind-fam dash-perf-block">
             <div className="ind-fam-head">Performance</div>
             <div className="table-scroll">
               <table className="dt var-table">

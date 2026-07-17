@@ -48,10 +48,12 @@ export function TickerChart({
   spot,
   markers = [],
   events = [],
+  height = 300,
 }: {
   spot: number;
   markers?: TradeEvent[];
   events?: MacroEvent[];
+  height?: number; // viewBox height — smaller = flatter chart (dashboard card)
 }): JSX.Element {
   const [tf, setTf] = useState("1D");
   const [evtTip, setEvtTip] = useState<EvtTip | null>(null);
@@ -73,7 +75,7 @@ export function TickerChart({
   const N = candles.length;
 
   const W = 520,
-    H = 300,
+    H = height,
     pl = 46,
     pr = 10,
     pt = 8;
