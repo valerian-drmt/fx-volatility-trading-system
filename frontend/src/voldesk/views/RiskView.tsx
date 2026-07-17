@@ -213,12 +213,6 @@ const STRESS_AXIS_LABEL: Record<string, string> = {
   "spot-fly": "ΔBF · fly",
 };
 
-const stressCell = (v: number, max: number): string => {
-  const t = Math.max(-1, Math.min(1, v / max));
-  return t >= 0
-    ? `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})`
-    : `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`;
-};
 const stressKg = (v: number): string => {
   const s = v >= 0 ? "+" : "-";
   const a = Math.abs(v);
@@ -230,7 +224,6 @@ function LiveStressGrid({ d, status }: { d: StressGridData | null; status: Fresh
   if (!d || !d.grid.length) {
     return <div className="heat-empty dim mono small">{status === "missing" ? "no book / no spot" : "loading…"}</div>;
   }
-  const max = Math.max(...d.grid.flat().map(Math.abs)) || 1;
   const rowLbl = (v: number): string => (d.rowUnit === "d" ? v + "d" : (v > 0 ? "+" : "") + v + "vp");
   // Column display order = secondary axis ascending, so the smallest bucket
   // (e.g. 0d for the time grid) is leftmost; cell lookups follow the same ri.
@@ -252,7 +245,8 @@ function LiveStressGrid({ d, status }: { d: StressGridData | null; status: Fresh
             {cols.map(({ r, ri }) => {
               const v = d.grid[ri]?.[si] ?? NaN;
               const center = (r ?? NaN) === 0 && (s ?? NaN) === 0;
-              return <td key={ri} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : stressCell(v, max) }}>{stressKg(v)}</td>;
+              const sign = v > 0 ? "pos" : v < 0 ? "neg" : "";
+              return <td key={ri} className={[center ? "center-cell" : "", sign].filter(Boolean).join(" ")}>{stressKg(v)}</td>;
             })}
           </tr>
         ))}
