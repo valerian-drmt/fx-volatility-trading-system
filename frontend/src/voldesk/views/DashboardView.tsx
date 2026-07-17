@@ -86,12 +86,6 @@ function HoldingsDonut({ netLiq, cash }: { netLiq: number; cash: Cash[] }): JSX.
   const contracts = netLiq - cash.reduce((s, c) => s + c.usd, 0);
   const vals: Record<string, number> = { usd, eur, contracts };
   const totAbs = DONUT_PARTS.reduce((s, p) => s + Math.abs(vals[p.key]!), 0) || 1;
-  const base = Math.abs(netLiq) || 1;
-  // signed share of |net liq| — same reading as the Portfolio tab's table.
-  const pct = (v: number): string => {
-    const p = Math.round((v / base) * 100);
-    return (p >= 0 ? "+" : "−") + Math.abs(p) + "%";
-  };
   const R = 40;
   const C = 2 * Math.PI * R;
   let acc = 0;
@@ -129,9 +123,7 @@ function HoldingsDonut({ netLiq, cash }: { netLiq: number; cash: Cash[] }): JSX.
           <div key={p.key} className="hdl-row">
             <span className="val-dot" style={{ background: p.color }} />
             <span className="hdl-lbl dim">{p.label}</span>
-            <span className={"mono " + pnlCls(vals[p.key]!)}>
-              {fmt.usd(vals[p.key]!)} <span className="dim">({pct(vals[p.key]!)})</span>
-            </span>
+            <span className={"mono " + pnlCls(vals[p.key]!)}>{fmt.usd(vals[p.key]!)}</span>
           </div>
         ))}
       </div>
@@ -186,6 +178,15 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   // ── Portfolio card: live per-currency cash for the holdings donut.
   const liveCash = trade.data?.cash;
   const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
+  // Leverage from the live book — same math as the Portfolio tab's "Leverage &
+  // buying power" table: gross = Σ|notional| (€), net = |Σ signed| (€), ratios
+  // vs net liq converted $→€ at live spot.
+  const positions = trade.data?.positions ?? DATA.positions;
+  const grossLevM = positions.reduce((s, p) => s + Math.abs(p.nominal), 0) / 1e6;
+  const netLevM = Math.abs(positions.reduce((s, p) => s + (p.side === "BUY" ? p.nominal : -p.nominal), 0)) / 1e6;
+  const netLiqEurM = a.netLiq / spot / 1e6;
+  const grossX = netLiqEurM ? (grossLevM / netLiqEurM).toFixed(2) : "—";
+  const netX = netLiqEurM ? (netLevM / netLiqEurM).toFixed(2) : "—";
   // per-window performance recap — one equity sweep over the 5 windows (the
   // dashboard table has no greek columns, so no greek-P&L fetch here).
   const NO_GREEKS: GreekSeries = { delta: [], gamma: [], vega: [], theta: [] };
@@ -260,13 +261,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                     </td>
                   </tr>
                   <tr>
-                    <td className="l">Cash</td>
-                    <td className="r mono">
-                      {fmt.usd(a.cash)}
-                      {acctNote(deltaPill(a.dCash))}
-                    </td>
-                  </tr>
-                  <tr>
                     <td className="l">Init margin</td>
                     <td className="r mono">
                       {fmt.usd(a.marginInit)}
@@ -281,13 +275,15 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                     </td>
                   </tr>
                   <tr>
-                    <td className="l">Excess liquidity</td>
-                    <td className="r mono pos">{fmt.usd(a.excessLiq)}</td>
+                    <td className="l">Gross leverage</td>
+                    <td className="r mono">
+                      {grossLevM.toFixed(1)}M €{acctNote(`${grossX}× net liq · €${netLiqEurM.toFixed(2)}M`)}
+                    </td>
                   </tr>
                   <tr>
-                    <td className="l">Cushion</td>
+                    <td className="l">Net leverage</td>
                     <td className="r mono">
-                      {(a.cushion * 100).toFixed(1)}%{acctNote(`${a.nPositions} positions`)}
+                      {netLevM.toFixed(1)}M €{acctNote(`${netX}× net liq`)}
                     </td>
                   </tr>
                 </tbody>
