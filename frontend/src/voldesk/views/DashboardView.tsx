@@ -1,9 +1,9 @@
 /**
  * VOLDESK — Dashboard: one live summary card per tab (Portfolio / Risk / Trade /
- * Signal) under a freshness strip. Each card compresses its tab's headline
- * numbers and routes there via the header link — detail lives in the tabs,
- * never here. The Trade card shows the EUR/USD candlestick (session bands +
- * macro-event dots) with the upcoming macro events listed beneath it.
+ * Signal). Each card compresses its tab's headline numbers and routes there via
+ * the header link — detail lives in the tabs, never here. The Trade card shows
+ * the EUR/USD candlestick (session bands + macro-event dots) with the upcoming
+ * macro events listed beneath it.
  */
 import {
   fetchEquityCurve,
@@ -97,8 +97,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const a = portfolio.data?.account ?? DATA.account,
     g = portfolio.data?.greeks ?? DATA.greeks,
     ps = portfolio.data?.perfStats ?? DATA2.perfStats,
-    L = trade.data?.limits ?? DATA.limits,
-    f = DATA.feed; // freshness thresholds mock; ages/tones derived from domains below
+    L = trade.data?.limits ?? DATA.limits;
   const positions = trade.data?.positions ?? DATA.positions;
   const events = trade.data?.events ?? DATA.events;
   const ts = termStructure.data ?? DATA.termStructure;
@@ -113,15 +112,9 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const stress = useFetch(() => fetchStressGrid("spot-vol").then(adaptStressGrid), 120_000, true, 120_000).data ?? null;
   const pinRows = useFetch(() => fetchPinRisk().then(adaptPinRisk), 120_000, true, 120_000).data ?? [];
 
-  // freshness — derived from the live domains (honest staleness), not mock timers.
+  // surface staleness — degrades the Signal card when the vol surface is down.
   const toTone = (s: FreshStatus): Status => (s === "live" ? "up" : s === "stale" ? "warn" : "down");
-  const ageS = (ms: number | null, fallback: number): number => (ms != null ? Math.round(ms / 1000) : fallback);
-  const feedTone = toTone(trade.status);
-  const surfTone = toTone(termStructure.status);
-  const feedS = ageS(trade.ageMs, f.feedS);
-  const surfaceS = ageS(termStructure.ageMs, f.surfaceS);
-  const surfStale = surfTone === "down";
-  const worstTone: Status = [feedTone, surfTone].includes("down") ? "down" : [feedTone, surfTone].includes("warn") ? "warn" : "up";
+  const surfStale = toTone(termStructure.status) === "down";
 
   // ── Portfolio card numbers
   const grossNominal = positions.reduce((s, p) => s + Math.abs(p.nominal), 0);
@@ -171,26 +164,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
 
   return (
     <div className="dash-grid">
-      {/* freshness strip */}
-      <div className={"dash-fresh tone-" + worstTone}>
-        <span className={"df-dot " + worstTone} />
-        <b className="df-status">{worstTone === "down" ? "FEED STALE" : worstTone === "warn" ? "feed delayed" : "live"}</b>
-        <span className="df-src mono">
-          EURUSD <em className="up">{spot.toFixed(5)}</em>
-        </span>
-        <span className="df-src mono">
-          gate <em className={gateOpen ? "up" : "down"}>{gateOpen ? "open" : "blocked"}</em>
-        </span>
-        <span className="df-src mono">
-          feed <em className={feedTone}>{feedS}s</em>
-        </span>
-        <span className="df-src mono">
-          surface <em className={surfTone}>{surfaceS}s</em>
-        </span>
-        {surfStale && <span className="df-warn mono">surface &gt; {f.surfStale}s — greyed tiles are unreliable</span>}
-        <span className="df-asof dim mono">as of {new Date().toLocaleTimeString("en-GB")} · UTC+1</span>
-      </div>
-
       {/* one summary card per tab */}
       <div className="dash-cards">
         <Panel
