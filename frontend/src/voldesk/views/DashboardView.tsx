@@ -233,6 +233,47 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
       {/* one summary card per tab */}
       <div className="dash-cards">
         <Panel
+          title="Trade"
+          dataPp="dash-trade"
+          right={
+            <>
+              <span className={"tb-badge " + (ticks.status === "live" ? "open" : "")}>
+                <span className="status-dot" style={{ background: mktDot }} />
+                {mktLabel}
+              </span>
+              <button className="link-btn" onClick={() => go("trade")}>
+                Trade →
+              </button>
+            </>
+          }
+          className="dash-card"
+        >
+          <div className="ind-fam">
+            <div className="ind-fam-head">
+              Ticker <span className="dim">· EUR/USD</span>
+            </div>
+            <TickerChart spot={spot} events={chartEvents} />
+          </div>
+          <div className="ind-fam">
+            <div className="ind-fam-head">Macro events</div>
+            {events.length ? (
+              events.slice(0, 3).map((ev, i) => (
+                <div key={i} className="today-evt">
+                  <span className="mono accent">{ev.in}</span>
+                  <span className="evt-code mono">{ev.code}</span>
+                  <span className="dim">
+                    {ev.content} · {ev.country}
+                  </span>
+                  <Tag tone={String(ev.impact).toUpperCase().includes("HIGH") ? "danger" : "neutral"}>{ev.impact}</Tag>
+                </div>
+              ))
+            ) : (
+              <div className="today-evt dim">no upcoming events</div>
+            )}
+          </div>
+        </Panel>
+
+        <Panel
           title="Portfolio"
           dataPp="dash-portfolio"
           right={
@@ -402,47 +443,6 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                 <div className="dim small mono">VaR accumulating…</div>
               )}
             </div>
-          </div>
-        </Panel>
-
-        <Panel
-          title="Trade"
-          dataPp="dash-trade"
-          right={
-            <>
-              <span className={"tb-badge " + (ticks.status === "live" ? "open" : "")}>
-                <span className="status-dot" style={{ background: mktDot }} />
-                {mktLabel}
-              </span>
-              <button className="link-btn" onClick={() => go("trade")}>
-                Trade →
-              </button>
-            </>
-          }
-          className="dash-card"
-        >
-          <div className="ind-fam">
-            <div className="ind-fam-head">
-              Ticker <span className="dim">· EUR/USD</span>
-            </div>
-            <TickerChart spot={spot} events={chartEvents} />
-          </div>
-          <div className="ind-fam">
-            <div className="ind-fam-head">Macro events</div>
-            {events.length ? (
-              events.slice(0, 3).map((ev, i) => (
-                <div key={i} className="today-evt">
-                  <span className="mono accent">{ev.in}</span>
-                  <span className="evt-code mono">{ev.code}</span>
-                  <span className="dim">
-                    {ev.content} · {ev.country}
-                  </span>
-                  <Tag tone={String(ev.impact).toUpperCase().includes("HIGH") ? "danger" : "neutral"}>{ev.impact}</Tag>
-                </div>
-              ))
-            ) : (
-              <div className="today-evt dim">no upcoming events</div>
-            )}
           </div>
         </Panel>
 
