@@ -18,11 +18,12 @@ import type { Status } from "../components/format";
 import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
 import { TickerChart } from "../components/TickerChart";
 import { DATA, fmt } from "../data";
-import type { Cash, Pc, TermPoint } from "../data";
+import type { Cash, TermPoint } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
 import { adaptEquityCurve, type EquityPoint, type GreekSeries } from "../data/live/portfolio";
 import { adaptEvents } from "../data/live/trade";
+import { ModeCard } from "./SignalsView";
 
 // mini ATM term-structure with σ_fair overlay
 function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
@@ -233,13 +234,8 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const mktDot = ticks.status === "live" ? "var(--pos)" : ticks.status === "stale" ? "var(--warn)" : "var(--neg)";
   const mktLabel = ticks.status === "live" ? "Market open" : ticks.status === "stale" ? "feed stale" : "no feed";
 
-  // ── Signal card numbers — conviction-ranked by VARIANCE share (PC1 > PC2 > PC3)
-  const ranked = [...(pca.data?.pcs ?? DATA.pcs)].sort((x, y) => (y.variance || 0) - (x.variance || 0));
-  const lead = ranked[0] ?? null;
-  const convW = (pc: Pc): number => Math.sqrt(pc.variance || 0);
-  const maxW = Math.max(...ranked.map(convW)) || 1;
-  const leadTone: Tone =
-    lead?.label === "CHEAP" ? "good" : lead?.label === "RICH" || lead?.label === "EXPENSIVE" ? "danger" : "neutral";
+  // ── Signal card — the 3 live PC mode cards (PC1/PC2/PC3, 3M z-history view).
+  const pcsLive = pca.data?.pcs ?? [];
   // IV vs σ_fair per tenor (±0.1 vol-pt threshold) — the Fair-vol gate compressed.
   const nCheap = ts.filter((t) => t.atm - t.fair <= -0.1).length;
   const nRich = ts.filter((t) => t.atm - t.fair >= 0.1).length;
@@ -482,40 +478,17 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           }
           className={"dash-card" + (surfStale ? " df-degraded" : "")}
         >
-          {lead ? (
+          {pcsLive.length ? (
             <>
-              <div className="sig-main">
-                <div className="sig-pc">
-                  <span className="sig-id mono">{lead.id}</span>
-                  <span className="dim">{lead.name}</span>
-                </div>
-                <div className="sig-z mono">
-                  <b className={pnlCls(lead.z)}>{fmt.sgn(lead.z, 2)}</b>
-                  <span className="dim small">z-score</span>
-                </div>
-                <Tag tone={leadTone}>{lead.label}</Tag>
+              <div className="dash-sig-3col">
+                {pcsLive.slice(0, 3).map((pc) => (
+                  <ModeCard key={pc.id} pc={pc} view="3M" showLoadings={false} />
+                ))}
               </div>
               <div className="sig-conv dim small mono">
                 gate {gateOpen ? "open" : "blocked"}
                 {gate?.size_mult != null ? ` · size ×${gate.size_mult}` : ""}
                 {gate?.reason ? ` · ${gate.reason}` : ""} · IV vs σ_fair: {nCheap} cheap / {nRich} rich
-              </div>
-              <div className="sig-rank">
-                {ranked.map((pc) => (
-                  <div key={pc.id} className="sig-rank-row">
-                    <span className="srr-id mono">{pc.id}</span>
-                    <span className="srr-name dim">{pc.name}</span>
-                    <div className="srr-track">
-                      <div className="srr-fill" style={{ width: Math.max(4, (convW(pc) / maxW) * 100) + "%" }} />
-                    </div>
-                    <span className={"srr-z mono " + pnlCls(pc.z)}>{fmt.sgn(pc.z, 2)}</span>
-                    {pc.dataQuality === "noisy" ? (
-                      <span className="srr-badge warn mono">low conv · wings noisy</span>
-                    ) : (
-                      <span className="srr-badge dim mono">{pc.variance}% var</span>
-                    )}
-                  </div>
-                ))}
               </div>
             </>
           ) : (

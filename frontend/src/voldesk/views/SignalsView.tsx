@@ -256,8 +256,17 @@ function ZSeriesChart({ pc, view, series }: { pc: Pc; view: string; series?: num
 // PCA surface-mode card — the RELATIVE signal only (z vs history, loadings). The level gate lives in its own Fair vol panel.
 // memo: one card per PC; its props (pc, view) only change on a vol cycle or a
 // timeframe toggle, so skip the SVG z-series + loadings heatmap re-render on
-// unrelated desk ticks.
-const ModeCard = memo(function ModeCard({ pc, view }: { pc: PcaCard; view: string }): JSX.Element {
+// unrelated desk ticks. Exported for the Dashboard Signal card (compact form,
+// showLoadings={false} drops the tenor×delta heatmap).
+export const ModeCard = memo(function ModeCard({
+  pc,
+  view,
+  showLoadings = true,
+}: {
+  pc: PcaCard;
+  view: string;
+  showLoadings?: boolean;
+}): JSX.Element {
   const tone: Tone =
     pc.label === "CHEAP" ? "good" : pc.label === "EXPENSIVE" || pc.label === "RICH" ? "danger" : "neutral";
   return (
@@ -279,8 +288,12 @@ const ModeCard = memo(function ModeCard({ pc, view }: { pc: PcaCard; view: strin
         </div>
       </div>
       <ZSeriesChart pc={pc} view={view} series={pc.zHistory} />
-      <div className="mc-load-lbl dim small mono">loadings · tenor × delta</div>
-      <Heatmap rows={DATA.tenors} cols={DATA.deltas} matrix={pc.load} />
+      {showLoadings && (
+        <>
+          <div className="mc-load-lbl dim small mono">loadings · tenor × delta</div>
+          <Heatmap rows={DATA.tenors} cols={DATA.deltas} matrix={pc.load} />
+        </>
+      )}
     </div>
   );
 });
