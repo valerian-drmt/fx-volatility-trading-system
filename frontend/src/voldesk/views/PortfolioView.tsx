@@ -18,6 +18,7 @@ import { useTicks } from "../../hooks/streams";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
+import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
 import { groupByTradeId, structureName, structureSide } from "../components/tradeGrouping";
 import { DATA, fmt } from "../data";
 import type { Cash } from "../data";
@@ -406,48 +407,6 @@ function DrawdownSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.El
   );
 }
 
-// The 5 shared perf windows — chips on the Performance panel + rows of the recap table.
-const PERF_WINS = [
-  { v: "1D", l: "1D" },
-  { v: "7D", l: "7D" },
-  { v: "30D", l: "1M" },
-  { v: "1Y", l: "1Y" },
-  { v: "all", l: "all" },
-];
-
-// One recap-table row: per-window P&L, drawdowns (running-peak, same formula as
-// the underwater plot) and the 4 cumulative greek-P&L Taylor terms (Δ over window).
-interface RecapRow {
-  w: string;
-  pnl: number | null;
-  maxDd: number | null;
-  curDd: number | null;
-  delta: number | null;
-  gamma: number | null;
-  vega: number | null;
-  theta: number | null;
-}
-
-function recapRow(w: string, pts: EquityPoint[], gs: GreekSeries): RecapRow {
-  let pnl: number | null = null,
-    maxDd: number | null = null,
-    curDd: number | null = null;
-  if (pts.length >= 2) {
-    pnl = pts[pts.length - 1]!.v - pts[0]!.v;
-    let peak = -Infinity,
-      worst = 0;
-    for (const p of pts) {
-      peak = Math.max(peak, p.v);
-      worst = Math.min(worst, (p.v - peak) / peak);
-    }
-    maxDd = worst * 100;
-    curDd = ((pts[pts.length - 1]!.v - peak) / peak) * 100;
-  }
-  const gval = (arr: EquityPoint[]): number | null =>
-    arr.length >= 2 ? arr[arr.length - 1]!.v - arr[0]!.v : null;
-  return { w, pnl, maxDd, curDd, delta: gval(gs.delta), gamma: gval(gs.gamma), vega: gval(gs.vega), theta: gval(gs.theta) };
-}
-
 // Performance panel — fixed layout over a shared timeframe: the left half stacks
 // the P&L curve over the drawdown underwater plot; the right half is a 2×2 grid of
 // the four cumulative greek-P&L series (Taylor terms from /greek-pnl-history — the
@@ -504,10 +463,6 @@ function PerformancePanel({
     300_000,
   );
   const recapRows = recap.data ?? [];
-  const money = (x: number | null): JSX.Element =>
-    x == null ? <span className="dim">—</span> : <span className={pnlCls(x)}>{fmt.usdk(x)}</span>;
-  const ddCell = (x: number | null): JSX.Element =>
-    x == null ? <span className="dim">—</span> : <span className={x < -0.05 ? "neg" : "dim"}>{x.toFixed(1)}%</span>;
   return (
     <Panel
       title="Performance"
@@ -607,14 +562,14 @@ function PerformancePanel({
                   <td className="l mono">
                     {wn.l} <span className="dim">{wn.v === "all" ? "since start" : ""}</span>
                   </td>
-                  <td className="r mono">{money(r?.pnl ?? null)}</td>
-                  <td className="r mono">{money(unreal)}</td>
-                  <td className="r mono">{ddCell(r?.maxDd ?? null)}</td>
-                  <td className="r mono">{ddCell(r?.curDd ?? null)}</td>
-                  <td className="r mono">{money(r?.delta ?? null)}</td>
-                  <td className="r mono">{money(r?.gamma ?? null)}</td>
-                  <td className="r mono">{money(r?.vega ?? null)}</td>
-                  <td className="r mono">{money(r?.theta ?? null)}</td>
+                  <td className="r mono">{recapMoney(r?.pnl ?? null)}</td>
+                  <td className="r mono">{recapMoney(unreal)}</td>
+                  <td className="r mono">{recapDd(r?.maxDd ?? null)}</td>
+                  <td className="r mono">{recapDd(r?.curDd ?? null)}</td>
+                  <td className="r mono">{recapMoney(r?.delta ?? null)}</td>
+                  <td className="r mono">{recapMoney(r?.gamma ?? null)}</td>
+                  <td className="r mono">{recapMoney(r?.vega ?? null)}</td>
+                  <td className="r mono">{recapMoney(r?.theta ?? null)}</td>
                 </tr>
               );
             })}

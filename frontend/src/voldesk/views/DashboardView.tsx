@@ -6,16 +6,28 @@
  * macro events listed beneath it.
  */
 import type { ReactNode } from "react";
-import { fetchRegimeEvents, fetchRegimeState } from "../../api/endpoints";
+import {
+  fetchEquityCurve,
+  fetchGreekPnlHistory,
+  fetchRegimeEvents,
+  fetchRegimeState,
+} from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
+import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
 import { TickerChart } from "../components/TickerChart";
-import { DATA, DATA2, fmt } from "../data";
+import { DATA, fmt } from "../data";
 import type { Cash, Pc, TermPoint } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
+import {
+  adaptEquityCurve,
+  adaptGreekPnlHistory,
+  type EquityPoint,
+  type GreekSeries,
+} from "../data/live/portfolio";
 import { adaptEvents } from "../data/live/trade";
 
 // mini ATM term-structure with σ_fair overlay
@@ -163,8 +175,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const { pca, portfolio, trade, termStructure, risk } = useDeskData();
   const ticks = useTicks();
   const a = portfolio.data?.account ?? DATA.account,
-    g = portfolio.data?.greeks ?? DATA.greeks,
-    ps = portfolio.data?.perfStats ?? DATA2.perfStats;
+    g = portfolio.data?.greeks ?? DATA.greeks;
   const events = trade.data?.events ?? DATA.events;
   const ts = termStructure.data ?? DATA.termStructure;
   const spot = ticks.data?.mid ?? DATA.SPOT;
@@ -181,6 +192,23 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   // ── Portfolio card: live per-currency cash for the holdings donut.
   const liveCash = trade.data?.cash;
   const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
+  // per-window performance recap — one sweep over the 5 windows (equity + greek P&L).
+  const recapRows =
+    useFetch<RecapRow[]>(
+      () =>
+        Promise.all(
+          PERF_WINS.map(async (wn) => {
+            const [pts, gs] = await Promise.all([
+              fetchEquityCurve(wn.v.toLowerCase()).then(adaptEquityCurve).catch((): EquityPoint[] => []),
+              fetchGreekPnlHistory(wn.v.toLowerCase())
+                .then(adaptGreekPnlHistory)
+                .catch((): GreekSeries => ({ delta: [], gamma: [], vega: [], theta: [] })),
+            ]);
+            return recapRow(wn.v, pts, gs);
+          }),
+        ),
+      300_000,
+    ).data ?? [];
 
   // ── Risk card numbers
   const v = risk.data;
@@ -273,22 +301,48 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
               </table>
             </div>
             <div className="ind-fam">
-              <div className="ind-fam-head">P&amp;L &amp; holdings</div>
-              <div className="dash-pnl-pair">
-                <div className="bs-item">
-                  <span className="gs-lbl">Realized</span>
-                  <b className={"mono " + pnlCls(ps.cumRealized)}>{fmt.sgn(ps.cumRealized, 1)}k</b>
-                </div>
-                <div className="bs-item">
-                  <span className="gs-lbl">Unrealized</span>
-                  <b className={"mono " + pnlCls(g.netUnreal)}>{fmt.usdk(g.netUnreal)}</b>
-                </div>
-                <div className="bs-item">
-                  <span className="gs-lbl">DD</span>
-                  <b className={"mono " + (ps.currentDd < 0 ? "neg" : "dim")}>{ps.currentDd}%</b>
-                </div>
-              </div>
+              <div className="ind-fam-head">Holdings</div>
               <HoldingsDonut netLiq={a.netLiq} cash={cashRows} />
+            </div>
+          </div>
+          <div className="ind-fam">
+            <div className="ind-fam-head">Performance</div>
+            <div className="table-scroll">
+              <table className="dt var-table">
+                <thead>
+                  <tr>
+                    <th className="l">Window</th>
+                    <th className="r">Realized</th>
+                    <th className="r">Unrealized</th>
+                    <th className="r">Max DD</th>
+                    <th className="r">Current DD</th>
+                    <th className="r">Delta P&L</th>
+                    <th className="r">Gamma P&L</th>
+                    <th className="r">Vega P&L</th>
+                    <th className="r">Theta P&L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {PERF_WINS.map((wn) => {
+                    const r = recapRows.find((x) => x.w === wn.v);
+                    return (
+                      <tr key={wn.v}>
+                        <td className="l mono">
+                          {wn.l} <span className="dim">{wn.v === "all" ? "since start" : ""}</span>
+                        </td>
+                        <td className="r mono">{recapMoney(r?.pnl ?? null)}</td>
+                        <td className="r mono">{recapMoney(g.netUnreal)}</td>
+                        <td className="r mono">{recapDd(r?.maxDd ?? null)}</td>
+                        <td className="r mono">{recapDd(r?.curDd ?? null)}</td>
+                        <td className="r mono">{recapMoney(r?.delta ?? null)}</td>
+                        <td className="r mono">{recapMoney(r?.gamma ?? null)}</td>
+                        <td className="r mono">{recapMoney(r?.vega ?? null)}</td>
+                        <td className="r mono">{recapMoney(r?.theta ?? null)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </Panel>
