@@ -355,8 +355,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           className="dash-card"
         >
           <div className="dash-risk-2col">
-            <div className="ind-fam">
-              <div className="ind-fam-head">Greeks</div>
+            <div>
               <table className="dt greeks-table">
                 <thead>
                   <tr>
@@ -384,8 +383,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                 </tbody>
               </table>
             </div>
-            <div className="ind-fam">
-              <div className="ind-fam-head">VaR table</div>
+            <div>
               {v ? (
                 <table className="dt var-table">
                   <thead>
