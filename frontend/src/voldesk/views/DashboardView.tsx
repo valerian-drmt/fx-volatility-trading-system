@@ -8,7 +8,6 @@
 import type { ReactNode } from "react";
 import {
   fetchEquityCurve,
-  fetchGreekPnlHistory,
   fetchRegimeEvents,
   fetchRegimeState,
 } from "../../api/endpoints";
@@ -22,12 +21,7 @@ import { DATA, fmt } from "../data";
 import type { Cash, Pc, TermPoint } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
-import {
-  adaptEquityCurve,
-  adaptGreekPnlHistory,
-  type EquityPoint,
-  type GreekSeries,
-} from "../data/live/portfolio";
+import { adaptEquityCurve, type EquityPoint, type GreekSeries } from "../data/live/portfolio";
 import { adaptEvents } from "../data/live/trade";
 
 // mini ATM term-structure with σ_fair overlay
@@ -192,19 +186,18 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   // ── Portfolio card: live per-currency cash for the holdings donut.
   const liveCash = trade.data?.cash;
   const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
-  // per-window performance recap — one sweep over the 5 windows (equity + greek P&L).
+  // per-window performance recap — one equity sweep over the 5 windows (the
+  // dashboard table has no greek columns, so no greek-P&L fetch here).
+  const NO_GREEKS: GreekSeries = { delta: [], gamma: [], vega: [], theta: [] };
   const recapRows =
     useFetch<RecapRow[]>(
       () =>
         Promise.all(
           PERF_WINS.map(async (wn) => {
-            const [pts, gs] = await Promise.all([
-              fetchEquityCurve(wn.v.toLowerCase()).then(adaptEquityCurve).catch((): EquityPoint[] => []),
-              fetchGreekPnlHistory(wn.v.toLowerCase())
-                .then(adaptGreekPnlHistory)
-                .catch((): GreekSeries => ({ delta: [], gamma: [], vega: [], theta: [] })),
-            ]);
-            return recapRow(wn.v, pts, gs);
+            const pts = await fetchEquityCurve(wn.v.toLowerCase())
+              .then(adaptEquityCurve)
+              .catch((): EquityPoint[] => []);
+            return recapRow(wn.v, pts, NO_GREEKS);
           }),
         ),
       300_000,
@@ -314,12 +307,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                     <th className="l">Window</th>
                     <th className="r">Realized</th>
                     <th className="r">Unrealized</th>
-                    <th className="r">Max DD</th>
                     <th className="r">Current DD</th>
-                    <th className="r">Delta P&L</th>
-                    <th className="r">Gamma P&L</th>
-                    <th className="r">Vega P&L</th>
-                    <th className="r">Theta P&L</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -332,12 +320,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                         </td>
                         <td className="r mono">{recapMoney(r?.pnl ?? null)}</td>
                         <td className="r mono">{recapMoney(g.netUnreal)}</td>
-                        <td className="r mono">{recapDd(r?.maxDd ?? null)}</td>
                         <td className="r mono">{recapDd(r?.curDd ?? null)}</td>
-                        <td className="r mono">{recapMoney(r?.delta ?? null)}</td>
-                        <td className="r mono">{recapMoney(r?.gamma ?? null)}</td>
-                        <td className="r mono">{recapMoney(r?.vega ?? null)}</td>
-                        <td className="r mono">{recapMoney(r?.theta ?? null)}</td>
                       </tr>
                     );
                   })}
