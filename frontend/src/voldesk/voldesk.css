@@ -464,6 +464,15 @@ input,select{font-family:inherit;font-size:13px}
 .ticker-legend i{display:inline-block;width:11px;height:8px;border-radius:2px;margin-right:5px}
 .ticker-legend .ticker-note{margin-left:auto}
 .ticker-empty{padding:40px 12px;text-align:center;color:var(--text-faint);border:1px dashed var(--border);border-radius:6px}
+/* macro-event dot tooltip (info-bulle) — anchored above the hovered dot */
+.ticker-plot{position:relative}
+.ticker-evt-tip{position:absolute;transform:translate(-50%,-112%);background:var(--bg-3);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:10.5px;line-height:1.45;pointer-events:none;z-index:6;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.45)}
+.ticker-evt-tip .tet-head{display:flex;align-items:center;gap:6px;font-size:11px}
+.ticker-evt-tip .tet-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.ticker-evt-tip .tet-impact{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.ticker-evt-tip .tet-impact.neg{color:var(--neg)}
+.ticker-evt-tip .tet-impact.warn{color:var(--warn)}
+.ticker-evt-tip .tet-body{max-width:260px;white-space:normal}
 .pca-ribbon{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .sig-tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:13px 15px 13px 17px;position:relative;overflow:hidden}
 .sig-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--text-faint)}

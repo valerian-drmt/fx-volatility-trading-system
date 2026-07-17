@@ -37,6 +37,13 @@ const LIMIT = 250; // upper bound on bars fetched (backend caps at ≤500)
 const isOpen = (hour: number, open: number, close: number): boolean => hour >= open && hour < close;
 const pad2 = (n: number): string => String(n).padStart(2, "0");
 
+interface EvtTip {
+  x: number; // svg x of the hovered dot (viewBox units)
+  e: MacroEvent;
+  t: number;
+  future: boolean;
+}
+
 export function TickerChart({
   spot,
   markers = [],
@@ -47,6 +54,7 @@ export function TickerChart({
   events?: MacroEvent[];
 }): JSX.Element {
   const [tf, setTf] = useState("1D");
+  const [evtTip, setEvtTip] = useState<EvtTip | null>(null);
   const preset = PRESETS.find((p) => p.key === tf)!;
   // real OHLC candles from the market-data engine's IB cache (poll every 60s)
   const barsFetch = useFetch<Bar[]>(() => fetchBars("EURUSD", tf, LIMIT), 180_000, true, 60_000);
@@ -158,6 +166,7 @@ export function TickerChart({
   return (
     <div className="ticker">
       {tfButtons}
+      <div className="ticker-plot">
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
         <rect x={pl} y={pt} width={plotW} height={priceBot - pt} fill="var(--bg-3)" opacity="0.4" />
         {/* price grid + axis */}
@@ -213,12 +222,15 @@ export function TickerChart({
           <line x1={pl + N * colW} x2={pl + N * colW} y1={pt} y2={priceBot} stroke="var(--line)" strokeDasharray="2 3" />
         )}
         {/* macro-event dots — bottom of the price area, at their scheduled time;
-            hollow ring = upcoming */}
+            hollow ring = upcoming. Hover (wide invisible hit-zone) = tooltip. */}
         {evtDots.map((d, i) => (
-          <g key={"e" + i} style={{ cursor: "pointer" }}>
-            <title>
-              {`${d.e.code} · ${d.e.content} · ${fmtTs(d.t)}${d.future && d.e.in ? " · in " + d.e.in : ""}`}
-            </title>
+          <g
+            key={"e" + i}
+            style={{ cursor: "pointer" }}
+            onMouseEnter={() => setEvtTip(d)}
+            onMouseLeave={() => setEvtTip(null)}
+          >
+            <circle cx={d.x} cy={evtY} r="9" fill="transparent" />
             <circle
               cx={d.x}
               cy={evtY}
@@ -250,6 +262,26 @@ export function TickerChart({
           </text>
         ) : null))}
       </svg>
+      {evtTip && (
+        <div
+          className="ticker-evt-tip"
+          style={{ left: Math.min(86, Math.max(14, (evtTip.x / W) * 100)) + "%", top: (evtY / H) * 100 + "%" }}
+        >
+          <div className="tet-head">
+            <span className="tet-dot" style={{ background: evtCol(evtTip.e.impact) }} />
+            <b className="mono">{evtTip.e.code}</b>
+            <span className={"tet-impact " + (/high/i.test(evtTip.e.impact) ? "neg" : /med/i.test(evtTip.e.impact) ? "warn" : "dim")}>
+              {evtTip.e.impact}
+            </span>
+          </div>
+          <div className="tet-body dim">{evtTip.e.content}{evtTip.e.country ? " · " + evtTip.e.country : ""}</div>
+          <div className="tet-when mono dim">
+            {fmtTs(evtTip.t)}
+            {evtTip.future && evtTip.e.in ? " · in " + evtTip.e.in : ""}
+          </div>
+        </div>
+      )}
+      </div>
       <div className="ticker-legend">
         {SESSIONS.map((s) => (
           <span key={s.code}>
