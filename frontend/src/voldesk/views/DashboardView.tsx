@@ -248,29 +248,21 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           }
           className="dash-card"
         >
-          <div className="ind-fam">
-            <div className="ind-fam-head">
-              Ticker <span className="dim">· EUR/USD</span>
-            </div>
-            <TickerChart spot={spot} events={chartEvents} height={232} />
-          </div>
-          <div className="ind-fam">
-            <div className="ind-fam-head">Macro events</div>
-            {events.length ? (
-              events.slice(0, 3).map((ev, i) => (
-                <div key={i} className="today-evt">
-                  <span className="mono accent">{ev.in}</span>
-                  <span className="evt-code mono">{ev.code}</span>
-                  <span className="dim">
-                    {ev.content} · {ev.country}
-                  </span>
-                  <Tag tone={String(ev.impact).toUpperCase().includes("HIGH") ? "danger" : "neutral"}>{ev.impact}</Tag>
-                </div>
-              ))
-            ) : (
-              <div className="today-evt dim">no upcoming events</div>
-            )}
-          </div>
+          <TickerChart spot={spot} events={chartEvents} height={232} />
+          {events.length ? (
+            events.slice(0, 3).map((ev, i) => (
+              <div key={i} className="today-evt">
+                <span className="mono accent">{ev.in}</span>
+                <span className="evt-code mono">{ev.code}</span>
+                <span className="dim">
+                  {ev.content} · {ev.country}
+                </span>
+                <Tag tone={String(ev.impact).toUpperCase().includes("HIGH") ? "danger" : "neutral"}>{ev.impact}</Tag>
+              </div>
+            ))
+          ) : (
+            <div className="today-evt dim">no upcoming events</div>
+          )}
         </Panel>
 
         <Panel
