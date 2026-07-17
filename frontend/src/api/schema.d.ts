@@ -1842,7 +1842,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Events */
+        /**
+         * List Events
+         * @description Upcoming events; `past_days > 0` extends the window backwards so charts
+         *     can plot recent past events too (default 0 keeps the future-only contract).
+         */
         get: operations["list_events_api_v1_regime_events_get"];
         put?: never;
         /** Insert Event */
@@ -5837,6 +5841,7 @@ export interface operations {
         parameters: {
             query?: {
                 n?: number;
+                past_days?: number;
             };
             header?: never;
             path?: never;

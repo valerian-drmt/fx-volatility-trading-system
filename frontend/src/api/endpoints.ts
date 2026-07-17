@@ -157,8 +157,8 @@ export const fetchSystemStats = () => apiGet<SystemStats>("/api/v1/system-stats"
 export type RegimeState = Get<"/api/v1/regime/state", 200>;
 export const fetchRegimeState = (symbol = "EURUSD") =>
   apiGet<RegimeState>("/api/v1/regime/state", { query: { symbol } });
-export const fetchRegimeEvents = (n = 10) =>
-  apiGet<unknown>("/api/v1/regime/events", { query: { n } });
+export const fetchRegimeEvents = (n = 10, pastDays = 0) =>
+  apiGet<unknown>("/api/v1/regime/events", { query: { n, past_days: pastDays } });
 
 // PCA signals
 export type PcaState = Get<"/api/v1/signals/pca/state", 200>;

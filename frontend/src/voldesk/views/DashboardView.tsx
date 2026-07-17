@@ -8,6 +8,7 @@
 import {
   fetchEquityCurve,
   fetchPinRisk,
+  fetchRegimeEvents,
   fetchRegimeState,
   fetchStressGrid,
 } from "../../api/endpoints";
@@ -26,6 +27,7 @@ import {
   adaptStressGrid,
   type EquityPoint,
 } from "../data/live/portfolio";
+import { adaptEvents } from "../data/live/trade";
 
 // mini ATM term-structure with σ_fair overlay
 function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
@@ -143,6 +145,12 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
     }
   }
   const nextPin = [...pinRows].sort((x, y) => x.dte - y.dte)[0] ?? null;
+
+  // chart events: same calendar but with a 35d past window (covers the 1M
+  // range), so past releases show as filled dots. The list below the chart
+  // stays upcoming-only via the trade slice's future-only fetch.
+  const chartEvents =
+    useFetch(() => fetchRegimeEvents(100, 35).then((raw) => adaptEvents(raw, Date.now())), 300_000).data ?? events;
 
   // ── Trade card: market open/closed badge — same icon + mapping as the topbar.
   const mktDot = ticks.status === "live" ? "var(--pos)" : ticks.status === "stale" ? "var(--warn)" : "var(--neg)";
@@ -334,7 +342,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
             <div className="ind-fam-head">
               Ticker <span className="dim">· EUR/USD</span>
             </div>
-            <TickerChart spot={spot} events={events} />
+            <TickerChart spot={spot} events={chartEvents} />
           </div>
           <div className="ind-fam">
             <div className="ind-fam-head">Macro events</div>
