@@ -1500,6 +1500,8 @@ input,select{font-family:inherit;font-size:13px}
    panel visible (internal scroll) when the Greeks panel fills the column */
 .risk-left-col > .risk-macro-panel{flex:1 1 0;min-height:240px}
 .risk-macro-panel > .panel-body{flex:1;min-height:0}
+/* Dashboard Trade card: Macro events fixed at exactly 3 visible rows, scrollbar for the rest */
+.dash-card .risk-macro-panel > .panel-body{flex:none;height:142px;overflow-y:scroll}
 .greeks-2x2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
 .greeks-2x2 > .panel{min-width:0;grid-column:auto}
 /* Expiries & roll-off spans the full Greeks-grid width */
