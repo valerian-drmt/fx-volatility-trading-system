@@ -436,7 +436,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           {pcsLive.length ? (
             <div className="dash-sig-3col">
               {pcsLive.slice(0, 3).map((pc) => (
-                <ModeCard key={pc.id} pc={pc} view="3M" showLoadings={false} />
+                <ModeCard key={pc.id} pc={pc} view="3M" showLoadings={false} showChart={false} />
               ))}
             </div>
           ) : (

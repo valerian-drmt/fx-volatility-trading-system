@@ -262,10 +262,12 @@ export const ModeCard = memo(function ModeCard({
   pc,
   view,
   showLoadings = true,
+  showChart = true,
 }: {
   pc: PcaCard;
   view: string;
   showLoadings?: boolean;
+  showChart?: boolean;
 }): JSX.Element {
   const tone: Tone =
     pc.label === "CHEAP" ? "good" : pc.label === "EXPENSIVE" || pc.label === "RICH" ? "danger" : "neutral";
@@ -287,7 +289,7 @@ export const ModeCard = memo(function ModeCard({
           <span className="dim small mono">percentile {pc.pctile.toFixed(2)}%</span>
         </div>
       </div>
-      <ZSeriesChart pc={pc} view={view} series={pc.zHistory} />
+      {showChart && <ZSeriesChart pc={pc} view={view} series={pc.zHistory} />}
       {showLoadings && (
         <>
           <div className="mc-load-lbl dim small mono">loadings · tenor × delta</div>
