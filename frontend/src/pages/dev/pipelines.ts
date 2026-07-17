@@ -866,7 +866,7 @@ export const PIPELINES: PanelPipe[] = [
     },
   },
   {
-    id: "risk-macro", panel: "Macro events", view: "risk", domain: "trade", isolated: true, cadence: "~24h · events scheduler",
+    id: "dash-macro", panel: "Macro events", view: "dashboard", domain: "trade", isolated: true, cadence: "~24h · events scheduler",
     nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Macro events")],
     edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
     // events scheduler (in api) fans out to providers every 24h → dedup → upsert event_calendar.

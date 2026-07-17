@@ -6,10 +6,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
-import { Panel, Tag } from "../components/common";
+import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
-import type { Tone } from "../components/format";
 import { PositionBreakdown } from "../components/PositionBreakdown";
 import { fmt } from "../data";
 import type { Position } from "../data";
@@ -384,28 +383,6 @@ function PinRiskTable({ positions }: { positions: Position[] }): JSX.Element {
   );
 }
 
-// ---- macro events calendar ----
-function CalendarPanel(): JSX.Element {
-  const impactTone: Record<string, Tone> = { high: "danger", medium: "warn", low: "neutral" };
-  const { trade } = useDeskData();
-  const events = trade.data?.events ?? [];
-  return (
-    <Panel title="Macro events" dataPp="risk-macro" right={<PanelLive status={trade.status} />} className="risk-macro-panel" scroll>
-      <div className="evt-list">
-        {events.length === 0 ? (
-          <div className="dim mono small">no scheduled events</div>
-        ) : events.map((e, i) => (
-          <div key={i} className="evt-item">
-            <div className="evt-when mono"><span className="evt-in accent">{e.in}</span><span className="dim small">{e.date.split(",")[0]}</span></div>
-            <div className="evt-body"><span className="evt-code mono">{e.code}</span><span className="evt-name">{e.content}</span><span className="dim mono small"> · {e.country}</span></div>
-            <Tag tone={impactTone[e.impact] ?? "neutral"}>{e.impact}</Tag>
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
 // Marginal contribution to VaR — live (/portfolio/marginal-var); empty state
 // until a book + ≥5d history exist.
 function MarginalVarPanel(): JSX.Element {
@@ -555,7 +532,6 @@ export function RiskView(): JSX.Element {
             <PinRiskTable positions={portfolio.data?.positions ?? []} />
           </div>
         </Panel>
-          <CalendarPanel />
         </div>
         <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} hist={vd.hist} fresh={risk} />
       </div>

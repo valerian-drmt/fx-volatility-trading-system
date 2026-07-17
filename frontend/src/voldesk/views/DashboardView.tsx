@@ -56,6 +56,22 @@ function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
   );
 }
 
+// per-panel data-source indicator (live / stale / no-data) — same look as the
+// Risk tab's PanelLive, driven by a desk-domain freshness status.
+const IMPACT_TONE: Record<string, Tone> = { high: "danger", medium: "warn", low: "neutral" };
+function LiveBadge({ status }: { status: FreshStatus }): JSX.Element {
+  const cfg = {
+    live: { c: "var(--pos)", t: "live", pulse: true },
+    stale: { c: "var(--warn)", t: "stale", pulse: false },
+    missing: { c: "var(--muted)", t: "no data", pulse: false },
+  }[status];
+  return (
+    <span className="panel-live dim mono small" title="data feed status">
+      <span className={"status-dot" + (cfg.pulse ? " pulse" : "")} style={{ background: cfg.c }} /> {cfg.t}
+    </span>
+  );
+}
+
 // ▲/▼ change pill + parenthetical note — same helpers as the Portfolio tab's
 // Cash & margin table (classes .acct-delta / .acct-sub are global).
 function deltaPill(d: number | null | undefined): JSX.Element | null {
@@ -249,20 +265,34 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           className="dash-card"
         >
           <TickerChart spot={spot} events={chartEvents} height={232} />
-          {events.length ? (
-            events.slice(0, 3).map((ev, i) => (
-              <div key={i} className="today-evt">
-                <span className="mono accent">{ev.in}</span>
-                <span className="evt-code mono">{ev.code}</span>
-                <span className="dim">
-                  {ev.content} · {ev.country}
-                </span>
-                <Tag tone={String(ev.impact).toUpperCase().includes("HIGH") ? "danger" : "neutral"}>{ev.impact}</Tag>
-              </div>
-            ))
-          ) : (
-            <div className="today-evt dim">no upcoming events</div>
-          )}
+          <Panel
+            title="Macro events"
+            dataPp="dash-macro"
+            right={<LiveBadge status={trade.status} />}
+            className="risk-macro-panel"
+            scroll
+          >
+            <div className="evt-list">
+              {events.length === 0 ? (
+                <div className="dim mono small">no scheduled events</div>
+              ) : (
+                events.map((e, i) => (
+                  <div key={i} className="evt-item">
+                    <div className="evt-when mono">
+                      <span className="evt-in accent">{e.in}</span>
+                      <span className="dim small">{e.date.split(",")[0]}</span>
+                    </div>
+                    <div className="evt-body">
+                      <span className="evt-code mono">{e.code}</span>
+                      <span className="evt-name">{e.content}</span>
+                      <span className="dim mono small"> · {e.country}</span>
+                    </div>
+                    <Tag tone={IMPACT_TONE[e.impact] ?? "neutral"}>{e.impact}</Tag>
+                  </div>
+                ))
+              )}
+            </div>
+          </Panel>
         </Panel>
 
         <Panel
