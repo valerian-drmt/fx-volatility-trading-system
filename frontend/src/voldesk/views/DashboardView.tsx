@@ -215,7 +215,9 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           }
           className="dash-card"
         >
-          <TickerChart spot={spot} events={chartEvents} height={232} />
+          <div data-pp="dash-ticker">
+            <TickerChart spot={spot} events={chartEvents} height={232} />
+          </div>
           <Panel
             title="Macro events"
             dataPp="dash-macro"
@@ -257,7 +259,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           className="dash-card"
         >
           <div className="dash-pf-2col">
-            <div className="ind-fam">
+            <div className="ind-fam" data-pp="dash-acct">
               <div className="ind-fam-head">Cash &amp; margin</div>
               <table className="dt greeks-table">
                 <thead>
@@ -303,12 +305,12 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                 </tbody>
               </table>
             </div>
-            <div className="ind-fam">
+            <div className="ind-fam" data-pp="dash-holdings">
               <div className="ind-fam-head">Holdings</div>
               <HoldingsDonut netLiq={a.netLiq} cash={cashRows} />
             </div>
           </div>
-          <div className="ind-fam dash-perf-block">
+          <div className="ind-fam dash-perf-block" data-pp="dash-perf">
             <div className="ind-fam-head ifh-split">
               <span>Performance</span>
               <span className="ifh-right mono">
@@ -355,7 +357,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           className="dash-card"
         >
           <div className="dash-risk-2col">
-            <div>
+            <div data-pp="dash-greeks">
               <table className="dt greeks-table">
                 <thead>
                   <tr>
@@ -383,7 +385,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                 </tbody>
               </table>
             </div>
-            <div>
+            <div data-pp="dash-var">
               {v ? (
                 <table className="dt var-table">
                   <thead>
