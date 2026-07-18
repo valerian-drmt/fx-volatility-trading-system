@@ -11,6 +11,12 @@
 #   OWNER             GHCR owner (github user/org)
 #   AWS_REGION        e.g. eu-west-1
 #   COMPOSE_PROFILES  optional; empty = core stack (api+frontend+nginx+pg+redis)
+#
+# Rollback: re-run the previous SHA (.\scripts\ops\ec2.ps1 deploy -Sha <prev>);
+# the pre-migration dump uploaded below is the DB restore point (see
+# infrastructure/ec2/RESTORE.md).
+# AUTH_SALT is deliberately not rendered: the api falls back to its code
+# default. Provision /fxvol/prod/AUTH_SALT in SSM only when rotating it.
 set -euo pipefail
 
 cd /opt/fxvol
@@ -20,17 +26,15 @@ ssm() { aws ssm get-parameter --name "$1" --with-decryption --query Parameter.Va
 
 # --- secrets, straight from SSM (never logged, never in GitHub) -------------
 DB_PASSWORD="$(ssm /fxvol/prod/DB_PASSWORD)"
-VNC_PASSWORD="$(ssm /fxvol/prod/VNC_PASSWORD)"
-IB_USERID="$(ssm /fxvol/prod/IB_USERID)"
-IB_PASSWORD="$(ssm /fxvol/prod/IB_PASSWORD)"
 # Optional params : tolerate absence (set -e) so a missing SSM entry never
 # aborts the deploy. FRED_API_KEY is unused by the current compose; GHCR_TOKEN
 # is only needed if the GHCR packages are private (login skipped below if empty).
 FRED_API_KEY="$(ssm /fxvol/prod/FRED_API_KEY 2>/dev/null || echo "")"
 GHCR_TOKEN="$(ssm /fxvol/prod/GHCR_TOKEN 2>/dev/null || echo "")"
-# Auth (single-trader write boundary). Optional: if absent the api keeps its
-# fail-closed defaults (insecure secret + empty hash → every login fails →
-# writes stay locked). Provision both in SSM to enable the write path.
+# Auth (single-trader write boundary). Optional in SSM, but the api's ENV=prod
+# boot guard refuses the repo-default AUTH_SECRET: an unprovisioned host
+# crash-loops the api instead of serving with a forgeable key. Provision both
+# params in SSM before the first deploy.
 AUTH_SECRET="$(ssm /fxvol/prod/AUTH_SECRET 2>/dev/null || echo "")"
 AUTH_PASSWORD_HASH="$(ssm /fxvol/prod/AUTH_PASSWORD_HASH 2>/dev/null || echo "")"
 
@@ -40,10 +44,8 @@ reg="ghcr.io/${OWNER}"
 umask 077
 cat > /opt/fxvol/.env <<ENVEOF
 DB_PASSWORD=${DB_PASSWORD}
-VNC_PASSWORD=${VNC_PASSWORD}
-IB_USERID=${IB_USERID}
-IB_PASSWORD=${IB_PASSWORD}
 FRED_API_KEY=${FRED_API_KEY}
+ENV=prod
 TRADING_MODE=paper
 READ_ONLY_API=yes
 COMPOSE_PROFILES=${COMPOSE_PROFILES:-}
@@ -56,8 +58,25 @@ MARKET_DATA_IMAGE=${reg}/fx-options-market-data:${IMAGE_TAG}
 VOL_ENGINE_IMAGE=${reg}/fx-options-vol-engine:${IMAGE_TAG}
 RISK_ENGINE_IMAGE=${reg}/fx-options-risk-engine:${IMAGE_TAG}
 DB_WRITER_IMAGE=${reg}/fx-options-db-writer:${IMAGE_TAG}
+EXECUTION_IMAGE=${reg}/fx-options-execution:${IMAGE_TAG}
 IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:latest
 ENVEOF
+
+# Broker credentials: fetched + rendered ONLY when the ib profile is armed, so
+# a public core-only box never holds IB creds on disk (compose tolerates the
+# absent vars via ${IB_USERID:-}).
+case ",${COMPOSE_PROFILES:-}," in
+  *,ib,*)
+    IB_USERID="$(ssm /fxvol/prod/IB_USERID)"
+    IB_PASSWORD="$(ssm /fxvol/prod/IB_PASSWORD)"
+    VNC_PASSWORD="$(ssm /fxvol/prod/VNC_PASSWORD)"
+    {
+      echo "IB_USERID=${IB_USERID}"
+      echo "IB_PASSWORD=${IB_PASSWORD}"
+      echo "VNC_PASSWORD=${VNC_PASSWORD}"
+    } >> /opt/fxvol/.env
+    ;;
+esac
 
 # Auth vars appended conditionally: emit the secret/hash only when present in
 # SSM, so an unprovisioned host keeps the api's fail-closed defaults. Cookie is
@@ -69,11 +88,26 @@ ENVEOF
   echo "AUTH_COOKIE_SECURE=true"
 } >> /opt/fxvol/.env
 
-# --- pull + restart ---------------------------------------------------------
+# --- pull + migrate + restart ------------------------------------------------
 if [ -n "${GHCR_TOKEN}" ]; then
   echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${OWNER}" --password-stdin
 fi
 docker compose pull
+
+# Pre-migration safety dump + migrate BEFORE swapping code (skipped on the
+# first-ever deploy when postgres isn't running yet). Dump upload uses the
+# instance role — no static keys. Migration runs the NEW image against the
+# OLD still-serving stack; alembic upgrade head is idempotent.
+if docker compose ps --status running postgres | grep -q postgres; then
+  ts=$(date -u +%Y%m%dT%H%M%SZ)
+  docker compose exec -T postgres pg_dump -U fxvol -Fc fxvol > "/tmp/fxvol-pre-${IMAGE_TAG}-${ts}.dump"
+  aws s3 cp "/tmp/fxvol-pre-${IMAGE_TAG}-${ts}.dump" \
+    "s3://fxvol-backups/postgres/pre-deploy/" --sse AES256 --region "$REGION"
+  rm -f "/tmp/fxvol-pre-${IMAGE_TAG}-${ts}.dump"
+  docker compose run --rm --no-deps api \
+    python -m alembic -c src/persistence/alembic.ini upgrade head
+fi
+
 docker compose up -d --remove-orphans
 
 # The nginx config is a bind-mounted file. `compose up -d` only recreates a
@@ -84,6 +118,8 @@ docker compose up -d --remove-orphans
 docker compose exec -T nginx nginx -t
 docker compose exec -T nginx nginx -s reload
 
+# Bootstrap path: on the first-ever deploy postgres only exists now — the
+# idempotent re-run is a no-op on the normal path.
 docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
 
 echo "remote-deploy: done (tag ${IMAGE_TAG}, profiles '${COMPOSE_PROFILES:-core}')"
