@@ -26,7 +26,7 @@
   connect          Shell interactif sur l'host (SSM Session Manager).
   deploy           Declenche le workflow GitHub 'deploy-prod' (build->ghcr->host).
                    Avec -Sha : rollback/deploie un commit precis (deploy_sha).
-  health           GET https://<Domain>/api/v1/health depuis le laptop.
+  health           GET https://<Domain>/fx-volatility-trading-system/api/v1/health depuis le laptop.
   ps               Liste les containers tournant sur l'host.
   up               docker compose up -d sur l'host (relance le stack).
   down             docker compose down sur l'host (stoppe les containers, garde l'instance).
@@ -184,10 +184,13 @@ switch ($Action) {
     }
 
     'health' {
-        $url = "https://$Domain/api/v1/health"
+        $url = "https://$Domain/fx-volatility-trading-system/api/v1/health"
         Write-Step "GET $url"
         try {
             $resp = Invoke-WebRequest -Uri $url -TimeoutSec 15 -UseBasicParsing
+            # A bare 200 also passes on the SPA fallback page — require API JSON
+            # (same assert as the deploy.yml smoke step).
+            if ($resp.Content -notmatch '"status"') { throw "body is not API JSON (SPA fallback?)" }
             Write-Ok "HTTP $($resp.StatusCode) : $($resp.Content)"
         } catch {
             Write-Warn "Echec : $($_.Exception.Message)"
