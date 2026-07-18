@@ -3,8 +3,8 @@
  * prototype's `js/views_risk.jsx` (global-window JSX) into typed ES modules.
  * Exports only RiskView; all sub-components stay local (lint).
  */
-import { useEffect, useRef, useState } from "react";
-import { fetchGreekLimits, fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -12,9 +12,11 @@ import { gk$, pnlCls } from "../components/format";
 import type { Tone } from "../components/format";
 import { PositionBreakdown } from "../components/PositionBreakdown";
 import { fmt } from "../data";
+import type { Position } from "../data";
+import { groupByTradeId, structureName } from "../components/tradeGrouping";
 import { type HistBin, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreekLimits, adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type GreekLimits, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -298,28 +300,89 @@ function StressEngine(): JSX.Element {
 }
 
 // ---- Expiries & roll-off (pin risk) — own panel for the Greeks 2×2 grid ----
-function PinRiskTable(): JSX.Element {
+// Legs are grouped by trade like the Position breakdown table : a collapsible
+// summary line per multi-leg structure (caret ▸, structure name, P&L rollup)
+// with its legs indented. Ungrouped (direct-IB) legs render flat.
+function PinRiskTable({ positions }: { positions: Position[] }): JSX.Element {
   const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + "k" : Math.round(Math.abs(v)));
   const pin = useFetch<PinRiskRow[]>(() => fetchPinRisk().then(adaptPinRisk), 120_000);
   const pinRows = pin.data ?? [];
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const toggle = (id: number): void =>
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  // Structure names from the same grouping the Position breakdown uses.
+  const nameByTrade = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const grp of groupByTradeId(positions)) {
+      if (grp.tradeId != null && grp.legs.length > 1) m.set(Number(grp.tradeId), structureName(grp.legs));
+    }
+    return m;
+  }, [positions]);
+  // Group pin rows by tradeId, preserving the backend's most-urgent-first order.
+  const groups: { tradeId: number | null; rows: PinRiskRow[] }[] = [];
+  {
+    const at = new Map<number, number>();
+    for (const r of pinRows) {
+      const t = r.tradeId;
+      if (t == null) { groups.push({ tradeId: null, rows: [r] }); continue; }
+      const i = at.get(t);
+      if (i == null) { at.set(t, groups.length); groups.push({ tradeId: t, rows: [r] }); }
+      else groups[i]!.rows.push(r);
+    }
+  }
+  const legRow = (p: PinRiskRow, key: string, indent: boolean): JSX.Element => (
+    <tr key={key} className={(p.distPips <= 10 ? "row-now" : "") + (indent ? " pos-leg" : "")}>
+      <td className="l mono">{indent ? "↳ " : ""}{p.product}</td>
+      <td className="r mono dim">{p.strike.toFixed(4)}</td>
+      <td className="r mono dim">{p.dte}d</td>
+      <td className={"r mono " + (p.distPips <= 10 ? "warn" : "dim")}>{p.distPips}</td>
+      <td className={"r mono " + pnlCls(p.pnlNow)}>{kk(p.pnlNow)}</td>
+      <td className={"r mono " + pnlCls(p.pnlAtPin)}>{kk(p.pnlAtPin)}</td>
+    </tr>
+  );
   return (
-    <Panel title="Expiries & roll-off" dataPp="pin-risk" right={<PanelLive status={pin.status} />} className="trade-block" pad={false}>
+    <Panel title="Expiries & roll-off" dataPp="pin-risk" right={<PanelLive status={pin.status} />} className="trade-block pin-risk-full" pad={false}>
       <div className="table-scroll">
         <table className="dt">
           <thead><tr><th className="l">Option</th><th className="r">Strike</th><th className="r">DTE</th><th className="r">Dist pip</th><th className="r">P&L now</th><th className="r">if pin</th></tr></thead>
           <tbody>
             {pinRows.length === 0 ? (
               <tr><td className="l dim mono small" colSpan={6}>{pin.status === "missing" ? "no open options" : "loading…"}</td></tr>
-            ) : pinRows.map((p, i) => (
-              <tr key={i} className={p.distPips <= 10 ? "row-now" : ""}>
-                <td className="l mono">{p.product}</td>
-                <td className="r mono dim">{p.strike.toFixed(4)}</td>
-                <td className="r mono dim">{p.dte}d</td>
-                <td className={"r mono " + (p.distPips <= 10 ? "warn" : "dim")}>{p.distPips}</td>
-                <td className={"r mono " + pnlCls(p.pnlNow)}>{kk(p.pnlNow)}</td>
-                <td className={"r mono " + pnlCls(p.pnlAtPin)}>{kk(p.pnlAtPin)}</td>
-              </tr>
-            ))}
+            ) : groups.map((grp, gi) => {
+              if (grp.tradeId == null || grp.rows.length === 1) return legRow(grp.rows[0]!, `g${gi}`, false);
+              const isOpen = expanded.has(grp.tradeId);
+              const dtes = new Set(grp.rows.map((r) => r.dte));
+              const pnlSum = grp.rows.reduce((s, r) => s + r.pnlNow, 0);
+              return (
+                <Fragment key={`t${grp.tradeId}`}>
+                  <tr className={"pos-main" + (isOpen ? " open" : "")} onClick={() => toggle(grp.tradeId!)}>
+                    <td className="l">
+                      <button
+                        className="pos-caret"
+                        onClick={(e) => { e.stopPropagation(); toggle(grp.tradeId!); }}
+                        aria-expanded={isOpen}
+                      >
+                        {isOpen ? "▾" : "▸"}
+                      </button>
+                      <span className="sym">{nameByTrade.get(grp.tradeId) ?? `#${grp.tradeId}`}</span>
+                      <span className="dim mono small"> · {grp.rows.length} legs</span>
+                    </td>
+                    <td className="r mono dim">—</td>
+                    <td className="r mono dim">{dtes.size === 1 ? `${[...dtes][0]}d` : "—"}</td>
+                    <td className="r mono dim">—</td>
+                    <td className={"r mono " + pnlCls(pnlSum)}>{kk(pnlSum)}</td>
+                    {/* per-leg pins are different spots — a summed "if pin" would mix scenarios */}
+                    <td className="r mono dim">—</td>
+                  </tr>
+                  {isOpen && grp.rows.map((r, i) => legRow(r, `t${grp.tradeId}-${i}`, true))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -452,7 +515,6 @@ export function RiskView(): JSX.Element {
   // All live. Net greeks + caps from the trade domain; account from portfolio.
   // No DATA mock fallback — absent data reads as 0 / "—", never fabricated.
   const ng = trade.data?.greeks;
-  const a = portfolio.data?.account;
   const nd = ng?.netDelta ?? 0, ngm = ng?.netGamma ?? 0, nv = ng?.netVega ?? 0, nt = ng?.netTheta ?? 0;
   // No live VaR yet (history < min window → backend returns null): show honest
   // zeros + "building window…", NOT a fabricated mock VaR scaled across horizons.
@@ -461,25 +523,6 @@ export function RiskView(): JSX.Element {
   // net 2nd-order greeks = Σ of their tenor buckets (live), by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
   const netVolga = pt.reduce((s, r) => s + r.volga, 0);
-  // §7: show the TRUE utilization (never clamp to 100); colour flags a breach.
-  const utilColor = (p: number): string => (p > 100 ? "var(--neg)" : p > 80 ? "var(--warn)" : "var(--pos)");
-  const pctOf = (used: number, cap: number | undefined): number => (cap && cap > 0 ? (Math.abs(used) / cap) * 100 : 0);
-  // Greek caps are DERIVED from one stress-loss budget, not configured: the
-  // /portfolio/greek-limits endpoint projects L*=α·nav_base onto each axis
-  // (greek-limits-spec §2/§6). All live; "—" until nav_base + spot resolve.
-  const glim = useFetch<GreekLimits>(() => fetchGreekLimits().then(adaptGreekLimits), 60_000).data;
-  const deltaCap = glim?.deltaCapUsd ?? 0;
-  const vegaCap = glim?.vegaCapUsd ?? 0;
-  const gammaCap = glim?.gammaCapPip ?? 0;
-  const capk = (c: number): string => (c > 0 ? fmt.usdk(c) : "—");
-  // Risk-utilization rows : name · used / cap · % (used vs the cap). All live.
-  const utilRows = [
-    { label: "Init margin", used: a ? fmt.usd(a.marginInit) : "—", limit: a ? fmt.usd(a.netLiq) : "—", pct: a?.marginInitPct ?? 0 },
-    { label: "Maint margin", used: a ? fmt.usd(a.marginMaint) : "—", limit: a ? fmt.usd(a.netLiq) : "—", pct: a?.marginMaintPct ?? 0 },
-    { label: "Delta exposure", used: fmt.usdk(Math.abs(nd)), limit: capk(deltaCap), pct: pctOf(nd, deltaCap) },
-    { label: "Vega", used: fmt.usdk(Math.abs(nv)), limit: capk(vegaCap), pct: pctOf(nv, vegaCap) },
-    { label: "Gamma exposure", used: fmt.usdk(Math.abs(ngm)), limit: capk(gammaCap), pct: pctOf(ngm, gammaCap) },
-  ];
   return (
     <div className="risk-grid">
       <div className="risk-row1">
@@ -515,21 +558,7 @@ export function RiskView(): JSX.Element {
                 </tbody>
               </table>
             </Panel>
-            <Panel title="Risk utilization" dataPp="risk-util" right={<PanelLive status={portfolio.status} />} className="trade-block">
-              <table className="dt greeks-table">
-                <thead><tr><th className="l">Limit</th><th className="r">Used / cap</th><th className="r">%</th></tr></thead>
-                <tbody>
-                  {utilRows.map((r) => (
-                    <tr key={r.label}>
-                      <td className="l">{r.label}</td>
-                      <td className="r mono"><span style={{ color: utilColor(r.pct) }}>{r.used}</span> <span className="dim">/ {r.limit}</span></td>
-                      <td className="r mono" style={{ color: utilColor(r.pct) }}>{r.pct.toFixed(0)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Panel>
-            <PinRiskTable />
+            <PinRiskTable positions={portfolio.data?.positions ?? []} />
           </div>
         </Panel>
           <CalendarPanel />

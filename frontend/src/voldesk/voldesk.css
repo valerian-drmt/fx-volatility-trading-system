@@ -448,10 +448,10 @@ input,select{font-family:inherit;font-size:13px}
 .hold-line .hl-ccy{font-size:11.5px;font-weight:700;color:var(--text-dim);min-width:30px}
 .hold-line>b{font-size:14px;font-weight:700}
 .hold-line .hl-share{margin-left:-3px}
-/* spot EUR⇄USD ticket (inside Cash holdings) — neutral buttons that take the
-   Place-order green on hover (.btn-draft-send palette) */
-.spot-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border-radius:5px;background:var(--surface-2,rgba(255,255,255,.04));border:1px solid var(--line);color:var(--text-dim);font-weight:700;font-size:13px;transition:.15s}
-.spot-btn:hover:not(:disabled){background:#0f2417;border-color:color-mix(in srgb,var(--pos) 48%,transparent);color:var(--pos)}
+/* spot EUR⇄USD ticket (inside Cash holdings) — yellow/orange fill + outline,
+   same intensity on both buttons; hover deepens the fill like .btn-draft-send */
+.spot-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;border-radius:5px;background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--warn) 45%,transparent);color:var(--text-dim);font-weight:700;font-size:13px;transition:.15s}
+.spot-btn:hover:not(:disabled){background:color-mix(in srgb,var(--warn) 20%,transparent)}
 .spot-btn:disabled{opacity:.45;cursor:not-allowed}
 /* one reserved line so the sent/error message doesn't grow the panel */
 .spot-status{min-height:17px;line-height:17px}
@@ -1535,10 +1535,22 @@ input,select{font-family:inherit;font-size:13px}
    events takes the leftover height and scrolls internally. */
 .risk-left-col{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
 .risk-left-col > .panel{margin-bottom:0;min-width:0}
-.risk-left-col > .risk-macro-panel{flex:1 1 0;min-height:0}
+/* flex-basis 0 = absorb leftover column height only; the floor keeps the
+   panel visible (internal scroll) when the Greeks panel fills the column */
+.risk-left-col > .risk-macro-panel{flex:1 1 0;min-height:240px}
 .risk-macro-panel > .panel-body{flex:1;min-height:0}
 .greeks-2x2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
 .greeks-2x2 > .panel{min-width:0;grid-column:auto}
+/* Expiries & roll-off spans the full Greeks-grid width */
+.greeks-2x2 > .pin-risk-full{grid-column:1 / -1}
+/* cap the Option column so the numeric columns share the freed width */
+.pin-risk-full .dt th.l{width:30%}
+/* .sym is display:block globally — inline it here so the structure name sits
+   on the same line as (and to the right of) the ▸ caret */
+.pin-risk-full .dt .sym{display:inline}
+/* cap the table height (internal scroll, sticky header) so expanding legs
+   never stretches the Greeks grid / panel layout */
+.pin-risk-full .table-scroll{max-height:280px}
 /* Value at Risk column — table / graph / marginal contribution stacked 1x3 */
 .var-1x3{display:flex;flex-direction:column;gap:10px}
 

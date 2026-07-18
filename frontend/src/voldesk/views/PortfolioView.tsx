@@ -470,7 +470,7 @@ function PerformancePanel({
       className="perf-panel"
     >
       <div className="perf-cols">
-        <div className="perf-col-left">
+        <div className="perf-col-left" data-pp="perf-equity">
           <div className="perf-slot-stats">
             <div className="pstat">
               <span className="pstat-lbl mono dim">Realized</span>
@@ -500,7 +500,7 @@ function PerformancePanel({
           </div>
           <DrawdownSvg grid={equity} status={eq.status} />
         </div>
-        <div className="perf-greek-grid">
+        <div className="perf-greek-grid" data-pp="perf-greek-pnl">
           {GREEKS.map((g) => (
             <div key={g.key} className="perf-greek-cell">
               <div className="perf-sub mono dim">
@@ -1076,7 +1076,7 @@ export function PortfolioView(): JSX.Element {
       >
         <div className="acct-cols">
           <div className="acct-col">
-            <table className="dt greeks-table acct-cap">
+            <table className="dt greeks-table acct-cap" data-pp="acct-cash-margin">
               <thead>
                 <tr>
                   <th className="l">Cash &amp; margin</th>
@@ -1124,7 +1124,7 @@ export function PortfolioView(): JSX.Element {
                 </tr>
               </tbody>
             </table>
-            <table className="dt greeks-table acct-cap">
+            <table className="dt greeks-table acct-cap" data-pp="acct-leverage">
               <thead>
                 <tr>
                   <th className="l">Leverage &amp; buying power</th>
@@ -1154,8 +1154,10 @@ export function PortfolioView(): JSX.Element {
             </table>
           </div>
           <div className="acct-col">
-            <HoldingsValuation netLiq={a.netLiq} cash={cashRows} />
-            <div>
+            <div data-pp="acct-holdings">
+              <HoldingsValuation netLiq={a.netLiq} cash={cashRows} />
+            </div>
+            <div data-pp="acct-valuation">
               <div className="val-head">
                 <div className="perf-sub mono dim">
                   Portfolio valuation{" "}
