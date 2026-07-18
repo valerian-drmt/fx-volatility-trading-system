@@ -12,6 +12,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: fxvol-postgres
+    mem_limit: 512m
     restart: unless-stopped
     environment:
       POSTGRES_DB: fxvol
@@ -35,6 +36,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: fxvol-redis
+    mem_limit: 320m
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -54,6 +56,7 @@ services:
       dockerfile: infrastructure/docker/api.Dockerfile
     image: ${API_IMAGE:-fx-options-api:local}
     container_name: fxvol-api
+    mem_limit: 512m
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
@@ -106,6 +109,7 @@ services:
       dockerfile: src/engines/market_data/Dockerfile
     image: ${MARKET_DATA_IMAGE:-fx-options-market-data:local}
     container_name: fxvol-market-data
+    mem_limit: 384m
     # Opt-in with the ``engines`` profile so a plain ``docker compose up``
     # (api demo) does not spin up a live IB connection.
     profiles: ["engines"]
@@ -150,6 +154,7 @@ services:
       dockerfile: src/engines/vol/Dockerfile
     image: ${VOL_ENGINE_IMAGE:-fx-options-vol-engine:local}
     container_name: fxvol-vol-engine
+    mem_limit: 512m
     profiles: ["engines"]
     restart: unless-stopped
     environment:
@@ -203,6 +208,7 @@ services:
       dockerfile: src/engines/risk/Dockerfile
     image: ${RISK_ENGINE_IMAGE:-fx-options-risk-engine:local}
     container_name: fxvol-risk
+    mem_limit: 384m
     profiles: ["engines"]
     restart: unless-stopped
     environment:
@@ -245,6 +251,7 @@ services:
       dockerfile: src/engines/db_writer/Dockerfile
     image: ${DB_WRITER_IMAGE:-fx-options-db-writer:local}
     container_name: fxvol-db-writer
+    mem_limit: 384m
     profiles: ["engines"]
     restart: unless-stopped
     environment:
@@ -278,6 +285,7 @@ services:
       dockerfile: infrastructure/docker/execution.Dockerfile
     image: ${EXECUTION_IMAGE:-fx-options-execution:local}
     container_name: fxvol-execution
+    mem_limit: 384m
     profiles: ["engines"]
     restart: unless-stopped
     environment:
@@ -330,6 +338,7 @@ services:
       dockerfile: infrastructure/docker/web.Dockerfile
     image: ${FRONTEND_IMAGE:-fx-options-frontend:local}
     container_name: fxvol-frontend
+    mem_limit: 64m
     restart: unless-stopped
     networks:
       - fxvol-internal
@@ -350,6 +359,7 @@ services:
     # `infrastructure/ib-gateway/README.md`.
     image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:latest}
     container_name: fxvol-ib-gateway
+    mem_limit: 1500m
     # Opt-in : `docker compose --profile ib up -d` to include IB Gateway.
     # Keeps the default `docker compose up` light and avoids the 4002
     # port-bind when another service (or a Windows reserved range) already
@@ -424,6 +434,7 @@ services:
   nginx:
     image: nginx:alpine
     container_name: fxvol-nginx
+    mem_limit: 64m
     restart: unless-stopped
     ports:
       - "80:80"

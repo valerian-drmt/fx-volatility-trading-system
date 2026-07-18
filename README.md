@@ -119,6 +119,8 @@ trail in Postgres.
 
 Networks : `fxvol-public` (nginx), `fxvol-internal` (services), `fxvol-external` (IB outbound). The 5 Python engines live behind the `engines` compose profile (opt-in : `docker compose --profile engines up -d`).
 
+**Deployment sizing** : every service carries a compose `mem_limit` so no container can OOM-starve postgres. Core profile (nginx + frontend + api + postgres + redis) ≈ 1.1 GB → fits a `t3.small`. `engines` adds ~1.5 GB → `t3.medium` minimum; the `ib` profile adds a ~1–1.5 GB JVM on top (`t3.medium` for core+ib, avoid running everything on one small box).
+
 Shared Python libs (under `src/`, no container of their own) :
 - **`core/`** — pure pricing + vol + risk algorithms (no I/O)
 - **`persistence/`** — SQLAlchemy 2 ORM (`models.py`, 20 classes) + 18 Alembic revisions + `AsyncDatabaseWriter`
