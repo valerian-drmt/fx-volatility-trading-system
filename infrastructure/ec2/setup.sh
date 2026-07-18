@@ -32,7 +32,27 @@ if ! command -v docker > /dev/null; then
     apt-get update
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
+
+echo "[setup] docker daemon: json-file log rotation (unbounded logs fill the root disk)"
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json <<'JSON'
+{ "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }
+JSON
+
 systemctl enable --now docker
+systemctl restart docker
+
+echo "[setup] 2G swapfile (OOM shock absorber for t3.small)"
+if ! swapon --show | grep -q /swapfile; then
+    fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+    grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+echo "[setup] weekly docker prune (keeps <7d images: previous SHA survives for rollback)"
+install -m 0755 /dev/stdin /etc/cron.weekly/fxvol-docker-prune <<'CRON'
+#!/bin/sh
+docker system prune -af --filter "until=168h"
+CRON
 
 echo "[setup] create $APP_USER user and $APP_DIR"
 id -u "$APP_USER" > /dev/null 2>&1 || useradd -m -s /bin/bash "$APP_USER"
@@ -40,17 +60,25 @@ usermod -aG docker "$APP_USER"
 mkdir -p "$APP_DIR"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
-echo "[setup] ufw : allow 22 + 80 + 443, drop the rest"
+echo "[setup] ufw : allow 80 + 443 only (admin is SSM-only, port 22 stays closed)"
 ufw --force reset
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow 22/tcp
 ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
 
 echo "[setup] systemd unit for docker compose stack"
-cat > /etc/systemd/system/fxvol-compose.service <<'UNIT'
+# Prefer the versioned unit (present once a deploy payload has landed); the
+# heredoc fallback below MUST stay byte-identical to
+# infrastructure/ec2/fxvol-compose.service — EnvironmentFile included, or a
+# boot-time compose up misses COMPOSE_PROFILES/NGINX_CONF_FILE and brings up
+# the wrong stack shape.
+if [ -f "$APP_DIR/infrastructure/ec2/fxvol-compose.service" ]; then
+    install -m 0644 "$APP_DIR/infrastructure/ec2/fxvol-compose.service" \
+        /etc/systemd/system/fxvol-compose.service
+else
+    cat > /etc/systemd/system/fxvol-compose.service <<'UNIT'
 [Unit]
 Description=FX Vol stack (docker compose)
 Requires=docker.service
@@ -60,12 +88,14 @@ After=docker.service network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/fxvol
+EnvironmentFile=/opt/fxvol/.env
 ExecStart=/usr/bin/docker compose up -d --remove-orphans
 ExecStop=/usr/bin/docker compose down --remove-orphans
 
 [Install]
 WantedBy=multi-user.target
 UNIT
+fi
 systemctl daemon-reload
 systemctl enable fxvol-compose.service
 
@@ -79,19 +109,20 @@ install -m 0755 /dev/stdin /etc/cron.daily/fxvol-certbot-renew <<'CRON'
 certbot renew --quiet --deploy-hook "docker compose -f /opt/fxvol/docker-compose.yml exec nginx nginx -s reload"
 CRON
 
-echo "[setup] nightly Postgres backup to S3 (SSE-S3)"
+echo "[setup] nightly Postgres backup to S3 (instance role, SSE-S3)"
 install -m 0755 /dev/stdin /etc/cron.daily/fxvol-postgres-backup <<'CRON'
 #!/bin/sh
 set -eu
-# Expect AWS_REGION / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / BACKUP_BUCKET
-# to be sourced from /etc/fxvol/backup.env (provisioned out of band).
-. /etc/fxvol/backup.env
+# Credentials: EC2 instance role (s3:PutObject on fxvol-backups/*). No env
+# file, no static keys. Restore procedure: infrastructure/ec2/RESTORE.md.
 ts=$(date -u +%Y%m%dT%H%M%SZ)
+tmp="/tmp/fxvol-$ts.dump"
 docker compose -f /opt/fxvol/docker-compose.yml exec -T postgres \
-    pg_dump -U fxvol -Fc fxvol > "/tmp/fxvol-$ts.dump"
-aws s3 cp "/tmp/fxvol-$ts.dump" "s3://${BACKUP_BUCKET}/postgres/fxvol-$ts.dump" \
-    --sse AES256
-rm -f "/tmp/fxvol-$ts.dump"
+    pg_dump -U fxvol -Fc --if-exists --clean fxvol > "$tmp"
+# Refuse to upload an implausibly small dump (schema-only is tens of KB).
+[ "$(wc -c < "$tmp")" -gt 10240 ] || { echo "dump too small, aborting" >&2; rm -f "$tmp"; exit 1; }
+aws s3 cp "$tmp" "s3://fxvol-backups/postgres/fxvol-$ts.dump" --sse AES256 --region eu-west-1
+rm -f "$tmp"
 CRON
 
 echo "[setup] done. Next steps :"
