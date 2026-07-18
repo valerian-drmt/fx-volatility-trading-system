@@ -1,9 +1,10 @@
 """Dev console endpoints — read-only inspection of Redis, engines, IB,
 DB schema, alembic migrations, Loki logs.
 
-**NOT prod-ready** : no auth, hardcoded Redis-key whitelist. A feature
-flag (``VITE_DEV_TABS=false`` côté frontend + allow-list ``/dev/*``
-bloqué côté nginx) doit être posée avant tout déploiement public.
+Auth boundary: the whole router requires a valid write-auth cookie
+(``Depends(require_write)`` at router level), so the console is usable in
+prod by the logged-in operator only. nginx additionally 404s the prefix
+publicly as defense-in-depth (``infrastructure/nginx/nginx.conf``).
 """
 from __future__ import annotations
 
@@ -25,10 +26,15 @@ from redis import asyncio as aioredis
 from sqlalchemy import Text, cast, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.auth import require_write
 from api.dependencies import get_db_session, get_redis
 from persistence.models import Base
 
-router = APIRouter(prefix="/api/v1/dev", tags=["dev"])
+router = APIRouter(
+    prefix="/api/v1/dev",
+    tags=["dev"],
+    dependencies=[Depends(require_write)],
+)
 
 # Resolved at import time : versions/ lives next to this router via the
 # PyPA src layout. Used by the alembic migrations inspector.
