@@ -79,7 +79,7 @@ services:
       AUTH_USERNAME: ${AUTH_USERNAME:-trader}
       AUTH_SALT: ${AUTH_SALT:-fxvol}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       # PCA model refit cadence (hours). Default weekly (168h); lower it (e.g.
       # 0.1 ≈ 6min) to bootstrap fast locally alongside PCA_SNAPSHOT_INTERVAL_MIN
       # on vol-engine. A refit re-projects the whole snapshot window, so hourly
