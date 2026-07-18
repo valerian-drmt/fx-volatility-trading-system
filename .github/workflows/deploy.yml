@@ -1,0 +1,174 @@
+name: deploy-prod
+
+# Continuous deploy to the prod EC2. Runs automatically AFTER `build-and-push`
+# succeeds on main (so the per-commit images already exist in GHCR), and can
+# also be run manually via workflow_dispatch — optionally for an arbitrary
+# commit SHA (rollback / redeploy).
+#
+# NO SSH and NO inbound port 22: the runner federates into AWS via GitHub OIDC
+# (no stored AWS key), uploads the config payload to S3, then drives the deploy
+# on the host through SSM RunShellScript.
+#
+# Secrets never touch GitHub: the host renders /opt/fxvol/.env by reading
+# /fxvol/prod/* from SSM Parameter Store via its own instance role. The runner
+# only passes non-secret config (image tag, compose profiles, owner).
+#
+# Required repo VARIABLES:
+#   DEPLOY_ENABLED      'true' to arm real deploys (gate)
+#   AWS_DEPLOY_ROLE_ARN arn of fxvol-deploy-role (assumed via OIDC)
+#   AWS_REGION          eu-west-1
+#   DEPLOY_BUCKET       S3 bucket for the config payload (fxvol-deploy)
+#   EC2_INSTANCE_ID     i-082e72f0186c9d019
+#   DEPLOY_DOMAIN       valeriandarmente.dev  (smoke target)
+#   COMPOSE_PROFILES    optional; empty = core stack only (add "engines,ib" for live)
+# Host-side SSM params consumed by infrastructure/ec2/remote-deploy.sh:
+#   /fxvol/prod/{DB_PASSWORD,VNC_PASSWORD,IB_USERID,IB_PASSWORD,FRED_API_KEY?,GHCR_TOKEN?}
+
+on:
+  workflow_run:
+    workflows: ["build-and-push"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_sha:
+        description: "Commit SHA to deploy (default: the build's commit / main HEAD)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  id-token: write   # required for OIDC federation to AWS
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  deploy:
+    name: deploy to EC2
+    # Armed by DEPLOY_ENABLED. On the auto (workflow_run) path, only deploy when
+    # the build actually succeeded — never ship a half-built image set.
+    if: ${{ vars.DEPLOY_ENABLED == 'true' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    environment: production   # OIDC sub is pinned to this environment
+    timeout-minutes: 20
+
+    steps:
+      - name: Resolve commit to deploy
+        id: resolve
+        run: |
+          # Manual SHA wins; else the commit the build ran on (auto path); else
+          # the dispatch ref. Images + compose/infra all come from this commit.
+          if [ -n "${{ inputs.deploy_sha }}" ]; then
+            sha="${{ inputs.deploy_sha }}"
+          elif [ -n "${{ github.event.workflow_run.head_sha }}" ]; then
+            sha="${{ github.event.workflow_run.head_sha }}"
+          else
+            sha="${{ github.sha }}"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "image_tag=sha-$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying commit $sha (image tag sha-$sha)"
+
+      - name: Checkout the deployed commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.resolve.outputs.sha }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Package + upload config payload to S3
+        env:
+          BUCKET: ${{ vars.DEPLOY_BUCKET }}
+          REGION: ${{ vars.AWS_REGION }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          # Ship the compose file plus the configs it bind-mounts (nginx confs,
+          # postgres init, redis conf, obs/*). The dev override stays local.
+          tar czf payload.tar.gz docker-compose.yml infrastructure obs
+          aws s3 cp payload.tar.gz "s3://${BUCKET}/${SHA}.tar.gz" --region "${REGION}"
+
+      - name: Deploy on host via SSM
+        env:
+          BUCKET: ${{ vars.DEPLOY_BUCKET }}
+          REGION: ${{ vars.AWS_REGION }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+          INSTANCE: ${{ vars.EC2_INSTANCE_ID }}
+          IMAGE_TAG: ${{ steps.resolve.outputs.image_tag }}
+          OWNER: ${{ env.OWNER }}
+          PROFILES: ${{ vars.COMPOSE_PROFILES }}
+        run: |
+          # Build the SendCommand parameters with jq so JSON escaping is correct.
+          # Host bootstrap: pull payload from S3, extract, hand off to the
+          # versioned remote-deploy.sh (which renders .env from SSM + restarts).
+          # NB: AWS-RunShellScript runs under /bin/sh (dash), so no `pipefail`
+          # here (`set -eu` only). remote-deploy.sh runs under bash (full set).
+          jq -n \
+            --arg bucket "$BUCKET" --arg sha "$SHA" --arg region "$REGION" \
+            --arg tag "$IMAGE_TAG" --arg owner "$OWNER" --arg profiles "$PROFILES" '
+            { commands: [
+                "set -eu",
+                "cd /opt/fxvol",
+                "aws s3 cp s3://\($bucket)/\($sha).tar.gz /tmp/payload.tar.gz --region \($region)",
+                "tar xzf /tmp/payload.tar.gz -C /opt/fxvol",
+                "IMAGE_TAG=\($tag) OWNER=\($owner) AWS_REGION=\($region) COMPOSE_PROFILES=\"\($profiles)\" bash infrastructure/ec2/remote-deploy.sh"
+            ] }' > ssm-params.json
+
+          cmd_id=$(aws ssm send-command \
+            --region "$REGION" \
+            --instance-ids "$INSTANCE" \
+            --document-name "AWS-RunShellScript" \
+            --comment "deploy ${IMAGE_TAG}" \
+            --parameters file://ssm-params.json \
+            --query "Command.CommandId" --output text)
+          echo "SSM command id: $cmd_id"
+
+          # Poll to a terminal state.
+          for i in $(seq 1 60); do
+            status=$(aws ssm get-command-invocation --region "$REGION" \
+              --command-id "$cmd_id" --instance-id "$INSTANCE" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            echo "status: $status"
+            case "$status" in
+              Success) break ;;
+              Failed|Cancelled|TimedOut)
+                echo "---- remote stderr ----"
+                aws ssm get-command-invocation --region "$REGION" \
+                  --command-id "$cmd_id" --instance-id "$INSTANCE" \
+                  --query StandardErrorContent --output text
+                exit 1 ;;
+            esac
+            if [ "$i" = "60" ]; then echo "timed out waiting for SSM command"; exit 1; fi
+            sleep 5
+          done
+
+          echo "---- remote stdout ----"
+          aws ssm get-command-invocation --region "$REGION" \
+            --command-id "$cmd_id" --instance-id "$INSTANCE" \
+            --query StandardOutputContent --output text
+
+      - name: "Smoke check /fx-volatility-trading-system/api/v1/health returns JSON"
+        env:
+          DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
+        run: |
+          # API now lives under the project subpath (the apex serves the CV).
+          # Assert the body is the real API JSON, not just HTTP 200: nginx's SPA
+          # fallback returns 200 text/html for any unmatched path, so a 200 alone
+          # would pass even when routing is broken (e.g. nginx not reloaded).
+          HEALTH="https://${DOMAIN}/fx-volatility-trading-system/api/v1/health"
+          for i in $(seq 1 30); do
+            body=$(curl -fsS "$HEALTH" || true)
+            case "$body" in
+              *'"status"'*) echo "OK: $body"; exit 0 ;;
+            esac
+            sleep 3
+          done
+          echo "Post-deploy smoke failed — $HEALTH did not return API JSON"
+          echo "last body: ${body:-<empty>}"
+          exit 1
