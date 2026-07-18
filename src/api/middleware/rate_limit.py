@@ -19,6 +19,12 @@ def build_limiter() -> Limiter:
     )
 
 
+# Module-level singleton so route decorators (@limiter.limit) and main.py's
+# app.state.limiter share one instance — required for SlowAPIMiddleware to
+# enforce anything.
+limiter = build_limiter()
+
+
 async def rate_limit_exceeded_handler(
     request: Request, exc: RateLimitExceeded
 ) -> JSONResponse:

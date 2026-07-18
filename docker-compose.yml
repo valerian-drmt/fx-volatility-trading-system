@@ -78,6 +78,11 @@ services:
       # Deployment env: "prod" arms the api boot guard (rejects the default
       # AUTH_SECRET + insecure cookies). Local/CI stay "dev" with zero setup.
       ENV: ${ENV:-dev}
+      # uvicorn --proxy-headers only trusts X-Forwarded-For from
+      # forwarded-allow-ips (default 127.0.0.1) — without this, every public
+      # visitor behind nginx shares ONE rate-limit bucket. "*" is safe here:
+      # api:8000 is reachable from compose-internal peers only.
+      FORWARDED_ALLOW_IPS: "*"
       AUTH_SECRET: ${AUTH_SECRET:-dev-insecure-change-me}
       AUTH_USERNAME: ${AUTH_USERNAME:-trader}
       AUTH_SALT: ${AUTH_SALT:-fxvol}

@@ -9,13 +9,14 @@ from fastapi import FastAPI
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis import asyncio as aioredis
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import Response
 
 from api.config import get_settings
 from api.dependencies import set_redis_client
 from api.middleware.logging import AccessLogMiddleware, configure_logging
-from api.middleware.rate_limit import build_limiter, rate_limit_exceeded_handler
+from api.middleware.rate_limit import limiter, rate_limit_exceeded_handler
 from api.middleware.timing import TimingMiddleware
 from api.routers import admin as admin_router
 from api.routers import analytics as analytics_router
@@ -172,9 +173,12 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
 
-    limiter = build_limiter()
+    # Shared singleton (also imported by @limiter.limit decorators). The
+    # middleware is what actually enforces default_limits — without it the
+    # limiter is inert.
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
     app.add_middleware(
         CORSMiddleware,
