@@ -30,6 +30,8 @@ names=(
     /fxvol/prod/DB_PASSWORD
     /fxvol/prod/VNC_PASSWORD
     /fxvol/prod/TRADING_MODE
+    /fxvol/prod/AUTH_SECRET
+    /fxvol/prod/AUTH_PASSWORD_HASH
 )
 
 aws ssm get-parameters \
@@ -51,6 +53,10 @@ db_password=$(grep '^DB_PASSWORD=' "$TMP" | cut -d= -f2-)
 {
     echo "DATABASE_URL=postgresql+asyncpg://fxvol:${db_password}@postgres:5432/fxvol"
     echo "REDIS_URL=redis://redis:6379/0"
+    # Prod posture: arms the api boot guard (fail-fast on default AUTH_SECRET)
+    # and forces the Secure flag on the session cookie.
+    echo "ENV=prod"
+    echo "AUTH_COOKIE_SECURE=true"
 } >> "$TMP"
 
 mv "$TMP" "$OUT"

@@ -72,6 +72,9 @@ services:
       # cookie. Login is CLOSED until AUTH_PASSWORD_HASH is set (pbkdf2_hmac
       # sha256 hex of the password, salt=AUTH_SALT). AUTH_COOKIE_SECURE=false
       # for local HTTP; prod sets these from SSM. Cf. src/api/auth.py.
+      # Deployment env: "prod" arms the api boot guard (rejects the default
+      # AUTH_SECRET + insecure cookies). Local/CI stay "dev" with zero setup.
+      ENV: ${ENV:-dev}
       AUTH_SECRET: ${AUTH_SECRET:-dev-insecure-change-me}
       AUTH_USERNAME: ${AUTH_USERNAME:-trader}
       AUTH_SALT: ${AUTH_SALT:-fxvol}
