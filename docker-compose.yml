@@ -620,13 +620,15 @@ services:
     profiles: ["obs"]
     restart: unless-stopped
     environment:
-      # Dev-only : anonymous admin. EC2 prod doit désactiver
-      # GF_AUTH_ANONYMOUS_ENABLED et configurer basic auth ou OAuth
-      # (cf. spec § Phase 1 anti-patterns).
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
-      GF_AUTH_DISABLE_LOGIN_FORM: "true"
-      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      # Anonymous access is view-only; edits/admin go through the login form.
+      # Never Admin, even in dev. The obs profile itself must NOT run on the
+      # public prod host until Grafana sits behind the nginx auth layer
+      # (also keeps cadvisor privileged + promtail docker.sock off the box).
+      GF_AUTH_ANONYMOUS_ENABLED: ${GF_AUTH_ANONYMOUS_ENABLED:-true}
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ALLOW_EMBEDDING: "false"
       GF_SECURITY_COOKIE_SAMESITE: "lax"
     volumes:
       - grafana_data:/var/lib/grafana
