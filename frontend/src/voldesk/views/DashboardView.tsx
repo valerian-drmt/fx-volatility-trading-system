@@ -1,440 +1,449 @@
 /**
- * VOLDESK — Dashboard (command center). Ported from the prototype's
- * `js/views_misc.jsx` (DashboardView + MiniTerm). Mock data for now; wires to
- * the backend in a later lot.
+ * VOLDESK — Dashboard: one live summary card per tab (Portfolio / Risk / Trade /
+ * Signal). Each card compresses its tab's headline numbers and routes there via
+ * the header link — detail lives in the tabs, never here. The Trade card shows
+ * the EUR/USD candlestick (session bands + macro-event dots) with the upcoming
+ * macro events listed beneath it.
  */
-import { fetchOrders, fetchPnlAttribution, fetchRegimeState } from "../../api/endpoints";
+import type { ReactNode } from "react";
+import { fetchEquityCurve, fetchRegimeEvents } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
-import { Bar, Panel, Tag } from "../components/common";
+import { Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
-import { DATA, DATA2, fmt } from "../data";
-import type { Pc, TermPoint, WorkingOrder } from "../data";
+import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
+import { TickerChart } from "../components/TickerChart";
+import { DATA, fmt } from "../data";
+import type { Cash } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
-import { adaptCoverage } from "../data/live/portfolio";
+import { adaptEquityCurve, type EquityPoint, type GreekSeries } from "../data/live/portfolio";
+import { adaptEvents } from "../data/live/trade";
+import { ModeCard } from "./SignalsView";
 
-/** /api/v1/orders (live IB openTrades via execution-engine) → WorkingOrder[].
- *  Empty when execution-engine is down or there are no resident orders. */
-function adaptWorkingOrders(raw: unknown): WorkingOrder[] {
-  const rows = (raw as { orders?: Array<Record<string, unknown>> } | null)?.orders ?? [];
-  return rows.map((o) => ({
-    id: String(o["order_id"] ?? o["perm_id"] ?? ""),
-    side: String(o["side"] ?? ""),
-    product: String(o["local_symbol"] ?? o["symbol"] ?? "—"),
-    qty: Number(o["qty"] ?? 0),
-    level: o["limit_price"] != null ? `@ ${String(o["limit_price"])} limit` : String(o["status"] ?? ""),
-  }));
-}
-
-// mini ATM term-structure with σ_fair overlay
-function MiniTerm({ ts }: { ts: TermPoint[] }): JSX.Element {
-  const w = 250,
-    h = 74,
-    pl = 6,
-    pr = 6,
-    pt = 8,
-    pb = 16;
-  const all = ts.flatMap((t) => [t.atm, t.fair]);
-  const lo = Math.min(...all),
-    hi = Math.max(...all),
-    rng = hi - lo || 1;
-  const X = (i: number): number => pl + (i / (ts.length - 1)) * (w - pl - pr);
-  const Y = (v: number): number => pt + (1 - (v - lo) / rng) * (h - pt - pb);
-  const line = (key: "atm" | "fair"): string =>
-    ts.map((t, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(t[key]).toFixed(1)).join(" ");
+// per-panel data-source indicator (live / stale / no-data) — same look as the
+// Risk tab's PanelLive, driven by a desk-domain freshness status.
+const IMPACT_TONE: Record<string, Tone> = { high: "danger", medium: "warn", low: "neutral" };
+function LiveBadge({ status }: { status: FreshStatus }): JSX.Element {
+  const cfg = {
+    live: { c: "var(--pos)", t: "live", pulse: true },
+    stale: { c: "var(--warn)", t: "stale", pulse: false },
+    missing: { c: "var(--muted)", t: "no data", pulse: false },
+  }[status];
   return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-      <path d={line("fair")} stroke="var(--text-faint)" strokeDasharray="3 2" fill="none" strokeWidth="1.4" />
-      <path d={line("atm")} stroke="var(--accent)" fill="none" strokeWidth="1.9" />
-      {ts.map((t, i) => (
-        <circle key={i} cx={X(i)} cy={Y(t.atm)} r="2.2" fill="var(--accent)" />
-      ))}
-      {ts.map((t, i) => (
-        <text key={"l" + i} x={X(i)} y={h - 4} fill="var(--text-faint)" fontSize="8" fontFamily="var(--mono)" textAnchor="middle">
-          {t.tenor}
-        </text>
-      ))}
-    </svg>
+    <span className="panel-live dim mono small" title="data feed status">
+      <span className={"status-dot" + (cfg.pulse ? " pulse" : "")} style={{ background: cfg.c }} /> {cfg.t}
+    </span>
   );
 }
 
-export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element | null {
-  // Composition view: read the already-wired desk domains, fall back to mock.
-  const { pca, portfolio, trade, termStructure } = useDeskData();
+// ▲/▼ change pill + parenthetical note — same helpers as the Portfolio tab's
+// Cash & margin table (classes .acct-delta / .acct-sub are global).
+function deltaPill(d: number | null | undefined): JSX.Element | null {
+  if (d == null || !Number.isFinite(d)) return null;
+  const neg = d < 0;
+  return (
+    <span className={"acct-delta " + (neg ? "neg" : "pos")}>
+      {neg ? "▼" : "▲"} {Math.abs(d).toFixed(2)}%
+    </span>
+  );
+}
+function acctNote(note: ReactNode): JSX.Element | null {
+  return note ? <span className="acct-sub"> ({note})</span> : null;
+}
+
+// Holdings valuation as a donut — same decomposition as the Portfolio tab's
+// Holdings table (USD cash / EUR cash / contracts as the residual net liq −
+// cash, so the parts always foot exactly to net liq in the centre).
+const DONUT_PARTS: { key: string; label: string; color: string }[] = [
+  { key: "usd", label: "USD cash", color: "var(--accent)" },
+  { key: "eur", label: "EUR cash", color: "#a78bfa" },
+  { key: "contracts", label: "Contracts", color: "#2dd4bf" },
+];
+
+function HoldingsDonut({ netLiq, cash }: { netLiq: number; cash: Cash[] }): JSX.Element {
+  const usd = cash.find((c) => c.ccy === "USD")?.usd ?? 0;
+  const eur = cash.find((c) => c.ccy === "EUR")?.usd ?? 0;
+  const contracts = netLiq - cash.reduce((s, c) => s + c.usd, 0);
+  const vals: Record<string, number> = { usd, eur, contracts };
+  const totAbs = DONUT_PARTS.reduce((s, p) => s + Math.abs(vals[p.key]!), 0) || 1;
+  const R = 40;
+  const C = 2 * Math.PI * R;
+  let acc = 0;
+  return (
+    <div className="hold-donut">
+      <svg width="118" height="118" viewBox="0 0 118 118">
+        {DONUT_PARTS.map((p) => {
+          const frac = Math.abs(vals[p.key]!) / totAbs;
+          const off = -acc * C;
+          acc += frac;
+          return (
+            <circle
+              key={p.key}
+              cx="59"
+              cy="59"
+              r={R}
+              fill="none"
+              stroke={p.color}
+              strokeWidth="14"
+              strokeDasharray={`${frac * C} ${C - frac * C}`}
+              strokeDashoffset={off}
+              transform="rotate(-90 59 59)"
+            />
+          );
+        })}
+        <text x="59" y="54" textAnchor="middle" fontSize="9" fill="var(--text-dim)">
+          Total
+        </text>
+        <text x="59" y="67" textAnchor="middle" fontSize="10.5" fontWeight={700} fontFamily="var(--mono)" fill="var(--fg)">
+          {fmt.usd(netLiq)}
+        </text>
+      </svg>
+      <div className="hold-donut-leg">
+        {DONUT_PARTS.map((p) => (
+          <div key={p.key} className="hdl-row">
+            <span className="val-dot" style={{ background: p.color }} />
+            <span className="hdl-lbl dim">{p.label}</span>
+            <span className={"mono " + pnlCls(vals[p.key]!)}>{fmt.usd(vals[p.key]!)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// mini VaR table (Risk card) — same √t scaling + percentile math as the Risk
+// tab's VarCard, compressed to Horizon / exp. return / VaR 95%.
+const VAR_ROWS = [
+  { id: "1d", lbl: "Daily", days: 1 },
+  { id: "1w", lbl: "Weekly", days: 5 },
+  { id: "1M", lbl: "Monthly", days: 21 },
+  { id: "1Y", lbl: "Yearly", days: 252 },
+];
+const kc = (vk: number): string => {
+  const s = vk < 0 ? "−" : "+";
+  const a = Math.abs(vk);
+  return s + "$" + (a >= 1000 ? (a / 1000).toFixed(2) + "M" : Math.round(a) + "k");
+};
+// standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
+const normCdf = (z: number): number => {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989423 * Math.exp(-z * z / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return z > 0 ? 1 - p : p;
+};
+const ordinal = (n: number): string => {
+  const s = ["th", "st", "nd", "rd"],
+    v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]!);
+};
+
+export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element {
+  const { pca, portfolio, trade, termStructure, risk } = useDeskData();
   const ticks = useTicks();
   const a = portfolio.data?.account ?? DATA.account,
-    g = portfolio.data?.greeks ?? DATA.greeks,
-    L = trade.data?.limits ?? DATA.limits,
-    f = DATA.feed; // freshness thresholds mock; ages/tones derived from domains below
-  // regime gate: live decision (/regime/state → gate.authorized), mock fallback.
-  const regimeLive = useFetch(() => fetchRegimeState(), 60_000);
-  const gateOpen = regimeLive.data?.gate?.authorized ?? DATA.regime.gate.allowed;
-  // working orders: live resident IB orders (empty when none / execution down).
-  const workingOrders = useFetch(() => fetchOrders().then(adaptWorkingOrders), 30_000).data ?? [];
-  const live = ticks.data?.mid ?? DATA.SPOT; // live spot (RT.1) ; move/RV restent mock
-  // coverage: ratio/convexity/carry live (from /pnl-attribution); perf trio deferred (mock).
-  const covLive = useFetch(() => fetchPnlAttribution().then(adaptCoverage), 60_000).data;
-  const cov = { ...DATA2.coverage, ...(covLive ?? {}) };
-  const ts = termStructure.data ?? DATA.termStructure;
+    g = portfolio.data?.greeks ?? DATA.greeks;
   const events = trade.data?.events ?? DATA.events;
-  const totalNominal = portfolio.data?.bookComposition.totalNominal ?? DATA2.bookComposition.totalNominal;
-  // signal: conviction-ranked by VARIANCE share (PC1 > PC2 > PC3)
-  const ranked = [...(pca.data?.pcs ?? DATA.pcs)].sort((x, y) => (y.variance || 0) - (x.variance || 0));
-  const lead = ranked[0];
-  const ev0 = events[0];
-  if (!lead || !ev0) return null;
-  const convW = (pc: Pc): number => Math.sqrt(pc.variance || 0);
-  const maxW = Math.max(...ranked.map(convW)) || 1;
-  const leadTone: Tone =
-    lead.label === "CHEAP" ? "good" : lead.label === "RICH" || lead.label === "EXPENSIVE" ? "danger" : "neutral";
-  // leverage — € notional ÷ € net liq
-  const netLiqEur = a.netLiq / DATA.SPOT;
-  const grossX = (totalNominal / (netLiqEur / 1e6)).toFixed(2);
-  const netX = (18.2 / (netLiqEur / 1e6)).toFixed(2);
+  const spot = ticks.data?.mid ?? DATA.SPOT;
 
-  // freshness — derived from the live domains (honest staleness), not mock timers.
+  // surface staleness — degrades the Signal card when the vol surface is down.
   const toTone = (s: FreshStatus): Status => (s === "live" ? "up" : s === "stale" ? "warn" : "down");
-  const ageS = (ms: number | null, fallback: number): number => (ms != null ? Math.round(ms / 1000) : fallback);
-  const feedTone = toTone(trade.status);
-  const surfTone = toTone(termStructure.status);
-  const feedS = ageS(trade.ageMs, f.feedS);
-  const surfaceS = ageS(termStructure.ageMs, f.surfaceS);
-  const surfStale = surfTone === "down";
-  const worst: Status = [feedTone, surfTone].includes("down") ? "down" : [feedTone, surfTone].includes("warn") ? "warn" : "up";
+  const surfStale = toTone(termStructure.status) === "down";
 
-  // skew incident
-  const varTot = DATA2.varFactors.reduce((s, x) => s + Math.abs(x.v), 0);
-  const skewF = DATA2.varFactors.find((x) => x.key === "skew");
-  const skewPct = skewF ? (Math.abs(skewF.v) / varTot) * 100 : 0;
-  const skewWatch = skewPct > L.skewVarPct;
+  // ── Portfolio card: live per-currency cash for the holdings donut.
+  const liveCash = trade.data?.cash;
+  const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
+  // Leverage from the live book — same math as the Portfolio tab's "Leverage &
+  // buying power" table: gross = Σ|notional| (€), net = |Σ signed| (€), ratios
+  // vs net liq converted $→€ at live spot.
+  const positions = trade.data?.positions ?? DATA.positions;
+  const grossLevM = positions.reduce((s, p) => s + Math.abs(p.nominal), 0) / 1e6;
+  const netLevM = Math.abs(positions.reduce((s, p) => s + (p.side === "BUY" ? p.nominal : -p.nominal), 0)) / 1e6;
+  const netLiqEurM = a.netLiq / spot / 1e6;
+  const grossX = netLiqEurM ? (grossLevM / netLiqEurM).toFixed(2) : "—";
+  const netX = netLiqEurM ? (netLevM / netLiqEurM).toFixed(2) : "—";
+  // per-window performance recap — one equity sweep over the 5 windows (the
+  // dashboard table has no greek columns, so no greek-P&L fetch here).
+  const NO_GREEKS: GreekSeries = { delta: [], gamma: [], vega: [], theta: [] };
+  const recapRows =
+    useFetch<RecapRow[]>(
+      () =>
+        Promise.all(
+          PERF_WINS.map(async (wn) => {
+            const pts = await fetchEquityCurve(wn.v.toLowerCase())
+              .then(adaptEquityCurve)
+              .catch((): EquityPoint[] => []);
+            return recapRow(wn.v, pts, NO_GREEKS);
+          }),
+        ),
+      300_000,
+    ).data ?? [];
 
-  // EXCEPTIONS — risk only
-  const band = L.deltaBandUsd,
-    resid = g.netDelta,
-    overPct = Math.round((Math.abs(resid) / band - 1) * 100);
-  const bandTxt = "$" + (band / 1000).toFixed(1) + "k";
-  const breach = {
-    cat: "Hedge",
-    msg: "Delta residual " + gk$(resid) + " vs ±" + bandTxt + " band",
-    detail: "+" + overPct + "% beyond band · last hedge 11:48:02",
-    action: "hedge in Trade",
-    tab: "trade",
-  };
-  const watches = [
-    { cat: "Limit · Gamma", msg: "Gamma 71% of cap", detail: "14.5k / 20.4k · approaching", action: "Risk", tab: "risk" },
-    ...(skewWatch
-      ? [
-          {
-            cat: "Skew incident",
-            msg: "Skew " + skewPct.toFixed(0) + "% of VaR · unintended",
-            detail: "net vanna " + fmt.sgn(g.netVanna, 0) + "k · risk-only, not traded",
-            action: "Risk",
-            tab: "risk",
-          },
-        ]
-      : []),
-    { cat: "Stability", msg: "Eigengap λ2−λ3 narrow", detail: "PC2/PC3 may rotate · 1.50×", action: "Signal", tab: "signals" },
-  ];
-  const cleared = ["VaR within 99 limit · 3 / 2.5 exp", "Cushion 69.6% · margin 43.6%", "Coverage 1.20× · convexity pays"];
+  // ── Risk card numbers
+  const v = risk.data;
+
+  // chart events: same calendar but with a 35d past window (covers the 1M
+  // range), so past releases show as filled dots. The list below the chart
+  // stays upcoming-only via the trade slice's future-only fetch.
+  const chartEvents =
+    useFetch(() => fetchRegimeEvents(100, 35).then((raw) => adaptEvents(raw, Date.now())), 300_000).data ?? events;
+
+  // ── Trade card: market open/closed badge — same icon + mapping as the topbar.
+  const mktDot = ticks.status === "live" ? "var(--pos)" : ticks.status === "stale" ? "var(--warn)" : "var(--neg)";
+  const mktLabel = ticks.status === "live" ? "Market open" : ticks.status === "stale" ? "feed stale" : "no feed";
+
+  // ── Signal card — the 3 live PC mode cards (PC1/PC2/PC3, 3M z-history view).
+  const pcsLive = pca.data?.pcs ?? [];
 
   return (
     <div className="dash-grid">
-      {/* freshness */}
-      <div className={"dash-fresh tone-" + worst}>
-        <span className={"df-dot " + worst} />
-        <b className="df-status">{worst === "down" ? "FEED STALE" : worst === "warn" ? "feed delayed" : "live"}</b>
-        <span className="df-src mono">
-          feed <em className={feedTone}>{feedS}s</em>
-        </span>
-        <span className="df-src mono">
-          surface <em className={surfTone}>{surfaceS}s</em>
-        </span>
-        {surfStale && <span className="df-warn mono">surface &gt; {f.surfStale}s — greyed tiles are unreliable</span>}
-        <span className="df-asof dim mono">as of {new Date().toLocaleTimeString("en-GB")} · UTC+1</span>
-      </div>
-
-      {/* LAYER 1 — exceptions */}
-      <Panel
-        title="Attention"
-        dataPp="dash-attention"
-        right={
-          <span className="dim mono small">
-            1 breach · {watches.length} watch · {cleared.length} clear
-          </span>
-        }
-        className="dash-alerts-panel"
-      >
-        <div className="exc-layout">
-          <button className="exc-hero" onClick={() => go(breach.tab)}>
-            <div className="exc-hero-l">
-              <span className="exc-flag mono">● BREACH</span>
-              <span className="exc-cat mono">{breach.cat}</span>
-            </div>
-            <div className="exc-hero-msg">{breach.msg}</div>
-            <div className="exc-hero-detail mono dim">{breach.detail}</div>
-            <span className="exc-hero-act mono">{breach.action} →</span>
-          </button>
-          <div className="exc-side">
-            <div className="exc-watch-row">
-              {watches.map((w, i) => (
-                <button key={i} className="exc-watch" onClick={() => go(w.tab)}>
-                  <span className="exc-w-cat mono">▲ {w.cat}</span>
-                  <span className="exc-w-msg">{w.msg}</span>
-                  <span className="exc-w-detail mono dim">{w.detail}</span>
-                  <span className="exc-w-act mono">{w.action} →</span>
-                </button>
-              ))}
-            </div>
-            <div className="exc-clear">
-              <span className="exc-clear-tag mono">✓ within limits</span>
-              {cleared.map((c, i) => (
-                <span key={i} className="exc-clear-item mono dim">
-                  {c}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Panel>
-
-      {/* LAYER 2 — routing state */}
-      <div className="dash-r2">
+      {/* one summary card per tab */}
+      <div className="dash-cards">
         <Panel
-          title="Market snapshot"
-          dataPp="dash-market"
+          title="Trade"
+          dataPp="dash-trade"
           right={
-            <button className="link-btn" onClick={() => go("signals")}>
-              Signal →
+            <>
+              <span className={"tb-badge " + (ticks.status === "live" ? "open" : "")}>
+                <span className="status-dot" style={{ background: mktDot }} />
+                {mktLabel}
+              </span>
+              <button className="link-btn" onClick={() => go("trade")}>
+                Trade →
+              </button>
+            </>
+          }
+          className="dash-card"
+        >
+          <div data-pp="dash-ticker">
+            <TickerChart spot={spot} events={chartEvents} height={232} />
+          </div>
+          <Panel
+            title="Macro events"
+            dataPp="dash-macro"
+            right={<LiveBadge status={trade.status} />}
+            className="risk-macro-panel"
+            scroll
+          >
+            <div className="evt-list">
+              {events.length === 0 ? (
+                <div className="dim mono small">no scheduled events</div>
+              ) : (
+                events.map((e, i) => (
+                  <div key={i} className="evt-item">
+                    <div className="evt-when mono">
+                      <span className="evt-in accent">{e.in}</span>
+                      <span className="dim small">{e.date.split(",")[0]}</span>
+                    </div>
+                    <div className="evt-body">
+                      <span className="evt-code mono">{e.code}</span>
+                      <span className="evt-name">{e.content}</span>
+                      <span className="dim mono small"> · {e.country}</span>
+                    </div>
+                    <Tag tone={IMPACT_TONE[e.impact] ?? "neutral"}>{e.impact}</Tag>
+                  </div>
+                ))
+              )}
+            </div>
+          </Panel>
+        </Panel>
+
+        <Panel
+          title="Portfolio"
+          dataPp="dash-portfolio"
+          right={
+            <button className="link-btn" onClick={() => go("portfolio")}>
+              Portfolio →
             </button>
           }
-          className={"dash-mkt" + (surfStale ? " df-degraded" : "")}
+          className="dash-card"
         >
-          <div className="mkt-top">
-            <div className="mkt-spot">
-              <span className="gs-lbl">EURUSD spot</span>
-              <b className="mono">{live.toFixed(5)}</b>
-              <span className="dim mono small">
-                {(ticks.data?.bid ?? live - 0.00008).toFixed(5)} / {(ticks.data?.ask ?? live + 0.00008).toFixed(5)}
-              </span>
+          <div className="dash-pf-2col">
+            <div className="ind-fam" data-pp="dash-acct">
+              <div className="ind-fam-head">Cash &amp; margin</div>
+              <table className="dt greeks-table">
+                <thead>
+                  <tr>
+                    <th className="l">Cash &amp; margin</th>
+                    <th className="r">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="l">Net liquidation</td>
+                    <td className="r mono">
+                      {fmt.usd(a.netLiq)}
+                      {acctNote(deltaPill(a.dNetLiq))}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="l">Init margin</td>
+                    <td className="r mono">
+                      {fmt.usd(a.marginInit)}
+                      {acctNote(`${a.marginInitPct}% used`)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="l">Maint margin</td>
+                    <td className="r mono">
+                      {fmt.usd(a.marginMaint)}
+                      {acctNote(`${a.marginMaintPct}% used`)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="l">Gross leverage</td>
+                    <td className="r mono">
+                      {grossLevM.toFixed(1)}M €{acctNote(`${grossX}× net liq · €${netLiqEurM.toFixed(2)}M`)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="l">Net leverage</td>
+                    <td className="r mono">
+                      {netLevM.toFixed(1)}M €{acctNote(`${netX}× net liq`)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <div className="mkt-stat">
-              <span className="gs-lbl">move 24h</span>
-              <b className="mono pos">+0.31%</b>
-            </div>
-            <div className="mkt-stat">
-              <span className="gs-lbl">RV 1M</span>
-              <b className="mono">4.4</b>
-            </div>
-            <div className="mkt-stat">
-              <span className="gs-lbl">session</span>
-              <b className="mono">London</b>
+            <div className="ind-fam" data-pp="dash-holdings">
+              <div className="ind-fam-head">Holdings</div>
+              <HoldingsDonut netLiq={a.netLiq} cash={cashRows} />
             </div>
           </div>
-          <div className="mkt-term">
-            <div className="mkt-term-head">
-              <span className="gs-lbl">ATM term structure</span>
-              <span className="mkt-term-leg mono dim">
-                <i className="lg-atm" />
-                IV <i className="lg-fair" />
-                σ_fair
+          <div className="ind-fam dash-perf-block" data-pp="dash-perf">
+            <div className="ind-fam-head ifh-split">
+              <span>Performance</span>
+              <span className="ifh-right mono">
+                <span className="dim">Unrealized </span>
+                {recapMoney(g.netUnreal)}
               </span>
             </div>
-            <MiniTerm ts={ts} />
+            <div className="table-scroll">
+              <table className="dt var-table">
+                <thead>
+                  <tr>
+                    <th className="l">Window</th>
+                    <th className="r">Realized</th>
+                    <th className="r">Current DD</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {PERF_WINS.map((wn) => {
+                    const r = recapRows.find((x) => x.w === wn.v);
+                    return (
+                      <tr key={wn.v}>
+                        <td className="l mono">
+                          {wn.l} <span className="dim">{wn.v === "all" ? "since start" : ""}</span>
+                        </td>
+                        <td className="r mono">{recapMoney(r?.pnl ?? null)}</td>
+                        <td className="r mono">{recapDd(r?.curDd ?? null)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </Panel>
+
         <Panel
-          title="Active signal"
+          title="Risk"
+          dataPp="dash-risk"
+          right={
+            <button className="link-btn" onClick={() => go("risk")}>
+              Risk →
+            </button>
+          }
+          className="dash-card"
+        >
+          <div className="dash-risk-2col">
+            <div data-pp="dash-greeks">
+              <table className="dt greeks-table">
+                <thead>
+                  <tr>
+                    <th className="l">Greek</th>
+                    <th className="r">Net value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="l">Delta <em className="unit">USD</em></td>
+                    <td className={"r mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</td>
+                  </tr>
+                  <tr>
+                    <td className="l">Gamma <em className="unit">USD/pip</em></td>
+                    <td className={"r mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</td>
+                  </tr>
+                  <tr>
+                    <td className="l">Vega <em className="unit">$/vp</em></td>
+                    <td className={"r mono " + pnlCls(g.netVega)}>{gk$(g.netVega)}</td>
+                  </tr>
+                  <tr>
+                    <td className="l">Theta <em className="unit">$/day</em></td>
+                    <td className={"r mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div data-pp="dash-var">
+              {v ? (
+                <table className="dt var-table">
+                  <thead>
+                    <tr>
+                      <th className="l">Horizon</th>
+                      <th className="r">exp. return μt</th>
+                      <th className="r">VaR 95%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {VAR_ROWS.map((r) => {
+                      const m = Math.sqrt(r.days);
+                      const v95 = v.var95 * m;
+                      const retk = v.meanDaily * r.days;
+                      const sig = Math.abs(v95) / 1.645;
+                      const muZ = sig ? retk / sig : 0;
+                      return (
+                        <tr key={r.id}>
+                          <td className="l mono">
+                            {r.id} <span className="dim">{r.lbl}</span>
+                          </td>
+                          <td className={"r mono " + pnlCls(retk)}>
+                            {kc(retk)} <span className="dim">({ordinal(Math.round(normCdf(muZ) * 100))})</span>
+                          </td>
+                          <td className="r mono neg">{kc(v95)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="dim small mono">VaR accumulating…</div>
+              )}
+            </div>
+          </div>
+        </Panel>
+
+        <Panel
+          title="Signal"
           dataPp="dash-signal"
           right={
             <button className="link-btn" onClick={() => go("signals")}>
               Signal →
             </button>
           }
-          className={"dash-signal" + (surfStale ? " df-degraded" : "")}
+          className={"dash-card" + (surfStale ? " df-degraded" : "")}
         >
-          <div className="sig-main">
-            <div className="sig-pc">
-              <span className="sig-id mono">{lead.id}</span>
-              <span className="dim">{lead.name}</span>
+          {pcsLive.length ? (
+            <div className="dash-sig-3col">
+              {pcsLive.slice(0, 3).map((pc) => (
+                <ModeCard key={pc.id} pc={pc} view="3M" showLoadings={false} showChart={false} />
+              ))}
             </div>
-            <div className="sig-z mono">
-              <b className={pnlCls(lead.z)}>{fmt.sgn(lead.z, 2)}</b>
-              <span className="dim small">z-score</span>
-            </div>
-            <Tag tone={leadTone}>{lead.label}</Tag>
-          </div>
-          <div className="sig-conv dim small mono">
-            conviction-ranked · {lead.id} dominant ({lead.variance}% var) · gate {gateOpen ? "open" : "blocked"}{" "}
-            <span className="dim">(PC1 only · info)</span>
-          </div>
-          <div className="sig-rank">
-            {ranked.map((pc) => (
-              <div key={pc.id} className="sig-rank-row">
-                <span className="srr-id mono">{pc.id}</span>
-                <span className="srr-name dim">{pc.name}</span>
-                <div className="srr-track">
-                  <div className="srr-fill" style={{ width: Math.max(4, (convW(pc) / maxW) * 100) + "%" }} />
-                </div>
-                <span className={"srr-z mono " + pnlCls(pc.z)}>{fmt.sgn(pc.z, 2)}</span>
-                {pc.dataQuality === "noisy" ? (
-                  <span className="srr-badge warn mono">low conv · wings noisy</span>
-                ) : (
-                  <span className="srr-badge dim mono">{pc.variance}% var</span>
-                )}
-              </div>
-            ))}
-          </div>
+          ) : (
+            <div className="dim small mono">PCA model unavailable (no fit / market closed)</div>
+          )}
         </Panel>
       </div>
-
-      <div className="dash-r2 dash-r2b">
-        <Panel
-          title="Book health"
-          dataPp="dash-book-health"
-          right={
-            <button className="link-btn" onClick={() => go("risk")}>
-              Risk →
-            </button>
-          }
-          className="dash-book"
-        >
-          <div className="greeks-summary gs-g5">
-            <div className="gs-item">
-              <span className="gs-lbl">
-                Net Delta <em className="unit">$</em>
-              </span>
-              <b className={"mono " + pnlCls(g.netDelta)}>{gk$(g.netDelta)}</b>
-            </div>
-            <div className="gs-item">
-              <span className="gs-lbl">
-                Net Gamma <em className="unit">$/pip</em>
-              </span>
-              <b className={"mono " + pnlCls(g.netGamma)}>{gk$(g.netGamma)}</b>
-            </div>
-            <div className="gs-item">
-              <span className="gs-lbl">
-                Net Vega <em className="unit">$/vp</em>
-              </span>
-              <b className={"mono " + pnlCls(g.netVega)}>{gk$(g.netVega)}</b>
-            </div>
-            <div className="gs-item">
-              <span className="gs-lbl">
-                Net Vanna <em className="unit">$k</em>
-              </span>
-              <b className={"mono " + pnlCls(g.netVanna)}>{fmt.sgn(g.netVanna, 0)}k</b>
-            </div>
-            <div className="gs-item">
-              <span className="gs-lbl">
-                Net Theta <em className="unit">$/day</em>
-              </span>
-              <b className={"mono " + pnlCls(g.netTheta)}>{gk$(g.netTheta)}</b>
-            </div>
-          </div>
-          <div className="book-surv">
-            <div className="bs-item">
-              <span className="gs-lbl">Coverage</span>
-              <b className={"mono " + (cov.ratio >= 1 ? "pos" : "neg")}>{cov.ratio.toFixed(2)}×</b>
-              <span className="gs-sub dim">survival · {cov.windowLabel}</span>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Day P&L</span>
-              <b className={"mono " + pnlCls(a.dayPnl)}>{fmt.usdk(a.dayPnl)}</b>
-              <span className="gs-sub dim">session · {fmt.pct(a.dayPnlPct)}</span>
-            </div>
-            <div className="bs-item">
-              <span className="gs-lbl">Unrealized</span>
-              <b className={"mono " + pnlCls(g.netUnreal)}>{fmt.usdk(g.netUnreal)}</b>
-              <span className="gs-sub dim">open MTM</span>
-            </div>
-            <div className="bs-item">
-
-              <span className="gs-lbl">Gamma util.</span>
-              <b className="mono warn">71%</b>
-              <span className="gs-sub dim">of cap</span>
-            </div>
-          </div>
-        </Panel>
-        <Panel
-          title="Capital"
-          dataPp="dash-capital"
-          right={
-            <button className="link-btn" onClick={() => go("portfolio")}>
-              Portfolio →
-            </button>
-          }
-          className="dash-capital"
-        >
-          <div className="cap-row">
-            <span className="gs-lbl">Net liq</span>
-            <b className="mono">{fmt.usd(a.netLiq)}</b>
-          </div>
-          <div className="cap-row">
-            <span className="gs-lbl">Cushion</span>
-            <b className="mono pos">{(a.cushion * 100).toFixed(1)}%</b>
-          </div>
-          <Bar
-            label="Margin used"
-            used={fmt.usd(a.marginInit)}
-            limit={fmt.usd(a.netLiq)}
-            pct={a.marginInitPct}
-            value={a.marginInitPct + "%"}
-            tone="auto"
-          />
-          <div className="cap-lev">
-            <span className="dim mono small">
-              gross {grossX}× · net {netX}× net liq <em className="unit">€{(netLiqEur / 1e6).toFixed(2)}M</em>
-            </span>
-          </div>
-        </Panel>
-      </div>
-
-      {/* LAYER 3 — temporal */}
-      <Panel title="Today — events, expiries & working orders" dataPp="dash-today" className="dash-today">
-        <div className="today-grid t3">
-          <div className="today-col">
-            <span className="gs-lbl">Today's macro events</span>
-            <div className="today-evt">
-              <span className="mono accent">{ev0.in}</span>
-              <span className="evt-code mono">{ev0.code}</span>
-              <span className="dim">
-                {ev0.content} · {ev0.country}
-              </span>
-              <Tag tone="danger">{ev0.impact}</Tag>
-            </div>
-          </div>
-          <div className="today-col">
-            <span className="gs-lbl">Near expiries & roll-off</span>
-            <div className="today-evt">
-              <span className="mono warn">29 DTE</span>
-              <span className="evt-code mono">Straddle 1M</span>
-              <span className="dim">@1.0850 · pin 8 pip</span>
-              <button className="link-btn" onClick={() => go("risk")}>
-                Risk →
-              </button>
-            </div>
-          </div>
-          <div className="today-col">
-            <span className="gs-lbl">
-              Working orders <span className="dim">· {workingOrders.length} resident</span>
-            </span>
-            {workingOrders.length ? (
-              workingOrders.map((o) => (
-                <button key={o.id} className="today-evt wo-row" onClick={() => go("trade")}>
-                  <span className={"side-pill " + (o.side === "BUY" ? "long" : "short")}>{o.side}</span>
-                  <span className="evt-code mono">{o.product}</span>
-                  <span className="dim mono">
-                    {o.qty}× · {o.level}
-                  </span>
-                  <span className="wo-go mono">Trade →</span>
-                </button>
-              ))
-            ) : (
-              <div className="today-evt dim">no working orders</div>
-            )}
-          </div>
-        </div>
-      </Panel>
     </div>
   );
 }

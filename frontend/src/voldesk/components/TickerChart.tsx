@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchBars, type Bar } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
+import type { MacroEvent } from "../data/core";
 import type { TradeEvent } from "../data/live/portfolio";
 
 // UTC trading windows + one distinct colour per market (non-overlapping rows).
@@ -36,8 +37,26 @@ const LIMIT = 250; // upper bound on bars fetched (backend caps at ≤500)
 const isOpen = (hour: number, open: number, close: number): boolean => hour >= open && hour < close;
 const pad2 = (n: number): string => String(n).padStart(2, "0");
 
-export function TickerChart({ spot, markers = [] }: { spot: number; markers?: TradeEvent[] }): JSX.Element {
+interface EvtTip {
+  x: number; // svg x of the hovered dot (viewBox units)
+  e: MacroEvent;
+  t: number;
+  future: boolean;
+}
+
+export function TickerChart({
+  spot,
+  markers = [],
+  events = [],
+  height = 300,
+}: {
+  spot: number;
+  markers?: TradeEvent[];
+  events?: MacroEvent[];
+  height?: number; // viewBox height — smaller = flatter chart (dashboard card)
+}): JSX.Element {
   const [tf, setTf] = useState("1D");
+  const [evtTip, setEvtTip] = useState<EvtTip | null>(null);
   const preset = PRESETS.find((p) => p.key === tf)!;
   // real OHLC candles from the market-data engine's IB cache (poll every 60s)
   const barsFetch = useFetch<Bar[]>(() => fetchBars("EURUSD", tf, LIMIT), 180_000, true, 60_000);
@@ -56,7 +75,7 @@ export function TickerChart({ spot, markers = [] }: { spot: number; markers?: Tr
   const N = candles.length;
 
   const W = 520,
-    H = 300,
+    H = height,
     pl = 46,
     pr = 10,
     pt = 8;
@@ -88,7 +107,11 @@ export function TickerChart({ spot, markers = [] }: { spot: number; markers?: Tr
   }
 
   const plotW = W - pl - pr;
-  const colW = plotW / N;
+  // TradingView-style future zone: when macro events are drawn, the candles are
+  // compressed into the left 75% of the plot and the time axis keeps running
+  // into the blank right 25%, so upcoming events sit at their TRUE time.
+  const futFrac = events.length ? 0.25 : 0;
+  const colW = (plotW * (1 - futFrac)) / N;
   const bodyW = Math.max(1, colW * 0.64);
 
   const lo = Math.min(...candles.map((c) => c.l), spot || Infinity);
@@ -98,17 +121,15 @@ export function TickerChart({ spot, markers = [] }: { spot: number; markers?: Tr
     yHi = hi + pad;
   const X = (i: number): number => pl + (i + 0.5) * colW;
   const Y = (p: number): number => pt + (1 - (p - yLo) / (yHi - yLo)) * (priceBot - pt);
-  const hourOf = (c: Bar): number => new Date(c.t).getUTCHours();
   // intraday → "HHh"; multi-day ranges → "DD/MM"
-  const axisLabel = (c: Bar): string => {
-    const d = new Date(c.t);
+  const axisLabel = (t: number): string => {
+    const d = new Date(t);
     return preset.intraday ? pad2(d.getUTCHours()) + "h" : pad2(d.getUTCDate()) + "/" + pad2(d.getUTCMonth() + 1);
   };
 
   const last = spot || candles[N - 1]!.c;
   const ticks: number[] = [];
   for (let i = 0; i <= 4; i++) ticks.push(yLo + ((yHi - yLo) / 4) * i);
-  const labelEvery = Math.ceil(N / 8);
 
   // Trade markers: map an event timestamp to a fractional candle x (null if it
   // falls outside the visible range), anchored to entry_spot or the candle close.
@@ -127,9 +148,32 @@ export function TickerChart({ spot, markers = [] }: { spot: number; markers?: Tr
     .map((m) => ({ m, x: markerX(m.t) }))
     .filter((e): e is { m: TradeEvent; x: number } => e.x != null);
 
+  // Macro-event dots along the bottom of the price area, at their TRUE time on
+  // the axis (the same linear time→x mapping the candles use, extended into the
+  // future zone). Filled dot = past/current, hollow ring = upcoming. Events
+  // beyond the visible window simply don't show — switch to a wider range
+  // (1W/1M) to see further out, like TradingView.
+  const evtY = priceBot - 7;
+  const evtCol = (impact: string): string =>
+    /high/i.test(impact) ? "var(--neg)" : /med/i.test(impact) ? "var(--warn)" : "var(--text-dim)";
+  const evtDots = events
+    .map((e) => ({ e, t: Date.parse(e.date) }))
+    .filter((d) => !Number.isNaN(d.t) && d.t >= t0 - interval / 2)
+    .sort((a, b) => a.t - b.t)
+    .map((d) => ({ ...d, x: X((d.t - t0) / interval), future: d.t > tN + interval / 2 }))
+    .filter((d) => d.x > pl + 4 && d.x < W - pr - 3);
+
+  // Time slots for the session bands + x-axis: one per candle, then virtual
+  // slots continuing the same interval across the future zone — so market-open
+  // bands and date labels extend past the present, TradingView-style.
+  const nSlots = futFrac > 0 ? Math.floor(plotW / colW) : N;
+  const slotT = (i: number): number => t0 + i * interval;
+  const labelEvery = Math.ceil(nSlots / 8);
+
   return (
     <div className="ticker">
       {tfButtons}
+      <div className="ticker-plot">
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
         <rect x={pl} y={pt} width={plotW} height={priceBot - pt} fill="var(--bg-3)" opacity="0.4" />
         {/* price grid + axis */}
@@ -180,13 +224,46 @@ export function TickerChart({ spot, markers = [] }: { spot: number; markers?: Tr
             </g>
           );
         })}
-        {/* session bands — one non-overlapping row per market */}
+        {/* "now" divider between the candles and the future zone */}
+        {futFrac > 0 && (
+          <line x1={pl + N * colW} x2={pl + N * colW} y1={pt} y2={priceBot} stroke="var(--line)" strokeDasharray="2 3" />
+        )}
+        {/* macro-event dots — bottom of the price area, at their scheduled time;
+            hollow ring = upcoming. Hover (wide invisible hit-zone) = tooltip. */}
+        {evtDots.map((d, i) => (
+          <g
+            key={"e" + i}
+            style={{ cursor: "pointer" }}
+            onMouseEnter={() => setEvtTip(d)}
+            onMouseLeave={() => setEvtTip(null)}
+          >
+            <circle cx={d.x} cy={evtY} r="9" fill="transparent" />
+            <circle
+              cx={d.x}
+              cy={evtY}
+              r="3.2"
+              fill={d.future ? "var(--bg)" : evtCol(d.e.impact)}
+              stroke={evtCol(d.e.impact)}
+              strokeWidth="1.4"
+            />
+          </g>
+        ))}
+        {/* session bands — one non-overlapping row per market, extended across
+            the future zone (upcoming opens slightly dimmed) */}
         {SESSIONS.map((s, si) => {
           const y = bandsTop + si * (bandH + bandGap);
           return (
             <g key={s.code}>
-              {candles.map((c, i) => (
-                <rect key={i} x={pl + i * colW} y={y} width={colW} height={bandH} fill={s.color} opacity={isOpen(hourOf(c), s.open, s.close) ? 0.85 : 0.07} />
+              {Array.from({ length: nSlots }, (_, i) => (
+                <rect
+                  key={i}
+                  x={pl + i * colW}
+                  y={y}
+                  width={colW}
+                  height={bandH}
+                  fill={s.color}
+                  opacity={isOpen(new Date(slotT(i)).getUTCHours(), s.open, s.close) ? (i < N ? 0.85 : 0.45) : 0.07}
+                />
               ))}
               <text x={pl - 5} y={y + bandH / 2} dominantBaseline="central" textAnchor="end" fontSize="12.5" fontWeight={800} fontFamily="var(--mono)" fill={s.color}>
                 {s.code}
@@ -194,13 +271,34 @@ export function TickerChart({ spot, markers = [] }: { spot: number; markers?: Tr
             </g>
           );
         })}
-        {/* time axis (UTC) — hour intraday, date for week/month */}
-        {candles.map((c, i) => (i % labelEvery === 0 ? (
+        {/* time axis (UTC) — hour intraday, date for week/month; runs past the
+            present into the future zone */}
+        {Array.from({ length: nSlots }, (_, i) => (i % labelEvery === 0 ? (
           <text key={"h" + i} x={X(i)} y={H - 3} textAnchor="middle" fontSize="8" fontFamily="var(--mono)" fill="var(--text-faint)">
-            {axisLabel(c)}
+            {axisLabel(slotT(i))}
           </text>
         ) : null))}
       </svg>
+      {evtTip && (
+        <div
+          className="ticker-evt-tip"
+          style={{ left: Math.min(86, Math.max(14, (evtTip.x / W) * 100)) + "%", top: (evtY / H) * 100 + "%" }}
+        >
+          <div className="tet-head">
+            <span className="tet-dot" style={{ background: evtCol(evtTip.e.impact) }} />
+            <b className="mono">{evtTip.e.code}</b>
+            <span className={"tet-impact " + (/high/i.test(evtTip.e.impact) ? "neg" : /med/i.test(evtTip.e.impact) ? "warn" : "dim")}>
+              {evtTip.e.impact}
+            </span>
+          </div>
+          <div className="tet-body dim">{evtTip.e.content}{evtTip.e.country ? " · " + evtTip.e.country : ""}</div>
+          <div className="tet-when mono dim">
+            {fmtTs(evtTip.t)}
+            {evtTip.future && evtTip.e.in ? " · in " + evtTip.e.in : ""}
+          </div>
+        </div>
+      )}
+      </div>
       <div className="ticker-legend">
         {SESSIONS.map((s) => (
           <span key={s.code}>

@@ -464,6 +464,15 @@ input,select{font-family:inherit;font-size:13px}
 .ticker-legend i{display:inline-block;width:11px;height:8px;border-radius:2px;margin-right:5px}
 .ticker-legend .ticker-note{margin-left:auto}
 .ticker-empty{padding:40px 12px;text-align:center;color:var(--text-faint);border:1px dashed var(--border);border-radius:6px}
+/* macro-event dot tooltip (info-bulle) — anchored above the hovered dot */
+.ticker-plot{position:relative}
+.ticker-evt-tip{position:absolute;transform:translate(-50%,-112%);background:var(--bg-3);border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:10.5px;line-height:1.45;pointer-events:none;z-index:6;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.45)}
+.ticker-evt-tip .tet-head{display:flex;align-items:center;gap:6px;font-size:11px}
+.ticker-evt-tip .tet-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.ticker-evt-tip .tet-impact{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.ticker-evt-tip .tet-impact.neg{color:var(--neg)}
+.ticker-evt-tip .tet-impact.warn{color:var(--warn)}
+.ticker-evt-tip .tet-body{max-width:260px;white-space:normal}
 .pca-ribbon{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .sig-tile{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:13px 15px 13px 17px;position:relative;overflow:hidden}
 .sig-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--text-faint)}
@@ -1127,58 +1136,34 @@ input,select{font-family:inherit;font-size:13px}
 @media(max-width:760px){.slab-herobody{grid-template-columns:1fr}}
 /* ---------- dashboard ---------- */
 .dash-grid{display:flex;flex-direction:column;gap:12px}
-.dash-alert{display:flex;align-items:center;gap:9px;padding:9px 13px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);font-size:11.5px;color:var(--text-dim)}
-.dash-row{display:grid;gap:12px}
-.dash-account{grid-template-columns:1.4fr 1fr 1fr 1fr 1fr 1.2fr;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:12px}
-.dash-account .metric{background:transparent;border:none;padding:0;border-left:1px solid var(--border);padding-left:14px}
-.dash-account .metric:first-child{border-left:none;padding-left:0}
-.dash-spark{display:flex;flex-direction:column;gap:6px;border-left:1px solid var(--border);padding-left:14px;justify-content:center}
-.dash-cols{grid-template-columns:1fr 1fr 1fr}
-.dash-cols-2{grid-template-columns:1fr 1fr}
-.test-pca{max-width:440px}
-.greeks-tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-.greeks-tiles .metric{padding:8px}
-.greeks-tiles .metric-value{font-size:13px}
-.dash-feat{display:flex;align-items:center;gap:9px;font-size:11.5px;padding:5px 0;border-bottom:1px solid color-mix(in srgb,var(--border) 50%,transparent)}
-.dash-feat>span:first-child{flex:1}
-.dash-pca-z{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-.big-countdown{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
-.cd-in{font-size:22px;font-weight:700}
-.evt-detail{font-size:12px}.evt-detail .event-code{font-weight:700;color:var(--accent);margin-right:5px}
-.eng-strip{display:flex;flex-wrap:wrap;gap:6px}
-.eng-pill{display:flex;align-items:center;gap:6px;font-size:10.5px;background:var(--bg-2);border:1px solid var(--border);border-radius:5px;padding:5px 8px}
-.dash-pos-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px}
-.dash-pos-summary .metric{padding:8px}.dash-pos-summary .metric-value{font-size:14px}
 .link-btn{font-size:11px;color:var(--accent);font-weight:600}
-/* dashboard — blueprint IA */
-.dash-r2{display:grid;grid-template-columns:1.5fr 1fr;gap:12px;align-items:stretch}
-.dash-r2b{grid-template-columns:1.4fr 1fr}
-.dash-r2 .panel{margin-bottom:0}
-.alerts-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
-/* dashboard — exceptions hero (asymmetric: breach dominates, watches calm, cleared muted) */
-.exc-layout{display:grid;grid-template-columns:1.15fr 2fr;gap:10px;align-items:stretch}
-.exc-hero{text-align:left;display:flex;flex-direction:column;gap:6px;padding:13px 15px;border-radius:8px;cursor:pointer;color:var(--fg);background:color-mix(in srgb,var(--neg) 13%,var(--surface));border:1px solid color-mix(in srgb,var(--neg) 45%,var(--border));border-left:4px solid var(--neg);transition:.12s}
-.exc-hero:hover{background:color-mix(in srgb,var(--neg) 20%,var(--surface))}
-.exc-hero-l{display:flex;align-items:center;gap:9px}
-.exc-flag{font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--neg)}
-.exc-cat{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim)}
-.exc-hero-msg{font-size:16px;font-weight:700;line-height:1.2;text-wrap:pretty}
-.exc-hero-detail{font-size:11px}
-.exc-hero-act{margin-top:auto;font-size:12.5px;font-weight:700;color:var(--neg)}
-.exc-side{display:flex;flex-direction:column;gap:8px;min-width:0}
-.exc-watch-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1}
-.exc-watch{text-align:left;display:flex;flex-direction:column;gap:3px;padding:10px 11px;border-radius:6px;cursor:pointer;color:var(--fg);background:var(--bg-3);border:1px solid var(--border);border-left:3px solid var(--warn);transition:.12s}
-.exc-watch:hover{background:var(--bg-2)}
-.exc-w-cat{font-size:10px;font-weight:700;color:var(--warn);letter-spacing:.03em}
-.exc-w-msg{font-size:12.5px;font-weight:600;line-height:1.25}
-.exc-w-detail{font-size:10px}
-.exc-w-act{font-size:9.5px;font-weight:700;color:var(--text-dim);margin-top:auto;opacity:0;transition:opacity .12s}
-.exc-watch:hover .exc-w-act{opacity:1}
-.exc-clear{display:flex;flex-wrap:wrap;align-items:center;gap:5px 14px;padding:8px 11px;border-radius:6px;background:var(--bg-2);border:1px solid var(--border);border-left:3px solid color-mix(in srgb,var(--pos) 60%,transparent)}
-.exc-clear-tag{font-size:10.5px;font-weight:700;color:var(--pos)}
-.exc-clear-item{font-size:10.5px}
+/* dashboard — one live summary card per tab (2×2), routed via the header link */
+.dash-cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:stretch}
+.dash-cards .panel{margin-bottom:0}
+.dash-card{display:flex;flex-direction:column;gap:10px}
+.dash-risk-2col{display:grid;grid-template-columns:1fr 1.25fr;gap:22px;align-items:start}
+@media(max-width:1400px){.dash-risk-2col{grid-template-columns:1fr}}
+.dash-pf-2col{display:grid;grid-template-columns:1.15fr 1fr;gap:10px;align-items:start}
+@media(max-width:1400px){.dash-pf-2col{grid-template-columns:1fr}}
+/* Portfolio card: glue the Performance table to the bottom of the panel */
+.dash-card .dash-perf-block{margin-top:auto}
+/* Signal card: the 3 PC mode cards side by side (compact, no loadings heatmap) */
+.dash-sig-3col{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-items:start;min-width:0}
+.dash-sig-3col .modecard{min-width:0}
+/* holdings valuation donut (Portfolio card) — disc + legend stacked, centred */
+.hold-donut{display:flex;flex-direction:column;align-items:center;gap:10px}
+.hold-donut svg{flex:0 0 auto}
+.hold-donut-leg{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;font-size:11px}
+.hdl-row{display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.hdl-row .hdl-lbl{min-width:70px}
+/* Performance recap table — bare table under the perf charts (no sub-panel box) */
+.perf-recap{margin-top:10px;border-top:1px solid var(--line);padding-top:4px}
+.dash-card .book-surv.dash-kpis{margin-top:0;padding-top:0;border-top:none}
+.dash-pos-pnl{margin-left:auto;font-weight:700;font-size:12px}
+.dash-pos-pnl~.wo-go{margin-left:8px}
+.spark-empty{padding:8px 0}
+@media(max-width:1100px){.dash-cards{grid-template-columns:1fr}}
 /* conviction-ranked signal strip */
-.greeks-summary.gs-g5{grid-template-columns:repeat(5,1fr)}
 .gs-lbl .unit{text-transform:none}
 .sig-rank{display:flex;flex-direction:column;gap:5px;margin:9px 0}
 .sig-rank-row{display:flex;align-items:center;gap:8px;font-size:11px}
@@ -1189,7 +1174,6 @@ input,select{font-family:inherit;font-size:13px}
 .srr-z{min-width:42px;text-align:right;font-weight:700}
 .srr-badge{font-size:9px;white-space:nowrap;min-width:88px;text-align:right}
 .srr-badge.warn{color:var(--warn)}
-@media(max-width:1100px){.exc-layout{grid-template-columns:1fr}}
 /* freshness strip */
 .dash-fresh{display:flex;align-items:center;gap:12px;padding:6px 12px;background:var(--bg-2);border:1px solid var(--border);border-radius:6px;font-size:11px}
 .dash-fresh.tone-warn{border-color:color-mix(in srgb,var(--warn) 40%,var(--border))}
@@ -1216,30 +1200,13 @@ input,select{font-family:inherit;font-size:13px}
 .wo-go{margin-left:auto;font-size:9.5px;font-weight:700;color:var(--text-dim);opacity:0;transition:opacity .12s}
 .wo-row:hover .wo-go{opacity:1}
 @media(max-width:1100px){.today-grid.t3{grid-template-columns:1fr}}
-.alert-card{text-align:left;background:var(--bg-3);border:1px solid var(--border);border-left:3px solid var(--muted);border-radius:6px;padding:9px 10px;cursor:pointer;display:flex;flex-direction:column;gap:4px;font:inherit;color:var(--fg);transition:border-color .12s,background .12s}
-.alert-card:hover{background:var(--bg-2)}
-.alert-card.sev-high{border-left-color:var(--neg)}
-.alert-card.sev-warn{border-left-color:var(--warn)}
-.alert-card.sev-ok{border-left-color:var(--pos)}
-.alert-head{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
-.alert-cat{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim)}
-.alert-act{font-size:9.5px;font-weight:700;color:var(--accent);opacity:0;transition:opacity .12s}
-.alert-card:hover .alert-act{opacity:1}
-.alert-msg{font-size:12px;font-weight:600;line-height:1.25;text-wrap:pretty}
-.alert-detail{font-size:10px;margin-top:auto}
-.alerts-note{margin-top:9px}
-/* market snapshot */
-.mkt-top{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:10px;margin-bottom:11px;padding-bottom:11px;border-bottom:1px solid var(--border)}
-.mkt-spot,.mkt-stat{display:flex;flex-direction:column;gap:1px}
-.mkt-spot b{font-size:18px;font-weight:700}
-.mkt-stat b{font-size:15px;font-weight:700}
+/* mini term-structure header (Signal card) */
 .mkt-term-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
 .mkt-term-leg{display:flex;align-items:center;gap:6px;font-size:9.5px}
 .mkt-term-leg i{display:inline-block;width:12px;height:0;border-top:2px solid;vertical-align:middle;margin-right:2px}
 .mkt-term-leg .lg-atm{border-color:var(--accent)}
 .mkt-term-leg .lg-fair{border-top-style:dashed;border-color:var(--text-faint)}
 /* signal actif */
-.dash-signal{display:flex;flex-direction:column}
 .sig-main{display:flex;align-items:center;gap:12px;margin-bottom:9px}
 .sig-pc{display:flex;flex-direction:column;line-height:1.1}
 .sig-id{font-size:17px;font-weight:800}
@@ -1253,10 +1220,6 @@ input,select{font-family:inherit;font-size:13px}
 .bs-item b{font-size:17px;font-weight:700}
 .bs-item .gs-sub{font-size:9.5px}
 /* capital */
-.dash-capital{display:flex;flex-direction:column;gap:9px}
-.cap-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.cap-row b{font-size:15px;font-weight:700}
-.cap-row .gs-lbl{white-space:nowrap}
 .cap-lev{margin-top:2px}
 /* today */
 .today-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -1453,6 +1416,9 @@ input,select{font-family:inherit;font-size:13px}
 .ind-fam{display:flex;flex-direction:column;gap:8px;min-width:0;border:1px solid var(--line);border-radius:6px;padding:0 9px 9px;overflow:hidden}
 .ind-fam-head{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--text-dim);background:var(--surface-2,rgba(255,255,255,.03));margin:0 -9px;padding:6px 9px;border-bottom:1px solid var(--line)}
 .ind-fam-head .dim{font-weight:500;letter-spacing:0;text-transform:none}
+/* head variant with a right-aligned live value (e.g. "Performance | Unrealized −$21.9k") */
+.ind-fam-head.ifh-split{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ind-fam-head .ifh-right{font-size:11px;font-weight:700;letter-spacing:0;text-transform:none}
 .ind-rows{display:flex;flex-direction:column;gap:5px}
 .ind-rows.tight{gap:4px}
 .ind-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:11.5px;color:var(--text-dim)}
@@ -1520,6 +1486,7 @@ input,select{font-family:inherit;font-size:13px}
 /* Risk · VaR horizon button group (replaces the click-the-table-row selector) */
 .var-tf-group{display:flex;gap:6px;padding:8px 12px 2px;flex-wrap:wrap}
 .var-tf-group .chip{font-size:12px}
+.var-tf-group.in-chart{padding:0 0 6px}
 
 /* Risk · row 1 — Greeks panel (left) + Value at Risk (right), same width.
    minmax(0,1fr) (not the default minmax(auto,1fr)) keeps each half at 50% even
@@ -1539,6 +1506,8 @@ input,select{font-family:inherit;font-size:13px}
    panel visible (internal scroll) when the Greeks panel fills the column */
 .risk-left-col > .risk-macro-panel{flex:1 1 0;min-height:240px}
 .risk-macro-panel > .panel-body{flex:1;min-height:0}
+/* Dashboard Trade card: Macro events fixed at exactly 3 visible rows, scrollbar for the rest */
+.dash-card .risk-macro-panel > .panel-body{flex:none;height:142px;overflow-y:scroll}
 .greeks-2x2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:start}
 .greeks-2x2 > .panel{min-width:0;grid-column:auto}
 /* Expiries & roll-off spans the full Greeks-grid width */

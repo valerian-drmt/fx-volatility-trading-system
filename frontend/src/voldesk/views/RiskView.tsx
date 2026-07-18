@@ -6,10 +6,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
-import { Panel, Tag } from "../components/common";
+import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
-import type { Tone } from "../components/format";
 import { PositionBreakdown } from "../components/PositionBreakdown";
 import { fmt } from "../data";
 import type { Position } from "../data";
@@ -151,17 +150,6 @@ function VarCard({ var95, var99, es99, meanDaily, hist, fresh }: { var95: number
     <Panel title="Value at Risk" dataPp="var" right={<PanelLive status={fresh.status} />} className="stress-panel">
       <div className="var-1x3">
         <Panel title="VaR table" dataPp="var-table" right={<FreshBadge fresh={fresh} label="historical 1d" />} className="trade-block" pad={false}>
-          <div className="var-tf-group">
-            {rows.map((r) => (
-              <button
-                key={r.id}
-                className={"chip " + (r.id === tf ? "on" : "")}
-                onClick={() => setTf(r.id)}
-              >
-                {r.id}
-              </button>
-            ))}
-          </div>
           <div className="table-scroll">
             <table className="dt var-table">
               <thead><tr>
@@ -186,6 +174,17 @@ function VarCard({ var95, var99, es99, meanDaily, hist, fresh }: { var95: number
           </div>
         </Panel>
         <Panel title="P&L distribution" dataPp="var-chart" right={<FreshBadge fresh={fresh} label="empirical" />} className="trade-block">
+          <div className="var-tf-group in-chart">
+            {rows.map((r) => (
+              <button
+                key={r.id}
+                className={"chip " + (r.id === tf ? "on" : "")}
+                onClick={() => setTf(r.id)}
+              >
+                {r.id}
+              </button>
+            ))}
+          </div>
           <div className="ret-chart">
             <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · empirical</span></div>
             <EmpiricalHist hist={histScaled} var95={c.v95} var99={c.v99} es99={c.es} retk={c.retk} letter={letter} />
@@ -213,12 +212,6 @@ const STRESS_AXIS_LABEL: Record<string, string> = {
   "spot-fly": "ΔBF · fly",
 };
 
-const stressCell = (v: number, max: number): string => {
-  const t = Math.max(-1, Math.min(1, v / max));
-  return t >= 0
-    ? `oklch(0.62 ${0.02 + 0.13 * t} 150 / ${0.12 + 0.6 * t})`
-    : `oklch(0.58 ${0.02 + 0.15 * -t} 25 / ${0.12 + 0.6 * -t})`;
-};
 const stressKg = (v: number): string => {
   const s = v >= 0 ? "+" : "-";
   const a = Math.abs(v);
@@ -230,7 +223,6 @@ function LiveStressGrid({ d, status }: { d: StressGridData | null; status: Fresh
   if (!d || !d.grid.length) {
     return <div className="heat-empty dim mono small">{status === "missing" ? "no book / no spot" : "loading…"}</div>;
   }
-  const max = Math.max(...d.grid.flat().map(Math.abs)) || 1;
   const rowLbl = (v: number): string => (d.rowUnit === "d" ? v + "d" : (v > 0 ? "+" : "") + v + "vp");
   // Column display order = secondary axis ascending, so the smallest bucket
   // (e.g. 0d for the time grid) is leftmost; cell lookups follow the same ri.
@@ -252,7 +244,8 @@ function LiveStressGrid({ d, status }: { d: StressGridData | null; status: Fresh
             {cols.map(({ r, ri }) => {
               const v = d.grid[ri]?.[si] ?? NaN;
               const center = (r ?? NaN) === 0 && (s ?? NaN) === 0;
-              return <td key={ri} className={center ? "center-cell" : ""} style={{ background: center ? "var(--bg-3)" : stressCell(v, max) }}>{stressKg(v)}</td>;
+              const sign = v > 0 ? "pos" : v < 0 ? "neg" : "";
+              return <td key={ri} className={[center ? "center-cell" : "", sign].filter(Boolean).join(" ")}>{stressKg(v)}</td>;
             })}
           </tr>
         ))}
@@ -385,28 +378,6 @@ function PinRiskTable({ positions }: { positions: Position[] }): JSX.Element {
             })}
           </tbody>
         </table>
-      </div>
-    </Panel>
-  );
-}
-
-// ---- macro events calendar ----
-function CalendarPanel(): JSX.Element {
-  const impactTone: Record<string, Tone> = { high: "danger", medium: "warn", low: "neutral" };
-  const { trade } = useDeskData();
-  const events = trade.data?.events ?? [];
-  return (
-    <Panel title="Macro events" dataPp="risk-macro" right={<PanelLive status={trade.status} />} className="risk-macro-panel" scroll>
-      <div className="evt-list">
-        {events.length === 0 ? (
-          <div className="dim mono small">no scheduled events</div>
-        ) : events.map((e, i) => (
-          <div key={i} className="evt-item">
-            <div className="evt-when mono"><span className="evt-in accent">{e.in}</span><span className="dim small">{e.date.split(",")[0]}</span></div>
-            <div className="evt-body"><span className="evt-code mono">{e.code}</span><span className="evt-name">{e.content}</span><span className="dim mono small"> · {e.country}</span></div>
-            <Tag tone={impactTone[e.impact] ?? "neutral"}>{e.impact}</Tag>
-          </div>
-        ))}
       </div>
     </Panel>
   );
@@ -561,7 +532,6 @@ export function RiskView(): JSX.Element {
             <PinRiskTable positions={portfolio.data?.positions ?? []} />
           </div>
         </Panel>
-          <CalendarPanel />
         </div>
         <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} hist={vd.hist} fresh={risk} />
       </div>

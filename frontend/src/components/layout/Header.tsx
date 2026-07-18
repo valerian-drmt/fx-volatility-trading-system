@@ -7,7 +7,6 @@ export function Header(): JSX.Element {
   const raw = typeof window !== "undefined" ? window.location.pathname : "/";
   const path = base && raw.startsWith(base) ? raw.slice(base.length) || "/" : raw;
   const isDev = path.startsWith("/dev");
-  const isConfig = path.startsWith("/config");
 
   const btn: React.CSSProperties = {
     marginLeft: 8,
@@ -25,9 +24,6 @@ export function Header(): JSX.Element {
       <h1>FX Vol Dashboard</h1>
       <a href={isDev ? `${base}/` : `${base}/dev`} style={{ ...btn, marginLeft: 24 }}>
         {isDev ? "← Live" : "Dev →"}
-      </a>
-      <a href={isConfig ? `${base}/` : `${base}/config`} style={btn} title="Vol Engine Configs">
-        ⚙️ Parameter
       </a>
       <StatusBadge />
     </header>

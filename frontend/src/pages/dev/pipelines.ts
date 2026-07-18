@@ -142,21 +142,6 @@ function dagLive(engine: PipeNode, redisSub: string, e0: string, e1: string, api
     ],
   };
 }
-// macro events: providers → scheduler → Postgres → api serve (Postgres dual-role).
-function dagEvents(panelName: string): PipeDag {
-  return {
-    nodes: [
-      { id: "ext", kind: "external", label: "macro providers", sub: "FRED · ECB · BoE · FOMC", role: "emit" },
-      { id: "sched", kind: "api", label: "events scheduler", sub: "fetch + dedup", role: "transform", health: "__api" },
-      toDag(xPg("event_calendar"), "pg"), dApi("GET /regime/events"), toDag(xFE, "fe"), dPanel(panelName),
-    ],
-    edges: [
-      { from: "ext", to: "sched", label: "fetch" }, { from: "sched", to: "pg", label: "upsert" },
-      { from: "pg", to: "api", label: "read" }, { from: "api", to: "fe", label: "JSON" }, { from: "fe", to: "panel", label: "render" },
-    ],
-  };
-}
-
 // per-currency cash holdings: account snapshot currencies + surface spot for
 // the EUR→$ leg, merging at the api. Shared by the Portfolio "Holdings
 // valuation" block and the Trade "Cash holdings" block.
@@ -229,53 +214,188 @@ export const PIPELINES: PanelPipe[] = [
     edges: ["get tick", "reqMktData", "publish ticks", "WS bridge", "WS /ws/ticks", "render"],
     dag: dagLive(xEng("market-data", "clientId 1 · tick stream", "market-data"), "latest_spot:EUR · ticks ch.", "get tick", "reqMktData", "FastAPI · WS bridge", "Ticker bid/ask"),
   },
+  // One entry per live dashboard sub-panel (4 cards → 8 anchored flows), each
+  // with its own data-pp for isolation — same decomposition as Trade/Portfolio.
   {
-    id: "dash-market", panel: "Market snapshot", view: "dashboard", domain: "ticks", isolated: true,
-    nodes: [IB, IBG, eng("market-data", "clientId 1"), redis("latest_spot:EUR"), API, FE, panel("Market snapshot")],
-    edges: ["get tick", "reqMktData", "publish", "WS bridge", "WS /ws/ticks", "render"],
-    dag: dagLive(xEng("market-data", "clientId 1", "market-data"), "latest_spot:EUR", "get tick", "reqMktData", "FastAPI · WS bridge", "Market snapshot"),
-  },
-  {
-    id: "dash-signal", panel: "Active signal", view: "dashboard", domain: "pca", isolated: true,
-    nodes: [eng("vol-engine", "PCA projection"), pg("pca_signal_history"), API, FE, panel("Active signal")],
-    edges: ["persist (db_events)", "read latest", "GET /signals/pca/state", "render"],
-    dag: dagPersist(xEng("vol-engine", "PCA project", "vol-engine"), "FOP chain", "reqMktData", "pca_signal_history", "GET /signals/pca/state", "Active signal"),
-  },
-  {
-    id: "dash-book-health", panel: "Book health", view: "dashboard", domain: "portfolio", isolated: true,
-    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Book health")],
-    edges: ["UPDATE greeks", "read book", "GET /portfolio/aggregate-greeks", "render"],
-    dag: dagPersist(xEng("risk-engine", "greeks /2s", "risk-engine"), "positions", "UPDATE greeks", "open_position", "GET /portfolio/aggregate-greeks", "Book health"),
-  },
-  {
-    id: "dash-capital", panel: "Capital", view: "dashboard", domain: "portfolio", isolated: true,
-    nodes: [eng("execution-engine", "account snaps"), DBW, pg("account_history"), API, FE, panel("Capital")],
-    edges: ["account summary", "db_events", "INSERT", "latest", "GET /portfolio/account", "render"],
-    dag: dagPersist(xEng("execution-engine", "account snaps", "exec-engine"), "account summary", "publish", "account_history", "GET /portfolio/account", "Capital"),
-  },
-  {
-    id: "dash-today", panel: "Today — events & expiries", view: "dashboard", domain: "trade", isolated: true,
-    nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Today")],
-    edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
-    dag: dagEvents("Today"),
-  },
-  {
-    id: "dash-attention", panel: "Attention (alerts)", view: "dashboard", domain: "system", isolated: true,
-    nodes: [eng("5 engines", "heartbeat each cycle"), redis("heartbeat:<engine>"), API, FE, panel("Attention")],
-    edges: ["SET heartbeat (TTL)", "read heartbeats", "GET /health/extended", "derive alerts"],
+    id: "dash-ticker", panel: "Trade — EUR/USD candlestick", view: "dashboard", domain: "ticks", isolated: true,
+    cadence: "~60s poll · 15m/1h/4h bars",
+    nodes: [IB, IBG, eng("market-data", "clientId 1 · reqHistoricalData"), redis("bars:EURUSD:<tf>"), API, FE, panel("EUR/USD candlestick")],
+    edges: ["OHLC bars", "reqHistoricalData (MIDPOINT)", "cache bars", "read bars", "GET /bars + /regime/events", "render"],
+    // Two reads merge in the chart: real OHLC candles (market-data engine's IB
+    // cache) and the macro calendar with past_days=35 for the event dots.
     dag: {
       nodes: [
-        { id: "engs", kind: "container", label: "5 engines", sub: "heartbeat each cycle", role: "emit" },
-        { id: "redis", kind: "store", label: "Redis", sub: "heartbeat:<engine> (TTL)", role: "hub", health: "redis" },
-        { id: "api", kind: "api", label: "api", sub: "GET /health/extended", role: "hub", health: "__api" },
-        { id: "fe", kind: "frontend", label: "frontend", sub: "React · fetch", role: "receive", health: "__self" },
-        { id: "panel", kind: "panel", label: "Attention", sub: "displayed panel", role: "receive", terminal: true },
+        toDag(xIB, "ib"), toDag(xIBG, "ibg"),
+        { id: "md", kind: "container", label: "market-data", sub: "clientId 1 · reqHistoricalData (MIDPOINT)", role: "transform", health: "market-data" },
+        { id: "redis", kind: "store", label: "Redis", sub: "bars:EURUSD:<tf> cache", role: "hub", health: "redis" },
+        { id: "pgevt", kind: "store", label: "Postgres", sub: "event_calendar (past_days=35 window)", role: "receive", health: "postgres" },
+        dApi("GET /bars · GET /regime/events?past_days=35"),
+        { id: "dots", kind: "frontend", label: "event dots", sub: "time→x mapping · future zone 25%", role: "transform", health: "__self" },
+        toDag(xFE, "fe"), dPanel("EUR/USD candlestick"),
       ],
       edges: [
-        { from: "engs", to: "redis", label: "SET heartbeat" },
-        { from: "redis", to: "api", label: "read heartbeats" },
+        { from: "ib", to: "ibg", label: "OHLC history" },
+        { from: "ibg", to: "md", label: "reqHistoricalData" },
+        { from: "md", to: "redis", label: "cache bars" },
+        { from: "redis", to: "api", label: "read bars" },
+        { from: "pgevt", to: "api", label: "read events" },
+        { from: "api", to: "fe", label: "JSON ×2" },
+        { from: "fe", to: "dots", label: "events + time axis" },
+        { from: "dots", to: "panel", label: "render" },
+      ],
+    },
+  },
+  {
+    id: "dash-acct", panel: "Portfolio — Cash & margin + leverage", view: "dashboard", domain: "portfolio", isolated: true,
+    nodes: [eng("execution-engine", "account snaps"), pg("account_history · open_position"), API, FE, panel("Cash & margin")],
+    edges: ["INSERT snaps", "account + notionals", "GET /portfolio/account + /positions + ticks", "render"],
+    // Same merge as the Portfolio tab's leverage table: account snapshot for the
+    // margin rows + open-position notionals + live spot for the €-ratio rows.
+    dag: {
+      nodes: [
+        { id: "exec", kind: "container", label: "execution-engine", sub: "account snaps", role: "transform", health: "exec-engine" },
+        { id: "risk", kind: "container", label: "risk-engine", sub: "book upsert /2s", role: "transform", health: "risk-engine" },
+        { id: "md", kind: "container", label: "market-data", sub: "clientId 1 · tick stream", role: "transform", health: "market-data" },
+        { id: "pgacct", kind: "store", label: "Postgres", sub: "account_history (net liq · margins)", role: "receive", health: "postgres" },
+        { id: "pgpos", kind: "store", label: "Postgres", sub: "open_position (nominal_eur · side)", role: "receive", health: "postgres" },
+        { id: "redis", kind: "store", label: "Redis", sub: "ticks channel", role: "hub", health: "redis" },
+        dApi("GET /portfolio/account · /positions · WS /ws/ticks"),
+        { id: "lever", kind: "frontend", label: "leverage ratios", sub: "gross=Σ|notional| · net=|Σ±| · × net-liq € (spot)", role: "transform", health: "__self" },
+        toDag(xFE, "fe"), dPanel("Cash & margin"),
+      ],
+      edges: [
+        { from: "exec", to: "pgacct", label: "INSERT snaps" },
+        { from: "risk", to: "pgpos", label: "UPDATE book" },
+        { from: "md", to: "redis", label: "publish ticks" },
+        { from: "pgacct", to: "api", label: "read account" },
+        { from: "pgpos", to: "api", label: "read notionals" },
+        { from: "redis", to: "api", label: "WS bridge" },
+        { from: "api", to: "fe", label: "JSON + ticks" },
+        { from: "fe", to: "lever", label: "account · positions · spot" },
+        { from: "lever", to: "panel", label: "render" },
+      ],
+    },
+  },
+  {
+    id: "dash-holdings", panel: "Portfolio — Holdings donut", view: "dashboard", domain: "portfolio", isolated: true,
+    nodes: [eng("execution-engine", "account snaps"), pg("account_history.currencies"), API, FE, panel("Holdings donut")],
+    edges: ["INSERT snaps", "CashBalance per ccy", "GET /portfolio/cash", "render"],
+    // Same decomposition as the Portfolio tab's Holdings valuation: USD cash 1:1,
+    // EUR cash at the surface spot, contracts = residual — rendered as a donut.
+    dag: dagCashHoldings("Holdings donut"),
+  },
+  {
+    id: "dash-perf", panel: "Portfolio — performance recap", view: "dashboard", domain: "portfolio", isolated: true,
+    cadence: "~5 min · 5-window equity sweep",
+    nodes: [eng("execution-engine", "account snaps"), pg("account_history"), API, FE, panel("Performance recap")],
+    edges: ["INSERT snaps", "windowed curves ×5", "GET /portfolio/equity-curve ×5", "render"],
+    // One fetch per window (1d/7d/30d/1y/all); realized = curve Δ and the DDs
+    // are running-peak walks — all computed client-side from the raw curves.
+    dag: {
+      nodes: [
+        { id: "exec", kind: "container", label: "execution-engine", sub: "account snaps", role: "transform", health: "exec-engine" },
+        { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
+        toDag(xDBW, "dbw"),
+        { id: "pg", kind: "store", label: "Postgres", sub: "account_history (net liq)", role: "receive", health: "postgres" },
+        { id: "curve", kind: "api", label: "equity curve", sub: "DISTINCT ON (bucket) · per window", role: "transform", health: "__api" },
+        dApi("GET /portfolio/equity-curve ×5 windows"),
+        { id: "recap", kind: "frontend", label: "recap rows", sub: "realized = Δ curve · DD = running-peak walk", role: "transform", health: "__self" },
+        toDag(xFE, "fe"), dPanel("Performance recap"),
+      ],
+      edges: [
+        { from: "exec", to: "redis", label: "db_events" },
+        { from: "redis", to: "dbw", label: "db_events" },
+        { from: "dbw", to: "pg", label: "INSERT" },
+        { from: "pg", to: "curve", label: "read window ×5" },
+        { from: "curve", to: "api", label: "net-liq series" },
+        { from: "api", to: "fe", label: "JSON ×5" },
+        { from: "fe", to: "recap", label: "5 curves" },
+        { from: "recap", to: "panel", label: "render" },
+      ],
+    },
+  },
+  {
+    id: "dash-greeks", panel: "Risk — net greeks", view: "dashboard", domain: "trade", isolated: true,
+    cadence: "~2s · risk beat",
+    nodes: [eng("risk-engine", "greeks /2s"), pg("open_position"), API, FE, panel("Greeks")],
+    edges: ["UPDATE greeks", "read book", "GET /positions/open (Σ)", "render"],
+    // Same producer as the Risk tab's Net greeks: per-leg BS greeks denormalised
+    // onto open_position; the Σ Δ/Γ/V/Θ reduction is front-side.
+    dag: {
+      nodes: [
+        toDag(xIB, "ib"), toDag(xIBG, "ibg"),
+        { id: "risk", kind: "container", label: "risk-engine", sub: "clientId 3 · per-leg BS greeks /2s", role: "transform", health: "risk-engine" },
+        { id: "pg", kind: "store", label: "Postgres", sub: "open_position · denormalised greeks", role: "receive", health: "postgres" },
+        dApi("GET /positions/open"),
+        { id: "sum", kind: "frontend", label: "Σ net greeks", sub: "frontend · sum Δ/Γ/V/Θ over rows", role: "transform", health: "__self" },
+        toDag(xFE, "fe"), dPanel("Greeks"),
+      ],
+      edges: [
+        { from: "ib", to: "ibg", label: "market data" },
+        { from: "ibg", to: "risk", label: "reqMktData" },
+        { from: "risk", to: "pg", label: "UPDATE greeks" },
+        { from: "pg", to: "api", label: "read book" },
         { from: "api", to: "fe", label: "JSON" },
-        { from: "fe", to: "panel", label: "derive alerts" },
+        { from: "fe", to: "sum", label: "per-position rows" },
+        { from: "sum", to: "panel", label: "render" },
+      ],
+    },
+  },
+  {
+    id: "dash-var", panel: "Risk — VaR table", view: "dashboard", domain: "risk", isolated: true,
+    cadence: "~60s poll · historical 1d",
+    nodes: [eng("execution-engine", "account snaps"), pg("account_history (504d)"), API, FE, panel("VaR table")],
+    edges: ["INSERT snapshot", "504d sim", "GET /portfolio/var", "render"],
+    // Same historical simulation as the Risk tab's VaR card; the dashboard table
+    // shows exp. return + VaR 95 per horizon, √t-scaled client-side.
+    dag: {
+      nodes: [
+        { id: "exec", kind: "container", label: "execution-engine", sub: "clientId 5 · account_summary() snapshot", role: "transform", health: "exec-engine" },
+        { id: "pgacct", kind: "store", label: "Postgres", sub: "account_history (net_liq_usd · direct INSERT)", role: "receive", health: "postgres" },
+        { id: "sim", kind: "api", label: "historical sim", sub: "api · daily Δnet-liq → VaR95/99 · ES · mean", role: "transform", health: "__api" },
+        dApi("GET /portfolio/var"),
+        { id: "scale", kind: "frontend", label: "√t scaling", sub: "frontend · 1d→1w/1M/1Y · percentile of μt", role: "transform", health: "__self" },
+        toDag(xFE, "fe"), dPanel("VaR table"),
+      ],
+      edges: [
+        { from: "exec", to: "pgacct", label: "INSERT snapshot (~30s)" },
+        { from: "pgacct", to: "sim", label: "read ~504d" },
+        { from: "sim", to: "api", label: "var/es/mean/hist" },
+        { from: "api", to: "fe", label: "JSON" },
+        { from: "fe", to: "scale", label: "1d stats" },
+        { from: "scale", to: "panel", label: "render" },
+      ],
+    },
+  },
+  {
+    id: "dash-signal", panel: "Signal — PC mode cards", view: "dashboard", domain: "pca", isolated: true,
+    cadence: "~3 min read · refit weekly (≥6 snaps)",
+    nodes: [eng("vol-engine", "PCA projection"), pg("pca_model · pca_signal_history"), API, FE, panel("PC mode cards")],
+    edges: ["z/label (db_events)", "read model + signals", "GET /signals/pca/state", "render"],
+    // Compact form of the Signals tab's PCA pipeline: the 3 cards render the
+    // per-PC z/label/percentile (charts + loadings are dropped on the dashboard).
+    dag: {
+      nodes: [
+        toDag(xIB, "ib"), toDag(xIBG, "ibg"),
+        { id: "vol", kind: "container", label: "vol-engine", sub: "clientId 2 · surface → project → z + label", role: "transform", health: "vol-engine" },
+        { id: "redis", kind: "store", label: "Redis", sub: "db_events", role: "hub", health: "redis" },
+        toDag(xDBW, "dbw"),
+        { id: "pgmodel", kind: "store", label: "Postgres", sub: "pca_model (loadings · variance)", role: "receive", health: "postgres" },
+        { id: "pgsig", kind: "store", label: "Postgres", sub: "pca_signal_history (z_score · label)", role: "receive", health: "postgres" },
+        dApi("GET /signals/pca/state · /history"),
+        toDag(xFE, "fe"), dPanel("PC mode cards"),
+      ],
+      edges: [
+        { from: "ib", to: "ibg", label: "FOP chain" },
+        { from: "ibg", to: "vol", label: "reqMktData" },
+        { from: "vol", to: "redis", label: "z/label (db_events)" },
+        { from: "redis", to: "dbw", label: "db_events" },
+        { from: "dbw", to: "pgsig", label: "INSERT per cycle" },
+        { from: "pgmodel", to: "vol", label: "active loadings" },
+        { from: "pgmodel", to: "api", label: "variance · tiers" },
+        { from: "pgsig", to: "api", label: "z · label · pctile" },
+        { from: "api", to: "fe", label: "JSON" },
+        { from: "fe", to: "panel", label: "render" },
       ],
     },
   },
@@ -887,7 +1007,7 @@ export const PIPELINES: PanelPipe[] = [
     },
   },
   {
-    id: "risk-macro", panel: "Macro events", view: "risk", domain: "trade", isolated: true, cadence: "~24h · events scheduler",
+    id: "dash-macro", panel: "Macro events", view: "dashboard", domain: "trade", isolated: true, cadence: "~24h · events scheduler",
     nodes: [eng("api · events scheduler", "FRED/ECB/BoE/FOMC"), pg("event_calendar"), API, FE, panel("Macro events")],
     edges: ["fetch + dedup", "upsert", "GET /regime/events", "render"],
     // events scheduler (in api) fans out to providers every 24h → dedup → upsert event_calendar.
