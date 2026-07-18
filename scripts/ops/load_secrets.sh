@@ -32,6 +32,7 @@ names=(
     /fxvol/prod/TRADING_MODE
     /fxvol/prod/AUTH_SECRET
     /fxvol/prod/AUTH_PASSWORD_HASH
+    /fxvol/prod/REDIS_PASSWORD
 )
 
 aws ssm get-parameters \
@@ -50,9 +51,12 @@ aws ssm get-parameters \
 # prod the containers talk to each other via docker networks, so the
 # hosts are the service names (not localhost).
 db_password=$(grep '^DB_PASSWORD=' "$TMP" | cut -d= -f2-)
+# REDIS_PASSWORD must be URL-safe (alnum + -_ only): it is embedded un-encoded
+# in REDIS_URL below and passed to --requirepass by docker-compose.
+redis_password=$(grep '^REDIS_PASSWORD=' "$TMP" | cut -d= -f2-)
 {
     echo "DATABASE_URL=postgresql+asyncpg://fxvol:${db_password}@postgres:5432/fxvol"
-    echo "REDIS_URL=redis://redis:6379/0"
+    echo "REDIS_URL=redis://:${redis_password}@redis:6379/0"
     # Prod posture: arms the api boot guard (fail-fast on default AUTH_SECRET)
     # and forces the Secure flag on the session cookie.
     echo "ENV=prod"

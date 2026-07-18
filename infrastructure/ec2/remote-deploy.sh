@@ -37,6 +37,10 @@ GHCR_TOKEN="$(ssm /fxvol/prod/GHCR_TOKEN 2>/dev/null || echo "")"
 # params in SSM before the first deploy.
 AUTH_SECRET="$(ssm /fxvol/prod/AUTH_SECRET 2>/dev/null || echo "")"
 AUTH_PASSWORD_HASH="$(ssm /fxvol/prod/AUTH_PASSWORD_HASH 2>/dev/null || echo "")"
+# Redis auth (URL-safe chars only: embedded un-encoded in REDIS_URL). Absent
+# from SSM -> compose falls back to the weak dev default; provision it before
+# go-live (go/no-go checklist).
+REDIS_PASSWORD="$(ssm /fxvol/prod/REDIS_PASSWORD 2>/dev/null || echo "")"
 
 reg="ghcr.io/${OWNER}"
 
@@ -84,6 +88,7 @@ esac
 {
   if [ -n "${AUTH_SECRET}" ];        then echo "AUTH_SECRET=${AUTH_SECRET}"; fi
   if [ -n "${AUTH_PASSWORD_HASH}" ]; then echo "AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH}"; fi
+  if [ -n "${REDIS_PASSWORD}" ];     then echo "REDIS_PASSWORD=${REDIS_PASSWORD}"; fi
   echo "AUTH_USERNAME=trader"
   echo "AUTH_COOKIE_SECURE=true"
 } >> /opt/fxvol/.env

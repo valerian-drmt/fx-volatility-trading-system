@@ -57,7 +57,9 @@ $names = @(
     # in both environments, so AUTH_PASSWORD_HASH is the only credential needed;
     # AUTH_SECRET is loaded too for cookie parity.
     '/fxvol/prod/AUTH_SECRET',
-    '/fxvol/prod/AUTH_PASSWORD_HASH'
+    '/fxvol/prod/AUTH_PASSWORD_HASH',
+    # Redis auth (URL-safe chars only : embedded un-encoded in REDIS_URL).
+    '/fxvol/prod/REDIS_PASSWORD'
 )
 $json = aws ssm get-parameters `
     --names $names `
@@ -86,7 +88,10 @@ foreach ($p in $params) {
 
 # 4. Derived vars (non-secretes mais dependantes des secrets)
 $env:DATABASE_URL = "postgresql+asyncpg://fxvol:$($env:DB_PASSWORD)@localhost:5433/fxvol"
-$env:REDIS_URL = "redis://localhost:6380/0"
+# Falls back to the compose dev default when the SSM param is absent, so the
+# local stack (requirepass fxvol-dev) stays reachable either way.
+$redisPw = if ($env:REDIS_PASSWORD) { $env:REDIS_PASSWORD } else { 'fxvol-dev' }
+$env:REDIS_URL = "redis://:$redisPw@localhost:6380/0"
 $env:PYTHONPATH = "src"
 
 # 5. Report

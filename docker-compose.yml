@@ -41,7 +41,14 @@ services:
     volumes:
       - redis_data:/data
       - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    # Auth via --requirepass (never in the committed conf). The dev default is
+    # deliberately non-empty so the auth path is always exercised (an empty
+    # requirepass silently disables auth); prod sets REDIS_PASSWORD from SSM.
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf",
+              "--requirepass", "${REDIS_PASSWORD:-fxvol-dev}"]
+    environment:
+      # redis-cli reads REDISCLI_AUTH — keeps the healthcheck working under auth.
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-fxvol-dev}
     networks:
       - fxvol-internal
     healthcheck:
@@ -60,7 +67,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # URL interne du nouveau container execution-engine. L'api forward
       # les actions /orders / /exec/positions vers ce service.
@@ -125,7 +132,7 @@ services:
       IB_PORT: 4002
       IB_CLIENT_ID: 1
       MARKET_SYMBOL: ${MARKET_SYMBOL:-EURUSD}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       redis:
@@ -167,7 +174,7 @@ services:
       IB_HOST: ib-gateway
       IB_PORT: 4002
       IB_CLIENT_ID: 2
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       # Min minutes between PCA surface snapshots (default ~hourly = decorrelated
       # samples). Lower it (e.g. 2) to bootstrap the PCA fast locally — pairs with
       # PCA_REFIT_INTERVAL_HOURS on the api. Cf. _maybe_collect_hourly_snapshot.
@@ -221,7 +228,7 @@ services:
       IB_HOST: ib-gateway
       IB_PORT: 4002
       IB_CLIENT_ID: 3
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
@@ -262,7 +269,7 @@ services:
     environment:
       SERVICE_NAME: db_writer
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
@@ -296,7 +303,7 @@ services:
     environment:
       SERVICE_NAME: execution
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # IB connection — clientId 5 (≠ 1 market-data, 2 vol, 3 risk, 4 réservé api legacy).
       IB_HOST: ib-gateway
