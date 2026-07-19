@@ -131,7 +131,21 @@ if docker compose ps --status running postgres | grep -q postgres; then
     echo "remote-deploy: postgres not ready after 60s, aborting before migration" >&2
     exit 1
   fi
-  docker compose run --rm --no-deps api \
+  # NOT 'docker compose run api': the api service pins ipv4_address 172.20.0.13
+  # (the engines need stable IPs for the IB Gateway trust list), and a one-off
+  # 'compose run' container inherits that pin. While the real fxvol-api holds
+  # .13 the migration container cannot start — "failed to set up container
+  # networking: Address already in use" — so migrate-before-swap could only ever
+  # succeed when api happened to be down. Use plain 'docker run' instead: same
+  # image, same network, but a dynamic address out of the .128/25 pool.
+  net="$(docker network ls --filter name=fxvol-internal --format '{{.Name}}' | head -1)"
+  if [ -z "$net" ]; then
+    echo "remote-deploy: cannot find the fxvol-internal network" >&2
+    exit 1
+  fi
+  docker run --rm --network "$net" \
+    -e "DATABASE_URL=postgresql+asyncpg://fxvol:${DB_PASSWORD}@postgres:5432/fxvol" \
+    "${reg}/fx-options-api:${IMAGE_TAG}" \
     python -m alembic -c src/persistence/alembic.ini upgrade head
 fi
 
