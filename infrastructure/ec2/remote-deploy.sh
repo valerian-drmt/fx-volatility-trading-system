@@ -104,6 +104,28 @@ if docker compose ps --status running postgres | grep -q postgres; then
   aws s3 cp "/tmp/fxvol-pre-${IMAGE_TAG}-${ts}.dump" \
     "s3://fxvol-backups/postgres/pre-deploy/" --sse AES256 --region "$REGION"
   rm -f "/tmp/fxvol-pre-${IMAGE_TAG}-${ts}.dump"
+  # Reconcile postgres with the compose file we just extracted before migrating.
+  # The migration container reaches the DB by service name over the compose
+  # network, but a postgres container left over from an older compose revision
+  # can still be running with stale network aliases — 'compose exec' finds it by
+  # label while 'compose run' fails to resolve 'postgres' via DNS. Recreating it
+  # first is a no-op when the definition is unchanged, and reattaches the same
+  # named volume (fxvol_postgres_data) when it is not, so no data is lost.
+  docker compose up -d --no-deps postgres
+  # A recreated postgres needs a moment before it accepts connections; without
+  # this the migration races the restart and fails on a refused connection.
+  ready=0
+  for _ in $(seq 1 30); do
+    if docker compose exec -T postgres pg_isready -U fxvol -d fxvol >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    sleep 2
+  done
+  if [ "$ready" -ne 1 ]; then
+    echo "remote-deploy: postgres not ready after 60s, aborting before migration" >&2
+    exit 1
+  fi
   docker compose run --rm --no-deps api \
     python -m alembic -c src/persistence/alembic.ini upgrade head
 fi
