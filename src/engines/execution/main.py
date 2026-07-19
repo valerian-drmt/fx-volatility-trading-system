@@ -89,15 +89,28 @@ async def lifespan(app: FastAPI):
     app.state.redis = redis
     set_redis_client(redis)
 
+    # Must match the gateway's READ_ONLY_API: prod deliberately runs read-only,
+    # and a writable handshake against a read-only gateway fails outright rather
+    # than degrading (see OrderExecutor.readonly).
+    ib_readonly = os.getenv("IB_READ_ONLY", "no").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     executor = OrderExecutor(
         host=os.getenv("IB_HOST", "ib-gateway"),
         port=int(os.getenv("IB_PORT", "4002")),
         client_id=int(os.getenv("IB_CLIENT_ID", "5")),
+        readonly=ib_readonly,
     )
     try:
-        await executor.connect(timeout=5.0)
+        # 5s is tight once IB replays open orders on connect; the handshake is
+        # one-off at startup, so a longer ceiling costs nothing and avoids
+        # leaving the engine disconnected until the watchdog's next sweep.
+        await executor.connect(timeout=20.0)
     except Exception:
         logger.exception("ib_connect_failed_at_startup")
+    logger.info("execution_ib_mode readonly=%s", ib_readonly)
     app.state.executor = executor
 
     sm = get_sessionmaker()

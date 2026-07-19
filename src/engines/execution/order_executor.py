@@ -79,10 +79,18 @@ class OrderExecutorUnavailable(RuntimeError):
 class OrderExecutor:
     """One IB connection, shared across requests. Async-safe via ib_insync."""
 
-    def __init__(self, host: str, port: int, client_id: int) -> None:
+    def __init__(
+        self, host: str, port: int, client_id: int, readonly: bool = False
+    ) -> None:
         self.host = host
         self.port = port
         self.client_id = client_id
+        # Mirrors the gateway's own READ_ONLY_API setting. When the gateway runs
+        # read-only, ib_insync's default handshake calls reqAutoOpenOrders, IB
+        # rejects it ("Error 321 ... The API interface is currently in Read-Only
+        # mode") and the connect never completes — so the engine stays down
+        # instead of degrading to reads. Passing readonly through skips that call.
+        self.readonly = readonly
         self._ib: Any | None = None
         self._lock = asyncio.Lock()
 
@@ -96,7 +104,12 @@ class OrderExecutor:
             ib = IB()
             try:
                 await asyncio.wait_for(
-                    ib.connectAsync(self.host, self.port, clientId=self.client_id),
+                    ib.connectAsync(
+                        self.host,
+                        self.port,
+                        clientId=self.client_id,
+                        readonly=self.readonly,
+                    ),
                     timeout=timeout,
                 )
             except (TimeoutError, OSError) as e:
