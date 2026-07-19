@@ -82,6 +82,7 @@ dev = [
     "mypy>=1.10",
     "pytest>=9.0,<10.0",
     "pytest-asyncio>=0.23,<0.25",
+    "pytest-cov>=5,<8",
     "aiosqlite>=0.19,<0.21",
     "import-linter>=2.0,<3.0",
 ]
@@ -131,7 +132,7 @@ minversion = "8.0"
 # quarantine has been removed — its last survivor (the nginx-config parse
 # test) now lives under ``tests/unit/infrastructure/`` and is collected here.
 testpaths = ["tests/unit", "tests/integration"]
-addopts = "-q --strict-markers --maxfail=1"
+addopts = "-q --strict-markers"
 asyncio_mode = "auto"
 markers = [
     "unit: Fast isolated tests with mocks only.",

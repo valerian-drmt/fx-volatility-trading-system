@@ -39,7 +39,10 @@ class Settings(_BaseSettings):
     cors_origins: list[str] = Field(
         default=["http://localhost:3000", "http://localhost:5173"]
     )
-    rate_limit_per_minute: int = Field(default=100)
+    # Global per-IP default (slowapi middleware). 600/min: the dashboard
+    # legitimately polls many endpoints at ~5s cadence; nginx still caps at
+    # 30 r/s upstream. /login carries its own strict 5/min decorator.
+    rate_limit_per_minute: int = Field(default=600)
 
     # Auth boundary (single-trader). Reads stay public; writes require a valid
     # HMAC cookie (see api/auth.py). Prod sets these from SSM; locally the empty
