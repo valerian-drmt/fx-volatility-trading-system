@@ -37,12 +37,6 @@ GHCR_TOKEN="$(ssm /fxvol/prod/GHCR_TOKEN 2>/dev/null || echo "")"
 # params in SSM before the first deploy.
 AUTH_SECRET="$(ssm /fxvol/prod/AUTH_SECRET 2>/dev/null || echo "")"
 AUTH_PASSWORD_HASH="$(ssm /fxvol/prod/AUTH_PASSWORD_HASH 2>/dev/null || echo "")"
-# Redis auth. Compose falls back to the dev default (${REDIS_PASSWORD:-fxvol-dev})
-# when this is empty, so an unprovisioned host still boots — but it then runs
-# prod Redis on a password published in this repo. Redis is reachable only from
-# fxvol-internal, so this is defence in depth rather than an open door; still,
-# provision /fxvol/prod/REDIS_PASSWORD via the SSM console to close it.
-REDIS_PASSWORD="$(ssm /fxvol/prod/REDIS_PASSWORD 2>/dev/null || echo "")"
 # Redis auth (URL-safe chars only: embedded un-encoded in REDIS_URL). Absent
 # from SSM -> compose falls back to the weak dev default; provision it before
 # go-live (go/no-go checklist).
@@ -97,7 +91,6 @@ esac
   if [ -n "${REDIS_PASSWORD}" ];     then echo "REDIS_PASSWORD=${REDIS_PASSWORD}"; fi
   echo "AUTH_USERNAME=trader"
   echo "AUTH_COOKIE_SECURE=true"
-  if [ -n "${REDIS_PASSWORD}" ]; then echo "REDIS_PASSWORD=${REDIS_PASSWORD}"; fi
 } >> /opt/fxvol/.env
 
 # --- pull + migrate + restart ------------------------------------------------
@@ -142,7 +135,21 @@ if docker compose ps --status running postgres | grep -q postgres; then
     python -m alembic -c src/persistence/alembic.ini upgrade head
 fi
 
-docker compose up -d --remove-orphans
+# Recreating nginx races docker-proxy releasing :80/:443 — the new container can
+# bind before the outgoing one's proxy has let go, and compose aborts with
+# "failed to set up container networking: Address already in use". The window is
+# under a second, but it fails the whole deploy while leaving the stack half
+# swapped. Retry a couple of times before giving up.
+up_attempt=0
+until docker compose up -d --remove-orphans; do
+  up_attempt=$((up_attempt + 1))
+  if [ "$up_attempt" -ge 3 ]; then
+    echo "remote-deploy: 'compose up -d' failed ${up_attempt}x, giving up" >&2
+    exit 1
+  fi
+  echo "remote-deploy: 'compose up -d' failed (attempt ${up_attempt}), retrying in 5s" >&2
+  sleep 5
+done
 
 # The nginx config is a bind-mounted file. `compose up -d` only recreates a
 # container when its image/spec changes, so a config-only change leaves the
