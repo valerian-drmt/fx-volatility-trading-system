@@ -17,14 +17,23 @@ Naming convention :
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from shared.config import Settings as _BaseSettings
+
+# The committed dev fallback for AUTH_SECRET. Usable locally, rejected in prod
+# by the boot guard below.
+_INSECURE_SECRET = "dev-insecure-change-me"
 
 
 class Settings(_BaseSettings):
     """API Settings — engines never instantiate this class."""
+
+    # Deployment environment. "prod" arms the fail-fast boot guard below;
+    # anything else keeps the zero-setup local/CI behaviour.
+    ENV: Literal["dev", "prod"] = Field(default="dev")
 
     # HTTP-layer fields (no engine equivalent).
     cors_origins: list[str] = Field(
@@ -42,6 +51,20 @@ class Settings(_BaseSettings):
     AUTH_PASSWORD_HASH: str = Field(default="")                  # pbkdf2_hmac(sha256) hex
     AUTH_COOKIE_SECURE: bool = Field(default=True)               # set false only for local HTTP dev
     AUTH_TTL_SECONDS: int = Field(default=43200)                 # 12 h
+
+    @model_validator(mode="after")
+    def _prod_boot_guard(self) -> Settings:
+        # Fires inside get_settings() during create_app() import: a prod
+        # container with a forgeable HMAC key never serves a single request.
+        if self.ENV == "prod":
+            if self.AUTH_SECRET == _INSECURE_SECRET or len(self.AUTH_SECRET) < 32:
+                raise ValueError(
+                    "ENV=prod requires a strong AUTH_SECRET (>=32 chars, not the "
+                    "repo default). Provision /fxvol/prod/AUTH_SECRET in SSM."
+                )
+            if not self.AUTH_COOKIE_SECURE:
+                raise ValueError("ENV=prod requires AUTH_COOKIE_SECURE=true")
+        return self
 
     # Lowercase aliases — read-only views of the inherited UPPERCASE fields.
     @property

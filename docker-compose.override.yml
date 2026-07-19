@@ -40,6 +40,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       PYTHONPATH: /app/src
+      # Local HTTP dev: the Secure cookie flag would make login unusable over
+      # http://localhost. Prod runs without this override file → secure default.
+      AUTH_COOKIE_SECURE: "false"
     command:
       - uvicorn
       - api.main:app

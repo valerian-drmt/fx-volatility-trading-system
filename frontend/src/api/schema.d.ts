@@ -3890,7 +3890,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3921,7 +3923,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3936,6 +3940,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     db_schema_api_v1_dev_db_schema_get: {
@@ -3945,7 +3958,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3976,7 +3991,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -3989,6 +4006,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3998,7 +4024,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4013,6 +4041,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     logs_containers_api_v1_dev_logs_containers_get: {
@@ -4020,7 +4057,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4033,6 +4072,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4048,7 +4096,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4079,7 +4129,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4094,6 +4146,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_migration_api_v1_dev_migrations__rev_id__get: {
@@ -4103,7 +4164,9 @@ export interface operations {
             path: {
                 rev_id: string;
             };
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4134,7 +4197,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4149,6 +4214,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     redis_value_api_v1_dev_redis_value_get: {
@@ -4158,7 +4232,9 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4189,7 +4265,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4204,6 +4282,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     list_tables_api_v1_dev_tables_get: {
@@ -4211,7 +4298,9 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
@@ -4224,6 +4313,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4241,7 +4339,9 @@ export interface operations {
             path: {
                 name: string;
             };
-            cookie?: never;
+            cookie?: {
+                fxvol_auth?: string | null;
+            };
         };
         requestBody?: never;
         responses: {
