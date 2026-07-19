@@ -135,7 +135,21 @@ if docker compose ps --status running postgres | grep -q postgres; then
     python -m alembic -c src/persistence/alembic.ini upgrade head
 fi
 
-docker compose up -d --remove-orphans
+# Recreating nginx races docker-proxy releasing :80/:443 — the new container can
+# bind before the outgoing one's proxy has let go, and compose aborts with
+# "failed to set up container networking: Address already in use". The window is
+# under a second, but it fails the whole deploy while leaving the stack half
+# swapped. Retry a couple of times before giving up.
+up_attempt=0
+until docker compose up -d --remove-orphans; do
+  up_attempt=$((up_attempt + 1))
+  if [ "$up_attempt" -ge 3 ]; then
+    echo "remote-deploy: 'compose up -d' failed ${up_attempt}x, giving up" >&2
+    exit 1
+  fi
+  echo "remote-deploy: 'compose up -d' failed (attempt ${up_attempt}), retrying in 5s" >&2
+  sleep 5
+done
 
 # The nginx config is a bind-mounted file. `compose up -d` only recreates a
 # container when its image/spec changes, so a config-only change leaves the
