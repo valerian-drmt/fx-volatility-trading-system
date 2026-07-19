@@ -129,7 +129,13 @@ services:
     environment:
       SERVICE_NAME: market_data
       IB_HOST: ib-gateway
-      IB_PORT: 4002
+      # 4004 is the socat relay the ib-gateway image runs in front of TWS's
+      # 4002 (socat TCP-LISTEN:4004,fork TCP:127.0.0.1:4002). Connecting
+      # straight to 4002 makes TWS see the engine's container IP, which is
+      # not in jts.ini TrustedIPs, so it accepts the socket then drops it.
+      # Via the relay TWS sees 127.0.0.1, always trusted — and TWS rewrites
+      # jts.ini on every boot, so maintaining TrustedIPs by hand never sticks.
+      IB_PORT: 4004
       IB_CLIENT_ID: 1
       MARKET_SYMBOL: ${MARKET_SYMBOL:-EURUSD}
       REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
@@ -172,7 +178,13 @@ services:
     environment:
       SERVICE_NAME: vol_engine
       IB_HOST: ib-gateway
-      IB_PORT: 4002
+      # 4004 is the socat relay the ib-gateway image runs in front of TWS's
+      # 4002 (socat TCP-LISTEN:4004,fork TCP:127.0.0.1:4002). Connecting
+      # straight to 4002 makes TWS see the engine's container IP, which is
+      # not in jts.ini TrustedIPs, so it accepts the socket then drops it.
+      # Via the relay TWS sees 127.0.0.1, always trusted — and TWS rewrites
+      # jts.ini on every boot, so maintaining TrustedIPs by hand never sticks.
+      IB_PORT: 4004
       IB_CLIENT_ID: 2
       REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       # Min minutes between PCA surface snapshots (default ~hourly = decorrelated
@@ -226,7 +238,13 @@ services:
     environment:
       SERVICE_NAME: risk_engine
       IB_HOST: ib-gateway
-      IB_PORT: 4002
+      # 4004 is the socat relay the ib-gateway image runs in front of TWS's
+      # 4002 (socat TCP-LISTEN:4004,fork TCP:127.0.0.1:4002). Connecting
+      # straight to 4002 makes TWS see the engine's container IP, which is
+      # not in jts.ini TrustedIPs, so it accepts the socket then drops it.
+      # Via the relay TWS sees 127.0.0.1, always trusted — and TWS rewrites
+      # jts.ini on every boot, so maintaining TrustedIPs by hand never sticks.
+      IB_PORT: 4004
       IB_CLIENT_ID: 3
       REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
@@ -307,7 +325,13 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # IB connection — clientId 5 (≠ 1 market-data, 2 vol, 3 risk, 4 réservé api legacy).
       IB_HOST: ib-gateway
-      IB_PORT: 4002
+      # 4004 is the socat relay the ib-gateway image runs in front of TWS's
+      # 4002 (socat TCP-LISTEN:4004,fork TCP:127.0.0.1:4002). Connecting
+      # straight to 4002 makes TWS see the engine's container IP, which is
+      # not in jts.ini TrustedIPs, so it accepts the socket then drops it.
+      # Via the relay TWS sees 127.0.0.1, always trusted — and TWS rewrites
+      # jts.ini on every boot, so maintaining TrustedIPs by hand never sticks.
+      IB_PORT: 4004
       IB_CLIENT_ID: 5
       # Cycle de sync IB → Postgres pour orders/trades/positions/snapshots.
       # 5 s = compromis : UI poll à 5 s côté front, charge IB modérée
