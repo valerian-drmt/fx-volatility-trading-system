@@ -219,6 +219,17 @@ class OrderExecutor:
             if account is None and v.account:
                 account = v.account
 
+        # DIAGNOSTIC (temporary): the per-currency cash split (USD/EUR) isn't
+        # reaching the holdings widget in prod while the blended TotalCashValue
+        # is. Log exactly what IB exposes — currencies seen + CashBalance per
+        # currency — so the real fix targets the actual gap. Remove once fixed.
+        logger.info(
+            "account_summary_raw currencies=%s cashbalance=%s totalcash=%s",
+            sorted(by_cur.keys()),
+            {c: vs.get("CashBalance") for c, vs in by_cur.items() if "CashBalance" in vs},
+            by_tag.get("TotalCashValue"),
+        )
+
         # Flatten by_tag into out[tag] following the priority.
         out: dict[str, Any] = {"account": account}
         for tag, cur_to_val in by_tag.items():
