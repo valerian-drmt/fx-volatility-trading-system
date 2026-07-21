@@ -99,7 +99,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Python step is needed before Node because `scripts/dev/dump_openapi.py`
+      # Python step is needed before Node because `frontend/scripts/dump_openapi.py`
       # spits the live OpenAPI schema that openapi-typescript consumes.
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -112,7 +112,7 @@ jobs:
           pip install -e ".[api]"
 
       - name: Dump live OpenAPI schema
-        run: python scripts/dev/dump_openapi.py openapi.json
+        run: python frontend/scripts/dump_openapi.py openapi.json
 
       - name: Set up Node 20
         uses: actions/setup-node@v4

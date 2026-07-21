@@ -46,7 +46,7 @@ trail in Postgres.
 - Versioned vol config in Postgres (`vol_config` append-only table), edited
   via `/settings` React page, hot-reloaded into engines via Redis pub/sub
 - Secrets in AWS SSM Parameter Store (KMS-encrypted), never on disk, loaded
-  per-session by `scripts/ops/load_secrets.ps1` (Windows) or IAM role (EC2)
+  per-session by `scripts/local/load_secrets.ps1` (Windows) or IAM role (EC2)
 - Structured JSON logs (structlog), Prometheus metrics at `/metrics`,
   extended health probe exercising DB + Redis + engine heartbeats
 
@@ -167,8 +167,8 @@ python -m pip install -e ".[dev,api,quant,ib,writer]"
 .\scripts\ops\load_secrets.ps1
 
 # 3. Start the full stack
-.\scripts\ops\start_stack.ps1          # build + up + alembic upgrade head (+ obs profile)
-.\scripts\ops\start_stack.ps1 -NoBuild # skip build, reuse cached images
+.\scripts\local\stack.ps1          # build + up + alembic upgrade head (+ obs profile)
+.\scripts\local\stack.ps1 -NoBuild # skip build, reuse cached images
 ```
 
 Then :
@@ -194,8 +194,8 @@ command needed). They appear in the Run dropdown grouped in two folders :
 
 | Folder  | Wraps                      | Configurations |
 |---------|----------------------------|----------------|
-| `Local` | `scripts/ops/start_stack.ps1` | Up · Up (no build) · Up (fast) · Down · Down (wipe volumes) · Refresh · Rebuild: frontend · Rebuild: api |
-| `EC2`   | `scripts/ops/ec2.ps1`         | Health · Containers · Deploy · Connect (SSM) · Logs: api · Restart: nginx · Instance: status/stop/start |
+| `Local` | `scripts/local/stack.ps1` | Up · Up (no build) · Up (fast) · Down · Down (wipe volumes) · Refresh · Rebuild: frontend · Rebuild: api |
+| `EC2`   | `scripts/aws/ec2.ps1`         | Health · Containers · Deploy · Connect (SSM) · Logs: api · Restart: nginx · Instance: status/stop/start |
 
 If they don't show up after pulling, run **File → Reload All from Disk**. They
 target Windows PowerShell (`powershell.exe`) and run in the integrated terminal.
@@ -300,9 +300,11 @@ fx-volatility-trading-system/
 │   ├── redis/                      redis.conf (hardened)
 │   └── aws/                        SSM secrets bootstrap + KMS / IAM / S3 reference
 ├── scripts/                        human-run only (not shipped, not CI-collected)
-│   ├── ops/                        start_stack.ps1 + ec2.ps1 + load_secrets.{ps1,sh}
+│   ├── local/                      stack.ps1 + load_secrets.ps1 (docker stack) + README
+│   ├── aws/                        ec2.ps1 + load_secrets.sh (EC2 host)
+│   ├── fxvol.ps1                   interactive launcher wrapping both
 │   ├── db/                         seed_* + backfill_iv_history_for_gmm.py
-│   └── dev/                        dump_openapi.py + gmm_diagnostic.py + check_orders.py + compute_context_baseline.py
+│   └── dev/                        gmm_diagnostic.py + check_orders.py + compute_context_baseline.py
 ├── obs/                            Prometheus / Loki / Tempo / Promtail / OTel-collector
 │                                     configs + Grafana dashboards + datasources
 ├── tests/                          mirrors src/ 1-to-1

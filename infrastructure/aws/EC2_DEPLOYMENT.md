@@ -98,7 +98,7 @@ systemd `fxvol-compose.service`, cron certbot renew + backup Postgres→S3). `in
 
 ## 5. Exploitation au quotidien
 
-Tout se pilote depuis le laptop via **`scripts/ops/ec2.ps1`** (SSM, pas de SSH) :
+Tout se pilote depuis le laptop via **`scripts/aws/ec2.ps1`** (SSM, pas de SSH) :
 ```powershell
 .\scripts\ops\ec2.ps1 health            # GET /api/v1/health
 .\scripts\ops\ec2.ps1 deploy            # redeploy main HEAD (gh workflow run deploy-prod)

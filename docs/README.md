@@ -7,7 +7,7 @@ matches what you came for.
 
 | Doc | What it covers |
 |---|---|
-| [run-local-stack.md](run-local-stack.md) | Boot the full v2 stack on a developer laptop (`scripts/ops/start_stack.ps1`, expected log tabs, common failure modes). |
+| [run-local-stack.md](run-local-stack.md) | Boot the full v2 stack on a developer laptop (`scripts/local/stack.ps1`, expected log tabs, common failure modes). |
 | [docker-cheatsheet.md](docker-cheatsheet.md) | Day-to-day docker compose commands : restart, rebuild, logs, exec, Redis inspection, IB Gateway recycle. |
 | [db_schema_drift_workflow.md](db_schema_drift_workflow.md) | Once the **DB Schema** dev tab surfaces drift between `models.py` (ORM) and the live Postgres, how to feed the fix back through alembic. |
 | [branch-protection.md](branch-protection.md) | Enforced GitHub branch ruleset on `main` (required reviewers, required CI checks, no force-push). |

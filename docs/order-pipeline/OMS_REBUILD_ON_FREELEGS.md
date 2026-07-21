@@ -45,7 +45,7 @@ From `OMS_ARCHITECTURE_CIBLE.md`, on top of the current `main`:
   builder, free-leg flow). Only change API response shapes if strictly required,
   and regenerate the typed client (`npm run gen:api`) so the OpenAPI drift check
   passes.
-- The working ops scripts (`scripts/ops/`, `scripts/up.ps1` / `start_stack.ps1`)
+- The working ops scripts (`scripts/local/`, `scripts/aws/`, `scripts/fxvol.ps1`)
   and `docker-compose.yml`.
 
 ## Git rules (STRICT — this is why the previous attempt went sideways)

@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Containers" type="ShConfigurationType" folderName="EC2">
-    <option name="SCRIPT_TEXT" value="&amp; &quot;./scripts/ops/ec2.ps1&quot; ps" />
+  <configuration default="false" name="ALL START down" type="ShConfigurationType" folderName="Local">
+    <option name="SCRIPT_TEXT" value="&amp; &quot;./scripts/local/stack.ps1&quot; -Stop" />
     <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
     <option name="SCRIPT_PATH" value="" />
     <option name="SCRIPT_OPTIONS" value="" />

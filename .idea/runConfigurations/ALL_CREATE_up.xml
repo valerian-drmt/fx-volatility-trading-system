@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Up" type="ShConfigurationType" folderName="Local">
-    <option name="SCRIPT_TEXT" value="&amp; &quot;./scripts/ops/start_stack.ps1&quot;" />
+  <configuration default="false" name="ALL CREATE up" type="ShConfigurationType" folderName="Local">
+    <option name="SCRIPT_TEXT" value="&amp; &quot;./scripts/local/stack.ps1&quot; -Create" />
     <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
     <option name="SCRIPT_PATH" value="" />
     <option name="SCRIPT_OPTIONS" value="" />

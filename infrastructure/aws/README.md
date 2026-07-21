@@ -21,7 +21,7 @@
 > **Note déploiement EC2** : R8 prévoyait un déploiement EC2 prod ; la
 > workflow `deploy.yml` et le playbook `R8_DEPLOY.md` ont été retirés.
 > Les ressources support AWS (KMS, IAM, SSM, S3, DNS) restent en place
-> et sont utilisées par `scripts/ops/load_secrets.{ps1,sh}` pour le
+> et sont utilisées par `scripts/local/load_secrets.ps1` (Windows) / `scripts/aws/load_secrets.sh` (EC2) pour le
 > bootstrap local des secrets. Si un déploiement EC2 reprend, repartir
 > de zéro sur un nouveau plan plutôt que de reconstituer l'historique.
 
