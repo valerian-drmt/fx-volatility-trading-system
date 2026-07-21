@@ -18,6 +18,7 @@
 import { useState, type CSSProperties } from "react";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Header } from "../components/layout/Header";
+import { useAuthStore } from "../store/authStore";
 import { DbExplorer } from "./dev/DbExplorer";
 import { DbSchema } from "./dev/DbSchema";
 import { Hardware } from "./dev/Hardware";
@@ -30,32 +31,43 @@ interface TabDef {
   id: string;
   label: string;
   Component: () => JSX.Element;
+  // trader-only tab: hidden from the public showcase, shown once logged in.
+  // Mirrors the backend split (see releases/PLAN_trader_vs_public.md): the
+  // Stack/Schema/Migrations/Pipeline tabs are a safe read-only showcase; the
+  // DB Explorer / Logs / Hardware tabs are the write-gated debug tools.
+  trader?: boolean;
 }
 
 const TABS: TabDef[] = [
-  { id: "stack", label: "🐳 Stack · Health · Redis", Component: StackCombined },
-  { id: "db", label: "🗃 DB Explorer", Component: DbExplorer },
+  { id: "stack", label: "🐳 Stack · Health", Component: StackCombined },
   { id: "schema", label: "🗺 DB Schema", Component: DbSchema },
-  { id: "logs", label: "🔍 Logs", Component: Logs },
   { id: "migrations", label: "🔁 Migrations", Component: Migrations },
   { id: "pipeline", label: "🧭 Pipeline", Component: PipelineViz },
-  { id: "hw", label: "🖥 Hardware", Component: Hardware },
+  { id: "db", label: "🗃 DB Explorer", Component: DbExplorer, trader: true },
+  { id: "logs", label: "🔍 Logs", Component: Logs, trader: true },
+  { id: "hw", label: "🖥 Hardware", Component: Hardware, trader: true },
 ];
 
 export function DevLayout(): JSX.Element {
-  // Tab visible by default: the first one in the list.
-  const [activeId, setActiveId] = useState<string>(TABS[0]?.id ?? "");
+  const authenticated = useAuthStore((s) => s.authenticated);
+  // Public sees the showcase tabs; a logged-in trader sees everything.
+  const tabs = TABS.filter((t) => !t.trader || authenticated);
+
+  // Default to the first visible tab; if the active one just got hidden (e.g.
+  // logged out while on a trader tab), fall back to the first visible.
+  const [activeId, setActiveId] = useState<string>(tabs[0]?.id ?? "");
+  const effectiveId = tabs.some((t) => t.id === activeId) ? activeId : (tabs[0]?.id ?? "");
 
   return (
     <div className="app-shell" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <Header />
       <nav style={navBarStyle}>
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setActiveId(t.id)}
-            style={tabBtnStyle(t.id === activeId)}
+            style={tabBtnStyle(t.id === effectiveId)}
           >
             {t.label}
           </button>
@@ -67,10 +79,10 @@ export function DevLayout(): JSX.Element {
           hidden with display:none — they keep their internal state, their
           open WS connections, their polling, etc.
         */}
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <div
             key={t.id}
-            style={{ display: t.id === activeId ? "block" : "none" }}
+            style={{ display: t.id === effectiveId ? "block" : "none" }}
           >
             {/*
               Per-tab boundary: since every tab is mounted at once, an
