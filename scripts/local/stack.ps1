@@ -75,7 +75,8 @@
 .PARAMETER FullPurge
   Reclaim DISK (opposite of -Refresh, which reclaims RAM): remove all fxvol
   containers + images + the docker build cache (down --rmi all + system prune).
-  Volumes (DB) are kept unless -DropVolumes. Typed confirmation required.
+  The volumes (Postgres DB + Redis cache) are ALWAYS kept -- a purge never
+  erases the data. Typed confirmation required.
 
 .EXAMPLE
   .\scripts\local\stack.ps1                      # ALL up : build + create + start (engines+ib+obs)
@@ -152,13 +153,12 @@ try {
     # ---------- FULL PURGE mode: reclaim DISK (not RAM -- that is -Refresh) ----------
     # Opposite of -Refresh: -Refresh frees RAM and keeps everything on disk;
     # -FullPurge frees DISK by removing containers, images and the build cache.
-    # Volumes (the Postgres DB + Redis cache) are KEPT unless -DropVolumes.
-    # Destructive -> typed confirmation, whatever the caller.
+    # The volumes (Postgres DB + Redis cache) are ALWAYS KEPT -- a purge never
+    # touches the data. Destructive to images/cache -> typed confirmation.
     if ($FullPurge) {
-        $word = if ($DropVolumes) { 'WIPE' } else { 'PURGE' }
-        Write-Warn "FULL PURGE: removes ALL fxvol containers, images and the docker build cache$(if ($DropVolumes) { ' + the VOLUMES (Postgres DB + Redis cache ERASED)' })."
-        $typed = (Read-Host "Type '$word' to confirm (anything else aborts)").Trim()
-        if ($typed -cne $word) { Write-Warn "Aborted."; exit 0 }
+        Write-Warn "FULL PURGE: removes ALL fxvol containers, images and the docker build cache. The volumes (Postgres DB + Redis cache) are KEPT."
+        $typed = (Read-Host "Type 'PURGE' to confirm (anything else aborts)").Trim()
+        if ($typed -cne 'PURGE') { Write-Warn "Aborted."; exit 0 }
 
         # 'compose down' interpolates ${DB_PASSWORD:?} at parse time -> secrets needed.
         if (-not $env:DB_PASSWORD) {
@@ -166,20 +166,17 @@ try {
             & "$PSScriptRoot\load_secrets.ps1"
         }
         $prof = @('compose', '--profile', 'engines', '--profile', 'ib', '--profile', 'obs')
+        # NOTE: no --volumes anywhere below -> the DB is never erased.
         Write-Step "Stopping the stack + removing its images (down --rmi all)"
-        $downArgs = $prof + @('down', '--rmi', 'all', '--remove-orphans')
-        if ($DropVolumes) { $downArgs += '--volumes' }
-        & docker @downArgs
+        & docker @($prof + @('down', '--rmi', 'all', '--remove-orphans'))
         # system prune reclaims the big items the compose scope misses: the build
         # cache (often tens of GB) + any other unused image / stopped container /
-        # dangling network. --volumes only when the caller opted into data loss.
+        # dangling network. No --volumes -> named volumes (the DB) survive.
         Write-Step "Pruning build cache + unused images/containers/networks"
-        $pruneArgs = @('system', 'prune', '-af')
-        if ($DropVolumes) { $pruneArgs += '--volumes' }
-        & docker @pruneArgs
+        & docker @('system', 'prune', '-af')
         Write-Step "Disk usage after purge"
         & docker system df
-        Write-Ok "Full purge done. Rebuild with: .\scripts\local\stack.ps1"
+        Write-Ok "Full purge done (DB kept). Rebuild with: .\scripts\local\stack.ps1"
         exit 0
     }
 
