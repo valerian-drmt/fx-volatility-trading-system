@@ -30,10 +30,18 @@ from api.auth import require_write
 from api.dependencies import get_db_session, get_redis
 from persistence.models import Base
 
+# Two audiences (see releases/PLAN_trader_vs_public.md):
+#   * PUBLIC  (no auth)      : safe read-only showcase — stack, engines,
+#     cycle-progress, db-schema, migrations. Just status + topology + schema,
+#     no data / secrets / host internals.
+#   * TRADER  (require_write): the debug tools — db-explorer (tables), logs,
+#     redis viewer, hardware. Each carries Depends(require_write) per route.
+# So the router is NOT gated at the router level; write-gating is per endpoint.
+_TRADER = [Depends(require_write)]
+
 router = APIRouter(
     prefix="/api/v1/dev",
     tags=["dev"],
-    dependencies=[Depends(require_write)],
 )
 
 # Resolved at import time : versions/ lives next to this router via the
@@ -81,7 +89,7 @@ def _parse_age(raw_str: str, now: datetime) -> float | None:
     return None
 
 
-@router.get("/redis/keys")
+@router.get("/redis/keys", dependencies=_TRADER)
 async def redis_keys(
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> dict[str, Any]:
@@ -351,7 +359,7 @@ async def stack_overview(
 # The endpoints only emit SELECT — no INSERT/UPDATE/DELETE here.
 
 
-@router.get("/tables")
+@router.get("/tables", dependencies=_TRADER)
 async def list_tables() -> dict[str, Any]:
     """Auto-discover every ORM-declared table with light metadata.
 
@@ -420,7 +428,7 @@ def _reorder_columns(table: str, row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-@router.get("/tables/{name}")
+@router.get("/tables/{name}", dependencies=_TRADER)
 async def read_table(
     name: str,
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -596,7 +604,7 @@ async def read_table(
 LOKI_BASE = "http://loki:3100"
 
 
-@router.get("/logs/containers")
+@router.get("/logs/containers", dependencies=_TRADER)
 async def logs_containers() -> dict[str, Any]:
     """Return the distinct values of the ``container`` Loki label."""
     import httpx
@@ -618,7 +626,7 @@ async def logs_containers() -> dict[str, Any]:
     return {"containers": values}
 
 
-@router.get("/logs/query")
+@router.get("/logs/query", dependencies=_TRADER)
 async def logs_query(
     container: str | None = None,
     pattern: str | None = None,
@@ -914,7 +922,7 @@ async def get_migration(rev_id: str) -> dict[str, Any]:
     }
 
 
-@router.get("/redis/value")
+@router.get("/redis/value", dependencies=_TRADER)
 async def redis_value(
     key: str,
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
@@ -1429,7 +1437,7 @@ async def _read_gpu() -> list[dict[str, Any]]:
         return []
 
 
-@router.get("/hardware")
+@router.get("/hardware", dependencies=_TRADER)
 async def hardware() -> dict[str, Any]:
     """Host CPU / RAM / disk (from /proc) + best-effort GPU (nvidia-smi).
 
@@ -1533,7 +1541,7 @@ async def _sample_docker() -> None:
         pass  # socket absent (prod) / docker unreachable → leave history untouched
 
 
-@router.get("/containers/metrics")
+@router.get("/containers/metrics", dependencies=_TRADER)
 async def container_metrics(minutes: int = 15) -> dict[str, Any]:
     """Per-container CPU % + RAM (bytes) time-series over the last ``minutes``.
 
