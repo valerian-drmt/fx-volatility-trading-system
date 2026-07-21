@@ -219,15 +219,23 @@ class OrderExecutor:
             if account is None and v.account:
                 account = v.account
 
-        # DIAGNOSTIC (temporary): the per-currency cash split (USD/EUR) isn't
-        # reaching the holdings widget in prod while the blended TotalCashValue
-        # is. Log exactly what IB exposes — currencies seen + CashBalance per
-        # currency — so the real fix targets the actual gap. Remove once fixed.
+        # DIAGNOSTIC (temporary): reqAccountUpdates carries no per-currency
+        # CashBalance for this EUR-base account. Log the full per-currency tag
+        # set AND probe the account-summary LEDGER ($LEDGER:ALL = per-currency
+        # cash ledger) to find where the USD/EUR split actually lives, then fix.
+        try:
+            ledger = await asyncio.wait_for(ib.reqAccountSummaryAsync(), timeout=5.0)
+            ledger_cash = [
+                (a.currency, a.tag, a.value)
+                for a in ledger
+                if a.tag in ("CashBalance", "TotalCashBalance")
+            ]
+        except Exception as exc:
+            ledger_cash = [("ERR", type(exc).__name__, str(exc)[:80])]
         logger.info(
-            "account_summary_raw currencies=%s cashbalance=%s totalcash=%s",
-            sorted(by_cur.keys()),
-            {c: vs.get("CashBalance") for c, vs in by_cur.items() if "CashBalance" in vs},
-            by_tag.get("TotalCashValue"),
+            "account_summary_raw by_cur=%s ledger_cash=%s",
+            {c: sorted(vs.keys()) for c, vs in by_cur.items()},
+            ledger_cash,
         )
 
         # Flatten by_tag into out[tag] following the priority.
