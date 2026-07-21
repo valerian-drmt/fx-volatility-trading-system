@@ -41,7 +41,7 @@ write endpoints return 401 demonstrate the auth boundary.
 ## Secrets
 
 All secrets live in AWS SSM Parameter Store (`/fxvol/prod/*`, KMS-encrypted),
-loaded to RAM/tmpfs by `scripts/ops/load_secrets.{ps1,sh}` or rendered on the
+loaded to RAM/tmpfs by `scripts/local/load_secrets.ps1` (Windows) / `scripts/aws/load_secrets.sh` (EC2) or rendered on the
 EC2 host by `infrastructure/ec2/remote-deploy.sh` via the instance role. No
 secret is stored in the repo, GitHub secrets, or images. Redis requires auth
 (`requirepass` from `REDIS_PASSWORD`); Postgres and Redis publish no host

@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Up (fast)" type="ShConfigurationType" folderName="Local">
-    <option name="SCRIPT_TEXT" value="&amp; &quot;./scripts/ops/start_stack.ps1&quot; -NoPull -NoBuild" />
+  <configuration default="false" name="Stack health: watch (30s loop)" type="ShConfigurationType" folderName="EC2">
+    <option name="SCRIPT_TEXT" value="while ($true) { Clear-Host; &amp; &quot;./scripts/aws/ec2.ps1&quot; stack; Write-Host ''; Write-Host 'refreshing in 30s - Ctrl-C to stop' -ForegroundColor DarkGray; Start-Sleep -Seconds 30 }" />
     <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
     <option name="SCRIPT_PATH" value="" />
     <option name="SCRIPT_OPTIONS" value="" />

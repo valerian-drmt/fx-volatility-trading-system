@@ -426,7 +426,7 @@ services:
       # instead of crash-looping on timeout.
       TWOFA_TIMEOUT_ACTION: restart
       BYPASS_WARNING: "yes"
-      # VNC password loaded from SSM via scripts/ops/load_secrets.ps1. Empty-
+      # VNC password loaded from SSM via scripts/local/load_secrets.ps1. Empty-
       # tolerant for the same reason as TWS_USERID above (whole-file
       # interpolation); the container only runs with the ib profile armed.
       VNC_SERVER_PASSWORD: ${VNC_PASSWORD:-}

@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Down" type="ShConfigurationType" folderName="Local">
-    <option name="SCRIPT_TEXT" value="&amp; &quot;./scripts/ops/start_stack.ps1&quot; -Down" />
+  <configuration default="false" name="Grafana tunnel (localhost:3000)" type="ShConfigurationType" folderName="EC2">
+    <option name="SCRIPT_TEXT" value="Write-Host 'Grafana will be at http://localhost:3000 - Ctrl-C to close the tunnel' -ForegroundColor Cyan; aws ssm start-session --target i-082e72f0186c9d019 --document-name AWS-StartPortForwardingSession --parameters '{\&quot;portNumber\&quot;:[\&quot;3000\&quot;],\&quot;localPortNumber\&quot;:[\&quot;3000\&quot;]}' --region eu-west-1 --profile admin" />
     <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
     <option name="SCRIPT_PATH" value="" />
     <option name="SCRIPT_OPTIONS" value="" />

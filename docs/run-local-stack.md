@@ -1,6 +1,6 @@
 # Run the local v2 stack
 
-> **TL;DR** — `.\scripts\ops\start_stack.ps1` lance tout. Une seule commande.
+> **TL;DR** — `.\scripts\local\stack.ps1` lance tout. Une seule commande.
 
 Stack 10 containers : `postgres` · `redis` · `api` · `db-writer` · `market-data` · `vol-engine` · `risk-engine` · `frontend` · `nginx` · `ib-gateway`.
 
@@ -16,13 +16,13 @@ Vérifier le profil AWS (one-shot, après une nouvelle machine ou des access key
 aws configure --profile fxvol-dev
 aws sts get-caller-identity --profile fxvol-dev
 cd .\Documents\'Python Project'\fx-volatility-trading-system
-.\scripts\ops\start_stack.ps1
+.\scripts\local\stack.ps1
 ```
 
 Lancer la stack :
 
 ```powershell
-.\scripts\ops\start_stack.ps1
+.\scripts\local\stack.ps1
 ```
 
 Recharger les secrets dans la session courante:
@@ -34,7 +34,7 @@ Recharger les secrets dans la session courante:
 Tout nettoyer :
 
 ```powershell
-.\scripts\ops\start_stack.ps1 -Down              # stop tout (data preservée)
+.\scripts\local\stack.ps1 -Down              # stop tout (data preservée)
 ```
 
 ---
@@ -52,7 +52,7 @@ laptop devient bruyant, stack arrêtée, lancer le bloc ci-dessous.
 > cassée. Cf. `infrastructure/ib-gateway/README.md` pour le rebuild.
 
 ```powershell
-.\scripts\ops\start_stack.ps1 -Down       # stop stack, data preservée
+.\scripts\local\stack.ps1 -Down       # stop stack, data preservée
 docker container prune -f                 # containers exited / dead
 docker image prune -f                     # dangling images uniquement (PAS -a)
 docker volume prune -f                    # volumes anonymes orphelins
@@ -113,7 +113,7 @@ wsl --list --running               # distros WSL en vie (= sources du Vmmem)
 
 ---
 
-## Détail de `start_stack.ps1`
+## Détail de `stack.ps1`
 
 Ce que ça fait, dans l'ordre :
 
@@ -138,9 +138,9 @@ Durée typique :
 ## Variantes courantes
 
 ```powershell
-.\scripts\ops\start_stack.ps1 -NoPull -NoBuild   # quick restart (~30s)
-.\scripts\ops\start_stack.ps1 -RecreateVenv      # rebuild venv (après pyproject.toml change)
-.\scripts\ops\start_stack.ps1 -NoTabs            # CI / scripting / pas de WT
+.\scripts\local\stack.ps1 -NoPull -NoBuild   # quick restart (~30s)
+.\scripts\local\stack.ps1 -RecreateVenv      # rebuild venv (après pyproject.toml change)
+.\scripts\local\stack.ps1 -NoTabs            # CI / scripting / pas de WT
 ```
 
 ---
@@ -197,7 +197,7 @@ Si un secret apparaît accidentellement quelque part :
 | `Missing required tool : 'aws'` | AWS CLI v2 absent | `winget install -e --id Amazon.AWSCLI` |
 | `Docker daemon not reachable` | Docker Desktop pas lancé | démarrer Docker Desktop, attendre l'icône verte |
 | `AWS profile 'fxvol-dev' not usable` | Access keys expirées / absentes | `aws configure --profile fxvol-dev` puis re-tester |
-| `Postgres did not become healthy within 60s` | Image PG corrompue ou volume orphelin | `.\scripts\ops\start_stack.ps1 -Down -DropVolumes` puis re-lancer |
+| `Postgres did not become healthy within 60s` | Image PG corrompue ou volume orphelin | `.\scripts\local\stack.ps1 -Down -DropVolumes` puis re-lancer |
 | `nginx` 502 sur `/api/...` | API container pas prêt au boot de nginx | déjà géré par le restart auto étape 8 ; sinon `docker compose restart nginx` |
 | Heartbeats `<nil>` dans le healthcheck | engines crashent au boot | `docker compose logs vol-engine` (tab dédié auto) |
 | WT tabs ne s'ouvrent pas | `wt.exe` absent | installer Windows Terminal (Microsoft Store) |
@@ -208,9 +208,9 @@ Si un secret apparaît accidentellement quelque part :
 
 | Script | Usage |
 |---|---|
-| `start_stack.ps1` | **THE one-shot command** ci-dessus |
-| `load_secrets.ps1` | Appelé par `start_stack.ps1` — fetch SSM → `$env:*` |
-| `load_secrets.sh` | Linux equivalent of `load_secrets.ps1`. Source it in a bash session : `. scripts/ops/load_secrets.sh` |
+| `stack.ps1` | **THE one-shot command** ci-dessus |
+| `load_secrets.ps1` | Appelé par `stack.ps1` — fetch SSM → `$env:*` |
+| `load_secrets.sh` | Linux equivalent of `load_secrets.ps1`. Source it in a bash session : `. scripts/aws/load_secrets.sh` |
 | `.claude/hooks/block_secrets.ps1` | Hook Claude Code (PreToolUse) qui bloque les commandes exposant un secret. **Vit dans `.claude/`** (gitignored) car c'est de la config harness Claude, pas un script utilisateur. |
 | `db_apply.py` / `db_rollback.py` / `db_new_revision.py` / `db_reset.py` | Wrappers Alembic (pour usage hors container, ex: créer une nouvelle migration en local) |
 | `dump_openapi.py` | Régénère `frontend/src/api/schema.d.ts` après changement Pydantic |

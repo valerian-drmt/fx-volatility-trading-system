@@ -5,7 +5,7 @@ Used by CI to feed ``openapi-typescript`` for the frontend drift check
 directly).
 
 Usage:
-    python scripts/dev/dump_openapi.py path/to/openapi.json
+    python frontend/scripts/dump_openapi.py path/to/openapi.json
 """
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+# This lives at frontend/scripts/, so the repo root is two levels up. CI also
+# sets PYTHONPATH=src, but keep the sys.path insert so standalone runs work.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 for p in (REPO_ROOT, REPO_ROOT / "src"):
     sp = str(p)
     if sp not in sys.path:

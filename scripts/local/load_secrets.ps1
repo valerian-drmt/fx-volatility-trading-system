@@ -1,21 +1,21 @@
 <#
 .SYNOPSIS
-  Fetch les secrets fx-vol depuis AWS SSM Parameter Store (/fxvol/prod/*) et
-  les injecte dans la session PowerShell courante en tant que variables d'env.
+  Fetches the fx-vol secrets from AWS SSM Parameter Store (/fxvol/prod/*) and
+  injects them into the current PowerShell session as environment variables.
 
 .DESCRIPTION
-  Source unique de verite : AWS SSM. Aucun .env n'est ecrit sur disque.
-  Les secrets vivent uniquement en RAM dans la session shell. Docker Compose
-  les recupere ensuite via l'heritage d'env du process parent.
+  Single source of truth: AWS SSM. No .env is ever written to disk.
+  The secrets live in RAM only, inside the shell session. Docker Compose
+  then picks them up through the parent process env inheritance.
 
-  Compose egalement DATABASE_URL, REDIS_URL, PYTHONPATH (vars non-secretes
-  derivables, pas stockees en SSM pour eviter la duplication).
+  Also composes DATABASE_URL, REDIS_URL, PYTHONPATH (non-secret derivable
+  vars, not stored in SSM to avoid duplication).
 
 .PARAMETER Profile
-  Profil AWS CLI a utiliser. Defaut : fxvol-dev.
+  AWS CLI profile to use. Default: fxvol-dev.
 
 .PARAMETER Region
-  Region AWS. Defaut : eu-west-1.
+  AWS region. Default: eu-west-1.
 
 .EXAMPLE
   .\scripts\ops\load_secrets.ps1
@@ -28,7 +28,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# 1. Verifier que le profil AWS est utilisable (SSO valide ou access keys OK)
+# 1. Check that the AWS profile is usable (valid SSO or working access keys)
 $identity = $null
 try {
     $identity = aws sts get-caller-identity --profile $Profile --output json 2>$null | ConvertFrom-Json
@@ -41,10 +41,10 @@ if (-not $identity) {
 }
 Write-Host "==> AWS identity : $($identity.Arn)" -ForegroundColor DarkGray
 
-# 2. Fetch tous les parametres en une requete (get-parameters sur une liste
-# explicite : le path lui-meme n'a pas besoin d'etre permis en IAM,
-# seulement les feuilles arn:.../parameter/fxvol/prod/* -- ce qui matche
-# la policy actuelle de fxvol-dev).
+# 2. Fetch all parameters in one request (get-parameters on an explicit
+# list: the path itself does not need to be allowed in IAM, only the
+# leaves arn:.../parameter/fxvol/prod/* -- which matches the current
+# fxvol-dev policy).
 $names = @(
     '/fxvol/prod/IB_USERID',
     '/fxvol/prod/IB_PASSWORD',
@@ -74,11 +74,11 @@ if (-not $params -or $params.Count -eq 0) {
     throw "No parameters returned - create them via AWS console : https://eu-west-1.console.aws.amazon.com/systems-manager/parameters"
 }
 if ($resp.InvalidParameters -and $resp.InvalidParameters.Count -gt 0) {
-    Write-Host "==> WARNING : parametres introuvables dans SSM :" -ForegroundColor Yellow
+    Write-Host "==> WARNING : parameters not found in SSM :" -ForegroundColor Yellow
     $resp.InvalidParameters | ForEach-Object { Write-Host "      - $_" -ForegroundColor Yellow }
 }
 
-# 3. Export en $env:*
+# 3. Export as $env:*
 $placeholders = @()
 foreach ($p in $params) {
     $key = $p.Name -replace '^/fxvol/prod/', ''
@@ -86,7 +86,7 @@ foreach ($p in $params) {
     if ($p.Value -eq 'PLACEHOLDER_TO_REPLACE') { $placeholders += $key }
 }
 
-# 4. Derived vars (non-secretes mais dependantes des secrets)
+# 4. Derived vars (non-secret but dependent on the secrets)
 $env:DATABASE_URL = "postgresql+asyncpg://fxvol:$($env:DB_PASSWORD)@localhost:5433/fxvol"
 # Falls back to the compose dev default when the SSM param is absent, so the
 # local stack (requirepass fxvol-dev) stays reachable either way.
@@ -97,8 +97,8 @@ $env:PYTHONPATH = "src"
 # 5. Report
 Write-Host "==> Loaded $($params.Count) secrets from SSM into shell env" -ForegroundColor Green
 if ($placeholders.Count -gt 0) {
-    Write-Host "==> WARNING : $($placeholders.Count) parametre(s) ont encore la valeur PLACEHOLDER_TO_REPLACE :" -ForegroundColor Yellow
+    Write-Host "==> WARNING : $($placeholders.Count) parameter(s) still hold the value PLACEHOLDER_TO_REPLACE :" -ForegroundColor Yellow
     $placeholders | ForEach-Object { Write-Host "      - $_" -ForegroundColor Yellow }
-    Write-Host "    Editer la valeur via la console AWS :" -ForegroundColor Yellow
+    Write-Host "    Edit the value via the AWS console :" -ForegroundColor Yellow
     Write-Host "    https://eu-west-1.console.aws.amazon.com/systems-manager/parameters" -ForegroundColor Yellow
 }
