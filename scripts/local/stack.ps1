@@ -72,6 +72,10 @@
   Add -DropVolumes to also erase the data.
 .PARAMETER Status
   Container status + health for every service (compose ps).
+.PARAMETER FullPurge
+  Reclaim DISK (opposite of -Refresh, which reclaims RAM): remove all fxvol
+  containers + images + the docker build cache (down --rmi all + system prune).
+  Volumes (DB) are kept unless -DropVolumes. Typed confirmation required.
 
 .EXAMPLE
   .\scripts\local\stack.ps1                      # ALL up : build + create + start (engines+ib+obs)
@@ -103,7 +107,8 @@ param(
     [switch]$Start,
     [switch]$Stop,
     [switch]$Purge,
-    [switch]$Status
+    [switch]$Status,
+    [switch]$FullPurge
 )
 
 $ErrorActionPreference = 'Stop'
@@ -142,6 +147,40 @@ try {
         Write-Ok "Docker engine ready -> recreating the containers (existing images)"
         # Fall back into the up pipeline : no build (reuse existing images).
         $NoBuild = $true
+    }
+
+    # ---------- FULL PURGE mode: reclaim DISK (not RAM -- that is -Refresh) ----------
+    # Opposite of -Refresh: -Refresh frees RAM and keeps everything on disk;
+    # -FullPurge frees DISK by removing containers, images and the build cache.
+    # Volumes (the Postgres DB + Redis cache) are KEPT unless -DropVolumes.
+    # Destructive -> typed confirmation, whatever the caller.
+    if ($FullPurge) {
+        $word = if ($DropVolumes) { 'WIPE' } else { 'PURGE' }
+        Write-Warn "FULL PURGE: removes ALL fxvol containers, images and the docker build cache$(if ($DropVolumes) { ' + the VOLUMES (Postgres DB + Redis cache ERASED)' })."
+        $typed = (Read-Host "Type '$word' to confirm (anything else aborts)").Trim()
+        if ($typed -cne $word) { Write-Warn "Aborted."; exit 0 }
+
+        # 'compose down' interpolates ${DB_PASSWORD:?} at parse time -> secrets needed.
+        if (-not $env:DB_PASSWORD) {
+            Write-Step "Secrets missing -> loading from AWS SSM"
+            & "$PSScriptRoot\load_secrets.ps1"
+        }
+        $prof = @('compose', '--profile', 'engines', '--profile', 'ib', '--profile', 'obs')
+        Write-Step "Stopping the stack + removing its images (down --rmi all)"
+        $downArgs = $prof + @('down', '--rmi', 'all', '--remove-orphans')
+        if ($DropVolumes) { $downArgs += '--volumes' }
+        & docker @downArgs
+        # system prune reclaims the big items the compose scope misses: the build
+        # cache (often tens of GB) + any other unused image / stopped container /
+        # dangling network. --volumes only when the caller opted into data loss.
+        Write-Step "Pruning build cache + unused images/containers/networks"
+        $pruneArgs = @('system', 'prune', '-af')
+        if ($DropVolumes) { $pruneArgs += '--volumes' }
+        & docker @pruneArgs
+        Write-Step "Disk usage after purge"
+        & docker system df
+        Write-Ok "Full purge done. Rebuild with: .\scripts\local\stack.ps1"
+        exit 0
     }
 
     # ---------- TARGETED mode: one (or several) service only ----------
