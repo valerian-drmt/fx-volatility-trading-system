@@ -177,6 +177,16 @@ docker compose exec -T nginx nginx -s reload
 # idempotent re-run is a no-op on the normal path.
 docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
 
+# Reclaim disk: drop every image no longer referenced by a running container —
+# i.e. the previous deploys' sha-<commit> tags. Each deploy pulls 7 fresh images,
+# so without this the 29G root fills up after ~a dozen deploys; once it does,
+# 'docker compose pull' stalls mid-transfer and the SSM document-worker times out
+# ("ipc messaging received timeout signal") with an empty error — the whole
+# deploy fails for a reason that looks nothing like "disk full". Runs only after
+# the new stack is up (so its images are protected). Best-effort: a prune failure
+# must never fail an otherwise-good deploy.
+docker image prune -af || echo "remote-deploy: image prune skipped"
+
 # Regenerate the on-server command folder (/opt/fxvol/cmd) so a connected user
 # can `cd /opt/fxvol/cmd; ls; ./all/ps; ./containers/api`. Best-effort.
 bash /opt/fxvol/infrastructure/ec2/gen-commands.sh || echo "remote-deploy: gen-commands skipped"
