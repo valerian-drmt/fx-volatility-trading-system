@@ -179,21 +179,24 @@ switch ($Action) {
         $iid = Resolve-InstanceId
         # Print the server cheat-sheet in this window BEFORE opening the shell,
         # so the quick commands stay visible (scroll up) during the session.
+        # ASCII only below: this file has no BOM, so Windows PowerShell reads it
+        # in the ANSI codepage. A non-ASCII char (e.g. an em-dash) inside a
+        # string would break parsing and the rest gets run as code.
         Write-Host ""
-        Write-Host "  ===== fxvol server — quick commands (run once connected) =====" -ForegroundColor Cyan
-        Write-Host "  cd $HostDir                                       # ALWAYS first" -ForegroundColor Yellow
+        Write-Host "  ===== fxvol server : quick commands once connected =====" -ForegroundColor Cyan
+        Write-Host "  cd $HostDir                                       [ALWAYS first]" -ForegroundColor Yellow
         Write-Host ""
-        Write-Host "  sudo docker compose ps                            # containers + health" -ForegroundColor Gray
-        Write-Host "  sudo docker compose logs -f <svc>                 # tail a service (Ctrl-C)" -ForegroundColor Gray
-        Write-Host "  sudo docker compose restart <svc>                 # restart a service" -ForegroundColor Gray
-        Write-Host "  sudo docker compose up -d                         # (re)start the stack" -ForegroundColor Gray
-        Write-Host "  sudo docker compose down                          # stop the stack" -ForegroundColor Gray
+        Write-Host "  sudo docker compose ps                            containers + health" -ForegroundColor Gray
+        Write-Host "  sudo docker compose logs -f SVC                   tail a service (Ctrl-C)" -ForegroundColor Gray
+        Write-Host "  sudo docker compose restart SVC                   restart a service" -ForegroundColor Gray
+        Write-Host "  sudo docker compose up -d                         (re)start the stack" -ForegroundColor Gray
+        Write-Host "  sudo docker compose down                          stop the stack" -ForegroundColor Gray
         Write-Host "  sudo docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head" -ForegroundColor Gray
         Write-Host ""
-        Write-Host "  sudo docker stats --no-stream                     # per-container RAM/CPU" -ForegroundColor Gray
-        Write-Host "  free -m ; df -h /                                 # host RAM / disk" -ForegroundColor Gray
-        Write-Host "  exit   (or Ctrl-D)                                # leave the server" -ForegroundColor Gray
-        Write-Host "  ==============================================================" -ForegroundColor Cyan
+        Write-Host "  sudo docker stats --no-stream                     per-container RAM/CPU" -ForegroundColor Gray
+        Write-Host "  free -m ; df -h /                                 host RAM / disk" -ForegroundColor Gray
+        Write-Host "  exit                                              leave the server" -ForegroundColor Gray
+        Write-Host "  ========================================================" -ForegroundColor Cyan
         Write-Host ""
         Write-Step "Opening interactive shell on $iid"
         & aws ssm start-session --region $Region --profile $Profile --target $iid
