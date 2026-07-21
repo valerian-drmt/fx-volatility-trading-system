@@ -199,7 +199,25 @@ switch ($Action) {
         Write-Host "  ========================================================" -ForegroundColor Cyan
         Write-Host ""
         Write-Step "Opening interactive shell on $iid"
-        & aws ssm start-session --region $Region --profile $Profile --target $iid
+        # The default SSM session drops into 'sh' (dash): no line editing, so
+        # backspace/arrows print ^H and typing gets mangled. Launch bash instead
+        # (readline = proper editing/history) and land in /opt/fxvol. Params go
+        # through a file:// JSON payload to dodge PowerShell<->aws quoting.
+        $sessParams = @{ command = @('cd /opt/fxvol 2>/dev/null; exec bash') } |
+            ConvertTo-Json -Compress
+        $sessFile = New-TemporaryFile
+        [System.IO.File]::WriteAllText(
+            $sessFile.FullName, $sessParams,
+            (New-Object System.Text.UTF8Encoding($false)))
+        try {
+            & aws ssm start-session `
+                --region $Region --profile $Profile --target $iid `
+                --document-name AWS-StartInteractiveCommand `
+                --parameters ("file://" + $sessFile.FullName.Replace('\', '/'))
+        }
+        finally {
+            Remove-Item $sessFile -Force -ErrorAction SilentlyContinue
+        }
     }
 
     'deploy' {
