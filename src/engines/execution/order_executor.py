@@ -124,6 +124,15 @@ class OrderExecutor:
                 await asyncio.wait_for(ib.reqPositionsAsync(), timeout=timeout)
             except Exception as e:
                 logger.warning("ib_reqpositions_failed: %s", e)
+            # Subscribe to the account-summary LEDGER so ib.accountValues() carries
+            # the per-currency cash ($LEDGER-CashBalance for USD/EUR/…). Plain
+            # reqAccountUpdates only streams the base-currency aggregate, so without
+            # this the holdings widget can't split cash by currency (shows USD/EUR
+            # as 0). Best-effort: a miss just leaves the per-currency breakdown empty.
+            try:
+                await asyncio.wait_for(ib.reqAccountSummaryAsync(), timeout=timeout)
+            except Exception as e:
+                logger.warning("ib_reqaccountsummary_failed: %s", e)
             logger.info("ib_connected host=%s port=%s clientId=%s", self.host, self.port, self.client_id)
 
     async def disconnect(self) -> None:
@@ -213,30 +222,17 @@ class OrderExecutor:
                 val = float(v.value)
             except (ValueError, TypeError):
                 continue
+            # IB exposes the per-currency cash ledger under "$LEDGER-<Tag>"
+            # (e.g. $LEDGER-CashBalance for USD/EUR); the plain reqAccountUpdates
+            # tags only carry the base-currency aggregate. Normalise the prefix
+            # away so the ledger tags line up with _CURRENCY_TAGS_KEEP and the
+            # downstream CashBalance reader.
+            tag = v.tag.removeprefix("$LEDGER-")
             cur = v.currency or "BASE"
-            by_tag.setdefault(v.tag, {})[cur] = val
-            by_cur.setdefault(cur, {})[v.tag] = val
+            by_tag.setdefault(tag, {})[cur] = val
+            by_cur.setdefault(cur, {})[tag] = val
             if account is None and v.account:
                 account = v.account
-
-        # DIAGNOSTIC (temporary): reqAccountUpdates carries no per-currency
-        # CashBalance for this EUR-base account. Log the full per-currency tag
-        # set AND probe the account-summary LEDGER ($LEDGER:ALL = per-currency
-        # cash ledger) to find where the USD/EUR split actually lives, then fix.
-        try:
-            ledger = await asyncio.wait_for(ib.reqAccountSummaryAsync(), timeout=5.0)
-            ledger_cash = [
-                (a.currency, a.tag, a.value)
-                for a in ledger
-                if a.tag in ("CashBalance", "TotalCashBalance")
-            ]
-        except Exception as exc:
-            ledger_cash = [("ERR", type(exc).__name__, str(exc)[:80])]
-        logger.info(
-            "account_summary_raw by_cur=%s ledger_cash=%s",
-            {c: sorted(vs.keys()) for c, vs in by_cur.items()},
-            ledger_cash,
-        )
 
         # Flatten by_tag into out[tag] following the priority.
         out: dict[str, Any] = {"account": account}

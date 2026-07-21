@@ -125,36 +125,6 @@ async def test_cash_holdings_empty_table_is_missing():
         await engine.dispose()
 
 
-async def test_cash_holdings_falls_back_to_scalar_cash_usd_when_breakdown_empty():
-    # IB often reports this account's cash only under the BASE aggregate, which
-    # by_currency drops → currencies={} even though cash_usd is populated. The
-    # endpoint must synthesize a USD row from the scalar so holdings isn't $0.
-    from api.routers.portfolio_panel import cash_holdings
-    from persistence.models import AccountHistory
-
-    maker, engine = await _make_session()
-    try:
-        async with maker() as db:
-            db.add(AccountHistory(
-                timestamp=datetime(2026, 6, 16, 12, tzinfo=UTC),
-                net_liq_usd=Decimal("435957"), cash_usd=Decimal("148704"),
-                currencies={},   # empty per-currency breakdown (all cash was BASE)
-            ))
-            await db.commit()
-        async with maker() as db:
-            out = await cash_holdings(db)
-
-        assert len(out["currencies"]) == 1
-        usd = out["currencies"][0]
-        assert usd["ccy"] == "USD"
-        assert usd["settled"] == pytest.approx(148704.0)
-        assert usd["usd_value"] == pytest.approx(148704.0)
-        assert usd["rate"] == 1.0
-        assert out["total_usd"] == pytest.approx(148704.0)
-    finally:
-        await engine.dispose()
-
-
 async def test_cash_holdings_values_eur_in_usd_via_spot():
     from api.routers.portfolio_panel import cash_holdings
     from persistence.models import AccountHistory, VolSurface

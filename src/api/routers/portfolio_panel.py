@@ -1728,18 +1728,6 @@ async def cash_holdings(db: DbDep) -> dict[str, Any]:
             "ccy": ccy, "settled": settled, "unsettled": None,
             "rate": rate, "usd_value": (round(usd, 2) if usd is not None else None),
         })
-    # Fallback : IB frequently reports this account's cash only under the BASE
-    # currency aggregate, which ``by_currency`` deliberately drops — so the
-    # per-currency breakdown comes back empty even though the account holds cash
-    # (the scalar ``cash_usd`` snapshot is still populated). Synthesize a single
-    # USD row from that scalar so the holdings widget shows the real cash instead
-    # of $0. Only kicks in when the breakdown yielded nothing.
-    if not rows and latest is not None and latest.cash_usd is not None:
-        settled = float(latest.cash_usd)
-        rows.append({
-            "ccy": "USD", "settled": settled, "unsettled": None,
-            "rate": 1.0, "usd_value": round(settled, 2),
-        })
     # Largest USD value first; unconvertible currencies last.
     rows.sort(key=lambda r: (r["usd_value"] is None, -(r["usd_value"] or 0.0)))
     total_usd = sum(r["usd_value"] for r in rows if r["usd_value"] is not None)
