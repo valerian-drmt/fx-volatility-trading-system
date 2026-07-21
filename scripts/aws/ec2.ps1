@@ -177,34 +177,31 @@ switch ($Action) {
 
     'connect' {
         $iid = Resolve-InstanceId
-        # Print the server cheat-sheet in this window BEFORE opening the shell,
-        # so the quick commands stay visible (scroll up) during the session.
-        # ASCII only below: this file has no BOM, so Windows PowerShell reads it
-        # in the ANSI codepage. A non-ASCII char (e.g. an em-dash) inside a
-        # string would break parsing and the rest gets run as code.
-        Write-Host ""
-        Write-Host "  ===== fxvol server : quick commands once connected =====" -ForegroundColor Cyan
-        Write-Host "  cd $HostDir                                       [ALWAYS first]" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "  sudo docker compose ps                            containers + health" -ForegroundColor Gray
-        Write-Host "  sudo docker compose logs -f SVC                   tail a service (Ctrl-C)" -ForegroundColor Gray
-        Write-Host "  sudo docker compose restart SVC                   restart a service" -ForegroundColor Gray
-        Write-Host "  sudo docker compose up -d                         (re)start the stack" -ForegroundColor Gray
-        Write-Host "  sudo docker compose down                          stop the stack" -ForegroundColor Gray
-        Write-Host "  sudo docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head" -ForegroundColor Gray
-        Write-Host ""
-        Write-Host "  sudo docker stats --no-stream                     per-container RAM/CPU" -ForegroundColor Gray
-        Write-Host "  free -m ; df -h /                                 host RAM / disk" -ForegroundColor Gray
-        Write-Host "  exit                                              leave the server" -ForegroundColor Gray
-        Write-Host "  ========================================================" -ForegroundColor Cyan
-        Write-Host ""
-        Write-Step "Opening interactive shell on $iid"
-        # The default SSM session drops into 'sh' (dash): no line editing, so
-        # backspace/arrows print ^H and typing gets mangled. Launch bash instead
-        # (readline = proper editing/history) and land in /opt/fxvol. Params go
-        # through a file:// JSON payload to dodge PowerShell<->aws quoting.
-        $sessParams = @{ command = @('cd /opt/fxvol 2>/dev/null; exec bash') } |
-            ConvertTo-Json -Compress
+        Write-Step "Opening interactive shell on $iid (bash + cheat-sheet on entry)"
+        # Everything runs ON the server before the interactive bash: cd to
+        # /opt/fxvol, print the command cheat-sheet (echo lines), then 'exec bash'
+        # so the sheet appears INSIDE the session, right above the prompt. bash
+        # (not the default 'sh'/dash) gives readline = proper editing/history.
+        # ASCII only. Params go through a file:// JSON payload to dodge the
+        # PowerShell<->aws quoting.
+        $help = @(
+            '',
+            '  ===== fxvol server : commands to manage the stack =====',
+            '  sudo docker compose ps                    containers + health',
+            '  sudo docker compose logs -f SVC           tail a service (Ctrl-C)',
+            '  sudo docker compose restart SVC           restart a service',
+            '  sudo docker compose up -d                 (re)start the stack',
+            '  sudo docker compose down                  stop the stack',
+            '  sudo docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head',
+            '  sudo docker stats --no-stream             per-container RAM/CPU',
+            '  free -m ; df -h /                          host RAM / disk',
+            '  exit                                      leave the server',
+            '  =======================================================',
+            ''
+        )
+        $echoCmds = ($help | ForEach-Object { "echo '$_'" }) -join '; '
+        $remoteCmd = "cd /opt/fxvol 2>/dev/null; clear 2>/dev/null; $echoCmds; exec bash"
+        $sessParams = @{ command = @($remoteCmd) } | ConvertTo-Json -Compress
         $sessFile = New-TemporaryFile
         [System.IO.File]::WriteAllText(
             $sessFile.FullName, $sessParams,
