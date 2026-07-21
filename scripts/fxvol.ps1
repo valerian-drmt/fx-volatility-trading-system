@@ -99,7 +99,7 @@ function Show-Menu {
     Write-Host ''
     Write-Host '  LOCAL STACK  (stack.ps1)' -ForegroundColor Cyan
     Write-Host '   1  Start full stack           (build, engines+ib+obs)'
-    Write-Host '   2  Start full stack fast      (-NoPull -NoBuild)'
+    Write-Host '   2  Start full stack fast      (-NoBuild, reuse images)'
     Write-Host '   3  Start core only            (api/frontend/nginx/pg/redis)'
     Write-Host '   4  Rebuild one service        (-Service <name>)'
     Write-Host '   5  Tail one service log       (-Service <name> -Logs -NoBuild)'
@@ -143,7 +143,7 @@ try {
 
             # ---------- LOCAL STACK ----------
             '1' { Invoke-Script $StackPs1 @() }
-            '2' { Invoke-Script $StackPs1 @('-NoPull', '-NoBuild') }
+            '2' { Invoke-Script $StackPs1 @('-NoBuild') }
             '3' { Invoke-Script $StackPs1 @('-Core') }
 
             '4' {

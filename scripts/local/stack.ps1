@@ -5,24 +5,23 @@
 .DESCRIPTION
   One entry point that does everything:
     1. Check the prereqs (docker, aws, python)
-    2. git pull (unless -NoPull)
-    3. Create the .venv if missing + pip install
-    4. Load the secrets from AWS SSM
-    5. docker compose up -d --build (unless -NoBuild) on ALL profiles
+    2. Create the .venv if missing + pip install
+    3. Load the secrets from AWS SSM
+    4. docker compose up -d --build (unless -NoBuild) on ALL profiles
        (engines + ib + obs) to build every container of the project
        (api, frontend, nginx, 5 engines, ib-gateway, prometheus, loki,
         promtail, tempo, otel-collector, grafana).
-    6. Wait for Postgres healthy
-    7. Alembic upgrade head
-    8. Restart nginx (refresh DNS upstreams)
+    5. Wait for Postgres healthy
+    6. Alembic upgrade head
+    7. Restart nginx (refresh DNS upstreams)
+
+  Containers are built from the LOCAL working tree (no git pull) — the stack
+  always reflects your local code, never GitHub.
 
   Sub-mode -Down stops everything (and drops the volumes with -DropVolumes).
 
 .PARAMETER Down
   Stops the stack and exits (instead of the up pipeline).
-
-.PARAMETER NoPull
-  Skips the git pull.
 
 .PARAMETER NoBuild
   Skips the --build (faster when no image has changed).
@@ -91,7 +90,6 @@
 #>
 param(
     [switch]$Down,
-    [switch]$NoPull,
     [switch]$NoBuild,
     [switch]$DropVolumes,
     [switch]$RecreateVenv,
@@ -119,7 +117,7 @@ function Write-Warn($msg) { Write-Host "    [!]  $msg" -ForegroundColor Yellow }
 try {
     # ---------- REFRESH mode: purge the RAM (WSL2 VM) without losing data ----------
     # down (volumes kept) -> wsl --shutdown (gives the RAM back to Windows) -> wait
-    # for the Docker engine -> fall back into the normal up pipeline (NoPull + NoBuild).
+    # for the Docker engine -> fall back into the normal up pipeline (NoBuild).
     if ($Refresh) {
         if (-not $env:DB_PASSWORD) {
             Write-Step "Secrets missing -> loading from AWS SSM"
@@ -142,8 +140,7 @@ try {
             throw "Docker engine unavailable after 'wsl --shutdown'. Open Docker Desktop, then : .\scripts\local\stack.ps1 -NoBuild"
         }
         Write-Ok "Docker engine ready -> recreating the containers (existing images)"
-        # Fall back into the up pipeline : no pull, no build.
-        $NoPull = $true
+        # Fall back into the up pipeline : no build (reuse existing images).
         $NoBuild = $true
     }
 
@@ -284,18 +281,11 @@ try {
     }
     Write-Ok "docker, aws, python, git all available"
 
-    # ---------- 2. git pull ----------
-    if (-not $NoPull) {
-        Write-Step "git pull"
-        $branch = (& git rev-parse --abbrev-ref HEAD).Trim()
-        if ($branch -eq 'main') {
-            & git pull --ff-only origin main
-        } else {
-            Write-Warn "Branch '$branch' (not main) -> skip auto-pull, use -NoPull to silence"
-        }
-    }
+    # No git pull: containers are built from the LOCAL working tree (the docker
+    # build context is this folder on disk), so the stack always reflects your
+    # local code — never GitHub. Sync main with origin by hand when you want to.
 
-    # ---------- 3. .venv ----------
+    # ---------- 2. .venv ----------
     $venvPath = Join-Path $projectDir '.venv'
     if ($RecreateVenv -and (Test-Path $venvPath)) {
         Write-Step "Removing existing .venv (-RecreateVenv)"
