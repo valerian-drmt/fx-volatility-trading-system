@@ -15,7 +15,7 @@
  *
  * Constant /dev URL, never changes.
  */
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Header } from "../components/layout/Header";
 import { useAuthStore } from "../store/authStore";
@@ -50,6 +50,15 @@ const TABS: TabDef[] = [
 
 export function DevLayout(): JSX.Element {
   const authenticated = useAuthStore((s) => s.authenticated);
+  const refresh = useAuthStore((s) => s.refresh);
+  // /dev is a separate full-page entry (main.tsx path routing → fresh zustand
+  // store), so unlike the desk (VoldeskApp) nothing probes /me here. Without
+  // this the httpOnly cookie set on the desk is ignored and `authenticated`
+  // stays false forever → the trader tabs never appear. Probe /me once on mount.
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
   // Public sees the showcase tabs; a logged-in trader sees everything.
   const tabs = TABS.filter((t) => !t.trader || authenticated);
 
