@@ -177,4 +177,8 @@ docker compose exec -T nginx nginx -s reload
 # idempotent re-run is a no-op on the normal path.
 docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
 
+# Regenerate the on-server command folder (/opt/fxvol/cmd) so a connected user
+# can `cd /opt/fxvol/cmd; ls; ./all/ps; ./containers/api`. Best-effort.
+bash /opt/fxvol/infrastructure/ec2/gen-commands.sh || echo "remote-deploy: gen-commands skipped"
+
 echo "remote-deploy: done (tag ${IMAGE_TAG}, profiles '${COMPOSE_PROFILES:-core}')"

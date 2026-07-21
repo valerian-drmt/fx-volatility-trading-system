@@ -187,6 +187,9 @@ switch ($Action) {
         $help = @(
             '',
             '  ===== fxvol server : commands to manage the stack =====',
+            '  cd cmd && ./help          <-- all commands as scripts (./all/ps, ./containers/api)',
+            '',
+            '  or the raw docker commands:',
             '  sudo docker compose ps                    containers + health',
             '  sudo docker compose logs -f SVC           tail a service (Ctrl-C)',
             '  sudo docker compose restart SVC           restart a service',
