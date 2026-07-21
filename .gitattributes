@@ -2,3 +2,6 @@
 # drift check regenerates it on Linux (LF). Force LF in the repo so a Windows
 # checkout/commit (autocrlf) can't introduce CRLF and break the drift check.
 frontend/src/api/schema.d.ts text eol=lf
+
+# Shell scripts run on Linux (EC2 host) — always LF, never CRLF.
+*.sh text eol=lf
