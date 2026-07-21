@@ -9,6 +9,23 @@ name: build-and-push
 on:
   push:
     branches: [main]
+    # Continuous deploy is armed (DEPLOY_ENABLED=true) and deploy-prod chains off
+    # this build, so a push that changes nothing in the images or the deploy
+    # payload must NOT rebuild+redeploy prod. Skip pushes that only touch dev
+    # ergonomics / docs / host-side scripts:
+    #   - .idea/**       PyCharm run configs (never shipped)
+    #   - scripts/**      local + aws host scripts (not in any image nor the
+    #                     S3 payload, which is docker-compose.yml + infrastructure + obs)
+    #   - docs, *.md, releases/**  documentation only
+    # NB: a mixed push (some ignored + some real files) still runs — GitHub only
+    # skips when EVERY changed path matches. src/, frontend/, infrastructure/,
+    # obs/, docker-compose.yml, pyproject.toml all stay in scope.
+    paths-ignore:
+      - ".idea/**"
+      - "scripts/**"
+      - "docs/**"
+      - "releases/**"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:
