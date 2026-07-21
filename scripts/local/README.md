@@ -9,7 +9,7 @@ Two PowerShell scripts to run the full stack on the developer laptop. They are
 | `stack.ps1` | One entry point for the whole container lifecycle (build / create / start / stop / remove) plus targeted and maintenance actions. |
 
 Everything below is also reachable, without memorising flags, from the
-`fxvol.bat` menu at the repo root or the PyCharm run configs (`Local` folder).
+`cmd_menu.bat` menu at the repo root or the PyCharm run configs (`Local` folder).
 
 ---
 
@@ -80,5 +80,5 @@ direction are always explicit (`ALL` = every image/container, all profiles).
 - These scripts drive the **local** stack only. Production images are built on
   GitHub Actions (not this machine); the AWS/EC2 host is driven from
   `scripts/aws/ec2.ps1`.
-- `fxvol.bat` (repo root) opens the common actions as a numbered menu in a
+- `cmd_menu.bat` (repo root) opens the common actions as a numbered menu in a
   long-lived shell, so secrets loaded once stay in RAM for later actions.

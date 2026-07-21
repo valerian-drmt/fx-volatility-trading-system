@@ -3,7 +3,7 @@
   Interactive launcher for every fx-vol ops script (Windows / PowerShell).
 
 .DESCRIPTION
-  Single clickable entry point (see fxvol.bat at the repo root) that wraps the
+  Single clickable entry point (see cmd_menu.bat at the repo root) that wraps the
   four ops scripts so none of their flags have to be memorised:
 
     * scripts/local/stack.ps1          -> LOCAL docker stack
@@ -20,7 +20,7 @@
   require typing the confirmation word shown on screen.
 
 .EXAMPLE
-  .\scripts\fxvol.ps1        # or just double-click fxvol.bat
+  .\scripts\fxvol.ps1        # or just double-click cmd_menu.bat
 #>
 [CmdletBinding()]
 param()
