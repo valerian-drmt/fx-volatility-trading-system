@@ -87,4 +87,12 @@ TXT
 HELP
 chmod +x "$CMD/help"
 
+# remote-deploy.sh runs this as root, and `chmod +x` only ORs the exec bit onto
+# whatever the umask left — under a 077 umask that yields 0700 and `cd
+# /opt/fxvol/cmd` fails with "Permission denied" for the ssm-user who connects
+# via `ec2.ps1 connect`. Force world-readable/traversable explicitly: these are
+# thin `sudo docker compose` wrappers, no secrets, and each one still re-asks
+# for sudo when it runs.
+chmod -R a+rX "$CMD"
+
 echo "gen-commands: wrote $CMD (all: $(ls "$CMD/all" | wc -l), containers: $(ls "$CMD/containers" | wc -l))"
