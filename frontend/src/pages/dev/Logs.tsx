@@ -24,6 +24,7 @@
  *   - Export the current result set as .log.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiFetch, apiFetchJson } from "../../api/client";
 
 interface LogEntry {
   ts: string;                    // ISO
@@ -79,9 +80,8 @@ export function Logs(): JSX.Element {
 
   // ── Load container list once ──
   useEffect(() => {
-    fetch("/api/v1/dev/logs/containers")
-      .then((r) => r.json())
-      .then((j: { containers: string[] }) => setContainers(j.containers))
+    apiFetchJson<{ containers: string[] }>("/api/v1/dev/logs/containers")
+      .then((j) => setContainers(j.containers ?? []))
       .catch((e) => setError(String(e)));
   }, []);
 
@@ -96,7 +96,7 @@ export function Logs(): JSX.Element {
       if (pattern.trim()) p.set("pattern", pattern.trim());
       p.set("minutes", String(minutes));
       p.set("limit", String(limit));
-      const r = await fetch(`/api/v1/dev/logs/query?${p.toString()}`);
+      const r = await apiFetch(`/api/v1/dev/logs/query?${p.toString()}`);
       if (!r.ok) {
         const txt = await r.text();
         throw new Error(`HTTP ${r.status} : ${txt.slice(0, 200)}`);

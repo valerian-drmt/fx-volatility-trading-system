@@ -1,9 +1,10 @@
 /**
- * VOLDESK mock data barrel. Views import { DATA, DATA2, fmt } from "../data".
- * When a view is wired to the backend, swap its imports here for the typed
- * OpenAPI client / WS hooks — the views stay agnostic of the source.
+ * VOLDESK data barrel. `DATA` now carries only preview/axis constants
+ * (OrderBuilder smile preview, wing bucketing, heatmap axes) — all book data
+ * comes from the live provider (`useDeskData()`); empty states are in
+ * `neutral.ts`.
  */
-export { DATA, fmt, genCandles, mulberry32, smileFor, equityCurve } from "./core";
-export { DATA2, scenarioSeries } from "./extended";
+export { DATA, fmt, smileFor } from "./core";
+export { EMPTY_ACCOUNT, EMPTY_GREEKS } from "./neutral";
 export type * from "./core";
 export type * from "./extended";

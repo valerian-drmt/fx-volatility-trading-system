@@ -12,7 +12,7 @@ import { FreshBadge } from "../components/FreshBadge";
 import { OpenPositionsTable, type StructureCtx } from "../components/PositionsTable";
 import { OrderBuilder } from "../components/OrderBuilder";
 import { TickerChart } from "../components/TickerChart";
-import { DATA, fmt } from "../data";
+import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
 import type { AccountState, Cash, Greeks, Position } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
@@ -863,12 +863,14 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const ticks = useTicks();
   const td = trade.data;
   // Open positions render from the structured read. Fall back to the raw IB
-  // mirror only when there are no structures at all (and to the mock when there's
-  // no live data), so a genuinely-flat live book shows empty, not mock rows.
-  const positions = structRows.positions.length
-    ? structRows.positions
-    : (td?.positions ?? DATA.positions);
-  const greeks = td?.greeks ?? DATA.greeks;
+  // mirror only when there are no structures at all — a flat or unreachable
+  // book shows empty rows, never fabricated ones (remediation 05 WI-2).
+  // Memoized so the `?? []` default keeps a stable identity for the effect below.
+  const positions = useMemo(
+    () => (structRows.positions.length ? structRows.positions : (td?.positions ?? [])),
+    [structRows.positions, td?.positions],
+  );
+  const greeks = td?.greeks ?? EMPTY_GREEKS;
   // Drop a "closing" lock once its position has cleared from the panel (fill +
   // sync ~30 s) or after a 90 s TTL (safety net so a close that never fills
   // doesn't lock the button forever — the operator can retry / cancel). Runs on
@@ -889,9 +891,9 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     });
   }, [positions]);
   const closing = useMemo(() => new Set(Object.keys(closingKeys)), [closingKeys]);
-  const account = td?.account ?? DATA.account;
-  const cash = td?.cash ?? DATA.cash;
-  // Live EURUSD bid/ask (RT.1) ; fallback to a synthetic spread around the mock spot.
+  const account = td?.account ?? EMPTY_ACCOUNT;
+  const cash = td?.cash ?? [];
+  // Live EURUSD bid/ask (RT.1) ; fallback to a synthetic spread around the reference spot.
   const spotBid = ticks.data?.bid ?? DATA.SPOT - 0.0001;
   const spotAsk = ticks.data?.ask ?? DATA.SPOT + 0.0001;
 

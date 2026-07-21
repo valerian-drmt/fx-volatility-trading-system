@@ -7,7 +7,7 @@
 import { Fragment, useState } from "react";
 import { pnlCls } from "./format";
 import { legStrikeNum, structureName, structureSide } from "./tradeGrouping";
-import { DATA, fmt } from "../data";
+import { EMPTY_GREEKS, fmt } from "../data";
 import type { Cash, Greeks, Position } from "../data";
 
 // compact signed formatter for per-leg / net greek cells (±N · ±N.Nk · ±N.NNM).
@@ -229,8 +229,8 @@ export function OpenPositionsTable({
   structureContext,
   closing = EMPTY_CLOSING,
   dense = false,
-  positions = DATA.positions,
-  greeks = DATA.greeks,
+  positions = [],
+  greeks = EMPTY_GREEKS,
   showNet = true,
 }: OpenPositionsTableProps): JSX.Element {
   const rows = positions;
@@ -438,9 +438,9 @@ export function OpenPositionsTable({
 }
 
 export function CashHoldings({ cash }: { cash?: Cash[] }): JSX.Element {
-  // Live per-currency balances (from /portfolio/cash via the trade slice) when
-  // present; the mock only until the account snapshot has been written.
-  const rows = cash && cash.length > 0 ? cash : DATA.cash;
+  // Live per-currency balances (from /portfolio/cash via the trade slice);
+  // empty until the account snapshot has been written — never mock rows.
+  const rows = cash ?? [];
   const total = rows.reduce((s, c) => s + c.usd, 0);
   const base = Math.abs(total) || 1;
   // Each ccy's USD value as a signed share of |net cash| — same reading as the

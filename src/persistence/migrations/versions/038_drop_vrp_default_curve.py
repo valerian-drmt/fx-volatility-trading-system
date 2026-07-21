@@ -56,11 +56,17 @@ def downgrade() -> None:
         sa.CheckConstraint("regime IN ('calm','stressed','pre_event')",
                            name="ck_vrp_table_default_regime"),
     )
-    # Re-seed from the Python dict so the downgrade is loss-less.
-    from core.vol.vrp import VRP_DEFAULTS_VOL_PTS
+    # Re-seed from a literal snapshot of core.vol.vrp.VRP_DEFAULTS_VOL_PTS
+    # (frozen at this revision — migrations must never import live ``core``
+    # modules) so the downgrade is loss-less.
+    defaults_vol_pts: dict[str, dict[str, float]] = {
+        "calm":      {"1M": 0.6, "2M": 0.7, "3M": 0.8, "4M": 0.9, "5M": 1.0, "6M": 1.1},
+        "stressed":  {"1M": 1.5, "2M": 1.6, "3M": 1.8, "4M": 1.9, "5M": 2.0, "6M": 2.1},
+        "pre_event": {"1M": 2.5, "2M": 2.2, "3M": 2.0, "4M": 1.9, "5M": 1.8, "6M": 1.8},
+    }
     rows = [
         {"regime": regime, "tenor": tenor, "vrp_vol_pts": pts}
-        for regime, by_tenor in VRP_DEFAULTS_VOL_PTS.items()
+        for regime, by_tenor in defaults_vol_pts.items()
         for tenor, pts in by_tenor.items()
     ]
     op.bulk_insert(

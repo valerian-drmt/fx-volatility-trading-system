@@ -81,7 +81,7 @@ silently trusting either side:
 - **book (expected)** = signed Σ `trade_order.qty_filled` per contract (entries − closes).
 - **broker (actual)** = signed Σ `open_position.quantity` per contract.
 - `break = expected − actual`, classified `missing_at_ib` / `unbooked_at_ib` / `direction` /
-  `quantity`. See `../ORDERS_POSITIONS_AUDIT.md §5.4`.
+  `quantity`.
 
 ## Summary of the sync jobs
 

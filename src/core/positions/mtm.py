@@ -12,12 +12,17 @@ Attribution model (linearised, vs entry snapshot) :
 
 For monitoring purposes this linearisation is good enough. Full re-pricing
 is reserved for closing P&L.
+
+Units : every ``*_usd`` input/output follows the USD-at-notional
+convention of ``core.units`` (premium/mark in real USD, vega $/vol-pt,
+gamma $/pip² with shocks in pips, theta $/day). The formulas here are
+scale-agnostic — they are only correct when the inputs respect it.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-PIP_SIZE = 0.0001  # EUR/USD pip
+from core.units import PIP_SIZE  # EUR/USD pip — single source of truth
 
 
 @dataclass(frozen=True)

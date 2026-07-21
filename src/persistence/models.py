@@ -175,7 +175,7 @@ class AccountHistory(Base):
         DateTime(timezone=True), nullable=False
     )
 
-    # Globaux (en currency de base du compte — typiquement EUR)
+    # Globals (in the account's base currency — typically EUR)
     net_liq_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     cash_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     unrealized_pnl_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
@@ -188,7 +188,7 @@ class AccountHistory(Base):
     excess_liquidity: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     cushion: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
 
-    # Per-currency breakdown (USD / EUR / etc., sans BASE qui est redondant)
+    # Per-currency breakdown (USD / EUR / etc., without the redundant BASE)
     currencies: Mapped[dict | None] = mapped_column(JSONB_PORTABLE)
 
     open_positions_count: Mapped[int | None] = mapped_column(Integer)
@@ -464,7 +464,7 @@ class PcaSignal(Base):
 
 
 class TradePreviewRow(Base):
-    """Audit log : 1 row par Arm trade."""
+    """Audit log: 1 row per Arm trade."""
 
     __tablename__ = "trade_preview"  # renamed in migration 025
     __table_args__ = (
@@ -496,7 +496,7 @@ class TradePreviewRow(Base):
 
 
 class BookStateSnapshot(Base):
-    """État aggregé du book (1 row is_current=true par symbol + history)."""
+    """Aggregated book state (1 row is_current=true per symbol + history)."""
 
     __tablename__ = "book_state_snapshot_history"  # renamed 026 → 040 (_history suffix alignment)
 
@@ -630,6 +630,16 @@ class TradeStructure(Base):
     # Migration 046 : correlation id of the request that created this trade, so a
     # trade's whole story (API → exec-engine → fills) is one `grep <trace_id>`.
     trace_id: Mapped[str | None] = mapped_column(String(32))
+    # Migration 050 : execution-safety claims (EXEC-1 / EXEC-3).
+    # submit_claimed_at is taken atomically (UPDATE ... WHERE IS NULL) and
+    # committed BEFORE any IB placement — a replayed live submit finds it set
+    # and is refused, so a retry can never double-place the legs. Cleared when
+    # the submit fails before any placement (retry stays possible).
+    submit_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # rollback_started_at serialises concurrent rollbacks + stamps the audit
+    # trail; the double-unwind safety itself is the residual-qty math in
+    # core.execution.rollback.
+    rollback_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class StructureOrder(Base):

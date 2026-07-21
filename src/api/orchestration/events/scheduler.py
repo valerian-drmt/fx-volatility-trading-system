@@ -1,10 +1,10 @@
 """Orchestrate N event sources in parallel, isolate failures, dedup, persist.
 
-Cf. spec §2. Invariants :
-  - 1 source qui crash → log warning, autres continuent
-  - 1 source qui timeout → cap dur à ``source.timeout_seconds``
+Cf. spec §2. Invariants:
+  - 1 source crashes → log warning, the others keep going
+  - 1 source times out → hard cap at ``source.timeout_seconds``
   - len(events) < expected_min_events → log warning (parser drift)
-  - run_once est idempotent : re-run = inserted=0 si rien n'a changé
+  - run_once is idempotent: re-run = inserted=0 if nothing changed
 """
 from __future__ import annotations
 

@@ -1,18 +1,18 @@
 /**
- * Stack Overview — schéma SVG type draw.io des 10 containers + flèches de
- * dépendance, status live coloré (cf. docs/schémas/containers-overview.drawio
- * pour la version source). Auto-refresh 5s.
+ * Stack Overview — draw.io-style SVG diagram of the 10 containers +
+ * dependency arrows, live colored status. Auto-refresh 5s.
  *
- * Layout 4 rangées :
+ * Layout, 4 rows:
  *   Row 1 (data)    : redis · postgres · ib-gateway
  *   Row 2 (engines) : market-data · vol-engine · risk-engine · db-writer
  *   Row 3 (server)  : api
  *   Row 4 (edge)    : nginx · frontend
  *
- * Arrow convention : A → B veut dire "B utilise A" (cf. container_deps.md).
- * Les engines sont au milieu parce qu'ils sont la couche métier centrale.
+ * Arrow convention: A → B means "B uses A" (cf. container_deps.md).
+ * The engines sit in the middle because they are the central business layer.
  */
 import { useEffect, useRef, useState } from "react";
+import { apiFetch } from "../../api/client";
 
 interface Container {
   name: string;
@@ -28,7 +28,7 @@ interface StackResp {
 
 const POLL_MS = 3_000;
 
-// Coordonnées (x, y) en unités SVG. ViewBox "0 0 W H".
+// Coordinates (x, y) in SVG units. ViewBox "0 0 W H".
 const BOX_W = 150;
 const BOX_H = 85;
 const SVG_W = 900;
@@ -95,7 +95,7 @@ const POSITIONS: Record<string, { x: number; y: number }> = {
   "grafana":    { x: 675, y: 650 },
 };
 
-// Edges = (from, to). "from" est utilisé par "to" (ex: redis → api = api utilise redis).
+// Edges = (from, to). "from" is used by "to" (e.g. redis → api = api uses redis).
 const EDGES: { from: string; to: string }[] = [
   // data → engines
   { from: "redis",      to: "market-data" },
@@ -132,7 +132,7 @@ export function StackOverview(): JSX.Element {
   const fetchData = async () => {
     setError(null);
     try {
-      const r = await fetch("/api/v1/dev/stack");
+      const r = await apiFetch("/api/v1/dev/stack");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setData(await r.json());
     } catch (e) {
@@ -343,13 +343,14 @@ function Arrow({
   to: { x: number; y: number } | undefined;
 }): JSX.Element | null {
   if (!from || !to) return null;
-  // Arrow va du bord bas/haut de la box source au bord haut/bas de la cible.
-  // On calcule les centres et on raccourcit pour ne pas chevaucher la box.
+  // The arrow goes from the bottom/top edge of the source box to the
+  // top/bottom edge of the target. Compute the centers then shorten the
+  // line so it does not overlap the box.
   const fcx = from.x + BOX_W / 2;
   const fcy = from.y + BOX_H / 2;
   const tcx = to.x + BOX_W / 2;
   const tcy = to.y + BOX_H / 2;
-  // Compute clipping aux bords des box (rectangles).
+  // Compute clipping at the box edges (rectangles).
   const start = clipToBox(fcx, fcy, tcx, tcy);
   const end = clipToBox(tcx, tcy, fcx, fcy);
   return (
@@ -366,8 +367,8 @@ function Arrow({
 }
 
 /**
- * Clip une ligne partant de (cx, cy) — supposé être le centre d'une box BOX_W
- * × BOX_H — en direction de (tx, ty) pour qu'elle s'arrête au bord du rect.
+ * Clip a line starting at (cx, cy) — assumed to be the center of a BOX_W ×
+ * BOX_H box — towards (tx, ty) so that it stops at the edge of the rect.
  */
 function clipToBox(cx: number, cy: number, tx: number, ty: number): { x: number; y: number } {
   const dx = tx - cx;

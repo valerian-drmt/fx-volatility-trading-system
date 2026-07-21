@@ -26,9 +26,9 @@ def get_redis() -> aioredis.Redis:
 
 
 def get_redis_client_or_none() -> aioredis.Redis | None:
-    """Like `get_redis` but returns None at boot — utile pour les background
-    tasks qui peuvent vivre sans Redis (ex: position_sync_loop reads optional
-    spot/IV pour enrichir les snapshots)."""
+    """Like `get_redis` but returns None at boot — useful for background
+    tasks that can live without Redis (e.g. position_sync_loop reads optional
+    spot/IV to enrich the snapshots)."""
     return _redis_client
 
 

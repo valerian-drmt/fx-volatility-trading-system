@@ -1,35 +1,35 @@
 # AWS bootstrap — SSM Parameter Store + KMS + IAM for fx-vol secrets
 
-Procédure **manuelle** pour préparer le compte AWS avant d'activer les scripts
-`load_secrets.ps1` / `load_secrets.sh` qui consomment SSM Parameter Store.
+**Manual** procedure to prepare the AWS account before enabling the
+`load_secrets.ps1` / `load_secrets.sh` scripts that consume SSM Parameter Store.
 
-Objectif : stocker 5 paramètres sensibles (`IB_USERID`, `IB_PASSWORD`,
-`DB_PASSWORD`, `VNC_PASSWORD`, `TRADING_MODE`) dans SSM chiffrés par une CMK
-KMS dédiée, accessibles :
-- en dev local via un IAM user + AWS SSO
-- en prod EC2 via un IAM instance role
+Goal: store 5 sensitive parameters (`IB_USERID`, `IB_PASSWORD`,
+`DB_PASSWORD`, `VNC_PASSWORD`, `TRADING_MODE`) in SSM, encrypted with a dedicated
+KMS CMK, accessible:
+- in local dev via an IAM user + AWS SSO
+- in EC2 prod via an IAM instance role
 
-À exécuter **une fois**, par un utilisateur admin du compte AWS.
-
----
-
-## 0. Prérequis
-
-- Compte AWS actif (root ou IAM admin)
-- AWS CLI v2 installé (`aws --version` ≥ 2.15)
-- Région cible : `eu-west-1` (tout cohabite ici — SSM, KMS, EC2)
-- ID du compte AWS récupérable via : `aws sts get-caller-identity`
-
-Dans toute la suite, remplace :
-- `<ACCOUNT_ID>` par ton ID de compte (12 chiffres)
-- `<REGION>` par `eu-west-1`
+To be executed **once**, by an admin user of the AWS account.
 
 ---
 
-## 1. Créer la CMK KMS `alias/fxvol-secrets`
+## 0. Prerequisites
+
+- Active AWS account (root or IAM admin)
+- AWS CLI v2 installed (`aws --version` ≥ 2.15)
+- Target region: `eu-west-1` (everything lives here — SSM, KMS, EC2)
+- AWS account ID retrievable via: `aws sts get-caller-identity`
+
+Throughout the rest of this doc, replace:
+- `<ACCOUNT_ID>` with your account ID (12 digits)
+- `<REGION>` with `eu-west-1`
+
+---
+
+## 1. Create the KMS CMK `alias/fxvol-secrets`
 
 ```bash
-# Créer la clé
+# Create the key
 aws kms create-key \
   --description "fx-vol secrets encryption key" \
   --key-usage ENCRYPT_DECRYPT \
@@ -37,36 +37,36 @@ aws kms create-key \
   --tags TagKey=Project,TagValue=fxvol
 ```
 
-Récupère le `KeyId` renvoyé (UUID) → on l'utilisera comme `<CMK_KEY_ID>`.
+Grab the returned `KeyId` (UUID) → it will be used as `<CMK_KEY_ID>`.
 
 ```bash
-# Créer l'alias humainement lisible
+# Create the human-readable alias
 aws kms create-alias \
   --alias-name alias/fxvol-secrets \
   --target-key-id <CMK_KEY_ID> \
   --region eu-west-1
 
-# Activer rotation annuelle auto
+# Enable automatic annual rotation
 aws kms enable-key-rotation \
   --key-id <CMK_KEY_ID> \
   --region eu-west-1
 ```
 
-**Vérification** :
+**Verification**:
 ```bash
 aws kms describe-key --key-id alias/fxvol-secrets --region eu-west-1
-# doit renvoyer KeyState=Enabled, KeyRotationEnabled dans get-key-rotation-status
+# should return KeyState=Enabled, KeyRotationEnabled in get-key-rotation-status
 ```
 
 ---
 
-## 2. Créer les 5 paramètres SSM (valeurs placeholder)
+## 2. Create the 5 SSM parameters (placeholder values)
 
-On crée les paramètres **vides** (ou placeholder) ici. Les vraies valeurs
-seront poussées plus tard via la console AWS (cf. `SETUP.md` § 7).
-**Note historique** : ce document mentionnait initialement un script
-`put_secrets.ps1`, supprimé au 28/04/2026 — décision : édition des secrets
-via console uniquement pour éviter les fausses manipulations CLI.
+We create the parameters **empty** (or placeholder) here. The real values
+will be pushed later via the AWS console (see `SETUP.md` § 7).
+**Historical note**: this document initially mentioned a
+`put_secrets.ps1` script, removed on 2026-04-28 — decision: secrets are edited
+via the console only, to avoid CLI mishandling.
 
 ```bash
 for NAME in IB_USERID IB_PASSWORD DB_PASSWORD VNC_PASSWORD; do
@@ -87,17 +87,17 @@ aws ssm put-parameter \
   --tags Key=Project,Value=fxvol
 ```
 
-**Vérification** :
+**Verification**:
 ```bash
 aws ssm describe-parameters \
   --parameter-filters "Key=Name,Option=BeginsWith,Values=/fxvol/prod/" \
   --region eu-west-1
-# doit renvoyer 5 entrées : 4 SecureString + 1 String
+# should return 5 entries: 4 SecureString + 1 String
 ```
 
 ---
 
-## 3. Créer l'IAM user dev `fxvol-dev`
+## 3. Create the dev IAM user `fxvol-dev`
 
 ### 3.1 User + programmatic access
 
@@ -106,10 +106,10 @@ aws iam create-user --user-name fxvol-dev \
   --tags Key=Project,Value=fxvol
 ```
 
-### 3.2 Policy inline `fxvol-dev-ssm-rw`
+### 3.2 Inline policy `fxvol-dev-ssm-rw`
 
-Sauver le contenu suivant dans `fxvol-dev-policy.json` (remplacer les
-placeholders `<ACCOUNT_ID>` et `<CMK_KEY_ID>`) :
+Save the following content to `fxvol-dev-policy.json` (replace the
+`<ACCOUNT_ID>` and `<CMK_KEY_ID>` placeholders):
 
 ```json
 {
@@ -146,7 +146,7 @@ placeholders `<ACCOUNT_ID>` et `<CMK_KEY_ID>`) :
 }
 ```
 
-Attacher :
+Attach:
 ```bash
 aws iam put-user-policy \
   --user-name fxvol-dev \
@@ -154,28 +154,28 @@ aws iam put-user-policy \
   --policy-document file://fxvol-dev-policy.json
 ```
 
-### 3.3 Activer MFA (obligatoire)
+### 3.3 Enable MFA (mandatory)
 
-Depuis la console AWS : IAM → Users → fxvol-dev → Security credentials →
-Assign MFA device (Authenticator app). **Ne pas skip** — sans MFA, un leak
-des access keys = accès direct aux secrets IB.
+From the AWS console: IAM → Users → fxvol-dev → Security credentials →
+Assign MFA device (Authenticator app). **Do not skip** — without MFA, a leak
+of the access keys = direct access to the IB secrets.
 
-### 3.4 (Option recommandée) Remplacer par AWS SSO
+### 3.4 (Recommended option) Replace with AWS SSO
 
-Si tu utilises déjà AWS IAM Identity Center (ex-SSO), préférer :
-1. Créer un permission set `fxvol-dev-secrets` avec la policy ci-dessus
-2. L'attacher à ton user IdC sur le compte cible
-3. Côté Windows : `aws configure sso` + profile name `fxvol-dev`
+If you already use AWS IAM Identity Center (ex-SSO), prefer:
+1. Create a permission set `fxvol-dev-secrets` with the policy above
+2. Attach it to your IdC user on the target account
+3. On Windows: `aws configure sso` + profile name `fxvol-dev`
 
-→ pas d'access keys statiques, sessions temporaires, rotation auto.
+→ no static access keys, temporary sessions, automatic rotation.
 
 ---
 
-## 4. Créer l'IAM role EC2 `fxvol-ec2-secrets-role`
+## 4. Create the EC2 IAM role `fxvol-ec2-secrets-role`
 
 ### 4.1 Trust policy
 
-Sauver dans `fxvol-ec2-trust-policy.json` :
+Save to `fxvol-ec2-trust-policy.json`:
 
 ```json
 {
@@ -196,7 +196,7 @@ aws iam create-role \
   --assume-role-policy-document file://fxvol-ec2-trust-policy.json \
   --tags Key=Project,Value=fxvol
 
-# Policy en lecture seule (pas de PutParameter depuis EC2)
+# Read-only policy (no PutParameter from EC2)
 cat > fxvol-ec2-policy.json <<EOF
 {
   "Version": "2012-10-17",
@@ -236,15 +236,15 @@ aws iam add-role-to-instance-profile \
   --role-name fxvol-ec2-secrets-role
 ```
 
-### 4.4 Attacher à l'EC2 — **différé à R8** (2026-05-12)
+### 4.4 Attach to the EC2 — **deferred to R8** (2026-05-12)
 
-Aucune EC2 n'est déployée pendant R9. Le role et l'instance profile
-restent dormants jusqu'à la release R8 ("Deploy prod EC2"). À ce moment,
-exécuter ci-dessous avec un profil admin (pas `fxvol-dev`, qui n'a pas
-`ec2:AssociateIamInstanceProfile`) :
+No EC2 is deployed during R9. The role and the instance profile
+remain dormant until the R8 release ("Deploy prod EC2"). At that point,
+run the following with an admin profile (not `fxvol-dev`, which lacks
+`ec2:AssociateIamInstanceProfile`):
 
 ```bash
-# Récupérer l'instance id (ou depuis la console)
+# Retrieve the instance id (or from the console)
 aws ec2 describe-instances \
   --filters "Name=tag:Project,Values=fxvol" \
   --query "Reservations[].Instances[].InstanceId" \
@@ -259,23 +259,23 @@ aws ec2 associate-iam-instance-profile \
   --profile admin
 ```
 
-**Vérification depuis l'EC2** (SSH dedans, post-attach) :
+**Verification from the EC2** (SSH into it, post-attach):
 ```bash
 aws sts get-caller-identity
-# doit renvoyer un ARN du type :
+# should return an ARN of the form:
 # arn:aws:sts::552269855056:assumed-role/fxvol-ec2-secrets-role/i-xxxxx
-# SI tu vois un IAM user arn:aws:iam::.../user/..., l'instance profile n'est pas attaché
+# IF you see an IAM user arn:aws:iam::.../user/..., the instance profile is not attached
 ```
 
 ---
 
-## 5. Setup AWS SSO côté Windows (dev local)
+## 5. AWS SSO setup on Windows (local dev)
 
-Dans PowerShell :
+In PowerShell:
 
 ```powershell
 aws configure sso
-# SSO start URL       : https://<ton-orga>.awsapps.com/start
+# SSO start URL       : https://<your-org>.awsapps.com/start
 # SSO Region          : eu-west-1
 # Account             : <ACCOUNT_ID>
 # Role                : fxvol-dev-secrets
@@ -284,106 +284,106 @@ aws configure sso
 # CLI profile name    : fxvol-dev
 ```
 
-Test :
+Test:
 ```powershell
 aws sso login --profile fxvol-dev
 aws sts get-caller-identity --profile fxvol-dev
-# doit renvoyer l'ARN du permission set assumé
+# should return the ARN of the assumed permission set
 aws ssm get-parameter --name /fxvol/prod/TRADING_MODE --profile fxvol-dev --region eu-west-1
-# doit renvoyer {"Parameter": {..., "Value": "paper"}}
+# should return {"Parameter": {..., "Value": "paper"}}
 ```
 
-Si SSO non dispo sur ton compte → utiliser les access keys du user `fxvol-dev` :
+If SSO is not available on your account → use the `fxvol-dev` user's access keys:
 ```powershell
 aws configure --profile fxvol-dev
-# AWS Access Key ID     : <keys créés à l'étape 3.1>
+# AWS Access Key ID     : <keys created in step 3.1>
 # AWS Secret Access Key : ...
 # Default region        : eu-west-1
 # Default output format : json
 ```
 
-⚠️ Stocker les access keys **dans Windows Credential Manager** ou un gestionnaire
-de mots de passe, pas dans `~/.aws/credentials` en clair si possible (même si
-le fichier est `0600`).
+⚠️ Store the access keys **in Windows Credential Manager** or a password
+manager, not in `~/.aws/credentials` in plaintext if possible (even if
+the file is `0600`).
 
 ---
 
-## 6. Ressources existantes (compte 552269855056, eu-west-1)
+## 6. Existing resources (account 552269855056, eu-west-1)
 
-État au 2026-04-23.
+State as of 2026-04-23.
 
-| Ressource | Identifiant / ARN |
+| Resource | Identifier / ARN |
 |---|---|
-| CMK KMS | `alias/fxvol-secrets` — KeyId `bbc7ef4a-0b3e-4019-a7db-4502c4662f30`, rotation annuelle ON |
+| KMS CMK | `alias/fxvol-secrets` — KeyId `bbc7ef4a-0b3e-4019-a7db-4502c4662f30`, annual rotation ON |
 | SSM params `/fxvol/prod/*` | `IB_USERID`, `IB_PASSWORD`, `DB_PASSWORD`, `VNC_PASSWORD` (SecureString), `TRADING_MODE` (String=`paper`) |
-| IAM user dev | `fxvol-dev` + inline policy `fxvol-dev-ssm-rw` (SSM rw + KMS Decrypt/GenerateDataKey) |
-| IAM role EC2 | `fxvol-ec2-secrets-role` — `arn:aws:iam::552269855056:role/fxvol-ec2-secrets-role` (RoleId `AROAYBFOZHFIM6KA3IZAY`) |
+| Dev IAM user | `fxvol-dev` + inline policy `fxvol-dev-ssm-rw` (SSM rw + KMS Decrypt/GenerateDataKey) |
+| EC2 IAM role | `fxvol-ec2-secrets-role` — `arn:aws:iam::552269855056:role/fxvol-ec2-secrets-role` (RoleId `AROAYBFOZHFIM6KA3IZAY`) |
 | Role policy | Inline `fxvol-ec2-ssm-read` (SSM Get* + KMS Decrypt, **read-only**) |
 | Instance profile | `fxvol-ec2-instance-profile` — `arn:aws:iam::552269855056:instance-profile/fxvol-ec2-instance-profile` (Id `AIPAYBFOZHFIB46B5H7H5`) |
 
-Vérifications `aws iam simulate-principal-policy` exécutées le 2026-04-23 :
+`aws iam simulate-principal-policy` checks run on 2026-04-23:
 
-- `ssm:GetParameter` sur `/fxvol/prod/IB_USERID` → **allowed** ✓
-- `kms:Decrypt` sur la CMK `fxvol-secrets` → **allowed** ✓
-- `ssm:PutParameter` sur `/fxvol/prod/IB_USERID` → **implicitDeny** ✓ (read-only confirmé)
-- `ssm:GetParameter` sur `/other/something` → **implicitDeny** ✓ (wildcard scopé correctement)
-
----
-
-## 7. Checklist bootstrap
-
-- [x] CMK `alias/fxvol-secrets` créée, rotation activée
-- [x] 5 paramètres SSM `/fxvol/prod/*` existent (vraies valeurs poussées via console AWS)
-- [x] IAM user `fxvol-dev` créé avec policy `fxvol-dev-ssm-rw`
-- [ ] MFA activée sur `fxvol-dev` (décision en attente)
-- [x] IAM role `fxvol-ec2-secrets-role` + instance profile créés (simulate-principal-policy OK)
-- [ ] Instance profile attaché à l'EC2 fxvol — **différé à R8** (pas d'EC2 déployée)
-- [x] `aws sts get-caller-identity --profile fxvol-dev` renvoie l'ARN du user (access keys, SSO non utilisé)
-- [ ] `aws sts get-caller-identity` depuis EC2 renvoie l'ARN du role — **différé à R8**
-- [x] `aws ssm get-parameter --name /fxvol/prod/TRADING_MODE --profile fxvol-dev` renvoie `paper`
-
-**Cases cochables en R9** : toutes sauf les 3 différées (MFA, EC2 attach, EC2 sts).
-Étape 4 **clôturée** du point de vue capitalisation code. Le jour du déploiement
-R8 (~2026-05-12), exécuter § 4.4 ci-dessus et cocher les 2 dernières cases.
+- `ssm:GetParameter` on `/fxvol/prod/IB_USERID` → **allowed** ✓
+- `kms:Decrypt` on the `fxvol-secrets` CMK → **allowed** ✓
+- `ssm:PutParameter` on `/fxvol/prod/IB_USERID` → **implicitDeny** ✓ (read-only confirmed)
+- `ssm:GetParameter` on `/other/something` → **implicitDeny** ✓ (wildcard properly scoped)
 
 ---
 
-## 7. Coût estimé (récap)
+## 7. Bootstrap checklist
 
-| Service | Usage mensuel | Coût |
+- [x] CMK `alias/fxvol-secrets` created, rotation enabled
+- [x] 5 SSM parameters `/fxvol/prod/*` exist (real values pushed via AWS console)
+- [x] IAM user `fxvol-dev` created with policy `fxvol-dev-ssm-rw`
+- [ ] MFA enabled on `fxvol-dev` (decision pending)
+- [x] IAM role `fxvol-ec2-secrets-role` + instance profile created (simulate-principal-policy OK)
+- [ ] Instance profile attached to the fxvol EC2 — **deferred to R8** (no EC2 deployed)
+- [x] `aws sts get-caller-identity --profile fxvol-dev` returns the user's ARN (access keys, SSO not used)
+- [ ] `aws sts get-caller-identity` from EC2 returns the role's ARN — **deferred to R8**
+- [x] `aws ssm get-parameter --name /fxvol/prod/TRADING_MODE --profile fxvol-dev` returns `paper`
+
+**Boxes checkable in R9**: all except the 3 deferred ones (MFA, EC2 attach, EC2 sts).
+Step 4 **closed** from the code-capitalization standpoint. On R8 deployment day
+(~2026-05-12), run § 4.4 above and check the last 2 boxes.
+
+---
+
+## 7. Estimated cost (recap)
+
+| Service | Monthly usage | Cost |
 |---|---|---|
-| SSM Parameter Store standard tier | 5 params, ~100 reads/jour | gratuit (< 10k) |
-| KMS CMK dédiée | 1 clé + ~3000 decrypt/mois | ~$1.03 |
-| IAM user/role/policies | illimité | gratuit |
-| CloudTrail management events | 90 jours rétention | gratuit |
-| **Total** | | **~$1/mois** |
+| SSM Parameter Store standard tier | 5 params, ~100 reads/day | free (< 10k) |
+| Dedicated KMS CMK | 1 key + ~3000 decrypt/month | ~$1.03 |
+| IAM user/role/policies | unlimited | free |
+| CloudTrail management events | 90 days retention | free |
+| **Total** | | **~$1/month** |
 
 ---
 
-## 8. Rollback (si on veut tout annuler)
+## 8. Rollback (if we want to undo everything)
 
 ```bash
-# Supprimer les paramètres
+# Delete the parameters
 for NAME in IB_USERID IB_PASSWORD DB_PASSWORD VNC_PASSWORD TRADING_MODE; do
   aws ssm delete-parameter --name "/fxvol/prod/$NAME" --region eu-west-1
 done
 
-# Détacher l'instance profile de l'EC2
+# Detach the instance profile from the EC2
 aws ec2 disassociate-iam-instance-profile --association-id <assoc-id>
 aws iam remove-role-from-instance-profile \
   --instance-profile-name fxvol-ec2-instance-profile \
   --role-name fxvol-ec2-secrets-role
 aws iam delete-instance-profile --instance-profile-name fxvol-ec2-instance-profile
 
-# Supprimer role + policies
+# Delete role + policies
 aws iam delete-role-policy --role-name fxvol-ec2-secrets-role --policy-name fxvol-ec2-ssm-read
 aws iam delete-role --role-name fxvol-ec2-secrets-role
 
-# Supprimer user + policy
+# Delete user + policy
 aws iam delete-user-policy --user-name fxvol-dev --policy-name fxvol-dev-ssm-rw
 aws iam delete-user --user-name fxvol-dev
 
-# Programmer suppression CMK (délai min 7 jours, ne peut être immédiat)
+# Schedule CMK deletion (min 7-day window, cannot be immediate)
 aws kms delete-alias --alias-name alias/fxvol-secrets --region eu-west-1
 aws kms schedule-key-deletion --key-id <CMK_KEY_ID> --pending-window-in-days 7 --region eu-west-1
 ```

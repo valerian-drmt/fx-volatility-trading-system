@@ -1,18 +1,19 @@
 /**
- * Redis Inspector — affiche la whitelist des clés Redis avec TTL + age,
- * click sur une row → JSON brut de la valeur. Pas de polling auto, refresh
- * manuel. Backend : GET /api/v1/dev/redis/keys + /api/v1/dev/redis/value.
+ * Redis Inspector — shows the whitelist of Redis keys with TTL + age;
+ * clicking a row → raw JSON of the value. No auto polling, manual
+ * refresh. Backend: GET /api/v1/dev/redis/keys + /api/v1/dev/redis/value.
  *
- * Exporte 3 surfaces :
- *   - useRedisInspector()  : hook avec state partagé (keys, selected, value)
- *   - RedisKeysPanel       : juste la table (utilise le hook ou une instance)
- *   - RedisValuePanel      : juste la valeur sélectionnée
- *   - RedisInspector       : wrapper "tout-en-un" (table dessus, valeur dessous)
+ * Exports 3 surfaces:
+ *   - useRedisInspector()  : hook with shared state (keys, selected, value)
+ *   - RedisKeysPanel       : just the table (uses the hook or an instance)
+ *   - RedisValuePanel      : just the selected value
+ *   - RedisInspector       : all-in-one wrapper (table on top, value below)
  *
- * Les 2 panels peuvent être placés dans des grid cells distinctes (cf.
- * StackCombined.tsx) en partageant la même instance de hook au parent.
+ * The 2 panels can be placed in separate grid cells (cf. StackCombined.tsx)
+ * by sharing the same hook instance at the parent level.
  */
 import { useEffect, useState } from "react";
+import { apiFetch } from "../../api/client";
 
 interface KeyInfo {
   key: string;
@@ -50,7 +51,7 @@ export function useRedisInspector(): RedisInspectorState {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/v1/dev/redis/keys");
+      const r = await apiFetch("/api/v1/dev/redis/keys");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();
       setKeys(j.keys);
@@ -66,7 +67,7 @@ export function useRedisInspector(): RedisInspectorState {
     setValue(null);
     setError(null);
     try {
-      const r = await fetch(`/api/v1/dev/redis/value?key=${encodeURIComponent(key)}`);
+      const r = await apiFetch(`/api/v1/dev/redis/value?key=${encodeURIComponent(key)}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setValue(await r.json());
     } catch (e) {
@@ -74,7 +75,7 @@ export function useRedisInspector(): RedisInspectorState {
     }
   };
 
-  // Auto-refresh 3s : re-fetch keys + re-fetch value (si une est sélectionnée).
+  // Auto-refresh 3s: re-fetch keys + re-fetch value (if one is selected).
   useEffect(() => {
     void fetchKeys();
     const id = window.setInterval(() => {
@@ -146,7 +147,7 @@ export function RedisValuePanel({ state }: { state: RedisInspectorState }): JSX.
       </header>
       <div className="panel-body" style={{ padding: 12, overflow: "auto", flex: 1 }}>
         {error && <div style={{ color: "#e66", marginBottom: 8 }}>{error}</div>}
-        {value === null && !error && <div style={{ color: "#888" }}>Click une row pour voir la valeur.</div>}
+        {value === null && !error && <div style={{ color: "#888" }}>Click a row to see its value.</div>}
         {value && (
           <pre style={preStyle}>{value.is_json ? JSON.stringify(value.value, null, 2) : value.raw}</pre>
         )}

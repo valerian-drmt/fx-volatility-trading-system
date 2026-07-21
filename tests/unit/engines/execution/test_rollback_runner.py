@@ -243,6 +243,107 @@ async def test_run_rollback_noop_when_all_filled_or_cancelled(monkeypatch):
         await engine.dispose()
 
 
+async def test_run_rollback_twice_is_idempotent(monkeypatch):
+    # EXEC-3 : a second rollback call must place ZERO unwind orders — the
+    # prior unwind rows cover the fills, so the residual plan is empty.
+    _install_ibinsync_stub(monkeypatch)
+    from sqlalchemy import select
+
+    from engines.execution.rollback_runner import run_rollback
+    from persistence.models import StructureOrder, TradeEvent, TradeStructure
+
+    maker, engine = await _make_session()
+    try:
+        struct_id, _ = await _seed_structure_with_orders(
+            maker,
+            configs=[
+                {"side": "BUY", "qty": 5, "state": "partially_filled",
+                 "qty_filled": 3, "ib_order_id": "1002"},
+            ],
+        )
+        ib = _FakeIB()
+        ib._open = [SimpleNamespace(order=SimpleNamespace(orderId=1002))]
+        executor = _FakeExecutor(ib)
+
+        first = await run_rollback(
+            sessionmaker_factory=maker, executor=executor,
+            structure_id=struct_id,
+        )
+        assert len(first["unwound"]) == 1 and first["unwound"][0]["qty"] == 3
+        assert len(ib.placed) == 1
+
+        async with maker() as db:
+            struct = await db.get(TradeStructure, struct_id)
+            stamp_after_first = struct.rollback_started_at
+        assert stamp_after_first is not None
+
+        second = await run_rollback(
+            sessionmaker_factory=maker, executor=executor,
+            structure_id=struct_id,
+        )
+        # Second run places NOTHING — residual is fully covered.
+        assert second["unwound"] == []
+        assert len(ib.placed) == 1
+
+        async with maker() as db:
+            struct = await db.get(TradeStructure, struct_id)
+            unwind_rows = (await db.execute(
+                select(StructureOrder)
+                .where(StructureOrder.structure_id == struct_id)
+                .where(StructureOrder.order_role == "unwind")
+            )).scalars().all()
+            events = (await db.execute(
+                select(TradeEvent).where(TradeEvent.structure_id == struct_id)
+            )).scalars().all()
+        # Stamp set once, unchanged by the re-entry ; exactly one unwind row.
+        assert struct.rollback_started_at == stamp_after_first
+        assert len(unwind_rows) == 1
+        assert "rollback_reentry" in {e.event_type for e in events}
+    finally:
+        await engine.dispose()
+
+
+async def test_run_rollback_passed_plan_is_ignored(monkeypatch):
+    # A stale caller-passed plan must not double-unwind : the runner always
+    # recomputes from DB truth (entry legs + prior unwind rows).
+    _install_ibinsync_stub(monkeypatch)
+    from core.execution.rollback import RollbackPlan, UnwindAction
+    from engines.execution.rollback_runner import run_rollback
+
+    maker, engine = await _make_session()
+    try:
+        struct_id, _ = await _seed_structure_with_orders(
+            maker,
+            configs=[
+                {"side": "BUY", "qty": 5, "state": "partially_filled",
+                 "qty_filled": 3, "ib_order_id": "1002"},
+            ],
+        )
+        ib = _FakeIB()
+        ib._open = [SimpleNamespace(order=SimpleNamespace(orderId=1002))]
+        executor = _FakeExecutor(ib)
+
+        await run_rollback(
+            sessionmaker_factory=maker, executor=executor,
+            structure_id=struct_id,
+        )
+        assert len(ib.placed) == 1
+
+        # Replaying the ORIGINAL (now stale) plan must not re-place.
+        stale_plan = RollbackPlan(
+            cancels=[],
+            unwinds=[UnwindAction(leg_idx=0, side="SELL", qty=3)],
+        )
+        second = await run_rollback(
+            sessionmaker_factory=maker, executor=executor,
+            structure_id=struct_id, plan=stale_plan,
+        )
+        assert second["unwound"] == []
+        assert len(ib.placed) == 1
+    finally:
+        await engine.dispose()
+
+
 async def test_run_rollback_raises_when_disconnected():
     from engines.execution.rollback_runner import run_rollback
 

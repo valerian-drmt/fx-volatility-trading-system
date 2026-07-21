@@ -182,8 +182,8 @@ async def history(
             "term_slope_pct": _f(r.term_slope_pct), "event_dampener": r.event_dampener,
             "days_to_next_event": _f(r.days_to_next_event),
             "next_event_type": r.next_event_type,
-            # GMM shadow probas (NULL tant que GMM n'a pas fitté ce cycle).
-            # Step 2 va consommer cet historique pour calibrer le sizing.
+            # GMM shadow probas (NULL as long as GMM has not fitted this cycle).
+            # Step 2 will consume this history to calibrate the sizing.
             "p_calm": _f(r.p_calm),
             "p_stressed": _f(r.p_stressed),
             "p_pre_event": _f(r.p_pre_event),
@@ -218,14 +218,14 @@ async def transitions(
     symbol: str = Query("EURUSD", min_length=3, max_length=20),
     days: int = Query(7, ge=1, le=90),
 ) -> dict[str, Any]:
-    """Compte les transitions de label sur les N derniers jours.
+    """Count label transitions over the last N days.
 
-    But : détecter si le seuil heuristique (vov > 0.4 → pre_event) est trop
-    proche du bruit de mesure. Si > 5 transitions calm↔pre_event par jour,
-    c'est un signal pour ajouter de l'hystérésis ou un seuil dynamique
+    Goal: detect whether the heuristic threshold (vov > 0.4 → pre_event) is
+    too close to the measurement noise. If > 5 calm↔pre_event transitions
+    per day, that is a signal to add hysteresis or a dynamic threshold
     (cf. TODO.md / STEP1 §14).
 
-    Returns :
+    Returns:
       - by_day : dict {YYYY-MM-DD: {transition_type: count}}
       - total : sum across all days/transitions
       - calm_pre_event_per_day : average flips calm↔pre_event per day
@@ -266,8 +266,8 @@ async def transitions(
         "calm_pre_event_per_day": round(avg_per_day, 2),
         "threshold_warning": avg_per_day > 5,
         "hint": (
-            "Seuil vov>0.4 trop proche du bruit — envisager hystérésis "
-            "(entrer 0.4, sortir 0.35) ou seuil dynamique μ + 1.5σ"
+            "vov>0.4 threshold too close to the noise — consider hysteresis "
+            "(enter 0.4, exit 0.35) or a dynamic threshold μ + 1.5σ"
             if avg_per_day > 5 else "OK"
         ),
     }

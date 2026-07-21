@@ -1,6 +1,6 @@
-"""Intra-cycle dedup : 2 sources qui renvoient le même CPI → 1 seul gardé.
+"""Intra-cycle dedup: 2 sources returning the same CPI → only 1 kept.
 
-Inter-cycle dedup = contrainte UNIQUE en DB (cf. migration 012).
+Inter-cycle dedup = UNIQUE constraint in the DB (cf. migration 012).
 """
 from __future__ import annotations
 

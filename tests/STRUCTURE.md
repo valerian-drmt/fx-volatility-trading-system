@@ -1,42 +1,38 @@
-# `tests/` — structure et conventions
+# `tests/` — structure and conventions
 
-> Doc de référence pour savoir **où mettre un test** et **comment exécuter**.
+> Reference doc for knowing **where to put a test** and **how to run it**.
 
 ---
 
-## Pyramide à 2 niveaux + smoke externalisé
+## 2-level pyramid + externalized smoke
 
 ```
 tests/
-├── fixtures/               # builders réutilisables (factories de positions, vol surfaces, etc.)
+├── fixtures/               # reusable builders (factories for positions, vol surfaces, etc.)
 │
-├── unit/                   # in-process, no I/O, < 100ms par test
+├── unit/                   # in-process, no I/O, < 100ms per test
 │   └── <mirror src/>
 │
-├── integration/            # I/O réel (DB/Redis/HTTP), secondes par test
-│   └── pipeline_<sub-system>/
-│
-└── old/                    # tests historiques en attente de triage (pré-R9)
-                            # NON collectés par pytest depuis Step 17 :
-                            # testpaths = ["tests/unit","tests/integration"]
+└── integration/            # real I/O (DB/Redis/HTTP), seconds per test
+    └── pipeline_<sub-system>/
 ```
 
-Le **3e étage de la pyramide (smoke / e2e)** vit hors de `tests/` : validation
-manuelle de la stack complète + Playwright côté frontend (`frontend/e2e/`).
+The **3rd level of the pyramid (smoke / e2e)** lives outside `tests/`: manual
+validation of the full stack + Playwright on the frontend side (`frontend/e2e/`).
 
-Cette répartition reflète la nature des tests :
+This split reflects the nature of the tests:
 
-| Niveau | Question répondue | Outil | Vitesse | Indépendance |
+| Level | Question answered | Tool | Speed | Independence |
 |---|---|---|---|---|
-| unit | "ce module fait-il son boulot ?" | pytest | < 100ms | mocks, pas d'I/O |
-| integration | "ces N modules ensemble produisent-ils le bon output ?" | pytest + containers | secondes | DB/Redis/IB réels (ou stubs pour IB) |
-| smoke | "le user voit-il ce qu'il doit voir ?" | manuel + Playwright | min | stack complète |
+| unit | "does this module do its job?" | pytest | < 100ms | mocks, no I/O |
+| integration | "do these N modules together produce the right output?" | pytest + containers | seconds | real DB/Redis/IB (or stubs for IB) |
+| smoke | "does the user see what they should see?" | manual + Playwright | min | full stack |
 
 ---
 
-## `tests/unit/` — mirror de `src/`
+## `tests/unit/` — mirror of `src/`
 
-**Règle** : `tests/unit/<X>/test_<Y>.py` teste `src/<X>/<Y>.py`. Path = transformation directe.
+**Rule**: `tests/unit/<X>/test_<Y>.py` tests `src/<X>/<Y>.py`. Path = direct transformation.
 
 ```
 src/                            tests/unit/
@@ -56,56 +52,56 @@ src/                            tests/unit/
 └── shared/               →     └── shared/
 ```
 
-**Pas de folders `tests/unit/postgres/`, `tests/unit/redis/`, `tests/unit/ib-gateway/`** parce que ces containers utilisent des images off-the-shelf (postgres:16, redis:7, gnzsnz/ib-gateway) sans code Python custom à unit-tester. Leur validation passe par le smoke manuel de la stack complète.
+**No `tests/unit/postgres/`, `tests/unit/redis/`, `tests/unit/ib-gateway/` folders** because those containers use off-the-shelf images (postgres:16, redis:7, gnzsnz/ib-gateway) with no custom Python code to unit-test. Their validation goes through the manual smoke of the full stack.
 
-**Pas de folder `tests/unit/nginx/`** non plus — la conf nginx est testée via `tests/integration/docker_compose/` (syntaxe + reload).
+**No `tests/unit/nginx/` folder** either — the nginx config is tested via `tests/integration/docker_compose/` (syntax + reload).
 
-**Pas de folder `tests/unit/frontend/`** — le frontend a son propre framework (Vitest + Playwright) dans `frontend/tests/` ou `frontend/__tests__/` selon la convention adoptée plus tard.
+**No `tests/unit/frontend/` folder** — the frontend has its own framework (Vitest + Playwright) in `frontend/tests/` or `frontend/__tests__/` depending on the convention adopted later.
 
-### Critères pour qu'un test soit "unit"
+### Criteria for a test to qualify as "unit"
 
-Tous obligatoires :
+All mandatory:
 
-- ✅ Pas d'I/O réseau (pas de `redis.from_url`, pas de `httpx.get`, pas de socket)
-- ✅ Pas d'I/O disque hors tmp (pas d'écriture SQLite réel ; `tmp_path` fixture pytest OK)
-- ✅ Pas de container Docker
-- ✅ Mocks/stubs pour les dépendances externes (`AsyncMock` pour ib_insync, `fakeredis` ou MagicMock pour Redis)
-- ✅ < 100ms par test typique (le cumul de `tests/unit/` doit rester < 30s)
+- ✅ No network I/O (no `redis.from_url`, no `httpx.get`, no socket)
+- ✅ No disk I/O outside tmp (no real SQLite writes; pytest's `tmp_path` fixture OK)
+- ✅ No Docker container
+- ✅ Mocks/stubs for external dependencies (`AsyncMock` for ib_insync, `fakeredis` or MagicMock for Redis)
+- ✅ < 100ms per typical test (the total for `tests/unit/` must stay < 30s)
 
-**Règle simple côté reviewer** : si tu vois `import redis` ou `import psycopg` ou `from ib_insync import IB` dans le test, c'est de l'integration, pas du unit. Exception : import de types pour l'annotation ne compte pas.
+**Simple reviewer rule**: if you see `import redis` or `import psycopg` or `from ib_insync import IB` in the test, it's integration, not unit. Exception: importing types for annotations does not count.
 
 ---
 
-## `tests/integration/` — par pipeline (sous-système)
+## `tests/integration/` — by pipeline (sub-system)
 
-**Règle** : on regroupe par **chemin de données end-to-end-partiel**, pas par container individuel ni par edge isolée. Chaque pipeline représente un sous-système qui doit fonctionner ensemble.
+**Rule**: group by **partial end-to-end data path**, not by individual container nor by isolated edge. Each pipeline represents a sub-system that must work together.
 
-| Folder | Pipeline testé | Containers impliqués |
+| Folder | Pipeline under test | Containers involved |
 |---|---|---|
-| `pipeline_redis_bus/` | producers + consumers Redis (`bus.publisher`, channels, cache TTL) | redis + 1-2 producer/consumer Python in-process |
-| `pipeline_db_writer/` | events Redis → db-writer → Postgres (idempotency, retry, shutdown) | postgres + redis + db-writer |
+| `pipeline_redis_bus/` | Redis producers + consumers (`bus.publisher`, channels, cache TTL) | redis + 1-2 in-process Python producers/consumers |
+| `pipeline_db_writer/` | Redis events → db-writer → Postgres (idempotency, retry, shutdown) | postgres + redis + db-writer |
 | `pipeline_vol/` | ib-stub → market-data → redis → vol-engine → postgres (SVI fit, signal generation) | ib-stub + market-data + redis + vol-engine + postgres |
-| `pipeline_risk/` | spot+surface in redis → risk-engine → greeks+pnl_curve out (full cycle) | redis + risk-engine + (postgres pour positions stub future) |
-| `pipeline_api_serving/` | REST endpoints lisant DB+Redis : `/health`, `/api/v1/risk`, `/api/v1/pnl-curve`, etc. | postgres + redis + api + (nginx optionnel) |
-| `pipeline_ws_bridge/` | engine PUBLISH → api SUBSCRIBE → broadcast WS → client receive | un engine + redis + api + nginx + client websocket |
-| `ci_workflows/` | tests sur `.github/workflows/*.yml` (existence, structure, déclencheurs) | aucun container (analyse statique YAML) |
-| `docker_compose/` | tests sur `docker-compose.yml` (syntaxe `compose config`, services attendus, healthchecks bien définis) | docker daemon mais pas de container réellement up |
+| `pipeline_risk/` | spot+surface in redis → risk-engine → greeks+pnl_curve out (full cycle) | redis + risk-engine + (postgres for future positions stub) |
+| `pipeline_api_serving/` | REST endpoints reading DB+Redis: `/health`, `/api/v1/portfolio/header`, etc. | postgres + redis + api + (optional nginx) |
+| `pipeline_ws_bridge/` | engine PUBLISH → api SUBSCRIBE → WS broadcast → client receive | one engine + redis + api + nginx + websocket client |
+| `ci_workflows/` | tests on `.github/workflows/*.yml` (existence, structure, triggers) | no container (static YAML analysis) |
+| `docker_compose/` | tests on `docker-compose.yml` (`compose config` syntax, expected services, well-defined healthchecks) | docker daemon but no container actually up |
 
-### Pourquoi pas un folder par paire de containers (edge)
+### Why not one folder per container pair (edge)
 
-Granularité trop fine : il y a 14+ edges dans le graphe. Tu te retrouves avec 14 dossiers de 1-2 fichiers chacun, et la cohésion sémantique se perd ("test_redis_market_data" vs "test_redis_vol_engine" sont presque identiques mais doublonnés).
+Too fine-grained: there are 14+ edges in the graph. You end up with 14 folders of 1-2 files each, and semantic cohesion is lost ("test_redis_market_data" vs "test_redis_vol_engine" are nearly identical but duplicated).
 
-**À l'inverse** : `pipeline_vol/` regroupe `test_market_data_writes_spot.py`, `test_vol_reads_spot_writes_surface.py`, `test_vol_signal_publishes.py` — tous lisibles dans le même dossier comme une chaîne logique.
+**Conversely**: `pipeline_vol/` groups `test_market_data_writes_spot.py`, `test_vol_reads_spot_writes_surface.py`, `test_vol_signal_publishes.py` — all readable in the same folder as one logical chain.
 
-### Pourquoi pas un folder par scenario (e2e)
+### Why not one folder per scenario (e2e)
 
-`pipeline_api_serving/` n'est pas e2e : il teste l'api isolée du frontend. L'e2e (user clique un bouton, voit un nombre changer) c'est la validation manuelle de la stack ou Playwright côté frontend.
+`pipeline_api_serving/` is not e2e: it tests the api in isolation from the frontend. E2e (user clicks a button, sees a number change) is the manual stack validation or Playwright on the frontend side.
 
 ---
 
-## `tests/fixtures/` — builders réutilisables
+## `tests/fixtures/` — reusable builders
 
-Pour éviter de dupliquer les setup data dans chaque test :
+To avoid duplicating setup data in every test:
 
 ```python
 # tests/fixtures/positions.py
@@ -118,7 +114,7 @@ def make_long_call(strike=1.17, qty=1, ...):
     )
 ```
 
-Importable dans n'importe quel test :
+Importable from any test:
 
 ```python
 from tests.fixtures.positions import make_long_call
@@ -126,23 +122,10 @@ from tests.fixtures.positions import make_long_call
 
 ---
 
-## `tests/old/` — supprimée
+## Pytest configuration
 
-Quarantine historique vidée lors du cleanup repo (2026-06-06) puis
-**supprimée en R11**. Son dernier survivant, **`test_nginx_config_syntax.py`**
-(offline parse-level validation des configs nginx, complément du `nginx -t`
-live), a été déplacé dans **`tests/unit/infrastructure/`** : il est désormais
-collecté avec la suite unit et reste référencé explicitement par le job
-`nginx-config` de `.github/workflows/ci.yml`. Le chemin des configs y est
-résolu via remontée jusqu'au `pyproject.toml`, donc insensible à un futur
-déplacement.
-
----
-
-## Configuration pytest
-
-Vit dans `pyproject.toml § [tool.pytest.ini_options]` (single source of
-truth, cf. CLAUDE.md). Markers et `testpaths` y sont déjà définis :
+Lives in `pyproject.toml § [tool.pytest.ini_options]` (single source of
+truth, cf. CLAUDE.md). Markers and `testpaths` are already defined there:
 
 ```toml
 [tool.pytest.ini_options]
@@ -154,36 +137,36 @@ markers = [
 ]
 ```
 
-CI exerce ces markers dans `.github/workflows/ci.yml` (job
-`live-integration` pour db + redis, job `integration` manuel pour IB).
+CI exercises these markers in `.github/workflows/ci.yml` (job
+`live-integration` for db + redis, manual `integration` job for IB).
 
 ---
 
-## Commandes courantes
+## Common commands
 
 ```bash
-# Tout le suite (unit + integration)
+# The whole suite (unit + integration)
 python -m pytest
 
-# Que les unit tests (rapide, dev loop)
+# Unit tests only (fast, dev loop)
 python -m pytest tests/unit
 
-# Un seul module unit
+# A single unit module
 python -m pytest tests/unit/core/ -v
 
-# Un pipeline integration spécifique
+# A specific integration pipeline
 python -m pytest tests/integration/pipeline_db_writer/ -v
 ```
 
 ---
 
-## Décision de design (FAQ)
+## Design decisions (FAQ)
 
-**Q : Pourquoi pas `tests/smoke/` en pytest ?**
-A : Les smoke tests du projet sont **interactifs** (notebooks avec OK/FAIL en sortie + troubleshooting markdown). Recoder ça en pytest serait redondant. Garde la séparation : pytest = automatique CI-friendly, notebooks = inspection manuelle.
+**Q: Why not a `tests/smoke/` in pytest?**
+A: The project's smoke tests are **interactive** (notebooks with OK/FAIL output + troubleshooting markdown). Recoding that in pytest would be redundant. Keep the separation: pytest = automatic CI-friendly, notebooks = manual inspection.
 
-**Q : Que faire si un test est unit ET integration ?**
-A : Probablement deux tests distincts. La couche unit mock les I/O ; la couche integration les exerce vraiment. Si tu peux pas séparer, classe en integration (le filet de sécurité plus large l'emporte).
+**Q: What if a test is both unit AND integration?**
+A: Probably two distinct tests. The unit layer mocks the I/O; the integration layer actually exercises it. If you can't split them, classify as integration (the wider safety net wins).
 
-**Q : `tests/unit/engines/` est obligatoire ou je peux flatter en `tests/unit/{db_writer,market_data,risk,vol}/` ?**
-A : Reflète `src/`. `src/engines/` existe pour grouper les 5 engines, donc `tests/unit/engines/` aussi. Cohérence du mapping path-to-path > économie de profondeur.
+**Q: Is `tests/unit/engines/` mandatory or can I flatten to `tests/unit/{db_writer,market_data,risk,vol}/`?**
+A: Mirror `src/`. `src/engines/` exists to group the 5 engines, so `tests/unit/engines/` does too. Path-to-path mapping consistency > saving depth.

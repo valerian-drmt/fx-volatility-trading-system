@@ -27,6 +27,7 @@
  * values are bound as SQL parameters server-side.
  */
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch, apiFetchJson } from "../../api/client";
 
 interface TableMeta {
   name: string;
@@ -90,11 +91,11 @@ export function DbExplorer(): JSX.Element {
 
   // ── Load table list ──
   useEffect(() => {
-    fetch("/api/v1/dev/tables")
-      .then((r) => r.json())
-      .then((j: { tables: TableMeta[] }) => {
-        setTables(j.tables);
-        if (j.tables[0]) setSelected(j.tables[0].name);
+    apiFetchJson<{ tables: TableMeta[] }>("/api/v1/dev/tables")
+      .then((j) => {
+        const list = j.tables ?? [];
+        setTables(list);
+        if (list[0]) setSelected(list[0].name);
       })
       .catch((e) => setError(String(e)));
   }, []);
@@ -132,7 +133,7 @@ export function DbExplorer(): JSX.Element {
 
     setLoading(true);
     setError(null);
-    fetch(`/api/v1/dev/tables/${selected}?${params.toString()}`)
+    apiFetch(`/api/v1/dev/tables/${selected}?${params.toString()}`)
       .then(async (r) => {
         if (!r.ok) {
           const txt = await r.text();

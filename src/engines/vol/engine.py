@@ -449,6 +449,7 @@ class VolEngine:
         fetch_fop_chain: Any,
         tenor_t: dict[str, float] | None = None,
         fetch_ohlc: Any = None,
+        on_ib_reconnected: Any = None,
     ) -> None:
         self.ib = ib
         self.redis = redis
@@ -461,6 +462,11 @@ class VolEngine:
         # fetch_ohlc : () -> DataFrame[open,high,low,close] (daily bars) | awaitable.
         # Drives the fair-vol pipeline (RV/HAR/GARCH). None -> fair vol skipped.
         self._fetch_ohlc = fetch_ohlc
+        # on_ib_reconnected : optional async () -> None, awaited once after
+        # every IB reconnect (NOT the initial connect). main.py uses it to
+        # re-arm delayed market data + invalidate the chains cache — both
+        # are per-session state at IB. Exceptions are logged, never fatal.
+        self._on_ib_reconnected = on_ib_reconnected
         self.tenor_t = tenor_t or DEFAULT_TENOR_T
         self._stop = asyncio.Event()
         # Cycle-progress instrumentation : reset at the start of every
@@ -518,6 +524,21 @@ class VolEngine:
             import time as _time
 
             while not self._stop.is_set():
+                # Reconnect check (nightly IB Gateway restart, mid-day drop) :
+                # pause the cycle with capped backoff until IB is back, then
+                # run the per-engine hook. In-loop on purpose — a concurrent
+                # watchdog task would race the cycle's own IB calls.
+                if not self.ib.isConnected():
+                    logger.warning("vol_engine_ib_disconnected_reconnecting")
+                    await connect_ib_with_backoff(
+                        self.ib, host=self.ib_host, port=self.ib_port,
+                        client_id=self.client_id,
+                    )
+                    if self._on_ib_reconnected is not None:
+                        try:
+                            await self._on_ib_reconnected()
+                        except Exception:
+                            logger.exception("on_ib_reconnected_hook_failed")
                 await publisher.set_heartbeat(self.redis, keys.ENGINE_VOL)
                 # Retention : prune old Signal-tab history once at startup, then
                 # ~daily (throttled by cycle count, like risk-engine).

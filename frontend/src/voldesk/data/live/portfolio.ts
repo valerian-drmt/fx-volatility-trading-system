@@ -19,9 +19,9 @@
  */
 import {
   type AccountState,
-  account as mockAccount,
   type Position,
 } from "../core";
+import { EMPTY_ACCOUNT } from "../neutral";
 import type { HistBin, TenorRisk, VarData } from "../deskData";
 import type { BookComposition, PerfStats, VarFactor, VegaTenor, WaterfallStep } from "../extended";
 
@@ -39,7 +39,8 @@ interface AccountSnap {
   open_positions_count?: number | null;
 }
 
-/** /portfolio/account → the mock `account` shape (deltas from prev_24h). */
+/** /portfolio/account → the `AccountState` shape (deltas from prev_24h);
+ * fields the snapshot doesn't carry stay neutral zeros. */
 export function adaptAccount(raw: unknown): AccountState {
   const o = (raw ?? {}) as {
     latest?: AccountSnap | null; prev_24h?: AccountSnap | null;
@@ -53,21 +54,21 @@ export function adaptAccount(raw: unknown): AccountState {
   const maintM = n(L.maint_margin_req);
   const dPct = (now: number, prev: number): number => (prev ? ((now - prev) / prev) * 100 : 0);
   return {
-    ...mockAccount,
+    ...EMPTY_ACCOUNT,
     netLiq,
     cash,
     marginInit: initM,
     marginMaint: maintM,
     excessLiq: n(L.excess_liquidity),
     cushion: n(L.cushion),
-    nPositions: L.open_positions_count ?? mockAccount.nPositions,
-    buyingPower: o.buying_power_usd != null ? n(o.buying_power_usd) : mockAccount.buyingPower,
-    availableFunds: o.available_funds_usd != null ? n(o.available_funds_usd) : mockAccount.availableFunds,
-    marginInitPct: netLiq > 0 ? r1((initM / netLiq) * 100) : mockAccount.marginInitPct,
-    marginMaintPct: netLiq > 0 ? r1((maintM / netLiq) * 100) : mockAccount.marginMaintPct,
-    dNetLiq: P ? r2(dPct(netLiq, n(P.net_liq_usd))) : mockAccount.dNetLiq,
-    dCash: P ? r2(dPct(cash, n(P.cash_usd))) : mockAccount.dCash,
-    dayPnl: P ? r2(netLiq - n(P.net_liq_usd)) : mockAccount.dayPnl,
+    nPositions: L.open_positions_count ?? 0,
+    buyingPower: o.buying_power_usd != null ? n(o.buying_power_usd) : 0,
+    availableFunds: o.available_funds_usd != null ? n(o.available_funds_usd) : 0,
+    marginInitPct: netLiq > 0 ? r1((initM / netLiq) * 100) : 0,
+    marginMaintPct: netLiq > 0 ? r1((maintM / netLiq) * 100) : 0,
+    dNetLiq: P ? r2(dPct(netLiq, n(P.net_liq_usd))) : 0,
+    dCash: P ? r2(dPct(cash, n(P.cash_usd))) : 0,
+    dayPnl: P ? r2(netLiq - n(P.net_liq_usd)) : 0,
   };
 }
 

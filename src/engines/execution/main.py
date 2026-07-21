@@ -1,13 +1,13 @@
-"""Execution engine — FastAPI service interne.
+"""Execution engine — internal FastAPI service.
 
 Owns :
-  - L'IB connection (clientId=5)
-  - La position_sync_loop (1s par défaut)
-  - Les endpoints de mutation (/internal/orders, /internal/positions/.../close)
-  - L'écriture des order_events (audit log synchrone à chaque action)
+  - The IB connection (clientId=5)
+  - The position_sync_loop (1s by default)
+  - The mutation endpoints (/internal/orders, /internal/positions/.../close)
+  - Writing order_events (synchronous audit log on every action)
 
-Pas exposé via nginx — uniquement appelé depuis le container `api` via
-http://execution-engine:8001 sur le réseau interne fxvol-internal.
+Not exposed via nginx — only called from the `api` container via
+http://execution-engine:8001 on the internal fxvol-internal network.
 """
 from __future__ import annotations
 
@@ -30,7 +30,11 @@ from engines.execution.ib_heartbeat import (
     mark_disconnected,
     stuck_order_watcher_loop,
 )
-from engines.execution.live_submit import LiveSubmitError, submit_structure_live
+from engines.execution.live_submit import (
+    LiveSubmitAlreadyClaimed,
+    LiveSubmitError,
+    submit_structure_live,
+)
 from engines.execution.order_executor import (
     OrderExecutor,
     OrderExecutorUnavailable,
@@ -46,6 +50,7 @@ from engines.execution.rollback_runner import run_rollback
 from persistence.db import get_sessionmaker
 from persistence.models import TradeEvent
 from persistence.projection import rebuild_all
+from shared.ib_connection import maintain_ib_connection
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
 from shared.tracing import init_tracing
@@ -64,6 +69,9 @@ HEARTBEAT_INTERVAL_S = float(os.getenv("HEARTBEAT_INTERVAL_S", "10.0"))
 STUCK_WATCH_INTERVAL_S = float(os.getenv("STUCK_WATCH_INTERVAL_S", "60.0"))
 STUCK_AFTER_S = float(os.getenv("STUCK_AFTER_S", "600.0"))
 RECONCILE_INTERVAL_S = float(os.getenv("RECONCILE_INTERVAL_S", "60.0"))
+# IB reconnect watchdog cadence — how often the lifespan task polls
+# ``executor.is_connected()`` and retries ``connect()`` while down.
+IB_RECONNECT_INTERVAL_S = float(os.getenv("IB_RECONNECT_INTERVAL_S", "10.0"))
 
 # Combo (BAG) execution : place combo-eligible option structures as a single IB
 # BAG so multi-leg trades fill all-or-nothing (no naked half-fill). OFF by default
@@ -161,6 +169,16 @@ async def lifespan(app: FastAPI):
         reconcile_positions_loop(sm, executor),
         name="position_reconcile_loop",
     )
+    # IB reconnect watchdog (ENG-1) : recovers from the nightly IB Gateway
+    # restart AND retries a failed startup connect — ``OrderExecutor.connect``
+    # is idempotent + failure-swallowing, so this loop is safe to run forever.
+    ib_watchdog_stop = asyncio.Event()
+    ib_watchdog_task = asyncio.create_task(
+        maintain_ib_connection(
+            executor, ib_watchdog_stop, interval_s=IB_RECONNECT_INTERVAL_S,
+        ),
+        name="ib_reconnect_watchdog",
+    )
     logger.info(
         "execution_startup ib_connected=%s sync_interval=%.1fs heartbeat=%.1fs",
         executor.is_connected(), SYNC_INTERVAL_S, HEARTBEAT_INTERVAL_S,
@@ -168,9 +186,10 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task):
+        ib_watchdog_stop.set()
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, ib_watchdog_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, ib_watchdog_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -560,6 +579,14 @@ async def submit_structure(
             _scrub(body.structure_id), _scrub(str(result)[:300]),
         )
         return result
+    except LiveSubmitAlreadyClaimed as e:
+        # Idempotent replay (EXEC-1): a previous call owns the claim. 409 —
+        # distinct from 400 so the API layer can treat it as in-progress.
+        logger.warning(
+            "live_submit_already_claimed structure_id=%s",
+            _scrub(body.structure_id),
+        )
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except LiveSubmitError as e:
         logger.error(
             "live_submit_failed structure_id=%s reason=%s",

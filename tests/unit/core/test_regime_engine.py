@@ -17,15 +17,15 @@ def test_zscore_returns_none_when_insufficient_history():
     assert compute_rolling_zscore(7.5, [7.0] * 29) is None
 
 
-# === detect_regime tests (spec §10) — alignés sur l'heuristique v1 ====
+# === detect_regime tests (spec §10) — aligned with the v1 heuristic ====
 def test_regime_label_calm_normal_features():
-    """Vol bas, vol_of_vol bas → calm."""
+    """Low vol, low vol_of_vol → calm."""
     from core.vol.vrp import detect_regime
     assert detect_regime(vol_level_pct=6.0, vol_of_vol_pct=0.10, term_slope_pct=0.20) == "calm"
 
 
 def test_regime_label_pre_event_high_vov():
-    """Vol_of_vol modérément élevé → pre_event (cf. STEP1 §10)."""
+    """Moderately high vol_of_vol → pre_event (cf. STEP1 §10)."""
     from core.vol.vrp import detect_regime
     assert detect_regime(vol_level_pct=8.0, vol_of_vol_pct=0.5, term_slope_pct=-0.5) == "pre_event"
 
@@ -60,7 +60,7 @@ def test_regime_label_calm_below_vov_threshold():
     """vol_of_vol = 0.35 (< seuil 0.4) → calm peu importe term_slope."""
     from core.vol.vrp import detect_regime
     assert detect_regime(vol_level_pct=6.0, vol_of_vol_pct=0.35, term_slope_pct=0.2) == "calm"
-    # term_slope élevé n'override pas (différent de v0)
+    # high term_slope does not override (different from v0)
     assert detect_regime(vol_level_pct=6.0, vol_of_vol_pct=0.35, term_slope_pct=2.5) == "calm"
 
 

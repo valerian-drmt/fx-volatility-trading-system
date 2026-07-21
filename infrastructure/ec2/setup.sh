@@ -106,7 +106,11 @@ echo "[setup] Let's Encrypt renewal cron (certbot renew --deploy-hook reloads Ng
 install -m 0755 /dev/stdin /etc/cron.daily/fxvol-certbot-renew <<'CRON'
 #!/bin/sh
 # Webroot renewal (Nginx serves /var/www/certbot on :80); reload the container.
-certbot renew --quiet --deploy-hook "docker compose -f /opt/fxvol/docker-compose.yml exec nginx nginx -s reload"
+# 'exec -T' is required: cron has no TTY, and without it docker compose fails
+# with "the input device is not a TTY". That failure is silent from the outside
+# — the cert renews on disk while the running container keeps serving the old
+# one until it expires.
+certbot renew --quiet --deploy-hook "docker compose -f /opt/fxvol/docker-compose.yml exec -T nginx nginx -s reload"
 CRON
 
 echo "[setup] nightly Postgres backup to S3 (instance role, SSE-S3)"

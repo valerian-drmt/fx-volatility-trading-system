@@ -1,6 +1,6 @@
 """Step 1 — regime gating compute helpers.
 
-Pure functions only : input dicts/lists, output dicts. No DB / Redis access.
+Pure functions only: input dicts/lists, output dicts. No DB / Redis access.
 The vol-engine cycle is responsible for fetching history (feature_history,
 events, vrp_table_default) and feeding them in. The API uses the same
 ``gate_decision`` to derive trade authorization from a snapshot.
@@ -34,7 +34,7 @@ def compute_rolling_zscore(value: float | None, history: list[float]) -> float |
 
     Requires ≥ MIN_OBS_ZSCORE=30 obs. With N<30, σ̂ has > 50% sampling
     variance and any |z| > 2 is trivially obtained — the orange/red
-    coloring on the panel would be statistically meaningless. Tradeoff :
+    coloring on the panel would be statistically meaningless. Tradeoff:
     zone 3 z-columns stay grey for the first ~90 minutes of vol-engine
     uptime, in exchange for non-noisy alerts after.
     """
@@ -54,15 +54,15 @@ def qualify(z: float | None, kind: str) -> str | None:
         return None
     if kind == "level":
         if z < -1.0:
-            return "bas"
+            return "low"
         if z > 1.0:
-            return "haut"
+            return "high"
         return "normal"
     if z < -1.0:
-        return "inversé"
+        return "inverted"
     if z > 1.0:
-        return "raide"
-    return "plat"
+        return "steep"
+    return "flat"
 
 
 def compute_regime_snapshot(
@@ -94,7 +94,7 @@ def compute_regime_snapshot(
     vol_level_pct = iv_3m
     term_slope_pct = (iv_6m - iv_1m) if (iv_1m is not None and iv_6m is not None) else None
 
-    # vol_of_vol = std rolling 30d de iv_3m (besoin >= 20 obs).
+    # vol_of_vol = rolling 30d std of iv_3m (needs >= 20 obs).
     vov_pct: float | None = None
     if len(iv_3m_history_pct) >= 20:
         m = sum(iv_3m_history_pct) / len(iv_3m_history_pct)
@@ -103,7 +103,7 @@ def compute_regime_snapshot(
             4,
         )
 
-    # Z-scores rolling 90j sur les 3 features.
+    # Rolling 90d z-scores on the 3 features.
     z_level = compute_rolling_zscore(
         vol_level_pct,
         [r["vol_level"] for r in feature_history_rows if r.get("vol_level") is not None],
@@ -128,10 +128,10 @@ def compute_regime_snapshot(
     # grayed-out as the spec requires until ≥ N obs spanning ≥ 1 traversed
     # event).
     #
-    # Why : with a calm-only training window, GMM components don't
+    # Why: with a calm-only training window, GMM components don't
     # correspond to real {calm, stressed, pre_event} regimes — the label
     # mapping is mathematically defined but semantically meaningless.
-    # See diag run output : 100/0/0 probas are extrapolation artefacts.
+    # See diag run output: 100/0/0 probas are extrapolation artefacts.
     # ──────────────────────────────────────────────────────────────────
     label = detect_regime(
         vol_level_pct=vol_level_pct, vol_of_vol_pct=vov_pct, term_slope_pct=term_slope_pct,
@@ -155,7 +155,7 @@ def compute_regime_snapshot(
     payload = {
         "label": label,
         "method": method,
-        # Spec-compliant : null until GMM is promoted out of shadow mode
+        # Spec-compliant: null until GMM is promoted out of shadow mode
         # (cf. STEP1 §13). The shadow values are still persisted in
         # regime_snapshots for J+30 backtest comparison.
         "probabilities": None,
@@ -217,7 +217,7 @@ def gate_decision(
 ) -> GateDecision:
     """Step 1 final gate. Cf. STEP1 §2.
 
-    ``history_labels`` = N derniers labels (most recent first), N ≥ STABILITY_CYCLES.
+    ``history_labels`` = last N labels (most recent first), N ≥ STABILITY_CYCLES.
     """
     recent = history_labels[:STABILITY_CYCLES]
     if len(recent) < STABILITY_CYCLES or any(x != label for x in recent):

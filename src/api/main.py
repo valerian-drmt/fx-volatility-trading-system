@@ -25,7 +25,6 @@ from api.routers import cockpit as cockpit_router
 from api.routers import dev as dev_router
 from api.routers import health as health_router
 from api.routers import orders as orders_router
-from api.routers import portfolio as portfolio_router
 from api.routers import portfolio_panel as portfolio_panel_router
 from api.routers import positions as positions_router
 from api.routers import pricing as pricing_router
@@ -77,10 +76,10 @@ async def lifespan(app: FastAPI):
     # in the ``execution-engine`` container (cf. routers/orders.py
     # which forwards via httpx).
 
-    # One-shot seed : si vol_config n'a que la row initiale (version=1,
-    # config={}), pousse une version 2 avec le dump complet des defaults.
-    # Permet de voir les params dans la table au lieu d'avoir un JSONB
-    # vide qui force la lecture côté code.
+    # One-shot seed: if vol_config only holds the initial row (version=1,
+    # config={}), push a version 2 with the full dump of the defaults.
+    # Makes the params visible in the table instead of an empty JSONB
+    # that forces reading the code to know them.
     try:
         from sqlalchemy import text
 
@@ -198,7 +197,6 @@ def create_app() -> FastAPI:
     app.include_router(pricing_router.router)
     app.include_router(vol_router.router)
     app.include_router(positions_router.router)
-    app.include_router(portfolio_router.router)
     app.include_router(portfolio_panel_router.router)
     app.include_router(analytics_router.router)
     app.include_router(cockpit_router.router)

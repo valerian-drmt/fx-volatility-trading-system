@@ -44,7 +44,7 @@ _BASE_PATTERNS: list[
     (("0", "0", "0"),  6,  "pure_noise_baseline",             "B_normal_vol","no_action_vol_driven",               "depend_on_other_signals"),
     (("0", "+", "0"),  7,  "hidden_volatility",               "B_normal_vol","relative_value_vol_spreads",         "dispersion_between_tenors"),
     (("0", "0", "+"),  8,  "steep_slope_normal_level",        "B_normal_vol","calendar_spread_long_short",         "convex_decay_with_event"),
-    (("0", "0", "-"),  9,  "stress_local_naissant",           "B_normal_vol","size_reduce_monitor",                "transition_to_stressed"),
+    (("0", "0", "-"),  9,  "incipient_local_stress",           "B_normal_vol","size_reduce_monitor",                "transition_to_stressed"),
     (("0", "+", "+"),  10, "cross_product_divergence",        "B_normal_vol","short_short_long_long_hedged_gamma", "terminal_cycle_repricing"),
     (("+", "0", "0"),  11, "elevated_calm",                   "C_high_vol",  "structural_hot_regime",              "new_setpoint_no_divergence"),
     (("+", "+", "0"),  12, "active_stress_normal_slope",      "C_high_vol",  "reduced_sizing",                     "resolution_phase_unstable"),

@@ -5,6 +5,7 @@
  * GET /api/v1/dev/hardware. Read-only, dev-only.
  */
 import type { Data, Layout } from "plotly.js";
+import { apiFetch } from "../../api/client";
 import { useEffect, useRef, useState } from "react";
 
 import { PlotlyChart } from "../../components/charts/PlotlyChart";
@@ -90,8 +91,8 @@ export function Hardware(): JSX.Element {
   const load = async (mins: number): Promise<void> => {
     try {
       const [h, c] = await Promise.all([
-        fetch("/api/v1/dev/hardware").then((r) => (r.ok ? r.json() : null)),
-        fetch(`/api/v1/dev/containers/metrics?minutes=${mins}`).then((r) => (r.ok ? r.json() : null)),
+        apiFetch("/api/v1/dev/hardware").then((r) => (r.ok ? r.json() : null)),
+        apiFetch(`/api/v1/dev/containers/metrics?minutes=${mins}`).then((r) => (r.ok ? r.json() : null)),
       ]);
       setHw(h as Hw | null);
       setCm(c as ContainerMetrics | null);

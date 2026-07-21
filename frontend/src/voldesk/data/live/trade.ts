@@ -19,15 +19,14 @@
  */
 import {
   type AccountState,
-  account as mockAccount,
   type Cash,
   type Greeks,
-  greeks as mockGreeks,
   type Limits,
-  limits as mockLimits,
+  limits as defaultLimits,
   type MacroEvent,
   type Position,
 } from "../core";
+import { EMPTY_ACCOUNT, EMPTY_GREEKS } from "../neutral";
 
 interface BackendPosition {
   id?: number;
@@ -104,11 +103,12 @@ export function adaptPositions(raw: unknown, now: number): Position[] {
   });
 }
 
-/** Net book greeks = Σ per-leg live greeks; non-net fields kept from the mock. */
+/** Net book greeks = Σ per-leg live greeks; non-net fields (per-unit greeks,
+ * VaR, 24h deltas) have no live source here → neutral zeros, never fabricated. */
 export function deriveNetGreeks(positions: Position[]): Greeks {
   const sum = (f: (p: Position) => number): number => positions.reduce((s, p) => s + f(p), 0);
   return {
-    ...mockGreeks,
+    ...EMPTY_GREEKS,
     netDelta: sum((p) => p.delta),
     netGamma: sum((p) => p.gamma),
     netVega: sum((p) => p.vega),
@@ -125,17 +125,18 @@ interface TradeBook {
   margin_used_usd?: number | null;
 }
 
-/** Margin / excess-liquidity from /trade/book; other account fields kept mock. */
+/** Margin / excess-liquidity from /trade/book; fields the endpoint doesn't
+ * carry stay neutral zeros (the views render "—" for absent headline money). */
 export function adaptAccount(raw: unknown): AccountState {
   const b = (raw ?? {}) as TradeBook;
   const cap = n(b.capital_total_usd);
   const used = n(b.margin_used_usd);
   return {
-    ...mockAccount,
-    netLiq: cap || mockAccount.netLiq,
-    marginInit: used || mockAccount.marginInit,
-    marginInitPct: cap > 0 ? (used / cap) * 100 : mockAccount.marginInitPct,
-    excessLiq: cap > 0 ? cap - used : mockAccount.excessLiq,
+    ...EMPTY_ACCOUNT,
+    netLiq: cap,
+    marginInit: used,
+    marginInitPct: cap > 0 ? (used / cap) * 100 : 0,
+    excessLiq: cap > 0 ? cap - used : 0,
   };
 }
 
@@ -144,7 +145,8 @@ interface BackendLimit {
   unit?: string | null;
 }
 
-/** /trade/limits keyed dict → the mock limits struct (cap+unit per greek). */
+/** /trade/limits keyed dict → the limits struct (cap+unit per greek); keys the
+ * backend doesn't configure fall back to the static default caps. */
 export function adaptLimits(raw: unknown): Limits {
   const d = (raw ?? {}) as Record<string, BackendLimit>;
   const cap = (key: string, fallback: { cap: number; unit: string }) => {
@@ -156,12 +158,12 @@ export function adaptLimits(raw: unknown): Limits {
     return l && typeof l.value === "number" ? l.value : fallback;
   };
   return {
-    gamma: cap("gamma", mockLimits.gamma),
-    vega: cap("vega", mockLimits.vega),
-    vanna: cap("vanna", mockLimits.vanna),
-    var99: cap("var99", mockLimits.var99),
-    deltaBandUsd: scalar("deltaBandUsd", mockLimits.deltaBandUsd),
-    skewVarPct: scalar("skewVarPct", mockLimits.skewVarPct),
+    gamma: cap("gamma", defaultLimits.gamma),
+    vega: cap("vega", defaultLimits.vega),
+    vanna: cap("vanna", defaultLimits.vanna),
+    var99: cap("var99", defaultLimits.var99),
+    deltaBandUsd: scalar("deltaBandUsd", defaultLimits.deltaBandUsd),
+    skewVarPct: scalar("skewVarPct", defaultLimits.skewVarPct),
     // Live vega budget — the desk's configured max book vega (no mock fallback).
     vegaCapUsd: scalar("max_book_vega_usd", 0),
   };

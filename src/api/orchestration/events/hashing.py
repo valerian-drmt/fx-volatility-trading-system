@@ -1,8 +1,8 @@
 """SHA-256 truncated to 16 hex chars — identity = (event_type, region, minute).
 
-Pourquoi tronquer à la minute (cf. spec §3) : 2 sources peuvent renvoyer
-14:30:00 vs 14:30:15 pour le même release, la seconde n'a pas de valeur
-sémantique (BC publient à la minute près). Truncation = no false duplicates.
+Why truncate to the minute (cf. spec §3): 2 sources can return
+14:30:00 vs 14:30:15 for the same release; the seconds carry no semantic
+value (central banks publish to the minute). Truncation = no false duplicates.
 """
 from __future__ import annotations
 

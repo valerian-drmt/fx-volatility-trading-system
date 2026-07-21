@@ -85,7 +85,7 @@ async def state(
         # Active model exists but the vol-engine hasn't projected any cycle
         # yet (typical right after a refit, or with markets closed). Stay in
         # "stable" so the UI shows the active model + 3 empty PC cards rather
-        # than the misleading "Pas de modèle PCA actif" bootstrap layout.
+        # than the misleading "no active PCA model" bootstrap layout.
         var = list(model.variance_explained_ratio or [])
         return {
             "state": "stable", "model_version": model.version,

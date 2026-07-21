@@ -1,11 +1,11 @@
-"""Wrapper async autour de ib_insync pour place/cancel/close depuis l'api.
+"""Async wrapper around ib_insync for place/cancel/close from the api.
 
-Connexion IB partagée par le lifespan FastAPI (un seul `IB` instance,
-clientId=4). Toutes les méthodes sont safe à appeler concurremment dans
-l'event loop FastAPI (ib_insync utilise asyncio en interne).
+IB connection shared by the FastAPI lifespan (a single `IB` instance,
+clientId=4). All methods are safe to call concurrently inside the
+FastAPI event loop (ib_insync uses asyncio internally).
 
-Ce service est utilisé par `api.routers.orders`. Si la connexion IB est
-DOWN (Gateway pas joignable, TrustedIPs KO), les endpoints renvoient 503.
+Used by `api.routers.orders`. If the IB connection is DOWN (Gateway
+unreachable, TrustedIPs broken), the endpoints return 503.
 """
 from __future__ import annotations
 
@@ -58,22 +58,22 @@ async def _marketable_close_price(ib: Any, contract: Any, side: str) -> float | 
 
 @dataclass
 class OrderRequest:
-    """Payload normalisé pour place/close. Construit depuis le body API."""
-    symbol: str               # e.g. "EUR" pour FUT/CASH, "EUU" pour FOP EUR options
+    """Normalized payload for place/close. Built from the API body."""
+    symbol: str               # e.g. "EUR" for FUT/CASH, "EUU" for FOP EUR options
     sec_type: str             # "FUT" | "FOP" | "CASH" (spot FX, e.g. EUR.USD)
     side: str                 # "BUY" | "SELL"
     qty: int
     limit_price: float | None    # None ⇒ MarketOrder (spot cash management)
-    expiry: str | None = None    # YYYYMMDD pour FUT/FOP
+    expiry: str | None = None    # YYYYMMDD for FUT/FOP
     strike: float | None = None  # FOP only
     right: str | None = None     # "C" | "P", FOP only
-    exchange: str = "CME"        # "IDEALPRO" pour CASH
+    exchange: str = "CME"        # "IDEALPRO" for CASH
     currency: str = "USD"
-    trading_class: str | None = None  # e.g. "EUU" pour FOP EUR
+    trading_class: str | None = None  # e.g. "EUU" for FOP EUR
 
 
 class OrderExecutorUnavailable(RuntimeError):
-    """Levée si l'IB connection est down — endpoint orders renvoie 503."""
+    """Raised when the IB connection is down — orders endpoints return 503."""
 
 
 class OrderExecutor:
@@ -95,7 +95,7 @@ class OrderExecutor:
         self._lock = asyncio.Lock()
 
     async def connect(self, timeout: float = 5.0) -> None:
-        """Open the IB connection. Idempotent (ne reconnecte pas si déjà OK)."""
+        """Open the IB connection. Idempotent (no reconnect when already OK)."""
         from ib_insync import IB
 
         async with self._lock:
@@ -177,10 +177,10 @@ class OrderExecutor:
             out.append(d)
         return out
 
-    # Tags conservés dans `by_currency` — sélection scale projet perso :
-    # cash + valorisation + P&L. Les ~50 autres (Billable, FundValue,
-    # MutualFundValue, IndianStockHaircut, ColumnPrio, etc.) sont du noise
-    # IB pour notre cas d'usage et sont droppés.
+    # Tags kept in `by_currency` — a personal-project-scale selection :
+    # cash + valuation + P&L. The ~50 others (Billable, FundValue,
+    # MutualFundValue, IndianStockHaircut, ColumnPrio, etc.) are IB noise
+    # for our use case and are dropped.
     _CURRENCY_TAGS_KEEP: tuple[str, ...] = (
         "CashBalance",
         "NetLiquidationByCurrency",
@@ -191,20 +191,20 @@ class OrderExecutor:
     )
 
     async def account_summary(self) -> dict[str, Any]:
-        """Return tous les tags numériques du compte IB, agrégés par tag.
+        """Return every numeric IB account tag, aggregated per tag.
 
-        Beaucoup de tags ne sont exposés que dans la currency de base du
-        compte (souvent EUR ou USD selon le compte) — on prend donc la
-        valeur disponible dans cet ordre :
-          1. BASE (= currency native du compte, agrégat propre)
+        Many tags are only exposed in the account's base currency (often
+        EUR or USD depending on the account) — so we take the available
+        value in this order :
+          1. BASE (= the account's native currency, clean aggregate)
           2. USD
-          3. autre currency
-        `by_currency` retourne un summary (6 tags clés) par currency réelle,
-        sans BASE (= agrégat global, redondant avec les colonnes top-level).
+          3. any other currency
+        `by_currency` returns a summary (6 key tags) per real currency,
+        without BASE (= global aggregate, redundant with the top-level columns).
         """
         ib = self._ensure()
-        # Indexe les valeurs par tag puis par currency, pour pouvoir
-        # appliquer la priorité BASE > USD > autres au moment du pick.
+        # Index values by tag then by currency, so the BASE > USD > others
+        # priority can be applied at pick time.
         by_tag: dict[str, dict[str, float]] = {}
         by_cur: dict[str, dict[str, float]] = {}
         account: str | None = None
@@ -219,7 +219,7 @@ class OrderExecutor:
             if account is None and v.account:
                 account = v.account
 
-        # Aplatit by_tag en out[tag] selon priorité.
+        # Flatten by_tag into out[tag] following the priority.
         out: dict[str, Any] = {"account": account}
         for tag, cur_to_val in by_tag.items():
             for preferred in ("BASE", "USD"):
@@ -229,8 +229,8 @@ class OrderExecutor:
             else:
                 out[tag] = next(iter(cur_to_val.values()))
 
-        # by_currency : pour chaque currency réelle (≠ BASE), on filtre aux
-        # tags pertinents et on drop les currencies sans aucun tag retenu.
+        # by_currency : for each real currency (≠ BASE), filter to the
+        # relevant tags and drop currencies with no kept tag.
         out["by_currency"] = {}
         for cur, vs in by_cur.items():
             if cur == "BASE":
@@ -417,7 +417,7 @@ class OrderExecutor:
 
 
 def trade_to_dict(trade: Any) -> dict[str, Any]:
-    """Sérialise un Trade ib_insync en dict JSON-safe."""
+    """Serialize an ib_insync Trade into a JSON-safe dict."""
     o = trade.order
     c = trade.contract
     s = trade.orderStatus
@@ -443,4 +443,7 @@ def trade_to_dict(trade: Any) -> dict[str, Any]:
         "filled": float(s.filled),
         "remaining": float(s.remaining),
         "avg_fill_price": float(s.avgFillPrice) if s.avgFillPrice else None,
+        # Idempotency key stamped by live_submit (``fxvol:{structure}:{order}``)
+        # — the reaper's adoption sweep matches ghosts on it (EXEC-2).
+        "order_ref": getattr(o, "orderRef", None) or None,
     }

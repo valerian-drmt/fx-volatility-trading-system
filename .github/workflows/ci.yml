@@ -88,7 +88,7 @@ jobs:
 
     # R8 PR #3 consolidates the frontend gates into a single job : OpenAPI
     # drift guard against a freshly-dumped FastAPI schema, strict lint,
-    # typecheck, Vitest with a 70% line coverage threshold, production
+    # typecheck, Vitest with an honest-denominator coverage floor, production
     # build and artefact upload of the resulting dist/ bundle so downstream
     # jobs (deploy in PR #5) can pull it without rebuilding.
 
@@ -139,7 +139,7 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
-      - name: Unit tests with coverage threshold 70%
+      - name: Unit tests with coverage floor (see vitest.config.ts thresholds)
         working-directory: frontend
         run: npm run test:coverage
 

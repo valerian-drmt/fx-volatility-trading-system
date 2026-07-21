@@ -43,8 +43,8 @@ MIGRATIONS_DIR = (
     / "persistence" / "migrations" / "versions"
 )
 
-# Whitelist : seules ces clés sont inspectables. Évite que /dev/redis/value
-# soit utilisé pour scanner Redis arbitrairement (clé sensible, scan KEYS *).
+# Whitelist: only these keys are inspectable. Prevents /dev/redis/value
+# from being used to scan Redis arbitrarily (sensitive keys, KEYS * scans).
 KNOWN_KEYS: list[str] = [
     "heartbeat:market_data",
     "heartbeat:vol_engine",
@@ -176,8 +176,8 @@ async def _key_age(redis: aioredis.Redis, key: str, now: datetime) -> float | No
 
 
 async def _ib_probe(host: str = "ib-gateway", port: int = 4002, timeout_s: float = 2.0) -> dict[str, Any]:
-    """TCP probe sur le port API IB Gateway. Same intent que socat dans le compose
-    healthcheck : OK si TCP connect, DOWN sinon. Pas de handshake API ici.
+    """TCP probe on the IB Gateway API port. Same intent as the socat compose
+    healthcheck: OK if TCP connects, DOWN otherwise. No API handshake here.
     """
     try:
         _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout_s)
@@ -235,14 +235,14 @@ STACK_LAYOUT: list[dict[str, Any]] = [
 async def stack_overview(
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> dict[str, Any]:
-    """Aggregate status pour les 10 containers, dérivé de probes + heartbeats.
+    """Aggregate status for the 10 containers, derived from probes + heartbeats.
 
-    On ne lit pas le Docker socket (api n'a pas accès, et c'est mieux comme ça).
-    Statuses dérivés :
-      - postgres / redis / ib-gateway   : TCP probe ou ping
+    We do not read the Docker socket (the api has no access, which is safer).
+    Derived statuses:
+      - postgres / redis / ib-gateway   : TCP probe or ping
       - frontend                        : HTTP probe http://frontend:8080/
-      - nginx / api                     : implicite (la requête arrive via eux)
-      - 4 engines                       : heartbeat Redis + age vs threshold
+      - nginx / api                     : implicit (the request arrives through them)
+      - 4 engines                       : Redis heartbeat + age vs threshold
     """
     now = datetime.now(UTC)
 
@@ -308,7 +308,7 @@ async def stack_overview(
     for entry in STACK_LAYOUT:
         out.append({**entry, "status": container_status[entry["name"]]})
 
-    # Edges = relations cf. docs/container_deps.md (A → B = B dépend de A).
+    # Edges = relations cf. docs/container_deps.md (A → B = B depends on A).
     edges = [
         {"from": "postgres",    "to": "api"},
         {"from": "redis",       "to": "api"},
@@ -969,12 +969,12 @@ async def cycle_progress(
 
 
 # ──────────────────────────────────────────────────────────────────────
-# DB Schema — introspection automatique des modèles ORM
+# DB Schema — automatic introspection of the ORM models
 # ──────────────────────────────────────────────────────────────────────
-# Source de vérité = ``persistence.models.Base.metadata``. Importer
-# ``Base`` charge toutes les classes ORM et enregistre leurs ``Table``
-# auprès de la metadata. Aucune liste hardcodée : ajouter une classe
-# ORM la fait apparaître sur le schéma au prochain refresh.
+# Source of truth = ``persistence.models.Base.metadata``. Importing
+# ``Base`` loads every ORM class and registers its ``Table`` with the
+# metadata. No hardcoded list: adding an ORM class makes it show up
+# on the schema at the next refresh.
 
 
 @router.get("/db-schema")

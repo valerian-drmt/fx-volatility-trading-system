@@ -2,7 +2,8 @@
  * Generic HTTP snapshot hook (R11 PR F) → `Fresh<T>` + `reload()`.
  * Fetches on mount; `reload()` (or a WS stream invalidation) re-fetches.
  * `pollMs > 0` also re-fetches on an interval (for sources with no WS push,
- * e.g. engine heartbeats). On error → status "missing" (view shows last-known).
+ * e.g. engine heartbeats). On error the hook keeps the last-known data and
+ * flags it "stale"; only when nothing ever loaded does it report "missing".
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type Fresh, makeFresh } from "../voldesk/data/freshness";
@@ -43,7 +44,14 @@ export function useFetch<T>(
       .catch((err) => {
         // Aborted fetch: caller moved on, keep last-known state untouched.
         if (cancelled || (err instanceof DOMException && err.name === "AbortError")) return;
-        setState({ data: null, status: "missing", asOf: null, ageMs: null });
+        // Transient error: keep the last-known data, flag it stale. Never blank
+        // a slice that already has data — that is what used to flip views onto
+        // fabricated fallbacks. No data yet → honest "missing".
+        setState((prev) =>
+          prev.data === null
+            ? { data: null, status: "missing", asOf: null, ageMs: null }
+            : { ...prev, status: "stale" },
+        );
       });
     return () => {
       cancelled = true;

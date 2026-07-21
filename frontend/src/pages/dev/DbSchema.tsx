@@ -30,6 +30,7 @@
  * label box so the crow's-foot anchors land in clean gaps).
  */
 import dagre from "@dagrejs/dagre";
+import { apiFetch } from "../../api/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 interface Column {
@@ -303,7 +304,7 @@ export function DbSchema(): JSX.Element {
         const fetches = need.map(async (s) => {
           if (s === "orm" && ormSchema) return;
           if (s === "live" && liveSchema) return;
-          const r = await fetch(`/api/v1/dev/db-schema?source=${s}`);
+          const r = await apiFetch(`/api/v1/dev/db-schema?source=${s}`);
           if (!r.ok) throw new Error(`HTTP ${r.status} on source=${s}`);
           const j: Schema = await r.json();
           if (s === "orm") setOrmSchema(j);

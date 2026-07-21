@@ -33,7 +33,7 @@ THRESHOLDS = {"weak": 1.0, "moderate": 1.5, "strong": 2.0, "extreme": 3.0}
 
 # Hard gates introduced post-MVP per STEP2 critique. Sandbox-friendly defaults
 # (kept low so the synthetic seed of 35 obs passes) but production should
-# bump these — see spec §1 invariants (T ≥ 300 obs idéal, 100 minimum).
+# bump these — see spec §1 invariants (T ≥ 300 obs ideal, 100 minimum).
 MIN_N_OBS_HARD = 30                  # block actionable below this
 MIN_CUMULATIVE_VARIANCE = 0.85       # block if PC1+2+3 explains < 85%
 

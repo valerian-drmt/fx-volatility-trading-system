@@ -54,7 +54,6 @@ is interpolated and *which real expiry* your order will actually hit.
 | `src/engines/vol/chain_fetcher.py` | `DEFAULT_TARGET_DTES (30,60,90,120,150,180)` → add the long anchors so interpolation is bracketed: e.g. `(30,60,90,120,150,180,270,365)`. Extend `tenor_label()` past `6M` (add `9M`, `1Y`). NOTE these are *anchor discovery* targets, not the display set. |
 | **NEW** term‑interp step (vol‑engine or `src/core/vol/`) | Build the DISPLAY_PILLARS surface from the qualified anchors per §2; attach `source` flag per cell. Emit this as the published surface. |
 | `src/core/vol/pca_engine.py` (`DEFAULT_TENORS`, `N_FEATURES`) | `DEFAULT_TENORS = ("1M","2M","3M","6M","9M","1Y")`. Still 6 tenors × 5 pillars = 30 features → **dimensionality unchanged**, but the model must be **refit** on new‑pillar surfaces. |
-| `src/core/vol/surface_pca.py` (`DEFAULT_TENORS`) | same new tuple. |
 | `src/core/risk/vega_pca.py` (`TENORS`) | same new tuple. |
 | `src/api/orchestration/vol_service.py:226` | tenor→year map: add `"9M": 9/12` (already has `1Y`); drop `4M/5M` if unused. |
 | `src/api/routers/portfolio_panel.py:55‑58` | per‑tenor DTE buckets (`4M`,`6M` rows) → realign to new pillars. |
@@ -87,8 +86,8 @@ is interpolated and *which real expiry* your order will actually hit.
 ## 5. Tests to update
 - `frontend/src/voldesk/data/__tests__/foundation.test.tsx` — surface tenor assertions (now `1M…1Y`), interp‑flag rendering.
 - `frontend/src/voldesk/components/__tests__/orderBuilderLegs.test.ts` — tenors used in specs (3M/4M…) → tradeable set.
-- Backend: `tests/unit/core/test_pca_engine.py` / surface_pca tests — new `DEFAULT_TENORS`. `tests/unit/core/test_trade_preview.py` — `TENOR_TO_DTE`/tradeable tenors. Any `vega_pca` test.
-- `tests/old` + alembic `db_integration` job if it asserts surface shape (cf. CI rollup).
+- Backend: `tests/unit/core/test_pca_engine.py` — new `DEFAULT_TENORS`. `tests/unit/core/test_trade_preview.py` — `TENOR_TO_DTE`/tradeable tenors. Any `vega_pca` test.
+- alembic `db_integration` job if it asserts surface shape (cf. CI rollup).
 
 ## 6. Phasing (suggested)
 1. **Backend anchors + interp** — extend targets/labels, add the term‑interp step, emit `source` flags. (vol‑engine)

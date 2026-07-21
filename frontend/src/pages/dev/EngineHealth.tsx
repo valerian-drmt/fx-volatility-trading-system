@@ -1,8 +1,9 @@
 /**
- * Engine Health — 4 cards engines + 1 card IB Gateway, alimentées par
- * GET /api/v1/dev/engines. Refresh manuel + auto-refresh 5s (toggle).
+ * Engine Health — 4 engine cards + 1 IB Gateway card, fed by
+ * GET /api/v1/dev/engines. Manual refresh + auto-refresh 5s (toggle).
  */
 import { useEffect, useRef, useState } from "react";
+import { apiFetch } from "../../api/client";
 
 interface EngineInfo {
   name: string;
@@ -37,7 +38,7 @@ export function EngineHealth(): JSX.Element {
   const fetchData = async () => {
     setError(null);
     try {
-      const r = await fetch("/api/v1/dev/engines");
+      const r = await apiFetch("/api/v1/dev/engines");
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setData(await r.json());
     } catch (e) {

@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date
+from typing import Final, Literal
 
 # IB ``contract.multiplier`` for each symbol the system can hold.
 # - "EUR" : standard EUR FX future + FOP options (CME, multiplier 125 000)
@@ -40,6 +41,13 @@ def multiplier_for(symbol: str | None) -> float:
 _FUT_MONTH_LETTERS = "FGHJKMNQUVXZ"  # IB convention Jan→Dec
 _OPT_RE = re.compile(r"^EUU([FGHJKMNQUVXZ])(\d) ([CP])(\d{4})$")
 _FUT_RE = re.compile(r"^(M6E|6E)([FGHJKMNQUVXZ])(\d)$")
+
+# Canonical ``instrument_type`` values — NOT the IB ``secType`` strings
+# ("FUT"/"FOP"/...). Compare against these constants so the literal can
+# never drift again (cf. the risk-engine "FUT" vs "FUTURE" bug).
+InstrumentType = Literal["FUTURE", "OPTION"]
+INSTRUMENT_FUTURE: Final = "FUTURE"
+INSTRUMENT_OPTION: Final = "OPTION"
 
 
 @dataclass(frozen=True)
@@ -71,7 +79,7 @@ def parse_local_symbol(ls: str | None) -> ContractSpec | None:
         right, strike_int = m.group(3), m.group(4)
         return ContractSpec(
             symbol="EUR",
-            instrument_type="OPTION",
+            instrument_type=INSTRUMENT_OPTION,
             multiplier=multiplier_for("EUR"),
             strike=int(strike_int) / 1000.0,
             option_type="CALL" if right == "C" else "PUT",
@@ -82,7 +90,7 @@ def parse_local_symbol(ls: str | None) -> ContractSpec | None:
         symbol = "EUR" if cls == "6E" else "M6E"
         return ContractSpec(
             symbol=symbol,
-            instrument_type="FUTURE",
+            instrument_type=INSTRUMENT_FUTURE,
             multiplier=multiplier_for(symbol),
             strike=None,
             option_type=None,

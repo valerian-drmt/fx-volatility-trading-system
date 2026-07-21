@@ -1,139 +1,139 @@
 # AWS Setup — fx-volatility-trading-system
 
-> Procédure complète pour configurer AWS en partant de zéro, adaptée à l'**état
-> actuel du projet** (R3 en cours sur main, R6 Docker prévu ~05/05, R8 deploy
-> EC2 prévu ~12/05).
+> Complete procedure to configure AWS from scratch, adapted to the **current
+> state of the project** (R3 in progress on main, R6 Docker planned ~05/05, R8 EC2
+> deploy planned ~12/05).
 >
-> Le projet **n'est pas encore en prod**. Cette doc te dit **quoi faire
-> maintenant** (le strict nécessaire pour le dev local SSM) et **quoi attendre**
-> (EC2, deploy.yml, IAM role) jusqu'à ce que les PRs correspondantes arrivent.
+> The project **is not in prod yet**. This doc tells you **what to do
+> now** (the bare minimum for local SSM dev) and **what to hold off on**
+> (EC2, deploy.yml, IAM role) until the corresponding PRs land.
 
 ---
 
-## 0. Vue d'ensemble — où on en est
+## 0. Overview — where we stand
 
-| Composant | Statut projet | Action AWS requise | Quand |
+| Component | Project status | AWS action required | When |
 |---|---|---|---|
-| Code v1.x (PyQt local) | ✅ tourne | Aucune | — |
-| Schéma Postgres + Alembic (R1) | ✅ mergé | Aucune | — |
-| Async DB writer (R2) | ✅ mergé | Aucune | — |
-| Redis broker (R3) | 🟡 en cours | Aucune | — |
-| FastAPI backend (R4) | 🔒 codé local | Aucune | — |
-| React frontend (R5) | 🔒 codé local | Aucune | — |
-| Docker compose prod (R6) | 🔒 codé local | Aucune | — |
-| Services split (R7) | 🔒 codé local | Aucune | — |
-| **R8 — deploy EC2** | 🔒 codé local | **EC2 + IAM role + SSM en prod** | ~12/05 |
-| **R9 — secrets SSM** | 🟡 sandbox | **KMS + SSM + IAM user dev** | dès maintenant si tu veux drop le `.env` local |
+| v1.x code (local PyQt) | ✅ running | None | — |
+| Postgres schema + Alembic (R1) | ✅ merged | None | — |
+| Async DB writer (R2) | ✅ merged | None | — |
+| Redis broker (R3) | 🟡 in progress | None | — |
+| FastAPI backend (R4) | 🔒 coded locally | None | — |
+| React frontend (R5) | 🔒 coded locally | None | — |
+| Docker compose prod (R6) | 🔒 coded locally | None | — |
+| Services split (R7) | 🔒 coded locally | None | — |
+| **R8 — EC2 deploy** | 🔒 coded locally | **EC2 + IAM role + SSM in prod** | ~12/05 |
+| **R9 — SSM secrets** | 🟡 sandbox | **KMS + SSM + dev IAM user** | right now if you want to drop the local `.env` |
 
-**Conséquence pratique** : tu peux **tout faire AWS aujourd'hui**, ou tu peux
-faire **uniquement la phase 1-3 (dev local SSM)** et reporter EC2 à mai. Les
-deux chemins sont valides — la migration R9 secrets a été conçue pour que dev
-et prod cohabitent (le dev passe à SSM sans toucher à la prod, et inversement).
+**Practical consequence**: you can **do everything on AWS today**, or you can
+do **only phases 1-3 (local SSM dev)** and postpone EC2 to May. Both
+paths are valid — the R9 secrets migration was designed so that dev
+and prod coexist (dev moves to SSM without touching prod, and vice versa).
 
 ---
 
-## 1. Prérequis (avant tout)
+## 1. Prerequisites (before anything else)
 
-### Côté toi
+### On your side
 
-- [ ] Carte bancaire valide (le compte AWS la demande même si l'usage projeté est ~$1/mois)
-- [ ] Numéro de téléphone mobile pour la vérification (SMS code)
-- [ ] Adresse email **dédiée** au compte root (idéalement `aws-fxvol@<ton-domaine>`
-      ou `valeriandarmente+aws@gmail.com` — alias séparé du compte personnel)
-- [ ] Un password manager (Bitwarden, 1Password, KeePass) pour stocker les
-      mots de passe root + access keys que tu vas générer
+- [ ] Valid credit card (the AWS account requires one even though projected usage is ~$1/month)
+- [ ] Mobile phone number for verification (SMS code)
+- [ ] Email address **dedicated** to the root account (ideally `aws-fxvol@<your-domain>`
+      or `valeriandarmente+aws@gmail.com` — alias separate from the personal account)
+- [ ] A password manager (Bitwarden, 1Password, KeePass) to store the
+      root passwords + access keys you are going to generate
 
-### Côté machine Windows
+### On the Windows machine
 
 ```powershell
 # 1. AWS CLI v2 (>= 2.15)
 winget install -e --id Amazon.AWSCLI
-# Vérifier
+# Verify
 aws --version
-# Doit afficher : aws-cli/2.x.x Python/3.x ...
+# Should print: aws-cli/2.x.x Python/3.x ...
 
-# 2. (Optionnel mais recommandé) Session Manager plugin pour SSM start-session
+# 2. (Optional but recommended) Session Manager plugin for SSM start-session
 winget install -e --id Amazon.SessionManagerPlugin
 ```
 
-Pas besoin de `boto3` côté machine : les scripts utilisent l'`aws` CLI.
+No need for `boto3` on the machine: the scripts use the `aws` CLI.
 
 ---
 
-## 2. Phase 1 — Compte AWS + IAM users (DÉJÀ FAIT)
+## 2. Phase 1 — AWS account + IAM users (ALREADY DONE)
 
-✅ **État actuel** :
-- Compte AWS root créé (eu-west-1)
-- IAM user `itadmin` (admin, pour créer les ressources)
-- IAM user `fxvol-dev` (à utiliser pour les opérations runtime sur SSM)
+✅ **Current state**:
+- AWS root account created (eu-west-1)
+- IAM user `itadmin` (admin, for creating resources)
+- IAM user `fxvol-dev` (to be used for runtime operations on SSM)
 
-**À vérifier maintenant si pas déjà fait** (CRITIQUE) :
+**To verify now if not already done** (CRITICAL):
 
-- [ ] **MFA activée sur le compte root** : Console (root) → Security credentials
-      → Multi-factor authentication → Add MFA. Codes de récupération en
-      password manager. **Ne plus se connecter en root sauf urgence**.
-- [ ] **MFA activée sur `itadmin`** : Console (root) → IAM → Users → itadmin
+- [ ] **MFA enabled on the root account**: Console (root) → Security credentials
+      → Multi-factor authentication → Add MFA. Recovery codes in the
+      password manager. **Never log in as root again except in an emergency**.
+- [ ] **MFA enabled on `itadmin`**: Console (root) → IAM → Users → itadmin
       → Security credentials → Assign MFA device.
-- [ ] **MFA activée sur `fxvol-dev`** : idem. Sans MFA, refuser tout `aws iam
-      put-user-policy` qui donne des droits sensibles (KMS decrypt).
-- [ ] **Région par défaut `eu-west-1`** : tous les scripts et commandes
-      de cette doc sont hardcodés sur `eu-west-1`.
+- [ ] **MFA enabled on `fxvol-dev`**: same. Without MFA, refuse any `aws iam
+      put-user-policy` that grants sensitive rights (KMS decrypt).
+- [ ] **Default region `eu-west-1`**: all scripts and commands
+      in this doc are hardcoded to `eu-west-1`.
 
-**Architecture IAM cible (classique, pas SSO)** :
+**Target IAM architecture (classic, not SSO)**:
 
 ```
 Account <ID>
-├─ root                      MFA, locked, urgence uniquement
-├─ itadmin                   MFA, AdministratorAccess (gérer ressources)
-└─ fxvol-dev                 MFA, policy fxvol-dev-ssm (lecture/écriture SSM + KMS sur scope /fxvol/prod/*)
+├─ root                      MFA, locked, emergency only
+├─ itadmin                   MFA, AdministratorAccess (manage resources)
+└─ fxvol-dev                 MFA, policy fxvol-dev-ssm (SSM read/write + KMS on scope /fxvol/prod/*)
 ```
 
-`itadmin` crée la CMK + les params SSM + les policies (phases 2-4 ci-dessous).
-`fxvol-dev` consomme au quotidien via le script `load_secrets.ps1` (phase 5+).
-**Édition des valeurs SSM = via la console AWS uniquement** (pas de script
-CLI fourni — pour éviter les fausses manipulations sur les secrets).
+`itadmin` creates the CMK + the SSM params + the policies (phases 2-4 below).
+`fxvol-dev` consumes day-to-day via the `load_secrets.ps1` script (phase 5+).
+**Editing SSM values = via the AWS console only** (no CLI script
+provided — to avoid mishandling of secrets).
 
 ---
 
-## 3. Phase 2 — KMS CMK pour chiffrer les secrets
+## 3. Phase 2 — KMS CMK to encrypt the secrets
 
-> Tout en console (eu-west-1, vérifier en haut à droite).
+> Everything in the console (eu-west-1, check top right).
 
-1. **Console KMS** → Customer managed keys → Create key
-2. Configuration :
-   - Key type : **Symmetric**
-   - Key usage : **Encrypt and decrypt**
-   - Advanced : Single-region, **Key material origin = KMS**
-3. Alias : `fxvol-secrets` → l'ARN sera `arn:aws:kms:eu-west-1:<ACCOUNT_ID>:alias/fxvol-secrets`
-4. Description : `CMK for FX vol trading system secrets in SSM Parameter Store`
-5. Key administrators : IAM user `itadmin` (et personne d'autre)
-6. Key users : IAM user `fxvol-dev` (on ajoutera l'EC2 role en phase R8)
+1. **KMS console** → Customer managed keys → Create key
+2. Configuration:
+   - Key type: **Symmetric**
+   - Key usage: **Encrypt and decrypt**
+   - Advanced: Single-region, **Key material origin = KMS**
+3. Alias: `fxvol-secrets` → the ARN will be `arn:aws:kms:eu-west-1:<ACCOUNT_ID>:alias/fxvol-secrets`
+4. Description: `CMK for FX vol trading system secrets in SSM Parameter Store`
+5. Key administrators: IAM user `itadmin` (and no one else)
+6. Key users: IAM user `fxvol-dev` (the EC2 role will be added in phase R8)
 7. Review → Finish
-8. Une fois créée → onglet **Key rotation** → cocher "Automatically rotate this
+8. Once created → **Key rotation** tab → check "Automatically rotate this
    KMS key every year"
 
-📋 **Note l'ARN complet** dans ton password manager :
-`arn:aws:kms:eu-west-1:<ACCOUNT_ID>:key/<UUID>` — tu vas en avoir besoin
-en phase 5 et plus tard pour l'EC2 role.
+📋 **Note the full ARN** in your password manager:
+`arn:aws:kms:eu-west-1:<ACCOUNT_ID>:key/<UUID>` — you will need it
+in phase 5 and later for the EC2 role.
 
-📋 **Note ton AWS Account ID** (12 chiffres) visible en haut à droite de la
-console : `<ACCOUNT_ID>`. Aussi à stocker dans le password manager.
+📋 **Note your AWS Account ID** (12 digits) visible at the top right of the
+console: `<ACCOUNT_ID>`. Also to be stored in the password manager.
 
-**Coût** : $1/mois fixe pour la CMK + $0.03 par 10k decrypt (négligeable).
+**Cost**: $1/month flat for the CMK + $0.03 per 10k decrypt (negligible).
 
 ---
 
-## 4. Phase 3 — SSM Parameter Store : créer les paramètres vides
+## 4. Phase 3 — SSM Parameter Store: create the empty parameters
 
-Tu peux faire ça en console OU via CLI (tu n'as pas encore CLI configuré, donc
-console pour cette première fois).
+You can do this in the console OR via CLI (you don't have the CLI configured yet, so
+console for this first time).
 
 > Console → Systems Manager → Parameter Store → Create parameter
 
-Crée 5 paramètres avec les noms et types suivants. **Mets une valeur bidon
-maintenant**, on les remplira avec les vraies valeurs en phase 6.
+Create 5 parameters with the following names and types. **Put a dummy value
+for now**, we will fill them with the real values in phase 6.
 
-| Name | Tier | Type | KMS key | Value (bidon) |
+| Name | Tier | Type | KMS key | Value (dummy) |
 |---|---|---|---|---|
 | `/fxvol/prod/IB_USERID` | Standard | SecureString | `alias/fxvol-secrets` | `placeholder` |
 | `/fxvol/prod/IB_PASSWORD` | Standard | SecureString | `alias/fxvol-secrets` | `placeholder` |
@@ -141,25 +141,25 @@ maintenant**, on les remplira avec les vraies valeurs en phase 6.
 | `/fxvol/prod/VNC_PASSWORD` | Standard | SecureString | `alias/fxvol-secrets` | `placeholder` |
 | `/fxvol/prod/TRADING_MODE` | Standard | String | (n/a) | `paper` |
 
-**Pourquoi des placeholders maintenant** : les scripts `load_secrets.ps1`
-testent que les params existent. Avoir 5 entrées en SSM permet de valider la
-chaîne IAM → KMS → SSM end-to-end avant de mettre les vrais secrets.
+**Why placeholders now**: the `load_secrets.ps1` scripts
+test that the params exist. Having 5 entries in SSM makes it possible to validate the
+IAM → KMS → SSM chain end-to-end before putting in the real secrets.
 
-⚠️ Tier **Standard** uniquement (gratuit jusqu'à 10k params). Ne JAMAIS choisir
-"Advanced" (payant).
+⚠️ Tier **Standard** only (free up to 10k params). NEVER pick
+"Advanced" (paid).
 
-✅ **Checkpoint phase 3** : `Parameter Store` montre 5 entrées sous le path
+✅ **Phase 3 checkpoint**: `Parameter Store` shows 5 entries under the path
 `/fxvol/prod/`.
 
 ---
 
-## 5. Phase 4 — Policy IAM sur `fxvol-dev` : lire/écrire SSM + KMS
+## 5. Phase 4 — IAM policy on `fxvol-dev`: read/write SSM + KMS
 
-Maintenant qu'on a la CMK ARN et l'Account ID, on peut écrire la policy IAM
-attachée à l'IAM user `fxvol-dev` (inline policy).
+Now that we have the CMK ARN and the Account ID, we can write the IAM policy
+attached to the IAM user `fxvol-dev` (inline policy).
 
-1. Sauvegarder le JSON ci-dessous dans `fxvol-dev-policy.json` (en remplaçant
-   `<ACCOUNT_ID>` et `<CMK_KEY_ID>` par les vraies valeurs) :
+1. Save the JSON below to `fxvol-dev-policy.json` (replacing
+   `<ACCOUNT_ID>` and `<CMK_KEY_ID>` with the real values):
 
 ```json
 {
@@ -200,7 +200,7 @@ attachée à l'IAM user `fxvol-dev` (inline policy).
 }
 ```
 
-2. Attacher la policy via CLI (lance ça depuis une session `itadmin`) :
+2. Attach the policy via CLI (run this from an `itadmin` session):
 
 ```powershell
 aws iam put-user-policy `
@@ -210,35 +210,35 @@ aws iam put-user-policy `
   --profile itadmin
 ```
 
-3. Vérifier que la policy est bien attachée :
+3. Verify that the policy is properly attached:
 ```powershell
 aws iam list-user-policies --user-name fxvol-dev --profile itadmin
-# Doit lister : "fxvol-dev-ssm"
+# Should list: "fxvol-dev-ssm"
 ```
 
-**Pourquoi `kms:Encrypt` aussi** : nécessaire pour `ssm:PutParameter` sur une
-SecureString (KMS génère une data key). `kms:Decrypt` seul = tu peux lire mais
-pas écrire.
+**Why `kms:Encrypt` too**: required for `ssm:PutParameter` on a
+SecureString (KMS generates a data key). `kms:Decrypt` alone = you can read but
+not write.
 
-**Pourquoi `inline` plutôt que `managed`** : managed policies sont réutilisables
-mais ici on a 1 user et 1 scope. Inline garde la policy collée à l'identité,
-visible immédiatement dans `aws iam get-user`. Suppression du user = suppression
-auto de la policy.
+**Why `inline` rather than `managed`**: managed policies are reusable
+but here we have 1 user and 1 scope. Inline keeps the policy glued to the identity,
+immediately visible in `aws iam get-user`. Deleting the user = automatic
+deletion of the policy.
 
 ---
 
-## 6. Phase 5 — Configurer AWS CLI côté Windows (access keys classiques)
+## 6. Phase 5 — Configure the AWS CLI on Windows (classic access keys)
 
-### 6.1 Générer les access keys pour `fxvol-dev`
+### 6.1 Generate the access keys for `fxvol-dev`
 
-Lance ça depuis une session `itadmin` (qui a le droit de créer des access keys
-pour d'autres users) :
+Run this from an `itadmin` session (which has the right to create access keys
+for other users):
 
 ```powershell
 aws iam create-access-key --user-name fxvol-dev --profile itadmin
 ```
 
-Le retour :
+The return:
 ```json
 {
   "AccessKey": {
@@ -250,36 +250,36 @@ Le retour :
 }
 ```
 
-⚠️ **Le `SecretAccessKey` n'est affiché qu'une seule fois**. Copie-le
-immédiatement dans ton password manager. Si perdu : rotate via
+⚠️ **The `SecretAccessKey` is only displayed once**. Copy it
+immediately into your password manager. If lost: rotate via
 `aws iam delete-access-key` + `create-access-key`.
 
-⚠️ **Limite par user : 2 access keys actives max**. Si déjà 2 existent (ex:
-historique), liste avec `aws iam list-access-keys --user-name fxvol-dev
---profile itadmin` et delete celle qui n'est plus utilisée avant d'en créer
-une nouvelle.
+⚠️ **Limit per user: max 2 active access keys**. If 2 already exist (e.g.
+historical), list with `aws iam list-access-keys --user-name fxvol-dev
+--profile itadmin` and delete the one no longer in use before creating
+a new one.
 
-### 6.2 Configurer le profile CLI
+### 6.2 Configure the CLI profile
 
 ```powershell
 aws configure --profile fxvol-dev
-# AWS Access Key ID     : AKIA...               (du retour ci-dessus)
-# AWS Secret Access Key : wJalr...              (du password manager)
+# AWS Access Key ID     : AKIA...               (from the return above)
+# AWS Secret Access Key : wJalr...              (from the password manager)
 # Default region name   : eu-west-1
 # Default output format : json
 ```
 
-Cela écrit dans `~/.aws/credentials` (Windows : `C:\Users\<user>\.aws\credentials`).
-**Ce fichier contient un secret en clair sur disque** : c'est le compromis
-des access keys classiques (vs SSO ephemeral). Mitigation :
-- ACL Windows : `icacls $env:USERPROFILE\.aws /inheritance:r /grant:r "${env:USERNAME}:F"`
-- Rotation manuelle tous les 90 jours via `aws iam create-access-key` + delete ancienne
+This writes to `~/.aws/credentials` (Windows: `C:\Users\<user>\.aws\credentials`).
+**This file contains a plaintext secret on disk**: that is the trade-off
+of classic access keys (vs SSO ephemeral). Mitigation:
+- Windows ACL: `icacls $env:USERPROFILE\.aws /inheritance:r /grant:r "${env:USERNAME}:F"`
+- Manual rotation every 90 days via `aws iam create-access-key` + delete the old one
 
-### 6.3 Tester
+### 6.3 Test
 
 ```powershell
 aws sts get-caller-identity --profile fxvol-dev
-# Doit afficher :
+# Should print:
 # {
 #   "UserId": "AIDA...",
 #   "Account": "<ACCOUNT_ID>",
@@ -287,171 +287,171 @@ aws sts get-caller-identity --profile fxvol-dev
 # }
 ```
 
-Tester la lecture SSM :
+Test SSM read:
 ```powershell
 aws ssm get-parameter --name /fxvol/prod/TRADING_MODE --profile fxvol-dev
-# Doit renvoyer : "Value": "paper"
+# Should return: "Value": "paper"
 ```
 
-Tester decrypt KMS :
+Test KMS decrypt:
 ```powershell
 aws ssm get-parameter --name /fxvol/prod/IB_USERID --with-decryption --profile fxvol-dev --query 'Parameter.Name' --output text
-# Doit renvoyer : /fxvol/prod/IB_USERID
-# (on utilise --query pour ne PAS afficher la valeur — règle CLAUDE.md)
+# Should return: /fxvol/prod/IB_USERID
+# (we use --query to NOT display the value — CLAUDE.md rule)
 ```
 
-✅ **Checkpoint phase 5** : tu peux lire les params SSM en CLI, le decrypt
-fonctionne, ton ARN visible est `arn:aws:iam::<ACCOUNT_ID>:user/fxvol-dev`.
+✅ **Phase 5 checkpoint**: you can read the SSM params via CLI, decrypt
+works, your visible ARN is `arn:aws:iam::<ACCOUNT_ID>:user/fxvol-dev`.
 
 ---
 
-## 7. Phase 6 — Pousser les vrais secrets (via console AWS)
+## 7. Phase 6 — Push the real secrets (via AWS console)
 
-> **Décision projet** : aucune écriture de secrets en CLI. Toutes les
-> modifications de valeurs SSM passent par la **console AWS**. C'est plus lent
-> mais zéro risque de fausse manipulation (typo en clair dans le shell history,
-> oubli de `--type SecureString`, oubli de `--key-id`...).
+> **Project decision**: no writing of secrets via CLI. All
+> SSM value modifications go through the **AWS console**. It is slower
+> but zero risk of mishandling (plaintext typo in shell history,
+> forgetting `--type SecureString`, forgetting `--key-id`...).
 
-### Procédure console (pour chaque secret)
+### Console procedure (for each secret)
 
-1. Aller sur https://eu-west-1.console.aws.amazon.com/systems-manager/parameters
-2. Login en `fxvol-dev` (ou `itadmin` pour first-time setup avant que la
-   policy `fxvol-dev-ssm` soit attachée).
-3. Cliquer sur le paramètre (ex: `/fxvol/prod/IB_USERID`).
-4. Bouton **Edit** en haut à droite.
-5. **Tier** : Standard (laisser tel quel)
-6. **Type** : SecureString (pour les 4 secrets) ou String (pour `TRADING_MODE`)
-7. **KMS key source** : `My current account` → `alias/fxvol-secrets`
-8. **Value** : coller la nouvelle valeur. La saisie est masquée par défaut sur
-   les SecureString, et le champ n'apparaît jamais en clair après save.
+1. Go to https://eu-west-1.console.aws.amazon.com/systems-manager/parameters
+2. Log in as `fxvol-dev` (or `itadmin` for first-time setup before the
+   `fxvol-dev-ssm` policy is attached).
+3. Click on the parameter (e.g. `/fxvol/prod/IB_USERID`).
+4. **Edit** button at the top right.
+5. **Tier**: Standard (leave as is)
+6. **Type**: SecureString (for the 4 secrets) or String (for `TRADING_MODE`)
+7. **KMS key source**: `My current account` → `alias/fxvol-secrets`
+8. **Value**: paste the new value. Input is masked by default on
+   SecureStrings, and the field never appears in plaintext after save.
 9. **Save changes**.
 
-À répéter pour : `IB_USERID`, `IB_PASSWORD`, `DB_PASSWORD`, `VNC_PASSWORD`.
-Pour `TRADING_MODE`, laisser `paper` jusqu'au passage en `live` (décision
-explicite, pas avant).
+Repeat for: `IB_USERID`, `IB_PASSWORD`, `DB_PASSWORD`, `VNC_PASSWORD`.
+For `TRADING_MODE`, leave `paper` until the switch to `live` (explicit
+decision, not before).
 
-### Vérification post-modif (sans exposer la valeur)
+### Post-modification verification (without exposing the value)
 
 ```powershell
-# Confirme que la version a été incrémentée + nouveau LastModifiedDate
+# Confirms the version was incremented + new LastModifiedDate
 aws ssm get-parameter --name /fxvol/prod/IB_USERID `
     --query '{Name:Parameter.Name,Version:Parameter.Version,Modified:Parameter.LastModifiedDate,Length:length(Parameter.Value)}' `
     --with-decryption --profile fxvol-dev
 ```
 
-→ `Length` = nombre de caractères, pas la valeur. Permet de vérifier que la
-nouvelle valeur n'est pas vide / pas trop courte sans la révéler.
+→ `Length` = number of characters, not the value. Lets you verify that the
+new value is not empty / not too short without revealing it.
 
-### Recharger les secrets dans la session shell après modif
+### Reload the secrets in the shell session after modification
 
 ```powershell
 .\scripts\load_secrets.ps1
 ```
 
-Re-fetch SSM → `$env:*` mis à jour pour la session courante. Les containers
-docker démarrés AVANT cet appel gardent l'ancienne valeur jusqu'au prochain
-`docker compose up -d` qui relit `$env:*`.
+Re-fetch SSM → `$env:*` updated for the current session. Docker containers
+started BEFORE this call keep the old value until the next
+`docker compose up -d` which re-reads `$env:*`.
 
 ---
 
-## 8. Ce qu'il NE FAUT PAS faire maintenant
+## 8. What NOT to do now
 
-Le projet n'est pas prêt pour ces étapes — attends la PR correspondante :
+The project is not ready for these steps — wait for the corresponding PR:
 
-| Action AWS | Quand l'activer | PR de référence |
+| AWS action | When to enable | Reference PR |
 |---|---|---|
-| Créer une instance EC2 | R8 (~12/05) | R8 PR #51 `ci/r8-deploy-ec2` |
-| Créer le rôle IAM `fxvol-ec2-secrets-role` | R8 | idem |
-| Créer un instance profile + l'attacher | R8 | idem |
-| Configurer Route 53 / domaine | post-R8 | hors scope migration |
-| ACM cert pour HTTPS | post-R8 | hors scope |
-| RDS Postgres managé | jamais (on garde le container) | — |
-| Elasticache Redis managé | jamais (idem) | — |
-| Secrets Manager (au lieu de SSM) | jamais (overkill, +$2/mois) | — |
-| GitHub Actions OIDC vers AWS | si CI doit lire SSM | hors scope R9 |
-| CloudWatch alarms sur GetParameter | R10+ | hors scope migration |
-| AWS Backup pour EBS EC2 | R10+ | hors scope |
+| Create an EC2 instance | R8 (~12/05) | R8 PR #51 `ci/r8-deploy-ec2` |
+| Create the IAM role `fxvol-ec2-secrets-role` | R8 | same |
+| Create an instance profile + attach it | R8 | same |
+| Configure Route 53 / domain | post-R8 | out of migration scope |
+| ACM cert for HTTPS | post-R8 | out of scope |
+| Managed RDS Postgres | never (we keep the container) | — |
+| Managed Elasticache Redis | never (same) | — |
+| Secrets Manager (instead of SSM) | never (overkill, +$2/month) | — |
+| GitHub Actions OIDC to AWS | if CI must read SSM | out of R9 scope |
+| CloudWatch alarms on GetParameter | R10+ | out of migration scope |
+| AWS Backup for EC2 EBS | R10+ | out of scope |
 
 ---
 
-## 9. Vérification globale (phases 1-5 terminées)
+## 9. Global verification (phases 1-5 completed)
 
-Lance ce smoke check complet — tout doit passer :
+Run this full smoke check — everything must pass:
 
 ```powershell
-# 1. Profile actif (Arn doit être user/fxvol-dev)
+# 1. Active profile (Arn must be user/fxvol-dev)
 aws sts get-caller-identity --profile fxvol-dev | ConvertFrom-Json | Select-Object Account, Arn
 
 # 2. CMK accessible
 aws kms describe-key --key-id alias/fxvol-secrets --profile fxvol-dev --query 'KeyMetadata.{Id:KeyId, Enabled:Enabled, Rotation:KeyRotationStatus}'
 
-# 3. Les 5 params SSM existent
+# 3. The 5 SSM params exist
 aws ssm describe-parameters --parameter-filters "Key=Name,Option=BeginsWith,Values=/fxvol/prod/" --profile fxvol-dev --query 'Parameters[].{Name:Name, Type:Type}'
 
-# 4. Decrypt fonctionne (sans afficher la valeur)
+# 4. Decrypt works (without displaying the value)
 aws ssm get-parameter --name /fxvol/prod/IB_USERID --with-decryption --profile fxvol-dev --query 'length(Parameter.Value)'
 
-# 5. (Optionnel) Vérifier âge des access keys (rotate si > 90 jours)
+# 5. (Optional) Check the age of the access keys (rotate if > 90 days)
 aws iam list-access-keys --user-name fxvol-dev --profile itadmin --query 'AccessKeyMetadata[].{Id:AccessKeyId,Created:CreateDate,Status:Status}'
 ```
 
-Si les 4 premières commandes renvoient un résultat propre, tu es prêt pour
-la suite (R9 PRs ou simplement laisser dormir AWS jusqu'à R8).
+If the first 4 commands return a clean result, you are ready for
+what comes next (R9 PRs or simply letting AWS sit idle until R8).
 
 ---
 
-## 10. Coûts mensuels attendus (pendant le développement)
+## 10. Expected monthly costs (during development)
 
-| Service | Usage | Coût |
+| Service | Usage | Cost |
 |---|---|---|
-| KMS CMK | 1 clé | **$1** |
-| KMS decrypt | ~100 calls/jour dev = ~3000/mois | **~$0.01** |
-| SSM Parameter Store | 5 params standard | **$0** |
-| IAM Identity Center | jusqu'à 50 users | **$0** |
-| CloudTrail (90 jours rétention) | events management | **$0** |
-| **Total dev (R9 actif)** | | **~$1.01/mois** |
+| KMS CMK | 1 key | **$1** |
+| KMS decrypt | ~100 calls/day dev = ~3000/month | **~$0.01** |
+| SSM Parameter Store | 5 standard params | **$0** |
+| IAM Identity Center | up to 50 users | **$0** |
+| CloudTrail (90 days retention) | management events | **$0** |
+| **Total dev (R9 active)** | | **~$1.01/month** |
 
-Quand R8 sera mergée et l'EC2 lancée :
+When R8 is merged and the EC2 launched:
 
-| Service additionnel | Spec | Coût |
+| Additional service | Spec | Cost |
 |---|---|---|
 | EC2 t3.small | 24/7 | **~$15** |
-| EBS gp3 30 GB | volume root | **~$2.50** |
-| Data transfer out | léger (API JSON) | **~$1** |
-| Elastic IP | 1 IP statique | **$0** (attachée à instance running) |
-| **Total prod (R8 actif)** | | **~$20/mois** |
+| EBS gp3 30 GB | root volume | **~$2.50** |
+| Data transfer out | light (JSON API) | **~$1** |
+| Elastic IP | 1 static IP | **$0** (attached to a running instance) |
+| **Total prod (R8 active)** | | **~$20/month** |
 
 ---
 
-## 11. Checklist finale
+## 11. Final checklist
 
-Phase 1-5 (le strict nécessaire pour le dev) :
+Phases 1-5 (the bare minimum for dev):
 
-- [ ] MFA activée sur root, `itadmin`, `fxvol-dev`
-- [ ] Password root + access keys `fxvol-dev` en password manager
-- [ ] CMK `alias/fxvol-secrets` créée, rotation annuelle activée
-- [ ] ARN CMK + Account ID notés dans password manager
-- [ ] 5 params SSM créés sous `/fxvol/prod/*` avec valeur placeholder
-- [ ] Policy `fxvol-dev-ssm` attachée à user `fxvol-dev` avec les ARN réels
-- [ ] AWS CLI v2 installé sur Windows
-- [ ] Profile `fxvol-dev` configuré (`aws configure --profile fxvol-dev`)
-- [ ] ACL Windows posée sur `~/.aws/credentials`
-- [ ] Smoke check § 9 passe entièrement
-- [ ] Cette doc relue avant de toucher aux vrais secrets en phase 6
+- [ ] MFA enabled on root, `itadmin`, `fxvol-dev`
+- [ ] Root password + `fxvol-dev` access keys in the password manager
+- [ ] CMK `alias/fxvol-secrets` created, annual rotation enabled
+- [ ] CMK ARN + Account ID noted in the password manager
+- [ ] 5 SSM params created under `/fxvol/prod/*` with placeholder values
+- [ ] Policy `fxvol-dev-ssm` attached to user `fxvol-dev` with the real ARNs
+- [ ] AWS CLI v2 installed on Windows
+- [ ] Profile `fxvol-dev` configured (`aws configure --profile fxvol-dev`)
+- [ ] Windows ACL set on `~/.aws/credentials`
+- [ ] Smoke check § 9 passes entirely
+- [ ] This doc re-read before touching the real secrets in phase 6
 
-Phase 6 et plus : à reprendre quand les scripts R9 seront mergés sur main, ou
-en CLI manuel si tu veux tester avant.
-
----
-
-## 12. Liens utiles
-
-- **Plan détaillé R9 secrets** : `releases/r9-sandbox-secrets-ssm.md` (gitignored)
-- **Architecture cible v2** : `releases/architecture_finale_project/00-architecture-main.md`
-- **Règles secrets dans Claude** : `CLAUDE.md` § "Règle absolue : zéro exposition des secrets"
-- **AWS console** : https://console.aws.amazon.com/ (login via `itadmin` ou `fxvol-dev`, jamais root)
-- **AWS pricing calculator** : https://calculator.aws/
+Phase 6 and beyond: to be resumed when the R9 scripts are merged to main, or
+manually via CLI if you want to test before.
 
 ---
 
-**Dernière mise à jour** : 2026-04-25 — projet à R3 sur main, R9 secrets en sandbox, R8 deploy non commencé.
+## 12. Useful links
+
+- **Detailed R9 secrets plan**: `releases/r9-sandbox-secrets-ssm.md` (gitignored)
+- **Target v2 architecture**: `releases/architecture_finale_project/00-architecture-main.md`
+- **Secrets rules in Claude**: `CLAUDE.md` § "Absolute rule: zero exposure of secrets"
+- **AWS console**: https://console.aws.amazon.com/ (log in via `itadmin` or `fxvol-dev`, never root)
+- **AWS pricing calculator**: https://calculator.aws/
+
+---
+
+**Last updated**: 2026-04-25 — project at R3 on main, R9 secrets in sandbox, R8 deploy not started.

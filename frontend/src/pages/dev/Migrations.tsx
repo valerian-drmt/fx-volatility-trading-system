@@ -23,6 +23,7 @@
  * the schema can go out of sync.
  */
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "../../api/client";
 
 interface Revision {
   id: string;
@@ -68,7 +69,7 @@ export function Migrations(): JSX.Element {
   }, [toast]);
 
   const loadChain = (): void => {
-    fetch("/api/v1/dev/migrations")
+    apiFetch("/api/v1/dev/migrations")
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status} : ${await r.text()}`);
         return r.json() as Promise<ChainResp>;
@@ -92,7 +93,7 @@ export function Migrations(): JSX.Element {
   // Load the selected revision's source on demand.
   useEffect(() => {
     if (!selectedId) { setDetail(null); return; }
-    fetch(`/api/v1/dev/migrations/${encodeURIComponent(selectedId)}`)
+    apiFetch(`/api/v1/dev/migrations/${encodeURIComponent(selectedId)}`)
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status} : ${await r.text()}`);
         return r.json() as Promise<RevDetail>;

@@ -1,4 +1,4 @@
-"""OMS invariants I1..I7 as property tests (spec §3.2, OMS_ARCHITECTURE_CIBLE.md).
+"""OMS invariants I1..I7 as property tests (spec §3.2, OMS_ARCHITECTURE.md).
 
 These are the assertions that must ALWAYS hold; a violated invariant is a
 localised bug, not an intuition. This file is the red baseline: the invariants

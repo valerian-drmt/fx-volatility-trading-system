@@ -18,6 +18,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from core.products import product_label_from_symbol
+from core.units import EUR_FOP_MULTIPLIER, FUTURE_MULTIPLIERS, PIP_SIZE, VOLPT
 from core.vol.tenors import snap_tenor
 
 # 6-tenor canonical grid
@@ -280,8 +281,9 @@ class Structure:
     product_label: str | None = None
 
 
-# Multiplier in EUR notional per CME contract.
-FUTURE_MULTIPLIERS: dict[str, int] = {"full": 125_000, "micro": 12_500}
+# Contract multipliers + pip/vol-point sizes live in ``core.units`` (the
+# single source of truth for the USD-at-notional convention) — imported
+# above and re-exported here for backwards compatibility.
 # IB ``Contract.symbol`` convention : EUR for full size 6E, M6E for micro.
 # Cf. src/shared/contracts.py ContractSpec.symbol.
 FUTURE_IB_SYMBOLS: dict[str, str] = {"full": "EUR", "micro": "M6E"}
@@ -290,9 +292,6 @@ FUTURE_IB_SYMBOLS: dict[str, str] = {"full": "EUR", "micro": "M6E"}
 FUTURE_DISPLAY_SYMBOLS: dict[str, str] = {"full": "6E", "micro": "M6E"}
 # Commission per round-trip-side (entry only) in USD. IB published rates.
 FUTURE_COMMISSION_USD: dict[str, float] = {"full": 2.40, "micro": 0.60}
-
-# CME EUR options (FOP class EUU) notional per contract — same as 6E future.
-EUR_FOP_MULTIPLIER: float = 125_000.0
 
 
 def _resolve_tenor(template_leg: dict, near: str, far: str | None) -> str:
@@ -559,11 +558,15 @@ def build_from_legs(
 # ────────────────────────────────────────────────────────────────
 
 
-CONTRACT_MULTIPLIER = 1.0  # FX vanilla : per unit of notional, scaling done by qty
-
-
 @dataclass(frozen=True)
 class PricingResult:
+    """USD-at-notional pricing (convention : ``core.units``).
+
+    ``leg_prices_usd`` = per-contract premium in real USD
+    (``bs_price × EUR_FOP_MULTIPLIER``). Callers that need IB's raw
+    price-points unit (lmtPrice) divide back by ``EUR_FOP_MULTIPLIER``.
+    """
+
     leg_prices_usd: list[float]
     total_premium_usd: float                  # sign : + = paid (long), - = received
     breakeven_pips_each_side: float | None
@@ -597,7 +600,9 @@ def price_structure(structure: Structure, surface: dict[str, Any]) -> PricingRes
         if leg.contract_type in ("call", "put") and leg.strike and leg.entry_iv_pct:
             T = leg.dte / 365.0
             sigma = leg.entry_iv_pct / 100.0
-            price = bs_price(spot, leg.strike, T, sigma, leg.contract_type) * CONTRACT_MULTIPLIER
+            # bs_price is in price points ; × EUR_FOP_MULTIPLIER = real USD
+            # per contract (cf. core.units).
+            price = bs_price(spot, leg.strike, T, sigma, leg.contract_type) * EUR_FOP_MULTIPLIER
             leg_prices.append(price)
             sign = +1 if leg.side == "BUY" else -1
             total += sign * price * leg.qty_factor
@@ -616,33 +621,48 @@ def price_structure(structure: Structure, surface: dict[str, Any]) -> PricingRes
     )
 
 
+def _leg_greeks(leg: Leg, spot: float, fut_mult: float) -> dict[str, float]:
+    """Signed USD greeks for ONE leg — the single place where the
+    ``core.units`` convention is applied inside this module :
+
+      vega  = bs_vega  × VOLPT × mult        ($ per +1 vol-pt)
+      gamma = bs_gamma × PIP_SIZE² × mult    ($ per pip² — gamma P&L is
+                                              0.5 × gamma × ΔS_pips²)
+      theta = bs_theta_per_year / 365 × mult ($ per day)
+      delta = bs_delta × spot × mult         ($ notional exposure)
+
+    with ``mult = ±qty_factor × EUR_FOP_MULTIPLIER``. A future leg carries
+    delta only (± qty × future multiplier × spot).
+    """
+    vega = gamma = theta = delta = 0.0
+    if leg.contract_type == "future":
+        # 6E (full) : 125 000 × spot ≈ $147 000 per contract @ 1.175.
+        # M6E (micro) :  12 500 × spot ≈ $14 700 per contract.
+        sign = +1 if leg.side == "BUY" else -1
+        delta = sign * leg.qty_factor * fut_mult * spot
+    elif leg.contract_type in ("call", "put") and leg.strike and leg.entry_iv_pct:
+        T = leg.dte / 365.0
+        sigma = leg.entry_iv_pct / 100.0
+        g = bs_greeks(spot, leg.strike, T, sigma, leg.contract_type)
+        sign = +1 if leg.side == "BUY" else -1
+        mult = sign * leg.qty_factor * EUR_FOP_MULTIPLIER
+        vega = g["vega"] * VOLPT * mult
+        gamma = g["gamma"] * PIP_SIZE ** 2 * mult
+        theta = g["theta"] / 365.0 * mult
+        delta = g["delta"] * spot * mult
+    return {"vega": vega, "gamma": gamma, "theta": theta, "delta": delta}
+
+
 def compute_net_greeks(structure: Structure, surface: dict[str, Any]) -> NetGreeks:
     spot = _spot_from_surface(surface)
     fut_mult = FUTURE_MULTIPLIERS.get(structure.future_contract_size or "full", 125_000)
     vega = gamma = theta = delta = 0.0
     for leg in structure.legs:
-        if leg.contract_type == "future":
-            # Future leg : delta_usd = ±qty × multiplier × spot.
-            # 6E (full) : 125 000 × spot ≈ $147 000 per contract @ 1.175.
-            # M6E (micro) :  12 500 × spot ≈ $14 700 per contract.
-            sign = +1 if leg.side == "BUY" else -1
-            delta += sign * leg.qty_factor * fut_mult * spot
-            continue
-        if leg.contract_type in ("call", "put") and leg.strike and leg.entry_iv_pct:
-            T = leg.dte / 365.0
-            sigma = leg.entry_iv_pct / 100.0
-            g = bs_greeks(spot, leg.strike, T, sigma, leg.contract_type)
-            sign = +1 if leg.side == "BUY" else -1
-            mult = sign * leg.qty_factor * EUR_FOP_MULTIPLIER
-            # Trader-readable USD units. Conventions :
-            #   vega   = $ P&L per +1 vol-pt (1 % IV move)
-            #   gamma  = $ delta change per +1 pip spot move = bs_gamma × pip
-            #   theta  = $ P&L per +1 day decay
-            #   delta  = $ exposure   = bs_delta × spot × notional
-            vega += g["vega"] * 0.01 * mult
-            gamma += g["gamma"] * 1e-4 * mult
-            theta += g["theta"] / 365.0 * mult
-            delta += g["delta"] * spot * mult
+        g = _leg_greeks(leg, spot, fut_mult)
+        vega += g["vega"]
+        gamma += g["gamma"]
+        theta += g["theta"]
+        delta += g["delta"]
     delta_post_hedge = 0.0 if structure.requires_delta_hedge else delta
     return NetGreeks(
         vega_usd_per_volpt=round(vega, 4),
@@ -677,7 +697,6 @@ DEFAULT_SCENARIOS: list[ScenarioConfig] = [
 # ────────────────────────────────────────────────────────────────
 
 
-DEFAULT_SPOT_MOVES_PCT: list[float] = [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0]
 DEFAULT_PNL_SPOT_MOVES_PCT: list[float] = [-2.0, -1.0, 0.0, 1.0, 2.0]
 DEFAULT_PNL_IV_MOVES_VOLPTS: list[float] = [-2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0]
 
@@ -691,30 +710,17 @@ def compute_legs_greeks(
     fut_mult = FUTURE_MULTIPLIERS.get(structure.future_contract_size or "full", 125_000)
     rows: list[dict[str, Any]] = []
     for leg in structure.legs:
-        vega = gamma = theta = delta = 0.0
-        if leg.contract_type == "future":
-            sign = +1 if leg.side == "BUY" else -1
-            delta = sign * leg.qty_factor * fut_mult * spot
-        elif leg.contract_type in ("call", "put") and leg.strike and leg.entry_iv_pct:
-            T = leg.dte / 365.0
-            sigma = leg.entry_iv_pct / 100.0
-            g = bs_greeks(spot, leg.strike, T, sigma, leg.contract_type)
-            sign = +1 if leg.side == "BUY" else -1
-            mult = sign * leg.qty_factor * EUR_FOP_MULTIPLIER
-            vega = g["vega"] * 0.01 * mult       # $ / vol-pt
-            gamma = g["gamma"] * 1e-4 * mult     # $ delta per pip spot move
-            theta = g["theta"] / 365.0 * mult    # $ / day
-            delta = g["delta"] * spot * mult     # $ delta
+        g = _leg_greeks(leg, spot, fut_mult)   # core.units convention
         rows.append({
             "leg_idx": leg.leg_idx,
             "type": leg.contract_type,
             "strike": leg.strike,
             "side": leg.side,
             "qty_factor": leg.qty_factor,
-            "vega": round(vega, 2),
-            "gamma": round(gamma, 6),
-            "theta": round(theta, 2),
-            "delta": round(delta, 4),
+            "vega": round(g["vega"], 2),
+            "gamma": round(g["gamma"], 6),
+            "theta": round(g["theta"], 2),
+            "delta": round(g["delta"], 4),
         })
     return rows
 
@@ -726,7 +732,8 @@ def compute_pnl_grid(
 ) -> dict[str, Any]:
     """2D Taylor-approximated P&L grid : rows = ΔS%, cols = ΔIV (volpts).
 
-    For each (ΔS, ΔIV) cell : P&L ≈ ½ γ (ΔS_abs)² + V (ΔIV).
+    For each (ΔS, ΔIV) cell : P&L ≈ ½ γ (ΔS_pips)² + V (ΔIV) — the spot
+    shock is converted to PIPS because gamma is $/pip² (cf. core.units).
     Δ-leg ignored (structures requiring delta hedge collapse to 0). Theta
     ignored (instantaneous shock). Cell at (0,0) flagged ``is_current``.
     """
@@ -735,8 +742,8 @@ def compute_pnl_grid(
     spot = _spot_from_surface(surface)
     grid_rows: list[dict[str, Any]] = []
     for ds_pct in spot_moves:
-        ds_abs = spot * (ds_pct / 100.0)
-        pnl_gamma = 0.5 * greeks.gamma_usd_per_pip2 * (ds_abs ** 2)
+        ds_pips = spot * (ds_pct / 100.0) / PIP_SIZE
+        pnl_gamma = 0.5 * greeks.gamma_usd_per_pip2 * (ds_pips ** 2)
         cells: list[dict[str, Any]] = []
         for div in iv_moves:
             pnl_vega = greeks.vega_usd_per_volpt * div
@@ -754,52 +761,6 @@ def compute_pnl_grid(
     }
 
 
-def compute_greeks_grid(
-    structure: Structure, surface: dict[str, Any],
-    spot_moves_pct: list[float] | None = None,
-) -> list[dict[str, Any]]:
-    """Re-evaluate net greeks at each shocked spot. The IV stays at the
-    leg's entry_iv_pct (no surface re-shape) — this is a Taylor-style grid
-    showing how the greeks move with spot, holding everything else fixed.
-
-    Returns a list of rows, one per spot move percentage. The row at 0%
-    has ``is_current=True`` so the UI can highlight it.
-    """
-    moves = spot_moves_pct or DEFAULT_SPOT_MOVES_PCT
-    base_spot = _spot_from_surface(surface)
-    fut_mult = FUTURE_MULTIPLIERS.get(structure.future_contract_size or "full", 125_000)
-    grid: list[dict[str, Any]] = []
-    for pct in moves:
-        s_shocked = base_spot * (1.0 + pct / 100.0)
-        vega = gamma = theta = delta = 0.0
-        for leg in structure.legs:
-            if leg.contract_type == "future":
-                # Future delta_usd = ±qty × multiplier × spot_shocked.
-                sign = +1 if leg.side == "BUY" else -1
-                delta += sign * leg.qty_factor * fut_mult * s_shocked
-                continue
-            if leg.contract_type in ("call", "put") and leg.strike and leg.entry_iv_pct:
-                T = leg.dte / 365.0
-                sigma = leg.entry_iv_pct / 100.0
-                g = bs_greeks(s_shocked, leg.strike, T, sigma, leg.contract_type)
-                sign = +1 if leg.side == "BUY" else -1
-                mult = sign * leg.qty_factor
-                vega += g["vega"] * 0.01 * mult
-                gamma += g["gamma"] * mult
-                theta += g["theta"] / 365.0 * mult
-                delta += g["delta"] * mult
-        grid.append({
-            "spot_pct": pct,
-            "spot": round(s_shocked, 4),
-            "vega_usd_per_volpt": round(vega, 2),
-            "gamma_usd_per_pip2": round(gamma, 6),
-            "theta_usd_per_day": round(theta, 2),
-            "delta": round(delta, 3),
-            "is_current": pct == 0.0,
-        })
-    return grid
-
-
 def simulate_scenarios(
     structure: Structure, surface: dict[str, Any], greeks: NetGreeks,
     grid: list[ScenarioConfig] | None = None,
@@ -808,8 +769,9 @@ def simulate_scenarios(
     spot = _spot_from_surface(surface)
     results: list[dict[str, Any]] = []
     for sc in grid:
-        spot_move_abs = spot * (sc.spot_move_pct / 100.0)
-        pnl_gamma = 0.5 * greeks.gamma_usd_per_pip2 * (spot_move_abs ** 2)
+        # gamma is $/pip² (core.units) → shock expressed in pips.
+        spot_move_pips = spot * (sc.spot_move_pct / 100.0) / PIP_SIZE
+        pnl_gamma = 0.5 * greeks.gamma_usd_per_pip2 * (spot_move_pips ** 2)
         pnl_theta = greeks.theta_usd_per_day * 1  # assume 1 day later
         pnl_vega = greeks.vega_usd_per_volpt * sc.iv_reprice_volpts
         pnl_total = pnl_gamma + pnl_theta + pnl_vega

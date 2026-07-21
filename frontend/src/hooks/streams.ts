@@ -33,11 +33,15 @@ export interface TickMsg {
 export const useTicks = (enabled = true): Fresh<TickMsg> =>
   useStream<TickMsg>(enabled ? "/ws/ticks" : null, WARN_MS.ticks, 1000);
 
+// vol/risk beats are used ONLY as REST-invalidation triggers (provider.tsx) —
+// the payloads themselves are never rendered. Throttle them so each open tab
+// re-fetches its snapshot family at a bounded cadence instead of on every
+// ~2s engine cycle (the audit's "refetch storm": ~5.5 req/s per tab, forever).
 export const useVolStream = (enabled = true): Fresh<unknown> =>
-  useStream<unknown>(enabled ? "/ws/vol" : null, WARN_MS.vol);
+  useStream<unknown>(enabled ? "/ws/vol" : null, WARN_MS.vol, 30_000);
 
 export const useRiskStream = (enabled = true): Fresh<unknown> =>
-  useStream<unknown>(enabled ? "/ws/risk" : null, WARN_MS.risk);
+  useStream<unknown>(enabled ? "/ws/risk" : null, WARN_MS.risk, 15_000);
 
 export const usePositionsStream = (enabled = true): Fresh<unknown> =>
   useStream<unknown>(enabled ? "/ws/positions" : null, WARN_MS.positions);

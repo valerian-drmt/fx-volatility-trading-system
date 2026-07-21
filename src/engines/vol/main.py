@@ -82,9 +82,9 @@ async def run() -> None:
         service_name=settings.SERVICE_NAME or "vol_engine", level=settings.LOG_LEVEL
     )
     start_metrics_server(_METRICS_PORT, engine="vol_engine")
-    # P2 obs (PoC vol-engine seul) : OTel tracer → otel-collector → Tempo.
-    # Spec § Phase 2 gate 2.1 — rollout aux 4 autres engines après
-    # validation flame graph dans Grafana.
+    # P2 obs (PoC on vol-engine only): OTel tracer → otel-collector → Tempo.
+    # Spec § Phase 2 gate 2.1 — rollout to the 4 other engines after
+    # validating the flame graph in Grafana.
     init_tracing(service_name=settings.SERVICE_NAME or "vol_engine")
 
     from ib_insync import IB
@@ -124,6 +124,13 @@ async def run() -> None:
 
         return await fetch_daily_ohlc(ib)
 
+    async def _on_ib_reconnected() -> None:
+        # Both flags are per-IB-session state : delayed market data (type 3)
+        # must be re-armed after the nightly Gateway restart, and the chains
+        # are rediscovered (expiries may have rolled while disconnected).
+        _chains_cache["delayed_enabled"] = False
+        _chains_cache["chains"] = None
+
     engine = VolEngine(
         ib=ib,
         redis=redis,
@@ -133,6 +140,7 @@ async def run() -> None:
         client_id=settings.IB_CLIENT_ID,
         fetch_fop_chain=_fop_real,
         fetch_ohlc=_ohlc_real,
+        on_ib_reconnected=_on_ib_reconnected,
     )
 
     # Boot config comes from env vars (pydantic-settings) ; live updates

@@ -84,23 +84,21 @@ class MarketDataEngine:
 
     async def run(self) -> None:
         """Main engine loop : connect, poll, publish, heartbeat, repeat."""
-        from shared.ib_connection import connect_ib_with_backoff
         from shared.observability import observed_cycle
 
-        await connect_ib_with_backoff(
-            self.ib, host=self.ib_host, port=self.ib_port, client_id=self.client_id
-        )
-        if self._post_connect_hook is not None:
-            try:
-                await self._post_connect_hook()
-            except Exception:
-                logger.exception("post_connect_hook_failed")
+        await self._ensure_ib_connected()
         await self._maybe_refresh_bars(force=True)
         logger.info("market_data_engine_started", extra={"symbol": self.symbol})
 
         try:
             poll = 0
             while not self._stop.is_set():
+                # Reconnect check : a no-op while the session is up. After
+                # the nightly IB Gateway restart ``isConnected()`` flips
+                # False — the loop pauses here (capped backoff) until IB is
+                # back, then the hook re-subscribes the tick feed so a fresh
+                # ticker object replaces the dead one.
+                await self._ensure_ib_connected()
                 # P0 obs : each 100 ms poll = one cycle. Prometheus counters
                 # handle the rate fine. cycle_id rotates per poll keeping logs
                 # cleanly segmented.
@@ -117,6 +115,27 @@ class MarketDataEngine:
                     continue  # normal — no stop requested, loop
         finally:
             self._teardown()
+
+    async def _ensure_ib_connected(self) -> None:
+        """Connect (or reconnect) IB, then (re-)run the post-connect hook.
+
+        No-op when already connected. ``connect_ib_with_backoff`` retries
+        forever with capped backoff, so the poll loop simply pauses until
+        the Gateway is back — caches intact, no container restart needed.
+        The hook re-subscribes market data (per-session state at IB).
+        """
+        if self.ib.isConnected():
+            return
+        from shared.ib_connection import connect_ib_with_backoff
+
+        await connect_ib_with_backoff(
+            self.ib, host=self.ib_host, port=self.ib_port, client_id=self.client_id
+        )
+        if self._post_connect_hook is not None:
+            try:
+                await self._post_connect_hook()
+            except Exception:
+                logger.exception("post_connect_hook_failed")
 
     async def _maybe_refresh_bars(self, *, force: bool = False) -> None:
         """Refresh the historical-bars Redis cache on a timer. Best-effort: any

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { apiFetch } from "../../api/client";
 
 function isFxMarketOpen(now: Date): boolean {
   // FX cash market: Sun 22:00 UTC → Fri 22:00 UTC.
@@ -25,7 +26,7 @@ export function StatusBadge(): JSX.Element {
   useEffect(() => {
     const load = async () => {
       try {
-        const r = await fetch("/api/v1/dev/tables/ib_session_state?limit=1");
+        const r = await apiFetch("/api/v1/dev/tables/ib_session_state?limit=1");
         if (!r.ok) return;
         const j = await r.json();
         const t = j.rows?.[0]?.account_type ?? null;

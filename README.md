@@ -12,7 +12,7 @@ research-grade vol signals, web cockpit, and Interactive Brokers execution.**
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-15-panel React cockpit on top of 5 async Python engines :
+7-view React trading desk (voldesk) on top of 5 async Python engines :
 live IB tick stream → vol surface fit (SVI/SSVI, GARCH, HAR-RV) → GMM regime
 + PCA signal z-scores → order submission with delta hedge → versioned audit
 trail in Postgres.
@@ -54,7 +54,7 @@ trail in Postgres.
 
 ## Architecture
 
-**10-container core stack** (6 ship our Python code) **+ optional 6-container observability stack** (Prometheus / Loki / Tempo / Grafana / promtail / otel-collector, opt-in via `--profile obs`).
+**11-container core stack** (6 ship our Python code) **+ optional 7-container observability stack** (Prometheus / cAdvisor / Loki / Tempo / Grafana / promtail / otel-collector, opt-in via `--profile obs`).
 
 ```
                           ┌────────────────┐
@@ -123,7 +123,7 @@ Networks : `fxvol-public` (nginx), `fxvol-internal` (services), `fxvol-external`
 
 Shared Python libs (under `src/`, no container of their own) :
 - **`core/`** — pure pricing + vol + risk algorithms (no I/O)
-- **`persistence/`** — SQLAlchemy 2 ORM (`models.py`, 20 classes) + 18 Alembic revisions + `AsyncDatabaseWriter`
+- **`persistence/`** — SQLAlchemy 2 ORM (`models.py`, 28 classes) + 54 Alembic revisions + `AsyncDatabaseWriter`
 - **`bus/`** — Redis pub/sub helpers + channel/key constants + connection factories
 - **`shared/`** — config (`Settings`), structlog setup, IB connection wrapper, db-events publisher
 
@@ -147,7 +147,7 @@ Dependency direction is enforced by [`import-linter`](https://import-linter.read
 | Vol models | numpy, scipy (PCHIP, norm), arch (GARCH), scikit-learn (GMM), custom SVI/SSVI |
 | Secrets | AWS SSM Parameter Store + KMS CMK |
 | CI | GitHub Actions — ruff, pytest, compileall, import-linter, openapi drift, vitest, Playwright, alembic round-trip |
-| Deploy | Docker compose local (10-container `obs` profile optional) |
+| Deploy | Docker compose local (11-container core, `obs` profile optional) |
 
 ---
 
@@ -167,8 +167,8 @@ python -m pip install -e ".[dev,api,quant,ib,writer]"
 .\scripts\ops\load_secrets.ps1
 
 # 3. Start the full stack
-.\scripts\local\stack.ps1          # build + up + alembic upgrade head (+ obs profile)
-.\scripts\local\stack.ps1 -NoBuild # skip build, reuse cached images
+.\scripts\ops\stack.ps1          # build + up + alembic upgrade head (+ obs profile)
+.\scripts\ops\stack.ps1 -NoBuild # skip build, reuse cached images
 ```
 
 Then :
@@ -246,8 +246,8 @@ fx-volatility-trading-system/
 ├── src/                            (PyPA src-layout, all Python)
 │   ├── api/                        → container fxvol-api
 │   │   ├── main.py                 FastAPI app + lifespan (events scheduler, WS bridge)
-│   │   ├── routers/                16 routers : health, admin, analytics, cockpit,
-│   │   │                             dev, orders, portfolio, portfolio_panel,
+│   │   ├── routers/                16 routers : admin, analytics, auth, cockpit,
+│   │   │                             dev, health, orders, portfolio_panel,
 │   │   │                             positions, pricing, regime, signals, trade,
 │   │   │                             trades, vol, ws
 │   │   ├── ws/                     connection_manager + redis_bridge
@@ -263,20 +263,19 @@ fx-volatility-trading-system/
 │   │   └── execution/              → fxvol-execution-engine (clientID 5, :8001)
 │   ├── core/                       pure-Python algos (no I/O)
 │   │   ├── vol/                    garch, har_rv, svi, ssvi, pchip_smile,
-│   │   │                             fair_smile, gmm_regime, regime_engine,
-│   │   │                             pca_engine, surface_pca, calibration,
-│   │   │                             vrp, yang_zhang
+│   │   │                             gmm_regime, regime_engine, pca_engine,
+│   │   │                             fair_term, surface_z, tenors,
+│   │   │                             feature_enrichment, vrp, yang_zhang
 │   │   ├── pricing/bs.py           Black-Scholes for FX options
 │   │   ├── risk/greeks.py          Δ/Γ/V analytics
 │   │   ├── config/                 config helpers
-│   │   ├── products.py             Murex-style product label dual-column
-│   │   └── payloads.py             engine output → DB row dict (pure)
+│   │   └── products.py             Murex-style product label dual-column
 │   ├── persistence/                ONLY the DB adapter
-│   │   ├── models.py               30 ORM classes (single file)
+│   │   ├── models.py               28 ORM classes (single file)
 │   │   ├── db.py                   engine + AsyncSession factory
 │   │   ├── writer.py               AsyncDatabaseWriter (batch INSERT + retry)
 │   │   ├── alembic.ini
-│   │   └── migrations/versions/    41 revisions
+│   │   └── migrations/versions/    54 revisions
 │   ├── bus/                        ONLY the Redis adapter
 │   │   ├── client.py               connection factory (async + sync)
 │   │   ├── publisher.py
@@ -288,7 +287,7 @@ fx-volatility-trading-system/
 │       ├── ib_connection.py        IB sync wrapper + backoff
 │       ├── observability.py        Prometheus metrics + OTel tracing
 │       └── db_events.py            db-events Redis publisher
-├── frontend/                       React + TS + Vite (15 production panels +
+├── frontend/                       React + TS + Vite (7 voldesk views +
 │                                     9 dev tabs : Stack / WS / DB Explorer /
 │                                     DB Schema / Logs / Migrations / PCA /
 │                                     Trade / Portfolio)
@@ -300,18 +299,15 @@ fx-volatility-trading-system/
 │   ├── redis/                      redis.conf (hardened)
 │   └── aws/                        SSM secrets bootstrap + KMS / IAM / S3 reference
 ├── scripts/                        human-run only (not shipped, not CI-collected)
-│   ├── local/                      stack.ps1 + load_secrets.ps1 (docker stack) + README
-│   ├── aws/                        ec2.ps1 + load_secrets.sh (EC2 host)
-│   ├── fxvol.ps1                   interactive launcher wrapping both
+│   ├── ops/                        stack.ps1 + ec2.ps1 + load_secrets.{ps1,sh}
 │   ├── db/                         seed_* + backfill_iv_history_for_gmm.py
-│   └── dev/                        gmm_diagnostic.py + check_orders.py + compute_context_baseline.py
+│   └── dev/                        dump_openapi.py + gmm_diagnostic.py + check_orders.py + compute_context_baseline.py
 ├── obs/                            Prometheus / Loki / Tempo / Promtail / OTel-collector
 │                                     configs + Grafana dashboards + datasources
 ├── tests/                          mirrors src/ 1-to-1
 │   ├── unit/                       (api, bus, core, engines, persistence, shared)
 │   ├── integration/                pipeline_<sub-system>/ (gated by markers)
-│   ├── fixtures/                   shared pytest fixtures
-│   └── old/                        residual nginx-config syntax test (CI path-pinned)
+│   └── fixtures/                   shared pytest fixtures
 └── docs/
     ├── README.md                   landing page index
     ├── run-local-stack.md          local stack runbook

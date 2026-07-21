@@ -14,13 +14,13 @@ import {
   fetchValuationHistory,
 } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
-import { useTicks } from "../../hooks/streams";
+import { useTicks } from "../data/deskData";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
 import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
 import { groupByTradeId, structureName, structureSide } from "../components/tradeGrouping";
-import { DATA, fmt } from "../data";
+import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
 import type { Cash } from "../data";
 import { useDeskData } from "../data/deskData";
 import {
@@ -1074,9 +1074,11 @@ function ValuationChart({
 export function PortfolioView(): JSX.Element {
   const { portfolio, trade } = useDeskData();
   const pd = portfolio.data;
-  const a = pd?.account ?? DATA.account,
-    g = pd?.greeks ?? DATA.greeks;
-  // Live EURUSD spot (WS ticks) for the $→€ conversions; mock only until a tick lands.
+  // Honest empty states: zeros until the live snapshot lands — never
+  // fabricated book data (remediation 05 WI-2).
+  const a = pd?.account ?? EMPTY_ACCOUNT,
+    g = pd?.greeks ?? EMPTY_GREEKS;
+  // Live EURUSD spot (WS ticks) for the $→€ conversions; reference spot until a tick lands.
   const spot = useTicks().data?.mid ?? DATA.SPOT;
   // Trade open/close markers overlaid on the Performance P&L + greek charts (covers 1Y).
   const tradeMarkers =
@@ -1105,11 +1107,10 @@ export function PortfolioView(): JSX.Element {
     reloadVal();
   }, [valWin, reloadVal]);
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
-  const liveCash = trade.data?.cash;
-  const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
+  const cashRows = trade.data?.cash ?? [];
   // Leverage from the live book: gross = Σ|notional|, net = |Σ signed notional| (€),
-  // buying power from the IB heartbeat ($). Mock only until positions/account load.
-  const posForLev = pd?.positions ?? DATA.positions;
+  // buying power from the IB heartbeat ($). Empty until positions/account load.
+  const posForLev = pd?.positions ?? [];
   const grossNotional = posForLev.reduce((s, p) => s + Math.abs(p.nominal), 0);
   const netNotional = Math.abs(
     posForLev.reduce((s, p) => s + (p.side === "BUY" ? p.nominal : -p.nominal), 0),

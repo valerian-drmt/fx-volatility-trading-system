@@ -67,10 +67,10 @@ async def fetch_daily_ohlc(
         currency=contract_currency,
     )
     try:
-        # whatToShow="TRADES" : seul mode supporté par IB pour FUT/CONTFUT.
-        # ADJUSTED_LAST n'existe que pour les STK (split/dividend adjusted) ;
-        # sur un futures il provoque Error 162 "API historical data query
-        # cancelled" et `bars` revient vide.
+        # whatToShow="TRADES": the only mode IB supports for FUT/CONTFUT.
+        # ADJUSTED_LAST only exists for STK (split/dividend adjusted);
+        # on a futures it triggers Error 162 "API historical data query
+        # cancelled" and `bars` comes back empty.
         bars = await ib.reqHistoricalDataAsync(
             cont_fut,
             endDateTime="",

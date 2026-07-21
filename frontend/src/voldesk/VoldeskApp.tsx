@@ -114,6 +114,16 @@ interface TickerView {
   status: "live" | "stale" | "missing";
 }
 
+// The clock shows the viewer's local time — label it with the real UTC offset
+// (a hard-coded "UTC+1" was wrong half the year and for non-CET visitors).
+const TZ_LABEL = (() => {
+  const mins = -new Date().getTimezoneOffset();
+  const sign = mins >= 0 ? "+" : "−";
+  const h = Math.floor(Math.abs(mins) / 60);
+  const m = Math.abs(mins) % 60;
+  return `UTC${sign}${h}${m ? ":" + String(m).padStart(2, "0") : ""}`;
+})();
+
 function Topbar({
   ticker,
   clock,
@@ -167,7 +177,7 @@ function Topbar({
         </button>
       )}
       <span className="tb-clock mono">
-        {clock} <span className="dim">UTC+1</span>
+        {clock} <span className="dim">{TZ_LABEL}</span>
       </span>
     </header>
   );

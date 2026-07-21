@@ -51,7 +51,7 @@ export function SystemView(): JSX.Element {
       </Panel>
       <Panel title="Engine heartbeats" right={<FreshBadge fresh={system} />}>
         {engines.length === 0 && (
-          <div className="dim small mono ivz-empty">heartbeats indisponibles (/dev gated ou engines arrêtés)</div>
+          <div className="dim small mono ivz-empty">heartbeats unavailable (/dev gated or engines stopped)</div>
         )}
         {engines.map((e) => (
           <div key={e.name} className="eng-row">

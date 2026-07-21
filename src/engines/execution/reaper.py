@@ -57,6 +57,23 @@ _LIVE_IB_STATUSES = frozenset(
 )
 
 
+_ORDER_REF_PREFIX = "fxvol:"
+
+
+def parse_order_ref(ref: str | None) -> tuple[int, int] | None:
+    """Parse a live-submit idempotency key ``fxvol:{structure_id}:{order_id}``
+    into ``(structure_id, order_id)``; None for anything else. Pure/testable."""
+    if not ref or not ref.startswith(_ORDER_REF_PREFIX):
+        return None
+    parts = ref.split(":")
+    if len(parts) != 3:
+        return None
+    try:
+        return int(parts[1]), int(parts[2])
+    except ValueError:
+        return None
+
+
 def live_ib_order_keys(ib_trades: list[dict[str, Any]]) -> set[str]:
     """Order ids (+ perm ids) of trades still working at IB. Pure/testable: the
     reaper skips any DB order whose ib_order_id or ib_perm_id is in this set."""
@@ -87,7 +104,20 @@ async def reap_stale_orders(
     cutoff = now - timedelta(seconds=tau_stale_s)
     expired_ids: list[int] = []
 
+    # One IB snapshot serves both the adoption sweep and the liveness check.
+    # If we can't get it, do NOT act this cycle: never expire an order we
+    # can't prove is dead.
+    try:
+        ib_trades = await executor.list_all_trades()
+    except Exception:
+        logger.warning("reaper_skip_ib_trades_unavailable")
+        return {"reaped": 0, "expired": [], "skipped": "ib_trades_unavailable"}
+
     async with sm() as db:
+        # orderRef adoption sweep (EXEC-2): re-attach ghosts left by a crash
+        # between placeOrder and the per-leg commit before judging staleness.
+        adopted_ids = await _adopt_orphaned_orders(db, ib_trades, now)
+
         stale = (await db.execute(
             select(StructureOrder)
             .where(StructureOrder.state.in_(tuple(REAPABLE_STATES)))
@@ -95,17 +125,13 @@ async def reap_stale_orders(
             .where(StructureOrder.submitted_at < cutoff)
         )).scalars().all()
         if not stale:
-            return {"reaped": 0, "expired": []}
+            if adopted_ids:
+                await db.commit()
+            return {"reaped": 0, "expired": [], "adopted": adopted_ids}
 
         # Which of our orders are still WORKING at IB? A resting limit that hasn't
-        # filled is neither held nor dead — leave it (spec §6.2 `if at_ib`). If we
-        # can't confirm liveness, do NOT reap this cycle: never expire an order we
-        # can't prove is dead.
-        try:
-            live_at_ib = live_ib_order_keys(await executor.list_all_trades())
-        except Exception:
-            logger.warning("reaper_skip_ib_trades_unavailable")
-            return {"reaped": 0, "expired": [], "skipped": "ib_trades_unavailable"}
+        # filled is neither held nor dead — leave it (spec §6.2 `if at_ib`).
+        live_at_ib = live_ib_order_keys(ib_trades)
 
         struct_ids = {int(o.structure_id) for o in stale}
         positions = (await db.execute(
@@ -190,7 +216,58 @@ async def reap_stale_orders(
 
     if expired_ids:
         logger.warning("order_reaper expired=%s", expired_ids)
-    return {"reaped": len(expired_ids), "expired": expired_ids}
+    return {"reaped": len(expired_ids), "expired": expired_ids, "adopted": adopted_ids}
+
+
+async def _adopt_orphaned_orders(
+    db: AsyncSession, ib_trades: list[dict[str, Any]], now: datetime,
+) -> list[int]:
+    """Adopt live IB orders whose DB rows never got their ids (EXEC-2).
+
+    A crash between ``placeOrder`` and the per-leg commit leaves an order live
+    at IB while its row still says ``pending`` with no ``ib_order_id`` —
+    invisible to the reaper and the stuck-watcher. live_submit stamps
+    ``orderRef='fxvol:{structure_id}:{order_id}'`` (persisted by IB) on every
+    order, so such ghosts are re-attached here instead of staying orphans or
+    being double-placed."""
+    ref_map: dict[int, dict[str, Any]] = {}
+    for t in ib_trades:
+        parsed = parse_order_ref(t.get("order_ref"))
+        if parsed is not None:
+            ref_map[parsed[1]] = t
+    if not ref_map:
+        return []
+    rows = (await db.execute(
+        select(StructureOrder)
+        .where(StructureOrder.id.in_(tuple(ref_map)))
+        .where(StructureOrder.ib_order_id.is_(None))
+    )).scalars().all()
+    adopted: list[int] = []
+    for o in rows:
+        t = ref_map[int(o.id)]
+        o.ib_order_id = str(t["order_id"]) if t.get("order_id") is not None else None
+        o.ib_perm_id = str(t["perm_id"]) if t.get("perm_id") is not None else None
+        if o.state == "pending":
+            o.state = "submitted"
+            o.state_updated_at = now
+        if o.submitted_at is None:
+            o.submitted_at = now
+        db.add(TradeEvent(
+            structure_id=int(o.structure_id), order_id=int(o.id),
+            event_type="order_adopted_from_ib", severity="warning",
+            description=(
+                f"order {o.id} adopted from IB via orderRef "
+                "(ghost after mid-submit crash)"
+            ),
+            payload={
+                "order_id": int(o.id), "ib_order_id": o.ib_order_id,
+                "order_ref": t.get("order_ref"),
+            },
+        ))
+        adopted.append(int(o.id))
+    if adopted:
+        logger.warning("reaper_adopted_orphans ids=%s", adopted)
+    return adopted
 
 
 async def reaper_loop(

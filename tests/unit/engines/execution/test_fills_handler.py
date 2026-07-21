@@ -199,8 +199,10 @@ async def test_full_fill_creates_position_and_marks_structure():
             )).scalar_one_or_none()
         assert struct.state == "fully_filled"
         assert struct.total_commission_usd == pytest.approx(2.0)
-        # Both legs BUY × qty=2 × (0.50 + 0.40) = 1.80 signed total premium
-        assert struct.total_premium_paid_usd == pytest.approx(1.80, abs=1e-4)
+        # USD at notional (core.units) : fill prices are IB price points,
+        # the structure aggregate is × EUR_FOP_MULTIPLIER. Both legs BUY ×
+        # qty=2 × (0.50 + 0.40) × 125 000 = 225 000 signed total premium.
+        assert struct.total_premium_paid_usd == pytest.approx(225_000.0, abs=1e-2)
         assert pos is not None
         assert pos.state == "open"
     finally:

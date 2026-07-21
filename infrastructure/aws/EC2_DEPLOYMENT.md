@@ -1,75 +1,87 @@
-# Déploiement EC2 — fxvol (runbook opérationnel)
+# EC2 deployment — fxvol (operational runbook)
 
-> **✅ DÉPLOYÉ ET LIVE** depuis le 2026-06-21 : https://valeriandarmente.dev/ (TLS valide,
-> pipeline CD complet). Ce runbook décrit le **flux réel OIDC + SSM** (plus de SSH/port 22),
-> comment exploiter le stack, et ce qui reste en ops. Pré-requis AWS (compte, KMS, SSM, IAM,
-> SG, DNS, S3) : provisionnés — voir `STATE.md`.
+> **Status of record lives in `STATE.md`** — this file is the *procedure* runbook.
+> Summary as of 2026-07-17: the AWS resources and the EC2 instance are provisioned,
+> the CD pipeline (`deploy.yml`) is restored on `main` but **gated OFF**
+> (`DEPLOY_ENABLED` repo var is false, so tags/pushes skip cleanly), and the site
+> is currently **not serving** (a CloudFront 504 was observed at the public URL on
+> 2026-07-17). The v1 topology of record is a **direct Route53 A record → EIP**
+> (no CloudFront), single URL `valeriandarmente.dev` with the app under the
+> `/fx-volatility-trading-system` subpath, **core-only** compose profile on t3.small.
+> This runbook describes the **OIDC + SSM flow** (no SSH / port 22), how to operate
+> the stack, and what remains in ops. AWS prerequisites (account, KMS, SSM, IAM,
+> SG, DNS, S3): provisioned — see `STATE.md`.
 
 ---
 
-## 1. État
+## 1. State
 
-| Bloc | État |
+| Block | State |
 |---|---|
-| Compte AWS + KMS + SSM secrets + SG + S3 + DNS zone | ✅ provisionné (`STATE.md`) |
-| **OIDC** : provider GitHub + role `fxvol-deploy-role` + bucket `fxvol-deploy` + 5 repo vars | ✅ via `provision-deploy-oidc.ps1` |
-| Instance EC2 (`i-082e72f0186c9d019`, t3.small, eu-west-1) + EIP + A-record Route53 | ✅ lancée |
-| Images GHCR (`build.yml` → 6 images `sha-<commit>` + `:latest` sur chaque push main) | ✅ publiques |
-| `deploy.yml` (`deploy-prod`) — CD auto sur push main, gaté `DEPLOY_ENABLED=true` | ✅ armé |
-| TLS Let's Encrypt (`init-letsencrypt.sh`, renew cron) | ✅ émis |
-| **Sécurité** : `/dev`→404, write derrière auth (`require_write`+login), `READ_ONLY_API=yes` | ✅ (#134/#140) |
-| Login prod (SSM `AUTH_SECRET`/`AUTH_PASSWORD_HASH`) | ✅ provisionné + testé |
+| AWS account + KMS + SSM secrets + SG + S3 + DNS zone | ✅ provisioned (`STATE.md`) |
+| **OIDC**: GitHub provider + `fxvol-deploy-role` role + `fxvol-deploy` bucket + 5 repo vars | ✅ via `provision-deploy-oidc.ps1` |
+| EC2 instance (`i-082e72f0186c9d019`, t3.small, eu-west-1) + EIP + Route53 A-record | ✅ launched |
+| GHCR images (`build.yml` → 6 `sha-<commit>` images + `:latest` on each main push) | ✅ public |
+| `deploy.yml` (`deploy-prod`) — auto CD on main push, gated on `DEPLOY_ENABLED=true` | ⛔ **gated OFF** (`DEPLOY_ENABLED` false — arm it to deploy) |
+| TLS Let's Encrypt (`init-letsencrypt.sh`, renew cron) | ✅ issued |
+| **Security**: `/dev`→404, write behind auth (`require_write`+login), `READ_ONLY_API=yes` | ✅ (#134/#140) |
+| Prod login (SSM `AUTH_SECRET`/`AUTH_PASSWORD_HASH`) | ✅ provisioned + tested |
+| Site serving | ❌ **down as of 2026-07-17** (CloudFront 504 observed at the URL) |
 
-**Reste en ops** (non bloquant) : alarmes CloudWatch (CPU/disk/health → SNS), budget AWS $10→$25,
-driver `awslogs` (logs containers → CloudWatch), vérif cron backup Postgres→S3. Cf. §6.
+**Remaining ops items** (non-blocking): CloudWatch alarms (CPU/disk/health → SNS), AWS budget $10→$25,
+`awslogs` driver (container logs → CloudWatch), verify the Postgres→S3 backup cron. Cf. §6.
 
 ---
 
-## 2. Architecture cible (comment c'est structuré)
+## 2. Target architecture (how it is structured)
 
 ```
                 Internet  (HTTPS 443 / HTTP 80→redirect)
                     │
-        Route53  valeriandarmente.dev ──A──► EIP
+        Route53  valeriandarmente.dev ──A──► EIP        (v1: direct, no CloudFront)
                     │
             ┌───────▼─────────  EC2 t3.small (eu-west-1, Ubuntu 22.04)  ───────────┐
             │  instance profile : fxvol-ec2-instance-profile (SSM read + KMS + S3) │
-            │  SG fxvol-ec2-sg : 80/443 public, 22 FERMÉ (admin via SSM Session Mgr)│
+            │  SG fxvol-ec2-sg : 80/443 public, 22 CLOSED (admin via SSM Session Mgr)│
             │  /opt/fxvol/ : docker-compose.yml + .env(600) + infrastructure/ + obs/│
-            │  systemd : fxvol-compose.service (up au boot)                         │
+            │  systemd : fxvol-compose.service (up at boot)                         │
             │                                                                       │
-            │  docker compose (réseaux public / internal / external)               │
+            │  docker compose (public / internal / external networks)              │
             │   ┌─ nginx:alpine (TLS Let's Encrypt, :80/:443) ; /dev→404            │
             │   │     /api/ , /ws/ → api:8000 ;  / → frontend:8080                  │
             │   ├─ frontend (GHCR) :8080 · api (GHCR) :8000 · postgres · redis      │
-            │   ├─ profile engines (opt-in via COMPOSE_PROFILES) : market-data,     │
+            │   ├─ engines profile (opt-in via COMPOSE_PROFILES) : market-data,     │
             │   │     vol-engine, risk-engine, db-writer, execution                 │
-            │   └─ profile ib : ib-gateway ; profile obs : prometheus/loki/grafana  │
+            │   └─ ib profile : ib-gateway ; obs profile : prometheus/loki/grafana  │
             └───────────────────────────────────────────────────────────────────────┘
                     │ outbound : GHCR (pull), IB (TWS), ACME, AWS API (SSM/KMS/S3)
 ```
 
-**Flux de release (CD, 100 % automatique sur push main) :**
+The deployed profile is **core-only** (nginx, frontend, api, postgres, redis) on the
+t3.small; the engines / ib / obs profiles are opt-in and not part of the v1 footprint.
+
+**Release flow (CD — automatic on main push once `DEPLOY_ENABLED=true`):**
 ```
 push main → build.yml (build-and-push) → 6 images ghcr.io/valerian-drmt/fx-options-*:sha-<commit> (+ :latest)
-          → deploy.yml (deploy-prod) se déclenche via workflow_run (si DEPLOY_ENABLED=true) :
-   1. OIDC : assume fxvol-deploy-role (pas de clé AWS stockée)
+          → deploy.yml (deploy-prod) triggers via workflow_run (only if DEPLOY_ENABLED=true) :
+   1. OIDC : assume fxvol-deploy-role (no stored AWS key)
    2. tar payload (docker-compose.yml + infrastructure/ + obs/) → S3 fxvol-deploy
-   3. SSM send-command (AWS-RunShellScript, tourne sous /bin/sh) sur l'instance :
-        → fetch payload S3, extrait dans /opt/fxvol, lance infrastructure/ec2/remote-deploy.sh
-   4. remote-deploy.sh (host) : rend /opt/fxvol/.env depuis SSM (DB/VNC/IB + AUTH_*),
+   3. SSM send-command (AWS-RunShellScript, runs under /bin/sh) on the instance :
+        → fetch the S3 payload, extract into /opt/fxvol, run infrastructure/ec2/remote-deploy.sh
+   4. remote-deploy.sh (host) : renders /opt/fxvol/.env from SSM (DB/VNC/IB + AUTH_*),
         docker login ghcr → compose pull → compose up -d → alembic upgrade head
-   5. smoke : GET https://valeriandarmente.dev/api/v1/health == 200
+   5. smoke : GET https://valeriandarmente.dev/fx-volatility-trading-system/api/v1/health
+        must return API JSON (a bare 200 also passes on the SPA fallback — assert the body)
 ```
-Port 22 n'est jamais ouvert. Rollback : `gh workflow run deploy-prod -f deploy_sha=<ancien-sha>`.
+Port 22 is never open. Rollback: `gh workflow run deploy-prod -f deploy_sha=<old-sha>`.
 
-**Secrets** : tous dans **SSM `/fxvol/prod/*`** (source de vérité, KMS). `remote-deploy.sh` les lit
-sur l'host via l'instance role — ils ne transitent jamais par GitHub ni par les params SSM-command.
-Les anciens repo secrets `EC2_HOST`/`EC2_USER`/`EC2_SSH_KEY` (flow SSH) sont **morts** (à supprimer).
+**Secrets**: all in **SSM `/fxvol/prod/*`** (source of truth, KMS). `remote-deploy.sh` reads them
+on the host through the instance role — they never transit through GitHub nor the SSM-command params.
+The old repo secrets `EC2_HOST`/`EC2_USER`/`EC2_SSH_KEY` (SSH flow) are **dead** (to be deleted).
 
 ---
 
-## 3. Ressources AWS (cf. `STATE.md` pour le détail)
+## 3. AWS resources (cf. `STATE.md` for the detail)
 
 ```
 Account     552269855056              Region   eu-west-1
@@ -77,61 +89,63 @@ KMS CMK     alias/fxvol-secrets
 SSM secrets /fxvol/prod/{IB_USERID,IB_PASSWORD,DB_PASSWORD,VNC_PASSWORD,TRADING_MODE,
                          AUTH_SECRET,AUTH_PASSWORD_HASH}
 IAM (host)  fxvol-ec2-secrets-role + instance profile fxvol-ec2-instance-profile (SSM+KMS+S3)
-IAM (CD)    fxvol-deploy-role (OIDC GitHub) — assume par deploy.yml, pas de clé stockée
-S3          fxvol-deploy (payload CD)  +  fxvol-backups (dumps Postgres)
-SG          fxvol-ec2-sg (sg-0c96af5e3203ffeec) : 80+443 public, 22 fermé → SSM
+IAM (CD)    fxvol-deploy-role (GitHub OIDC) — assumed by deploy.yml, no stored key
+S3          fxvol-deploy (CD payload)  +  fxvol-backups (Postgres dumps)
+SG          fxvol-ec2-sg (sg-0c96af5e3203ffeec) : 80+443 public, 22 closed → SSM
 DNS         valeriandarmente.dev (Route53) → A → EIP
-Repo vars   AWS_REGION, DEPLOY_ENABLED, + 3 posées par provision-deploy-oidc.ps1
+Repo vars   AWS_REGION, DEPLOY_ENABLED, + 3 set by provision-deploy-oidc.ps1
 ```
 
 ---
 
-## 4. Provisionnement (one-shot, déjà fait)
+## 4. Provisioning (one-shot, already done)
 
-`infrastructure/aws/provision-deploy-oidc.ps1` (profil AWS `admin`) crée : OIDC provider GitHub,
-`fxvol-deploy-role` (trust sur le repo), bucket S3 `fxvol-deploy`, ajoute S3+SSM au host role, pose
-les 5 repo vars. `infrastructure/ec2/setup.sh` bootstrappe l'host (docker, user fxvol, `/opt/fxvol`,
-systemd `fxvol-compose.service`, cron certbot renew + backup Postgres→S3). `init-letsencrypt.sh`
-émet le cert (webroot, chemin canonique idempotent).
+`infrastructure/aws/provision-deploy-oidc.ps1` (AWS profile `admin`) creates: the GitHub OIDC
+provider, `fxvol-deploy-role` (trust on the repo), the S3 bucket `fxvol-deploy`, adds S3+SSM to
+the host role, sets the 5 repo vars. `infrastructure/ec2/setup.sh` bootstraps the host (docker,
+fxvol user, `/opt/fxvol`, systemd `fxvol-compose.service`, certbot renew cron + Postgres→S3
+backup cron). `init-letsencrypt.sh` issues the cert (webroot, idempotent canonical path).
 
 ---
 
-## 5. Exploitation au quotidien
+## 5. Day-to-day operation
 
-Tout se pilote depuis le laptop via **`scripts/aws/ec2.ps1`** (SSM, pas de SSH) :
+Everything is driven from the laptop via **`scripts/aws/ec2.ps1`** (SSM, no SSH):
 ```powershell
 .\scripts\ops\ec2.ps1 health            # GET /api/v1/health
 .\scripts\ops\ec2.ps1 deploy            # redeploy main HEAD (gh workflow run deploy-prod)
-.\scripts\ops\ec2.ps1 deploy -Sha <sha> # rollback sur un commit précis
-.\scripts\ops\ec2.ps1 ps | logs <svc> | restart <svc> | up | down   # docker compose sur l'host
-.\scripts\ops\ec2.ps1 connect           # shell interactif (SSM Session Manager)
-.\scripts\ops\ec2.ps1 instance-stop     # COUPE le coût compute (~$15/mo) ; instance-start pour relancer
+.\scripts\ops\ec2.ps1 deploy -Sha <sha> # rollback to a specific commit
+.\scripts\ops\ec2.ps1 ps | logs <svc> | restart <svc> | up | down   # docker compose on the host
+.\scripts\ops\ec2.ps1 connect           # interactive shell (SSM Session Manager)
+.\scripts\ops\ec2.ps1 instance-stop     # CUTS the compute cost (~$15/mo) ; instance-start to relaunch
 ```
-- **Redéploy** : automatique sur chaque push main. Manuel : `ec2.ps1 deploy` ou re-tag.
-- **Logs** : `ec2.ps1 logs <svc>` (host) ; CloudWatch `/fxvol/{api,engines,nginx}` (driver awslogs à câbler).
-- **Coût** : ~$22/mo en marche (t3.small + EBS + EIP + transfert). Instance arrêtée ≈ $7-8/mo (EBS+EIP+KMS+Route53).
+- **Redeploy**: automatic on each main push *when `DEPLOY_ENABLED=true`*. Manual: `ec2.ps1 deploy` or re-tag.
+- **Logs**: `ec2.ps1 logs <svc>` (host) ; CloudWatch `/fxvol/{api,engines,nginx}` (awslogs driver still to wire).
+- **Nginx config gotcha**: the nginx conf is bind-mounted — after a conf change,
+  `ec2.ps1 restart nginx` is required for it to apply.
+- **Cost**: ~$22/mo while running (t3.small + EBS + EIP + transfer). Stopped instance ≈ $7-8/mo (EBS+EIP+KMS+Route53).
 
 ---
 
-## 6. Reste en ops (non bloquant)
+## 6. Remaining ops items (non-blocking)
 
-- [ ] Alarmes CloudWatch (CPU/disk/healthcheck) → SNS `fxvol-alarms`
-- [ ] Budget AWS $10 → $25
-- [ ] Driver `awslogs` sur les containers (logs → CloudWatch, sinon perdus au `down`)
-- [ ] Vérifier que le cron backup Postgres→S3 (`fxvol-backups/postgres/`) tourne + tester une restore
-- [ ] Supprimer les repo secrets morts `EC2_HOST`/`EC2_USER`/`EC2_SSH_KEY` (legacy SSH)
-- [ ] (optionnel) sous-chemin `/fx-volatility-trading-system/` — l'app est à la **racine** aujourd'hui
-- [ ] (optionnel) déployer engines+ib (`COMPOSE_PROFILES=engines,ib`) pour de la data live — one-shot IB Trusted IPs
+- [ ] CloudWatch alarms (CPU/disk/healthcheck) → SNS `fxvol-alarms`
+- [ ] AWS budget $10 → $25
+- [ ] `awslogs` driver on the containers (logs → CloudWatch, otherwise lost on `down`)
+- [ ] Verify the Postgres→S3 backup cron (`fxvol-backups/postgres/`) runs + test a restore —
+      restore procedure: `infrastructure/ec2/RESTORE.md`
+- [ ] Delete the dead repo secrets `EC2_HOST`/`EC2_USER`/`EC2_SSH_KEY` (legacy SSH)
+- [ ] (optional) deploy engines+ib (`COMPOSE_PROFILES=engines,ib`) for live data — one-shot IB Trusted IPs
 
 ---
 
-## 7. Sécurité (état actuel)
+## 7. Security (current state)
 
-- **Read-only public** : le desk est public en lecture. Le **write** (ordres/config) est gaté par
-  `require_write` (cookie auth HMAC, #134/#140) — 401 sans login. Login via SSM `AUTH_SECRET` +
-  `AUTH_PASSWORD_HASH`. `READ_ONLY_API=yes` côté IB tant qu'on n'a pas décidé le real-money.
-- **`/dev/*`** : `return 404` dans la conf nginx prod (conf dev inchangée).
-- **Port 22 fermé** : admin uniquement via SSM Session Manager.
-- **Secrets** : jamais sur disque runner, jamais echo (cf. `CLAUDE.md`). SSM = source de vérité.
-- **IB** : `paper` jusqu'à décision explicite `live` ; session unique (cf. note IB).
-- **OIDC** : pas de clé AWS longue-durée dans GitHub ; le role est assumé par token court OIDC.
+- **Read-only public**: the desk is publicly readable. **Write** (orders/config) is gated by
+  `require_write` (HMAC cookie auth, #134/#140) — 401 without login. Login via SSM `AUTH_SECRET` +
+  `AUTH_PASSWORD_HASH`. `READ_ONLY_API=yes` on the IB side until real-money is explicitly decided.
+- **`/dev/*`**: `return 404` in the prod nginx conf (dev conf unchanged).
+- **Port 22 closed**: admin only via SSM Session Manager.
+- **Secrets**: never on the runner disk, never echoed (cf. `CLAUDE.md`). SSM = source of truth.
+- **IB**: `paper` until an explicit `live` decision; single session (cf. the IB note).
+- **OIDC**: no long-lived AWS key in GitHub; the role is assumed with a short-lived OIDC token.

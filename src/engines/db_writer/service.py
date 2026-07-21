@@ -14,8 +14,11 @@ import json
 import logging
 from typing import Any, Protocol
 
+from redis.exceptions import RedisError
+
 from bus import keys, publisher
 from persistence.writer import AsyncDatabaseWriter
+from shared.backoff import next_backoff_seconds
 from shared.db_events import DB_EVENTS_CHANNEL
 
 HEARTBEAT_INTERVAL_S = 5.0
@@ -41,6 +44,10 @@ class DbWriterService:
         self.writer = writer
         self.channel = channel
         self._stop = asyncio.Event()
+        # True only while the db_events subscription is live and consuming.
+        # The heartbeat is tied to this flag so a dead subscriber makes the
+        # ENGINE_DB_WRITER heartbeat go stale (no more green-zombie).
+        self._subscriber_ok: bool = False
 
     def request_stop(self) -> None:
         self._stop.set()
@@ -50,11 +57,41 @@ class DbWriterService:
         writer_task = asyncio.create_task(self.writer.run(), name="async_db_writer")
         subscriber_task = asyncio.create_task(self._subscribe_loop(), name="db_events_subscriber")
         heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="db_writer_heartbeat")
+        stop_task = asyncio.create_task(self._stop.wait(), name="db_writer_stop")
 
         try:
-            # Block until request_stop() is called (SIGTERM / SIGINT from main).
-            await self._stop.wait()
+            # Supervise the subscriber until request_stop() is called
+            # (SIGTERM / SIGINT from main). _subscribe_loop is designed to
+            # run forever, so it completing while _stop is unset means an
+            # exception escaped it — restart it (defense in depth) with a
+            # capped backoff so a hard failure can't turn into a hot loop.
+            restarts = 0
+            while True:
+                done, _ = await asyncio.wait(
+                    {stop_task, subscriber_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if stop_task in done:
+                    break
+                self._subscriber_ok = False
+                exc = subscriber_task.exception()
+                logger.error("subscriber_task_died_restarting", exc_info=exc)
+                # Back off before restarting, but wake immediately on stop.
+                done, _ = await asyncio.wait(
+                    {stop_task}, timeout=next_backoff_seconds(restarts)
+                )
+                if stop_task in done:
+                    break
+                restarts += 1
+                subscriber_task = asyncio.create_task(
+                    self._subscribe_loop(), name="db_events_subscriber"
+                )
         finally:
+            stop_task.cancel()
+            try:
+                await stop_task
+            except asyncio.CancelledError:
+                pass
             # Order matters : stop accepting new events first, then flush.
             subscriber_task.cancel()
             heartbeat_task.cancel()
@@ -80,10 +117,17 @@ class DbWriterService:
             # ping — sufficient to detect a hung service via the
             # engine_last_cycle_timestamp_seconds gauge.
             with observed_cycle("db_writer"):
-                try:
-                    await publisher.set_heartbeat(self.redis, keys.ENGINE_DB_WRITER)
-                except Exception:
-                    logger.warning("heartbeat_publish_failed")
+                # Heartbeat tells the truth : publish only while the
+                # db_events subscriber is live. When it is down, the
+                # heartbeat goes stale and the existing stale-heartbeat
+                # alerting fires with zero new plumbing.
+                if self._subscriber_ok:
+                    try:
+                        await publisher.set_heartbeat(self.redis, keys.ENGINE_DB_WRITER)
+                    except Exception:
+                        logger.warning("heartbeat_publish_failed")
+                else:
+                    logger.warning("heartbeat_suppressed_subscriber_down")
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=HEARTBEAT_INTERVAL_S)
                 break
@@ -91,26 +135,47 @@ class DbWriterService:
                 continue
 
     async def _subscribe_loop(self) -> None:
-        """Reconnect-on-drop Redis subscriber. Each frame → writer queue."""
+        """Reconnect-on-drop Redis subscriber. Each frame → writer queue.
+
+        ``redis.exceptions.ConnectionError`` / ``TimeoutError`` subclass
+        only ``RedisError`` — NOT the builtins of the same name — so
+        ``RedisError`` must be in the except tuple or the first real Redis
+        failure escapes the loop and kills the task (the green-zombie bug).
+        """
+        attempt = 0
         while not self._stop.is_set():
             pubsub = self.redis.pubsub()
             try:
                 await pubsub.subscribe(self.channel)
+                self._subscriber_ok = True
+                attempt = 0
                 logger.info("db_events_subscribed", extra={"channel": self.channel})
                 async for message in pubsub.listen():
                     if message.get("type") != "message":
                         continue
                     self._enqueue(message.get("data"))
             except asyncio.CancelledError:
+                self._subscriber_ok = False
                 raise
-            except (ConnectionError, OSError, TimeoutError):
+            except (RedisError, ConnectionError, OSError, TimeoutError):
+                self._subscriber_ok = False
                 logger.warning("db_events_subscriber_disconnected, retrying")
-                await asyncio.sleep(2)
+                await asyncio.sleep(next_backoff_seconds(attempt))
+                attempt += 1
+            except Exception:
+                # Last-resort catch : supervision beats precision. An
+                # unexpected error must not kill the subscriber for the
+                # life of the process.
+                self._subscriber_ok = False
+                logger.exception("db_events_subscriber_unexpected_error, retrying")
+                await asyncio.sleep(next_backoff_seconds(attempt))
+                attempt += 1
             finally:
                 try:
                     await pubsub.aclose()
                 except Exception:
                     pass
+        self._subscriber_ok = False
 
     def _enqueue(self, raw: Any) -> None:
         """Parse a JSON frame and push (table, payload) onto the writer queue."""

@@ -42,6 +42,7 @@ from core.trade_preview import (
     simulate_scenarios,
 )
 from core.trade_preview_regime import apply_regime_to_limits, regime_label
+from core.units import EUR_FOP_MULTIPLIER
 from persistence.models import (
     AppConfigScalar,  # replaces RiskLimit (migration 024)
     BookedPosition,
@@ -933,9 +934,17 @@ async def _submit_preview_impl(
         fut_symbol = _FIB.get(fcs_from_payload or "")
         for i, leg in enumerate(legs):
             qty = int(leg.get("qty", 0))
-            preview_price = float(leg.get("entry_price_per_contract_usd") or 0.0)
             side = leg.get("side", "BUY")
             contract_type = leg.get("contract_type", "call")
+            # ``entry_price_per_contract_usd`` is real USD at notional
+            # (core.units). IB quotes CME EUR FOPs in raw price points
+            # (the lmtPrice unit) — divide the option premium back by the
+            # FOP multiplier. ``preview_price`` (DB column, limit prices,
+            # fill prices) stays in points throughout the pipeline.
+            _price_usd = float(leg.get("entry_price_per_contract_usd") or 0.0)
+            preview_price = (
+                _price_usd / EUR_FOP_MULTIPLIER if contract_type != "future" else 0.0
+            )
             contract_strike = leg.get("strike")
             contract_expiry: date | None = None
             if leg.get("expiry"):
@@ -962,8 +971,8 @@ async def _submit_preview_impl(
                         preview_price = 1.0  # last-resort to keep flow alive
             # Futures : MKT. Options : MARKETABLE LIMIT crossing the spread from the
             # preview premium so the BUY legs don't die on IB's option price-cap
-            # (→ naked half-fills). ``preview_price`` is already the premium in price
-            # points (CONTRACT_MULTIPLIER=1) — exactly IB's lmtPrice unit, no scaling.
+            # (→ naked half-fills). ``preview_price`` is the premium in price points
+            # (USD ÷ EUR_FOP_MULTIPLIER above) — exactly IB's lmtPrice unit.
             # Falls back to MKT if there's no premium (or it rounds to zero).
             if contract_type == "future" or not (preview_price and preview_price > 0):
                 order_type_db = "MKT"
@@ -1040,9 +1049,12 @@ async def _submit_preview_impl(
     total_slippage = 0.0
     for i, leg in enumerate(legs):
         qty = int(leg.get("qty", 0))
-        preview_price = float(leg.get("entry_price_per_contract_usd") or 0.0)
         side = leg.get("side", "BUY")
         contract_type = leg.get("contract_type", "call")
+        # USD at notional in the preview payload (core.units) ; the order /
+        # fill rows keep IB's raw price points (÷ EUR_FOP_MULTIPLIER).
+        _price_usd = float(leg.get("entry_price_per_contract_usd") or 0.0)
+        preview_price = _price_usd / EUR_FOP_MULTIPLIER
         contract_strike = leg.get("strike")
         contract_expiry: date | None = None
         if leg.get("expiry"):
@@ -1098,7 +1110,10 @@ async def _submit_preview_impl(
         db.add(fill)
 
         sign = +1 if side == "BUY" else -1
-        total_premium += sign * preview_price * qty
+        # Premium aggregate in REAL USD at notional (core.units) — this is
+        # what lands on BookedPosition.entry_premium_usd and must be on the
+        # same scale as the live mark + the entry greeks.
+        total_premium += sign * _price_usd * qty
         total_commission += qty * commission_per_contract
 
     # 3. Mark structure fully_filled + aggregate

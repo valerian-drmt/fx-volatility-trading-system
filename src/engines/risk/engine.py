@@ -41,7 +41,7 @@ from core.pricing.bs import (
 )
 from core.risk.greeks import bs_price_vec
 from persistence.models import OpenPosition, OpenPositionHistory
-from shared.contracts import multiplier_for, parse_local_symbol
+from shared.contracts import INSTRUMENT_FUTURE, multiplier_for, parse_local_symbol
 
 
 def _days_to_tenor_bucket(days: int) -> str:
@@ -127,6 +127,15 @@ class RiskEngine:
         logger.info("risk_engine_started", extra={"symbol": self.symbol})
         try:
             while not self._stop.is_set():
+                # Reconnect check (nightly IB Gateway restart). No hook needed :
+                # positions come from Redis/DB, IB is only the session heartbeat
+                # + the portfolio spot fallback — both self-heal on reconnect.
+                if not self.ib.isConnected():
+                    logger.warning("risk_engine_ib_disconnected_reconnecting")
+                    await connect_ib_with_backoff(
+                        self.ib, host=self.ib_host, port=self.ib_port,
+                        client_id=self.client_id,
+                    )
                 await publisher.set_heartbeat(self.redis, keys.ENGINE_RISK)
                 # Retention: prune old history once at startup, then ~daily.
                 if (
@@ -318,7 +327,7 @@ class RiskEngine:
                 mult = float(pos.get("multiplier") or multiplier_for(pos.get("symbol")))
 
                 vanna = volga = None
-                if instr == "FUTURE":
+                if instr == INSTRUMENT_FUTURE:
                     delta = qty * mult
                     gamma = 0.0
                     vega = 0.0
@@ -470,19 +479,19 @@ class RiskEngine:
         return out
 
     async def _read_spot(self) -> float | None:
-        """Lit le spot depuis Redis. Accepte les deux formats produits par
-        les engines en upstream :
+        """Read the spot from Redis. Accepts both formats produced by
+        the upstream engines:
 
-        - **plain float string** (ex: ``"1.17052"``) — c'est ce que
-          ``bus.publisher.publish_tick`` écrit via ``str(mid)`` (cf.
-          ``src/bus/publisher.py:83-85``). Format actuel de market-data.
-        - **dict JSON** (ex: ``{"mid": 1.17, "bid": 1.169, ...}``) —
-          format alternatif possiblement utilisé ailleurs.
+        - **plain float string** (e.g. ``"1.17052"``) — this is what
+          ``bus.publisher.publish_tick`` writes via ``str(mid)`` (cf.
+          ``src/bus/publisher.py:83-85``). Current market-data format.
+        - **JSON dict** (e.g. ``{"mid": 1.17, "bid": 1.169, ...}``) —
+          alternative format possibly used elsewhere.
 
-        Le tolerant des deux formes évite un mismatch de contrat bus
-        entre market-data (writer) et risk-engine (reader). Sans cette
-        tolérance, un mismatch entraîne ``risk_cycle_skipped`` en boucle
-        alors que la valeur est bien dans Redis (incident reproduit en
+        Tolerating both forms avoids a bus contract mismatch between
+        market-data (writer) and risk-engine (reader). Without this
+        tolerance, a mismatch causes ``risk_cycle_skipped`` in a loop
+        while the value actually sits in Redis (incident reproduced in
         sandbox).
         """
         key = keys.LATEST_SPOT.format(symbol=self.symbol)
@@ -491,10 +500,10 @@ class RiskEngine:
             return None
         try:
             payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
-            # Plain numeric (str(mid) côté market-data) → cast direct.
+            # Plain numeric (str(mid) on the market-data side) → direct cast.
             if isinstance(payload, (int, float)):
                 return float(payload)
-            # Dict avec "mid" / "bid" → fallback historique.
+            # Dict with "mid" / "bid" → historical fallback.
             if isinstance(payload, dict):
                 return float(payload.get("mid") or payload.get("bid"))
             return None
@@ -535,8 +544,11 @@ class RiskEngine:
         for pos in positions:
             right = pos.get("option_type") or pos.get("right")
             if right not in ("C", "P"):
-                # FUTs contribute 1 per unit of delta, others skipped here.
-                if pos.get("instrument_type") == "FUT":
+                # Futures contribute 1 per unit of delta, others skipped here.
+                # NB: positions carry the canonical "FUTURE" (shared.contracts),
+                # not the IB secType "FUT" — comparing against "FUT" silently
+                # zeroed every futures delta.
+                if pos.get("instrument_type") == INSTRUMENT_FUTURE:
                     totals["delta"] += float(pos.get("quantity", 0))
                 continue
             qty = float(pos.get("quantity", 0))
@@ -565,7 +577,7 @@ class RiskEngine:
             qty = float(pos.get("quantity", 0))
             cost = float(pos.get("cost_per_unit") or 0)
             if right not in ("C", "P"):
-                if pos.get("instrument_type") == "FUT":
+                if pos.get("instrument_type") == INSTRUMENT_FUTURE:
                     pnls += (spots - cost) * qty
                 continue
             K = float(pos.get("strike") or 0)

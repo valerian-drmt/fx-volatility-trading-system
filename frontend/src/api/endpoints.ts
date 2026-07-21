@@ -65,19 +65,6 @@ export const fetchTermStructure = (symbol = "EURUSD") =>
 export const fetchSmile = (tenor: string, symbol = "EURUSD") =>
   apiGet<Smile>(`/api/v1/vol/smile/${encodeURIComponent(tenor)}`, { query: { symbol } });
 
-// ── Portfolio ─────────────────────────────────────────────────────────────
-export type Positions = Get<"/api/v1/positions", 200>;
-export type Position = Get<"/api/v1/positions/{position_id}", 200>;
-export type Risk = Get<"/api/v1/risk", 200>;
-export type PnlCurve = Get<"/api/v1/pnl-curve", 200>;
-
-export const fetchPositions = (params?: { status?: string; limit?: number }) =>
-  apiGet<Positions>("/api/v1/positions", params ? { query: params } : {});
-export const fetchPosition = (id: number) =>
-  apiGet<Position>(`/api/v1/positions/${id}`);
-export const fetchRisk = () => apiGet<Risk>("/api/v1/risk");
-export const fetchPnlCurve = () => apiGet<PnlCurve>("/api/v1/pnl-curve");
-
 // ── Analytics ─────────────────────────────────────────────────────────────
 // Per-tenor pricing signals (CHEAP/FAIR/EXPENSIVE) and the /signals endpoint
 // were retired in R9 alongside the Vol Scanner panel.

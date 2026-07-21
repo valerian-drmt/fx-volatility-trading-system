@@ -1077,8 +1077,8 @@ export const PIPELINES: PanelPipe[] = [
   },
 
   // ───────────────────────── Portfolio ─────────────────────────
-  // One entry per panel / sub-panel of the live Portfolio view (see
-  // docs/DEV_PIPELINE_PORTFOLIO.md). Composite panels (Account & capital,
+  // One entry per panel / sub-panel of the live Portfolio view.
+  // Composite panels (Account & capital,
   // Performance) are split so each entry documents ONE real data flow;
   // the sub-blocks carry their own data-pp anchors for isolation.
   {

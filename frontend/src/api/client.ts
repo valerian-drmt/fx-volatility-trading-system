@@ -50,6 +50,31 @@ function buildInit(base: RequestInit, signal: AbortSignal | undefined): RequestI
   return signal ? { ...init, signal } : init;
 }
 
+/**
+ * Base-prefixed raw fetch for callers that handle the Response themselves
+ * (dev pages, status badge). Same BASE_URL as the typed client, so these
+ * calls survive the deploy subpath; cookies ride along for the /dev auth gate.
+ */
+export function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(`${BASE_URL}${path}`, { ...init, credentials: "include" });
+}
+
+/**
+ * `apiFetch` + status check + JSON decode, for callers that only want the body.
+ *
+ * Prefer this over raw `apiFetch` when the response is JSON: `apiFetch` resolves
+ * on a non-2xx like any `fetch`, so a caller that goes straight to `.json()`
+ * silently decodes the error payload (`{"detail": "…"}`) and reads `undefined`
+ * out of it. That is how a logged-out /dev used to blank the console — the 401
+ * body has no `tables` key, and the next render called `.find` on `undefined`.
+ */
+export async function apiFetchJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await apiFetch(path, init);
+  const body = await parseBody(res);
+  if (!res.ok) throw new ApiError(res.status, `${BASE_URL}${path}`, body);
+  return body as T;
+}
+
 export async function apiGet<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const url = buildUrl(path, opts.query);
   const res = await fetch(url, buildInit({ method: "GET" }, opts.signal));

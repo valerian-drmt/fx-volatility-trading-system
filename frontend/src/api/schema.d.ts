@@ -477,14 +477,14 @@ export interface paths {
         };
         /**
          * Stack Overview
-         * @description Aggregate status pour les 10 containers, dérivé de probes + heartbeats.
+         * @description Aggregate status for the 10 containers, derived from probes + heartbeats.
          *
-         *     On ne lit pas le Docker socket (api n'a pas accès, et c'est mieux comme ça).
-         *     Statuses dérivés :
-         *       - postgres / redis / ib-gateway   : TCP probe ou ping
+         *     We do not read the Docker socket (the api has no access, which is safer).
+         *     Derived statuses:
+         *       - postgres / redis / ib-gateway   : TCP probe or ping
          *       - frontend                        : HTTP probe http://frontend:8080/
-         *       - nginx / api                     : implicite (la requête arrive via eux)
-         *       - 4 engines                       : heartbeat Redis + age vs threshold
+         *       - nginx / api                     : implicit (the request arrives through them)
+         *       - 4 engines                       : Redis heartbeat + age vs threshold
          */
         get: operations["stack_overview_api_v1_dev_stack_get"];
         put?: never;
@@ -652,26 +652,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Position History
-         * @description Snapshots for a position, oldest-first (ready for timeseries plotting).
-         */
-        get: operations["position_history_api_v1_history_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/iv": {
         parameters: {
             query?: never;
@@ -722,23 +702,6 @@ export interface paths {
         post?: never;
         /** Cancel Order */
         delete: operations["cancel_order_api_v1_orders__order_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/pnl-curve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Pnl Curve */
-        get: operations["pnl_curve_api_v1_pnl_curve_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1397,26 +1360,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/positions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Positions
-         * @description All positions (most-recent first). Filter by ``status`` if given.
-         */
-        get: operations["list_positions_api_v1_positions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/positions/active": {
         parameters: {
             query?: never;
@@ -1979,40 +1922,20 @@ export interface paths {
         };
         /**
          * Transitions
-         * @description Compte les transitions de label sur les N derniers jours.
+         * @description Count label transitions over the last N days.
          *
-         *     But : détecter si le seuil heuristique (vov > 0.4 → pre_event) est trop
-         *     proche du bruit de mesure. Si > 5 transitions calm↔pre_event par jour,
-         *     c'est un signal pour ajouter de l'hystérésis ou un seuil dynamique
+         *     Goal: detect whether the heuristic threshold (vov > 0.4 → pre_event) is
+         *     too close to the measurement noise. If > 5 calm↔pre_event transitions
+         *     per day, that is a signal to add hysteresis or a dynamic threshold
          *     (cf. TODO.md / STEP1 §14).
          *
-         *     Returns :
+         *     Returns:
          *       - by_day : dict {YYYY-MM-DD: {transition_type: count}}
          *       - total : sum across all days/transitions
          *       - calm_pre_event_per_day : average flips calm↔pre_event per day
          *       - threshold_warning : True if average > 5/day
          */
         get: operations["transitions_api_v1_regime_transitions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/risk": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Portfolio Risk
-         * @description Portfolio-level greeks published by RiskEngine every cycle (~2s).
-         */
-        get: operations["portfolio_risk_api_v1_risk_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2720,21 +2643,6 @@ export interface components {
             size_mult: number;
         };
         /**
-         * GreeksAggregated
-         * @description Portfolio-level greeks as published by RiskEngine to Redis.
-         */
-        GreeksAggregated: {
-            /** Greeks */
-            greeks: {
-                [key: string]: unknown;
-            };
-            /**
-             * Timestamp
-             * Format: date-time
-             */
-            timestamp: string;
-        };
-        /**
          * GreeksRequest
          * @description Same shape as PriceRequest — alias kept for OpenAPI clarity.
          */
@@ -2783,13 +2691,6 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
-        };
-        /** HistoryResponse */
-        HistoryResponse: {
-            /** Position Id */
-            position_id: number;
-            /** Snapshots */
-            snapshots: components["schemas"]["PositionSnapshotView"][];
         };
         /**
          * ImpliedVolRequest
@@ -2910,122 +2811,6 @@ export interface components {
              * Format: date-time
              */
             scheduled_at: string;
-        };
-        /**
-         * PnLCurve
-         * @description Spot vs PnL curve (~31 points) from RiskEngine.
-         */
-        PnLCurve: {
-            /** Curve */
-            curve: {
-                [key: string]: unknown;
-            };
-            /**
-             * Timestamp
-             * Format: date-time
-             */
-            timestamp: string;
-        };
-        /**
-         * PositionSnapshotView
-         * @description One snapshot row used by /history. Mirrors the panel-E shape after
-         *     migration 030.
-         */
-        PositionSnapshotView: {
-            /** Contract Price Entry */
-            contract_price_entry: string | null;
-            /** Current Pnl Usd */
-            current_pnl_usd: string | null;
-            /** Delta Usd */
-            delta_usd: string | null;
-            /** Expiry */
-            expiry: string | null;
-            /** Gamma Usd */
-            gamma_usd: string | null;
-            /** Iv */
-            iv: string | null;
-            /** Market Price */
-            market_price: string | null;
-            /** Nominal Eur */
-            nominal_eur: string | null;
-            /** Product Label */
-            product_label: string | null;
-            /** Quantity */
-            quantity: string;
-            /** Side */
-            side: string;
-            /** Structure */
-            structure: string;
-            /** Tenor */
-            tenor: string | null;
-            /** Theta Usd */
-            theta_usd: string | null;
-            /**
-             * Timestamp
-             * Format: date-time
-             */
-            timestamp: string;
-            /** Vanna Usd */
-            vanna_usd: string | null;
-            /** Vega Usd */
-            vega_usd: string | null;
-            /** Volga Usd */
-            volga_usd: string | null;
-        };
-        /**
-         * PositionView
-         * @description A single position row — mirrors ``persistence.models.OpenPosition``
-         *     (table ``open_position`` after migration 033). Same shape as
-         *     ``PositionSnapshotView`` below ; the only difference is the
-         *     ``open_position_history`` table also carries a ``position_id`` FK.
-         */
-        PositionView: {
-            /** Contract Price Entry */
-            contract_price_entry: string | null;
-            /** Current Pnl Usd */
-            current_pnl_usd: string | null;
-            /** Delta Usd */
-            delta_usd: string | null;
-            /**
-             * Entry Timestamp
-             * Format: date-time
-             */
-            entry_timestamp: string;
-            /** Expiry */
-            expiry: string | null;
-            /** Gamma Usd */
-            gamma_usd: string | null;
-            /** Id */
-            id: number;
-            /** Iv */
-            iv: string | null;
-            /** Market Price */
-            market_price: string | null;
-            /** Nominal Eur */
-            nominal_eur: string | null;
-            /** Product Label */
-            product_label: string | null;
-            /** Quantity */
-            quantity: string;
-            /** Side */
-            side: string;
-            /** Structure */
-            structure: string;
-            /** Tenor */
-            tenor: string | null;
-            /** Theta Usd */
-            theta_usd: string | null;
-            /**
-             * Timestamp
-             * Format: date-time
-             */
-            timestamp: string;
-            /** Vanna Usd */
-            vanna_usd: string | null;
-            /** Vega Usd */
-            vega_usd: string | null;
-            /** Volga Usd */
-            volga_usd: string | null;
         };
         /** PreviewRequest */
         PreviewRequest: {
@@ -4507,38 +4292,6 @@ export interface operations {
             };
         };
     };
-    position_history_api_v1_history_get: {
-        parameters: {
-            query: {
-                position_id: number;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HistoryResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     implied_vol_api_v1_iv_post: {
         parameters: {
             query?: never;
@@ -4664,26 +4417,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    pnl_curve_api_v1_pnl_curve_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PnLCurve"];
                 };
             };
         };
@@ -5351,38 +5084,6 @@ export interface operations {
             };
         };
     };
-    list_positions_api_v1_positions_get: {
-        parameters: {
-            query?: {
-                status?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PositionView"][];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_active_api_v1_positions_active_get: {
         parameters: {
             query?: never;
@@ -5675,7 +5376,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PositionView"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -6203,26 +5906,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    portfolio_risk_api_v1_risk_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GreeksAggregated"];
                 };
             };
         };

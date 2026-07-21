@@ -1,19 +1,16 @@
 /**
- * VOLDESK mock data — core market/vol/pca/regime/positions/account (EURUSD).
- * Ported from the prototype's `js/data.jsx`. Synthetic only — this whole layer
- * is replaced by the typed OpenAPI client / WS hooks when each view is wired to
- * the backend (see frontend/Option Trading System/IMPLEMENTATION.md §5).
+ * VOLDESK static desk constants + domain types (EURUSD).
+ *
+ * What remains of the original mock corpus after the live wiring (R11) and the
+ * fabricated-fallback purge (remediation 05 WI-2):
+ *   - `fmt` display formatters,
+ *   - axis/pillar constants (`tenors`, `deltas`) and the reference `SPOT` used
+ *     ONLY by the OrderBuilder's client-side pricing preview (labeled as such),
+ *   - the smile-preview generator (`smileFor`) + `strikeToWing` bucketing,
+ *   - the domain type exports shared with the live adapters.
+ * All synthetic *book* data (positions / account / greeks / cash / events…) is
+ * gone: views render honest empty states when the backend has no data.
  */
-
-export function mulberry32(a: number): () => number {
-  return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 export const fmt = {
   px: (v: number, d = 4): string =>
@@ -34,42 +31,14 @@ export const fmt = {
     v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }),
 };
 
-export interface Candle {
-  t: number;
-  o: number;
-  h: number;
-  l: number;
-  c: number;
-  v: number;
-}
-
-export function genCandles(n: number, start: number, vol: number, seed: number, drift = 0): Candle[] {
-  const rnd = mulberry32(seed);
-  const out: Candle[] = [];
-  let price = start;
-  const t = Date.now() - n * 60000;
-  for (let i = 0; i < n; i++) {
-    const o = price;
-    const shock = (rnd() - 0.5) * vol + drift;
-    const c = Math.max(0.0001, o + shock);
-    const hi = Math.max(o, c) + rnd() * vol * 0.7;
-    const lo = Math.min(o, c) - rnd() * vol * 0.7;
-    const v = (0.4 + rnd()) * (1 + Math.abs(shock) / vol);
-    out.push({ t: t + i * 60000, o, h: hi, l: lo, c, v });
-    price = c;
-  }
-  return out;
-}
-
+/** Reference spot for the OrderBuilder preview maths (NOT live market data). */
 export const SPOT = 1.0842;
-// Mock deltas were authored on the old "$ per big-figure" scale (notional × 0.01).
-// Multiply by this to reach cash dollar-delta (notional × spot), matching the
-// backend `delta_usd` and the OrderBuilder preview. Factor = spot / 0.01 = spot×100.
+// Cash dollar-delta scale (notional × spot), matching the backend `delta_usd`.
 const DELTA_CASH = SPOT * 100;
 export const tenors = ["1M", "2M", "3M", "4M", "5M", "6M"];
 export const deltas = ["10Δp", "25Δp", "ATM", "25Δc", "10Δc"];
 
-// vol surface IV [tenor][delta]
+// Reference IV grid [tenor][delta] — drives the OrderBuilder smile preview only.
 export const ivSurface: number[][] = [
   [7.9, 6.4, 5.3, 6.2, 7.6],
   [7.6, 6.2, 5.4, 6.1, 7.3],
@@ -77,16 +46,6 @@ export const ivSurface: number[][] = [
   [7.3, 6.0, 5.8, 6.0, 7.0],
   [7.2, 6.0, 6.0, 6.1, 7.0],
   [7.1, 6.0, 6.1, 6.1, 6.9],
-];
-
-// per-cell rich/cheap z-score (standardized vs rolling history) — the PCA read, by tenor × delta.
-export const ivZ: number[][] = [
-  [-2.2, -0.7, 0.1, -0.5, -1.9],
-  [-1.5, -0.4, 0.3, -0.3, -1.1],
-  [-0.6, 0.0, 0.5, 0.1, -0.3],
-  [0.4, 0.3, 0.4, 0.4, 0.5],
-  [1.0, 0.6, 0.2, 0.7, 1.2],
-  [1.7, 1.0, 0.1, 1.1, 2.1],
 ];
 
 export interface TermPoint {
@@ -100,7 +59,7 @@ export interface TermPoint {
   rr10: number;
 }
 
-// term structure: atm (mid), fair (GARCH forecast), rv (Yang-Zhang).
+// Reference term structure backing the smile preview (fair/rv columns).
 // Non-null assertions: tenors / ivSurface are fixed-length, indices always valid.
 export const termStructure: TermPoint[] = tenors.map((t, i) => {
   const atm = ivSurface[i]![2]!;
@@ -168,25 +127,7 @@ export function strikeToWing(strike: number | null | undefined, tenor: string): 
   return pillar === "ATM" ? "ATM" : pillar.replace(/[pc]$/, ""); // "25Δc" → "25Δ"
 }
 
-// PCA loadings
-const pc1Load: number[][] = tenors.map((_, i) => deltas.map(() => (i === 5 ? 0.17 : 0.18)));
-const pc2Load: number[][] = [
-  [-0.28, -0.2, -0.21, -0.25, -0.33],
-  [-0.13, -0.08, -0.09, -0.13, -0.21],
-  [-0.03, 0.0, -0.02, -0.06, -0.14],
-  [0.13, 0.08, 0.07, 0.02, -0.09],
-  [0.32, 0.2, 0.16, 0.12, 0.04],
-  [0.44, 0.23, 0.19, 0.15, 0.13],
-];
-const pc3Load: number[][] = [
-  [0.08, -0.14, -0.16, -0.08, 0.07],
-  [0.06, -0.09, -0.11, -0.04, 0.14],
-  [0.07, -0.1, -0.09, -0.0, 0.23],
-  [-0.08, -0.18, -0.16, -0.05, 0.24],
-  [-0.02, -0.25, -0.24, -0.11, 0.33],
-  [0.28, -0.13, -0.09, 0.08, 0.58],
-];
-
+/** PCA mode card shape (filled by the live adapter, `live/pca.ts`). */
 export interface Pc {
   id: string;
   name: string;
@@ -203,12 +144,8 @@ export interface Pc {
   extra: { convex_z: number } | null;
 }
 
-export const pcs: Pc[] = [
-  { id: "PC1", name: "level", desc: "surface up/down", z: -1.09, pctile: 13.8, label: "FAIR", variance: 97.2, stable: true, tier: 1, dataQuality: "clean", thr: 1.5, load: pc1Load, extra: null },
-  { id: "PC2", name: "slope", desc: "front vs back (tenor)", z: 0.83, pctile: 79.8, label: "FAIR", variance: 1.2, stable: true, tier: 2, dataQuality: "clean", thr: 1.8, load: pc2Load, extra: null },
-  { id: "PC3", name: "curvature", desc: "wings vs ATM (delta)", z: -2.15, pctile: 3.2, label: "CHEAP", variance: 0.8, stable: false, tier: 3, dataQuality: "noisy", thr: 2.0, load: pc3Load, extra: { convex_z: -2.15 } },
-];
-
+// Display-config statics for the PCA model meta (window sizes, refit cadence…).
+// The live adapter overlays the model-derived fields (variance, eigen, obs).
 export const pcaModel = {
   variance: { pc1: 97.2, pc2: 1.2, pc3: 0.8, cumul: 99.3 },
   coherence: "aligned",
@@ -229,30 +166,6 @@ export const pcaModel = {
 /** Active-model meta shape — reused by the live adapter (R11). */
 export type PcaModelMeta = typeof pcaModel;
 
-export interface RegimeFeature {
-  name: string;
-  value: number;
-  z: number;
-  pctile: number;
-  bucket: string;
-  dz: number;
-  signal: string;
-  ctx: string;
-}
-
-export const regime = {
-  state: "calm",
-  probs: { calm: 0.71, stressed: 0.06, pre_event: 0.23 },
-  features: [
-    { name: "vol_level", value: 5.28, z: -1.55, pctile: 0, bucket: "--", dz: -0.02, signal: "tail", ctx: "-1.55 ± 0.04 (NFP J0 london_open, n=31)" },
-    { name: "vol_of_vol", value: 0.2, z: -0.14, pctile: 38, bucket: "0", dz: 0.01, signal: "noise", ctx: "-0.15 ± 0.00 (NFP J0 london_open, n=36)" },
-    { name: "term_slope", value: 0.57, z: 1.12, pctile: 84, bucket: "0", dz: 0.26, signal: "weak", ctx: "+1.40 ± 0.19 (NFP J0 london_open, n=31)" },
-  ] as RegimeFeature[],
-  joint: { joint: "(--,0,0)", regime: "calm", dominant: "vol_level", vs_expected: "+0.00σ aligned" },
-  vrp: tenors.map((t, i) => ({ tenor: t, vrp: [1.42, 1.18, 0.96, 0.81, 0.69, 0.58][i] })),
-  gate: { allowed: true, reason: "regime calm · vol_level tail-cheap", size_mult: 1.0, dampener: 0.85 },
-};
-
 export interface MacroEvent {
   date: string;
   country: string;
@@ -262,14 +175,6 @@ export interface MacroEvent {
   content: string;
   src: string;
 }
-
-export const events: MacroEvent[] = [
-  { date: "06/06/2026, 14:30", country: "US", impact: "high", in: "1d 2h", code: "NFP", content: "Non-Farm Payrolls", src: "FRED" },
-  { date: "11/06/2026, 14:30", country: "US", impact: "high", in: "6d 2h", code: "CPI_US", content: "US CPI YoY", src: "FRED" },
-  { date: "12/06/2026, 08:00", country: "GB", impact: "medium", in: "6d 20h", code: "GDP_GB", content: "UK GDP estimate", src: "ONS" },
-  { date: "18/06/2026, 18:00", country: "US", impact: "high", in: "13d", code: "FOMC", content: "FOMC rate decision", src: "FOMC" },
-  { date: "19/06/2026, 11:45", country: "EU", impact: "medium", in: "14d", code: "ECB_PR", content: "ECB press conference", src: "ECB" },
-];
 
 export interface Position {
   id: string;
@@ -303,98 +208,6 @@ export interface Position {
   netted?: boolean;
 }
 
-interface LegGreeks {
-  d: number;
-  g: number;
-  v: number;
-  t: number;
-  vn: number;
-  vg: number;
-}
-type LegSpec = [side: string, qty: number, tenor: string, expiry: string, strike: number, entry: number, mark: number, iv: number, g: LegGreeks];
-
-let _tid = 88010;
-let _cid = 712400;
-
-function leg(pkgId: number, struct: string, spec: LegSpec): Position {
-  const [side, qty, tenor, expiry, strike, entry, mark, iv, g] = spec;
-  const conId = ++_cid;
-  const mult = 125000; // 6E
-  const dir = side === "BUY" ? 1 : -1;
-  const pnl = (mark - entry) * dir * qty * mult * 0.0001 * 100;
-  return {
-    id: "L" + conId,
-    packageId: "PKG-" + pkgId,
-    tradeId: "T-" + _tid,
-    conId,
-    product: "EURUSD",
-    structure: struct,
-    side,
-    qty,
-    tenor,
-    expiry,
-    strike,
-    entry,
-    mark,
-    iv,
-    pnl,
-    nominal: qty * 125000,
-    delta: g.d * DELTA_CASH, // authored per-figure → cash dollar-delta
-
-    gamma: g.g,
-    vega: g.v,
-    theta: g.t,
-    vanna: g.vn,
-    volga: g.vg,
-    updated: "12:04:31",
-    opened: "03 Jun 09:12",
-    pnlPct: 0,
-    dte: 0,
-  };
-}
-
-export const positions: Position[] = [];
-let _pid = 2040;
-function pkg(struct: string, legs: LegSpec[]): void {
-  _pid++;
-  _tid++;
-  legs.forEach((l) => positions.push(leg(_pid, struct, l)));
-}
-
-pkg("Straddle ATM 1M", [
-  ["BUY", 25, "1M", "04 Jul", 1.085, 0.00512, 0.00548, 5.3, { d: 4200, g: 1850, v: 920, t: -1180, vn: 42, vg: 18 }],
-  ["BUY", 25, "1M", "04 Jul", 1.085, 0.00498, 0.00531, 5.3, { d: -4050, g: 1820, v: 910, t: -1160, vn: -38, vg: 17 }],
-]);
-pkg("Risk Reversal 25Δ 2M", [
-  ["BUY", 30, "2M", "01 Aug", 1.101, 0.00231, 0.00268, 6.1, { d: 6100, g: 980, v: 1120, t: -640, vn: 88, vg: 9 }],
-  ["SELL", 30, "2M", "01 Aug", 1.068, 0.00198, 0.00171, 6.2, { d: 3800, g: -720, v: -880, t: 510, vn: 64, vg: -7 }],
-]);
-pkg("Butterfly 25Δ 3M", [
-  ["BUY", 20, "3M", "29 Aug", 1.108, 0.00142, 0.00159, 6.0, { d: 1900, g: 540, v: 610, t: -390, vn: 22, vg: 12 }],
-  ["SELL", 40, "3M", "29 Aug", 1.0842, 0.00386, 0.00362, 5.6, { d: -200, g: -1180, v: -1240, t: 820, vn: -4, vg: -26 }],
-  ["BUY", 20, "3M", "29 Aug", 1.06, 0.00121, 0.00138, 6.1, { d: -1500, g: 520, v: 590, t: -370, vn: -18, vg: 11 }],
-]);
-pkg("Calendar 1M/4M", [
-  ["SELL", 15, "1M", "04 Jul", 1.085, 0.00301, 0.00279, 5.3, { d: -120, g: -940, v: -520, t: 690, vn: -3, vg: -8 }],
-  ["BUY", 15, "4M", "26 Sep", 1.085, 0.00488, 0.00521, 5.8, { d: 140, g: 610, v: 1180, t: -410, vn: 5, vg: 14 }],
-]);
-positions.push({
-  id: "F-6E-U6", packageId: "PKG-2045", tradeId: "T-88016", conId: 712499, product: "EURUSD",
-  structure: "Future 6E Sep26", side: "SELL", qty: 8, tenor: "—", expiry: "15 Sep", strike: 0,
-  entry: 1.0871, mark: 1.0842, iv: 0, pnl: 2900, nominal: 8 * 125000,
-  delta: -10000, gamma: 0, vega: 0, theta: 0, vanna: 0, volga: 0, updated: "12:04:33", opened: "04 Jun 10:48",
-  pnlPct: 0, dte: 0,
-});
-positions.forEach((p) => {
-  p.pnlPct = p.entry ? ((p.mark - p.entry) / p.entry) * (p.side === "BUY" ? 1 : -1) * 100 : 0;
-});
-
-// days-to-expiry per leg (as-of 13 Jun 2026)
-const DTE_BY_TENOR: Record<string, number> = { "1M": 21, "2M": 49, "3M": 77, "4M": 105, "5M": 133, "6M": 161 };
-positions.forEach((p) => {
-  p.dte = DTE_BY_TENOR[p.tenor] ?? 94;
-});
-
 export interface Cash {
   ccy: string;
   settled: number;
@@ -402,23 +215,28 @@ export interface Cash {
   rate: number;
   usd: number;
 }
-export const cash: Cash[] = [
-  { ccy: "USD", settled: 1284500, unsettled: -42000, rate: 1.0, usd: 0 },
-  { ccy: "EUR", settled: 318200, unsettled: 0, rate: 1.0842, usd: 0 },
-  { ccy: "GBP", settled: 96400, unsettled: 12000, rate: 1.2774, usd: 0 },
-  { ccy: "JPY", settled: -8500000, unsettled: 0, rate: 0.00639, usd: 0 },
-];
-cash.forEach((c) => {
-  c.usd = (c.settled + c.unsettled) * c.rate;
-});
 
-export const account = {
-  netLiq: 4218640, dNetLiq: 0.92, cash: 1554900, dCash: -0.3,
-  unrealized: 38420, dayPnl: 38420, dayPnlPct: 0.92, realized: 12180,
-  marginInit: 1842000, marginMaint: 1284000, marginInitPct: 43.6, marginMaintPct: 30.4,
-  excessLiq: 2934640, cushion: 0.696, nPositions: positions.length, dPositions: 2,
-  buyingPower: 8740000, availableFunds: 2934640,
-};
+/** IB account snapshot shape (filled by the live adapters, zeros when absent). */
+export interface AccountState {
+  netLiq: number;
+  dNetLiq: number;
+  cash: number;
+  dCash: number;
+  unrealized: number;
+  dayPnl: number;
+  dayPnlPct: number;
+  realized: number;
+  marginInit: number;
+  marginMaint: number;
+  marginInitPct: number;
+  marginMaintPct: number;
+  excessLiq: number;
+  cushion: number;
+  nPositions: number;
+  dPositions: number;
+  buyingPower: number;
+  availableFunds: number;
+}
 
 export interface Greeks {
   delta: number; gamma: number; theta: number; vega: number; vanna: number; volga: number;
@@ -428,12 +246,7 @@ export interface Greeks {
   netVanna: number; netVolga: number; netNominal: number; netUnreal: number;
 }
 
-export const greeks: Greeks = {
-  delta: 6.2, gamma: 14.5, theta: -9.1, vega: 32.0, vanna: 1.53, volga: 0.42, charm: -0.84,
-  var1d99: -312, var1d95: -184, beta: 0.34, dDelta24h: 1.1, dVega24h: -3.4, dVanna24h: 0.31, dVolga24h: -0.12,
-  netDelta: 0, netGamma: 0, netVega: 0, netTheta: 0, netVanna: 0, netVolga: 0, netNominal: 0, netUnreal: 0,
-};
-
+// Default risk caps — overridden per-key by /trade/limits when configured.
 export const limits = {
   gamma: { cap: 20400, unit: "$/pip" },
   vega: { cap: 48000, unit: "$/vp" },
@@ -445,70 +258,9 @@ export const limits = {
   // until the config row resolves — never a mock fallback.
   vegaCapUsd: 0,
 };
-/** Inline-const shapes reused by the live Trade adapter (R11 PR 6r). */
-export type AccountState = typeof account;
 export type Limits = typeof limits;
 
-export const feed = { feedS: 2, surfaceS: 38, feedWarn: 5, feedStale: 15, surfWarn: 45, surfStale: 60 };
-
-export interface WorkingOrder {
-  id: string;
-  side: string;
-  product: string;
-  qty: number;
-  level: string;
-}
-export const workingOrders: WorkingOrder[] = [
-  { id: "wo-7741", side: "BUY", product: "Straddle 1M", qty: 15, level: "@ 5.1 vol limit" },
-  { id: "wo-7742", side: "SELL", product: "6E Sep26", qty: 5, level: "@ 1.0905 stop" },
-];
-
-// ---- SINGLE GREEKS ENGINE: reconcile per-leg greeks so the book foots to the canonical net.
-const GREEKS_NET = {
-  delta: greeks.delta * 1000 * DELTA_CASH, gamma: greeks.gamma * 1000, vega: greeks.vega * 1000,
-  theta: greeks.theta * 1000, vanna: 177, volga: 42,
-};
-(function reconcileBookGreeks(): void {
-  const optLegs = positions.filter((p) => p.iv);
-  const fut = positions.find((p) => !p.iv);
-  const sum = (arr: Position[], k: keyof Position): number =>
-    arr.reduce((s, p) => s + ((p[k] as number) || 0), 0);
-  (["gamma", "vega", "theta", "vanna", "volga"] as const).forEach((k) => {
-    const cur = sum(optLegs, k);
-    if (!cur) return;
-    const f = GREEKS_NET[k] / cur;
-    optLegs.forEach((p) => {
-      p[k] = +(p[k] * f).toFixed(k === "vanna" || k === "volga" ? 1 : 0);
-    });
-  });
-  if (fut) fut.delta = Math.round(GREEKS_NET.delta - sum(optLegs, "delta"));
-  greeks.netDelta = sum(positions, "delta");
-  greeks.netGamma = sum(positions, "gamma");
-  greeks.netVega = sum(positions, "vega");
-  greeks.netTheta = sum(positions, "theta");
-  greeks.netVanna = sum(positions, "vanna");
-  greeks.netVolga = sum(positions, "volga");
-  greeks.netNominal = sum(positions, "nominal");
-  greeks.netUnreal = sum(positions, "pnl");
-})();
-
-export const equityCurve = (window_: string): number[] => {
-  const map: Record<string, number> = { "1D": 48, "7D": 90, "30D": 120, "1Y": 160, all: 200 };
-  const n = map[window_] || 90;
-  const rnd = mulberry32(7 + n);
-  let v = account.netLiq * 0.92;
-  const a: number[] = [];
-  for (let i = 0; i < n; i++) {
-    v += (rnd() - 0.45) * account.netLiq * 0.004;
-    a.push(v);
-  }
-  a[a.length - 1] = account.netLiq;
-  return a;
-};
-
-export const watch = [{ sym: "EURUSD", last: SPOT, chg: 0.31 }];
-
+/** Preview/axis constants consumed as `DATA.*` (OrderBuilder, wing tags, axes). */
 export const DATA = {
-  SPOT, tenors, deltas, ivSurface, ivZ, termStructure, smileFor, strikeToWing, pcs, pcaModel, regime,
-  events, positions, cash, account, greeks, limits, feed, workingOrders, equityCurve, watch,
+  SPOT, tenors, deltas, ivSurface, termStructure, smileFor, strikeToWing,
 };

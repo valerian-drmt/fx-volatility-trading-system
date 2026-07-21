@@ -69,7 +69,7 @@ def clear_cycle() -> None:
 # ── Prometheus metrics ───────────────────────────────────────────────────────
 # Single shared registry (the default global one). Each engine process has
 # its own /metrics endpoint, so cross-engine cardinality is naturally
-# partitioned. Labels kept low-cardinality per CONVENTIONS § Labels autorisés.
+# partitioned. Labels kept low-cardinality per CONVENTIONS § Allowed labels.
 
 cycles_total = Counter(
     "engine_cycles_total",

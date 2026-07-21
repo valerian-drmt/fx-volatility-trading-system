@@ -81,6 +81,96 @@ def test_reaper_terminalises_structure_once_all_legs_terminal() -> None:
     assert plan_structure_terminal_state(["filled", "filled"]) == "fully_filled"
 
 
+def test_parse_order_ref() -> None:
+    from engines.execution.reaper import parse_order_ref
+
+    assert parse_order_ref("fxvol:7:42") == (7, 42)
+    assert parse_order_ref(None) is None
+    assert parse_order_ref("") is None
+    assert parse_order_ref("something-else") is None
+    assert parse_order_ref("fxvol:7") is None
+    assert parse_order_ref("fxvol:7:42:9") is None
+    assert parse_order_ref("fxvol:x:y") is None
+
+
+async def test_orphan_with_orderref_is_adopted_not_reaped() -> None:
+    # EXEC-2 residual window: a crash between placeOrder and the per-leg commit
+    # leaves a live IB order whose row says pending / no ib_order_id. The sweep
+    # must adopt it (fill ids + submitted_at) instead of leaving a ghost.
+    from datetime import date
+
+    from sqlalchemy import BigInteger, Integer, select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from engines.execution.reaper import reap_stale_orders
+    from persistence.models import Base, StructureOrder, TradeEvent, TradeStructure
+
+    for table in Base.metadata.tables.values():
+        for col in table.columns:
+            if isinstance(col.type, BigInteger):
+                col.type = Integer()
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with maker() as db:
+            s = TradeStructure(
+                structure_type="straddle", reference_tenor="3M",
+                base_qty=5, state="submitted", execution_mode="live",
+            )
+            db.add(s)
+            await db.flush()
+            ghost = StructureOrder(
+                structure_id=s.id, leg_idx=0, order_role="entry",
+                contract_type="call", contract_strike=1.085,
+                contract_expiry=date(2026, 9, 18),
+                side="BUY", qty=5, order_type="LMT", limit_price=0.004,
+                state="pending",  # never committed as submitted — the ghost
+            )
+            other = StructureOrder(
+                structure_id=s.id, leg_idx=1, order_role="entry",
+                contract_type="put", contract_strike=1.075,
+                contract_expiry=date(2026, 9, 18),
+                side="BUY", qty=5, order_type="LMT", limit_price=0.004,
+                state="pending",  # no matching IB order → left alone
+            )
+            db.add_all([ghost, other])
+            await db.flush()
+            struct_id, ghost_id, other_id = s.id, ghost.id, other.id
+            await db.commit()
+
+        class _StubExec:
+            def account_is_reporting(self) -> bool:
+                return True
+
+            async def list_all_trades(self):
+                return [{
+                    "order_id": 501, "perm_id": 601,
+                    "status": "Submitted", "remaining": 5.0,
+                    "order_ref": f"fxvol:{struct_id}:{ghost_id}",
+                }]
+
+        result = await reap_stale_orders(maker, _StubExec())
+        assert result["adopted"] == [ghost_id]
+        assert result["reaped"] == 0
+
+        async with maker() as db:
+            g = await db.get(StructureOrder, ghost_id)
+            o = await db.get(StructureOrder, other_id)
+            events = (await db.execute(
+                select(TradeEvent).where(TradeEvent.structure_id == struct_id)
+            )).scalars().all()
+        assert g.ib_order_id == "501"
+        assert g.ib_perm_id == "601"
+        assert g.state == "submitted"
+        assert g.submitted_at is not None
+        assert o.ib_order_id is None and o.state == "pending"
+        assert "order_adopted_from_ib" in {e.event_type for e in events}
+    finally:
+        await engine.dispose()
+
+
 async def test_t7_dead_feed_is_a_no_op() -> None:
     # T7: IB feed cut (account not reporting) -> reaper acts on nothing and never
     # even opens a DB session (acting on an empty snapshot would fabricate

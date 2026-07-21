@@ -13,9 +13,10 @@ The label is one of 8 canonical values from
     Vanilla Call · Vanilla Put · Straddle · Strangle · Butterfly ·
     Calendar · Future - 6E · Future - M6E
 
-Backfill : pure-Python data migration using ``core.products.
-product_label_from_symbol`` — same helper that the engine writers will
-call going forward, so the column never drifts from production logic.
+Backfill : pure-Python data migration using a frozen copy of
+``core.products.product_label_from_symbol`` (inlined below — migrations
+must never import live ``core`` modules, which can be refactored or
+deleted after the fact and would break replaying this revision).
 
 Nullable for now ; a follow-up migration (033) will promote to NOT NULL
 once writer coverage is proven across one release cycle.
@@ -28,8 +29,6 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
-
-from core.products import product_label_from_symbol
 
 revision: str = "032_product_label_dual_column"
 down_revision: str | None = "026_theme2_portfolio"
@@ -47,6 +46,63 @@ _BACKFILL_TARGETS: tuple[tuple[str, str | None, str | None], ...] = (
     ("trade_structure",         None,             "structure_type"),
     ("trade_preview",           None,             "structure_type"),
 )
+
+
+# ── Frozen copy of core.products.product_label_from_symbol (as of this
+#    revision) — inlined so the migration never depends on a live module. ──
+
+_STRUCTURE_TYPE_TO_LABEL: dict[str, str] = {
+    "vanilla_call":         "Vanilla Call",
+    "short_vanilla_call":   "Vanilla Call",
+    "vanilla_put":          "Vanilla Put",
+    "short_vanilla_put":    "Vanilla Put",
+    "straddle_atm":         "Straddle",
+    "short_straddle_atm":   "Straddle",
+    "long_strangle_25d":    "Strangle",
+    "short_strangle":       "Strangle",
+    "long_butterfly_25d":   "Butterfly",
+    "short_butterfly_25d":  "Butterfly",
+    "calendar_long":        "Calendar",
+    "calendar_short":       "Calendar",
+}
+
+
+def _future_label(ib_symbol: str | None) -> str:
+    return "Future - M6E" if ib_symbol and ib_symbol.startswith("M6E") else "Future - 6E"
+
+
+def product_label_from_symbol(
+    ib_symbol: str | None,
+    structure_type: str | None,
+) -> str | None:
+    """Return the user-friendly product label (frozen copy, see above).
+
+    Resolution order :
+        1. ``structure_type`` (highest signal — exec pipeline writes it).
+        2. ``ib_symbol`` parse (IB-live positions that bypass trade_structure).
+
+    Returns ``None`` when neither input is recognised. Never raises.
+    """
+    if structure_type:
+        if structure_type.startswith("future_"):
+            return _future_label(ib_symbol)
+        label = _STRUCTURE_TYPE_TO_LABEL.get(structure_type)
+        if label is not None:
+            return label
+    if not ib_symbol:
+        return None
+    sym = ib_symbol.strip()
+    if not sym:
+        return None
+    # IB option localSymbols look like "EUUQ6 C1130" / "EUUN6 P1170" :
+    # 5 chars + space + C/P + strike. The space-delimited C/P token is the
+    # most reliable signal across all CME FX-option series.
+    if " C" in sym:
+        return "Vanilla Call"
+    if " P" in sym:
+        return "Vanilla Put"
+    # Otherwise treat as a future symbol (6E* full / M6E* micro).
+    return _future_label(sym)
 
 
 def upgrade() -> None:

@@ -1,7 +1,8 @@
 """Portfolio panel — account-level aggregate views (cf. PORTFOLIO_PANEL.md).
 
-Bounded context distinct du legacy `portfolio.py` (qui sert l'ancien
-Portfolio panel based on the `positions` table). Ici on expose :
+Bounded context distinct from the legacy `portfolio.py` router (which
+served the old Portfolio panel based on the `positions` table, since
+removed). Exposed here:
 
   GET /api/v1/portfolio/account            — latest + prev (≈24h) account_snap
   GET /api/v1/portfolio/equity-curve       — net_liq series, adaptive downsample

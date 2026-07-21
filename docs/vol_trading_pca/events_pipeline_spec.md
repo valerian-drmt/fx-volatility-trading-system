@@ -1,22 +1,22 @@
 # Events pipeline — refactor spec
 
-Cible : remplacer la cascade actuelle (`TradingEconomics → ForexFactory`) par un agrégateur multi-sources orthogonales, testable, isolé par source, idempotent.
+Goal: replace the current cascade (`TradingEconomics → ForexFactory`) with a multi-source aggregator of orthogonal sources — testable, isolated per source, idempotent.
 
-À l'issue de cette implémentation : **service de récupération d'events économiques de qualité production**, sans dépendance à un agrégateur tiers commercial, sans intervention manuelle, refresh quotidien automatique.
+At the end of this implementation: **a production-quality economic events retrieval service**, with no dependency on a commercial third-party aggregator, no manual intervention, and automatic daily refresh.
 
-Trois éléments fondamentaux à livrer, dans l'ordre, puis 7 sources concrètes branchées dessus.
+Three fundamental building blocks to deliver, in order, then 7 concrete sources plugged into them.
 
 ---
 
-## 0. Système
+## 0. System
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                        EventsScheduler                           │
-│  • boucle async (24h interval, jitter ±10min)                    │
-│  • exécute chaque Source en parallèle (asyncio.gather)           │
-│  • isole les échecs : 1 source down ≠ pipeline down              │
-│  • collecte → dédup par hash → upsert idempotent                 │
+│  • async loop (24h interval, jitter ±10min)                      │
+│  • runs every Source in parallel (asyncio.gather)                │
+│  • isolates failures: 1 source down ≠ pipeline down              │
+│  • collect → dedupe by hash → idempotent upsert                  │
 └──────────────────────────────────────────────────────────────────┘
         │                    │                    │
         ▼                    ▼                    ▼
@@ -45,20 +45,20 @@ Trois éléments fondamentaux à livrer, dans l'ordre, puis 7 sources concrètes
                   └──────────────────────┘
 ```
 
-Contraintes :
+Constraints:
 
-- une source qui timeout/crash ne bloque pas les autres
-- un re-run quotidien doit être un no-op si rien n'a changé
-- ajouter une nouvelle source = créer 1 classe, 0 modification du scheduler
-- chaque source est testable en isolation (mock HTTP)
+- a source that times out or crashes does not block the others
+- a daily re-run must be a no-op if nothing has changed
+- adding a new source = create 1 class, 0 changes to the scheduler
+- every source is testable in isolation (mock HTTP)
 
 ---
 
-## 1. Pattern `Source` (livraison 1)
+## 1. `Source` pattern (deliverable 1)
 
 ### Interface
 
-Fichier : `src/api/orchestration/events/sources/base.py`
+File: `src/api/orchestration/events/sources/base.py`
 
 ```python
 from abc import ABC, abstractmethod
@@ -71,42 +71,42 @@ Impact = Literal["high", "medium", "low"]
 
 @dataclass(frozen=True)
 class RawEvent:
-    """Événement tel que renvoyé par une source, avant dédup/persist."""
+    """Event as returned by a source, before dedupe/persist."""
     event_type: str          # "FOMC", "NFP", "CPI", ...
     region: Region
     impact: Impact
     scheduled_at: datetime   # UTC, tz-aware
     description: str
-    source_name: str         # "FRED", "ECB", ... pour debug
+    source_name: str         # "FRED", "ECB", ... for debugging
 
 class EventSource(ABC):
-    """Contrat pour toute source d'événements économiques."""
+    """Contract for any economic events source."""
 
-    name: str                       # identifiant unique, utilisé dans les logs
-    timeout_seconds: float = 10.0   # cap dur, pas de source qui traîne
-    expected_min_events: int = 1    # alerte si fetch retourne moins que ça
+    name: str                       # unique identifier, used in logs
+    timeout_seconds: float = 10.0   # hard cap, no source is allowed to drag
+    expected_min_events: int = 1    # warn if fetch returns fewer than this
 
     @abstractmethod
     async def fetch(self) -> list[RawEvent]:
         """
-        Récupère et parse les events. 
-        Doit lever une exception en cas d'échec — le scheduler la catch.
-        Ne pas swallow les erreurs ici.
+        Fetches and parses the events.
+        Must raise an exception on failure — the scheduler catches it.
+        Do not swallow errors here.
         """
         ...
 ```
 
-### Règle de séparation I/O / parsing
+### I/O / parsing separation rule
 
-Chaque source DOIT séparer :
-- `fetch()` : I/O réseau uniquement, retourne le payload brut (HTML/JSON/XML)
-- `_parse(payload)` : transformation pure, testable sans réseau
+Every source MUST separate:
+- `fetch()`: network I/O only, returns the raw payload (HTML/JSON/XML)
+- `_parse(payload)`: pure transformation, testable without network
 
-Sinon les tests deviennent impossibles à faire sans hit le web.
+Otherwise tests become impossible without hitting the web.
 
-### Tests par source
+### Tests per source
 
-Pour chaque source, un snapshot du payload (HTML/JSON) committé dans `tests/fixtures/`. Pas de test live qui hit le réseau (flaky). Re-snapshot quand le format change.
+For each source, a snapshot of the payload (HTML/JSON) committed under `tests/fixtures/`. No live tests that hit the network (flaky). Re-snapshot when the format changes.
 
 ```python
 # tests/services/events/sources/test_<source>.py
@@ -124,14 +124,14 @@ def test_parser_extracts_all_events(payload):
     events = source._parse(payload)
     assert len(events) >= source.expected_min_events
     assert all(e.scheduled_at.tzinfo is not None for e in events)
-    # ... assertions spécifiques au type d'event
+    # ... assertions specific to the event type
 ```
 
 ---
 
-## 2. Scheduler isolant (livraison 2)
+## 2. Isolating scheduler (deliverable 2)
 
-Fichier : `src/api/orchestration/events/scheduler.py`
+File: `src/api/orchestration/events/scheduler.py`
 
 ```python
 import asyncio
@@ -145,12 +145,12 @@ logger = logging.getLogger(__name__)
 
 class EventsScheduler:
     """
-    Orchestre N sources en parallèle, isole les échecs, dédup, persist.
+    Orchestrates N sources in parallel, isolates failures, dedupes, persists.
     
-    Invariants :
-    - 1 source qui crash → log warning, les autres continuent
-    - 1 source qui timeout → cap à source.timeout_seconds
-    - 0 event retourné < expected_min_events → log warning (drift parser)
+    Invariants:
+    - 1 source crashing → log warning, the others keep running
+    - 1 source timing out → capped at source.timeout_seconds
+    - fewer events returned than expected_min_events → log warning (parser drift)
     """
 
     def __init__(
@@ -170,12 +170,12 @@ class EventsScheduler:
 
     async def run_once(self) -> dict[str, int]:
         """
-        Exécute un cycle complet. Retourne un report par source.
-        Utilisé par la boucle ET par les tests.
+        Runs one full cycle. Returns a per-source report.
+        Used by the loop AND by the tests.
         """
         results = await asyncio.gather(
             *[self._fetch_safely(s) for s in self.sources],
-            return_exceptions=False,  # déjà catch dans _fetch_safely
+            return_exceptions=False,  # already caught inside _fetch_safely
         )
         
         all_events: list[RawEvent] = []
@@ -193,7 +193,7 @@ class EventsScheduler:
         return report
 
     async def _fetch_safely(self, source: EventSource) -> list[RawEvent]:
-        """Wrap fetch() : timeout, exception isolation, validation min_events."""
+        """Wraps fetch(): timeout, exception isolation, min_events validation."""
         try:
             events = await asyncio.wait_for(
                 source.fetch(),
@@ -214,7 +214,7 @@ class EventsScheduler:
         return events
 
     async def start(self):
-        """Démarre la boucle infinie. À appeler depuis lifespan FastAPI."""
+        """Starts the infinite loop. To be called from the FastAPI lifespan."""
         self._task = asyncio.create_task(self._loop())
 
     async def stop(self):
@@ -226,7 +226,7 @@ class EventsScheduler:
                 pass
 
     async def _loop(self):
-        await asyncio.sleep(30)  # laisse l'API ready
+        await asyncio.sleep(30)  # let the API become ready
         while True:
             try:
                 await self.run_once()
@@ -238,7 +238,7 @@ class EventsScheduler:
             await asyncio.sleep(sleep_seconds)
 ```
 
-### Tests scheduler (avec FakeSource, pas de réseau)
+### Scheduler tests (with FakeSource, no network)
 
 ```python
 import asyncio
@@ -287,16 +287,16 @@ async def test_scheduler_caps_slow_source():
 
 ---
 
-## 3. Hash idempotent (livraison 3)
+## 3. Idempotent hash (deliverable 3)
 
-### Convention de hash
+### Hash convention
 
-Identité d'un event = `(event_type, region, scheduled_at_truncated_to_minute)`.
+Identity of an event = `(event_type, region, scheduled_at_truncated_to_minute)`.
 
-Pourquoi tronquer à la minute :
-- une source peut renvoyer `14:30:00`, une autre `14:30:15` pour le même release
-- la seconde n'a aucune valeur sémantique (les BC publient à la minute près)
-- évite les doublons quand 2 sources se chevauchent (FRED + BLS donnent le même CPI)
+Why truncate to the minute:
+- one source may return `14:30:00`, another `14:30:15` for the same release
+- the seconds carry no semantic value (central banks publish to the minute)
+- avoids duplicates when 2 sources overlap (FRED + BLS report the same CPI)
 
 ```python
 # src/api/orchestration/events/hashing.py
@@ -304,7 +304,7 @@ import hashlib
 from .sources.base import RawEvent
 
 def event_hash(e: RawEvent) -> str:
-    """SHA-256 hex tronqué à 16 chars. Identité = (type, region, minute)."""
+    """SHA-256 hex truncated to 16 chars. Identity = (type, region, minute)."""
     minute = e.scheduled_at.replace(second=0, microsecond=0).isoformat()
     key = f"{e.event_type}|{e.region}|{minute}"
     return hashlib.sha256(key.encode()).hexdigest()[:16]
@@ -319,9 +319,9 @@ from .hashing import event_hash
 
 class EventDeduplicator:
     """
-    Dédup INTRA-cycle (avant insert).
-    Si 2 sources renvoient le même CPI, on garde 1 seul (ordre d'arrivée).
-    Le dédup INTER-cycle est géré par la contrainte UNIQUE en DB.
+    INTRA-cycle dedupe (before insert).
+    If 2 sources return the same CPI, keep only 1 (arrival order).
+    INTER-cycle dedupe is handled by the UNIQUE constraint in the DB.
     """
     def dedupe(self, events: list[RawEvent]) -> list[tuple[str, RawEvent]]:
         seen: dict[str, RawEvent] = {}
@@ -332,7 +332,7 @@ class EventDeduplicator:
         return [(h, e) for h, e in seen.items()]
 ```
 
-### Migration DB
+### DB migration
 
 ```sql
 -- migrations/00X_events_hash.sql
@@ -389,50 +389,50 @@ class EventsRepository:
 
 ---
 
-## 4. Liste exhaustive des sources à implémenter
+## 4. Exhaustive list of sources to implement
 
-### Architecture en 2 tiers (révisée)
+### 2-tier architecture (revised)
 
-L'asymétrie majeure : **FRED API** (St. Louis Fed) expose un endpoint `/fred/releases/dates` qui agrège les dates de release de TOUTES les statistiques US officielles (BLS, BEA, Fed, Census, Treasury) en JSON, gratuit, key obtenue en 30s. C'est le seul agrégateur que tu peux raisonnablement utiliser comme source primaire — parce qu'il est opéré par la Fed elle-même, pas par un acteur commercial.
+The major asymmetry: the **FRED API** (St. Louis Fed) exposes a `/fred/releases/dates` endpoint aggregating the release dates of ALL official US statistics (BLS, BEA, Fed, Census, Treasury) as JSON, free, with a key obtained in 30s. It is the only aggregator you can reasonably use as a primary source — because it is operated by the Fed itself, not by a commercial actor.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ TIER 1 — Sources primaires (5 sources, couvrent 95%+)       │
+│ TIER 1 — Primary sources (5 sources, cover 95%+)            │
 │  [US]  FREDSource          → CPI, NFP, PCE, GDP, PPI, etc.  │
 │  [EU]  ECBSource           → Governing Council meetings     │
 │  [GB]  BoESource           → MPC decisions                  │
 │  [US]  FOMCSource          → meetings + minutes             │
-│  [EU]  EurostatSource      → CPI/HICP, GDP zone euro        │
+│  [EU]  EurostatSource      → CPI/HICP, euro area GDP        │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
-│ TIER 2 — Sources secondaires (2 sources, redondance + GB)   │
+│ TIER 2 — Secondary sources (2 sources, redundancy + GB)     │
 │  [GB]  ONSSource           → UK CPI, GDP, employment        │
-│  [US]  BLSSource           → fallback si FRED key down      │
+│  [US]  BLSSource           → fallback if FRED key down      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Détail par source
+### Per-source detail
 
-#### `FREDSource` — couvre tout le bloc US d'un seul coup
+#### `FREDSource` — covers the whole US block in one shot
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
 | URL | `https://api.stlouisfed.org/fred/releases/dates` |
 | Format | JSON |
-| Auth | API key (gratuite, 30s à obtenir) |
-| Couverture | tous les `release_id` US officiels (CPI, NFP, PCE, GDP, FOMC, etc.) |
-| Endpoint signup | `https://fredaccount.stlouisfed.org/apikeys` |
+| Auth | API key (free, 30s to obtain) |
+| Coverage | all official US `release_id`s (CPI, NFP, PCE, GDP, FOMC, etc.) |
+| Signup endpoint | `https://fredaccount.stlouisfed.org/apikeys` |
 | Env var | `FRED_API_KEY` |
 
-**Stratégie** : appeler l'endpoint avec `realtime_end=today+180d` et `include_release_dates_with_no_data=true` pour récupérer les dates futures. Filtrer ensuite sur les `release_id` qui correspondent aux events high-impact.
+**Strategy**: call the endpoint with `realtime_end=today+180d` and `include_release_dates_with_no_data=true` to retrieve future dates. Then filter on the `release_id`s that map to high-impact events.
 
 ```python
-# Whitelist des release_id FRED à garder
-# (vérifier via GET /fred/releases?api_key=KEY&file_type=json&order_by=popularity)
+# Whitelist of FRED release_ids to keep
+# (verify via GET /fred/releases?api_key=KEY&file_type=json&order_by=popularity)
 FRED_HIGH_IMPACT_RELEASES = {
     10:  ("CPI", "high"),           # Consumer Price Index (BLS)
-    50:  ("NFP", "high"),           # Employment Situation (BLS) — contient NFP
+    50:  ("NFP", "high"),           # Employment Situation (BLS) — contains NFP
     21:  ("M2", "medium"),          # H.6 Money Stock (Fed)
     53:  ("GDP", "high"),           # Gross Domestic Product (BEA)
     151: ("PCE", "high"),           # Personal Income and Outlays (BEA)
@@ -446,7 +446,7 @@ FRED_HIGH_IMPACT_RELEASES = {
 ```python
 class FREDSource(EventSource):
     name = "FRED"
-    expected_min_events = 10  # ~10 high-impact releases sur 6 mois minimum
+    expected_min_events = 10  # ~10 high-impact releases over 6 months minimum
     
     BASE_URL = "https://api.stlouisfed.org/fred"
     
@@ -479,7 +479,7 @@ class FREDSource(EventSource):
             if release_id not in FRED_HIGH_IMPACT_RELEASES:
                 continue
             event_type, impact = FRED_HIGH_IMPACT_RELEASES[release_id]
-            # FRED donne la date sans heure ; releases US à 8:30 ET (12:30/13:30 UTC selon DST)
+            # FRED gives the date without a time; US releases at 8:30 ET (12:30/13:30 UTC depending on DST)
             scheduled_at = self._localize_us_release(r["date"], event_type)
             events.append(RawEvent(
                 event_type=event_type, region="US", impact=impact,
@@ -490,83 +490,83 @@ class FREDSource(EventSource):
         return events
     
     def _localize_us_release(self, date_str: str, event_type: str) -> datetime:
-        """8:30 ET pour la plupart des releases BLS/BEA, 14:00 ET pour FOMC."""
-        # implémenter le mapping event_type → heure locale → UTC tz-aware
-        # utiliser zoneinfo.ZoneInfo("America/New_York") pour gérer DST
+        """8:30 ET for most BLS/BEA releases, 14:00 ET for FOMC."""
+        # implement the mapping event_type → local time → UTC tz-aware
+        # use zoneinfo.ZoneInfo("America/New_York") to handle DST
         ...
 ```
 
-#### `ECBSource` — Governing Council EU
+#### `ECBSource` — EU Governing Council
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
 | URL | `https://www.ecb.europa.eu/press/calendars/mgcgc/html/index.en.html` |
 | Format | HTML |
-| Auth | aucune |
-| Couverture | 8 meetings monetary policy/an + non-MP meetings |
-| Heure | 14:15 CET pour décision MP, 14:45 CET pour press conf |
+| Auth | none |
+| Coverage | 8 monetary policy meetings/year + non-MP meetings |
+| Time | 14:15 CET for MP decision, 14:45 CET for press conf |
 
-Note : le calendrier weekly `https://www.ecb.europa.eu/press/calendars/weekly/html/index.en.html` fournit aussi les heures précises pour la semaine courante. Utile en complément.
+Note: the weekly calendar `https://www.ecb.europa.eu/press/calendars/weekly/html/index.en.html` also provides precise times for the current week. Useful as a complement.
 
-#### `BoESource` — MPC UK
+#### `BoESource` — UK MPC
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
 | URL | `https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates` |
 | Format | HTML |
-| Auth | aucune |
-| Couverture | 8 MPC meetings/an, dates confirmées 6+ mois en avance |
-| Heure | 12:00 UK time (announcement) |
+| Auth | none |
+| Coverage | 8 MPC meetings/year, dates confirmed 6+ months in advance |
+| Time | 12:00 UK time (announcement) |
 
-Dates 2026 confirmées par BoE : 5 février, 19 mars, 30 avril, 18 juin, 30 juillet, 17 septembre, 5 novembre, 17 décembre.
+2026 dates confirmed by the BoE: February 5, March 19, April 30, June 18, July 30, September 17, November 5, December 17.
 
-#### `FOMCSource` — meetings Fed (complément à FRED)
+#### `FOMCSource` — Fed meetings (complement to FRED)
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
 | URL | `https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm` |
 | Format | HTML |
-| Auth | aucune |
-| Couverture | 8 meetings + minutes releases (3 semaines après) |
+| Auth | none |
+| Coverage | 8 meetings + minutes releases (3 weeks after) |
 
-**Pourquoi en plus de FRED** : FRED expose la release "H.15 Selected Interest Rates" qui sort le jour du FOMC, mais pas explicitement le meeting FOMC lui-même comme event distinct. Les minutes (3 semaines après) doivent venir d'ici.
+**Why in addition to FRED**: FRED exposes the "H.15 Selected Interest Rates" release which comes out on FOMC day, but not the FOMC meeting itself as an explicit, distinct event. The minutes (3 weeks after) must come from here.
 
-#### `EurostatSource` — statistiques zone euro
+#### `EurostatSource` — euro area statistics
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
 | URL | `https://ec.europa.eu/eurostat/news/release-calendar` |
 | Format | HTML / RSS |
-| Auth | aucune |
-| Couverture | HICP flash + final, GDP flash + final, employment |
+| Auth | none |
+| Coverage | HICP flash + final, GDP flash + final, employment |
 
-Note : Eurostat a aussi un endpoint API REST sur `https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/` mais pour le calendrier des publications, le HTML/RSS suffit.
+Note: Eurostat also has a REST API endpoint at `https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/` but for the publication calendar, HTML/RSS is enough.
 
-#### `ONSSource` — UK statistiques
+#### `ONSSource` — UK statistics
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
 | URL | `https://www.ons.gov.uk/releasecalendar` |
 | Format | HTML |
-| Auth | aucune |
-| Couverture | UK CPI, GDP, employment, retail sales |
-| Heure | 7:00 UK time pour la plupart |
+| Auth | none |
+| Coverage | UK CPI, GDP, employment, retail sales |
+| Time | 7:00 UK time for most |
 
-#### `BLSSource` — fallback si FRED indisponible
+#### `BLSSource` — fallback if FRED is unavailable
 
-| Champ | Valeur |
+| Field | Value |
 |---|---|
-| URL | `https://www.bls.gov/schedule/2026/home.htm` (et `/2027/home.htm`) |
+| URL | `https://www.bls.gov/schedule/2026/home.htm` (and `/2027/home.htm`) |
 | Format | HTML |
-| Auth | aucune |
-| Couverture | redondant avec FRED, mais sans dépendance à la clé |
-| Heure | 8:30 ET pour la plupart des releases |
+| Auth | none |
+| Coverage | redundant with FRED, but with no dependency on the key |
+| Time | 8:30 ET for most releases |
 
-À implémenter mais à laisser **désactivé par défaut** dans la liste des sources actives — l'activer uniquement si FRED échoue régulièrement (monitoring sur 30j en prod).
+Implement it but leave it **disabled by default** in the list of active sources — activate it only if FRED fails regularly (30-day monitoring in prod).
 
-### Tableau récap : couverture × event_type
+### Recap table: coverage × event_type
 
-| event_type | Région | Source primaire | Source backup |
+| event_type | Region | Primary source | Backup source |
 |---|---|---|---|
 | CPI | US | FRED | BLS |
 | NFP | US | FRED | BLS |
@@ -583,13 +583,13 @@ Note : Eurostat a aussi un endpoint API REST sur `https://ec.europa.eu/eurostat/
 | UK CPI | GB | ONSSource | — |
 | UK GDP | GB | ONSSource | — |
 
-**Couverture estimée pour EUR/USD high-impact** : ≥98% avec FRED + ECB + BoE + FOMC + Eurostat (5 sources). ONS et BLS sont des backups optionnels.
+**Estimated coverage for EUR/USD high-impact**: ≥98% with FRED + ECB + BoE + FOMC + Eurostat (5 sources). ONS and BLS are optional backups.
 
 ---
 
-## 5. Wiring final dans l'API
+## 5. Final wiring in the API
 
-`src/api/main.py` :
+`src/api/main.py`:
 
 ```python
 import os
@@ -624,88 +624,88 @@ async def lifespan(app):
     await scheduler.stop()
 ```
 
-`docker-compose.yml` : ajouter `FRED_API_KEY=${FRED_API_KEY}` dans les env de l'api.
+`docker-compose.yml`: add `FRED_API_KEY=${FRED_API_KEY}` to the api's env vars.
 
-`.env` : `FRED_API_KEY=<clé>` (obtenue sur https://fredaccount.stlouisfed.org/apikeys).
+`.env`: `FRED_API_KEY=<key>` (obtained at https://fredaccount.stlouisfed.org/apikeys).
 
-Supprimer l'ancien `_events_sync_loop` dans `main.py` et l'ancien `events_fetcher.py`.
+Delete the old `_events_sync_loop` in `main.py` and the old `events_fetcher.py`.
 
 ---
 
-## 6. Ordre de livraison strict
+## 6. Strict delivery order
 
 ```
-PR 1 : pattern Source + FREDSource + tests + fixture JSON
-       (FRED en premier parce qu'elle couvre 60% des events en 1 source)
+PR 1 : Source pattern + FREDSource + tests + JSON fixture
+       (FRED first because it covers 60% of the events in 1 source)
 
-PR 2 : EventsScheduler + EventDeduplicator + hashing + tests scheduler
-       (avec FakeSource only, indépendant de PR 1)
+PR 2 : EventsScheduler + EventDeduplicator + hashing + scheduler tests
+       (with FakeSource only, independent of PR 1)
 
-PR 3 : migration DB event_hash + EventsRepository + tests idempotence
+PR 3 : event_hash DB migration + EventsRepository + idempotency tests
 
-PR 4 : wiring lifespan + suppression ancien fetcher
-       + ECBSource + BoESource + FOMCSource avec leurs fixtures HTML
+PR 4 : lifespan wiring + removal of the old fetcher
+       + ECBSource + BoESource + FOMCSource with their HTML fixtures
 
-PR 5 : EurostatSource + ONSSource (couverture EU/GB complète)
+PR 5 : EurostatSource + ONSSource (full EU/GB coverage)
 
-PR 6 (optionnel) : BLSSource désactivée par défaut, à activer si drift FRED
+PR 6 (optional) : BLSSource disabled by default, to activate on FRED drift
 ```
 
-Ne pas merger PR 4 avant que PR 1-3 soient verts en CI.
+Do not merge PR 4 before PR 1-3 are green in CI.
 
 ---
 
-## 7. Checklist de validation
+## 7. Validation checklist
 
-- [ ] `pytest tests/services/events/` passe à 100%
-- [ ] couverture ≥ 90% sur `services/events/`
-- [ ] aucun test ne hit le réseau (tous via fixtures)
-- [ ] ajouter une nouvelle source = 1 fichier dans `sources/`, 1 ligne dans `main.py`
-- [ ] `docker compose up` → logs montrent `events sync cycle complete: {...}` après 30s
-- [ ] table `events` contient ≥30 events futurs sur les 6 prochains mois après 1er run
-- [ ] re-run dans 24h → `_inserted: 0` si rien n'a bougé côté sources
-- [ ] kill une source (changer URL en localhost:1) → les autres continuent de produire
-- [ ] FRED key invalide → FRED log warning, autres sources fonctionnent
+- [ ] `pytest tests/services/events/` passes at 100%
+- [ ] coverage ≥ 90% on `services/events/`
+- [ ] no test hits the network (all via fixtures)
+- [ ] adding a new source = 1 file in `sources/`, 1 line in `main.py`
+- [ ] `docker compose up` → logs show `events sync cycle complete: {...}` after 30s
+- [ ] `events` table contains ≥30 future events over the next 6 months after the 1st run
+- [ ] re-run 24h later → `_inserted: 0` if nothing moved on the source side
+- [ ] kill one source (change its URL to localhost:1) → the others keep producing
+- [ ] invalid FRED key → FRED logs a warning, other sources keep working
 
 ---
 
-## 8. Setup utilisateur (1 fois)
+## 8. User setup (one-time)
 
-1. **FRED API key** (couvre toutes les sources US d'un coup) :
-   - aller sur `https://fredaccount.stlouisfed.org/apikeys`
+1. **FRED API key** (covers all US sources at once):
+   - go to `https://fredaccount.stlouisfed.org/apikeys`
    - email + password (~30s)
-   - copier la clé dans `.env` : `FRED_API_KEY=...`
+   - copy the key into `.env`: `FRED_API_KEY=...`
 2. `docker compose up -d --force-recreate api`
-3. Vérifier logs : `docker compose logs api | grep "events sync"`
+3. Check logs: `docker compose logs api | grep "events sync"`
 
-C'est tout. Plus jamais d'intervention.
-
----
-
-## 9. Hors-scope (ne pas implémenter ici)
-
-- Trading Economics API : éliminée du design, plus nécessaire avec FRED
-- ForexFactory scraping : éliminé du design, fragilité Cloudflare
-- Webhook Discord/Slack quand une source drift : nice-to-have, après v1
-- UI admin pour voir le statut des sources : pas avant qu'on ait du signal sur les drifts
-- Events de banques centrales secondaires (BoJ, SNB, RBA) : ajouter quand le scope du système trading s'étend hors EUR/USD
+That's it. No intervention ever again.
 
 ---
 
-## 10. Réponse à la question "ce sera un service pro ?"
+## 9. Out of scope (do not implement here)
 
-Oui, sous condition que les 3 fondamentaux (Source pattern + scheduler isolant + hash idempotent) soient livrés tels que spécifiés. Le design proposé élimine :
+- Trading Economics API: dropped from the design, no longer needed with FRED
+- ForexFactory scraping: dropped from the design, Cloudflare fragility
+- Discord/Slack webhook when a source drifts: nice-to-have, after v1
+- Admin UI to view source status: not before we have signal on the drifts
+- Secondary central bank events (BoJ, SNB, RBA): add when the trading system's scope extends beyond EUR/USD
 
-- la dépendance à un agrégateur commercial fragile (TE/FF)
-- les single points of failure (1 source down ≠ pipeline down)
-- l'intervention manuelle (auto-refresh 24h)
-- les doublons (hash + UNIQUE constraint)
-- les tests flaky (fixtures committées)
+---
 
-Ce qui reste **non-géré** par cette implémentation et qu'il faudra envisager plus tard si le système prend en importance :
-- monitoring actif (alerter si `_inserted` reste à 0 plusieurs jours d'affilée)
-- versioning des fixtures HTML (un site qui change son format casse silencieusement le parser jusqu'à ce qu'`expected_min_events` déclenche)
-- backfill historique (la spec couvre les events futurs, pas l'archive)
-- gestion des reschedulings (un BLS qui décale une release de 2 jours = 2 hash différents, le vieux reste en DB ; il faudra une logique de "supersede")
+## 10. Answer to the question "will this be a professional-grade service?"
 
-Ces points relèvent du v2, pas du v1.
+Yes, provided the 3 fundamentals (Source pattern + isolating scheduler + idempotent hash) are delivered as specified. The proposed design eliminates:
+
+- the dependency on a fragile commercial aggregator (TE/FF)
+- single points of failure (1 source down ≠ pipeline down)
+- manual intervention (24h auto-refresh)
+- duplicates (hash + UNIQUE constraint)
+- flaky tests (committed fixtures)
+
+What remains **unhandled** by this implementation and will need consideration later if the system grows in importance:
+- active monitoring (alert if `_inserted` stays at 0 for several days in a row)
+- versioning of the HTML fixtures (a site changing its format silently breaks the parser until `expected_min_events` triggers)
+- historical backfill (the spec covers future events, not the archive)
+- rescheduling handling (a BLS release shifted by 2 days = 2 different hashes, the old one stays in the DB; a "supersede" logic will be needed)
+
+These points belong to v2, not v1.

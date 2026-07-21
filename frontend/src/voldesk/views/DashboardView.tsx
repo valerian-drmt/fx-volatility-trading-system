@@ -13,7 +13,7 @@ import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
 import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
 import { TickerChart } from "../components/TickerChart";
-import { DATA, fmt } from "../data";
+import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
 import type { Cash } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
@@ -141,9 +141,11 @@ const ordinal = (n: number): string => {
 export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element {
   const { pca, portfolio, trade, termStructure, risk } = useDeskData();
   const ticks = useTicks();
-  const a = portfolio.data?.account ?? DATA.account,
-    g = portfolio.data?.greeks ?? DATA.greeks;
-  const events = trade.data?.events ?? DATA.events;
+  // Honest empty states: zeros/empty until the live snapshot lands — never
+  // fabricated book data (remediation 05 WI-2).
+  const a = portfolio.data?.account ?? EMPTY_ACCOUNT,
+    g = portfolio.data?.greeks ?? EMPTY_GREEKS;
+  const events = trade.data?.events ?? [];
   const spot = ticks.data?.mid ?? DATA.SPOT;
 
   // surface staleness — degrades the Signal card when the vol surface is down.
@@ -151,12 +153,11 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const surfStale = toTone(termStructure.status) === "down";
 
   // ── Portfolio card: live per-currency cash for the holdings donut.
-  const liveCash = trade.data?.cash;
-  const cashRows = liveCash && liveCash.length > 0 ? liveCash : DATA.cash;
+  const cashRows = trade.data?.cash ?? [];
   // Leverage from the live book — same math as the Portfolio tab's "Leverage &
   // buying power" table: gross = Σ|notional| (€), net = |Σ signed| (€), ratios
   // vs net liq converted $→€ at live spot.
-  const positions = trade.data?.positions ?? DATA.positions;
+  const positions = trade.data?.positions ?? [];
   const grossLevM = positions.reduce((s, p) => s + Math.abs(p.nominal), 0) / 1e6;
   const netLevM = Math.abs(positions.reduce((s, p) => s + (p.side === "BUY" ? p.nominal : -p.nominal), 0)) / 1e6;
   const netLiqEurM = a.netLiq / spot / 1e6;

@@ -11,7 +11,6 @@ Every file the order/position pipeline touches, grouped by the container that sh
 | `api/routers/positions.py` | `close_one_open_position`, `close_live_position`, `close_trade`, `_compute_breaks`, `reconciliation`, `ledger`, `_marketable_close_from_mark` | Reads positions; **closes** a leg/trade; book-vs-broker reconciliation; P&L ledger. |
 | `core/trade_preview.py` | `build_from_legs`, `classify_legs`, `_strangle_delta_bucket`, `price_structure`, `compute_net_greeks` | **Pure domain**: resolve strikes off the live surface, price (Black-Scholes), name the structure. No I/O. |
 | `core/pricing/bs.py`, `core/risk/greeks.py` | BS price, Δ/Γ/V | pricing/greeks used by the preview |
-| `core/payloads.py` | dict builders | engine output → DB row dicts |
 | `api/schemas/…`, `api/dependencies.py`, `api/auth.py` | Pydantic req/resp, `get_db_session`, `require_write` | request models + DB session + write auth gate |
 
 ## Execution-engine container (`src/engines/execution/`) — talks to IB (clientID 5, :8001)

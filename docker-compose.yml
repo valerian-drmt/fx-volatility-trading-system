@@ -69,13 +69,13 @@ services:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
       REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      # URL interne du nouveau container execution-engine. L'api forward
-      # les actions /orders / /exec/positions vers ce service.
+      # Internal URL of the execution-engine container. The api forwards
+      # the /orders / /exec/positions actions to this service.
       EXECUTION_URL: http://execution-engine:8001
       # FRED API key for the multi-source events pipeline. Free signup at
       # https://fredaccount.stlouisfed.org/apikeys (~30s). Without it, the
       # FRED source is skipped and only the stub sources run (= no events
-      # collected automatically — fallback is scripts/db/seed_events_manual.py).
+      # collected automatically).
       # Cf. docs/vol_trading_pca/events_pipeline_spec.md §8.
       FRED_API_KEY: ${FRED_API_KEY:-}
       # Auth boundary (single-trader). Reads are public; writes need a valid
@@ -156,10 +156,10 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        # Heartbeat est écrit en ISO-8601 par bus.publisher.set_heartbeat
-        # (cf. src/bus/publisher.py). float(ts) sur une string ISO crash —
-        # on parse via datetime.fromisoformat. Max age 60s = 60× la cadence
-        # de push (~1s).
+        # The heartbeat is written in ISO-8601 by bus.publisher.set_heartbeat
+        # (cf. src/bus/publisher.py). float(ts) on an ISO string crashes —
+        # we parse via datetime.fromisoformat. Max age 60s = 60x the push
+        # cadence (~1s).
         - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:market_data'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 60 else 1)\""
       interval: 30s
       timeout: 5s
@@ -217,9 +217,9 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        # Heartbeat ISO-8601 — cf. healthcheck market-data ci-dessus.
-        # Max age 300s parce que vol-engine cycle = 30s + 2-5s de calc
-        # GARCH/SVI = ~5min toléré sans push.
+        # ISO-8601 heartbeat — cf. the market-data healthcheck above.
+        # Max age 300s because vol-engine cycle = 30s + 2-5s of GARCH/SVI
+        # compute = ~5min tolerated without a push.
         - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:vol_engine'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 300 else 1)\""
       interval: 60s
       timeout: 5s
@@ -323,7 +323,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
       REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      # IB connection — clientId 5 (≠ 1 market-data, 2 vol, 3 risk, 4 réservé api legacy).
+      # IB connection — clientId 5 (≠ 1 market-data, 2 vol, 3 risk, 4 reserved for legacy api).
       IB_HOST: ib-gateway
       # 4004 is the socat relay the ib-gateway image runs in front of TWS's
       # 4002 (socat TCP-LISTEN:4004,fork TCP:127.0.0.1:4002). Connecting
@@ -339,9 +339,9 @@ services:
       # engine stays down instead of degrading to reads (account summary,
       # positions). Prod runs read-only, so this is the normal path there.
       IB_READ_ONLY: ${READ_ONLY_API:-no}
-      # Cycle de sync IB → Postgres pour orders/trades/positions/snapshots.
-      # 5 s = compromis : UI poll à 5 s côté front, charge IB modérée
-      # (12 calls/min). Surchargeable via la var d'env EXECUTION_SYNC_INTERVAL_S.
+      # IB → Postgres sync cycle for orders/trades/positions/snapshots.
+      # 5 s = compromise: the UI polls every 5 s on the front side, moderate
+      # IB load (12 calls/min). Overridable via the EXECUTION_SYNC_INTERVAL_S env var.
       SYNC_INTERVAL_S: ${EXECUTION_SYNC_INTERVAL_S:-5.0}
       # Combo (BAG) execution : atomic all-or-nothing fill, no naked half-fill.
       # OFF by default — the IB PAPER simulator handles BAGs poorly (legs fill then
@@ -385,8 +385,8 @@ services:
     networks:
       - fxvol-internal
     healthcheck:
-      # `wget` ship avec nginx:alpine (busybox). Vérifie que le bundle static
-      # est accessible sur le port interne 8080.
+      # `wget` ships with nginx:alpine (busybox). Checks that the static
+      # bundle is reachable on the internal port 8080.
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
       interval: 15s
       timeout: 3s
@@ -451,15 +451,15 @@ services:
       # Initial setup (one-shot after first compose up): connect to VNC
       # on 127.0.0.1:5900, Configure → Settings → API → Settings:
       #   - uncheck "Allow connections from localhost only"
-      #   - Trusted IPs (1 par 1, le GUI refuse les CIDR) :
-      #       127.0.0.1     (loopback, IBC le ré-ajoute toujours)
-      #       172.20.0.10   (market-data, IP statique pinnée compose)
-      #       172.20.0.11   (vol-engine,  IP statique pinnée compose)
-      #       172.20.0.12   (risk-engine, IP statique pinnée compose)
+      #   - Trusted IPs (one by one, the GUI rejects CIDRs):
+      #       127.0.0.1     (loopback, IBC always re-adds it)
+      #       172.20.0.10   (market-data, static IP pinned in compose)
+      #       172.20.0.11   (vol-engine,  static IP pinned in compose)
+      #       172.20.0.12   (risk-engine, static IP pinned in compose)
       #   - OK + File → Save Settings
-      # Subsequent boots reload these settings from the volume — pas
-      # besoin de retoucher la GUI tant que les IPs ne bougent pas
-      # (et elles ne bougent plus, cf. ipam.config.subnet ci-dessous).
+      # Subsequent boots reload these settings from the volume — no need
+      # to touch the GUI again as long as the IPs do not move (and they
+      # no longer move, cf. ipam.config.subnet below).
       - ib_gateway_jts:/home/ibgateway/Jts
     healthcheck:
       # tcp probe — gnzsnz/ib-gateway is minimal (no nc, netstat, curl,
@@ -675,8 +675,8 @@ services:
         condition: service_started
     networks:
       - fxvol-internal
-    # Host port 3000 mapping pour ouverture browser directe en dev.
-    # En EC2 prod, retirer ce mapping et passer par nginx reverse-proxy.
+    # Host port 3000 mapping for direct browser access in dev.
+    # On EC2 prod, remove this mapping and go through the nginx reverse-proxy.
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:
@@ -695,18 +695,18 @@ networks:
   fxvol-internal:
     driver: bridge
     internal: false
-    # Subnet pinné pour que les engines aient des IPs stables, lisibles
-    # et trustables une seule fois côté IB Gateway. Sans ça Docker pioche
-    # un range au hasard dans 172.17-31, et chaque `compose down` peut
-    # changer le subnet → TrustedIPs whitelist obsolète.
+    # Subnet pinned so that the engines get stable, readable IPs that can
+    # be trusted once and for all on the IB Gateway side. Without it Docker
+    # picks a random range in 172.17-31, and every `compose down` can change
+    # the subnet → stale TrustedIPs whitelist.
     ipam:
       config:
-        # ip_range OBLIGATOIRE : sans lui Docker auto-assigne les IPs dynamiques
-        # (db-writer, nginx, promtail, grafana…) sur tout le /24 en partant de .2,
-        # et grappille .10/.11/.12/.13/.14 — les IPs statiques pinnées des engines.
-        # Le 1er engine qui veut son .10 crashe alors "Address already in use".
-        # On confine donc le pool dynamique à la moitié haute (.128–.254) et on
-        # réserve .2–.127 aux pins statiques ci-dessus (engines + api + execution).
+        # ip_range is MANDATORY: without it Docker auto-assigns the dynamic IPs
+        # (db-writer, nginx, promtail, grafana…) across the whole /24 starting at .2,
+        # and grabs .10/.11/.12/.13/.14 — the engines' pinned static IPs.
+        # The 1st engine that wants its .10 then crashes with "Address already in use".
+        # So we confine the dynamic pool to the upper half (.128–.254) and keep
+        # .2–.127 reserved for the static pins above (engines + api + execution).
         - subnet: 172.20.0.0/24
           ip_range: 172.20.0.128/25
   # Outbound-only lane for IB Gateway — lets it reach IB servers while

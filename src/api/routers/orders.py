@@ -1,9 +1,9 @@
-"""Orders router — pure proxy vers le container `execution-engine`.
+"""Orders router — pure proxy to the `execution-engine` container.
 
-L'api ne touche pas IB directement : toutes les mutations sont
-forwardées via httpx vers http://execution-engine:8001.
+The api never touches IB directly: every mutation is forwarded
+via httpx to http://execution-engine:8001.
 
-Endpoints inchangés côté client :
+Endpoints unchanged from the client's point of view:
   - GET    /api/v1/orders               → forward GET  /internal/orders
   - POST   /api/v1/orders                → forward POST /internal/orders
   - DELETE /api/v1/orders/{id}           → forward DELETE /internal/orders/{id}

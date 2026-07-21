@@ -1,6 +1,6 @@
 # OMS rebuild on the free-legs line — context & directive
 
-> Read this together with [`OMS_ARCHITECTURE_CIBLE.md`](./OMS_ARCHITECTURE_CIBLE.md)
+> Read this together with [`OMS_ARCHITECTURE.md`](./OMS_ARCHITECTURE.md)
 > (the authoritative target design: ERD, FSM, reaper, invariants I1–I7,
 > scenarios T1–T8, migration mapping §11).
 
@@ -12,7 +12,7 @@ contained the current frontend (Signal/Trade builder, free-leg classifier, …).
 A `git merge` of the two lines produces **140 conflicting files** — not viable.
 
 **Decision: re-implement the OMS backend on the current `main` (the free-legs
-line), guided by `OMS_ARCHITECTURE_CIBLE.md`. Do NOT git-merge the OMS branch.**
+line), guided by `OMS_ARCHITECTURE.md`. Do NOT git-merge the OMS branch.**
 
 ## The two lines (why we're here)
 - **`main` (local) = the free-legs line — CANONICAL base.** The real working
@@ -24,10 +24,10 @@ line), guided by `OMS_ARCHITECTURE_CIBLE.md`. Do NOT git-merge the OMS branch.**
   the OMS backend refactor but **not** the frontend. Divergent: ~594 commits
   ahead / 166 behind, common ancestor ~3 months old. **Reference only — do not
   merge, do not build on it.** The design it implemented is captured in
-  `OMS_ARCHITECTURE_CIBLE.md`, which lives on this (free-legs) line.
+  `OMS_ARCHITECTURE.md`, which lives on this (free-legs) line.
 
 ## What to build (re-apply the spec to the free-legs code)
-From `OMS_ARCHITECTURE_CIBLE.md`, on top of the current `main`:
+From `OMS_ARCHITECTURE.md`, on top of the current `main`:
 - **D1 — order finite-state machine + `reaper` loop.** Terminalize ghost orders;
   no more multi-hour stuck orders in a non-terminal state.
 - **D2 — forward `position_projector`.** Build positions forward from the fill

@@ -1,21 +1,22 @@
 /**
  * Dev console — page unique `/dev`.
  *
- * Tous les onglets sont **mountés au démarrage et restent mountés** : leurs
- * fetch / WS / pollings tournent dès le load et continuent en arrière-plan
- * pendant qu'on switche. Le bouton d'onglet ne fait que toggle la visibilité
- * via CSS (`display: none` sur les inactifs), pas mount/unmount.
+ * All tabs are **mounted at startup and stay mounted**: their
+ * fetch / WS / polling loops run from load time and keep going in the
+ * background while switching. The tab button only toggles visibility
+ * via CSS (`display: none` on inactive tabs), no mount/unmount.
  *
- * Conséquences voulues :
- *   - Click rapide entre onglets → instantané, pas de re-fetch
- *   - Le buffer WS Monitor garde ses messages quand on revient dessus
- *   - Le polling EngineHealth continue même si on regarde Redis
- *   - Au cost : N fetches/WS en permanence — assumé pour un dev tool
- *     local (la stack supporte largement)
+ * Intended consequences:
+ *   - Fast clicks between tabs → instant, no re-fetch
+ *   - The WS Monitor buffer keeps its messages when coming back to it
+ *   - The EngineHealth polling keeps running even while looking at Redis
+ *   - At a cost: N permanent fetches/WS — accepted for a local dev
+ *     tool (the stack handles it easily)
  *
- * URL constant /dev, jamais de changement.
+ * Constant /dev URL, never changes.
  */
 import { useState, type CSSProperties } from "react";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Header } from "../components/layout/Header";
 import { DbExplorer } from "./dev/DbExplorer";
 import { DbSchema } from "./dev/DbSchema";
@@ -42,7 +43,7 @@ const TABS: TabDef[] = [
 ];
 
 export function DevLayout(): JSX.Element {
-  // Onglet visible par défaut : le premier de la liste.
+  // Tab visible by default: the first one in the list.
   const [activeId, setActiveId] = useState<string>(TABS[0]?.id ?? "");
 
   return (
@@ -62,16 +63,24 @@ export function DevLayout(): JSX.Element {
       </nav>
       <main style={{ flex: 1, overflow: "auto", background: "#0e0e0e", color: "#ddd", position: "relative" }}>
         {/*
-          Tous les composants sont rendus en permanence. On masque les
-          inactifs avec display:none — ils gardent leur state interne, leurs
-          WS connectées, leur polling, etc.
+          All components are rendered permanently. The inactive ones are
+          hidden with display:none — they keep their internal state, their
+          open WS connections, their polling, etc.
         */}
         {TABS.map((t) => (
           <div
             key={t.id}
             style={{ display: t.id === activeId ? "block" : "none" }}
           >
-            <t.Component />
+            {/*
+              Per-tab boundary: since every tab is mounted at once, an
+              unguarded throw in any one of them would otherwise unmount the
+              whole console. Contained here, a broken tab shows its own error
+              and the other six keep running.
+            */}
+            <ErrorBoundary label={t.label}>
+              <t.Component />
+            </ErrorBoundary>
           </div>
         ))}
       </main>

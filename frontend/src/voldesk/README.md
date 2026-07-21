@@ -1,68 +1,63 @@
-# VOLDESK — frontend utilisateur
+# VOLDESK — user-facing frontend
 
-Dashboard de trading FX vol **côté utilisateur** (la partie « live »), porté depuis
-un prototype HTML autonome (React via Babel CDN, JSX global-`window`) vers la stack
-**Vite + React 18 + TypeScript strict** de ce repo. Sert la route `/`.
+The live FX-vol trading desk served at `/`. Originally ported from a standalone
+HTML prototype into this repo's **Vite + React 18 + strict TypeScript** stack,
+now fully wired to the backend (typed OpenAPI client + WS streams).
 
 ## Structure
 
 ```
 voldesk/
-├── VoldeskApp.tsx       shell : Topbar + Rail (incl. onglet Dev) + routing par hash
-├── voldesk.css          CSS (extrait verbatim du prototype)
-├── useTweaks.ts         accent / densité / rail-labels (persistés localStorage)
+├── VoldeskApp.tsx       shell: Topbar + Rail (incl. Dev tab) + hash routing
+├── voldesk.css          CSS (extracted verbatim from the prototype)
+├── useTweaks.ts         accent / density / rail-labels (persisted to localStorage)
 ├── components/
-│   ├── common.tsx       primitives UI (Panel, Tag, MetricTile, MiniStat, Bar, Delta, StatusDot)
-│   ├── format.ts        helpers purs (pnlCls, gk$ [avec $], signalTone)
-│   ├── charts.tsx       Heatmap + Donut (SVG, sans lib graphique)
-│   ├── PositionsTable.tsx  OpenPositionsTable + CashHoldings (gk$ local SANS $)
-│   └── OrderBuilder.tsx    builder multi-leg (exporte BuilderState pour TradeView)
-├── data/                couche mock TYPÉE — point de bascule vers l'API
-│   ├── core.ts          marché / vol / pca / regime / positions / compte / greeks
-│   ├── extended.ts      risk / stress / attribution / system / config
-│   └── index.ts         barrel : { DATA, DATA2, fmt, scenarioSeries, … }
-└── views/               une vue par onglet
+│   ├── common.tsx       UI primitives (Panel, Tag, MetricTile, MiniStat, Bar, Delta, StatusDot)
+│   ├── format.ts        pure helpers (pnlCls, gk$ [with $], signalTone)
+│   ├── charts.tsx       Heatmap + Donut (SVG, no chart lib)
+│   ├── PositionsTable.tsx  OpenPositionsTable + CashHoldings (local gk$ WITHOUT $)
+│   └── OrderBuilder.tsx    multi-leg builder (exports BuilderState for TradeView)
+├── data/
+│   ├── core.ts          desk constants + shared domain types (formatters, tenors,
+│   │                    deltas, reference SPOT for the order preview, smileFor)
+│   ├── neutral.ts       honest empty states (EMPTY_ACCOUNT / EMPTY_GREEKS)
+│   ├── extended.ts      shared portfolio/system type exports
+│   ├── live/            REST/WS adapters, one module per data family
+│   ├── provider.tsx     DataProvider (desk slices) + TicksProvider (1 Hz spot)
+│   └── deskData.ts      context hooks: useDeskData() / useTicks()
+└── views/               one view per rail tab
     DashboardView · SignalsView · RiskView · PortfolioView · TradeView · SystemView · SettingsView
 ```
 
-## Routing (dans `src/main.tsx`)
+## Routing (in `src/main.tsx`)
 
-Routing par **path**, base-aware (`import.meta.env.BASE_URL`) :
-- `/`        → **VoldeskApp** (ce front)
-- `/dev/*`   → `DevLayout` (console interne — NE PAS fusionner ici)
-- `/config`  → `VolEngineConfigPage`
+**Path**-based, base-aware (`import.meta.env.BASE_URL`):
+- `/`        → **VoldeskApp** (this desk)
+- `/dev/*`   → `DevLayout` (operator console, lazy-loaded — do NOT merge in here)
 
-VOLDESK route ses propres vues en **interne par hash** (`#trade`, `#risk`…). L'onglet
-**Dev** du rail fait une navigation full-page vers `${BASE_URL}dev`.
+VOLDESK routes its own views **internally by hash** (`#trade`, `#risk`…). The
+rail's **Dev** tab does a full-page navigation to `${BASE_URL}dev`.
 
-## Données : mock → backend
+## Data
 
-Toute la couche `data/` est **synthétique** (PRNG). C'est le **point de bascule** : quand
-on câble une vue au backend, on remplace ses imports `from "../data"` par le client
-OpenAPI typé + les hooks WS (`/ws/ticks`, `/ws/vol`, `/ws/risk`). Les vues restent
-agnostiques de la source.
+All views read live data through `useDeskData()` / `useTicks()` (context over
+the typed OpenAPI client + `/ws/ticks|vol|risk` streams). There is **no mock
+fallback**: when the backend has no data yet, views render zeros / empty rows
+plus the per-panel `FreshBadge` state — never fabricated numbers.
 
-## Déploiement & sécurité (décidé 2026-06-13)
+## Deployment & security
 
-- **Une seule URL** `valeriandarmente.dev` (Route 53). App sous le sous-chemin
-  `/fx-volatility-trading-system` (le routing est déjà base-portable → `vite base` en 1 ligne).
-  API/WS restent à la racine (`/api/v1`, `/ws`). Backend **live**.
-- **Frontière lecture/écriture** (auth à implémenter, cf. plus bas) :
-  lecture publique (surface, signal, risk, portfolio) ; **écriture auth-gatée**
-  (soumission d'ordre onglet Trade, `/config`, `/dev`). Un visiteur anonyme ne doit
-  jamais passer d'ordre.
+- **Single URL** `valeriandarmente.dev`, app under the
+  `/fx-volatility-trading-system` subpath (`vite base`); API/WS proxied by
+  nginx from the same origin.
+- **Read/write boundary**: reads are public; writes (Trade tab order submit,
+  admin config) and the `/dev` console require the write-auth cookie — see
+  `SECURITY.md` at the repo root.
 
-## Reste à faire
+## Port notes
 
-1. **Auth** (différée) : login admin → JWT cookie ; middleware FastAPI protégeant
-   ordres + `/config` + `/dev`.
-2. **Câblage backend** vue par vue (remplacer `data/` par l'API).
-3. **`vite base`** = `/fx-volatility-trading-system/` le jour du déploiement.
-
-## Notes de port
-
-Port fidèle 1:1 (mêmes classNames → même CSS). Code mort du prototype non porté car
-jamais rendu par les vues livrées : `IVSurface` canvas + `ComboZStrip` (Signal),
-`MarketDataBlock` (Trade), `activeSignal`/`PcCard`, et la `TestView` (banc d'essai hors
-nav) avec ses composants exclusifs (`CandleChart`, `GaussCurve`, `Sparkline`, `ZGauge`,
-`VolSurface3D`, `SurfaceLab`).
+Faithful 1:1 port (same classNames → same CSS). Prototype dead code was never
+ported: `IVSurface` canvas + `ComboZStrip` (Signal), `MarketDataBlock` (Trade),
+`activeSignal`/`PcCard`, and the off-nav `TestView` with its exclusive
+components (`CandleChart`, `GaussCurve`, `Sparkline`, `ZGauge`, `VolSurface3D`,
+`SurfaceLab`).

@@ -3,23 +3,23 @@
 ## Restart / recreate / rebuild
 
 ```powershell
-docker compose restart <service>                                 # redémarre le process
-docker compose up -d --force-recreate <service>                  # recrée le container (relit env)
-docker compose up -d --build <service>                           # rebuild image + recrée
-docker compose build --no-cache <service>                        # rebuild propre sans cache
+docker compose restart <service>                                 # restarts the process
+docker compose up -d --force-recreate <service>                  # recreates the container (re-reads env)
+docker compose up -d --build <service>                           # rebuild image + recreate
+docker compose build --no-cache <service>                        # clean rebuild without cache
 ```
 
-## Stack entier
+## Whole stack
 
 ```powershell
-docker compose --profile engines up -d --build                   # tout rebuild + lance
-docker compose --profile engines down                            # stop + rm containers (volumes gardés)
+docker compose --profile engines up -d --build                   # rebuild everything + start
+docker compose --profile engines down                            # stop + rm containers (volumes kept)
 docker compose --profile engines down -v                         # ⚠ wipe volumes
 ```
 
-## Cas typiques
+## Typical cases
 
-| Modif | Commande |
+| Change | Command |
 |---|---|
 | `src/engines/risk/` | `docker compose --profile engines up -d --build risk-engine` |
 | `src/engines/vol/` | `docker compose --profile engines up -d --build vol-engine` |
@@ -29,16 +29,16 @@ docker compose --profile engines down -v                         # ⚠ wipe volu
 | `src/api/` | `docker compose up -d --build api` |
 | `frontend/` | `docker compose up -d --build frontend` |
 | `docker-compose.yml` | `docker compose up -d <service>` |
-| `Dockerfile` | `docker compose build --no-cache <service>` puis `up -d` |
+| `Dockerfile` | `docker compose build --no-cache <service>` then `up -d` |
 
 ## Logs / debug
 
 ```powershell
-docker compose ps                                                # état
-docker compose logs --tail=80 <service>                          # historique
+docker compose ps                                                # status
+docker compose logs --tail=80 <service>                          # history
 docker compose logs -f --tail=20 <service>                       # follow
 docker compose exec <service> sh                                 # shell
-docker compose exec -u 0 <service> sh                            # shell en root
+docker compose exec -u 0 <service> sh                            # shell as root
 ```
 
 ## IB Gateway
@@ -46,7 +46,7 @@ docker compose exec -u 0 <service> sh                            # shell en root
 ```powershell
 docker compose stop ib-gateway
 docker compose rm -f ib-gateway
-docker compose up -d ib-gateway                                  # recreate (volume jts persiste)
+docker compose up -d ib-gateway                                  # recreate (jts volume persists)
 docker compose logs --tail=30 ib-gateway | Select-String "TrustedIPs|Login|socat"
 ```
 

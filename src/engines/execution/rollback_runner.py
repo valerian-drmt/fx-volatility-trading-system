@@ -12,35 +12,52 @@ Caller patterns :
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from core.execution.rollback import OrderState, RollbackPlan, decide_rollback
-from persistence.models import StructureOrder, TradeEvent
+from core.execution.rollback import (
+    OrderState,
+    RollbackPlan,
+    UnwindState,
+    decide_rollback,
+)
+from persistence.models import StructureOrder, TradeEvent, TradeStructure
 
 logger = logging.getLogger(__name__)
 
 
 async def load_order_states(
     db: AsyncSession, structure_id: int,
-) -> tuple[list[OrderState], dict[int, StructureOrder]]:
-    """Return (pure-state-list, leg_idx → ORM row) pair for the structure."""
+) -> tuple[list[OrderState], list[UnwindState], dict[int, StructureOrder]]:
+    """Return (entry states, prior unwind states, leg_idx → entry ORM row).
+
+    Prior unwind rows MUST feed ``decide_rollback`` (EXEC-3) — without them a
+    second rollback call re-plans the same unwinds and flips the book."""
     rows = (await db.execute(
         select(StructureOrder)
         .where(StructureOrder.structure_id == structure_id)
-        .where(StructureOrder.order_role == "entry")
+        .where(StructureOrder.order_role.in_(("entry", "unwind")))
     )).scalars().all()
+    entries = [r for r in rows if r.order_role == "entry"]
     states = [
         OrderState(
             leg_idx=r.leg_idx, state=r.state, side=r.side,
             qty=r.qty, qty_filled=r.qty_filled or 0,
         )
-        for r in rows
+        for r in entries
     ]
-    by_leg = {r.leg_idx: r for r in rows}
-    return states, by_leg
+    unwind_states = [
+        UnwindState(
+            leg_idx=r.leg_idx, state=r.state,
+            qty=r.qty, qty_filled=r.qty_filled or 0,
+        )
+        for r in rows if r.order_role == "unwind"
+    ]
+    by_leg = {r.leg_idx: r for r in entries}
+    return states, unwind_states, by_leg
 
 
 async def run_rollback(
@@ -50,7 +67,14 @@ async def run_rollback(
     structure_id: int,
     plan: RollbackPlan | None = None,
 ) -> dict[str, Any]:
-    """Execute cancel + unwind. Plan is recomputed if not passed.
+    """Execute cancel + unwind, idempotently (EXEC-3).
+
+    The plan is ALWAYS recomputed from DB truth (entry legs + prior unwind
+    rows) so unwind quantities are residual-based — a passed ``plan`` is
+    ignored (it may be stale and would double-unwind). ``rollback_started_at``
+    is claimed atomically inside the same transaction as the unwind inserts:
+    the first call stamps it; a re-entry proceeds (the residual math makes it
+    a no-op where already covered) but is logged + audit-evented.
 
     Returns a small report. Mutations to ``structure_orders`` are committed
     inside this function ; subsequent fills events update the unwind orders.
@@ -60,15 +84,53 @@ async def run_rollback(
 
     from ib_insync import LimitOrder
 
+    if plan is not None:
+        logger.warning(
+            "rollback_passed_plan_ignored structure_id=%s — plan is recomputed "
+            "from DB state (residual-based idempotency)", structure_id,
+        )
+
     sm = sessionmaker_factory
     cancelled: list[int] = []
     unwound: list[dict[str, Any]] = []
 
     async with sm() as db:
-        states, by_leg = await load_order_states(db, structure_id)
-        if plan is None:
-            plan = decide_rollback(states)
+        struct = await db.get(TradeStructure, structure_id)
+        if struct is None:
+            return {"cancelled": [], "unwound": [], "noop": True}
+
+        states, unwind_states, by_leg = await load_order_states(db, structure_id)
+        plan = decide_rollback(states, unwind_states)
+
+        # Serialize concurrent rollbacks + stamp the audit trail. Taken in the
+        # SAME transaction as the unwind-row inserts; the residual math above
+        # is the actual double-unwind safety.
+        claimed = (await db.execute(
+            update(TradeStructure)
+            .where(
+                TradeStructure.id == structure_id,
+                TradeStructure.rollback_started_at.is_(None),
+            )
+            .values(rollback_started_at=datetime.now(UTC))
+            .returning(TradeStructure.id)
+        )).scalar_one_or_none()
+        if claimed is None:
+            logger.warning("rollback_reentry structure_id=%s", structure_id)
+            db.add(TradeEvent(
+                structure_id=structure_id,
+                event_type="rollback_reentry", severity="warning",
+                description=(
+                    "rollback called again — residual-based plan recomputed "
+                    f"(cancels={len(plan.cancels)} unwinds={len(plan.unwinds)})"
+                ),
+                payload={
+                    "n_cancels": len(plan.cancels),
+                    "n_unwinds": len(plan.unwinds),
+                },
+            ))
+
         if plan.is_noop():
+            await db.commit()   # persist the claim (and any reentry event)
             return {"cancelled": [], "unwound": [], "noop": True}
 
         ib = executor._ensure()

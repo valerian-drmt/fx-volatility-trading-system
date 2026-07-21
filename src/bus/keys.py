@@ -54,12 +54,12 @@ HEARTBEAT: str = "heartbeat:{engine_name}"
 TTL_SPOT: int = 30
 TTL_BID_ASK: int = 30
 TTL_GREEKS: int = 30
-# 300s = supérieur au cycle de l'engine le plus lent (vol-engine, 180s) +
-# marge de calc (~5s GARCH/SVI/SSVI). Tous les healthchecks compose sont
-# age-based (calculent `now - parse(ts)`) donc bumper le TTL ne ralentit
-# pas la détection des engines rapides (risk HC < 30s, market-data < 60s)
-# — l'âge parlera bien avant que la clé n'expire. Sans ça, vol-engine
-# perdait sa clé heartbeat pendant 150s/180s entre 2 cycles.
+# 300s = above the cycle of the slowest engine (vol-engine, 180s) plus
+# compute margin (~5s GARCH/SVI/SSVI). All compose healthchecks are
+# age-based (they compute `now - parse(ts)`) so bumping the TTL does not
+# slow down detection of the fast engines (risk HC < 30s, market-data
+# < 60s) — the age will speak long before the key expires. Without this,
+# vol-engine lost its heartbeat key for 150s/180s between 2 cycles.
 TTL_HEARTBEAT: int = 300
 
 # Medium TTL : refreshed every 10s to 60s — 60s ceiling matches the

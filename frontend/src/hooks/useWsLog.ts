@@ -1,10 +1,10 @@
 /**
  * Self-contained WebSocket subscription with rolling buffer + pause/clear,
- * pour les dev tabs (R9 sandbox). Différent de useWebSocket :
- *  - état local (pas de connectionStore global) → on peut mount N instances
- *    sans qu'elles polluent le statut global du dashboard
- *  - garde les N derniers messages dans un buffer FIFO
- *  - pause / resume / clear exposés
+ * for the dev tabs (R9 sandbox). Different from useWebSocket:
+ *  - local state (no global connectionStore) → N instances can be mounted
+ *    without polluting the dashboard's global status
+ *  - keeps the last N messages in a FIFO buffer
+ *  - exposes pause / resume / clear
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -12,12 +12,12 @@ export type WsStatus = "connecting" | "open" | "retry" | "closed";
 
 export interface LoggedMessage {
   ts: string;          // ISO string client-side (Date.now())
-  raw: string;         // payload brut tel que reçu
+  raw: string;         // raw payload as received
 }
 
 export interface UseWsLogResult {
   status: WsStatus;
-  count: number;       // total messages reçus depuis le mount
+  count: number;       // total messages received since mount
   messages: LoggedMessage[];
   paused: boolean;
   /** Live message rate (msg/s, sliding 5 s window). Recomputed once

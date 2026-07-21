@@ -18,8 +18,8 @@ Branch: `sandbox/r11` (the free-legs Trade stack). Python 3.11, `PYTHONPATH=src`
 | [`04-ib-db-sync.md`](04-ib-db-sync.md) | **IB ↔ DB cross-check** — fills matching, `position_sync`, reconciler |
 | [`05-states-and-verify.md`](05-states-and-verify.md) | **State machines** + how to verify an order is submitted/filled |
 
-Companion docs (higher-level): `../ORDERS_POSITIONS_AUDIT.md` (data-model audit),
-`../ORDER_PIPELINE.md`, `../IB_ORDER_OPS.md` (operator commands), `../POSITIONS_TRUTH.md`.
+Companion docs (higher-level): `../ORDER_PIPELINE.md`, `../IB_ORDER_OPS.md`
+(operator commands), `../POSITIONS_TRUTH.md`.
 
 ## The big picture (one diagram)
 

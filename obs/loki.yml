@@ -32,8 +32,8 @@ schema_config:
         period: 24h
 
 limits_config:
-  # 14-day retention (durcissement spec § 2.4 : volume Loki recompté
-  # à ~2 GB sur 14j à 1.5 KB/log line × ~100k events/day × 5 engines).
+  # 14-day retention (hardening spec § 2.4: Loki volume re-estimated
+  # at ~2 GB over 14d at 1.5 KB/log line × ~100k events/day × 5 engines).
   retention_period: 336h
   ingestion_rate_mb: 16
   ingestion_burst_size_mb: 32

@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fmtCcy, fmtCcySigned, gk$, pnlCls } from "./format";
-import { DATA, fmt } from "../data";
+import { DATA, EMPTY_GREEKS, fmt } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import { ApiError } from "../../api/client";
 import { createTradePreview, submitTrade, type TradePreview } from "../../api/endpoints";
@@ -424,8 +424,8 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const totalCommission = commission + hedgeComm;
 
   // structure value + book before/after, one row per greek (and the cash legs below).
-  // Same live book greeks the Trade "Portfolio greeks" panel shows (mock fallback).
-  const g = trade.data?.greeks ?? DATA.greeks;
+  // Same live book greeks the Trade "Portfolio greeks" panel shows (zeros until live).
+  const g = trade.data?.greeks ?? EMPTY_GREEKS;
   const kfmt = (x: number): string => fmt.sgn(x, 1) + "k"; // $k greeks — 1 dp so small values don't collapse to "+0k"
   const netCash = (isCredit ? premiumAbs : -premiumAbs) - totalCommission;
   const impactRows = [

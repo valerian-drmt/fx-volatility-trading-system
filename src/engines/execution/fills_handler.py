@@ -405,17 +405,31 @@ async def maybe_complete_structure(
             return
 
         # Cross-leg aggregates : signed premium, total commission, total slippage.
+        # Order-level prices (avg_fill_price / total_slippage_usd) are in IB
+        # price points — × the contract multiplier here so the structure-level
+        # ``*_usd`` aggregates are REAL USD at notional (core.units), on the
+        # same scale as the monitor's live mark + the entry greeks.
+        from core.units import EUR_FOP_MULTIPLIER, FUTURE_MULTIPLIERS
+
         total_premium = 0.0
         total_commission = 0.0
         total_slippage = 0.0
         first_fill_at: datetime | None = None
         last_fill_at: datetime | None = None
         for o in orders:
-            sign = +1 if o.side == "BUY" else -1
-            avg = float(o.avg_fill_price or 0.0)
-            total_premium += sign * avg * float(o.qty_filled or 0)
+            if o.contract_type == "future":
+                # A future carries no premium (margin, not a cash outlay) ;
+                # its slippage is still a real $ cost at the future notional.
+                leg_mult = float(FUTURE_MULTIPLIERS[
+                    "micro" if (o.contract_symbol or "") == "M6E" else "full"
+                ])
+            else:
+                leg_mult = EUR_FOP_MULTIPLIER
+                sign = +1 if o.side == "BUY" else -1
+                avg = float(o.avg_fill_price or 0.0)
+                total_premium += sign * avg * float(o.qty_filled or 0) * leg_mult
             total_commission += float(o.total_commission_usd or 0.0)
-            total_slippage += float(o.total_slippage_usd or 0.0)
+            total_slippage += float(o.total_slippage_usd or 0.0) * leg_mult
             if o.fully_filled_at:
                 first_fill_at = (
                     o.fully_filled_at if first_fill_at is None

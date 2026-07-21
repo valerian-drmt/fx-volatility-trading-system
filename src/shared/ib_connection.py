@@ -17,22 +17,15 @@ import asyncio
 import logging
 from typing import Any, Protocol
 
+# Backoff math lives in shared.backoff (extracted so non-IB reconnect
+# loops can reuse it) — re-exported here for backwards compatibility.
+from shared.backoff import (  # noqa: F401
+    MAX_BACKOFF_S,
+    MIN_BACKOFF_S,
+    next_backoff_seconds,
+)
+
 logger = logging.getLogger(__name__)
-
-MIN_BACKOFF_S = 1.0
-MAX_BACKOFF_S = 60.0
-
-
-def next_backoff_seconds(attempt: int) -> float:
-    """Return the wait before attempt ``attempt`` (0-based).
-
-    ``attempt=0`` → 1 s, ``attempt=1`` → 2 s, ``attempt=2`` → 4 s, ...
-    capped at ``MAX_BACKOFF_S``. Negative attempts clamp to the minimum.
-    """
-    if attempt < 0:
-        return MIN_BACKOFF_S
-    delay = MIN_BACKOFF_S * (2 ** attempt)
-    return min(delay, MAX_BACKOFF_S)
 
 
 class _IBLike(Protocol):
@@ -42,6 +35,54 @@ class _IBLike(Protocol):
     async def connectAsync(
         self, host: str, port: int, clientId: int, timeout: float = 5.0
     ) -> Any: ...
+
+
+class _ExecutorLike(Protocol):
+    """Minimal protocol for an executor owning its own IB connection.
+
+    Matches ``engines.execution.order_executor.OrderExecutor`` : ``connect``
+    must be idempotent (no-op when already connected) and swallow failures.
+    """
+
+    def is_connected(self) -> bool: ...
+    async def connect(self, timeout: float = 5.0) -> None: ...
+
+
+async def maintain_ib_connection(
+    executor: _ExecutorLike,
+    stop: asyncio.Event,
+    *,
+    interval_s: float = 10.0,
+    connect_timeout: float = 5.0,
+) -> None:
+    """Background watchdog for request-driven services (execution-engine).
+
+    Cycle engines (market-data / vol / risk) re-check ``ib.isConnected()``
+    at the top of their own loop and call :func:`connect_ib_with_backoff`
+    inline — a service without a cycle needs this task instead. Every
+    ``interval_s`` seconds it polls ``executor.is_connected()`` and, while
+    disconnected, calls ``executor.connect()``. Because ``connect`` is
+    idempotent and failure-swallowing, this loop both recovers from the
+    nightly IB Gateway restart *and* retries a failed startup connect.
+
+    Polling ``is_connected()`` is deliberate : ``ib.disconnectedEvent``
+    delivery on a torn socket is best-effort, the poll is the guarantee.
+    Exits when ``stop`` is set.
+    """
+    while not stop.is_set():
+        if not executor.is_connected():
+            try:
+                await executor.connect(timeout=connect_timeout)
+                if executor.is_connected():
+                    logger.info("ib_watchdog_reconnected")
+            except Exception:
+                # connect() swallows its own failures — this is a belt for
+                # unexpected errors ; the watchdog must never die.
+                logger.exception("ib_watchdog_connect_failed")
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval_s)
+        except TimeoutError:
+            continue
 
 
 async def connect_ib_with_backoff(

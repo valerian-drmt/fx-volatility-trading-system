@@ -25,6 +25,10 @@ router = APIRouter(prefix="/api/v1/vol", tags=["cockpit"])
 RedisDep = Annotated[aioredis.Redis, Depends(get_redis)]
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
 
+# Was core.vol.surface_pca.MIN_SAMPLES_FOR_SIGNAL (module deleted): minimum
+# surface snapshots before the PCA readout is considered trained.
+PCA_MIN_SAMPLES = 50
+
 
 # ────────────────────────────────────────────────────────────────
 # P6.1 — Regime Detector
@@ -188,7 +192,6 @@ class ModelHealthResponse(BaseModel):
 
 @router.get("/model-health", response_model=ModelHealthResponse)
 async def model_health(db: DbDep) -> ModelHealthResponse:
-    from core.vol.surface_pca import MIN_SAMPLES_FOR_SIGNAL as PCA_MIN
     from persistence.models import VolSurface
 
     vs_count = int((await db.execute(
@@ -203,5 +206,5 @@ async def model_health(db: DbDep) -> ModelHealthResponse:
         vol_surfaces_count=vs_count,
         svi_params_count=svi_count,
         last_vol_surface_ts=last_vs.timestamp if last_vs else None,
-        pca_ready=vs_count >= PCA_MIN,
+        pca_ready=vs_count >= PCA_MIN_SAMPLES,
     )

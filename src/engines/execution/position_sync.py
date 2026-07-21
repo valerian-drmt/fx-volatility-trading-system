@@ -1,15 +1,15 @@
 """Sync IB live positions → Postgres `positions` + insert `position_snapshots`.
 
 Pipeline :
-  - **sync_positions_from_ib** : fait l'upsert IB → DB. Match par tuple
-    (symbol, instrument_type, strike, maturity, option_type) — pas besoin
-    d'ajouter une colonne con_id à OpenPosition.
-  - **publish_portfolio_to_redis** : pour chaque OPEN position, publie sur
-    Redis hashes (contract_marks / option_marks / unrealized_pnl) les
-    données IB-canoniques. Aucune écriture DB ici — risk-engine est le seul
-    writer de ``position_snapshots`` (cf. PORTFOLIO_PANEL_LIVE.md).
+  - **sync_positions_from_ib** : upserts IB → DB. Matched by the tuple
+    (symbol, instrument_type, strike, maturity, option_type) — no need to
+    add a con_id column to OpenPosition.
+  - **publish_portfolio_to_redis** : for every OPEN position, publishes the
+    IB-canonical data on Redis hashes (contract_marks / option_marks /
+    unrealized_pnl). No DB write here — risk-engine is the only writer of
+    ``position_snapshots`` (cf. PORTFOLIO_PANEL_LIVE.md).
 
-Lance au startup api + via un loop périodique (30s).
+Runs at api startup + via a periodic loop (30s).
 """
 from __future__ import annotations
 
@@ -49,8 +49,8 @@ logger = logging.getLogger(__name__)
 # ``SYNC_INTERVAL_S`` env var read in ``engines.execution.main``.
 SNAPSHOT_INTERVAL_S = 5.0
 
-# Multiplier hardcodé pour EUR FX futures + options (CME). Une vraie impl
-# utiliserait `ib.qualifyContractsAsync` pour lire contract.multiplier.
+# Hardcoded multiplier for EUR FX futures + options (CME). A real impl
+# would use `ib.qualifyContractsAsync` to read contract.multiplier.
 EUR_MULTIPLIER = Decimal("125000")
 
 
@@ -344,9 +344,9 @@ async def publish_portfolio_to_redis(
 
 
 async def insert_account_snap(db: AsyncSession, executor: OrderExecutor) -> bool:
-    """Insert un row dans account_snaps. Pour chaque colonne on essaie
-    plusieurs tags IB (alias) — paper et live retournent parfois des
-    noms différents. Si aucun ne match, la colonne reste null.
+    """Insert a row into account_snaps. For each column several IB tags
+    (aliases) are tried — paper and live sometimes return different
+    names. If none matches, the column stays null.
     """
     if not executor.is_connected():
         return False

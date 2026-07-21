@@ -16,14 +16,18 @@ treat that as a partial-confidence mark.
 
 Greeks aggregation
 ------------------
-Vega is reported $/vol-point ; gamma in $/pip² ; theta in $/day ; delta is
-the *signed contract delta* (positive long-call exposure). For a position
-``side ∈ {BUY, SELL}`` and qty ``q``, we multiply by ``+q`` (BUY) or
-``-q`` (SELL) and sum across legs.
+USD-at-notional convention — see ``core.units`` (the single source of
+truth). Mark, vega ($/vol-pt), gamma ($/pip²) and theta ($/day) are all
+scaled by ``contract_multiplier`` (default : CME EUR FOP €125 000) so they
+agree with the preview-side ``core.trade_preview`` numbers. ``total_delta``
+stays a *contract-equivalent* delta (Σ bs_delta × qty_signed, NO
+notional) — that is what the delta hedger consumes (hedge qty in
+contracts). For a position ``side ∈ {BUY, SELL}`` and qty ``q``, we
+multiply by ``+q`` (BUY) or ``-q`` (SELL) and sum across legs.
 
-Conversion conventions (matching the existing ``core.positions.mtm`` math) :
-* vol-point = 0.01 (so iv=0.075 → 7.5 vol-points above 0)
-* pip      = 0.0001 (EUR/USD)
+Per-leg ``LegPricing`` values stay raw/unscaled (price points, per unit
+of notional) — they are diagnostic ; only the position-level totals carry
+the USD convention.
 """
 from __future__ import annotations
 
@@ -40,9 +44,7 @@ from core.pricing.bs import (
     bs_vega,
     interpolate_iv,
 )
-
-PIP_SIZE = 0.0001
-VOLPT = 0.01
+from core.units import EUR_FOP_MULTIPLIER, PIP_SIZE, VOLPT
 
 
 @dataclass(frozen=True)
@@ -72,8 +74,8 @@ class LegPricing:
 
 @dataclass(frozen=True)
 class PositionMark:
-    mark_value_usd: float
-    total_delta: float            # contract-equivalent (positive long EUR exposure)
+    mark_value_usd: float         # real USD at notional (core.units convention)
+    total_delta: float            # contract-equivalent (positive long EUR exposure), NO notional
     total_gamma_usd_per_pip2: float
     total_vega_usd_per_volpt: float
     total_theta_usd_per_day: float
@@ -93,8 +95,15 @@ def price_position(
     surface: dict[str, Any] | None,
     spot: float,
     now: datetime,
+    contract_multiplier: float = EUR_FOP_MULTIPLIER,
 ) -> PositionMark:
-    """Re-price every leg with BS + surface IV. Sums into a position-level mark."""
+    """Re-price every leg with BS + surface IV. Sums into a position-level mark.
+
+    ``contract_multiplier`` scales mark/gamma/vega/theta into real USD at
+    notional (core.units). Default = CME EUR FOP full size (€125 000) ;
+    micro (M6E) callers pass 12 500. ``total_delta`` is NOT scaled (see
+    module docstring).
+    """
     mark = 0.0
     total_delta = 0.0
     total_gamma = 0.0
@@ -131,15 +140,18 @@ def price_position(
         sign = +1 if leg.side.upper() == "BUY" else -1
         qty_signed = sign * int(leg.qty)
 
-        # Mark : long premium positive ; signed price × |qty|.
-        mark += sign * price * abs(qty_signed)
+        # Mark : long premium positive ; signed price × |qty| × notional
+        # (bs_price is in price points — × contract_multiplier = real USD).
+        mark += sign * price * abs(qty_signed) * contract_multiplier
 
-        # Greeks : delta scales with qty_signed ; γ in $/pip² uses pip² unit ;
-        # vega in $/volpt converts BS vega (per 1 vol = 100 volpts) by /100.
+        # Greeks (core.units) : delta stays contract-equivalent ; γ in
+        # $/pip² (bs_gamma × pip² × notional) ; vega in $/volpt (bs_vega ×
+        # 0.01 × notional) ; theta already per-day from core.pricing.bs —
+        # scaled by notional only, no second /365.
         total_delta += delta * qty_signed
-        total_gamma += gamma * (PIP_SIZE * PIP_SIZE) * qty_signed
-        total_vega += vega * VOLPT * qty_signed
-        total_theta += theta * qty_signed
+        total_gamma += gamma * (PIP_SIZE * PIP_SIZE) * qty_signed * contract_multiplier
+        total_vega += vega * VOLPT * qty_signed * contract_multiplier
+        total_theta += theta * qty_signed * contract_multiplier
 
         leg_results.append(LegPricing(
             leg_idx=leg.leg_idx, price=price, delta=delta, gamma=gamma,

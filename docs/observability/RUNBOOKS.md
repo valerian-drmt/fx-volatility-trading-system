@@ -1,93 +1,93 @@
-# Runbooks — debug guide via la stack obs
+# Runbooks — debug guide via the obs stack
 
-3 incidents typiques + chemin de diagnostic via Grafana / LGTM.
-Compagnon de `CONVENTIONS.md`.
+3 typical incidents + diagnostic path via Grafana / LGTM.
+Companion to `CONVENTIONS.md`.
 
-Pré-requis : profile `obs` démarré (`docker compose --profile obs up -d`),
-Grafana ouvert sur http://localhost:3000.
+Prerequisite: `obs` profile started (`docker compose --profile obs up -d`),
+Grafana open at http://localhost:3000.
 
 ---
 
-## Runbook 1 — "Le cycle vol-engine n'avance plus"
+## Runbook 1 — "The vol-engine cycle is stuck"
 
-### Symptômes
-- Panel E (Portfolio) montre stress-grid / greeks-ladder figés
-- `latest_vol_surface:EURUSD` dans Redis ne change plus
-- Heartbeat vol_engine vert dans EngineHealth, donc le process tourne
+### Symptoms
+- Panel E (Portfolio) shows frozen stress-grid / greeks-ladder
+- `latest_vol_surface:EURUSD` in Redis no longer changes
+- vol_engine heartbeat is green in EngineHealth, so the process is running
 
-### Diagnostic LGTM
+### LGTM diagnostics
 
-**Étape 1 — Cycle rate sur Prometheus**
+**Step 1 — Cycle rate in Prometheus**
 
-Grafana → Explore → Prometheus → query :
+Grafana → Explore → Prometheus → query:
 ```promql
 rate(engine_cycles_total{engine="vol_engine"}[5m])
 ```
-- Si rate = 0 → le cycle ne se termine pas. Va à étape 2.
-- Si rate > 0 → les cycles passent mais skip vite (no_spot / no_surface). Va à étape 4.
+- If rate = 0 → the cycle never completes. Go to step 2.
+- If rate > 0 → cycles run but skip quickly (no_spot / no_surface). Go to step 4.
 
-**Étape 2 — Quelle étape bloque ?**
+**Step 2 — Which stage is blocking?**
 
-Grafana → Explore → Tempo → Search → service.name=vol_engine → trier par duration desc → ouvrir le trace le plus long → flame graph.
+Grafana → Explore → Tempo → Search → service.name=vol_engine → sort by duration desc → open the longest trace → flame graph.
 
-Repérer le child span qui domine :
-- `vol_read_spot` → souci Redis spot key
-- `vol_compute_surface` → IB chain fetch lent (chain_fetcher.scan_all_tenors_concurrent)
+Spot the dominating child span:
+- `vol_read_spot` → Redis spot key issue
+- `vol_compute_surface` → slow IB chain fetch (chain_fetcher.scan_all_tenors_concurrent)
 - `vol_compute_regime` → DB lookup feature_history
-- `vol_compute_pca` → recalc PCA model
-- `vol_redis_publish` → Redis write lent
+- `vol_compute_pca` → PCA model recalc
+- `vol_redis_publish` → slow Redis write
 
-**Étape 3 — Logs du span**
+**Step 3 — Logs for the span**
 
-Dans le détail du span lent, bouton "Logs for this span" → Loki s'ouvre filtré sur trace_id. Tu vois exactement ce qui a été tenté et ce qui a foiré.
+In the slow span's detail view, "Logs for this span" button → Loki opens filtered on trace_id. You see exactly what was attempted and what went wrong.
 
-**Étape 4 — Cycle skipped reasons**
+**Step 4 — Cycle skipped reasons**
 
-Si rate > 0 mais panels figés, les cycles aboutissent à early-return. Grafana → Explore → Loki :
+If rate > 0 but the panels are frozen, cycles end in an early-return. Grafana → Explore → Loki:
 ```logql
 {engine="vol-engine"} |= "vol_cycle_skipped" | json
 ```
-Filtre `reason` : `market_closed`, `no_spot`, `no_surface`. Si `no_spot` répétitif → market-data engine en panne (cf. runbook 3).
+Filter on `reason`: `market_closed`, `no_spot`, `no_surface`. If `no_spot` is repeating → market-data engine is down (see runbook 3).
 
 ---
 
-## Runbook 2 — "Les writes Postgres sont lents"
+## Runbook 2 — "Postgres writes are slow"
 
-### Symptômes
-- Panel E positions désync vs IB live (gap > 30s)
-- `position_metric_history` count croît trop lentement
-- db-writer container UP mais heartbeat délayé
+### Symptoms
+- Panel E positions out of sync vs IB live (gap > 30s)
+- `position_metric_history` count grows too slowly
+- db-writer container UP but heartbeat delayed
 
-### Diagnostic
+### Diagnostics
 
-**Étape 1 — Drain rate**
+**Step 1 — Drain rate**
 
-Grafana → Explore → Prometheus :
+Grafana → Explore → Prometheus:
 ```promql
 rate(engine_cycles_total{engine="db_writer"}[5m])
 ```
-Cible normale : ~0.2 cycles/s (HEARTBEAT_INTERVAL_S=5s). Si plus bas → drainage queue lent.
+Normal target: ~0.2 cycles/s (HEARTBEAT_INTERVAL_S=5s). If lower → slow queue drain.
 
-**Étape 2 — Cycle duration**
+**Step 2 — Cycle duration**
 
 ```promql
 histogram_quantile(0.99, sum by (le) (rate(engine_cycle_duration_seconds_bucket{engine="db_writer"}[5m])))
 ```
-Si p99 > 1s sur un cycle heartbeat (qui devrait être < 5 ms) → DB lente ou queue saturée.
+If p99 > 1s for a heartbeat cycle (which should be < 5 ms) → slow DB or saturated queue.
 
-**Étape 3 — Traces de batch writes**
+**Step 3 — Batch write traces**
 
-Grafana → Explore → Tempo → Search → service.name=db_writer → trace du `db_writer_cycle` lent. Le span n'a pas d'enfants (cycle = heartbeat ping, le drain bulk-insert vit dans `persistence.writer.AsyncDatabaseWriter.run()` non instrumenté). Donc tu auras seulement le timing global.
+Grafana → Explore → Tempo → Search → service.name=db_writer → trace of the slow `db_writer_cycle`. The span has no children (cycle = heartbeat ping, the bulk-insert drain lives in `persistence.writer.AsyncDatabaseWriter.run()` which is not instrumented). So you will only get the overall timing.
 
-**Étape 4 — Erreurs DB explicites**
+**Step 4 — Explicit DB errors**
 
-Grafana → Explore → Loki :
+Grafana → Explore → Loki:
 ```logql
 {engine="db-writer"} |~ "writer loop error|psycopg|asyncpg"
 ```
-Cherche `connection refused`, `deadlock`, `unique constraint violation`. Trace via timestamp.
+Look for `connection refused`, `deadlock`, `unique constraint violation`. Correlate via timestamp.
 
-**Étape 5 — Postgres lui-même**
+**Step 5 — Postgres itself**
 
 ```powershell
 docker compose exec postgres pg_isready -U fxvol
@@ -95,64 +95,64 @@ docker compose exec postgres psql -U fxvol -c "SELECT count(*) FROM position_met
 docker compose stats fxvol-postgres
 ```
 
-Si CPU postgres > 80% → query plan à analyser (EXPLAIN ANALYZE sur un INSERT). Hors scope LGTM, problème métier.
+If postgres CPU > 80% → query plan to analyze (EXPLAIN ANALYZE on an INSERT). Out of LGTM scope, business-level problem.
 
 ---
 
-## Runbook 3 — "IB Gateway s'est déconnecté"
+## Runbook 3 — "IB Gateway got disconnected"
 
-### Symptômes
-- Panel 5 Grafana "IB session uptime" rouge sur un ou plusieurs clientID
-- Logs `ib_not_connected` répétitifs dans market-data / risk / execution
-- Heartbeats engines OK (cycle loop tourne), mais leurs steps IB fail
+### Symptoms
+- Grafana panel 5 "IB session uptime" red on one or more clientIDs
+- Repeating `ib_not_connected` logs in market-data / risk / execution
+- Engine heartbeats OK (cycle loop is running), but their IB steps fail
 
-### Diagnostic
+### Diagnostics
 
-**Étape 1 — Confirmer côté metrics**
+**Step 1 — Confirm on the metrics side**
 
-Grafana → Explore → Prometheus :
+Grafana → Explore → Prometheus:
 ```promql
 ib_session_connected
 ```
-0 = down sur ce clientID. Note les IDs concernés (1=market-data, 2=vol, 3=risk, 5=execution).
+0 = down for that clientID. Note the affected IDs (1=market-data, 2=vol, 3=risk, 5=execution).
 
-**Étape 2 — Quand est-ce arrivé ?**
+**Step 2 — When did it happen?**
 
-Étendre la fenêtre de temps en haut à droite de Grafana → "Last 6 hours". Tu vois le flip 1→0. Note le timestamp.
+Widen the time window at the top right of Grafana → "Last 6 hours". You see the 1→0 flip. Note the timestamp.
 
-**Étape 3 — Logs ib-gateway autour du timestamp**
+**Step 3 — ib-gateway logs around the timestamp**
 
-Grafana → Explore → Loki :
+Grafana → Explore → Loki:
 ```logql
 {container="fxvol-ib-gateway"} |~ "Login|Logout|TrustedIPs|socat|2FA|Connecting"
 ```
-Cherches `Login has completed`, `Logout`, `Pending Tasks`, `Connecting to server`. Si plusieurs `Connecting to server` consécutifs → flapping (= autre session IB ailleurs cf. memory `IB single session per userid`).
+Look for `Login has completed`, `Logout`, `Pending Tasks`, `Connecting to server`. If several consecutive `Connecting to server` → flapping (= another IB session elsewhere, cf. memory `IB single session per userid`).
 
-**Étape 4 — Logs engine côté client**
+**Step 4 — Engine logs on the client side**
 
 ```logql
 {engine=~"market-data|vol-engine|risk-engine|execution-engine"} |~ "Disconnect|Peer closed|API connection failed"
 ```
-Si `Peer closed connection` = IB Gateway a kické. Si `API connection failed: TimeoutError` = TCP timeout au handshake.
+If `Peer closed connection` = IB Gateway kicked the client. If `API connection failed: TimeoutError` = TCP timeout during the handshake.
 
-**Étape 5 — Actions correctives**
+**Step 5 — Corrective actions**
 
 | Cause | Fix |
 |---|---|
-| Autre login web/TWS/mobile actif | Fermer ces sessions ; `docker compose restart ib-gateway` puis engines |
-| TrustedIPs perdues post-recreate | Reconnect VNC `127.0.0.1:5900`, Configure → API → Trusted IPs : 127.0.0.1 + 172.20.0.10/11/12/14, OK + Save Settings |
-| 2FA expiré | Approuver via push mobile ou switch TOTP côté compte IB |
-| Daily auto-restart 23:59 Paris | Normal, attendre 1-2 min puis vérifier reconnect |
+| Another web/TWS/mobile login active | Close those sessions; `docker compose restart ib-gateway` then the engines |
+| TrustedIPs lost after recreate | Reconnect VNC `127.0.0.1:5900`, Configure → API → Trusted IPs : 127.0.0.1 + 172.20.0.10/11/12/14, OK + Save Settings |
+| 2FA expired | Approve via mobile push or switch to TOTP on the IB account side |
+| Daily auto-restart 23:59 Paris | Normal, wait 1-2 min then verify the reconnect |
 
 ---
 
-## Quick reference — queries utiles
+## Quick reference — useful queries
 
 ```promql
-# Cycle rate par engine
+# Cycle rate per engine
 sum by (engine) (rate(engine_cycles_total[5m]))
 
-# Error rate par engine
+# Error rate per engine
 sum by (engine) (rate(engine_cycles_total{status="error"}[5m]))
 
 # Last cycle age
@@ -163,20 +163,20 @@ sum(ib_session_connected)
 ```
 
 ```logql
-# Tous logs error/exception sur tous engines
+# All error/exception logs across all engines
 {engine=~".+"} |~ "(?i)error|exception|traceback|failed"
 
-# Logs d'un cycle précis
+# Logs for a specific cycle
 {engine=~".+"} | json | cycle_id="abc123..."
 
-# Logs d'un trace précis (cross-link Tempo→Loki)
+# Logs for a specific trace (cross-link Tempo→Loki)
 {engine=~".+"} | json | trace_id="d723131bd6..."
 ```
 
 ```traceql
-# Traces > 1 seconde
+# Traces > 1 second
 { duration > 1s }
 
-# Traces vol-engine avec n_pillars=0 (chain fetch vide)
+# vol-engine traces with n_pillars=0 (empty chain fetch)
 { resource.service.name = "vol_engine" && span.n_pillars = 0 }
 ```
