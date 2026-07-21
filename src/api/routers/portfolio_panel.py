@@ -1023,18 +1023,20 @@ async def pnl_attribution(
 ) -> dict[str, Any]:
     """Decompose realized P&L into greek contributions over the window.
 
-    Per-position Taylor expansion :
+    Per-position Taylor expansion, anchored on the window-START (t-1) greeks :
         actual_pnl  = (pnl_now - pnl_then)
-        delta_pnl   = δ_now × (spot_now - spot_then)
-        gamma_pnl   = 0.5 × Γ_now × (spot_now - spot_then) ** 2
-        vega_pnl    = V_now × (iv_now - iv_then)      [vol points]
-        theta_pnl   = Θ_now × Δt_days
+        delta_pnl   = δ_t-1 × (spot_now - spot_then)
+        gamma_pnl   = 0.5 × Γ_t-1 × (spot_now - spot_then) ** 2
+        vega_pnl    = V_t-1 × (iv_now - iv_then)      [vol points]
+        theta_pnl   = Θ_t-1 × Δt_days
         residual    = actual_pnl - (delta + gamma + vega + theta)
 
-    Frozen-greeks approximation (uses current greeks for both endpoints) —
-    fine for short windows ≤ 1 day, less accurate over a week. The
-    ``residual`` row captures the un-attributed drift so the operator can
-    spot when the Taylor expansion stops being valid.
+    Greeks are read at the START of the window (the t-1 snapshot), not the
+    current ones: over a 24h window an option's delta drifts materially, so
+    attributing with δ_now overshoots δ·dS and inflates the residual. Anchoring
+    on the entry greek keeps the expansion consistent; the residual then only
+    holds genuine vol convexity (volga/vanna) + higher order. Falls back to the
+    current greek when a t-1 greek column is null (older snapshots).
 
     Sources :
       - IB-live positions (``position`` table) : t-1 row in
@@ -1076,6 +1078,10 @@ async def pnl_attribution(
                t1.current_pnl_usd AS pnl_then,
                t1.market_price    AS spot_then,
                t1.iv              AS iv_then,
+               t1.delta_usd       AS delta_then,
+               t1.gamma_usd       AS gamma_then,
+               t1.vega_usd        AS vega_then,
+               t1.theta_usd       AS theta_then,
                t1.timestamp       AS t_then
           FROM open_position p
           LEFT JOIN t1 ON t1.position_id = p.id
@@ -1102,7 +1108,11 @@ async def pnl_attribution(
           SELECT DISTINCT ON (position_id)
                  position_id, timestamp,
                  spot, iv_avg_legs_pct,
-                 current_pnl_gross_usd
+                 current_pnl_gross_usd,
+                 current_delta_unhedged,
+                 current_gamma_usd_per_pip2,
+                 current_vega_usd_per_volpt,
+                 current_theta_usd_per_day
             FROM booked_position_metric_history
            WHERE timestamp <= :cutoff
            ORDER BY position_id, timestamp DESC
@@ -1121,6 +1131,10 @@ async def pnl_attribution(
                t1.current_pnl_gross_usd AS pnl_then,
                t1.spot                  AS spot_then,
                t1.iv_avg_legs_pct       AS iv_then,
+               t1.current_delta_unhedged     AS delta_then,
+               t1.current_gamma_usd_per_pip2 AS gamma_then,
+               t1.current_vega_usd_per_volpt AS vega_then,
+               t1.current_theta_usd_per_day  AS theta_then,
                t1.timestamp             AS t_then
           FROM booked_position bp
           LEFT JOIN trade_structure ts ON ts.id = bp.structure_id
@@ -1155,6 +1169,8 @@ async def pnl_attribution(
         delta: float | None, gamma: float | None,
         vega: float | None, theta: float | None,
         t_then: datetime | None,
+        delta_then: float | None = None, gamma_then: float | None = None,
+        vega_then: float | None = None, theta_then: float | None = None,
     ) -> dict[str, float | None]:
         actual = (pnl_now - pnl_then) if (pnl_now is not None and pnl_then is not None) else None
         # No t-1 snapshot → the leg's realized P&L over the window is unmeasurable,
@@ -1169,10 +1185,23 @@ async def pnl_attribution(
         div_pts = (iv_now - iv_then) if (iv_now is not None and iv_then is not None) else None
         dt_days = ((now - t_then).total_seconds() / 86400.0) if t_then is not None else None
 
-        delta_pnl = (delta * dspot) if (delta is not None and dspot is not None) else None
-        gamma_pnl = (0.5 * gamma * dspot * dspot) if (gamma is not None and dspot is not None) else None
-        vega_pnl = (vega * div_pts) if (vega is not None and div_pts is not None) else None
-        theta_pnl = (theta * dt_days) if (theta is not None and dt_days is not None) else None
+        # Taylor expansion around the START of the window: attribute with the t-1
+        # greeks, not the current ones. Over a 24h window an option's delta drifts
+        # a lot, so delta_now·dS overshoots the realized move and the correction is
+        # dumped into the residual (e.g. a -$14k delta·dS against a -$6.4k actual).
+        # Anchoring on the entry greek keeps δ·dS + ½Γ·dS² a clean 2nd-order-in-spot
+        # expansion; the residual then only holds the genuine vol convexity
+        # (volga/vanna) + higher order. Fall back to the current greek when a t-1
+        # greek is missing (old snapshots with null greek columns).
+        d = delta_then if delta_then is not None else delta
+        g = gamma_then if gamma_then is not None else gamma
+        v = vega_then if vega_then is not None else vega
+        th = theta_then if theta_then is not None else theta
+
+        delta_pnl = (d * dspot) if (d is not None and dspot is not None) else None
+        gamma_pnl = (0.5 * g * dspot * dspot) if (g is not None and dspot is not None) else None
+        vega_pnl = (v * div_pts) if (v is not None and div_pts is not None) else None
+        theta_pnl = (th * dt_days) if (th is not None and dt_days is not None) else None
 
         explained: float | None
         if None in (delta_pnl, gamma_pnl, vega_pnl, theta_pnl):
@@ -1222,6 +1251,10 @@ async def pnl_attribution(
             vega=float(r.vega_now) if r.vega_now is not None else None,
             theta=float(r.theta_now) if r.theta_now is not None else None,
             t_then=r.t_then,
+            delta_then=float(r.delta_then) if r.delta_then is not None else None,
+            gamma_then=float(r.gamma_then) if r.gamma_then is not None else None,
+            vega_then=float(r.vega_then) if r.vega_then is not None else None,
+            theta_then=float(r.theta_then) if r.theta_then is not None else None,
         )
         per_position.append({
             "id": int(r.id), "source": "ib_live",
@@ -1248,6 +1281,10 @@ async def pnl_attribution(
             vega=float(r.vega_now) if r.vega_now is not None else None,
             theta=float(r.theta_now) if r.theta_now is not None else None,
             t_then=r.t_then,
+            delta_then=float(r.delta_then) if r.delta_then is not None else None,
+            gamma_then=float(r.gamma_then) if r.gamma_then is not None else None,
+            vega_then=float(r.vega_then) if r.vega_then is not None else None,
+            theta_then=float(r.theta_then) if r.theta_then is not None else None,
         )
         per_position.append({
             "id": int(r.id), "source": "booked",
