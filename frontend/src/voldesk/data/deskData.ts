@@ -41,14 +41,26 @@ export interface TenorRisk {
  * wired to live endpoints (fetchStressGrid / fetchGreeksLadder / fetchMarginalVar
  * / fetchPinRisk) — no longer mock. */
 export interface VarData {
-  var95: number;
-  var99: number;
-  es99: number;
-  meanDaily: number; // live mean daily P&L ($k) — drives the expected-return column
+  // null until the backend has enough daily observations (< VAR_MIN_DAYS ⇒ the
+  // /portfolio/var stats come back null). Never coerced to 0 — a 0 VaR would
+  // read as "no risk" and pile the 95/99/ES marks onto the µ line.
+  var95: number | null;
+  var99: number | null;
+  es99: number | null;
+  meanDaily: number | null; // live mean daily P&L ($k) — drives the expected-return column
   nDays: number;
+  /** Which distribution the numbers came from — "historical-simulation" replays
+   * ~1y of market moves through today's book, "account-history" uses the
+   * account's own realised daily P&L (needs VAR_MIN_DAYS to accumulate). */
+  method: string | null;
+  nPositions: number | null;
   hist: HistBin[];
   perTenor: TenorRisk[];
 }
+
+/** Daily observations the historical VaR needs before it returns stats
+ * (mirrors `_var_stats` in `src/api/routers/portfolio_panel.py`). */
+export const VAR_MIN_DAYS = 5;
 
 export interface PortfolioData {
   account: AccountState;

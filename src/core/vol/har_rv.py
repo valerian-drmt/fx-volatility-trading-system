@@ -34,7 +34,6 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-DAILY_LAG = 1
 WEEKLY_LAG = 5
 MONTHLY_LAG = 22
 TRADING_DAYS_PER_YEAR = 252

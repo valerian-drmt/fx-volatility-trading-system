@@ -23,7 +23,7 @@ import {
 } from "../core";
 import { EMPTY_ACCOUNT } from "../neutral";
 import type { HistBin, TenorRisk, VarData } from "../deskData";
-import type { BookComposition, PerfStats, VarFactor, VegaTenor, WaterfallStep } from "../extended";
+import type { BookComposition, PerfStats, VegaTenor, WaterfallStep } from "../extended";
 
 const n = (v: unknown): number => (typeof v === "number" ? v : 0);
 const r1 = (v: number): number => Math.round(v * 10) / 10;
@@ -134,90 +134,6 @@ interface AttribTotals {
   residual_usd?: number | null;
 }
 
-/** /portfolio/pnl-attribution-pivot → a by-structure / by-tenor / by-trade bridge
- * ($ → $k). Start → one signed step per group → Net. `sub` carries the structure
- * type for the by-trade axis (label = "#id"). */
-export function adaptWaterfallPivot(raw: unknown): WaterfallStep[] {
-  const o = (raw ?? {}) as { groups?: { label?: string; sub?: string; pnl_usd?: number | null }[] };
-  const groups = o.groups ?? [];
-  const k = (v: number | null | undefined): number => r1(n(v) / 1000);
-  const steps: WaterfallStep[] = [{ label: "Start", v: 0, type: "start" }];
-  let net = 0;
-  for (const gr of groups) {
-    const v = n(gr.pnl_usd);
-    net += v;
-    const step: WaterfallStep = { label: String(gr.label ?? "—"), v: k(v), type: v >= 0 ? "pos" : "neg" };
-    if (gr.sub) step.sub = gr.sub;
-    steps.push(step);
-  }
-  steps.push({ label: "Net", v: k(net), type: "net" });
-  return steps;
-}
-
-/** Rich per-structure-type row: P&L + nominal + 2nd-order greeks (raw USD/EUR). */
-export interface StructureRow {
-  label: string;
-  pnl: number;
-  nominal: number;
-  vanna: number;
-  volga: number;
-}
-
-/** /portfolio/pnl-attribution-pivot?by=structure → rich rows for the breakdown table. */
-export function adaptStructureRows(raw: unknown): StructureRow[] {
-  const groups = ((raw ?? {}) as {
-    groups?: { label?: string; pnl_usd?: number | null; nominal_eur?: number | null; vanna_usd?: number | null; volga_usd?: number | null }[];
-  }).groups ?? [];
-  return groups.map((g) => ({
-    label: String(g.label ?? "—"),
-    pnl: n(g.pnl_usd),
-    nominal: n(g.nominal_eur),
-    vanna: n(g.vanna_usd),
-    volga: n(g.volga_usd),
-  }));
-}
-
-/** Rich per-reference-tenor row: P&L + nominal + the full 6 greeks (raw USD/EUR). */
-export interface TenorRow {
-  label: string;
-  pnl: number;
-  nominal: number;
-  delta: number;
-  gamma: number;
-  vega: number;
-  theta: number;
-  vanna: number;
-  volga: number;
-}
-
-/** /portfolio/pnl-attribution-pivot?by=tenor → rich rows for the breakdown table. */
-export function adaptTenorRows(raw: unknown): TenorRow[] {
-  const groups = ((raw ?? {}) as {
-    groups?: {
-      label?: string;
-      pnl_usd?: number | null;
-      nominal_eur?: number | null;
-      delta_usd?: number | null;
-      gamma_usd?: number | null;
-      vega_usd?: number | null;
-      theta_usd?: number | null;
-      vanna_usd?: number | null;
-      volga_usd?: number | null;
-    }[];
-  }).groups ?? [];
-  return groups.map((g) => ({
-    label: String(g.label ?? "—"),
-    pnl: n(g.pnl_usd),
-    nominal: n(g.nominal_eur),
-    delta: n(g.delta_usd),
-    gamma: n(g.gamma_usd),
-    vega: n(g.vega_usd),
-    theta: n(g.theta_usd),
-    vanna: n(g.vanna_usd),
-    volga: n(g.volga_usd),
-  }));
-}
-
 /** /portfolio/pnl-attribution totals → the greek-pivot waterfall ($ → $k). */
 export function adaptWaterfallGreek(raw: unknown): WaterfallStep[] {
   const t = ((raw ?? {}) as { totals?: AttribTotals }).totals ?? {};
@@ -272,6 +188,8 @@ export function adaptVar(raw: unknown): VarData {
     es_99_usd?: number | null;
     mean_daily_usd?: number | null;
     n_days?: number | null;
+    method?: string | null;
+    n_positions?: number | null;
     hist?: { lo?: number; hi?: number; count?: number }[];
   };
   const hist: HistBin[] = (v.hist ?? []).map((b) => ({
@@ -279,12 +197,17 @@ export function adaptVar(raw: unknown): VarData {
     hi: n(b.hi) / 1000,
     count: n(b.count),
   }));
+  // null stays null (short history) — see VarData: 0 would be read as a real
+  // zero-risk VaR by every consumer.
+  const k = (x: number | null | undefined): number | null => (typeof x === "number" ? x / 1000 : null);
   return {
-    var95: n(v.var_95_usd) / 1000,
-    var99: n(v.var_99_usd) / 1000,
-    es99: n(v.es_99_usd) / 1000,
-    meanDaily: n(v.mean_daily_usd) / 1000,
+    var95: k(v.var_95_usd),
+    var99: k(v.var_99_usd),
+    es99: k(v.es_99_usd),
+    meanDaily: k(v.mean_daily_usd),
     nDays: v.n_days ?? 0,
+    method: v.method ?? null,
+    nPositions: v.n_positions ?? null,
     hist,
     perTenor: [],
   };
@@ -333,29 +256,6 @@ export function adaptEquityCurve(raw: unknown): EquityPoint[] {
 /** Portfolio greek time-series — one timestamped ($) series per greek. */
 export type GreekKey = "delta" | "gamma" | "vega" | "theta";
 export type GreekSeries = Record<GreekKey, EquityPoint[]>;
-
-/** /portfolio/greeks-history → four timestamped Σ-greek series ($) for the chart. */
-export function adaptGreeksHistory(raw: unknown): GreekSeries {
-  const rows = Array.isArray(raw)
-    ? (raw as {
-        timestamp?: string;
-        delta_usd?: number | null;
-        gamma_usd?: number | null;
-        vega_usd?: number | null;
-        theta_usd?: number | null;
-      }[])
-    : [];
-  const out: GreekSeries = { delta: [], gamma: [], vega: [], theta: [] };
-  for (const r of rows) {
-    const t = r.timestamp ? Date.parse(r.timestamp) : NaN;
-    if (!Number.isFinite(t)) continue;
-    out.delta.push({ t, v: n(r.delta_usd) });
-    out.gamma.push({ t, v: n(r.gamma_usd) });
-    out.vega.push({ t, v: n(r.vega_usd) });
-    out.theta.push({ t, v: n(r.theta_usd) });
-  }
-  return out;
-}
 
 /** /portfolio/greek-pnl-history → four cumulative Taylor-term series ($, start at 0)
  * for the Performance 2×2 greek-P&L grid. */
@@ -541,8 +441,6 @@ export function adaptTradeMarkers(raw: unknown): TradeEvent[] {
   return out.filter((e) => Number.isFinite(e.t));
 }
 
-export type StressAxis = "spot-vol" | "spot-time" | "spot-skew" | "spot-fly";
-
 export interface StressGridData {
   axis: string;
   output: string;
@@ -552,48 +450,6 @@ export interface StressGridData {
   rowUnit: string; // "vp" | "d"
   nPositions: number;
   grid: number[][]; // [row][col], raw $ (full-BS reval)
-}
-
-export interface ScenarioPoint {
-  x: number; pnl: number; delta: number; gamma: number; vega: number; theta: number;
-}
-
-/** /portfolio/scenarios by_spot rows → ScenarioPoint[] (spot-shock full reval). */
-export function adaptScenarios(raw: unknown): ScenarioPoint[] {
-  const r = raw as { by_spot?: Array<Record<string, number>> } | null;
-  return (r?.by_spot ?? []).map((d) => ({
-    x: Number(d.step_pct ?? 0),
-    pnl: Number(d.pnl_usd ?? 0),
-    delta: Number(d.delta_usd ?? 0),
-    gamma: Number(d.gamma_usd_per_pip ?? 0),
-    vega: Number(d.vega_usd_per_volpt ?? 0),
-    theta: Number(d.theta_usd_per_day ?? 0),
-  }));
-}
-
-export interface LiveCoverage {
-  convexity: number; carry: number; ratio: number;
-  gammaPnl: number; vegaPnl: number; thetaPaid: number;
-  posture: string; windowLabel: string;
-}
-
-/** /portfolio/pnl-attribution totals → realized survival ratio (convexity ÷ carry).
- *  $ → $k. Empty book → zeros (ratio 0). Perf trio (RoM/RoVaR/Sharpe) + the history
- *  sparkline need realized trading history → deferred (R12+, like backtest). */
-export function adaptCoverage(raw: unknown): LiveCoverage {
-  const t = (raw as { totals?: Record<string, number>; lookback_hours?: number } | null) ?? {};
-  const tot = t.totals ?? {};
-  const gammaPnl = +(Number(tot["gamma_pnl_usd"] ?? 0) / 1000).toFixed(1);
-  const vegaPnl = +(Number(tot["vega_pnl_usd"] ?? 0) / 1000).toFixed(1);
-  const thetaPaid = +(Math.abs(Number(tot["theta_pnl_usd"] ?? 0)) / 1000).toFixed(1);
-  const convexity = +(gammaPnl + vegaPnl).toFixed(1);
-  const ratio = thetaPaid > 0 ? +(convexity / thetaPaid).toFixed(2) : 0;
-  const hrs = Number(t.lookback_hours ?? 24);
-  return {
-    convexity, carry: thetaPaid, ratio, gammaPnl, vegaPnl, thetaPaid,
-    posture: gammaPnl >= 0 ? "long gamma · Theta−" : "short gamma · Theta+",
-    windowLabel: hrs >= 24 ? `${Math.round(hrs / 24)}j` : `${hrs}h`,
-  };
 }
 
 /** /portfolio/stress-grid?axis=&output= → one (axis, output) matrix. Rows = the
@@ -624,8 +480,6 @@ export function adaptStressGrid(raw: unknown): StressGridData | null {
     grid,
   };
 }
-
-export type LadderAxis = "spot" | "vol" | "time" | "skew" | "fly";
 
 export interface LiveLadderRow {
   label: string;
@@ -696,97 +550,6 @@ interface PinRowResp {
   pnl_at_pin_usd?: number | null;
 }
 
-export interface VegaPcaRow {
-  mode: string;
-  name: string;
-  vega: number; // $k per unit-PC move
-  var: number; // variance explained %
-}
-
-interface VegaPcaResp {
-  pcs?: { pc?: number; name?: string; variance_pct?: number | null; vega_usd?: number | null }[];
-}
-
-/** /portfolio/vega-pca → book vega projected on PC1/2/3 ($ → $k). */
-export function adaptVegaPca(raw: unknown): VegaPcaRow[] {
-  const pcs = ((raw ?? {}) as VegaPcaResp).pcs ?? [];
-  return pcs.map((p) => ({
-    mode: "PC" + (p.pc ?? 0),
-    name: p.name ?? "",
-    vega: r1(n(p.vega_usd) / 1000),
-    var: n(p.variance_pct),
-  }));
-}
-
-export interface PositionAttrib {
-  deltaPnl: number | null;
-  gammaPnl: number | null;
-  vegaPnl: number | null;
-  thetaPnl: number | null;
-  residual: number | null;
-}
-
-/** /portfolio/pnl-attribution per_position → live Taylor P&L decomposition by
- * position id (Δ/Γ/Vega/Θ contributions + residual over the lookback window). */
-export function adaptPnlAttributionByPosition(raw: unknown): Record<string, PositionAttrib> {
-  const rows = ((raw ?? {}) as {
-    per_position?: {
-      id?: number | string;
-      delta_pnl_usd?: number | null;
-      gamma_pnl_usd?: number | null;
-      vega_pnl_usd?: number | null;
-      theta_pnl_usd?: number | null;
-      residual_usd?: number | null;
-    }[];
-  }).per_position ?? [];
-  const out: Record<string, PositionAttrib> = {};
-  for (const r of rows) {
-    out[String(r.id ?? "")] = {
-      deltaPnl: r.delta_pnl_usd ?? null,
-      gammaPnl: r.gamma_pnl_usd ?? null,
-      vegaPnl: r.vega_pnl_usd ?? null,
-      thetaPnl: r.theta_pnl_usd ?? null,
-      residual: r.residual_usd ?? null,
-    };
-  }
-  return out;
-}
-
-export interface GreekLimits {
-  deltaCapUsd: number;
-  vegaCapUsd: number;
-  gammaCapPip: number;
-  crossBudgetUsd: number;
-  lossBudgetUsd: number;
-  navBaseUsd: number;
-  navLiveUsd: number;
-  regimeMult: number;
-}
-
-/** /portfolio/greek-limits → derived stress-loss caps (greek-limits-spec §2). */
-export function adaptGreekLimits(raw: unknown): GreekLimits {
-  const o = (raw ?? {}) as {
-    delta_cap_usd?: number | null;
-    vega_cap_usd?: number | null;
-    gamma_cap_pip?: number | null;
-    cross_budget_usd?: number | null;
-    loss_budget_usd?: number | null;
-    nav_base_usd?: number | null;
-    nav_live_usd?: number | null;
-    regime_mult?: number | null;
-  };
-  return {
-    deltaCapUsd: n(o.delta_cap_usd),
-    vegaCapUsd: n(o.vega_cap_usd),
-    gammaCapPip: n(o.gamma_cap_pip),
-    crossBudgetUsd: n(o.cross_budget_usd),
-    lossBudgetUsd: n(o.loss_budget_usd),
-    navBaseUsd: n(o.nav_base_usd),
-    navLiveUsd: n(o.nav_live_usd),
-    regimeMult: o.regime_mult ?? 1,
-  };
-}
-
 export interface MarginalVarRow {
   trade: string; // trade / package id (T-… / PKG-…) or "—"
   label: string; // product label
@@ -833,26 +596,6 @@ export function adaptMarginalVar(raw: unknown): MarginalVarData {
     diversification: n(o.total?.diversification_pct),
     nDays: o.n_days ?? 0,
   };
-}
-
-const _FACTOR_COLOR: Record<string, string> = {
-  spot: "var(--warn)",
-  level: "var(--accent)",
-  skew: "#a78bfa",
-  curv: "var(--pos)",
-};
-
-/** /portfolio/var-factors → scenario VaR by factor ($ → $k) for the FactorStack. */
-export function adaptVarFactors(raw: unknown): VarFactor[] {
-  const factors = ((raw ?? {}) as {
-    factors?: { key?: string; label?: string; var_usd?: number | null }[];
-  }).factors ?? [];
-  return factors.map((f) => ({
-    key: f.key ?? "",
-    label: f.label ?? "",
-    v: r1(n(f.var_usd) / 1000),
-    color: _FACTOR_COLOR[f.key ?? ""] ?? "var(--muted)",
-  }));
 }
 
 /** /portfolio/pin-risk → per-option pin exposure (P&L now vs at the strike). */

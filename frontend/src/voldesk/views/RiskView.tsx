@@ -13,7 +13,7 @@ import { PositionBreakdown } from "../components/PositionBreakdown";
 import { fmt } from "../data";
 import type { Position } from "../data";
 import { groupByTradeId, structureName } from "../components/tradeGrouping";
-import { type HistBin, useDeskData } from "../data/deskData";
+import { type HistBin, VAR_MIN_DAYS, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
 import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
 
@@ -55,12 +55,16 @@ function PanelLive({ status }: { status: Fresh<unknown>["status"] | "mock" }): J
 }
 
 
-function EmpiricalHist({ hist, var95, var99, es99, retk, letter, h = 88 }: { hist: HistBin[]; var95: number; var99: number; es99: number; retk: number; letter: string; h?: number }): JSX.Element {
+function EmpiricalHist({ hist, var95, var99, es99, retk, letter, note, h = 88 }: { hist: HistBin[]; var95: number; var99: number; es99: number; retk: number; letter: string; note?: string | undefined; h?: number }): JSX.Element {
   const w = 340;
-  if (!hist.length) {
+  // No bins, or the VaR stats aren't out of their warm-up yet: draw the empty
+  // state. Plotting a 2-sample histogram with 95/99/ES all pinned to 0 stacks
+  // every mark onto the µ line and shades the whole left half as the loss zone
+  // — it reads as a real distribution when there is none.
+  if (note || !hist.length) {
     return (
       <svg className="var-curve-svg" width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
-        <text x={w / 2} y={h / 2} fill="var(--text-faint)" fontSize="10" fontFamily="var(--mono)" textAnchor="middle">distribution accumulating…</text>
+        <text x={w / 2} y={h / 2} fill="var(--text-faint)" fontSize="10" fontFamily="var(--mono)" textAnchor="middle">{note ?? "distribution accumulating…"}</text>
       </svg>
     );
   }
@@ -109,36 +113,53 @@ interface VarRow {
   days: number; // horizon in trading days → √t scaling (1 / 5 / 21 / 252)
 }
 interface VarCalc {
-  v95: number;
-  v99: number;
-  es: number;
-  retk: number;
-  muZ: number;
+  v95: number | null;
+  v99: number | null;
+  es: number | null;
+  retk: number | null;
+  muZ: number | null;
 }
 
-function VarCard({ var95, var99, es99, meanDaily, hist, fresh }: { var95: number; var99: number; es99: number; meanDaily: number; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
-  const base95 = var95,
-    base99 = var99;
+// How the numbers were produced, for the panel badges. Historical simulation
+// replays ~1y of real market moves through today's book (available immediately);
+// the account-history fallback needs the account's own P&L to accumulate.
+function methodLabel(method: string | null, n: number): string {
+  if (method === "historical-simulation") return `1y sim · ${n} scenarios`;
+  return "account 1d";
+}
+
+function VarCard({ var95, var99, es99, meanDaily, nDays, method, hist, fresh }: { var95: number | null; var99: number | null; es99: number | null; meanDaily: number | null; nDays: number; method: string | null; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
   const rows: VarRow[] = [
     { id: "1d", lbl: "Daily", days: 1 },
     { id: "1w", lbl: "Weekly", days: 5 },
     { id: "1M", lbl: "Monthly", days: 21 },
     { id: "1Y", lbl: "Yearly", days: 252 },
   ];
+  // The backend nulls every stat until it has VAR_MIN_DAYS of daily net-liq
+  // deltas. Show dashes + a warm-up note rather than $0k VaR (a 0 loss is not
+  // "no risk", it's "not computed yet").
+  const ready = var95 !== null && var99 !== null && es99 !== null;
+  const warmup = ready ? null : `accumulating history — ${nDays}/${VAR_MIN_DAYS} days`;
+  const src = methodLabel(method, nDays);
   // ES/VaR is horizon-invariant under √t scaling → the live 1d ratio holds for
   // every row (no hardcoded per-horizon ratio).
-  const ratio = base99 ? es99 / base99 : 0;
+  const ratio = ready && var99 !== null && var99 !== 0 && es99 !== null ? es99 / var99 : null;
   const [tf, setTf] = useState("1d");
-  const kc = (vk: number): string => { const s = vk < 0 ? "−" : "+"; const a = Math.abs(vk); return s + "$" + (a >= 1000 ? (a / 1000).toFixed(2) + "M" : Math.round(a) + "k"); };
+  const kc = (vk: number | null): string => {
+    if (vk === null) return "—";
+    const s = vk < 0 ? "−" : "+";
+    const a = Math.abs(vk);
+    return s + "$" + (a >= 1000 ? (a / 1000).toFixed(2) + "M" : Math.round(a) + "k");
+  };
   const calc = (r: VarRow): VarCalc => {
     // √t scaling derived from the horizon (not hardcoded multipliers).
     const m = Math.sqrt(r.days);
-    const v95 = base95 * m,
-      v99 = base99 * m,
-      es = es99 * m;                          // live 1d ES, √t-scaled
-    const retk = meanDaily * r.days;          // live mean daily P&L ($k) × horizon
-    const sig = Math.abs(v95) / 1.645;
-    return { v95, v99, es, retk, muZ: sig ? retk / sig : 0 };
+    const v95 = var95 === null ? null : var95 * m,
+      v99 = var99 === null ? null : var99 * m,
+      es = es99 === null ? null : es99 * m;    // live 1d ES, √t-scaled
+    const retk = meanDaily === null ? null : meanDaily * r.days; // mean daily P&L ($k) × horizon
+    const sig = v95 === null ? 0 : Math.abs(v95) / 1.645;
+    return { v95, v99, es, retk, muZ: sig && retk !== null ? retk / sig : null };
   };
   const sel = rows.find((r) => r.id === tf) ?? rows[0]!,
     c = calc(sel);
@@ -149,7 +170,7 @@ function VarCard({ var95, var99, es99, meanDaily, hist, fresh }: { var95: number
   return (
     <Panel title="Value at Risk" dataPp="var" right={<PanelLive status={fresh.status} />} className="stress-panel">
       <div className="var-1x3">
-        <Panel title="VaR table" dataPp="var-table" right={<FreshBadge fresh={fresh} label="historical 1d" />} className="trade-block" pad={false}>
+        <Panel title="VaR table" dataPp="var-table" right={<FreshBadge fresh={fresh} label={src} />} className="trade-block" pad={false}>
           <div className="table-scroll">
             <table className="dt var-table">
               <thead><tr>
@@ -161,11 +182,14 @@ function VarCard({ var95, var99, es99, meanDaily, hist, fresh }: { var95: number
                   return (
                     <tr key={r.id} className={"var-row " + (r.id === tf ? "row-now" : "")} onClick={() => setTf(r.id)}>
                       <td className="l mono">{r.id} <span className="dim">{r.lbl}</span></td>
-                      <td className={"r mono " + pnlCls(x.retk)}>{kc(x.retk)} <span className="dim">({ordinal(Math.round(normCdf(x.muZ) * 100))})</span></td>
+                      <td className={"r mono " + pnlCls(x.retk ?? 0)}>
+                        {kc(x.retk)}
+                        {x.muZ !== null ? <span className="dim"> ({ordinal(Math.round(normCdf(x.muZ) * 100))})</span> : null}
+                      </td>
                       <td className="r mono neg">{kc(x.v95)}</td>
                       <td className="r mono neg">{kc(x.v99)}</td>
                       <td className="r mono neg">{kc(x.es)}</td>
-                      <td className={"r mono " + (ratio >= 1.25 ? "warn" : "dim")}>{ratio.toFixed(2)}</td>
+                      <td className={"r mono " + (ratio !== null && ratio >= 1.25 ? "warn" : "dim")}>{ratio === null ? "—" : ratio.toFixed(2)}</td>
                     </tr>
                   );
                 })}
@@ -173,7 +197,7 @@ function VarCard({ var95, var99, es99, meanDaily, hist, fresh }: { var95: number
             </table>
           </div>
         </Panel>
-        <Panel title="P&L distribution" dataPp="var-chart" right={<FreshBadge fresh={fresh} label="empirical" />} className="trade-block">
+        <Panel title="P&L distribution" dataPp="var-chart" right={<FreshBadge fresh={fresh} label={method === "historical-simulation" ? "simulated" : "empirical"} />} className="trade-block">
           <div className="var-tf-group in-chart">
             {rows.map((r) => (
               <button
@@ -186,14 +210,16 @@ function VarCard({ var95, var99, es99, meanDaily, hist, fresh }: { var95: number
             ))}
           </div>
           <div className="ret-chart">
-            <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · empirical</span></div>
-            <EmpiricalHist hist={histScaled} var95={c.v95} var99={c.v99} es99={c.es} retk={c.retk} letter={letter} />
-            <div className="hist-leg dim mono">
-              <span><i className="lg-line mu" />return (D/W/M/Y)</span>
-              <span><i className="lg-line w" />VaR 95%</span>
-              <span><i className="lg-line n" />VaR 99%</span>
-              <span><i className="lg-dot" />ES (tail mean)</span>
-            </div>
+            <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · {src}</span></div>
+            <EmpiricalHist hist={histScaled} var95={c.v95 ?? 0} var99={c.v99 ?? 0} es99={c.es ?? 0} retk={c.retk ?? 0} letter={letter} note={warmup ?? undefined} />
+            {warmup ? null : (
+              <div className="hist-leg dim mono">
+                <span><i className="lg-line mu" />return (D/W/M/Y)</span>
+                <span><i className="lg-line w" />VaR 95%</span>
+                <span><i className="lg-line n" />VaR 99%</span>
+                <span><i className="lg-dot" />ES (tail mean)</span>
+              </div>
+            )}
           </div>
         </Panel>
         <MarginalVarPanel />
@@ -487,9 +513,10 @@ export function RiskView(): JSX.Element {
   // No DATA mock fallback — absent data reads as 0 / "—", never fabricated.
   const ng = trade.data?.greeks;
   const nd = ng?.netDelta ?? 0, ngm = ng?.netGamma ?? 0, nv = ng?.netVega ?? 0, nt = ng?.netTheta ?? 0;
-  // No live VaR yet (history < min window → backend returns null): show honest
-  // zeros + "building window…", NOT a fabricated mock VaR scaled across horizons.
-  const vd = risk.data ?? { var95: 0, var99: 0, es99: 0, meanDaily: 0, nDays: 0, hist: [], perTenor: [] };
+  // No live VaR yet (history < VAR_MIN_DAYS → backend returns null): keep the
+  // nulls so the card shows dashes + a warm-up note, NOT $0k VaR and not a
+  // fabricated mock VaR scaled across horizons.
+  const vd = risk.data ?? { var95: null, var99: null, es99: null, meanDaily: null, nDays: 0, method: null, nPositions: null, hist: [], perTenor: [] };
   const pt = vd.perTenor; // vega/vanna/volga by tenor ($k) — live (PR 5)
   // net 2nd-order greeks = Σ of their tenor buckets (live), by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
@@ -533,7 +560,7 @@ export function RiskView(): JSX.Element {
           </div>
         </Panel>
         </div>
-        <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} hist={vd.hist} fresh={risk} />
+        <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} nDays={vd.nDays} method={vd.method} hist={vd.hist} fresh={risk} />
       </div>
       <StressEngine />
       <LiveLadders />

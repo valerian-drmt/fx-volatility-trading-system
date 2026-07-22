@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="360" viewBox="0 0 1320 360" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="1320" height="360" fill="#ffffff"/>
+  <!-- gate -->
+  <rect x="540" y="30" width="220" height="46" rx="4" fill="none" stroke="#999999" stroke-dasharray="5 3"/>
+  <text x="650" y="50" text-anchor="middle" font-style="italic" fill="#555">DEPLOY_ENABLED=true gate</text>
+  <text x="650" y="68" text-anchor="middle" font-style="italic" fill="#555">(repo variable)</text>
+  <line x1="650" y1="76" x2="650" y2="150" stroke="#999999" stroke-dasharray="5 3"/>
+  <!-- stage 1 -->
+  <rect x="20" y="150" width="180" height="90" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="110" y="188" text-anchor="middle" font-weight="bold">1. Push to main</text>
+  <text x="110" y="208" text-anchor="middle">(GitHub)</text>
+  <!-- stage 2 -->
+  <rect x="250" y="140" width="210" height="110" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="355" y="170" text-anchor="middle" font-weight="bold">2. build-and-push</text>
+  <text x="355" y="190" text-anchor="middle">GitHub Actions</text>
+  <text x="355" y="210" text-anchor="middle">7 images &#8594; GHCR</text>
+  <text x="355" y="230" text-anchor="middle">sha-&lt;commit&gt; + latest</text>
+  <!-- stage 3 -->
+  <rect x="510" y="140" width="210" height="110" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="615" y="170" text-anchor="middle" font-weight="bold">3. deploy-prod</text>
+  <text x="615" y="190" text-anchor="middle">OIDC into AWS</text>
+  <text x="615" y="210" text-anchor="middle">S3 config payload</text>
+  <text x="615" y="230" text-anchor="middle">SSM RunShellScript</text>
+  <!-- stage 4 -->
+  <rect x="770" y="130" width="270" height="130" rx="8" fill="#fff2cc" stroke="#d6b656"/>
+  <text x="905" y="158" text-anchor="middle" font-weight="bold">4. EC2 host (remote-deploy.sh)</text>
+  <text x="905" y="178" text-anchor="middle">render .env from SSM</text>
+  <text x="905" y="198" text-anchor="middle">pg_dump &#8594; S3 + alembic</text>
+  <text x="905" y="218" text-anchor="middle">compose up + nginx reload</text>
+  <text x="905" y="238" text-anchor="middle">image prune</text>
+  <!-- stage 5 -->
+  <rect x="1090" y="150" width="200" height="90" rx="8" fill="#f8cecc" stroke="#b85450"/>
+  <text x="1190" y="180" text-anchor="middle" font-weight="bold">5. Smoke check</text>
+  <text x="1190" y="200" text-anchor="middle">/api/v1/health</text>
+  <text x="1190" y="220" text-anchor="middle">returns JSON</text>
+  <!-- arrows -->
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#333"/></marker></defs>
+  <line x1="200" y1="195" x2="248" y2="195" stroke="#333" marker-end="url(#a)"/>
+  <line x1="460" y1="195" x2="508" y2="195" stroke="#333" marker-end="url(#a)"/>
+  <line x1="720" y1="195" x2="768" y2="195" stroke="#333" marker-end="url(#a)"/>
+  <line x1="1040" y1="195" x2="1088" y2="195" stroke="#333" marker-end="url(#a)"/>
+</svg>

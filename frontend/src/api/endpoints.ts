@@ -43,15 +43,9 @@ export const fetchHealthExtended = () =>
 // ── Pricing ───────────────────────────────────────────────────────────────
 export type PriceRequest = PostBody<"/api/v1/price">;
 export type PriceResponse = Post<"/api/v1/price", 200>;
-export type GreeksResponse = Post<"/api/v1/greeks", 200>;
-export type IvRequest = PostBody<"/api/v1/iv">;
-export type IvResponse = Post<"/api/v1/iv", 200>;
 
 export const postPrice = (body: PriceRequest) =>
   apiPost<PriceResponse>("/api/v1/price", body);
-export const postGreeks = (body: PriceRequest) =>
-  apiPost<GreeksResponse>("/api/v1/greeks", body);
-export const postIv = (body: IvRequest) => apiPost<IvResponse>("/api/v1/iv", body);
 
 // ── Vol ───────────────────────────────────────────────────────────────────
 export type VolSurface = Get<"/api/v1/vol/surface", 200>;
@@ -62,18 +56,10 @@ export const fetchVolSurface = (symbol = "EURUSD") =>
   apiGet<VolSurface>("/api/v1/vol/surface", { query: { symbol } });
 export const fetchTermStructure = (symbol = "EURUSD") =>
   apiGet<TermStructure>("/api/v1/vol/term-structure", { query: { symbol } });
-export const fetchSmile = (tenor: string, symbol = "EURUSD") =>
-  apiGet<Smile>(`/api/v1/vol/smile/${encodeURIComponent(tenor)}`, { query: { symbol } });
 
 // ── Analytics ─────────────────────────────────────────────────────────────
 // Per-tenor pricing signals (CHEAP/FAIR/EXPENSIVE) and the /signals endpoint
 // were retired in R9 alongside the Vol Scanner panel.
-export type VolHistory = Get<"/api/v1/vol-history", 200>;
-export type SystemStats = Get<"/api/v1/system-stats", 200>;
-
-export const fetchVolHistory = (symbol = "EURUSD", limit = 50) =>
-  apiGet<VolHistory>("/api/v1/vol-history", { query: { symbol, limit } });
-
 // Real OHLC candles from the market-data engine's Redis cache (IB reqHistoricalData).
 // Typed by hand (not via schema.d.ts) until `npm run gen:api` is regenerated
 // against the running backend; `t` = bar-open epoch ms (UTC).
@@ -100,17 +86,6 @@ export interface TradeMarkerRaw {
 export const fetchTradeMarkers = (days = 30) =>
   apiGet<TradeMarkerRaw[]>("/api/v1/portfolio/trade-markers", { query: { days } });
 
-// Portfolio Σ greeks (Δ/Γ/Vega/Θ) time series for the Performance greek chart.
-export interface GreekHistoryRaw {
-  timestamp: string;
-  delta_usd: number;
-  gamma_usd: number;
-  vega_usd: number;
-  theta_usd: number;
-}
-export const fetchGreeksHistory = (window = "30d") =>
-  apiGet<GreekHistoryRaw[]>("/api/v1/portfolio/greeks-history", { query: { window } });
-
 // Cumulative greek-P&L (Taylor terms) time series for the Performance 2×2 grid.
 export interface GreekPnlHistoryRaw {
   timestamp: string;
@@ -133,50 +108,36 @@ export interface ValuationHistoryRaw {
 export const fetchValuationHistory = (window = "30d") =>
   apiGet<ValuationHistoryRaw[]>("/api/v1/portfolio/valuation-history", { query: { window } });
 
-export const fetchSystemStats = () => apiGet<SystemStats>("/api/v1/system-stats");
-
 // ── R11 voldesk wiring (read) ───────────────────────────────────────────────
 // Typed against schema.d.ts. Endpoints returning a bare dict server-side surface
 // here as opaque values; the per-domain adapter (voldesk/data/live/*) maps them
 // to the DATA/DATA2 shapes the views consume.
 
 // Regime
-export type RegimeState = Get<"/api/v1/regime/state", 200>;
-export const fetchRegimeState = (symbol = "EURUSD") =>
-  apiGet<RegimeState>("/api/v1/regime/state", { query: { symbol } });
 export const fetchRegimeEvents = (n = 10, pastDays = 0) =>
   apiGet<unknown>("/api/v1/regime/events", { query: { n, past_days: pastDays } });
 
 // PCA signals
 export type PcaState = Get<"/api/v1/signals/pca/state", 200>;
-export type PcaModel = Get<"/api/v1/signals/pca/model", 200>;
 export const fetchPcaState = (symbol = "EURUSD") =>
   apiGet<PcaState>("/api/v1/signals/pca/state", { query: { symbol } });
-export const fetchPcaModel = () => apiGet<PcaModel>("/api/v1/signals/pca/model");
 export type PcaHistory = Get<"/api/v1/signals/pca/history", 200>;
 export const fetchPcaHistory = (pcId: number, n = 120, symbol = "EURUSD") =>
   apiGet<PcaHistory>("/api/v1/signals/pca/history", { query: { symbol, pc_id: pcId, n } });
 
 // Positions (Step 5)
 export const fetchOpenPositions = () => apiGet<unknown>("/api/v1/positions/open");
-export const fetchActivePositions = () => apiGet<unknown>("/api/v1/positions/active");
-export const fetchPositionsAggregate = () =>
-  apiGet<unknown>("/api/v1/positions/aggregate");
 
 // Portfolio panels (A–J + scenarios)
-export const fetchPortfolioHeader = () => apiGet<unknown>("/api/v1/portfolio/header");
 export const fetchPortfolioAccount = () => apiGet<unknown>("/api/v1/portfolio/account");
 export const fetchPortfolioCash = () => apiGet<unknown>("/api/v1/portfolio/cash");
 export const fetchPortfolioDailyPnl = (days = 90) =>
   apiGet<unknown>("/api/v1/portfolio/daily-pnl", { query: { days } });
 export const fetchPortfolioStats = () => apiGet<unknown>("/api/v1/portfolio/stats");
 export const fetchPortfolioVar = () => apiGet<unknown>("/api/v1/portfolio/var");
-export const fetchGreekLimits = () => apiGet<unknown>("/api/v1/portfolio/greek-limits");
 export const fetchRiskPerTenor = () => apiGet<unknown>("/api/v1/portfolio/risk-per-tenor");
 export const fetchEquityCurve = (window = "30d") =>
   apiGet<unknown>("/api/v1/portfolio/equity-curve", { query: { window } });
-export const fetchAggregateGreeks = () =>
-  apiGet<unknown>("/api/v1/portfolio/aggregate-greeks");
 export const fetchVegaPerTenor = () =>
   apiGet<unknown>("/api/v1/portfolio/vega-per-tenor");
 export const fetchStressGrid = (axis = "spot-vol", output = "pnl") =>
@@ -193,20 +154,10 @@ export const fetchPnlAttributionMatrix = (groupBy = "tenor", lookbackHours = 24)
   apiGet<unknown>("/api/v1/portfolio/pnl-attribution", {
     query: { group_by: groupBy, lookback_hours: lookbackHours },
   });
-// Realized-P&L bridge grouped by a non-greek axis (structure type / tenor).
-export const fetchPnlAttributionPivot = (by: string, days = 90) =>
-  apiGet<unknown>("/api/v1/portfolio/pnl-attribution-pivot", { query: { by, days } });
 export const fetchPinRisk = () => apiGet<unknown>("/api/v1/portfolio/pin-risk");
-export const fetchVegaPca = () => apiGet<unknown>("/api/v1/portfolio/vega-pca");
 export const fetchMarginalVar = () => apiGet<unknown>("/api/v1/portfolio/marginal-var");
-export const fetchVarFactors = () => apiGet<unknown>("/api/v1/portfolio/var-factors");
-export const fetchScenarios = () => apiGet<unknown>("/api/v1/portfolio/scenarios");
-export const fetchHedgeSummary = () =>
-  apiGet<unknown>("/api/v1/portfolio/hedge-summary");
 
 // Trade (read)
-// Working orders = live IB openTrades, proxied via the execution-engine.
-export const fetchOrders = () => apiGet<unknown>("/api/v1/orders");
 // Spot FX (EUR.USD cash) market order — write-gated proxy to the
 // execution-engine (/internal/orders). qty = base-currency notional.
 export interface SpotOrderBody {
@@ -219,7 +170,6 @@ export interface SpotOrderBody {
 }
 export const postSpotOrder = (body: SpotOrderBody) =>
   apiPost<unknown>("/api/v1/orders", body);
-export const fetchTradeStructures = () => apiGet<unknown>("/api/v1/trade/structures");
 export const fetchTradeLimits = () => apiGet<unknown>("/api/v1/trade/limits");
 export const fetchTradeBook = (symbol = "EURUSD") =>
   apiGet<unknown>("/api/v1/trade/book", { query: { symbol } });
@@ -227,7 +177,6 @@ export const fetchTradeBook = (symbol = "EURUSD") =>
 // Admin config (read; write lands in Phase 2 behind auth)
 export type ConfigResponse = Get<"/api/v1/admin/config", 200>;
 export const fetchConfig = () => apiGet<ConfigResponse>("/api/v1/admin/config");
-export const fetchConfigSchema = () => apiGet<unknown>("/api/v1/admin/config/schema");
 export const fetchConfigHistory = (limit = 50) =>
   apiGet<unknown>("/api/v1/admin/config/history", { query: { limit } });
 // Settings write (Phase 2 / 2w) — gated by auth in prod (require_write), free locally.
@@ -279,9 +228,6 @@ export const submitTrade = (previewId: string, executionMode: "live" | "mock" = 
     preview_id: previewId,
     execution_mode: executionMode,
   });
-
-export const cancelTradePreview = (previewId: string) =>
-  apiPost<unknown>(`/api/v1/trade/preview/${encodeURIComponent(previewId)}/cancel`, {});
 
 // Persisted submitted structures (DB: trade_structure + booked_position). Read-only,
 // so the Orders blotter survives refresh and reflects the real DB state.

@@ -14,7 +14,6 @@ Runs at api startup + via a periodic loop (30s).
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 from datetime import UTC, date, datetime, timedelta
@@ -48,21 +47,6 @@ logger = logging.getLogger(__name__)
 # ``interval_s`` (tests / scripts). Production runs override this via the
 # ``SYNC_INTERVAL_S`` env var read in ``engines.execution.main``.
 SNAPSHOT_INTERVAL_S = 5.0
-
-# Hardcoded multiplier for EUR FX futures + options (CME). A real impl
-# would use `ib.qualifyContractsAsync` to read contract.multiplier.
-EUR_MULTIPLIER = Decimal("125000")
-
-
-def _sec_type_to_instrument_type(sec_type: str) -> str:
-    return {"FUT": "FUTURE", "CONTFUT": "FUTURE", "OPT": "OPTION", "FOP": "OPTION", "STK": "SPOT"}.get(sec_type, "SPOT")
-
-
-def _right_to_option_type(right: str | None) -> str | None:
-    if not right:
-        return None
-    return {"C": "CALL", "P": "PUT", "CALL": "CALL", "PUT": "PUT"}.get(right)
-
 
 def _expiry_to_date(s: str | None) -> date | None:
     if not s:
@@ -114,26 +98,6 @@ def _ib_position_key(p: dict) -> str | None:
 
 def _db_position_key(p: OpenPosition) -> str | None:
     return p.structure
-
-
-async def _read_spot_from_redis(redis: aioredis.Redis | None, symbol: str = "EURUSD") -> float | None:
-    if redis is None:
-        return None
-    try:
-        raw = await redis.get(f"latest_spot:{symbol}")
-    except Exception:
-        return None
-    if raw is None:
-        return None
-    text = raw.decode() if isinstance(raw, bytes) else raw
-    try:
-        return float(text)
-    except ValueError:
-        try:
-            payload = json.loads(text)
-            return float(payload.get("mid") or payload.get("bid"))
-        except (ValueError, TypeError, AttributeError):
-            return None
 
 
 async def sync_positions_from_ib(

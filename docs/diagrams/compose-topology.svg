@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="720" viewBox="0 0 1160 720" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1160" height="720" fill="#ffffff"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#333"/></marker></defs>
+
+  <!-- fxvol-public -->
+  <rect x="40" y="30" width="300" height="110" rx="4" fill="#dae8fc" stroke="#6c8ebf" stroke-dasharray="5 3"/>
+  <text x="52" y="50" font-weight="bold" fill="#33455e">fxvol-public</text>
+  <rect x="90" y="66" width="130" height="56" rx="6" fill="#ffffff" stroke="#6c8ebf"/>
+  <text x="155" y="90" text-anchor="middle" font-weight="bold">nginx</text>
+  <text x="155" y="108" text-anchor="middle">:80 :443</text>
+
+  <!-- fxvol-internal -->
+  <rect x="40" y="170" width="840" height="500" rx="4" fill="#eef7ec" stroke="#82b366" stroke-dasharray="5 3"/>
+  <text x="52" y="190" font-weight="bold" fill="#3d6b2e">fxvol-internal (172.20.0.0/24)</text>
+
+  <rect x="70" y="205" width="130" height="46" rx="6" fill="#ffffff" stroke="#82b366"/>
+  <text x="135" y="233" text-anchor="middle">api :8000 (.13)</text>
+  <rect x="220" y="205" width="130" height="46" rx="6" fill="#ffffff" stroke="#82b366"/>
+  <text x="285" y="233" text-anchor="middle">frontend :8080</text>
+  <rect x="370" y="205" width="130" height="46" rx="6" fill="#f5f5f5" stroke="#666"/>
+  <text x="435" y="233" text-anchor="middle">postgres :5432</text>
+  <rect x="520" y="205" width="130" height="46" rx="6" fill="#f5f5f5" stroke="#666"/>
+  <text x="585" y="233" text-anchor="middle">redis :6379</text>
+
+  <!-- engines profile -->
+  <rect x="66" y="275" width="700" height="90" rx="4" fill="none" stroke="#b85450" stroke-dasharray="4 3"/>
+  <text x="78" y="292" font-style="italic" fill="#8a3b37">engines profile</text>
+  <g font-size="11">
+    <rect x="80" y="300" width="120" height="50" rx="6" fill="#fff" stroke="#b85450"/><text x="140" y="320" text-anchor="middle">market-data</text><text x="140" y="337" text-anchor="middle">.10 :9101 id1</text>
+    <rect x="210" y="300" width="120" height="50" rx="6" fill="#fff" stroke="#b85450"/><text x="270" y="320" text-anchor="middle">vol-engine</text><text x="270" y="337" text-anchor="middle">.11 :9102 id2</text>
+    <rect x="340" y="300" width="120" height="50" rx="6" fill="#fff" stroke="#b85450"/><text x="400" y="320" text-anchor="middle">risk-engine</text><text x="400" y="337" text-anchor="middle">.12 :9103 id3</text>
+    <rect x="470" y="300" width="120" height="50" rx="6" fill="#fff" stroke="#b85450"/><text x="530" y="320" text-anchor="middle">db-writer</text><text x="530" y="337" text-anchor="middle">:9105</text>
+    <rect x="600" y="300" width="150" height="50" rx="6" fill="#fff" stroke="#b85450"/><text x="675" y="320" text-anchor="middle">execution</text><text x="675" y="337" text-anchor="middle">.14 :8001 :9104 id5</text>
+  </g>
+
+  <!-- obs profile -->
+  <rect x="66" y="380" width="700" height="130" rx="4" fill="none" stroke="#d79b00" stroke-dasharray="4 3"/>
+  <text x="78" y="397" font-style="italic" fill="#a06f00">obs / metrics profile</text>
+  <g font-size="11">
+    <rect x="80" y="405" width="130" height="38" rx="6" fill="#fff2cc" stroke="#d79b00"/><text x="145" y="428" text-anchor="middle">prometheus :9090</text>
+    <rect x="220" y="405" width="120" height="38" rx="6" fill="#fff2cc" stroke="#d79b00"/><text x="280" y="428" text-anchor="middle">cadvisor :8080</text>
+    <rect x="350" y="405" width="100" height="38" rx="6" fill="#fff2cc" stroke="#d79b00"/><text x="400" y="428" text-anchor="middle">loki :3100</text>
+    <rect x="460" y="405" width="90" height="38" rx="6" fill="#fff2cc" stroke="#d79b00"/><text x="505" y="428" text-anchor="middle">promtail</text>
+    <rect x="80" y="455" width="130" height="38" rx="6" fill="#fff2cc" stroke="#d79b00"/><text x="145" y="478" text-anchor="middle">grafana :3000</text>
+    <rect x="220" y="455" width="140" height="38" rx="6" fill="#fff2cc" stroke="#d79b00"/><text x="290" y="478" text-anchor="middle">tempo :3200/:4317</text>
+    <rect x="370" y="455" width="160" height="38" rx="6" fill="#fff2cc" stroke="#d79b00"/><text x="450" y="478" text-anchor="middle">otel-collector :4317</text>
+  </g>
+
+  <!-- ib gateway -->
+  <rect x="90" y="530" width="180" height="60" rx="6" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="180" y="555" text-anchor="middle" font-weight="bold">ib-gateway :4002</text>
+  <text x="180" y="573" text-anchor="middle">(ib profile)</text>
+
+  <!-- fxvol-external -->
+  <rect x="900" y="530" width="240" height="100" rx="4" fill="#f8cecc" stroke="#b85450" stroke-dasharray="5 3"/>
+  <text x="912" y="550" font-weight="bold" fill="#8a3b37">fxvol-external (IB outbound)</text>
+  <rect x="960" y="565" width="130" height="50" rx="6" fill="#fff" stroke="#b85450"/>
+  <text x="1025" y="588" text-anchor="middle">IB servers</text>
+  <text x="1025" y="605" text-anchor="middle">(internet)</text>
+
+  <!-- edges -->
+  <line x1="155" y1="122" x2="135" y2="203" stroke="#333" marker-end="url(#a)"/>
+  <line x1="270" y1="590" x2="960" y2="590" stroke="#333" marker-end="url(#a)"/>
+</svg>

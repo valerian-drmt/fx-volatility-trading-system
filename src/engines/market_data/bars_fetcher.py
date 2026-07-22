@@ -25,6 +25,10 @@ TF_SPECS: dict[str, tuple[str, str]] = {
     "1D": ("1 D", "15 mins"),   # the day  — ~96 × 15m
     "1W": ("1 W", "1 hour"),    # the week — ~120 × 1h
     "1M": ("1 M", "4 hours"),   # the month — ~180 × 4h
+    # Not a ticker range: the year of daily closes feeds the historical-simulation
+    # VaR (core.risk.hist_var) with real spot moves to replay onto the book, so
+    # /portfolio/var no longer waits for the account's own P&L history.
+    "1Y": ("1 Y", "1 day"),     # the year — ~260 × 1d
 }
 
 

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="360" viewBox="0 0 1100 360" font-family="Helvetica,Arial,sans-serif">
+  <rect width="1100" height="360" fill="#ffffff"/>
+  <text x="40" y="34" font-size="14" font-weight="bold">Vol structures — legs by delta pillar + tenor (src/engines/execution/structures.py)</text>
+
+  <!-- structure cards -->
+  <g font-size="11">
+    <rect x="40"  y="60" width="190" height="150" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+    <text x="50" y="80" font-weight="bold">StraddleATM</text>
+    <text x="50" y="96" fill="#333">view: LEVEL (PC1)</text>
+    <text x="50" y="124">BUY Call @ ATM</text>
+    <text x="50" y="140">BUY Put  @ ATM</text>
+    <text x="50" y="164" fill="#555">(+ FUT delta hedge)</text>
+
+    <rect x="260" y="60" width="190" height="150" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+    <text x="270" y="80" font-weight="bold">RiskReversal25d</text>
+    <text x="270" y="96" fill="#333">view: SKEW (PC3)</text>
+    <text x="270" y="124">BUY  Call @ 25dc</text>
+    <text x="270" y="140">SELL Put  @ 25dp</text>
+    <text x="270" y="164" fill="#555">(inverse = LONG_PUT)</text>
+
+    <rect x="480" y="60" width="190" height="150" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+    <text x="490" y="80" font-weight="bold">Butterfly25d</text>
+    <text x="490" y="96" fill="#333">view: CONVEXITY (PC3)</text>
+    <text x="490" y="124">BUY  Call @ 25dc</text>
+    <text x="490" y="140">BUY  Put  @ 25dp</text>
+    <text x="490" y="156">SELL 2x   @ ATM</text>
+
+    <rect x="700" y="60" width="190" height="150" rx="8" fill="#e1d5e7" stroke="#9673a6"/>
+    <text x="710" y="80" font-weight="bold">CalendarSpread</text>
+    <text x="710" y="96" fill="#333">view: TERM SLOPE (PC2)</text>
+    <text x="710" y="124">SELL Call @ ATM near</text>
+    <text x="710" y="140">BUY  Call @ ATM far</text>
+
+    <rect x="920" y="60" width="150" height="150" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+    <text x="930" y="80" font-weight="bold">Strangle 10d/25d</text>
+    <text x="930" y="96" fill="#333">view: LEVEL</text>
+    <text x="930" y="124">BUY Put  @ 25dp</text>
+    <text x="930" y="140">BUY Call @ 25dc</text>
+    <text x="930" y="164" fill="#555">(OTM wings)</text>
+  </g>
+
+  <!-- greek row -->
+  <text x="550" y="248" font-size="12" font-weight="bold" text-anchor="middle">net greek expressed</text>
+  <g font-size="11">
+    <rect x="40"  y="262" width="190" height="56" rx="4" fill="#f5f5f5" stroke="#666"/>
+    <text x="135" y="286" text-anchor="middle">+Vega / +Gamma</text>
+    <text x="135" y="302" text-anchor="middle">delta ~ 0</text>
+    <rect x="260" y="262" width="190" height="56" rx="4" fill="#f5f5f5" stroke="#666"/>
+    <text x="355" y="286" text-anchor="middle">+/- Vanna (skew)</text>
+    <text x="355" y="302" text-anchor="middle">directional delta</text>
+    <rect x="480" y="262" width="190" height="56" rx="4" fill="#f5f5f5" stroke="#666"/>
+    <text x="575" y="286" text-anchor="middle">+/- Volga (convexity)</text>
+    <text x="575" y="302" text-anchor="middle">vega-neutral-ish</text>
+    <rect x="700" y="262" width="190" height="56" rx="4" fill="#f5f5f5" stroke="#666"/>
+    <text x="795" y="286" text-anchor="middle">forward-variance</text>
+    <text x="795" y="302" text-anchor="middle">(far vega vs near)</text>
+    <rect x="920" y="262" width="150" height="56" rx="4" fill="#f5f5f5" stroke="#666"/>
+    <text x="995" y="294" text-anchor="middle">+Vega, low premium</text>
+  </g>
+
+  <g stroke="#999" stroke-width="1" marker-end="url(#a)">
+    <line x1="135" y1="210" x2="135" y2="262"/>
+    <line x1="355" y1="210" x2="355" y2="262"/>
+    <line x1="575" y1="210" x2="575" y2="262"/>
+    <line x1="795" y1="210" x2="795" y2="262"/>
+    <line x1="995" y1="210" x2="995" y2="262"/>
+  </g>
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#999"/>
+    </marker>
+  </defs>
+</svg>

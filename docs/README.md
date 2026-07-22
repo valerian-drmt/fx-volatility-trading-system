@@ -1,41 +1,65 @@
-# `docs/` — index
+# Documentation
 
-Landing page. Each doc here answers one question. Pick the one that
-matches what you came for.
+The **FX Volatility Trading System** is an end-to-end platform for trading EUR/USD
+FX options. A live Interactive Brokers feed flows through five async Python engines
+that fit the volatility surface (SVI / SSVI / GARCH / HAR-RV), detect the market
+regime (GMM), and reduce the 30-dimensional surface to PCA signals; the desk then
+submits delta-hedged option structures and books every fill into a versioned
+Postgres audit trail. A React trading desk (voldesk) serves it all over REST + WebSockets.
+The public deployment at
+[valeriandarmente.dev/fx-volatility-trading-system](https://valeriandarmente.dev/fx-volatility-trading-system/)
+is read-only; trading, config, and the `/dev` console sit behind an auth boundary.
 
-## Operator runbooks
+These docs describe the system as it is built. Diagrams are **SVG** files under
+[`diagrams/`](diagrams/), embedded inline in the relevant `.md`.
 
-| Doc | What it covers |
+## Architecture
+
+| Doc | Covers |
 |---|---|
-| [run-local-stack.md](run-local-stack.md) | Boot the full v2 stack on a developer laptop (`scripts/local/stack.ps1`, expected log tabs, common failure modes). |
-| [docker-cheatsheet.md](docker-cheatsheet.md) | Day-to-day docker compose commands : restart, rebuild, logs, exec, Redis inspection, IB Gateway recycle. |
-| [db_schema_drift_workflow.md](db_schema_drift_workflow.md) | Once the **DB Schema** dev tab surfaces drift between `models.py` (ORM) and the live Postgres, how to feed the fix back through alembic. |
-| [branch-protection.md](branch-protection.md) | Enforced GitHub branch ruleset on `main` (required reviewers, required CI checks, no force-push). |
+| [architecture/overview.md](architecture/overview.md) | The platform in one page: what it trades, the 11-container core stack (6 ship our code) + optional obs stack, the live deployment. |
+| [architecture/backend.md](architecture/backend.md) | The `src/` layout (`api` / `core` / `engines` / `persistence` / `bus` / `shared`) and the five import-linter contracts. |
+| [architecture/data-flow.md](architecture/data-flow.md) | The live path: IB → engines → Redis pub/sub + cache → db-writer → Postgres; api reads DB + Redis; frontend via REST + WS. |
+| [architecture/frontend.md](architecture/frontend.md) | The voldesk React app: 7 views, zustand stores, the typed OpenAPI client, WS hooks, the `/dev` console. |
+| [architecture/database.md](architecture/database.md) | The Postgres schema: 27 ORM classes grouped by domain, Alembic flow, `VolConfig` versioning. |
 
-## Architecture & design
+## Volatility modeling
 
-| Doc | What it covers |
+| Doc | Covers |
 |---|---|
-| [vol_trading_pca/events_pipeline_spec.md](vol_trading_pca/events_pipeline_spec.md) | Multi-source economic-events pipeline (FRED + ECB + BoE + FOMC + Eurostat + ONS) — schema, dedup, scheduler. Kept as the canonical design reference for `src/api/orchestration/events/`. |
+| [vol-modeling/pca-signals.md](vol-modeling/pca-signals.md) | PCA on the surface snapshot → PC1/PC2/PC3 (level/slope/curvature) → z-scores → signals. |
+| [vol-modeling/volatility-surface.md](vol-modeling/volatility-surface.md) | SVI / SSVI calibration, smile, term structure, delta/tenor pillars, PCHIP, surface-Z. |
+| [vol-modeling/forecasting.md](vol-modeling/forecasting.md) | Realized-vol models: GARCH, HAR-RV, Yang-Zhang, VRP. |
+| [vol-modeling/regime.md](vol-modeling/regime.md) | GMM regime detection and how the regime gates signals. |
+| [vol-modeling/notebooks/pca_signal_pipeline_explained.ipynb](vol-modeling/notebooks/pca_signal_pipeline_explained.ipynb) | Runnable walk-through of the PCA signal pipeline. |
+
+## Strategy
+
+| Doc | Covers |
+|---|---|
+| [strategy/structures.md](strategy/structures.md) | Straddle, strangle, risk reversal, butterfly, calendar — built by delta pillar + tenor. |
+| [strategy/signals-to-trades.md](strategy/signals-to-trades.md) | Mapping PC signals to structures (level→straddle, slope→calendar, curvature→butterfly, skew→risk-reversal). |
+| [strategy/risk.md](strategy/risk.md) | Greeks (Δ/Γ/V/Θ/vanna/volga), VaR, greek limits, P&L attribution, delta hedging. |
+
+## Execution
+
+| Doc | Covers |
+|---|---|
+| [execution/oms.md](execution/oms.md) | Order management: free-legs book, structure submit, reconciliation, reaper/projection/reservation. |
+| [execution/order-lifecycle.md](execution/order-lifecycle.md) | Submit → IB → fills → booked position; states, idempotency, partial fills. |
+| [execution/ib-integration.md](execution/ib-integration.md) | IB Gateway, ib_insync, the four client IDs, single-session-per-userid, paper vs live. |
 
 ## Observability
 
-| Doc | What it covers |
+| Doc | Covers |
 |---|---|
-| [observability/CONVENTIONS.md](observability/CONVENTIONS.md) | Naming + label cardinality rules for metrics, log fields, and spans. |
-| [observability/RUNBOOKS.md](observability/RUNBOOKS.md) | Operator playbooks for the obs stack (Loki, Prometheus, Tempo, Grafana). |
+| [observability/conventions.md](observability/conventions.md) | Metric naming + label-cardinality rules (Prometheus / OTel). |
+| [observability/runbooks.md](observability/runbooks.md) | Loki / Prometheus / Tempo / Grafana operator playbooks. |
 
-## Where the rest lives
+## Ops
 
-- **Git workflow + commit conventions + PR cadence** → `releases/git_management/WORKFLOW.md` (single source of truth).
-- **Architecture diagram + container roles + folder layout** → repo root `README.md` and the in-app **Stack** dev tab.
-- **Live ER diagram + drift detection** → in-app **DB Schema** dev tab (introspects `Base.metadata` at runtime ; no static schema doc to drift against).
-- **API contract** → `http://localhost/docs` (FastAPI Swagger) + generated `frontend/src/api/schema.d.ts`.
-
-## Reading order for a new contributor
-
-1. Repo root [`README.md`](../README.md) — features + quickstart in 5 minutes.
-2. [`run-local-stack.md`](run-local-stack.md) — boot the stack locally.
-3. In-app dev console → **Stack** tab — see the 17 containers and their wiring.
-4. In-app dev console → **DB Schema** tab — see every table and FK without reading code.
-5. Pick a subsystem under `src/engines/` or `src/api/` and read its code.
+| Doc | Covers |
+|---|---|
+| [ops/local-stack.md](ops/local-stack.md) | Run locally: docker compose, `scripts/local` launchers, profiles, Alembic. |
+| [ops/deployment.md](ops/deployment.md) | Prod on AWS/EC2: push → GitHub Actions → OIDC → SSM → deploy, the deploy gate. |
+| [ops/secrets.md](ops/secrets.md) | SSM Parameter Store (KMS), load-to-RAM, never-on-disk, never-echo. |

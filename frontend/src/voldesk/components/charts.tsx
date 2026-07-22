@@ -5,7 +5,7 @@
  * prototype's CandleChart / GaussCurve / Sparkline / ZGauge were only used by
  * the parking-bench TestView (not in the nav) and are intentionally dropped.
  */
-import { memo, type ReactNode, useMemo } from "react";
+import { memo, useMemo } from "react";
 import { fmt } from "../data";
 
 // loadings heat colour: green (+) ↔ red (−), opacity scaled by |v|/max
@@ -54,63 +54,3 @@ export const Heatmap = memo(function Heatmap({ rows, cols, matrix, decimals = 2 
     </table>
   );
 });
-
-interface DonutSegment {
-  value: number;
-  color: string;
-  label?: string;
-}
-interface DonutProps {
-  segments: DonutSegment[];
-  center?: ReactNode;
-  size?: number;
-  thickness?: number;
-}
-
-export function Donut({ segments, center, size = 84, thickness = 11 }: DonutProps): JSX.Element {
-  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
-  const r = (size - thickness) / 2;
-  const circ = 2 * Math.PI * r;
-  const gap = 1.5;
-  let offset = 0;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: "block" }}>
-      <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--bg-3)" strokeWidth={thickness} />
-        {segments.map((s, i) => {
-          const len = (s.value / total) * circ;
-          const el = (
-            <circle
-              key={i}
-              cx={size / 2}
-              cy={size / 2}
-              r={r}
-              fill="none"
-              stroke={s.color}
-              strokeWidth={thickness}
-              strokeDasharray={`${Math.max(0, len - gap)} ${circ - Math.max(0, len - gap)}`}
-              strokeDashoffset={-offset}
-              strokeLinecap="butt"
-            />
-          );
-          offset += len;
-          return el;
-        })}
-      </g>
-      {center && (
-        <text
-          x={size / 2}
-          y={size / 2}
-          textAnchor="middle"
-          dominantBaseline="central"
-          fontSize="13"
-          fontWeight="700"
-          fill="var(--fg)"
-          fontFamily="var(--mono)"
-        >
-          {center}
-        </text>
-      )}
-    </svg>
-  );
-}

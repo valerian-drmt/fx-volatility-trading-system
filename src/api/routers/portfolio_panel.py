@@ -15,17 +15,22 @@ P1 + P2 + P3 shipped.
 from __future__ import annotations
 
 import itertools
+import json
+import logging
 import statistics
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db_session
+from api.dependencies import get_db_session, get_redis
+from bus import keys
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
 from core.risk import greek_limits as gl
+from core.risk.hist_var import market_shocks, portfolio_pnl, simulate_pnl_by_position
 from core.risk.marginal_var import component_var
 from core.risk.stress import reval_book
 from core.risk.var_factors import factor_var_breakdown
@@ -43,8 +48,11 @@ from persistence.models import (  # noqa: F401
 )
 from shared.contracts import parse_local_symbol
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/portfolio", tags=["portfolio-panel"])
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
+RedisDep = Annotated[aioredis.Redis, Depends(get_redis)]
 
 # Window → (lookback timedelta, bucket size in seconds for SQL downsampling).
 # Constant target ~1k–2k points across the curve.
@@ -798,13 +806,17 @@ async def _resolve_book(db: AsyncSession) -> tuple[float | None, list[dict[str, 
             continue
         qty_signed = float(p.quantity) * (1.0 if p.side == "BUY" else -1.0)
         if spec.instrument_type == "FUTURE":
-            baselines.append({"type": "FUTURE", "qty_signed": qty_signed, "mult": spec.multiplier})
+            baselines.append({
+                "id": str(p.id), "type": "FUTURE",
+                "qty_signed": qty_signed, "mult": spec.multiplier,
+            })
         elif spec.option_type and spec.strike and p.expiry and p.iv:
             T = max(0.001, (p.expiry - today).days / 365.0)
             iv_dec = float(p.iv)
             right = "C" if spec.option_type == "CALL" else "P"
             baselines.append({
-                "type": "OPTION", "qty_signed": qty_signed, "mult": spec.multiplier,
+                "id": str(p.id), "type": "OPTION",
+                "qty_signed": qty_signed, "mult": spec.multiplier,
                 "K": float(spec.strike), "T": T, "iv": iv_dec, "right": right,
                 "price_base": bs_price(current_spot, float(spec.strike), T, iv_dec, right),
             })
@@ -931,18 +943,22 @@ async def vega_pca(db: DbDep) -> dict[str, Any]:
 
 
 @router.get("/marginal-var")
-async def marginal_var(db: DbDep) -> dict[str, Any]:
+async def marginal_var(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """Per-position component VaR over the open book (R11 G-risk).
 
-    Builds each open position's daily P&L delta series from
-    ``open_position_history``, then decomposes the 99% historical portfolio VaR
-    into per-position standalone + component contributions (Euler allocation, see
-    ``core.risk.marginal_var``). The factor tag is the position's dominant greek
-    (spot / level / skew / curv). Empty until ~5 days of history accumulate.
+    Decomposes the 99% portfolio VaR into per-position standalone + component
+    contributions (Euler allocation, see ``core.risk.marginal_var``). The factor
+    tag is the position's dominant greek (spot / level / skew / curv).
+
+    Same two methods as ``/var``, and for the same reason: each position's P&L
+    series is preferably its own vector across the ~1y of replayed market
+    scenarios (``historical-simulation``, available immediately), falling back to
+    its realised daily P&L deltas out of ``open_position_history``
+    (``account-history``, needs ~5 days to accumulate).
     """
     positions = (await db.execute(select(OpenPosition))).scalars().all()
     if not positions:
-        return {"positions": [], "total": None, "n_days": 0}
+        return {"positions": [], "total": None, "n_days": 0, "method": "historical-simulation"}
     meta: dict[str, dict[str, Any]] = {}
     for pos in positions:
         cand = {
@@ -960,24 +976,30 @@ async def marginal_var(db: DbDep) -> dict[str, Any]:
             ),
             "factor": max(cand, key=lambda k: cand[k]),
         }
-    rows = (await db.execute(text("""
-        WITH daily AS (
-          SELECT DISTINCT ON (position_id, date_trunc('day', timestamp))
-                 position_id, date_trunc('day', timestamp) AS day, current_pnl_usd
-            FROM open_position_history
-           WHERE timestamp >= NOW() - INTERVAL '120 days' AND current_pnl_usd IS NOT NULL
-           ORDER BY position_id, date_trunc('day', timestamp), timestamp DESC
-        )
-        SELECT position_id, current_pnl_usd FROM daily ORDER BY position_id, day
-    """))).all()
-    cum: dict[str, list[float]] = {}
-    for pid, pnl in rows:
-        cum.setdefault(str(pid), []).append(float(pnl))
-    series_by_id = {
-        pid: [vals[i] - vals[i - 1] for i in range(1, len(vals))]
-        for pid, vals in cum.items()
-        if len(vals) >= 2
-    }
+    sim = await _hist_sim(db, redis)
+    if sim is not None:
+        series_by_id: dict[str, list[float]] = sim["by_id"]
+        method = "historical-simulation"
+    else:
+        rows = (await db.execute(text("""
+            WITH daily AS (
+              SELECT DISTINCT ON (position_id, date_trunc('day', timestamp))
+                     position_id, date_trunc('day', timestamp) AS day, current_pnl_usd
+                FROM open_position_history
+               WHERE timestamp >= NOW() - INTERVAL '120 days' AND current_pnl_usd IS NOT NULL
+               ORDER BY position_id, date_trunc('day', timestamp), timestamp DESC
+            )
+            SELECT position_id, current_pnl_usd FROM daily ORDER BY position_id, day
+        """))).all()
+        cum: dict[str, list[float]] = {}
+        for pid, pnl in rows:
+            cum.setdefault(str(pid), []).append(float(pnl))
+        series_by_id = {
+            pid: [vals[i] - vals[i - 1] for i in range(1, len(vals))]
+            for pid, vals in cum.items()
+            if len(vals) >= 2
+        }
+        method = "account-history"
     res = component_var(series_by_id)
     out = [
         {**row, "label": meta.get(row["id"], {}).get("label", row["id"]),
@@ -989,7 +1011,7 @@ async def marginal_var(db: DbDep) -> dict[str, Any]:
         {"portfolio_var_usd": res["portfolio_var_usd"], "diversification_pct": res["diversification_pct"]}
         if out else None
     )
-    return {"positions": out, "total": total, "n_days": res["n_days"]}
+    return {"positions": out, "total": total, "n_days": res["n_days"], "method": method}
 
 
 @router.get("/var-factors")
@@ -1610,13 +1632,19 @@ def _percentile(sorted_vals: list[float], q: float) -> float | None:
 # Max calendar-day span for two net-liq samples to count as a 1-day P&L delta.
 # 3 absorbs Fri→Mon weekends; anything longer is a data gap / capital move.
 _VAR_MAX_GAP_DAYS = 3
+# Below this the empirical quantiles are noise, whatever the method.
+_VAR_MIN_OBS = 5
+# Historical simulation has a full year of bars to draw on, so hold it to a much
+# higher bar than the account-history fallback: a 99% quantile off a part-filled
+# cache (a few weeks of bars) would be a worse number than no number at all.
+_HIST_SIM_MIN_SCENARIOS = 60
 
 
 def _var_stats(deltas: list[float]) -> dict[str, float] | None:
     """Pure compute (unit-tested): historical 1d VaR 95/99 + ES 99 (mean of the
     losses at or below the 99% quantile) from a list of net-liq daily changes.
-    `None` when < 5 observations. Values are losses (negative)."""
-    if len(deltas) < 5:
+    `None` when < ``_VAR_MIN_OBS`` observations. Values are losses (negative)."""
+    if len(deltas) < _VAR_MIN_OBS:
         return None
     s = sorted(deltas)
     var95 = _percentile(s, 0.05)
@@ -1917,16 +1945,84 @@ async def pnl_attribution_pivot(
     return {"by": by, "groups": groups, "total_usd": total}
 
 
-@router.get("/var")
-async def value_at_risk(db: DbDep) -> dict[str, Any]:
-    """Historical 1-day Value-at-Risk (R11 G-risk).
+async def _daily_closes(redis: aioredis.Redis, symbol: str = "EURUSD") -> list[float]:
+    """Year of daily closes from the market-data engine's bar cache (``bars:…:1Y``).
 
-    VaR 95 / 99 + ES 99 from the empirical distribution of daily ``net_liq``
-    changes over the last ~504 sessions. Values are losses (negative USD).
-    Fields ``None`` when < 5 days of history. The factor decomposition
-    (skew/level/curvature) + per-position marginal-VaR remain a separate G-risk
-    PR (they need greeks × shock attribution, not just the net-liq series).
+    Empty when the engines are down / the cache has not been populated yet — the
+    caller then falls back to the account-history VaR."""
+    try:
+        raw = await redis.get(keys.BARS.format(symbol=symbol, timeframe="1Y"))
+    except Exception:
+        logger.warning("var_bars_cache_unavailable", exc_info=True)
+        return []
+    if not raw:
+        return []
+    try:
+        rows = json.loads(raw)
+    except (TypeError, ValueError):
+        logger.warning("var_bars_cache_corrupt")
+        return []
+    return [float(r["c"]) for r in rows if isinstance(r, dict) and r.get("c")]
+
+
+async def _hist_sim(db: AsyncSession, redis: aioredis.Redis) -> dict[str, Any] | None:
+    """Replay a year of daily EURUSD moves through the current book.
+
+    Returns the portfolio P&L vector, the per-position vectors keyed by open
+    position id, and scenario metadata — or ``None`` when the book or the bar
+    cache is missing, i.e. when there is nothing to simulate."""
+    spot, baselines = await _resolve_book(db)
+    if spot is None or not baselines:
+        return None
+    shocks = market_shocks(await _daily_closes(redis))
+    if len(shocks) < _HIST_SIM_MIN_SCENARIOS:
+        return None
+    by_position = simulate_pnl_by_position(baselines, spot, shocks)
+    return {
+        "pnl": portfolio_pnl(by_position),
+        "by_id": {str(b["id"]): vec for b, vec in zip(baselines, by_position, strict=True)},
+        "meta": {
+            "current_spot": round(spot, 5),
+            "n_positions": len(baselines),
+            "n_scenarios": len(shocks),
+        },
+    }
+
+
+@router.get("/var")
+async def value_at_risk(db: DbDep, redis: RedisDep) -> dict[str, Any]:
+    """1-day Value-at-Risk — VaR 95 / 99 + ES 99, as losses (negative USD).
+
+    Two methods, in order of preference:
+
+    ``historical-simulation`` (preferred) replays ~1 year of real EURUSD daily
+    moves through **today's** book, full-BS revalued per scenario (see
+    ``core.risk.hist_var``). Available from the first open position, and it
+    measures the book that is actually on right now.
+
+    ``account-history`` (fallback, used when the book or the bar cache is empty)
+    is the empirical distribution of daily ``net_liq`` changes over the last
+    ~504 sessions. It describes the book as it *was*, and needs 5 daily
+    observations before it says anything — fields stay ``None`` until then.
+
+    ``hist`` is the histogram of whichever distribution was used, so the desk's
+    P&L-distribution chart always plots the same population the quantiles came from.
     """
+    sim = await _hist_sim(db, redis)
+    if sim is not None:
+        pnl = sim["pnl"]
+        stats = _var_stats(pnl)
+        return {
+            "computed_at": datetime.now(UTC).isoformat(),
+            "method": "historical-simulation",
+            "n_days": len(pnl),
+            "mean_daily_usd": round(sum(pnl) / len(pnl), 2) if pnl else None,
+            "var_95_usd": round(stats["var_95"], 2) if stats else None,
+            "var_99_usd": round(stats["var_99"], 2) if stats else None,
+            "es_99_usd": round(stats["es_99"], 2) if stats else None,
+            "hist": _histogram(pnl),
+            **sim["meta"],
+        }
     # Portfolio settings (editable): VaR lookback window + max day-gap.
     pf = {name: float(val) for name, val in (await db.execute(
         select(AppConfigScalar.name, AppConfigScalar.value)
@@ -1958,7 +2054,7 @@ async def value_at_risk(db: DbDep) -> dict[str, Any]:
     mean_daily = sum(deltas) / len(deltas) if deltas else None
     return {
         "computed_at": datetime.now(UTC).isoformat(),
-        "method": "historical",
+        "method": "account-history",
         "n_days": len(deltas),
         # live mean daily P&L → the table's expected-return column (× horizon),
         # no longer a hardcoded assumed return.

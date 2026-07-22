@@ -27,7 +27,3 @@ export const fmtCcy = (v: number, sym: string): string =>
 // signed notional : sign BEFORE the symbol so a short leg reads "−$3.57M"
 export const fmtCcySigned = (v: number, sym: string): string =>
   (v < 0 ? "−" : "+") + fmtCcy(Math.abs(v), sym);
-
-export const signalTone = (s: string): Tone =>
-  (({ tail: "danger", weak: "warn", noise: "neutral", strong: "good", aligned: "good" } as Record<string, Tone>)[s] ||
-    "neutral");

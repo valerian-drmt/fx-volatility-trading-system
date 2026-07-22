@@ -11,6 +11,9 @@ __pycache__/
 src/*.egg-info/
 CLAUDE.md
 .claude
+# Private dev/AI tooling repo, cloned in here for the assistant to read
+# (methodology + per-project config). Never part of the public repo.
+dev-workflow/
 # IDE : ignore everything except the shared run/debug configurations
 .idea/*
 !.idea/runConfigurations/

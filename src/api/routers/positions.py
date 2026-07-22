@@ -71,9 +71,6 @@ def _ib_sync_status(reconciled_at: datetime | None) -> str:
     return "missing"
 
 
-_FUT_MONTH_CODES = "FGHJKMNQUVXZ"  # Jan→Dec, IB convention
-
-
 def _tenor_bucket(maturity: Any) -> str | None:
     """Closest FX OTC tenor pillar (1W / 2W / 1M / 2M / 3M / 6M / 9M / 1Y / 2Y+).
     Thresholds are midpoints between nominal tenor day counts so a real
@@ -106,28 +103,6 @@ def _tenor_bucket(maturity: Any) -> str | None:
     if days <= 547:                      # 1Y ↔ 2Y
         return "1Y"
     return "2Y+"
-
-# Trading-class prefix per ``positions.symbol``. Used to rebuild the IB
-# ``localSymbol`` for display when not persisted to DB.
-_TRADING_CLASS = {
-    "EUR": "6E",
-    "M6E": "M6E",
-}
-
-
-def _ib_local_symbol(symbol: str | None, maturity: Any) -> str | None:
-    """Return the IB-style localSymbol like ``6EM6`` / ``M6EM6`` / ``6EK6``.
-    Returns None if the inputs aren't enough to build it."""
-    if not symbol or not maturity:
-        return None
-    cls = _TRADING_CLASS.get(symbol, symbol)
-    try:
-        month_letter = _FUT_MONTH_CODES[maturity.month - 1]
-        year_digit = str(maturity.year)[-1]
-    except (AttributeError, IndexError):
-        return None
-    return f"{cls}{month_letter}{year_digit}"
-
 
 async def _read_contract_marks(redis: Any) -> dict[int, float]:
     """Read the Redis hash ``contract_marks:EUR`` populated by execution-engine.
@@ -945,10 +920,6 @@ def _close_limit_from_mark(mark: float, side: str) -> float:
     if side == "BUY":
         return mark * (1.0 - _OUTSIDE_RTH_SLIPPAGE)
     return mark * (1.0 + _OUTSIDE_RTH_SLIPPAGE)
-
-
-# Below this, an expected − actual difference is rounding noise, not a break.
-_BREAK_EPS = 1e-4
 
 
 def _compute_breaks(

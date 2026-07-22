@@ -15,7 +15,7 @@ import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../comp
 import { TickerChart } from "../components/TickerChart";
 import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
 import type { Cash } from "../data";
-import { useDeskData, useTicks } from "../data/deskData";
+import { VAR_MIN_DAYS, useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
 import { adaptEquityCurve, type EquityPoint, type GreekSeries } from "../data/live/portfolio";
 import { adaptEvents } from "../data/live/trade";
@@ -387,7 +387,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
               </table>
             </div>
             <div data-pp="dash-var">
-              {v ? (
+              {v && v.var95 !== null && v.meanDaily !== null ? (
                 <table className="dt var-table">
                   <thead>
                     <tr>
@@ -399,8 +399,8 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                   <tbody>
                     {VAR_ROWS.map((r) => {
                       const m = Math.sqrt(r.days);
-                      const v95 = v.var95 * m;
-                      const retk = v.meanDaily * r.days;
+                      const v95 = (v.var95 ?? 0) * m;
+                      const retk = (v.meanDaily ?? 0) * r.days;
                       const sig = Math.abs(v95) / 1.645;
                       const muZ = sig ? retk / sig : 0;
                       return (
@@ -418,7 +418,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                   </tbody>
                 </table>
               ) : (
-                <div className="dim small mono">VaR accumulating…</div>
+                <div className="dim small mono">VaR accumulating… {v ? `${v.nDays}/${VAR_MIN_DAYS} days` : ""}</div>
               )}
             </div>
           </div>

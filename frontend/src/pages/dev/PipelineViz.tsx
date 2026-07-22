@@ -1,6 +1,6 @@
 /**
  * Dev "Pipeline" tab — live end-to-end plumbing schematic per PROD panel.
- * Faithful to the Claude Design mockup (Ticker bid/ask). Always live (no toggle):
+ * Faithful to the design mockup (Ticker bid/ask). Always live (no toggle):
  * the schema mounts the desk DataProvider and reads real state.
  *
  * Spot ticker = the REAL pipeline: each block resolves its actual health from the

@@ -146,6 +146,6 @@ Everything is driven from the laptop via **`scripts/aws/ec2.ps1`** (SSM, no SSH)
   `AUTH_PASSWORD_HASH`. `READ_ONLY_API=yes` on the IB side until real-money is explicitly decided.
 - **`/dev/*`**: `return 404` in the prod nginx conf (dev conf unchanged).
 - **Port 22 closed**: admin only via SSM Session Manager.
-- **Secrets**: never on the runner disk, never echoed (cf. `CLAUDE.md`). SSM = source of truth.
+- **Secrets**: never on the runner disk, never echoed. SSM = source of truth.
 - **IB**: `paper` until an explicit `live` decision; single session (cf. the IB note).
 - **OIDC**: no long-lived AWS key in GitHub; the role is assumed with a short-lived OIDC token.

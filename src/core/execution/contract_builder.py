@@ -18,14 +18,6 @@ from math import gcd
 _FOP_TRADING_CLASS = {"EUR": "EUU"}
 
 
-def _ib_expiry(d: date | str) -> str:
-    """IB expiry format = YYYYMMDD (no dashes)."""
-    if isinstance(d, str):
-        # Accept both ISO ('2026-06-19') and IB ('20260619').
-        return d.replace("-", "")
-    return d.strftime("%Y%m%d")
-
-
 def _next_quarterly_yyyymm(d: date | str) -> str:
     """Snap a date to the next CME quarterly contract month (Mar/Jun/Sep/Dec).
 

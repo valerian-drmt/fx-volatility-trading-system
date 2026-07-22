@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="680" viewBox="0 0 1120 680" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1120" height="680" fill="#ffffff"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#333"/></marker></defs>
+
+  <!-- trade_preview -->
+  <rect x="40" y="60" width="180" height="80" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="130" y="82" text-anchor="middle" font-weight="bold">trade_preview</text>
+  <text x="130" y="102" text-anchor="middle">PK preview_id</text>
+  <text x="130" y="122" text-anchor="middle">armed signal + checks</text>
+
+  <!-- trade_structure -->
+  <rect x="320" y="60" width="200" height="90" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="420" y="82" text-anchor="middle" font-weight="bold">trade_structure</text>
+  <text x="420" y="102" text-anchor="middle">PK id</text>
+  <text x="420" y="122" text-anchor="middle">multi-leg trade,</text>
+  <text x="420" y="140" text-anchor="middle">state machine</text>
+
+  <!-- trade_order -->
+  <rect x="320" y="240" width="200" height="90" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="420" y="262" text-anchor="middle" font-weight="bold">trade_order</text>
+  <text x="420" y="282" text-anchor="middle">PK id, FK structure_id</text>
+  <text x="420" y="302" text-anchor="middle">one leg</text>
+  <text x="420" y="320" text-anchor="middle">(entry/closing/hedge)</text>
+
+  <!-- trade_fill -->
+  <rect x="320" y="420" width="200" height="80" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="420" y="444" text-anchor="middle" font-weight="bold">trade_fill</text>
+  <text x="420" y="464" text-anchor="middle">PK id, FK order_id</text>
+  <text x="420" y="484" text-anchor="middle">one execution event</text>
+
+  <!-- leg_position -->
+  <rect x="620" y="420" width="200" height="80" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="720" y="444" text-anchor="middle" font-weight="bold">leg_position</text>
+  <text x="720" y="464" text-anchor="middle">PK id, FK order_id (uniq)</text>
+  <text x="720" y="484" text-anchor="middle">book = signed fold of fills</text>
+
+  <!-- reconciliation_break -->
+  <rect x="620" y="560" width="200" height="70" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="720" y="584" text-anchor="middle" font-weight="bold">reconciliation_break</text>
+  <text x="720" y="604" text-anchor="middle">PK id</text>
+  <text x="720" y="622" text-anchor="middle">book vs IB mirror gap</text>
+
+  <!-- booked_position -->
+  <rect x="620" y="60" width="200" height="90" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="720" y="82" text-anchor="middle" font-weight="bold">booked_position</text>
+  <text x="720" y="102" text-anchor="middle">PK id, FK structure_id (uniq)</text>
+  <text x="720" y="122" text-anchor="middle">trade-level P&amp;L,</text>
+  <text x="720" y="140" text-anchor="middle">state machine</text>
+
+  <!-- open_position -->
+  <rect x="40" y="240" width="200" height="80" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="140" y="264" text-anchor="middle" font-weight="bold">open_position</text>
+  <text x="140" y="284" text-anchor="middle">PK id, FK trade_id</text>
+  <text x="140" y="304" text-anchor="middle">live IB book mirror</text>
+
+  <!-- hedge_order -->
+  <rect x="900" y="60" width="180" height="80" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="990" y="84" text-anchor="middle" font-weight="bold">hedge_order</text>
+  <text x="990" y="104" text-anchor="middle">PK id, FK position_id</text>
+  <text x="990" y="124" text-anchor="middle">delta-rebalance future</text>
+
+  <!-- exit_alert -->
+  <rect x="900" y="180" width="180" height="70" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="990" y="204" text-anchor="middle" font-weight="bold">exit_alert</text>
+  <text x="990" y="224" text-anchor="middle">PK id, FK position_id</text>
+  <text x="990" y="242" text-anchor="middle">exit-rule trigger</text>
+
+  <!-- package -->
+  <rect x="40" y="420" width="180" height="70" fill="#e1d5e7" stroke="#9673a6"/>
+  <text x="130" y="444" text-anchor="middle" font-weight="bold">package</text>
+  <text x="130" y="464" text-anchor="middle">PK id</text>
+  <text x="130" y="482" text-anchor="middle">optional grouping</text>
+
+  <!-- relationships (arrow points to the "one" / parent side) -->
+  <line x1="320" y1="105" x2="222" y2="105" stroke="#333" marker-end="url(#a)"/>
+  <text x="270" y="98" text-anchor="middle" font-style="italic" fill="#555">preview_id</text>
+
+  <line x1="420" y1="240" x2="420" y2="152" stroke="#333" marker-end="url(#a)"/>
+  <text x="462" y="200" text-anchor="middle" font-style="italic" fill="#555">1..N legs</text>
+
+  <line x1="420" y1="420" x2="420" y2="332" stroke="#333" marker-end="url(#a)"/>
+  <text x="446" y="380" text-anchor="middle" font-style="italic" fill="#555">fills</text>
+
+  <line x1="620" y1="460" x2="522" y2="460" stroke="#333" marker-end="url(#a)"/>
+  <text x="570" y="452" text-anchor="middle" font-style="italic" fill="#555">1:1</text>
+
+  <line x1="720" y1="150" x2="520" y2="105" stroke="#333" marker-end="url(#a)"/>
+  <text x="620" y="118" text-anchor="middle" font-style="italic" fill="#555">1:1 structure</text>
+
+  <line x1="240" y1="270" x2="320" y2="120" stroke="#333" marker-end="url(#a)"/>
+  <text x="300" y="200" text-anchor="middle" font-style="italic" fill="#555">trade_id</text>
+
+  <line x1="900" y1="105" x2="822" y2="105" stroke="#333" marker-end="url(#a)"/>
+  <text x="860" y="98" text-anchor="middle" font-style="italic" fill="#555">position_id</text>
+
+  <line x1="900" y1="215" x2="822" y2="135" stroke="#333" marker-end="url(#a)"/>
+  <text x="874" y="184" text-anchor="middle" font-style="italic" fill="#555">position_id</text>
+
+  <line x1="220" y1="450" x2="320" y2="300" stroke="#333" marker-end="url(#a)"/>
+  <text x="248" y="392" text-anchor="middle" font-style="italic" fill="#555">package_id</text>
+
+  <line x1="720" y1="560" x2="720" y2="502" stroke="#333" marker-end="url(#a)"/>
+</svg>

@@ -80,7 +80,7 @@ All mandatory:
 |---|---|---|
 | `pipeline_redis_bus/` | Redis producers + consumers (`bus.publisher`, channels, cache TTL) | redis + 1-2 in-process Python producers/consumers |
 | `pipeline_db_writer/` | Redis events → db-writer → Postgres (idempotency, retry, shutdown) | postgres + redis + db-writer |
-| `pipeline_vol/` | ib-stub → market-data → redis → vol-engine → postgres (SVI fit, signal generation) | ib-stub + market-data + redis + vol-engine + postgres |
+| `pipeline_vol/` | ib-gateway → market-data → redis → vol-engine → postgres (SVI fit, signal generation) | ib-gateway + market-data + redis + vol-engine + postgres |
 | `pipeline_risk/` | spot+surface in redis → risk-engine → greeks+pnl_curve out (full cycle) | redis + risk-engine + (postgres for future positions stub) |
 | `pipeline_api_serving/` | REST endpoints reading DB+Redis: `/health`, `/api/v1/portfolio/header`, etc. | postgres + redis + api + (optional nginx) |
 | `pipeline_ws_bridge/` | engine PUBLISH → api SUBSCRIBE → WS broadcast → client receive | one engine + redis + api + nginx + websocket client |
@@ -125,7 +125,7 @@ from tests.fixtures.positions import make_long_call
 ## Pytest configuration
 
 Lives in `pyproject.toml § [tool.pytest.ini_options]` (single source of
-truth, cf. CLAUDE.md). Markers and `testpaths` are already defined there:
+truth). Markers and `testpaths` are already defined there:
 
 ```toml
 [tool.pytest.ini_options]

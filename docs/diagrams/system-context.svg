@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="580" viewBox="0 0 1120 580" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="1120" height="580" fill="#ffffff"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#333"/></marker></defs>
+
+  <!-- trader -->
+  <rect x="80" y="300" width="150" height="70" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="155" y="330" text-anchor="middle" font-weight="bold">Trader</text>
+  <text x="155" y="350" text-anchor="middle">(single-user desk)</text>
+
+  <!-- desk -->
+  <rect x="440" y="290" width="240" height="92" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="560" y="316" text-anchor="middle" font-weight="bold">FX Volatility Trading System</text>
+  <text x="560" y="336" text-anchor="middle">EUR/USD vol surface, PCA signals,</text>
+  <text x="560" y="356" text-anchor="middle">delta-hedged option structures</text>
+
+  <!-- ib -->
+  <rect x="860" y="120" width="220" height="92" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="970" y="146" text-anchor="middle" font-weight="bold">Interactive Brokers</text>
+  <text x="970" y="166" text-anchor="middle">IB Gateway (paper account)</text>
+  <text x="970" y="186" text-anchor="middle">ticks + EUR/USD FOP chains + orders</text>
+
+  <!-- events -->
+  <rect x="860" y="300" width="220" height="72" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="970" y="330" text-anchor="middle" font-weight="bold">Economic calendar sources</text>
+  <text x="970" y="350" text-anchor="middle">FRED / ECB / BoE / Eurostat / ONS</text>
+
+  <!-- ssm -->
+  <rect x="860" y="450" width="220" height="72" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="970" y="480" text-anchor="middle" font-weight="bold">AWS SSM Parameter Store</text>
+  <text x="970" y="500" text-anchor="middle">(KMS-encrypted secrets)</text>
+
+  <!-- edges -->
+  <line x1="230" y1="336" x2="438" y2="336" stroke="#333" marker-end="url(#a)"/>
+  <text x="334" y="328" text-anchor="middle" font-style="italic" fill="#555">browse / trade (web)</text>
+
+  <line x1="680" y1="310" x2="858" y2="200" stroke="#333" marker-end="url(#a)"/>
+  <text x="772" y="244" text-anchor="middle" font-style="italic" fill="#555">ib_insync</text>
+
+  <line x1="680" y1="336" x2="858" y2="336" stroke="#333" marker-end="url(#a)"/>
+  <text x="770" y="328" text-anchor="middle" font-style="italic" fill="#555">HTTP poll</text>
+
+  <line x1="680" y1="362" x2="858" y2="472" stroke="#333" marker-end="url(#a)"/>
+  <text x="772" y="432" text-anchor="middle" font-style="italic" fill="#555">load to RAM</text>
+</svg>

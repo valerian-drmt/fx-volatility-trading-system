@@ -1,12 +1,7 @@
 # Workflow — from issue to merge
 
-> ⛔ **SUSPENDED — not the active workflow.** The issue → branch → PR → merge
-> procedure below (and **all git worktrees**) is on hold. The active rule is:
-> **work only on `sandbox/r11`, commits only** — no worktree, no branch, no PR, no
-> `main`. See `CLAUDE.md § "Git / workflow — sandbox/r11 UNIQUEMENT"`. Re-enable
-> this procedure only when Valérian explicitly restarts main-decomposition.
+> The issue → branch → PR → merge lifecycle, followed for every deliverable.
 >
-> Single procedure, followed identically for **every** task.
 > Tracking = GitHub (Issues + [Project #5](https://github.com/users/valerian-drmt/projects/5)).
 > See also [`PROJECT_BOARD.md`](PROJECT_BOARD.md) and [`ISSUE_PROTOCOL.md`](ISSUE_PROTOCOL.md).
 
@@ -52,7 +47,7 @@ A blocker at any step → card ⛔ Blocked, with an issue comment explaining the
 - **type**: `feat · fix · refactor · infra · docs · chore · test · perf`.
 - **scope**: the component (`api`, `vol`, `risk`, `frontend`, `aws`, `ci`…).
 - Atomic: one commit = one coherent change that compiles.
-- **Forbidden**: `Co-Authored-By` or any bot/assistant name in authorship.
+- **Forbidden**: `Co-Authored-By` trailers or any bot name in authorship.
 
 ```
 feat(vol): add VRP computation on the SSVI surface
@@ -77,15 +72,14 @@ Any PR touching observable behavior goes through a **manual test** described in 
 - **CI** (`.github/workflows/ci.yml`): compileall + ruff + import-linter + pytest + frontend
   (lint/typecheck/build/vitest) + builds. All must be green.
 - **CodeQL** + **security-scan**: no new critical alert.
-- **Deploy**: on a `vX.Y.Z` tag, gated by `DEPLOY_ENABLED` (disarmed by default).
+- **Deploy** (`build.yml` → `deploy.yml`): on **push to `main`**, gated by the
+  `DEPLOY_ENABLED` repo variable. When armed, a code push auto-builds the images
+  and deploys to the EC2 (`.idea`/`scripts`/`docs` pushes are `paths-ignore`d).
 
 ## 6. Who triggers what
 
-**Tracking** (issues, board, moving cards) is handled freely by the assistant —
-these are not git operations.
-
-**Git operations** (commit / push / PR / merge / tag) remain **explicitly triggered** by the
-maintainer; the assistant does not push or merge on its own initiative.
+**Git operations** (commit / push / PR / merge / tag) are **explicitly triggered**
+by the maintainer — never run automatically.
 
 ## 7. Releases
 
