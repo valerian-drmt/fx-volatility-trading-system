@@ -195,11 +195,14 @@ export function adaptVar(raw: unknown): VarData {
     hi: n(b.hi) / 1000,
     count: n(b.count),
   }));
+  // null stays null (short history) — see VarData: 0 would be read as a real
+  // zero-risk VaR by every consumer.
+  const k = (x: number | null | undefined): number | null => (typeof x === "number" ? x / 1000 : null);
   return {
-    var95: n(v.var_95_usd) / 1000,
-    var99: n(v.var_99_usd) / 1000,
-    es99: n(v.es_99_usd) / 1000,
-    meanDaily: n(v.mean_daily_usd) / 1000,
+    var95: k(v.var_95_usd),
+    var99: k(v.var_99_usd),
+    es99: k(v.es_99_usd),
+    meanDaily: k(v.mean_daily_usd),
     nDays: v.n_days ?? 0,
     hist,
     perTenor: [],

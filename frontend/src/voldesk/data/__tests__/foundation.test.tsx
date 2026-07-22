@@ -320,6 +320,15 @@ describe("portfolio adapters", () => {
     expect(v.hist[0]).toEqual({ lo: -400, hi: -300, count: 3 });
   });
 
+  it("var: short history keeps the nulls (never a fabricated $0 VaR)", () => {
+    const v = adaptVar({
+      var_95_usd: null, var_99_usd: null, es_99_usd: null, mean_daily_usd: -22886.59, n_days: 2,
+      hist: [{ lo: -48481.15, hi: -38243.32, count: 1 }],
+    });
+    expect(v).toMatchObject({ var95: null, var99: null, es99: null, nDays: 2 });
+    expect(v.meanDaily).toBeCloseTo(-22.887, 3);
+  });
+
   it("risk-per-tenor: vega/vanna/volga $ → $k", () => {
     const t = adaptRiskPerTenor([{ bucket: "1M", vega_usd: 6400, vanna_usd: 152000, volga_usd: -64000, n_positions: 4 }]);
     expect(t[0]).toEqual({ tenor: "1M", vega: 6.4, vanna: 152, volga: -64, n: 4 });
