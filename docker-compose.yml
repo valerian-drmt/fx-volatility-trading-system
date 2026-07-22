@@ -512,20 +512,34 @@ services:
   # on fxvol-internal so Prometheus reaches the engine /metrics ports
   # without any host-side mapping. Grafana also gets fxvol-public for
   # browser access.
+  #
+  # `metrics` is a deliberate SUBSET of `obs`: prometheus + cadvisor only,
+  # i.e. exactly what the /dev Hardware tab needs to plot per-container
+  # CPU/RAM. It exists so prod can have those graphs WITHOUT the parts that
+  # must not run on a public host — Grafana (host-mapped :3000, anonymous
+  # viewer on by default) and promtail (read-write docker.sock). Both
+  # services list the two profiles, so `--profile obs` still starts the
+  # full LGTM set exactly as before.
 
   prometheus:
     image: prom/prometheus:v2.55.0
     container_name: fxvol-prometheus
-    profiles: ["obs"]
+    profiles: ["obs", "metrics"]
+    # Measured ~91 MB with the full 17-container local stack; the prod box is
+    # a t3.small (2 GB) running core-only, so the ceiling is ~3x headroom.
+    mem_limit: 256m
     restart: unless-stopped
     volumes:
       - ./obs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prom_data:/prometheus
     command:
+      # Retention is env-tunable because the same file serves a 16 GB laptop
+      # and a 2 GB EC2 box. The default is the prod-safe one — raise it in a
+      # local .env if you want a longer local history.
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
-      - '--storage.tsdb.retention.size=2GB'
+      - '--storage.tsdb.retention.time=${PROM_RETENTION_TIME:-7d}'
+      - '--storage.tsdb.retention.size=${PROM_RETENTION_SIZE:-512MB}'
       - '--web.enable-lifecycle'
     networks:
       - fxvol-internal
@@ -543,13 +557,28 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: fxvol-cadvisor
-    profiles: ["obs"]
+    profiles: ["obs", "metrics"]
+    # Measured ~21 MB locally. NOTE: on Docker Desktop / WSL2 cAdvisor only
+    # sees the root cgroup, so it reports nothing per-container and the api
+    # falls back to the docker.sock path (dev override). On a real Linux
+    # kernel (EC2) this is the path that actually serves the Hardware tab.
+    mem_limit: 128m
     restart: unless-stopped
     privileged: true
     command:
       - '--housekeeping_interval=10s'
       - '--docker_only=true'
       - '--store_container_labels=false'
+      # This host runs Docker's containerd image store (storage driver
+      # "overlayfs", not classic "overlay2"), so cAdvisor can't resolve each
+      # container's read-write layer — "failed to identify the read-write layer
+      # ID ... image/overlayfs/layerdb/mounts/<id>/mount-id: no such file". With
+      # --docker_only that error fails container *registration*, so only the root
+      # cgroup is exported (no name= label) and the Hardware tab stays empty.
+      # The rw-layer lookup is gated by the `disk` metric, so disabling disk
+      # (which the Hardware tab never uses — CPU + RAM only) skips it and the
+      # per-container CPU/RAM series come back with their fxvol-* name labels.
+      - '--disable_metrics=disk,diskIO'
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
