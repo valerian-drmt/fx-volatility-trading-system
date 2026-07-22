@@ -569,16 +569,12 @@ services:
       - '--housekeeping_interval=10s'
       - '--docker_only=true'
       - '--store_container_labels=false'
-      # This host runs Docker's containerd image store (storage driver
-      # "overlayfs", not classic "overlay2"), so cAdvisor can't resolve each
-      # container's read-write layer — "failed to identify the read-write layer
-      # ID ... image/overlayfs/layerdb/mounts/<id>/mount-id: no such file". With
-      # --docker_only that error fails container *registration*, so only the root
-      # cgroup is exported (no name= label) and the Hardware tab stays empty.
-      # The rw-layer lookup is gated by the `disk` metric, so disabling disk
-      # (which the Hardware tab never uses — CPU + RAM only) skips it and the
-      # per-container CPU/RAM series come back with their fxvol-* name labels.
-      - '--disable_metrics=disk,diskIO'
+    # NOTE: per-container metrics require the host's Docker to use the CLASSIC
+    # overlay2 image store, NOT the containerd image store (storage driver
+    # "overlayfs"). With the containerd store cAdvisor v0.49.x can't resolve each
+    # container's read-write layer and, under --docker_only, fails registration —
+    # the Hardware tab then shows nothing. setup.sh pins overlay2 via
+    # daemon.json {"features":{"containerd-snapshotter":false}}.
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro

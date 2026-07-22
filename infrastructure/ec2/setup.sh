@@ -33,10 +33,16 @@ if ! command -v docker > /dev/null; then
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
 
-echo "[setup] docker daemon: json-file log rotation (unbounded logs fill the root disk)"
+echo "[setup] docker daemon: json-file log rotation + classic overlay2 image store"
 mkdir -p /etc/docker
+# containerd-snapshotter=false pins the CLASSIC overlay2 image store. Recent
+# Docker defaults to the containerd image store (storage driver "overlayfs"),
+# whose on-disk layout cAdvisor v0.49.x can't resolve per-container ("failed to
+# identify the read-write layer ID …") — under --docker_only that fails container
+# registration, so the dev Hardware tab gets no per-container CPU/RAM series.
+# overlay2 keeps the layout cAdvisor understands.
 cat > /etc/docker/daemon.json <<'JSON'
-{ "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }
+{ "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" }, "features": { "containerd-snapshotter": false } }
 JSON
 
 systemctl enable --now docker
