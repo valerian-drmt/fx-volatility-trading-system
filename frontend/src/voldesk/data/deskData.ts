@@ -49,6 +49,11 @@ export interface VarData {
   es99: number | null;
   meanDaily: number | null; // live mean daily P&L ($k) — drives the expected-return column
   nDays: number;
+  /** Which distribution the numbers came from — "historical-simulation" replays
+   * ~1y of market moves through today's book, "account-history" uses the
+   * account's own realised daily P&L (needs VAR_MIN_DAYS to accumulate). */
+  method: string | null;
+  nPositions: number | null;
   hist: HistBin[];
   perTenor: TenorRisk[];
 }

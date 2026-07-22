@@ -188,6 +188,8 @@ export function adaptVar(raw: unknown): VarData {
     es_99_usd?: number | null;
     mean_daily_usd?: number | null;
     n_days?: number | null;
+    method?: string | null;
+    n_positions?: number | null;
     hist?: { lo?: number; hi?: number; count?: number }[];
   };
   const hist: HistBin[] = (v.hist ?? []).map((b) => ({
@@ -204,6 +206,8 @@ export function adaptVar(raw: unknown): VarData {
     es99: k(v.es_99_usd),
     meanDaily: k(v.mean_daily_usd),
     nDays: v.n_days ?? 0,
+    method: v.method ?? null,
+    nPositions: v.n_positions ?? null,
     hist,
     perTenor: [],
   };

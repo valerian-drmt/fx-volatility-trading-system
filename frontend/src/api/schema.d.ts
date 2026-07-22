@@ -999,11 +999,15 @@ export interface paths {
          * Marginal Var
          * @description Per-position component VaR over the open book (R11 G-risk).
          *
-         *     Builds each open position's daily P&L delta series from
-         *     ``open_position_history``, then decomposes the 99% historical portfolio VaR
-         *     into per-position standalone + component contributions (Euler allocation, see
-         *     ``core.risk.marginal_var``). The factor tag is the position's dominant greek
-         *     (spot / level / skew / curv). Empty until ~5 days of history accumulate.
+         *     Decomposes the 99% portfolio VaR into per-position standalone + component
+         *     contributions (Euler allocation, see ``core.risk.marginal_var``). The factor
+         *     tag is the position's dominant greek (spot / level / skew / curv).
+         *
+         *     Same two methods as ``/var``, and for the same reason: each position's P&L
+         *     series is preferably its own vector across the ~1y of replayed market
+         *     scenarios (``historical-simulation``, available immediately), falling back to
+         *     its realised daily P&L deltas out of ``open_position_history``
+         *     (``account-history``, needs ~5 days to accumulate).
          */
         get: operations["marginal_var_api_v1_portfolio_marginal_var_get"];
         put?: never;
@@ -1056,18 +1060,20 @@ export interface paths {
          * Pnl Attribution
          * @description Decompose realized P&L into greek contributions over the window.
          *
-         *     Per-position Taylor expansion :
+         *     Per-position Taylor expansion, anchored on the window-START (t-1) greeks :
          *         actual_pnl  = (pnl_now - pnl_then)
-         *         delta_pnl   = δ_now × (spot_now - spot_then)
-         *         gamma_pnl   = 0.5 × Γ_now × (spot_now - spot_then) ** 2
-         *         vega_pnl    = V_now × (iv_now - iv_then)      [vol points]
-         *         theta_pnl   = Θ_now × Δt_days
+         *         delta_pnl   = δ_t-1 × (spot_now - spot_then)
+         *         gamma_pnl   = 0.5 × Γ_t-1 × (spot_now - spot_then) ** 2
+         *         vega_pnl    = V_t-1 × (iv_now - iv_then)      [vol points]
+         *         theta_pnl   = Θ_t-1 × Δt_days
          *         residual    = actual_pnl - (delta + gamma + vega + theta)
          *
-         *     Frozen-greeks approximation (uses current greeks for both endpoints) —
-         *     fine for short windows ≤ 1 day, less accurate over a week. The
-         *     ``residual`` row captures the un-attributed drift so the operator can
-         *     spot when the Taylor expansion stops being valid.
+         *     Greeks are read at the START of the window (the t-1 snapshot), not the
+         *     current ones: over a 24h window an option's delta drifts materially, so
+         *     attributing with δ_now overshoots δ·dS and inflates the residual. Anchoring
+         *     on the entry greek keeps the expansion consistent; the residual then only
+         *     holds genuine vol convexity (volga/vanna) + higher order. Falls back to the
+         *     current greek when a t-1 greek column is null (older snapshots).
          *
          *     Sources :
          *       - IB-live positions (``position`` table) : t-1 row in
@@ -1274,13 +1280,22 @@ export interface paths {
         };
         /**
          * Value At Risk
-         * @description Historical 1-day Value-at-Risk (R11 G-risk).
+         * @description 1-day Value-at-Risk — VaR 95 / 99 + ES 99, as losses (negative USD).
          *
-         *     VaR 95 / 99 + ES 99 from the empirical distribution of daily ``net_liq``
-         *     changes over the last ~504 sessions. Values are losses (negative USD).
-         *     Fields ``None`` when < 5 days of history. The factor decomposition
-         *     (skew/level/curvature) + per-position marginal-VaR remain a separate G-risk
-         *     PR (they need greeks × shock attribution, not just the net-liq series).
+         *     Two methods, in order of preference:
+         *
+         *     ``historical-simulation`` (preferred) replays ~1 year of real EURUSD daily
+         *     moves through **today's** book, full-BS revalued per scenario (see
+         *     ``core.risk.hist_var``). Available from the first open position, and it
+         *     measures the book that is actually on right now.
+         *
+         *     ``account-history`` (fallback, used when the book or the bar cache is empty)
+         *     is the empirical distribution of daily ``net_liq`` changes over the last
+         *     ~504 sessions. It describes the book as it *was*, and needs 5 daily
+         *     observations before it says anything — fields stay ``None`` until then.
+         *
+         *     ``hist`` is the histogram of whichever distribution was used, so the desk's
+         *     P&L-distribution chart always plots the same population the quantiles came from.
          */
         get: operations["value_at_risk_api_v1_portfolio_var_get"];
         put?: never;
@@ -3708,9 +3723,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3725,15 +3738,6 @@ export interface operations {
                     };
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     db_schema_api_v1_dev_db_schema_get: {
@@ -3743,9 +3747,7 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3776,9 +3778,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3791,15 +3791,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3914,9 +3905,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3931,15 +3920,6 @@ export interface operations {
                     };
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     get_migration_api_v1_dev_migrations__rev_id__get: {
@@ -3949,9 +3929,7 @@ export interface operations {
             path: {
                 rev_id: string;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4050,9 +4028,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4065,15 +4041,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

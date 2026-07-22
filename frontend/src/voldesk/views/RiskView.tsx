@@ -120,7 +120,15 @@ interface VarCalc {
   muZ: number | null;
 }
 
-function VarCard({ var95, var99, es99, meanDaily, nDays, hist, fresh }: { var95: number | null; var99: number | null; es99: number | null; meanDaily: number | null; nDays: number; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
+// How the numbers were produced, for the panel badges. Historical simulation
+// replays ~1y of real market moves through today's book (available immediately);
+// the account-history fallback needs the account's own P&L to accumulate.
+function methodLabel(method: string | null, n: number): string {
+  if (method === "historical-simulation") return `1y sim · ${n} scenarios`;
+  return "account 1d";
+}
+
+function VarCard({ var95, var99, es99, meanDaily, nDays, method, hist, fresh }: { var95: number | null; var99: number | null; es99: number | null; meanDaily: number | null; nDays: number; method: string | null; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
   const rows: VarRow[] = [
     { id: "1d", lbl: "Daily", days: 1 },
     { id: "1w", lbl: "Weekly", days: 5 },
@@ -132,6 +140,7 @@ function VarCard({ var95, var99, es99, meanDaily, nDays, hist, fresh }: { var95:
   // "no risk", it's "not computed yet").
   const ready = var95 !== null && var99 !== null && es99 !== null;
   const warmup = ready ? null : `accumulating history — ${nDays}/${VAR_MIN_DAYS} days`;
+  const src = methodLabel(method, nDays);
   // ES/VaR is horizon-invariant under √t scaling → the live 1d ratio holds for
   // every row (no hardcoded per-horizon ratio).
   const ratio = ready && var99 !== null && var99 !== 0 && es99 !== null ? es99 / var99 : null;
@@ -161,7 +170,7 @@ function VarCard({ var95, var99, es99, meanDaily, nDays, hist, fresh }: { var95:
   return (
     <Panel title="Value at Risk" dataPp="var" right={<PanelLive status={fresh.status} />} className="stress-panel">
       <div className="var-1x3">
-        <Panel title="VaR table" dataPp="var-table" right={<FreshBadge fresh={fresh} label="historical 1d" />} className="trade-block" pad={false}>
+        <Panel title="VaR table" dataPp="var-table" right={<FreshBadge fresh={fresh} label={src} />} className="trade-block" pad={false}>
           <div className="table-scroll">
             <table className="dt var-table">
               <thead><tr>
@@ -188,7 +197,7 @@ function VarCard({ var95, var99, es99, meanDaily, nDays, hist, fresh }: { var95:
             </table>
           </div>
         </Panel>
-        <Panel title="P&L distribution" dataPp="var-chart" right={<FreshBadge fresh={fresh} label="empirical" />} className="trade-block">
+        <Panel title="P&L distribution" dataPp="var-chart" right={<FreshBadge fresh={fresh} label={method === "historical-simulation" ? "simulated" : "empirical"} />} className="trade-block">
           <div className="var-tf-group in-chart">
             {rows.map((r) => (
               <button
@@ -201,7 +210,7 @@ function VarCard({ var95, var99, es99, meanDaily, nDays, hist, fresh }: { var95:
             ))}
           </div>
           <div className="ret-chart">
-            <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · empirical</span></div>
+            <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · {src}</span></div>
             <EmpiricalHist hist={histScaled} var95={c.v95 ?? 0} var99={c.v99 ?? 0} es99={c.es ?? 0} retk={c.retk ?? 0} letter={letter} note={warmup ?? undefined} />
             {warmup ? null : (
               <div className="hist-leg dim mono">
@@ -507,7 +516,7 @@ export function RiskView(): JSX.Element {
   // No live VaR yet (history < VAR_MIN_DAYS → backend returns null): keep the
   // nulls so the card shows dashes + a warm-up note, NOT $0k VaR and not a
   // fabricated mock VaR scaled across horizons.
-  const vd = risk.data ?? { var95: null, var99: null, es99: null, meanDaily: null, nDays: 0, hist: [], perTenor: [] };
+  const vd = risk.data ?? { var95: null, var99: null, es99: null, meanDaily: null, nDays: 0, method: null, nPositions: null, hist: [], perTenor: [] };
   const pt = vd.perTenor; // vega/vanna/volga by tenor ($k) — live (PR 5)
   // net 2nd-order greeks = Σ of their tenor buckets (live), by construction
   const netVanna = pt.reduce((s, r) => s + r.vanna, 0);
@@ -551,7 +560,7 @@ export function RiskView(): JSX.Element {
           </div>
         </Panel>
         </div>
-        <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} nDays={vd.nDays} hist={vd.hist} fresh={risk} />
+        <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} nDays={vd.nDays} method={vd.method} hist={vd.hist} fresh={risk} />
       </div>
       <StressEngine />
       <LiveLadders />

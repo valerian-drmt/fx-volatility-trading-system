@@ -21,8 +21,10 @@ from api.schemas.analytics import (
 )
 from bus import keys
 
-# range presets the market-data engine caches (bus.BARS keys)
-_BAR_TIMEFRAMES = ("1D", "1W", "1M")
+# range presets the market-data engine caches (bus.BARS keys). "1Y" is daily
+# closes — cached for the historical-simulation VaR rather than for the ticker,
+# but served here too since it is the same cache.
+_BAR_TIMEFRAMES = ("1D", "1W", "1M", "1Y")
 
 router = APIRouter(prefix="/api/v1", tags=["analytics"])
 
