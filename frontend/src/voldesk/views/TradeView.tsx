@@ -152,17 +152,23 @@ function prettyProduct(s: SubmittedTrade): string {
   return formatStructLabel(s.product_label) ?? formatStructLabel(s.structure_type) ?? "Structure";
 }
 
-// CME contract-month codes → short month, to read a leg's expiry off its IB
-// localSymbol (e.g. "EUUU6 C1147" → U → Sep). Lets a calendar's blotter rows show
-// each leg's OWN expiry instead of the single structure tenor on both.
-const CME_MONTHS: Record<string, string> = {
-  F: "Jan", G: "Feb", H: "Mar", J: "Apr", K: "May", M: "Jun",
-  N: "Jul", Q: "Aug", U: "Sep", V: "Oct", X: "Nov", Z: "Dec",
-};
-function legMonth(contract: string | null | undefined): string | null {
+// Read a leg's TENOR bucket off its IB localSymbol's CME month code (e.g.
+// "EUUU6 C1147" → U = Sep) as the whole-month distance from the trade's entry
+// date → "2M". Lets a calendar's blotter rows show each leg's OWN tenor (near vs
+// far, e.g. 2M / 4M) instead of the single structure tenor on both.
+const CME_MONTH_CODES = "FGHJKMNQUVXZ"; // F=Jan … Z=Dec
+function legTenor(contract: string | null | undefined, refIso: string | null | undefined): string | null {
   const sym = (contract ?? "").trim().split(/\s/)[0] ?? "";
-  const m = /([FGHJKMNQUVXZ])\d$/.exec(sym); // month+year at the end of the symbol token
-  return m ? CME_MONTHS[m[1]!]! : null;
+  const m = /([FGHJKMNQUVXZ])(\d)$/.exec(sym); // month + year digit at the token end
+  if (!m) return null;
+  const monthIdx = CME_MONTH_CODES.indexOf(m[1]!);
+  const ref = refIso ? new Date(refIso) : new Date();
+  if (Number.isNaN(ref.getTime())) return null;
+  const refYear = ref.getUTCFullYear();
+  let year = Math.floor(refYear / 10) * 10 + Number(m[2]!); // single-digit year → full
+  if (year < refYear - 1) year += 10;                       // decade wrap guard
+  const months = (year - refYear) * 12 + (monthIdx - ref.getUTCMonth());
+  return `${Math.max(1, months)}M`;
 }
 
 // Per-leg blotter label, e.g. "Butterfly 3M · Sell Call 1130". The structure
@@ -195,10 +201,10 @@ function legBlotterLabel(s: SubmittedTrade, leg: SubmittedLeg): string {
   // legs as one tenor. When the legs span >1 month, tag each row with its OWN
   // expiry month (near vs far); single-expiry structures (RR, straddle, butterfly)
   // keep the shared reference tenor, which is correct for them.
-  const legMonths = (s.legs ?? []).map((l) => legMonth(l.contract)).filter(Boolean);
-  const multiExpiry = new Set(legMonths).size > 1;
+  const legTenors = (s.legs ?? []).map((l) => legTenor(l.contract, s.created_at)).filter(Boolean);
+  const multiExpiry = new Set(legTenors).size > 1;
   const tenorPart = multiExpiry
-    ? (legMonth(leg.contract) ?? s.reference_tenor ?? "")
+    ? (legTenor(leg.contract, s.created_at) ?? s.reference_tenor ?? "")
     : (s.reference_tenor ?? "");
   const base = `${prettyProduct(s)}${tenorPart ? " " + tenorPart : ""}`;
   if ((s.legs?.length ?? 1) <= 1) return base;
