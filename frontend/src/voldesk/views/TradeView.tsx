@@ -218,7 +218,14 @@ function legBlotterLabel(s: SubmittedTrade, leg: SubmittedLeg): string {
   if (wings.length === 1) wing = wings[0]!;
   else if (wings.length >= 2 && s.legs) wing = assignLegWing(s.legs, leg, wings);
   else wing = DATA.strikeToWing(leg.strike, s.reference_tenor ?? "");
-  return `${base} · ${verb} ${kind}${wing ? " " + wing : ""}`;
+  // Tag the leg's Δ with its wing (c/p): a RR's two legs sit on OPPOSITE wings
+  // even at the same |Δ|, so the structure reads "25Δ" but the legs read
+  // "25Δc" (call) / "25Δp" (put). ATM has no wing → left as-is.
+  const wingTag =
+    wing && wing !== "ATM" && (kind === "Call" || kind === "Put")
+      ? `${wing}${kind === "Call" ? "c" : "p"}`
+      : wing;
+  return `${base} · ${verb} ${kind}${wingTag ? " " + wingTag : ""}`;
 }
 
 // Single source of truth for Open positions : turn the server-joined

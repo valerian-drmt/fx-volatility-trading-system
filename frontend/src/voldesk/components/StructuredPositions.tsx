@@ -20,6 +20,20 @@ function prettyStruct(t: string, label: string | null): string {
   return (label || t || "structure").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Pull the structure's Δ bucket ("25" / "10") off its label so each leg can show
+// its WING-tagged delta: a Risk Reversal's two legs sit on opposite wings even at
+// the same |Δ| → call = "25Δc", put = "25Δp". Null when the structure declares no
+// bucket (calendar, ATM straddle, older rows) → no leg tag.
+function structDeltaLevel(product_label: string | null, structure_type: string): string | null {
+  const m = /(\d+)\s*d/.exec(`${product_label ?? ""} ${structure_type ?? ""}`.toLowerCase());
+  return m ? m[1]! : null;
+}
+function legWingTag(contract_type: string, level: string | null): string {
+  const ct = (contract_type ?? "").toLowerCase();
+  if (!level || (ct !== "call" && ct !== "put")) return "";
+  return ` ${level}Δ${ct === "call" ? "c" : "p"}`;
+}
+
 export function StructuredPositions(): JSX.Element {
   const q = useFetch<StructuredPositions>(() => fetchStructuredPositions(), 60_000, true, 20_000);
   const data = q.data;
@@ -86,6 +100,7 @@ function fillSummary(legs: StructuredPositions["structures"][number]["legs"]): {
 
 function StructureGroup({ s }: { s: StructuredPositions["structures"][number] }): JSX.Element {
   const fill = fillSummary(s.legs);
+  const dLevel = structDeltaLevel(s.product_label, s.structure_type);
   return (
     <>
       <tr className="sp-group">
@@ -109,7 +124,7 @@ function StructureGroup({ s }: { s: StructuredPositions["structures"][number] })
       </tr>
       {s.legs.map((lg) => (
         <tr key={lg.leg_idx} className="sp-leg">
-          <td className="l sp-leg-name">↳ {lg.contract_type}{lg.ib_local_symbol ? <span className="dim small mono"> · {lg.ib_local_symbol}</span> : ""}</td>
+          <td className="l sp-leg-name">↳ {lg.contract_type}{legWingTag(lg.contract_type, dLevel) ? <span className="dim small"> {legWingTag(lg.contract_type, dLevel).trim()}</span> : ""}{lg.ib_local_symbol ? <span className="dim small mono"> · {lg.ib_local_symbol}</span> : ""}</td>
           <td><span className={"side-pill " + (lg.side === "BUY" ? "long" : "short")}>{lg.side}</span></td>
           <td className="r mono">{lg.qty}</td>
           <td className="r mono dim">{lg.strike != null ? lg.strike.toFixed(4) : "—"}</td>
