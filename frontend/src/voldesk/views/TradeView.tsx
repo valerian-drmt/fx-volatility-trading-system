@@ -150,6 +150,19 @@ function prettyProduct(s: SubmittedTrade): string {
   return formatStructLabel(s.product_label) ?? formatStructLabel(s.structure_type) ?? "Structure";
 }
 
+// CME contract-month codes → short month, to read a leg's expiry off its IB
+// localSymbol (e.g. "EUUU6 C1147" → U → Sep). Lets a calendar's blotter rows show
+// each leg's OWN expiry instead of the single structure tenor on both.
+const CME_MONTHS: Record<string, string> = {
+  F: "Jan", G: "Feb", H: "Mar", J: "Apr", K: "May", M: "Jun",
+  N: "Jul", Q: "Aug", U: "Sep", V: "Oct", X: "Nov", Z: "Dec",
+};
+function legMonth(contract: string | null | undefined): string | null {
+  const sym = (contract ?? "").trim().split(/\s/)[0] ?? "";
+  const m = /([FGHJKMNQUVXZ])\d$/.exec(sym); // month+year at the end of the symbol token
+  return m ? CME_MONTHS[m[1]!]! : null;
+}
+
 // Per-leg blotter label, e.g. "Butterfly 3M · Sell Call 1130". The structure
 // name + tenor prefix keeps every leg row tied to its product; the suffix
 // (side + Call/Put/Fut + strike) says which leg this row is. Single-leg orders
@@ -175,7 +188,17 @@ function assignLegWing(legs: SubmittedLeg[], leg: SubmittedLeg, wings: string[])
 }
 
 function legBlotterLabel(s: SubmittedTrade, leg: SubmittedLeg): string {
-  const base = `${prettyProduct(s)}${s.reference_tenor ? " " + s.reference_tenor : ""}`;
+  // Multi-expiry structures (calendar / diagonal) put their legs on DIFFERENT
+  // contract months, so the single structure tenor ("Calendar 2M") mislabels both
+  // legs as one tenor. When the legs span >1 month, tag each row with its OWN
+  // expiry month (near vs far); single-expiry structures (RR, straddle, butterfly)
+  // keep the shared reference tenor, which is correct for them.
+  const legMonths = (s.legs ?? []).map((l) => legMonth(l.contract)).filter(Boolean);
+  const multiExpiry = new Set(legMonths).size > 1;
+  const tenorPart = multiExpiry
+    ? (legMonth(leg.contract) ?? s.reference_tenor ?? "")
+    : (s.reference_tenor ?? "");
+  const base = `${prettyProduct(s)}${tenorPart ? " " + tenorPart : ""}`;
   if ((s.legs?.length ?? 1) <= 1) return base;
   const verb = leg.side === "SELL" ? "Sell" : "Buy";
   const ct = (leg.contract_type ?? "").toLowerCase();
