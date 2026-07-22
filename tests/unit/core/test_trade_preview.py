@@ -582,6 +582,20 @@ def test_classify_strangle_vs_straddle_and_delta_bucket():
     assert _strangle_delta_bucket([_leg("put", 1.00), _leg("call", 1.20)], None) == ""
 
 
+def test_classify_risk_reversal_carries_delta_bucket():
+    # RR = buy call + sell put (opposite sides). Like the strangle it now carries
+    # its Δ bucket ("risk reversal 10d") so the blotter shows the wing the trader
+    # picked instead of re-bucketing the live strike to the wrong pillar.
+    from core.trade_preview import Leg, classify_legs
+
+    def _leg(ct: str, k: float, side: str) -> Leg:
+        return Leg(leg_idx=0, contract_type=ct, tenor="1M", expiry="", dte=30,
+                   strike=k, qty_factor=1, side=side, entry_iv_pct=7.0)
+    legs = [_leg("call", 1.20, "BUY"), _leg("put", 1.00, "SELL")]
+    assert classify_legs(legs, 1.10) == "risk reversal 10d"  # wide OTM wings → 10Δ
+    assert classify_legs(legs, None) == "risk reversal"       # no spot → bare
+
+
 def test_classify_legs_calendar_two_tenors():
     # a calendar = one type, two expiries — regardless of side. Both the
     # (theoretical) same-side shape and the REAL opposite-side shape the order

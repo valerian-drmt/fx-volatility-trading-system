@@ -451,7 +451,12 @@ def classify_legs(legs: list[Leg], spot: float | None = None) -> str:
             if len(types) == 1:
                 return f"{side} vertical spread"
         if n == 2 and side is None and types == {"call", "put"}:
-            return "risk reversal"
+            # Carry the Δ bucket like the strangle does ("risk reversal 25d"), so
+            # the blotter shows the wing the trader actually picked instead of
+            # re-bucketing the live strike (which snaps to the wrong pillar). A
+            # symmetric RR yields one bucket; an asymmetric one yields none → bare.
+            bucket = _strangle_delta_bucket(opts, spot)
+            return f"risk reversal{(' ' + bucket) if bucket else ''}"
         # opposite sides, one type, one tenor → a vertical (call/put) spread
         if n == 2 and side is None and len(types) == 1 and len(tenors) == 1:
             return f"{next(iter(types))} spread"

@@ -129,6 +129,8 @@ function formatStructLabel(label: string | null | undefined): string | null {
   if (sm) return `Strangle ${sm[1]}Δ`;
   if (l.includes("strangle")) return "Strangle";
   if (l.includes("straddle")) return "Straddle";
+  const rrm = /risk reversal\s*(\d+)\s*d/.exec(l);
+  if (rrm) return `Risk Reversal ${rrm[1]}Δ`;
   if (l.includes("risk reversal")) return "Risk Reversal";
   if (l.includes("butterfly")) return "Butterfly";
   if (l.includes("calendar")) return "Calendar";
