@@ -117,6 +117,19 @@ class OrderExecutor:
                 self._ib = None
                 return
             self._ib = ib
+            # Paper (and any account without a real-time CME data subscription)
+            # returns NO live quote for the FOP options, so live_submit falls back
+            # to a theoretical limit. That fair-value limit is marketable for a BUY
+            # (fair >= ask) but sits ABOVE the bid for a SELL, so the sell leg of a
+            # structure (e.g. RR sell-call, calendar sell-call) hangs unfilled at
+            # "submitted" while the buy leg fills → half-filled structures. Request
+            # delayed-frozen data (type 4: delayed during hours, frozen after) so the
+            # tickers populate a bid/ask and the marketable limit prices at the touch
+            # (SELL -> bid) and fills. Best-effort.
+            try:
+                ib.reqMarketDataType(4)
+            except Exception as e:
+                logger.warning("ib_reqmarketdatatype_failed: %s", e)
             # Explicitly subscribe to the positions feed so ``ib.positions()``
             # populates after a reconnect (some gateways don't auto-push it).
             # Best-effort : the portfolio fallback in list_positions covers a miss.
