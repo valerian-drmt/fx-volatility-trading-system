@@ -51,7 +51,10 @@ DB_PASSWORD=${DB_PASSWORD}
 FRED_API_KEY=${FRED_API_KEY}
 ENV=prod
 TRADING_MODE=paper
-READ_ONLY_API=yes
+# Gateway API mode: 'yes' rejects every order placement (IB error 321). Toggled
+# by the repo variable READ_ONLY_API via deploy.yml; defaults to 'yes' (safe) when
+# unset/empty. Set the repo var to 'no' to let the authed trader place paper orders.
+READ_ONLY_API=${READ_ONLY_API:-yes}
 COMPOSE_PROFILES=${COMPOSE_PROFILES:-}
 NGINX_CONF_FILE=./infrastructure/nginx/nginx.conf
 LETSENCRYPT_DIR=/etc/letsencrypt

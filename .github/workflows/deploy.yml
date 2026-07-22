@@ -103,6 +103,7 @@ jobs:
           IMAGE_TAG: ${{ steps.resolve.outputs.image_tag }}
           OWNER: ${{ env.OWNER }}
           PROFILES: ${{ vars.COMPOSE_PROFILES }}
+          READONLY: ${{ vars.READ_ONLY_API }}
         run: |
           # Build the SendCommand parameters with jq so JSON escaping is correct.
           # Host bootstrap: pull payload from S3, extract, hand off to the
@@ -111,13 +112,14 @@ jobs:
           # here (`set -eu` only). remote-deploy.sh runs under bash (full set).
           jq -n \
             --arg bucket "$BUCKET" --arg sha "$SHA" --arg region "$REGION" \
-            --arg tag "$IMAGE_TAG" --arg owner "$OWNER" --arg profiles "$PROFILES" '
+            --arg tag "$IMAGE_TAG" --arg owner "$OWNER" --arg profiles "$PROFILES" \
+            --arg readonly "$READONLY" '
             { commands: [
                 "set -eu",
                 "cd /opt/fxvol",
                 "aws s3 cp s3://\($bucket)/\($sha).tar.gz /tmp/payload.tar.gz --region \($region)",
                 "tar xzf /tmp/payload.tar.gz -C /opt/fxvol",
-                "IMAGE_TAG=\($tag) OWNER=\($owner) AWS_REGION=\($region) COMPOSE_PROFILES=\"\($profiles)\" bash infrastructure/ec2/remote-deploy.sh"
+                "IMAGE_TAG=\($tag) OWNER=\($owner) AWS_REGION=\($region) COMPOSE_PROFILES=\"\($profiles)\" READ_ONLY_API=\"\($readonly)\" bash infrastructure/ec2/remote-deploy.sh"
             ] }' > ssm-params.json
 
           cmd_id=$(aws ssm send-command \
