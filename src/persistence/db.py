@@ -8,8 +8,6 @@ URL via ``monkeypatch`` before the first call.
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -51,19 +49,6 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
             class_=AsyncSession,
         )
     return _sessionmaker
-
-
-@asynccontextmanager
-async def get_session() -> AsyncIterator[AsyncSession]:
-    """Yield an AsyncSession inside a transaction, commit on success, rollback on error."""
-    maker = get_sessionmaker()
-    async with maker() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
 
 
 def reset_engine_for_tests() -> None:

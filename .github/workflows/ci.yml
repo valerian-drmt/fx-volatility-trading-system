@@ -242,7 +242,7 @@ jobs:
     name: Playwright e2e against ephemeral docker-compose stack
     # R8 PR #4 : the existing frontend-e2e job runs against vite preview
     # with MSW / route.fulfill mocks. This job brings up the real api,
-    # frontend container, Nginx, postgres, redis and an ib-stub, then
+    # frontend container, Nginx, postgres and redis, then
     # points Playwright at http://localhost (Nginx entrypoint). Validates
     # the full wiring is reachable through the reverse proxy, not just
     # the bundle in isolation.

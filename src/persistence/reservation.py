@@ -14,7 +14,6 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.execution.reservation import try_reserve
 from persistence.models import LegPosition, StructureOrder
 
 # An in-flight close still holding a reservation (everything not terminal).
@@ -46,20 +45,4 @@ async def recompute_reservation(db: AsyncSession, *, entry_order_id: int) -> Dec
     reserved = sum(max(int(q) - int(qf or 0), 0) for q, qf in rows)
     lp = await _leg_row(db, entry_order_id)
     lp.reserved_qty = Decimal(reserved)
-    return lp.reserved_qty
-
-
-async def try_reserve_on_leg(
-    db: AsyncSession, *, entry_order_id: int, requested: float
-) -> Decimal:
-    """O(1) admission guard: reserve ``requested`` on a leg or raise
-    ``OverReserveError``. The building block for a race-free close admission
-    (the stateless 409 re-sum's replacement)."""
-    lp = await _leg_row(db, entry_order_id)
-    new_reserved = try_reserve(
-        open_qty=float(lp.open_qty or 0),
-        reserved_qty=float(lp.reserved_qty or 0),
-        requested=float(requested),
-    )
-    lp.reserved_qty = Decimal(str(new_reserved))
     return lp.reserved_qty

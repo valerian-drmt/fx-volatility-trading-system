@@ -12,9 +12,6 @@ const WARN_MS = {
   ticks: 10_000,
   vol: 240_000,
   risk: 90_000,
-  positions: 90_000,
-  orders: 60_000,
-  alerts: 300_000,
 } as const;
 
 function useStream<T>(path: string | null, warnMs: number, throttleMs = 0): Fresh<T> {
@@ -42,15 +39,3 @@ export const useVolStream = (enabled = true): Fresh<unknown> =>
 
 export const useRiskStream = (enabled = true): Fresh<unknown> =>
   useStream<unknown>(enabled ? "/ws/risk" : null, WARN_MS.risk, 15_000);
-
-export const usePositionsStream = (enabled = true): Fresh<unknown> =>
-  useStream<unknown>(enabled ? "/ws/positions" : null, WARN_MS.positions);
-
-export const useOrdersStream = (structureId: number | null): Fresh<unknown> =>
-  useStream<unknown>(
-    structureId !== null ? `/ws/orders/${structureId}` : null,
-    WARN_MS.orders,
-  );
-
-export const useExitAlerts = (enabled = true): Fresh<unknown> =>
-  useStream<unknown>(enabled ? "/ws/exit_alerts" : null, WARN_MS.alerts);

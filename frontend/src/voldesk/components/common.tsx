@@ -64,54 +64,6 @@ export function Delta({
   );
 }
 
-interface MetricTileProps {
-  label: ReactNode;
-  value: ReactNode;
-  delta?: number | null;
-  deltaSuffix?: string;
-  sub?: ReactNode;
-  tone?: string;
-  big?: boolean;
-}
-
-export function MetricTile({
-  label,
-  value,
-  delta,
-  deltaSuffix = "%",
-  sub,
-  tone,
-  big,
-}: MetricTileProps): JSX.Element {
-  return (
-    <div className={"metric" + (big ? " metric-big" : "")}>
-      <span className="metric-label">{label}</span>
-      <span className={"metric-value mono " + (tone || "")}>{value}</span>
-      <span className="metric-foot">
-        {delta != null && <Delta v={delta} suffix={deltaSuffix} />}
-        {sub && <span className="metric-sub">{sub}</span>}
-      </span>
-    </div>
-  );
-}
-
-export function MiniStat({
-  label,
-  value,
-  tone,
-}: {
-  label: ReactNode;
-  value: ReactNode;
-  tone?: string;
-}): JSX.Element {
-  return (
-    <div className="ministat">
-      <span className="ministat-label">{label}</span>
-      <span className={"ministat-value mono " + (tone || "")}>{value}</span>
-    </div>
-  );
-}
-
 export function StatusDot({ status }: { status: Status }): JSX.Element {
   const map: Record<Status, string> = { up: "var(--pos)", warn: "var(--warn)", down: "var(--neg)" };
   return <span className="status-dot" style={{ background: map[status] || "var(--muted)" }} />;

@@ -34,9 +34,6 @@ from persistence.models import IbConnectionState, StructureOrder, TradeEvent
 logger = logging.getLogger(__name__)
 
 
-_NUMERIC_TAGS = ("AvailableFunds", "BuyingPower", "MaintMarginReq")
-
-
 def _pick_float(account_summary: dict[str, Any], tag: str) -> float | None:
     """Defensive numeric extraction from OrderExecutor.account_summary() output."""
     v = account_summary.get(tag)
@@ -201,24 +198,6 @@ async def stuck_order_watcher_loop(
         except Exception:
             logger.exception("stuck_order_watcher_cycle_crashed")
         await asyncio.sleep(interval_s)
-
-
-# --------------------------------------------------------------------------
-# Gating helper (used by api / submit flow via the cached state row)
-# --------------------------------------------------------------------------
-
-async def fetch_ib_connected(db: AsyncSession) -> bool:
-    """Return latest cached value of ``ib_connection_state.is_connected``.
-
-    Submit flow uses this as a pre-condition (cf. spec §7.4 — "Gating Submit
-    on is_connected"). Cheap : single-row PK lookup.
-    """
-    row = (await db.execute(
-        select(IbConnectionState).where(IbConnectionState.broker == "IB").limit(1)
-    )).scalar_one_or_none()
-    if row is None:
-        return False
-    return bool(row.is_connected)
 
 
 async def mark_disconnected(db: AsyncSession, now: datetime) -> None:

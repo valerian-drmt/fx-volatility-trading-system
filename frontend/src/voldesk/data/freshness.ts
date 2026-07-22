@@ -39,10 +39,3 @@ export function makeFresh<T>(
   }
   return { data, status: statusFor(asOf, warnMs, now), asOf, ageMs: now - asOf };
 }
-
-export const MISSING: Fresh<never> = {
-  data: null,
-  status: "missing",
-  asOf: null,
-  ageMs: null,
-};
