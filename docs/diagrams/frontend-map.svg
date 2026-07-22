@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="560" viewBox="0 0 1240 560" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1240" height="560" fill="#ffffff"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#333"/></marker></defs>
+
+  <!-- shell -->
+  <rect x="440" y="40" width="240" height="60" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="560" y="66" text-anchor="middle" font-weight="bold">VoldeskApp (shell)</text>
+  <text x="560" y="84" text-anchor="middle">Topbar + Rail + hash routing</text>
+
+  <!-- 7 views -->
+  <g>
+    <rect x="40" y="160" width="150" height="50" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+    <text x="115" y="190" text-anchor="middle">DashboardView</text>
+    <rect x="210" y="160" width="150" height="50" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+    <text x="285" y="190" text-anchor="middle">SignalsView</text>
+    <rect x="380" y="160" width="150" height="50" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+    <text x="455" y="190" text-anchor="middle">RiskView</text>
+    <rect x="550" y="160" width="150" height="50" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+    <text x="625" y="190" text-anchor="middle">PortfolioView</text>
+    <rect x="720" y="160" width="150" height="50" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+    <text x="795" y="190" text-anchor="middle">TradeView</text>
+    <rect x="890" y="160" width="150" height="50" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+    <text x="965" y="190" text-anchor="middle">SystemView</text>
+    <rect x="1060" y="160" width="150" height="50" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+    <text x="1135" y="190" text-anchor="middle">SettingsView</text>
+  </g>
+
+  <!-- provider -->
+  <rect x="340" y="320" width="360" height="70" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="520" y="348" text-anchor="middle" font-weight="bold">DataProvider / useDeskData / useTicks</text>
+  <text x="520" y="368" text-anchor="middle">(context over live REST + WS adapters)</text>
+
+  <!-- client -->
+  <rect x="120" y="460" width="240" height="60" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="240" y="486" text-anchor="middle" font-weight="bold">api/client.ts</text>
+  <text x="240" y="504" text-anchor="middle">typed OpenAPI client (schema.d.ts)</text>
+
+  <!-- ws -->
+  <rect x="400" y="460" width="240" height="60" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="520" y="486" text-anchor="middle" font-weight="bold">hooks/streams.ts + useWebSocket</text>
+  <text x="520" y="504" text-anchor="middle">/ws/ticks | /ws/vol | /ws/risk</text>
+
+  <!-- auth -->
+  <rect x="680" y="460" width="220" height="60" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="790" y="486" text-anchor="middle" font-weight="bold">store/authStore (zustand)</text>
+  <text x="790" y="504" text-anchor="middle">write-auth cookie state</text>
+
+  <!-- dev -->
+  <rect x="920" y="330" width="300" height="90" rx="8" fill="#e1d5e7" stroke="#9673a6" stroke-dasharray="5 3"/>
+  <text x="1070" y="356" text-anchor="middle" font-weight="bold">/dev console (DevLayout, lazy)</text>
+  <text x="1070" y="376" text-anchor="middle">EngineHealth / DbSchema / Migrations /</text>
+  <text x="1070" y="396" text-anchor="middle">Logs / Hardware / RedisInspector / PipelineViz</text>
+
+  <!-- shell -> views -->
+  <line x1="470" y1="100" x2="130" y2="158" stroke="#333" marker-end="url(#a)"/>
+  <line x1="500" y1="100" x2="300" y2="158" stroke="#333" marker-end="url(#a)"/>
+  <line x1="530" y1="100" x2="460" y2="158" stroke="#333" marker-end="url(#a)"/>
+  <line x1="580" y1="100" x2="620" y2="158" stroke="#333" marker-end="url(#a)"/>
+  <line x1="610" y1="100" x2="790" y2="158" stroke="#333" marker-end="url(#a)"/>
+  <line x1="640" y1="100" x2="960" y2="158" stroke="#333" marker-end="url(#a)"/>
+  <line x1="670" y1="100" x2="1130" y2="158" stroke="#333" marker-end="url(#a)"/>
+
+  <!-- view -> provider -->
+  <line x1="470" y1="210" x2="510" y2="318" stroke="#333" marker-end="url(#a)"/>
+  <text x="500" y="270" font-style="italic" fill="#555">views read</text>
+
+  <!-- provider -> client / ws -->
+  <line x1="440" y1="390" x2="290" y2="458" stroke="#333" marker-end="url(#a)"/>
+  <line x1="520" y1="390" x2="520" y2="458" stroke="#333" marker-end="url(#a)"/>
+
+  <!-- shell -> dev (dashed) -->
+  <line x1="680" y1="80" x2="1000" y2="328" stroke="#333" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <text x="880" y="196" text-anchor="middle" font-style="italic" fill="#555">full-page nav</text>
+</svg>

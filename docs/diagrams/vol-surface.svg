@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="680" viewBox="0 0 860 680" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="860" height="680" fill="#ffffff"/>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#555"/>
+    </marker>
+  </defs>
+  <g stroke="#555" stroke-width="1.4" fill="none" marker-end="url(#arrow)">
+    <path d="M420,92 L250,144"/>
+    <path d="M440,92 L620,144"/>
+    <path d="M240,212 L240,254"/>
+    <path d="M330,212 L470,354"/>
+    <path d="M640,212 L560,354"/>
+    <path d="M490,432 L490,464"/>
+    <path d="M410,532 L250,574"/>
+    <path d="M540,532 L640,574"/>
+  </g>
+  <!-- n1 -->
+  <rect x="310" y="40" width="260" height="52" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="440" y="63" text-anchor="middle" font-weight="bold">IB FOP chain per tenor</text>
+  <text x="440" y="82" text-anchor="middle" fill="#334">(delta, iv, strike) triples</text>
+  <!-- n2 -->
+  <rect x="45" y="144" width="380" height="68" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="235" y="168" text-anchor="middle" font-weight="bold">SVI fit per tenor (fit_svi)</text>
+  <text x="235" y="190" text-anchor="middle" fill="#334">w(k) = a + b(rho(k-m)</text>
+  <text x="235" y="206" text-anchor="middle" fill="#334">+ sqrt((k-m)^2 + sigma^2))</text>
+  <!-- n3 -->
+  <rect x="450" y="144" width="380" height="68" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="640" y="168" text-anchor="middle" font-weight="bold">PCHIP smile</text>
+  <text x="640" y="188" text-anchor="middle">10dp / 25dp / atm / 25dc / 10dc</text>
+  <text x="640" y="206" text-anchor="middle" fill="#334">interpolate_delta_pillars, SVI wing fallback</text>
+  <!-- n4 -->
+  <rect x="45" y="254" width="380" height="56" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="235" y="278" text-anchor="middle" font-weight="bold">Butterfly check (butterfly_g_min)</text>
+  <text x="235" y="298" text-anchor="middle" fill="#334">g(k) &gt;= 0 no-arb density</text>
+  <!-- n5 -->
+  <rect x="300" y="354" width="380" height="78" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="490" y="378" text-anchor="middle" font-weight="bold">SSVI global fit (fit_ssvi)</text>
+  <text x="490" y="398" text-anchor="middle">w(k, theta), phi(theta) = eta theta^-gamma</text>
+  <text x="490" y="418" text-anchor="middle" fill="#334">calendar-arb: 2gamma &gt;= 1 - rho^2</text>
+  <!-- n6 -->
+  <rect x="290" y="464" width="400" height="60" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="490" y="490" text-anchor="middle" font-weight="bold">Display pillars (to_display_surface)</text>
+  <text x="490" y="510" text-anchor="middle" fill="#334">6 tenors x 5 deltas, total-variance interp</text>
+  <!-- n7 -->
+  <rect x="45" y="574" width="380" height="62" rx="8" fill="#e1d5e7" stroke="#9673a6"/>
+  <text x="235" y="600" text-anchor="middle" font-weight="bold">Cross-sectional surface-Z</text>
+  <text x="235" y="620" text-anchor="middle" fill="#334">z = (iv_cell - mean) / std over all cells</text>
+  <!-- n8 -->
+  <rect x="450" y="574" width="380" height="62" rx="8" fill="#e1d5e7" stroke="#9673a6"/>
+  <text x="640" y="600" text-anchor="middle" font-weight="bold">Fair smile: YZ RV + VRP -&gt; sigma_fair^Q</text>
+  <text x="640" y="620" text-anchor="middle" fill="#334">build_fair_q()</text>
+</svg>

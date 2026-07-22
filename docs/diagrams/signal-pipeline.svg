@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="900" viewBox="0 0 760 900" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13">
+  <rect width="760" height="900" fill="#ffffff"/>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#555"/>
+    </marker>
+  </defs>
+  <g stroke="#555" stroke-width="1.4" fill="none" marker-end="url(#arrow)">
+    <path d="M380,96 L380,138"/>
+    <path d="M380,196 L380,238"/>
+    <path d="M380,306 L380,348"/>
+    <path d="M380,416 L380,458"/>
+    <path d="M380,516 L380,558"/>
+    <path d="M330,616 L220,656"/>
+    <path d="M430,616 L560,656"/>
+    <path d="M210,724 L340,784"/>
+    <path d="M560,730 L430,784"/>
+  </g>
+  <!-- n1 -->
+  <rect x="215" y="36" width="330" height="60" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="380" y="58" text-anchor="middle" font-weight="bold">Vol-surface snapshot</text>
+  <text x="380" y="76" text-anchor="middle">6 tenors x 5 delta pillars = 30-D IV vector</text>
+  <text x="380" y="91" text-anchor="middle" fill="#334">feature_vector_from_surface()</text>
+  <!-- n2 -->
+  <rect x="255" y="138" width="250" height="50" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="380" y="160" text-anchor="middle" font-weight="bold">Standardise columns</text>
+  <text x="380" y="178" text-anchor="middle" fill="#334">X_std = (X - means) / stds</text>
+  <!-- n3 -->
+  <rect x="225" y="238" width="310" height="68" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="380" y="260" text-anchor="middle" font-weight="bold">PCA via SVD (fit_pca_svd)</text>
+  <text x="380" y="278" text-anchor="middle">loadings, eigenvalues, variance ratio</text>
+  <text x="380" y="296" text-anchor="middle" fill="#334">sign_correct_loadings vs prior fit</text>
+  <!-- n4 -->
+  <rect x="245" y="348" width="270" height="68" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="380" y="372" text-anchor="middle" font-weight="bold">PC1 = level</text>
+  <text x="380" y="390" text-anchor="middle">PC2 = slope</text>
+  <text x="380" y="408" text-anchor="middle">PC3 = curvature (skew / convex)</text>
+  <!-- n5 -->
+  <rect x="245" y="458" width="270" height="58" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="380" y="482" text-anchor="middle" font-weight="bold">z-score each PC</text>
+  <text x="380" y="502" text-anchor="middle" fill="#334">zscore_against(raw, 90d hist)</text>
+  <!-- n6 -->
+  <rect x="265" y="558" width="230" height="58" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="380" y="582" text-anchor="middle" font-weight="bold">classify_label</text>
+  <text x="380" y="602" text-anchor="middle">CHEAP / FAIR / EXPENSIVE</text>
+  <!-- n7 -->
+  <rect x="55" y="656" width="270" height="68" rx="8" fill="#f8cecc" stroke="#b85450"/>
+  <text x="190" y="680" text-anchor="middle" font-weight="bold">Regime gate (gate_decision)</text>
+  <text x="190" y="700" text-anchor="middle">calm / stressed / pre_event</text>
+  <text x="190" y="718" text-anchor="middle" fill="#334">-&gt; size_mult</text>
+  <!-- n8 -->
+  <rect x="425" y="656" width="290" height="74" rx="8" fill="#f8cecc" stroke="#b85450"/>
+  <text x="570" y="680" text-anchor="middle" font-weight="bold">actionable_check (7 gates)</text>
+  <text x="570" y="700" text-anchor="middle">n_obs, variance, stability,</text>
+  <text x="570" y="720" text-anchor="middle">magnitude, label, persistence</text>
+  <!-- n9 -->
+  <rect x="225" y="784" width="310" height="74" rx="8" fill="#e1d5e7" stroke="#9673a6"/>
+  <text x="380" y="810" text-anchor="middle" font-weight="bold">Tradeable signals</text>
+  <text x="380" y="830" text-anchor="middle">PC1 -&gt; straddle, PC2 -&gt; calendar,</text>
+  <text x="380" y="850" text-anchor="middle">PC3 -&gt; butterfly / risk-reversal</text>
+</svg>

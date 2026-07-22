@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="720" viewBox="0 0 1100 720" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="720" fill="#ffffff"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#333"/></marker></defs>
+
+  <!-- api -->
+  <rect x="210" y="110" width="280" height="80" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="350" y="138" text-anchor="middle" font-weight="bold">api</text>
+  <text x="350" y="158" text-anchor="middle">FastAPI app, 16 routers, ws, middleware,</text>
+  <text x="350" y="176" text-anchor="middle">schemas, orchestration/events</text>
+
+  <!-- engines -->
+  <rect x="650" y="10" width="300" height="80" rx="8" fill="#dae8fc" stroke="#6c8ebf"/>
+  <text x="800" y="38" text-anchor="middle" font-weight="bold">engines</text>
+  <text x="800" y="58" text-anchor="middle">market_data / vol / risk / db_writer / execution</text>
+  <text x="800" y="76" text-anchor="middle">(5 long-running services)</text>
+
+  <!-- bus -->
+  <rect x="20" y="370" width="280" height="70" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="160" y="400" text-anchor="middle" font-weight="bold">bus (adapter)</text>
+  <text x="160" y="420" text-anchor="middle">Redis client / publisher / channels / keys</text>
+
+  <!-- persistence -->
+  <rect x="700" y="370" width="300" height="70" rx="8" fill="#d5e8d4" stroke="#82b366"/>
+  <text x="850" y="400" text-anchor="middle" font-weight="bold">persistence (adapter)</text>
+  <text x="850" y="420" text-anchor="middle">models (28 ORM) / db / writer / migrations</text>
+
+  <!-- core -->
+  <rect x="360" y="470" width="320" height="90" rx="8" fill="#ffe6cc" stroke="#d79b00"/>
+  <text x="520" y="500" text-anchor="middle" font-weight="bold">core (pure domain, no I/O)</text>
+  <text x="520" y="520" text-anchor="middle">vol (svi/ssvi/garch/har_rv/pca/gmm/...)</text>
+  <text x="520" y="540" text-anchor="middle">pricing/bs, risk/greeks</text>
+
+  <!-- shared -->
+  <rect x="360" y="620" width="320" height="60" rx="8" fill="#e1d5e7" stroke="#9673a6"/>
+  <text x="520" y="646" text-anchor="middle" font-weight="bold">shared</text>
+  <text x="520" y="664" text-anchor="middle">config / logging / ib_connection / observability</text>
+
+  <!-- forbid note -->
+  <rect x="740" y="480" width="330" height="120" rx="4" fill="#fff2cc" stroke="#d6b656"/>
+  <text x="758" y="504" font-weight="bold" fill="#7a6000">import-linter forbids:</text>
+  <text x="758" y="524" fill="#7a6000">core &#8594; anything;</text>
+  <text x="758" y="544" fill="#7a6000">bus / persistence &#8594; api or engines;</text>
+  <text x="758" y="564" fill="#7a6000">engines &#8594; api; api &#8594; engines</text>
+  <text x="758" y="584" fill="#7a6000">(one whitelisted data-class import)</text>
+
+  <!-- edges -->
+  <line x1="270" y1="190" x2="180" y2="368" stroke="#333" marker-end="url(#a)"/>
+  <text x="150" y="286" font-style="italic" fill="#555">uses</text>
+  <line x1="430" y1="190" x2="770" y2="368" stroke="#333" marker-end="url(#a)"/>
+  <line x1="800" y1="90" x2="820" y2="368" stroke="#333" marker-end="url(#a)"/>
+  <line x1="670" y1="70" x2="200" y2="368" stroke="#333" marker-end="url(#a)"/>
+  <line x1="380" y1="190" x2="470" y2="468" stroke="#333" marker-end="url(#a)"/>
+  <line x1="700" y1="60" x2="560" y2="468" stroke="#333" marker-end="url(#a)"/>
+  <line x1="200" y1="440" x2="400" y2="480" stroke="#333" marker-end="url(#a)"/>
+  <line x1="820" y1="440" x2="640" y2="482" stroke="#333" marker-end="url(#a)"/>
+</svg>

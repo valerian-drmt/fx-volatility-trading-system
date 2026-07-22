@@ -1,7 +1,9 @@
 # FX Volatility Trading System
 
-**End-to-end trading platform for EUR/USD FX options : microservices pipeline,
-research-grade vol signals, web cockpit, and Interactive Brokers execution.**
+**End-to-end trading platform for EUR/USD FX options — a microservices pipeline
+that turns a live Interactive Brokers feed into research-grade volatility signals,
+executes delta-hedged option structures, and serves it all through a real-time web
+desk.**
 
 [![CI](https://github.com/valerian-drmt/fx-volatility-trading-system/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/valerian-drmt/fx-volatility-trading-system/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
@@ -12,49 +14,63 @@ research-grade vol signals, web cockpit, and Interactive Brokers execution.**
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-7-view React trading desk (voldesk) on top of 5 async Python engines :
-live IB tick stream → vol surface fit (SVI/SSVI, GARCH, HAR-RV) → GMM regime
-+ PCA signal z-scores → order submission with delta hedge → versioned audit
-trail in Postgres.
+<p align="center">
+  <img src="docs/dashboard.png" alt="The voldesk trading cockpit — live vol surface, PCA signals, positions and greeks" width="900">
+</p>
+
+A 7-view React trading desk on top of 5 async Python engines: live IB tick stream →
+vol-surface fit (SVI / SSVI, GARCH, HAR-RV) → GMM regime + PCA signal z-scores →
+delta-hedged order submission → versioned audit trail in Postgres.
+
+## 🔴 Live demo
+
+**[valeriandarmente.dev/fx-volatility-trading-system](https://valeriandarmente.dev/fx-volatility-trading-system/)** — the full stack running live on AWS (paper account).
+
+The public site is **read-only**: browse live positions, the vol surface, PCA
+signals, greeks and P&L. Trading, the config editor, and the developer console are
+behind an auth boundary. Every push to `main` redeploys it automatically (see
+[Deployment](#deployment)).
 
 ---
 
 ## Features
 
 ### Market data + execution
-- IB Gateway container (gnzsnz fork) serving delayed EUR/USD FOP chains
-- Real-time tick stream published on Redis (throttled ~200ms)
-- Order structures factory : straddle ATM, calendar spread, risk reversal 25d,
-  butterfly 25d, all delta-hedged via 6E futures leg
+- IB Gateway container (gnzsnz fork) serving the EUR/USD FOP chains
+- Real-time tick stream published on Redis (throttled ~200 ms)
+- Structure factory: **straddle**, **strangle**, **risk reversal**, **butterfly**,
+  **calendar** — built by delta pillar + tenor, delta-hedged via a 6E futures leg
+- Marketable-limit pricing off the live touch; full order lifecycle (submit → fills
+  → booked position) with idempotency and reconciliation against the IB mirror
 
 ### Volatility analytics
 - **Regime detector** — GMM on `[vol_of_vol, vol_level, term_slope]` → 3 regimes
-  (calm / stressed / pre_event) driving sizing multipliers
+  (calm / stressed / pre-event) driving sizing multipliers
 - **Surface fit** — SVI per tenor + SSVI global, butterfly + calendar no-arb checks,
   fair smile via EWMA on historical SVI params
 - **Signal** — PCA(3) on the 30-D surface snapshot (6 tenors × 5 delta pillars),
-  z-score each PC vs rolling 3M distribution, arm trade on `|z| > 1.5`
-- **VRP** — realized forward vol vs IV ATM, conditional on regime ; fallback
-  constant RP if history < 6 months
+  z-scoring each PC (level / slope / curvature) vs a rolling distribution
+- **VRP** — realized forward vol vs ATM implied, conditional on regime
 
 ### Risk + P&L
-- Greeks aggregation across open structures, per-tenor vega bar charts
-- Delta hedge modes : static / threshold (default Δ=0.05) / scheduled
-- Exit rules systematic : z-flip, time ratio, stop-loss vega, time to expiry
+- Greeks aggregation (Δ / Γ / V / Θ / vanna / volga) across open structures, per-tenor vega
+- P&L attribution — Taylor decomposition (δ·dS + ½Γ·dS² + V·dσ + Θ·dt + residual)
+- Delta hedge modes: static / threshold / scheduled; computed greek limits; VaR
 
 ### Admin & observability
-- Versioned vol config in Postgres (`vol_config` append-only table), edited
-  via `/settings` React page, hot-reloaded into engines via Redis pub/sub
-- Secrets in AWS SSM Parameter Store (KMS-encrypted), never on disk, loaded
-  per-session by `scripts/local/load_secrets.ps1` (Windows) or IAM role (EC2)
-- Structured JSON logs (structlog), Prometheus metrics at `/metrics`,
-  extended health probe exercising DB + Redis + engine heartbeats
+- Versioned vol config in Postgres (append-only), edited in the web desk and
+  hot-reloaded into the engines via Redis pub/sub
+- Secrets in AWS SSM Parameter Store (KMS-encrypted) — never on disk, never echoed
+- Structured JSON logs (structlog), Prometheus metrics, OpenTelemetry traces, and an
+  opt-in Grafana / Loki / Tempo observability stack
 
 ---
 
 ## Architecture
 
-**11-container core stack** (6 ship our Python code) **+ optional 7-container observability stack** (Prometheus / cAdvisor / Loki / Tempo / Grafana / promtail / otel-collector, opt-in via `--profile obs`).
+**11-container core stack** (6 ship our Python code) **+ an optional 7-container
+observability stack** (Prometheus / cAdvisor / Loki / Tempo / Grafana / promtail /
+otel-collector, opt-in via `--profile obs`).
 
 ```
                           ┌────────────────┐
@@ -77,59 +93,52 @@ trail in Postgres.
     │  Postgres   │◄───── db-writer ─────┐         │     Redis      │
     │   (16)      │  (Redis → DB sink)   │         │ pub/sub + cache│
     └─────────────┘                      │         └─┬────┬──┬───┬──┘
-                                         │           │    │  │   │
                                          └───────────┤    │  │   │
-                                                     │    │  │   │
        ┌────────────┐  ticks/bars     ┌──────────────▼┐   │  │   │
        │ ib-gateway │◄────────────────│ market-data    │───┘  │   │
        │  (IB API)  │  (clientID 1)   │   engine       │      │   │
        └─────┬──────┘                 └────────────────┘      │   │
-             │                                                │   │
-             │     option chains + IV history                 │   │
-             │     (clientID 2)        ┌────────────────┐     │   │
-             ├────────────────────────►│   vol-engine   │─────┘   │
+             │     option chains       ┌────────────────┐     │   │
+             ├─────(clientID 2)───────►│   vol-engine   │─────┘   │
              │                         │ SVI/SSVI/GARCH │         │
              │                         │ HAR/PCA/GMM    │         │
              │                         └────────────────┘         │
-             │                                                    │
-             │     positions + greeks  ┌────────────────┐         │
-             │     (clientID 3)        │   risk-engine  │─────────┘
-             ├────────────────────────►│ Δ/Γ/V aggreg.  │
+             │     positions+greeks    ┌────────────────┐         │
+             ├─────(clientID 3)───────►│   risk-engine  │─────────┘
+             │                         │ Δ/Γ/V aggreg.  │
              │                         └────────────────┘
-             │
              │     order submission    ┌────────────────┐
-             │     (clientID 5)        │ execution-eng. │  HTTP server
-             └────────────────────────►│ orders+hedger  │  (port 8001)
+             └─────(clientID 5)───────►│ execution-eng. │  HTTP (:8001)
+                                       │ orders+hedger  │
                                        └────────────────┘
 ```
 
-| Container | Runs | Source | Dockerfile |
-|---|---|---|---|
-| `postgres` | DB 16 | — | `postgres:16-alpine` |
-| `redis` | Bus + cache | — | `redis:7-alpine` |
-| `nginx` | Reverse proxy | `infrastructure/nginx/` | `nginx:alpine` |
-| `ib-gateway` | IB API | — | `gnzsnz/ib-gateway:latest` |
-| `frontend` | React SPA | `frontend/` | `infrastructure/docker/web.Dockerfile` |
-| **`api`** | FastAPI REST + WS | `src/api/` + shared libs | `infrastructure/docker/api.Dockerfile` |
-| **`market-data`** | IB ticks → Redis (clientID 1) | `src/engines/market_data/` | `src/engines/market_data/Dockerfile` |
-| **`vol-engine`** | SVI/SSVI/GARCH/HAR/PCA/GMM (clientID 2) | `src/engines/vol/` | `src/engines/vol/Dockerfile` |
-| **`risk-engine`** | Greeks + delta hedge (clientID 3) | `src/engines/risk/` | `src/engines/risk/Dockerfile` |
-| **`db-writer`** | Redis → Postgres async sink | `src/engines/db_writer/` | `src/engines/db_writer/Dockerfile` |
-| **`execution-engine`** | Order submission HTTP (clientID 5, :8001) | `src/engines/execution/` | `infrastructure/docker/execution.Dockerfile` |
+| Container | Runs | Source |
+|---|---|---|
+| `postgres` | DB 16 | — |
+| `redis` | Bus + cache | — |
+| `nginx` | Reverse proxy | `infrastructure/nginx/` |
+| `ib-gateway` | IB API | — (`gnzsnz/ib-gateway`) |
+| `frontend` | React SPA | `frontend/` |
+| **`api`** | FastAPI REST + WS | `src/api/` + shared libs |
+| **`market-data`** | IB ticks → Redis (clientID 1) | `src/engines/market_data/` |
+| **`vol-engine`** | SVI/SSVI/GARCH/HAR/PCA/GMM (clientID 2) | `src/engines/vol/` |
+| **`risk-engine`** | Greeks + delta hedge (clientID 3) | `src/engines/risk/` |
+| **`db-writer`** | Redis → Postgres async sink | `src/engines/db_writer/` |
+| **`execution-engine`** | Order submission (clientID 5, :8001) | `src/engines/execution/` |
 
-Networks : `fxvol-public` (nginx), `fxvol-internal` (services), `fxvol-external` (IB outbound). The 5 Python engines live behind the `engines` compose profile (opt-in : `docker compose --profile engines up -d`).
+Networks: `fxvol-public` (nginx), `fxvol-internal` (services), `fxvol-external` (IB
+outbound). The 5 Python engines live behind the `engines` compose profile.
 
-**Deployment sizing** : every service carries a compose `mem_limit` so no container can OOM-starve postgres. Core profile (nginx + frontend + api + postgres + redis) ≈ 1.1 GB → fits a `t3.small`. `engines` adds ~1.5 GB → `t3.medium` minimum; the `ib` profile adds a ~1–1.5 GB JVM on top (`t3.medium` for core+ib, avoid running everything on one small box).
-
-Shared Python libs (under `src/`, no container of their own) :
+Shared Python libs under `src/` (no container of their own):
 - **`core/`** — pure pricing + vol + risk algorithms (no I/O)
-- **`persistence/`** — SQLAlchemy 2 ORM (`models.py`, 28 classes) + 54 Alembic revisions + `AsyncDatabaseWriter`
-- **`bus/`** — Redis pub/sub helpers + channel/key constants + connection factories
-- **`shared/`** — config (`Settings`), structlog setup, IB connection wrapper, db-events publisher
+- **`persistence/`** — SQLAlchemy 2 ORM (27 classes) + Alembic revisions + `AsyncDatabaseWriter`
+- **`bus/`** — Redis pub/sub helpers + channel/key constants
+- **`shared/`** — config, structlog, IB connection wrapper, observability
 
-Dependency direction is enforced by [`import-linter`](https://import-linter.readthedocs.io/) in CI ; see [`.importlinter`](.importlinter) for the 5 contracts.
-
-**Full architecture** : the in-app **Stack** dev tab (`/dev` → 🐳 Stack · Health · Redis) renders the 17 containers, their wiring, and live health probes — single canonical view, no static diagram to drift against.
+Dependency direction is enforced by [`import-linter`](.importlinter) in CI (5 layered
+contracts: `core` pure, `bus`/`persistence` as adapters, `engines` never import `api`).
+Full diagrams live in [`docs/architecture/`](docs/architecture/).
 
 ---
 
@@ -138,99 +147,84 @@ Dependency direction is enforced by [`import-linter`](https://import-linter.read
 | Layer | Tech |
 |---|---|
 | Language | Python 3.11 + TypeScript 5 |
-| Build / packaging | `pyproject.toml` (PEP 621) — single source of truth ; `uv` recommended, plain `pip` works |
-| API | FastAPI + uvicorn + pydantic v2 + pydantic-settings + slowapi |
+| Packaging | `pyproject.toml` (PEP 621) — single source of truth; `uv` recommended |
+| API | FastAPI + uvicorn + pydantic v2 + slowapi |
 | Frontend | React 18 + Vite + TypeScript strict + zustand + plotly.js |
 | Persistence | PostgreSQL 16 + SQLAlchemy 2 async + Alembic |
 | Cache + bus | Redis 7 (pub/sub + cache) |
 | IB connectivity | ib_insync (async) |
-| Vol models | numpy, scipy (PCHIP, norm), arch (GARCH), scikit-learn (GMM), custom SVI/SSVI |
-| Secrets | AWS SSM Parameter Store + KMS CMK |
-| CI | GitHub Actions — ruff, pytest, compileall, import-linter, openapi drift, vitest, Playwright, alembic round-trip |
-| Deploy | Docker compose local (11-container core, `obs` profile optional) |
+| Vol models | numpy, scipy, arch (GARCH), scikit-learn (GMM), custom SVI/SSVI |
+| Secrets | AWS SSM Parameter Store + KMS |
+| CI / CD | GitHub Actions — ruff, pytest, import-linter, OpenAPI drift, vitest, Playwright; OIDC deploy to AWS EC2 |
 
 ---
 
 ## Quickstart
 
-**Prerequisites** : Docker Desktop (WSL2 backend) + Python 3.11 + Node 20.
-AWS CLI v2 configured with profile `fxvol-dev` (see
-[`infrastructure/aws/secrets-bootstrap.md`](infrastructure/aws/secrets-bootstrap.md)).
+**Prerequisites**: Docker Desktop + Python 3.11 + Node 20.
 
 ```powershell
 # 1. venv + deps (one-off)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev,api,quant,ib,writer]"
+python -m pip install -e ".[dev,api,quant,ib,writer]"      # or: uv sync --extra dev --extra api --extra quant --extra ib --extra writer
 
-# 2. Load secrets from SSM into the shell (every PS session)
-.\scripts\ops\load_secrets.ps1
+# 2. Load secrets from SSM into the shell (dot-sourced — every PS session)
+. .\scripts\local\load_secrets.ps1
 
-# 3. Start the full stack
-.\scripts\ops\stack.ps1          # build + up + alembic upgrade head (+ obs profile)
-.\scripts\ops\stack.ps1 -NoBuild # skip build, reuse cached images
+# 3. Start the full stack (build + up + alembic upgrade head)
+.\scripts\local\stack.ps1
+.\scripts\local\stack.ps1 -NoBuild     # reuse cached images
 ```
 
-Then :
+Then:
+- Cockpit — http://localhost/
+- API health — http://localhost/api/v1/health
+- Extended health (DB + Redis + engines) — http://localhost/api/v1/health/extended
 
-- Cockpit : http://localhost/
-- Admin config : http://localhost/settings
-- API health : http://localhost/api/v1/health
-- Extended health (DB + Redis + engines) : http://localhost/api/v1/health/extended
+PyCharm run configurations ship under [`.idea/runConfigurations/`](.idea/runConfigurations)
+(version-controlled, grouped **Local** and **EC2**) — no setup needed.
 
-**Faster setup with [`uv`](https://docs.astral.sh/uv/)** (recommended) :
+---
 
-```powershell
-uv sync --extra dev --extra api --extra quant --extra ib --extra writer
-uv run pytest
+## Deployment
+
+Prod runs on a single AWS EC2 box, deployed **continuously from `main`** with no SSH
+and no stored AWS keys:
+
+```
+push to main → GitHub Actions "build-and-push" (7 images → GHCR, tagged sha-<commit>)
+             → "deploy-prod": OIDC into AWS → S3 config payload → SSM RunShellScript
+             → the host pulls the images, renders .env from SSM, migrates, restarts
+             → smoke-checks the live /health endpoint
 ```
 
-### PyCharm run configurations
-
-The repo ships ready-to-use **Run/Debug configurations** under
-[`.idea/runConfigurations/`](.idea/runConfigurations) (version-controlled, so
-they load automatically when the project is opened in PyCharm — no setup
-command needed). They appear in the Run dropdown grouped in two folders :
-
-| Folder  | Wraps                      | Configurations |
-|---------|----------------------------|----------------|
-| `Local` | `scripts/local/stack.ps1` | Up · Up (no build) · Up (fast) · Down · Down (wipe volumes) · Refresh · Rebuild: frontend · Rebuild: api |
-| `EC2`   | `scripts/aws/ec2.ps1`         | Health · Containers · Deploy · Connect (SSM) · Logs: api · Restart: nginx · Instance: status/stop/start |
-
-If they don't show up after pulling, run **File → Reload All from Disk**. They
-target Windows PowerShell (`powershell.exe`) and run in the integrated terminal.
-
-> Secrets still come from `load_secrets.ps1`, which must be **dot-sourced in
-> your shell** (`. .\scripts\ops\load_secrets.ps1`) — it is intentionally not a
-> run configuration, since a child process can't export env vars back to PyCharm.
+The VM never builds — it only pulls. Secrets are read on the host from SSM via its
+instance role; they never touch GitHub. Deploys are gated by a `DEPLOY_ENABLED` repo
+variable, and `.idea`/`scripts`/`docs`-only pushes are `paths-ignore`d so they don't
+redeploy. See [`docs/ops/deployment.md`](docs/ops/deployment.md).
 
 ---
 
 ## Testing
 
 ```powershell
-# Python — pyproject.toml drives ruff config + pytest config + mypy config
 python -m ruff check src tests                       # lint
-python -m pytest                                     # unit suite (~410 tests, < 10s)
-PYTHONPATH=src lint-imports                          # architecture contracts
+PYTHONPATH=src python -m pytest                       # ~730 unit tests, < 15s
+PYTHONPATH=src lint-imports                           # architecture contracts
 
 # Integration suites (gated by env)
-$env:DB_RUN_INTEGRATION = "1"; python -m pytest -m db_integration
+$env:DB_RUN_INTEGRATION = "1";    python -m pytest -m db_integration
 $env:REDIS_RUN_INTEGRATION = "1"; python -m pytest -m redis_integration
-$env:IB_RUN_INTEGRATION = "1"; python -m pytest -m integration
+$env:IB_RUN_INTEGRATION = "1";    python -m pytest -m integration
 
 # Frontend
 cd frontend
-npm run lint && npm run typecheck                    # ESLint + tsc
-npm test                                             # vitest (with 70% coverage threshold)
-npm run test:e2e                                     # Playwright
+npm run lint && npm run typecheck && npm test         # ESLint + tsc + vitest
+npm run test:e2e                                       # Playwright
 ```
 
-The nginx config parse-test lives at
-`tests/unit/infrastructure/test_nginx_config_syntax.py` — collected with the
-unit suite and also run explicitly by the `nginx-config` CI job. The old
-`tests/old/` quarantine has been emptied and removed (cf.
-[`tests/STRUCTURE.md`](tests/STRUCTURE.md)).
+Test layout mirrors `src/` 1-to-1 — see [`tests/STRUCTURE.md`](tests/STRUCTURE.md).
 
 ---
 
@@ -238,129 +232,70 @@ unit suite and also run explicitly by the `nginx-config` CI job. The old
 
 ```
 fx-volatility-trading-system/
-├── pyproject.toml                  single source of truth (deps + ruff + pytest + mypy)
-├── .importlinter                   architecture contracts (5 layered rules)
-├── docker-compose.yml, docker-compose.override.yml
-├── README.md, CLAUDE.md, LICENSE
-├── .github/workflows/              ci.yml + build.yml + codeql.yml + security-scan.yml
-├── src/                            (PyPA src-layout, all Python)
-│   ├── api/                        → container fxvol-api
-│   │   ├── main.py                 FastAPI app + lifespan (events scheduler, WS bridge)
-│   │   ├── routers/                16 routers : admin, analytics, auth, cockpit,
-│   │   │                             dev, health, orders, portfolio_panel,
-│   │   │                             positions, pricing, regime, signals, trade,
-│   │   │                             trades, vol, ws
-│   │   ├── ws/                     connection_manager + redis_bridge
-│   │   ├── middleware/             logging (structlog) + rate_limit + timing
-│   │   ├── schemas/                Pydantic v2 request/response classes
-│   │   └── orchestration/          use-case orchestration
-│   │       └── events/             FRED + ECB + BoE + FOMC + Eurostat + ONS pipeline
-│   ├── engines/                    5 long-running services
-│   │   ├── market_data/            → fxvol-market-data (clientID 1)
-│   │   ├── vol/                    → fxvol-vol-engine    (clientID 2)
-│   │   ├── risk/                   → fxvol-risk-engine   (clientID 3)
-│   │   ├── db_writer/              → fxvol-db-writer
-│   │   └── execution/              → fxvol-execution-engine (clientID 5, :8001)
-│   ├── core/                       pure-Python algos (no I/O)
-│   │   ├── vol/                    garch, har_rv, svi, ssvi, pchip_smile,
-│   │   │                             gmm_regime, regime_engine, pca_engine,
-│   │   │                             fair_term, surface_z, tenors,
-│   │   │                             feature_enrichment, vrp, yang_zhang
-│   │   ├── pricing/bs.py           Black-Scholes for FX options
-│   │   ├── risk/greeks.py          Δ/Γ/V analytics
-│   │   ├── config/                 config helpers
-│   │   └── products.py             Murex-style product label dual-column
-│   ├── persistence/                ONLY the DB adapter
-│   │   ├── models.py               28 ORM classes (single file)
-│   │   ├── db.py                   engine + AsyncSession factory
-│   │   ├── writer.py               AsyncDatabaseWriter (batch INSERT + retry)
-│   │   ├── alembic.ini
-│   │   └── migrations/versions/    54 revisions
-│   ├── bus/                        ONLY the Redis adapter
-│   │   ├── client.py               connection factory (async + sync)
-│   │   ├── publisher.py
-│   │   ├── channels.py
-│   │   └── keys.py
-│   └── shared/                     cross-cutting infra
-│       ├── config.py               base Settings (extended by api/config.py)
-│       ├── logging.py              structlog setup
-│       ├── ib_connection.py        IB sync wrapper + backoff
-│       ├── observability.py        Prometheus metrics + OTel tracing
-│       └── db_events.py            db-events Redis publisher
-├── frontend/                       React + TS + Vite (7 voldesk views +
-│                                     9 dev tabs : Stack / WS / DB Explorer /
-│                                     DB Schema / Logs / Migrations / PCA /
-│                                     Trade / Portfolio)
+├── pyproject.toml                 single source of truth (deps + ruff + pytest + mypy)
+├── .importlinter                  architecture contracts (5 layered rules)
+├── docker-compose.yml
+├── .github/workflows/             ci · build · deploy · codeql · security-scan
+├── src/                           (PyPA src-layout, all Python)
+│   ├── api/                       → api container: main, 16 routers, ws, middleware, schemas, orchestration/events
+│   ├── engines/                   5 long-running services (market_data, vol, risk, db_writer, execution)
+│   ├── core/                      pure algos — vol (svi/ssvi/garch/har_rv/pca/gmm/…), pricing/bs, risk/greeks
+│   ├── persistence/               DB adapter — models (27 ORM classes), db, writer, migrations/
+│   ├── bus/                       Redis adapter — client, publisher, channels, keys
+│   └── shared/                    config, logging, ib_connection, observability
+├── frontend/                      React + TS + Vite — 7 voldesk views + a dev console (/dev)
 ├── infrastructure/
-│   ├── docker/                     api.Dockerfile, web.Dockerfile, execution.Dockerfile, ib-stub
-│   ├── nginx/                      nginx.conf + nginx-dev.conf + frontend.conf
-│   ├── ib-gateway/                 local IB gateway image build instructions
-│   ├── postgres/                   init.sql
-│   ├── redis/                      redis.conf (hardened)
-│   └── aws/                        SSM secrets bootstrap + KMS / IAM / S3 reference
-├── scripts/                        human-run only (not shipped, not CI-collected)
-│   ├── ops/                        stack.ps1 + ec2.ps1 + load_secrets.{ps1,sh}
-│   ├── db/                         seed_* + backfill_iv_history_for_gmm.py
-│   └── dev/                        dump_openapi.py + gmm_diagnostic.py + check_orders.py + compute_context_baseline.py
-├── obs/                            Prometheus / Loki / Tempo / Promtail / OTel-collector
-│                                     configs + Grafana dashboards + datasources
-├── tests/                          mirrors src/ 1-to-1
-│   ├── unit/                       (api, bus, core, engines, persistence, shared)
-│   ├── integration/                pipeline_<sub-system>/ (gated by markers)
-│   └── fixtures/                   shared pytest fixtures
-└── docs/
-    ├── README.md                   landing page index
-    ├── run-local-stack.md          local stack runbook
-    ├── docker-cheatsheet.md        day-to-day docker compose commands
-    ├── db_schema_drift_workflow.md ORM ⇄ DB drift fix via alembic
-    ├── branch-protection.md        GitHub branch rules
-    ├── observability/              metric naming conventions + obs runbooks
-    └── vol_trading_pca/            events pipeline architecture spec
+│   ├── docker/                    api / web / execution Dockerfiles
+│   ├── nginx/                     nginx confs (dev + prod TLS)
+│   ├── postgres/ redis/           init.sql + hardened redis.conf
+│   ├── ec2/                       host bootstrap + remote-deploy
+│   └── aws/                       OIDC / IAM / SSM setup
+├── scripts/
+│   ├── local/                     stack.ps1 + load_secrets.ps1 (user-run)
+│   └── aws/                        ec2.ps1 + load_secrets.sh
+├── obs/                           Prometheus / Loki / Tempo / OTel + Grafana dashboards
+├── tests/                         unit/ + integration/ (mirrors src/) + fixtures/
+└── docs/                          architecture · vol-modeling · strategy · execution · ops (+ diagrams/)
 ```
 
 ---
 
 ## Documentation
 
-| Document | Content |
+Full docs live in [`docs/`](docs/):
+
+| Section | Covers |
 |---|---|
-| [docs/README.md](docs/README.md) | Index of all docs with one-sentence summaries |
-| [docs/run-local-stack.md](docs/run-local-stack.md) | Local stack operator runbook |
-| [docs/docker-cheatsheet.md](docs/docker-cheatsheet.md) | Day-to-day docker compose commands |
-| [docs/db_schema_drift_workflow.md](docs/db_schema_drift_workflow.md) | How to feed DB-schema-drift fixes back through alembic |
-| [docs/branch-protection.md](docs/branch-protection.md) | GitHub `main` branch ruleset + required status checks |
-| [docs/observability/CONVENTIONS.md](docs/observability/CONVENTIONS.md) | Metric naming + label cardinality rules |
-| [docs/observability/RUNBOOKS.md](docs/observability/RUNBOOKS.md) | Loki / Prometheus / Tempo / Grafana operator playbooks |
-| [docs/vol_trading_pca/events_pipeline_spec.md](docs/vol_trading_pca/events_pipeline_spec.md) | Multi-source economic-events pipeline architecture |
-| [tests/STRUCTURE.md](tests/STRUCTURE.md) | Test layout + pytest configuration reference |
-| [infrastructure/aws/secrets-bootstrap.md](infrastructure/aws/secrets-bootstrap.md) | AWS SSM + KMS + IAM one-time setup |
-| Live ER diagram, drift detection, log tail, alembic chain | in-app **dev console** (`/dev`) — DB Schema / Logs / Migrations tabs |
+| [architecture/](docs/architecture/) | System overview, backend layout, data flow, frontend, database schema |
+| [vol-modeling/](docs/vol-modeling/) | PCA signals, SVI/SSVI surface, GARCH/HAR-RV forecasting, GMM regime (+ the runnable [PCA notebook](docs/vol-modeling/notebooks/pca_signal_pipeline_explained.ipynb)) |
+| [strategy/](docs/strategy/) | Vol structures, signal→trade mapping, risk & P&L attribution |
+| [execution/](docs/execution/) | OMS, order lifecycle, IB integration |
+| [observability/](docs/observability/) | Metric conventions + operator runbooks |
+| [ops/](docs/ops/) | Local stack, AWS deployment, secrets |
+
+The `/dev` console (live on the site) also renders the container graph + health, the
+DB schema, and the migration chain directly from the running system.
 
 ---
 
 ## Contributing
 
-**Local CI reproduction** — the commands below mirror `.github/workflows/ci.yml` :
+The GitHub project protocol (issue → PR → squash-merge, Conventional Commits, CI
+gates) is under [`.github/`](.github/) — see
+[`CONTRIBUTING.md`](.github/CONTRIBUTING.md) and [`WORKFLOW.md`](.github/WORKFLOW.md).
+
+Reproduce CI locally:
 
 ```powershell
 python -m compileall -q src
 python -m ruff check src tests
-PYTHONPATH=src lint-imports                                # architecture contracts
-$env:PYTHONPATH = "src"; python -m pytest                  # ~410 unit tests
-cd frontend; npm test; npm run build
+PYTHONPATH=src lint-imports
+PYTHONPATH=src python -m pytest
+cd frontend; npm run typecheck && npm run lint && npm test && npm run build
 ```
-
-**Branching** : trunk-based, `main` always deployable. One short-lived feature
-branch per PR, naming `<type>/<release>-<slug>` (e.g. `feat/r10-dev-tabs`).
-Conventional Commits for messages. Squash-merge only. Branch protection rules
-in [`docs/branch-protection.md`](docs/branch-protection.md).
-
-**Architecture lint** — [`.importlinter`](.importlinter) enforces 5 layered
-contracts in CI ; any PR introducing a forbidden import (e.g. `core/`
-depending on `persistence/`) fails the build.
 
 ---
 
 ## License
 
-MIT
+[MIT](LICENSE)
