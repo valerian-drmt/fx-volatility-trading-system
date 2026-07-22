@@ -26,6 +26,9 @@ import type { HistBin, TenorRisk, VarData } from "../deskData";
 import type { BookComposition, PerfStats, VegaTenor, WaterfallStep } from "../extended";
 
 const n = (v: unknown): number => (typeof v === "number" ? v : 0);
+// Like `n` but keeps "absent" absent: a backend null is a value the desk could not
+// measure, and must not be rendered as a real 0 (see AttribRow / VarData).
+const nn = (v: unknown): number | null => (typeof v === "number" ? v : null);
 const r1 = (v: number): number => Math.round(v * 10) / 10;
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 
@@ -310,15 +313,19 @@ export function adaptValuationHistory(raw: unknown): ValuationSeries {
 }
 
 /** One row of the greek-P&L attribution matrix (all $): the Taylor terms of a group's
- * P&L over the window, plus the group's actual P&L (Σ). Terms foot to actual (± residual). */
+ * P&L over the window, plus the group's actual P&L (Σ). Terms foot to actual (± residual).
+ *
+ * `null` = not measurable over this window (no t-1 snapshot for that leg, e.g. it was
+ * opened inside the window). Kept null all the way to the cell, which renders "—":
+ * an unmeasurable term is not a flat $0. */
 export interface AttribRow {
   label: string;
-  delta: number; // δ·dS
-  gamma: number; // ½Γ·dS²
-  vega: number; // V·dσ
-  theta: number; // Θ·dt
-  residual: number;
-  actual: number; // realized P&L over the window
+  delta: number | null; // δ·dS
+  gamma: number | null; // ½Γ·dS²
+  vega: number | null; // V·dσ
+  theta: number | null; // Θ·dt
+  residual: number | null;
+  actual: number | null; // realized P&L over the window
 }
 export interface AttribMatrix {
   rows: AttribRow[];
@@ -333,12 +340,12 @@ export function adaptAttributionMatrix(raw: unknown): AttribMatrix {
   };
   const row = (g: Record<string, number | string | null>, label: string): AttribRow => ({
     label,
-    delta: n(g.delta_pnl_usd),
-    gamma: n(g.gamma_pnl_usd),
-    vega: n(g.vega_pnl_usd),
-    theta: n(g.theta_pnl_usd),
-    residual: n(g.residual_usd),
-    actual: n(g.actual_pnl_usd),
+    delta: nn(g.delta_pnl_usd),
+    gamma: nn(g.gamma_pnl_usd),
+    vega: nn(g.vega_pnl_usd),
+    theta: nn(g.theta_pnl_usd),
+    residual: nn(g.residual_usd),
+    actual: nn(g.actual_pnl_usd),
   });
   return {
     rows: (o.groups ?? []).map((g) => row(g, String(g.label ?? "—"))),
@@ -358,12 +365,13 @@ export interface PositionAttribRow {
   tenor: string;
   iv: number; // %
   nominal: number; // €
-  actual: number;
-  delta: number;
-  gamma: number;
-  vega: number;
-  theta: number;
-  residual: number;
+  // null = not measurable over the window (see AttribRow).
+  actual: number | null;
+  delta: number | null;
+  gamma: number | null;
+  vega: number | null;
+  theta: number | null;
+  residual: number | null;
 }
 export interface PositionAttribMatrix {
   rows: PositionAttribRow[];
@@ -386,15 +394,20 @@ export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
       tenor: String(r.tenor ?? "—"),
       iv: n(r.iv) * 100,
       nominal: n(r.nominal_eur),
-      actual: n(r.actual_pnl_usd),
-      delta: n(r.delta_pnl_usd),
-      gamma: n(r.gamma_pnl_usd),
-      vega: n(r.vega_pnl_usd),
-      theta: n(r.theta_pnl_usd),
-      residual: n(r.residual_usd),
+      actual: nn(r.actual_pnl_usd),
+      delta: nn(r.delta_pnl_usd),
+      gamma: nn(r.gamma_pnl_usd),
+      vega: nn(r.vega_pnl_usd),
+      theta: nn(r.theta_pnl_usd),
+      residual: nn(r.residual_usd),
     }));
-  // Total footed on the visible IB legs (not the endpoint totals, which include booked).
-  const s = (sel: (r: PositionAttribRow) => number): number => rows.reduce((a, r) => a + sel(r), 0);
+  // Total footed on the visible IB legs (not the endpoint totals, which include
+  // booked). Sums only the legs that carry the term; null when none of them does,
+  // so a column nobody could measure stays "—" instead of totalling to $0.
+  const s = (sel: (r: PositionAttribRow) => number | null): number | null => {
+    const vals = rows.map(sel).filter((v): v is number => v !== null);
+    return vals.length ? vals.reduce((a, v) => a + v, 0) : null;
+  };
   return {
     rows,
     totals: {

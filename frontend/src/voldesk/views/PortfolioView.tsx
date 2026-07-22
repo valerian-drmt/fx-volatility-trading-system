@@ -625,37 +625,54 @@ const GREEKS: { key: GreekKey; label: string }[] = [
   { key: "theta", label: "Theta" },
 ];
 
+// A Taylor term the desk could not measure over the window (leg opened inside it →
+// no t-1 snapshot) arrives as null and must read "—". Rendering it as "+$0" claims a
+// flat P&L that was never observed. Shared by both attribution matrices below.
+function attribCell(v: number | null, rowActual: number | null, extra: string): JSX.Element {
+  if (v === null) return <td className={"r mono dim " + extra}>—</td>;
+  // % of the row's realized P&L — undefined when that P&L is unknown or ~0 (would
+  // divide by ≈0 into a nonsense %), shown as "—" then.
+  const p = rowActual === null || Math.abs(rowActual) < 1 ? null : Math.round((v / Math.abs(rowActual)) * 100);
+  return (
+    <td className={"r mono " + extra + " " + pnlCls(v)}>
+      <b>{gk$(v)}</b>{" "}
+      <span className="pb-rel">({p === null ? "—" : (p >= 0 ? "+" : "−") + Math.abs(p) + "%"})</span>
+    </td>
+  );
+}
+
+// Bold P&L Σ cell (or "—" when the window's realized P&L is unmeasurable).
+function attribSum(v: number | null, extra: string): JSX.Element {
+  return (
+    <td className={"r mono " + extra + " " + (v === null ? "dim" : pnlCls(v))}>
+      <b>{v === null ? "—" : fmt.usdk(v)}</b>
+    </td>
+  );
+}
+
+// Σ over legs of one term: null when no leg carries it (see attribCell).
+function attribTotal<T>(rows: T[], sel: (r: T) => number | null): number | null {
+  const vals = rows.map(sel).filter((v): v is number => v !== null);
+  return vals.length ? vals.reduce((a, v) => a + v, 0) : null;
+}
+
 // P&L attribution matrix — greek P&L (Taylor terms) × axis (tenor), all in $. Each
 // cell shows the term value + its share of that row's realized P&L. Rows foot to
 // P&L Σ (± residual); the Total row (Σ over rows) equals the by-greek bridge.
 function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel: string }): JSX.Element {
   if (!m || m.rows.length === 0)
     return <div className="hbar-empty dim small mono">no attribution yet</div>;
-  // term cell: value $ bold + (% of the row's realized P&L) lighter, same colour.
-  const cell = (v: number, rowActual: number, extra: string): JSX.Element => {
-    // % of the row's realized P&L — undefined when the row P&L is ~0 (would divide
-    // by ≈0 into a nonsense %), shown as "—" then.
-    const p = Math.abs(rowActual) < 1 ? null : Math.round((v / Math.abs(rowActual)) * 100);
-    return (
-      <td className={"r mono " + extra + " " + pnlCls(v)}>
-        <b>{gk$(v)}</b>{" "}
-        <span className="pb-rel">({p == null ? "—" : (p >= 0 ? "+" : "−") + Math.abs(p) + "%"})</span>
-      </td>
-    );
-  };
   const dataRow = (r: AttribRow, i: number): JSX.Element => (
     <tr key={i}>
       <td className="l grp-fix">
         <span className="sym">{r.label}</span>
       </td>
-      <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.actual)}>
-        <b>{fmt.usdk(r.actual)}</b>
-      </td>
-      {cell(r.delta, r.actual, "grp-grk col-grp")}
-      {cell(r.gamma, r.actual, "grp-grk")}
-      {cell(r.vega, r.actual, "grp-grk")}
-      {cell(r.theta, r.actual, "grp-grk")}
-      {cell(r.residual, r.actual, "grp-grk col-grp-end")}
+      {attribSum(r.actual, "grp-pnl col-grp col-grp-end")}
+      {attribCell(r.delta, r.actual, "grp-grk col-grp")}
+      {attribCell(r.gamma, r.actual, "grp-grk")}
+      {attribCell(r.vega, r.actual, "grp-grk")}
+      {attribCell(r.theta, r.actual, "grp-grk")}
+      {attribCell(r.residual, r.actual, "grp-grk col-grp-end")}
     </tr>
   );
   const t = m.totals;
@@ -681,24 +698,12 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
             <td className="l grp-fix">
               <span className="sym">Total</span>
             </td>
-            <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(t.actual)}>
-              <b>{fmt.usdk(t.actual)}</b>
-            </td>
-            <td className={"r mono grp-grk col-grp " + pnlCls(t.delta)}>
-              <b>{gk$(t.delta)}</b>
-            </td>
-            <td className={"r mono grp-grk " + pnlCls(t.gamma)}>
-              <b>{gk$(t.gamma)}</b>
-            </td>
-            <td className={"r mono grp-grk " + pnlCls(t.vega)}>
-              <b>{gk$(t.vega)}</b>
-            </td>
-            <td className={"r mono grp-grk " + pnlCls(t.theta)}>
-              <b>{gk$(t.theta)}</b>
-            </td>
-            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.residual)}>
-              <b>{gk$(t.residual)}</b>
-            </td>
+            {attribSum(t.actual, "grp-pnl col-grp col-grp-end")}
+            {attribCell(t.delta, null, "grp-grk col-grp")}
+            {attribCell(t.gamma, null, "grp-grk")}
+            {attribCell(t.vega, null, "grp-grk")}
+            {attribCell(t.theta, null, "grp-grk")}
+            {attribCell(t.residual, null, "grp-grk col-grp-end")}
           </tr>
         </tbody>
       </table>
@@ -743,31 +748,18 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
     });
   if (!m || m.rows.length === 0)
     return <div className="hbar-empty dim small mono">no attribution yet</div>;
-  // one greek-P&L cell: value $ bold + (% of the row's realized P&L).
-  const cell = (v: number, rowActual: number, extra: string): JSX.Element => {
-    // % of the row's realized P&L — undefined when the row P&L is ~0 (would divide
-    // by ≈0 into a nonsense %), shown as "—" then.
-    const p = Math.abs(rowActual) < 1 ? null : Math.round((v / Math.abs(rowActual)) * 100);
-    return (
-      <td className={"r mono " + extra + " " + pnlCls(v)}>
-        <b>{gk$(v)}</b>{" "}
-        <span className="pb-rel">({p == null ? "—" : (p >= 0 ? "+" : "−") + Math.abs(p) + "%"})</span>
-      </td>
-    );
-  };
   // the 6 attribution cells (P&L Σ + 4 terms + residual), shared by leg & summary rows.
   const attribCells = (r: {
-    actual: number; delta: number; gamma: number; vega: number; theta: number; residual: number;
+    actual: number | null; delta: number | null; gamma: number | null;
+    vega: number | null; theta: number | null; residual: number | null;
   }): JSX.Element => (
     <>
-      <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(r.actual)}>
-        <b>{fmt.usdk(r.actual)}</b>
-      </td>
-      {cell(r.delta, r.actual, "grp-grk col-grp")}
-      {cell(r.gamma, r.actual, "grp-grk")}
-      {cell(r.vega, r.actual, "grp-grk")}
-      {cell(r.theta, r.actual, "grp-grk")}
-      {cell(r.residual, r.actual, "grp-grk col-grp-end")}
+      {attribSum(r.actual, "grp-pnl col-grp col-grp-end")}
+      {attribCell(r.delta, r.actual, "grp-grk col-grp")}
+      {attribCell(r.gamma, r.actual, "grp-grk")}
+      {attribCell(r.vega, r.actual, "grp-grk")}
+      {attribCell(r.theta, r.actual, "grp-grk")}
+      {attribCell(r.residual, r.actual, "grp-grk col-grp-end")}
     </>
   );
   const legRow = (r: PositionAttribRow, main: boolean): JSX.Element => (
@@ -817,10 +809,10 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
           {groupByTradeId(m.rows).map((grp) => {
             if (grp.legs.length === 1) return legRow(grp.legs[0]!, true);
             const isOpen = expanded.has(grp.key);
-            const sum = (sel: (r: PositionAttribRow) => number): number => grp.legs.reduce((a, r) => a + sel(r), 0);
             const agg = {
-              actual: sum((r) => r.actual), delta: sum((r) => r.delta), gamma: sum((r) => r.gamma),
-              vega: sum((r) => r.vega), theta: sum((r) => r.theta), residual: sum((r) => r.residual),
+              actual: attribTotal(grp.legs, (r) => r.actual), delta: attribTotal(grp.legs, (r) => r.delta),
+              gamma: attribTotal(grp.legs, (r) => r.gamma), vega: attribTotal(grp.legs, (r) => r.vega),
+              theta: attribTotal(grp.legs, (r) => r.theta), residual: attribTotal(grp.legs, (r) => r.residual),
             };
             const tenors = new Set(grp.legs.map((l) => l.tenor));
             const side = structureSide(grp.legs);
@@ -847,7 +839,7 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
                   </td>
                   <td className="r mono dim grp-fix">{tenors.size === 1 ? [...tenors][0] : "—"}</td>
                   <td className="r mono dim grp-fix">—</td>
-                  <td className="r mono dim grp-fix col-grp-end">{(sum((r) => r.nominal) / 1e6).toFixed(2)}M</td>
+                  <td className="r mono dim grp-fix col-grp-end">{(grp.legs.reduce((a, r) => a + r.nominal, 0) / 1e6).toFixed(2)}M</td>
                   {attribCells(agg)}
                 </tr>
                 {isOpen && grp.legs.map((r) => legRow(r, false))}
@@ -858,24 +850,12 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
             <td className="l grp-fix" colSpan={8}>
               <span className="sym">Total</span>
             </td>
-            <td className={"r mono grp-pnl col-grp col-grp-end " + pnlCls(t.actual)}>
-              <b>{fmt.usdk(t.actual)}</b>
-            </td>
-            <td className={"r mono grp-grk col-grp " + pnlCls(t.delta)}>
-              <b>{gk$(t.delta)}</b>
-            </td>
-            <td className={"r mono grp-grk " + pnlCls(t.gamma)}>
-              <b>{gk$(t.gamma)}</b>
-            </td>
-            <td className={"r mono grp-grk " + pnlCls(t.vega)}>
-              <b>{gk$(t.vega)}</b>
-            </td>
-            <td className={"r mono grp-grk " + pnlCls(t.theta)}>
-              <b>{gk$(t.theta)}</b>
-            </td>
-            <td className={"r mono grp-grk col-grp-end " + pnlCls(t.residual)}>
-              <b>{gk$(t.residual)}</b>
-            </td>
+            {attribSum(t.actual, "grp-pnl col-grp col-grp-end")}
+            {attribCell(t.delta, null, "grp-grk col-grp")}
+            {attribCell(t.gamma, null, "grp-grk")}
+            {attribCell(t.vega, null, "grp-grk")}
+            {attribCell(t.theta, null, "grp-grk")}
+            {attribCell(t.residual, null, "grp-grk col-grp-end")}
           </tr>
         </tbody>
       </table>
