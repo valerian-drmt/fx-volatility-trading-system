@@ -1,10 +1,6 @@
 # Workflow — from issue to merge
 
-> The issue → branch → PR → merge lifecycle for one deliverable. The hard git
-> rules (commit-on-local-`main`, the **`git update`** trigger, 2–3 PR/day, **no
-> `git worktree`**, secrets) live in `CLAUDE.md § "Git / workflow"` — that file
-> wins on any conflict. For **how to slice** a backlog into these PRs, see
-> [`DECOMPOSITION.md`](DECOMPOSITION.md).
+> The issue → branch → PR → merge lifecycle, followed for every deliverable.
 >
 > Tracking = GitHub (Issues + [Project #5](https://github.com/users/valerian-drmt/projects/5)).
 > See also [`PROJECT_BOARD.md`](PROJECT_BOARD.md) and [`ISSUE_PROTOCOL.md`](ISSUE_PROTOCOL.md).
@@ -51,7 +47,7 @@ A blocker at any step → card ⛔ Blocked, with an issue comment explaining the
 - **type**: `feat · fix · refactor · infra · docs · chore · test · perf`.
 - **scope**: the component (`api`, `vol`, `risk`, `frontend`, `aws`, `ci`…).
 - Atomic: one commit = one coherent change that compiles.
-- **Forbidden**: `Co-Authored-By` or any bot/assistant name in authorship.
+- **Forbidden**: `Co-Authored-By` trailers or any bot name in authorship.
 
 ```
 feat(vol): add VRP computation on the SSVI surface
@@ -82,11 +78,8 @@ Any PR touching observable behavior goes through a **manual test** described in 
 
 ## 6. Who triggers what
 
-**Tracking** (issues, board, moving cards) is handled freely by the assistant —
-these are not git operations.
-
-**Git operations** (commit / push / PR / merge / tag) remain **explicitly triggered** by the
-maintainer; the assistant does not push or merge on its own initiative.
+**Git operations** (commit / push / PR / merge / tag) are **explicitly triggered**
+by the maintainer — never run automatically.
 
 ## 7. Releases
 

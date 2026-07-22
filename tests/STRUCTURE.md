@@ -125,7 +125,7 @@ from tests.fixtures.positions import make_long_call
 ## Pytest configuration
 
 Lives in `pyproject.toml § [tool.pytest.ini_options]` (single source of
-truth, cf. CLAUDE.md). Markers and `testpaths` are already defined there:
+truth). Markers and `testpaths` are already defined there:
 
 ```toml
 [tool.pytest.ini_options]

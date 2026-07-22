@@ -1,7 +1,7 @@
 # `infrastructure/aws/` — index
 
 > Documentation of the AWS infrastructure for the fxvol project.
-> **Read this first** (Claude Code and any human contributor).
+> **Read this first.**
 
 ---
 

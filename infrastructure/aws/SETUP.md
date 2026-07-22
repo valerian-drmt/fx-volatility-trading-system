@@ -297,7 +297,7 @@ Test KMS decrypt:
 ```powershell
 aws ssm get-parameter --name /fxvol/prod/IB_USERID --with-decryption --profile fxvol-dev --query 'Parameter.Name' --output text
 # Should return: /fxvol/prod/IB_USERID
-# (we use --query to NOT display the value — CLAUDE.md rule)
+# (we use --query to NOT display the value — the secrets rule: never print a secret)
 ```
 
 ✅ **Phase 5 checkpoint**: you can read the SSM params via CLI, decrypt
@@ -446,9 +446,7 @@ manually via CLI if you want to test before.
 
 ## 12. Useful links
 
-- **Detailed R9 secrets plan**: `releases/r9-sandbox-secrets-ssm.md` (gitignored)
-- **Target v2 architecture**: `releases/architecture_finale_project/00-architecture-main.md`
-- **Secrets rules in Claude**: `CLAUDE.md` § "Absolute rule: zero exposure of secrets"
+- **Secrets policy**: never echo a secret value; SSM Parameter Store (KMS-encrypted) is the single source of truth — loaded to RAM, never written to disk.
 - **AWS console**: https://console.aws.amazon.com/ (log in via `itadmin` or `fxvol-dev`, never root)
 - **AWS pricing calculator**: https://calculator.aws/
 

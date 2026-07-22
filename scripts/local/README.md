@@ -1,7 +1,7 @@
 # `scripts/local/` — local Docker stack
 
 Two PowerShell scripts to run the full stack on the developer laptop. They are
-**user-run only** (they load secrets — see the secrets rule in `CLAUDE.md`).
+**user-run only** (they load secrets into RAM — never echo a secret value).
 
 | File | Role |
 |---|---|
