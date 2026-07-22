@@ -1,12 +1,11 @@
 # Workflow — from issue to merge
 
-> ⛔ **SUSPENDED — not the active workflow.** The issue → branch → PR → merge
-> procedure below (and **all git worktrees**) is on hold. The active rule is:
-> **work only on `sandbox/r11`, commits only** — no worktree, no branch, no PR, no
-> `main`. See `CLAUDE.md § "Git / workflow — sandbox/r11 UNIQUEMENT"`. Re-enable
-> this procedure only when Valérian explicitly restarts main-decomposition.
+> The issue → branch → PR → merge lifecycle for one deliverable. The hard git
+> rules (commit-on-local-`main`, the **`git update`** trigger, 2–3 PR/day, **no
+> `git worktree`**, secrets) live in `CLAUDE.md § "Git / workflow"` — that file
+> wins on any conflict. For **how to slice** a backlog into these PRs, see
+> [`DECOMPOSITION.md`](DECOMPOSITION.md).
 >
-> Single procedure, followed identically for **every** task.
 > Tracking = GitHub (Issues + [Project #5](https://github.com/users/valerian-drmt/projects/5)).
 > See also [`PROJECT_BOARD.md`](PROJECT_BOARD.md) and [`ISSUE_PROTOCOL.md`](ISSUE_PROTOCOL.md).
 
@@ -77,7 +76,9 @@ Any PR touching observable behavior goes through a **manual test** described in 
 - **CI** (`.github/workflows/ci.yml`): compileall + ruff + import-linter + pytest + frontend
   (lint/typecheck/build/vitest) + builds. All must be green.
 - **CodeQL** + **security-scan**: no new critical alert.
-- **Deploy**: on a `vX.Y.Z` tag, gated by `DEPLOY_ENABLED` (disarmed by default).
+- **Deploy** (`build.yml` → `deploy.yml`): on **push to `main`**, gated by the
+  `DEPLOY_ENABLED` repo variable. When armed, a code push auto-builds the images
+  and deploys to the EC2 (`.idea`/`scripts`/`docs` pushes are `paths-ignore`d).
 
 ## 6. Who triggers what
 
