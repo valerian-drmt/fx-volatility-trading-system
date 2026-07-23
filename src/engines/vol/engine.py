@@ -52,6 +52,15 @@ SKIP_BACKOFF_S = 5.0   # short sleep when a cycle skipped (no spot / no surface)
 HISTORY_RETENTION_DAYS = 90
 # 1 prune ≈ once/day. Vol cycle is CYCLE_S (180 s) → 480 cycles ≈ 24h.
 PRUNE_EVERY_CYCLES = 480
+
+# Heavy hourly batch (GMM regime refit, PCA surface snapshot, PC3 rolling
+# history) was extracted to the ``analytics`` engine so it can be cpu-capped off
+# the real-time path. When "0", this engine READS the analytics engine's
+# published results (train-centrally / serve-at-the-edge : it still runs the
+# cheap per-cycle ``infer_proba`` on the live obs). Default "1" keeps the legacy
+# inline behavior for a safe staged cutover — flip to "0" once analytics is
+# verified live. Read once at import : a restart applies the change.
+_INLINE_ANALYTICS: bool = os.environ.get("VOL_INLINE_ANALYTICS", "1") != "0"
 DEFAULT_TENOR_T = {
     "1M": 1 / 12, "2M": 2 / 12, "3M": 3 / 12,
     "4M": 4 / 12, "5M": 5 / 12, "6M": 6 / 12,
@@ -699,8 +708,12 @@ class VolEngine:
                 signals = pca_rows["payload"].get("signals", [])
                 span.set_attribute("n_signals", len(signals))
 
-        # Step 2 — hourly snapshot for PCA fit history.
-        hourly_snapshot = await self._maybe_collect_hourly_snapshot(surface, F)
+        # Step 2 — hourly snapshot for PCA fit history. Owned by the analytics
+        # engine unless VOL_INLINE_ANALYTICS keeps the legacy inline path.
+        hourly_snapshot = (
+            await self._maybe_collect_hourly_snapshot(surface, F)
+            if _INLINE_ANALYTICS else None
+        )
 
         await self._publish_progress("publish", "redis_set")
         with tracer.start_as_current_span("vol_redis_publish") as span:
@@ -1190,26 +1203,15 @@ class VolEngine:
         (low vol+low vov) from stressed (high vol+high vov), with pre_event
         falling in the middle of the vol_level distribution.
 
-        P3 : the EM fit moves ≤ hourly (feature_history fills slowly), so the
-        fitted ``(gmm, fit)`` is memoized on the training-set signature (number
-        of pairs + last pair) and refit only when a new feature row lands. The
-        fit runs off the event loop via ``asyncio.to_thread``. The per-cycle
-        ``infer_proba`` projection is cheap and stays inline.
+        The heavy FIT is either inline (legacy, VOL_INLINE_ANALYTICS=1, memoized
+        + off the event loop) or read from the analytics engine's published
+        model (=0). The cheap per-cycle ``infer_proba`` on the live obs always
+        stays here — train centrally, serve at the edge.
         """
         try:
             import numpy as np
 
-            from core.vol.gmm_regime import MIN_OBS_GMM, fit_gmm, infer_proba
-
-            # Build training matrix from history rows that have both features.
-            train: list[tuple[float, float]] = [
-                (r["vol_level"], r["vol_of_vol"])
-                for r in feature_history_rows
-                if r.get("vol_level") is not None and r.get("vol_of_vol") is not None
-            ]
-            if len(train) < MIN_OBS_GMM:
-                return None
-            X = np.asarray(train, dtype=float)
+            from core.vol.gmm_regime import infer_proba
 
             # Live obs : need a vov estimate. If not passed, compute on the fly.
             if vov_pct_live is None and len(iv_3m_history_pct) >= 20:
@@ -1218,14 +1220,7 @@ class VolEngine:
             if vol_level_pct is None or vov_pct_live is None:
                 return None
 
-            # Refit only when the training set changed (new feature row).
-            fit_sig = (len(train), train[-1])
-            if self._gmm_cache_key == fit_sig and self._gmm_cache is not None:
-                gmm, fit = self._gmm_cache
-            else:
-                gmm, fit = await asyncio.to_thread(fit_gmm, X)
-                self._gmm_cache_key = fit_sig
-                self._gmm_cache = (gmm, fit)
+            gmm, fit = await self._get_gmm_model(feature_history_rows)
             if gmm is None or fit is None or not fit.converged:
                 return None
 
@@ -1239,6 +1234,66 @@ class VolEngine:
         except Exception:
             logger.exception("gmm_inference_failed")
             return None
+
+    async def _get_gmm_model(
+        self, feature_history_rows: list[dict[str, float | None]],
+    ) -> tuple[Any, Any]:
+        """Return the fitted ``(gmm, fit)`` regime model, or ``(None, None)``.
+
+        VOL_INLINE_ANALYTICS=0 : deserialize the analytics engine's published
+        model from Redis (no fit on this hot path). =1 (legacy) : fit inline on
+        the 2-column (vol_level, vol_of_vol) training matrix — only 2 of 3
+        features because term_slope is mostly NULL during bootstrap — memoized on
+        the training-set signature (refit only when a new feature row lands, off
+        the event loop via ``asyncio.to_thread``).
+        """
+        import numpy as np
+
+        from core.vol.gmm_regime import MIN_OBS_GMM, deserialize_gmm, fit_gmm
+
+        if not _INLINE_ANALYTICS:
+            raw = await self.redis.get(
+                keys.LATEST_REGIME_MODEL.format(symbol=self.symbol)
+            )
+            if raw is None:
+                return None, None
+            payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+            return deserialize_gmm(payload)
+
+        train: list[tuple[float, float]] = [
+            (r["vol_level"], r["vol_of_vol"])
+            for r in feature_history_rows
+            if r.get("vol_level") is not None and r.get("vol_of_vol") is not None
+        ]
+        if len(train) < MIN_OBS_GMM:
+            return None, None
+        fit_sig = (len(train), train[-1])
+        if self._gmm_cache_key == fit_sig and self._gmm_cache is not None:
+            return self._gmm_cache
+        X = np.asarray(train, dtype=float)
+        gmm, fit = await asyncio.to_thread(fit_gmm, X)
+        self._gmm_cache_key = fit_sig
+        self._gmm_cache = (gmm, fit)
+        return gmm, fit
+
+    async def _read_pc3_history_from_analytics(self) -> tuple[list[float], list[float]]:
+        """Read the analytics engine's published PC3 skew/convex rolling arrays
+        from Redis (VOL_INLINE_ANALYTICS=0). Empty on absence → the downstream
+        ``zscore_against`` degrades to 0, same as an empty inline history."""
+        try:
+            raw = await self.redis.get(
+                keys.LATEST_PC3_HISTORY.format(symbol=self.symbol)
+            )
+            if raw is None:
+                return [], []
+            payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+            return (
+                [float(v) for v in payload.get("skew", [])],
+                [float(v) for v in payload.get("convex", [])],
+            )
+        except Exception:
+            logger.exception("pc3_history_read_failed")
+            return [], []
 
     async def _compute_pca_signals(self, surface: dict[str, Any]) -> dict[str, Any] | None:
         """Project surface on active PCA model + emit 3 signals.
@@ -1318,39 +1373,42 @@ class VolEngine:
                 # pull + per-row pc3_sub_metrics recompute is memoized on the
                 # latest snapshot timestamp (P3). A cheap LIMIT-1 timestamp probe
                 # decides whether to refresh.
-                latest_snap_ts = (await session.execute(
-                    select(SurfaceSnapshotHourly.timestamp)
-                    .where(SurfaceSnapshotHourly.symbol == self.symbol)
-                    .order_by(desc(SurfaceSnapshotHourly.timestamp))
-                    .limit(1)
-                )).scalar_one_or_none()
-                if (
-                    self._pc3_hist_cache_key == latest_snap_ts
-                    and self._pc3_hist_cache is not None
-                ):
-                    hist_skew, hist_convex = self._pc3_hist_cache
+                if not _INLINE_ANALYTICS:
+                    hist_skew, hist_convex = await self._read_pc3_history_from_analytics()
                 else:
-                    snap_iv_cols = [
-                        f"iv_{t.lower()}_{d}" for t in TENORS for d in DELTAS
-                    ]
-                    snap_rows = (await session.execute(
-                        select(SurfaceSnapshotHourly)
+                    latest_snap_ts = (await session.execute(
+                        select(SurfaceSnapshotHourly.timestamp)
                         .where(SurfaceSnapshotHourly.symbol == self.symbol)
                         .order_by(desc(SurfaceSnapshotHourly.timestamp))
-                        .limit(200)
-                    )).scalars().all()
-                    hist_skew = []
-                    hist_convex = []
-                    for r in snap_rows:
-                        vec = [getattr(r, c) for c in snap_iv_cols]
-                        if any(v is None for v in vec):
-                            continue
-                        xv = np.asarray([float(v) for v in vec])
-                        s, c = pc3_sub_metrics(xv)
-                        hist_skew.append(s)
-                        hist_convex.append(c)
-                    self._pc3_hist_cache_key = latest_snap_ts
-                    self._pc3_hist_cache = (hist_skew, hist_convex)
+                        .limit(1)
+                    )).scalar_one_or_none()
+                    if (
+                        self._pc3_hist_cache_key == latest_snap_ts
+                        and self._pc3_hist_cache is not None
+                    ):
+                        hist_skew, hist_convex = self._pc3_hist_cache
+                    else:
+                        snap_iv_cols = [
+                            f"iv_{t.lower()}_{d}" for t in TENORS for d in DELTAS
+                        ]
+                        snap_rows = (await session.execute(
+                            select(SurfaceSnapshotHourly)
+                            .where(SurfaceSnapshotHourly.symbol == self.symbol)
+                            .order_by(desc(SurfaceSnapshotHourly.timestamp))
+                            .limit(200)
+                        )).scalars().all()
+                        hist_skew = []
+                        hist_convex = []
+                        for r in snap_rows:
+                            vec = [getattr(r, c) for c in snap_iv_cols]
+                            if any(v is None for v in vec):
+                                continue
+                            xv = np.asarray([float(v) for v in vec])
+                            s, c = pc3_sub_metrics(xv)
+                            hist_skew.append(s)
+                            hist_convex.append(c)
+                        self._pc3_hist_cache_key = latest_snap_ts
+                        self._pc3_hist_cache = (hist_skew, hist_convex)
                 cur_skew, cur_convex = pc3_sub_metrics(x)
                 skew_z = zscore_against(cur_skew, hist_skew)
                 convex_z = zscore_against(cur_convex, hist_convex)
