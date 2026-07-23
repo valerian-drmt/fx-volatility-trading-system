@@ -3692,9 +3692,7 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3802,9 +3800,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3817,15 +3813,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
