@@ -5,10 +5,18 @@ the 3-component GMM regime classifier.
 """
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
-from core.vol.gmm_regime import MIN_OBS_GMM, fit_gmm, infer_proba
+from core.vol.gmm_regime import (
+    MIN_OBS_GMM,
+    deserialize_gmm,
+    fit_gmm,
+    infer_proba,
+    serialize_gmm,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -70,3 +78,42 @@ def test_fit_gmm_is_deterministic_across_refits():
     assert fit_a is not None and fit_b is not None
     # GMM_RANDOM_STATE=42 pins the k-means init → identical mapping.
     assert fit_a.component_to_label == fit_b.component_to_label
+
+
+def test_serialize_deserialize_roundtrip_preserves_predict_proba():
+    """The analytics→vol model-serving path: fit centrally, serialize to JSON
+    (Redis), deserialize at the edge, infer per-cycle — bit-identical output."""
+    X = _three_cluster_data()
+    gmm, fit = fit_gmm(X)
+    assert gmm is not None and fit is not None
+
+    # Full round-trip through JSON, exactly as it travels over Redis.
+    payload = json.loads(json.dumps(serialize_gmm(gmm, fit)))
+    gmm2, fit2 = deserialize_gmm(payload)
+
+    # Metadata preserved.
+    assert fit2.n_obs == fit.n_obs
+    assert fit2.converged == fit.converged
+    assert fit2.component_to_label == fit.component_to_label
+
+    # infer_proba identical on points across the three regimes — no re-fit,
+    # no numerical drift (precisions_cholesky_ restored verbatim).
+    for x in (CALM_MEAN, PRE_EVENT_MEAN, STRESSED_MEAN, (7.0, 1.5, -1.0)):
+        r1 = infer_proba(gmm, np.array(x), fit)
+        r2 = infer_proba(gmm2, np.array(x), fit2)
+        assert r1.label == r2.label
+        assert r1.p_calm == r2.p_calm
+        assert r1.p_stressed == r2.p_stressed
+        assert r1.p_pre_event == r2.p_pre_event
+
+
+def test_deserialize_gmm_is_marked_fitted_without_refit():
+    """A restored model must predict without ever calling .fit() (no training
+    data at the edge)."""
+    gmm, fit = fit_gmm(_three_cluster_data())
+    assert gmm is not None and fit is not None
+    gmm2, _ = deserialize_gmm(serialize_gmm(gmm, fit))
+    # predict_proba would raise NotFittedError if the attrs weren't restored.
+    proba = gmm2.predict_proba(np.array([STRESSED_MEAN]))
+    assert proba.shape == (1, 3)
+    assert proba.sum() == pytest.approx(1.0, abs=1e-6)
