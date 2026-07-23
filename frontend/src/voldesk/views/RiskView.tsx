@@ -15,7 +15,7 @@ import type { Position } from "../data";
 import { groupByTradeId, structureName } from "../components/tradeGrouping";
 import { type HistBin, VAR_MIN_DAYS, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
-import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type LiveLadder, type MarginalVarData, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
+import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type LiveLadder, type MarginalVarData, type MarginalVarRow, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -128,7 +128,7 @@ function methodLabel(method: string | null, n: number): string {
   return "account 1d";
 }
 
-function VarCard({ var95, var99, es99, meanDaily, nDays, method, hist, fresh }: { var95: number | null; var99: number | null; es99: number | null; meanDaily: number | null; nDays: number; method: string | null; hist: HistBin[]; fresh: Fresh<unknown> }): JSX.Element {
+function VarCard({ var95, var99, es99, meanDaily, nDays, method, hist, fresh, positions }: { var95: number | null; var99: number | null; es99: number | null; meanDaily: number | null; nDays: number; method: string | null; hist: HistBin[]; fresh: Fresh<unknown>; positions: Position[] }): JSX.Element {
   const rows: VarRow[] = [
     { id: "1d", lbl: "Daily", days: 1 },
     { id: "1w", lbl: "Weekly", days: 5 },
@@ -222,7 +222,7 @@ function VarCard({ var95, var99, es99, meanDaily, nDays, method, hist, fresh }: 
             )}
           </div>
         </Panel>
-        <MarginalVarPanel />
+        <MarginalVarPanel positions={positions} />
       </div>
     </Panel>
   );
@@ -410,12 +410,51 @@ function PinRiskTable({ positions }: { positions: Position[] }): JSX.Element {
 }
 
 // Marginal contribution to VaR — live (/portfolio/marginal-var); empty state
-// until a book + ≥5d history exist.
-function MarginalVarPanel(): JSX.Element {
+// until a book + ≥5d history exist. Legs are grouped by trade like the Position
+// breakdown table: a collapsible summary line per multi-leg structure (caret ▸,
+// structure name) with its legs indented. Component VaR + % VaR are additive
+// (they foot to the portfolio total) so the summary sums them; standalone VaR is
+// NOT additive across legs, so the summary shows "—".
+function MarginalVarPanel({ positions }: { positions: Position[] }): JSX.Element {
   const live = useFetch<MarginalVarData>(() => fetchMarginalVar().then(adaptMarginalVar), 120_000);
   const d = live.data;
   const rows = d?.rows ?? [];
   const money = (v: number): string => { const a = Math.abs(v); const m = a >= 1000 ? (a / 1000).toFixed(1) + "k" : Math.round(a).toString(); return (v >= 0 ? "-$" : "+$") + m; };
+  const compCls = (v: number): string => "r mono " + (v >= 0 ? "neg" : "pos");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (t: string): void =>
+    setExpanded((prev) => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
+  // Structure names from the same grouping the Position breakdown uses.
+  const nameByTrade = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const grp of groupByTradeId(positions)) {
+      if (grp.tradeId != null && grp.legs.length > 1) m.set(Number(grp.tradeId), structureName(grp.legs));
+    }
+    return m;
+  }, [positions]);
+  // Group rows by trade id, preserving the backend's (contribution) order. A
+  // multi-leg structure's legs collapse under one caret even when the backend
+  // interleaves them with other trades.
+  const groups: { trade: string; rows: MarginalVarRow[] }[] = [];
+  {
+    const at = new Map<string, number>();
+    for (const r of rows) {
+      const t = r.trade;
+      if (t === "—") { groups.push({ trade: t, rows: [r] }); continue; }
+      const i = at.get(t);
+      if (i == null) { at.set(t, groups.length); groups.push({ trade: t, rows: [r] }); }
+      else groups[i]!.rows.push(r);
+    }
+  }
+  const legRow = (m: MarginalVarRow, key: string, indent: boolean): JSX.Element => (
+    <tr key={key} className={indent ? "pos-leg" : undefined}>
+      <td className="l mono dim">{indent ? "↳" : m.trade}</td>
+      <td className="l mono">{m.label}</td>
+      <td className="r mono dim">{money(m.standalone)}</td>
+      <td className={compCls(m.component)}>{money(m.component)}</td>
+      <td className="r mono">{m.pct.toFixed(1)}%</td>
+    </tr>
+  );
   return (
     <Panel title="Marginal contribution to VaR" dataPp="marginal-var" right={<PanelLive status={live.status} />} className="trade-block" pad={false}>
       <div className="table-scroll">
@@ -424,15 +463,37 @@ function MarginalVarPanel(): JSX.Element {
           <tbody>
             {rows.length === 0 ? (
               <tr><td className="l dim mono small" colSpan={5}>{live.status === "missing" ? "no open book" : d && d.nDays < 5 ? "accumulating history (≈5d)…" : "loading…"}</td></tr>
-            ) : rows.map((m, i) => (
-              <tr key={i}>
-                <td className="l mono dim">{m.trade}</td>
-                <td className="l mono">{m.label}</td>
-                <td className="r mono dim">{money(m.standalone)}</td>
-                <td className={"r mono " + (m.component >= 0 ? "neg" : "pos")}>{money(m.component)}</td>
-                <td className="r mono">{m.pct.toFixed(1)}%</td>
-              </tr>
-            ))}
+            ) : groups.map((grp, gi) => {
+              if (grp.trade === "—" || grp.rows.length === 1) return legRow(grp.rows[0]!, `g${gi}`, false);
+              const isOpen = expanded.has(grp.trade);
+              const compSum = grp.rows.reduce((s, r) => s + r.component, 0);
+              const pctSum = grp.rows.reduce((s, r) => s + r.pct, 0);
+              const tid = Number(grp.trade.replace(/\D/g, ""));
+              const name = (Number.isFinite(tid) ? nameByTrade.get(tid) : undefined) ?? grp.trade;
+              return (
+                <Fragment key={grp.trade}>
+                  <tr className={"pos-main" + (isOpen ? " open" : "")} onClick={() => toggle(grp.trade)}>
+                    <td className="l">
+                      <button
+                        className="pos-caret"
+                        onClick={(e) => { e.stopPropagation(); toggle(grp.trade); }}
+                        aria-expanded={isOpen}
+                      >
+                        {isOpen ? "▾" : "▸"}
+                      </button>
+                      <span className="sym">{name}</span>
+                      <span className="dim mono small"> · {grp.rows.length} legs</span>
+                    </td>
+                    <td className="r mono dim">—</td>
+                    {/* standalone VaR is not additive across legs — only component / % foot */}
+                    <td className="r mono dim">—</td>
+                    <td className={compCls(compSum)}>{money(compSum)}</td>
+                    <td className="r mono">{pctSum.toFixed(1)}%</td>
+                  </tr>
+                  {isOpen && grp.rows.map((r, i) => legRow(r, `${grp.trade}-${i}`, true))}
+                </Fragment>
+              );
+            })}
           </tbody>
           {rows.length > 0 && d ? (
             <tfoot><tr>
@@ -560,7 +621,7 @@ export function RiskView(): JSX.Element {
           </div>
         </Panel>
         </div>
-        <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} nDays={vd.nDays} method={vd.method} hist={vd.hist} fresh={risk} />
+        <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} nDays={vd.nDays} method={vd.method} hist={vd.hist} fresh={risk} positions={portfolio.data?.positions ?? []} />
       </div>
       <StressEngine />
       <LiveLadders />
