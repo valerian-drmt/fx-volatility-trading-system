@@ -112,8 +112,8 @@ cat <<TXT
                         A = up|down|status|logs (default up)
 
   NOTE: the stack-wide ./all/* commands NEVER touch tempo + otel-collector
-  (dev-only tracing, `traces` profile). Ops/data-check need only metrics+logs;
-  spin traces up on demand with `./all/traces up`, tear down with `... down`.
+  (dev-only tracing, traces profile). Ops/data-check need only metrics+logs;
+  spin traces up on demand with "./all/traces up", tear down with "... down".
 
   CONTAINERS (CREATE/START up = recreate ONE service, no build)
     ./containers/<svc>     e.g. ./containers/api, ./containers/vol-engine
