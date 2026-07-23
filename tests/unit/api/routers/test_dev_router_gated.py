@@ -2,9 +2,9 @@
 write-gated TRADER debug set (see releases/PLAN_trader_vs_public.md).
 
   * PUBLIC  (no auth)      : stack / engines / cycle-progress / db-schema /
-    migrations — status + topology + schema only, no data/secrets/host internals.
-  * TRADER  (require_write): tables (DB Explorer) / logs / redis / hardware /
-    container metrics — the debug tools.
+    migrations / hardware / container metrics — status + topology + schema +
+    resource consumption only, no data/secrets/host internals.
+  * TRADER  (require_write): tables (DB Explorer) / logs / redis — the debug tools.
 
 This test fail-closes: every dev route must be classified, every TRADER route
 must carry require_write, and no PUBLIC route may. A new dev route that isn't
@@ -28,6 +28,8 @@ PUBLIC = {
     "/api/v1/dev/db-schema",
     "/api/v1/dev/migrations",
     "/api/v1/dev/migrations/{rev_id}",
+    "/api/v1/dev/hardware",
+    "/api/v1/dev/containers/metrics",
 }
 TRADER = {
     "/api/v1/dev/redis/keys",
@@ -36,8 +38,6 @@ TRADER = {
     "/api/v1/dev/tables/{name}",
     "/api/v1/dev/logs/containers",
     "/api/v1/dev/logs/query",
-    "/api/v1/dev/hardware",
-    "/api/v1/dev/containers/metrics",
 }
 
 

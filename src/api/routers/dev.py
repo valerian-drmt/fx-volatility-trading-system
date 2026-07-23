@@ -32,10 +32,11 @@ from persistence.models import Base
 
 # Two audiences (see releases/PLAN_trader_vs_public.md):
 #   * PUBLIC  (no auth)      : safe read-only showcase — stack, engines,
-#     cycle-progress, db-schema, migrations. Just status + topology + schema,
-#     no data / secrets / host internals.
+#     cycle-progress, db-schema, migrations, hardware (aggregate CPU/RAM/disk +
+#     per-container resource use — status/topology/consumption only, no data /
+#     secrets / host internals).
 #   * TRADER  (require_write): the debug tools — db-explorer (tables), logs,
-#     redis viewer, hardware. Each carries Depends(require_write) per route.
+#     redis viewer. Each carries Depends(require_write) per route.
 # So the router is NOT gated at the router level; write-gating is per endpoint.
 _TRADER = [Depends(require_write)]
 
@@ -1464,7 +1465,7 @@ async def _read_gpu() -> list[dict[str, Any]]:
         return []
 
 
-@router.get("/hardware", dependencies=_TRADER)
+@router.get("/hardware")
 async def hardware() -> dict[str, Any]:
     """Host CPU / RAM / disk (from /proc) + best-effort GPU (nvidia-smi).
 
@@ -1568,7 +1569,7 @@ async def _sample_docker() -> None:
         pass  # socket absent (prod) / docker unreachable → leave history untouched
 
 
-@router.get("/containers/metrics", dependencies=_TRADER)
+@router.get("/containers/metrics")
 async def container_metrics(minutes: int = 15) -> dict[str, Any]:
     """Per-container CPU % + RAM (bytes) time-series over the last ``minutes``.
 
