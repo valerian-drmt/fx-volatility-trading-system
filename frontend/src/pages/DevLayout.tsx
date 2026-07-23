@@ -33,8 +33,8 @@ interface TabDef {
   Component: () => JSX.Element;
   // trader-only tab: hidden from the public showcase, shown once logged in.
   // Mirrors the backend split (see releases/PLAN_trader_vs_public.md): the
-  // Stack/Schema/Migrations/Pipeline tabs are a safe read-only showcase; the
-  // DB Explorer / Logs / Hardware tabs are the write-gated debug tools.
+  // Stack/Schema/Migrations/Pipeline/Hardware tabs are a safe read-only
+  // showcase; the DB Explorer / Logs tabs are the write-gated debug tools.
   trader?: boolean;
 }
 
@@ -45,7 +45,7 @@ const TABS: TabDef[] = [
   { id: "pipeline", label: "🧭 Pipeline", Component: PipelineViz },
   { id: "db", label: "🗃 DB Explorer", Component: DbExplorer, trader: true },
   { id: "logs", label: "🔍 Logs", Component: Logs, trader: true },
-  { id: "hw", label: "🖥 Hardware", Component: Hardware, trader: true },
+  { id: "hw", label: "🖥 Hardware", Component: Hardware },
 ];
 
 export function DevLayout(): JSX.Element {

@@ -32,10 +32,11 @@ from persistence.models import Base
 
 # Two audiences (see releases/PLAN_trader_vs_public.md):
 #   * PUBLIC  (no auth)      : safe read-only showcase — stack, engines,
-#     cycle-progress, db-schema, migrations. Just status + topology + schema,
-#     no data / secrets / host internals.
+#     cycle-progress, db-schema, migrations, hardware (aggregate CPU/RAM/disk +
+#     per-container resource use — status/topology/consumption only, no data /
+#     secrets / host internals).
 #   * TRADER  (require_write): the debug tools — db-explorer (tables), logs,
-#     redis viewer, hardware. Each carries Depends(require_write) per route.
+#     redis viewer. Each carries Depends(require_write) per route.
 # So the router is NOT gated at the router level; write-gating is per endpoint.
 _TRADER = [Depends(require_write)]
 
@@ -227,12 +228,10 @@ async def _tcp_probe(host: str, port: int, timeout_s: float = 2.0) -> str:
         return "DOWN"
 
 
-# Static metadata for the 15 prod containers de la stack — known at compose time.
+# Static metadata for the 17 containers de la stack — known at compose time.
 # `image` est le tag attendu, `layer` groupe la viz, `desc` est un one-liner.
-# Layer obs (4 containers) = profil docker compose ``obs`` : promtail (logs),
-# loki + prometheus (stores), grafana (UI). The traces pair (tempo + otel,
-# profil ``traces``) is DEV-ONLY and deliberately not tracked here — otherwise
-# it reads as a permanent prod outage on a box that never runs it.
+# Layer obs (6 containers) = profil docker compose ``obs`` : collectors
+# (promtail, otel-collector), stores (prometheus, loki, tempo), UI (grafana).
 STACK_LAYOUT: list[dict[str, Any]] = [
     {"name": "frontend",      "image": "fx-options-frontend:local",   "layer": "edge",    "desc": "React SPA (nginx static)"},
     {"name": "nginx",         "image": "nginx:alpine",                "layer": "edge",    "desc": "Reverse proxy (80/443)"},
@@ -245,11 +244,12 @@ STACK_LAYOUT: list[dict[str, Any]] = [
     {"name": "risk-engine",   "image": "fx-options-risk-engine:local","layer": "engines", "desc": "Greeks + P&L curve"},
     {"name": "db-writer",     "image": "fx-options-db-writer:local",  "layer": "engines", "desc": "Redis events → Postgres"},
     {"name": "execution",     "image": "fx-options-execution:local",  "layer": "engines", "desc": "Orders/positions IB → DB (1s)"},
-    # ─── Observability stack (profil obs) — tempo + otel are dev-only (profil
-    #     ``traces``) and intentionally excluded, see note above. ───
+    # ─── Observability stack (profil obs) ───
     {"name": "promtail",      "image": "grafana/promtail",            "layer": "obs",     "desc": "Docker logs → Loki"},
+    {"name": "otel-collector","image": "otel/opentelemetry-collector","layer": "obs",     "desc": "OTLP traces → Tempo"},
     {"name": "loki",          "image": "grafana/loki",                "layer": "obs",     "desc": "Logs store"},
     {"name": "prometheus",    "image": "prom/prometheus",             "layer": "obs",     "desc": "Metrics scrape + store"},
+    {"name": "tempo",         "image": "grafana/tempo",               "layer": "obs",     "desc": "Traces store"},
     {"name": "grafana",       "image": "grafana/grafana-oss",         "layer": "obs",     "desc": "Dashboards UI (:3000)"},
 ]
 
@@ -295,15 +295,17 @@ async def stack_overview(
     exec_status = await _tcp_probe("execution-engine", 8001)
 
     # Observability stack — TCP probe on the canonical port of each
-    # component when it exposes one. promtail has no public TCP listener
-    # we can cheaply probe ; treat it as presence-tracked (fall back to
-    # "OK" when the rest of the obs stack answers, "DOWN" otherwise).
-    # tempo + otel-collector are dev-only (profil ``traces``) — not probed.
+    # component when it exposes one. promtail / otel-collector have
+    # no public TCP listener we can cheaply probe ; treat them as
+    # presence-tracked at the docker level (fall back to "OK" when
+    # the rest of the obs stack answers, "DOWN" otherwise).
     prom_status    = await _tcp_probe("prometheus",    9090)
     loki_status    = await _tcp_probe("loki",          3100)
+    tempo_status   = await _tcp_probe("tempo",         3200)
     grafana_status = await _tcp_probe("grafana",       3000)
-    obs_any_up = "OK" in (prom_status, loki_status, grafana_status)
+    obs_any_up = "OK" in (prom_status, loki_status, tempo_status, grafana_status)
     promtail_status = "OK" if obs_any_up else "DOWN"
+    otel_status     = "OK" if obs_any_up else "DOWN"
 
     # 2. Engines : reuse the per-engine config from /engines
     engines_status: dict[str, str] = {}
@@ -329,10 +331,12 @@ async def stack_overview(
         "risk-engine": engines_status.get("risk_engine", "DOWN"),
         "db-writer":   engines_status.get("db_writer", "DOWN"),
         "execution":  exec_status,
-        # Observability layer (tempo + otel are dev-only, excluded)
+        # Observability layer
         "promtail":      promtail_status,
+        "otel-collector": otel_status,
         "loki":          loki_status,
         "prometheus":    prom_status,
+        "tempo":         tempo_status,
         "grafana":       grafana_status,
     }
 
@@ -356,8 +360,10 @@ async def stack_overview(
         {"from": "frontend",    "to": "nginx"},
         # Observability flows (kept minimal to avoid spaghetti)
         {"from": "promtail",       "to": "loki"},        # Docker logs → Loki
+        {"from": "otel-collector", "to": "tempo"},       # OTLP traces → Tempo
         {"from": "loki",           "to": "grafana"},
         {"from": "prometheus",     "to": "grafana"},
+        {"from": "tempo",          "to": "grafana"},
     ]
 
     return {
@@ -1459,7 +1465,7 @@ async def _read_gpu() -> list[dict[str, Any]]:
         return []
 
 
-@router.get("/hardware", dependencies=_TRADER)
+@router.get("/hardware")
 async def hardware() -> dict[str, Any]:
     """Host CPU / RAM / disk (from /proc) + best-effort GPU (nvidia-smi).
 
@@ -1563,7 +1569,7 @@ async def _sample_docker() -> None:
         pass  # socket absent (prod) / docker unreachable → leave history untouched
 
 
-@router.get("/containers/metrics", dependencies=_TRADER)
+@router.get("/containers/metrics")
 async def container_metrics(minutes: int = 15) -> dict[str, Any]:
     """Per-container CPU % + RAM (bytes) time-series over the last ``minutes``.
 
