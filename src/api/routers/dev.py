@@ -1578,17 +1578,18 @@ async def container_metrics(minutes: int = 15, step_s: int = 0) -> dict[str, Any
     per-container series — e.g. Docker Desktop / WSL2, where cAdvisor only sees
     the root cgroup. ``source`` says which path served the data.
 
-    ``step_s`` overrides the sample step (clamped 1-60s); 0 auto-picks ~5s (the
-    cAdvisor scrape resolution) capped at ~720 points. Fine steps only resolve
-    real detail up to the scrape interval — see obs/prometheus.yml.
+    ``step_s`` overrides the sample step (clamped 1-60s); 0 auto-picks the step
+    to keep ~720 points across the window (≈5s at ≤1h, ≈120s at 24h). Fine steps
+    only resolve real detail up to the scrape interval — see obs/prometheus.yml.
+    ``minutes`` spans 1min..24h so the tab can confirm hourly patterns.
     """
-    minutes = max(1, min(180, minutes))
+    minutes = max(1, min(1440, minutes))  # up to 24h
     end = datetime.now(UTC)
     start = end - timedelta(minutes=minutes)
     if step_s > 0:
         step = max(1, min(60, step_s))
     else:
-        step = max(5, minutes * 60 // 720)  # ~5s resolution, ≤720 points
+        step = max(5, minutes * 60 // 720)  # ~720 points; 5s at ≤1h, 120s at 24h
     base = {
         "start": start.isoformat().replace("+00:00", "Z"),
         "end": end.isoformat().replace("+00:00", "Z"),

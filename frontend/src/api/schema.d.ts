@@ -216,9 +216,10 @@ export interface paths {
          *     per-container series — e.g. Docker Desktop / WSL2, where cAdvisor only sees
          *     the root cgroup. ``source`` says which path served the data.
          *
-         *     ``step_s`` overrides the sample step (clamped 1-60s); 0 auto-picks ~5s (the
-         *     cAdvisor scrape resolution) capped at ~720 points. Fine steps only resolve
-         *     real detail up to the scrape interval — see obs/prometheus.yml.
+         *     ``step_s`` overrides the sample step (clamped 1-60s); 0 auto-picks the step
+         *     to keep ~720 points across the window (≈5s at ≤1h, ≈120s at 24h). Fine steps
+         *     only resolve real detail up to the scrape interval — see obs/prometheus.yml.
+         *     ``minutes`` spans 1min..24h so the tab can confirm hourly patterns.
          */
         get: operations["container_metrics_api_v1_dev_containers_metrics_get"];
         put?: never;
