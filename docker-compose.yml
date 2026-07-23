@@ -206,6 +206,10 @@ services:
       # Cf. engines.vol.chain_fetcher.
       VOL_MAX_CONCURRENT: ${VOL_MAX_CONCURRENT:-1}
       VOL_SUBSCRIBE_GAP_S: ${VOL_SUBSCRIBE_GAP_S:-0.05}
+      # Cutover flag for the analytics-engine extraction. "1" (default) keeps the
+      # legacy inline GMM/snapshot/PC3; flip to "0" to serve the analytics
+      # engine's published results (staged rollout — see engines/analytics).
+      VOL_INLINE_ANALYTICS: ${VOL_INLINE_ANALYTICS:-1}
     depends_on:
       redis:
         condition: service_healthy
