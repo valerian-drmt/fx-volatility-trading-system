@@ -198,6 +198,14 @@ services:
       # Signal calibration (ex config/vol_config.json, R9 inline en env).
       THRESHOLD_VOL_PTS: ${THRESHOLD_VOL_PTS:-1.0}
       MODEL_P: ${MODEL_P:-har}
+      # IB Gateway load smoothing — the vol cycle fetches the whole chain at
+      # once. Sequential tenors (=1) keep open reqMktData lines under IB paper's
+      # ~100-line cap (no dropped wing strikes) AND flatten IB's per-cycle CPU
+      # spike; the gap drips the ~74 subscriptions/tenor into a rolling stream.
+      # Raise concurrency only to trade data completeness for a faster fetch.
+      # Cf. engines.vol.chain_fetcher.
+      VOL_MAX_CONCURRENT: ${VOL_MAX_CONCURRENT:-1}
+      VOL_SUBSCRIBE_GAP_S: ${VOL_SUBSCRIBE_GAP_S:-0.05}
     depends_on:
       redis:
         condition: service_healthy

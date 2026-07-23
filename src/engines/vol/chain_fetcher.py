@@ -10,9 +10,11 @@ call into IB :
   ``reqMktData(contract, \"100\", ...)`` to get modelGreeks, waits for
   the Greeks to populate, collects ``(delta, iv, strike)`` triples and
   cancels market data.
-- ``scan_all_tenors_concurrent(ib, F, chains, max_concurrent=3)`` runs
-  ``scan_one_tenor`` on each chain in parallel behind a semaphore to
-  stay within IB's live-subscription cap (paper = ~100 concurrent).
+- ``scan_all_tenors_concurrent(ib, F, chains, max_concurrent=1)`` runs
+  ``scan_one_tenor`` on each chain behind a semaphore. Default 1 keeps
+  open lines under IB's live-subscription cap (paper = ~100 concurrent)
+  so no strike is dropped, and keeps IB Gateway's CPU flat (pacing note
+  on the constants).
 
 Ported from ``src/engines/vol_engine.py`` (monolith v1) :
 ``_discover_chains`` / ``_qualify_contracts`` / ``_scan_iv``. Key async
@@ -20,8 +22,9 @@ wins over the monolith :
 
 - ``reqContractDetailsAsync`` + ``reqSecDefOptParamsAsync`` let us fan
   out contract qualification.
-- ``asyncio.Semaphore(3)`` scans 3 tenors in parallel instead of 6
-  sequential — typical speedup on paper gateway : 24-30s -> 8-10s.
+- ``asyncio.Semaphore(max_concurrent)`` bounds tenor parallelism. Default
+  is 1 (sequential) — flattest IB CPU AND best completeness (open lines
+  stay under IB's ~100 cap). Raise it only to trade data quality for speed.
 
 Pure asyncio — the legacy Qt-gated design is gone.
 """
@@ -30,11 +33,27 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import os
 import time
 from datetime import datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, "").strip() or default)
+    except ValueError:
+        return default
+
 
 # Anchor-discovery targets — the listed expiries we try to qualify, spanning the
 # CME monthly-serial range (≈1M..6M). Display pillars come from interpolating
@@ -42,9 +61,23 @@ logger = logging.getLogger(__name__)
 # we don't chase them. See docs/surface_tenor_pillars.md.
 DEFAULT_TARGET_DTES: tuple[int, ...] = (30, 60, 90, 120, 150, 180)
 DEFAULT_STRIKES_PER_SIDE: int = 18  # ATM ± 18 strikes per tenor
-DEFAULT_MAX_CONCURRENT: int = 3
+# Tenor concurrency + subscribe pacing shape IB Gateway's CPU load. The vol
+# cycle (engine CYCLE_S=180s) fetches the whole chain at once; unpaced, ~74
+# reqMktData lines/tenor × max_concurrent hit IB as a single burst every 3 min
+# (spike to ~70%, then idle). Default is fully sequential tenors (=1): the
+# flattest IB CPU profile AND the best data quality — 74 open lines stays under
+# IB paper's ~100-line cap, so no wing strike is silently dropped (concurrency
+# 2-3 opens 148-220 lines, OVER the cap, and IB queues/rejects the excess). The
+# whole chain is still fetched every cycle; the SAME work is just spread across
+# the ~90-120s fetch window (well under the 180s budget). Env-overridable so
+# it's tunable on the box (container restart, no code redeploy) — raise
+# VOL_MAX_CONCURRENT only to trade data completeness for a faster/spikier fetch.
+DEFAULT_MAX_CONCURRENT: int = _env_int("VOL_MAX_CONCURRENT", 1)
 DEFAULT_GREEKS_WAIT_S: int = 12
 DEFAULT_CANCEL_PAUSE_S: float = 0.5
+# Gap between successive reqMktData subscriptions within a tenor — turns the
+# ~74-line burst into a rolling stream (0.05s ≈ 3.7s spread/tenor). 0 disables.
+DEFAULT_SUBSCRIBE_GAP_S: float = _env_float("VOL_SUBSCRIBE_GAP_S", 0.05)
 
 
 def _safe(val: object) -> float | None:
@@ -227,6 +260,7 @@ async def scan_one_tenor(
     ib: Any, chain: dict[str, Any], F: float,
     wait_greeks_s: int = DEFAULT_GREEKS_WAIT_S,
     min_strikes: int = 5,
+    subscribe_gap_s: float = DEFAULT_SUBSCRIBE_GAP_S,
 ) -> list[tuple[float, float, float]]:
     """Return (delta, iv, strike) triples for one tenor."""
     t0 = time.monotonic()
@@ -239,6 +273,12 @@ async def scan_one_tenor(
         for right, contract in rights.items():
             ticker = ib.reqMktData(contract, "100", False, False)
             active.append((K, right, contract, ticker))
+            # Drip subscriptions rather than firing all ~74 at once, so IB
+            # Gateway sees a rolling stream instead of a per-cycle wall. Every
+            # line still gets >= wait_greeks_s before it's read below — the
+            # last-subscribed one bounds the wait.
+            if subscribe_gap_s > 0:
+                await asyncio.sleep(subscribe_gap_s)
 
     await asyncio.sleep(wait_greeks_s)
 
