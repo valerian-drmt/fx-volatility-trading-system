@@ -20,18 +20,30 @@ const DEFAULT_CONFIG: Partial<Config> = {
   responsive: true,
 };
 
+// Interactive: drag-to-zoom box + wheel zoom + pan/reset via the modebar. Used
+// for time-series charts you want to inspect closely (pair with a stable
+// `layout.uirevision` so the zoom survives data refreshes).
+const INTERACTIVE_CONFIG: Partial<Config> = {
+  displayModeBar: true,
+  displaylogo: false,
+  responsive: true,
+  scrollZoom: true,
+  modeBarButtonsToRemove: ["select2d", "lasso2d"],
+};
+
 export interface PlotlyChartProps {
   data: Data[];
   layout?: Partial<Layout>;
   height?: number;
+  interactive?: boolean;
 }
 
-export function PlotlyChart({ data, layout, height = 260 }: PlotlyChartProps): JSX.Element {
+export function PlotlyChart({ data, layout, height = 260, interactive = false }: PlotlyChartProps): JSX.Element {
   return (
     <Plot
       data={data}
       layout={{ ...DARK_LAYOUT, ...layout, autosize: true, height }}
-      config={DEFAULT_CONFIG}
+      config={interactive ? INTERACTIVE_CONFIG : DEFAULT_CONFIG}
       style={{ width: "100%", height }}
       useResizeHandler
     />

@@ -215,6 +215,10 @@ export interface paths {
          *     the Docker socket (sampled in-memory each poll) when Prometheus has no
          *     per-container series — e.g. Docker Desktop / WSL2, where cAdvisor only sees
          *     the root cgroup. ``source`` says which path served the data.
+         *
+         *     ``step_s`` overrides the sample step (clamped 1-60s); 0 auto-picks ~5s (the
+         *     cAdvisor scrape resolution) capped at ~720 points. Fine steps only resolve
+         *     real detail up to the scrape interval — see obs/prometheus.yml.
          */
         get: operations["container_metrics_api_v1_dev_containers_metrics_get"];
         put?: never;
@@ -3689,6 +3693,7 @@ export interface operations {
         parameters: {
             query?: {
                 minutes?: number;
+                step_s?: number;
             };
             header?: never;
             path?: never;
