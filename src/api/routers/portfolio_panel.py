@@ -1036,6 +1036,69 @@ async def var_factors(db: DbDep) -> dict[str, Any]:
 # Panel G — P&L attribution over a lookback window
 # ──────────────────────────────────────────────────────────────────────
 
+# group_by → the per-position field it buckets on.
+_ATTRIB_GROUP_KEYS: dict[str, str] = {"tenor": "tenor", "structure": "structure_type", "wing": "wing"}
+_ATTRIB_TERMS = ["delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd"]
+_ATTRIB_SUM_COLS = ["actual_pnl_usd", *_ATTRIB_TERMS]
+# Tenor ladder order; buckets outside it (2W, other, …) follow, sorted.
+_ATTRIB_TENOR_LADDER = ("1M", "2M", "3M", "4M", "5M", "6M")
+# Smile order for the wing pivot: downside → ATM → upside, then linear / catch-all.
+_ATTRIB_WING_ORDER = ("Put wing", "Body (ATM)", "Call wing", "Future / delta-1", "other")
+
+
+def _attribution_groups(
+    per_position: list[dict[str, Any]],
+    group_by: str,
+) -> tuple[list[dict[str, Any]], dict[str, float | None]]:
+    """Pure pivot (unit-tested): per-position Taylor terms → attribution matrix.
+
+    A bucket accumulates a term only from the legs that actually carry it. A term
+    no leg could measure — every contributor ``None`` because it has no t-1
+    snapshot in the window (typically a leg opened inside it) — stays ``None``
+    rather than summing to ``0.0``. An unmeasurable P&L is not a flat P&L, and a
+    bucket of manufactured zeros is indistinguishable from a genuinely flat one.
+
+    Only buckets the book actually holds are emitted: an empty 4M row reads as
+    "flat there" when the truth is "nothing there".
+    """
+    key_col = _ATTRIB_GROUP_KEYS[group_by]
+    buckets: dict[str, dict[str, float | None]] = {}
+    for row in per_position:
+        label = str(row.get(key_col) or "other")
+        b = buckets.setdefault(label, dict.fromkeys(_ATTRIB_SUM_COLS, None))
+        for c in _ATTRIB_SUM_COLS:
+            if row.get(c) is not None:
+                b[c] = (b[c] or 0.0) + float(row[c])
+
+    def _mk(label: str, b: dict[str, float | None]) -> dict[str, Any]:
+        terms = [b[c] for c in _ATTRIB_TERMS]
+        # The residual only foots when the actual AND every term it is derived
+        # from are known — otherwise it would silently absorb the missing ones.
+        residual = (
+            b["actual_pnl_usd"] - sum(float(t) for t in terms)  # type: ignore[arg-type,operator]
+            if b["actual_pnl_usd"] is not None and all(t is not None for t in terms)
+            else None
+        )
+        out: dict[str, Any] = {"label": label}
+        for c in _ATTRIB_SUM_COLS:
+            out[c] = round(b[c], 2) if b[c] is not None else None
+        out["residual_usd"] = round(residual, 2) if residual is not None else None
+        return out
+
+    if group_by == "tenor":
+        head = [t for t in _ATTRIB_TENOR_LADDER if t in buckets]
+    elif group_by == "wing":
+        head = [w for w in _ATTRIB_WING_ORDER if w in buckets]
+    else:
+        head = sorted(buckets, key=lambda g: abs(buckets[g]["actual_pnl_usd"] or 0.0), reverse=True)
+    order = head + sorted(g for g in buckets if g not in head)
+    groups = [_mk(label, buckets[label]) for label in order]
+    totals = {
+        c: (round(sum(vals), 2) if (vals := [g[c] for g in groups if g[c] is not None]) else None)
+        for c in [*_ATTRIB_SUM_COLS, "residual_usd"]
+    }
+    return groups, totals
+
 
 @router.get("/pnl-attribution")
 async def pnl_attribution(
@@ -1320,45 +1383,9 @@ async def pnl_attribution(
     #     P&L-attribution matrix (rows = groups, cols = greek P&L). The residual is
     #     re-derived per bucket (actual − Σ explained) so every row foots exactly.
     if group_by is not None:
-        key_col = {"tenor": "tenor", "structure": "structure_type", "wing": "wing"}.get(group_by)
-        if key_col is None:
+        if group_by not in _ATTRIB_GROUP_KEYS:
             raise HTTPException(400, f"unknown group_by '{group_by}' (expected tenor / structure / wing)")
-        sum_cols = ["actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd"]
-        buckets: dict[str, dict[str, float]] = {}
-        for row in per_position:
-            label = str(row.get(key_col) or "other")
-            b = buckets.setdefault(label, dict.fromkeys(sum_cols, 0.0))
-            for c in sum_cols:
-                if row[c] is not None:
-                    b[c] += float(row[c])
-
-        def _mk(label: str, b: dict[str, float]) -> dict[str, Any]:
-            explained = b["delta_pnl_usd"] + b["gamma_pnl_usd"] + b["vega_pnl_usd"] + b["theta_pnl_usd"]
-            return {
-                "label": label,
-                "actual_pnl_usd": round(b["actual_pnl_usd"], 2),
-                "delta_pnl_usd": round(b["delta_pnl_usd"], 2),
-                "gamma_pnl_usd": round(b["gamma_pnl_usd"], 2),
-                "vega_pnl_usd": round(b["vega_pnl_usd"], 2),
-                "theta_pnl_usd": round(b["theta_pnl_usd"], 2),
-                "residual_usd": round(b["actual_pnl_usd"] - explained, 2),
-            }
-
-        if group_by == "tenor":
-            ladder = ["1M", "2M", "3M", "4M", "5M", "6M"]
-            extra = sorted(g for g in buckets if g not in ladder)
-            zero = dict.fromkeys(sum_cols, 0.0)
-            groups = [_mk(t, buckets.get(t, zero)) for t in ladder + extra]
-        elif group_by == "wing":
-            # smile order: downside → ATM → upside, then linear / catch-all.
-            wing_order = ["Put wing", "Body (ATM)", "Call wing", "Future / delta-1", "other"]
-            extra = sorted(g for g in buckets if g not in wing_order)
-            groups = [_mk(t, buckets[t]) for t in wing_order + extra if t in buckets]
-        else:
-            order = sorted(buckets, key=lambda g: abs(buckets[g]["actual_pnl_usd"]), reverse=True)
-            groups = [_mk(t, buckets[t]) for t in order]
-        cols = ["actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd", "residual_usd"]
-        totals = {c: round(sum(g[c] for g in groups), 2) for c in cols}
+        groups, totals = _attribution_groups(per_position, group_by)
         return {
             "group_by": group_by, "lookback_hours": lookback_hours,
             "computed_at": now.isoformat(), "groups": groups, "totals": totals,

@@ -8,7 +8,9 @@ import { adaptConfig, adaptConfigCurrent, adaptConfigHistory } from "../live/con
 import { adaptPca } from "../live/pca";
 import {
   adaptAccount as adaptPortfolioAccount,
+  adaptAttributionMatrix,
   adaptDailyPnl,
+  adaptPositionAttribution,
   adaptPerfStats,
   adaptRiskPerTenor,
   adaptVar,
@@ -327,6 +329,33 @@ describe("portfolio adapters", () => {
     });
     expect(v).toMatchObject({ var95: null, var99: null, es99: null, nDays: 2 });
     expect(v.meanDaily).toBeCloseTo(-22.887, 3);
+  });
+
+  it("attribution matrix: unmeasurable terms stay null (never $0)", () => {
+    // A leg opened inside the window has no t-1 snapshot -> the backend nulls
+    // every term. The cell must read "-", so the adapter must not coerce to 0.
+    const m = adaptAttributionMatrix({
+      groups: [
+        { label: "1M", actual_pnl_usd: null, delta_pnl_usd: null, gamma_pnl_usd: null, vega_pnl_usd: null, theta_pnl_usd: null, residual_usd: null },
+        { label: "2M", actual_pnl_usd: 1500, delta_pnl_usd: 800, gamma_pnl_usd: 150, vega_pnl_usd: 550, theta_pnl_usd: -75, residual_usd: 75 },
+      ],
+      totals: { actual_pnl_usd: 1500, delta_pnl_usd: 800, gamma_pnl_usd: 150, vega_pnl_usd: 550, theta_pnl_usd: -75, residual_usd: 75 },
+    });
+    expect(m.rows[0]).toMatchObject({ label: "1M", actual: null, delta: null, residual: null });
+    expect(m.rows[1]).toMatchObject({ label: "2M", actual: 1500, delta: 800, residual: 75 });
+    expect(m.totals.actual).toBe(1500);
+  });
+
+  it("per-position attribution: totals sum only the legs that carry the term", () => {
+    const m = adaptPositionAttribution({
+      per_position: [
+        { id: 1, source: "ib_live", tenor: "1M", actual_pnl_usd: 400, delta_pnl_usd: 300, gamma_pnl_usd: null, vega_pnl_usd: null, theta_pnl_usd: null, residual_usd: null },
+        { id: 2, source: "ib_live", tenor: "2M", actual_pnl_usd: null, delta_pnl_usd: null, gamma_pnl_usd: null, vega_pnl_usd: null, theta_pnl_usd: null, residual_usd: null },
+      ],
+    });
+    expect(m.rows.map((r) => r.actual)).toEqual([400, null]);
+    expect(m.totals.actual).toBe(400);      // the one measurable leg
+    expect(m.totals.gamma).toBeNull();      // no leg carries it -> stays "-"
   });
 
   it("risk-per-tenor: vega/vanna/volga $ → $k", () => {

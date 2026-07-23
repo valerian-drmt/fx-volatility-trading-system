@@ -199,6 +199,20 @@ async def _ib_probe(host: str = "ib-gateway", port: int = 4002, timeout_s: float
         return {"status": "DOWN", "host": host, "port": port, "error": str(e)[:80]}
 
 
+def _derive_ib_status(ib_tcp: str, md_hb_age: float | None, stale_s: float) -> str:
+    """Fold the TCP probe with market-data heartbeat age into one IB status.
+
+    The socat API port stays up after the gateway's nightly IBC restart drops
+    the upstream IBKR session (Error 1100), so ``ib_tcp == "OK"`` alone is not
+    proof data flows. The market-data heartbeat is — it only refreshes on live
+    ticks. Returns ``DOWN`` (gateway container down), ``OK`` (upstream live) or
+    ``STALE`` (socket up, IBKR upstream dead — the nightly-reset failure mode).
+    """
+    if ib_tcp != "OK":
+        return "DOWN"
+    return "OK" if md_hb_age is not None and md_hb_age < stale_s else "STALE"
+
+
 async def _tcp_probe(host: str, port: int, timeout_s: float = 2.0) -> str:
     """Generic TCP probe → 'OK' / 'DOWN'."""
     try:
@@ -247,7 +261,9 @@ async def stack_overview(
 
     We do not read the Docker socket (the api has no access, which is safer).
     Derived statuses:
-      - postgres / redis / ib-gateway   : TCP probe or ping
+      - postgres / redis                : TCP probe or ping
+      - ib-gateway                      : TCP probe AND market-data heartbeat
+                                          (STALE = socket up but IBKR upstream dead)
       - frontend                        : HTTP probe http://frontend:8080/
       - nginx / api                     : implicit (the request arrives through them)
       - 4 engines                       : Redis heartbeat + age vs threshold
@@ -262,7 +278,18 @@ async def stack_overview(
         redis_ok = "DOWN"
 
     pg_status = await _tcp_probe("postgres", 5432)
-    ib_status = (await _ib_probe()).get("status", "DOWN")
+    # IB "connected" is not the same as "socket open". The gateway keeps its
+    # socat API port up even after the nightly IBC restart drops the upstream
+    # IBKR session (Error 1100) — a bare TCP probe reads OK while no data flows.
+    # The authoritative signal is the market-data heartbeat: it only refreshes
+    # on live ticks, which require a live IBKR upstream. So fold the two:
+    #   TCP down                        -> DOWN  (gateway container down)
+    #   TCP up + market-data hb fresh   -> OK    (upstream live, data flowing)
+    #   TCP up + market-data hb stale   -> STALE (socket up, IBKR upstream dead)
+    ib_tcp = (await _ib_probe()).get("status", "DOWN")
+    md_cfg = next(c for c in ENGINES_CONFIG if c["name"] == "market_data")
+    md_hb_age = await _key_age(redis, md_cfg["hb"], now) if ib_tcp == "OK" else None
+    ib_status = _derive_ib_status(ib_tcp, md_hb_age, md_cfg["stale_s"])
     fe_status = await _tcp_probe("frontend", 8080)
     exec_status = await _tcp_probe("execution-engine", 8001)
 

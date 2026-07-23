@@ -171,7 +171,7 @@ export function Hardware(): JSX.Element {
 
       {cm && !cm.reachable ? (
         <div style={{ color: "#d9b86a", fontSize: 12, background: "#23200f", border: "1px solid #3a3417", padding: "10px 14px", borderRadius: 6, lineHeight: 1.6 }}>
-          No per-container metrics yet. Linux/EC2: <code style={{ color: "#cdd1d8" }}>docker compose --profile obs up -d cadvisor prometheus</code>. Docker Desktop: recreate the api for the socket <code style={{ color: "#cdd1d8" }}>docker compose up -d api</code> — graphs then build live.
+          No per-container metrics yet. Linux/EC2: <code style={{ color: "#cdd1d8" }}>docker compose --profile metrics up -d</code> (cAdvisor + Prometheus, no Grafana). Docker Desktop: recreate the api for the socket <code style={{ color: "#cdd1d8" }}>docker compose up -d api</code> — cAdvisor is blind to per-container cgroups on WSL2. Graphs then build live, with no back-history.
         </div>
       ) : cm ? (
         <>

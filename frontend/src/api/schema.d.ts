@@ -481,7 +481,9 @@ export interface paths {
          *
          *     We do not read the Docker socket (the api has no access, which is safer).
          *     Derived statuses:
-         *       - postgres / redis / ib-gateway   : TCP probe or ping
+         *       - postgres / redis                : TCP probe or ping
+         *       - ib-gateway                      : TCP probe AND market-data heartbeat
+         *                                           (STALE = socket up but IBKR upstream dead)
          *       - frontend                        : HTTP probe http://frontend:8080/
          *       - nginx / api                     : implicit (the request arrives through them)
          *       - 4 engines                       : Redis heartbeat + age vs threshold
