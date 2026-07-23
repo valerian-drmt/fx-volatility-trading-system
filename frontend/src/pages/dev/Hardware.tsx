@@ -16,10 +16,10 @@ interface Disk { total_gb: number; used_gb: number; percent: number; }
 interface Gpu { name: string; util_percent: number | null; mem_used_mb: number | null; mem_total_mb: number | null; temp_c: number | null; }
 interface Hw { cpu: Cpu; memory: Mem; disk: Disk; gpu: Gpu[]; }
 interface Series { name: string; points: [number, number][]; }
-interface ContainerMetrics { reachable: boolean; source?: string; cpu: Series[]; mem: Series[]; }
+interface ContainerMetrics { reachable: boolean; source?: string; step?: number; cpu: Series[]; mem: Series[]; }
 
 const POLL_MS = 10_000;
-const WINDOWS = [{ lbl: "5m", m: 5 }, { lbl: "15m", m: 15 }, { lbl: "1h", m: 60 }];
+const WINDOWS = [{ lbl: "5m", m: 5 }, { lbl: "15m", m: 15 }, { lbl: "1h", m: 60 }, { lbl: "24h", m: 1440 }];
 const PALETTE = ["#3ec46d", "#5b8fd6", "#d9a441", "#a77bd6", "#e0726a", "#38c8c0", "#e0a060", "#7fa8e0", "#cf6bce", "#5fce93", "#d9b86a", "#8fb0d8", "#b0d86a", "#d86ab0"];
 const col = (p: number): string => (p > 85 ? "#e0564f" : p > 65 ? "#d9a441" : "#3ec46d");
 const last = (s: Series): number => (s.points.length ? s.points[s.points.length - 1]![1] : 0);
@@ -92,7 +92,8 @@ export function Hardware(): JSX.Element {
     try {
       const [h, c] = await Promise.all([
         apiFetch("/api/v1/dev/hardware").then((r) => (r.ok ? r.json() : null)),
-        apiFetch(`/api/v1/dev/containers/metrics?minutes=${mins}&step_s=5`).then((r) => (r.ok ? r.json() : null)),
+        // No step_s: backend auto-picks ~720 points (≈5s at ≤1h, ≈120s at 24h).
+        apiFetch(`/api/v1/dev/containers/metrics?minutes=${mins}`).then((r) => (r.ok ? r.json() : null)),
       ]);
       setHw(h as Hw | null);
       setCm(c as ContainerMetrics | null);
@@ -221,10 +222,10 @@ export function Hardware(): JSX.Element {
 
           {/* stacked-area time-series */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <Section title="CPU OVER TIME" hint="stacked · % of one core · 5s · drag/scroll to zoom">
+            <Section title="CPU OVER TIME" hint={`stacked · % of one core · ${cm.step ?? "?"}s · drag/scroll to zoom`}>
               <PlotlyChart interactive data={toArea(cm.cpu, 1)} layout={{ ...STACK_LAYOUT, uirevision: minutes, yaxis: { gridcolor: "#262a33", ticksuffix: "%" } }} height={300} />
             </Section>
-            <Section title="RAM OVER TIME" hint="stacked · GB · 5s · drag/scroll to zoom">
+            <Section title="RAM OVER TIME" hint={`stacked · GB · ${cm.step ?? "?"}s · drag/scroll to zoom`}>
               <PlotlyChart interactive data={toArea(cm.mem, 1 / GB)} layout={{ ...STACK_LAYOUT, uirevision: minutes, yaxis: { gridcolor: "#262a33", ticksuffix: " GB" } }} height={300} />
             </Section>
           </div>
