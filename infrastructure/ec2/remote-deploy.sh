@@ -66,6 +66,7 @@ VOL_ENGINE_IMAGE=${reg}/fx-options-vol-engine:${IMAGE_TAG}
 RISK_ENGINE_IMAGE=${reg}/fx-options-risk-engine:${IMAGE_TAG}
 DB_WRITER_IMAGE=${reg}/fx-options-db-writer:${IMAGE_TAG}
 EXECUTION_IMAGE=${reg}/fx-options-execution:${IMAGE_TAG}
+ANALYTICS_ENGINE_IMAGE=${reg}/fx-options-analytics-engine:${IMAGE_TAG}
 IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:latest
 ENVEOF
 

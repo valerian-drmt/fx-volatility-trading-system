@@ -317,6 +317,58 @@ services:
       retries: 3
       start_period: 15s
 
+  analytics-engine:
+    build:
+      context: .
+      dockerfile: src/engines/analytics/Dockerfile
+    image: ${ANALYTICS_ENGINE_IMAGE:-fx-options-analytics-engine:local}
+    container_name: fxvol-analytics
+    # HARD cpu cap. The hourly GMM refit + PCA snapshot + PC3 recompute used to
+    # run inline in the vol-engine and spike BOTH t3.medium cores (the cascade).
+    # Isolated here and capped to half a core, the batch can never saturate the
+    # box — the real-time engines keep full speed and the kernel CFS spreads the
+    # burst over wall-time. No IB (reads Redis/Postgres only), like db-writer.
+    cpus: 0.5
+    mem_limit: 512m
+    profiles: ["engines"]
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: analytics_engine
+      DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
+      REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Hourly batch cadence : train GMM regime model + collect the PCA surface
+      # snapshot + recompute the PC3 skew/convex history. Published to Redis for
+      # the vol-engine to consume (model-serving: train here, infer at the edge).
+      ANALYTICS_INTERVAL_MIN: ${ANALYTICS_INTERVAL_MIN:-60}
+      PCA_SNAPSHOT_INTERVAL_MIN: ${PCA_SNAPSHOT_INTERVAL_MIN:-55}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      vol-engine:
+        # started, not healthy : analytics reads latest_vol_surface from Redis;
+        # if it's absent the snapshot step just skips (best-effort), GMM/PC3 read
+        # Postgres independently. Soft ordering only.
+        condition: service_started
+    networks:
+      - fxvol-internal
+    # P0 obs : Prometheus /metrics endpoint (9102 vol, 9103 risk, 9104 exec,
+    # 9105 db-writer taken).
+    expose:
+      - "9106"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        # Compute is hourly but a decoupled loop ticks the heartbeat every 60s,
+        # so age stays < 120s. 300s tolerance mirrors the other engines.
+        - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:analytics_engine'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 300 else 1)\""
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
   execution-engine:
     build:
       context: .

@@ -18,6 +18,7 @@ scrape_configs:
           - 'risk-engine:9103'
           - 'execution-engine:9104'
           - 'db-writer:9105'
+          - 'analytics-engine:9106'
 
   # Per-container CPU/RAM/net/fs (cAdvisor) → the dev Hardware tab graphs these.
   # 5s scrape (overrides the 15s global) so the Hardware time-series can resolve
