@@ -46,9 +46,37 @@ compose_cmd alembic 'exec -T api python -m alembic -c src/persistence/alembic.in
 printf '#!/usr/bin/env bash\ncd %s && sudo docker compose pull && exec sudo docker compose up -d --remove-orphans "$@"\n' "$APP" > "$CMD/all/full-up"
 chmod +x "$CMD/all/full-up"
 
-# stats is a plain 'docker' command (not compose)
-printf '#!/usr/bin/env bash\nexec sudo docker stats --no-stream "$@"\n' > "$CMD/all/stats"
+# stats is a plain 'docker' command (not compose). Prepend the EC2 hardware
+# line (instance-type via IMDSv2 + total RAM + vCPU) so a RAM/CPU check always
+# shows WHAT box the numbers are measured against — t3.small vs t3.medium etc.
+cat > "$CMD/all/stats" <<'STATS'
+#!/usr/bin/env bash
+tok=$(curl -sX PUT http://169.254.169.254/latest/api/token \
+        -H "X-aws-ec2-metadata-token-ttl-seconds: 60" --max-time 1 2>/dev/null || true)
+itype=$(curl -s -H "X-aws-ec2-metadata-token: $tok" --max-time 1 \
+          http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || true)
+mem=$(awk '/MemTotal/{printf "%.1f GiB", $2/1048576}' /proc/meminfo 2>/dev/null || true)
+echo "EC2 instance-type: ${itype:-unknown}   RAM: ${mem:-?}   vCPU: $(nproc)"
+exec sudo docker stats --no-stream "$@"
+STATS
 chmod +x "$CMD/all/stats"
+
+# traces = the dev-only tracing pair (tempo + otel-collector), gated behind the
+# `traces` compose profile so every stack-wide ./all/* command ignores them.
+# This is the ONE command that drives them, on demand, for latency forensics.
+cat > "$CMD/all/traces" <<'TRACES'
+#!/usr/bin/env bash
+cd /opt/fxvol
+action="${1:-up}"; [ $# -gt 0 ] && shift
+case "$action" in
+  up)         exec sudo docker compose --profile traces up -d tempo otel-collector "$@" ;;
+  down)       exec sudo docker compose --profile traces rm -sf tempo otel-collector "$@" ;;
+  status|ps)  exec sudo docker compose --profile traces ps tempo otel-collector "$@" ;;
+  logs)       exec sudo docker compose --profile traces logs -f --tail=100 tempo otel-collector "$@" ;;
+  *) echo "usage: ./all/traces [up|down|status|logs]   (dev-only tempo + otel-collector)"; exit 2 ;;
+esac
+TRACES
+chmod +x "$CMD/all/traces"
 
 # Per-container: CREATE/START up ONE service (recreate from its current image;
 # no build on the VM). Profiles come from /opt/fxvol/.env which compose reads.
@@ -78,8 +106,14 @@ cat <<TXT
     ./all/full-up       PULL/CREATE/START up (full) pull + up -d
     ./all/status        status + health             compose ps
     ./all/logs SVC      tail one service            compose logs -f
-    ./all/stats         per-container RAM/CPU        docker stats
+    ./all/stats         instance-type + RAM/CPU     docker stats
     ./all/alembic       DB migration                alembic upgrade
+    ./all/traces A      dev-only tempo+otel         compose --profile traces
+                        A = up|down|status|logs (default up)
+
+  NOTE: the stack-wide ./all/* commands NEVER touch tempo + otel-collector
+  (dev-only tracing, `traces` profile). Ops/data-check need only metrics+logs;
+  spin traces up on demand with `./all/traces up`, tear down with `... down`.
 
   CONTAINERS (CREATE/START up = recreate ONE service, no build)
     ./containers/<svc>     e.g. ./containers/api, ./containers/vol-engine

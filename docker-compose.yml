@@ -507,19 +507,22 @@ services:
       retries: 3
       start_period: 5s
 
-  # ── P1 obs — LGTM stack (Loki + Grafana + Tempo + Mimir/Prom) ────────
-  # Opt-in via `docker compose --profile obs up -d`. All 4 services live
-  # on fxvol-internal so Prometheus reaches the engine /metrics ports
-  # without any host-side mapping. Grafana also gets fxvol-public for
-  # browser access.
+  # ── P1 obs — LGTM stack (Loki + Grafana + Prometheus [+ Tempo]) ──────
+  # Opt-in via `docker compose --profile obs up -d`. All services live on
+  # fxvol-internal so Prometheus reaches the engine /metrics ports without
+  # any host-side mapping. Grafana also gets fxvol-public for browser access.
   #
-  # `metrics` is a deliberate SUBSET of `obs`: prometheus + cadvisor only,
-  # i.e. exactly what the /dev Hardware tab needs to plot per-container
-  # CPU/RAM. It exists so prod can have those graphs WITHOUT the parts that
-  # must not run on a public host — Grafana (host-mapped :3000, anonymous
-  # viewer on by default) and promtail (read-write docker.sock). Both
-  # services list the two profiles, so `--profile obs` still starts the
-  # full LGTM set exactly as before.
+  # THREE nested profiles, smallest → largest footprint:
+  #   metrics : prometheus + cadvisor            — per-container CPU/RAM only,
+  #             exactly what the /dev Hardware tab plots. Public-host safe.
+  #   obs     : metrics + loki + promtail + grafana  — full ops/data-check view
+  #             (metrics + logs + dashboards). NO traces.
+  #   traces  : tempo + otel-collector           — dev-only latency forensics,
+  #             the RAM-heaviest and least useful signal for ops. Deliberately
+  #             OUTSIDE `obs` so every stack-wide ./all/* command ignores them;
+  #             start on demand with ./all/traces (see gen-commands.sh).
+  # cadvisor/prometheus list both metrics+obs, so `--profile obs` still starts
+  # the metrics subset. `traces` is never implied — request it explicitly.
 
   prometheus:
     image: prom/prometheus:v2.55.0
@@ -633,7 +636,10 @@ services:
   tempo:
     image: grafana/tempo:2.6.0
     container_name: fxvol-tempo
-    profiles: ["obs"]
+    # `traces`, NOT `obs`: tempo + otel are a dev-only tracing pair (latency
+    # forensics), useless for ops/data-check. Splitting them out keeps every
+    # stack-wide ./all/* command from touching them; drive them via ./all/traces.
+    profiles: ["traces"]
     restart: unless-stopped
     command: -config.file=/etc/tempo.yml
     volumes:
@@ -654,7 +660,8 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.110.0
     container_name: fxvol-otel-collector
-    profiles: ["obs"]
+    # See tempo above — dev-only tracing pair, gated behind `traces`.
+    profiles: ["traces"]
     restart: unless-stopped
     command: ["--config=/etc/otel-collector.yml"]
     volumes:
