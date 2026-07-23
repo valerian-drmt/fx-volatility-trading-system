@@ -61,23 +61,6 @@ exec sudo docker stats --no-stream "$@"
 STATS
 chmod +x "$CMD/all/stats"
 
-# traces = the dev-only tracing pair (tempo + otel-collector), gated behind the
-# `traces` compose profile so every stack-wide ./all/* command ignores them.
-# This is the ONE command that drives them, on demand, for latency forensics.
-cat > "$CMD/all/traces" <<'TRACES'
-#!/usr/bin/env bash
-cd /opt/fxvol
-action="${1:-up}"; [ $# -gt 0 ] && shift
-case "$action" in
-  up)         exec sudo docker compose --profile traces up -d tempo otel-collector "$@" ;;
-  down)       exec sudo docker compose --profile traces rm -sf tempo otel-collector "$@" ;;
-  status|ps)  exec sudo docker compose --profile traces ps tempo otel-collector "$@" ;;
-  logs)       exec sudo docker compose --profile traces logs -f --tail=100 tempo otel-collector "$@" ;;
-  *) echo "usage: ./all/traces [up|down|status|logs]   (dev-only tempo + otel-collector)"; exit 2 ;;
-esac
-TRACES
-chmod +x "$CMD/all/traces"
-
 # Per-container: CREATE/START up ONE service (recreate from its current image;
 # no build on the VM). Profiles come from /opt/fxvol/.env which compose reads.
 for svc in postgres redis api market-data vol-engine risk-engine db-writer \
@@ -108,12 +91,6 @@ cat <<TXT
     ./all/logs SVC      tail one service            compose logs -f
     ./all/stats         instance-type + RAM/CPU     docker stats
     ./all/alembic       DB migration                alembic upgrade
-    ./all/traces A      dev-only tempo+otel         compose --profile traces
-                        A = up|down|status|logs (default up)
-
-  NOTE: the stack-wide ./all/* commands NEVER touch tempo + otel-collector
-  (dev-only tracing, traces profile). Ops/data-check need only metrics+logs;
-  spin traces up on demand with "./all/traces up", tear down with "... down".
 
   CONTAINERS (CREATE/START up = recreate ONE service, no build)
     ./containers/<svc>     e.g. ./containers/api, ./containers/vol-engine
