@@ -35,15 +35,14 @@ const SVG_W = 900;
 const SVG_H = 770;
 
 // Shape per container : cylinder for stores (postgres / redis / loki /
-// prometheus / tempo), cloud for the external IB Gateway, screen-with-
-// stand for the operator-facing UIs (frontend / grafana), plain rect
-// for everything else (engines / api / execution / nginx / collectors).
+// prometheus), cloud for the external IB Gateway, screen-with-stand for
+// the operator-facing UIs (frontend / grafana), plain rect for everything
+// else (engines / api / execution / nginx / collectors).
 const SHAPES: Record<string, "rect" | "cylinder" | "cloud" | "screen"> = {
   postgres: "cylinder",
   redis: "cylinder",
   loki: "cylinder",
   prometheus: "cylinder",
-  tempo: "cylinder",
   "ib-gateway": "cloud",
   frontend: "screen",
   grafana: "screen",
@@ -85,13 +84,12 @@ const POSITIONS: Record<string, { x: number; y: number }> = {
   // Row 4 (edge, 2 boxes) — panel EDGE (y=405..520)
   "nginx":       { x: 275, y: 420 },
   "frontend":    { x: 475, y: 420 },
-  // Row 5 (obs collectors, 2 boxes) — panel OBS (y=535..750)
-  "promtail":       { x: 275, y: 550 },
-  "otel-collector": { x: 475, y: 550 },
-  // Row 6 (obs stores + UI, 4 boxes) — same panel
+  // Row 5 (obs collector, 1 box centred) — panel OBS (y=535..750).
+  // tempo + otel are dev-only (profil `traces`) and intentionally absent.
+  "promtail":   { x: 375, y: 550 },
+  // Row 6 (obs stores + UI, 3 boxes) — same panel
   "loki":       { x: 75,  y: 650 },
-  "prometheus": { x: 275, y: 650 },
-  "tempo":      { x: 475, y: 650 },
+  "prometheus": { x: 375, y: 650 },
   "grafana":    { x: 675, y: 650 },
 };
 
@@ -118,10 +116,8 @@ const EDGES: { from: string; to: string }[] = [
   { from: "frontend", to: "nginx" },
   // Observability flows (kept minimal to avoid spaghetti)
   { from: "promtail",       to: "loki" },        // Docker logs → Loki
-  { from: "otel-collector", to: "tempo" },       // OTLP traces → Tempo
   { from: "loki",           to: "grafana" },
   { from: "prometheus",     to: "grafana" },
-  { from: "tempo",          to: "grafana" },
 ];
 
 export function StackOverview(): JSX.Element {
