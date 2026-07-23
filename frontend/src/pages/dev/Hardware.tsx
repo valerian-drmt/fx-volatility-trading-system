@@ -83,7 +83,7 @@ const STACK_LAYOUT: Partial<Layout> = {
 export function Hardware(): JSX.Element {
   const [hw, setHw] = useState<Hw | null>(null);
   const [cm, setCm] = useState<ContainerMetrics | null>(null);
-  const [minutes, setMinutes] = useState(15);
+  const [minutes, setMinutes] = useState(60);
   const [sort, setSort] = useState<"cpu" | "mem">("cpu");
   const [err, setErr] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
@@ -92,7 +92,7 @@ export function Hardware(): JSX.Element {
     try {
       const [h, c] = await Promise.all([
         apiFetch("/api/v1/dev/hardware").then((r) => (r.ok ? r.json() : null)),
-        apiFetch(`/api/v1/dev/containers/metrics?minutes=${mins}`).then((r) => (r.ok ? r.json() : null)),
+        apiFetch(`/api/v1/dev/containers/metrics?minutes=${mins}&step_s=5`).then((r) => (r.ok ? r.json() : null)),
       ]);
       setHw(h as Hw | null);
       setCm(c as ContainerMetrics | null);
@@ -221,11 +221,11 @@ export function Hardware(): JSX.Element {
 
           {/* stacked-area time-series */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <Section title="CPU OVER TIME" hint="stacked · % of one core">
-              <PlotlyChart data={toArea(cm.cpu, 1)} layout={{ ...STACK_LAYOUT, yaxis: { gridcolor: "#262a33", ticksuffix: "%" } }} height={300} />
+            <Section title="CPU OVER TIME" hint="stacked · % of one core · 5s · drag/scroll to zoom">
+              <PlotlyChart interactive data={toArea(cm.cpu, 1)} layout={{ ...STACK_LAYOUT, uirevision: minutes, yaxis: { gridcolor: "#262a33", ticksuffix: "%" } }} height={300} />
             </Section>
-            <Section title="RAM OVER TIME" hint="stacked · GB">
-              <PlotlyChart data={toArea(cm.mem, 1 / GB)} layout={{ ...STACK_LAYOUT, yaxis: { gridcolor: "#262a33", ticksuffix: " GB" } }} height={300} />
+            <Section title="RAM OVER TIME" hint="stacked · GB · 5s · drag/scroll to zoom">
+              <PlotlyChart interactive data={toArea(cm.mem, 1 / GB)} layout={{ ...STACK_LAYOUT, uirevision: minutes, yaxis: { gridcolor: "#262a33", ticksuffix: " GB" } }} height={300} />
             </Section>
           </div>
         </>

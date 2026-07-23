@@ -8,17 +8,22 @@ P&L — the exact fabrication the desk must never show.
 """
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
-from api.routers.portfolio_panel import _attribution_groups
+from api.routers.portfolio_panel import _attrib_tenor_bucket, _attribution_groups
 
 _TERMS = ["delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd"]
 
 
 def _pos(tenor: str, wing: str = "Put wing", **terms: float | None) -> dict[str, Any]:
-    """One per-position row; every Taylor term defaults to None (unmeasurable)."""
+    """One per-position row; every Taylor term defaults to None (unmeasurable).
+
+    The tenor pivot groups on ``attrib_tenor`` (the fixed 1M..6M ladder), so set
+    both — ``tenor`` (raw OTC bucket, kept for the by-trade view) and the pivot key.
+    """
     row: dict[str, Any] = {
-        "tenor": tenor, "wing": wing, "structure_type": "long call",
+        "tenor": tenor, "attrib_tenor": tenor, "wing": wing, "structure_type": "long call",
         "actual_pnl_usd": None, **dict.fromkeys(_TERMS, None),
     }
     row.update(terms)
@@ -103,3 +108,30 @@ def test_empty_book_yields_no_groups_and_null_totals():
     groups, totals = _attribution_groups([], "tenor")
     assert groups == []
     assert all(v is None for v in totals.values())
+
+
+# ── _attrib_tenor_bucket: fixed 1M..6M ladder by DTE ──────────────────────────
+_TODAY = date(2026, 7, 23)
+
+
+def test_attrib_bucket_maps_each_pillar():
+    # Nominal pillar DTEs land in their own bucket.
+    assert _attrib_tenor_bucket(date(2026, 8, 22), _TODAY) == "1M"   # 30d
+    assert _attrib_tenor_bucket(date(2026, 9, 21), _TODAY) == "2M"   # 60d
+    assert _attrib_tenor_bucket(date(2026, 10, 21), _TODAY) == "3M"  # 90d
+    assert _attrib_tenor_bucket(date(2026, 11, 20), _TODAY) == "4M"  # 120d
+    assert _attrib_tenor_bucket(date(2026, 12, 20), _TODAY) == "5M"  # 150d
+
+
+def test_attrib_bucket_clamps_short_into_1m_and_long_into_6m():
+    # A 2W option (15d) is not its own row — it clamps into 1M.
+    assert _attrib_tenor_bucket(date(2026, 8, 7), _TODAY) == "1M"    # 15d
+    # A ~4.7M future (Dec 14, 144d) is 5M, not absorbed into 6M like the OTC bucket.
+    assert _attrib_tenor_bucket(date(2026, 12, 14), _TODAY) == "5M"  # 144d
+    # Anything past ~6M clamps into 6M (no 9M/1Y rows).
+    assert _attrib_tenor_bucket(date(2027, 4, 23), _TODAY) == "6M"   # ~9M
+    assert _attrib_tenor_bucket(date(2027, 7, 23), _TODAY) == "6M"   # 1Y
+
+
+def test_attrib_bucket_none_expiry_is_none():
+    assert _attrib_tenor_bucket(None, _TODAY) is None

@@ -573,7 +573,9 @@ services:
     restart: unless-stopped
     privileged: true
     command:
-      - '--housekeeping_interval=10s'
+      # 5s housekeeping so cAdvisor actually produces 5s-fresh samples for the
+      # Hardware tab's 5s Prometheus scrape (else Prometheus reads duplicates).
+      - '--housekeeping_interval=5s'
       - '--docker_only=true'
       - '--store_container_labels=false'
     # NOTE: per-container metrics require the host's Docker to use the CLASSIC

@@ -20,7 +20,12 @@ scrape_configs:
           - 'db-writer:9105'
 
   # Per-container CPU/RAM/net/fs (cAdvisor) → the dev Hardware tab graphs these.
+  # 5s scrape (overrides the 15s global) so the Hardware time-series can resolve
+  # sub-minute events for zoom-in diagnosis; pairs with cAdvisor's 5s
+  # housekeeping (docker-compose.yml). Only this job is fine-grained — the
+  # engines / self / loki jobs stay at the 15s global.
   - job_name: 'cadvisor'
+    scrape_interval: 5s
     static_configs:
       - targets: ['cadvisor:8080']
 

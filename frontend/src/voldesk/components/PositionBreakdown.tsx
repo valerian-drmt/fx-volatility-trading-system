@@ -85,7 +85,7 @@ export function PositionBreakdown({ positions }: { positions: Position[] }): JSX
             <th className="r grp-fix">Tenor</th>
             <th className="r grp-fix">IV</th>
             <th className="r grp-fix">Nominal €</th>
-            <th className="r grp-grk col-grp">Δ$</th>
+            <th className="r grp-grk col-grp">Δ</th>
             <th className="r grp-grk">Γ</th>
             <th className="r grp-grk">Vega</th>
             <th className="r grp-grk">Θ</th>

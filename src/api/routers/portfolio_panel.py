@@ -18,7 +18,7 @@ import itertools
 import json
 import logging
 import statistics
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 import redis.asyncio as aioredis
@@ -1037,13 +1037,38 @@ async def var_factors(db: DbDep) -> dict[str, Any]:
 # ──────────────────────────────────────────────────────────────────────
 
 # group_by → the per-position field it buckets on.
-_ATTRIB_GROUP_KEYS: dict[str, str] = {"tenor": "tenor", "structure": "structure_type", "wing": "wing"}
+_ATTRIB_GROUP_KEYS: dict[str, str] = {"tenor": "attrib_tenor", "structure": "structure_type", "wing": "wing"}
 _ATTRIB_TERMS = ["delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd"]
 _ATTRIB_SUM_COLS = ["actual_pnl_usd", *_ATTRIB_TERMS]
 # Tenor ladder order; buckets outside it (2W, other, …) follow, sorted.
 _ATTRIB_TENOR_LADDER = ("1M", "2M", "3M", "4M", "5M", "6M")
 # Smile order for the wing pivot: downside → ATM → upside, then linear / catch-all.
 _ATTRIB_WING_ORDER = ("Put wing", "Body (ATM)", "Call wing", "Future / delta-1", "other")
+
+
+def _attrib_tenor_bucket(expiry: date | None, today: date) -> str | None:
+    """Map a position to the fixed 6-pillar attribution ladder (1M..6M) by DTE.
+
+    The tenor pivot shows exactly these six pillars — NOT the OTC position bucket
+    (``_tenor_bucket``, which carries 1W/2W/9M/… and skips 4M/5M entirely, so a
+    ~4.7M future landed in "6M" and a 2W option showed as its own out-of-order
+    row). Anything shorter than ~1M clamps into 1M, anything past ~6M into 6M, so
+    only 1M..6M ever appear. Thresholds are the midpoints between the nominal
+    pillar DTEs (30/60/90/120/150/180)."""
+    if expiry is None:
+        return None
+    dte = (expiry - today).days
+    if dte <= 45:
+        return "1M"
+    if dte <= 75:
+        return "2M"
+    if dte <= 105:
+        return "3M"
+    if dte <= 135:
+        return "4M"
+    if dte <= 165:
+        return "5M"
+    return "6M"
 
 
 def _attribution_groups(
@@ -1150,7 +1175,7 @@ async def pnl_attribution(
            WHERE timestamp <= :cutoff
            ORDER BY position_id, timestamp DESC
         )
-        SELECT p.id, p.structure, p.product_label, p.side, p.tenor,
+        SELECT p.id, p.structure, p.product_label, p.side, p.tenor, p.expiry,
                p.trade_id, p.contract_id, p.nominal_eur,
                ts.structure_type AS structure_type,
                p.current_pnl_usd AS pnl_now,
@@ -1205,6 +1230,7 @@ async def pnl_attribution(
         SELECT bp.id, bp.state,
                ts.product_label AS product_label,
                ts.reference_tenor AS tenor,
+               ts.expiry_date AS expiry,
                ts.structure_type AS structure_type,
                latest.current_pnl_gross_usd AS pnl_now,
                latest.spot                  AS spot_now,
@@ -1345,6 +1371,7 @@ async def pnl_attribution(
             "id": int(r.id), "source": "ib_live",
             "structure": r.structure, "product_label": r.product_label,
             "side": r.side, "tenor": r.tenor,
+            "attrib_tenor": _attrib_tenor_bucket(r.expiry, now.date()),
             "trade_id": int(r.trade_id) if r.trade_id is not None else None,
             "contract_id": int(r.contract_id) if r.contract_id is not None else None,
             "nominal_eur": float(r.nominal_eur) if r.nominal_eur is not None else None,
@@ -1375,6 +1402,7 @@ async def pnl_attribution(
             "id": int(r.id), "source": "booked",
             "structure": None, "product_label": r.product_label,
             "side": None, "tenor": r.tenor,
+            "attrib_tenor": _attrib_tenor_bucket(r.expiry, now.date()),
             "structure_type": r.structure_type, "wing": "other",
             **decomp,
         })
