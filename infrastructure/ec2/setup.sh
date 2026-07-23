@@ -135,6 +135,17 @@ aws s3 cp "$tmp" "s3://fxvol-backups/postgres/fxvol-$ts.dump" --sse AES256 --reg
 rm -f "$tmp"
 CRON
 
+echo "[setup] IB gateway nightly-reset watchdog (cron.d, every 2 min)"
+# The gateway's 23:59 IBC auto-restart can drop the IBKR upstream while the
+# socat port stays up; the engines then hang unhealthy and Docker won't restart
+# an *unhealthy* (only an exited) container. ib_watchdog.sh restarts gateway +
+# engines when either engine is unhealthy. Ships in the deploy payload; the cron
+# tolerates the script being briefly absent before the first deploy lands it.
+install -m 0644 /dev/stdin /etc/cron.d/fxvol-ib-watchdog <<CRON
+# Managed by infrastructure/ec2/setup.sh — do not edit by hand.
+*/2 * * * * root flock -n /run/fxvol-ib-watchdog.lock $APP_DIR/infrastructure/ec2/ib_watchdog.sh >> /var/log/fxvol-ib-watchdog.log 2>&1
+CRON
+
 echo "[setup] done. Next steps :"
 echo "  1. Render $APP_DIR/.env (done by deploy.yml, or scp manually: DB_PASSWORD,"
 echo "     IB creds, image tags, NGINX_CONF_FILE=./infrastructure/nginx/nginx.conf)."
