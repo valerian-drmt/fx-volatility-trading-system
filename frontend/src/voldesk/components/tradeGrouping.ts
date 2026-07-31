@@ -84,6 +84,66 @@ export function structureName(legs: LegLike[]): string {
   return base;
 }
 
+// ── Authoritative structure name (from the DB classifier, never leg-inference) ──
+// The booking pipeline stores each trade's structure_type + product_label; those
+// are the source of truth for the summary name. structureName() (leg-inference)
+// is only a fallback for rows with no trade context — it buckets live strikes
+// against the smile and snaps a 25Δ strangle / a straddle / a calendar all to
+// "Strangle 10Δ", which is why panels must prefer the stored label below.
+export const PRODUCT_NAMES: Record<string, string> = {
+  vanilla_call: "Vanilla Call", vanilla_put: "Vanilla Put",
+  straddle_atm: "Straddle", straddle: "Straddle", strangle: "Strangle",
+  butterfly: "Butterfly", risk_reversal: "Risk Reversal", calendar: "Calendar", future: "Future",
+  "call spread": "Call Spread", "put spread": "Put Spread",
+};
+
+// Format a classifier label (stored structure_type / product_label, e.g.
+// "long strangle 25d") into a clean product name. Returns null for empty /
+// "custom" so callers fall through to the next source.
+export function formatStructLabel(label: string | null | undefined): string | null {
+  if (!label) return null;
+  const l = label.toLowerCase().trim();
+  if (l === "custom" || l === "") return null;
+  const sm = /strangle\s*(\d+)\s*d/.exec(l);
+  if (sm) return `Strangle ${sm[1]}Δ`;
+  if (l.includes("strangle")) return "Strangle";
+  if (l.includes("straddle")) return "Straddle";
+  const rrm = /risk reversal\s*(\d+)\s*d/.exec(l);
+  if (rrm) return `Risk Reversal ${rrm[1]}Δ`;
+  if (l.includes("risk reversal")) return "Risk Reversal";
+  if (l.includes("butterfly")) return "Butterfly";
+  if (l.includes("calendar")) return "Calendar";
+  if (l.includes("call spread")) return "Call Spread";
+  if (l.includes("put spread")) return "Put Spread";
+  if (l.includes("vertical spread")) return "Vertical Spread";
+  if (l.includes("future")) return "Future";
+  const bare = l.replace(/^(long|short)\s+/, "");  // vanilla single-leg
+  if (bare === "call") return "Vanilla Call";
+  if (bare === "put") return "Vanilla Put";
+  return label.replace(/_/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Minimal shape of a StructuredPositions structure row.
+export interface StructRowLike {
+  structure_id: string | number;
+  structure_type?: string | null;
+  product_label?: string | null;
+}
+
+/** trade_id → authoritative structure name, from the DB structured feed. Panels
+ *  prefer this over structureName(legs); missing ids fall back to inference. */
+export function structureNamesByTrade(structures: StructRowLike[]): Record<string, string> {
+  const m: Record<string, string> = {};
+  for (const s of structures) {
+    m[String(s.structure_id)] =
+      PRODUCT_NAMES[s.structure_type ?? ""]
+      ?? formatStructLabel(s.product_label)
+      ?? formatStructLabel(s.structure_type)
+      ?? "Structure";
+  }
+  return m;
+}
+
 // Structure-level side (BUY/SELL) — count majority, else the first (entry) leg.
 export function structureSide(legs: LegLike[]): string {
   const buys = legs.filter((l) => l.side === "BUY").length;

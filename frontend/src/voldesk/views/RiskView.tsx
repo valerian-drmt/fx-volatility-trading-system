@@ -4,7 +4,7 @@
  * Exports only RiskView; all sub-components stay local (lint).
  */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid } from "../../api/endpoints";
+import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fetchStructuredPositions, type StructuredPositions } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
@@ -12,7 +12,7 @@ import { gk$, pnlCls } from "../components/format";
 import { PositionBreakdown } from "../components/PositionBreakdown";
 import { fmt } from "../data";
 import type { Position } from "../data";
-import { groupByTradeId, structureName } from "../components/tradeGrouping";
+import { groupByTradeId, structureName, structureNamesByTrade } from "../components/tradeGrouping";
 import { type HistBin, VAR_MIN_DAYS, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
 import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type LiveLadder, type MarginalVarData, type MarginalVarRow, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
@@ -326,6 +326,14 @@ function PinRiskTable({ positions }: { positions: Position[] }): JSX.Element {
   const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + "k" : Math.round(Math.abs(v)));
   const pin = useFetch<PinRiskRow[]>(() => fetchPinRisk().then(adaptPinRisk), 120_000);
   const pinRows = pin.data ?? [];
+  // Authoritative structure name per trade, from the DB structured feed (Trade
+  // view uses the same source). Prefer it over structureName(legs) inference,
+  // which snaps a 25Δ strangle / straddle / calendar all to "Strangle 10Δ".
+  const structured = useFetch<StructuredPositions>(() => fetchStructuredPositions(), 30_000);
+  const structNames = useMemo(
+    () => structureNamesByTrade(structured.data?.structures ?? []),
+    [structured.data],
+  );
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const toggle = (id: number): void =>
     setExpanded((prev) => {
@@ -334,14 +342,14 @@ function PinRiskTable({ positions }: { positions: Position[] }): JSX.Element {
       else n.add(id);
       return n;
     });
-  // Structure names from the same grouping the Position breakdown uses.
   const nameByTrade = useMemo(() => {
     const m = new Map<number, string>();
     for (const grp of groupByTradeId(positions)) {
-      if (grp.tradeId != null && grp.legs.length > 1) m.set(Number(grp.tradeId), structureName(grp.legs));
+      if (grp.tradeId != null && grp.legs.length > 1)
+        m.set(Number(grp.tradeId), structNames[String(grp.tradeId)] ?? structureName(grp.legs));
     }
     return m;
-  }, [positions]);
+  }, [positions, structNames]);
   // Group pin rows by tradeId, preserving the backend's most-urgent-first order.
   const groups: { tradeId: number | null; rows: PinRiskRow[] }[] = [];
   {
@@ -424,14 +432,22 @@ function MarginalVarPanel({ positions }: { positions: Position[] }): JSX.Element
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggle = (t: string): void =>
     setExpanded((prev) => { const n = new Set(prev); if (n.has(t)) n.delete(t); else n.add(t); return n; });
-  // Structure names from the same grouping the Position breakdown uses.
+  // Authoritative structure name per trade from the DB structured feed; prefer
+  // it over structureName(legs) inference (which mislabels every structure as
+  // "Strangle 10Δ" when the legs carry no shared stored name).
+  const structured = useFetch<StructuredPositions>(() => fetchStructuredPositions(), 30_000);
+  const structNames = useMemo(
+    () => structureNamesByTrade(structured.data?.structures ?? []),
+    [structured.data],
+  );
   const nameByTrade = useMemo(() => {
     const m = new Map<number, string>();
     for (const grp of groupByTradeId(positions)) {
-      if (grp.tradeId != null && grp.legs.length > 1) m.set(Number(grp.tradeId), structureName(grp.legs));
+      if (grp.tradeId != null && grp.legs.length > 1)
+        m.set(Number(grp.tradeId), structNames[String(grp.tradeId)] ?? structureName(grp.legs));
     }
     return m;
-  }, [positions]);
+  }, [positions, structNames]);
   // Group rows by trade id, preserving the backend's (contribution) order. A
   // multi-leg structure's legs collapse under one caret even when the backend
   // interleaves them with other trades.
