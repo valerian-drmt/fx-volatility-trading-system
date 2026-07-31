@@ -20,6 +20,7 @@ Cf. STEP1 §3 zone 2 + the `p_calm/p_stressed/p_pre_event` columns in
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -105,6 +106,52 @@ def infer_proba(
         p_stressed=round(by_label.get("stressed", 0.0), 4),
         p_pre_event=round(by_label.get("pre_event", 0.0), 4),
     )
+
+
+def serialize_gmm(gmm: object, fit: GmmFitResult) -> dict[str, Any]:
+    """Serialize a fitted GMM + its label mapping to a JSON-safe dict.
+
+    Captures the exact fitted attributes ``infer_proba`` needs so a consumer can
+    ``deserialize_gmm`` and call ``predict_proba`` with bit-identical output —
+    no re-fit. This is the ``analytics`` engine → vol-engine model-serving path
+    (train centrally, infer at the edge). Pure (numpy → lists), stays in
+    ``core`` per the architecture rules.
+    """
+    return {
+        "weights": np.asarray(gmm.weights_).tolist(),                       # type: ignore[attr-defined]
+        "means": np.asarray(gmm.means_).tolist(),                           # type: ignore[attr-defined]
+        "covariances": np.asarray(gmm.covariances_).tolist(),               # type: ignore[attr-defined]
+        "precisions_cholesky": np.asarray(gmm.precisions_cholesky_).tolist(),  # type: ignore[attr-defined]
+        "n_obs": int(fit.n_obs),
+        "converged": bool(fit.converged),
+        "component_to_label": {str(k): v for k, v in fit.component_to_label.items()},
+    }
+
+
+def deserialize_gmm(payload: dict[str, Any]) -> tuple[object, GmmFitResult]:
+    """Rebuild a fitted GaussianMixture + GmmFitResult from ``serialize_gmm``.
+
+    The restored model reproduces ``predict_proba`` exactly — we restore
+    ``precisions_cholesky_`` verbatim, which is what predict_proba consumes, so
+    no re-fit and no numerical drift. Lazy sklearn import keeps ``core.vol``
+    import-light (mirrors ``fit_gmm``).
+    """
+    from sklearn.mixture import GaussianMixture
+
+    weights = np.asarray(payload["weights"], dtype=float)
+    gmm = GaussianMixture(n_components=int(weights.shape[0]), covariance_type="full")
+    # Restore the fitted attributes predict_proba relies on. Setting them marks
+    # the estimator as fitted (attrs ending in ``_``), so no .fit() is called.
+    gmm.weights_ = weights
+    gmm.means_ = np.asarray(payload["means"], dtype=float)
+    gmm.covariances_ = np.asarray(payload["covariances"], dtype=float)
+    gmm.precisions_cholesky_ = np.asarray(payload["precisions_cholesky"], dtype=float)
+    fit = GmmFitResult(
+        n_obs=int(payload["n_obs"]),
+        component_to_label={int(k): v for k, v in payload["component_to_label"].items()},
+        converged=bool(payload["converged"]),
+    )
+    return gmm, fit
 
 
 def _map_components_to_labels(

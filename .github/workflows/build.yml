@@ -136,6 +136,8 @@ jobs:
             dockerfile: src/engines/db_writer/Dockerfile
           - image: execution
             dockerfile: infrastructure/docker/execution.Dockerfile
+          - image: analytics-engine
+            dockerfile: src/engines/analytics/Dockerfile
     steps:
       - name: Checkout
         uses: actions/checkout@v4

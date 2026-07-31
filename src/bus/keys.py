@@ -28,6 +28,15 @@ LATEST_ASK: str = "latest_ask:{symbol}"
 LATEST_VOL_SURFACE: str = "latest_vol_surface:{symbol}"
 LATEST_SIGNALS: str = "latest_signals:{symbol}"
 
+# Analytics engine → Vol Engine (model serving : train centrally, infer at edge)
+# LATEST_REGIME_MODEL : serialized GMM (means/covariances/weights/precisions_
+#   cholesky + component→label) the vol-engine deserializes to run infer_proba
+#   per cycle on the live obs (shadow probas).
+# LATEST_PC3_HISTORY  : the PC3 skew/convex rolling arrays (≤200 each) the
+#   vol-engine z-scores the live snapshot against.
+LATEST_REGIME_MODEL: str = "analytics:regime_model:{symbol}"
+LATEST_PC3_HISTORY: str = "analytics:pc3_history:{symbol}"
+
 # Portfolio-level aggregates (Risk Engine → FastAPI)
 # No ``{symbol}`` : greeks and PnL are computed across the whole book.
 LATEST_GREEKS_PORTFOLIO: str = "latest_greeks:portfolio"
@@ -71,6 +80,10 @@ TTL_ACCOUNT: int = 60
 TTL_VOL_SURFACE: int = 600
 TTL_SIGNALS: int = 600
 
+# Analytics runs hourly (ANALYTICS_INTERVAL_MIN=60). 2h TTL survives one skipped
+# or slow run without blanking the vol-engine's shadow probas / PC3 z-scores.
+TTL_ANALYTICS: int = 2 * 60 * 60
+
 # Bars are a broker-backed cache refreshed every ~15 min; 6h TTL keeps the
 # chart populated through a missed refresh / brief engine restart.
 TTL_BARS: int = 6 * 60 * 60
@@ -88,3 +101,4 @@ ENGINE_MARKET_DATA: str = "market_data"
 ENGINE_VOL: str = "vol_engine"
 ENGINE_RISK: str = "risk_engine"
 ENGINE_DB_WRITER: str = "db_writer"
+ENGINE_ANALYTICS: str = "analytics_engine"
