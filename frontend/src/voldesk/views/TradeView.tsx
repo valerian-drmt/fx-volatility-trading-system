@@ -10,6 +10,7 @@ import { Panel } from "../components/common";
 import { fmtCcySigned, gk$, pnlCls } from "../components/format";
 import { FreshBadge } from "../components/FreshBadge";
 import { OpenPositionsTable, type StructureCtx } from "../components/PositionsTable";
+import { PRODUCT_NAMES, formatStructLabel } from "../components/tradeGrouping";
 import { OrderBuilder } from "../components/OrderBuilder";
 import { TickerChart } from "../components/TickerChart";
 import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
@@ -110,39 +111,6 @@ function fmtAge(ms: number): string {
 // clean, consistent product name. Known structure_types map to a proper label;
 // for "custom"/unknown types we fall back to the descriptive product_label so a
 // freeform trade shows its real name instead of "Custom".
-const PRODUCT_NAMES: Record<string, string> = {
-  vanilla_call: "Vanilla Call", vanilla_put: "Vanilla Put",
-  straddle_atm: "Straddle", straddle: "Straddle", strangle: "Strangle",
-  butterfly: "Butterfly", risk_reversal: "Risk Reversal", calendar: "Calendar", future: "Future",
-  "call spread": "Call Spread", "put spread": "Put Spread",
-};
-// Format a classifier label (the stored structure_type / product_label) into a
-// clean product name. The backend stores classify_legs' verdict with a
-// long/short prefix + Δ bucket — e.g. "long strangle 25d", "long straddle",
-// "long future", "long call". This maps those to the dropdown's product names.
-// Returns null only for empty / "custom" so callers can fall through.
-function formatStructLabel(label: string | null | undefined): string | null {
-  if (!label) return null;
-  const l = label.toLowerCase().trim();
-  if (l === "custom" || l === "") return null;
-  const sm = /strangle\s*(\d+)\s*d/.exec(l);
-  if (sm) return `Strangle ${sm[1]}Δ`;
-  if (l.includes("strangle")) return "Strangle";
-  if (l.includes("straddle")) return "Straddle";
-  const rrm = /risk reversal\s*(\d+)\s*d/.exec(l);
-  if (rrm) return `Risk Reversal ${rrm[1]}Δ`;
-  if (l.includes("risk reversal")) return "Risk Reversal";
-  if (l.includes("butterfly")) return "Butterfly";
-  if (l.includes("calendar")) return "Calendar";
-  if (l.includes("call spread")) return "Call Spread";
-  if (l.includes("put spread")) return "Put Spread";
-  if (l.includes("vertical spread")) return "Vertical Spread";
-  if (l.includes("future")) return "Future";
-  const bare = l.replace(/^(long|short)\s+/, "");  // vanilla single-leg
-  if (bare === "call") return "Vanilla Call";
-  if (bare === "put") return "Vanilla Put";
-  return label.replace(/_/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function prettyProduct(s: SubmittedTrade): string {
   const st = (s.structure_type ?? "").toLowerCase();

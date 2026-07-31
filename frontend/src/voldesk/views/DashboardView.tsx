@@ -388,7 +388,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
               </table>
             </div>
             <div className="ind-fam" data-pp="dash-var">
-              <div className="ind-fam-head">Value at Risk <span className="dim">· horizon loss</span></div>
+              <div className="ind-fam-head">Value at Risk</div>
               {v && v.var95 !== null && v.meanDaily !== null ? (
                 <table className="dt var-table">
                   <thead>

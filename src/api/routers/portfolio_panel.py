@@ -35,6 +35,7 @@ from core.risk.marginal_var import component_var
 from core.risk.stress import reval_book
 from core.risk.var_factors import factor_var_breakdown
 from core.risk.vega_pca import N_CELLS, PC_NAMES, cell_index, project_vega
+from core.units import PIP_SIZE
 from persistence.models import (  # noqa: F401
     AccountHistory,
     AppConfigScalar,
@@ -569,7 +570,9 @@ async def greek_pnl_history(
             forward[ts] = float(r.market_price)
         per_position.setdefault(int(r.position_id), {})[ts] = {
             "delta": float(r.delta_usd) if r.delta_usd is not None else None,
-            "gamma": float(r.gamma_usd) if r.gamma_usd is not None else None,
+            # gamma_usd is $/pip; ½Γ·dS² uses a raw-spot dS, so convert to Γ_$
+            # ($/spot²) — else the convexity term is 1e4× too small (~$0).
+            "gamma": float(r.gamma_usd) / PIP_SIZE if r.gamma_usd is not None else None,
             "vega": float(r.vega_usd) if r.vega_usd is not None else None,
             "theta": float(r.theta_usd) if r.theta_usd is not None else None,
             "iv": float(r.iv) if r.iv is not None else None,
@@ -1125,6 +1128,70 @@ def _attribution_groups(
     return groups, totals
 
 
+def _decompose_row(
+    *,
+    now: datetime,
+    pnl_now: float | None, pnl_then: float | None,
+    spot_now: float | None, spot_then: float | None,
+    iv_now: float | None, iv_then: float | None,
+    delta: float | None, gamma: float | None,
+    vega: float | None, theta: float | None,
+    t_then: datetime | None,
+    delta_then: float | None = None, gamma_then: float | None = None,
+    vega_then: float | None = None, theta_then: float | None = None,
+    gamma_scale: float = 1.0,
+) -> dict[str, float | None]:
+    """Taylor-decompose one leg's window P&L into δ·dS / ½Γ·dS² / V·dσ / Θ·dt / residual.
+
+    Anchors on the t-1 (window-start) greek, falling back to the current one when
+    a t-1 column is null. ``gamma_scale`` converts the stored gamma into Γ_$ (2nd
+    derivative in raw spot²) so ½Γ·dS² is real dollars: IB-live ``gamma_usd`` is
+    $/pip (``1/PIP_SIZE``), booked ``gamma_usd_per_pip2`` is $/pip²
+    (``1/PIP_SIZE²``). Pure — unit-tested in test_portfolio_pnl_attribution.
+    """
+    actual = (pnl_now - pnl_then) if (pnl_now is not None and pnl_then is not None) else None
+    # No t-1 snapshot → the leg's realized P&L over the window is unmeasurable,
+    # so there is nothing to attribute. Suppress every term (else a theoretical
+    # delta·dS would show against a $0 actual and pollute the trade/tenor sums).
+    if actual is None:
+        return dict.fromkeys(
+            ("actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd", "residual_usd"),
+            None,
+        )
+    dspot = (spot_now - spot_then) if (spot_now is not None and spot_then is not None) else None
+    div_pts = (iv_now - iv_then) if (iv_now is not None and iv_then is not None) else None
+    dt_days = ((now - t_then).total_seconds() / 86400.0) if t_then is not None else None
+
+    # Attribute with the t-1 greeks, not the current ones: over a 24h window an
+    # option's delta drifts a lot, so delta_now·dS overshoots and inflates the
+    # residual. Fall back to the current greek when a t-1 column is null.
+    d = delta_then if delta_then is not None else delta
+    g = gamma_then if gamma_then is not None else gamma
+    v = vega_then if vega_then is not None else vega
+    th = theta_then if theta_then is not None else theta
+
+    delta_pnl = (d * dspot) if (d is not None and dspot is not None) else None
+    gamma_pnl = (0.5 * g * gamma_scale * dspot * dspot) if (g is not None and dspot is not None) else None
+    vega_pnl = (v * div_pts) if (v is not None and div_pts is not None) else None
+    theta_pnl = (th * dt_days) if (th is not None and dt_days is not None) else None
+
+    explained: float | None
+    if None in (delta_pnl, gamma_pnl, vega_pnl, theta_pnl):
+        explained = None
+    else:
+        explained = float(delta_pnl) + float(gamma_pnl) + float(vega_pnl) + float(theta_pnl)
+    residual = (actual - explained) if (actual is not None and explained is not None) else None
+
+    return {
+        "actual_pnl_usd": round(actual, 2) if actual is not None else None,
+        "delta_pnl_usd": round(delta_pnl, 2) if delta_pnl is not None else None,
+        "gamma_pnl_usd": round(gamma_pnl, 2) if gamma_pnl is not None else None,
+        "vega_pnl_usd": round(vega_pnl, 2) if vega_pnl is not None else None,
+        "theta_pnl_usd": round(theta_pnl, 2) if theta_pnl is not None else None,
+        "residual_usd": round(residual, 2) if residual is not None else None,
+    }
+
+
 @router.get("/pnl-attribution")
 async def pnl_attribution(
     db: DbDep,
@@ -1271,64 +1338,9 @@ async def pnl_attribution(
             return "Body (ATM)"
         return "Put wing" if moneyness < 0 else "Call wing"
 
-    # 3. Decompose each row. None on any input → return Nones (caller
-    #    displays "—") so partial data doesn't poison aggregates.
-    def _decompose(
-        pnl_now: float | None, pnl_then: float | None,
-        spot_now: float | None, spot_then: float | None,
-        iv_now: float | None, iv_then: float | None,
-        delta: float | None, gamma: float | None,
-        vega: float | None, theta: float | None,
-        t_then: datetime | None,
-        delta_then: float | None = None, gamma_then: float | None = None,
-        vega_then: float | None = None, theta_then: float | None = None,
-    ) -> dict[str, float | None]:
-        actual = (pnl_now - pnl_then) if (pnl_now is not None and pnl_then is not None) else None
-        # No t-1 snapshot → the leg's realized P&L over the window is unmeasurable,
-        # so there is nothing to attribute. Suppress every term (else a theoretical
-        # delta·dS would show against a $0 actual and pollute the trade/tenor sums).
-        if actual is None:
-            return dict.fromkeys(
-                ("actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd", "residual_usd"),
-                None,
-            )
-        dspot = (spot_now - spot_then) if (spot_now is not None and spot_then is not None) else None
-        div_pts = (iv_now - iv_then) if (iv_now is not None and iv_then is not None) else None
-        dt_days = ((now - t_then).total_seconds() / 86400.0) if t_then is not None else None
-
-        # Taylor expansion around the START of the window: attribute with the t-1
-        # greeks, not the current ones. Over a 24h window an option's delta drifts
-        # a lot, so delta_now·dS overshoots the realized move and the correction is
-        # dumped into the residual (e.g. a -$14k delta·dS against a -$6.4k actual).
-        # Anchoring on the entry greek keeps δ·dS + ½Γ·dS² a clean 2nd-order-in-spot
-        # expansion; the residual then only holds the genuine vol convexity
-        # (volga/vanna) + higher order. Fall back to the current greek when a t-1
-        # greek is missing (old snapshots with null greek columns).
-        d = delta_then if delta_then is not None else delta
-        g = gamma_then if gamma_then is not None else gamma
-        v = vega_then if vega_then is not None else vega
-        th = theta_then if theta_then is not None else theta
-
-        delta_pnl = (d * dspot) if (d is not None and dspot is not None) else None
-        gamma_pnl = (0.5 * g * dspot * dspot) if (g is not None and dspot is not None) else None
-        vega_pnl = (v * div_pts) if (v is not None and div_pts is not None) else None
-        theta_pnl = (th * dt_days) if (th is not None and dt_days is not None) else None
-
-        explained: float | None
-        if None in (delta_pnl, gamma_pnl, vega_pnl, theta_pnl):
-            explained = None
-        else:
-            explained = float(delta_pnl) + float(gamma_pnl) + float(vega_pnl) + float(theta_pnl)
-        residual = (actual - explained) if (actual is not None and explained is not None) else None
-
-        return {
-            "actual_pnl_usd": round(actual, 2) if actual is not None else None,
-            "delta_pnl_usd": round(delta_pnl, 2) if delta_pnl is not None else None,
-            "gamma_pnl_usd": round(gamma_pnl, 2) if gamma_pnl is not None else None,
-            "vega_pnl_usd": round(vega_pnl, 2) if vega_pnl is not None else None,
-            "theta_pnl_usd": round(theta_pnl, 2) if theta_pnl is not None else None,
-            "residual_usd": round(residual, 2) if residual is not None else None,
-        }
+    # 3. Decompose each row via the module-level _decompose_row (unit-tested).
+    #    None on any input → Nones (caller displays "—") so partial data doesn't
+    #    poison aggregates.
 
     # Book-level UNDERLYING spot = the EUR future's market price (the FOP
     # underlying), now and at t-1. Option legs decompose against THIS, not their
@@ -1349,23 +1361,55 @@ async def pnl_attribution(
 
     per_position: list[dict[str, Any]] = []
     for r in ib_rows:
-        decomp = _decompose(
+        # A future / delta-1 leg is linear: no gamma/vega/theta, and it must
+        # decompose against its OWN price. Each 6E expiry has a different price,
+        # so the single shared `forward` (one arbitrary 6E) made every other
+        # future's δ·dS miss its actual P&L — and with gamma/vega/theta NULL the
+        # residual stayed None, so those gaps footed nowhere and the totals row
+        # did not reconcile. Own price + explicit 0 greeks → residual foots.
+        is_future = (
+            (r.product_label or "").lower().startswith("future")
+            or (r.structure or "").startswith("6E")
+        )
+        if is_future:
+            spot_now_u = float(r.spot_now) if r.spot_now is not None else None
+            spot_then_u = float(r.spot_then) if r.spot_then is not None else None
+            gamma_u = gamma_then_u = 0.0
+            vega_u = vega_then_u = 0.0
+            theta_u = theta_then_u = 0.0
+            iv_now_u = iv_then_u = 0.0   # equal → Δiv 0 → vega term a clean 0
+            gscale = 1.0
+        else:
+            spot_now_u, spot_then_u = forward, forward_then
+            gamma_u = float(r.gamma_now) if r.gamma_now is not None else None
+            gamma_then_u = float(r.gamma_then) if r.gamma_then is not None else None
+            vega_u = float(r.vega_now) if r.vega_now is not None else None
+            vega_then_u = float(r.vega_then) if r.vega_then is not None else None
+            theta_u = float(r.theta_now) if r.theta_now is not None else None
+            theta_then_u = float(r.theta_then) if r.theta_then is not None else None
+            iv_now_u = float(r.iv_now) if r.iv_now is not None else None
+            iv_then_u = float(r.iv_then) if r.iv_then is not None else None
+            gscale = 1.0 / PIP_SIZE   # open_position.gamma_usd is $/pip → Γ_$
+        decomp = _decompose_row(
+            now=now,
             pnl_now=float(r.pnl_now) if r.pnl_now is not None else None,
             pnl_then=float(r.pnl_then) if r.pnl_then is not None else None,
-            # underlying spot (future price), NOT the per-leg premium
-            spot_now=forward,
-            spot_then=forward_then,
-            iv_now=float(r.iv_now) if r.iv_now is not None else None,
-            iv_then=float(r.iv_then) if r.iv_then is not None else None,
+            # options: underlying future price (per-leg market_price is the
+            # premium); futures: their own price.
+            spot_now=spot_now_u,
+            spot_then=spot_then_u,
+            iv_now=iv_now_u,
+            iv_then=iv_then_u,
             delta=float(r.delta_now) if r.delta_now is not None else None,
-            gamma=float(r.gamma_now) if r.gamma_now is not None else None,
-            vega=float(r.vega_now) if r.vega_now is not None else None,
-            theta=float(r.theta_now) if r.theta_now is not None else None,
+            gamma=gamma_u,
+            vega=vega_u,
+            theta=theta_u,
             t_then=r.t_then,
             delta_then=float(r.delta_then) if r.delta_then is not None else None,
-            gamma_then=float(r.gamma_then) if r.gamma_then is not None else None,
-            vega_then=float(r.vega_then) if r.vega_then is not None else None,
-            theta_then=float(r.theta_then) if r.theta_then is not None else None,
+            gamma_then=gamma_then_u,
+            vega_then=vega_then_u,
+            theta_then=theta_then_u,
+            gamma_scale=gscale,
         )
         per_position.append({
             "id": int(r.id), "source": "ib_live",
@@ -1381,7 +1425,8 @@ async def pnl_attribution(
             **decomp,
         })
     for r in booked_rows:
-        decomp = _decompose(
+        decomp = _decompose_row(
+            now=now,
             pnl_now=float(r.pnl_now) if r.pnl_now is not None else None,
             pnl_then=float(r.pnl_then) if r.pnl_then is not None else None,
             spot_now=float(r.spot_now) if r.spot_now is not None else None,
@@ -1397,6 +1442,8 @@ async def pnl_attribution(
             gamma_then=float(r.gamma_then) if r.gamma_then is not None else None,
             vega_then=float(r.vega_then) if r.vega_then is not None else None,
             theta_then=float(r.theta_then) if r.theta_then is not None else None,
+            # booked_position_metric_history.current_gamma_usd_per_pip2 is $/pip²
+            gamma_scale=1.0 / (PIP_SIZE * PIP_SIZE),
         )
         per_position.append({
             "id": int(r.id), "source": "booked",
