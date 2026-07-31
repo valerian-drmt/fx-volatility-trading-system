@@ -67,7 +67,14 @@ RISK_ENGINE_IMAGE=${reg}/fx-options-risk-engine:${IMAGE_TAG}
 DB_WRITER_IMAGE=${reg}/fx-options-db-writer:${IMAGE_TAG}
 EXECUTION_IMAGE=${reg}/fx-options-execution:${IMAGE_TAG}
 ANALYTICS_ENGINE_IMAGE=${reg}/fx-options-analytics-engine:${IMAGE_TAG}
-IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:latest
+# Pinned, NOT :latest. gnzsnz installs the Gateway into /home/ibgateway/Jts,
+# which we persist as a named volume (compose ib_gateway_jts). Docker only
+# populates that volume from the image ONCE (when empty), so a floating :latest
+# that bumps the Gateway build (e.g. 10.48->10.49) leaves the old jars in the
+# volume: IBC then dies with "version X not installed: can't find jars folder"
+# and the engines stall unhealthy. Bumping this pin is deliberate and MUST be
+# paired with refreshing the volume's install (see infrastructure/ib-gateway/README.md).
+IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:10.49.1c
 ENVEOF
 
 # Broker credentials: fetched + rendered ONLY when the ib profile is armed, so

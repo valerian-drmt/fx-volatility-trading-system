@@ -358,7 +358,8 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           className="dash-card"
         >
           <div className="dash-risk-2col">
-            <div data-pp="dash-greeks">
+            <div className="ind-fam" data-pp="dash-greeks">
+              <div className="ind-fam-head">Portfolio greeks</div>
               <table className="dt greeks-table">
                 <thead>
                   <tr>
@@ -386,7 +387,8 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                 </tbody>
               </table>
             </div>
-            <div data-pp="dash-var">
+            <div className="ind-fam" data-pp="dash-var">
+              <div className="ind-fam-head">Value at Risk <span className="dim">· horizon loss</span></div>
               {v && v.var95 !== null && v.meanDaily !== null ? (
                 <table className="dt var-table">
                   <thead>
