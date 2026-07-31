@@ -143,7 +143,10 @@ echo "[setup] IB gateway nightly-reset watchdog (cron.d, every 2 min)"
 # tolerates the script being briefly absent before the first deploy lands it.
 install -m 0644 /dev/stdin /etc/cron.d/fxvol-ib-watchdog <<CRON
 # Managed by infrastructure/ec2/setup.sh — do not edit by hand.
-*/2 * * * * root flock -n /run/fxvol-ib-watchdog.lock $APP_DIR/infrastructure/ec2/ib_watchdog.sh >> /var/log/fxvol-ib-watchdog.log 2>&1
+# Invoked via /bin/sh (not directly) so a lost execute bit on the deployed
+# script — the tarball payload does not always preserve mode 0755 — cannot
+# silently break the auto-heal with "flock: Permission denied".
+*/2 * * * * root flock -n /run/fxvol-ib-watchdog.lock /bin/sh $APP_DIR/infrastructure/ec2/ib_watchdog.sh >> /var/log/fxvol-ib-watchdog.log 2>&1
 CRON
 
 echo "[setup] done. Next steps :"
