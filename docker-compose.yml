@@ -463,7 +463,13 @@ services:
     # refused as obsolete). gnzsnz/ib-gateway is a drop-in fork that
     # rebuilds monthly. For a pinned local build see
     # `infrastructure/ib-gateway/README.md`.
-    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:latest}
+    # Pinned default (NOT :latest). The Gateway install lives in the persisted
+    # ib_gateway_jts volume, which Docker populates from the image only once —
+    # a floating :latest that bumps the build strands old jars in the volume and
+    # IBC dies "version X not installed". Bump this pin deliberately + refresh
+    # the volume install (infrastructure/ib-gateway/README.md). Prod pins the
+    # same tag via remote-deploy.sh's IB_GATEWAY_IMAGE.
+    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:10.49.1c}
     container_name: fxvol-ib-gateway
     mem_limit: 1500m
     # Opt-in : `docker compose --profile ib up -d` to include IB Gateway.

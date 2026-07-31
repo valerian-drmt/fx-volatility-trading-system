@@ -66,3 +66,43 @@ Two cleaner paths than re-doing these steps at every upstream bump :
    nothing else is third-party.
 
 Either becomes a proper post-R9 PR once R8 is on main.
+
+## Pinned image + the persistent volume (READ before bumping the version)
+
+The gnzsnz image installs the Gateway into `/home/ibgateway/Jts/ibgateway/<build>/`,
+and compose persists **that whole path** as the named volume `ib_gateway_jts`
+(the volume also holds the API/Trusted-IPs settings we want to keep). Docker
+copies the image's contents into a named volume **only once — when the volume
+is empty**. So if the image tag floats (`:latest`) and a deploy pulls a newer
+Gateway build, the volume keeps the *old* jars and IBC dies at boot with:
+
+```
+Error: Offline TWS/Gateway version <new> is not installed: can't find jars folder
+```
+
+The container then crash-loops, `4002` never opens, and market-data / vol-engine /
+risk-engine stall `unhealthy` (their healthchecks are Redis heartbeat freshness,
+which goes stale when IB is unreachable). This bit prod on 2026-07-31
+(image bumped 10.48.1e → 10.49.1c, volume stuck on 10.48.1e).
+
+Because of this, `IB_GATEWAY_IMAGE` is **pinned to a specific build**, not
+`:latest` — both in `infrastructure/ec2/remote-deploy.sh` (prod `.env`) and as
+the compose default. Bumping it is a deliberate two-step change:
+
+1. Update the pin in both places to the new tag (e.g. `:10.50.1x`).
+2. Refresh the volume's install so the new jars land next to the kept settings.
+   Either recreate the volume (loses the Trusted-IPs GUI config → redo it over
+   VNC 127.0.0.1:5900), **or** the non-destructive surgical copy:
+
+   ```sh
+   VOL=fxvol_ib_gateway_jts
+   IMG=ghcr.io/gnzsnz/ib-gateway:<new-tag>
+   sudo docker stop fxvol-ib-gateway
+   # backup first
+   sudo docker run --rm -u root -v $VOL:/vol -v /tmp:/b alpine \
+     tar czf /b/ibgw_jts_$(date -u +%Y%m%dT%H%M%SZ).tgz -C /vol .
+   # copy the new build's install into the volume (settings untouched)
+   sudo docker run --rm -u root -v $VOL:/vol --entrypoint sh $IMG \
+     -c 'cp -a /home/ibgateway/Jts/ibgateway/<new-build> /vol/ibgateway/'
+   sudo docker start fxvol-ib-gateway     # IBC logs in, 4002 opens, engines reconnect
+   ```
