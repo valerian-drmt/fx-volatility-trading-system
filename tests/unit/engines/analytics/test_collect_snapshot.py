@@ -6,11 +6,10 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from _analytics_helpers import FakeRedis, FakeResult, FakeSessionmaker, make_surface
 
 from bus import keys
 from engines.analytics.engine import AnalyticsEngine
-
-from .conftest import FakeRedis, FakeResult, FakeSessionmaker, make_surface
 
 
 @pytest.mark.asyncio

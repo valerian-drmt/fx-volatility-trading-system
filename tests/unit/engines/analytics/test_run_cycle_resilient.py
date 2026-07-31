@@ -5,17 +5,16 @@ from __future__ import annotations
 import json
 
 import pytest
-
-from bus import keys
-from engines.analytics.engine import AnalyticsEngine
-
-from .conftest import (
+from _analytics_helpers import (
     FakeRedis,
     FakeResult,
     FakeSessionmaker,
     make_snapshot_row,
     make_surface,
 )
+
+from bus import keys
+from engines.analytics.engine import AnalyticsEngine
 
 
 @pytest.mark.asyncio

@@ -7,12 +7,11 @@ import json
 
 import numpy as np
 import pytest
+from _analytics_helpers import FakeRedis, FakeResult, FakeSessionmaker
 
 from bus import keys
 from core.vol.gmm_regime import LABELS_3, MIN_OBS_GMM, deserialize_gmm, infer_proba
 from engines.analytics.engine import AnalyticsEngine
-
-from .conftest import FakeRedis, FakeResult, FakeSessionmaker
 
 
 def _three_regime_rows(n_per: int = 20) -> list[tuple]:
