@@ -18,7 +18,7 @@ from api.schemas.vol import (
     TermStructureRow,
 )
 from bus import keys
-from core.vol.tenors import DISPLAY_PILLARS, LABEL_DTE, to_display_surface
+from core.vol.tenors import DISPLAY_PILLARS, to_display_surface
 from persistence.models import VolSurface
 
 # Smile point extraction — (pillar field for IV, pillar field for strike, label).
@@ -58,16 +58,17 @@ async def get_latest_surface(
         )
     if db is not None:
         base = select(VolSurface).where(VolSurface.underlying == symbol)
-        # Prefer the most recent surface that actually carries a live IV grid — a
-        # top-level tenor pillar (1M…1Y). Markets closed, the latest rows are
+        # Prefer the most recent COMPLETE grid — all display pillars (1M…6M)
+        # present as top-level tenor keys. Markets closed, the latest rows are
         # model-only (only _fair_q/_har/_svi; their "1M" keys are NESTED inside
-        # _har, not top-level), so a plain LIMIT 1 serves a gridless surface and
-        # blanks the IV-surface panel. jsonb_exists_any ( ?| ) finds the last full
-        # grid in one query however many model-only rows precede it. Fall back to
-        # the absolute latest so the fair-vol/model term structure still serves
-        # when no live grid exists yet.
+        # _har, not top-level) and the very last live rows are sparse (near close
+        # the chain thins to a tenor or two), so "any tenor" would serve a lone-6M
+        # surface. jsonb_exists_all ( ?& ) finds the last full grid in one query
+        # however many model-only/sparse rows precede it. Fall back to the
+        # absolute latest so the fair-vol/model term structure still serves when
+        # no full grid exists yet.
         grid_stmt = (
-            base.where(func.jsonb_exists_any(VolSurface.surface_data, pg_array(tuple(LABEL_DTE))))
+            base.where(func.jsonb_exists_all(VolSurface.surface_data, pg_array(tuple(DISPLAY_PILLARS))))
             .order_by(VolSurface.timestamp.desc())
             .limit(1)
         )

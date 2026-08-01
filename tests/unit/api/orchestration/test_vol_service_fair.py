@@ -122,27 +122,28 @@ class _NoRedis:
         return None  # force the DB fallback
 
 
-async def test_get_latest_surface_prefers_grid_row_over_model_only():
-    """Markets closed: the latest rows are model-only; the DB fallback's first
-    (jsonb_exists_any) query returns the last row WITH a live IV grid — that row
-    must win over the newer model-only one."""
+async def test_get_latest_surface_prefers_full_grid_over_model_only():
+    """Markets closed: the latest rows are model-only / sparse; the DB fallback's
+    first (jsonb_exists_all) query returns the last COMPLETE grid (all display
+    pillars) — that row must win over the newer model-only one."""
     from types import SimpleNamespace
 
     from api.orchestration import vol_service
 
     grid = SimpleNamespace(
         underlying="EURUSD",
-        timestamp=datetime(2026, 7, 31, 21, 2, tzinfo=UTC),
-        surface_data={"1M": {"atm": {"iv": 0.06}}, "_fair_q": {}},
+        timestamp=datetime(2026, 7, 31, 20, 59, tzinfo=UTC),
+        surface_data={t: {"atm": {"iv": 0.06}} for t in ("1M", "2M", "3M", "4M", "5M", "6M")}
+        | {"_fair_q": {}},
     )
     resp = await vol_service.get_latest_surface(_NoRedis(), "EURUSD", db=_FakeDB([grid]))
     assert resp.timestamp == grid.timestamp
-    assert "1M" in resp.surface          # the live grid pillar survived to display
+    assert {"1M", "2M", "3M", "4M", "5M", "6M"} <= set(resp.surface)   # all pillars survived
 
 
 async def test_get_latest_surface_falls_back_to_latest_when_no_grid():
-    """No grid anywhere (fresh DB / only model-only rows): the grid query returns
-    None, then the plain-latest query serves the model-only surface so the
+    """No full grid anywhere (fresh DB / only model-only rows): the grid query
+    returns None, then the plain-latest query serves the model-only surface so the
     fair-vol term structure still has something to work from."""
     from types import SimpleNamespace
 
