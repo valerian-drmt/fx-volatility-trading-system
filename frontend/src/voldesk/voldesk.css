@@ -1526,6 +1526,9 @@ input,select{font-family:inherit;font-size:13px}
 /* Same inline treatment for Marginal-contribution-to-VaR so the structure name
    sits to the right of the ▸ caret (was dropping below it — .sym is block). */
 [data-pp="marginal-var"] .dt .sym{display:inline}
+/* Cap Marginal-VaR at ~6 rows (sticky header + 6 × ~26px) with internal scroll,
+   like Expiries & roll-off, so it doesn't stretch the Value-at-Risk row. */
+[data-pp="marginal-var"] .table-scroll{max-height:184px}
 /* cap the table height (internal scroll, sticky header) so expanding legs
    never stretches the Greeks grid / panel layout */
 .pin-risk-full .table-scroll{max-height:254px}
