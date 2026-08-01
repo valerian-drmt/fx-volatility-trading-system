@@ -1512,16 +1512,26 @@ input,select{font-family:inherit;font-size:13px}
 .greeks-2x2 > .panel{min-width:0;grid-column:auto}
 /* Expiries & roll-off spans the full Greeks-grid width */
 .greeks-2x2 > .pin-risk-full{grid-column:1 / -1}
+/* Greeks row (full-width): 25% Portfolio greeks / 25% Vega·Vanna·Volga /
+   50% Expiries & roll-off, side by side. Expiries caps its own height
+   (.pin-risk-full .table-scroll below), so the wider 50% column keeps the
+   two short greek tables from leaving a tall void beside it. */
+.greeks-3col{display:grid;grid-template-columns:1fr 1fr 2fr;gap:10px;align-items:start}
+.greeks-3col > .panel{min-width:0;grid-column:auto}
 /* cap the Option column so the numeric columns share the freed width */
 .pin-risk-full .dt th.l{width:30%}
 /* .sym is display:block globally — inline it here so the structure name sits
    on the same line as (and to the right of) the ▸ caret */
 .pin-risk-full .dt .sym{display:inline}
+/* Same inline treatment for Marginal-contribution-to-VaR so the structure name
+   sits to the right of the ▸ caret (was dropping below it — .sym is block). */
+[data-pp="marginal-var"] .dt .sym{display:inline}
 /* cap the table height (internal scroll, sticky header) so expanding legs
    never stretches the Greeks grid / panel layout */
 .pin-risk-full .table-scroll{max-height:280px}
-/* Value at Risk column — table / graph / marginal contribution stacked 1x3 */
-.var-1x3{display:flex;flex-direction:column;gap:10px}
+/* Value at Risk row (full-width): VaR table / P&L distribution / Marginal
+   contribution to VaR — 3 equal columns (33/33/33). */
+.var-1x3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:start}
 
 /* Risk · greeks (left) + utilization (right) side by side */
 .gu-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
