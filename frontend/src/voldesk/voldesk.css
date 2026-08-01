@@ -1528,7 +1528,7 @@ input,select{font-family:inherit;font-size:13px}
 [data-pp="marginal-var"] .dt .sym{display:inline}
 /* cap the table height (internal scroll, sticky header) so expanding legs
    never stretches the Greeks grid / panel layout */
-.pin-risk-full .table-scroll{max-height:280px}
+.pin-risk-full .table-scroll{max-height:254px}
 /* Value at Risk row (full-width): VaR table / P&L distribution / Marginal
    contribution to VaR — 3 equal columns (33/33/33). */
 .var-1x3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:start}
