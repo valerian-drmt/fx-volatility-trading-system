@@ -6,7 +6,8 @@ from datetime import datetime
 from typing import Any
 
 from redis import asyncio as aioredis
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
+from sqlalchemy.dialects.postgresql import array as pg_array
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.vol import (
@@ -17,7 +18,7 @@ from api.schemas.vol import (
     TermStructureRow,
 )
 from bus import keys
-from core.vol.tenors import to_display_surface
+from core.vol.tenors import DISPLAY_PILLARS, LABEL_DTE, to_display_surface
 from persistence.models import VolSurface
 
 # Smile point extraction — (pillar field for IV, pillar field for strike, label).
@@ -56,13 +57,25 @@ async def get_latest_surface(
             surface=to_display_surface(payload.get("surface", {})),
         )
     if db is not None:
-        stmt = (
-            select(VolSurface)
-            .where(VolSurface.underlying == symbol)
+        base = select(VolSurface).where(VolSurface.underlying == symbol)
+        # Prefer the most recent surface that actually carries a live IV grid — a
+        # top-level tenor pillar (1M…1Y). Markets closed, the latest rows are
+        # model-only (only _fair_q/_har/_svi; their "1M" keys are NESTED inside
+        # _har, not top-level), so a plain LIMIT 1 serves a gridless surface and
+        # blanks the IV-surface panel. jsonb_exists_any ( ?| ) finds the last full
+        # grid in one query however many model-only rows precede it. Fall back to
+        # the absolute latest so the fair-vol/model term structure still serves
+        # when no live grid exists yet.
+        grid_stmt = (
+            base.where(func.jsonb_exists_any(VolSurface.surface_data, pg_array(tuple(LABEL_DTE))))
             .order_by(VolSurface.timestamp.desc())
             .limit(1)
         )
-        row = (await db.execute(stmt)).scalar_one_or_none()
+        row = (await db.execute(grid_stmt)).scalar_one_or_none()
+        if row is None:
+            row = (
+                await db.execute(base.order_by(VolSurface.timestamp.desc()).limit(1))
+            ).scalar_one_or_none()
         if row is not None:
             return SurfaceResponse(
                 symbol=row.underlying,
@@ -132,17 +145,32 @@ async def get_term_structure(
     rv_full = surface.surface.get("_rv_full_pct")
     rv_full_f = float(rv_full) if isinstance(rv_full, (int, float)) else None
 
+    # Iterate the canonical display ladder, not only the live IV pillars: markets
+    # closed, the persisted surface carries just the model sub-dicts
+    # (_fair_q / _har / _garch) and NO live tenor pillars, yet _fair_q still holds
+    # σ_fair^Q/P + VRP per tenor. Emitting a row per tenor that has EITHER a live
+    # pillar OR a _fair_q entry keeps the fair-vol / RV curve alive (σ_atm just
+    # stays None) instead of returning pillars:[] — same "serve the last
+    # persisted state" behaviour as the PCA cards. Any live tenor outside the
+    # ladder is appended defensively.
+    tenors: list[str] = list(DISPLAY_PILLARS)
+    for t in surface.surface:
+        if not t.startswith("_") and t not in tenors:
+            tenors.append(t)
+
     rows: list[TermStructureRow] = []
-    for tenor, pillar in surface.surface.items():
-        if tenor.startswith("_") or not isinstance(pillar, dict):
-            continue
+    for tenor in tenors:
+        pillar = surface.surface.get(tenor)
+        pillar = pillar if isinstance(pillar, dict) else {}
+        fq = fair_q.get(tenor) if isinstance(fair_q, dict) else None
+        fq = fq if isinstance(fq, dict) else {}
+        if not pillar and not fq:
+            continue  # nothing persisted for this tenor — skip, don't fake a row
         sigma_pct = pillar.get("sigma_atm_pct") or pillar.get("sigma_ATM_pct")
         if sigma_pct is None:
             atm = pillar.get("atm")
             if isinstance(atm, dict) and isinstance(atm.get("iv"), (int, float)):
                 sigma_pct = float(atm["iv"]) * 100.0
-        fq = fair_q.get(tenor) if isinstance(fair_q, dict) else None
-        fq = fq if isinstance(fq, dict) else {}
         sigma_fair_q = fq.get("sigma_fair_q_pct")
         sigma_fair_p = fq.get("sigma_fair_p_pct")
         # Horizon-matched RV per tenor (pillar.rv_pct) ; fall back to the
