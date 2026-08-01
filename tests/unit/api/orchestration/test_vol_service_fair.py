@@ -63,3 +63,96 @@ async def test_term_structure_propagates_fair_and_rv(monkeypatch):
     assert by["3M"].rv_pct == pytest.approx(6.0)
     assert by["3M"].rr_25d_pct is None
     assert by["3M"].bf_25d_pct is None
+
+
+async def test_term_structure_market_closed_uses_fair_q_only(monkeypatch):
+    """Markets closed: the persisted surface carries only the model sub-dicts
+    (_fair_q, _rv_full_pct) with NO live IV pillars. The term structure must
+    still serve the fair-vol / RV curve (σ_atm None) instead of pillars:[]."""
+    from api.orchestration import vol_service
+
+    closed = SimpleNamespace(
+        symbol="EURUSD",
+        timestamp=datetime(2026, 6, 17, 22, tzinfo=UTC),
+        surface={
+            "_rv_full_pct": 6.0,
+            "_fair_q": {
+                "1M": {"sigma_fair_q_pct": 5.8, "sigma_fair_p_pct": 5.2, "vrp_vol_pts": 0.6, "regime": "calm"},
+                "3M": {"sigma_fair_q_pct": 6.1, "sigma_fair_p_pct": 5.5, "vrp_vol_pts": 0.5, "regime": "calm"},
+            },
+        },
+    )
+
+    async def _fake_latest(_redis, _symbol, db=None):
+        return closed
+
+    monkeypatch.setattr(vol_service, "get_latest_surface", _fake_latest)
+    resp = await vol_service.get_term_structure(redis=None, symbol="EURUSD")
+    by = {r.tenor: r for r in resp.pillars}
+
+    assert set(by) == {"1M", "3M"}                     # only tenors with _fair_q data
+    assert by["1M"].sigma_atm_pct is None              # no live IV grid
+    assert by["1M"].sigma_fair_q_pct == pytest.approx(5.8)
+    assert by["1M"].sigma_fair_pct == pytest.approx(5.8)   # legacy = Q
+    assert by["1M"].rv_pct == pytest.approx(6.0)       # surface-level RV fallback
+    assert by["1M"].rr_25d_pct is None                 # no wings market-closed
+    assert by["3M"].sigma_fair_q_pct == pytest.approx(6.1)
+
+
+class _Res:
+    def __init__(self, row):
+        self._row = row
+
+    def scalar_one_or_none(self):
+        return self._row
+
+
+class _FakeDB:
+    """Serves canned scalar_one_or_none rows in call order (grid query first)."""
+
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    async def execute(self, _stmt):
+        return _Res(self._rows.pop(0))
+
+
+class _NoRedis:
+    async def get(self, _key):
+        return None  # force the DB fallback
+
+
+async def test_get_latest_surface_prefers_grid_row_over_model_only():
+    """Markets closed: the latest rows are model-only; the DB fallback's first
+    (jsonb_exists_any) query returns the last row WITH a live IV grid — that row
+    must win over the newer model-only one."""
+    from types import SimpleNamespace
+
+    from api.orchestration import vol_service
+
+    grid = SimpleNamespace(
+        underlying="EURUSD",
+        timestamp=datetime(2026, 7, 31, 21, 2, tzinfo=UTC),
+        surface_data={"1M": {"atm": {"iv": 0.06}}, "_fair_q": {}},
+    )
+    resp = await vol_service.get_latest_surface(_NoRedis(), "EURUSD", db=_FakeDB([grid]))
+    assert resp.timestamp == grid.timestamp
+    assert "1M" in resp.surface          # the live grid pillar survived to display
+
+
+async def test_get_latest_surface_falls_back_to_latest_when_no_grid():
+    """No grid anywhere (fresh DB / only model-only rows): the grid query returns
+    None, then the plain-latest query serves the model-only surface so the
+    fair-vol term structure still has something to work from."""
+    from types import SimpleNamespace
+
+    from api.orchestration import vol_service
+
+    latest = SimpleNamespace(
+        underlying="EURUSD",
+        timestamp=datetime(2026, 7, 31, 21, 59, tzinfo=UTC),
+        surface_data={"_fair_q": {"1M": {"sigma_fair_q_pct": 5.8}}},
+    )
+    # grid query → None, then fallback query → the model-only latest row.
+    resp = await vol_service.get_latest_surface(_NoRedis(), "EURUSD", db=_FakeDB([None, latest]))
+    assert resp.timestamp == latest.timestamp
