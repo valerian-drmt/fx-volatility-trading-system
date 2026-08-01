@@ -40,6 +40,7 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [strategy/structures.md](strategy/structures.md) | Straddle, strangle, risk reversal, butterfly, calendar — built by delta pillar + tenor. |
 | [strategy/signals-to-trades.md](strategy/signals-to-trades.md) | Mapping PC signals to structures (level→straddle, slope→calendar, curvature→butterfly, skew→risk-reversal). |
 | [strategy/risk.md](strategy/risk.md) | Greeks (Δ/Γ/V/Θ/vanna/volga), VaR, greek limits, P&L attribution, delta hedging. |
+| [strategy/greek-limits.md](strategy/greek-limits.md) | Implementation brief for the greek-limit framework — stress-loss budget `L* = α·NAV_base` projected onto each axis, NAV anchor, scenario grid. |
 
 ## Execution
 

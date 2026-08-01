@@ -1,6 +1,6 @@
 """Greek limit framework — stress-loss budget projected onto each greek axis.
 
-Implements ``greek-limits-spec.md`` §2/§6/§8 (pure math, no I/O):
+Implements ``docs/strategy/greek-limits.md`` §2/§6/§8 (pure math, no I/O):
 
   * One daily stress-loss appetite ``L* = ALPHA * nav_base`` is projected onto
     each axis by inverting that axis' shock — caps are *derived*, never

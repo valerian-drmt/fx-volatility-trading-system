@@ -847,7 +847,7 @@ export interface paths {
         };
         /**
          * Greek Limits
-         * @description Derived greek caps from the stress-loss budget (greek-limits-spec §2/§6/§8).
+         * @description Derived greek caps from the stress-loss budget (docs/strategy/greek-limits.md §2/§6/§8).
          *
          *     Caps are *computed, not configured*: ``L* = ALPHA·nav_base`` is projected
          *     onto delta/vega/gamma/cross by inverting each axis' shock. ``nav_base`` is
