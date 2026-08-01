@@ -31,6 +31,17 @@ signals, greeks and P&L. Trading, the config editor, and the developer console a
 behind an auth boundary. Every push to `main` redeploys it automatically (see
 [Deployment](#deployment)).
 
+## 📸 Screenshots
+
+| | |
+|:---:|:---:|
+| ![Live vol surface, regime & PCA signals](docs/pictures/vol-surface.png) | ![Portfolio risk — greeks, VaR & P&L distribution](docs/pictures/risk.png) |
+| *Vol surface, regime & PCA signals* | *Risk — greeks, VaR & P&L distribution* |
+| ![Structured options book](docs/pictures/positions.png) | ![Microservices architecture](docs/pictures/architecture.png) |
+| *Structured options book* | *Microservices architecture (11 services)* |
+
+> More views in [`docs/pictures/`](docs/pictures/).
+
 ---
 
 ## Features
