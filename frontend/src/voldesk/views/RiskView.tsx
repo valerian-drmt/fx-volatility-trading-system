@@ -464,8 +464,8 @@ function MarginalVarPanel({ positions }: { positions: Position[] }): JSX.Element
   }
   const legRow = (m: MarginalVarRow, key: string, indent: boolean): JSX.Element => (
     <tr key={key} className={indent ? "pos-leg" : undefined}>
-      <td className="l mono dim">{indent ? "↳" : m.trade}</td>
-      <td className="l mono">{m.label}</td>
+      <td className="l mono dim">{indent ? "" : m.trade}</td>
+      <td className="l mono">{indent ? "↳ " : ""}{m.label}</td>
       <td className="r mono dim">{money(m.standalone)}</td>
       <td className={compCls(m.component)}>{money(m.component)}</td>
       <td className="r mono">{m.pct.toFixed(1)}%</td>
@@ -489,6 +489,7 @@ function MarginalVarPanel({ positions }: { positions: Position[] }): JSX.Element
               return (
                 <Fragment key={grp.trade}>
                   <tr className={"pos-main" + (isOpen ? " open" : "")} onClick={() => toggle(grp.trade)}>
+                    <td className="l mono dim">{grp.trade}</td>
                     <td className="l">
                       <button
                         className="pos-caret"
@@ -500,7 +501,6 @@ function MarginalVarPanel({ positions }: { positions: Position[] }): JSX.Element
                       <span className="sym">{name}</span>
                       <span className="dim mono small"> · {grp.rows.length} legs</span>
                     </td>
-                    <td className="r mono dim">—</td>
                     {/* standalone VaR is not additive across legs — only component / % foot */}
                     <td className="r mono dim">—</td>
                     <td className={compCls(compSum)}>{money(compSum)}</td>
@@ -600,10 +600,8 @@ export function RiskView(): JSX.Element {
   const netVolga = pt.reduce((s, r) => s + r.volga, 0);
   return (
     <div className="risk-grid">
-      <div className="risk-row1">
-        <div className="risk-left-col">
-        <Panel title="Greeks" dataPp="greeks-wrap" right={<PanelLive status={risk.status} />} className="stress-panel">
-          <div className="greeks-2x2">
+      <Panel title="Greeks" dataPp="greeks-wrap" right={<PanelLive status={risk.status} />} className="stress-panel">
+          <div className="greeks-3col">
             <Panel title="Portfolio greeks" dataPp="greeks-net" right={<PanelLive status={trade.status} />} className="trade-block">
               <table className="dt greeks-table">
                 <thead><tr><th className="l">Greek</th><th className="r">Net value</th></tr></thead>
@@ -635,10 +633,8 @@ export function RiskView(): JSX.Element {
             </Panel>
             <PinRiskTable positions={portfolio.data?.positions ?? []} />
           </div>
-        </Panel>
-        </div>
-        <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} nDays={vd.nDays} method={vd.method} hist={vd.hist} fresh={risk} positions={portfolio.data?.positions ?? []} />
-      </div>
+      </Panel>
+      <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} nDays={vd.nDays} method={vd.method} hist={vd.hist} fresh={risk} positions={portfolio.data?.positions ?? []} />
       <StressEngine />
       <LiveLadders />
       <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status={portfolio.status} />} pad={false} className="ladder-panel">

@@ -15,7 +15,7 @@ desk.**
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 <p align="center">
-  <img src="docs/dashboard.png" alt="The voldesk trading cockpit — live vol surface, PCA signals, positions and greeks" width="900">
+  <img src="docs/pictures/dashboard.png" alt="The voldesk trading cockpit — live vol surface, PCA signals, positions and greeks" width="900">
 </p>
 
 A 7-view React trading desk on top of 5 async Python engines: live IB tick stream →
@@ -30,6 +30,17 @@ The public site is **read-only**: browse live positions, the vol surface, PCA
 signals, greeks and P&L. Trading, the config editor, and the developer console are
 behind an auth boundary. Every push to `main` redeploys it automatically (see
 [Deployment](#deployment)).
+
+## 📸 Screenshots
+
+| | |
+|:---:|:---:|
+| ![Live vol surface, regime & PCA signals](docs/pictures/vol-surface.png) | ![Portfolio risk — greeks, VaR & P&L distribution](docs/pictures/risk.png) |
+| *Vol surface, regime & PCA signals* | *Risk — greeks, VaR & P&L distribution* |
+| ![Structured options book](docs/pictures/positions.png) | ![Microservices architecture](docs/pictures/architecture.png) |
+| *Structured options book* | *Microservices architecture (11 services)* |
+
+> More views in [`docs/pictures/`](docs/pictures/).
 
 ---
 
