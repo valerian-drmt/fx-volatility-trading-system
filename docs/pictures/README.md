@@ -24,8 +24,8 @@ tables don't horizontal-scroll.
 | `pnl-attribution.png` | **Portfolio → P&L attribution by trade** | the fixed table: `½Γ·dS²` populated (not $0), futures footing, Total row reconciling |
 | `marginal-var.png` | **Risk → Marginal contribution to VaR** | correct structure names (Straddle / Strangle 25Δ / Calendar / Butterfly), not all "Strangle 10Δ" |
 | `expiries-rolloff.png` | **Risk → Expiries & roll-off** | correct structure names + DTE / pin P&L |
-| `portfolio.png` | **Portfolio** view | equity curve + performance table + cash/margin |
-| `dashboard-risk-card.png` | **Dashboard → Risk card** | the two separated titled cards ("Portfolio greeks" / "Value at Risk") |
+| `portfolio-equity.png` | **Portfolio** view | the equity / net-liq curve |
+| `portfolio-performance.png` | **Portfolio** view | performance table + cash / margin |
 | `trade-builder.png` | **Trade → order builder** | the structure factory (Δ pillar + tenor selectors) |
 | `settings-volconfig.png` | **Settings** (auth) | the versioned VolConfig editor |
 | `system-hardware.png` | **System → Hardware** | per-container CPU / RAM + host memory/swap |

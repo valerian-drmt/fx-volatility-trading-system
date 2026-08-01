@@ -15,7 +15,7 @@ desk.**
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 <p align="center">
-  <img src="docs/dashboard.png" alt="The voldesk trading cockpit — live vol surface, PCA signals, positions and greeks" width="900">
+  <img src="docs/pictures/dashboard.png" alt="The voldesk trading cockpit — live vol surface, PCA signals, positions and greeks" width="900">
 </p>
 
 A 7-view React trading desk on top of 5 async Python engines: live IB tick stream →
