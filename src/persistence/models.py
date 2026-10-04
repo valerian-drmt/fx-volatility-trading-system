@@ -104,7 +104,13 @@ class OpenPosition(Base):
     )
 
     metric_history: Mapped[list[OpenPositionHistory]] = relationship(
-        back_populates="position", cascade="all, delete-orphan"
+        back_populates="position",
+        cascade="all, delete-orphan",
+        # The FK already has ON DELETE CASCADE — let Postgres do the cascade.
+        # Without this, db.delete(position) loads the position's ENTIRE history
+        # collection into RAM first (1.9M-row table on prod → OOM crash-loop of
+        # execution-engine, 2026-10-04, 5 654 restarts).
+        passive_deletes=True,
     )
     # Note: `trades` relationship removed — Trade ORM dropped in
     # migration 025 (legacy fills journal had no live writers).
