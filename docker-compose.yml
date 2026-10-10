@@ -379,7 +379,10 @@ services:
       dockerfile: infrastructure/docker/execution.Dockerfile
     image: ${EXECUTION_IMAGE:-fx-options-execution:local}
     container_name: fxvol-execution
-    mem_limit: 384m
+    # 384m OOM-killed the engine once the book grew to ~74 legs (anon-rss ~390 MB
+    # at kill, 5 654 restarts by 2026-10-04) — the kernel killed uvicorn every
+    # ~9 min and the engine never published a heartbeat.
+    mem_limit: 512m
     profiles: ["engines"]
     restart: unless-stopped
     environment:
