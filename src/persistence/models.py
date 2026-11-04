@@ -19,6 +19,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -175,6 +176,10 @@ class AccountHistory(Base):
     Writer = execution-engine every 30s."""
 
     __tablename__ = "account_history"  # renamed in migration 026
+    # Every reader asks for the latest row (ORDER BY timestamp DESC LIMIT 1) or
+    # a time window; without this index each call sorted the whole table
+    # (migration 051).
+    __table_args__ = (Index("ix_account_history_ts", "timestamp"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(
