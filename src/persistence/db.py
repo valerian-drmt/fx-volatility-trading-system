@@ -29,14 +29,31 @@ def _database_url() -> str:
     return url
 
 
+def _statement_timeout_ms() -> int:
+    """``DB_STATEMENT_TIMEOUT_MS`` — server-side cap on a single statement.
+
+    0 / unset = no cap (engines : batch inserts, daily prunes, alembic). The
+    API sets it (docker-compose) so one pathological query cannot pile up
+    across UI polls until the pool is exhausted — the request fails fast with
+    a 500 instead of taking every other endpoint down with it.
+    """
+    raw = os.environ.get("DB_STATEMENT_TIMEOUT_MS", "").strip()
+    try:
+        return max(0, int(raw)) if raw else 0
+    except ValueError:
+        return 0
+
+
 def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
-        _engine = create_async_engine(
-            _database_url(),
-            pool_pre_ping=True,
-            future=True,
-        )
+        kwargs: dict = {"pool_pre_ping": True, "future": True}
+        timeout_ms = _statement_timeout_ms()
+        if timeout_ms and _database_url().startswith("postgresql"):
+            kwargs["connect_args"] = {
+                "server_settings": {"statement_timeout": str(timeout_ms)},
+            }
+        _engine = create_async_engine(_database_url(), **kwargs)
     return _engine
 
 

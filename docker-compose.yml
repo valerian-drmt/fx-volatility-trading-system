@@ -67,6 +67,11 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
+      # Server-side cap per SQL statement on the api's connections (ms). A
+      # slow read fails fast with a 500 instead of piling up across UI polls
+      # until the pool is exhausted (prod incident 2026-11-04). Engines keep
+      # the default (no cap). Cf. src/persistence/db.py.
+      DB_STATEMENT_TIMEOUT_MS: ${API_DB_STATEMENT_TIMEOUT_MS:-20000}
       REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Internal URL of the execution-engine container. The api forwards

@@ -1226,22 +1226,16 @@ async def pnl_attribution(
     now = datetime.now(UTC)
     cutoff = now - timedelta(hours=lookback_hours)
 
-    # 1. IB-live positions : current state from ``position`` + t-1 from
-    #    ``position_metric_history``. Use a CTE that picks the row whose
-    #    timestamp is the latest one still ≤ cutoff (closest from below).
+    # 1. IB-live positions : current state from ``open_position`` + t-1 from
+    #    ``open_position_history``. Per open position, a LATERAL probe picks the
+    #    row whose timestamp is the latest one still ≤ cutoff (closest from
+    #    below). This walks the (position_id, timestamp) index backwards ONE
+    #    step per open position. The previous ``DISTINCT ON (position_id)``
+    #    CTE over the whole history table (no position filter) scanned + sorted
+    #    every row ever written (1M+ rows, spilled to disk, minutes per call)
+    #    and, polled by the UI, piled up until the API pool was exhausted
+    #    (prod incident 2026-11-04).
     ib_sql = text("""
-        WITH t1 AS (
-          SELECT DISTINCT ON (position_id)
-                 position_id,
-                 timestamp,
-                 market_price,
-                 current_pnl_usd,
-                 iv,
-                 delta_usd, gamma_usd, vega_usd, theta_usd
-            FROM open_position_history
-           WHERE timestamp <= :cutoff
-           ORDER BY position_id, timestamp DESC
-        )
         SELECT p.id, p.structure, p.product_label, p.side, p.tenor, p.expiry,
                p.trade_id, p.contract_id, p.nominal_eur,
                ts.structure_type AS structure_type,
@@ -1261,39 +1255,24 @@ async def pnl_attribution(
                t1.theta_usd       AS theta_then,
                t1.timestamp       AS t_then
           FROM open_position p
-          LEFT JOIN t1 ON t1.position_id = p.id
+          LEFT JOIN LATERAL (
+                 SELECT h.timestamp, h.market_price, h.current_pnl_usd, h.iv,
+                        h.delta_usd, h.gamma_usd, h.vega_usd, h.theta_usd
+                   FROM open_position_history h
+                  WHERE h.position_id = p.id
+                    AND h.timestamp <= :cutoff
+                  ORDER BY h.timestamp DESC
+                  LIMIT 1
+               ) t1 ON TRUE
           LEFT JOIN trade_structure ts ON ts.id = p.trade_id
     """)
     ib_rows = (await db.execute(ib_sql, {"cutoff": cutoff})).all()
 
-    # 2. Booked positions : current state from latest metric_history row +
-    #    t-1 from earlier row.
+    # 2. Booked positions : current state from the latest metric_history row +
+    #    t-1 from the latest row ≤ cutoff. Same LATERAL-per-open-position shape
+    #    as above (index (position_id, timestamp), one backward step each)
+    #    instead of two DISTINCT ON passes over the whole history table.
     booked_sql = text("""
-        WITH latest AS (
-          SELECT DISTINCT ON (position_id)
-                 position_id, timestamp,
-                 spot, iv_avg_legs_pct,
-                 current_pnl_gross_usd, current_pnl_net_usd,
-                 current_vega_usd_per_volpt,
-                 current_gamma_usd_per_pip2,
-                 current_theta_usd_per_day,
-                 current_delta_unhedged
-            FROM booked_position_metric_history
-           ORDER BY position_id, timestamp DESC
-        ),
-        t1 AS (
-          SELECT DISTINCT ON (position_id)
-                 position_id, timestamp,
-                 spot, iv_avg_legs_pct,
-                 current_pnl_gross_usd,
-                 current_delta_unhedged,
-                 current_gamma_usd_per_pip2,
-                 current_vega_usd_per_volpt,
-                 current_theta_usd_per_day
-            FROM booked_position_metric_history
-           WHERE timestamp <= :cutoff
-           ORDER BY position_id, timestamp DESC
-        )
         SELECT bp.id, bp.state,
                ts.product_label AS product_label,
                ts.reference_tenor AS tenor,
@@ -1316,8 +1295,27 @@ async def pnl_attribution(
                t1.timestamp             AS t_then
           FROM booked_position bp
           LEFT JOIN trade_structure ts ON ts.id = bp.structure_id
-          LEFT JOIN latest ON latest.position_id = bp.id
-          LEFT JOIN t1     ON t1.position_id     = bp.id
+          LEFT JOIN LATERAL (
+                 SELECT h.timestamp, h.spot, h.iv_avg_legs_pct,
+                        h.current_pnl_gross_usd, h.current_pnl_net_usd,
+                        h.current_vega_usd_per_volpt, h.current_gamma_usd_per_pip2,
+                        h.current_theta_usd_per_day, h.current_delta_unhedged
+                   FROM booked_position_metric_history h
+                  WHERE h.position_id = bp.id
+                  ORDER BY h.timestamp DESC
+                  LIMIT 1
+               ) latest ON TRUE
+          LEFT JOIN LATERAL (
+                 SELECT h.timestamp, h.spot, h.iv_avg_legs_pct,
+                        h.current_pnl_gross_usd, h.current_delta_unhedged,
+                        h.current_gamma_usd_per_pip2, h.current_vega_usd_per_volpt,
+                        h.current_theta_usd_per_day
+                   FROM booked_position_metric_history h
+                  WHERE h.position_id = bp.id
+                    AND h.timestamp <= :cutoff
+                  ORDER BY h.timestamp DESC
+                  LIMIT 1
+               ) t1 ON TRUE
          WHERE bp.state = 'open'
     """)
     booked_rows = (await db.execute(booked_sql, {"cutoff": cutoff})).all()

@@ -80,7 +80,9 @@ writer = [
 dev = [
     "ruff>=0.11,<0.12",
     "mypy>=1.10",
-    "pytest>=9.0,<10.0",
+    # <9.2 : pytest 9.2 dropped FixtureManager._arg2fixturedefs, which
+    # pytest-asyncio 0.23 still touches at collection (CI red 2026-11-04).
+    "pytest>=9.0,<9.2",
     "pytest-asyncio>=0.23,<0.25",
     "pytest-cov>=5,<8",
     "aiosqlite>=0.19,<0.21",

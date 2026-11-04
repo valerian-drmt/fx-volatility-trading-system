@@ -24,9 +24,27 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _collector_reachable(endpoint: str) -> bool:
+    """True when the OTLP endpoint's host resolves.
+
+    The obs compose profile (otel-collector + Tempo) is opt-in ; when it is
+    off, the hostname does not exist on the compose network. Probing once at
+    start-up lets the engines run without an exporter instead of retrying a
+    DNS failure on every span batch forever (one warning per ~1s per engine,
+    plus the CPU of the retry loop).
+    """
+    host = endpoint.split("://", 1)[-1].rsplit(":", 1)[0] or endpoint
+    try:
+        socket.getaddrinfo(host, None)
+        return True
+    except OSError:
+        return False
 
 
 def init_tracing(service_name: str) -> Any:
@@ -57,13 +75,24 @@ def init_tracing(service_name: str) -> Any:
     if isinstance(existing, TracerProvider):
         return trace.get_tracer(service_name)
 
+    if os.getenv("OTEL_SDK_DISABLED", "").lower() in {"1", "true", "yes"}:
+        logger.info("otel_tracing_disabled service=%s (OTEL_SDK_DISABLED)", service_name)
+        return _NoopTracer()
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4317")
+    if not _collector_reachable(endpoint):
+        logger.warning(
+            "otel_collector_unreachable service=%s endpoint=%s — tracing disabled "
+            "(start the `obs` compose profile to enable it)",
+            service_name, endpoint,
+        )
+        return _NoopTracer()
+
     resource = Resource.create({
         "service.name": service_name,
         "service.namespace": "fxvol",
         "deployment.environment": os.getenv("ENVIRONMENT", "dev"),
     })
     provider = TracerProvider(resource=resource)
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4317")
     exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
