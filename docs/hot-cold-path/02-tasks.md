@@ -2,21 +2,21 @@
 
 Ten tasks, each closing one or more problems from
 [01-problems.md](01-problems.md). One GitHub issue per task (label
-`hot-cold-path`), grouped under one epic. Estimates are engineering days for
+`hot-cold-path`), grouped under the epic #375. Estimates are engineering days for
 one person including tests and the doc update.
 
-| # | Task | Closes | Depends on | Estimate | PRs |
-|---|---|---|---|---|---|
-| T1 | CPU weights per container; retire the duplicate analytics run | P3, P10 | none | 0.5 d | 1 |
-| T2 | Execution engine publishes position and account deltas | P5 | none | 1 d | 1 |
-| T3 | Desk subscribes to positions, orders and account over WebSocket | P5 | T2 | 2 d | 1 |
-| T4 | Materialise rollups and attribution in the analytics engine | P1, P6 | none | 3 d | 2 |
-| T5 | Never blank a panel: per-endpoint degrade everywhere, ageing freshness, server as-of, no mock spot | P2, P7 | none | 2 d | 1 |
-| T6 | Latency metrics and the fluidity panel | P8 | T2 (for fill timestamps) | 1.5 d | 1 |
-| T7 | Capacity dial in Settings for the analytics engine | P3 (fine tuning) | T1, config hot-reload (#329) | 2 d | 1 |
-| T8 | Chain-subscription knob for the vol engine | P9 | T7 (same dial) | 0.5 d | 1 |
-| T9 | Write-side hygiene: history write cadence, retention off-peak, autovacuum settings | P4, P1 | T4 | 1 d | 1 |
-| T10 | Split hosts: trading core / analytics and observability | P3, P4 (physically) | T6 numbers | 2 d | infra |
+| # | Task | Closes | Depends on | Estimate | PRs | Issue |
+|---|---|---|---|---|---|---|
+| T1 | CPU weights per container; retire the duplicate analytics run | P3, P10 | none | 0.5 d | 1 | #365 |
+| T2 | Execution engine publishes position and account deltas | P5 | none | 1 d | 1 | #366 |
+| T3 | Desk subscribes to positions, orders and account over WebSocket | P5 | T2 | 2 d | 1 | #367 |
+| T4 | Materialise rollups and attribution in the analytics engine | P1, P6 | none | 3 d | 2 | #368 |
+| T5 | Never blank a panel: per-endpoint degrade everywhere, ageing freshness, server as-of, no mock spot | P2, P7 | none | 2 d | 1 | #369 |
+| T6 | Latency metrics and the fluidity panel | P8 | T2 (for fill timestamps) | 1.5 d | 1 | #370 |
+| T7 | Capacity dial in Settings for the analytics engine | P3 (fine tuning) | T1, config hot-reload (#329) | 2 d | 1 | #371 |
+| T8 | Chain-subscription knob for the vol engine | P9 | T7 (same dial) | 0.5 d | 1 | #372 |
+| T9 | Write-side hygiene: history write cadence, retention off-peak, autovacuum settings | P4, P1 | T4 | 1 d | 1 | #373 |
+| T10 | Split hosts: trading core / analytics and observability | P3, P4 (physically) | T6 numbers | 2 d | infra | #374 |
 
 ![Task dependency map: T1, T2, T4, T5 start now; T3 and T6 follow T2; T7 follows T1 and the config hot-reload fix; T8 follows T7; T9 follows T4; T10 waits for T6's numbers](../diagrams/hot-cold-task-map.svg)
 

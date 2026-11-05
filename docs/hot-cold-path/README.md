@@ -12,8 +12,8 @@ work's way, and the measurements that prove it.
 | [02-tasks.md](02-tasks.md) | The task plan: ten tasks (T1 to T10) with scope, acceptance, dependencies, estimate, and the problems each one closes. |
 | [../architecture/hot-cold-paths.md](../architecture/hot-cold-paths.md) | The architecture note the programme is built on: topology, the two lanes, the target. |
 
-Tracking: GitHub epic and one issue per task, labelled `hot-cold-path`, on
-project board #5. The problem register is updated when a task closes a problem
+Tracking: GitHub epic #375 and one issue per task (#365 to #374), labelled
+`hot-cold-path`, on project board #5. The problem register is updated when a task closes a problem
 (status column in `01-problems.md`); the tickets carry the discussion.
 
 ## Reading order for a newcomer
