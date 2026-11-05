@@ -30,4 +30,6 @@ storage:
 
 compactor:
   compaction:
-    block_retention: 168h  # 7 days
+    # 3 days (was 7). Shares a 3.8 GB prod host with the trading stack ; the
+    # container is capped at 320 MB (#293), so keep the on-disk set small.
+    block_retention: 72h

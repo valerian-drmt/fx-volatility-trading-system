@@ -675,6 +675,12 @@ services:
     image: grafana/loki:3.2.0
     container_name: fxvol-loki
     profiles: ["obs"]
+    # Memory cap (#293). 2026-11-02 : the obs profile ran uncapped on the
+    # 3.8 GB prod host, Tempo grew to ~1.4 GB, the host OOM'd and SSM lost it.
+    # A capped container is OOM-killed and restarted on its own instead.
+    mem_limit: 320m
+    environment:
+      GOMEMLIMIT: 256MiB   # Go GC target below the cgroup cap
     restart: unless-stopped
     command: -config.file=/etc/loki/local-config.yaml
     volumes:
@@ -695,6 +701,7 @@ services:
     image: grafana/promtail:3.2.0
     container_name: fxvol-promtail
     profiles: ["obs"]
+    mem_limit: 64m   # #293 (measured ~25 MB)
     restart: unless-stopped
     command: -config.file=/etc/promtail/config.yml
     volumes:
@@ -713,6 +720,12 @@ services:
     image: grafana/tempo:2.6.0
     container_name: fxvol-tempo
     profiles: ["obs"]
+    # Memory cap (#293). 2026-11-02 : the obs profile ran uncapped on the
+    # 3.8 GB prod host, Tempo grew to ~1.4 GB, the host OOM'd and SSM lost it.
+    # A capped container is OOM-killed and restarted on its own instead.
+    mem_limit: 320m
+    environment:
+      GOMEMLIMIT: 256MiB
     restart: unless-stopped
     command: -config.file=/etc/tempo.yml
     volumes:
@@ -734,6 +747,9 @@ services:
     image: otel/opentelemetry-collector-contrib:0.110.0
     container_name: fxvol-otel-collector
     profiles: ["obs"]
+    mem_limit: 128m   # #293 ; memory_limiter processor at 96 MiB in obs/otel-collector.yml
+    environment:
+      GOMEMLIMIT: 96MiB
     restart: unless-stopped
     command: ["--config=/etc/otel-collector.yml"]
     volumes:
@@ -752,6 +768,7 @@ services:
     image: grafana/grafana-oss:11.3.0
     container_name: fxvol-grafana
     profiles: ["obs"]
+    mem_limit: 192m   # #293 (measured ~110 MB with the provisioned dashboards)
     restart: unless-stopped
     environment:
       # Anonymous access is view-only; edits/admin go through the login form.

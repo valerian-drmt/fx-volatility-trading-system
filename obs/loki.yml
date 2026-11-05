@@ -32,11 +32,12 @@ schema_config:
         period: 24h
 
 limits_config:
-  # 14-day retention (hardening spec § 2.4: Loki volume re-estimated
-  # at ~2 GB over 14d at 1.5 KB/log line × ~100k events/day × 5 engines).
-  retention_period: 336h
-  ingestion_rate_mb: 16
-  ingestion_burst_size_mb: 32
+  # 7-day retention (was 14d, hardening spec § 2.4 estimated ~2 GB/14d) and
+  # half the ingest budget : Loki is capped at 320 MB on the 3.8 GB prod host
+  # it shares with the trading stack (#293).
+  retention_period: 168h
+  ingestion_rate_mb: 8
+  ingestion_burst_size_mb: 16
   max_global_streams_per_user: 5000
   reject_old_samples: true
   reject_old_samples_max_age: 168h  # 7 jours pour les replays Promtail
