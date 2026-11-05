@@ -264,11 +264,20 @@ cd __DIR__
 echo '--- CONTAINERS ---'
 sudo docker compose ps --format '{{.Name}}\t{{.Status}}' | sort
 echo
-echo '--- RAM / CPU (sorted by RAM) ---'
-sudo docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}' \
+echo '--- RAM / CPU (sorted by RAM; CPU = mean of 5 x 1s docker stats samples) ---'
+# A single 'docker stats --no-stream' is ONE ~1 s window. A container's
+# HEALTHCHECK runs inside its cgroup, so when that window catches the health
+# probe's interpreter start the column reads 60-90 % for a process that
+# averages 1 % (2026-11-05: risk-engine shown at 77 % while its main thread
+# used 0.5 s CPU per minute). Average several windows so a one-off spike
+# cannot be mistaken for a hot container.
+for i in 1 2 3 4 5; do
+  sudo docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}'
+done \
   | awk -F'\t' '{v=$2; sub(/ .*/,"",v); u=v; gsub(/[0-9.]/,"",u); n=v+0;
                  if(u=="GiB")n*=1024; else if(u=="KiB")n/=1024;
-                 printf "%8.1f MiB  %-22s CPU %s\n", n, $1, $3}' \
+                 c=$3; sub(/%/,"",c); mem[$1]=n; cpu[$1]+=c+0; cnt[$1]++}
+            END {for(k in mem) printf "%8.1f MiB  %-22s CPU %5.1f%%\n", mem[k], k, cpu[k]/cnt[k]}' \
   | sort -rn
 echo
 echo '--- HOST MEMORY ---'
