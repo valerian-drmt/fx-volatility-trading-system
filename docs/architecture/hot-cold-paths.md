@@ -27,48 +27,7 @@ Companion notes: [data-flow.md](data-flow.md) (the live path end to end),
 **Hot** means an operator is waiting on the output within seconds. **Cold**
 means the output is valuable but a minute late is fine.
 
-```mermaid
-flowchart LR
-    classDef hot fill:#fbe3d6,stroke:#d9480f,color:#1d2430
-    classDef cold fill:#dbe6f4,stroke:#3b6ea8,color:#1d2430
-    classDef shared fill:#fff3cd,stroke:#b7791f,color:#1d2430
-    classDef plain fill:#ffffff,stroke:#5b6676,color:#1d2430
-
-    IB[IB Gateway<br/>paper, 4 client ids]:::plain
-
-    MD[market-data<br/>ticks 0.1 s]:::hot
-    EX[execution<br/>orders, fills, sync 1 s]:::hot
-    RK[risk<br/>greeks 2 s, history 30 s]:::plain
-    VOL[vol<br/>surface ~3 min]:::cold
-    AN[analytics<br/>PCA, GMM hourly]:::cold
-    DBW[db-writer<br/>Redis to Postgres]:::cold
-
-    REDIS[(Redis<br/>last value + pub/sub)]:::plain
-    PG[(Postgres<br/>one pool, 1.3 M history rows)]:::shared
-    API[api<br/>REST + WS bridge]:::plain
-    UI[voldesk UI]:::plain
-
-    IB -->|ticks| MD
-    IB -->|acks, fills, portfolio| EX
-    IB -->|session only| RK
-    IB -->|chain, 74 lines| VOL
-
-    MD -->|SET + PUBLISH ticks| REDIS
-    EX -->|PUBLISH orders:*| REDIS
-    EX -->|open_position, account_history| PG
-    RK -->|PUBLISH risk_update| REDIS
-    RK -->|history every 30 s| PG
-    VOL -->|PUBLISH vol_update| REDIS
-    VOL -->|surface, fair vol| PG
-    AN -->|pca, gmm, pc3| PG
-    REDIS -.->|db_events| DBW
-    DBW -->|batches| PG
-
-    REDIS -->|pub/sub to WS| API
-    PG -->|queries| API
-    API -->|WS ticks, vol, risk| UI
-    UI -.->|REST poll 15 / 30 / 60 s<br/>positions, orders, account, portfolio| API
-```
+![Six engines, two paths: where each one writes and how the UI reads](../diagrams/hot-cold-topology.svg)
 
 Orange producers and blue producers write to the same Redis and the same
 Postgres. The UI receives ticks, vol and risk by push and polls everything
@@ -88,29 +47,7 @@ The api holds one asyncpg pool: 5 connections plus 10 overflow. Every REST
 endpoint takes a connection from it, whether it reads six `open_position`
 rows or scans 1.3 million `open_position_history` rows.
 
-```mermaid
-flowchart LR
-    classDef hot fill:#fbe3d6,stroke:#d9480f,color:#1d2430
-    classDef cold fill:#dbe6f4,stroke:#3b6ea8,color:#1d2430
-    classDef shared fill:#fff3cd,stroke:#b7791f,color:#1d2430
-
-    subgraph hotq [hot queries]
-        A1["/portfolio/account<br/>1 row, 0.2 s"]:::hot
-        A2["/positions/open<br/>6 rows, 0.2 s"]:::hot
-        A3["/trade/spot-orders<br/>30 rows, 0.2 s"]:::hot
-    end
-    subgraph coldq [cold queries]
-        C1["/portfolio/pnl-attribution<br/>history scan, 0.2 to 20 s"]:::cold
-        C2["/portfolio/stats<br/>account_history rollup, 5 s"]:::cold
-        C3["/portfolio/daily-pnl<br/>account_history rollup, 3 s"]:::cold
-    end
-    POOL["api asyncpg pool<br/>5 + 10 overflow<br/>first come, first served"]:::shared
-    PG[(Postgres<br/>2 vCPU shared)]
-
-    A1 & A2 & A3 --> POOL
-    C1 & C2 & C3 --> POOL
-    POOL --> PG
-```
+![The api connection pool: 200 ms reads queue behind 20 s scans](../diagrams/hot-cold-pool.svg)
 
 The pool is first come, first served. A cold query that holds a connection for
 20 seconds holds it against an account read that needs it for 200 milliseconds.
@@ -120,26 +57,7 @@ over the whole history table with no position filter. One call took one to
 eight minutes. The Portfolio tab polls it every 60 seconds, so copies piled
 up.
 
-```mermaid
-sequenceDiagram
-    participant UI as voldesk (several tabs)
-    participant API as api
-    participant POOL as asyncpg pool (15 slots)
-    participant PG as Postgres
-
-    loop every 60 s, per tab
-        UI->>API: GET /portfolio/pnl-attribution
-        API->>POOL: acquire
-        POOL->>PG: DISTINCT ON over 1.28 M rows
-        Note over PG: work_mem 4 MB, spills to disk<br/>1 to 8 min per call
-    end
-    Note over POOL: 13 to 21 copies in flight<br/>all 15 slots held by cold scans
-    UI->>API: GET /portfolio/account (hot)
-    API->>POOL: acquire
-    POOL-->>API: QueuePool limit reached (timeout)
-    API-->>UI: 500
-    Note over UI: Cash & margin $0, indicators "no data",<br/>while IB and Redis were fine
-```
+![4 November 2026: polled cold scans fill the pool, the hot account read gets a 500](../diagrams/hot-cold-pool-exhaustion.svg)
 
 Fixed in PR #285: per-position `LATERAL` probe, index on
 `account_history.timestamp`, and a 20 s `statement_timeout` on the api pool so
@@ -158,39 +76,7 @@ bundle was a single `Promise.all` over six endpoints: one rejection rejected
 the bundle, and the Trade tab fell back to the trade slice's account, which
 is the trade-book bootstrap mock.
 
-```mermaid
-flowchart TB
-    classDef hot fill:#fbe3d6,stroke:#d9480f,color:#1d2430
-    classDef cold fill:#dbe6f4,stroke:#3b6ea8,color:#1d2430
-    classDef bad fill:#f8d7da,stroke:#b02a37,color:#1d2430
-    classDef ok fill:#d1e7dd,stroke:#146c43,color:#1d2430
-
-    subgraph before [before PR 289: one Promise.all]
-        B1["account 200"]:::hot
-        B2["positions 200"]:::hot
-        B3["vega-per-tenor 200"]:::cold
-        B4["stats 200"]:::cold
-        B5["daily-pnl 200"]:::cold
-        B6["pnl-attribution 500 after 20 s"]:::bad
-        BALL{{"Promise.all rejects"}}:::bad
-        BOUT["portfolio.data = null<br/>Trade tab shows $100,000 / $0 mock"]:::bad
-        B1 & B2 & B3 & B4 & B5 & B6 --> BALL --> BOUT
-    end
-
-    subgraph after [after PR 289: primary + degradable]
-        P1["account 200"]:::hot
-        P2["positions 200"]:::hot
-        S3["vega-per-tenor 200"]:::cold
-        S4["stats 200"]:::cold
-        S5["daily-pnl 200"]:::cold
-        S6["pnl-attribution 500 → null"]:::cold
-        PRIM{{"primary Promise.all"}}:::ok
-        SEC{{"each .catch(() => null)"}}:::ok
-        POUT["account panel live,<br/>waterfall shows its neutral shape"]:::ok
-        P1 & P2 --> PRIM --> POUT
-        S3 & S4 & S5 & S6 --> SEC --> POUT
-    end
-```
+![The portfolio bundle before and after PR 289](../diagrams/hot-cold-ui-bundle.svg)
 
 The lesson generalises: a hot panel must never depend on a cold request
 succeeding, and a panel must never substitute a mock for a value it cannot
@@ -202,20 +88,7 @@ Two cores, thirteen containers (twenty with observability), and the Linux
 scheduler gives every container the same weight. The only hard cap is
 `cpus: 0.5` on the analytics engine.
 
-```mermaid
-gantt
-    title One minute on the host during a PCA cycle (illustrative)
-    dateFormat ss
-    axisFormat %S s
-    section cold
-    analytics PCA + GMM fit, 2 threads      :crit, a1, 00, 25s
-    vol chain scan, 74 lines                :a2, 30, 20s
-    section hot
-    execution order submit + ack            :active, h1, 05, 2s
-    execution position sync (every 1 s)     :h2, 00, 60s
-    market-data ticks (every 0.1 s)         :h3, 00, 60s
-    api GET /portfolio/account              :h4, 06, 1s
-```
+![One minute on the 2-core host during a PCA cycle](../diagrams/hot-cold-cpu-timeline.svg)
 
 While the fit holds both cores, the order submit at second 5 and the account
 read at second 6 wait their turn in the run queue. Nothing is broken, but the
@@ -235,27 +108,7 @@ writes a surface every 3 minutes, db-writer streams payloads in batches, and
 the execution engine writes positions and account snapshots. All of it lands
 in one database on the same two cores that serve the hot reads.
 
-```mermaid
-flowchart LR
-    classDef hot fill:#fbe3d6,stroke:#d9480f,color:#1d2430
-    classDef cold fill:#dbe6f4,stroke:#3b6ea8,color:#1d2430
-    classDef shared fill:#fff3cd,stroke:#b7791f,color:#1d2430
-
-    EX["execution<br/>open_position, account_history<br/>every 1 s when changed"]:::hot
-    RK["risk<br/>open_position_history<br/>N rows / 30 s"]:::cold
-    VOL["vol<br/>surface, fair vol<br/>every 3 min"]:::cold
-    DBW["db-writer<br/>streamed payloads<br/>batched"]:::cold
-    AN["analytics<br/>pca, gmm, pc3<br/>hourly"]:::cold
-    PG[(Postgres<br/>autovacuum, WAL, checkpoints<br/>on the same 2 vCPU)]:::shared
-    READS["hot reads<br/>account, positions, spot orders"]:::hot
-
-    EX --> PG
-    RK --> PG
-    VOL --> PG
-    DBW --> PG
-    AN --> PG
-    PG --> READS
-```
+![The write side of Postgres shared with the hot reads](../diagrams/hot-cold-pg-writes.svg)
 
 The 90-day retention delete in the risk engine and the autovacuum that follows
 it are the kind of background work that can make Postgres busy for minutes
@@ -267,33 +120,7 @@ None of this adds a service or rewrites an algorithm. Each change installs a
 priority rule at one of the collision points, plus one measurement so we know
 the rules hold.
 
-```mermaid
-flowchart LR
-    classDef hot fill:#fbe3d6,stroke:#d9480f,color:#1d2430
-    classDef cold fill:#dbe6f4,stroke:#3b6ea8,color:#1d2430
-    classDef plain fill:#ffffff,stroke:#5b6676,color:#1d2430
-    classDef new stroke-width:3px
-
-    subgraph hotlane [hot lane: pushed end to end, cpu_shares 1024]
-        HEX[execution]:::hot
-        HRED[Redis pub/sub<br/>positions, account, orders:*]:::plain
-        HAPI[api WS bridge<br/>already forwards these]:::plain
-        HUI[UI<br/>patches rows in place]:::hot
-        HEX ==>|NEW publish after each sync / fill| HRED
-        HRED ==>|exists| HAPI
-        HAPI ==>|NEW subscribe /ws/positions, /ws/orders, /ws/account| HUI
-    end
-
-    subgraph coldlane [cold lane: computed once, read cheaply, cpu_shares 128 to 256]
-        CAN[analytics<br/>PCA, GMM, rollups, attribution]:::cold
-        CTAB[(result tables<br/>one small row per cycle)]:::plain
-        CAPI[api<br/>SELECT ... LIMIT 1]:::plain
-        CUI[UI<br/>keeps last value + badge]:::cold
-        CAN ==>|NEW write| CTAB
-        CTAB ==>|ms read| CAPI
-        CAPI ==>|poll 60 s| CUI
-    end
-```
+![Target: the same engines in two lanes, with the new edges marked](../diagrams/hot-cold-target-lanes.svg)
 
 Why the push is cheap to finish: the api already serves `/ws/positions` and
 `/ws/orders/{structure_id}`, the Redis bridge already forwards the
