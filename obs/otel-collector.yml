@@ -8,6 +8,12 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
+  # First in the pipeline (#293) : drop data before the 128 MB cgroup cap
+  # OOM-kills the collector. Soft limit 96 MiB, spike allowance 24 MiB.
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 96
+    spike_limit_mib: 24
   batch:
     timeout: 5s
     send_batch_size: 1000
@@ -22,7 +28,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [memory_limiter, batch]
       exporters: [otlp/tempo]
   telemetry:
     logs:
