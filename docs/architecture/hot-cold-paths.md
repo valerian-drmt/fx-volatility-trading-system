@@ -154,6 +154,7 @@ of a slider.
 
 ## Related
 
+- [../hot-cold-path/](../hot-cold-path/README.md): the programme built on this note, with the problem register (P1 to P10) and the task plan (T1 to T10).
 - [data-flow.md](data-flow.md): the live path end to end.
 - [../observability/](../observability/): the obs profile (re-enabled with memory caps on 5 November 2026).
 - Issues: #284 / #285 (pool exhaustion), #288 / #289 (attribution timeout, portfolio bundle), #286 (daily rollups), #290 / #291 / #292 (spot orders), #293 / #294 (obs caps).

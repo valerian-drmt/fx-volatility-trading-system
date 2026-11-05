@@ -24,6 +24,14 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [architecture/database.md](architecture/database.md) | The Postgres schema: 27 ORM classes grouped by domain, Alembic flow, `VolConfig` versioning. |
 | [architecture/hot-cold-paths.md](architecture/hot-cold-paths.md) | Hot path (orders, fills, positions, account) vs cold path (surface, PCA, rollups): the six engines, the three collision points behind the November 2026 incidents, and the changes that separate them. |
 
+## Hot / cold path programme
+
+| Doc | Covers |
+|---|---|
+| [hot-cold-path/README.md](hot-cold-path/README.md) | The programme: goal, principles, reading order. |
+| [hot-cold-path/01-problems.md](hot-cold-path/01-problems.md) | Problem register P1 to P10: shared pool, all-or-nothing bundles, equal CPU priority, write side, polled hot state, per-request cold compute, freshness that never ages, no latency metric, chain load, duplicate analytics. |
+| [hot-cold-path/02-tasks.md](hot-cold-path/02-tasks.md) | Task plan T1 to T10 with acceptance, dependencies and estimates; the dependency map. |
+
 ## Volatility modeling
 
 | Doc | Covers |
