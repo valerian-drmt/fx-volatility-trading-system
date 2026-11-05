@@ -70,3 +70,4 @@ zeros plus a freshness badge.
 - [backend.md](backend.md) — the packages behind each box.
 - [database.md](database.md) — where the sinked payloads land.
 - [frontend.md](frontend.md) — the consuming views and hooks.
+- [hot-cold-paths.md](hot-cold-paths.md) — which of these edges must stay fast, where the slow ones collide with them, and the fixes.
