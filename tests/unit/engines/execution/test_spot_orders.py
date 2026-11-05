@@ -112,3 +112,29 @@ def test_place_order_with_limit_stays_limit() -> None:
     _, order = fake.placed[0]
     assert order.orderType == "LMT"
     assert order.lmtPrice == 1.0850
+
+
+# ---- place_order_trade : raw Trade + orderRef (spot persistence, #291) -----
+
+
+def test_place_order_trade_returns_raw_trade_with_order_ref() -> None:
+    fake = _FakeIB()
+    ex = _executor_with(fake)
+    req = OrderRequest(symbol="EUR", sec_type="CASH", side="SELL", qty=44_513,
+                       limit_price=1.12325, exchange="IDEALPRO", currency="USD")
+    trade = asyncio.run(ex.place_order_trade(req, order_ref="fxvol:spot:12"))
+    _, order = fake.placed[0]
+    assert order.orderRef == "fxvol:spot:12"
+    assert order.orderType == "LMT" and order.lmtPrice == 1.12325
+    # The raw ib_insync Trade (not the dict) so callers can attach handlers.
+    assert trade.order.orderId == 1 and trade.orderStatus.status == "Submitted"
+
+
+def test_place_order_without_ref_leaves_order_ref_untouched() -> None:
+    fake = _FakeIB()
+    ex = _executor_with(fake)
+    req = OrderRequest(symbol="EUR", sec_type="CASH", side="BUY", qty=100_000,
+                       limit_price=None, exchange="IDEALPRO", currency="USD")
+    asyncio.run(ex.place_order(req))
+    _, order = fake.placed[0]
+    assert not getattr(order, "orderRef", "")

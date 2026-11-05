@@ -5,7 +5,7 @@
  * rendered by TradeView — dropped. Order entry is the WRITE path: it stays mock
  * until the auth boundary + backend wiring lands (IMPLEMENTATION.md §3bis/§5).
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Panel } from "../components/common";
 import { fmtCcySigned, gk$, pnlCls } from "../components/format";
 import { FreshBadge } from "../components/FreshBadge";
@@ -19,7 +19,8 @@ import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
 import { ApiError } from "../../api/client";
-import { cancelTrade, closeContract, closeTrade, fetchStructuredPositions, fetchSubmitted, postSpotOrder, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
+import { cancelIbOrder, cancelTrade, closeContract, closeTrade, fetchSpotOrders, fetchStructuredPositions, fetchSubmitted, postSpotOrder, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
+import { adaptSpotOrders, spotLimitPrice } from "../data/live/spot";
 import { useFetch } from "../../hooks/useFetch";
 
 const GATE_TITLE = "write disabled — auth required (Phase 2)";
@@ -51,6 +52,8 @@ interface BlotterRow {
   id: string;
   tradeNo?: number; // the assigned trade_structure id (DB rows only; session rejects have none)
   structureId?: number; // the ACTUAL structure id (for cancel actions; tradeNo may show the closed trade)
+  tradeTag?: string; // spot orders have no trade #; shown as "S<id>" (#291)
+  ibOrderId?: number; // spot rows: IB orderId -> DELETE /orders/{id} cancels it
   contract?: string; // IB localSymbol(s) of the legs ("EUUV6 C1130" / "… +N")
   ts: string;
   tsSort: number;
@@ -66,7 +69,7 @@ interface BlotterRow {
   note?: string;
 }
 // Order role → the desk's professional label + open/close tone for the "Type" cell.
-const ROLE_LABEL: Record<string, string> = { entry: "Entry", closing: "Closing", unwind: "Unwind", hedge: "Hedge" };
+const ROLE_LABEL: Record<string, string> = { entry: "Entry", closing: "Closing", unwind: "Unwind", hedge: "Hedge", spot: "Spot" };
 function roleLabel(role: string): string { return ROLE_LABEL[role] ?? "Entry"; }
 function roleTone(role: string): "open" | "close" { return role === "closing" || role === "unwind" ? "close" : "open"; }
 // In-flight (waiting) order states — pinned above resolved rows in the blotter,
@@ -513,7 +516,12 @@ function ClosePanel({
 // EUR.USD (IDEALPRO). Editing one volume recomputes the other at the live mid.
 // A fill moves IB's per-currency CashBalance, which flows back into the
 // holdings lines above via the account snapshot (→ /portfolio/cash).
-function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: (rec: OrderRecord) => void }): JSX.Element {
+function SpotTicket({ bid, ask, ticksLive, onOrder, onSent }: {
+  bid: number; ask: number;
+  ticksLive: boolean; // live EUR.USD quote present: the limit is derived from it
+  onOrder: (rec: OrderRecord) => void;
+  onSent?: () => void; // IB accepted -> refetch the Orders blotter (spot rows)
+}): JSX.Element {
   const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
   const mid = (bid + ask) / 2;
   const [eurQty, setEurQty] = useState(100_000);
@@ -522,6 +530,11 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
   const [done, setDone] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const valid = eurQty > 0 && eurQty <= 5_000_000;
+  // Marketable limit (#290): SELL crosses the bid, BUY crosses the ask, 2 pips
+  // through. A pure market order is simulated by IDEALPRO and was parked in
+  // PreSubmitted on the paper account; a limit through the touch is a real
+  // Submitted order. No live quote -> no price -> the ticket refuses to send.
+  const canSend = canWrite && ticksLive;
   const onEur = (v: number): void => {
     setEurQty(v);
     setUsdQty(Math.round(v * mid));
@@ -533,15 +546,22 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
   // IB quantifies EUR.USD in EUR base units for both directions :
   // BUY = buy EUR / sell USD, SELL = buy USD / sell EUR.
   const send = async (side: "BUY" | "SELL"): Promise<void> => {
-    if (busy || !canWrite || !valid) return;
+    if (busy || !canSend || !valid) return;
+    const limit = spotLimitPrice(side, bid, ask);
+    if (limit == null) {
+      setErr("no live EUR.USD quote — spot order not sent");
+      return;
+    }
     setBusy(true);
     setErr(null);
     setDone(null);
     const label = side === "BUY" ? "spot buy EUR/USD" : "spot buy USD/EUR";
     try {
-      await postSpotOrder({ symbol: "EUR", sec_type: "CASH", side, qty: Math.round(eurQty), exchange: "IDEALPRO", currency: "USD" });
-      setDone(`${label} · ${eurQty.toLocaleString()} EUR @ mkt`);
+      const res = await postSpotOrder({ symbol: "EUR", sec_type: "CASH", side, qty: Math.round(eurQty), exchange: "IDEALPRO", currency: "USD", limit_price: limit });
+      const tag = res?.spot_order_id != null ? ` · S${res.spot_order_id}` : "";
+      setDone(`${label} · ${eurQty.toLocaleString()} EUR @ ${limit.toFixed(5)} lmt${tag} — see Orders`);
       onOrder({ action: "open", label, side, qty: eurQty, state: "sent" });
+      onSent?.();
     } catch (e) {
       const note = closeErr(e);
       setErr(note);
@@ -572,8 +592,8 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
       <div style={{ display: "flex", gap: 8 }}>
         <button
           className="spot-btn"
-          disabled={!canWrite || busy || !valid}
-          title={canWrite ? `market order · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO` : GATE_TITLE}
+          disabled={!canSend || busy || !valid}
+          title={!canWrite ? GATE_TITLE : !ticksLive ? NO_TICK_TITLE : `limit ${spotLimitPrice("BUY", bid, ask)?.toFixed(5) ?? "—"} (ask + 2p) · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO`}
           onClick={() => send("BUY")}
         >
           <span style={{ color: "var(--text)" }}>Buy <b style={{ fontSize: "1.3em" }}>EUR</b><span style={{ fontSize: "0.8em" }}>/usd</span></span>
@@ -584,8 +604,8 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
         </button>
         <button
           className="spot-btn"
-          disabled={!canWrite || busy || !valid}
-          title={canWrite ? `market order · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO` : GATE_TITLE}
+          disabled={!canSend || busy || !valid}
+          title={!canWrite ? GATE_TITLE : !ticksLive ? NO_TICK_TITLE : `limit ${spotLimitPrice("SELL", bid, ask)?.toFixed(5) ?? "—"} (bid − 2p) · EUR.USD ${bid.toFixed(5)}/${ask.toFixed(5)} · IDEALPRO`}
           onClick={() => send("SELL")}
         >
           <span style={{ color: "var(--text)" }}>Buy <b style={{ fontSize: "1.3em" }}>USD</b><span style={{ fontSize: "0.8em" }}>/eur</span></span>
@@ -600,9 +620,11 @@ function SpotTicket({ bid, ask, onOrder }: { bid: number; ask: number; onOrder: 
         {err ? `⚠ ${err}` : done ? `Sent ✓ ${done}` : " "}
       </div>
       {!canWrite && <div className="dim small ob-readonly-note">Read-only desk · log in to trade spot.</div>}
+      {canWrite && !ticksLive && <div className="dim small ob-readonly-note">No live EUR.USD quote · spot ticket paused.</div>}
     </div>
   );
 }
+const NO_TICK_TITLE = "no live EUR.USD quote — the marketable limit can't be priced";
 
 // ---------------- HoldingsStrip ----------------
 // Two lines, one per currency: "<CCY> <native amount> (<share of book>%)".
@@ -650,14 +672,18 @@ function IndicatorsPanel({
   cash,
   spotBid,
   spotAsk,
+  ticksLive,
   onOrder,
+  onSpotSent,
 }: {
   greeks: Greeks;
   account: AccountState;
   cash: Cash[];
   spotBid: number;
   spotAsk: number;
+  ticksLive: boolean;
   onOrder: (rec: OrderRecord) => void;
+  onSpotSent: () => void;
 }): JSX.Element {
   const g = greeks;
   // Cash & margin — same table (and same live source) as the Portfolio tab's
@@ -713,7 +739,7 @@ function IndicatorsPanel({
       <div className="ind-fam" data-pp="ind-cash-holdings">
         <div className="ind-fam-head">Cash holdings</div>
         <HoldingsStrip cash={cash} />
-        <SpotTicket bid={spotBid} ask={spotAsk} onOrder={onOrder} />
+        <SpotTicket bid={spotBid} ask={spotAsk} ticksLive={ticksLive} onOrder={onOrder} onSent={onSpotSent} />
       </div>
 
       {/* portfolio greeks — same table as the Risk tab's "Portfolio greeks" */}
@@ -761,6 +787,30 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   // Order blotter: persisted submitted structures from the DB (survive refresh) +
   // ephemeral session rejects (failed sends aren't persisted server-side).
   const submitted = useFetch<SubmittedTrade[]>(() => fetchSubmitted(50), 120_000, true, 30_000);
+  // Spot (CASH) orders from the cash ticket: own table, merged into the same
+  // blotter so a spot send shows its IB lifecycle (submitted -> filled) and can
+  // be cancelled from here (#291).
+  const spotOrders = useFetch(() => fetchSpotOrders(30), 120_000, true, 30_000);
+  const reloadSpot = spotOrders.reload;
+  // IB acks a spot order in well under a second and fills a marketable limit
+  // within a few; re-poll on a short ladder after a send instead of waiting for
+  // the 30 s cycle, then let the regular poll take over.
+  const onSpotSent = useCallback((): void => {
+    reloadSpot();
+    [2_000, 6_000, 15_000].forEach((ms) => setTimeout(reloadSpot, ms));
+  }, [reloadSpot]);
+  const [cancellingSpot, setCancellingSpot] = useState<Set<number>>(new Set());
+  const onCancelSpot = async (ibOrderId: number): Promise<void> => {
+    setCancellingSpot((s) => new Set(s).add(ibOrderId));
+    try {
+      await cancelIbOrder(ibOrderId);
+      onSpotSent();
+    } catch (e) {
+      addOrder({ action: "open", label: `cancel spot IB#${ibOrderId}`, side: "—", qty: 0, state: "rejected", note: closeErr(e) });
+    } finally {
+      setCancellingSpot((s) => { const n = new Set(s); n.delete(ibOrderId); return n; });
+    }
+  };
   // Open positions = a SINGLE server-joined read (/positions/structured). It
   // carries the DB structure (identity + terms) already joined to the live IB
   // mirror, so the panel renders straight from it — no second fetch, no
@@ -853,7 +903,25 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
       state: leg.state,
     }));
   });
-  const orders = [...rejects, ...dbRows]
+  const spotRows: BlotterRow[] = adaptSpotOrders(spotOrders.data).map((r) => ({
+    id: r.id,
+    tradeTag: r.tradeTag,
+    ...(r.ibOrderId != null ? { ibOrderId: r.ibOrderId } : {}),
+    ts: fmtBlotterTs(r.ts),
+    tsSort: r.ts.getTime() || 0,
+    action: "open" as const,
+    role: "spot",
+    contract: r.contract,
+    label: r.label,
+    qty: r.qty,
+    qtyTotal: r.qty,
+    qtyFilled: r.qtyFilled,
+    legIdx: 0,
+    groupWaiting: isWaitingState(r.state),
+    state: r.state,
+    ...(r.note ? { note: r.note } : {}),
+  }));
+  const orders = [...rejects, ...dbRows, ...spotRows]
     .sort((a, b) => {
       // working structures first, newest-first; a structure's legs stay together
       // (same structureId) and in leg order.
@@ -907,7 +975,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     <div className={"trade-grid " + (tweaks.density || "regular")}>
       <div className="trade-top">
         <Panel title="Indicators" dataPp="trade-indicators" right={<FreshBadge fresh={trade} label="" />} className="trade-block">
-          <IndicatorsPanel greeks={greeks} account={account} cash={cash} spotBid={spotBid} spotAsk={spotAsk} onOrder={addOrder} />
+          <IndicatorsPanel greeks={greeks} account={account} cash={cash} spotBid={spotBid} spotAsk={spotAsk} ticksLive={ticks.data != null && ticks.status === "live"} onOrder={addOrder} onSpotSent={onSpotSent} />
         </Panel>
         <Panel title="Order" dataPp="trade-builder" className="trade-block">
           <OrderBuilder onOrder={addOrder} />
@@ -947,7 +1015,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
                   return (
                     <tr key={o.id}>
                       <td className="mono dim">{o.ts}</td>
-                      <td className="mono dim">{o.tradeNo != null ? "#" + o.tradeNo : "—"}</td>
+                      <td className="mono dim">{o.tradeNo != null ? "#" + o.tradeNo : (o.tradeTag ?? "—")}</td>
                       <td className="mono dim">{o.contract ?? "—"}</td>
                       <td>
                         {o.label}
@@ -968,6 +1036,16 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
                         )}
                       </td>
                       <td className="right">
+                        {canWrite && o.ibOrderId != null && isWaitingState(o.state) && (
+                          <button
+                            className="row-close"
+                            disabled={cancellingSpot.has(o.ibOrderId)}
+                            title="Cancel this spot order at IB"
+                            onClick={() => o.ibOrderId != null && void onCancelSpot(o.ibOrderId)}
+                          >
+                            {cancellingSpot.has(o.ibOrderId) ? "…" : "Cancel"}
+                          </button>
+                        )}
                         {canWrite && o.structureId != null && isWaitingState(o.state) && (
                           <button
                             className="row-close"

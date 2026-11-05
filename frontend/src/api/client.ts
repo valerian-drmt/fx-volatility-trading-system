@@ -100,6 +100,14 @@ export async function apiPost<T>(
   return body as T;
 }
 
+export async function apiDelete<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const url = buildUrl(path, opts.query);
+  const res = await fetch(url, buildInit({ method: "DELETE" }, opts.signal));
+  const body = await parseBody(res);
+  if (!res.ok) throw new ApiError(res.status, url, body);
+  return body as T;
+}
+
 export async function apiPut<T>(
   path: string,
   payload: unknown,

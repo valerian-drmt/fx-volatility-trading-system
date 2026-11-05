@@ -75,6 +75,7 @@ export const handlers = [
   http.get("*/api/v1/admin/config/history", () => HttpResponse.json([])),
   http.get("*/api/v1/positions/open", () => HttpResponse.json([])),
   http.get("*/api/v1/trade/limits", () => HttpResponse.json({})),
+  http.get("*/api/v1/trade/spot-orders", () => HttpResponse.json([])),
   http.get("*/api/v1/trade/book", () => HttpResponse.json({ capital_total_usd: 0, margin_used_usd: 0 })),
   http.get("*/api/v1/regime/events", () => HttpResponse.json([])),
   http.get("*/api/v1/portfolio/cash", () =>
