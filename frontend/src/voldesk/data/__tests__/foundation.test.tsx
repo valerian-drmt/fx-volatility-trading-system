@@ -556,6 +556,27 @@ describe("DataProvider (live-only)", () => {
     expect(screen.getByTestId("pf-status").textContent).toBe("live");
   });
 
+  it("portfolio bundle degrades per analytics endpoint: a 500 on pnl-attribution keeps the account snapshot", async () => {
+    // Prod 2026-11-05: /portfolio/pnl-attribution hit the DB statement timeout
+    // (500) and, bundled in one Promise.all, took /portfolio/account down with
+    // it → Trade tab's Cash & margin fell back to the $100k trade-book mock.
+    server.use(
+      http.get("*/api/v1/portfolio/account", () =>
+        HttpResponse.json({ latest: { net_liq_usd: 176904.63, cash_usd: 172209.42 }, prev_24h: null }),
+      ),
+      http.get("*/api/v1/portfolio/pnl-attribution", () => HttpResponse.text("Internal Server Error", { status: 500 })),
+    );
+    render(
+      <DataProvider>
+        <PortfolioProbe />
+      </DataProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("pf-netliq").textContent).toBe("176904.63"));
+    expect(screen.getByTestId("pf-status").textContent).toBe("live");
+    // The failed analytics read yields its neutral shape, not a missing domain.
+    expect(screen.getByTestId("pf-wf").textContent).not.toBe("none");
+  });
+
   it("live mode fetches the VaR card values ($k)", async () => {
     server.use(
       http.get("*/api/v1/portfolio/var", () =>
