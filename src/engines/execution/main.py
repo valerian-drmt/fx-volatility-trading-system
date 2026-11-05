@@ -47,6 +47,14 @@ from engines.execution.reaper import reap_stale_orders, reaper_loop
 from engines.execution.reconciler import reconcile_positions, reconcile_positions_loop
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
+from engines.execution.spot_orders import (
+    adopt_open_spot_orders,
+    attach_spot_handlers,
+    create_spot_order,
+    mark_spot_failed,
+    spot_order_ref,
+    stamp_ib_ids,
+)
 from persistence.db import get_sessionmaker
 from persistence.models import TradeEvent
 from persistence.projection import rebuild_all
@@ -123,6 +131,14 @@ async def lifespan(app: FastAPI):
 
     sm = get_sessionmaker()
     app.state.sessionmaker = sm
+
+    # Spot (CASH) orders IB still holds : re-wire status/fill handlers onto their
+    # rows (orders from a previous engine process) or create the row for an
+    # untracked one, so the Orders blotter follows them and can cancel (#291).
+    try:
+        await adopt_open_spot_orders(executor.open_trades(), sm)
+    except Exception:
+        logger.exception("spot_order_adoption_failed")
 
     # Seed the forward projection (leg_position) from the fill log so the book is
     # current before the first fill event this session (I3). Best-effort — never
@@ -334,12 +350,31 @@ async def place_order(
     sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
 ) -> dict[str, Any]:
     payload = body.model_dump()
+    spot_id: int | None = None
     try:
-        result = await ex.place_order(OrderRequest(**payload))
+        if body.sec_type == "CASH":
+            # Spot cash ticket (#291): persist FIRST, then place with the row id
+            # as orderRef, then wire IB status/fill events onto the row so the
+            # Orders blotter follows the real IB lifecycle.
+            spot_id = await create_spot_order(
+                sm, symbol=body.symbol, currency=body.currency, exchange=body.exchange,
+                side=body.side, qty=body.qty, limit_price=body.limit_price,
+            )
+            trade = await ex.place_order_trade(
+                OrderRequest(**payload), order_ref=spot_order_ref(spot_id),
+            )
+            attach_spot_handlers(trade=trade, spot_order_id=spot_id, sessionmaker_factory=sm)
+            await stamp_ib_ids(sm, spot_id, trade)
+            result = trade_to_dict(trade)
+            result["spot_order_id"] = spot_id
+        else:
+            result = await ex.place_order(OrderRequest(**payload))
         await _log_event(sm, action_type="SUBMIT", request_payload=payload,
                          response_payload=result, success=True)
         return result
     except (OrderExecutorUnavailable, ValueError) as e:
+        if spot_id is not None:
+            await mark_spot_failed(sm, spot_id, str(e))
         await _log_event(sm, action_type="SUBMIT", request_payload=payload,
                          response_payload=None, success=False, error_message=str(e)[:500])
         raise HTTPException(status_code=400, detail=str(e)) from e

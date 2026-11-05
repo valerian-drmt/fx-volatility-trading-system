@@ -2,7 +2,7 @@
 // FastAPI Pydantic models and `schema.d.ts` is caught at `tsc --noEmit` time
 // (or earlier by `npm run gen:api:check` in CI).
 import type { paths } from "./schema";
-import { apiGet, apiPost, apiPut } from "./client";
+import { apiDelete, apiGet, apiPost, apiPut } from "./client";
 export { ApiError } from "./client";
 
 type Get<P extends keyof paths, S extends 200> = paths[P] extends {
@@ -167,9 +167,36 @@ export interface SpotOrderBody {
   qty: number;
   exchange: string;
   currency: string;
+  // Marketable limit (SELL bid-2p / BUY ask+2p). Omitted = IB market order,
+  // which IDEALPRO simulates and may park in PreSubmitted (#290) — the ticket
+  // always sends one.
+  limit_price?: number;
 }
 export const postSpotOrder = (body: SpotOrderBody) =>
-  apiPost<unknown>("/api/v1/orders", body);
+  apiPost<{ spot_order_id?: number; order_id?: number; status?: string }>("/api/v1/orders", body);
+/** Cancel an IB order by its IB orderId (spot rows carry it as ib_order_id). */
+export const cancelIbOrder = (ibOrderId: number) =>
+  apiDelete<Record<string, unknown>>(`/api/v1/orders/${ibOrderId}`);
+
+// Persisted spot FX (CASH) orders from the cash ticket (DB: spot_order, #291).
+export interface SpotOrderRow {
+  id: number;
+  created_at: string;
+  symbol: string;
+  currency: string;
+  local_symbol: string; // "EUR.USD"
+  side: "BUY" | "SELL" | string; // base-ccy side: BUY = buy EUR / sell USD
+  qty: number; // base-ccy notional (EUR)
+  qty_filled: number;
+  order_type: string; // "LMT" / "MKT"
+  limit_price: number | null;
+  avg_fill_price: number | null;
+  state: string; // pending / submitted / partially_filled / filled / cancelled / rejected
+  rejection_text: string | null;
+  ib_order_id: number | null;
+}
+export const fetchSpotOrders = (limit = 30) =>
+  apiGet<SpotOrderRow[]>("/api/v1/trade/spot-orders", { query: { limit } });
 export const fetchTradeLimits = () => apiGet<unknown>("/api/v1/trade/limits");
 export const fetchTradeBook = (symbol = "EURUSD") =>
   apiGet<unknown>("/api/v1/trade/book", { query: { symbol } });

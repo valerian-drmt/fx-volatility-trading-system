@@ -879,6 +879,47 @@ class IbConnectionState(Base):
     )
 
 
+class SpotOrder(Base):
+    """One spot FX (secType CASH, e.g. EUR.USD on IDEALPRO) order placed from the
+    Trade tab's cash ticket.
+
+    Deliberately NOT a ``trade_structure`` / ``trade_order`` pair: spot cash
+    management must stay out of the structure machinery (booking, reaper,
+    reservation ledger, position sync). The execution-engine writes the row
+    before placing at IB and its status/fill callbacks keep ``state`` /
+    ``qty_filled`` current ; the Orders blotter reads it via
+    ``GET /trade/spot-orders`` (migration 052).
+    """
+
+    __tablename__ = "spot_order"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True,
+    )
+    symbol: Mapped[str] = mapped_column(String(10), nullable=False, default="EUR")
+    currency: Mapped[str] = mapped_column(String(5), nullable=False, default="USD")
+    exchange: Mapped[str] = mapped_column(String(10), nullable=False, default="IDEALPRO")
+    side: Mapped[str] = mapped_column(String(5), nullable=False)      # BUY / SELL (base ccy)
+    qty: Mapped[int] = mapped_column(Integer, nullable=False)          # base-ccy notional
+    order_type: Mapped[str] = mapped_column(String(10), nullable=False, default="LMT")
+    limit_price: Mapped[float | None] = mapped_column(Float)
+    ib_order_id: Mapped[str | None] = mapped_column(String(40))
+    ib_perm_id: Mapped[str | None] = mapped_column(String(40))
+    ib_local_symbol: Mapped[str | None] = mapped_column(String(20))   # "EUR.USD"
+    # pending → submitted → partially_filled → filled | cancelled | rejected
+    state: Mapped[str] = mapped_column(String(25), nullable=False, default="pending")
+    state_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    qty_filled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    avg_fill_price: Mapped[float | None] = mapped_column(Float)
+    commission_usd: Mapped[float | None] = mapped_column(Float)
+    filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rejection_text: Mapped[str | None] = mapped_column(String(300))
+    trace_id: Mapped[str | None] = mapped_column(String(32))
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Step 5 — Active Positions monitoring (cf. STEP5_ACTIVE_POSITIONS.md §7)
 # ──────────────────────────────────────────────────────────────────────

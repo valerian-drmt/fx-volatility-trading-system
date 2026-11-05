@@ -182,6 +182,13 @@ class OrderExecutor:
         trades = ib.openTrades()
         return [trade_to_dict(t) for t in trades]
 
+    def open_trades(self) -> list[Any]:
+        """Raw open ib_insync Trades (handlers can be attached) ; [] when the
+        gateway is not connected. Used by the spot-order startup adoption."""
+        if self._ib is None or not self._ib.isConnected():
+            return []
+        return list(self._ib.openTrades())
+
     async def list_all_trades(self) -> list[dict[str, Any]]:
         """Return every trade visible in this IB session (open + done).
 
@@ -306,6 +313,13 @@ class OrderExecutor:
     # ---- Mutation operations ------------------------------------------------
 
     async def place_order(self, req: OrderRequest) -> dict[str, Any]:
+        """Place and serialize (FUT / FOP, and CASH without persistence)."""
+        return trade_to_dict(await self.place_order_trade(req))
+
+    async def place_order_trade(self, req: OrderRequest, *, order_ref: str | None = None) -> Any:
+        """Place at IB and return the raw ib_insync ``Trade`` so the caller can
+        attach event handlers (spot orders persist their IB lifecycle, #291).
+        ``order_ref`` is stamped on ``Order.orderRef`` (IB persists it)."""
         from ib_insync import Contract, LimitOrder, MarketOrder
 
         ib = self._ensure()
@@ -337,9 +351,10 @@ class OrderExecutor:
             if req.limit_price
             else MarketOrder(req.side, req.qty)
         )
-        trade = ib.placeOrder(contract, order)
-        # Don't wait for fill — return immediately. UI peut poll openOrders.
-        return trade_to_dict(trade)
+        if order_ref:
+            order.orderRef = order_ref
+        # Don't wait for the fill — return immediately ; the UI polls the state.
+        return ib.placeOrder(contract, order)
 
     async def cancel_order(self, order_id: int) -> dict[str, Any] | None:
         ib = self._ensure()

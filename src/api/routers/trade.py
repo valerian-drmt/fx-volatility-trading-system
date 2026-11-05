@@ -50,6 +50,7 @@ from persistence.models import (
     IbConnectionState,
     PcaSignal,
     RegimeSnapshot,
+    SpotOrder,
     StructureFill,
     StructureOrder,
     TradeEvent,  # replaces ExecutionAuditLog (migration 025)
@@ -1258,6 +1259,42 @@ async def list_submitted_structures(
             "position_state": position.state if position else None,
         })
     return out
+
+
+def serialize_spot_order(o: SpotOrder) -> dict[str, Any]:
+    """One ``spot_order`` row -> the blotter's payload (pure, unit-tested)."""
+    return {
+        "id": int(o.id),
+        "created_at": o.created_at,
+        "symbol": o.symbol, "currency": o.currency, "exchange": o.exchange,
+        "local_symbol": o.ib_local_symbol or f"{o.symbol}.{o.currency}",
+        "side": o.side,
+        "qty": int(o.qty or 0),
+        "qty_filled": int(o.qty_filled or 0),
+        "order_type": o.order_type,
+        "limit_price": o.limit_price,
+        "avg_fill_price": o.avg_fill_price,
+        "commission_usd": o.commission_usd,
+        "state": o.state,
+        "state_updated_at": o.state_updated_at,
+        "filled_at": o.filled_at,
+        "rejection_text": o.rejection_text,
+        # IB orderId : the handle the auth-gated DELETE /orders/{id} cancels.
+        "ib_order_id": int(o.ib_order_id) if (o.ib_order_id or "").isdigit() else None,
+        "ib_perm_id": o.ib_perm_id,
+    }
+
+
+@router.get("/spot-orders")
+async def list_spot_orders(
+    db: DbDep, limit: int = Query(30, ge=1, le=200),
+) -> list[dict[str, Any]]:
+    """Recent spot FX (CASH) orders from the cash ticket, newest first (#291).
+    Read-only ; the Orders blotter merges these with ``/trade/submitted``."""
+    rows = (await db.execute(
+        select(SpotOrder).order_by(desc(SpotOrder.created_at), desc(SpotOrder.id)).limit(limit)
+    )).scalars().all()
+    return [serialize_spot_order(o) for o in rows]
 
 
 @router.post("/preview/{preview_id}/cancel", dependencies=[Depends(require_write)])
