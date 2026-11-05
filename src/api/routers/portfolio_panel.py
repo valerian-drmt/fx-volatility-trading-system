@@ -1192,6 +1192,48 @@ def _decompose_row(
     }
 
 
+async def _underlying_forward(
+    db: AsyncSession, cutoff: datetime,
+) -> tuple[float | None, float | None]:
+    """Book-level underlying forward (the 6E future's market price) now and at
+    the latest snapshot ≤ ``cutoff``.
+
+    The t-1 probe is anchored on the OPEN 6E positions' ids and walks the
+    ``(position_id, timestamp)`` index one step per future. It is skipped
+    outright when no future is open. The previous shape — ``ORDER BY
+    oph.timestamp DESC LIMIT 1`` over the whole history joined on
+    ``structure LIKE '6E%'`` — walked the timestamp index backwards through
+    every row ever written whenever the book held no future (the join never
+    matched, so LIMIT 1 never stopped it): 1M+ rows, >20s, statement_timeout →
+    500 on every ``/portfolio/pnl-attribution`` call, which the UI bundles with
+    ``/portfolio/account`` (prod incident 2026-11-05: Cash & margin blank).
+    """
+    fwd_row = (await db.execute(text(
+        "SELECT market_price FROM open_position "
+        "WHERE structure LIKE '6E%' AND market_price IS NOT NULL ORDER BY id DESC LIMIT 1"
+    ))).first()
+    forward = float(fwd_row[0]) if fwd_row and fwd_row[0] is not None else None
+    if forward is None:
+        return None, None
+    fwd_then_row = (await db.execute(text(
+        "SELECT h.market_price "
+        "  FROM open_position op "
+        "  JOIN LATERAL ("
+        "        SELECT h.market_price, h.timestamp "
+        "          FROM open_position_history h "
+        "         WHERE h.position_id = op.id "
+        "           AND h.timestamp <= :cutoff "
+        "           AND h.market_price IS NOT NULL "
+        "         ORDER BY h.timestamp DESC "
+        "         LIMIT 1"
+        "       ) h ON TRUE "
+        " WHERE op.structure LIKE '6E%' "
+        " ORDER BY h.timestamp DESC LIMIT 1"
+    ), {"cutoff": cutoff})).first()
+    forward_then = float(fwd_then_row[0]) if fwd_then_row and fwd_then_row[0] is not None else None
+    return forward, forward_then
+
+
 @router.get("/pnl-attribution")
 async def pnl_attribution(
     db: DbDep,
@@ -1344,18 +1386,7 @@ async def pnl_attribution(
     # underlying), now and at t-1. Option legs decompose against THIS, not their
     # own market_price (which is the premium) — else dS is the premium change, so
     # delta·dS is garbage, ½Γ·dS² collapses to 0 and the residual eats the P&L.
-    fwd_row = (await db.execute(text(
-        "SELECT market_price FROM open_position "
-        "WHERE structure LIKE '6E%' AND market_price IS NOT NULL ORDER BY id DESC LIMIT 1"
-    ))).first()
-    forward = float(fwd_row[0]) if fwd_row and fwd_row[0] is not None else None
-    fwd_then_row = (await db.execute(text(
-        "SELECT oph.market_price FROM open_position_history oph "
-        "JOIN open_position op ON op.id = oph.position_id "
-        "WHERE op.structure LIKE '6E%' AND oph.timestamp <= :cutoff AND oph.market_price IS NOT NULL "
-        "ORDER BY oph.timestamp DESC LIMIT 1"
-    ), {"cutoff": cutoff})).first()
-    forward_then = float(fwd_then_row[0]) if fwd_then_row and fwd_then_row[0] is not None else None
+    forward, forward_then = await _underlying_forward(db, cutoff)
 
     per_position: list[dict[str, Any]] = []
     for r in ib_rows:

@@ -151,13 +151,18 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
 
   const livePortfolio = useFetch<PortfolioData>(
     async () => {
-      const [acct, vega, stats, daily, attrib, pos] = await Promise.all([
-        fetchPortfolioAccount(),
-        fetchVegaPerTenor(),
-        fetchPortfolioStats(),
-        fetchPortfolioDailyPnl(),
-        fetchPnlAttribution(),
-        fetchOpenPositions(),
+      // Account snapshot + positions are the primary signal (they feed the
+      // Cash & margin tables on Portfolio / Trade / Dashboard). The four
+      // analytics reads degrade on their own: one of them failing (e.g.
+      // /portfolio/pnl-attribution hitting the DB statement timeout, prod
+      // 2026-11-05) must NOT blank the account panel and silently drop the
+      // Trade tab onto the trade-book bootstrap mock ($100k / zero margin).
+      const [acct, pos] = await Promise.all([fetchPortfolioAccount(), fetchOpenPositions()]);
+      const [vega, stats, daily, attrib] = await Promise.all([
+        fetchVegaPerTenor().catch(() => null),
+        fetchPortfolioStats().catch(() => null),
+        fetchPortfolioDailyPnl().catch(() => null),
+        fetchPnlAttribution().catch(() => null),
       ]);
       const positions = adaptPositions(pos, Date.now());
       return {
