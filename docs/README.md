@@ -24,6 +24,12 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [architecture/database.md](architecture/database.md) | The Postgres schema: 27 ORM classes grouped by domain, Alembic flow, `VolConfig` versioning. |
 | [architecture/hot-cold-paths.md](architecture/hot-cold-paths.md) | Hot path (orders, fills, positions, account) vs cold path (surface, PCA, rollups): the six engines, the three collision points behind the November 2026 incidents, and the changes that separate them. |
 
+## Planning
+
+| Doc | Covers |
+|---|---|
+| [planning/iteration-plan.md](planning/iteration-plan.md) | The operational plan: 15 two-week iterations over the 71 open work tickets (audit campaign + hot / cold programme), ordering rules, dependency map, capacity model, review cadence. |
+
 ## Hot / cold path programme
 
 | Doc | Covers |
