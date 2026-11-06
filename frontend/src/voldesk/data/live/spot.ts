@@ -10,16 +10,27 @@
 import type { SpotOrderRow } from "../../../api/endpoints";
 
 export const SPOT_PIP = 0.0001;
+/** IDEALPRO minimum price variation for EUR.USD. A limit off this grid is
+ * refused by IB (error 110) and used to show up as a silent "cancelled" (#376). */
+export const SPOT_TICK = 0.00005;
 /** Pips through the touch — enough to cross a normal IDEALPRO spread, small
  * enough that a fill is still "at market" for cash management. */
 export const SPOT_LIMIT_PIPS = 2;
 
-/** SELL (buy USD / sell EUR) crosses the bid ; BUY (buy EUR) crosses the ask.
- * 5-dp rounding = IDEALPRO's EUR.USD tick. Null when the quote isn't usable. */
+/** Snap onto the IDEALPRO tick toward the aggressive side: SELL rounds down,
+ * BUY rounds up, so a marketable limit stays marketable. */
+export function snapSpotLimit(price: number, side: "BUY" | "SELL"): number {
+  const steps = price / SPOT_TICK;
+  const n = side === "SELL" ? Math.floor(steps + 1e-9) : Math.ceil(steps - 1e-9);
+  return Math.round(n * SPOT_TICK * 1e5) / 1e5;
+}
+
+/** SELL (buy USD / sell EUR) crosses the bid ; BUY (buy EUR) crosses the ask,
+ * then snaps onto the 0.00005 tick. Null when the quote isn't usable. */
 export function spotLimitPrice(side: "BUY" | "SELL", bid: number, ask: number): number | null {
   if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || ask < bid) return null;
   const raw = side === "SELL" ? bid - SPOT_LIMIT_PIPS * SPOT_PIP : ask + SPOT_LIMIT_PIPS * SPOT_PIP;
-  return Math.round(raw * 1e5) / 1e5;
+  return snapSpotLimit(raw, side);
 }
 
 export interface SpotBlotterRow {
@@ -35,8 +46,9 @@ export interface SpotBlotterRow {
   limitPrice: number | null;
   avgFillPrice: number | null;
   state: string;
-  note: string | null; // "@ 1.12325 lmt" / rejection text
+  note: string | null; // "@ 1.12325 lmt · PreSubmitted" / rejection text
   ibOrderId: number | null;
+  ibStatus: string | null; // IB's own status string while the order works (#376)
 }
 
 export function spotOrderLabel(side: string): string {
@@ -47,15 +59,22 @@ export function spotOrderLabel(side: string): string {
 export function adaptSpotOrders(raw: unknown): SpotBlotterRow[] {
   const rows = Array.isArray(raw) ? (raw as SpotOrderRow[]) : [];
   return rows.map((r) => {
+    // While the order works, say where IB holds it ("PreSubmitted" = parked,
+    // "Submitted" = live on the book) and IB's reason when it gives one, so a
+    // waiting row is diagnosable from the blotter alone (#376).
+    const working = r.state === "pending" || r.state === "submitted" || r.state === "partially_filled";
+    const ibHint = working && r.ib_status
+      ? ` · ${r.ib_status}${r.why_held ? ` (${r.why_held})` : ""}`
+      : "";
     const note =
       r.state === "rejected" && r.rejection_text
         ? r.rejection_text
         : r.avg_fill_price != null && r.qty_filled > 0
           ? `avg ${r.avg_fill_price.toFixed(5)}`
           : r.limit_price != null
-            ? `@ ${r.limit_price.toFixed(5)} lmt`
+            ? `@ ${r.limit_price.toFixed(5)} lmt${ibHint}`
             : r.order_type === "MKT"
-              ? "@ mkt"
+              ? `@ mkt${ibHint}`
               : null;
     return {
       id: "spot" + r.id,
@@ -72,6 +91,7 @@ export function adaptSpotOrders(raw: unknown): SpotBlotterRow[] {
       state: r.state,
       note,
       ibOrderId: r.ib_order_id,
+      ibStatus: r.ib_status ?? null,
     };
   });
 }

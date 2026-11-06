@@ -53,6 +53,7 @@ from engines.execution.spot_orders import (
     attach_spot_handlers,
     create_spot_order,
     mark_spot_failed,
+    snap_spot_limit,
     spot_order_ref,
     stamp_ib_ids,
 )
@@ -393,12 +394,21 @@ async def place_order(
     spot_id: int | None = None
     try:
         if body.sec_type == "CASH":
+            # IDEALPRO refuses a limit off its 0.00005 tick (error 110) and the
+            # order died as a silent "cancelled" (#376). Snap toward the
+            # aggressive side so the limit stays marketable, and persist the
+            # price that is actually sent.
+            snapped = snap_spot_limit(body.limit_price, body.side)
+            if snapped != body.limit_price:
+                logger.info("spot_limit_snapped side=%s requested=%s sent=%s",
+                            body.side, body.limit_price, snapped)
+                payload["limit_price"] = snapped
             # Spot cash ticket (#291): persist FIRST, then place with the row id
             # as orderRef, then wire IB status/fill events onto the row so the
             # Orders blotter follows the real IB lifecycle.
             spot_id = await create_spot_order(
                 sm, symbol=body.symbol, currency=body.currency, exchange=body.exchange,
-                side=body.side, qty=body.qty, limit_price=body.limit_price,
+                side=body.side, qty=body.qty, limit_price=snapped,
             )
             trade = await ex.place_order_trade(
                 OrderRequest(**payload), order_ref=spot_order_ref(spot_id),

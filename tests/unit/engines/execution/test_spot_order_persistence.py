@@ -205,3 +205,71 @@ def test_map_spot_status_table():
     assert map_spot_status("Filled") == "filled"
     assert map_spot_status("SomethingNew") is None
     assert map_spot_status(None) is None
+
+
+# ── #376 : why a spot order waits, why it died ────────────────────────────────
+
+def test_snap_spot_limit_onto_the_idealpro_tick_toward_the_aggressive_side():
+    """Prod row S3 sent 1.12258 (off the 0.00005 grid) and IB refused it in
+    188 ms with no visible reason."""
+    from engines.execution.spot_orders import snap_spot_limit
+    assert snap_spot_limit(1.12258, "SELL") == 1.12255   # down: still through the bid
+    assert snap_spot_limit(1.12258, "BUY") == 1.12260    # up: still through the ask
+    assert snap_spot_limit(1.12325, "SELL") == 1.12325   # on-grid untouched
+    assert snap_spot_limit(1.12335, "BUY") == 1.12335
+    assert snap_spot_limit(None, "SELL") is None
+
+
+def test_ib_reason_is_read_off_the_trade_log():
+    from engines.execution.spot_orders import ib_reason_from_trade, ib_why_held
+    t = _trade(status="Cancelled")
+    t.log = [
+        SimpleNamespace(status="PendingSubmit", message="", errorCode=0),
+        SimpleNamespace(status="Cancelled",
+                        message="Error 110, reqId 12: The price does not conform to the minimum price variation for this contract.",
+                        errorCode=110),
+    ]
+    assert ib_reason_from_trade(t).startswith("Error 110")
+    assert ib_reason_from_trade(_trade(status="Submitted")) is None   # no log attr
+    held = _trade(status="PreSubmitted")
+    held.orderStatus.whyHeld = "locate"
+    assert ib_why_held(held) == "locate"
+    assert ib_why_held(_trade()) is None
+
+
+async def test_ib_refusal_lands_as_rejected_with_ib_text_not_silent_cancel():
+    from engines.execution.spot_orders import _on_status
+    maker, engine = await _make_session()
+    try:
+        sid = await _create(maker)
+        t = _trade(status="Cancelled")
+        t.log = [SimpleNamespace(status="Cancelled", errorCode=110,
+                                 message="Error 110, reqId 12: The price does not conform to the minimum price variation for this contract.")]
+        await _on_status(t, sid, maker)
+        row = await _row(maker, sid)
+        assert row.state == "rejected"
+        assert "minimum price variation" in row.rejection_text
+        assert row.ib_status == "Cancelled"
+    finally:
+        await engine.dispose()
+
+
+async def test_raw_ib_status_and_why_held_are_kept_while_the_order_works():
+    from engines.execution.spot_orders import _on_status
+    maker, engine = await _make_session()
+    try:
+        sid = await _create(maker)
+        held = _trade(status="PreSubmitted")
+        held.orderStatus.whyHeld = "locate"
+        await _on_status(held, sid, maker)
+        row = await _row(maker, sid)
+        assert (row.state, row.ib_status, row.why_held) == ("submitted", "PreSubmitted", "locate")
+        # same state, new raw status: still persisted (the blotter needs it)
+        await _on_status(_trade(status="Submitted"), sid, maker)
+        row = await _row(maker, sid)
+        assert (row.state, row.ib_status, row.why_held) == ("submitted", "Submitted", None)
+        # a user cancel (ApiCancelled, no error in the log) stays "cancelled"
+        await _on_status(_trade(status="ApiCancelled"), sid, maker)
+        assert (await _row(maker, sid)).state == "cancelled"
+    finally:
+        await engine.dispose()

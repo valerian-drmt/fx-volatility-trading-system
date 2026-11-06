@@ -527,6 +527,10 @@ function SpotTicket({ bid, ask, ticksLive, onOrder, onSent }: {
   const [eurQty, setEurQty] = useState(100_000);
   const [usdQty, setUsdQty] = useState(() => Math.round(100_000 * ((bid + ask) / 2)));
   const [busy, setBusy] = useState(false);
+  // Synchronous re-entrancy guard: `busy` is React state and only flips on the
+  // next render, so two clicks ~70 ms apart both passed the check and placed
+  // two live orders (prod rows S1 and S2, 2026-11-05, #376).
+  const sendingRef = useRef(false);
   const [done, setDone] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const valid = eurQty > 0 && eurQty <= 5_000_000;
@@ -546,12 +550,13 @@ function SpotTicket({ bid, ask, ticksLive, onOrder, onSent }: {
   // IB quantifies EUR.USD in EUR base units for both directions :
   // BUY = buy EUR / sell USD, SELL = buy USD / sell EUR.
   const send = async (side: "BUY" | "SELL"): Promise<void> => {
-    if (busy || !canSend || !valid) return;
+    if (busy || sendingRef.current || !canSend || !valid) return;
     const limit = spotLimitPrice(side, bid, ask);
     if (limit == null) {
       setErr("no live EUR.USD quote — spot order not sent");
       return;
     }
+    sendingRef.current = true;
     setBusy(true);
     setErr(null);
     setDone(null);
@@ -567,6 +572,7 @@ function SpotTicket({ bid, ask, ticksLive, onOrder, onSent }: {
       setErr(note);
       onOrder({ action: "open", label, side, qty: eurQty, state: "rejected", note });
     } finally {
+      sendingRef.current = false;
       setBusy(false);
     }
   };
