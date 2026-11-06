@@ -1239,11 +1239,14 @@ export function PortfolioView(): JSX.Element {
 
       <PerformancePanel unreal={unreal} markers={tradeMarkers} />
 
-      <Panel title="P&L attribution by tenor" dataPp="attrib-tenor" className="wf-panel">
+      {/* Both matrices decompose the LAST 24 H of P&L (window start = t-1
+          snapshot), not the since-entry P&L the Position breakdown shows:
+          the title says so, so the two are not read as the same number (#377). */}
+      <Panel title="P&L attribution by tenor · 24h" dataPp="attrib-tenor" className="wf-panel">
         <AttributionMatrix m={attribTenor} axisLabel="Tenor" />
       </Panel>
 
-      <Panel title="P&L attribution by trade" dataPp="attrib-leg" className="wf-panel">
+      <Panel title="P&L attribution by trade · 24h" dataPp="attrib-leg" className="wf-panel">
         <PositionAttributionMatrix m={attribByLeg} />
       </Panel>
     </div>
