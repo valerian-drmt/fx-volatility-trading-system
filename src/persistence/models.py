@@ -740,6 +740,10 @@ class StructureFill(Base):
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False)
     fill_price: Mapped[float] = mapped_column(Float, nullable=False)
     commission_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # Currency of the fill / commission as IB reports it (migration 056, #322):
+    # a 6E leg is USD, but nothing recorded it, and a CommissionReport can be
+    # in another currency than the contract.
+    currency: Mapped[str | None] = mapped_column(String(5))
     exchange: Mapped[str | None] = mapped_column(String(10))
     side: Mapped[str] = mapped_column(String(5), nullable=False)
     spot_at_fill: Mapped[float | None] = mapped_column(Float)

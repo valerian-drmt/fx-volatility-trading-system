@@ -53,13 +53,14 @@ def _fake_trade(*, status: str = "Submitted", error: str | None = None,
 
 
 def _fake_fill(*, exec_id: str, qty: int, price: float, side: str = "BOT",
-               commission: float = 2.0) -> SimpleNamespace:
+               commission: float = 2.0, currency: str = "USD") -> SimpleNamespace:
     return SimpleNamespace(
         execution=SimpleNamespace(
             execId=exec_id, shares=qty, price=price, side=side,
             time=datetime.now(UTC), exchange="CME",
         ),
-        commissionReport=SimpleNamespace(commission=commission),
+        commissionReport=SimpleNamespace(commission=commission, currency=currency),
+        contract=SimpleNamespace(currency="USD", localSymbol="EUUZ6 C1130"),
     )
 
 
@@ -325,3 +326,79 @@ async def test_fill_inherits_and_binds_the_order_trace_id():
         assert fill.trace_id == "cafebabecafebabe"  # stamped from the order
     finally:
         await engine.dispose()
+
+
+# ── #322 : serialised fills, commission report, currency ──────────────────────
+
+async def test_concurrent_fills_of_one_order_fold_into_consistent_aggregates():
+    """DI-36 / 04#7: ib_insync fires one task per fill; without the per-order
+    lock the second recompute could overwrite the first (qty 3 instead of 5)."""
+    import asyncio
+
+    from engines.execution.fills_handler import _on_execution
+    from persistence.models import StructureFill, StructureOrder
+
+    maker, engine = await _make_session()
+    try:
+        _sid, order_ids = await _seed_structure(maker, qty=5)
+        oid = order_ids[0]
+        await asyncio.gather(
+            _on_execution(_fake_trade(), _fake_fill(exec_id="c1", qty=2, price=1.20, commission=1.0), oid, maker),
+            _on_execution(_fake_trade(), _fake_fill(exec_id="c2", qty=3, price=1.30, commission=1.5), oid, maker),
+        )
+        async with maker() as db:
+            from sqlalchemy import select
+            fills = (await db.execute(select(StructureFill).where(StructureFill.order_id == oid))).scalars().all()
+            order = await db.get(StructureOrder, oid)
+        assert len(fills) == 2
+        assert order.qty_filled == 5 and order.state == "filled"
+        assert order.avg_fill_price == pytest.approx(1.26, abs=1e-6)
+        assert {f.currency for f in fills} == {"USD"}
+    finally:
+        await engine.dispose()
+
+
+async def test_commission_report_updates_the_fill_and_the_order_totals():
+    """EX-03: the CommissionReport arrives AFTER the fill event, with the fill's
+    report still empty. The report handler must land the commission."""
+    from engines.execution.fills_handler import _on_commission_report, _on_execution
+    from persistence.models import StructureFill, StructureOrder
+
+    maker, engine = await _make_session()
+    try:
+        _sid, order_ids = await _seed_structure(maker, qty=2)
+        oid = order_ids[0]
+        fill = _fake_fill(exec_id="k1", qty=2, price=1.0, commission=0.0, currency="")
+        fill.commissionReport = SimpleNamespace(commission=0.0, currency="")  # empty at fill time
+        await _on_execution(_fake_trade(), fill, oid, maker)
+        async with maker() as db:
+            order = await db.get(StructureOrder, oid)
+        assert order.total_commission_usd == pytest.approx(0.0)
+        report = SimpleNamespace(execId="k1", commission=2.37, currency="USD", realizedPNL=0.0)
+        await _on_commission_report(fill, report, oid, maker)
+        async with maker() as db:
+            from sqlalchemy import select
+            row = (await db.execute(select(StructureFill).where(StructureFill.ib_execution_id == "k1"))).scalar_one()
+            order = await db.get(StructureOrder, oid)
+        assert row.commission_usd == pytest.approx(2.37) and row.currency == "USD"
+        assert order.total_commission_usd == pytest.approx(2.37)
+        # a report for an unknown execution is logged and ignored, never raises
+        await _on_commission_report(fill, SimpleNamespace(execId="nope", commission=1.0, currency="USD"), oid, maker)
+    finally:
+        await engine.dispose()
+
+
+def test_attach_wires_the_commission_report_event():
+    from engines.execution.fills_handler import attach_fill_handlers
+
+    class _Ev:
+        def __init__(self):
+            self.n = 0
+
+        def __iadd__(self, fn):
+            self.n += 1
+            return self
+
+    t = SimpleNamespace(statusEvent=_Ev(), fillEvent=_Ev(), commissionReportEvent=_Ev())
+    attach_fill_handlers(trade=t, order_id=1, sessionmaker_factory=None)  # type: ignore[arg-type]
+    assert (t.statusEvent.n, t.fillEvent.n, t.commissionReportEvent.n) == (1, 1, 1)
