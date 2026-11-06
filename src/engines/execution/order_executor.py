@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -93,6 +94,11 @@ class OrderExecutor:
         self.readonly = readonly
         self._ib: Any | None = None
         self._lock = asyncio.Lock()
+        # Session hooks (#321): set by ``ib_session.IbSessionSupervisor.install``.
+        # Re-attached to every new ``IB()`` the connect builds, so a reconnect
+        # never silently drops them. Signatures follow ib_insync's events.
+        self.on_error: Callable[[int, int, str, Any], None] | None = None
+        self.on_disconnected: Callable[[], None] | None = None
 
     async def connect(self, timeout: float = 5.0) -> None:
         """Open the IB connection. Idempotent (no reconnect when already OK)."""
@@ -117,6 +123,7 @@ class OrderExecutor:
                 self._ib = None
                 return
             self._ib = ib
+            self._wire_session_events(ib)
             # Paper (and any account without a real-time CME data subscription)
             # returns NO live quote for the FOP options, so live_submit falls back
             # to a theoretical limit. That fair-value limit is marketable for a BUY
@@ -147,6 +154,54 @@ class OrderExecutor:
             except Exception as e:
                 logger.warning("ib_reqaccountsummary_failed: %s", e)
             logger.info("ib_connected host=%s port=%s clientId=%s", self.host, self.port, self.client_id)
+
+    def wire_session_events(self) -> None:
+        """(Re)attach the session hooks to the current IB object. ``connect``
+        does it for every new object; the lifespan calls it once for the
+        startup connection that happened before the supervisor existed."""
+        if self._ib is not None:
+            self._wire_session_events(self._ib)
+
+    def _wire_session_events(self, ib: Any) -> None:
+        """Forward ``errorEvent`` / ``disconnectedEvent`` to the session hooks."""
+        try:
+            if self.on_error is not None and hasattr(ib, "errorEvent"):
+                ib.errorEvent += self._dispatch_error
+            if self.on_disconnected is not None and hasattr(ib, "disconnectedEvent"):
+                ib.disconnectedEvent += self._dispatch_disconnected
+        except Exception:
+            logger.exception("ib_session_hooks_failed")
+
+    def _dispatch_error(self, req_id: int, code: int, message: str, contract: Any = None) -> None:
+        hook = self.on_error
+        if hook is None:
+            return
+        try:
+            hook(req_id, code, message, contract)
+        except Exception:
+            logger.exception("ib_on_error_hook_failed")
+
+    def _dispatch_disconnected(self) -> None:
+        hook = self.on_disconnected
+        if hook is None:
+            return
+        try:
+            hook()
+        except Exception:
+            logger.exception("ib_on_disconnected_hook_failed")
+
+    async def replay_executions(self, timeout: float = 15.0) -> list[Any]:
+        """``reqExecutions`` for the session (IB keeps the day's executions):
+        the raw ``Fill`` list, [] when disconnected. The reconnect rehydration
+        pushes these through the idempotent fill persistence (#321)."""
+        if not self.is_connected():
+            return []
+        try:
+            fills = await asyncio.wait_for(self._ib.reqExecutionsAsync(), timeout=timeout)
+        except Exception as e:
+            logger.warning("ib_reqexecutions_failed: %s", e)
+            return []
+        return list(fills or [])
 
     async def disconnect(self) -> None:
         async with self._lock:

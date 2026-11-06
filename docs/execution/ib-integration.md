@@ -40,6 +40,39 @@ the Gateway comes back from its nightly ~23:59 restart. Each attempt mirrors
 session state into the Prometheus gauge `ib_session_connected{client_id}` for the
 Grafana "IB session uptime" panel.
 
+## Session resilience (execution engine)
+
+The execution engine keeps orders in flight across the Gateway's nightly
+restart, a torn socket and an IBKR upstream outage. Module:
+`engines/execution/ib_session.py` (#321).
+
+| Signal | How it is seen | What happens |
+|---|---|---|
+| socket down | `maintain_ib_connection` poll, `disconnectedEvent` | gate closes (`ib_disconnected`); watchdog reconnects and runs the pass |
+| 1100 upstream lost | `ib.errorEvent` (socket stays up) | gate closes (`ib_upstream_down`); `/health` 503 once the outage exceeds `EXECUTION_MAX_SYNC_AGE_S` |
+| 1102 restored, data kept | `ib.errorEvent` | gate reopens, nothing to replay |
+| 1101 restored, data lost | `ib.errorEvent` | full pass, then the gate reopens |
+
+**The pass** (`IbSessionSupervisor.run_pass`), serialised and run after every
+successful connect: handlers re-attached on every open IB order whose
+`orderRef` maps to a DB row still in flight (`fxvol:<structure>:<order>` for
+options, `fxvol:spot:<id>` for cash), `reqExecutions` replayed through the
+idempotent fill path (options dedupe on `execId`, spot re-folds the complete
+fill list and never shrinks a booked quantity), one position sync, one
+stuck-order reconcile. Each step has a `EXECUTION_SESSION_PASS_TIMEOUT_S`
+budget; a failed step is reported in `/internal/session`, not a permanent
+lock-out.
+
+**The gate.** `/internal/orders`, `/positions/.../close`,
+`/positions/close-by-symbol`, `/structure/submit`, `/structure/rollback` and
+`/hedge` answer `503 {"code": "reconciliation_in_progress", "reason": ...}`
+until the pass has completed on the current connection. Reads stay open.
+`/health` carries `ready`, `ready_reason`, `ib_upstream_ok`,
+`upstream_down_s`; `/internal/session` the full snapshot (last pass summary,
+event counts). Metric: `ib_session_events_total{engine,kind}` with
+`upstream_lost`, `restored_data_lost`, `restored_data_kept`, `socket_closed`,
+`order_rejected`, `farm_status`, `connected`, `disconnected`.
+
 ## Market-data types
 
 IB won't stream live quotes without a real-time subscription, so services request

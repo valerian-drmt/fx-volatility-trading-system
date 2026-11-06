@@ -103,6 +103,14 @@ ib_requests_total = Counter(
     ["engine", "request_type", "status"],
 )
 
+ib_session_events_total = Counter(
+    "ib_session_events_total",
+    "IB session events seen by an engine: errorEvent codes bucketed "
+    "(upstream_lost=1100, restored_data_lost=1101, restored_data_kept=1102, "
+    "socket_closed=507, order_rejected=201, ...) plus connected/disconnected (#321).",
+    ["engine", "kind"],
+)
+
 
 # ── Observed cycle wrapper ───────────────────────────────────────────────────
 

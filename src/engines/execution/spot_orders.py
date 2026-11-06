@@ -202,8 +202,18 @@ async def _on_fill(
 ) -> None:
     """Fold the Trade's cumulative fills into the row (ib_insync keeps
     ``trade.fills`` complete, so a re-fold is idempotent)."""
+    fills = list(getattr(trade, "fills", None) or [fill])
+    await fold_spot_fills(spot_order_id, fills, sm, contract=getattr(fill, "contract", None))
+
+
+async def fold_spot_fills(
+    spot_order_id: int, fills: list[Any], sm: async_sessionmaker[AsyncSession],
+    *, contract: Any = None,
+) -> None:
+    """Fold ``fills`` (the complete list for one order) into the row. Shared by
+    the live ``fillEvent`` and the reconnect replay of ``reqExecutions`` (#321):
+    quantities are recomputed from the full list, so replaying is idempotent."""
     try:
-        fills = list(getattr(trade, "fills", None) or [fill])
         qty = 0
         notional = 0.0
         commission = 0.0
@@ -220,6 +230,11 @@ async def _on_fill(
                 return
             if row.trace_id:
                 bind_trace_id(row.trace_id)
+            if qty < int(row.qty_filled or 0):
+                # A partial replay (filter window) must never shrink what we booked.
+                logger.info("spot_fold_skipped_partial id=%s seen=%s booked=%s",
+                            spot_order_id, qty, row.qty_filled)
+                return
             row.qty_filled = qty
             row.avg_fill_price = (notional / qty) if qty else None
             row.commission_usd = commission
@@ -230,7 +245,7 @@ async def _on_fill(
             elif qty > 0 and row.state not in _TERMINAL:
                 row.state = "partially_filled"
             row.state_updated_at = now
-            ls = getattr(getattr(fill, "contract", None), "localSymbol", None)
+            ls = getattr(contract, "localSymbol", None)
             if ls and not row.ib_local_symbol:
                 row.ib_local_symbol = str(ls)[:20]
             await db.commit()
