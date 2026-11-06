@@ -36,7 +36,7 @@ want to see.
 | `contract_marks:EUR`, `option_marks:EUR`, `unrealized_pnl:EUR` (hashes) | execution | 600 s | next position sync rewrites them |
 | `cycle_progress:vol_engine` (hash) | vol-engine | 600 s | progress bar restarts |
 | `trade:preview:*`, submit locks | api | 10 s to minutes | the trader re-previews; a lock loss is handled by the DB uniqueness (#319) |
-| `db_events` stream / pub-sub channels | engines → db-writer | none for pub/sub (fire and forget) | **the only real loss**: frames published while db-writer is down are gone; the engines that own tables (vol, risk, execution) also write them directly, and the dedup / dead-letter work is #324 |
+| `db_events` pub-sub channel | engines → db-writer | none for pub/sub (fire and forget) | **the only real loss**: frames published while db-writer is down are gone; the engines that own tables (risk, execution) write them directly. Delivery once the writer has the frame is covered by #324 (below) |
 
 Pub/sub itself is not stored: a subscriber that is down misses messages by
 design. The WebSocket bridge and the db-writer are the two subscribers; both
@@ -59,7 +59,19 @@ recover by re-reading last values from Redis or from Postgres on start.
 - Relying on Redis to carry a trade through a restart: forbidden by design;
   the submit path's Redis lock is a convenience, the DB constraint is the
   guard (#319).
-- Silent loss of db-writer frames: #324 (delivery semantics, dead-letter).
+- Silent loss of db-writer frames inside the writer: closed by #324. Every
+  streamed table has a natural key and the vol engine stamps one `cycle_ts`
+  per cycle, so a retry is a no-op (`ON CONFLICT DO NOTHING`); a bulk insert
+  that fails on a row error falls back to per-row writes and the rows that
+  still fail land in `db_writer_dead_letter` with the error
+  (`db_writer_dead_letter_total`); a full queue drops with a counter
+  (`db_writer_queue_dropped_total`, alert `DbWriterDroppingFrames`). What
+  remains open is the pub/sub hop itself (frames published while the writer
+  is down), tracked above.
+
+  Replaying a dead letter by hand: read the row, fix the cause (usually a
+  producer sending a column the table does not have), then re-publish the
+  payload on `db_events` or insert it directly, and stamp `replayed_at`.
 
 ## Operations
 

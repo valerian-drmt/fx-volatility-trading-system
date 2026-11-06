@@ -226,6 +226,9 @@ class RegimeSnapshot(Base):
             "label IN ('calm','stressed','pre_event')",
             name="ck_regime_snapshot_history_label",
         ),
+        # Natural key for the db-writer's ON CONFLICT DO NOTHING (#324,
+        # migration 059): one row per vol-engine cycle per symbol.
+        UniqueConstraint("symbol", "timestamp", name="uq_regime_snapshot_symbol_ts"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1162,3 +1165,19 @@ class PnlAttributionLatest(Base):
     forward_source: Mapped[str] = mapped_column(String(20), nullable=False)
     n_positions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     per_position: Mapped[list] = mapped_column(JSONB_PORTABLE, nullable=False, default=list)
+
+
+class DbWriterDeadLetter(Base):
+    """A streamed row the db-writer could not insert on its own after the
+    per-row fallback (#324, DI-04): kept with the error instead of being
+    dropped with its batch. Replay is manual (``docs/ops/redis-durability.md``)."""
+    __tablename__ = "db_writer_dead_letter"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    table_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
+    error: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    replayed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

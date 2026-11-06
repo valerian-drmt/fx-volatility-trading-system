@@ -665,9 +665,15 @@ class VolEngine:
         → compute_pca → publish breakdown with per-stage duration and
         attributes (n_strikes, n_pillars, etc.).
         """
+        from datetime import UTC, datetime
+
         from opentelemetry import trace as _otel
         tracer = _otel.get_tracer(__name__)
 
+        # One timestamp per cycle for every row this cycle streams to the
+        # db-writer (#324, DI-02): the natural keys (symbol, timestamp) only
+        # dedupe a retry if the retry carries the SAME timestamp.
+        cycle_ts = datetime.now(UTC)
         await self._reset_progress()
         if market_gate_active() and not is_fx_market_open():
             logger.info("vol_cycle_skipped", extra={"reason": "market_closed"})
@@ -727,11 +733,9 @@ class VolEngine:
 
         # Fan the surface + step1/step2 outputs to the db-writer via db_events.
         try:
-            from datetime import UTC, datetime
-
             from shared.db_events import publish_db_event
 
-            ts_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            ts_iso = cycle_ts.isoformat().replace("+00:00", "Z")
             await self._publish_progress("publish", "db_events")
             await publish_db_event(
                 self.redis,

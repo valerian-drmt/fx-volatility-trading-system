@@ -103,6 +103,30 @@ ib_requests_total = Counter(
     ["engine", "request_type", "status"],
 )
 
+db_writer_rows_written_total = Counter(
+    "db_writer_rows_written_total",
+    "Rows the db-writer inserted (duplicates on the natural key count as written: "
+    "the insert was accepted, the row already existed).",
+    ["table"],
+)
+
+db_writer_dead_letter_total = Counter(
+    "db_writer_dead_letter_total",
+    "Rows the db-writer parked in db_writer_dead_letter after the per-row fallback (#324).",
+    ["table"],
+)
+
+db_writer_queue_dropped_total = Counter(
+    "db_writer_queue_dropped_total",
+    "Frames dropped because the writer queue was full (#324, DI-07): a gap in history.",
+    ["table"],
+)
+
+db_writer_queue_depth = Gauge(
+    "db_writer_queue_depth",
+    "Frames waiting in the db-writer queue.",
+)
+
 history_prune_rows_total = Counter(
     "history_prune_rows_total",
     "Rows removed by the history retention prune, per engine and table (#330).",

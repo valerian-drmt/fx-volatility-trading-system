@@ -192,7 +192,29 @@ class DbWriterService:
         try:
             self.writer.queue.put_nowait((table, payload))
         except asyncio.QueueFull:
+            # A dropped frame is a gap in history nothing backfills (#324,
+            # DI-07): count it so the alert sees it, the log alone was not read.
             logger.warning("writer_queue_full_event_dropped", extra={"table": table})
+            _count_drop(table)
+        _set_queue_depth(self.writer.queue.qsize())
+
+
+def _count_drop(table: str) -> None:
+    try:
+        from shared.observability import db_writer_queue_dropped_total
+
+        db_writer_queue_dropped_total.labels(table=str(table)[:64]).inc()
+    except Exception:  # metrics are never load-bearing
+        pass
+
+
+def _set_queue_depth(n: int) -> None:
+    try:
+        from shared.observability import db_writer_queue_depth
+
+        db_writer_queue_depth.set(n)
+    except Exception:
+        pass
 
 
 _DATETIME_FIELDS: tuple[str, ...] = ("timestamp", "opened_at", "closed_at", "ts")
