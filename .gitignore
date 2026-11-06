@@ -44,3 +44,8 @@ openapi.json
 
 # Operator scratch dumps from live debug sessions (position P&L snapshots etc.)
 pin.json
+
+# Host-side state the api reads through ./state:/state:ro (backup freshness
+# stamp written by infrastructure/ec2/postgres_backup.sh). Created by docker
+# on a local `compose up`; never content to track.
+state/

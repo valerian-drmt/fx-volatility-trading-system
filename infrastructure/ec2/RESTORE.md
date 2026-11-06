@@ -1,10 +1,12 @@
 # Postgres backup restore runbook
 
-Backups: `/etc/cron.daily/fxvol-postgres-backup` (installed by `setup.sh`)
-uploads a nightly `pg_dump -Fc` to `s3://fxvol-backups/postgres/` using the
-EC2 instance role — no static keys anywhere. `remote-deploy.sh` additionally
-uploads a pre-migration dump to `s3://fxvol-backups/postgres/pre-deploy/`
-before every schema migration. S3 lifecycle: 30 d → Glacier IR, 365 d expiry.
+Backups: `/etc/cron.daily/fxvol-postgres-backup` (a wrapper installed by
+`setup.sh` and re-installed by every deploy) runs
+`infrastructure/ec2/postgres_backup.sh`, which uploads a nightly `pg_dump -Fc`
+to `s3://fxvol-backups/postgres/` using the EC2 instance role — no static keys
+anywhere. `remote-deploy.sh` runs the same script before every schema
+migration, into `s3://fxvol-backups/postgres/pre-deploy/`. S3 lifecycle:
+30 d → Glacier IR, 365 d expiry. Freshness: §5.
 
 **An untested backup is not a backup.** Run §3 once after the first deploy and
 record the date at the bottom of this file; re-run monthly.
@@ -64,15 +66,39 @@ rm /tmp/restore-test.dump
    `curl -s https://valeriandarmente.dev/fx-volatility-trading-system/api/v1/health`.
 6. `rm /tmp/restore.dump`.
 
-## 5. Freshness alarm (follow-up, monitoring phase)
+## 5. Freshness signal
 
-Cheap cron candidate: newest object age > 26 h → publish to the `fxvol-alarms`
-SNS topic. Not armed yet — tracked in the monitoring follow-up.
+`infrastructure/ec2/postgres_backup.sh` (the script behind the nightly cron
+**and** the pre-deploy dump) stamps `/opt/fxvol/state/postgres-backup.last`
+after every successful upload: `ts=<epoch> size=<bytes> key=<s3 key>`. The api
+reads it through `./state:/state:ro` and exposes it twice:
+
+- `GET /api/v1/health/extended` → `components.backup`: `OK (3.2h)`,
+  `STALE (31h)` after 26 h, `UNKNOWN (no backup stamp)` when the cron never
+  succeeded on this host. STALE and UNKNOWN make the aggregate `DEGRADED`.
+- `/metrics` → `fxvol_postgres_backup_age_seconds` (scraped by the `api` job
+  in `obs/prometheus.yml`). The alert rule (age > 26 h) is part of the
+  alerting ticket (#342).
+
+Cron health on the host: `cat /opt/fxvol/state/postgres-backup.last`,
+`tail /var/log/fxvol-postgres-backup.log`. The wrapper in
+`/etc/cron.daily/fxvol-postgres-backup` is re-installed by every deploy.
+
+## 6. Restore drill (automated §3)
+
+```bash
+sh /opt/fxvol/infrastructure/ec2/restore_drill.sh                 # newest nightly dump
+sh /opt/fxvol/infrastructure/ec2/restore_drill.sh postgres/pre-deploy/<name>.dump
+```
+
+Scratch `postgres:16-alpine` container, no network, 256 MB cap, removed on
+exit. Prints table count, alembic head, a few row counts, and the log row to
+paste below. Run it once after this lands, then monthly.
 
 ---
 
-**Restore test log** (append a line after each §3 run):
+**Restore test log** (append the row `restore_drill.sh` prints):
 
 | Date | Dump | Result |
 |---|---|---|
-| _none yet — run once before go-live_ | | |
+| _none yet — run `restore_drill.sh` once before go-live_ | | |

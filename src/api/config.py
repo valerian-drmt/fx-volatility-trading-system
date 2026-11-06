@@ -55,6 +55,13 @@ class Settings(_BaseSettings):
     AUTH_COOKIE_SECURE: bool = Field(default=True)               # set false only for local HTTP dev
     AUTH_TTL_SECONDS: int = Field(default=43200)                 # 12 h
 
+    # Backup freshness stamp (#343): path of the one-line file written by
+    # infrastructure/ec2/postgres_backup.sh after each successful S3 upload
+    # (``ts=<epoch> size=<bytes> key=<s3 key>``), bind-mounted read-only into
+    # the container. Empty = no backup on this deployment (local / CI): the
+    # "backup" health component and the Prometheus gauge are then absent.
+    BACKUP_STATE_FILE: str = Field(default="")
+
     @model_validator(mode="after")
     def _prod_boot_guard(self) -> Settings:
         # Fires inside get_settings() during create_app() import: a prod

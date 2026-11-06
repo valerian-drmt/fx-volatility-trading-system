@@ -105,6 +105,15 @@ services:
       # on vol-engine. A refit re-projects the whole snapshot window, so hourly
       # refits churn pca_signal_history — keep it slow in steady state.
       PCA_REFIT_INTERVAL_HOURS: ${PCA_REFIT_INTERVAL_HOURS:-168.0}
+      # Backup freshness (#343): prod sets /state/postgres-backup.last (the
+      # stamp infrastructure/ec2/postgres_backup.sh writes after each S3
+      # upload); empty locally = no "backup" health component, no gauge.
+      BACKUP_STATE_FILE: ${BACKUP_STATE_FILE:-}
+    volumes:
+      # Host-side state, read-only: the backup stamp above. On the EC2 host
+      # ./state = /opt/fxvol/state (created by remote-deploy.sh); locally an
+      # empty gitignored dir.
+      - ./state:/state:ro
     depends_on:
       postgres:
         condition: service_healthy

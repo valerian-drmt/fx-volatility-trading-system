@@ -59,6 +59,9 @@ COMPOSE_PROFILES=${COMPOSE_PROFILES:-}
 NGINX_CONF_FILE=./infrastructure/nginx/nginx.conf
 LETSENCRYPT_DIR=/etc/letsencrypt
 CERTBOT_WWW_DIR=/var/www/certbot
+# Backup freshness stamp written by infrastructure/ec2/postgres_backup.sh; the
+# api reads it through the ./state:/state:ro mount (#343).
+BACKUP_STATE_FILE=/state/postgres-backup.last
 API_IMAGE=${reg}/fx-options-api:${IMAGE_TAG}
 FRONTEND_IMAGE=${reg}/fx-options-frontend:${IMAGE_TAG}
 MARKET_DATA_IMAGE=${reg}/fx-options-market-data:${IMAGE_TAG}
@@ -104,6 +107,18 @@ esac
   echo "AUTH_COOKIE_SECURE=true"
 } >> /opt/fxvol/.env
 
+# --- host cron: keep the nightly backup wrapper current -----------------------
+# setup.sh installs it once at first boot; re-installing here means a host set
+# up before the wrapper existed, or a renamed script, still gets a working cron
+# on the next deploy (#343, audit 08#9 "one-shot, never re-run by deploy").
+mkdir -p /opt/fxvol/state
+chmod 0755 /opt/fxvol/state
+install -m 0755 /dev/stdin /etc/cron.daily/fxvol-postgres-backup <<'CRON'
+#!/bin/sh
+# Managed by infrastructure/ec2/setup.sh + remote-deploy.sh — do not edit by hand.
+exec /bin/sh /opt/fxvol/infrastructure/ec2/postgres_backup.sh >> /var/log/fxvol-postgres-backup.log 2>&1
+CRON
+
 # --- pull + migrate + restart ------------------------------------------------
 if [ -n "${GHCR_TOKEN}" ]; then
   echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${OWNER}" --password-stdin
@@ -115,11 +130,11 @@ docker compose pull
 # instance role — no static keys. Migration runs the NEW image against the
 # OLD still-serving stack; alembic upgrade head is idempotent.
 if docker compose ps --status running postgres | grep -q postgres; then
-  ts=$(date -u +%Y%m%dT%H%M%SZ)
-  docker compose exec -T postgres pg_dump -U fxvol -Fc fxvol > "/tmp/fxvol-pre-${IMAGE_TAG}-${ts}.dump"
-  aws s3 cp "/tmp/fxvol-pre-${IMAGE_TAG}-${ts}.dump" \
-    "s3://fxvol-backups/postgres/pre-deploy/" --sse AES256 --region "$REGION"
-  rm -f "/tmp/fxvol-pre-${IMAGE_TAG}-${ts}.dump"
+  # Same script as the nightly cron, under postgres/pre-deploy/. It also
+  # stamps /opt/fxvol/state/postgres-backup.last, so the api's backup-age
+  # signal is fresh right after a deploy (#343).
+  BACKUP_PREFIX=postgres/pre-deploy AWS_REGION="$REGION" \
+    /bin/sh infrastructure/ec2/postgres_backup.sh "pre-${IMAGE_TAG}"
   # Reconcile postgres with the compose file we just extracted before migrating.
   # The migration container reaches the DB by service name over the compose
   # network, but a postgres container left over from an older compose revision

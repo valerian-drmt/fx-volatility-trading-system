@@ -79,3 +79,4 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [ops/local-stack.md](ops/local-stack.md) | Run locally: docker compose, `scripts/local` launchers, profiles, Alembic. |
 | [ops/deployment.md](ops/deployment.md) | Prod on AWS/EC2: push → GitHub Actions → OIDC → SSM → deploy, the deploy gate. |
 | [ops/secrets.md](ops/secrets.md) | SSM Parameter Store (KMS), load-to-RAM, never-on-disk, never-echo. |
+| [ops/redis-durability.md](ops/redis-durability.md) | What Redis holds, its TTLs, the eviction policy, and what a restart costs. |
