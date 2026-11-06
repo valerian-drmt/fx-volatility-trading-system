@@ -746,19 +746,21 @@ async def submit_preview(
     except Exception as exc:
         if preview_id:
             await _release_preview_lock(str(preview_id))
+        # Full diagnosis goes to the log (the logging pipeline redacts URL
+        # passwords); the client gets an opaque 500 plus the correlation id,
+        # never str(exc) or a traceback (audit 01 #6, #297). Grafana :
+        # {container="fxvol-api"} |= "<trace_id>".
         tb = traceback.format_exc()
+        trace_id = current_trace_id()
         logger.error(
-            "trade_submit_failed preview_id=%s exc_type=%s exc=%s\n%s",
-            _scrub(preview_id), type(exc).__name__, str(exc)[:500], tb,
+            "trade_submit_failed preview_id=%s trace_id=%s exc_type=%s exc=%s\n%s",
+            _scrub(preview_id), trace_id, type(exc).__name__, _scrub(str(exc)[:500]), tb,
         )
         raise HTTPException(
             500,
             detail={
                 "error": "trade_submit_unhandled_exception",
-                "exception_type": type(exc).__name__,
-                "message": str(exc)[:500],
-                # Last 5 frames of the traceback for quick diagnosis on the UI.
-                "traceback_tail": tb.strip().splitlines()[-5:],
+                "trace_id": trace_id,
             },
         ) from exc
 

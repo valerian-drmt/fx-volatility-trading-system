@@ -61,6 +61,7 @@ from persistence.projection import rebuild_all
 from shared.ib_connection import maintain_ib_connection
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
+from shared.trace import current_trace_id
 from shared.tracing import init_tracing
 
 # T1 logs unification : structlog JSON output like the other engines.
@@ -630,18 +631,19 @@ async def submit_structure(
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         import traceback as _tb
+        # Opaque 500 + correlation id for the caller; the detail stays in the
+        # log, which the logging pipeline redacts (audit 01 #6, #297).
         tb = _tb.format_exc()
+        trace_id = current_trace_id()
         logger.error(
-            "live_submit_failed structure_id=%s exc_type=%s exc=%s\n%s",
-            _scrub(body.structure_id), type(e).__name__, _scrub(str(e)[:300]), tb,
+            "live_submit_failed structure_id=%s trace_id=%s exc_type=%s exc=%s\n%s",
+            _scrub(body.structure_id), trace_id, type(e).__name__, _scrub(str(e)[:300]), tb,
         )
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "live_submit_unhandled_exception",
-                "exception_type": type(e).__name__,
-                "message": str(e)[:500],
-                "traceback_tail": tb.strip().splitlines()[-5:],
+                "trace_id": trace_id,
             },
         ) from e
 

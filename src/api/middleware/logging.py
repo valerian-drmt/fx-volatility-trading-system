@@ -15,17 +15,26 @@ import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from shared.redact import install_stdlib_redaction, redact_event_dict
 from shared.trace import TRACE_HEADER, bind_trace_id, clear_trace_id, new_trace_id
 
 
 def configure_logging(level: str = "INFO") -> None:
-    """Wire structlog to stdlib logging with JSON renderer (idempotent)."""
+    """Wire structlog to stdlib logging with JSON renderer (idempotent).
+
+    ``redact_event_dict`` scrubs URL passwords and ``key=value`` credentials
+    from every structlog event before it is rendered, and the stdlib handlers
+    get the same scrubber as a filter, so no router can log a secret by
+    interpolating a URL or an exception text (#297).
+    """
     logging.basicConfig(level=level.upper(), format="%(message)s")
+    install_stdlib_redaction()
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,  # surfaces trace_id on every line
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso", utc=True),
+            redact_event_dict,
             structlog.processors.JSONRenderer(),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(
