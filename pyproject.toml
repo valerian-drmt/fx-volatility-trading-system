@@ -87,6 +87,11 @@ dev = [
     "pytest-cov>=5,<8",
     "aiosqlite>=0.19,<0.21",
     "import-linter>=2.0,<3.0",
+    # Test harness (#338): randomised order so hidden ordering coupling
+    # surfaces in CI (seed printed, replay with --randomly-seed), and a
+    # frozen clock instead of sleeps / datetime.now() in assertions.
+    "pytest-randomly>=3.15,<6",
+    "freezegun>=1.4,<2",
 ]
 
 # ─────────────────────────────────────────────────────────────────────
@@ -134,6 +139,8 @@ minversion = "8.0"
 # quarantine has been removed — its last survivor (the nginx-config parse
 # test) now lives under ``tests/unit/infrastructure/`` and is collected here.
 testpaths = ["tests/unit", "tests/integration"]
+# "." makes tests.fixtures importable (shared DB / IB / payload fixtures, #338).
+pythonpath = ["src", "."]
 addopts = "-q --strict-markers"
 asyncio_mode = "auto"
 markers = [

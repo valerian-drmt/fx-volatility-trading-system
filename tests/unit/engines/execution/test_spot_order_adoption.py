@@ -11,6 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.fixtures.db import make_sqlite_sessionmaker as _make_session  # shared harness (#338), FKs ON
+
 pytest.importorskip("pytest_asyncio")
 
 pytestmark = pytest.mark.asyncio
@@ -25,26 +27,6 @@ class _Event:
     def __iadd__(self, h):
         self.handlers.append(h)
         return self
-
-
-def _coerce_bigint_to_integer(metadata) -> None:
-    from sqlalchemy import BigInteger, Integer
-    for table in metadata.tables.values():
-        for col in table.columns:
-            if isinstance(col.type, BigInteger):
-                col.type = Integer()
-
-
-async def _make_session():
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-    from persistence.models import Base
-
-    _coerce_bigint_to_integer(Base.metadata)
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    return async_sessionmaker(engine, expire_on_commit=False), engine
 
 
 def _open_trade(*, sec_type="CASH", order_id=5, perm=422816514, ref="", action="SELL",

@@ -170,3 +170,20 @@ A: Probably two distinct tests. The unit layer mocks the I/O; the integration la
 
 **Q: Is `tests/unit/engines/` mandatory or can I flatten to `tests/unit/{db_writer,market_data,risk,vol}/`?**
 A: Mirror `src/`. `src/engines/` exists to group the 5 engines, so `tests/unit/engines/` does too. Path-to-path mapping consistency > saving depth.
+
+---
+
+## Shared harness (`tests/conftest.py` + `tests/fixtures/`, #338)
+
+| Fixture / helper | What it gives | Use it for |
+|---|---|---|
+| `sqlite_sessionmaker` | in-memory SQLite with the full schema and **foreign keys ON** | any test that writes rows; an orphan child row fails like it would on Postgres |
+| `sqlite_sessionmaker_no_fk` | same, FKs off | the rare test that builds rows in isolation on purpose (say why in a comment) |
+| `tests.fixtures.db.make_sqlite_sessionmaker()` | the function behind both (`(maker, engine)`) | modules that need their own lifecycle; `await engine.dispose()` when done |
+| `frozen_clock` | freezegun at `2026-11-06T12:00:00Z` | anything that reads `datetime.now()`; no `asyncio.sleep` to "age" a value |
+| `ib_factories` / `tests.fixtures.ib` | `fake_trade`, `fake_fill`, `fake_commission_report`, `fake_contract`, `FakeIB`, `FakeEvent` | ib_insync shapes as the handlers see them: empty commission report at fill time, `trade.log` with an error entry for a reject, `whyHeld` for a hold |
+| `canonical_payload(name)` / `tests.fixtures.payloads` | one JSON per Redis channel (`ticks`, `account`, `vol_update`, `risk_update`, `positions`, `orders`, `exit_alerts`, `db_events`) and per IB event (`ib_order_status`, `ib_execution`, `ib_commission_report`, `ib_error`) | producer and consumer tests built on the same shape; `tests/unit/fixtures/test_harness.py` checks the Redis ones against `bus.publisher` |
+
+Test order is randomised (`pytest-randomly`, dev extra): the seed is printed at
+the top of the run; replay a failure with `-p randomly --randomly-seed=<seed>`,
+or disable with `-p no:randomly` while bisecting.

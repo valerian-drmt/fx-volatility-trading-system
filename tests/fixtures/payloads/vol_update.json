@@ -1,0 +1,56 @@
+{
+  "symbol": "EURUSD",
+  "timestamp": "2026-11-06T12:00:00Z",
+  "spot": 1.12346,
+  "forward": 1.1249,
+  "surface": {
+    "1M": {
+      "10dp": {
+        "iv": 0.0712,
+        "strike": 1.1005,
+        "source": "listed",
+        "z": 0.3
+      },
+      "25dp": {
+        "iv": 0.0665,
+        "strike": 1.113,
+        "source": "listed",
+        "z": 0.1
+      },
+      "atm": {
+        "iv": 0.0628,
+        "strike": 1.125,
+        "source": "listed",
+        "z": -0.2
+      },
+      "25dc": {
+        "iv": 0.0641,
+        "strike": 1.137,
+        "source": "listed",
+        "z": 0.0
+      },
+      "10dc": {
+        "iv": 0.068,
+        "strike": 1.1495,
+        "source": "listed",
+        "z": 0.2
+      }
+    },
+    "3M": {
+      "atm": {
+        "iv": 0.0651,
+        "strike": 1.1265,
+        "source": "listed",
+        "z": -0.1
+      }
+    },
+    "6M": {
+      "atm": {
+        "iv": 0.067,
+        "strike": null,
+        "source": "interp",
+        "z": 0.0
+      }
+    }
+  }
+}

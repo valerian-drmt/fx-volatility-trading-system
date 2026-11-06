@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-11-06T12:00:00Z",
+  "greeks": {
+    "delta": -12.4,
+    "gamma": 1474.8,
+    "vega": 2779.58,
+    "theta": -92.41,
+    "spot": 1.12346,
+    "iv_fallback_legs": 0
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "table": "position_metric_history",
+  "payload": {
+    "position_id": 52,
+    "timestamp": "2026-11-06T12:00:00Z",
+    "delta_usd": -650427.88,
+    "gamma_usd": 1474.8,
+    "vega_usd": 2779.58,
+    "theta_usd": -92.41,
+    "iv": 0.06051,
+    "market_price": 0.01151105,
+    "current_pnl_usd": 2864.23
+  }
+}

@@ -13,29 +13,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.fixtures.db import make_sqlite_sessionmaker as _make_session  # shared harness (#338), FKs ON
+
 pytest.importorskip("pytest_asyncio")
 
 pytestmark = pytest.mark.asyncio
-
-
-def _coerce_bigint_to_integer(metadata) -> None:
-    from sqlalchemy import BigInteger, Integer
-    for table in metadata.tables.values():
-        for col in table.columns:
-            if isinstance(col.type, BigInteger):
-                col.type = Integer()
-
-
-async def _make_session():
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-    from persistence.models import Base
-
-    _coerce_bigint_to_integer(Base.metadata)
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    return async_sessionmaker(engine, expire_on_commit=False), engine
 
 
 class _FakeIB:
@@ -142,8 +124,16 @@ async def test_hedge_row_claim_and_refs():
     try:
         from datetime import UTC, datetime
 
+        from persistence.models import BookedPosition, TradeStructure
         async with maker() as db:
-            # sqlite tests do not enforce FKs (audit T7-03): no booked_position parent needed here
+            # FKs are ON in the shared harness (#338): a hedge needs its booked position.
+            ts = TradeStructure(structure_type="straddle", reference_tenor="3M", base_qty=1,
+                                state="fully_filled", execution_mode="live")
+            db.add(ts)
+            await db.flush()
+            db.add(BookedPosition(id=1, structure_id=ts.id, opened_at=datetime.now(UTC),
+                                  entry_premium_usd=0.0, entry_total_cost_usd=0.0, state="open"))
+            await db.flush()
             db.add(HedgeOrder(position_id=1, triggered_at=datetime.now(UTC), delta_imbalance_at_trigger=-1.4,
                               rebalance_threshold_used=0.05, hedge_qty=1, side="BUY", state="pending"))
             await db.commit()

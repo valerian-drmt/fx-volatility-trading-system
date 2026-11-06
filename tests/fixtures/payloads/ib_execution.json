@@ -1,0 +1,20 @@
+{
+  "execId": "0000e1a7.6a2b1c3d.01.01",
+  "time": "20261106  12:00:00",
+  "acctNumber": "DU0000000",
+  "exchange": "CME",
+  "side": "BOT",
+  "shares": 10.0,
+  "price": 0.0123,
+  "permId": 422816514,
+  "clientId": 5,
+  "orderId": 7,
+  "liquidation": 0,
+  "cumQty": 10.0,
+  "avgPrice": 0.0123,
+  "orderRef": "fxvol:87:106",
+  "evRule": "",
+  "evMultiplier": 0.0,
+  "modelCode": "",
+  "lastLiquidity": 1
+}

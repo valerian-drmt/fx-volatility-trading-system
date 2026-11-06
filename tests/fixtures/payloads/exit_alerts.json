@@ -1,0 +1,7 @@
+{
+  "position_id": 52,
+  "rule": "take_profit",
+  "severity": "info",
+  "message": "P&L +2864 USD >= take-profit 2500",
+  "timestamp": "2026-11-06T12:00:00Z"
+}

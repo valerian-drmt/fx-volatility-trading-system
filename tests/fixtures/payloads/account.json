@@ -1,0 +1,13 @@
+{
+  "net_liq_usd": 176904.63,
+  "cash_usd": 172209.42,
+  "buying_power_usd": 1180000.0,
+  "init_margin_usd": 4695.21,
+  "maint_margin_usd": 3756.17,
+  "excess_liquidity_usd": 173148.46,
+  "cash_by_currency": {
+    "USD": 150000.0,
+    "EUR": 19800.0
+  },
+  "timestamp": "2026-11-06T12:00:00Z"
+}
