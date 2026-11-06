@@ -19,6 +19,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from engines.execution.ib_trade_log import ib_reason_from_trade, ib_why_held
 from persistence.models import SpotOrder
 from shared.trace import bind_trace_id, clear_trace_id, current_trace_id
 
@@ -71,25 +72,8 @@ def snap_spot_limit(price: float | None, side: str, tick: float = SPOT_TICK) -> 
     return round(n * tick, 5)
 
 
-def ib_reason_from_trade(trade: Any) -> str | None:
-    """IB's own words for a refusal, read off ``trade.log`` (ib_insync appends a
-    TradeLogEntry per status/error, the error ones carry ``errorCode`` and a
-    message like ``Error 110, reqId 12: The price does not conform ...``).
-    None when the log holds no error. Pure over a duck-typed trade."""
-    entries = list(getattr(trade, "log", None) or [])
-    for entry in reversed(entries):
-        code = getattr(entry, "errorCode", 0) or 0
-        msg = str(getattr(entry, "message", "") or "").strip()
-        if code or msg.lower().startswith("error"):
-            return msg[:300] or f"IB error {code}"
-    return None
-
-
-def ib_why_held(trade: Any) -> str | None:
-    """``orderStatus.whyHeld`` (IB's hint for a PreSubmitted order), or None."""
-    wh = getattr(getattr(trade, "orderStatus", None), "whyHeld", None)
-    wh = str(wh or "").strip()
-    return wh[:60] or None
+# ib_reason_from_trade / ib_why_held live in engines.execution.ib_trade_log
+# (shared with the structure fills handler, #320) and are re-exported here.
 
 
 async def create_spot_order(

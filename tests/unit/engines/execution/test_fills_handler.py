@@ -41,10 +41,14 @@ async def _make_session():
     return async_sessionmaker(engine, expire_on_commit=False), engine
 
 
-def _fake_trade(*, status: str = "Submitted") -> SimpleNamespace:
-    """Trade object shape consumed by `_on_order_status`."""
+def _fake_trade(*, status: str = "Submitted", error: str | None = None,
+                why_held: str | None = None) -> SimpleNamespace:
+    """Trade object shape consumed by `_on_order_status`. ``error`` adds an IB
+    error entry to ``trade.log`` the way ib_insync does (#320)."""
+    log = [SimpleNamespace(status=status, message=error or "", errorCode=201 if error else 0)]
     return SimpleNamespace(
-        orderStatus=SimpleNamespace(status=status),
+        orderStatus=SimpleNamespace(status=status, whyHeld=why_held or ""),
+        log=log,
     )
 
 
@@ -83,18 +87,93 @@ async def _seed_structure(maker, *, qty: int = 5, n_legs: int = 1):
         return s.id, order_ids
 
 
-async def test_on_order_status_marks_rejected():
+async def test_on_order_status_marks_rejected_with_ib_reason():
+    """Inactive + an IB error in the trade log = a reject, with IB's words (#320)."""
     from engines.execution.fills_handler import _on_order_status
     from persistence.models import StructureOrder
 
     maker, engine = await _make_session()
     try:
         _struct_id, order_ids = await _seed_structure(maker)
-        await _on_order_status(_fake_trade(status="Inactive"), order_ids[0], maker)
+        await _on_order_status(
+            _fake_trade(status="Inactive", error="Error 201, reqId 7: Order rejected - reason: insufficient margin"),
+            order_ids[0], maker,
+        )
         async with maker() as db:
             order = await db.get(StructureOrder, order_ids[0])
         assert order.state == "rejected"
         assert order.rejected_at is not None
+        assert "insufficient margin" in order.rejection_text
+    finally:
+        await engine.dispose()
+
+
+async def test_inactive_without_an_error_is_a_hold_not_a_reject():
+    """EX-05: IB also uses Inactive for an order that is not working YET and
+    may re-activate; without an error it must stay submitted."""
+    from engines.execution.fills_handler import _on_order_status
+    from persistence.models import StructureOrder, TradeEvent
+
+    maker, engine = await _make_session()
+    try:
+        _struct_id, order_ids = await _seed_structure(maker)
+        await _on_order_status(_fake_trade(status="Inactive", why_held="locate"), order_ids[0], maker)
+        async with maker() as db:
+            from sqlalchemy import select
+            order = await db.get(StructureOrder, order_ids[0])
+            events = (await db.execute(select(TradeEvent.event_type))).scalars().all()
+        assert order.state == "submitted"
+        assert "order_held" in events
+    finally:
+        await engine.dispose()
+
+
+async def test_unknown_status_is_logged_and_ignored(caplog):
+    from engines.execution.fills_handler import _on_order_status
+    from persistence.models import StructureOrder
+
+    maker, engine = await _make_session()
+    try:
+        _struct_id, order_ids = await _seed_structure(maker)
+        with caplog.at_level("WARNING"):
+            await _on_order_status(_fake_trade(status="BrandNewStatus"), order_ids[0], maker)
+        assert any("order_status_unknown" in r.getMessage() for r in caplog.records)
+        async with maker() as db:
+            order = await db.get(StructureOrder, order_ids[0])
+        assert order.state == "submitted"
+    finally:
+        await engine.dispose()
+
+
+async def test_terminal_guard_a_late_cancel_never_downgrades_a_filled_row():
+    from engines.execution.fills_handler import _on_execution, _on_order_status
+    from persistence.models import StructureOrder
+
+    maker, engine = await _make_session()
+    try:
+        _struct_id, order_ids = await _seed_structure(maker, qty=2)
+        oid = order_ids[0]
+        await _on_execution(_fake_trade(), _fake_fill(exec_id="f1", qty=2, price=1.2), oid, maker)
+        await _on_order_status(_fake_trade(status="Cancelled"), oid, maker)
+        await _on_order_status(_fake_trade(status="Inactive", error="Error 201: rejected"), oid, maker)
+        async with maker() as db:
+            order = await db.get(StructureOrder, oid)
+        assert order.state == "filled"
+    finally:
+        await engine.dispose()
+
+
+async def test_pending_cancel_is_a_noop_not_a_drop():
+    from engines.execution.fills_handler import _on_order_status
+    from persistence.models import StructureOrder
+
+    maker, engine = await _make_session()
+    try:
+        _struct_id, order_ids = await _seed_structure(maker)
+        await _on_order_status(_fake_trade(status="PendingCancel"), order_ids[0], maker)
+        async with maker() as db:
+            order = await db.get(StructureOrder, order_ids[0])
+        assert order.state == "submitted"
     finally:
         await engine.dispose()
 

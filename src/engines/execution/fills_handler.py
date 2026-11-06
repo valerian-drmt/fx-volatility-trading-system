@@ -34,6 +34,8 @@ from core.execution.fills import (
     apply_fill_idempotent,
     update_order_aggregates,
 )
+from core.execution.order_states import next_state
+from engines.execution.ib_trade_log import ib_reason_from_trade, ib_why_held
 from engines.execution.redis_state import get_client as _get_redis
 from persistence.models import (
     BookedPosition,
@@ -49,22 +51,9 @@ from shared.trace import bind_trace_id, clear_trace_id
 logger = logging.getLogger(__name__)
 
 
-# ib_insync OrderStatus.status values we care about → DB state
-_STATUS_TO_STATE = {
-    "Submitted": "submitted",
-    "PreSubmitted": "submitted",
-    "PendingSubmit": "submitted",
-    "ApiPending": "submitted",
-    "Filled": "filled",
-    "Cancelled": "cancelled",
-    "ApiCancelled": "cancelled",
-    "Inactive": "rejected",
-}
-
-
-def _map_status(ib_status: str) -> str | None:
-    """Return our DB state for an IB status string, or None to ignore."""
-    return _STATUS_TO_STATE.get(ib_status)
+# The IB status -> state decision lives in core.execution.order_states
+# (explicit transition table, terminal guards, Inactive = hold unless IB
+# attached an error, PendingCancel mapped). #320.
 
 
 # --------------------------------------------------------------------------
@@ -91,9 +80,8 @@ async def _on_order_status(
     """Persist state transitions on ``structure_orders`` + audit log."""
     try:
         status = trade.orderStatus.status
-        new_state = _map_status(status)
-        if new_state is None:
-            return
+        reason = ib_reason_from_trade(trade)
+        why_held = ib_why_held(trade)
         async with sm() as db:
             order = await db.get(StructureOrder, order_id)
             if order is None:
@@ -104,32 +92,48 @@ async def _on_order_status(
             old_state = order.state
             now = datetime.now(UTC)
             ws_event: dict | None = None
-            if new_state == "submitted" and order.state == "pending":
+            tr = next_state(old_state, status, has_error_reason=reason is not None)
+            if tr.kind == "unknown":
+                # Never silent (EX-06): a new IB status is a thing to look at.
+                logger.warning("order_status_unknown order_id=%s state=%s ib_status=%r",
+                               order_id, old_state, status)
+                return
+            if tr.kind == "ignored_terminal":
+                logger.info("order_status_on_terminal order_id=%s state=%s ib_status=%s",
+                            order_id, old_state, status)
+                return
+            if tr.kind == "held":
+                # Inactive with no error: IB holds the order (outside RTH, halt,
+                # price-cap). Still working — record why, do not reject (EX-05).
+                _audit(db, order, "order_held", "warning",
+                       f"ib status={status} why_held={why_held or '-'}", {"why_held": why_held})
+                ws_event = {"event_type": "order_held", "why_held": why_held}
+            elif tr.new_state == "submitted":
                 order.state = "submitted"
                 order.submitted_at = order.submitted_at or now
                 _audit(db, order, "order_acknowledged", "info",
                        f"ib status={status}", {"old_state": old_state})
                 ws_event = {"event_type": "order_acknowledged"}
-            elif new_state == "submitted" and order.state == "submitted":
-                if order.acknowledged_at is None:
-                    order.acknowledged_at = now
-                    _audit(db, order, "order_acknowledged", "info",
-                           f"ib status={status}", {})
-                    ws_event = {"event_type": "order_acknowledged"}
-            elif new_state == "rejected":
+            elif tr.kind == "noop" and old_state == "submitted" and order.acknowledged_at is None:
+                order.acknowledged_at = now
+                _audit(db, order, "order_acknowledged", "info",
+                       f"ib status={status}", {})
+                ws_event = {"event_type": "order_acknowledged"}
+            elif tr.new_state == "rejected":
                 order.state = "rejected"
                 order.rejected_at = now
-                order.rejection_text = (status or "")[:300]
+                # IB's reason (error text off the trade log), not the status word.
+                order.rejection_text = (reason or status or "")[:300]
                 _audit(db, order, "order_rejected", "error",
-                       f"ib status={status}", {"old_state": old_state})
-                ws_event = {"event_type": "order_rejected"}
-            elif new_state == "cancelled":
+                       f"ib status={status} reason={order.rejection_text}", {"old_state": old_state})
+                ws_event = {"event_type": "order_rejected", "reason": order.rejection_text}
+            elif tr.new_state == "cancelled":
                 order.state = "cancelled"
                 _audit(db, order, "order_cancelled", "warning",
                        f"ib status={status}", {"old_state": old_state})
                 ws_event = {"event_type": "order_cancelled"}
             # Filled is handled in _on_execution after fill aggregates ; we
-            # don't transition here to avoid races.
+            # don't transition here to avoid races (tr.kind == fill_pending).
             await db.commit()
 
             if ws_event is not None:
@@ -304,22 +308,30 @@ async def _on_combo_status(
     filled by real per-leg executions are skipped."""
     try:
         status = getattr(trade.orderStatus, "status", "")
-        new_state = _map_status(status)
-        if new_state == "filled":
+        reason = ib_reason_from_trade(trade)
+        probe = next_state("submitted", status, has_error_reason=reason is not None)
+        if probe.kind == "fill_pending":
             await _book_combo_filled(trade, order_ids, sm)
             return
-        if new_state not in ("cancelled", "rejected"):
+        if probe.kind == "unknown":
+            logger.warning("combo_status_unknown ib_status=%r order_ids=%s", status, order_ids)
+            return
+        if probe.new_state not in ("cancelled", "rejected"):
             return
         async with sm() as db:
             for oid in order_ids:
                 o = await db.get(StructureOrder, oid)
-                if o is None or o.state in ("filled", "cancelled", "rejected"):
+                if o is None:
                     continue
-                o.state = new_state
-                if new_state == "rejected":
+                tr = next_state(o.state, status, has_error_reason=reason is not None)
+                if tr.new_state not in ("cancelled", "rejected"):
+                    continue  # terminal guard per leg
+                o.state = tr.new_state
+                if tr.new_state == "rejected":
                     o.rejected_at = datetime.now(UTC)
-                _audit(db, o, f"order_{new_state}", "warning",
-                       f"combo ib status={status}", {})
+                    o.rejection_text = (reason or status or "")[:300]
+                _audit(db, o, f"order_{tr.new_state}", "warning",
+                       f"combo ib status={status} reason={reason or '-'}", {})
             await db.commit()
     except Exception:
         logger.exception("on_combo_status_failed")
