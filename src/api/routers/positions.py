@@ -35,7 +35,6 @@ from api.orchestration.position_monitor import build_position_monitor_scheduler
 from core.execution.reconciliation import classify_break
 from core.ledger import LedgerFill, fold_fills, unrealized_pnl
 from core.products import product_label_from_symbol
-from core.vol.tenors import tenor_bucket_from_expiry
 from persistence.models import (
     AppConfigScalar,  # replaces DeltaHedgeConfig (migration 024)
     BookedPosition,
@@ -53,6 +52,7 @@ from persistence.models import (
     TradeStructure,
 )
 from persistence.reservation import recompute_reservation
+from persistence.rows import open_position_row
 from shared.contracts import multiplier_for, parse_local_symbol
 from shared.trace import current_trace_id, trace_headers
 
@@ -282,49 +282,9 @@ async def list_open(db: DbDep) -> list[dict[str, Any]]:
         select(OpenPosition).order_by(desc(OpenPosition.entry_timestamp))
     )).scalars().all()
     today = datetime.now(UTC).date()
-
-    def _f(v):  # Decimal → float for JSON
-        return float(v) if v is not None else None
-
-    # Column order : identity / grouping → spec → P&L → main greeks →
-    # secondary greeks → metadata. Python dicts preserve insertion order
-    # (>= 3.7) so JSON consumers see the same order.
-    return [{
-        # ── Identity & grouping (Murex-style id stack) ──
-        "id": r.id,
-        "package_id": r.package_id,
-        "trade_id": r.trade_id,
-        "contract_id": r.contract_id,
-        "product_label": r.product_label,
-        "structure": r.structure,
-        "side": r.side,
-        # ── Spec ──
-        "quantity": _f(r.quantity),
-        # ``tenor`` is the entry label and never rolls; ``tenor_now`` is the
-        # 1M..6M bucket by days to expiry, the same function the P&L
-        # attribution by tenor uses, so every panel files a leg under one
-        # tenor (#377).
-        "tenor": r.tenor,
-        "tenor_now": tenor_bucket_from_expiry(r.expiry, today),
-        "expiry": r.expiry.isoformat() if r.expiry else None,
-        # ── P&L & pricing ──
-        "current_pnl_usd": _f(r.current_pnl_usd),
-        "market_price": _f(r.market_price),
-        "contract_price_entry": _f(r.contract_price_entry),
-        "nominal_eur": _f(r.nominal_eur),
-        # ── Main greeks ──
-        "delta_usd": _f(r.delta_usd),
-        "gamma_usd": _f(r.gamma_usd),
-        "vega_usd": _f(r.vega_usd),
-        "theta_usd": _f(r.theta_usd),
-        "iv": _f(r.iv),
-        # ── Secondary greeks ──
-        "vanna_usd": _f(r.vanna_usd),
-        "volga_usd": _f(r.volga_usd),
-        # ── Metadata ──
-        "timestamp": r.timestamp.isoformat() if r.timestamp else None,
-        "entry_timestamp": r.entry_timestamp.isoformat() if r.entry_timestamp else None,
-    } for r in rows]
+    # Same serialiser as the ``positions`` channel (#366): a WebSocket patch
+    # and this read carry identical keys.
+    return [open_position_row(r, today) for r in rows]
 
 
 @router.get("/book")

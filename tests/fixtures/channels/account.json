@@ -1,0 +1,18 @@
+{
+  "event": "account_snapshot",
+  "source": "execution_engine",
+  "latest": {
+    "timestamp": "2026-11-06T12:00:00+00:00",
+    "net_liq_usd": 176904.63,
+    "cash_usd": 172209.42,
+    "unrealized_pnl_usd": 2801.1,
+    "gross_position_value": 4695.21,
+    "init_margin_req": 4695.21,
+    "maint_margin_req": 3756.17,
+    "excess_liquidity": 173148.46,
+    "cushion": 0.97,
+    "open_positions_count": 3,
+    "currencies": {"USD": {"CashBalance": 150000.0}, "EUR": {"CashBalance": 19800.0}}
+  },
+  "timestamp": "2026-11-06T12:00:01Z"
+}

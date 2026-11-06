@@ -48,3 +48,11 @@ CH_POSITIONS: str = "positions"
 
 # STEP5 — position_monitor publishes one row per ExitAlert that fires.
 CH_EXIT_ALERTS: str = "exit_alerts"
+
+# #366 — execution-engine publishes one message per spot (CASH) order change,
+# same row shape as ``GET /trade/spot-orders``. The ``positions`` channel also
+# carries the execution-engine's ``positions_changed`` event (rows upserted /
+# closed by a position sync, same shape as ``GET /positions/open``) and the
+# ``account`` channel its ``account_snapshot`` event (``latest`` of
+# ``GET /portfolio/account``). Messages carry ``event`` + ``source``.
+CH_SPOT_ORDERS: str = "spot_orders"

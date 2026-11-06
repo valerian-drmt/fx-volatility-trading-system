@@ -30,12 +30,21 @@ that missed a message can still read current state.
 | Channel (`channels.py`) | Publisher | Cadence |
 |---|---|---|
 | `ticks` | market-data | ~200 ms throttle |
-| `account` | market-data | ~10 s |
+| `account` | execution-engine (`account_snapshot`: the `latest` of `/portfolio/account`) | each account snap (~1 s loop) |
 | `vol_update` | vol-engine | end of each scan (~3 min) |
 | `risk_update` | risk-engine | end of each cycle (~60 s) |
 | `orders:<structure_id>` | execution-engine | per order event |
-| `positions`, `exit_alerts` | position monitor | per cycle |
+| `positions` | execution-engine (`positions_changed`: rows upserted / closed by a sync, shape of `/positions/open`); position monitor (MTM snapshot, `position_id`) | on change; per cycle |
+| `spot_orders` | execution-engine (`spot_order_changed`: shape of `/trade/spot-orders`) | per spot order change |
+| `exit_alerts` | position monitor | per cycle |
 | `config:changed` | admin endpoint | on config PUT/revert |
+
+Execution-engine messages carry `event` and `source`; a subscriber keys on
+`event`. The serialisers live in `persistence/rows.py` and are the same
+functions the REST readers use, so a WebSocket patch and the poll it
+reconciles against never disagree on keys (`tests/fixtures/channels/`).
+WebSocket routes: `/ws/positions`, `/ws/account`, `/ws/spot_orders`,
+`/ws/orders/{structure_id}` (#366, #367).
 
 Cache keys (`keys.py`) carry a prescribed TTL: `latest_spot:{symbol}` (30 s),
 `latest_vol_surface:{symbol}` (600 s), `latest_greeks:portfolio` (30 s),

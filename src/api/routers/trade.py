@@ -59,6 +59,7 @@ from persistence.models import (
     TradePreviewRow,
     TradeStructure,
 )
+from persistence.rows import spot_order_row
 from shared.contracts import build_ib_local_symbol
 from shared.trace import current_trace_id
 
@@ -1323,30 +1324,9 @@ async def list_submitted_structures(
 
 
 def serialize_spot_order(o: SpotOrder) -> dict[str, Any]:
-    """One ``spot_order`` row -> the blotter's payload (pure, unit-tested)."""
-    return {
-        "id": int(o.id),
-        "created_at": o.created_at,
-        "symbol": o.symbol, "currency": o.currency, "exchange": o.exchange,
-        "local_symbol": o.ib_local_symbol or f"{o.symbol}.{o.currency}",
-        "side": o.side,
-        "qty": int(o.qty or 0),
-        "qty_filled": int(o.qty_filled or 0),
-        "order_type": o.order_type,
-        "limit_price": o.limit_price,
-        "avg_fill_price": o.avg_fill_price,
-        "commission_usd": o.commission_usd,
-        "state": o.state,
-        "state_updated_at": o.state_updated_at,
-        "filled_at": o.filled_at,
-        "rejection_text": o.rejection_text,
-        # IB orderId : the handle the auth-gated DELETE /orders/{id} cancels.
-        "ib_order_id": int(o.ib_order_id) if (o.ib_order_id or "").isdigit() else None,
-        "ib_perm_id": o.ib_perm_id,
-        # Raw IB status (PreSubmitted / Submitted / ...) + whyHeld: why a row waits (#376).
-        "ib_status": o.ib_status,
-        "why_held": o.why_held,
-    }
+    """One ``spot_order`` row -> the blotter's payload. Shared with the
+    ``spot_orders`` channel through ``persistence.rows`` (#366)."""
+    return spot_order_row(o)
 
 
 @router.get("/spot-orders")

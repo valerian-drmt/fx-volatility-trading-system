@@ -19,11 +19,26 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bus.publisher import publish_spot_order
 from engines.execution.ib_trade_log import ib_reason_from_trade, ib_why_held
+from engines.execution.redis_state import get_client as _get_redis
 from persistence.models import SpotOrder
+from persistence.rows import spot_order_row
 from shared.trace import bind_trace_id, clear_trace_id, current_trace_id
 
 logger = logging.getLogger(__name__)
+
+
+async def _publish(row: SpotOrder) -> None:
+    """Best-effort PUBLISH of the row on ``spot_orders`` after a commit (#366);
+    silent when Redis is not configured (tests) or down."""
+    redis = _get_redis()
+    if redis is None:
+        return
+    try:
+        await publish_spot_order(redis, spot_order_row(row))
+    except Exception:
+        logger.warning("spot_order_publish_failed id=%s", row.id, exc_info=True)
 
 # orderRef stamped on every spot order. The reaper's structure parser expects
 # ``fxvol:<int>:<int>`` and returns None for this shape, so spot orders are never
@@ -92,6 +107,7 @@ async def create_spot_order(
         )
         db.add(row)
         await db.commit()
+        await _publish(row)
         return int(row.id)
 
 
@@ -121,6 +137,7 @@ async def stamp_ib_ids(
             row.ib_local_symbol = str(ls)[:20]
         _apply_status(row, status, reason=ib_reason_from_trade(trade), why_held=ib_why_held(trade))
         await db.commit()
+        await _publish(row)
 
 
 def _apply_status(
@@ -191,6 +208,7 @@ async def _on_status(
                 await db.commit()
                 logger.info("spot_order_state id=%s ib=%s state=%s why_held=%s reason=%s",
                             spot_order_id, status, row.state, why_held, reason)
+                await _publish(row)
     except Exception:
         logger.exception("spot_on_status_failed id=%s", spot_order_id)
     finally:
@@ -251,6 +269,7 @@ async def fold_spot_fills(
             await db.commit()
             logger.info("spot_order_fill id=%s filled=%s/%s avg=%s",
                         spot_order_id, qty, row.qty, row.avg_fill_price)
+            await _publish(row)
     except Exception:
         logger.exception("spot_on_fill_failed id=%s", spot_order_id)
     finally:
@@ -338,5 +357,6 @@ async def mark_spot_failed(
             row.rejection_text = reason[:300]
             row.state_updated_at = datetime.now(UTC)
             await db.commit()
+            await _publish(row)
     except Exception:
         logger.exception("spot_mark_failed_failed id=%s", spot_order_id)

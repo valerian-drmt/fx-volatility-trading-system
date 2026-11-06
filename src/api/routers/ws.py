@@ -66,6 +66,20 @@ async def ws_positions(ws: WebSocket) -> None:
     await _serve(channels.CH_POSITIONS, ws)
 
 
+@router.websocket("/ws/account")
+async def ws_account(ws: WebSocket) -> None:
+    """Subscribe to ``account`` — one ``account_snapshot`` per execution-engine
+    account snap (#366), the ``latest`` of ``GET /portfolio/account``."""
+    await _serve(channels.CH_ACCOUNT, ws)
+
+
+@router.websocket("/ws/spot_orders")
+async def ws_spot_orders(ws: WebSocket) -> None:
+    """Subscribe to ``spot_orders`` — one message per spot order change (#366),
+    the row shape of ``GET /trade/spot-orders``."""
+    await _serve(channels.CH_SPOT_ORDERS, ws)
+
+
 @router.websocket("/ws/exit_alerts")
 async def ws_exit_alerts(ws: WebSocket) -> None:
     """Subscribe to ``exit_alerts`` — one row per ExitAlert that fires."""

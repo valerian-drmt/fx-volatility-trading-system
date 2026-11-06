@@ -1,0 +1,28 @@
+{
+  "event": "spot_order_changed",
+  "source": "execution_engine",
+  "row": {
+    "id": 3,
+    "created_at": "2026-11-06T12:00:00Z",
+    "symbol": "EUR",
+    "currency": "USD",
+    "exchange": "IDEALPRO",
+    "local_symbol": "EUR.USD",
+    "side": "BUY",
+    "qty": 25000,
+    "qty_filled": 0,
+    "order_type": "LMT",
+    "limit_price": 1.1226,
+    "avg_fill_price": null,
+    "commission_usd": null,
+    "state": "submitted",
+    "state_updated_at": "2026-11-06T12:00:01Z",
+    "filled_at": null,
+    "rejection_text": null,
+    "ib_order_id": 1427,
+    "ib_perm_id": "1915668542",
+    "ib_status": "PreSubmitted",
+    "why_held": null
+  },
+  "timestamp": "2026-11-06T12:00:01Z"
+}
