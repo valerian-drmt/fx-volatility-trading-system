@@ -31,6 +31,7 @@ third leg: it restarts the gateway and the four IB-bound engines
 | `BackupStale` | backup stamp older than 26 h for 30 min | critical | `tail /var/log/fxvol-postgres-backup.log`; `RESTORE.md` §5 |
 | `BackupSignalMissing` | no backup-age metric at all | warning | api not scraped or `BACKUP_STATE_FILE` unset |
 | `MemoryNearLimit` | a container above 90 % of its cap 10 min | warning | an OOM kill follows |
+| `HistoryPruneFailing` | a retention prune failed for a table in the last 2 days | warning | `grep history_prune_failed` in the engine log; the table grows until fixed (#330) |
 
 Routing (`obs/alertmanager.yml`): one group per alert name, 30 s initial
 wait, critical repeats every 4 h, warning every 24 h, resolved messages

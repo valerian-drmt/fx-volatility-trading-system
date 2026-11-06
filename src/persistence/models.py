@@ -27,7 +27,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 JSONB_PORTABLE = JSON().with_variant(JSONB(), "postgresql")
 
@@ -104,15 +104,11 @@ class OpenPosition(Base):
         onupdate=func.now(),
     )
 
-    metric_history: Mapped[list[OpenPositionHistory]] = relationship(
-        back_populates="position",
-        cascade="all, delete-orphan",
-        # The FK already has ON DELETE CASCADE — let Postgres do the cascade.
-        # Without this, db.delete(position) loads the position's ENTIRE history
-        # collection into RAM first (1.9M-row table on prod → OOM crash-loop of
-        # execution-engine, 2026-10-04, 5 654 restarts).
-        passive_deletes=True,
-    )
+    # No relationship to ``open_position_history`` any more (#330, DI-03,
+    # migration 058): the history outlives the mirror row. Closing a position
+    # deletes this row and nothing else; the per-leg greeks / P&L series stays
+    # until the retention prune. Readers probe the history by ``position_id``
+    # (index ``(position_id, timestamp)``), never through an ORM collection.
     # Note: `trades` relationship removed — Trade ORM dropped in
     # migration 025 (legacy fills journal had no live writers).
 
@@ -126,9 +122,10 @@ class OpenPositionHistory(Base):
 
     # Schema mirrors ``open_position`` 1-to-1 plus position_id + timestamp.
     id: Mapped[int] = mapped_column(primary_key=True)
-    position_id: Mapped[int] = mapped_column(
-        ForeignKey("open_position.id", ondelete="CASCADE"), nullable=False
-    )
+    # Plain column since migration 058 (#330): the FK with ON DELETE CASCADE
+    # erased a leg's whole history when the position closed. The composite
+    # index (position_id, timestamp) from migration 044 serves every reader.
+    position_id: Mapped[int] = mapped_column(Integer, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -158,8 +155,6 @@ class OpenPositionHistory(Base):
     iv: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
     vanna_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     volga_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
-
-    position: Mapped[OpenPosition] = relationship(back_populates="metric_history")
 
 
 # Trade, Order, OrderEvent ORM classes deleted in migration 025 — all

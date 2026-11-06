@@ -642,26 +642,20 @@ class VolEngine:
         """Retention — DELETE Signal-tab history rows older than
         ``HISTORY_RETENTION_DAYS`` so the append-only tables don't grow
         unbounded (vol_surface_history ≈ 1.1 MB/day ; pca_signal_history grows
-        per-PC every cycle). Nothing reads beyond this window — history charts
-        downsample to daily. Mirrors risk-engine._prune_history but via the ORM
-        table classes (static `timestamp` column, parameterised cutoff)."""
+        per-PC every cycle). One transaction per table and the PCA signals a
+        trade or an armed preview still references are excluded from the
+        delete instead of blocking it (#330, DI-35: one such row used to roll
+        back the shared transaction and stop both prunes for good)."""
         from datetime import UTC, datetime, timedelta
 
-        from sqlalchemy import delete
-
         from persistence.db import get_sessionmaker
-        from persistence.models import PcaSignal, VolSurface
+        from persistence.retention import VOL_ENGINE_TABLES, run_retention
 
         cutoff = datetime.now(UTC) - timedelta(days=HISTORY_RETENTION_DAYS)
-        async with get_sessionmaker()() as session:
-            await session.execute(
-                delete(VolSurface).where(VolSurface.timestamp < cutoff)
-            )
-            await session.execute(
-                delete(PcaSignal).where(PcaSignal.timestamp < cutoff)
-            )
-            await session.commit()
-        logger.info("history_pruned", extra={"retention_days": HISTORY_RETENTION_DAYS})
+        summary = await run_retention(
+            get_sessionmaker(), engine="vol_engine", cutoff=cutoff, tables=VOL_ENGINE_TABLES,
+        )
+        logger.info("history_prune_done", extra={"retention_days": HISTORY_RETENTION_DAYS, **summary})
 
     async def run_cycle(self) -> bool:
         """Single pass. Returns True if a vol_update was published.

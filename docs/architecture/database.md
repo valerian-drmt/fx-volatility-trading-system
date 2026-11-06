@@ -25,7 +25,7 @@ trade; each `trade_order` is a leg; `trade_fill` is one execution event.
 | `BookedPosition` | `booked_position` | trade-level entity: entry cost, state, P&L |
 | `BookedPositionMetricHistory` | `booked_position_metric_history` | per-cycle MTM + signal tracking |
 | `OpenPosition` | `open_position` | live IB book mirror (one row per contract) |
-| `OpenPositionHistory` | `open_position_history` | per-cycle greeks/pnl/iv per leg |
+| `OpenPositionHistory` | `open_position_history` | per-cycle greeks/pnl/iv per leg; no FK to the mirror since migration 058, so a close keeps the leg's history (#330) |
 | `HedgeOrder` | `hedge_order` | delta-rebalancing future order |
 | `ExitAlert` | `exit_alert` | one exit-rule trigger |
 | `Package` | `package` | optional grouping of several trades |

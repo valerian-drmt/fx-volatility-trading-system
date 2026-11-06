@@ -63,6 +63,16 @@ groups:
           summary: "db-writer has not written for 3 min"
           description: "Streamed history rows are being dropped. Check Redis and `docker logs fxvol-db-writer`."
 
+      # Retention prune (#330): a table whose prune keeps failing grows without
+      # bound; before this counter one blocked DELETE stopped both prunes silently.
+      - alert: HistoryPruneFailing
+        expr: increase(history_prune_failures_total[2d]) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "history prune failing on {{ $labels.table }} ({{ $labels.engine }})"
+          description: "`docker logs fxvol-{{ $labels.engine }} | grep history_prune_failed`; the table keeps growing until fixed."
+
   - name: fxvol-host
     rules:
       # Root filesystem as cAdvisor sees it (id="/" = the host). Disk fills were

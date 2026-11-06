@@ -103,6 +103,19 @@ ib_requests_total = Counter(
     ["engine", "request_type", "status"],
 )
 
+history_prune_rows_total = Counter(
+    "history_prune_rows_total",
+    "Rows removed by the history retention prune, per engine and table (#330).",
+    ["engine", "table"],
+)
+
+history_prune_failures_total = Counter(
+    "history_prune_failures_total",
+    "Retention prune passes that failed for a table (#330, DI-35): the table "
+    "keeps growing until someone looks.",
+    ["engine", "table"],
+)
+
 ib_session_events_total = Counter(
     "ib_session_events_total",
     "IB session events seen by an engine: errorEvent codes bucketed "

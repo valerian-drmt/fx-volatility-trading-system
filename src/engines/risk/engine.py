@@ -25,7 +25,7 @@ from decimal import Decimal
 from typing import Any, Protocol
 
 import numpy as np
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys, publisher
@@ -230,22 +230,18 @@ class RiskEngine:
     async def _prune_history(self) -> None:
         """Retention — delete history rows older than HISTORY_RETENTION_DAYS so the
         append-only tables don't grow unbounded. Nothing reads beyond this window
-        (all readers downsample to daily). Shared maintenance over both history
-        tables; uses literal SQL (static table names, parameterised cutoff)."""
+        (the daily series lives in ``portfolio_daily`` since #368). One
+        transaction per table, failures counted (#330): one table's problem
+        never stops the other's prune."""
         if self._sessionmaker is None:
             return
+        from persistence.retention import RISK_ENGINE_TABLES, run_retention
+
         cutoff = datetime.now(UTC) - timedelta(days=HISTORY_RETENTION_DAYS)
-        async with self._sessionmaker() as db:
-            await db.execute(
-                text("DELETE FROM open_position_history WHERE timestamp < :cutoff"),
-                {"cutoff": cutoff},
-            )
-            await db.execute(
-                text("DELETE FROM account_history WHERE timestamp < :cutoff"),
-                {"cutoff": cutoff},
-            )
-            await db.commit()
-        logger.info("history_pruned", extra={"retention_days": HISTORY_RETENTION_DAYS})
+        summary = await run_retention(
+            self._sessionmaker, engine="risk_engine", cutoff=cutoff, tables=RISK_ENGINE_TABLES,
+        )
+        logger.info("history_prune_done", extra={"retention_days": HISTORY_RETENTION_DAYS, **summary})
 
     async def _load_positions(self) -> list[dict]:
         """Read OPEN positions from DB and shape them for the BS compute path.
