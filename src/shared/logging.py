@@ -11,12 +11,19 @@ import sys
 
 import structlog
 
+from shared.redact import install_stdlib_redaction, redact_event_dict
+
 
 def configure_logging(service_name: str, level: str = "INFO") -> None:
     """Wire structlog + stdlib logging to emit JSON to stdout.
 
     Safe to call multiple times — later calls overwrite the configuration
     (useful for tests that change ``service_name``).
+
+    Secrets never reach stdout: ``redact_event_dict`` scrubs every structlog
+    event (URL passwords, ``key=value`` credentials) right before rendering,
+    and the same scrubber is installed as a filter on the stdlib handlers
+    for the modules that still use ``logging.getLogger`` (#297).
     """
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
@@ -24,6 +31,7 @@ def configure_logging(service_name: str, level: str = "INFO") -> None:
         stream=sys.stdout,
         force=True,
     )
+    install_stdlib_redaction()
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
@@ -31,6 +39,7 @@ def configure_logging(service_name: str, level: str = "INFO") -> None:
             structlog.processors.TimeStamper(fmt="iso", utc=True),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
+            redact_event_dict,
             structlog.processors.JSONRenderer(),
         ],
         wrapper_class=structlog.make_filtering_bound_logger(

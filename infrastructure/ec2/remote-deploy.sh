@@ -154,10 +154,23 @@ if docker compose ps --status running postgres | grep -q postgres; then
     echo "remote-deploy: cannot find the fxvol-internal network" >&2
     exit 1
   fi
+  # The DB URL goes through a 0600 env file, never '-e KEY=VALUE': an inline
+  # variable sits in the container's command line for the whole migration and
+  # shows up in 'ps' / 'pgrep -a' / SSM command logs, password included (#287).
+  # umask 077 (set above) makes the file private; it is removed even on failure.
+  mig_env="$(mktemp /tmp/fxvol-migrate.XXXXXX)"
+  printf 'DATABASE_URL=postgresql+asyncpg://fxvol:%s@postgres:5432/fxvol\n' \
+    "${DB_PASSWORD}" > "$mig_env"
+  mig_rc=0
   docker run --rm --network "$net" \
-    -e "DATABASE_URL=postgresql+asyncpg://fxvol:${DB_PASSWORD}@postgres:5432/fxvol" \
+    --env-file "$mig_env" \
     "${reg}/fx-options-api:${IMAGE_TAG}" \
-    python -m alembic -c src/persistence/alembic.ini upgrade head
+    python -m alembic -c src/persistence/alembic.ini upgrade head || mig_rc=$?
+  rm -f "$mig_env"
+  if [ "$mig_rc" -ne 0 ]; then
+    echo "remote-deploy: migration failed (exit ${mig_rc}), aborting before swap" >&2
+    exit "$mig_rc"
+  fi
 fi
 
 # Recreating nginx races docker-proxy releasing :80/:443 — the new container can

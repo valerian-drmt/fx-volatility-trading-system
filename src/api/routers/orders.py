@@ -13,6 +13,7 @@ Endpoints unchanged from the client's point of view:
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
@@ -22,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from api.auth import require_write
 
 router = APIRouter(prefix="/api/v1", tags=["orders"])
+logger = logging.getLogger(__name__)
 
 EXECUTION_URL = os.getenv("EXECUTION_URL", "http://execution-engine:8001")
 TIMEOUT_S = 10.0
@@ -33,7 +35,12 @@ async def _forward(method: str, path: str, json: dict | None = None) -> dict[str
         async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
             r = await client.request(method, url, json=json)
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=503, detail=f"execution-engine unreachable: {e}") from e
+        # Static detail: the exception text names the internal URL (#297).
+        logger.warning(
+            "execution_forward_failed method=%s path=%s exc_type=%s",
+            method, path, type(e).__name__,
+        )
+        raise HTTPException(status_code=503, detail="execution-engine unreachable") from e
     if r.status_code >= 400:
         try:
             detail = r.json().get("detail", r.text)

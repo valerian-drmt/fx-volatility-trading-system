@@ -36,6 +36,7 @@ from api.routers import vol as vol_router
 from api.routers import ws as ws_router
 from api.ws.connection_manager import ConnectionManager
 from api.ws.redis_bridge import redis_to_ws_bridge
+from shared.redact import redact_url
 
 
 @asynccontextmanager
@@ -104,7 +105,8 @@ async def lifespan(app: FastAPI):
     except Exception:
         log.exception("vol_config_seed_failed")
 
-    log.info("api_startup", redis_url=settings.redis_url)
+    # Host only: the full URL carries the Redis password (audit 01 F-02, #297).
+    log.info("api_startup", redis=redact_url(settings.redis_url))
     try:
         yield
     finally:
