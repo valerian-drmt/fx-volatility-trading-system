@@ -33,6 +33,13 @@ def _day(n: int) -> datetime:
     return datetime(2026, 7, 1, tzinfo=UTC) + timedelta(days=n)
 
 
+def _daily(n: int, close: float):
+    """One ``portfolio_daily`` row (the fallback reads the rollup since #368)."""
+    from decimal import Decimal
+    from types import SimpleNamespace
+    return SimpleNamespace(day=_day(n).date(), net_liq_close=Decimal(str(close)), computed_at=_day(n))
+
+
 def _bars(n: int = 300) -> str:
     return json.dumps([{"t": i, "o": c, "h": c, "l": c, "c": c} for i, c in enumerate(_closes(n))])
 
@@ -127,7 +134,7 @@ async def test_var_falls_back_when_the_bar_cache_is_empty(book):
     book(1.10, _straddle())
     # No bars → nothing to replay. Account history holds 2 daily net-liq points.
     out = await value_at_risk(
-        _FakeDb([], [(_day(1), 400_000.0), (_day(2), 395_000.0)]),
+        _FakeDb([], [_daily(1, 400_000.0), _daily(2, 395_000.0)]),
         _FakeRedis(None),
     )
     assert out["method"] == "account-history"

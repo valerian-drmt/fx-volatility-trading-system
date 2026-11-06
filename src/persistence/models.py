@@ -1124,3 +1124,46 @@ class TradeEvent(Base):
     )
     description: Mapped[str | None] = mapped_column(String(500))
     payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False, default=dict)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Materialised portfolio rollups (#368, hot/cold T4). Writer = analytics
+# engine every ROLLUP_INTERVAL_S; readers = the daily portfolio endpoints.
+# ──────────────────────────────────────────────────────────────────────
+class PortfolioDaily(Base):
+    """One row per UTC day of account history: net-liq open / close, the
+    day-over-day MTM, realised P&L of genuine closes. Rebuilt from
+    ``account_history`` + ``booked_position`` by ``persistence.rollups``."""
+    __tablename__ = "portfolio_daily"
+    __table_args__ = (UniqueConstraint("day", name="uq_portfolio_daily_day"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    net_liq_open: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    net_liq_close: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    mtm_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    realized_usd: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False, default=0)
+    n_closed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    n_samples: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    first_sample_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sample_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PnlAttributionLatest(Base):
+    """The latest per-position P&L attribution for one lookback window, as
+    the analytics engine computed it (``core.risk.attribution``). The api
+    filters / pivots the stored rows; it never recomputes on the request path
+    while a fresh row exists."""
+    __tablename__ = "pnl_attribution_latest"
+    __table_args__ = (
+        UniqueConstraint("lookback_hours", name="uq_pnl_attribution_latest_lookback"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    lookback_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    forward_source: Mapped[str] = mapped_column(String(20), nullable=False)
+    n_positions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    per_position: Mapped[list] = mapped_column(JSONB_PORTABLE, nullable=False, default=list)

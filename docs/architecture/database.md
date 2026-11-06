@@ -33,6 +33,8 @@ trade; each `trade_order` is a leg; `trade_fill` is one execution event.
 | `AccountHistory` | `account_history` | IB account snapshot (NetLiq, margin, cushion) |
 | `IbConnectionState` | `runtime_ib_session` | singleton broker connectivity row |
 | `BookStateSnapshot` | `book_state_snapshot_history` | aggregated book greeks + exposure |
+| `PortfolioDaily` | `portfolio_daily` | one row per UTC day: net-liq open/close, MTM, realised (analytics engine, every 5 min; #368) |
+| `PnlAttributionLatest` | `pnl_attribution_latest` | per-position P&L attribution per lookback window (analytics engine; the api reads one row) |
 
 ## Vol & analytics
 

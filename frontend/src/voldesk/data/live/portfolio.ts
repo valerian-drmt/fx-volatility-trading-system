@@ -330,6 +330,15 @@ export interface AttribRow {
 export interface AttribMatrix {
   rows: AttribRow[];
   totals: AttribRow; // Σ over rows per column (= the by-greek bridge)
+  /** server `computed_at` of the rollup row (#368): the badge ages from it */
+  computedAt: string | null;
+}
+
+/** epoch ms of a payload's `computed_at`, for `useFetch`'s `asOfFrom`. */
+export function computedAtMs(d: { computedAt: string | null } | null | undefined): number | null {
+  if (!d?.computedAt) return null;
+  const t = Date.parse(d.computedAt);
+  return Number.isNaN(t) ? null : t;
 }
 
 /** /portfolio/pnl-attribution?group_by= → greek-P&L × axis matrix (all $). */
@@ -337,6 +346,7 @@ export function adaptAttributionMatrix(raw: unknown): AttribMatrix {
   const o = (raw ?? {}) as {
     groups?: Record<string, number | string | null>[];
     totals?: Record<string, number | null>;
+    computed_at?: string | null;
   };
   const row = (g: Record<string, number | string | null>, label: string): AttribRow => ({
     label,
@@ -350,6 +360,7 @@ export function adaptAttributionMatrix(raw: unknown): AttribMatrix {
   return {
     rows: (o.groups ?? []).map((g) => row(g, String(g.label ?? "—"))),
     totals: row(o.totals ?? {}, "Total"),
+    computedAt: o.computed_at ?? null,
   };
 }
 
@@ -376,11 +387,12 @@ export interface PositionAttribRow {
 export interface PositionAttribMatrix {
   rows: PositionAttribRow[];
   totals: AttribRow;
+  computedAt: string | null;
 }
 
 /** /portfolio/pnl-attribution (no group_by) → per-leg attribution matrix (IB legs). */
 export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
-  const o = (raw ?? {}) as { per_position?: Record<string, unknown>[] };
+  const o = (raw ?? {}) as { per_position?: Record<string, unknown>[]; computed_at?: string | null };
   const rows: PositionAttribRow[] = (o.per_position ?? [])
     .filter((r) => r.source === "ib_live")
     .map((r) => ({
@@ -419,6 +431,7 @@ export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
       theta: s((r) => r.theta),
       residual: s((r) => r.residual),
     },
+    computedAt: o.computed_at ?? null,
   };
 }
 

@@ -15,6 +15,12 @@ the vol-engine can serve them at the edge:
 3. ``_recompute_pc3_history`` — recompute the PC3 skew/convex rolling arrays
    from the latest ≤200 surface snapshots and publish them to Redis.
 
+A second, faster loop (``ROLLUP_INTERVAL_S``, default 5 min) materialises the
+portfolio rollups the api used to compute per request (#368, hot/cold T4):
+``portfolio_daily`` (one row per UTC day of account history) and
+``pnl_attribution_latest`` (one row per lookback window). See
+``persistence.rollups``.
+
 Heartbeat is **decoupled** from the compute (db-writer split-loop idea): a
 background task pings ``heartbeat:analytics_engine`` every ~60s so the
 container reads healthy between the hourly compute cycles. Each step is
@@ -34,6 +40,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys, publisher
+from bus.spot_cache import spot_fallbacks
 from core.vol.gmm_regime import MIN_OBS_GMM, fit_gmm, serialize_gmm
 from core.vol.pca_engine import (
     DELTAS,
@@ -43,6 +50,7 @@ from core.vol.pca_engine import (
 )
 from persistence.db import get_sessionmaker
 from persistence.models import FeatureHistory, SurfaceSnapshotHourly
+from persistence.rollups import refresh_attribution, refresh_portfolio_daily
 from shared.db_events import publish_db_event
 
 logger = logging.getLogger(__name__)
@@ -57,6 +65,9 @@ DEFAULT_INTERVAL_S: int = 3600
 FEATURE_HISTORY_WINDOW_DAYS: int = 90
 # PC3 rolling window : latest N snapshots (z-score window, not the fit window).
 PC3_SNAPSHOT_LIMIT: int = 200
+# Portfolio rollups cadence (#368). 5 min keeps the daily close and the 24 h
+# attribution within one badge window of live; the endpoints read one row.
+DEFAULT_ROLLUP_INTERVAL_S: float = 300.0
 
 
 def _any_butterfly_violation(surface: dict[str, Any]) -> bool:
@@ -87,10 +98,12 @@ class AnalyticsEngine:
         symbol: str = "EURUSD",
         interval_s: int = DEFAULT_INTERVAL_S,
         sessionmaker: async_sessionmaker[AsyncSession] | None = None,
+        rollup_interval_s: float = DEFAULT_ROLLUP_INTERVAL_S,
     ) -> None:
         self.redis = redis
         self.symbol = symbol
         self.interval_s = interval_s
+        self.rollup_interval_s = rollup_interval_s
         # Injected for tests ; falls back to the process-wide async sessionmaker.
         self._sessionmaker = sessionmaker or get_sessionmaker()
         self._stop = asyncio.Event()
@@ -109,6 +122,7 @@ class AnalyticsEngine:
         heartbeat_task = asyncio.create_task(
             self._heartbeat_loop(), name="analytics_heartbeat"
         )
+        rollup_task = asyncio.create_task(self._rollup_loop(), name="analytics_rollups")
         try:
             while not self._stop.is_set():
                 # P0 obs : one cycle_id per compute run + metrics emitted.
@@ -121,11 +135,54 @@ class AnalyticsEngine:
                     continue
         finally:
             heartbeat_task.cancel()
-            try:
-                await heartbeat_task
-            except asyncio.CancelledError:
-                pass
+            rollup_task.cancel()
+            for t in (heartbeat_task, rollup_task):
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
             logger.info("analytics_engine_stopped", extra={"symbol": self.symbol})
+
+    async def _rollup_loop(self) -> None:
+        """Materialise the portfolio rollups every ``rollup_interval_s`` (#368).
+        Runs on its own cadence so a slow GMM fit never delays the daily close
+        the Portfolio tab reads; counted as an engine cycle so the stall alert
+        covers it."""
+        from shared.observability import observed_cycle
+
+        while not self._stop.is_set():
+            with observed_cycle("analytics_engine"):
+                await self.run_rollup_cycle()
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=self.rollup_interval_s)
+                break
+            except TimeoutError:
+                continue
+
+    async def run_rollup_cycle(self) -> dict[str, Any]:
+        """One pass: ``portfolio_daily`` (backfill when empty, rolling 3 days
+        after) then ``pnl_attribution_latest`` for every lookback. Each step is
+        best-effort; the summary says which ran."""
+        now = datetime.now(UTC)
+        out: dict[str, Any] = {}
+        try:
+            async with self._sessionmaker() as session:
+                out["portfolio_daily"] = await refresh_portfolio_daily(session, now=now)
+        except Exception:
+            logger.exception("analytics_rollup_daily_failed")
+            out["portfolio_daily_error"] = True
+
+        async def _fallback(cutoff: datetime) -> tuple[float | None, float | None]:
+            return await spot_fallbacks(self.redis, cutoff, self.symbol)
+
+        try:
+            async with self._sessionmaker() as session:
+                out["attribution"] = await refresh_attribution(session, now=now, spot_fallback_for=_fallback)
+        except Exception:
+            logger.exception("analytics_rollup_attribution_failed")
+            out["attribution_error"] = True
+        logger.info("analytics_rollups_done", extra={"summary": out})
+        return out
 
     async def _heartbeat_loop(self) -> None:
         """Ping ``heartbeat:analytics_engine`` every HEARTBEAT_INTERVAL_S so the
