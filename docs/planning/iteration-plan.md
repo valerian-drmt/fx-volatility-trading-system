@@ -2,13 +2,17 @@
 
 Operational plan for the open backlog: which tickets to take, in which order,
 and why. Built on 2026-11-05 from the 83 open issues on project board #5
-(12 epics, 71 work tickets). Status lives on GitHub; this file holds the
-ordering and the reasoning, and is revised at the end of every iteration.
+(12 epics, 71 work tickets). Revised on 2026-11-06: four defects seen while
+using the desk (#376 to #379) were added as a new iteration 2 and the later
+iterations renumbered. Status lives on GitHub; this file holds the ordering
+and the reasoning, and is revised at the end of every iteration.
 
 - Board: https://github.com/users/valerian-drmt/projects/5
 - Sources: the audit campaign (`docs/audits/`, label `audit`), the hot / cold
-  path programme (`docs/hot-cold-path/`, label `hot-cold-path`), and three
-  standalone tickets (#286, #287, #295).
+  path programme (`docs/hot-cold-path/`, label `hot-cold-path`), three
+  standalone tickets (#286, #287, #295), and the desk defects of 2026-11-06
+  (#376 spot order stuck, #377 cross-table figures, #378 Logs tab 503,
+  #379 Strike Δ chooser).
 
 ## How to use this file
 
@@ -26,17 +30,17 @@ ordering and the reasoning, and is revised at the end of every iteration.
 
 | Size | Engineering days | Count open | Days |
 |---|---|---|---|
-| XS | 0.25 | 6 | 1.5 |
-| S | 0.75 | 29 | 21.75 |
-| M | 2 | 30 | 60 |
+| XS | 0.25 | 7 | 1.75 |
+| S | 0.75 | 30 | 22.5 |
+| M | 2 | 32 | 64 |
 | L | 4 | 6 | 24 |
-| **Total work tickets** | | **71** | **~107** |
+| **Total work tickets** | | **75** | **~112** |
 
 One engineer plus Claude, about 3.5 focused days per week, so an iteration is
 **two weeks with about 7 engineering days**. The PR drip (2 to 3 per day) is
-never the limit: an iteration ships 6 to 10 PRs. Fifteen iterations cover the
+never the limit: an iteration ships 6 to 10 PRs. Sixteen iterations cover the
 backlog; the v1.0 release gate (`docs/audits/reports/RELEASE-GATE-v1.0.md`)
-can close after iteration 14 if nothing new is found.
+can close after iteration 15 if nothing new is found.
 
 ## Ordering rules
 
@@ -45,9 +49,15 @@ can close after iteration 14 if nothing new is found.
 2. **Enablers before the work they enable**: the test harness (#338) before the
    critical-path tests (#339); the IV lookup fix (#310) before limit
    enforcement (#315); execution publishing (#366) before the desk subscribing
-   (#367); latency metrics (#370) before any hardware decision (#374).
-3. **Visible wins early**: CPU weights (#365) and never-blank panels (#369)
-   cost a day together and change how the desk feels on day one.
+   (#367); latency metrics (#370) before any hardware decision (#374); the
+   cross-table reconciliation (#377) before the materialisation it feeds
+   (#368).
+3. **Visible wins early, defects seen in use right after the P0s**: CPU
+   weights (#365) costs half a day and changes how the desk feels on day one.
+   A defect the operator hits every day (#376 to #379) outranks a planned
+   improvement: it is a broken promise, and it is fresh, so it is cheap to
+   diagnose now. They form iteration 2 together with never-blank panels
+   (#369).
 4. **Hot path before cold path**: anything an operator waits on outranks
    anything that is merely slow.
 5. **Docs last, written against the fixed system**: the docs and release
@@ -64,7 +74,9 @@ can close after iteration 14 if nothing new is found.
 #366 T2 publish ──▶ #370 T6 metrics ──▶ #374 T10 split hosts (only if needed)
 #365 T1 weights ──▶ #371 T7 capacity dial ──▶ #372 T8 chain knob
 #329 hot-reload ──▶ #371 T7 capacity dial
-#368 T4 materialise ──▶ #373 T9 write-side ; #368 closes #286
+#377 cross-table figures ──▶ #368 T4 materialise ──▶ #373 T9 write-side ; #368 closes #286
+#379 pillar strikes (one live-anchored function) ──▶ #347 frontend truthfulness (removes DATA.SPOT)
+#376 spot order stuck ──▶ #320 order state machine (the stuck state becomes a tested transition)
 #343 restore drill ──▶ #346 runbooks
 #331 pricing into core ──▶ #309 edge cases (same kernel)
 #297, #287 secrets ──▶ password rotations (user action, recorded in #297)
@@ -72,7 +84,7 @@ can close after iteration 14 if nothing new is found.
 
 ## The iterations
 
-### Iteration 1 — Stop the bleeding (safety P0 + two visible wins)
+### Iteration 1 — Stop the bleeding (safety P0 + one visible win)
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -82,27 +94,44 @@ can close after iteration 14 if nothing new is found.
 | #319 Atomic /trade/submit and close dedup (EX-01) | M | P0, a retry can place a second live close |
 | #344 Healthchecks that assert real state | S | `/health` constant hides Postgres down |
 | #365 T1 CPU weights; retire duplicate PCA | S | visible, half a day, no dependency |
-| #369 T5 Never blank a panel | M | visible, closes the $100k-mock class of failure |
+| #310 Live IV lookup falls back to 8 %; delta hedge can never fire | M | P0, every live greek depends on it; pulled forward when #369 moved to iteration 2 |
 
 7.5 days. Exit: no secret in any log line; a restore has been run and logged;
 a timed-out close cannot be retried into a duplicate; `docker stats` shows
-analytics yielding under load; killing the api blanks no panel.
+analytics yielding under load; one IV accessor against the current schema.
 
-### Iteration 2 — Bounded action I (correct numbers, safe submits)
+### Iteration 2 — Desk defects seen in use (2026-11-06)
 
 | Ticket | Size | Why now |
 |---|---|---|
-| #310 Live IV lookup falls back to 8 %; delta hedge can never fire | M | P0, every live greek depends on it |
+| #376 Spot order never fills; `S<id>` row stuck in a waiting state | M | P1, the only spot ticket the desk has is broken; cause unknown, triage path in the issue |
+| #377 Cross-table verification: Position breakdown vs attribution by tenor vs by trade | M | three panels, three tables, no footing test; must land before #368 materialises the wrong source |
+| #379 Strike Δ button and the strike ladder disagree (live vs mock pillar strikes) | S | the trader picks 25Δ and sees the leg under 10Δ; one shared function fixes every product |
+| #378 Dev Logs tab shows a raw 503 instead of the Loki-down state; check Loki on prod | XS | dev tooling, but also a signal that Loki may be down on prod |
+| #369 T5 Never blank a panel | M | moved from iteration 1; same theme, the desk shows true values or says why not |
+
+7 days. Exit: a paper spot send reaches `filled` in the blotter without a
+reload; the three per-leg panels show the same number for the same leg and
+`as_of` (or label why not), with the invariant tested; every product's Strike
+Δ button and ladder column agree at live spot; the Logs tab says "Loki down"
+with a hint, and Loki's state on prod is known; killing the api blanks no
+panel.
+
+### Iteration 3 — Bounded action I (safe submits, test harness)
+
+| Ticket | Size | Why now |
+|---|---|---|
 | #318 Every IB submit path idempotent | M | P0, hedge / rollback / close / manual lack the claim |
-| #320 Order state machine hardening | S | unknown statuses silently dropped |
+| #320 Order state machine hardening | S | unknown statuses silently dropped; absorbs the stuck state found by #376 |
 | #322 Fill journal correctness | S | concurrent fills overwrite aggregates |
 | #338 Test harness foundations | M | enabler for every fix after this |
 
-7.5 days. Exit: one IV accessor against the current schema; every placement
-goes through `place_with_claim()`; `conftest.py` with FK-on DB fixture,
-frozen clock and payload fixtures exists.
+5.5 days, on purpose: the slack absorbs leftovers from iterations 1 and 2
+(defects found in use tend to grow once opened). Exit: every placement goes
+through `place_with_claim()`; `conftest.py` with FK-on DB fixture, frozen
+clock and payload fixtures exists.
 
-### Iteration 3 — Bounded action II (limits, kill switch, alerting)
+### Iteration 4 — Bounded action II (limits, kill switch, alerting)
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -115,7 +144,7 @@ frozen clock and payload fixtures exists.
 halt flag blocks submission and cancels working orders; an alert reaches you
 when an engine dies.
 
-### Iteration 4 — Session resilience and the push loop
+### Iteration 5 — Session resilience and the push loop
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -126,18 +155,18 @@ when an engine dies.
 6.75 days. Exit: after the 02:00 gateway restart, open orders still report
 fills; a fill reaches the Open positions table in under 2 s.
 
-### Iteration 5 — Cold path off the request path
+### Iteration 6 — Cold path off the request path
 
 | Ticket | Size | Why now |
 |---|---|---|
-| #368 T4 Materialise rollups and attribution (closes #286) | L | the last cold scans in the request path |
+| #368 T4 Materialise rollups and attribution (closes #286) | L | the last cold scans in the request path; built on the source agreed in #377 |
 | #330 History retention: no cascade on close, prune jobs resilient | S | two Blockers from the data audit |
 | #324 db-writer delivery semantics | M | real dedup keys, dead-letter, overflow metric |
 
 6.75 days. Exit: every portfolio endpoint under 100 ms on prod; closing a
 position keeps its history; a poison frame loses one row, not a batch.
 
-### Iteration 6 — Measure, then consolidate pricing
+### Iteration 7 — Measure, then consolidate pricing
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -148,7 +177,7 @@ position keeps its history; a poison frame loses one row, not a batch.
 8 days. Exit: Grafana shows click-to-ack and fill-to-screen p95; one pricer,
 equivalence test across the three former call sites; `test_bs.py:56` flipped.
 
-### Iteration 7 — Data integrity
+### Iteration 8 — Data integrity
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -160,18 +189,18 @@ equivalence test across the three former call sites; `test_bs.py:56` flipped.
 6.75 days. Exit: `alembic check` green in CI; every vol payload carries its
 age; grep finds no literal channel name outside `bus/`.
 
-### Iteration 8 — Tests and truth
+### Iteration 9 — Tests and truth
 
 | Ticket | Size | Why now |
 |---|---|---|
-| #339 Critical-path tests (fail-closed, reconciliation, writer, WS bridge) | L | the safety net for iterations 2 to 5 |
-| #347 Frontend data truthfulness | M | server timestamps, ageing clock, WS state |
+| #339 Critical-path tests (fail-closed, reconciliation, writer, WS bridge) | L | the safety net for iterations 3 to 6 |
+| #347 Frontend data truthfulness | M | server timestamps, ageing clock, WS state; inherits the live-anchored pillar function of #379 |
 | #316 VaR robustness and documentation | M | after limits exist |
 
 8 days. Exit: the seven defect-pinning tests are flipped; a badge turns stale
 on its own; VaR payloads name what they dropped.
 
-### Iteration 9 — Security hardening
+### Iteration 10 — Security hardening
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -184,7 +213,7 @@ on its own; VaR payloads name what they dropped.
 
 6.5 days. Exit: audit 01 epic shows every item applied or waived.
 
-### Iteration 10 — Config convergence and the capacity dial
+### Iteration 11 — Config convergence and the capacity dial
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -198,7 +227,7 @@ on its own; VaR payloads name what they dropped.
 7.25 days. Exit: a Settings change reaches the analytics engine within one
 cycle without a restart; history row growth halved.
 
-### Iteration 11 — Quant hardening and code hygiene
+### Iteration 12 — Quant hardening and code hygiene
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -212,7 +241,7 @@ cycle without a restart; history row growth halved.
 
 6 days. Exit: audit 02 and 06 epics mostly applied.
 
-### Iteration 12 — Supply chain
+### Iteration 13 — Supply chain
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -225,7 +254,7 @@ cycle without a restart; history row growth halved.
 7.5 days. Exit: CI and Docker install the same resolved set; the scan job
 runs weekly; a decision on ib_async is recorded.
 
-### Iteration 13 — Ops and frontend resilience
+### Iteration 14 — Ops and frontend resilience
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -240,7 +269,7 @@ runs weekly; a decision on ib_async is recorded.
 7.25 days. Exit: a rollback has been exercised; the compose e2e job hits the
 real stack.
 
-### Iteration 14 — Docs and release
+### Iteration 15 — Docs and release
 
 | Ticket | Size | Why now |
 |---|---|---|
@@ -253,7 +282,7 @@ real stack.
 6.25 days. Exit: every gate in `RELEASE-GATE-v1.0.md` is green or waived in
 its epic; v1.0 can be tagged.
 
-### Iteration 15 — Decide on hardware
+### Iteration 16 — Decide on hardware
 
 | Ticket | Size | Condition |
 |---|---|---|
@@ -275,6 +304,9 @@ and stay out of the Ready column.
 
 - End of each iteration (every second Friday): tick epics, update problem
   statuses, move leftovers, commit this file.
-- After iteration 6: re-plan iterations 7 to 15 against the fluidity panel's
+- After iteration 7: re-plan iterations 8 to 16 against the fluidity panel's
   numbers.
-- After iteration 14: walk `RELEASE-GATE-v1.0.md` gate by gate.
+- After iteration 15: walk `RELEASE-GATE-v1.0.md` gate by gate.
+- Defects found while using the desk get a ticket the same day and go into
+  the next iteration that has not started, ahead of planned improvements
+  (rule 3); if that iteration is full, its lowest-ranked ticket moves down.
