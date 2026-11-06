@@ -83,9 +83,20 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
     ivSurface: number[][];
     ivZ: number[][];
     sources: ("listed" | "interp" | "missing")[];
+    asOf?: number | null;
   }>(
-    async () => adaptSurface(await fetchVolSurface()),
+    async () => {
+      const raw = await fetchVolSurface();
+      // The server's own stamp (vol-engine cycle time): the grid's age is the
+      // age of the last complete grid, not of the last successful GET (#369).
+      const ts = (raw as { timestamp?: string | null }).timestamp;
+      const asOf = ts ? Date.parse(ts) : NaN;
+      return { ...adaptSurface(raw), asOf: Number.isFinite(asOf) ? asOf : null };
+    },
     VOL_WARN_MS,
+    true,
+    0,
+    (d) => d.asOf ?? null,
   );
   const livePca = useFetch<PcaData>(
     async () => {
@@ -183,7 +194,11 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
 
   const liveRisk = useFetch<VarData>(
     async () => {
-      const [v, rpt] = await Promise.all([fetchPortfolioVar(), fetchRiskPerTenor()]);
+      // VaR is the primary signal of the risk domain; the per-tenor read degrades
+      // on its own (#369, T5): a 500 on /portfolio/risk-per-tenor must not blank
+      // the VaR card nor flip the Risk tab to "missing".
+      const v = await fetchPortfolioVar();
+      const rpt = await fetchRiskPerTenor().catch(() => null);
       return { ...adaptVar(v), perTenor: adaptRiskPerTenor(rpt) };
     },
     PORTFOLIO_WARN_MS,

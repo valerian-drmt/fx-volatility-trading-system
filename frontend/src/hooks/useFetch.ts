@@ -4,12 +4,26 @@
  * `pollMs > 0` also re-fetches on an interval (for sources with no WS push,
  * e.g. engine heartbeats). On error the hook keeps the last-known data and
  * flags it "stale"; only when nothing ever loaded does it report "missing".
+ *
+ * Freshness AGES (#369): `status` / `ageMs` are re-derived every second from
+ * `asOf` (the server's own stamp when `asOfFrom` extracts one, else receive
+ * time), so a source that goes quiet turns stale on its own instead of
+ * keeping the badge it had at fetch time. A failed reload keeps the data and
+ * forces "stale" until the next success.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type Fresh, makeFresh } from "../voldesk/data/freshness";
+import { type Fresh, statusFor } from "../voldesk/data/freshness";
+import { useNow } from "./useNow";
 
 export interface FetchResult<T> extends Fresh<T> {
   reload: () => void;
+}
+
+interface Held<T> {
+  data: T | null;
+  asOf: number | null;
+  /** last reload failed: show stale whatever the age */
+  errored: boolean;
 }
 
 export function useFetch<T>(
@@ -17,16 +31,14 @@ export function useFetch<T>(
   warnMs: number,
   enabled = true,
   pollMs = 0,
+  asOfFrom?: (data: T) => number | null,
 ): FetchResult<T> {
-  const [state, setState] = useState<Fresh<T>>({
-    data: null,
-    status: "missing",
-    asOf: null,
-    ageMs: null,
-  });
+  const [held, setHeld] = useState<Held<T>>({ data: null, asOf: null, errored: false });
   const [tick, setTick] = useState(0);
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
+  const asOfFromRef = useRef(asOfFrom);
+  asOfFromRef.current = asOfFrom;
 
   useEffect(() => {
     if (!enabled) return;
@@ -39,7 +51,9 @@ export function useFetch<T>(
     void fetcherRef
       .current(controller.signal)
       .then((d) => {
-        if (!cancelled) setState(makeFresh<T>(d, Date.now(), warnMs));
+        if (cancelled) return;
+        const serverAsOf = asOfFromRef.current?.(d) ?? null;
+        setHeld({ data: d, asOf: Number.isFinite(serverAsOf ?? NaN) ? serverAsOf : Date.now(), errored: false });
       })
       .catch((err) => {
         // Aborted fetch: caller moved on, keep last-known state untouched.
@@ -47,11 +61,7 @@ export function useFetch<T>(
         // Transient error: keep the last-known data, flag it stale. Never blank
         // a slice that already has data — that is what used to flip views onto
         // fabricated fallbacks. No data yet → honest "missing".
-        setState((prev) =>
-          prev.data === null
-            ? { data: null, status: "missing", asOf: null, ageMs: null }
-            : { ...prev, status: "stale" },
-        );
+        setHeld((prev) => (prev.data === null ? { data: null, asOf: null, errored: false } : { ...prev, errored: true }));
       });
     return () => {
       cancelled = true;
@@ -66,5 +76,18 @@ export function useFetch<T>(
   }, [enabled, pollMs]);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
-  return { ...state, reload };
+
+  // The ageing clock only runs while there is something to age.
+  const now = useNow(held.data !== null);
+  const fresh = deriveFresh(held, warnMs, now);
+  return { ...fresh, reload };
+}
+
+/** Pure: (held data, warn window, now) → Fresh. Exported for tests. */
+export function deriveFresh<T>(held: Held<T>, warnMs: number, now: number): Fresh<T> {
+  if (held.data === null || held.asOf === null) {
+    return { data: null, status: "missing", asOf: null, ageMs: null };
+  }
+  const status = held.errored ? "stale" : statusFor(held.asOf, warnMs, now);
+  return { data: held.data, status, asOf: held.asOf, ageMs: Math.max(0, now - held.asOf) };
 }

@@ -20,7 +20,7 @@ import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
 import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
 import { groupByTradeId, structureName, structureSide } from "../components/tradeGrouping";
-import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
+import { EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
 import type { Cash } from "../data";
 import { useDeskData } from "../data/deskData";
 import {
@@ -1059,7 +1059,7 @@ export function PortfolioView(): JSX.Element {
   const a = pd?.account ?? EMPTY_ACCOUNT,
     g = pd?.greeks ?? EMPTY_GREEKS;
   // Live EURUSD spot (WS ticks) for the $→€ conversions; reference spot until a tick lands.
-  const spot = useTicks().data?.mid ?? DATA.SPOT;
+  const spot = useTicks().data?.mid ?? null; // no tick -> ratios read a dash (#369)
   // Trade open/close markers overlaid on the Performance P&L + greek charts (covers 1Y).
   const tradeMarkers =
     useFetch(() => fetchTradeMarkers(366).then(adaptTradeMarkers), 120_000, true, 60_000).data ?? [];
@@ -1101,7 +1101,7 @@ export function PortfolioView(): JSX.Element {
     buyingPower: a.buyingPower / 1e6,
   };
   // §P1 leverage unit bug: notional is in €, net liq in $ — convert to one ccy before dividing
-  const netLiqEur = a.netLiq / spot; // $ net liq → €
+  const netLiqEur = spot ? a.netLiq / spot : 0; // $ net liq -> EUR ; 0 reads as a dash below
   const grossX = netLiqEur ? (lev.gross / (netLiqEur / 1e6)).toFixed(2) : "—";
   const netX = netLiqEur ? (lev.net / (netLiqEur / 1e6)).toFixed(2) : "—";
   // §P1 unrealized single source: read the one engine (= Open positions = Risk = Close)

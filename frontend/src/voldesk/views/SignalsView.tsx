@@ -364,7 +364,21 @@ export function SignalsView(): JSX.Element {
     <div className="ts-grid">
       <div className="sig-cluster">
         <div className="sig-left">
-          <Panel title="IV surface" dataPp="iv-surface" right={<FreshBadge fresh={surface} label="" />} className="ts-curve-panel">
+          <Panel
+            title="IV surface"
+            dataPp="iv-surface"
+            right={
+              <>
+                {surface.status !== "live" && surface.asOf != null && (
+                  <span className="dim small mono" title="server stamp of the last complete grid">
+                    grid as of {new Date(surface.asOf).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}{" "}
+                  </span>
+                )}
+                <FreshBadge fresh={surface} label="" />
+              </>
+            }
+            className="ts-curve-panel"
+          >
             <IVSurfaceZ data={surface.data} />
           </Panel>
         </div>

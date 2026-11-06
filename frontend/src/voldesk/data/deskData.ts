@@ -121,6 +121,9 @@ export interface SurfaceData {
   /** Per-tenor source aligned with `tenors`: "listed" (real contract), "interp"
    * (no listed contract — IV interpolated server-side) or "missing". */
   sources?: ("listed" | "interp" | "missing")[];
+  /** Server stamp of the grid (vol-engine cycle), epoch ms; null when the
+   * payload carries none. Drives the "grid as of" label when stale (#369). */
+  asOf?: number | null;
 }
 
 /** A mode card = the mock `Pc` plus its real z trajectory (empty in mock mode). */

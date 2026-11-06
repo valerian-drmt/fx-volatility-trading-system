@@ -244,7 +244,12 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const mult = isFut ? CONTRACTS[csize]! : CONTRACTS["6E (€125k)"]!;
   // notional is sized in EUR (the 6E/M6E contracts are EUR-denominated); show its
   // USD leg too so the panel stays coherent whichever side is the call.
-  const spotMid = ((ticks.data?.bid ?? DATA.SPOT) + (ticks.data?.ask ?? DATA.SPOT)) / 2;
+  // Live mid once a tick has arrived (a stale stream keeps its last value);
+  // only a desk that never received one anchors on the preview constant, and
+  // says so next to every spot it prints (#369).
+  const ticksSeen = ticks.data != null;
+  const spotMid = ticksSeen ? ((ticks.data!.bid ?? 0) + (ticks.data!.ask ?? 0)) / 2 || DATA.SPOT : DATA.SPOT;
+  const spotNote = !ticksSeen ? "no live quote" : ticks.status !== "live" ? "stale" : "";
   const nominalEur = qty * mult;
   const nominalUsd = nominalEur * spotMid;
   // The side flips the currency legs : BUY EUR/USD = long EUR (+€) / short USD (−$) ;
@@ -601,7 +606,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
           const baseQty = Math.min(...legs.map((l) => l.qty));
           return (
             <div className="strike-ladder">
-              <div className="sl-title"><span>Legs on the smile</span><em className="unit mono">spot {spotMid.toFixed(4)}</em></div>
+              <div className="sl-title"><span>Legs on the smile</span><em className="unit mono">spot {ticksSeen ? spotMid.toFixed(4) : "\u2014"}{spotNote ? ` (${spotNote})` : ""}</em></div>
               <div className="sl-axis">
                 {PILLARS.map((p, i) => (
                   <div key={p} className="sl-col">
@@ -626,7 +631,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
       <div className="builder-block block-mkt">
         <div className="block-tag">MARKET</div>
         <div className="mkt-rows">
-          <div><span>Spot bid/ask</span><b className="mono">{(ticks.data?.bid ?? DATA.SPOT - 0.0001).toFixed(5)}/{(ticks.data?.ask ?? DATA.SPOT + 0.0001).toFixed(5)}</b></div>
+          <div><span>Spot bid/ask</span><b className="mono">{ticksSeen ? `${(ticks.data!.bid ?? 0).toFixed(5)}/${(ticks.data!.ask ?? 0).toFixed(5)}` : "\u2014 / \u2014"}{spotNote && <span className="dim small"> {spotNote}</span>}</b></div>
           {showWingSkew ? (
             <>
               <div><span>{wingLevel}c IV {tenor}</span><b className="mono">{callWingIv.toFixed(1)}%</b></div>

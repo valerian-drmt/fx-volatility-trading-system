@@ -13,7 +13,7 @@ import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
 import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
 import { TickerChart } from "../components/TickerChart";
-import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
+import { EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
 import type { Cash } from "../data";
 import { VAR_MIN_DAYS, useDeskData, useTicks } from "../data/deskData";
 import type { FreshStatus } from "../data/freshness";
@@ -146,7 +146,9 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const a = portfolio.data?.account ?? EMPTY_ACCOUNT,
     g = portfolio.data?.greeks ?? EMPTY_GREEKS;
   const events = trade.data?.events ?? [];
-  const spot = ticks.data?.mid ?? DATA.SPOT;
+  // No tick -> no spot: the $->EUR ratios read a dash and the chart draws
+  // without a last-price line, never the 1.0842 preview constant (#369).
+  const spot = ticks.data?.mid ?? null;
 
   // surface staleness — degrades the Signal card when the vol surface is down.
   const toTone = (s: FreshStatus): Status => (s === "live" ? "up" : s === "stale" ? "warn" : "down");
@@ -160,7 +162,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const positions = trade.data?.positions ?? [];
   const grossLevM = positions.reduce((s, p) => s + Math.abs(p.nominal), 0) / 1e6;
   const netLevM = Math.abs(positions.reduce((s, p) => s + (p.side === "BUY" ? p.nominal : -p.nominal), 0)) / 1e6;
-  const netLiqEurM = a.netLiq / spot / 1e6;
+  const netLiqEurM = spot ? a.netLiq / spot / 1e6 : 0;
   const grossX = netLiqEurM ? (grossLevM / netLiqEurM).toFixed(2) : "—";
   const netX = netLiqEurM ? (netLevM / netLiqEurM).toFixed(2) : "—";
   // per-window performance recap — one equity sweep over the 5 windows (the
@@ -217,7 +219,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           className="dash-card"
         >
           <div data-pp="dash-ticker">
-            <TickerChart spot={spot} events={chartEvents} height={232} />
+            <TickerChart spot={spot ?? 0} events={chartEvents} height={232} />
           </div>
           <Panel
             title="Macro events"

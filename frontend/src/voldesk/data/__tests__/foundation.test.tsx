@@ -577,6 +577,33 @@ describe("DataProvider (live-only)", () => {
     expect(screen.getByTestId("pf-wf").textContent).not.toBe("none");
   });
 
+  it("risk bundle degrades per endpoint: a 500 on risk-per-tenor keeps the VaR card (#369)", async () => {
+    server.use(
+      http.get("*/api/v1/portfolio/var", () =>
+        HttpResponse.json({ var_95_usd: -184000, var_99_usd: -312000, es_99_usd: -362000, n_days: 480 }),
+      ),
+      http.get("*/api/v1/portfolio/risk-per-tenor", () => HttpResponse.text("Internal Server Error", { status: 500 })),
+    );
+    function RiskProbe(): JSX.Element {
+      const { risk } = useDeskData();
+      return (
+        <>
+          <span data-testid="rk-v99">{risk.data?.var99 ?? "none"}</span>
+          <span data-testid="rk-status">{risk.status}</span>
+          <span data-testid="rk-tenors">{risk.data ? risk.data.perTenor.length : "none"}</span>
+        </>
+      );
+    }
+    render(
+      <DataProvider>
+        <RiskProbe />
+      </DataProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("rk-v99").textContent).toBe("-312"));
+    expect(screen.getByTestId("rk-status").textContent).toBe("live");
+    expect(screen.getByTestId("rk-tenors").textContent).toBe("0");
+  });
+
   it("live mode fetches the VaR card values ($k)", async () => {
     server.use(
       http.get("*/api/v1/portfolio/var", () =>
