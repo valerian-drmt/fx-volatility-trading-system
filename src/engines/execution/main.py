@@ -459,12 +459,14 @@ async def close_position_by_symbol(
     operator can close from the DB ``position.id`` without round-tripping
     to IB to resolve a ``conId``.
 
-    After submitting the reverse LimitOrder, immediately runs one
+    After submitting the reverse LimitOrder, SCHEDULES one
     ``sync_positions_from_ib`` cycle so a fill that lands instantly
     (paper / marketable orders) is reflected on the DB row without
-    waiting for the next 30 s background tick. If IB hasn't filled
-    yet, the row is unchanged ; the background loop continues to
-    poll and will pick up the fill when it occurs.
+    waiting for the next 30 s background tick. The sync runs after the
+    response is sent (#319, EX-01): it used to run inside the request,
+    and a slow IB round trip pushed the api past its client timeout
+    while the order was already live, which the api then stamped
+    'rejected' and let a retry close the position a second time.
     """
     payload = {
         "local_symbol": body.local_symbol,
@@ -496,20 +498,40 @@ async def close_position_by_symbol(
                          success=False, error_message=str(e)[:500])
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Best-effort immediate sync — never blocks the close response on
-    # failure. Errors are logged but don't fail the caller : the order
-    # is already in flight at IB.
-    sync_summary: dict[str, Any] = {"synced": False}
+    # Best-effort immediate sync, OFF the request path: the caller gets IB's
+    # ack now; the sync runs right after and the background loop covers it
+    # anyway. Errors are logged, never returned (CWE-209).
+    _spawn_background(_post_close_sync(sm, ex, body.local_symbol), name="post_close_sync")
+    return {**result, "post_close_sync": {"scheduled": True}}
+
+
+_BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
+
+
+def _spawn_background(coro: Any, *, name: str) -> asyncio.Task[Any]:
+    """Fire-and-forget with a strong reference (a bare create_task can be
+    garbage-collected mid-flight) and the exception logged, never lost."""
+    task = asyncio.create_task(coro, name=name)
+    _BACKGROUND_TASKS.add(task)
+
+    def _done(t: asyncio.Task[Any]) -> None:
+        _BACKGROUND_TASKS.discard(t)
+        if not t.cancelled() and t.exception() is not None:
+            logger.error("background_task_failed name=%s exc_type=%s",
+                         name, type(t.exception()).__name__)
+
+    task.add_done_callback(_done)
+    return task
+
+
+async def _post_close_sync(
+    sm: async_sessionmaker[AsyncSession], ex: OrderExecutor, local_symbol: str,
+) -> None:
     try:
         async with sm() as db:
-            sync_summary = await sync_positions_from_ib(db, ex)
-            sync_summary["synced"] = True
+            await sync_positions_from_ib(db, ex)
     except Exception:
-        # Full detail goes to the engine log only — exception text in the
-        # response would leak internals to the API client (CWE-209).
-        logger.exception("post_close_sync_failed local_symbol=%s", _scrub(body.local_symbol))
-        sync_summary = {"synced": False, "error": "position sync failed — see engine logs"}
-    return {**result, "post_close_sync": sync_summary}
+        logger.exception("post_close_sync_failed local_symbol=%s", _scrub(local_symbol))
 
 
 @router.post("/positions/sync")

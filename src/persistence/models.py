@@ -610,7 +610,11 @@ class TradeStructure(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    preview_id: Mapped[str | None] = mapped_column(String(40), ForeignKey("trade_preview.preview_id"))
+    # One structure per preview (migration 053, #319): the last line against a
+    # double submit. Closing / hedge structures carry NULL, which UNIQUE allows.
+    preview_id: Mapped[str | None] = mapped_column(
+        String(40), ForeignKey("trade_preview.preview_id"), unique=True,
+    )
     pca_signal_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("pca_signal_history.id"))
     triggering_pc: Mapped[int | None] = mapped_column(Integer)
     armed_z_score: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))

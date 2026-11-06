@@ -88,25 +88,100 @@ async def test_preview_lock_first_caller_wins(monkeypatch):
     fake = _FakeRedis()
     monkeypatch.setattr(trade_mod, "get_redis_client_or_none", lambda: fake)
     pid = "tp_xyz"
-    assert await trade_mod._acquire_preview_lock(pid) is True
-    assert await trade_mod._acquire_preview_lock(pid) is False  # NX collision
+    assert await trade_mod._acquire_preview_lock(pid) == "acquired"
+    assert await trade_mod._acquire_preview_lock(pid) == "held"  # NX collision
+    assert fake.set_calls[0]["nx"] is True and fake.set_calls[0]["ex"] == 10
 
 
-async def test_preview_lock_falls_back_when_redis_unavailable(monkeypatch):
+async def test_preview_lock_fails_closed_when_redis_unavailable(monkeypatch):
+    """No Redis client = no lock = no submit (audit 04#2, #319). The old
+    behaviour returned True here, which let a retry run the submit twice."""
     from api.routers import trade as trade_mod
 
     monkeypatch.setattr(trade_mod, "get_redis_client_or_none", lambda: None)
-    assert await trade_mod._acquire_preview_lock("tp_abc") is True
+    assert await trade_mod._acquire_preview_lock("tp_abc") == "unavailable"
 
 
-async def test_preview_lock_falls_back_when_redis_raises(monkeypatch):
+async def test_preview_lock_fails_closed_when_redis_raises(monkeypatch):
     from api.routers import trade as trade_mod
 
     monkeypatch.setattr(
         trade_mod, "get_redis_client_or_none", lambda: _FakeRedis(fail=True),
     )
-    # Failure of Redis is non-fatal — DB user_action is the source of truth.
-    assert await trade_mod._acquire_preview_lock("tp_def") is True
+    assert await trade_mod._acquire_preview_lock("tp_def") == "unavailable"
+
+
+async def test_submit_refuses_without_lock_before_touching_the_preview(monkeypatch):
+    """The handler maps 'unavailable' to a 503 and 'held' to a 409 BEFORE the
+    preview is loaded, so a lock failure never reaches the IB gate or the DB."""
+    from fastapi import HTTPException
+
+    from api.routers import trade as trade_mod
+
+    async def _unavailable(_pid, ttl_s=10):
+        return "unavailable"
+
+    async def _held(_pid, ttl_s=10):
+        return "held"
+
+    class _ExplodingDb:
+        async def execute(self, *_a, **_k):
+            raise AssertionError("preview must not be read without the lock")
+
+    body = {"preview_id": "tp_locked", "execution_mode": "mock"}
+    monkeypatch.setattr(trade_mod, "_acquire_preview_lock", _unavailable)
+    with pytest.raises(HTTPException) as e1:
+        await trade_mod._submit_preview_impl(body, _ExplodingDb())  # type: ignore[arg-type]
+    assert e1.value.status_code == 503
+    assert e1.value.detail["error"] == "submit_lock_unavailable"
+
+    monkeypatch.setattr(trade_mod, "_acquire_preview_lock", _held)
+    with pytest.raises(HTTPException) as e2:
+        await trade_mod._submit_preview_impl(body, _ExplodingDb())  # type: ignore[arg-type]
+    assert e2.value.status_code == 409
+
+
+async def test_second_structure_for_one_preview_is_refused_by_the_schema():
+    """UNIQUE trade_structure.preview_id (migration 053): the database, not the
+    application, is the last guard against a double submit."""
+    from sqlalchemy.exc import IntegrityError
+
+    from persistence.models import TradePreviewRow, TradeStructure
+
+    maker, engine = await _make_session()
+    try:
+        async with maker() as db:
+            db.add(TradePreviewRow(
+                preview_id="tp_once", expires_at=datetime.now(UTC),
+                structure_type="straddle", reference_tenor="1M",
+                structure_full_payload={}, pre_submit_checks=[],
+                state="valid_for_submit",
+            ))
+            db.add(TradeStructure(
+                preview_id="tp_once", structure_type="straddle",
+                reference_tenor="1M", base_qty=1, state="submitted",
+                execution_mode="mock",
+            ))
+            await db.commit()
+        async with maker() as db:
+            db.add(TradeStructure(
+                preview_id="tp_once", structure_type="straddle",
+                reference_tenor="1M", base_qty=1, state="submitted",
+                execution_mode="mock",
+            ))
+            with pytest.raises(IntegrityError):
+                await db.commit()
+        # NULL preview_id (closing / hedge structures) stays unrestricted.
+        async with maker() as db:
+            for _ in range(2):
+                db.add(TradeStructure(
+                    preview_id=None, structure_type="straddle",
+                    reference_tenor="1M", base_qty=1, state="submitted",
+                    execution_mode="live",
+                ))
+            await db.commit()
+    finally:
+        await engine.dispose()
 
 
 # ── G-trade.preview : free-legs path ──────────────────────────────────────

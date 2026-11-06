@@ -20,7 +20,7 @@ from __future__ import annotations
 import math
 import os
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -968,6 +968,26 @@ _MKT_CLOSE_BUFFER = float(os.getenv("MARKETABLE_LIMIT_BUFFER", "0.25"))
 # fresh close (a cancelled order's DB row isn't always flipped terminal). A real
 # option close fills in ~30 s, so 3 min is a generous ceiling.
 _INFLIGHT_CLOSE_WINDOW = timedelta(minutes=float(os.getenv("CLOSE_INFLIGHT_WINDOW_MIN", "3")))
+# Budget for the engine to ack a close at IB. The engine no longer runs its
+# position sync inside this request (#319), so an IB ack is all it waits for.
+_CLOSE_DISPATCH_TIMEOUT_S = float(os.getenv("CLOSE_DISPATCH_TIMEOUT_S", "15"))
+
+DispatchFailure = Literal["not_sent", "unknown"]
+
+
+def classify_dispatch_failure(exc: httpx.HTTPError) -> DispatchFailure:
+    """Did the close request reach the execution engine?
+
+    ``not_sent``  connect-level failure (refused, DNS, connect timeout): the
+                  engine never saw the request, nothing can be live at IB.
+    ``unknown``   anything after the connection was made (read / write / pool
+                  timeout, broken response): the engine may have placed the
+                  order. EX-01: such a close must stay in flight, never be
+                  stamped rejected (pure, tested).
+    """
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+        return "not_sent"
+    return "unknown"
 
 
 def close_inflight_remaining(
@@ -1244,15 +1264,54 @@ async def close_one_open_position(
     exec_url = os.getenv("EXECUTION_URL", "http://execution-engine:8001")
     url = f"{exec_url}/internal/positions/close-by-symbol"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=_CLOSE_DISPATCH_TIMEOUT_S) as client:
             r = await client.post(url, json=payload, headers=trace_headers())
     except httpx.HTTPError as e:
-        # Mark the closing structure as failed so the operator sees it.
-        closing_struct.state = "partial_fail"
-        closing_order.state = "rejected"
-        closing_order.rejection_text = f"execution-engine unreachable: {e}"[:300]
+        outcome = classify_dispatch_failure(e)
+        if outcome == "not_sent":
+            # The request never reached the engine: nothing is live at IB, the
+            # close is safely dead and the operator can retry.
+            closing_struct.state = "partial_fail"
+            closing_order.state = "rejected"
+            closing_order.rejection_text = f"execution-engine unreachable: {type(e).__name__}"
+            await db.commit()
+            raise HTTPException(503, detail={
+                "error": "execution_engine_unreachable",
+                "position_id": pos.id, "order_id": closing_order.id,
+                "trace_id": trace_id,
+            }) from e
+        # EX-01 (#319): the request reached the engine and the answer never
+        # came back. The order may well be live at IB. Stamping it 'rejected'
+        # here is what let a retry place a SECOND live close: the stacking
+        # guard ignores rejected rows. Keep it in flight instead: state
+        # 'submitted' + submitted_at = now, so the guard counts it for the
+        # in-flight window and the reconciler / fills handler settle it.
+        closing_order.state = "submitted"
+        closing_order.submitted_at = datetime.now(UTC)
+        db.add(TradeEvent(
+            structure_id=closing_struct.id,
+            event_type="close_dispatch_timeout",
+            severity="warning",
+            description=(
+                f"close live#{pos.id}: no answer from execution-engine within "
+                f"{_CLOSE_DISPATCH_TIMEOUT_S:.0f}s; order kept in flight, do not retry"
+            ),
+            payload={
+                "live_position_id": pos.id, "order_id": closing_order.id,
+                "exc_type": type(e).__name__, "trace_id": trace_id,
+            },
+        ))
         await db.commit()
-        raise HTTPException(503, f"execution-engine unreachable: {e}") from e
+        raise HTTPException(504, detail={
+            "error": "close_dispatch_timeout",
+            "reason": (
+                "the close reached the execution engine but its answer timed out; "
+                "the order is treated as IN FLIGHT and a retry is refused until it "
+                "settles — check the Orders blotter"
+            ),
+            "position_id": pos.id, "order_id": closing_order.id,
+            "trace_id": trace_id,
+        }) from e
     if r.status_code >= 400:
         try:
             detail = r.json().get("detail", r.text)
