@@ -155,22 +155,30 @@ jobs:
             --command-id "$cmd_id" --instance-id "$INSTANCE" \
             --query StandardOutputContent --output text
 
-      - name: "Smoke check /fx-volatility-trading-system/api/v1/health returns JSON"
+      - name: "Smoke check: the shipped sha answers /health and /health/ready is OK"
         env:
           DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
+          SHA: ${{ steps.resolve.outputs.sha }}
         run: |
-          # API now lives under the project subpath (the apex serves the CV).
-          # Assert the body is the real API JSON, not just HTTP 200: nginx's SPA
-          # fallback returns 200 text/html for any unmatched path, so a 200 alone
-          # would pass even when routing is broken (e.g. nginx not reloaded).
-          HEALTH="https://${DOMAIN}/fx-volatility-trading-system/api/v1/health"
-          for i in $(seq 1 30); do
-            body=$(curl -fsS "$HEALTH" || true)
-            case "$body" in
-              *'"status"'*) echo "OK: $body"; exit 0 ;;
+          # Two assertions, neither satisfiable by a constant (#344, OPS-12):
+          #   1. /health carries git_sha == the sha this run deployed, so an
+          #      un-swapped stack still serving the previous image fails here.
+          #   2. /health/ready is HTTP 200 with status OK, i.e. the api reaches
+          #      Postgres and Redis. nginx's SPA fallback (200 text/html for any
+          #      unmatched path) matches neither.
+          BASE="https://${DOMAIN}/fx-volatility-trading-system/api/v1"
+          for i in $(seq 1 40); do
+            live=$(curl -fsS "$BASE/health" || true)
+            ready=$(curl -fsS "$BASE/health/ready" || true)
+            case "$live" in
+              *"\"git_sha\":\"${SHA}\""*)
+                case "$ready" in
+                  *'"status":"OK"'*) echo "OK: $live"; echo "ready: $ready"; exit 0 ;;
+                esac ;;
             esac
             sleep 3
           done
-          echo "Post-deploy smoke failed — $HEALTH did not return API JSON"
-          echo "last body: ${body:-<empty>}"
+          echo "Post-deploy smoke failed — expected git_sha ${SHA} and a ready api"
+          echo "last /health: ${live:-<empty>}"
+          echo "last /health/ready: ${ready:-<empty>}"
           exit 1

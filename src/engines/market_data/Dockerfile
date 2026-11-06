@@ -29,7 +29,11 @@ RUN useradd -m -u 1001 fxvol && chown -R fxvol:fxvol /app
 USER fxvol
 
 # Healthcheck : TTL of the Redis heartbeat must be < 60s.
+# Same check as docker-compose.yml (one implementation, #344): ISO-8601
+# heartbeat younger than 60 s AND, during FX market hours, a live EURUSD tick
+# (latest_spot key present, written within 120 s). The previous inline
+# float(ts) could only fail.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD python -c "import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:market_data'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 60) else 1)"
+    CMD python -m shared.healthcheck heartbeat market_data 60 --tick EURUSD 120
 
 CMD ["python", "-m", "engines.market_data.main"]

@@ -232,13 +232,18 @@ switch ($Action) {
     }
 
     'health' {
-        $url = "https://$Domain/fx-volatility-trading-system/api/v1/health"
+        # /health/ready probes Postgres + Redis (503 when either is down) and
+        # /health carries the git_sha the image was built from (#344).
+        $base = "https://$Domain/fx-volatility-trading-system/api/v1"
+        $url = "$base/health/ready"
         Write-Step "GET $url"
         try {
+            $live = Invoke-WebRequest -Uri "$base/health" -TimeoutSec 15 -UseBasicParsing
             $resp = Invoke-WebRequest -Uri $url -TimeoutSec 15 -UseBasicParsing
             # A bare 200 also passes on the SPA fallback page — require API JSON
             # (same assert as the deploy.yml smoke step).
             if ($resp.Content -notmatch '"status"') { throw "body is not API JSON (SPA fallback?)" }
+            Write-Ok "build : $($live.Content)"
             Write-Ok "HTTP $($resp.StatusCode) : $($resp.Content)"
         } catch {
             Write-Warn "Failure : $($_.Exception.Message)"

@@ -63,6 +63,10 @@ jobs:
           context: .
           file: infrastructure/docker/api.Dockerfile
           push: true
+          # GIT_SHA is served by /api/v1/health so the deploy smoke can assert
+          # the shipped commit is the one answering (#344).
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           # `sha-<short>` for traceability + `latest` for convenience pulls.
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/fx-options-api:sha-${{ github.sha }}
