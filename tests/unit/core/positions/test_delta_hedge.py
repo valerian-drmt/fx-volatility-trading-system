@@ -87,3 +87,15 @@ def test_unknown_delta_is_not_a_flat_book():
     assert d.skip_reason == "no_delta_available"
     nan = check_delta_hedge_needed(delta_unhedged=float("nan"), threshold=0.05)
     assert nan.skip_reason == "no_delta_available"
+
+
+def test_pending_hedges_are_netted_before_the_decision():
+    """04#3 (#318): a BUY 1 future already working against a -1.4 delta leaves
+    -0.4 to decide on, below the threshold -> no second hedge."""
+    from core.positions.delta_hedge import net_pending_hedge_delta
+    assert net_pending_hedge_delta(-1.4, [("BUY", 1)]) == pytest.approx(-0.4)
+    assert net_pending_hedge_delta(2.2, [("SELL", 2)]) == pytest.approx(0.2)
+    assert net_pending_hedge_delta(-1.4, []) == pytest.approx(-1.4)
+    assert net_pending_hedge_delta(None, [("BUY", 1)]) is None
+    d = check_delta_hedge_needed(delta_unhedged=net_pending_hedge_delta(-1.4, [("BUY", 1)]), threshold=0.5)
+    assert not d.needs_hedge and d.skip_reason == "below_threshold"

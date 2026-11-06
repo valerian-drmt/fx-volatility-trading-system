@@ -364,8 +364,12 @@ class OrderExecutor:
                 return trade_to_dict(t)
         return None
 
-    async def close_position(self, con_id: int, limit_price: float) -> dict[str, Any]:
-        """Submit a reverse LimitOrder to close the position identified by `con_id`."""
+    async def close_position(
+        self, con_id: int, limit_price: float, *, order_ref: str | None = None,
+    ) -> dict[str, Any]:
+        """Submit a reverse LimitOrder to close the position identified by `con_id`.
+        ``order_ref`` (#318): the key stamped on ``Order.orderRef`` so the order can
+        be found again at IB (operator closes have no row to claim)."""
         from ib_insync import LimitOrder
 
         ib = self._ensure()
@@ -378,6 +382,8 @@ class OrderExecutor:
             raise ValueError("OpenPosition quantity is zero — nothing to close")
         side = "SELL" if target.position > 0 else "BUY"
         order = LimitOrder(side, qty, limit_price)
+        if order_ref:
+            order.orderRef = order_ref
         trade = ib.placeOrder(target.contract, order)
         return trade_to_dict(trade)
 
@@ -386,6 +392,8 @@ class OrderExecutor:
         local_symbol: str,
         qty: int | None,
         limit_price: float | None = None,
+        *,
+        order_ref: str | None = None,
     ) -> Any:
         """Submit a reverse order closing ``qty`` contracts of the live
         IB position matching ``local_symbol``.
@@ -456,6 +464,8 @@ class OrderExecutor:
             order = LimitOrder(side, close_qty, limit_price)  # future outside RTH
         else:
             order = MarketOrder(side, close_qty)               # future in RTH
+        if order_ref:
+            order.orderRef = order_ref  # durable key, matched by the reaper (#318)
         return ib.placeOrder(contract, order)
 
 

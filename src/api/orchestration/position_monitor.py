@@ -29,7 +29,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus.publisher import publish_exit_alert, publish_position_update
-from core.positions.delta_hedge import check_delta_hedge_needed
+from core.positions.delta_hedge import check_delta_hedge_needed, net_pending_hedge_delta
 from core.positions.exit_rules import (
     EXIT_RULES,
     CurrentSignal,
@@ -391,8 +391,19 @@ class PositionMonitorScheduler:
             .order_by(desc(HedgeOrder.triggered_at)).limit(1)
         )).scalar_one_or_none()
         cfg = await self._load_hedge_config(db)
+        # Net the hedges already in flight for this position (pending /
+        # submitted, not yet filled) so the same imbalance is not hedged twice
+        # while IB works the first future (#318).
+        pending_rows = (await db.execute(
+            select(HedgeOrder.side, HedgeOrder.hedge_qty)
+            .where(HedgeOrder.position_id == pos.id)
+            .where(HedgeOrder.state.in_(("pending", "submitted")))
+        )).all()
+        delta_for_decision = net_pending_hedge_delta(
+            current_delta_unhedged, [(r[0], int(r[1])) for r in pending_rows],
+        )
         decision = check_delta_hedge_needed(
-            delta_unhedged=current_delta_unhedged,  # None = unknown, never 0.0
+            delta_unhedged=delta_for_decision,  # None = unknown, never 0.0
             threshold=cfg["rebalance_threshold_delta"],
             min_hedge_qty=int(cfg["min_hedge_qty"]),
             last_hedge_at=last_hedge.triggered_at if last_hedge else None,

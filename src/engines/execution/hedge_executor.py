@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from engines.execution.placement import AlreadyClaimed, hedge_order_ref, place_with_claim
 from persistence.models import HedgeOrder
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,9 @@ _HEDGE_SECTYPE = "FUT"
 
 class HedgeSubmitError(RuntimeError):
     """Raised when /internal/hedge cannot proceed."""
+
+
+__all__ = ["AlreadyClaimed", "HedgeSubmitError", "submit_hedge_order"]
 
 
 async def submit_hedge_order(
@@ -102,10 +106,16 @@ async def submit_hedge_order(
             raise HedgeSubmitError("no valid limit price for hedge order")
 
         ib_order = LimitOrder(hedge.side, hedge.hedge_qty, lmt)
-        trade = ib.placeOrder(contract, ib_order)
-        hedge.ib_order_id = str(trade.order.orderId)
-        hedge.submitted_at = datetime.now(UTC)
-        hedge.state = "submitted"
+        # Claim the row, stamp the durable key, place, stamp the ids (#318):
+        # a replayed POST /internal/hedge can no longer place a second future.
+        # Nothing is pending on ``db`` here, so the helper's own transactions
+        # cannot block on this session.
+        trade = await place_with_claim(
+            sm=sm, model=HedgeOrder, row_id=hedge_order_id,
+            order_ref=hedge_order_ref(hedge_order_id),
+            ib=ib, contract=contract, order=ib_order,
+        )
+        await db.refresh(hedge)
 
         # Wire a single fill callback to finalise the row.
         _BG_TASKS: set[asyncio.Task] = set()
