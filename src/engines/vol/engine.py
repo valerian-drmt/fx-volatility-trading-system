@@ -55,12 +55,14 @@ PRUNE_EVERY_CYCLES = 480
 
 # Heavy hourly batch (GMM regime refit, PCA surface snapshot, PC3 rolling
 # history) was extracted to the ``analytics`` engine so it can be cpu-capped off
-# the real-time path. When "0", this engine READS the analytics engine's
-# published results (train-centrally / serve-at-the-edge : it still runs the
-# cheap per-cycle ``infer_proba`` on the live obs). Default "1" keeps the legacy
-# inline behavior for a safe staged cutover — flip to "0" once analytics is
-# verified live. Read once at import : a restart applies the change.
-_INLINE_ANALYTICS: bool = os.environ.get("VOL_INLINE_ANALYTICS", "1") != "0"
+# the real-time path. Default "0" (#365, hot/cold T1): this engine READS the
+# analytics engine's published results (train-centrally / serve-at-the-edge :
+# it still runs the cheap per-cycle ``infer_proba`` on the live obs) and no
+# longer fits GMM / writes PCA snapshots itself, so the batch runs ONCE, on the
+# capped container. "1" keeps the legacy inline path (local runs without the
+# analytics engine); it is removed by #334 once prod has run a day on "0".
+# Read once at import : a restart applies the change.
+_INLINE_ANALYTICS: bool = os.environ.get("VOL_INLINE_ANALYTICS", "0") == "1"
 DEFAULT_TENOR_T = {
     "1M": 1 / 12, "2M": 2 / 12, "3M": 3 / 12,
     "4M": 4 / 12, "5M": 5 / 12, "6M": 6 / 12,
