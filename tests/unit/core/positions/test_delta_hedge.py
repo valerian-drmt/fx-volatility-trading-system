@@ -75,3 +75,15 @@ def test_min_hedge_qty_3_skips_qty_2():
     d = check_delta_hedge_needed(delta_unhedged=2.0, threshold=0.05, min_hedge_qty=3)
     assert not d.needs_hedge
     assert d.skip_reason == "rounded_to_zero"
+
+
+def test_unknown_delta_is_not_a_flat_book():
+    """R3-02 (#310): when the live delta cannot be computed the monitor used
+    to pass 0.0, which read as 'below_threshold' and silently disabled the
+    hedge forever. None must come back as its own reason, never as a skip
+    that looks like a healthy book."""
+    d = check_delta_hedge_needed(delta_unhedged=None, threshold=0.05)
+    assert not d.needs_hedge
+    assert d.skip_reason == "no_delta_available"
+    nan = check_delta_hedge_needed(delta_unhedged=float("nan"), threshold=0.05)
+    assert nan.skip_reason == "no_delta_available"

@@ -40,6 +40,7 @@ from core.pricing.bs import (
     bs_volga,
 )
 from core.risk.greeks import bs_price_vec
+from core.vol.iv_lookup import iv_at_strike
 from persistence.models import OpenPosition, OpenPositionHistory
 from shared.contracts import INSTRUMENT_FUTURE, multiplier_for, parse_local_symbol
 
@@ -112,6 +113,7 @@ class RiskEngine:
         self._stop = asyncio.Event()
         # history-write throttle + retention bookkeeping (see module constants)
         self._cycle = 0
+        self._iv_fallback_legs = 0  # legs priced on FALLBACK_IV in the current pass (#310)
         self._cycles_since_prune = PRUNE_EVERY_CYCLES  # prune on first loop, then ~daily
 
     def request_stop(self) -> None:
@@ -188,9 +190,21 @@ class RiskEngine:
 
         with tracer.start_as_current_span("risk_compute_greeks") as span:
             positions = await self._load_positions()
+            self._iv_fallback_legs = 0
             greeks = self._aggregate_greeks(positions, F, surface)
+            # Flag, never hide: legs priced on FALLBACK_IV because the surface
+            # had no usable pillar (#310, audit 03#5). Consumers can refuse or
+            # badge the numbers; the log makes a schema drift loud.
+            greeks["iv_fallback_legs"] = self._iv_fallback_legs
+            if self._iv_fallback_legs:
+                logger.warning(
+                    "risk_iv_fallback legs=%s n_positions=%s n_pillars=%s",
+                    self._iv_fallback_legs, len(positions), len(surface),
+                )
+            self._iv_fallback_legs = 0
             pnl_curve = self._compute_pnl_curve(positions, F, surface) if positions else None
             span.set_attribute("n_positions", len(positions))
+            span.set_attribute("iv_fallback_legs", greeks["iv_fallback_legs"])
 
         # Persist per-position greeks to DB — THROTTLED: history is read only at
         # daily resolution, so snapshot every HISTORY_PERSIST_CYCLES (~30s), not
@@ -336,8 +350,8 @@ class RiskEngine:
                     volga = 0.0
                     pnl = (F - cost) * qty * mult if cost else None
                 elif right in ("C", "P") and K > 0 and T > 0:
-                    iv = self._iv_for(surface, tenor, K)
-                    if iv == FALLBACK_IV or iv is None:
+                    iv = self._iv_for(surface, tenor, K, F=F, T=T)
+                    if iv is None:
                         # Surface missing / pillar absent → invert BS on the
                         # option's market mark for an exact implied vol.
                         mark = option_marks.get(int(pos["id"]))
@@ -347,6 +361,10 @@ class RiskEngine:
                             )
                             if implied is not None:
                                 iv = implied
+                    if iv is None:
+                        # Last resort, and counted: a constant vol is a guess.
+                        self._iv_fallback_legs += 1
+                        iv = FALLBACK_IV
                     delta = qty * bs_delta(F, K, T, iv, right) * mult
                     # Γ in $/pip = (∂²P/∂F²) × qty × mult × 10⁻⁴ — answers
                     # "how much does Δ ($) move when spot moves by 1 pip".
@@ -521,21 +539,29 @@ class RiskEngine:
         except (ValueError, TypeError):
             return None
 
-    def _iv_for(self, surface: dict, tenor: str, strike: float) -> float:
-        """Pick the closest pillar's IV for a given tenor/strike — matches the
-        behaviour of the legacy ``interpolate_iv`` but against the new
-        surface shape ``{tenor: {label: {iv, strike}}}``."""
-        pillars = surface.get(tenor) if isinstance(surface, dict) else None
-        if not isinstance(pillars, dict):
+    def _iv_for(
+        self, surface: dict, tenor: str, strike: float,
+        F: float | None = None, T: float | None = None,
+    ) -> float | None:
+        """IV at (tenor, strike) from the published surface via the one core
+        accessor (linear in strike, wings clamped; a pillar without a strike
+        is placed from its delta when F and T are given). None = unavailable:
+        the caller decides what to do and COUNTS it (#310). The 8 % constant
+        is no longer handed out from here."""
+        res = iv_at_strike(surface, tenor, strike, F=F, T=T)
+        return float(res.iv) if res is not None else None
+
+    def _iv_or_fallback(
+        self, surface: dict, tenor: str, strike: float, F: float, T: float,
+    ) -> float:
+        """``_iv_for`` with the FALLBACK_IV constant when the surface has
+        nothing — counted in ``self._iv_fallback_legs`` so the cycle can
+        publish how many legs were priced on a made-up vol."""
+        iv = self._iv_for(surface, tenor, strike, F=F, T=T)
+        if iv is None:
+            self._iv_fallback_legs += 1
             return FALLBACK_IV
-        candidates = [
-            (p["strike"], p["iv"]) for p in pillars.values()
-            if isinstance(p, dict) and p.get("iv") and p.get("strike")
-        ]
-        if not candidates:
-            return FALLBACK_IV
-        _, iv = min(candidates, key=lambda k_iv: abs(k_iv[0] - strike))
-        return float(iv)
+        return iv
 
     def _aggregate_greeks(
         self, positions: list[dict], F: float, surface: dict
@@ -557,7 +583,7 @@ class RiskEngine:
             if K <= 0 or T <= 0:
                 continue
             tenor = pos.get("tenor", "1M")
-            iv = self._iv_for(surface, tenor, K)
+            iv = self._iv_or_fallback(surface, tenor, K, F, T)
             totals["delta"] += qty * bs_delta(F, K, T, iv, right)
             totals["gamma"] += qty * bs_gamma(F, K, T, iv)
             totals["vega"] += qty * bs_vega(F, K, T, iv)
@@ -584,7 +610,7 @@ class RiskEngine:
             T = float(pos.get("T") or 0)
             if K <= 0 or T <= 0:
                 continue
-            iv = self._iv_for(surface, pos.get("tenor", "1M"), K)
+            iv = self._iv_or_fallback(surface, pos.get("tenor", "1M"), K, F, T)
             prices = bs_price_vec(spots, K, T, iv, right)
             pnls += (prices - cost) * qty
         return {"spots": spots.tolist(), "pnls": pnls.tolist(), "spot": F}

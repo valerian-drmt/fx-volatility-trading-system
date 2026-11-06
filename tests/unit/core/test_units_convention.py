@@ -75,8 +75,9 @@ def _preview_surface() -> dict:
 
 
 def _scanner_surface() -> dict:
-    """Surface in the scanner format used by core.pricing.bs.interpolate_iv."""
-    return {"1M": {"sigma_ATM_pct": SIGMA * 100.0, "strike_atm": SPOT}}
+    """Surface in the PUBLISHED nested shape read by core.vol.iv_lookup (#310);
+    the flat ``sigma_ATM_pct`` scanner format is retired."""
+    return {"1M": {"atm": {"iv": SIGMA, "strike": SPOT, "source": "listed"}}}
 
 
 def _straddle():

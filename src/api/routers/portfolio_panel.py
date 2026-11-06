@@ -776,30 +776,42 @@ _LADDER_AXES: dict[str, tuple[list[int], str, str]] = {
 _OUTPUTS = ("pnl", "delta", "gamma", "vega", "theta", "vanna", "volga")
 
 
-async def _resolve_book(db: AsyncSession) -> tuple[float | None, list[dict[str, Any]]]:
-    """Resolve OPEN positions → (current_spot, baselines) for ``reval_book``.
+async def _resolve_book(
+    db: AsyncSession,
+) -> tuple[float | None, list[dict[str, Any]], str | None]:
+    """Resolve OPEN positions → (current_spot, baselines, spot_source) for
+    ``reval_book``.
 
-    Spot proxy : any FUTURE market_price, else an option strike (ATM fallback).
+    Spot proxy : any FUTURE market_price (``spot_source="future_mark"``), else
+    an option strike (``"strike_proxy"``: an ATM-ish guess that can be tens of
+    pips off; every stress / ladder number built on it is approximate, and the
+    response says so instead of hiding it — audit 03#5, #310).
     Each option baseline stores the per-unit BS ``price_base`` at current iv.
     """
     open_positions = (await db.execute(select(OpenPosition))).scalars().all()
     if not open_positions:
-        return None, []
+        return None, [], None
 
     current_spot: float | None = None
+    spot_source: str | None = None
     for p in open_positions:
         spec = parse_local_symbol(p.structure)
         if spec and spec.instrument_type == "FUTURE" and p.market_price:
             current_spot = float(p.market_price)
+            spot_source = "future_mark"
             break
     if current_spot is None:
         for p in open_positions:
             spec = parse_local_symbol(p.structure)
             if p.market_price and p.iv and spec and spec.strike:
                 current_spot = float(spec.strike)
+                spot_source = "strike_proxy"
+                logger.warning(
+                    "stress_spot_strike_proxy position_id=%s strike=%s", p.id, spec.strike,
+                )
                 break
     if current_spot is None:
-        return None, []
+        return None, [], None
 
     today = datetime.now(UTC).date()
     baselines: list[dict[str, Any]] = []
@@ -823,7 +835,7 @@ async def _resolve_book(db: AsyncSession) -> tuple[float | None, list[dict[str, 
                 "K": float(spec.strike), "T": T, "iv": iv_dec, "right": right,
                 "price_base": bs_price(current_spot, float(spec.strike), T, iv_dec, right),
             })
-    return current_spot, baselines
+    return current_spot, baselines, spot_source
 
 
 @router.get("/stress-grid")
@@ -842,9 +854,10 @@ async def stress_grid(
     if output not in _OUTPUTS:
         raise HTTPException(422, f"output must be one of {_OUTPUTS}")
     row_bins, row_kw, row_unit = _STRESS_ROW_AXES[axis]
-    current_spot, baselines = await _resolve_book(db)
+    current_spot, baselines, spot_source = await _resolve_book(db)
     base = {
         "current_spot": round(current_spot, 5) if current_spot else None,
+        "spot_source": spot_source,
         "axis": axis, "output": output,
         "spot_bins_bps": _STRESS_SPOT_BPS, "row_bins": row_bins, "row_unit": row_unit,
         "n_positions": len(baselines),
@@ -876,9 +889,10 @@ async def greeks_ladder(
     Δ/Γ/Vega revalued at that shock. ``hedge_delta_usd = −delta_usd``. The
     ``axis`` column name (``dspot_bps``/``dvol_vps``/…) reflects the chosen axis."""
     bins, kw, unit = _LADDER_AXES[axis]
-    current_spot, baselines = await _resolve_book(db)
+    current_spot, baselines, spot_source = await _resolve_book(db)
     base = {
         "current_spot": round(current_spot, 5) if current_spot else None,
+        "spot_source": spot_source,
         "axis": axis, "bins": bins, "unit": unit, "n_positions": len(baselines),
     }
     if axis == "spot":
@@ -914,7 +928,7 @@ async def vega_pca(db: DbDep) -> dict[str, Any]:
     loadings + stds then give the book's vega P&L sensitivity to each PC
     (level / slope / curvature) -- see ``core.risk.vega_pca``.
     """
-    current_spot, baselines = await _resolve_book(db)
+    current_spot, baselines, spot_source = await _resolve_book(db)
     opts = [b for b in baselines if b["type"] == "OPTION"]
     vega_cells = [0.0] * N_CELLS
     if current_spot is not None:
@@ -927,6 +941,7 @@ async def vega_pca(db: DbDep) -> dict[str, Any]:
     ).scalar_one_or_none()
     base = {
         "current_spot": round(current_spot, 5) if current_spot else None,
+        "spot_source": spot_source,
         "n_positions": len(opts),
     }
     if model is None:
@@ -1025,11 +1040,12 @@ async def var_factors(db: DbDep) -> dict[str, Any]:
     revalued via ``core.risk.var_factors`` — derived entirely from the live book
     (the shock sizes are documented desk assumptions). Empty when the book/spot is missing.
     """
-    spot, baselines = await _resolve_book(db)
+    spot, baselines, spot_source = await _resolve_book(db)
     if spot is None or not baselines:
         return {"current_spot": round(spot, 5) if spot else None, "n_positions": 0, "factors": []}
     return {
         "current_spot": round(spot, 5),
+        "spot_source": spot_source,
         "n_positions": len(baselines),
         "factors": factor_var_breakdown(baselines, spot),
     }
@@ -2102,7 +2118,7 @@ async def _hist_sim(db: AsyncSession, redis: aioredis.Redis) -> dict[str, Any] |
     Returns the portfolio P&L vector, the per-position vectors keyed by open
     position id, and scenario metadata — or ``None`` when the book or the bar
     cache is missing, i.e. when there is nothing to simulate."""
-    spot, baselines = await _resolve_book(db)
+    spot, baselines, spot_source = await _resolve_book(db)
     if spot is None or not baselines:
         return None
     shocks = market_shocks(await _daily_closes(redis))
@@ -2114,6 +2130,7 @@ async def _hist_sim(db: AsyncSession, redis: aioredis.Redis) -> dict[str, Any] |
         "by_id": {str(b["id"]): vec for b, vec in zip(baselines, by_position, strict=True)},
         "meta": {
             "current_spot": round(spot, 5),
+            "spot_source": spot_source,
             "n_positions": len(baselines),
             "n_scenarios": len(shocks),
         },

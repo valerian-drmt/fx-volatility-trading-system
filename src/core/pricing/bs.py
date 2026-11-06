@@ -113,32 +113,20 @@ def bs_implied_vol(
         return None
 
 
-def interpolate_iv(iv_surface: dict, tenor: str, strike: float, F: float) -> float | None:
-    """Get IV for a position by interpolating from the vol scanner surface.
+def interpolate_iv(
+    iv_surface: dict, tenor: str, strike: float, F: float, T: float | None = None,
+) -> float | None:
+    """IV (decimal) at ``strike`` on the published surface
+    ``{tenor: {label: {"iv": σ, "strike": K}}}`` — linear in strike between
+    the bracketing pillars, flat beyond the wings.
 
-    iv_surface: {tenor: {sigma_ATM_pct, strike_atm, iv_25dp_pct, strike_25dp, ...}}
-    Returns IV as decimal (not %).
+    Thin wrapper over :func:`core.vol.iv_lookup.iv_at_strike`, kept for the
+    existing call sites. The previous body read the retired flat schema
+    (``sigma_ATM_pct`` / ``strike_atm``) and returned None on every live
+    surface, which silently disabled live re-pricing and the delta hedge
+    (audit QM-02 / R3-02, #310).
     """
-    pillar = iv_surface.get(tenor)
-    if pillar is None:
-        return None
+    from core.vol.iv_lookup import iv_at_strike
 
-    # Build (strike, iv) pairs from the pillar
-    points = []
-    for label in ["10dp", "25dp", "atm", "25dc", "10dc"]:
-        if label == "atm":
-            k_key, iv_key = "strike_atm", "sigma_ATM_pct"
-        else:
-            k_key, iv_key = f"strike_{label}", f"iv_{label}_pct"
-        k = pillar.get(k_key)
-        iv = pillar.get(iv_key)
-        if k is not None and iv is not None:
-            points.append((k, iv / 100.0))  # convert % to decimal
-
-    if not points:
-        return None
-
-    # Find closest strike
-    points.sort(key=lambda p: p[0])
-    closest = min(points, key=lambda p: abs(p[0] - strike))
-    return closest[1]
+    res = iv_at_strike(iv_surface, tenor, strike, F=F, T=T)
+    return res.iv if res is not None else None

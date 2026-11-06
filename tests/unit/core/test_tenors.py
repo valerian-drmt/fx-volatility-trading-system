@@ -104,10 +104,27 @@ def test_to_display_surface_six_pillars_with_interp_and_source():
     assert disp["5M"]["atm"]["source"] == "listed"
     assert disp["5M"]["atm"]["strike"] is not None  # real cell kept
     assert disp["6M"]["atm"]["source"] == "interp"
-    assert disp["6M"]["atm"]["strike"] is None       # no contract → no strike
+    # No contract, but a strike per delta (held from 5M here): consumers that
+    # key on strike (risk engine, position pricing) used to drop interpolated
+    # pillars and fall back to a constant IV (#310).
+    assert disp["6M"]["atm"]["strike"] == pytest.approx(1.1)
+    assert disp["6M"]["25dc"]["strike"] == pytest.approx(1.101)
     assert disp["6M"]["atm"]["iv"] == pytest.approx(0.074)  # flat-held from 5M
     # z recomputed over the display grid
     assert "z" in disp["3M"]["atm"]
+
+
+def test_to_display_surface_interp_pillar_strike_is_linear_in_dte():
+    """Bracketed interp (no 3M listed): strike at 90 d is the DTE-weighted
+    average of the 2M and 4M strikes, per delta."""
+    raw = {
+        "1M": _raw_row(0.070), "2M": _raw_row(0.071), "4M": _raw_row(0.073), "5M": _raw_row(0.074),
+    }
+    raw["2M"]["atm"]["strike"] = 1.10
+    raw["4M"]["atm"]["strike"] = 1.12
+    disp = to_display_surface(raw)
+    assert disp["3M"]["atm"]["source"] == "interp"
+    assert disp["3M"]["atm"]["strike"] == pytest.approx(1.11)  # halfway 60 d -> 120 d
 
 
 def test_to_display_surface_omits_pillar_with_no_anchor_bracket():

@@ -60,17 +60,21 @@ def test_degenerate_inputs_return_zero():
     assert bs.bs_gamma(0.0, 1.0, 30 / 365, 0.1) == 0.0
 
 
-def test_interpolate_iv_returns_closest_strike():
+def test_interpolate_iv_interpolates_the_published_nested_surface():
+    """Published shape {tenor: {label: {iv, strike}}}, decimal IVs (#310).
+    Linear in strike between pillars (was: nearest-strike on a retired flat
+    schema, which returned None on every live surface)."""
     surface = {
         "1M": {
-            "strike_atm": 1.08, "sigma_ATM_pct": 7.5,
-            "strike_25dc": 1.09, "iv_25dc_pct": 7.8,
-            "strike_25dp": 1.07, "iv_25dp_pct": 8.1,
+            "25dp": {"iv": 0.081, "strike": 1.07},
+            "atm":  {"iv": 0.075, "strike": 1.08},
+            "25dc": {"iv": 0.078, "strike": 1.09},
         }
     }
-    # closest strike to 1.075 is 1.07 → iv 8.1 % → decimal 0.081
     iv = bs.interpolate_iv(surface, "1M", 1.075, F=1.08)
-    assert iv == pytest.approx(0.081, abs=1e-9)
+    assert iv == pytest.approx(0.078, abs=1e-9)        # midway 0.081 -> 0.075
+    assert bs.interpolate_iv(surface, "1M", 1.09, F=1.08) == pytest.approx(0.078)
+    assert bs.interpolate_iv(surface, "3M", 1.08, F=1.08) is None
 
 
 def test_d1_d2_shape_matches_textbook():
