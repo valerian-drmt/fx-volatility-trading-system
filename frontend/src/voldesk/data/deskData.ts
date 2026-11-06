@@ -4,7 +4,7 @@
  * `useDeskData()` to read each domain as `Fresh<T>` (live or mock).
  */
 import { createContext, useContext } from "react";
-import type { TickMsg } from "../../hooks/streams";
+import type { TickMsg, WsStatus } from "../../hooks/streams";
 import type { AccountState, Cash, Greeks, Limits, MacroEvent, Pc, PcaModelMeta, Position, TermPoint } from "./core";
 import type { BookComposition, PerfStats, StackItem, VegaTenor, WaterfallStep } from "./extended";
 import type { Fresh } from "./freshness";
@@ -64,6 +64,9 @@ export const VAR_MIN_DAYS = 5;
 
 export interface PortfolioData {
   account: AccountState;
+  /** The raw `/portfolio/account` payload the `account` above was adapted from;
+   * the provider re-adapts it with a pushed `latest` (#367). */
+  accountRaw: unknown;
   greeks: Greeks;
   positions: Position[];
   vegaPerTenor: VegaTenor[];
@@ -158,6 +161,14 @@ export interface DeskData {
   /** Risk : 1-day VaR card values (PR 5). Stress grids / ladders / marginal-VaR
    * / pin-risk are all live now (their own fetch hooks), not mock. */
   risk: Fresh<VarData>;
+  /** Push channels (#367): socket state per stream, shown as a chip on the
+   * panel it feeds, and the receive time of the last positions push (the
+   * Trade view reloads its structured read on it). */
+  streams: {
+    positions: WsStatus;
+    account: WsStatus;
+    positionsAsOf: number | null;
+  };
 }
 
 export const DeskDataContext = createContext<DeskData | null>(null);

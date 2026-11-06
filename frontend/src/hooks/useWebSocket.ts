@@ -1,12 +1,16 @@
 /**
  * Base WebSocket hook (R11 PR F) — auto-reconnect with exponential backoff,
  * status + receive-time tracking. Used by the voldesk live streams
- * (ticks / vol / risk / positions / orders / exit_alerts).
+ * (ticks / vol / risk / positions / account / spot_orders / orders).
  *
  * Base URL: same-origin under the deploy base in prod (Nginx) and dev (Vite
  * proxy), i.e. wss://host<base>/ws/... where <base> = import.meta.env.BASE_URL
  * (e.g. "/fx-volatility-trading-system/"). Override via VITE_WS_BASE_URL.
  * `path` = null disables the connection (mock mode).
+ *
+ * `useMultiWebSocket` (#367) keeps one socket per path for the per-structure
+ * `orders:<id>` channel; the set of paths can change between renders and only
+ * the added / removed sockets are opened / closed.
  */
 import { useEffect, useRef, useState } from "react";
 
@@ -31,6 +35,57 @@ export interface WsState<T> {
 
 const MAX_BACKOFF_MS = 15_000;
 
+interface ManagedSocket {
+  close: () => void;
+}
+
+/** One reconnecting socket. `onMessage` gets the raw text; `onStatus` the
+ * lifecycle. Returns a handle whose `close()` stops the reconnect loop. */
+export function openManagedSocket(
+  path: string,
+  onMessage: (raw: string) => void,
+  onStatus: (status: WsStatus) => void,
+): ManagedSocket {
+  let stopped = false;
+  let socket: WebSocket | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let attempt = 0;
+  const connect = (): void => {
+    if (stopped) return;
+    onStatus("connecting");
+    try {
+      socket = new WebSocket(`${wsBase()}${path}`);
+    } catch {
+      // No WebSocket constructor (SSR / a bare test runtime): stay closed.
+      onStatus("closed");
+      return;
+    }
+    socket.onopen = () => {
+      attempt = 0;
+      onStatus("open");
+    };
+    socket.onmessage = (ev: MessageEvent) => {
+      onMessage(typeof ev.data === "string" ? ev.data : "");
+    };
+    socket.onclose = () => {
+      if (stopped) return;
+      onStatus("closed");
+      const backoff = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
+      attempt += 1;
+      timer = setTimeout(connect, backoff);
+    };
+    socket.onerror = () => socket?.close();
+  };
+  connect();
+  return {
+    close: () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      socket?.close();
+    },
+  };
+}
+
 export function useWebSocket<T>(
   path: string | null,
   parse: (raw: string) => T | null = defaultParse,
@@ -51,10 +106,6 @@ export function useWebSocket<T>(
       setState({ last: null, status: "closed", asOf: null });
       return;
     }
-    let stopped = false;
-    let socket: WebSocket | null = null;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let attempt = 0;
     // Throttle buffer : keep only the latest message, flush on an interval so
     // setState (and re-render) fires at most once per `throttleMs`.
     let pending: WsState<T> | null = null;
@@ -71,40 +122,91 @@ export function useWebSocket<T>(
         }
       }, throttleMs);
     }
-
-    const connect = (): void => {
-      if (stopped) return;
-      setState((s) => ({ ...s, status: "connecting" }));
-      socket = new WebSocket(`${wsBase()}${path}`);
-      socket.onopen = () => {
-        attempt = 0;
-        setState((s) => ({ ...s, status: "open" }));
-      };
-      socket.onmessage = (ev: MessageEvent) => {
-        const raw = typeof ev.data === "string" ? ev.data : "";
+    const handle = openManagedSocket(
+      path,
+      (raw) => {
         const parsed = parseRef.current(raw);
-        if (parsed !== null) {
-          emit({ last: parsed, status: "open", asOf: Date.now() });
-        }
-      };
-      socket.onclose = () => {
-        if (stopped) return;
-        setState((s) => ({ ...s, status: "closed" }));
-        const backoff = Math.min(1000 * 2 ** attempt, MAX_BACKOFF_MS);
-        attempt += 1;
-        timer = setTimeout(connect, backoff);
-      };
-      socket.onerror = () => socket?.close();
-    };
-
-    connect();
+        if (parsed !== null) emit({ last: parsed, status: "open", asOf: Date.now() });
+      },
+      (status) => setState((s) => ({ ...s, status })),
+    );
     return () => {
-      stopped = true;
-      if (timer) clearTimeout(timer);
       if (flush) clearInterval(flush);
-      socket?.close();
+      handle.close();
     };
   }, [path, throttleMs]);
+
+  return state;
+}
+
+export interface MultiWsState<T> {
+  /** last parsed message from any of the sockets, with the path it came on */
+  last: { path: string; msg: T } | null;
+  /** "open" when every socket is open, "closed" when none is, else "connecting" */
+  status: WsStatus;
+  asOf: number | null;
+  /** number of sockets currently open */
+  nOpen: number;
+}
+
+/** One reconnecting socket per path (#367). Pass a stable, sorted list; a
+ * path that leaves the list has its socket closed, a new one is opened. */
+export function useMultiWebSocket<T>(
+  paths: readonly string[],
+  parse: (raw: string) => T | null = defaultParse,
+): MultiWsState<T> {
+  const key = paths.join("|");
+  const [state, setState] = useState<MultiWsState<T>>({ last: null, status: "closed", asOf: null, nOpen: 0 });
+  const parseRef = useRef(parse);
+  parseRef.current = parse;
+  const socketsRef = useRef<Map<string, ManagedSocket>>(new Map());
+  const statusRef = useRef<Map<string, WsStatus>>(new Map());
+
+  useEffect(() => {
+    const wanted = new Set(key ? key.split("|") : []);
+    const sockets = socketsRef.current;
+    const statuses = statusRef.current;
+    const aggregate = (): void => {
+      const all = [...statuses.values()];
+      const nOpen = all.filter((s) => s === "open").length;
+      const status: WsStatus = all.length === 0 || nOpen === 0
+        ? "closed"
+        : nOpen === all.length ? "open" : "connecting";
+      setState((s) => (s.status === status && s.nOpen === nOpen ? s : { ...s, status, nOpen }));
+    };
+    for (const [p, h] of sockets) {
+      if (!wanted.has(p)) {
+        h.close();
+        sockets.delete(p);
+        statuses.delete(p);
+      }
+    }
+    for (const p of wanted) {
+      if (sockets.has(p)) continue;
+      statuses.set(p, "connecting");
+      sockets.set(p, openManagedSocket(
+        p,
+        (raw) => {
+          const msg = parseRef.current(raw);
+          if (msg !== null) setState((s) => ({ ...s, last: { path: p, msg }, asOf: Date.now() }));
+        },
+        (st) => {
+          statuses.set(p, st);
+          aggregate();
+        },
+      ));
+    }
+    aggregate();
+  }, [key]);
+
+  // Close everything on unmount only (the path-diff effect above handles updates).
+  useEffect(() => {
+    const sockets = socketsRef.current;
+    return () => {
+      for (const h of sockets.values()) h.close();
+      sockets.clear();
+    };
+  }, []);
 
   return state;
 }

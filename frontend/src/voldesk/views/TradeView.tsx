@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Panel } from "../components/common";
 import { fmtCcySigned, gk$, pnlCls } from "../components/format";
 import { FreshBadge } from "../components/FreshBadge";
+import { WsChip } from "../components/WsChip";
 import { OpenPositionsTable, type StructureCtx } from "../components/PositionsTable";
 import { PRODUCT_NAMES, formatStructLabel } from "../components/tradeGrouping";
 import { OrderBuilder } from "../components/OrderBuilder";
@@ -21,7 +22,9 @@ import { useAuthStore } from "../../store/authStore";
 import { ApiError } from "../../api/client";
 import { cancelIbOrder, cancelTrade, closeContract, closeTrade, fetchSpotOrders, fetchStructuredPositions, fetchSubmitted, postSpotOrder, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
 import { adaptSpotOrders, spotLimitPrice } from "../data/live/spot";
+import { patchSpotOrderRows } from "../data/live/patch";
 import { useFetch } from "../../hooks/useFetch";
+import { type SpotOrderChangedMsg, useOrdersStream, useSpotOrdersStream } from "../../hooks/streams";
 
 const GATE_TITLE = "write disabled — auth required (Phase 2)";
 
@@ -786,18 +789,41 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     const t = setTimeout(() => el.classList.remove("panel-flash"), 1300);
     return () => clearTimeout(t);
   }, [closeReq]);
-  // Desk trade data (Open positions mirror + greeks/account) — polled by the
-  // provider on TRADE_POLL_MS. Grabbed here (above addOrder) so a send can force
-  // an immediate refetch of the positions panel.
-  const { trade, reloadTrade } = useDeskData();
+  // Desk trade data (Open positions mirror + greeks/account) — pushed by the
+  // execution engine, reconciled by the provider's 60 s poll (#367). Grabbed
+  // here (above addOrder) so a send can force an immediate refetch.
+  const { trade, reloadTrade, streams } = useDeskData();
   // Order blotter: persisted submitted structures from the DB (survive refresh) +
   // ephemeral session rejects (failed sends aren't persisted server-side).
-  const submitted = useFetch<SubmittedTrade[]>(() => fetchSubmitted(50), 120_000, true, 30_000);
+  // 60 s = reconciliation; the per-structure order sockets below reload it on
+  // each event for the structures still working.
+  const submitted = useFetch<SubmittedTrade[]>(() => fetchSubmitted(50), 120_000, true, 60_000);
   // Spot (CASH) orders from the cash ticket: own table, merged into the same
   // blotter so a spot send shows its IB lifecycle (submitted -> filled) and can
-  // be cancelled from here (#291).
-  const spotOrders = useFetch(() => fetchSpotOrders(30), 120_000, true, 30_000);
+  // be cancelled from here (#291). Rows are patched in place from the
+  // `spot_orders` push; the 60 s poll reconciles (#367).
+  const spotOrders = useFetch(() => fetchSpotOrders(30), 120_000, true, 60_000);
   const reloadSpot = spotOrders.reload;
+  const spotStream = useSpotOrdersStream();
+  const [spotOverlay, setSpotOverlay] = useState<{ msg: SpotOrderChangedMsg; at: number }[]>([]);
+  useEffect(() => {
+    if (spotStream.data && spotStream.asOf !== null) {
+      const entry = { msg: spotStream.data, at: spotStream.asOf };
+      setSpotOverlay((prev) => [...prev.slice(-49), entry]);
+    }
+  }, [spotStream.data, spotStream.asOf]);
+  useEffect(() => {
+    const landed = spotOrders.asOf;
+    if (landed === null) return;
+    setSpotOverlay((prev) => {
+      const kept = prev.filter((e) => e.at > landed - 3_000);
+      return kept.length === prev.length ? prev : kept;
+    });
+  }, [spotOrders.asOf]);
+  const spotRowsRaw = useMemo(
+    () => spotOverlay.reduce((acc, e) => patchSpotOrderRows(acc, e.msg), spotOrders.data),
+    [spotOrders.data, spotOverlay],
+  );
   // IB acks a spot order in well under a second and fills a marketable limit
   // within a few; re-poll on a short ladder after a send instead of waiting for
   // the 30 s cycle, then let the regular poll take over.
@@ -823,7 +849,15 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   // client-side inference of what a structure is (the broker feed never defines
   // our own booking). `structuredToRows` yields both the leg rows and the
   // per-structure context (name / N-of-M / naked).
-  const structured = useFetch<StructuredPositions>(() => fetchStructuredPositions(), 15_000, true, 30_000);
+  // 60 s = reconciliation (#367); a positions push reloads it at once, debounced
+  // so a burst of syncs (a multi-leg fill) costs one read.
+  const structured = useFetch<StructuredPositions>(() => fetchStructuredPositions(), 90_000, true, 60_000);
+  const reloadStructured = structured.reload;
+  useEffect(() => {
+    if (streams.positionsAsOf === null) return;
+    const t = setTimeout(reloadStructured, 300);
+    return () => clearTimeout(t);
+  }, [streams.positionsAsOf, reloadStructured]);
   const structRows = useMemo(() => structuredToRows(structured.data), [structured.data]);
   const structureCtx = structRows.ctx;
   const [rejects, setRejects] = useState<BlotterRow[]>([]);
@@ -909,7 +943,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
       state: leg.state,
     }));
   });
-  const spotRows: BlotterRow[] = adaptSpotOrders(spotOrders.data).map((r) => ({
+  const spotRows: BlotterRow[] = adaptSpotOrders(spotRowsRaw).map((r) => ({
     id: r.id,
     tradeTag: r.tradeTag,
     ...(r.ibOrderId != null ? { ibOrderId: r.ibOrderId } : {}),
@@ -927,6 +961,19 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     state: r.state,
     ...(r.note ? { note: r.note } : {}),
   }));
+  // Per-structure order events for the structures still working: each one
+  // reloads the blotter (debounced), so a fill shows without waiting for the poll.
+  const workingIds = useMemo(
+    () => [...new Set(dbRows.filter((r) => r.groupWaiting && r.structureId != null).map((r) => r.structureId as number))],
+    [dbRows],
+  );
+  const ordersStream = useOrdersStream(workingIds);
+  const reloadSubmitted = submitted.reload;
+  useEffect(() => {
+    if (ordersStream.asOf === null) return;
+    const t = setTimeout(reloadSubmitted, 300);
+    return () => clearTimeout(t);
+  }, [ordersStream.asOf, reloadSubmitted]);
   const orders = [...rejects, ...dbRows, ...spotRows]
     .sort((a, b) => {
       // working structures first, newest-first; a structure's legs stay together
@@ -992,7 +1039,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
           <ClosePanel req={closeReq} onDone={() => setCloseReq(null)} onOrder={addOrder} onClosing={(k) => setClosingKeys((p) => ({ ...p, [k]: Date.now() }))} positions={positions} greeks={greeks} ctx={structureCtx} />
         </Panel>
       </div>
-      <Panel title="Open positions" dataPp="trade-open" pad={false} className="trade-block open-pos-panel">
+      <Panel title="Open positions" dataPp="trade-open" pad={false} className="trade-block open-pos-panel" right={<WsChip status={streams.positions} />}>
         <OpenPositionsTable
           showGreeks={tweaks.showGreeks}
           extended={tweaks.showGreeks}
@@ -1006,7 +1053,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
           showNet={false}
         />
       </Panel>
-      <Panel title="Orders" dataPp="trade-orders" right={<FreshBadge fresh={submitted} label="from DB" />} className="trade-block" pad={false}>
+      <Panel title="Orders" dataPp="trade-orders" right={<><WsChip status={spotStream.wsStatus} /> <FreshBadge fresh={submitted} label="from DB" /></>} className="trade-block" pad={false}>
         {orders.length === 0 ? (
           <div className="dim small mono orders-empty">No submitted orders — Place order to book one (persisted in the DB).</div>
         ) : (

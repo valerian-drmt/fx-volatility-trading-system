@@ -8,7 +8,7 @@
  * yet (cold start / market closed) the domain is simply `missing`/`stale` via
  * the `Fresh<T>` contract and the views render the empty/neutral state.
  */
-import { type ReactNode, useEffect, useMemo } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   fetchConfig,
   fetchConfigHistory,
@@ -31,8 +31,17 @@ import {
   fetchVegaPerTenor,
   fetchVolSurface,
 } from "../../api/endpoints";
-import { useFetch } from "../../hooks/useFetch";
-import { type TickMsg, useRiskStream, useTicks, useVolStream } from "../../hooks/streams";
+import { type FetchResult, useFetch } from "../../hooks/useFetch";
+import {
+  type AccountSnapshotMsg,
+  type PositionsChangedMsg,
+  type TickMsg,
+  useAccountStream,
+  usePositionsStream,
+  useRiskStream,
+  useTicks,
+  useVolStream,
+} from "../../hooks/streams";
 import { deltas as DELTA_LABELS, type TermPoint } from "./core";
 import {
   type ConfigData,
@@ -48,6 +57,7 @@ import {
 } from "./deskData";
 import { type Fresh } from "./freshness";
 import { adaptConfig } from "./live/config";
+import { patchAccountRaw, patchPositions } from "./live/patch";
 import { adaptPca } from "./live/pca";
 import {
   adaptAccount as adaptPortfolioAccountSnap,
@@ -66,8 +76,13 @@ import { adaptAccount, adaptCash, adaptEvents, adaptLimits, adaptPositions, deri
 
 const SYSTEM_POLL_MS = 10_000; // engine heartbeats: no WS push → poll
 const SYSTEM_WARN_MS = 20_000;
-const TRADE_POLL_MS = 15_000; // positions mtm: snapshot + modest poll (WS in 6w)
-const TRADE_WARN_MS = 30_000;
+// Positions are PUSHED by the execution engine (#366); this poll is the
+// reconciliation, not the feed (hot/cold T3). Keep the warn window above it.
+const TRADE_POLL_MS = 60_000;
+const TRADE_WARN_MS = 90_000;
+// Pushes received in this window before a REST slice landed are kept on top
+// of it: the fetch may have read the DB before the engine's commit.
+const OVERLAP_MS = 3_000;
 const PORTFOLIO_WARN_MS = 120_000; // history-ish; light poll
 const PORTFOLIO_POLL_MS = 60_000;
 const CONFIG_WARN_MS = Number.POSITIVE_INFINITY; // config rarely changes → never "stale"
@@ -178,6 +193,7 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
       const positions = adaptPositions(pos, Date.now());
       return {
         account: adaptPortfolioAccountSnap(acct),
+        accountRaw: acct,
         greeks: deriveNetGreeks(positions),
         positions,
         vegaPerTenor: adaptVegaPerTenor(vega),
@@ -226,6 +242,52 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
   const riskBeat = useRiskStream();
   const reloadTrade = liveTrade.reload;
   const reloadPortfolio = livePortfolio.reload;
+
+  // Push channels (#367): patch the REST slices in place from the execution
+  // engine's messages. The overlay holds the pushes received since the slice
+  // last landed (plus a short overlap); each REST success resets it, so the
+  // 60 s poll stays the reconciliation and the pushes the feed.
+  const posStream = usePositionsStream();
+  const acctStream = useAccountStream();
+  const [posOverlay, setPosOverlay] = useState<{ msg: PositionsChangedMsg; at: number }[]>([]);
+  useEffect(() => {
+    if (posStream.data && posStream.asOf !== null) {
+      const entry = { msg: posStream.data, at: posStream.asOf };
+      setPosOverlay((prev) => [...prev.slice(-49), entry]);
+    }
+  }, [posStream.data, posStream.asOf]);
+  useEffect(() => {
+    const landed = liveTrade.asOf;
+    if (landed === null) return;
+    setPosOverlay((prev) => {
+      const kept = prev.filter((e) => e.at > landed - OVERLAP_MS);
+      return kept.length === prev.length ? prev : kept;
+    });
+  }, [liveTrade.asOf]);
+  const trade = useMemo<FetchResult<TradeData>>(() => {
+    const d = liveTrade.data;
+    if (!d || posOverlay.length === 0) return liveTrade;
+    const now = Date.now();
+    const positions = posOverlay.reduce((acc, e) => patchPositions(acc, e.msg, now), d.positions);
+    if (positions === d.positions) return liveTrade;
+    return { ...liveTrade, data: { ...d, positions, greeks: deriveNetGreeks(positions) } };
+  }, [liveTrade, posOverlay]);
+
+  const [acctMsg, setAcctMsg] = useState<AccountSnapshotMsg | null>(null);
+  useEffect(() => {
+    if (acctStream.data) setAcctMsg(acctStream.data);
+  }, [acctStream.data]);
+  const portfolio = useMemo<FetchResult<PortfolioData>>(() => {
+    const d = livePortfolio.data;
+    if (!d || !acctMsg) return livePortfolio;
+    const raw = patchAccountRaw(d.accountRaw, acctMsg);
+    if (raw === d.accountRaw) return livePortfolio;
+    return { ...livePortfolio, data: { ...d, accountRaw: raw, account: adaptPortfolioAccountSnap(raw) } };
+  }, [livePortfolio, acctMsg]);
+  const streams = useMemo(
+    () => ({ positions: posStream.wsStatus, account: acctStream.wsStatus, positionsAsOf: posStream.asOf }),
+    [posStream.wsStatus, acctStream.wsStatus, posStream.asOf],
+  );
   useEffect(() => {
     if (riskBeat.asOf !== null) {
       reloadTrade();
@@ -264,12 +326,13 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
       pca: livePca,
       system: liveSystem,
       config: liveConfig,
-      trade: liveTrade,
+      trade,
       reloadTrade,
-      portfolio: livePortfolio,
+      portfolio,
       risk: liveRisk,
+      streams,
     }),
-    [liveTerm, surface, livePca, liveSystem, liveConfig, liveTrade, reloadTrade, livePortfolio, liveRisk],
+    [liveTerm, surface, livePca, liveSystem, liveConfig, trade, reloadTrade, portfolio, liveRisk, streams],
   );
   return (
     <DeskDataContext.Provider value={value}>
