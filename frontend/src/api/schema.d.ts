@@ -624,7 +624,8 @@ export interface paths {
         };
         /**
          * Health
-         * @description Liveness probe — always 200 as long as the FastAPI process answers.
+         * @description Liveness probe — always 200 as long as the FastAPI process answers,
+         *     plus the build identity so a caller can tell WHICH build answers.
          */
         get: operations["health_api_v1_health_get"];
         put?: never;
@@ -644,13 +645,39 @@ export interface paths {
         };
         /**
          * Health Extended
-         * @description Readiness probe — Redis + DB + engine heartbeats. Aggregate status.
+         * @description Full readiness — Redis + DB + the six engine heartbeats + backup age.
          *
          *     Status is ``DEGRADED`` if any subsystem is not OK, else ``OK``.
          *     Redis heartbeats are the authoritative engine liveness signal
-         *     (written by the engines every ~1s via ``set_heartbeat``).
+         *     (written by the engines via ``set_heartbeat`` / the execution sync loop).
          */
         get: operations["health_extended_api_v1_health_extended_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health Ready
+         * @description Readiness probe for the api CONTAINER: its own dependencies only.
+         *
+         *     200 when Postgres and Redis answer, 503 otherwise. This is what the
+         *     Dockerfile / compose healthcheck and the deploy smoke hit (#344, OPS-12).
+         *     Engine liveness is deliberately not part of it: the core stack runs
+         *     without the engines profile, and a dead engine is the engines' problem
+         *     (see /health/extended), not a reason to pull the api from nginx.
+         */
+        get: operations["health_ready_api_v1_health_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4272,6 +4299,33 @@ export interface operations {
                         [key: string]: unknown;
                     };
                 };
+            };
+        };
+    };
+    health_ready_api_v1_health_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Postgres or Redis unreachable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

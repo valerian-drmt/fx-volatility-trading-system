@@ -25,7 +25,9 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip 
 RUN useradd -m -u 1006 fxvol && chown -R fxvol:fxvol /app
 USER fxvol
 
+# Same check as docker-compose.yml (one implementation, #344): ISO-8601
+# heartbeat younger than 300 s. The previous inline float(ts) could only fail.
 HEALTHCHECK --interval=60s --timeout=5s --start-period=240s --retries=3 \
-    CMD python -c "import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:analytics_engine'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 300) else 1)"
+    CMD python -m shared.healthcheck heartbeat analytics_engine 300
 
 CMD ["python", "-m", "engines.analytics.main"]

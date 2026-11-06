@@ -1,11 +1,24 @@
 [Unit]
 Description=FX Vol stack (docker compose)
 Requires=docker.service
+# Wants= is what pulls network-online.target into the boot transaction;
+# After= alone only orders against it if something else requested it (#344).
+Wants=network-online.target
 After=docker.service network-online.target
+
+# Boot ordering: dockerd restarts every `restart: unless-stopped` container
+# on its own, without compose's depends_on / service_healthy gates. This unit
+# then runs `compose up`, which does honour them and recreates nothing that
+# is already running with the right config. The two paths converge: nginx
+# crash-restarts until its upstreams resolve (OPS-15/20). The reboot drill
+# that measures how long convergence takes is a runbook item (#346).
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# A cold boot pulls nothing but may wait on healthchecks (ib-gateway 90 s,
+# vol-engine 240 s start_period); do not let systemd kill it at 90 s.
+TimeoutStartSec=600
 WorkingDirectory=/opt/fxvol
 EnvironmentFile=/opt/fxvol/.env
 ExecStart=/usr/bin/docker compose up -d --remove-orphans

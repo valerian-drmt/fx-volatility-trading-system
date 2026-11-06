@@ -19,6 +19,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -179,23 +180,29 @@ async def _fetch_ib_connected(db: AsyncSession) -> bool:
     return bool(row.is_connected) if row is not None else False
 
 
-async def _acquire_preview_lock(preview_id: str, ttl_s: int = 10) -> bool:
-    """Best-effort Redis lock keyed by preview_id (cf. STEP4 §7.2 decision 6).
+SubmitLockState = Literal["acquired", "held", "unavailable"]
 
-    Returns True if the lock was acquired (caller proceeds to submit), False
-    if another concurrent submit holds it. Falls back to True if Redis is
-    unavailable — lock is defense-in-depth, not the only safeguard
-    (`preview.user_action` is updated under DB transaction).
+
+async def _acquire_preview_lock(preview_id: str, ttl_s: int = 10) -> SubmitLockState:
+    """Redis ``SET NX`` lock keyed by preview_id (cf. STEP4 §7.2 decision 6).
+
+    ``acquired``    the caller proceeds to submit.
+    ``held``        another submit for this preview is in flight (409).
+    ``unavailable`` Redis is down or errored. Fail CLOSED (503): a submit
+                    without its lock is a submit that can run twice (audit 04#2,
+                    #319). The DB row lock + unique ``trade_structure.preview_id``
+                    are the second line, not a reason to let the request through.
     """
     client = get_redis_client_or_none()
     if client is None:
-        return True
+        return "unavailable"
     key = f"trade:submit_lock:{preview_id}"
     try:
         ok = await client.set(key, b"1", ex=ttl_s, nx=True)
-        return bool(ok)
     except Exception:
-        return True
+        logger.warning("trade_submit_lock_unavailable preview_id=%s", _scrub(preview_id))
+        return "unavailable"
+    return "acquired" if ok else "held"
 
 
 async def _release_preview_lock(preview_id: str) -> None:
@@ -743,6 +750,22 @@ async def submit_preview(
             _scrub(preview_id), he.status_code, _scrub(he.detail),
         )
         raise
+    except IntegrityError as exc:
+        # UNIQUE trade_structure.preview_id: a second structure for the same
+        # preview got past the Redis lock and the row lock (#319). The first
+        # submit owns the preview; this one is a duplicate, not a failure.
+        await db.rollback()
+        if preview_id:
+            await _release_preview_lock(str(preview_id))
+        logger.warning(
+            "trade_submit_duplicate preview_id=%s trace_id=%s",
+            _scrub(preview_id), current_trace_id(),
+        )
+        raise HTTPException(409, detail={
+            "error": "preview_already_submitted",
+            "reason": "a structure already exists for this preview",
+            "trace_id": current_trace_id(),
+        }) from exc
     except Exception as exc:
         if preview_id:
             await _release_preview_lock(str(preview_id))
@@ -785,14 +808,29 @@ async def _submit_preview_impl(
     if execution_mode not in ("mock", "live"):
         raise HTTPException(400, f"invalid execution_mode: {execution_mode}")
 
-    # Defense-in-depth lock to prevent double-submit (e.g. user double-clicks
-    # or retry mid-network). DB-level guard (preview.user_action) is the
-    # source of truth — this just short-circuits the duplicate request faster.
-    if not await _acquire_preview_lock(preview_id):
+    # Three guards against a double submit (double-click, client retry after a
+    # timeout, two tabs), each catching what the previous one cannot (#319):
+    #   1. Redis SET NX per preview: refuses the duplicate before any DB work.
+    #      Fail-closed: no Redis, no submit.
+    #   2. SELECT ... FOR UPDATE on the preview row: a request that got past
+    #      the lock (TTL expiry, Redis restart) waits here and then sees
+    #      user_action='submitted' in revalidate_preview().
+    #   3. UNIQUE trade_structure.preview_id: whatever slips through both
+    #      cannot persist a second structure (IntegrityError -> 409).
+    lock = await _acquire_preview_lock(preview_id)
+    if lock == "held":
         raise HTTPException(409, "submit already in progress for this preview")
+    if lock == "unavailable":
+        raise HTTPException(503, detail={
+            "error": "submit_lock_unavailable",
+            "reason": "Redis submit lock unavailable — refusing to submit without it",
+        })
 
     preview = (await db.execute(
-        select(TradePreviewRow).where(TradePreviewRow.preview_id == preview_id).limit(1)
+        select(TradePreviewRow)
+        .where(TradePreviewRow.preview_id == preview_id)
+        .with_for_update()
+        .limit(1)
     )).scalar_one_or_none()
     if preview is None:
         raise HTTPException(404, "preview not found")

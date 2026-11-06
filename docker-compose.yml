@@ -105,6 +105,15 @@ services:
       # on vol-engine. A refit re-projects the whole snapshot window, so hourly
       # refits churn pca_signal_history — keep it slow in steady state.
       PCA_REFIT_INTERVAL_HOURS: ${PCA_REFIT_INTERVAL_HOURS:-168.0}
+      # Backup freshness (#343): prod sets /state/postgres-backup.last (the
+      # stamp infrastructure/ec2/postgres_backup.sh writes after each S3
+      # upload); empty locally = no "backup" health component, no gauge.
+      BACKUP_STATE_FILE: ${BACKUP_STATE_FILE:-}
+    volumes:
+      # Host-side state, read-only: the backup stamp above. On the EC2 host
+      # ./state = /opt/fxvol/state (created by remote-deploy.sh); locally an
+      # empty gitignored dir.
+      - ./state:/state:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,9 +123,12 @@ services:
       fxvol-internal:
         ipv4_address: 172.20.0.13
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health"]
+      # Readiness (Postgres + Redis, 503 when either is down), not the constant
+      # /health: nginx's depends_on and `docker ps` then show the real state
+      # (#344, OPS-12).
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health/ready"]
       interval: 15s
-      timeout: 3s
+      timeout: 5s
       retries: 3
       start_period: 20s
 
@@ -159,13 +171,11 @@ services:
     expose:
       - "9101"
     healthcheck:
-      test:
-        - CMD-SHELL
-        # The heartbeat is written in ISO-8601 by bus.publisher.set_heartbeat
-        # (cf. src/bus/publisher.py). float(ts) on an ISO string crashes —
-        # we parse via datetime.fromisoformat. Max age 60s = 60x the push
-        # cadence (~1s).
-        - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:market_data'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 60 else 1)\""
+      # One implementation shared with the image HEALTHCHECK (shared.healthcheck,
+      # #344): heartbeat younger than 60 s (60x the ~1 s push cadence) and,
+      # during FX market hours, a live EURUSD tick written within 120 s —
+      # alive AND producing data, which is what the watchdog needs to know.
+      test: ["CMD", "python", "-m", "shared.healthcheck", "heartbeat", "market_data", "60", "--tick", "EURUSD", "120"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -232,12 +242,9 @@ services:
     expose:
       - "9102"
     healthcheck:
-      test:
-        - CMD-SHELL
-        # ISO-8601 heartbeat — cf. the market-data healthcheck above.
-        # Max age 300s because vol-engine cycle = 30s + 2-5s of GARCH/SVI
-        # compute = ~5min tolerated without a push.
-        - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:vol_engine'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 300 else 1)\""
+      # shared.healthcheck (#344). Max age 300 s because vol-engine cycle =
+      # 30 s + 2-5 s of GARCH/SVI compute = ~5 min tolerated without a push.
+      test: ["CMD", "python", "-m", "shared.healthcheck", "heartbeat", "vol_engine", "300"]
       interval: 60s
       timeout: 5s
       retries: 3
@@ -283,10 +290,8 @@ services:
     expose:
       - "9103"
     healthcheck:
-      test:
-        - CMD-SHELL
-        # Heartbeat ISO-8601 — cf. healthcheck market-data ci-dessus.
-        - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:risk_engine'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 30 else 1)\""
+      # shared.healthcheck (#344): heartbeat younger than 30 s.
+      test: ["CMD", "python", "-m", "shared.healthcheck", "heartbeat", "risk_engine", "30"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -317,10 +322,10 @@ services:
     expose:
       - "9105"
     healthcheck:
-      test:
-        - CMD-SHELL
-        # Heartbeat ISO-8601 — cf. healthcheck market-data ci-dessus.
-        - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:db_writer'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 30 else 1)\""
+      # shared.healthcheck (#344): heartbeat younger than 30 s. db-writer
+      # suppresses its heartbeat while its subscriber is down, so this check
+      # already reflects work, not just a loop.
+      test: ["CMD", "python", "-m", "shared.healthcheck", "heartbeat", "db_writer", "30"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -368,11 +373,9 @@ services:
     expose:
       - "9106"
     healthcheck:
-      test:
-        - CMD-SHELL
-        # Compute is hourly but a decoupled loop ticks the heartbeat every 60s,
-        # so age stays < 120s. 300s tolerance mirrors the other engines.
-        - "python -c \"import redis, os, sys; from datetime import datetime, timezone; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:analytics_engine'); ts_dt = datetime.fromisoformat(ts.decode().replace('Z', '+00:00')) if ts else None; age = (datetime.now(timezone.utc) - ts_dt).total_seconds() if ts_dt else 999; sys.exit(0 if age < 300 else 1)\""
+      # shared.healthcheck (#344). Compute is hourly but a decoupled loop ticks
+      # the heartbeat every 60 s, so age stays < 120 s; 300 s tolerance.
+      test: ["CMD", "python", "-m", "shared.healthcheck", "heartbeat", "analytics_engine", "300"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -440,6 +443,8 @@ services:
     expose:
       - "9104"
     healthcheck:
+      # /health answers 503 when IB is not connected or the position-sync loop
+      # has stopped ticking (#344): unhealthy means it, not "the process is up".
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8001/health"]
       interval: 15s
       timeout: 3s

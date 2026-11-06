@@ -38,9 +38,18 @@ RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip 
 
 COPY scripts/ ./scripts/
 
+# Build identity surfaced by GET /api/v1/health (#344): the deploy smoke
+# asserts the sha it just shipped is the one answering. build.yml passes it;
+# a local build reports "unknown".
+ARG GIT_SHA=unknown
+ENV GIT_SHA=${GIT_SHA}
+
 EXPOSE 8000
 
-HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8000/api/v1/health || exit 1
+# Readiness, not liveness: /health/ready probes Postgres and Redis and answers
+# 503 when either is down, so nginx's depends_on and the orchestrator see the
+# api's real state (#344, OPS-12). /health stays the constant liveness probe.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8000/api/v1/health/ready || exit 1
 
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

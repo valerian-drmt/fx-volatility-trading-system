@@ -120,19 +120,15 @@ certbot renew --quiet --deploy-hook "docker compose -f /opt/fxvol/docker-compose
 CRON
 
 echo "[setup] nightly Postgres backup to S3 (instance role, SSE-S3)"
-install -m 0755 /dev/stdin /etc/cron.daily/fxvol-postgres-backup <<'CRON'
+# Thin wrapper: the real script ships in the deploy payload
+# ($APP_DIR/infrastructure/ec2/postgres_backup.sh) and remote-deploy.sh
+# re-installs this wrapper on every deploy, so the backup logic is versioned
+# with the stack instead of frozen at first boot (#343). /bin/sh, not exec:
+# the tarball payload does not always preserve the execute bit.
+install -m 0755 /dev/stdin /etc/cron.daily/fxvol-postgres-backup <<CRON
 #!/bin/sh
-set -eu
-# Credentials: EC2 instance role (s3:PutObject on fxvol-backups/*). No env
-# file, no static keys. Restore procedure: infrastructure/ec2/RESTORE.md.
-ts=$(date -u +%Y%m%dT%H%M%SZ)
-tmp="/tmp/fxvol-$ts.dump"
-docker compose -f /opt/fxvol/docker-compose.yml exec -T postgres \
-    pg_dump -U fxvol -Fc --if-exists --clean fxvol > "$tmp"
-# Refuse to upload an implausibly small dump (schema-only is tens of KB).
-[ "$(wc -c < "$tmp")" -gt 10240 ] || { echo "dump too small, aborting" >&2; rm -f "$tmp"; exit 1; }
-aws s3 cp "$tmp" "s3://fxvol-backups/postgres/fxvol-$ts.dump" --sse AES256 --region eu-west-1
-rm -f "$tmp"
+# Managed by infrastructure/ec2/setup.sh + remote-deploy.sh — do not edit by hand.
+exec /bin/sh $APP_DIR/infrastructure/ec2/postgres_backup.sh >> /var/log/fxvol-postgres-backup.log 2>&1
 CRON
 
 echo "[setup] IB gateway nightly-reset watchdog (cron.d, every 2 min)"

@@ -120,7 +120,10 @@ trader place paper orders.
 fresh Ubuntu host (idempotent): Docker + compose, json-file log rotation, the
 overlay2 image store (needed for cAdvisor), a 2G swapfile, ufw allowing only
 80/443 (admin is SSM-only, port 22 stays closed), the `fxvol-compose` systemd unit,
-a daily certbot renewal cron, and a nightly `pg_dump` to `s3://fxvol-backups/`.
+a daily certbot renewal cron, and a nightly `pg_dump` to `s3://fxvol-backups/`
+(`infrastructure/ec2/postgres_backup.sh`, re-installed by every deploy; its
+freshness stamp feeds `/health/extended` and `fxvol_postgres_backup_age_seconds`,
+see `infrastructure/ec2/RESTORE.md` §5).
 
 ## Rollback
 

@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -241,14 +242,52 @@ async def _trace_middleware(request: Request, call_next):
         clear_trace_id()
 
 
+# The container healthcheck hits /health. It used to answer 200 with
+# ib_connected=false in the body (audit OPS-14 / 08#2): the value was computed
+# and ignored. Now: 503 when IB is not connected or the position-sync loop has
+# not ticked within MAX_SYNC_AGE_S, so `docker ps`, the watchdog and compose
+# see the engine's real state (#344).
+_MAX_SYNC_AGE_S = float(os.getenv("EXECUTION_MAX_SYNC_AGE_S", str(max(120.0, 10 * SYNC_INTERVAL_S))))
+
+
+async def _sync_heartbeat_age_s(redis: aioredis.Redis | None) -> float | None:
+    """Age of ``heartbeat:execution`` (written by position_sync_loop), None if unknown."""
+    if redis is None:
+        return None
+    try:
+        raw = await asyncio.wait_for(redis.get("heartbeat:execution"), 2.0)
+    except Exception:
+        return None
+    if not raw:
+        return None
+    text = raw.decode() if isinstance(raw, bytes) else str(raw)
+    try:
+        ts = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return max(0.0, (datetime.now(UTC) - ts).total_seconds())
+
+
 @app.get("/health")
-async def health(request: Request) -> dict[str, Any]:
+async def health(request: Request) -> Any:
     ex: OrderExecutor = request.app.state.executor
-    return {
-        "status": "OK",
-        "ib_connected": ex.is_connected(),
+    ib_ok = ex.is_connected()
+    sync_age = await _sync_heartbeat_age_s(getattr(request.app.state, "redis", None))
+    # No Redis handle at all (tests / degraded boot): the IB socket is the only
+    # thing we can assert. With Redis, the sync loop must be ticking too.
+    sync_ok = sync_age is not None and sync_age <= _MAX_SYNC_AGE_S
+    if getattr(request.app.state, "redis", None) is None:
+        sync_ok = True
+    body = {
+        "status": "OK" if (ib_ok and sync_ok) else "DEGRADED",
+        "ib_connected": ib_ok,
+        "sync_age_s": None if sync_age is None else round(sync_age, 1),
+        "max_sync_age_s": _MAX_SYNC_AGE_S,
         "sync_interval_s": SYNC_INTERVAL_S,
     }
+    if body["status"] != "OK":
+        return JSONResponse(body, status_code=503)
+    return body
 
 
 # --- Audit helpers ---------------------------------------------------------
@@ -459,12 +498,14 @@ async def close_position_by_symbol(
     operator can close from the DB ``position.id`` without round-tripping
     to IB to resolve a ``conId``.
 
-    After submitting the reverse LimitOrder, immediately runs one
+    After submitting the reverse LimitOrder, SCHEDULES one
     ``sync_positions_from_ib`` cycle so a fill that lands instantly
     (paper / marketable orders) is reflected on the DB row without
-    waiting for the next 30 s background tick. If IB hasn't filled
-    yet, the row is unchanged ; the background loop continues to
-    poll and will pick up the fill when it occurs.
+    waiting for the next 30 s background tick. The sync runs after the
+    response is sent (#319, EX-01): it used to run inside the request,
+    and a slow IB round trip pushed the api past its client timeout
+    while the order was already live, which the api then stamped
+    'rejected' and let a retry close the position a second time.
     """
     payload = {
         "local_symbol": body.local_symbol,
@@ -496,20 +537,40 @@ async def close_position_by_symbol(
                          success=False, error_message=str(e)[:500])
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    # Best-effort immediate sync — never blocks the close response on
-    # failure. Errors are logged but don't fail the caller : the order
-    # is already in flight at IB.
-    sync_summary: dict[str, Any] = {"synced": False}
+    # Best-effort immediate sync, OFF the request path: the caller gets IB's
+    # ack now; the sync runs right after and the background loop covers it
+    # anyway. Errors are logged, never returned (CWE-209).
+    _spawn_background(_post_close_sync(sm, ex, body.local_symbol), name="post_close_sync")
+    return {**result, "post_close_sync": {"scheduled": True}}
+
+
+_BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
+
+
+def _spawn_background(coro: Any, *, name: str) -> asyncio.Task[Any]:
+    """Fire-and-forget with a strong reference (a bare create_task can be
+    garbage-collected mid-flight) and the exception logged, never lost."""
+    task = asyncio.create_task(coro, name=name)
+    _BACKGROUND_TASKS.add(task)
+
+    def _done(t: asyncio.Task[Any]) -> None:
+        _BACKGROUND_TASKS.discard(t)
+        if not t.cancelled() and t.exception() is not None:
+            logger.error("background_task_failed name=%s exc_type=%s",
+                         name, type(t.exception()).__name__)
+
+    task.add_done_callback(_done)
+    return task
+
+
+async def _post_close_sync(
+    sm: async_sessionmaker[AsyncSession], ex: OrderExecutor, local_symbol: str,
+) -> None:
     try:
         async with sm() as db:
-            sync_summary = await sync_positions_from_ib(db, ex)
-            sync_summary["synced"] = True
+            await sync_positions_from_ib(db, ex)
     except Exception:
-        # Full detail goes to the engine log only — exception text in the
-        # response would leak internals to the API client (CWE-209).
-        logger.exception("post_close_sync_failed local_symbol=%s", _scrub(body.local_symbol))
-        sync_summary = {"synced": False, "error": "position sync failed — see engine logs"}
-    return {**result, "post_close_sync": sync_summary}
+        logger.exception("post_close_sync_failed local_symbol=%s", _scrub(local_symbol))
 
 
 @router.post("/positions/sync")

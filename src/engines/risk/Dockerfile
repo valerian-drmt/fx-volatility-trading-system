@@ -25,7 +25,9 @@ RUN useradd -m -u 1003 fxvol && chown -R fxvol:fxvol /app
 USER fxvol
 
 # 2s cycle cadence — heartbeat TTL 30s tolerates one missed cycle.
+# Same check as docker-compose.yml (one implementation, #344): ISO-8601
+# heartbeat younger than 30 s. The previous inline float(ts) could only fail.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-    CMD python -c "import redis, os, time; r = redis.Redis.from_url(os.environ['REDIS_URL']); ts = r.get('heartbeat:risk_engine'); import sys; sys.exit(0 if (ts and time.time() - float(ts) < 30) else 1)"
+    CMD python -m shared.healthcheck heartbeat risk_engine 30
 
 CMD ["python", "-m", "engines.risk.main"]
