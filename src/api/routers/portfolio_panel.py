@@ -905,7 +905,8 @@ async def greeks_ladder(
     rows: list[dict[str, Any]] = []
     for b in bins:
         kwargs = {kw: float(b)}
-        delta = reval_book(baselines, current_spot, output="delta", **kwargs)
+        # reval_book's delta is EUR-equivalent exposure; × spot = USD (#313).
+        delta = reval_book(baselines, current_spot, output="delta", **kwargs) * current_spot
         row = {
             "axis_value": b,
             "pnl_usd": round(reval_book(baselines, current_spot, output="pnl", **kwargs), 2),
@@ -1513,12 +1514,13 @@ async def pnl_attribution(
             spot_then=spot_then_u,
             iv_now=iv_now_u,
             iv_then=iv_then_u,
-            delta=float(r.delta_now) if r.delta_now is not None else None,
+            # delta_usd is USD exposure (delta_eur × F, #313): ∂V/∂F = delta_usd / F.
+            delta=(float(r.delta_now) / spot_now_u) if (r.delta_now is not None and spot_now_u) else None,
             gamma=gamma_u,
             vega=vega_u,
             theta=theta_u,
             t_then=r.t_then,
-            delta_then=float(r.delta_then) if r.delta_then is not None else None,
+            delta_then=(float(r.delta_then) / spot_then_u) if (r.delta_then is not None and spot_then_u) else None,
             gamma_then=gamma_then_u,
             vega_then=vega_then_u,
             theta_then=theta_then_u,

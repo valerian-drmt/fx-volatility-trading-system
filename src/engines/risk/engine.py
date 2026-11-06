@@ -30,15 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys, publisher
 from core.pricing.bs import (
-    bs_delta,
-    bs_gamma,
     bs_implied_vol,
     bs_price,
-    bs_theta,
-    bs_vanna,
-    bs_vega,
-    bs_volga,
 )
+from core.risk.greek_scaling import future_greeks, option_greeks, sum_greeks
 from core.risk.greeks import bs_price_vec
 from core.vol.iv_lookup import iv_at_strike
 from persistence.models import OpenPosition, OpenPositionHistory
@@ -342,12 +337,9 @@ class RiskEngine:
 
                 vanna = volga = None
                 if instr == INSTRUMENT_FUTURE:
-                    delta = qty * mult
-                    gamma = 0.0
-                    vega = 0.0
-                    theta = 0.0
-                    vanna = 0.0
-                    volga = 0.0
+                    g = future_greeks(qty, mult, F)
+                    delta, gamma, vega, theta = g.delta_usd, 0.0, 0.0, 0.0
+                    vanna = volga = 0.0
                     pnl = (F - cost) * qty * mult if cost else None
                 elif right in ("C", "P") and K > 0 and T > 0:
                     iv = self._iv_for(surface, tenor, K, F=F, T=T)
@@ -365,17 +357,15 @@ class RiskEngine:
                         # Last resort, and counted: a constant vol is a guess.
                         self._iv_fallback_legs += 1
                         iv = FALLBACK_IV
-                    delta = qty * bs_delta(F, K, T, iv, right) * mult
-                    # Γ in $/pip = (∂²P/∂F²) × qty × mult × 10⁻⁴ — answers
-                    # "how much does Δ ($) move when spot moves by 1 pip".
-                    gamma = qty * bs_gamma(F, K, T, iv) * mult * 1e-4
-                    # bs_vega is per 1.0 abs vol → /100 for per 1 vol pt.
-                    vega = qty * bs_vega(F, K, T, iv) * mult * 0.01
-                    theta = qty * bs_theta(F, K, T, iv, right) * mult
-                    # Vanna in $/volpt = ∂Δ/∂σ × qty × mult × 0.01.
-                    vanna = qty * bs_vanna(F, K, T, iv) * mult * 0.01
-                    # Volga in $/volpt² = ∂²P/∂σ² × qty × mult × (0.01)².
-                    volga = qty * bs_volga(F, K, T, iv) * mult * (0.01 ** 2)
+                    # One scaling path with the published aggregate (#313):
+                    # delta_usd is USD exposure (EUR exposure × spot), gamma
+                    # $/pip, vega $/vol pt, theta $/day, vanna $/vol pt,
+                    # volga $/vol pt². docs/vol-modeling/units.md.
+                    g = option_greeks(qty=qty, mult=mult, F=F, K=K, T=T, iv=iv, right=right)
+                    delta, gamma, vega, theta = (
+                        g.delta_usd, g.gamma_usd_per_pip, g.vega_usd_per_volpt, g.theta_usd_per_day,
+                    )
+                    vanna, volga = g.vanna_usd_per_volpt, g.volga_usd_per_volpt2
                     mark_bs = bs_price(F, K, T, iv, right)
                     pnl = (mark_bs - cost) * qty * mult if cost else None
 
@@ -566,30 +556,47 @@ class RiskEngine:
     def _aggregate_greeks(
         self, positions: list[dict], F: float, surface: dict
     ) -> dict[str, float]:
-        totals = {"delta": 0.0, "gamma": 0.0, "vega": 0.0, "theta": 0.0}
+        """Book-level greeks for ``risk_update`` / ``latest_greeks:portfolio``:
+        the SUM of the per-position greeks the snapshot path persists, same
+        helper, same units (#313, R3-07): delta in USD (``delta_eur`` alongside),
+        gamma $/pip, vega $/vol pt, theta $/day, vanna $/vol pt, volga $/vol pt².
+        ``n_positions`` / ``n_priced`` say how much of the book the numbers cover."""
+        items = []
+        n_positions = 0
         for pos in positions:
+            n_positions += 1
             right = pos.get("option_type") or pos.get("right")
-            if right not in ("C", "P"):
-                # Futures contribute 1 per unit of delta, others skipped here.
-                # NB: positions carry the canonical "FUTURE" (shared.contracts),
-                # not the IB secType "FUT" — comparing against "FUT" silently
-                # zeroed every futures delta.
-                if pos.get("instrument_type") == INSTRUMENT_FUTURE:
-                    totals["delta"] += float(pos.get("quantity", 0))
-                continue
+            instr = pos.get("instrument_type")
             qty = float(pos.get("quantity", 0))
+            # NB: positions carry the canonical "FUTURE" (shared.contracts),
+            # not the IB secType "FUT" — comparing against "FUT" silently
+            # zeroed every futures delta.
+            mult = float(pos.get("multiplier") or multiplier_for(pos.get("symbol")))
+            if instr == INSTRUMENT_FUTURE:
+                items.append(future_greeks(qty, mult, F))
+                continue
+            if right not in ("C", "P"):
+                continue
             K = float(pos.get("strike") or 0)
             T = float(pos.get("T") or 0)
             if K <= 0 or T <= 0:
                 continue
-            tenor = pos.get("tenor", "1M")
-            iv = self._iv_or_fallback(surface, tenor, K, F, T)
-            totals["delta"] += qty * bs_delta(F, K, T, iv, right)
-            totals["gamma"] += qty * bs_gamma(F, K, T, iv)
-            totals["vega"] += qty * bs_vega(F, K, T, iv)
-            totals["theta"] += qty * bs_theta(F, K, T, iv, right)
-        totals["spot"] = F
-        return totals
+            iv = self._iv_or_fallback(surface, pos.get("tenor", "1M"), K, F, T)
+            items.append(option_greeks(qty=qty, mult=mult, F=F, K=K, T=T, iv=iv, right=right))
+        s = sum_greeks(items)
+        return {
+            "delta": s.delta_usd,
+            "delta_eur": s.delta_eur,
+            "gamma": s.gamma_usd_per_pip,
+            "vega": s.vega_usd_per_volpt,
+            "theta": s.theta_usd_per_day,
+            "vanna": s.vanna_usd_per_volpt,
+            "volga": s.volga_usd_per_volpt2,
+            "spot": F,
+            "n_positions": n_positions,
+            "n_priced": len(items),
+            "units": "delta USD, delta_eur EUR, gamma $/pip, vega $/volpt, theta $/day, vanna $/volpt, volga $/volpt2",
+        }
 
     def _compute_pnl_curve(
         self, positions: list[dict], F: float, surface: dict
