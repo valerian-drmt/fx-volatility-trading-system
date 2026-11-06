@@ -628,6 +628,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./obs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./obs/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prom_data:/prometheus
     command:
       # Retention is env-tunable because the same file serves a 16 GB laptop
@@ -648,6 +649,36 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # Alert router (#342): Prometheus rules (obs/alerts.yml) -> SNS fxvol-alarms
+  # (email). Signs with the EC2 instance role through IMDS; locally the send
+  # fails harmlessly and the UI on :9093 still shows the alerts.
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: fxvol-alertmanager
+    profiles: ["obs", "metrics"]
+    mem_limit: 64m
+    cpu_shares: 128
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--data.retention=120h'
+    environment:
+      AWS_REGION: ${AWS_REGION:-eu-west-1}
+    volumes:
+      - ./obs/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    networks:
+      - fxvol-internal
+    expose:
+      - "9093"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9093/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # Per-container CPU/RAM/net/fs metrics → scraped by Prometheus. The standard
   # way to graph "how much does each container consume" (locally + on EC2).
@@ -869,6 +900,7 @@ volumes:
   # P1 obs — LGTM stack persistent storage.
   prom_data:
   loki_data:
+  alertmanager_data:
   grafana_data:
   # P2 obs — Tempo traces storage (7 days retention).
   tempo_data:

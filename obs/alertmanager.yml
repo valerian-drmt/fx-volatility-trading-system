@@ -1,0 +1,43 @@
+# Alertmanager (#342): Prometheus alerts -> SNS topic fxvol-alarms (its email
+# subscription is already confirmed). Credentials come from the EC2 instance
+# role through IMDS (the container reaches 169.254.169.254; the instance's
+# metadata hop limit must be >= 2, see docs/ops/alerting.md) and the role
+# needs sns:Publish on the topic (infrastructure/aws/host-additions.json).
+# Locally there is no role: alerts show in the Alertmanager UI (:9093) and
+# the SNS send fails harmlessly.
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: sns-alarms
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  # critical re-notifies every 4 h while firing, warning once a day
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="warning"]
+      repeat_interval: 24h
+
+inhibit_rules:
+  # a down engine is noise once the host disk is critical / the api is down
+  - source_matchers: [alertname="DiskUsageCritical"]
+    target_matchers: [alertname=~"EngineDown|ApiDown|EngineCycleStalled|DbWriterLag"]
+  - source_matchers: [alertname="DiskUsageCritical"]
+    target_matchers: [alertname="DiskUsageHigh"]
+
+receivers:
+  - name: sns-alarms
+    sns_configs:
+      - topic_arn: arn:aws:sns:eu-west-1:552269855056:fxvol-alarms
+        sigv4:
+          region: eu-west-1
+        subject: '[fxvol {{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+        message: |
+          {{ range .Alerts }}{{ .Labels.severity | toUpper }} {{ .Labels.alertname }}{{ if .Labels.instance }} ({{ .Labels.instance }}){{ end }}{{ if .Labels.name }} ({{ .Labels.name }}){{ end }}
+          {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          since {{ .StartsAt.Format "2006-01-02 15:04 UTC" }}
+
+          {{ end }}
+        send_resolved: true

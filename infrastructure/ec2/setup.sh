@@ -131,6 +131,31 @@ install -m 0755 /dev/stdin /etc/cron.daily/fxvol-postgres-backup <<CRON
 exec /bin/sh $APP_DIR/infrastructure/ec2/postgres_backup.sh >> /var/log/fxvol-postgres-backup.log 2>&1
 CRON
 
+echo "[setup] logrotate + journald cap + hourly disk guard (#342)"
+install -m 0644 /dev/stdin /etc/logrotate.d/fxvol <<'ROT'
+/var/log/fxvol-*.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+ROT
+mkdir -p /etc/systemd/journald.conf.d
+install -m 0644 /dev/stdin /etc/systemd/journald.conf.d/fxvol.conf <<'JRN'
+[Journal]
+SystemMaxUse=200M
+MaxRetentionSec=14day
+JRN
+systemctl restart systemd-journald 2>/dev/null || true
+install -m 0755 /dev/stdin /etc/cron.hourly/fxvol-disk-check <<'CRON'
+#!/bin/sh
+# Managed by infrastructure/ec2/setup.sh + remote-deploy.sh — do not edit by hand.
+exec /bin/sh /opt/fxvol/infrastructure/ec2/disk_check.sh >> /var/log/fxvol-disk-check.log 2>&1
+CRON
+
 echo "[setup] IB gateway nightly-reset watchdog (cron.d, every 2 min)"
 # The gateway's 23:59 IBC auto-restart can drop the IBKR upstream while the
 # socat port stays up; the engines then hang unhealthy and Docker won't restart

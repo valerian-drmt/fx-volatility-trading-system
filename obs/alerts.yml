@@ -1,0 +1,112 @@
+# Prometheus alert rules (#342, audit 08#13). Evaluated by the obs-profile
+# Prometheus, routed by Alertmanager to the SNS topic fxvol-alarms (email).
+# Metric names: src/shared/observability.py (engines), cAdvisor (containers),
+# src/api/routers/health.py (backup age). Runbook: docs/ops/alerting.md.
+groups:
+  - name: fxvol-trading-core
+    rules:
+      # A scrape target that disappears = the container is down or crash-looping
+      # (Docker restarts an exited container; `up` flips 0/1 while it does).
+      - alert: EngineDown
+        expr: up{job="engines"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.instance }} not scraped for 2 min"
+          description: "The container is down or restarting. `docker ps`, `docker logs <name> --tail 100` on the host."
+
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "api /metrics not scraped for 2 min"
+          description: "nginx will answer 502. Check `docker logs fxvol-api` and /health/ready."
+
+      # Alive but not working: the cycle loop stopped (IB hang, deadlock).
+      # Thresholds = the container healthchecks (docker-compose.yml).
+      - alert: EngineCycleStalled
+        expr: |
+          (time() - engine_last_cycle_timestamp_seconds{engine=~"market_data|risk_engine|execution_engine"} > 120)
+          or (time() - engine_last_cycle_timestamp_seconds{engine=~"vol_engine|analytics_engine|db_writer"} > 600)
+        for: 3m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.engine }} has not completed a cycle"
+          description: "Heartbeat only proves the loop is scheduled; this proves it finished. See the IB watchdog log if IB-bound."
+
+      - alert: IBSessionDown
+        expr: min(ib_session_connected) == 0
+        for: 3m
+        labels: {severity: critical}
+        annotations:
+          summary: "an engine's IB API session is disconnected"
+          description: "Nightly IBC restart lasts ~2 min; longer = gateway dead, competing login, or 2FA. docs/execution/ib-integration.md."
+
+      # Crash loop: a container restarted 3+ times in 15 min.
+      - alert: ContainerCrashLoop
+        expr: changes(container_start_time_seconds{name=~"fxvol-.+"}[15m]) >= 3
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.name }} restarted {{ $value }} times in 15 min"
+          description: "OOM (check `docker inspect --format '{{.State.OOMKilled}}'`) or a boot error in `docker logs`."
+
+      # db-writer: cycles stop when its Redis subscriber is down; frames published
+      # meanwhile are lost (docs/ops/redis-durability.md). Tighter than the
+      # generic stall rule because the loss is silent.
+      - alert: DbWriterLag
+        expr: time() - engine_last_cycle_timestamp_seconds{engine="db_writer"} > 180
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "db-writer has not written for 3 min"
+          description: "Streamed history rows are being dropped. Check Redis and `docker logs fxvol-db-writer`."
+
+  - name: fxvol-host
+    rules:
+      # Root filesystem as cAdvisor sees it (id="/" = the host). Disk fills were
+      # the cause of the 2026-07 deploy stalls (images accumulated).
+      - alert: DiskUsageHigh
+        expr: |
+          container_fs_usage_bytes{id="/"} / container_fs_limit_bytes{id="/"} > 0.80
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "host disk above 80 %"
+          description: "`docker system df`, `docker image prune -af`, `journalctl --disk-usage`. Deploys stall past ~95 %."
+
+      - alert: DiskUsageCritical
+        expr: |
+          container_fs_usage_bytes{id="/"} / container_fs_limit_bytes{id="/"} > 0.90
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "host disk above 90 %"
+          description: "Next deploy will fail. Prune now."
+
+      # 26 h = nightly cron + slack (same threshold as /health/extended backup).
+      - alert: BackupStale
+        expr: fxvol_postgres_backup_age_seconds > 93600
+        for: 30m
+        labels: {severity: critical}
+        annotations:
+          summary: "last Postgres backup older than 26 h"
+          description: "Cron /etc/cron.daily/fxvol-postgres-backup did not succeed. `tail /var/log/fxvol-postgres-backup.log`. RESTORE.md §5."
+
+      - alert: BackupSignalMissing
+        expr: absent(fxvol_postgres_backup_age_seconds)
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "no backup-age metric at all"
+          description: "api not scraped or BACKUP_STATE_FILE unset on this deployment."
+
+      - alert: MemoryNearLimit
+        expr: |
+          container_memory_working_set_bytes{name=~"fxvol-.+"} / container_spec_memory_limit_bytes{name=~"fxvol-.+"} > 0.90
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.name }} above 90 % of its memory cap"
+          description: "An OOM kill follows. Raise the cap in docker-compose.yml or find the leak."
