@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="420" viewBox="0 0 1100 420" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="420" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#5b6676"/></marker>
+  </defs>
+  <text x="550" y="28" text-anchor="middle" font-size="16" font-weight="bold" fill="#1d2430">Task dependency map: four tasks start now, the rest follow what they need</text>
+
+  <!-- columns: now (x=60), after (x=400), later (x=740) -->
+  <text x="150" y="58" text-anchor="middle" fill="#5b6676" font-size="11" font-weight="bold">START NOW</text>
+  <text x="490" y="58" text-anchor="middle" fill="#5b6676" font-size="11" font-weight="bold">AFTER A DEPENDENCY</text>
+  <text x="830" y="58" text-anchor="middle" fill="#5b6676" font-size="11" font-weight="bold">LATER / IF NEEDED</text>
+  <line x1="320" y1="50" x2="320" y2="400" stroke="#d8dde6" stroke-dasharray="4 4"/>
+  <line x1="660" y1="50" x2="660" y2="400" stroke="#d8dde6" stroke-dasharray="4 4"/>
+
+  <!-- START NOW -->
+  <rect x="60" y="80" width="180" height="50" rx="4" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="150" y="100" text-anchor="middle" font-weight="bold" fill="#1d2430">T1 CPU weights</text>
+  <text x="150" y="117" text-anchor="middle" fill="#5b6676" font-size="11">+ retire duplicate PCA · 0.5 d</text>
+
+  <rect x="60" y="150" width="180" height="50" rx="4" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="150" y="170" text-anchor="middle" font-weight="bold" fill="#1d2430">T2 execution publishes</text>
+  <text x="150" y="187" text-anchor="middle" fill="#5b6676" font-size="11">positions · account · 1 d</text>
+
+  <rect x="60" y="220" width="180" height="50" rx="4" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="150" y="240" text-anchor="middle" font-weight="bold" fill="#1d2430">T4 materialise rollups</text>
+  <text x="150" y="257" text-anchor="middle" fill="#5b6676" font-size="11">analytics writes, api reads · 3 d</text>
+
+  <rect x="60" y="290" width="180" height="50" rx="4" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="150" y="310" text-anchor="middle" font-weight="bold" fill="#1d2430">T5 never blank a panel</text>
+  <text x="150" y="327" text-anchor="middle" fill="#5b6676" font-size="11">ageing freshness · no mock · 2 d</text>
+
+  <!-- AFTER -->
+  <rect x="400" y="115" width="180" height="50" rx="4" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="490" y="135" text-anchor="middle" font-weight="bold" fill="#1d2430">T3 desk subscribes</text>
+  <text x="490" y="152" text-anchor="middle" fill="#5b6676" font-size="11">WS positions/orders/account · 2 d</text>
+
+  <rect x="400" y="185" width="180" height="50" rx="4" fill="#ffffff" stroke="#5b6676"/>
+  <text x="490" y="205" text-anchor="middle" font-weight="bold" fill="#1d2430">T6 latency metrics</text>
+  <text x="490" y="222" text-anchor="middle" fill="#5b6676" font-size="11">histograms + Grafana panel · 1.5 d</text>
+
+  <rect x="400" y="255" width="180" height="50" rx="4" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="490" y="275" text-anchor="middle" font-weight="bold" fill="#1d2430">T9 write-side hygiene</text>
+  <text x="490" y="292" text-anchor="middle" fill="#5b6676" font-size="11">history cadence · retention · 1 d</text>
+
+  <rect x="400" y="325" width="180" height="50" rx="4" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="490" y="345" text-anchor="middle" font-weight="bold" fill="#1d2430">T7 capacity dial</text>
+  <text x="490" y="362" text-anchor="middle" fill="#5b6676" font-size="11">Settings · hot-reload (#329) · 2 d</text>
+
+  <!-- LATER -->
+  <rect x="740" y="325" width="180" height="50" rx="4" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="830" y="345" text-anchor="middle" font-weight="bold" fill="#1d2430">T8 chain knob</text>
+  <text x="830" y="362" text-anchor="middle" fill="#5b6676" font-size="11">strikes per side · 0.5 d</text>
+
+  <rect x="740" y="185" width="180" height="50" rx="4" fill="#ffffff" stroke="#5b6676"/>
+  <text x="830" y="205" text-anchor="middle" font-weight="bold" fill="#1d2430">T10 split hosts</text>
+  <text x="830" y="222" text-anchor="middle" fill="#5b6676" font-size="11">only if T6 misses the target · 2 d</text>
+
+  <!-- edges -->
+  <g stroke="#5b6676" stroke-width="1.2" fill="none">
+    <line x1="240" y1="175" x2="400" y2="140" marker-end="url(#a)"/>
+    <line x1="240" y1="180" x2="400" y2="205" marker-end="url(#a)"/>
+    <line x1="240" y1="245" x2="400" y2="278" marker-end="url(#a)"/>
+    <line x1="240" y1="105" x2="400" y2="345" marker-end="url(#a)"/>
+    <line x1="580" y1="350" x2="740" y2="350" marker-end="url(#a)"/>
+    <line x1="580" y1="210" x2="740" y2="210" marker-end="url(#a)"/>
+  </g>
+  <text x="330" y="150" fill="#5b6676" font-size="10">T2 → T3</text>
+  <text x="330" y="200" fill="#5b6676" font-size="10">T2 → T6 (fill ts)</text>
+  <text x="330" y="268" fill="#5b6676" font-size="10">T4 → T9</text>
+  <text x="300" y="240" fill="#5b6676" font-size="10" transform="rotate(49 300 240)">T1 → T7</text>
+  <text x="660" y="342" text-anchor="middle" fill="#5b6676" font-size="10">same dial</text>
+  <text x="660" y="202" text-anchor="middle" fill="#5b6676" font-size="10">T6 numbers decide</text>
+
+  <text x="550" y="405" text-anchor="middle" fill="#5b6676" font-size="11">Orange: hot-path tasks the operator feels directly. Blue: cold-path tasks that remove pressure. White: measurement and infrastructure.</text>
+</svg>

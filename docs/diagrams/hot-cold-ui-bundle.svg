@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="400" viewBox="0 0 1100 400" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="400" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#5b6676"/></marker>
+  </defs>
+  <text x="550" y="28" text-anchor="middle" font-size="16" font-weight="bold" fill="#1d2430">The portfolio bundle: one cold failure must not take the hot panel down</text>
+
+  <!-- BEFORE -->
+  <rect x="30" y="50" width="500" height="330" rx="4" fill="none" stroke="#b02a37" stroke-dasharray="6 4"/>
+  <text x="42" y="70" fill="#b02a37" font-size="11" font-weight="bold">BEFORE PR #289 · one Promise.all over six endpoints</text>
+  <g stroke-width="1">
+    <rect x="50" y="90" width="130" height="26" rx="3" fill="#fbe3d6" stroke="#d9480f"/><text x="115" y="107" text-anchor="middle" fill="#1d2430">account 200</text>
+    <rect x="50" y="124" width="130" height="26" rx="3" fill="#fbe3d6" stroke="#d9480f"/><text x="115" y="141" text-anchor="middle" fill="#1d2430">positions 200</text>
+    <rect x="50" y="158" width="130" height="26" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/><text x="115" y="175" text-anchor="middle" fill="#1d2430">vega-per-tenor 200</text>
+    <rect x="50" y="192" width="130" height="26" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/><text x="115" y="209" text-anchor="middle" fill="#1d2430">stats 200</text>
+    <rect x="50" y="226" width="130" height="26" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/><text x="115" y="243" text-anchor="middle" fill="#1d2430">daily-pnl 200</text>
+    <rect x="50" y="260" width="130" height="26" rx="3" fill="#f8d7da" stroke="#b02a37"/><text x="115" y="277" text-anchor="middle" fill="#1d2430">attribution 500 (20 s)</text>
+  </g>
+  <g stroke="#5b6676" stroke-width="1.2">
+    <line x1="180" y1="103" x2="270" y2="185" marker-end="url(#a)"/><line x1="180" y1="137" x2="270" y2="185" marker-end="url(#a)"/><line x1="180" y1="171" x2="270" y2="185" marker-end="url(#a)"/>
+    <line x1="180" y1="205" x2="270" y2="185" marker-end="url(#a)"/><line x1="180" y1="239" x2="270" y2="185" marker-end="url(#a)"/><line x1="180" y1="273" x2="270" y2="185" marker-end="url(#a)"/>
+  </g>
+  <polygon points="275,160 345,160 365,185 345,210 275,210 255,185" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="310" y="189" text-anchor="middle" fill="#1d2430" font-size="11">all reject</text>
+  <line x1="365" y1="185" x2="400" y2="185" stroke="#5b6676" stroke-width="1.2" marker-end="url(#a)"/>
+  <rect x="400" y="150" width="120" height="70" rx="3" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="460" y="172" text-anchor="middle" fill="#1d2430" font-size="11">portfolio.data = null</text>
+  <text x="460" y="188" text-anchor="middle" fill="#1d2430" font-size="11">Trade tab falls back to</text>
+  <text x="460" y="204" text-anchor="middle" fill="#1d2430" font-size="11">$100,000 / $0 mock</text>
+  <text x="280" y="340" text-anchor="middle" fill="#5b6676" font-size="11">Observed 5 Nov 2026: real Cash holdings below, mock Cash &amp; margin above.</text>
+
+  <!-- AFTER -->
+  <rect x="570" y="50" width="500" height="330" rx="4" fill="none" stroke="#146c43" stroke-dasharray="6 4"/>
+  <text x="582" y="70" fill="#146c43" font-size="11" font-weight="bold">AFTER PR #289 · primary reads + degradable secondaries</text>
+  <g>
+    <rect x="590" y="90" width="130" height="26" rx="3" fill="#fbe3d6" stroke="#d9480f"/><text x="655" y="107" text-anchor="middle" fill="#1d2430">account 200</text>
+    <rect x="590" y="124" width="130" height="26" rx="3" fill="#fbe3d6" stroke="#d9480f"/><text x="655" y="141" text-anchor="middle" fill="#1d2430">positions 200</text>
+    <rect x="590" y="192" width="130" height="26" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/><text x="655" y="209" text-anchor="middle" fill="#1d2430">vega-per-tenor 200</text>
+    <rect x="590" y="226" width="130" height="26" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/><text x="655" y="243" text-anchor="middle" fill="#1d2430">stats 200</text>
+    <rect x="590" y="260" width="130" height="26" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/><text x="655" y="277" text-anchor="middle" fill="#1d2430">daily-pnl 200</text>
+    <rect x="590" y="294" width="130" height="26" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/><text x="655" y="311" text-anchor="middle" fill="#1d2430">attribution 500 → null</text>
+  </g>
+  <g stroke="#5b6676" stroke-width="1.2">
+    <line x1="720" y1="103" x2="800" y2="120" marker-end="url(#a)"/><line x1="720" y1="137" x2="800" y2="120" marker-end="url(#a)"/>
+    <line x1="720" y1="205" x2="800" y2="255" marker-end="url(#a)"/><line x1="720" y1="239" x2="800" y2="255" marker-end="url(#a)"/><line x1="720" y1="273" x2="800" y2="255" marker-end="url(#a)"/><line x1="720" y1="307" x2="800" y2="255" marker-end="url(#a)"/>
+  </g>
+  <polygon points="805,95 885,95 905,120 885,145 805,145 785,120" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="845" y="124" text-anchor="middle" fill="#1d2430" font-size="11">primary all()</text>
+  <polygon points="805,230 885,230 905,255 885,280 805,280 785,255" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="845" y="251" text-anchor="middle" fill="#1d2430" font-size="11">each .catch</text>
+  <text x="845" y="265" text-anchor="middle" fill="#1d2430" font-size="11">(() =&gt; null)</text>
+  <line x1="905" y1="120" x2="940" y2="170" stroke="#5b6676" stroke-width="1.2" marker-end="url(#a)"/>
+  <line x1="905" y1="255" x2="940" y2="205" stroke="#5b6676" stroke-width="1.2" marker-end="url(#a)"/>
+  <rect x="940" y="150" width="120" height="76" rx="3" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="1000" y="172" text-anchor="middle" fill="#1d2430" font-size="11">account panel live</text>
+  <text x="1000" y="188" text-anchor="middle" fill="#1d2430" font-size="11">waterfall shows its</text>
+  <text x="1000" y="204" text-anchor="middle" fill="#1d2430" font-size="11">neutral shape + badge</text>
+  <text x="820" y="340" text-anchor="middle" fill="#5b6676" font-size="11">Same pattern the trade bundle already used; still to apply to the risk bundle.</text>
+</svg>

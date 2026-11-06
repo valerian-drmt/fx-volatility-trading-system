@@ -22,6 +22,21 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [architecture/data-flow.md](architecture/data-flow.md) | The live path: IB → engines → Redis pub/sub + cache → db-writer → Postgres; api reads DB + Redis; frontend via REST + WS. |
 | [architecture/frontend.md](architecture/frontend.md) | The voldesk React app: 7 views, zustand stores, the typed OpenAPI client, WS hooks, the `/dev` console. |
 | [architecture/database.md](architecture/database.md) | The Postgres schema: 27 ORM classes grouped by domain, Alembic flow, `VolConfig` versioning. |
+| [architecture/hot-cold-paths.md](architecture/hot-cold-paths.md) | Hot path (orders, fills, positions, account) vs cold path (surface, PCA, rollups): the six engines, the three collision points behind the November 2026 incidents, and the changes that separate them. |
+
+## Planning
+
+| Doc | Covers |
+|---|---|
+| [planning/iteration-plan.md](planning/iteration-plan.md) | The operational plan: 15 two-week iterations over the 71 open work tickets (audit campaign + hot / cold programme), ordering rules, dependency map, capacity model, review cadence. |
+
+## Hot / cold path programme
+
+| Doc | Covers |
+|---|---|
+| [hot-cold-path/README.md](hot-cold-path/README.md) | The programme: goal, principles, reading order. |
+| [hot-cold-path/01-problems.md](hot-cold-path/01-problems.md) | Problem register P1 to P10: shared pool, all-or-nothing bundles, equal CPU priority, write side, polled hot state, per-request cold compute, freshness that never ages, no latency metric, chain load, duplicate analytics. |
+| [hot-cold-path/02-tasks.md](hot-cold-path/02-tasks.md) | Task plan T1 to T10 with acceptance, dependencies and estimates; the dependency map. |
 
 ## Volatility modeling
 

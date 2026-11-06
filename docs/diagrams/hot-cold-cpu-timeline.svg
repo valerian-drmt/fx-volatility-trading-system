@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="340" viewBox="0 0 1100 340" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="340" fill="#ffffff"/>
+  <text x="550" y="28" text-anchor="middle" font-size="16" font-weight="bold" fill="#1d2430">One minute on the 2-core host during a PCA cycle (illustrative): equal weights, so the hot work waits</text>
+
+  <!-- axis: 0..60 s mapped to x 260..1060 (13.33 px/s) -->
+  <g stroke="#d8dde6">
+    <line x1="260" y1="60" x2="260" y2="290"/><line x1="393" y1="60" x2="393" y2="290"/><line x1="527" y1="60" x2="527" y2="290"/>
+    <line x1="660" y1="60" x2="660" y2="290"/><line x1="793" y1="60" x2="793" y2="290"/><line x1="927" y1="60" x2="927" y2="290"/><line x1="1060" y1="60" x2="1060" y2="290"/>
+  </g>
+  <g fill="#5b6676" font-size="11" text-anchor="middle">
+    <text x="260" y="306">0 s</text><text x="393" y="306">10 s</text><text x="527" y="306">20 s</text><text x="660" y="306">30 s</text><text x="793" y="306">40 s</text><text x="927" y="306">50 s</text><text x="1060" y="306">60 s</text>
+  </g>
+
+  <!-- cold rows -->
+  <text x="40" y="78" fill="#3b6ea8" font-size="11" font-weight="bold">COLD</text>
+  <text x="40" y="103" fill="#1d2430">analytics: PCA + GMM fit, 2 threads</text>
+  <rect x="260" y="90" width="333" height="18" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="426" y="103" text-anchor="middle" fill="#1d2430" font-size="11">holds both cores for ~25 s</text>
+  <text x="40" y="133" fill="#1d2430">vol: chain scan, 74 lines (IB Gateway busy too)</text>
+  <rect x="660" y="120" width="267" height="18" fill="#dbe6f4" stroke="#3b6ea8"/>
+
+  <!-- hot rows -->
+  <text x="40" y="178" fill="#d9480f" font-size="11" font-weight="bold">HOT</text>
+  <text x="40" y="203" fill="#1d2430">execution: order submit → IB ack</text>
+  <rect x="327" y="190" width="27" height="18" fill="#fbe3d6" stroke="#d9480f"/>
+  <rect x="354" y="190" width="40" height="18" fill="none" stroke="#b02a37" stroke-dasharray="3 2"/>
+  <text x="402" y="203" fill="#b02a37" font-size="11">+3 s waiting in the run queue</text>
+
+  <text x="40" y="233" fill="#1d2430">execution: position sync every 1 s</text>
+  <g fill="#fbe3d6" stroke="#d9480f">
+    <rect x="260" y="220" width="6" height="18"/><rect x="327" y="220" width="6" height="18"/><rect x="393" y="220" width="6" height="18"/><rect x="460" y="220" width="6" height="18"/><rect x="527" y="220" width="6" height="18"/><rect x="593" y="220" width="6" height="18"/><rect x="660" y="220" width="6" height="18"/><rect x="727" y="220" width="6" height="18"/><rect x="793" y="220" width="6" height="18"/><rect x="860" y="220" width="6" height="18"/><rect x="927" y="220" width="6" height="18"/><rect x="993" y="220" width="6" height="18"/>
+  </g>
+  <text x="1005" y="233" fill="#5b6676" font-size="10">(every tick shown as 5 s)</text>
+
+  <text x="40" y="263" fill="#1d2430">api: GET /portfolio/account</text>
+  <rect x="340" y="250" width="8" height="18" fill="#fbe3d6" stroke="#d9480f"/>
+  <rect x="348" y="250" width="30" height="18" fill="none" stroke="#b02a37" stroke-dasharray="3 2"/>
+  <text x="385" y="263" fill="#b02a37" font-size="11">stutter the operator sees</text>
+
+  <text x="550" y="330" text-anchor="middle" fill="#5b6676" font-size="11">Average load is low (about a quarter of one core at rest); the burst is the problem, and it lands on whoever is running at that moment.</text>
+</svg>
