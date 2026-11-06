@@ -37,3 +37,15 @@ def test_marketprice_used_when_touch_side_missing() -> None:
     assert marketable_from_quote("BUY", None, None, 0.0117, 0.009) == 0.0117
     # SELL with no bid but a marketPrice → price off mkt.
     assert marketable_from_quote("SELL", None, None, 0.01151, 0.009) == 0.0115
+
+
+# ── #315 : price collar (pure) ───────────────────────────────────────────────
+
+def test_collar_accepts_within_band_and_refuses_beyond_or_without_a_reference():
+    from engines.execution.live_submit import collar_ok
+    assert collar_ok(0.0120, 0.0100, 0.5)          # +20 % inside a 50 % collar
+    assert not collar_ok(0.0160, 0.0100, 0.5)      # +60 % outside
+    assert not collar_ok(0.0040, 0.0100, 0.5)      # -60 % outside
+    assert not collar_ok(0.0120, 0.0, 0.5)         # no reference: refuse, not pass
+    assert not collar_ok(float("nan"), 0.01, 0.5)
+    assert not collar_ok(0.0, 0.01, 0.5)

@@ -18,7 +18,6 @@ import asyncio
 import itertools
 import json
 import logging
-import statistics
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal
 
@@ -28,6 +27,7 @@ from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis
+from api.orchestration.greek_caps import compute_live_caps
 from bus import keys
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
 from core.risk import greek_limits as gl
@@ -2303,56 +2303,9 @@ async def greek_limits(db: DbDep) -> dict[str, Any]:
     prevailing vol rises above its recent typical level. Fields are 0 until
     ~enough net-liq history + a spot exist.
     """
-    nl_sql = text("""
-        WITH daily AS (
-          SELECT DISTINCT ON (date_trunc('day', timestamp))
-                 date_trunc('day', timestamp) AS day, net_liq_usd
-            FROM account_history
-           WHERE timestamp >= NOW() - INTERVAL '504 days' AND net_liq_usd IS NOT NULL
-           ORDER BY date_trunc('day', timestamp), timestamp DESC
-        )
-        SELECT net_liq_usd FROM daily ORDER BY day
-    """)
-    nav_series = [float(r[0]) for r in (await db.execute(nl_sql)).all()]
-    spot = (await db.execute(
-        select(VolSurface.spot).where(VolSurface.underlying == "EURUSD")
-        .order_by(desc(VolSurface.timestamp)).limit(1)
-    )).scalar_one_or_none()
-
-    # Live policy from the Risk settings panel (config_scalar 'greek_limits'),
-    # falling back to the code defaults for any key not set in the DB.
-    rows = (await db.execute(
-        select(AppConfigScalar.name, AppConfigScalar.value)
-        .where(AppConfigScalar.namespace == "greek_limits")
-    )).all()
-    params = {name: float(val) for name, val in rows if name in gl.CONFIG_DEFAULTS}
-
-    nav_b = gl.nav_base(
-        nav_series,
-        hwm_floor=params.get("nav_hwm_floor", gl.CONFIG_DEFAULTS["nav_hwm_floor"]),
-        halflife=params.get("nav_halflife_days", gl.CONFIG_DEFAULTS["nav_halflife_days"]),
-    ) or 0.0
-    spot_f = float(spot) if spot is not None else 0.0
-    # §8 — regime scaling: tighten caps when current vol is elevated vs its recent
-    # typical level. regime_mult = clamp(current / median(last 90d), 1, 3), both
-    # read from regime_snapshot.vol_level_pct so the ratio is unit-independent (no
-    # calm-baseline constant to guess). Falls back to 1.0 when history is thin.
-    vol_levels = [
-        float(r[0]) for r in (await db.execute(
-            select(RegimeSnapshot.vol_level_pct)
-            .where(
-                RegimeSnapshot.vol_level_pct.is_not(None),
-                RegimeSnapshot.timestamp >= datetime.now(UTC) - timedelta(days=90),
-            )
-            .order_by(RegimeSnapshot.timestamp)
-        )).all()
-    ]
-    regime = 1.0
-    if len(vol_levels) >= 10:
-        baseline = statistics.median(vol_levels)
-        if baseline > 0:
-            regime = max(1.0, min(3.0, vol_levels[-1] / baseline))
-    caps = gl.compute_caps(nav_b, spot_f, regime, params=params)
+    # Same computation as the pre-trade gate (#315): api.orchestration.greek_caps.
+    live = await compute_live_caps(db)
+    caps, nav_series = live.caps, live.nav_series
     return {
         "computed_at": datetime.now(UTC).isoformat(),
         "nav_base_usd": round(caps.nav_base_usd, 2),

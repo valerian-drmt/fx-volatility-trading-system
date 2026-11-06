@@ -37,6 +37,7 @@ from core.execution.fills import (
 from core.execution.order_states import next_state
 from engines.execution.ib_trade_log import ib_reason_from_trade, ib_why_held
 from engines.execution.redis_state import get_client as _get_redis
+from persistence.book_state import refresh_book_state
 from persistence.models import (
     BookedPosition,
     StructureFill,
@@ -579,6 +580,12 @@ async def maybe_complete_structure(
                 description="all entry legs filled, position created",
                 payload={"premium_usd": struct.total_premium_paid_usd},
             ))
+            # The sizing gate reads book_state_snapshots; it was refreshed on
+            # the mock-fill path only, so live books sized against 0.0 (#315).
+            try:
+                await refresh_book_state(db)
+            except Exception:
+                logger.exception("refresh_book_state_failed structure_id=%s", structure_id)
             await db.commit()
             await _publish_order_safe(structure_id, {
                 "event_type": "structure_filled",

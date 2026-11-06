@@ -54,6 +54,57 @@ Two anti-procyclicality guards:
 All eight policy values are editable in the Risk settings panel
 (`CONFIG_DEFAULTS` / `CONFIG_META`), overlaid via `params=`.
 
+## Pre-trade gate (enforced, fail closed)
+
+Since #315 every `POST /trade/submit` runs
+[`core/risk/pretrade.py`](../../src/core/risk/pretrade.py) with inputs
+collected by `api/orchestration/pretrade_gate.py`. The gate refuses with HTTP
+400 `pretrade_gate_failed` and lists every failing reason; an input that
+cannot be read is a failure, never a pass.
+
+| Check | Failure code | Source |
+|---|---|---|
+| kill switch off | `trading_halted`, `halt_flag_unreadable` | `config_scalar` risk/`trading_halted` |
+| leg symbols allowed | `symbol_not_allowed` | `ALLOWED_SYMBOLS` (default `EUR,M6E`) |
+| IB session is the account type `TRADING_MODE` promises (live mode) | `account_type_mismatch` | `ib_connection_state.account_type` |
+| risk engine heartbeat younger than 30 s (live mode) | `risk_engine_stale` | Redis `heartbeat:risk_engine` |
+| surface age below `max_iv_data_age_seconds` (live mode) | `surface_stale` | preview `surface_age_seconds` |
+| surface not flagged arbitrageable | `surface_arbitrage` | surface meta `butterfly_ok` (unknown passes) |
+| every open position priced | `book_partially_priced` | `open_position` greeks |
+| post-trade \|delta\| ≤ cap, \|vega\| ≤ cap, \|gamma\| ≤ cap | `cap_delta`, `cap_vega`, `cap_gamma` | book greeks + preview `greeks_net` vs `compute_caps` |
+| caps established (NAV history + spot) | `caps_not_established`, `caps_unavailable` | `api.orchestration.greek_caps` |
+| structure notional ≤ `max_notional_eur` (default 5 M EUR) | `cap_notional` | `config_scalar` risk namespace |
+
+The caps are the same numbers the Risk settings panel shows
+(`GET /portfolio/greek-limits` and the gate call one helper). Mock-mode
+submits skip the three live-session checks and keep the rest.
+
+In the execution engine, `live_submit` adds two checks before any leg is
+placed: the symbol allow-list again, and a **price collar**: the live
+marketable limit of every leg must sit within `LIVE_SUBMIT_COLLAR_PCT`
+(default 50 %) of the preview premium, or the whole structure is refused and
+the submit claim released. Not assessed, and recorded as a waiver: quoted
+size / liquidity (the preview has no per-leg depth yet).
+
+## Kill switch
+
+One durable flag (`config_scalar` namespace `risk`, name `trading_halted`),
+set through `POST /api/v1/admin/halt {reason}` (trader cookie) and cleared
+with `DELETE /api/v1/admin/halt {reason}`; `GET /api/v1/admin/halt` is public
+so the desk can badge it. Setting it:
+
+1. writes the flag and a `trading_halted` trade event (who, when, why);
+2. mirrors it to Redis (`trading:halted`) and publishes on `system_alerts`;
+3. calls the execution engine's `POST /internal/halt`, which cancels every
+   working order of the IB session and issues IB's global cancel.
+
+While halted, every order-creating route of the execution engine (`/orders`,
+`/structure/submit`, `/structure/rollback`, both closes, `/hedge`) answers
+**423**, the api's `/trade/submit` fails the gate with `trading_halted`, and
+the position monitor's automatic hedge is refused by the engine. A database
+that cannot be read counts as halted (503). Resuming is a deliberate second
+call with its own reason; nothing resumes on its own.
+
 ## VaR
 
 [`core/risk/marginal_var.py`](../../src/core/risk/marginal_var.py) computes

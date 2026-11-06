@@ -25,6 +25,7 @@ from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from engines.execution.fills_handler import attach_fill_handlers
+from engines.execution.halt_guard import cancel_all_open, require_not_halted
 from engines.execution.hedge_executor import HedgeSubmitError, submit_hedge_order
 from engines.execution.ib_heartbeat import (
     heartbeat_loop,
@@ -391,7 +392,7 @@ class ClosePositionBySymbolBody(BaseModel):
     db_order_id: int | None = Field(default=None, gt=0)
 
 
-@router.post("/orders")
+@router.post("/orders", dependencies=[Depends(require_not_halted)])
 async def place_order(
     body: PlaceOrderBody,
     ex: Annotated[OrderExecutor, Depends(_executor_dep)],
@@ -489,7 +490,7 @@ async def live_positions(ex: Annotated[OrderExecutor, Depends(_executor_dep)]) -
     return {"positions": positions, "count": len(positions)}
 
 
-@router.post("/positions/{con_id}/close")
+@router.post("/positions/{con_id}/close", dependencies=[Depends(require_not_halted)])
 async def close_position(
     con_id: int,
     body: ClosePositionBody,
@@ -510,7 +511,7 @@ async def close_position(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@router.post("/positions/close-by-symbol")
+@router.post("/positions/close-by-symbol", dependencies=[Depends(require_not_halted)])
 async def close_position_by_symbol(
     body: ClosePositionBySymbolBody,
     ex: Annotated[OrderExecutor, Depends(_executor_dep)],
@@ -698,7 +699,7 @@ async def reconcile_positions_now(
     return await reconcile_positions(sm, ex)
 
 
-@router.post("/structure/submit")
+@router.post("/structure/submit", dependencies=[Depends(require_not_halted)])
 async def submit_structure(
     body: SubmitStructureBody,
     ex: Annotated[OrderExecutor, Depends(_executor_dep)],
@@ -759,7 +760,7 @@ async def submit_structure(
         ) from e
 
 
-@router.post("/structure/rollback")
+@router.post("/structure/rollback", dependencies=[Depends(require_not_halted)])
 async def rollback_structure(
     body: RollbackStructureBody,
     ex: Annotated[OrderExecutor, Depends(_executor_dep)],
@@ -775,7 +776,24 @@ async def rollback_structure(
         raise HTTPException(status_code=503, detail=str(e)) from e
 
 
-@router.post("/hedge")
+@router.post("/halt")
+async def halt_cancel_all(
+    request: Request,
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Kill switch, engine side (#315): cancel every working order of this IB
+    session. Called by the api right after it set the durable flag; usable on
+    its own from the host. Does not need IB to be 'connected' per the executor
+    dependency: if the socket is gone there is nothing to cancel, and we say so."""
+    ex: OrderExecutor = request.app.state.executor
+    ib = ex._ib if ex.is_connected() else None
+    result = await cancel_all_open(ib) if ib is not None else {"cancelled": 0, "failed": 0, "global_cancel": 0, "ib": "disconnected"}
+    await _log_event(sm, action_type="HALT_CANCEL_ALL", request_payload={}, response_payload=result, success=True)
+    logger.error("trading_halted_cancel_all result=%s", result)
+    return result
+
+
+@router.post("/hedge", dependencies=[Depends(require_not_halted)])
 async def submit_hedge(
     body: HedgeOrderBody,
     ex: Annotated[OrderExecutor, Depends(_executor_dep)],
