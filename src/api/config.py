@@ -16,6 +16,7 @@ Naming convention :
 """
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import Literal
 
@@ -26,6 +27,8 @@ from shared.config import Settings as _BaseSettings
 # The committed dev fallback for AUTH_SECRET. Usable locally, rejected in prod
 # by the boot guard below.
 _INSECURE_SECRET = "dev-insecure-change-me"
+_DEFAULT_SALT = "fxvol"
+_log = logging.getLogger(__name__)
 
 
 class Settings(_BaseSettings):
@@ -50,7 +53,7 @@ class Settings(_BaseSettings):
     # UPPERCASE = env-var name (case_sensitive); lowercase views are below.
     AUTH_SECRET: str = Field(default="dev-insecure-change-me")   # HMAC key for the cookie token
     AUTH_USERNAME: str = Field(default="trader")
-    AUTH_SALT: str = Field(default="fxvol")
+    AUTH_SALT: str = Field(default=_DEFAULT_SALT)
     AUTH_PASSWORD_HASH: str = Field(default="")                  # pbkdf2_hmac(sha256) hex
     AUTH_COOKIE_SECURE: bool = Field(default=True)               # set false only for local HTTP dev
     AUTH_TTL_SECONDS: int = Field(default=43200)                 # 12 h
@@ -74,6 +77,21 @@ class Settings(_BaseSettings):
                 )
             if not self.AUTH_COOKIE_SECURE:
                 raise ValueError("ENV=prod requires AUTH_COOKIE_SECURE=true")
+            # #300 (audit 01#3): no insecure default serves in prod. An empty
+            # password hash means nobody can log in and nothing warns; the
+            # DATABASE_URL fallback points at a dev password.
+            if not self.AUTH_PASSWORD_HASH:
+                raise ValueError(
+                    "ENV=prod requires AUTH_PASSWORD_HASH. Provision "
+                    "/fxvol/prod/AUTH_PASSWORD_HASH in SSM."
+                )
+            if not self.DATABASE_URL:
+                raise ValueError("ENV=prod requires DATABASE_URL (no fxvol:fxvol fallback)")
+            if self.AUTH_SALT == _DEFAULT_SALT:
+                _log.warning(
+                    "auth_salt_is_repo_default: provision /fxvol/prod/AUTH_SALT "
+                    "and re-hash the password at the next rotation (#300)"
+                )
         return self
 
     # Lowercase aliases — read-only views of the inherited UPPERCASE fields.

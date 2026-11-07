@@ -2598,6 +2598,11 @@ export interface components {
              */
             w1_walk_forward_months: number;
         };
+        /** ClosePositionBody */
+        ClosePositionBody: {
+            /** Limit Price */
+            limit_price: number;
+        };
         /** ClosePositionRequest */
         ClosePositionRequest: {
             /** Limit Price */
@@ -2930,6 +2935,43 @@ export interface components {
              */
             scheduled_at: string;
         };
+        /** PlaceOrderBody */
+        PlaceOrderBody: {
+            /**
+             * Currency
+             * @default USD
+             */
+            currency: string;
+            /**
+             * Exchange
+             * @default CME
+             */
+            exchange: string;
+            /** Expiry */
+            expiry?: string | null;
+            /** Limit Price */
+            limit_price?: number | null;
+            /** Qty */
+            qty: number;
+            /** Right */
+            right?: ("C" | "P") | null;
+            /**
+             * Sec Type
+             * @enum {string}
+             */
+            sec_type: "FUT" | "FOP" | "CASH";
+            /**
+             * Side
+             * @enum {string}
+             */
+            side: "BUY" | "SELL";
+            /** Strike */
+            strike?: number | null;
+            /** Symbol */
+            symbol: string;
+            /** Trading Class */
+            trading_class?: string | null;
+        };
         /** PreviewRequest */
         PreviewRequest: {
             /** Delta Pillar */
@@ -3196,6 +3238,20 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
+        };
+        /**
+         * SubmitBody
+         * @description ``POST /trade/submit`` (#300, audit 01#14): a preview id and the mode.
+         */
+        SubmitBody: {
+            /**
+             * Execution Mode
+             * @default mock
+             * @enum {string}
+             */
+            execution_mode: "mock" | "live";
+            /** Preview Id */
+            preview_id: string;
         };
         /**
          * SurfaceConfig
@@ -4384,9 +4440,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["ClosePositionBody"];
             };
         };
         responses: {
@@ -4617,9 +4671,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["PlaceOrderBody"];
             };
         };
         responses: {
@@ -6523,9 +6575,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["SubmitBody"];
             };
         };
         responses: {

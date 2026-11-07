@@ -80,6 +80,9 @@ services:
       # Internal URL of the execution-engine container. The api forwards
       # the /orders / /exec/positions actions to this service.
       EXECUTION_URL: http://execution-engine:8001
+      # Shared secret on the engine's /internal/* routes (#300). Prod renders it
+      # from SSM or a host-generated file (remote-deploy.sh); dev shares a default.
+      EXECUTION_INTERNAL_TOKEN: ${EXECUTION_INTERNAL_TOKEN:-fxvol-dev-internal}
       # FRED API key for the multi-source events pipeline. Free signup at
       # https://fredaccount.stlouisfed.org/apikeys (~30s). Without it, the
       # FRED source is skipped and only the stub sources run (= no events
@@ -427,6 +430,7 @@ services:
       # engine stays down instead of degrading to reads (account summary,
       # positions). Prod runs read-only, so this is the normal path there.
       IB_READ_ONLY: ${READ_ONLY_API:-no}
+      EXECUTION_INTERNAL_TOKEN: ${EXECUTION_INTERNAL_TOKEN:-fxvol-dev-internal}
       # IB → Postgres sync cycle for orders/trades/positions/snapshots.
       # 5 s = compromise: the UI polls every 5 s on the front side, moderate
       # IB load (12 calls/min). Overridable via the EXECUTION_SYNC_INTERVAL_S env var.

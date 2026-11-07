@@ -21,6 +21,8 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.auth import require_write
+from api.schemas.orders import ClosePositionBody, PlaceOrderBody
+from shared.internal_auth import internal_headers
 
 router = APIRouter(prefix="/api/v1", tags=["orders"])
 logger = logging.getLogger(__name__)
@@ -33,7 +35,7 @@ async def _forward(method: str, path: str, json: dict | None = None) -> dict[str
     url = f"{EXECUTION_URL}{path}"
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
-            r = await client.request(method, url, json=json)
+            r = await client.request(method, url, json=json, headers=internal_headers())
     except httpx.HTTPError as e:
         # Static detail: the exception text names the internal URL (#297).
         logger.warning(
@@ -56,8 +58,8 @@ async def list_orders(_: Request) -> dict[str, Any]:
 
 
 @router.post("/orders", dependencies=[Depends(require_write)])
-async def place_order(body: dict, _: Request) -> dict[str, Any]:
-    return await _forward("POST", "/internal/orders", json=body)
+async def place_order(body: PlaceOrderBody, _: Request) -> dict[str, Any]:
+    return await _forward("POST", "/internal/orders", json=body.model_dump())
 
 
 @router.delete("/orders/{order_id}", dependencies=[Depends(require_write)])
@@ -71,5 +73,5 @@ async def live_positions(_: Request) -> dict[str, Any]:
 
 
 @router.post("/exec/positions/{con_id}/close", dependencies=[Depends(require_write)])
-async def close_position(con_id: int, body: dict, _: Request) -> dict[str, Any]:
-    return await _forward("POST", f"/internal/positions/{con_id}/close", json=body)
+async def close_position(con_id: int, body: ClosePositionBody, _: Request) -> dict[str, Any]:
+    return await _forward("POST", f"/internal/positions/{con_id}/close", json=body.model_dump())

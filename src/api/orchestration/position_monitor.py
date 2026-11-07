@@ -52,6 +52,7 @@ from persistence.models import (
     StructureOrder,
     TradeStructure,
 )
+from shared.internal_auth import internal_headers
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +172,7 @@ class PositionMonitorScheduler:
                         resp = await client.post(
                             f"{base.rstrip('/')}/internal/hedge",
                             json={"hedge_order_id": hid},
+                            headers=internal_headers(),
                         )
                         if resp.status_code >= 400:
                             logger.warning(

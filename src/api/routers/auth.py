@@ -5,6 +5,7 @@ wrapper exposes ``__globals__`` from the slowapi module, where postponed
 annotation strings (LoginBody, SettingsDep) cannot be resolved; FastAPI would
 then demote the body/DI params to required query params (422 on every login).
 """
+import hmac
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
@@ -26,7 +27,10 @@ def login(
     request: Request, body: LoginBody, response: Response, settings: SettingsDep
 ) -> AuthStatus:
     """Verify the single-trader credentials and set the auth cookie."""
-    ok = body.username == settings.auth_username and verify_password(
+    # Both checks always run, in constant time, so neither the username nor
+    # the password branch leaks through timing (#300, audit 01#3).
+    user_ok = hmac.compare_digest(body.username.encode(), settings.auth_username.encode())
+    ok = user_ok & verify_password(
         body.password, settings.auth_salt, settings.auth_password_hash
     )
     if not ok:

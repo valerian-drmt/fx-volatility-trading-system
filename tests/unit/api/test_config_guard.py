@@ -32,7 +32,9 @@ def test_prod_rejects_insecure_cookie():
 
 
 def test_prod_accepts_strong_secret_and_secure_cookie():
-    s = _settings(ENV="prod", AUTH_SECRET=STRONG_SECRET, AUTH_COOKIE_SECURE=True)
+    # #300: prod also needs a provisioned password hash and an explicit DATABASE_URL.
+    s = _settings(ENV="prod", AUTH_SECRET=STRONG_SECRET, AUTH_COOKIE_SECURE=True,
+                  AUTH_PASSWORD_HASH="ab" * 32, DATABASE_URL="postgresql+asyncpg://u:p@h/db")
     assert s.ENV == "prod"
     assert s.auth_secret == STRONG_SECRET
 

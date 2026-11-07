@@ -35,6 +35,7 @@ from persistence.models import (
     TradeStructure,
 )
 from persistence.reservation import recompute_reservation
+from shared.internal_auth import internal_headers
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +181,7 @@ async def initiate_position_close(
                 resp = await client.post(
                     f"{base.rstrip('/')}/internal/structure/submit",
                     json={"structure_id": closing_structure_id},
+                    headers=internal_headers(),
                 )
             submitted = {"status": resp.status_code, "body": resp.json()}
         except Exception as e:
