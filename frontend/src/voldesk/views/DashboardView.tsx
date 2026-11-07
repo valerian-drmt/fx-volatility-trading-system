@@ -20,6 +20,7 @@ import type { FreshStatus } from "../data/freshness";
 import { adaptEquityCurve, type EquityPoint, type GreekSeries } from "../data/live/portfolio";
 import { adaptEvents } from "../data/live/trade";
 import { ModeCard } from "./SignalsView";
+import { ClosedBanner } from "../components/ClosedBanner";
 import { useMarketOpen } from "../../hooks/useMarketOpen";
 import { FEED_TONE_COLOR, feedState } from "../../utils/marketHours";
 
@@ -205,6 +206,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
 
   return (
     <div className="dash-grid">
+      <ClosedBanner />
       {/* one summary card per tab */}
       <div className="dash-cards">
         <Panel
@@ -260,9 +262,12 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           title="Portfolio"
           dataPp="dash-portfolio"
           right={
-            <button className="link-btn" onClick={() => go("portfolio")}>
-              Portfolio →
-            </button>
+            <>
+              <LiveBadge status={portfolio.status} />
+              <button className="link-btn" onClick={() => go("portfolio")}>
+                Portfolio →
+              </button>
+            </>
           }
           className="dash-card"
         >
@@ -358,9 +363,12 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
           title="Risk"
           dataPp="dash-risk"
           right={
-            <button className="link-btn" onClick={() => go("risk")}>
-              Risk →
-            </button>
+            <>
+              <LiveBadge status={risk.status} />
+              <button className="link-btn" onClick={() => go("risk")}>
+                Risk →
+              </button>
+            </>
           }
           className="dash-card"
         >

@@ -26,7 +26,8 @@ const PRODUCTS = ["Butterfly", "Calendar", "Call/Put Spread", "Future", "Risk Re
 const TENORS = DATA.tenors;
 const PILLARS = DATA.deltas;
 const CONTRACTS: Record<string, number> = { "6E (€125k)": 125000, "M6E (€12.5k)": 12500 };
-const DELTA_PER_6E = 125_000 * DATA.SPOT; // cash $-delta of 1 full 6E contract (notional × spot)
+// cash $-delta of 1 full 6E contract (notional × spot), at the LIVE spot (#347)
+const deltaPer6E = (spot: number): number => 125_000 * spot;
 
 
 type GreekKey = "d" | "g" | "v" | "t" | "vn" | "vg";
@@ -125,10 +126,10 @@ function errMsg(e: unknown): string {
 // standard "$ long/short"). Γ/Vega/Θ in $ (·/pip, ·/vp, ·/day) — gk$. Vanna/Volga
 // in $k — "±N.Nk".
 const FULL_LOT_EUR = 125_000; // 6E notional; a full lot = the €125k contract
-function previewGreeks(legs: Leg[], mult: number): NetGreeks {
+function previewGreeks(legs: Leg[], mult: number, spot: number): NetGreeks {
   const lot = mult / FULL_LOT_EUR;    // 1.0 for 6E, 0.1 for M6E — the notional scale
   const dollar = mult * 0.0001 * 100; // premium/2nd-order: $ per figure (= 1250 × lot)
-  const cashDelta = mult * DATA.SPOT; // Δ: cash dollar-delta = notional × spot (backend delta_usd)
+  const cashDelta = mult * spot;      // Δ: cash dollar-delta = notional × spot (backend delta_usd)
   let d = 0,
     g = 0,
     v = 0,
@@ -142,11 +143,11 @@ function previewGreeks(legs: Leg[], mult: number): NetGreeks {
       d += sd * l.qty * cashDelta; // future = 100% delta → full cash notional
       return { prem: 0 };
     }
-    const otm = Math.abs(l.strike - DATA.SPOT) / DATA.SPOT;
+    const otm = Math.abs(l.strike - spot) / spot;
     // Directional delta grows mildly with tenor so a calendar (same strike, near
     // vs far) isn't perfectly delta-flat → its delta hedge is non-zero + usable.
     const tf = 1 + 0.03 * tenorIdx(l.tenor);
-    const lg = { d: (l.type === "Call" ? 0.5 : -0.5) * tf + (DATA.SPOT - l.strike) * 4, g: 1.8 / (l.iv / 5 || 1), v: l.prem * 6, t: -l.prem * 9 };
+    const lg = { d: (l.type === "Call" ? 0.5 : -0.5) * tf + (spot - l.strike) * 4, g: 1.8 / (l.iv / 5 || 1), v: l.prem * 6, t: -l.prem * 9 };
     d += sd * lg.d * l.qty * cashDelta;           // $ (delta% × notional × spot)
     g += sd * lg.g * l.qty * 1000 * lot;          // $/pip
     v += sd * lg.v * l.qty * 100 * lot;           // $/vp
@@ -317,7 +318,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
     legs.some((l) => l.type === "Call") ? "EUR Call / USD Put" : null,
     legs.some((l) => l.type === "Put") ? "USD Call / EUR Put" : null,
   ].filter(Boolean).join(" · ") || "—";
-  const net = useMemo(() => previewGreeks(legs, mult), [legs, mult]);
+  const net = useMemo(() => previewGreeks(legs, mult, spotMid), [legs, mult, spotMid]);
 
   const commission = Math.round(legs.length * qty * 2.1);
   const isCredit = net.cost < 0; // SELL-heavy structures take in premium
@@ -326,9 +327,9 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   // A future is already delta-one — you don't delta-hedge it with another future,
   // so the bundle is disabled for futures (also hidden in the UI).
   const hedgeOn = bundleHedge && !isFut;
-  const hedgeQty = Math.round(Math.abs(net.d) / DELTA_PER_6E);
+  const hedgeQty = Math.round(Math.abs(net.d) / deltaPer6E(spotMid));
   const hedgeSide = net.d > 0 ? "SELL" : "BUY";
-  const hedgedDelta = Math.round(net.d - Math.sign(net.d) * hedgeQty * DELTA_PER_6E); // delta once the bundle is applied
+  const hedgedDelta = Math.round(net.d - Math.sign(net.d) * hedgeQty * deltaPer6E(spotMid)); // delta once the bundle is applied
   // When the delta-hedge is bundled, the 6E futures leg neutralises delta and
   // adds its own commission — the ticket must re-price as the HEDGED structure
   // (futures are delta-only : Γ/Vega/Θ unchanged).
@@ -590,7 +591,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
         )}
         {/* nominal traded = size × contract notional ; signed by side so a SELL
             reads "short €" / "long $" (selling EUR = buying dollars) */}
-        <div className="ob-info-row"><span>Nominal <em className="unit">EUR / USD</em></span><b className="mono"><span className={eurSigned >= 0 ? "pos" : "neg"}>{fmtCcySigned(eurSigned, "€")}</span> <span className="dim">/</span> <span className={usdSigned >= 0 ? "pos" : "neg"}>{fmtCcySigned(usdSigned, "$")}</span></b></div>
+        <div className="ob-info-row"><span>Nominal <em className="unit">EUR / USD</em></span><b className="mono"><span className={eurSigned >= 0 ? "pos" : "neg"}>{fmtCcySigned(eurSigned, "€")}</span> <span className="dim">/</span> {ticksSeen ? <span className={usdSigned >= 0 ? "pos" : "neg"}>{fmtCcySigned(usdSigned, "$")}</span> : <span className="dim" title="no live quote: the USD leg needs a spot">—</span>}</b></div>
         {/* strike ladder — where each leg sits across the 5 delta pillars (spot
             line + a tick per wing; legs stacked under their strike). Bottom of
             the INPUTS block so it updates live as the structure is configured. */}

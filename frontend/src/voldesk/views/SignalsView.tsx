@@ -12,6 +12,7 @@ import { Fragment, memo, useMemo, useState } from "react";
 import { Heatmap } from "../components/charts";
 import { Panel, Tag } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
+import { ClosedBanner } from "../components/ClosedBanner";
 import { type Tone } from "../components/format";
 import { DATA, fmt } from "../data";
 import type { Pc, TermPoint } from "../data";
@@ -362,6 +363,7 @@ export function SignalsView(): JSX.Element {
   const pcsList = pca.data?.pcs ?? [];
   return (
     <div className="ts-grid">
+      <ClosedBanner />
       <div className="sig-cluster">
         <div className="sig-left">
           <Panel
