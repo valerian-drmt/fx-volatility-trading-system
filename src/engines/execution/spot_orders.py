@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus.publisher import publish_spot_order
 from engines.execution.ib_trade_log import ib_reason_from_trade, ib_why_held
+from engines.execution.latency import observe_submitted
 from engines.execution.redis_state import get_client as _get_redis
 from persistence.models import SpotOrder
 from persistence.rows import spot_order_row
@@ -170,6 +171,8 @@ def _apply_status(
         return changed
     if new_state == row.state:
         return changed
+    if new_state == "submitted":
+        observe_submitted(("spot_order", int(row.id)), path="spot")
     row.state = new_state
     row.state_updated_at = datetime.now(UTC)
     if new_state == "rejected":

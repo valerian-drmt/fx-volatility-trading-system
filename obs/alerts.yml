@@ -63,6 +63,22 @@ groups:
           summary: "db-writer has not written for 3 min"
           description: "Streamed history rows are being dropped. Check Redis and `docker logs fxvol-db-writer`."
 
+      # Desk fluidity (#370): the two engine-side promises, p95 over 5 min.
+      - alert: OrderSubmitSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(order_submit_latency_seconds_bucket[5m]))) > 2
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "order submit p95 {{ $value | humanizeDuration }} (target 2 s)"
+          description: "Click to IB Submitted is slow: IB session, execution engine CPU, or the api hop. Grafana 'Desk fluidity'."
+      - alert: FillToPublishSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(fill_to_publish_seconds_bucket[5m]))) > 2
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "fill to publish p95 {{ $value | humanizeDuration }} (target 2 s)"
+          description: "Fills reach the desk late: position sync interval, Postgres, or Redis. Grafana 'Desk fluidity'."
+
       # db-writer delivery (#324): a dropped frame is a hole in history, a dead
       # letter is a row that needs a human. Both used to be a log line.
       - alert: DbWriterDroppingFrames

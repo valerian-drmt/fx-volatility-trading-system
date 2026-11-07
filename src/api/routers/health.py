@@ -56,7 +56,9 @@ def _build_identity() -> dict[str, str]:
         ver = _pkg_version("fxvol")
     except PackageNotFoundError:
         ver = "0.0.0"
-    return {"version": ver, "git_sha": os.getenv("GIT_SHA", "unknown")}
+    sha = os.getenv("GIT_SHA", "unknown")
+    # ``commit`` = ``git_sha`` (#370 acceptance wording); both stay.
+    return {"version": ver, "git_sha": sha, "commit": sha}
 
 
 @router.get("/health")
