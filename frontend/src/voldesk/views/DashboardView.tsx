@@ -20,6 +20,8 @@ import type { FreshStatus } from "../data/freshness";
 import { adaptEquityCurve, type EquityPoint, type GreekSeries } from "../data/live/portfolio";
 import { adaptEvents } from "../data/live/trade";
 import { ModeCard } from "./SignalsView";
+import { useMarketOpen } from "../../hooks/useMarketOpen";
+import { FEED_TONE_COLOR, feedState } from "../../utils/marketHours";
 
 // per-panel data-source indicator (live / stale / no-data) — same look as the
 // Risk tab's PanelLive, driven by a desk-domain freshness status.
@@ -191,9 +193,12 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const chartEvents =
     useFetch(() => fetchRegimeEvents(100, 35).then((raw) => adaptEvents(raw, Date.now())), 300_000).data ?? events;
 
-  // ── Trade card: market open/closed badge — same icon + mapping as the topbar.
-  const mktDot = ticks.status === "live" ? "var(--pos)" : ticks.status === "stale" ? "var(--warn)" : "var(--neg)";
-  const mktLabel = ticks.status === "live" ? "Market open" : ticks.status === "stale" ? "feed stale" : "no feed";
+  // ── Trade card: market open/closed badge — same icon + mapping as the topbar
+  // (a quiet stream on a weekend reads "Market closed", not "no feed").
+  const marketOpen = useMarketOpen();
+  const feed = feedState(ticks.status, marketOpen);
+  const mktDot = FEED_TONE_COLOR[feed.tone];
+  const mktLabel = feed.label;
 
   // ── Signal card — the 3 live PC mode cards (PC1/PC2/PC3, 3M z-history view).
   const pcsLive = pca.data?.pcs ?? [];
