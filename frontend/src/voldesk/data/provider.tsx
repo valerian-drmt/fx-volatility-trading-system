@@ -8,7 +8,7 @@
  * yet (cold start / market closed) the domain is simply `missing`/`stale` via
  * the `Fresh<T>` contract and the views render the empty/neutral state.
  */
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchConfig,
   fetchConfigHistory,
@@ -58,6 +58,7 @@ import {
 import { type Fresh } from "./freshness";
 import { adaptConfig } from "./live/config";
 import { patchAccountRaw, patchPositions } from "./live/patch";
+import { beaconPayload, postBeacon, shouldSample } from "../../utils/beacon";
 import { adaptPca } from "./live/pca";
 import {
   adaptAccount as adaptPortfolioAccountSnap,
@@ -250,10 +251,17 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
   const posStream = usePositionsStream();
   const acctStream = useAccountStream();
   const [posOverlay, setPosOverlay] = useState<{ msg: PositionsChangedMsg; at: number }[]>([]);
+  // Latency beacon (#370): remember the last push's stamps; the effect below
+  // runs after the patched slice has rendered and reports 1 push in 10.
+  const pendingBeacon = useRef<{ publishedAt: number | null; receivedAt: number } | null>(null);
   useEffect(() => {
     if (posStream.data && posStream.asOf !== null) {
       const entry = { msg: posStream.data, at: posStream.asOf };
       setPosOverlay((prev) => [...prev.slice(-49), entry]);
+      if (shouldSample(Math.random())) {
+        const published = Date.parse(posStream.data.timestamp);
+        pendingBeacon.current = { publishedAt: Number.isNaN(published) ? null : published, receivedAt: posStream.asOf };
+      }
     }
   }, [posStream.data, posStream.asOf]);
   useEffect(() => {
@@ -272,6 +280,14 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
     if (positions === d.positions) return liveTrade;
     return { ...liveTrade, data: { ...d, positions, greeks: deriveNetGreeks(positions) } };
   }, [liveTrade, posOverlay]);
+
+  useEffect(() => {
+    const p = pendingBeacon.current;
+    if (!p) return;
+    pendingBeacon.current = null;
+    const payload = beaconPayload("positions", p.publishedAt, p.receivedAt, Date.now());
+    if (payload) postBeacon(payload);
+  }, [trade]);
 
   const [acctMsg, setAcctMsg] = useState<AccountSnapshotMsg | null>(null);
   useEffect(() => {

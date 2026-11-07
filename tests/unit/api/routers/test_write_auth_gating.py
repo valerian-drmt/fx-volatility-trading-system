@@ -23,6 +23,9 @@ WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 PUBLIC_WRITE_PATHS = {
     "/api/v1/auth/login",
     "/api/v1/auth/logout",
+    # Browser latency beacon (#370): a measurement, not a mutation. Values are
+    # clamped, labels whitelisted, rate limited per IP.
+    "/api/v1/metrics/beacon",
     "/api/v1/price",
     "/api/v1/greeks",
     "/api/v1/iv",

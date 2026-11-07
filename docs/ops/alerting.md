@@ -31,6 +31,7 @@ third leg: it restarts the gateway and the four IB-bound engines
 | `BackupStale` | backup stamp older than 26 h for 30 min | critical | `tail /var/log/fxvol-postgres-backup.log`; `RESTORE.md` §5 |
 | `BackupSignalMissing` | no backup-age metric at all | warning | api not scraped or `BACKUP_STATE_FILE` unset |
 | `MemoryNearLimit` | a container above 90 % of its cap 10 min | warning | an OOM kill follows |
+| `OrderSubmitSlow` / `FillToPublishSlow` | p95 of click-to-IB-Submitted or fill-to-publish above 2 s for 5 min | warning | Grafana "Desk fluidity": which hop grew (#370) |
 | `DbWriterDroppingFrames` | writer queue full, frames dropped in the last 10 min | critical | Postgres behind; `db_writer_queue_depth`, writer log (#324) |
 | `DbWriterDeadLetters` | rows parked in `db_writer_dead_letter` in the last hour | warning | read the row's `error`, fix the producer, replay by hand (#324) |
 | `HistoryPruneFailing` | a retention prune failed for a table in the last 2 days | warning | `grep history_prune_failed` in the engine log; the table grows until fixed (#330) |

@@ -46,6 +46,7 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [vol-modeling/volatility-surface.md](vol-modeling/volatility-surface.md) | SVI / SSVI calibration, smile, term structure, delta/tenor pillars, PCHIP, surface-Z. |
 | [vol-modeling/forecasting.md](vol-modeling/forecasting.md) | Realized-vol models: GARCH, HAR-RV, Yang-Zhang, VRP. |
 | [vol-modeling/regime.md](vol-modeling/regime.md) | GMM regime detection and how the regime gates signals. |
+| [vol-modeling/pricing.md](vol-modeling/pricing.md) | The one Black-Scholes kernel: inputs, boundary (intrinsic at expiry), the undiscounted-convention decision. |
 | [vol-modeling/units.md](vol-modeling/units.md) | Units at every boundary: greeks (USD / per pip / per vol point), IV fraction vs percent, IB price points, P&L attribution terms. |
 | [vol-modeling/notebooks/pca_signal_pipeline_explained.ipynb](vol-modeling/notebooks/pca_signal_pipeline_explained.ipynb) | Runnable walk-through of the PCA signal pipeline. |
 

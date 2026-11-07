@@ -19,6 +19,7 @@ KNOWN_METRICS = {
     # engines (src/shared/observability.py)
     "engine_last_cycle_timestamp_seconds", "ib_session_connected", "engine_cycles_total",
     "history_prune_failures_total", "db_writer_queue_dropped_total", "db_writer_dead_letter_total",
+    "order_submit_latency_seconds", "fill_to_publish_seconds",
     # api (src/api/routers/health.py)
     "fxvol_postgres_backup_age_seconds",
     # prometheus / cadvisor

@@ -2,7 +2,7 @@
 
 The desk trades EUR/USD volatility through a fixed catalogue of option
 structures. Each is a small frozen dataclass in
-[`src/engines/execution/structures.py`](../../src/engines/execution/structures.py)
+[`src/core/structures.py`](../../src/core/structures.py)
 that exposes three pure methods:
 
 - `legs(forward, surface)` — the list of `Leg` tuples the operator sees on the ticket.

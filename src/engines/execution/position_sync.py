@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus.publisher import publish_account_snapshot, publish_positions_changed
 from core.products import product_label_from_symbol
+from engines.execution.latency import observe_positions_publish
 from engines.execution.order_executor import OrderExecutor
 from persistence.models import (
     AccountHistory,
@@ -240,6 +241,7 @@ async def sync_positions_from_ib(
                 n_open=len(ib_by_key),
             )
             published = True
+            observe_positions_publish([r.structure for r in changed_rows])
             logger.info(
                 "positions_published upserted=%d closed=%d sync_ms=%.0f",
                 len(changed_rows), len(closed_rows),

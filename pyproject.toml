@@ -95,6 +95,7 @@ dev = [
     "pytest-randomly>=3.15,<6",
     "freezegun>=1.4,<2",
     "pyyaml>=6,<7",   # tests parse obs/alerts.yml + alertmanager.yml (#342)
+    "hypothesis>=6.100,<7",  # property tests on the pricing kernel (#309)
 ]
 
 # ─────────────────────────────────────────────────────────────────────

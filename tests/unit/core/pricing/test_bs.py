@@ -53,10 +53,15 @@ def test_bs_vega_matches_finite_difference():
     assert analytical == pytest.approx(numerical, rel=1e-4)
 
 
-def test_degenerate_inputs_return_zero():
-    assert bs.bs_price(1.0, 1.0, 0.0, 0.1, "C") == 0.0
-    assert bs.bs_price(1.0, 1.0, 30 / 365, 0.0, "C") == 0.0
-    assert bs.bs_delta(1.0, 1.0, 30 / 365, -0.1, "C") == 0.0
+def test_boundary_inputs_return_intrinsic_and_limit_greeks():
+    """QM-01 (#309 / #331): expiry or zero vol is intrinsic value, not 0.0;
+    gamma is 0 there; a non-positive F or K is not an option and prices 0."""
+    assert bs.bs_price(1.0, 1.0, 0.0, 0.1, "C") == 0.0        # ATM at expiry: no intrinsic
+    assert bs.bs_price(1.05, 1.0, 0.0, 0.1, "C") == pytest.approx(0.05)
+    assert bs.bs_price(1.0, 1.05, 30 / 365, 0.0, "P") == pytest.approx(0.05)
+    assert bs.bs_delta(1.0, 1.0, 30 / 365, -0.1, "C") == 0.0  # ATM step: not in the money
+    assert bs.bs_delta(1.1, 1.0, 0.0, 0.1, "C") == 1.0
+    assert bs.bs_gamma(1.0, 1.0, 0.0, 0.1) == 0.0
     assert bs.bs_gamma(0.0, 1.0, 30 / 365, 0.1) == 0.0
 
 

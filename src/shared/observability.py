@@ -103,6 +103,27 @@ ib_requests_total = Counter(
     ["engine", "request_type", "status"],
 )
 
+order_submit_latency_seconds = Histogram(
+    "order_submit_latency_seconds",
+    "Operator request received (api) to IB's first Submitted status (#370).",
+    ["engine", "path"],
+    buckets=(0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0),
+)
+
+fill_to_publish_seconds = Histogram(
+    "fill_to_publish_seconds",
+    "IB execution time to the engine's publish, per channel (orders / positions) (#370).",
+    ["engine", "channel"],
+    buckets=(0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0),
+)
+
+desk_publish_to_screen_seconds = Histogram(
+    "desk_publish_to_screen_seconds",
+    "Browser beacon: publish stamp (kind=publish) or WebSocket receive (kind=receive) to render (#370).",
+    ["channel", "kind"],
+    buckets=(0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0),
+)
+
 db_writer_rows_written_total = Counter(
     "db_writer_rows_written_total",
     "Rows the db-writer inserted (duplicates on the natural key count as written: "
