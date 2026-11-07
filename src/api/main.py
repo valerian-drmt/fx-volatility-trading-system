@@ -24,6 +24,7 @@ from api.routers import auth as auth_router
 from api.routers import cockpit as cockpit_router
 from api.routers import dev as dev_router
 from api.routers import health as health_router
+from api.routers import metrics_beacon as metrics_beacon_router
 from api.routers import orders as orders_router
 from api.routers import portfolio_panel as portfolio_panel_router
 from api.routers import positions as positions_router
@@ -210,6 +211,7 @@ def create_app() -> FastAPI:
     app.include_router(trade_router.router)
     app.include_router(trades_router.router)
     app.include_router(ws_router.router)
+    app.include_router(metrics_beacon_router.router)
     # Remaining planned : orders router (PR #5b) — requires OrderExecutor wiring.
     return app
 

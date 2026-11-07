@@ -36,6 +36,7 @@ from core.execution.fills import (
 )
 from core.execution.order_states import next_state
 from engines.execution.ib_trade_log import ib_reason_from_trade, ib_why_held
+from engines.execution.latency import note_fill, observe_orders_publish, observe_submitted
 from engines.execution.redis_state import get_client as _get_redis
 from persistence.book_state import refresh_book_state
 from persistence.models import (
@@ -138,6 +139,7 @@ async def _on_order_status(
                        f"ib status={status} why_held={why_held or '-'}", {"why_held": why_held})
                 ws_event = {"event_type": "order_held", "why_held": why_held}
             elif tr.new_state == "submitted":
+                observe_submitted(("trade_order", order_id))
                 order.state = "submitted"
                 order.submitted_at = order.submitted_at or now
                 _audit(db, order, "order_acknowledged", "info",
@@ -145,6 +147,7 @@ async def _on_order_status(
                 ws_event = {"event_type": "order_acknowledged"}
             elif tr.kind == "noop" and old_state == "submitted" and order.acknowledged_at is None:
                 order.acknowledged_at = now
+                observe_submitted(("trade_order", order_id))
                 _audit(db, order, "order_acknowledged", "info",
                        f"ib status={status}", {})
                 ws_event = {"event_type": "order_acknowledged"}
@@ -261,6 +264,7 @@ async def _persist_fill(
         if order.order_role == "closing" and order.closes_order_id is not None:
             await recompute_reservation(db, entry_order_id=order.closes_order_id)
         structure_id = order.structure_id
+        local_symbol = order.ib_local_symbol
         await db.commit()
 
         await _publish_order_safe(structure_id, {
@@ -268,6 +272,10 @@ async def _persist_fill(
             "order_id": order_id, "qty_filled": agg.qty_filled,
             "avg_fill_price": agg.avg_fill_price, "state": order.state,
         })
+        # Desk latency (#370): fill -> orders channel now; the positions
+        # channel closes when the next sync carries this symbol.
+        observe_orders_publish(ts)
+        note_fill(local_symbol, ts)
         if agg.fully_filled:
             await maybe_complete_structure(sm, structure_id)
 

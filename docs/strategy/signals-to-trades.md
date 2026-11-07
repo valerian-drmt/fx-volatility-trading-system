@@ -3,7 +3,7 @@
 The vol surface is decomposed by PCA into three principal components; each PC's
 z-score is a tradable signal, and each maps to exactly one canonical structure.
 The map lives in `signal_to_structure()` in
-[`src/engines/execution/structures.py`](../../src/engines/execution/structures.py);
+[`src/core/structures.py`](../../src/core/structures.py);
 the per-PC structure choice and thresholds are config, in
 [`src/core/config/vol_params.py`](../../src/core/config/vol_params.py).
 

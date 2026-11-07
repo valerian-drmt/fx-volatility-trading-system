@@ -33,6 +33,8 @@ from typing import Any
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from engines.execution.latency import note_submit_start
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,6 +119,7 @@ async def place_with_claim(
     if not await claim_submit(sm, model, row_id):
         raise AlreadyClaimed(getattr(model, "__tablename__", str(model)), row_id)
     order.orderRef = order_ref
+    note_submit_start((str(getattr(model, '__tablename__', model.__name__)), int(row_id)))
     try:
         trade = ib.placeOrder(contract, order)
     except Exception:

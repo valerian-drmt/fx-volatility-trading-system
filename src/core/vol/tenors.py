@@ -23,9 +23,29 @@ from datetime import date
 # then flips to "listed" automatically. (9M/1Y are quarterly-only and not
 # currently listed — left out to avoid permanently-empty columns.)
 DISPLAY_PILLARS: tuple[str, ...] = ("1M", "2M", "3M", "4M", "5M", "6M")
-PILLAR_TARGET_DTE: dict[str, int] = {
-    "1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180,
+# THE tenor map (#331, A6-03): label -> nominal calendar days. Every other
+# module derives from it (``tenor_dte`` / ``tenor_years`` / ``nearest_tenor``);
+# the five private copies it replaced disagreed on 1M (30 d vs 1/12 y).
+LABEL_DTE: dict[str, int] = {
+    "1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180, "9M": 270, "1Y": 365,
 }
+PILLAR_TARGET_DTE: dict[str, int] = {t: LABEL_DTE[t] for t in DISPLAY_PILLARS}
+
+
+def tenor_dte(tenor: str) -> int | None:
+    """Nominal days to expiry of a tenor label; None for an unknown label."""
+    return LABEL_DTE.get(tenor)
+
+
+def tenor_years(tenor: str) -> float | None:
+    """Nominal year fraction (ACT/365) of a tenor label; None when unknown."""
+    d = LABEL_DTE.get(tenor)
+    return None if d is None else d / 365.0
+
+
+def nearest_tenor(days: int, labels: tuple[str, ...] = DISPLAY_PILLARS) -> str:
+    """The label whose nominal DTE is closest to ``days`` (ties -> the shorter)."""
+    return min(labels, key=lambda t: (abs(LABEL_DTE[t] - days), LABEL_DTE[t]))
 # Delta pillars per tenor (put wings → ATM → call wings).
 DELTA_PILLARS: tuple[str, ...] = ("10dp", "25dp", "atm", "25dc", "10dc")
 
@@ -129,15 +149,8 @@ def nearest_listed_dte(target_dte: int, listed_dtes: list[int]) -> int | None:
     return min(listed_dtes, key=lambda d: abs(d - target_dte)) if listed_dtes else None
 
 
-# Nominal DTE for each engine tenor label (the engine buckets actual expiries into
-# these labels via chain_fetcher.tenor_label). Used to place anchors on the time axis.
-LABEL_DTE: dict[str, int] = {
-    "1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180, "9M": 270, "1Y": 365,
-}
-
-
 def _tenor_dte(tenor: str) -> int | None:
-    return PILLAR_TARGET_DTE.get(tenor) or LABEL_DTE.get(tenor)
+    return tenor_dte(tenor)
 
 
 def surface_listed_tenors(surface: dict) -> list[str]:

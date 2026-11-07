@@ -728,6 +728,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/metrics/beacon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Beacon */
+        post: operations["beacon_api_v1_metrics_beacon_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders": {
         parameters: {
             query?: never;
@@ -2519,6 +2536,18 @@ export interface components {
             o: number;
             /** T */
             t: number;
+        };
+        /** BeaconBody */
+        BeaconBody: {
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "positions" | "account" | "spot_orders" | "orders" | "ticks";
+            /** Publish To Screen Ms */
+            publish_to_screen_ms?: number | null;
+            /** Receive To Screen Ms */
+            receive_to_screen_ms?: number | null;
         };
         /**
          * CalibrationConfig
@@ -4464,6 +4493,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImpliedVolResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    beacon_api_v1_metrics_beacon_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BeaconBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
                 };
             };
             /** @description Validation Error */

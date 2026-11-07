@@ -39,6 +39,7 @@ from core.positions.exit_rules import (
 )
 from core.positions.mtm import attribute_pnl, compute_mtm
 from core.positions.position_pricing import LegSpec, PositionMark, price_position
+from core.vol.tenors import nearest_tenor
 from persistence.models import (
     AppConfigScalar,  # replaces DeltaHedgeConfig (migration 024)
     BookedPosition,
@@ -520,9 +521,8 @@ class PositionMonitorScheduler:
     def _tenor_from_expiry(expiry: date, now: datetime) -> str:
         """Pick the surface pillar tenor closest to days-to-expiry."""
         days = max(1, (expiry - now.date()).days)
-        # Map days → label using nearest match to the standard pillars.
-        candidates = {"1M": 30, "2M": 60, "3M": 90, "6M": 180}
-        return min(candidates.items(), key=lambda kv: abs(kv[1] - days))[0]
+        # The one tenor map (#331); the monitor keeps its coarse 4-pillar ladder.
+        return nearest_tenor(days, ("1M", "2M", "3M", "6M"))
 
     async def _sum_filled_hedge_costs(
         self, db: AsyncSession, position_id: int,

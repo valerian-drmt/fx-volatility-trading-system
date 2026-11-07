@@ -26,6 +26,7 @@ import asyncio
 import logging
 import math
 import os
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -42,11 +43,13 @@ from engines.execution.fills_handler import (
     attach_combo_fill_handlers,
     attach_fill_handlers,
 )
+from engines.execution.latency import note_submit_start
 from persistence.models import (
     StructureOrder,
     TradeEvent,
     TradeStructure,
 )
+from shared.trace import current_request_start
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +219,9 @@ async def submit_structure_live(
     Otherwise (or for futures) fall back to one order per leg. Returns a summary
     dict — final state arrives via events, not via this call.
     """
+    # Submit latency (#370): measured from the request the api received.
+    submit_t0 = current_request_start() or time.time()
+
     if not executor.is_connected():
         raise LiveSubmitError("IB Gateway not connected")
 
@@ -351,6 +357,8 @@ async def submit_structure_live(
                     db, structure_id, f"combo build/qualify failed: {e}",
                 )
                 raise
+            for order in orders:
+                note_submit_start(("trade_order", int(order.id)), submit_t0)
             trade = ib.placeOrder(bag, combo_order)
             attach_combo_fill_handlers(
                 trade=trade, conid_to_order=conid_to_order, sessionmaker_factory=sm,
@@ -491,6 +499,7 @@ async def submit_structure_live(
                 # restarts; the reaper adopts orphans by matching it.
                 ib_order.orderRef = order_ref(structure_id, order.id)
 
+                note_submit_start(("trade_order", int(order.id)), submit_t0)
                 trade = ib.placeOrder(contract, ib_order)
                 order.ib_order_id = str(trade.order.orderId)
                 order.ib_perm_id = str(trade.order.permId) if trade.order.permId else None

@@ -33,6 +33,7 @@ from engines.execution.ib_heartbeat import (
     stuck_order_watcher_loop,
 )
 from engines.execution.ib_session import IbSessionSupervisor
+from engines.execution.latency import note_submit_start
 from engines.execution.live_submit import (
     LiveSubmitAlreadyClaimed,
     LiveSubmitError,
@@ -268,15 +269,27 @@ async def _trace_middleware(request: Request, call_next):
     """Bind the caller's correlation id (X-Trace-ID) for this request so IB order
     placement / fills logged here share the API's trace_id — one grep spans both
     services. Mints one if the caller didn't send it (direct /internal call)."""
-    from shared.trace import TRACE_HEADER, bind_trace_id, clear_trace_id, new_trace_id
+    from shared.trace import (
+        REQUEST_START_HEADER,
+        TRACE_HEADER,
+        bind_request_start,
+        bind_trace_id,
+        clear_request_start,
+        clear_trace_id,
+        new_trace_id,
+    )
     trace_id = request.headers.get(TRACE_HEADER) or new_trace_id()
     bind_trace_id(trace_id)
+    # The api forwards the operator's receive time so the submit latency
+    # (#370) is measured from the click, not from this hop.
+    bind_request_start(request.headers.get(REQUEST_START_HEADER))
     try:
         response = await call_next(request)
         response.headers[TRACE_HEADER] = trace_id
         return response
     finally:
         clear_trace_id()
+        clear_request_start()
 
 
 # The container healthcheck hits /health. It used to answer 200 with
@@ -479,6 +492,7 @@ async def place_order(
                 sm, symbol=body.symbol, currency=body.currency, exchange=body.exchange,
                 side=body.side, qty=body.qty, limit_price=snapped,
             )
+            note_submit_start(("spot_order", spot_id))
             trade = await ex.place_order_trade(
                 OrderRequest(**payload), order_ref=spot_order_ref(spot_id),
             )

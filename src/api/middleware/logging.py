@@ -16,7 +16,15 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
 from shared.redact import install_stdlib_redaction, redact_event_dict
-from shared.trace import TRACE_HEADER, bind_trace_id, clear_trace_id, new_trace_id
+from shared.trace import (
+    REQUEST_START_HEADER,
+    TRACE_HEADER,
+    bind_request_start,
+    bind_trace_id,
+    clear_request_start,
+    clear_trace_id,
+    new_trace_id,
+)
 
 
 def configure_logging(level: str = "INFO") -> None:
@@ -50,6 +58,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         trace_id = request.headers.get(TRACE_HEADER) or new_trace_id()
         bind_trace_id(trace_id)
+        bind_request_start(request.headers.get(REQUEST_START_HEADER))  # #370
         log = structlog.get_logger("api.access")
         start = time.monotonic()
         status = 500  # if call_next raises, the access line still records a 5xx
@@ -67,3 +76,4 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                 duration_ms=round((time.monotonic() - start) * 1000, 2),
             )
             clear_trace_id()
+            clear_request_start()

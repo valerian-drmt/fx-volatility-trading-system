@@ -86,19 +86,14 @@ forbidden_modules =
 # Contract 5 — api does not depend on engine internals
 #
 # The api may *route* to engines via HTTP (execution-engine on :8001)
-# but must not Python-import their internals. The ONE documented
-# exception is engines.execution.structures — pure data classes
-# describing option structures (StraddleATM, RiskReversal25d, …) that
-# api/routers/cockpit.py uses to serialize previews. The right fix is
-# to promote those to core/structures.py ; until then this one path
-# is whitelisted.
+# but must not Python-import their internals. The one historical
+# exception (the trade-preview structures) moved to ``core/structures.py``
+# in #331; there is no allow-list any more.
 # ────────────────────────────────────────────────────────────────────
 [importlinter:contract:5]
-name = api does not depend on engines (except documented data classes)
+name = api does not depend on engines
 type = forbidden
 source_modules =
     api
 forbidden_modules =
     engines
-ignore_imports =
-    api.routers.cockpit -> engines.execution.structures

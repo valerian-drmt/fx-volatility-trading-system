@@ -12,45 +12,35 @@ top-level function maps 1:1 to a section of the spec.
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
+from core.pricing import bs as _bs
 from core.products import product_label_from_symbol
 from core.units import EUR_FOP_MULTIPLIER, FUTURE_MULTIPLIERS, PIP_SIZE, VOLPT
-from core.vol.tenors import snap_tenor
+from core.vol.tenors import PILLAR_TARGET_DTE, snap_tenor
 
-# 6-tenor canonical grid
-TENOR_TO_DTE = {"1M": 30, "2M": 60, "3M": 90, "4M": 120, "5M": 150, "6M": 180}
+# 6-tenor canonical grid — the one map in core.vol.tenors (#331).
+TENOR_TO_DTE = dict(PILLAR_TARGET_DTE)
 DELTA_PILLARS = ("10dp", "25dp", "atm", "25dc", "10dc")
 
+
 # ────────────────────────────────────────────────────────────────
-# Black-76 primitives (futures-style — same as engines/execution/structures.py)
+# Pricing — thin wrappers over the single kernel ``core.pricing.bs`` (#331).
+# ``right`` here is the catalog's "call" / "put"; the kernel takes "C" / "P".
+# Units are the kernel's raw units (vega per unit sigma, theta per YEAR).
 # ────────────────────────────────────────────────────────────────
-
-
-def _phi(x: float) -> float:
-    return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
-
-
-def _N(x: float) -> float:
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+def _kernel_right(right: str) -> str:
+    return "C" if str(right).lower().startswith("c") else "P"
 
 
 def bs_price(F: float, K: float, T: float, sigma: float, right: str) -> float:
-    if T <= 0 or sigma <= 0 or F <= 0 or K <= 0:
-        return max(0.0, (F - K) if right == "call" else (K - F))
-    sqrt_t = math.sqrt(T)
-    d1 = (math.log(F / K) + 0.5 * sigma * sigma * T) / (sigma * sqrt_t)
-    d2 = d1 - sigma * sqrt_t
-    if right == "call":
-        return F * _N(d1) - K * _N(d2)
-    return K * _N(-d2) - F * _N(-d1)
+    return _bs.bs_price(F, K, T, sigma, _kernel_right(right))
 
 
 def bs_greeks(F: float, K: float, T: float, sigma: float, right: str) -> dict[str, float]:
-    """Returns delta / gamma / vega / theta in raw (unscaled) units.
+    """delta / gamma / vega / theta in raw (unscaled) units.
 
     Units :
       delta  : ∂P/∂F             — fraction (call ≈ 0..1)
@@ -58,17 +48,7 @@ def bs_greeks(F: float, K: float, T: float, sigma: float, right: str) -> dict[st
       vega   : ∂P/∂σ             — per unit of σ (NOT per vol-pt)
       theta  : ∂P/∂t (per year)
     """
-    if T <= 0 or sigma <= 0 or F <= 0 or K <= 0:
-        return {"delta": 0.0, "gamma": 0.0, "vega": 0.0, "theta": 0.0}
-    sqrt_t = math.sqrt(T)
-    d1 = (math.log(F / K) + 0.5 * sigma * sigma * T) / (sigma * sqrt_t)
-    delta_call = _N(d1)
-    delta = delta_call if right == "call" else delta_call - 1.0
-    gamma = _phi(d1) / (F * sigma * sqrt_t)
-    vega = F * _phi(d1) * sqrt_t
-    # Black-76 with zero interest rate has symmetric theta for call/put.
-    theta = -F * _phi(d1) * sigma / (2.0 * sqrt_t)
-    return {"delta": delta, "gamma": gamma, "vega": vega, "theta": theta}
+    return _bs.bs_greeks(F, K, T, sigma, _kernel_right(right))
 
 
 # ────────────────────────────────────────────────────────────────
