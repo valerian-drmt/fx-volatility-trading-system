@@ -24,6 +24,7 @@ Reference : releases/architecture_finale_project/09-redis.md
 from __future__ import annotations
 
 import json
+import math
 import time
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -55,14 +56,31 @@ def _iso_utc(ts: datetime | float | None = None) -> str:
 def _json_default(obj: Any) -> Any:
     """json.dumps default : handle Decimal and datetime without extra deps."""
     if isinstance(obj, Decimal):
-        return float(obj)
+        f = float(obj)
+        return f if math.isfinite(f) else None
     if isinstance(obj, datetime):
         return _iso_utc(obj)
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
+def _finite(obj: Any) -> Any:
+    """Non-finite floats become ``null`` (#316, audit 03#12): ``NaN`` / ``Infinity``
+    are not JSON, the browser's ``JSON.parse`` rejects the whole frame, and a
+    silent 0 would be a lie. ``null`` is what every consumer already reads as
+    "no value"."""
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_finite(v) for v in obj]
+    return obj
+
+
 def _dumps(payload: dict) -> str:
-    return json.dumps(payload, default=_json_default)
+    # allow_nan=False is the belt: anything _finite missed raises here instead
+    # of publishing a frame no browser can parse.
+    return json.dumps(_finite(payload), default=_json_default, allow_nan=False)
 
 
 async def publish_tick(

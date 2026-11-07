@@ -14,15 +14,9 @@ from __future__ import annotations
 
 import numpy as np
 
+from core.risk.var_stats import diversification_pct, finite, loss_at
+
 MIN_DAYS = 5  # below this the historical decomposition is not meaningful
-
-
-def _loss_var(series: np.ndarray, conf: float) -> float:
-    """Historical VaR as a positive USD loss at the given confidence."""
-    if series.size == 0:
-        return 0.0
-    q = float(np.percentile(series, (1.0 - conf) * 100.0))
-    return max(0.0, -q)
 
 
 def component_var(series_by_id: dict[str, list[float]], conf: float = 0.99) -> dict:
@@ -32,22 +26,36 @@ def component_var(series_by_id: dict[str, list[float]], conf: float = 0.99) -> d
     (USD). Series are right-aligned to their common minimum length. Returns
     ``positions: []`` (with ``n_days``) when there is too little history.
     """
-    ids = [k for k, v in series_by_id.items() if v]
+    # A series with a non-finite value is dropped as a whole (#316): the
+    # alignment below needs every position on the same scenario grid, and a
+    # NaN in one position would poison the portfolio vector. ``dropped`` says
+    # which ones; the caller forwards it.
+    clean: dict[str, list[float]] = {}
+    dropped: list[dict] = []
+    for k, v in series_by_id.items():
+        if not v:
+            continue
+        f = finite(v)
+        if len(f) != len(v):
+            dropped.append({"id": k, "reason": "non_finite_pnl"})
+            continue
+        clean[k] = f
+    ids = list(clean)
     if not ids:
-        return {"portfolio_var_usd": 0.0, "diversification_pct": 0.0, "n_days": 0, "positions": []}
-    n = min(len(series_by_id[k]) for k in ids)
+        return {"portfolio_var_usd": 0.0, "diversification_pct": 0.0, "n_days": 0, "positions": [], "dropped": dropped}
+    n = min(len(clean[k]) for k in ids)
     if n < MIN_DAYS:
-        return {"portfolio_var_usd": 0.0, "diversification_pct": 0.0, "n_days": n, "positions": []}
+        return {"portfolio_var_usd": 0.0, "diversification_pct": 0.0, "n_days": n, "positions": [], "dropped": dropped}
 
-    mat = np.array([series_by_id[k][-n:] for k in ids], dtype=float).T  # (n_days, n_pos)
+    mat = np.array([clean[k][-n:] for k in ids], dtype=float).T  # (n_days, n_pos)
     pf = mat.sum(axis=1)
-    var_p = _loss_var(pf, conf)
+    var_p = loss_at(pf, conf)
     var_pf = float(np.var(pf, ddof=1)) or 1.0
 
     positions = []
     standalone_sum = 0.0
     for i, k in enumerate(ids):
-        standalone = _loss_var(mat[:, i], conf)
+        standalone = loss_at(mat[:, i], conf)
         standalone_sum += standalone
         cov_i = float(np.cov(mat[:, i], pf, ddof=1)[0, 1])
         comp = var_p * cov_i / var_pf
@@ -57,10 +65,10 @@ def component_var(series_by_id: dict[str, list[float]], conf: float = 0.99) -> d
             "component_usd": round(comp, 2),
             "pct": round(100.0 * comp / var_p, 1) if var_p else 0.0,
         })
-    diversification = round(100.0 * (1.0 - var_p / standalone_sum), 1) if standalone_sum else 0.0
     return {
         "portfolio_var_usd": round(var_p, 2),
-        "diversification_pct": diversification,
+        "diversification_pct": round(diversification_pct(var_p, standalone_sum), 1),
         "n_days": n,
         "positions": positions,
+        "dropped": dropped,
     }

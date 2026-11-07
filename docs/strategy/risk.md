@@ -116,9 +116,22 @@ call with its own reason; nothing resumes on its own.
 
 ## VaR
 
-[`core/risk/marginal_var.py`](../../src/core/risk/marginal_var.py) computes
-historical VaR as a positive USD loss quantile and decomposes it per position by
-Euler allocation:
+Methodology, as served by `GET /portfolio/var` and `GET /portfolio/marginal-var`
+(#316, audit 03#3 / 03#4 / 03#6):
+
+| | |
+|---|---|
+| Horizon | **1 trading day**. No horizon scaling anywhere: a full-revaluation VaR does not follow sqrt-t, so the desk shows the 1-day figures only (the old weekly / monthly / yearly rows were sqrt-t multiples and are gone). |
+| Confidence | VaR 95 % and VaR 99 % = the 5 % / 1 % quantiles of the P&L series; ES 99 % = mean of the P&L at or beyond the 1 % quantile. |
+| Percentile | linear interpolation between order statistics, on finite values only (`core/risk/var_stats.py`, the single implementation). |
+| Preferred method | `historical-simulation`: ~1 year of daily EURUSD closes from the bar cache, each session replayed as one scenario (`Δspot` = close-to-close return in bp, `Δvol` = change of the 21-session realised vol in vol points, a proxy for implied) through **today's** book, full Black-Scholes revaluation per scenario (`core/risk/hist_var.py`). Needs at least 60 scenarios. |
+| Fallback method | `account-history`: the empirical distribution of daily net-liq changes over the last `var_lookback_days` sessions (default 504), skipping any step longer than `var_max_gap_days` (default 3: a downtime or a capital move is not a daily loss). Needs 5 observations; fields are `null` before that. |
+| Sign | `var_stats` computes **positive USD losses**, clamped (a tail that is still a gain reads 0, ES ≥ VaR 99 ≥ VaR 95). `/var` serves them as P&L quantiles (negative = loss, `convention: "pnl_quantile"`) because the desk plots them on the P&L axis; `/marginal-var` serves the positive losses (`convention: "loss"`). |
+| What was not priced | every payload carries `dropped: [{id, reason}]` (`no_iv`, `no_expiry`, `unparseable_symbol`, `no_spot`, `non_finite_pnl`) and `fallback` (`{"spot": "strike_proxy"}` when no future mark gave a spot and an option strike stands in). `n_positions` counts the priced rows only. |
+| Diversification | `1 − VaR_p / Σ standalone`, clamped to [0, 100] %. |
+
+[`core/risk/marginal_var.py`](../../src/core/risk/marginal_var.py) decomposes
+the 1-day 99 % VaR per position by Euler allocation:
 
 ```
 comp_i = VaR_p · cov(pnl_i, pnl_p) / var(pnl_p)
