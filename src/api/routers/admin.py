@@ -173,3 +173,68 @@ async def put_domain_settings(domain: str, req: DomainSettingsPatch, db: DbDep) 
             ))
     await db.commit()
     return await _domain_payload(db, domain)
+
+
+# ── Kill switch (#315) ───────────────────────────────────────────────────────
+# GET is public (the desk badges it); POST / DELETE need the trader cookie.
+# The flag lives in Postgres (persistence.halt); Redis mirrors it and carries
+# the system_alerts message; the execution engine cancels working orders.
+
+
+class HaltRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=300)
+
+
+@router.get("/halt")
+async def get_halt_state(db: DbDep) -> dict[str, Any]:
+    from persistence.halt import get_halt
+
+    h = await get_halt(db)
+    return {"halted": h.halted, "reason": h.reason, "set_by": h.set_by,
+            "set_at": h.set_at.isoformat() if h.set_at else None}
+
+
+async def _forward_halt_to_execution() -> dict[str, Any]:
+    import os
+
+    import httpx
+
+    from shared.trace import trace_headers
+    url = os.getenv("EXECUTION_URL", "http://execution-engine:8001") + "/internal/halt"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(url, headers=trace_headers())
+        return {"status": r.status_code, **(r.json() if r.headers.get("content-type", "").startswith("application/json") else {})}
+    except Exception as e:  # the flag is already set; cancelling is best effort
+        return {"status": None, "error": type(e).__name__}
+
+
+@router.post("/halt", dependencies=[Depends(require_write)])
+async def halt_trading(body: HaltRequest, db: DbDep, redis: RedisDep) -> dict[str, Any]:
+    """Stop everything: flag set (durable), orders at IB cancelled, alert published."""
+    from bus.halt import mirror_halt
+    from persistence.halt import set_halt
+
+    st = await set_halt(db, halted=True, reason=body.reason, by="trader")
+    await db.commit()
+    try:
+        await mirror_halt(redis, halted=True, reason=body.reason, by="trader")
+    except Exception:
+        pass
+    cancel = await _forward_halt_to_execution()
+    return {"halted": True, "reason": st.reason, "set_at": st.set_at.isoformat() if st.set_at else None,
+            "execution_cancel": cancel}
+
+
+@router.delete("/halt", dependencies=[Depends(require_write)])
+async def resume_trading(body: HaltRequest, db: DbDep, redis: RedisDep) -> dict[str, Any]:
+    from bus.halt import mirror_halt
+    from persistence.halt import set_halt
+
+    st = await set_halt(db, halted=False, reason=body.reason, by="trader")
+    await db.commit()
+    try:
+        await mirror_halt(redis, halted=False, reason=body.reason, by="trader")
+    except Exception:
+        pass
+    return {"halted": False, "reason": st.reason}

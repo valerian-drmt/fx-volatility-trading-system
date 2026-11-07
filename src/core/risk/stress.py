@@ -38,8 +38,10 @@ MONEY_BAND = 0.05
 # Greek display scalings — match the existing greeks-ladder ($/pip, $/volpt).
 _GAMMA_PER_PIP = 1e-4
 _VEGA_PER_VOLPT = 0.01
-_VANNA_SCALE = 1e-4   # per pip · per vol pt
-_VOLGA_SCALE = 1e-4   # per vol pt²
+# vanna in $ per VOL POINT (change of EUR-equivalent delta for +1 % IV), the
+# same scale the risk engine persists (#313); it was 1e-4 here, 0.01 there.
+_VANNA_SCALE = 0.01
+_VOLGA_SCALE = 1e-4   # per vol pt² (0.01²)
 
 ResolvedPosition = dict[str, Any]
 

@@ -21,7 +21,9 @@ set -eu
 COOLDOWN_S=900                              # 15 min between recovery attempts
 STATE=/run/fxvol-ib-watchdog.last
 GW=fxvol-ib-gateway
-ENGINES="fxvol-market-data fxvol-vol-engine"
+# All four IB-bound engines (#342): a dead upstream stalls risk and execution
+# the same way it stalls market-data and vol. Container names from compose.
+ENGINES="fxvol-market-data fxvol-vol-engine fxvol-risk fxvol-execution"
 
 log() { echo "$(date -u +%FT%TZ) ib-watchdog: $*"; }
 
@@ -32,10 +34,12 @@ health() {
 
 md=$(health fxvol-market-data)
 ve=$(health fxvol-vol-engine)
+rk=$(health fxvol-risk)
+ex=$(health fxvol-execution)
 
 # Act only on the specific stall signature: an engine reporting unhealthy.
 # (`starting` during start_period, `healthy`, `none`, `missing` -> no action.)
-case "$md $ve" in
+case "$md $ve $rk $ex" in
     *unhealthy*) ;;
     *) exit 0 ;;
 esac
@@ -44,12 +48,12 @@ now=$(date +%s)
 if [ -f "$STATE" ]; then
     last=$(cat "$STATE" 2>/dev/null || echo 0)
     if [ $((now - last)) -lt "$COOLDOWN_S" ]; then
-        log "unhealthy (md=$md ve=$ve) but within ${COOLDOWN_S}s cooldown; skip"
+        log "unhealthy (md=$md ve=$ve rk=$rk ex=$ex) but within ${COOLDOWN_S}s cooldown; skip"
         exit 0
     fi
 fi
 
-log "unhealthy (md=$md ve=$ve) -> restart gateway then engines"
+log "unhealthy (md=$md ve=$ve rk=$rk ex=$ex) -> restart gateway then engines"
 echo "$now" > "$STATE"
 docker restart "$GW"
 sleep 75                                    # IBC login + market-data farm reconnect

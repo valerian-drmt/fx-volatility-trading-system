@@ -9,6 +9,16 @@ global:
   external_labels:
     environment: dev
 
+# Alert rules + their router (#342). Rules: obs/alerts.yml ; routing and the
+# SNS receiver: obs/alertmanager.yml ; runbook: docs/ops/alerting.md.
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
 scrape_configs:
   # The api's own /metrics: request timings plus
   # fxvol_postgres_backup_age_seconds (#343, read from the backup stamp).

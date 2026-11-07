@@ -112,7 +112,9 @@ class _FakeIB:
         return [contract]
 
     async def reqTickersAsync(self, contract):
-        return [SimpleNamespace(bid=1.01, ask=1.02, marketPrice=lambda: 1.015)]
+        # A quote NEAR the preview premium (0.0042): the price collar (#315)
+        # refuses a live limit more than 50 % away from it.
+        return [SimpleNamespace(bid=0.0041, ask=0.0043, marketPrice=lambda: 0.0042)]
 
     def placeOrder(self, contract, order):
         if (self._fail_place_after is not None
@@ -430,5 +432,36 @@ async def test_raises_when_disconnected():
             await submit_structure_live(
                 sessionmaker_factory=maker, executor=_Down(), structure_id=1,
             )
+    finally:
+        await engine.dispose()
+
+
+async def test_price_collar_refuses_the_whole_structure_before_any_leg_is_placed(monkeypatch):
+    """#315 (04#12): a live limit far from the preview premium (quote 1.02 vs
+    preview 0.0042) must refuse ALL legs before anything reaches IB and release
+    the claim, so a retry at a sane quote is possible."""
+    _install_ibinsync_stub(monkeypatch)
+    from engines.execution.live_submit import LiveSubmitError, submit_structure_live
+
+    class _FarQuoteIB(_FakeIB):
+        async def reqTickersAsync(self, contract):
+            return [SimpleNamespace(bid=1.01, ask=1.02, marketPrice=lambda: 1.015)]
+
+    maker, engine = await _make_session()
+    try:
+        struct_id, _ = await _seed(maker, legs=2)
+        ib = _FarQuoteIB()
+        with pytest.raises(LiveSubmitError, match="price collar"):
+            await submit_structure_live(
+                sessionmaker_factory=maker, executor=_FakeExecutor(ib), structure_id=struct_id,
+            )
+        assert ib.placed == []
+        struct = await _get_struct(maker, struct_id)
+        assert struct.submit_claimed_at is None
+        ib2 = _FakeIB()
+        result = await submit_structure_live(
+            sessionmaker_factory=maker, executor=_FakeExecutor(ib2), structure_id=struct_id,
+        )
+        assert result["n_orders_placed"] == 2
     finally:
         await engine.dispose()

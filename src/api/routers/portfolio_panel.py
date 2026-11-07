@@ -18,7 +18,6 @@ import asyncio
 import itertools
 import json
 import logging
-import statistics
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal
 
@@ -28,6 +27,7 @@ from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis
+from api.orchestration.greek_caps import compute_live_caps
 from bus import keys
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
 from core.risk import greek_limits as gl
@@ -905,7 +905,8 @@ async def greeks_ladder(
     rows: list[dict[str, Any]] = []
     for b in bins:
         kwargs = {kw: float(b)}
-        delta = reval_book(baselines, current_spot, output="delta", **kwargs)
+        # reval_book's delta is EUR-equivalent exposure; × spot = USD (#313).
+        delta = reval_book(baselines, current_spot, output="delta", **kwargs) * current_spot
         row = {
             "axis_value": b,
             "pnl_usd": round(reval_book(baselines, current_spot, output="pnl", **kwargs), 2),
@@ -1513,12 +1514,13 @@ async def pnl_attribution(
             spot_then=spot_then_u,
             iv_now=iv_now_u,
             iv_then=iv_then_u,
-            delta=float(r.delta_now) if r.delta_now is not None else None,
+            # delta_usd is USD exposure (delta_eur × F, #313): ∂V/∂F = delta_usd / F.
+            delta=(float(r.delta_now) / spot_now_u) if (r.delta_now is not None and spot_now_u) else None,
             gamma=gamma_u,
             vega=vega_u,
             theta=theta_u,
             t_then=r.t_then,
-            delta_then=float(r.delta_then) if r.delta_then is not None else None,
+            delta_then=(float(r.delta_then) / spot_then_u) if (r.delta_then is not None and spot_then_u) else None,
             gamma_then=gamma_then_u,
             vega_then=vega_then_u,
             theta_then=theta_then_u,
@@ -2301,56 +2303,9 @@ async def greek_limits(db: DbDep) -> dict[str, Any]:
     prevailing vol rises above its recent typical level. Fields are 0 until
     ~enough net-liq history + a spot exist.
     """
-    nl_sql = text("""
-        WITH daily AS (
-          SELECT DISTINCT ON (date_trunc('day', timestamp))
-                 date_trunc('day', timestamp) AS day, net_liq_usd
-            FROM account_history
-           WHERE timestamp >= NOW() - INTERVAL '504 days' AND net_liq_usd IS NOT NULL
-           ORDER BY date_trunc('day', timestamp), timestamp DESC
-        )
-        SELECT net_liq_usd FROM daily ORDER BY day
-    """)
-    nav_series = [float(r[0]) for r in (await db.execute(nl_sql)).all()]
-    spot = (await db.execute(
-        select(VolSurface.spot).where(VolSurface.underlying == "EURUSD")
-        .order_by(desc(VolSurface.timestamp)).limit(1)
-    )).scalar_one_or_none()
-
-    # Live policy from the Risk settings panel (config_scalar 'greek_limits'),
-    # falling back to the code defaults for any key not set in the DB.
-    rows = (await db.execute(
-        select(AppConfigScalar.name, AppConfigScalar.value)
-        .where(AppConfigScalar.namespace == "greek_limits")
-    )).all()
-    params = {name: float(val) for name, val in rows if name in gl.CONFIG_DEFAULTS}
-
-    nav_b = gl.nav_base(
-        nav_series,
-        hwm_floor=params.get("nav_hwm_floor", gl.CONFIG_DEFAULTS["nav_hwm_floor"]),
-        halflife=params.get("nav_halflife_days", gl.CONFIG_DEFAULTS["nav_halflife_days"]),
-    ) or 0.0
-    spot_f = float(spot) if spot is not None else 0.0
-    # §8 — regime scaling: tighten caps when current vol is elevated vs its recent
-    # typical level. regime_mult = clamp(current / median(last 90d), 1, 3), both
-    # read from regime_snapshot.vol_level_pct so the ratio is unit-independent (no
-    # calm-baseline constant to guess). Falls back to 1.0 when history is thin.
-    vol_levels = [
-        float(r[0]) for r in (await db.execute(
-            select(RegimeSnapshot.vol_level_pct)
-            .where(
-                RegimeSnapshot.vol_level_pct.is_not(None),
-                RegimeSnapshot.timestamp >= datetime.now(UTC) - timedelta(days=90),
-            )
-            .order_by(RegimeSnapshot.timestamp)
-        )).all()
-    ]
-    regime = 1.0
-    if len(vol_levels) >= 10:
-        baseline = statistics.median(vol_levels)
-        if baseline > 0:
-            regime = max(1.0, min(3.0, vol_levels[-1] / baseline))
-    caps = gl.compute_caps(nav_b, spot_f, regime, params=params)
+    # Same computation as the pre-trade gate (#315): api.orchestration.greek_caps.
+    live = await compute_live_caps(db)
+    caps, nav_series = live.caps, live.nav_series
     return {
         "computed_at": datetime.now(UTC).isoformat(),
         "nav_base_usd": round(caps.nav_base_usd, 2),

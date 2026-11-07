@@ -94,6 +94,7 @@ dev = [
     # frozen clock instead of sleeps / datetime.now() in assertions.
     "pytest-randomly>=3.15,<6",
     "freezegun>=1.4,<2",
+    "pyyaml>=6,<7",   # tests parse obs/alerts.yml + alertmanager.yml (#342)
 ]
 
 # ─────────────────────────────────────────────────────────────────────

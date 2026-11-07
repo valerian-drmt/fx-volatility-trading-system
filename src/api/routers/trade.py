@@ -26,6 +26,7 @@ from sqlalchemy.orm import aliased
 from api.auth import require_write
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.book_state_refresh import refresh_book_state
+from api.orchestration.pretrade_gate import run_pretrade_gate
 from core.execution.revalidation import revalidate_preview
 from core.execution.slippage import compute_limit_price
 from core.products import product_label_from_symbol
@@ -914,6 +915,26 @@ async def _submit_preview_impl(
 
     sizing = payload.get("sizing") or {}
     base_qty = int(sizing.get("base_qty", 1))
+
+    # Pre-trade gate, fail closed (#315): kill switch, risk-engine heartbeat,
+    # paper-account assertion, surface age, symbol allow-list, and every greek
+    # cap + the notional cap on the POST-trade book. Every reason at once.
+    gate = await run_pretrade_gate(
+        db, get_redis_client_or_none(), payload=payload, live_mode=(execution_mode == "live"),
+    )
+    if not gate.passed:
+        db.add(TradeEvent(
+            structure_id=None, event_type="submission_blocked",
+            severity="warning", description="pretrade_gate: " + ", ".join(gate.failures)[:450],
+            payload={"preview_id": preview_id, "failures": gate.failures, "details": gate.details},
+        ))
+        await db.commit()
+        raise HTTPException(400, detail={
+            "error": "pretrade_gate_failed",
+            "failures": gate.failures,
+            "details": gate.details,
+        })
+
     limits_for_submit = await _load_limits(db)
     commission_per_contract = limits_for_submit.get("commission_per_contract_usd", 2.0)
     slippage_tolerance_pct = float(

@@ -46,6 +46,7 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [vol-modeling/volatility-surface.md](vol-modeling/volatility-surface.md) | SVI / SSVI calibration, smile, term structure, delta/tenor pillars, PCHIP, surface-Z. |
 | [vol-modeling/forecasting.md](vol-modeling/forecasting.md) | Realized-vol models: GARCH, HAR-RV, Yang-Zhang, VRP. |
 | [vol-modeling/regime.md](vol-modeling/regime.md) | GMM regime detection and how the regime gates signals. |
+| [vol-modeling/units.md](vol-modeling/units.md) | Units at every boundary: greeks (USD / per pip / per vol point), IV fraction vs percent, IB price points, P&L attribution terms. |
 | [vol-modeling/notebooks/pca_signal_pipeline_explained.ipynb](vol-modeling/notebooks/pca_signal_pipeline_explained.ipynb) | Runnable walk-through of the PCA signal pipeline. |
 
 ## Strategy
@@ -81,3 +82,4 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [ops/deployment.md](ops/deployment.md) | Prod on AWS/EC2: push → GitHub Actions → OIDC → SSM → deploy, the deploy gate. |
 | [ops/secrets.md](ops/secrets.md) | SSM Parameter Store (KMS), load-to-RAM, never-on-disk, never-echo. |
 | [ops/redis-durability.md](ops/redis-durability.md) | What Redis holds, its TTLs, the eviction policy, and what a restart costs. |
+| [ops/alerting.md](ops/alerting.md) | Prometheus rules → Alertmanager → SNS, the host disk guard, the IB watchdog, one-time IAM / IMDS setup. |

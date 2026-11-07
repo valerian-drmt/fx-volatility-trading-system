@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -100,6 +101,29 @@ async def _release_submit_claim(
         payload={"reason": reason[:300]},
     ))
     await db.commit()
+
+
+def _allowed_symbols() -> tuple[str, ...]:
+    raw = os.getenv("ALLOWED_SYMBOLS", "EUR,M6E")
+    return tuple(s.strip().upper() for s in raw.split(",") if s.strip())
+
+
+def _collar_pct() -> float:
+    try:
+        return float(os.getenv("LIVE_SUBMIT_COLLAR_PCT", "0.5"))
+    except ValueError:
+        return 0.5
+
+
+def collar_ok(limit: float, reference: float, pct: float) -> bool:
+    """Pure: the live limit must sit within ±pct of the preview premium. With no
+    usable reference (0 / NaN) the collar cannot be applied and refuses:
+    an unknown reference is not a pass (#315)."""
+    if reference is None or reference != reference or reference <= 0:
+        return False
+    if limit is None or limit != limit or limit <= 0:
+        return False
+    return abs(limit - reference) <= pct * reference
 
 
 def _num(x: Any) -> float | None:
@@ -422,6 +446,31 @@ async def submit_structure_live(
         # no longer roll back legs 1..k-1 that are already live at IB; the
         # residual window (crash between placeOrder and its commit) is closed
         # by the orderRef adoption sweep in the reaper.
+        # Pre-placement pass (#315, 04#12): symbol allow-list and a price
+        # collar on EVERY leg before anything reaches IB, so a leg that fails
+        # the collar cannot leave its siblings live. The collar compares the
+        # live marketable limit with the preview premium (theoretical); a gap
+        # beyond LIVE_SUBMIT_COLLAR_PCT means the quote and the model disagree
+        # too much to trade on autopilot.
+        limits: dict[int, float] = {}
+        try:
+            for order, contract, is_market in prepared:
+                sym = str(order.contract_symbol or "EUR").upper()
+                if sym not in _allowed_symbols():
+                    raise LiveSubmitError(f"symbol {sym!r} not in the allow-list {_allowed_symbols()}")
+                if not is_market:
+                    lp = await _marketable_limit(ib, contract, order.side, float(order.limit_price))
+                    ref = float(order.preview_price or order.limit_price or 0.0)
+                    if not collar_ok(lp, ref, _collar_pct()):
+                        raise LiveSubmitError(
+                            f"price collar: leg {order.leg_idx} live limit {lp} vs preview {ref} "
+                            f"beyond {_collar_pct():.0%}"
+                        )
+                    limits[order.id] = lp
+        except Exception as e:
+            await _release_submit_claim(db, structure_id, f"pre-placement gate: {e}")
+            raise
+
         placed: list[dict[str, Any]] = []
         try:
             for order, contract, is_market in prepared:
@@ -431,12 +480,7 @@ async def submit_structure_live(
                     ib_order = MarketOrder(order.side, int(order.qty))
                     ib_order.tif = tif
                 else:
-                    # Re-price the marketable limit off IB's LIVE quote
-                    # (BUY→ask, SELL→bid) so it actually crosses ; the stored
-                    # preview limit is only a fallback when no quote exists.
-                    lp = await _marketable_limit(
-                        ib, contract, order.side, float(order.limit_price),
-                    )
+                    lp = limits[order.id]
                     order.limit_price = lp
                     ok = build_order_kwargs(
                         side=order.side, qty=order.qty, limit_price=lp, time_in_force=tif,
