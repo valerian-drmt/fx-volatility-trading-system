@@ -9,13 +9,10 @@ from core.positions.position_pricing import LegSpec, price_position
 
 
 def _flat_surface(iv_decimal: float = 0.07) -> dict:
-    """Synthesize a wide-ATM-only flat surface compatible with interpolate_iv."""
-    iv_pct = iv_decimal * 100.0
-    return {
-        "1M": {"sigma_ATM_pct": iv_pct, "strike_atm": 1.0850},
-        "3M": {"sigma_ATM_pct": iv_pct, "strike_atm": 1.0850},
-        "6M": {"sigma_ATM_pct": iv_pct, "strike_atm": 1.0850},
-    }
+    """ATM-only flat surface in the PUBLISHED nested shape (#310):
+    ``{tenor: {label: {iv, strike}}}`` with decimal IVs."""
+    cell = {"atm": {"iv": iv_decimal, "strike": 1.0850, "source": "listed"}}
+    return {"1M": dict(cell), "3M": dict(cell), "6M": dict(cell)}
 
 
 def test_price_position_long_call():

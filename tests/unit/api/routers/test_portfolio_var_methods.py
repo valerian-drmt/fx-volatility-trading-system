@@ -101,7 +101,8 @@ def book(monkeypatch: pytest.MonkeyPatch):
     """Patch the book resolution so the tests never need a real DB row set."""
     def _set(spot, baselines):
         async def _fake(_db):
-            return spot, baselines
+            # (spot, baselines, spot_source) since #310
+            return spot, baselines, "future_mark" if spot is not None else None
         monkeypatch.setattr(pp, "_resolve_book", _fake)
     return _set
 

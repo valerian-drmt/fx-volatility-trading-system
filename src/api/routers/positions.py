@@ -710,6 +710,7 @@ async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
     )).scalars().all()
     total_vega = total_gamma = total_theta = total_delta = 0.0
     n = 0
+    n_delta_unknown = 0  # positions whose latest live delta could not be computed (#310)
     for pos in rows:
         latest = (await db.execute(
             select(BookedPositionMetricHistory).where(BookedPositionMetricHistory.position_id == pos.id)
@@ -719,18 +720,24 @@ async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
             total_vega += latest.current_vega_usd_per_volpt or 0.0
             total_gamma += latest.current_gamma_usd_per_pip2 or 0.0
             total_theta += latest.current_theta_usd_per_day or 0.0
-            total_delta += latest.current_delta_unhedged or 0.0
+            if latest.current_delta_unhedged is None:
+                n_delta_unknown += 1
+            else:
+                total_delta += latest.current_delta_unhedged
         else:
             total_vega += pos.entry_vega_usd_per_volpt or 0.0
             total_gamma += pos.entry_gamma_usd_per_pip2 or 0.0
             total_theta += pos.entry_theta_usd_per_day or 0.0
+            n_delta_unknown += 1
         n += 1
     return {
         "n_open_positions": n,
         "total_vega_usd_per_volpt": round(total_vega, 2),
         "total_gamma_usd_per_pip2": round(total_gamma, 4),
         "total_theta_usd_per_day": round(total_theta, 2),
+        # Partial sum when n_delta_unknown > 0: the UI must say so, not show 0.
         "total_delta_unhedged": round(total_delta, 4),
+        "n_delta_unknown": n_delta_unknown,
     }
 
 

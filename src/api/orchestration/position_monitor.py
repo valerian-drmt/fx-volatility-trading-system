@@ -244,7 +244,17 @@ class PositionMonitorScheduler:
             current_vega = pos.entry_vega_usd_per_volpt
             current_gamma = pos.entry_gamma_usd_per_pip2
             current_theta = pos.entry_theta_usd_per_day
-            current_delta_unhedged = 0.0
+            # No live mark: the delta is UNKNOWN, not zero. A literal 0.0 here
+            # read as "the book is flat" and the hedge never fired (R3-02,
+            # #310). None flows to the hedge decision (no_delta_available),
+            # the metric history and the WS payload.
+            current_delta_unhedged = None
+            logger.warning(
+                "position_delta_unknown position_id=%s n_surface_missing=%s surface=%s",
+                pos.id,
+                live_mark.n_surface_missing if live_mark is not None else "n/a",
+                "present" if surface else "absent",
+            )
 
         hedge_cost_cumul = await self._sum_filled_hedge_costs(db, pos.id)
         mtm = compute_mtm(
@@ -267,6 +277,7 @@ class PositionMonitorScheduler:
             "current_gamma_usd_per_pip2": current_gamma,
             "current_theta_usd_per_day": current_theta,
             "current_delta_unhedged": current_delta_unhedged,
+            "delta_unknown": current_delta_unhedged is None,
             "hedge_cost_cumul_usd": hedge_cost_cumul,
         })
 
@@ -381,7 +392,7 @@ class PositionMonitorScheduler:
         )).scalar_one_or_none()
         cfg = await self._load_hedge_config(db)
         decision = check_delta_hedge_needed(
-            delta_unhedged=float(current_delta_unhedged),
+            delta_unhedged=current_delta_unhedged,  # None = unknown, never 0.0
             threshold=cfg["rebalance_threshold_delta"],
             min_hedge_qty=int(cfg["min_hedge_qty"]),
             last_hedge_at=last_hedge.triggered_at if last_hedge else None,

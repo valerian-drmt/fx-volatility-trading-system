@@ -122,6 +122,24 @@ the rules hold.
 
 ![Target: the same engines in two lanes, with the new edges marked](../diagrams/hot-cold-target-lanes.svg)
 
+### 3.1 CPU weights (T1, shipped)
+
+`cpu_shares` in `docker-compose.yml`, relative weights the kernel applies
+only under contention. An idle host still gives any container both cores;
+when the analytics batch and a trader's click compete, the click wins 8:1.
+
+| Weight | Containers | Why |
+|---|---|---|
+| 1024 | execution, api, market-data, ib-gateway, nginx | the hot path: an order, a fill, a tick, the page that shows them |
+| 512 | risk-engine, frontend | greeks the trader reads every few seconds; static files |
+| 256 | vol-engine, db-writer, postgres, redis | per-cycle work and the stores, which must not starve but never block a click |
+| 128 | analytics-engine (also `cpus: 0.5`), prometheus, cadvisor, loki, promtail, tempo, otel-collector, grafana | the cold path and observability: everything that can wait |
+
+Alongside the weights the vol engine stopped running the hourly batch itself:
+`VOL_INLINE_ANALYTICS` defaults to `0`, so GMM refit, PCA surface snapshot and
+PC3 history are computed once, on the analytics container, and read back from
+Redis. One `pca_surface_snapshot` row per hour, not two.
+
 Why the push is cheap to finish: the api already serves `/ws/positions` and
 `/ws/orders/{structure_id}`, the Redis bridge already forwards the
 `positions`, `account` and `orders:*` channels, and the bus has
@@ -133,7 +151,7 @@ execution engine writes positions to Postgres and the UI reads them back on a
 
 | # | Change | Where | Effort | Collision point |
 |---|---|---|---|---|
-| 1 | `cpu_shares` per container: execution, api, market-data 1024; risk 512; vol, db-writer 256; analytics, obs 128 | `docker-compose.yml` | 1 h, deploy-time | 2.3 |
+| 1 | `cpu_shares` per container (§3.1) and the analytics batch runs once (`VOL_INLINE_ANALYTICS=0`) — **shipped, #365** | `docker-compose.yml`, `engines/vol` | 1 h, deploy-time | 2.3 |
 | 2 | Push the hot path: execution publishes position and account deltas; UI subscribes to `/ws/positions`, `/ws/orders/{id}`, new `/ws/account`; REST poll becomes a 60 s reconciliation | execution, api/ws, frontend provider | 2 PRs | 2.2, 2.1 |
 | 3 | Materialise cold results: analytics computes attribution and daily rollups once per cycle into result tables; api endpoints become single-row reads (closes #286) | analytics, migration, api | 2 PRs | 2.1, 2.4 |
 | 4 | Never blank a panel: last good value + freshness badge, no mock fallback, on the trade and risk bundles too | frontend provider | 1 PR | 2.2 |

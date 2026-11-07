@@ -42,9 +42,9 @@ from core.pricing.bs import (
     bs_price,
     bs_theta,
     bs_vega,
-    interpolate_iv,
 )
 from core.units import EUR_FOP_MULTIPLIER, PIP_SIZE, VOLPT
+from core.vol.iv_lookup import iv_at_strike
 
 
 @dataclass(frozen=True)
@@ -70,6 +70,10 @@ class LegPricing:
     iv_used: float        # decimal IV applied
     sign: int             # +1 BUY, -1 SELL
     qty_signed: int       # sign * qty
+    # where iv_used came from: surface (pillar / interp_strike / wing_clamp /
+    # single_pillar), "fallback" (entry IV, counted in n_surface_missing) or
+    # "none" (unpriceable leg). Lets a caller refuse or flag a mark (#310).
+    iv_source: str = "none"
 
 
 @dataclass(frozen=True)
@@ -116,12 +120,16 @@ def price_position(
         T = _years_to_expiry(leg.expiry, now)
         right = "C" if leg.contract_type.lower() in ("call", "c") else "P"
         sigma: float | None = None
+        iv_source = "none"
         if surface is not None:
-            sigma = interpolate_iv(surface, leg.tenor, leg.strike, spot)
+            res = iv_at_strike(surface, leg.tenor, leg.strike, F=spot, T=T)
+            if res is not None:
+                sigma, iv_source = res.iv, res.source
         if sigma is None:
             sigma = leg.fallback_iv
             if sigma is not None:
                 n_missing += 1
+                iv_source = "fallback"
         if sigma is None or sigma <= 0:
             # Cannot price ; emit a zero-greek leg so the caller sees the gap.
             leg_results.append(LegPricing(
@@ -156,7 +164,7 @@ def price_position(
         leg_results.append(LegPricing(
             leg_idx=leg.leg_idx, price=price, delta=delta, gamma=gamma,
             vega=vega, theta=theta, iv_used=sigma, sign=sign,
-            qty_signed=qty_signed,
+            qty_signed=qty_signed, iv_source=iv_source,
         ))
 
     return PositionMark(

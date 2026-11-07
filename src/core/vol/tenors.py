@@ -147,6 +147,38 @@ def snap_tenor(requested: str, surface: dict) -> tuple[str, bool]:
     return best[0], True
 
 
+def _cell_strikes(row: dict) -> dict[str, float]:
+    return {
+        d: float(c["strike"]) for d, c in row.items()
+        if isinstance(c, dict) and isinstance(c.get("strike"), (int, float)) and c["strike"] > 0
+    }
+
+
+def _interp_strikes(raw_cells: dict[str, dict], target_dte: int) -> dict[str, float]:
+    """Per-delta strike at ``target_dte``, linear in DTE between the two listed
+    expiries that bracket it; held flat past the furthest one. Empty when the
+    listed cells carry no strikes."""
+    dated = sorted(
+        ((LABEL_DTE[lbl], _cell_strikes(row)) for lbl, row in raw_cells.items() if lbl in LABEL_DTE),
+        key=lambda x: x[0],
+    )
+    dated = [(dte, ks) for dte, ks in dated if ks]
+    if not dated:
+        return {}
+    lo = [x for x in dated if x[0] < target_dte]
+    hi = [x for x in dated if x[0] > target_dte]
+    if lo and hi:
+        (d0, k0), (d1, k1) = lo[-1], hi[0]
+        frac = (target_dte - d0) / (d1 - d0)
+        return {
+            d: round(k0[d] + (k1[d] - k0[d]) * frac, 6)
+            for d in k0 if d in k1
+        }
+    if lo:
+        return dict(lo[-1][1])
+    return dict(hi[0][1])
+
+
 def _recompute_surface_z(display: dict[str, dict]) -> None:
     """Attach a cross-sectional z to every display cell: z = (iv − mean)/std over
     all (tenor × delta) IVs of the display grid. No-op on a flat/degenerate grid."""
@@ -228,7 +260,15 @@ def to_display_surface(
         )
         if iv_by is None:
             continue  # missing — omit; frontend shows "—"
-        out[pillar] = {d: {"iv": iv, "strike": None, "source": source} for d, iv in iv_by.items()}
+        # An interpolated pillar has no contract, but it does have a strike
+        # per delta: linear in DTE between the bracketing listed expiries
+        # (held flat past the last one). Without it every consumer that keys
+        # on strike dropped the pillar and fell back to a constant IV (#310).
+        strike_by = _interp_strikes(raw_cells, target)
+        out[pillar] = {
+            d: {"iv": iv, "strike": strike_by.get(d), "source": source}
+            for d, iv in iv_by.items()
+        }
 
     _recompute_surface_z(out)
     return out

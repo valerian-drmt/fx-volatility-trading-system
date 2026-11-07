@@ -13,6 +13,7 @@ services:
     image: postgres:16-alpine
     container_name: fxvol-postgres
     mem_limit: 512m
+    cpu_shares: 256
     restart: unless-stopped
     environment:
       POSTGRES_DB: fxvol
@@ -37,6 +38,7 @@ services:
     image: redis:7-alpine
     container_name: fxvol-redis
     mem_limit: 320m
+    cpu_shares: 256
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -64,6 +66,7 @@ services:
     image: ${API_IMAGE:-fx-options-api:local}
     container_name: fxvol-api
     mem_limit: 512m
+    cpu_shares: 1024
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
@@ -139,6 +142,7 @@ services:
     image: ${MARKET_DATA_IMAGE:-fx-options-market-data:local}
     container_name: fxvol-market-data
     mem_limit: 384m
+    cpu_shares: 1024
     # Opt-in with the ``engines`` profile so a plain ``docker compose up``
     # (api demo) does not spin up a live IB connection.
     profiles: ["engines"]
@@ -188,6 +192,7 @@ services:
     image: ${VOL_ENGINE_IMAGE:-fx-options-vol-engine:local}
     container_name: fxvol-vol-engine
     mem_limit: 512m
+    cpu_shares: 256
     profiles: ["engines"]
     restart: unless-stopped
     environment:
@@ -221,10 +226,12 @@ services:
       # Cf. engines.vol.chain_fetcher.
       VOL_MAX_CONCURRENT: ${VOL_MAX_CONCURRENT:-1}
       VOL_SUBSCRIBE_GAP_S: ${VOL_SUBSCRIBE_GAP_S:-0.05}
-      # Cutover flag for the analytics-engine extraction. "1" (default) keeps the
-      # legacy inline GMM/snapshot/PC3; flip to "0" to serve the analytics
-      # engine's published results (staged rollout — see engines/analytics).
-      VOL_INLINE_ANALYTICS: ${VOL_INLINE_ANALYTICS:-1}
+      # Analytics cutover done (#365, hot/cold T1): "0" (default) serves the
+      # analytics engine's published GMM / snapshot / PC3 results, so the hourly
+      # batch runs once, on the cpu-capped analytics container. Set "1" only
+      # for a local run without the analytics engine (legacy inline path,
+      # removed by #334).
+      VOL_INLINE_ANALYTICS: ${VOL_INLINE_ANALYTICS:-0}
     depends_on:
       redis:
         condition: service_healthy
@@ -257,6 +264,7 @@ services:
     image: ${RISK_ENGINE_IMAGE:-fx-options-risk-engine:local}
     container_name: fxvol-risk
     mem_limit: 384m
+    cpu_shares: 512
     profiles: ["engines"]
     restart: unless-stopped
     environment:
@@ -304,6 +312,7 @@ services:
     image: ${DB_WRITER_IMAGE:-fx-options-db-writer:local}
     container_name: fxvol-db-writer
     mem_limit: 384m
+    cpu_shares: 256
     profiles: ["engines"]
     restart: unless-stopped
     environment:
@@ -344,6 +353,7 @@ services:
     # burst over wall-time. No IB (reads Redis/Postgres only), like db-writer.
     cpus: 0.5
     mem_limit: 512m
+    cpu_shares: 128
     profiles: ["engines"]
     restart: unless-stopped
     environment:
@@ -391,6 +401,7 @@ services:
     # at kill, 5 654 restarts by 2026-10-04) — the kernel killed uvicorn every
     # ~9 min and the engine never published a heartbeat.
     mem_limit: 512m
+    cpu_shares: 1024
     profiles: ["engines"]
     restart: unless-stopped
     environment:
@@ -458,6 +469,7 @@ services:
     image: ${FRONTEND_IMAGE:-fx-options-frontend:local}
     container_name: fxvol-frontend
     mem_limit: 64m
+    cpu_shares: 512
     restart: unless-stopped
     networks:
       - fxvol-internal
@@ -485,6 +497,7 @@ services:
     image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:10.49.1c}
     container_name: fxvol-ib-gateway
     mem_limit: 1500m
+    cpu_shares: 1024
     # Opt-in : `docker compose --profile ib up -d` to include IB Gateway.
     # Keeps the default `docker compose up` light and avoids the 4002
     # port-bind when another service (or a Windows reserved range) already
@@ -560,6 +573,7 @@ services:
     image: nginx:alpine
     container_name: fxvol-nginx
     mem_limit: 64m
+    cpu_shares: 1024
     restart: unless-stopped
     ports:
       - "80:80"
@@ -610,6 +624,7 @@ services:
     # Measured ~91 MB with the full 17-container local stack; the prod box is
     # a t3.small (2 GB) running core-only, so the ceiling is ~3x headroom.
     mem_limit: 256m
+    cpu_shares: 128
     restart: unless-stopped
     volumes:
       - ./obs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -645,6 +660,7 @@ services:
     # falls back to the docker.sock path (dev override). On a real Linux
     # kernel (EC2) this is the path that actually serves the Hardware tab.
     mem_limit: 128m
+    cpu_shares: 128
     restart: unless-stopped
     privileged: true
     command:
@@ -684,6 +700,7 @@ services:
     # 3.8 GB prod host, Tempo grew to ~1.4 GB, the host OOM'd and SSM lost it.
     # A capped container is OOM-killed and restarted on its own instead.
     mem_limit: 320m
+    cpu_shares: 128
     environment:
       GOMEMLIMIT: 256MiB   # Go GC target below the cgroup cap
     restart: unless-stopped
@@ -707,6 +724,7 @@ services:
     container_name: fxvol-promtail
     profiles: ["obs"]
     mem_limit: 64m   # #293 (measured ~25 MB)
+    cpu_shares: 128
     restart: unless-stopped
     command: -config.file=/etc/promtail/config.yml
     volumes:
@@ -729,6 +747,7 @@ services:
     # 3.8 GB prod host, Tempo grew to ~1.4 GB, the host OOM'd and SSM lost it.
     # A capped container is OOM-killed and restarted on its own instead.
     mem_limit: 320m
+    cpu_shares: 128
     environment:
       GOMEMLIMIT: 256MiB
     restart: unless-stopped
@@ -753,6 +772,7 @@ services:
     container_name: fxvol-otel-collector
     profiles: ["obs"]
     mem_limit: 128m   # #293 ; memory_limiter processor at 96 MiB in obs/otel-collector.yml
+    cpu_shares: 128
     environment:
       GOMEMLIMIT: 96MiB
     restart: unless-stopped
@@ -774,6 +794,7 @@ services:
     container_name: fxvol-grafana
     profiles: ["obs"]
     mem_limit: 192m   # #293 (measured ~110 MB with the provisioned dashboards)
+    cpu_shares: 128
     restart: unless-stopped
     environment:
       # Anonymous access is view-only; edits/admin go through the login form.

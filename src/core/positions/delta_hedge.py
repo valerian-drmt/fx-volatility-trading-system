@@ -17,13 +17,14 @@ class HedgeDecision:
     side: str = ""                      # 'BUY' | 'SELL'
     delta_imbalance: float = 0.0        # the delta we evaluated against
     threshold_used: float = 0.0
-    skip_reason: str | None = None      # 'below_threshold' | 'rounded_to_zero' | 'cooldown'
+    # 'below_threshold' | 'rounded_to_zero' | 'cooldown' | 'no_delta_available'
+    skip_reason: str | None = None
     post_hedge_residual_delta: float = 0.0
 
 
 def check_delta_hedge_needed(
     *,
-    delta_unhedged: float,
+    delta_unhedged: float | None,
     threshold: float = 0.05,
     min_hedge_qty: int = 1,
     last_hedge_at: datetime | None = None,
@@ -37,9 +38,17 @@ def check_delta_hedge_needed(
         - Trigger when |delta| > threshold AND outside cooldown
         - Hedge qty = round(|delta|) ; if rounds to 0 → skip
         - Hedge side opposite the imbalance
+        - ``None`` = the live delta could not be computed (no surface). That is
+          NOT a flat book: the decision is ``no_delta_available`` so the caller
+          alerts instead of reading it as ``below_threshold`` (R3-02, #310).
 
     cooldown_seconds=0 disables cooldown.
     """
+    if delta_unhedged is None or delta_unhedged != delta_unhedged:  # None or NaN
+        return HedgeDecision(
+            needs_hedge=False, delta_imbalance=0.0,
+            threshold_used=threshold, skip_reason="no_delta_available",
+        )
     abs_delta = abs(delta_unhedged)
 
     if abs_delta < threshold:
