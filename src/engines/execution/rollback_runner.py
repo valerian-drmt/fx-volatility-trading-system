@@ -24,6 +24,8 @@ from core.execution.rollback import (
     UnwindState,
     decide_rollback,
 )
+from engines.execution.live_submit import order_ref
+from engines.execution.placement import AlreadyClaimed, place_with_claim
 from persistence.models import StructureOrder, TradeEvent, TradeStructure
 
 logger = logging.getLogger(__name__)
@@ -184,7 +186,10 @@ async def run_rollback(
                 state="pending",
             )
             db.add(unwind_order)
-            await db.flush()
+            # Commit the row BEFORE placing (EX-11, #318): the placement claim
+            # runs in its own transaction and must see the row; and a failure
+            # on leg N must not lose legs 1..N-1 that are already live at IB.
+            await db.commit()
 
             # Place via IB. Contract must already be qualified — we reuse
             # the entry's qualification via permId lookup if available, else
@@ -210,9 +215,17 @@ async def run_rollback(
                 )
                 continue
             ib_order = LimitOrder(action.side, action.qty, unwind_limit)
-            trade = ib.placeOrder(qualified[0], ib_order)
-            unwind_order.ib_order_id = str(trade.order.orderId)
-            unwind_order.state = "submitted"
+            try:
+                trade = await place_with_claim(
+                    sm=sm, model=StructureOrder, row_id=unwind_order.id,
+                    order_ref=order_ref(structure_id, unwind_order.id),
+                    ib=ib, contract=qualified[0], order=ib_order,
+                )
+            except AlreadyClaimed:
+                logger.warning("unwind_already_placed structure=%s leg=%s order_id=%s",
+                               structure_id, action.leg_idx, unwind_order.id)
+                continue
+            await db.refresh(unwind_order)
 
             # Wire fills handler so partial fills on the unwind also write rows.
             from engines.execution.fills_handler import attach_fill_handlers
@@ -237,6 +250,7 @@ async def run_rollback(
                 "side": action.side, "qty": action.qty,
                 "ib_order_id": unwind_order.ib_order_id,
             })
+            await db.commit()  # per leg: the event row lands with its order
 
         await db.commit()
 

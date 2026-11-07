@@ -80,13 +80,20 @@ writer = [
 dev = [
     "ruff>=0.11,<0.12",
     "mypy>=1.10",
-    # <9.2 : pytest 9.2 dropped FixtureManager._arg2fixturedefs, which
-    # pytest-asyncio 0.23 still touches at collection (CI red 2026-11-04).
+    # <9.2 : pytest 9.2 dropped FixtureManager._arg2fixturedefs (CI red
+    # 2026-11-04). pytest-asyncio 1.x : 0.23 fails to collect a tests/
+    # PACKAGE on pytest 9 ("'Package' object has no attribute 'obj'", CI
+    # red 2026-11-07 once tests/__init__.py landed with the shared harness).
     "pytest>=9.0,<9.2",
-    "pytest-asyncio>=0.23,<0.25",
+    "pytest-asyncio>=1.0,<2",
     "pytest-cov>=5,<8",
     "aiosqlite>=0.19,<0.21",
     "import-linter>=2.0,<3.0",
+    # Test harness (#338): randomised order so hidden ordering coupling
+    # surfaces in CI (seed printed, replay with --randomly-seed), and a
+    # frozen clock instead of sleeps / datetime.now() in assertions.
+    "pytest-randomly>=3.15,<6",
+    "freezegun>=1.4,<2",
 ]
 
 # ─────────────────────────────────────────────────────────────────────
@@ -134,6 +141,8 @@ minversion = "8.0"
 # quarantine has been removed — its last survivor (the nginx-config parse
 # test) now lives under ``tests/unit/infrastructure/`` and is collected here.
 testpaths = ["tests/unit", "tests/integration"]
+# "." makes tests.fixtures importable (shared DB / IB / payload fixtures, #338).
+pythonpath = ["src", "."]
 addopts = "-q --strict-markers"
 asyncio_mode = "auto"
 markers = [

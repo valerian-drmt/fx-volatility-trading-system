@@ -1,0 +1,15 @@
+{
+  "position_id": 52,
+  "structure_id": 87,
+  "spot": 1.12346,
+  "iv_avg_pct": 6.05,
+  "current_pnl_gross_usd": 2864.23,
+  "current_pnl_net_usd": 2801.1,
+  "current_vega_usd_per_volpt": 2779.58,
+  "current_gamma_usd_per_pip2": 14.7,
+  "current_theta_usd_per_day": -92.41,
+  "current_delta_unhedged": -5.2,
+  "delta_unknown": false,
+  "hedge_cost_cumul_usd": 63.13,
+  "timestamp": "2026-11-06T12:00:00Z"
+}

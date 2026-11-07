@@ -22,6 +22,26 @@ class HedgeDecision:
     post_hedge_residual_delta: float = 0.0
 
 
+def net_pending_hedge_delta(
+    delta_unhedged: float | None,
+    pending: list[tuple[str, int]],
+) -> float | None:
+    """Subtract hedges already in flight (audit 04#3, #318).
+
+    ``pending`` = (side, qty) of this position's hedge orders in state pending /
+    submitted. A BUY future adds +qty delta once it fills, a SELL -qty; until it
+    does, the raw book delta still shows the imbalance and the monitor would
+    fire the same hedge again on the next cycle (the cooldown was the only
+    guard). None stays None: an unknown delta is not made known by netting.
+    """
+    if delta_unhedged is None:
+        return None
+    inflight = 0.0
+    for side, qty in pending:
+        inflight += float(qty) if str(side).upper() == "BUY" else -float(qty)
+    return delta_unhedged + inflight
+
+
 def check_delta_hedge_needed(
     *,
     delta_unhedged: float | None,

@@ -1,0 +1,9 @@
+{
+  "reqId": 7,
+  "errorCode": 201,
+  "errorString": "Order rejected - reason: insufficient margin",
+  "contract": {
+    "localSymbol": "EUUZ6 C1130",
+    "conId": 853091540
+  }
+}

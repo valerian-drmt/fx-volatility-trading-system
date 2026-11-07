@@ -36,6 +36,7 @@ from engines.execution.live_submit import (
     LiveSubmitError,
     submit_structure_live,
 )
+from engines.execution.live_submit import order_ref as structure_order_ref
 from engines.execution.order_executor import (
     OrderExecutor,
     OrderExecutorUnavailable,
@@ -43,6 +44,12 @@ from engines.execution.order_executor import (
     trade_to_dict,
 )
 from engines.execution.order_reconciler import reconcile_loop, reconcile_stuck_orders
+from engines.execution.placement import (
+    claim_submit,
+    manual_order_ref,
+    release_submit_claim,
+    stamp_placement,
+)
 from engines.execution.position_sync import position_sync_loop, sync_positions_from_ib
 from engines.execution.reaper import reap_stale_orders, reaper_loop
 from engines.execution.reconciler import reconcile_positions, reconcile_positions_loop
@@ -58,7 +65,7 @@ from engines.execution.spot_orders import (
     stamp_ib_ids,
 )
 from persistence.db import get_sessionmaker
-from persistence.models import TradeEvent
+from persistence.models import StructureOrder, TradeEvent
 from persistence.projection import rebuild_all
 from shared.ib_connection import maintain_ib_connection
 from shared.logging import configure_logging
@@ -418,7 +425,12 @@ async def place_order(
             result = trade_to_dict(trade)
             result["spot_order_id"] = spot_id
         else:
-            result = await ex.place_order(OrderRequest(**payload))
+            # Operator one-shot (EX-23, #318): no row to claim, but a key IB
+            # keeps and we echo, so the order can be found again.
+            ref = manual_order_ref()
+            trade = await ex.place_order_trade(OrderRequest(**payload), order_ref=ref)
+            result = trade_to_dict(trade)
+            result["order_ref"] = ref
         await _log_event(sm, action_type="SUBMIT", request_payload=payload,
                          response_payload=result, success=True)
         return result
@@ -486,7 +498,9 @@ async def close_position(
 ) -> dict[str, Any]:
     payload = {"con_id": con_id, "limit_price": body.limit_price}
     try:
-        result = await ex.close_position(con_id=con_id, limit_price=body.limit_price)
+        ref = manual_order_ref()
+        result = await ex.close_position(con_id=con_id, limit_price=body.limit_price, order_ref=ref)
+        result["order_ref"] = ref
         await _log_event(sm, action_type="CLOSE_POSITION", request_payload=payload,
                          response_payload=result, success=True)
         return result
@@ -523,12 +537,38 @@ async def close_position_by_symbol(
         "limit_price": body.limit_price,
         "db_order_id": body.db_order_id,
     }
+    # Idempotency (#318): when the api passes its closing trade_order row, claim
+    # it before touching IB so a retried close (EX-01's retry, a double click)
+    # cannot place a second live close; the orderRef makes the order adoptable
+    # by the reaper. Operator closes without a row get a manual key.
+    order_ref: str | None = None
+    if body.db_order_id is not None:
+        async with sm() as db:
+            row = await db.get(StructureOrder, body.db_order_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"trade_order {body.db_order_id} not found")
+        if not await claim_submit(sm, StructureOrder, body.db_order_id):
+            raise HTTPException(
+                status_code=409,
+                detail=f"close order {body.db_order_id} already placed (claimed) — not re-placing",
+            )
+        order_ref = structure_order_ref(int(row.structure_id), int(body.db_order_id))
+    else:
+        order_ref = manual_order_ref()
     try:
-        trade = await ex.close_position_by_symbol(
-            local_symbol=body.local_symbol,
-            qty=body.qty,
-            limit_price=body.limit_price,
-        )
+        try:
+            trade = await ex.close_position_by_symbol(
+                local_symbol=body.local_symbol,
+                qty=body.qty,
+                limit_price=body.limit_price,
+                order_ref=order_ref,
+            )
+        except Exception:
+            if body.db_order_id is not None:
+                await release_submit_claim(sm, StructureOrder, body.db_order_id)
+            raise
+        if body.db_order_id is not None:
+            await stamp_placement(sm, StructureOrder, body.db_order_id, trade)
         # Wire fills_handler so IB status / execution events flow back
         # to the DB ``trade_order`` row — keeps qty_filled / state in sync.
         if body.db_order_id is not None:

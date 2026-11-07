@@ -703,6 +703,9 @@ class StructureOrder(Base):
     state: Mapped[str] = mapped_column(String(25), nullable=False)
     state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Placement claim (migration 055, #318): set atomically before this row's
+    # order is handed to IB; a replay finds it non-NULL and is refused.
+    submit_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejection_code: Mapped[str | None] = mapped_column(String(20))
@@ -737,6 +740,10 @@ class StructureFill(Base):
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False)
     fill_price: Mapped[float] = mapped_column(Float, nullable=False)
     commission_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # Currency of the fill / commission as IB reports it (migration 056, #322):
+    # a 6E leg is USD, but nothing recorded it, and a CommissionReport can be
+    # in another currency than the contract.
+    currency: Mapped[str | None] = mapped_column(String(5))
     exchange: Mapped[str | None] = mapped_column(String(10))
     side: Mapped[str] = mapped_column(String(5), nullable=False)
     spot_at_fill: Mapped[float | None] = mapped_column(Float)
@@ -1006,6 +1013,8 @@ class HedgeOrder(Base):
     )
     triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Placement claim (migration 055, #318), same semantics as trade_order.
+    submit_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delta_imbalance_at_trigger: Mapped[float] = mapped_column(Float, nullable=False)
     rebalance_threshold_used: Mapped[float] = mapped_column(Float, nullable=False)

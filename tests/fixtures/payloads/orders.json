@@ -1,0 +1,11 @@
+{
+  "structure_id": 87,
+  "event_type": "order_filled",
+  "order_id": 106,
+  "leg_idx": 0,
+  "qty_filled": 10,
+  "avg_fill_price": 0.0115,
+  "state": "filled",
+  "ib_status": "Filled",
+  "timestamp": "2026-11-06T12:00:00Z"
+}
