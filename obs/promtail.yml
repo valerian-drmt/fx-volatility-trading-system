@@ -18,7 +18,8 @@ clients:
 scrape_configs:
   - job_name: docker
     docker_sd_configs:
-      - host: unix:///var/run/docker.sock
+      # Through the filtering proxy (#298): GET /containers only, no socket here.
+      - host: tcp://docker-socket-proxy:2375
         refresh_interval: 5s
         filters:
           - name: label

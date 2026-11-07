@@ -622,9 +622,10 @@ services:
   #
   # `metrics` is a deliberate SUBSET of `obs`: prometheus + cadvisor only, i.e.
   # exactly what the /dev Hardware tab needs to plot per-container CPU/RAM. It
-  # exists so prod can have those graphs WITHOUT the parts that must not run on
-  # a public host — Grafana (host-mapped :3000, anonymous viewer) and promtail
-  # (read-write docker.sock). cadvisor/prometheus list both profiles, so
+  # exists so a minimal host can have those graphs alone. Since #298 the full
+  # `obs` set is the prod allowlist too: cadvisor unprivileged, promtail behind
+  # docker-socket-proxy, Grafana loopback-only with anonymous access off and
+  # the admin password from SSM. cadvisor/prometheus list both profiles, so
   # `--profile obs` starts the full LGTM set — tempo + otel-collector included:
   # the t3.medium has the RAM headroom, so traces stay part of `./all/up`.
 
@@ -704,7 +705,10 @@ services:
     mem_limit: 128m
     cpu_shares: 128
     restart: unless-stopped
-    privileged: true
+    # Not privileged (#298, audit 01#10): the read-only mounts below are all
+    # cAdvisor needs for per-container CPU / RAM / net / fs on cgroup v1 and v2.
+    # What it loses without privilege: host OOM events from /dev/kmsg, which the
+    # Hardware tab never showed.
     command:
       # 5s housekeeping so cAdvisor actually produces 5s-fresh samples for the
       # Hardware tab's 5s Prometheus scrape (else Prometheus reads duplicates).
@@ -772,11 +776,14 @@ services:
     volumes:
       - ./obs/promtail.yml:/etc/promtail/config.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      # No Docker socket here (#298, audit 01#8): container discovery and log
+      # reads go through docker-socket-proxy, which allows GET /containers only.
     depends_on:
       # started, NOT healthy: promtail retries pushing to Loki, so waiting on
       # Loki's slow health (start_period 45s) only made `up` race and fail.
       loki:
+        condition: service_started
+      docker-socket-proxy:
         condition: service_started
     networks:
       - fxvol-internal
@@ -831,6 +838,28 @@ services:
     expose:
       - "4317"   # OTLP gRPC receiver (engines send here)
 
+  # The only obs container that touches the Docker socket (#298): a filtering
+  # proxy that answers GET /containers/* (list, inspect, logs) and refuses
+  # everything else (no exec, no create, no POST). promtail talks to it over
+  # the internal network; the socket itself is mounted read-only here.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: fxvol-docker-socket-proxy
+    profiles: ["obs"]
+    mem_limit: 32m
+    cpu_shares: 64
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"
+      POST: "0"
+      LOG_LEVEL: warning
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - fxvol-internal
+    expose:
+      - "2375"
+
   grafana:
     image: grafana/grafana-oss:11.3.0
     container_name: fxvol-grafana
@@ -840,9 +869,10 @@ services:
     restart: unless-stopped
     environment:
       # Anonymous access is view-only; edits/admin go through the login form.
-      # Never Admin, even in dev. The obs profile itself must NOT run on the
-      # public prod host until Grafana sits behind the nginx auth layer
-      # (also keeps cadvisor privileged + promtail docker.sock off the box).
+      # Never Admin, even in dev. On prod remote-deploy.sh renders
+      # GF_AUTH_ANONYMOUS_ENABLED=false and requires GRAFANA_ADMIN_PASSWORD from
+      # SSM (#298); the port below is loopback-only, reached over an SSM port
+      # forward. The dev defaults here never serve on the public host.
       GF_AUTH_ANONYMOUS_ENABLED: ${GF_AUTH_ANONYMOUS_ENABLED:-true}
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
       GF_AUTH_DISABLE_LOGIN_FORM: "false"
@@ -864,8 +894,9 @@ services:
         condition: service_started
     networks:
       - fxvol-internal
-    # Host port 3000 mapping for direct browser access in dev.
-    # On EC2 prod, remove this mapping and go through the nginx reverse-proxy.
+    # Loopback-only on every host: direct browser access in dev, an SSM port
+    # forward on prod (`aws ssm start-session ... --document-name
+    # AWS-StartPortForwardingSession`). Never a public bind (#298).
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:

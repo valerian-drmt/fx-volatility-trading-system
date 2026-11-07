@@ -102,3 +102,33 @@ thousands of one-off paths (`/ws/orders/<id>`) does not grow forever.
 and FLoC; HSTS, nosniff, `X-Frame-Options: DENY`, `frame-ancestors 'none'`
 and the referrer policy as before. `tests/unit/infrastructure/test_nginx_config_syntax.py`
 asserts each of these, and CI runs `nginx -t` on every conf.
+
+## Containers (#298)
+
+* `api` and `execution-engine` run as the unprivileged `fxvol` user (uid
+  10001); the images install as root and drop privileges before `CMD`.
+* The prod profile allowlist is `engines,ib,obs`. The `obs` set runs with
+  cAdvisor unprivileged (read-only `/`, `/sys`, `/var/lib/docker` mounts),
+  promtail without a Docker socket (container discovery and log reads go
+  through `docker-socket-proxy`, which allows `GET /containers/*` only and
+  mounts the socket read-only), Grafana bound to `127.0.0.1:3000` with
+  anonymous access off and the admin password from
+  `/fxvol/prod/GRAFANA_ADMIN_PASSWORD`. The deploy refuses to start `obs`
+  without that parameter, and refuses any deploy without
+  `/fxvol/prod/REDIS_PASSWORD` (no dev password on prod).
+* `metrics` (prometheus + cadvisor) remains the minimal subset for a host
+  that only wants the Hardware tab.
+
+## IAM and workflows (#302)
+
+* The deploy role (`infrastructure/aws/deploy-perms.json`) may put one S3
+  prefix, send `AWS-RunShellScript` to one instance, and read command
+  results. `ssm:GetCommandInvocation` / `ListCommand*` accept no resource
+  ARN (the API has no resource-level permissions), so they stay on `*`
+  with an `aws:RequestedRegion = eu-west-1` condition.
+* `fxvol-dev` has MFA (`infrastructure/aws/STATE.md`); its access key is the
+  laptop's only standing credential and reads `/fxvol/prod/*`.
+* Every action in `.github/workflows` is pinned to a commit sha with the
+  version as a comment; Dependabot (`.github/dependabot.yml`) bumps the
+  pins weekly. `deploy_sha` reaches the shell through `env`, validated as
+  hex. Every workflow declares `permissions:`; CI is `contents: read`.

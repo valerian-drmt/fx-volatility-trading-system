@@ -31,6 +31,13 @@ COPY pyproject.toml README.md ./
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip install ".[api,ib]"
 
+# Non-root runtime (#298, audit 01#10): the image installs as root, then drops
+# to an unprivileged user. The service listens above 1024 and writes nothing
+# (PYTHONDONTWRITEBYTECODE, logs to stdout), so no directory needs to be writable.
+RUN useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin fxvol \
+    && chown -R fxvol:fxvol /app
+USER fxvol
+
 EXPOSE 8001
 
 HEALTHCHECK --interval=15s --timeout=3s --start-period=30s --retries=3 \

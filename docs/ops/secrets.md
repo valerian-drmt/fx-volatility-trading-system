@@ -15,6 +15,7 @@ any container image. Related: [deployment.md](deployment.md),
 | `/fxvol/prod/VNC_PASSWORD` | IB Gateway VNC server. |
 | `/fxvol/prod/AUTH_SECRET`, `/AUTH_PASSWORD_HASH` | The single-trader write-login boundary. |
 | `/fxvol/prod/EXECUTION_INTERNAL_TOKEN` | Shared secret the api sends on every execution-engine `/internal/*` call (#300). Optional: when absent the host generates one into `/etc/fxvol/internal_token` at deploy and reuses it. |
+| `/fxvol/prod/GRAFANA_ADMIN_PASSWORD` | Grafana admin when the `obs` profile runs; the deploy refuses to start the profile without it (#298). |
 | `/fxvol/prod/FRED_API_KEY` | Events pipeline (optional). |
 | `/fxvol/prod/GHCR_TOKEN` | GHCR pull, only if the packages are private (optional). |
 

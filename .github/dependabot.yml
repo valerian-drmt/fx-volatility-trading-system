@@ -1,0 +1,11 @@
+# Keeps the SHA-pinned actions current (#302): Dependabot rewrites the pin and
+# the version comment together, one PR per action per week.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [chore, dependencies]
