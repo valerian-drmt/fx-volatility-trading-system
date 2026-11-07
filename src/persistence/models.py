@@ -25,6 +25,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -47,6 +48,9 @@ class OpenPosition(Base):
     __tablename__ = "open_position"  # renamed in migration 033 (was 'position')
     __table_args__ = (
         CheckConstraint("side IN ('BUY', 'SELL')", name="ck_positions_side"),
+        # The mirror's natural key: one row per IB contract. Created in 028 on
+        # the column's old name, re-asserted in 060 (#325).
+        Index("ix_positions_local_symbol_unique", "structure", unique=True),
     )
 
     # Column order here mirrors the physical schema after migration 028 :
@@ -119,6 +123,13 @@ class OpenPositionHistory(Base):
     One row per OPEN position per 2s cycle."""
 
     __tablename__ = "open_position_history"  # renamed in migration 033
+
+    __table_args__ = (
+        # Migration 044: the attribution's per-position LATERAL probe and the
+        # retention prune walk these (#325 declares them for the drift gate).
+        Index("idx_open_position_history_position_ts", "position_id", "timestamp"),
+        Index("idx_open_position_history_ts", "timestamp"),
+    )
 
     # Schema mirrors ``open_position`` 1-to-1 plus position_id + timestamp.
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -204,6 +215,7 @@ class VolSurface(Base):
     __tablename__ = "vol_surface_history"  # renamed in migration 023
     __table_args__ = (
         UniqueConstraint("timestamp", "underlying", name="uq_vol_surfaces_ts_underlying"),
+        Index("ix_vol_surface_underlying_ts", "underlying", text("timestamp DESC")),  # migration 045
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -439,6 +451,7 @@ class PcaSignal(Base):
             "label IN ('CHEAP','FAIR','EXPENSIVE')", name="ck_pca_signals_label",
         ),
         CheckConstraint("pc_id > 0", name="ck_pca_signals_pc_id"),
+        Index("ix_pca_signal_symbol_pc_ts", "symbol", "pc_id", text("timestamp DESC")),  # migration 045
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -951,6 +964,7 @@ class BookedPositionMetricHistory(Base):
     __tablename__ = "booked_position_metric_history"  # renamed + folded migration 026
     __table_args__ = (
         UniqueConstraint("position_id", "timestamp", name="uq_mtm_position_ts"),
+        Index("ix_mtm_position_ts", "position_id", "timestamp"),  # migration 016
         CheckConstraint(
             "signal_status IS NULL OR signal_status IN ('HOLD','TRIM','EXIT')",
             name="ck_signal_track_status",
@@ -1003,6 +1017,13 @@ class HedgeOrder(Base):
             "state IN ('pending','submitted','filled','failed')",
             name="ck_hedge_orders_state",
         ),
+        Index("ix_hedge_position_ts", "position_id", "triggered_at"),  # migration 016
+        # One PENDING hedge per position (migration 060, #325): the hedge loop
+        # must never queue two for the same leg.
+        Index(
+            "uq_hedge_order_pending_per_position", "position_id", unique=True,
+            postgresql_where=text("state = 'pending'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1040,6 +1061,7 @@ class ExitAlert(Base):
             "('in_progress','done','failed','overridden')",
             name="ck_exit_alerts_exec_status",
         ),
+        Index("ix_exit_alerts_position_ts", "position_id", "timestamp"),  # migration 016
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
