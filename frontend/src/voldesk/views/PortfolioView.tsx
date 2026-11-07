@@ -28,6 +28,7 @@ import {
   adaptEquityCurve,
   adaptGreekPnlHistory,
   adaptPositionAttribution,
+  computedAtMs,
   adaptTradeMarkers,
   adaptValuationHistory,
   type AttribMatrix,
@@ -49,6 +50,8 @@ import {
 // zone — no more stretching a handful of points across the full width. Every
 // timeframe therefore renders the same number of samples on the same-shaped axis.
 const GRID_N = 90;
+// Attribution rollup cadence is 5 min (#368): three missed cycles = stale.
+const ROLLUP_WARN_MS = 15 * 60_000;
 const DAY_MS = 86_400_000;
 const WINDOW_DAYS: Record<string, number | null> = {
   "1D": 1,
@@ -1064,10 +1067,17 @@ export function PortfolioView(): JSX.Element {
   const tradeMarkers =
     useFetch(() => fetchTradeMarkers(366).then(adaptTradeMarkers), 120_000, true, 60_000).data ?? [];
   // P&L-attribution matrices: greek P&L bucketed by tenor, and one per leg.
-  const attribTenor =
-    useFetch(() => fetchPnlAttributionMatrix("tenor").then(adaptAttributionMatrix), 120_000, true, 60_000).data ?? null;
-  const attribByLeg =
-    useFetch(() => fetchPnlAttribution().then(adaptPositionAttribution), 120_000, true, 60_000).data ?? null;
+  // The analytics engine materialises the attribution every 5 min (#368): the
+  // badge ages from the row's computed_at, not from the fetch time, so a
+  // stalled engine reads "stale" even while the poll keeps answering.
+  const attribTenorF = useFetch(
+    () => fetchPnlAttributionMatrix("tenor").then(adaptAttributionMatrix), ROLLUP_WARN_MS, true, 60_000, computedAtMs,
+  );
+  const attribByLegF = useFetch(
+    () => fetchPnlAttribution().then(adaptPositionAttribution), ROLLUP_WARN_MS, true, 60_000, computedAtMs,
+  );
+  const attribTenor = attribTenorF.data ?? null;
+  const attribByLeg = attribByLegF.data ?? null;
   // Net-liq valuation decomposition (USD cash / EUR cash / contracts), windowed.
   const [valWin, setValWin] = useState<string>("30D");
   const valuation = useFetch<ValuationSeries>(
@@ -1242,11 +1252,11 @@ export function PortfolioView(): JSX.Element {
       {/* Both matrices decompose the LAST 24 H of P&L (window start = t-1
           snapshot), not the since-entry P&L the Position breakdown shows:
           the title says so, so the two are not read as the same number (#377). */}
-      <Panel title="P&L attribution by tenor · 24h" dataPp="attrib-tenor" className="wf-panel">
+      <Panel title="P&L attribution by tenor · 24h" dataPp="attrib-tenor" className="wf-panel" right={<FreshBadge fresh={attribTenorF} label="rollup" />}>
         <AttributionMatrix m={attribTenor} axisLabel="Tenor" />
       </Panel>
 
-      <Panel title="P&L attribution by trade · 24h" dataPp="attrib-leg" className="wf-panel">
+      <Panel title="P&L attribution by trade · 24h" dataPp="attrib-leg" className="wf-panel" right={<FreshBadge fresh={attribByLegF} label="rollup" />}>
         <PositionAttributionMatrix m={attribByLeg} />
       </Panel>
     </div>

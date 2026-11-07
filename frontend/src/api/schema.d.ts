@@ -849,9 +849,12 @@ export interface paths {
          *
          *     A vol trader holds positions for weeks, so "realized on close" reads flat while
          *     the book is open. The headline daily P&L is therefore the day-over-day change in
-         *     EOD net-liquidation (``account_history``) — the honest total P&L, footing to the
-         *     equity curve. ``realized_usd`` (genuine closes only) is returned alongside for the
+         *     EOD net-liquidation — the honest total P&L, footing to the equity curve.
+         *     ``realized_usd`` (genuine closes only) is returned alongside for the
          *     realized/unrealized split, NOT as the bar height.
+         *
+         *     Reads ``portfolio_daily`` (one row per UTC day, written by the analytics
+         *     engine, #368); ``computed_at`` is the rollup's time.
          */
         get: operations["daily_pnl_api_v1_portfolio_daily_pnl_get"];
         put?: never;
@@ -1001,13 +1004,15 @@ export interface paths {
          * @description One-shot endpoint for the dashboard sticky header (panel A).
          *
          *     Bundles in a single round-trip :
-         *       - latest ``account_snaps`` row + reference 24 h before for delta P&L
+         *       - the latest account snapshot from the ``account_snapshot`` cache the
+         *         execution engine pushes (#366), falling back to ONE indexed row;
+         *       - the previous UTC day's close from ``portfolio_daily`` for the 24 h
+         *         P&L (same anchor as the Daily P&L panel);
          *       - aggregate greeks across all OPEN positions (denormalised on
-         *         ``positions`` since migration 028)
-         *       - 1-day 99% historical VaR computed on the daily distribution of
-         *         ``net_liq`` deltas from ``account_snaps`` (last 60 days).
-         *
-         *     Frontend can render the whole panel-A strip from one fetch.
+         *         ``open_position``);
+         *       - 1-day 99% historical VaR on the last 60 daily closes of
+         *         ``portfolio_daily``.
+         *     No scan of ``account_history`` on the request path (#368, closes #286).
          */
         get: operations["header_summary_api_v1_portfolio_header_get"];
         put?: never;
@@ -1116,28 +1121,14 @@ export interface paths {
          * Pnl Attribution
          * @description Decompose realized P&L into greek contributions over the window.
          *
-         *     Per-position Taylor expansion, anchored on the window-START (t-1) greeks :
-         *         actual_pnl  = (pnl_now - pnl_then)
-         *         delta_pnl   = δ_t-1 × (spot_now - spot_then)
-         *         gamma_pnl   = 0.5 × Γ_t-1 × (spot_now - spot_then) ** 2
-         *         vega_pnl    = V_t-1 × (iv_now - iv_then)      [vol points]
-         *         theta_pnl   = Θ_t-1 × Δt_days
-         *         residual    = actual_pnl - (delta + gamma + vega + theta)
-         *
-         *     Greeks are read at the START of the window (the t-1 snapshot), not the
-         *     current ones: over a 24h window an option's delta drifts materially, so
-         *     attributing with δ_now overshoots δ·dS and inflates the residual. Anchoring
-         *     on the entry greek keeps the expansion consistent; the residual then only
-         *     holds genuine vol convexity (volga/vanna) + higher order. Falls back to the
-         *     current greek when a t-1 greek column is null (older snapshots).
-         *
-         *     Sources :
-         *       - IB-live positions (``position`` table) : t-1 row in
-         *         ``position_metric_history`` closest to ``now - lookback_hours``.
-         *         Spot comes from the snapshot's ``market_price`` for the
-         *         underlying FUT contract on the same symbol.
-         *       - Booked positions (``booked_position``) : t-1 row in
-         *         ``booked_position_metric_history``. Spot stored on the snapshot.
+         *     Per-position Taylor expansion anchored on the window-START (t-1) greeks
+         *     (``core.risk.attribution.decompose_row``). The analytics engine computes
+         *     it every 5 min for the standard lookbacks and stores one row per window
+         *     (``pnl_attribution_latest``, #368); this endpoint reads that row and
+         *     filters / pivots it. It computes inline only when there is no fresh row
+         *     (engine not running, or a lookback it does not keep warm), so a panel
+         *     never blanks on a cold stack. ``computed_at`` is the rollup's time;
+         *     ``rollup`` says which path answered.
          */
         get: operations["pnl_attribution_api_v1_portfolio_pnl_attribution_get"];
         put?: never;
@@ -1238,10 +1229,11 @@ export interface paths {
          * Portfolio Stats
          * @description Headline performance stats (R11 G-portfolio).
          *
-         *     Sharpe + drawdown from the daily net-liq curve (``account_history``),
-         *     hit-rate + cumulative realized from closed booked positions, cumulative
-         *     unrealized from the live book. Fields are ``None`` when the underlying
-         *     series is too short / empty (read-only public deployment at boot).
+         *     Sharpe + drawdown from the daily net-liq closes of ``portfolio_daily``
+         *     (materialised, #368), hit-rate + cumulative realized from closed booked
+         *     positions, cumulative unrealized from the live book. Fields are ``None``
+         *     when the underlying series is too short / empty (read-only public
+         *     deployment at boot). ``computed_at`` is the rollup's time.
          */
         get: operations["portfolio_stats_api_v1_portfolio_stats_get"];
         put?: never;

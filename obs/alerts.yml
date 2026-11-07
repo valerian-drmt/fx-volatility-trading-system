@@ -63,6 +63,33 @@ groups:
           summary: "db-writer has not written for 3 min"
           description: "Streamed history rows are being dropped. Check Redis and `docker logs fxvol-db-writer`."
 
+      # db-writer delivery (#324): a dropped frame is a hole in history, a dead
+      # letter is a row that needs a human. Both used to be a log line.
+      - alert: DbWriterDroppingFrames
+        expr: increase(db_writer_queue_dropped_total[10m]) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "db-writer dropped {{ $value }} frames ({{ $labels.table }}) in 10 min"
+          description: "Postgres is behind (long prune, locks, disk?). Check `db_writer_queue_depth` and `docker logs fxvol-db-writer`."
+      - alert: DbWriterDeadLetters
+        expr: increase(db_writer_dead_letter_total[1h]) > 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "db-writer parked {{ $value }} rows for {{ $labels.table }}"
+          description: "`SELECT table_name, error, created_at FROM db_writer_dead_letter ORDER BY id DESC LIMIT 20` (docs/ops/redis-durability.md)."
+
+      # Retention prune (#330): a table whose prune keeps failing grows without
+      # bound; before this counter one blocked DELETE stopped both prunes silently.
+      - alert: HistoryPruneFailing
+        expr: increase(history_prune_failures_total[2d]) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "history prune failing on {{ $labels.table }} ({{ $labels.engine }})"
+          description: "`docker logs fxvol-{{ $labels.engine }} | grep history_prune_failed`; the table keeps growing until fixed."
+
   - name: fxvol-host
     rules:
       # Root filesystem as cAdvisor sees it (id="/" = the host). Disk fills were

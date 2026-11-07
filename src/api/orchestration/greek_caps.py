@@ -10,22 +10,17 @@ import statistics
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import desc, select, text
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.risk import greek_limits as gl
 from persistence.models import AppConfigScalar, RegimeSnapshot, VolSurface
+from persistence.rollups import read_nav_series
 
-_NAV_SQL = text("""
-    WITH daily AS (
-      SELECT DISTINCT ON (date_trunc('day', timestamp))
-             date_trunc('day', timestamp) AS day, net_liq_usd
-        FROM account_history
-       WHERE timestamp >= NOW() - INTERVAL '504 days' AND net_liq_usd IS NOT NULL
-       ORDER BY date_trunc('day', timestamp), timestamp DESC
-    )
-    SELECT net_liq_usd FROM daily ORDER BY day
-""")
+# The daily net-liq series comes from the materialised ``portfolio_daily``
+# rollup (#368): the pre-trade gate runs this on every submit, so it must
+# never pay for a DISTINCT ON over the whole account history.
+_NAV_DAYS = 504
 
 
 @dataclass(frozen=True)
@@ -36,7 +31,8 @@ class LiveCaps:
 
 
 async def compute_live_caps(db: AsyncSession) -> LiveCaps:
-    nav_series = [float(r[0]) for r in (await db.execute(_NAV_SQL)).all()]
+    nav_pairs, _ = await read_nav_series(db, days=_NAV_DAYS)
+    nav_series = [v for _, v in nav_pairs]
     spot = (await db.execute(
         select(VolSurface.spot).where(VolSurface.underlying == "EURUSD")
         .order_by(desc(VolSurface.timestamp)).limit(1)

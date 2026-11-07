@@ -642,26 +642,20 @@ class VolEngine:
         """Retention — DELETE Signal-tab history rows older than
         ``HISTORY_RETENTION_DAYS`` so the append-only tables don't grow
         unbounded (vol_surface_history ≈ 1.1 MB/day ; pca_signal_history grows
-        per-PC every cycle). Nothing reads beyond this window — history charts
-        downsample to daily. Mirrors risk-engine._prune_history but via the ORM
-        table classes (static `timestamp` column, parameterised cutoff)."""
+        per-PC every cycle). One transaction per table and the PCA signals a
+        trade or an armed preview still references are excluded from the
+        delete instead of blocking it (#330, DI-35: one such row used to roll
+        back the shared transaction and stop both prunes for good)."""
         from datetime import UTC, datetime, timedelta
 
-        from sqlalchemy import delete
-
         from persistence.db import get_sessionmaker
-        from persistence.models import PcaSignal, VolSurface
+        from persistence.retention import VOL_ENGINE_TABLES, run_retention
 
         cutoff = datetime.now(UTC) - timedelta(days=HISTORY_RETENTION_DAYS)
-        async with get_sessionmaker()() as session:
-            await session.execute(
-                delete(VolSurface).where(VolSurface.timestamp < cutoff)
-            )
-            await session.execute(
-                delete(PcaSignal).where(PcaSignal.timestamp < cutoff)
-            )
-            await session.commit()
-        logger.info("history_pruned", extra={"retention_days": HISTORY_RETENTION_DAYS})
+        summary = await run_retention(
+            get_sessionmaker(), engine="vol_engine", cutoff=cutoff, tables=VOL_ENGINE_TABLES,
+        )
+        logger.info("history_prune_done", extra={"retention_days": HISTORY_RETENTION_DAYS, **summary})
 
     async def run_cycle(self) -> bool:
         """Single pass. Returns True if a vol_update was published.
@@ -671,9 +665,15 @@ class VolEngine:
         → compute_pca → publish breakdown with per-stage duration and
         attributes (n_strikes, n_pillars, etc.).
         """
+        from datetime import UTC, datetime
+
         from opentelemetry import trace as _otel
         tracer = _otel.get_tracer(__name__)
 
+        # One timestamp per cycle for every row this cycle streams to the
+        # db-writer (#324, DI-02): the natural keys (symbol, timestamp) only
+        # dedupe a retry if the retry carries the SAME timestamp.
+        cycle_ts = datetime.now(UTC)
         await self._reset_progress()
         if market_gate_active() and not is_fx_market_open():
             logger.info("vol_cycle_skipped", extra={"reason": "market_closed"})
@@ -733,11 +733,9 @@ class VolEngine:
 
         # Fan the surface + step1/step2 outputs to the db-writer via db_events.
         try:
-            from datetime import UTC, datetime
-
             from shared.db_events import publish_db_event
 
-            ts_iso = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            ts_iso = cycle_ts.isoformat().replace("+00:00", "Z")
             await self._publish_progress("publish", "db_events")
             await publish_db_event(
                 self.redis,

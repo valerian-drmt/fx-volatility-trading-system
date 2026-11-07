@@ -366,6 +366,8 @@ services:
       # the vol-engine to consume (model-serving: train here, infer at the edge).
       ANALYTICS_INTERVAL_MIN: ${ANALYTICS_INTERVAL_MIN:-60}
       PCA_SNAPSHOT_INTERVAL_MIN: ${PCA_SNAPSHOT_INTERVAL_MIN:-55}
+      # Portfolio rollups (portfolio_daily + pnl_attribution_latest) cadence (#368).
+      ROLLUP_INTERVAL_S: ${ROLLUP_INTERVAL_S:-300}
     depends_on:
       postgres:
         condition: service_healthy

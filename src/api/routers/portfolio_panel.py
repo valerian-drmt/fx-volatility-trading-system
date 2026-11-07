@@ -18,7 +18,7 @@ import asyncio
 import itertools
 import json
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 import redis.asyncio as aioredis
@@ -29,15 +29,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.dependencies import get_db_session, get_redis
 from api.orchestration.greek_caps import compute_live_caps
 from bus import keys
+from bus.account_cache import read_account_snapshot
+from bus.spot_cache import spot_fallbacks
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
 from core.risk import greek_limits as gl
+from core.risk.attribution import (
+    ATTRIB_GROUP_KEYS,
+    ATTRIB_SOURCES,
+    ATTRIB_SUM_COLS,
+    ATTRIB_TENOR_LADDER,
+    ATTRIB_TERMS,
+    ATTRIB_WING_ORDER,
+    assemble_attribution,
+    attrib_tenor_bucket,
+    attribution_groups,
+    decompose_row,
+    filter_source,
+    iv_fraction_to_pts,
+    spot_at_or_before,
+)
 from core.risk.hist_var import market_shocks, portfolio_pnl, simulate_pnl_by_position
 from core.risk.marginal_var import component_var
 from core.risk.stress import reval_book
 from core.risk.var_factors import factor_var_breakdown
 from core.risk.vega_pca import N_CELLS, PC_NAMES, cell_index, project_vega
 from core.units import PIP_SIZE
-from core.vol.tenors import tenor_bucket_from_expiry
 from persistence.models import (  # noqa: F401
     AccountHistory,
     AppConfigScalar,
@@ -48,6 +64,17 @@ from persistence.models import (  # noqa: F401
     PcaModel,
     RegimeSnapshot,
     VolSurface,
+)
+from persistence.rollups import (
+    BACKFILL_DAYS,
+    compute_attribution,
+    latest_account_row,
+    read_attribution_latest,
+    read_close_before,
+    read_nav_series,
+    read_portfolio_daily,
+    refresh_portfolio_daily,
+    underlying_forward,
 )
 from persistence.rows import account_snapshot_row
 from shared.contracts import parse_local_symbol
@@ -134,29 +161,23 @@ async def get_account(db: DbDep) -> dict[str, Any]:
 
 
 @router.get("/header")
-async def header_summary(db: DbDep) -> dict[str, Any]:
+async def header_summary(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """One-shot endpoint for the dashboard sticky header (panel A).
 
     Bundles in a single round-trip :
-      - latest ``account_snaps`` row + reference 24 h before for delta P&L
+      - the latest account snapshot from the ``account_snapshot`` cache the
+        execution engine pushes (#366), falling back to ONE indexed row;
+      - the previous UTC day's close from ``portfolio_daily`` for the 24 h
+        P&L (same anchor as the Daily P&L panel);
       - aggregate greeks across all OPEN positions (denormalised on
-        ``positions`` since migration 028)
-      - 1-day 99% historical VaR computed on the daily distribution of
-        ``net_liq`` deltas from ``account_snaps`` (last 60 days).
-
-    Frontend can render the whole panel-A strip from one fetch.
+        ``open_position``);
+      - 1-day 99% historical VaR on the last 60 daily closes of
+        ``portfolio_daily``.
+    No scan of ``account_history`` on the request path (#368, closes #286).
     """
-    latest = (await db.execute(
-        select(AccountHistory).order_by(desc(AccountHistory.timestamp)).limit(1)
-    )).scalar_one_or_none()
-    prev: AccountHistory | None = None
-    if latest is not None:
-        cutoff = latest.timestamp - timedelta(hours=24)
-        prev = (await db.execute(
-            select(AccountHistory).where(AccountHistory.timestamp <= cutoff)
-            .order_by(desc(AccountHistory.timestamp)).limit(1)
-        )).scalar_one_or_none()
-
+    now = datetime.now(UTC)
+    latest = await read_account_snapshot(redis) or await latest_account_row(db)
+    prev = await read_close_before(db, now)
     # Aggregate greeks — single SUM scan on the denormalised positions row.
     greeks_sql = text("""
         SELECT
@@ -169,57 +190,34 @@ async def header_summary(db: DbDep) -> dict[str, Any]:
         FROM open_position
     """)
     g = (await db.execute(greeks_sql)).one()
-
-    # Historical VaR 1d 99% : take one ``net_liq`` value per UTC day over
-    # the last 60 days, derive day-over-day deltas, return the 1st-percentile
-    # (= worst-case loss with 99% confidence). NULL if < 5 days of data.
-    var_sql = text("""
-        WITH daily AS (
-          SELECT DISTINCT ON (date_trunc('day', timestamp))
-                 date_trunc('day', timestamp) AS day,
-                 net_liq_usd
-            FROM account_history
-           WHERE timestamp >= NOW() - INTERVAL '60 days'
-             AND net_liq_usd IS NOT NULL
-           ORDER BY date_trunc('day', timestamp), timestamp DESC
-        )
-        SELECT net_liq_usd FROM daily ORDER BY day
-    """)
-    daily_nl = [r[0] for r in (await db.execute(var_sql)).all()]
+    nav, rollup_at = await read_nav_series(db, days=60)
+    daily_nl = [v for _, v in nav]
     var_1d_99: float | None = None
     n_days = max(0, len(daily_nl) - 1)
     if n_days >= 5:
-        deltas = [
-            float(daily_nl[i] - daily_nl[i - 1])
-            for i in range(1, len(daily_nl))
-        ]
-        deltas.sort()
-        # 1st percentile via linear interpolation between the closest 2 ranks.
-        rank = 0.01 * (len(deltas) - 1)
-        lo = int(rank)
-        hi = min(lo + 1, len(deltas) - 1)
-        var_1d_99 = deltas[lo] + (rank - lo) * (deltas[hi] - deltas[lo])
-
-    nl_now = float(latest.net_liq_usd) if latest and latest.net_liq_usd else None
-    nl_prev = float(prev.net_liq_usd) if prev and prev.net_liq_usd else None
+        deltas = sorted(daily_nl[i] - daily_nl[i - 1] for i in range(1, len(daily_nl)))
+        var_1d_99 = _percentile(deltas, 0.01)
+    nl_now = _coerce_float(latest.get("net_liq_usd")) if latest else None
+    nl_prev = float(prev.net_liq_close) if prev is not None and prev.net_liq_close is not None else None
     pnl_24h = (nl_now - nl_prev) if (nl_now is not None and nl_prev is not None) else None
-
-    init_m = float(latest.init_margin_req) if latest and latest.init_margin_req else None
+    init_m = _coerce_float(latest.get("init_margin_req")) if latest else None
     util_pct = (init_m / nl_now) if (init_m and nl_now) else None
-
     return {
-        "computed_at": datetime.now(UTC).isoformat(),
+        "computed_at": now.isoformat(),
+        "rollup_computed_at": rollup_at.isoformat() if rollup_at else None,
         "account": {
             "net_liq_usd": nl_now,
-            "cash_usd": float(latest.cash_usd) if latest and latest.cash_usd else None,
+            "cash_usd": _coerce_float(latest.get("cash_usd")) if latest else None,
             "init_margin_req": init_m,
-            "excess_liquidity": float(latest.excess_liquidity) if latest and latest.excess_liquidity else None,
-            "cushion": float(latest.cushion) if latest and latest.cushion else None,
+            "excess_liquidity": _coerce_float(latest.get("excess_liquidity")) if latest else None,
+            "cushion": _coerce_float(latest.get("cushion")) if latest else None,
             "util_pct": util_pct,
             "n_open_positions": int(g.n_open or 0),
+            "as_of": latest.get("timestamp") if latest else None,
         },
         "pnl": {
             "total_24h_usd": pnl_24h,
+            "prev_close_day": prev.day.isoformat() if prev is not None else None,
             "open_unrealized_usd": float(g.sum_pnl),
         },
         "greeks": {
@@ -1047,242 +1045,24 @@ async def var_factors(db: DbDep) -> dict[str, Any]:
 # ──────────────────────────────────────────────────────────────────────
 
 # group_by → the per-position field it buckets on.
-_ATTRIB_GROUP_KEYS: dict[str, str] = {"tenor": "attrib_tenor", "structure": "structure_type", "wing": "wing"}
-_ATTRIB_TERMS = ["delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd"]
-_ATTRIB_SUM_COLS = ["actual_pnl_usd", *_ATTRIB_TERMS]
-# Tenor ladder order; buckets outside it (2W, other, …) follow, sorted.
-_ATTRIB_TENOR_LADDER = ("1M", "2M", "3M", "4M", "5M", "6M")
-# Smile order for the wing pivot: downside → ATM → upside, then linear / catch-all.
-_ATTRIB_WING_ORDER = ("Put wing", "Body (ATM)", "Call wing", "Future / delta-1", "other")
-
-
-def _attrib_tenor_bucket(expiry: date | None, today: date) -> str | None:
-    """The 1M..6M ladder by DTE — one implementation in core, shared with
-    ``/positions/open`` (``tenor_now``) so the Position breakdown and the
-    attribution by tenor put a leg in the same bucket (#377)."""
-    return tenor_bucket_from_expiry(expiry, today)
-
-
-_ATTRIB_SOURCES = ("ib_live", "booked", "all")
-
-
-def _filter_source(rows: list[dict[str, Any]], source: str) -> list[dict[str, Any]]:
-    """Pure: keep the rows of one source. The by-trade panel always showed IB
-    legs only while the by-tenor matrix summed IB + booked, so their totals
-    could differ; both now read the same filtered set (#377)."""
-    if source == "all":
-        return rows
-    return [r for r in rows if r.get("source") == source]
-
-
-def _iv_fraction_to_pts(iv: float | None) -> float | None:
-    """IB-live ``open_position.iv`` is a FRACTION (0.0605) while ``vega_usd`` is
-    $ per VOL POINT, so V·dσ needs dσ in points: ×100. Without it the vega term
-    was 100× too small and its P&L leaked into the residual (#377)."""
-    return None if iv is None else float(iv) * 100.0
-
-
-def spot_at_or_before(bars: list[dict[str, Any]] | None, cutoff: datetime) -> float | None:
-    """Pure: close of the latest candle that OPENED at or before ``cutoff``
-    (``t`` = bar-open epoch ms, as the market-data engine stores them)."""
-    if not bars:
-        return None
-    cutoff_ms = cutoff.timestamp() * 1000.0
-    best: float | None = None
-    best_t = float("-inf")
-    for b in bars:
-        try:
-            t, c = float(b["t"]), float(b["c"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if t <= cutoff_ms and t > best_t:
-            best, best_t = c, t
-    return best
-
-
-async def _spot_fallbacks(
-    redis: aioredis.Redis | None, cutoff: datetime,
-) -> tuple[float | None, float | None]:
-    """(spot_now, spot_then) from the market-data cache when no open 6E future
-    carries a mark / a t-1 snapshot: ``latest_spot`` for now, the hourly 1W
-    bar cache for then. Spot, not the future's forward, but the basis is
-    stable over a day and dS is what the delta / gamma terms need. Best
-    effort: any Redis trouble reads as (None, None)."""
-    if redis is None:
-        return None, None
-    try:
-        raw_spot = await asyncio.wait_for(redis.get(keys.LATEST_SPOT.format(symbol="EURUSD")), 2.0)
-        raw_bars = await asyncio.wait_for(redis.get(keys.BARS.format(symbol="EURUSD", timeframe="1W")), 2.0)
-    except Exception:
-        return None, None
-    spot_now = float(raw_spot) if raw_spot not in (None, "", b"") else None
-    bars = None
-    if raw_bars:
-        try:
-            bars = json.loads(raw_bars)
-        except (TypeError, ValueError):
-            bars = None
-    return spot_now, spot_at_or_before(bars if isinstance(bars, list) else None, cutoff)
-
-
-def _attribution_groups(
-    per_position: list[dict[str, Any]],
-    group_by: str,
-) -> tuple[list[dict[str, Any]], dict[str, float | None]]:
-    """Pure pivot (unit-tested): per-position Taylor terms → attribution matrix.
-
-    A bucket accumulates a term only from the legs that actually carry it. A term
-    no leg could measure — every contributor ``None`` because it has no t-1
-    snapshot in the window (typically a leg opened inside it) — stays ``None``
-    rather than summing to ``0.0``. An unmeasurable P&L is not a flat P&L, and a
-    bucket of manufactured zeros is indistinguishable from a genuinely flat one.
-
-    Only buckets the book actually holds are emitted: an empty 4M row reads as
-    "flat there" when the truth is "nothing there".
-    """
-    key_col = _ATTRIB_GROUP_KEYS[group_by]
-    buckets: dict[str, dict[str, float | None]] = {}
-    for row in per_position:
-        label = str(row.get(key_col) or "other")
-        b = buckets.setdefault(label, dict.fromkeys(_ATTRIB_SUM_COLS, None))
-        for c in _ATTRIB_SUM_COLS:
-            if row.get(c) is not None:
-                b[c] = (b[c] or 0.0) + float(row[c])
-
-    def _mk(label: str, b: dict[str, float | None]) -> dict[str, Any]:
-        terms = [b[c] for c in _ATTRIB_TERMS]
-        # The residual only foots when the actual AND every term it is derived
-        # from are known — otherwise it would silently absorb the missing ones.
-        residual = (
-            b["actual_pnl_usd"] - sum(float(t) for t in terms)  # type: ignore[arg-type,operator]
-            if b["actual_pnl_usd"] is not None and all(t is not None for t in terms)
-            else None
-        )
-        out: dict[str, Any] = {"label": label}
-        for c in _ATTRIB_SUM_COLS:
-            out[c] = round(b[c], 2) if b[c] is not None else None
-        out["residual_usd"] = round(residual, 2) if residual is not None else None
-        return out
-
-    if group_by == "tenor":
-        head = [t for t in _ATTRIB_TENOR_LADDER if t in buckets]
-    elif group_by == "wing":
-        head = [w for w in _ATTRIB_WING_ORDER if w in buckets]
-    else:
-        head = sorted(buckets, key=lambda g: abs(buckets[g]["actual_pnl_usd"] or 0.0), reverse=True)
-    order = head + sorted(g for g in buckets if g not in head)
-    groups = [_mk(label, buckets[label]) for label in order]
-    totals = {
-        c: (round(sum(vals), 2) if (vals := [g[c] for g in groups if g[c] is not None]) else None)
-        for c in [*_ATTRIB_SUM_COLS, "residual_usd"]
-    }
-    return groups, totals
-
-
-def _decompose_row(
-    *,
-    now: datetime,
-    pnl_now: float | None, pnl_then: float | None,
-    spot_now: float | None, spot_then: float | None,
-    iv_now: float | None, iv_then: float | None,
-    delta: float | None, gamma: float | None,
-    vega: float | None, theta: float | None,
-    t_then: datetime | None,
-    delta_then: float | None = None, gamma_then: float | None = None,
-    vega_then: float | None = None, theta_then: float | None = None,
-    gamma_scale: float = 1.0,
-) -> dict[str, float | None]:
-    """Taylor-decompose one leg's window P&L into δ·dS / ½Γ·dS² / V·dσ / Θ·dt / residual.
-
-    Anchors on the t-1 (window-start) greek, falling back to the current one when
-    a t-1 column is null. ``gamma_scale`` converts the stored gamma into Γ_$ (2nd
-    derivative in raw spot²) so ½Γ·dS² is real dollars: IB-live ``gamma_usd`` is
-    $/pip (``1/PIP_SIZE``), booked ``gamma_usd_per_pip2`` is $/pip²
-    (``1/PIP_SIZE²``). Pure — unit-tested in test_portfolio_pnl_attribution.
-    """
-    actual = (pnl_now - pnl_then) if (pnl_now is not None and pnl_then is not None) else None
-    # No t-1 snapshot → the leg's realized P&L over the window is unmeasurable,
-    # so there is nothing to attribute. Suppress every term (else a theoretical
-    # delta·dS would show against a $0 actual and pollute the trade/tenor sums).
-    if actual is None:
-        return dict.fromkeys(
-            ("actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd", "residual_usd"),
-            None,
-        )
-    dspot = (spot_now - spot_then) if (spot_now is not None and spot_then is not None) else None
-    div_pts = (iv_now - iv_then) if (iv_now is not None and iv_then is not None) else None
-    dt_days = ((now - t_then).total_seconds() / 86400.0) if t_then is not None else None
-
-    # Attribute with the t-1 greeks, not the current ones: over a 24h window an
-    # option's delta drifts a lot, so delta_now·dS overshoots and inflates the
-    # residual. Fall back to the current greek when a t-1 column is null.
-    d = delta_then if delta_then is not None else delta
-    g = gamma_then if gamma_then is not None else gamma
-    v = vega_then if vega_then is not None else vega
-    th = theta_then if theta_then is not None else theta
-
-    delta_pnl = (d * dspot) if (d is not None and dspot is not None) else None
-    gamma_pnl = (0.5 * g * gamma_scale * dspot * dspot) if (g is not None and dspot is not None) else None
-    vega_pnl = (v * div_pts) if (v is not None and div_pts is not None) else None
-    theta_pnl = (th * dt_days) if (th is not None and dt_days is not None) else None
-
-    explained: float | None
-    if None in (delta_pnl, gamma_pnl, vega_pnl, theta_pnl):
-        explained = None
-    else:
-        explained = float(delta_pnl) + float(gamma_pnl) + float(vega_pnl) + float(theta_pnl)
-    residual = (actual - explained) if (actual is not None and explained is not None) else None
-
-    return {
-        "actual_pnl_usd": round(actual, 2) if actual is not None else None,
-        "delta_pnl_usd": round(delta_pnl, 2) if delta_pnl is not None else None,
-        "gamma_pnl_usd": round(gamma_pnl, 2) if gamma_pnl is not None else None,
-        "vega_pnl_usd": round(vega_pnl, 2) if vega_pnl is not None else None,
-        "theta_pnl_usd": round(theta_pnl, 2) if theta_pnl is not None else None,
-        "residual_usd": round(residual, 2) if residual is not None else None,
-    }
-
-
-async def _underlying_forward(
-    db: AsyncSession, cutoff: datetime,
-) -> tuple[float | None, float | None]:
-    """Book-level underlying forward (the 6E future's market price) now and at
-    the latest snapshot ≤ ``cutoff``.
-
-    The t-1 probe is anchored on the OPEN 6E positions' ids and walks the
-    ``(position_id, timestamp)`` index one step per future. It is skipped
-    outright when no future is open. The previous shape — ``ORDER BY
-    oph.timestamp DESC LIMIT 1`` over the whole history joined on
-    ``structure LIKE '6E%'`` — walked the timestamp index backwards through
-    every row ever written whenever the book held no future (the join never
-    matched, so LIMIT 1 never stopped it): 1M+ rows, >20s, statement_timeout →
-    500 on every ``/portfolio/pnl-attribution`` call, which the UI bundles with
-    ``/portfolio/account`` (prod incident 2026-11-05: Cash & margin blank).
-    """
-    fwd_row = (await db.execute(text(
-        "SELECT market_price FROM open_position "
-        "WHERE structure LIKE '6E%' AND market_price IS NOT NULL ORDER BY id DESC LIMIT 1"
-    ))).first()
-    forward = float(fwd_row[0]) if fwd_row and fwd_row[0] is not None else None
-    if forward is None:
-        return None, None
-    fwd_then_row = (await db.execute(text(
-        "SELECT h.market_price "
-        "  FROM open_position op "
-        "  JOIN LATERAL ("
-        "        SELECT h.market_price, h.timestamp "
-        "          FROM open_position_history h "
-        "         WHERE h.position_id = op.id "
-        "           AND h.timestamp <= :cutoff "
-        "           AND h.market_price IS NOT NULL "
-        "         ORDER BY h.timestamp DESC "
-        "         LIMIT 1"
-        "       ) h ON TRUE "
-        " WHERE op.structure LIKE '6E%' "
-        " ORDER BY h.timestamp DESC LIMIT 1"
-    ), {"cutoff": cutoff})).first()
-    forward_then = float(fwd_then_row[0]) if fwd_then_row and fwd_then_row[0] is not None else None
-    return forward, forward_then
+# The attribution maths lives in ``core.risk.attribution`` and the queries in
+# ``persistence.rollups`` (#368): the analytics engine computes the rows, this
+# router shapes them. The underscored names stay as aliases for the tests and
+# for anyone grepping the old call sites.
+_ATTRIB_GROUP_KEYS = ATTRIB_GROUP_KEYS
+_ATTRIB_TERMS = ATTRIB_TERMS
+_ATTRIB_SUM_COLS = ATTRIB_SUM_COLS
+_ATTRIB_TENOR_LADDER = ATTRIB_TENOR_LADDER
+_ATTRIB_WING_ORDER = ATTRIB_WING_ORDER
+_ATTRIB_SOURCES = ATTRIB_SOURCES
+_attrib_tenor_bucket = attrib_tenor_bucket
+_filter_source = filter_source
+_iv_fraction_to_pts = iv_fraction_to_pts
+_attribution_groups = attribution_groups
+_decompose_row = decompose_row
+_underlying_forward = underlying_forward
+_spot_fallbacks = spot_fallbacks
+spot_at_or_before = spot_at_or_before  # re-exported for the attribution tests
 
 
 @router.get("/pnl-attribution")
@@ -1299,301 +1079,26 @@ async def pnl_attribution(
 ) -> dict[str, Any]:
     """Decompose realized P&L into greek contributions over the window.
 
-    Per-position Taylor expansion, anchored on the window-START (t-1) greeks :
-        actual_pnl  = (pnl_now - pnl_then)
-        delta_pnl   = δ_t-1 × (spot_now - spot_then)
-        gamma_pnl   = 0.5 × Γ_t-1 × (spot_now - spot_then) ** 2
-        vega_pnl    = V_t-1 × (iv_now - iv_then)      [vol points]
-        theta_pnl   = Θ_t-1 × Δt_days
-        residual    = actual_pnl - (delta + gamma + vega + theta)
-
-    Greeks are read at the START of the window (the t-1 snapshot), not the
-    current ones: over a 24h window an option's delta drifts materially, so
-    attributing with δ_now overshoots δ·dS and inflates the residual. Anchoring
-    on the entry greek keeps the expansion consistent; the residual then only
-    holds genuine vol convexity (volga/vanna) + higher order. Falls back to the
-    current greek when a t-1 greek column is null (older snapshots).
-
-    Sources :
-      - IB-live positions (``position`` table) : t-1 row in
-        ``position_metric_history`` closest to ``now - lookback_hours``.
-        Spot comes from the snapshot's ``market_price`` for the
-        underlying FUT contract on the same symbol.
-      - Booked positions (``booked_position``) : t-1 row in
-        ``booked_position_metric_history``. Spot stored on the snapshot.
+    Per-position Taylor expansion anchored on the window-START (t-1) greeks
+    (``core.risk.attribution.decompose_row``). The analytics engine computes
+    it every 5 min for the standard lookbacks and stores one row per window
+    (``pnl_attribution_latest``, #368); this endpoint reads that row and
+    filters / pivots it. It computes inline only when there is no fresh row
+    (engine not running, or a lookback it does not keep warm), so a panel
+    never blanks on a cold stack. ``computed_at`` is the rollup's time;
+    ``rollup`` says which path answered.
     """
+    if group_by is not None and group_by not in ATTRIB_GROUP_KEYS:
+        raise HTTPException(400, f"unknown group_by '{group_by}' (expected tenor / structure / wing)")
     now = datetime.now(UTC)
-    cutoff = now - timedelta(hours=lookback_hours)
-
-    # 1. IB-live positions : current state from ``open_position`` + t-1 from
-    #    ``open_position_history``. Per open position, a LATERAL probe picks the
-    #    row whose timestamp is the latest one still ≤ cutoff (closest from
-    #    below). This walks the (position_id, timestamp) index backwards ONE
-    #    step per open position. The previous ``DISTINCT ON (position_id)``
-    #    CTE over the whole history table (no position filter) scanned + sorted
-    #    every row ever written (1M+ rows, spilled to disk, minutes per call)
-    #    and, polled by the UI, piled up until the API pool was exhausted
-    #    (prod incident 2026-11-04).
-    ib_sql = text("""
-        SELECT p.id, p.structure, p.product_label, p.side, p.tenor, p.expiry,
-               p.trade_id, p.contract_id, p.nominal_eur,
-               ts.structure_type AS structure_type,
-               p.current_pnl_usd AS pnl_now,
-               p.market_price    AS spot_now,
-               p.iv              AS iv_now,
-               p.delta_usd       AS delta_now,
-               p.gamma_usd       AS gamma_now,
-               p.vega_usd        AS vega_now,
-               p.theta_usd       AS theta_now,
-               t1.current_pnl_usd AS pnl_then,
-               t1.market_price    AS spot_then,
-               t1.iv              AS iv_then,
-               t1.delta_usd       AS delta_then,
-               t1.gamma_usd       AS gamma_then,
-               t1.vega_usd        AS vega_then,
-               t1.theta_usd       AS theta_then,
-               t1.timestamp       AS t_then
-          FROM open_position p
-          LEFT JOIN LATERAL (
-                 SELECT h.timestamp, h.market_price, h.current_pnl_usd, h.iv,
-                        h.delta_usd, h.gamma_usd, h.vega_usd, h.theta_usd
-                   FROM open_position_history h
-                  WHERE h.position_id = p.id
-                    AND h.timestamp <= :cutoff
-                  ORDER BY h.timestamp DESC
-                  LIMIT 1
-               ) t1 ON TRUE
-          LEFT JOIN trade_structure ts ON ts.id = p.trade_id
-    """)
-    ib_rows = (await db.execute(ib_sql, {"cutoff": cutoff})).all()
-
-    # 2. Booked positions : current state from the latest metric_history row +
-    #    t-1 from the latest row ≤ cutoff. Same LATERAL-per-open-position shape
-    #    as above (index (position_id, timestamp), one backward step each)
-    #    instead of two DISTINCT ON passes over the whole history table.
-    booked_sql = text("""
-        SELECT bp.id, bp.state,
-               ts.product_label AS product_label,
-               ts.reference_tenor AS tenor,
-               ts.expiry_date AS expiry,
-               ts.structure_type AS structure_type,
-               latest.current_pnl_gross_usd AS pnl_now,
-               latest.spot                  AS spot_now,
-               latest.iv_avg_legs_pct       AS iv_now,
-               latest.current_delta_unhedged AS delta_now,
-               latest.current_gamma_usd_per_pip2 AS gamma_now,
-               latest.current_vega_usd_per_volpt AS vega_now,
-               latest.current_theta_usd_per_day  AS theta_now,
-               t1.current_pnl_gross_usd AS pnl_then,
-               t1.spot                  AS spot_then,
-               t1.iv_avg_legs_pct       AS iv_then,
-               t1.current_delta_unhedged     AS delta_then,
-               t1.current_gamma_usd_per_pip2 AS gamma_then,
-               t1.current_vega_usd_per_volpt AS vega_then,
-               t1.current_theta_usd_per_day  AS theta_then,
-               t1.timestamp             AS t_then
-          FROM booked_position bp
-          LEFT JOIN trade_structure ts ON ts.id = bp.structure_id
-          LEFT JOIN LATERAL (
-                 SELECT h.timestamp, h.spot, h.iv_avg_legs_pct,
-                        h.current_pnl_gross_usd, h.current_pnl_net_usd,
-                        h.current_vega_usd_per_volpt, h.current_gamma_usd_per_pip2,
-                        h.current_theta_usd_per_day, h.current_delta_unhedged
-                   FROM booked_position_metric_history h
-                  WHERE h.position_id = bp.id
-                  ORDER BY h.timestamp DESC
-                  LIMIT 1
-               ) latest ON TRUE
-          LEFT JOIN LATERAL (
-                 SELECT h.timestamp, h.spot, h.iv_avg_legs_pct,
-                        h.current_pnl_gross_usd, h.current_delta_unhedged,
-                        h.current_gamma_usd_per_pip2, h.current_vega_usd_per_volpt,
-                        h.current_theta_usd_per_day
-                   FROM booked_position_metric_history h
-                  WHERE h.position_id = bp.id
-                    AND h.timestamp <= :cutoff
-                  ORDER BY h.timestamp DESC
-                  LIMIT 1
-               ) t1 ON TRUE
-         WHERE bp.state = 'open'
-    """)
-    booked_rows = (await db.execute(booked_sql, {"cutoff": cutoff})).all()
-
-    # Wing classification for the by-wing axis: parse the IB leg's local symbol
-    # (strike + right) and bucket by strike vs forward (≈ spot) — put wing (below),
-    # body (ATM ±50 bp), call wing (above). Futures / unparseable legs fall back.
-    def _wing(local_symbol: str | None, forward: float | None) -> str:
-        spec = parse_local_symbol(local_symbol)
-        if spec is None:
-            return "other"
-        if spec.instrument_type == "FUTURE" or spec.strike is None:
-            return "Future / delta-1"
-        if forward is None or forward <= 0:
-            return "other"
-        moneyness = spec.strike / forward - 1.0
-        if abs(moneyness) <= 0.005:
-            return "Body (ATM)"
-        return "Put wing" if moneyness < 0 else "Call wing"
-
-    # 3. Decompose each row via the module-level _decompose_row (unit-tested).
-    #    None on any input → Nones (caller displays "—") so partial data doesn't
-    #    poison aggregates.
-
-    # Book-level UNDERLYING spot = the EUR future's market price (the FOP
-    # underlying), now and at t-1. Option legs decompose against THIS, not their
-    # own market_price (which is the premium) — else dS is the premium change, so
-    # delta·dS is garbage, ½Γ·dS² collapses to 0 and the residual eats the P&L.
-    forward, forward_then = await _underlying_forward(db, cutoff)
-    forward_source = "future_mark"
-    if forward is None or forward_then is None:
-        # No open 6E with a mark, or one opened inside the window (no t-1
-        # snapshot): every option's delta / gamma term was None and the
-        # panels read "—" for a book that was moving (#377). Fall back to the
-        # spot cache for whichever side is missing.
-        fb_now, fb_then = await _spot_fallbacks(redis, cutoff)
-        if forward is None and fb_now is not None:
-            forward = fb_now
-            forward_source = "spot_cache"
-        if forward_then is None and fb_then is not None:
-            forward_then = fb_then
-            forward_source = "spot_cache"
-        if forward is None or forward_then is None:
-            forward_source = "none"
-
-    per_position: list[dict[str, Any]] = []
-    for r in ib_rows:
-        # A future / delta-1 leg is linear: no gamma/vega/theta, and it must
-        # decompose against its OWN price. Each 6E expiry has a different price,
-        # so the single shared `forward` (one arbitrary 6E) made every other
-        # future's δ·dS miss its actual P&L — and with gamma/vega/theta NULL the
-        # residual stayed None, so those gaps footed nowhere and the totals row
-        # did not reconcile. Own price + explicit 0 greeks → residual foots.
-        is_future = (
-            (r.product_label or "").lower().startswith("future")
-            or (r.structure or "").startswith("6E")
-        )
-        if is_future:
-            spot_now_u = float(r.spot_now) if r.spot_now is not None else None
-            spot_then_u = float(r.spot_then) if r.spot_then is not None else None
-            gamma_u = gamma_then_u = 0.0
-            vega_u = vega_then_u = 0.0
-            theta_u = theta_then_u = 0.0
-            iv_now_u = iv_then_u = 0.0   # equal → Δiv 0 → vega term a clean 0
-            gscale = 1.0
-        else:
-            spot_now_u, spot_then_u = forward, forward_then
-            gamma_u = float(r.gamma_now) if r.gamma_now is not None else None
-            gamma_then_u = float(r.gamma_then) if r.gamma_then is not None else None
-            vega_u = float(r.vega_now) if r.vega_now is not None else None
-            vega_then_u = float(r.vega_then) if r.vega_then is not None else None
-            theta_u = float(r.theta_now) if r.theta_now is not None else None
-            theta_then_u = float(r.theta_then) if r.theta_then is not None else None
-            # IB-live iv is a fraction, vega_usd is $/vol point: dσ in points.
-            iv_now_u = _iv_fraction_to_pts(r.iv_now)
-            iv_then_u = _iv_fraction_to_pts(r.iv_then)
-            gscale = 1.0 / PIP_SIZE   # open_position.gamma_usd is $/pip → Γ_$
-        decomp = _decompose_row(
-            now=now,
-            pnl_now=float(r.pnl_now) if r.pnl_now is not None else None,
-            pnl_then=float(r.pnl_then) if r.pnl_then is not None else None,
-            # options: underlying future price (per-leg market_price is the
-            # premium); futures: their own price.
-            spot_now=spot_now_u,
-            spot_then=spot_then_u,
-            iv_now=iv_now_u,
-            iv_then=iv_then_u,
-            # delta_usd is USD exposure (delta_eur × F, #313): ∂V/∂F = delta_usd / F.
-            delta=(float(r.delta_now) / spot_now_u) if (r.delta_now is not None and spot_now_u) else None,
-            gamma=gamma_u,
-            vega=vega_u,
-            theta=theta_u,
-            t_then=r.t_then,
-            delta_then=(float(r.delta_then) / spot_then_u) if (r.delta_then is not None and spot_then_u) else None,
-            gamma_then=gamma_then_u,
-            vega_then=vega_then_u,
-            theta_then=theta_then_u,
-            gamma_scale=gscale,
-        )
-        per_position.append({
-            "id": int(r.id), "source": "ib_live",
-            "structure": r.structure, "product_label": r.product_label,
-            "side": r.side, "tenor": r.tenor,
-            "attrib_tenor": _attrib_tenor_bucket(r.expiry, now.date()),
-            "trade_id": int(r.trade_id) if r.trade_id is not None else None,
-            "contract_id": int(r.contract_id) if r.contract_id is not None else None,
-            "nominal_eur": float(r.nominal_eur) if r.nominal_eur is not None else None,
-            "iv": float(r.iv_now) if r.iv_now is not None else None,
-            "structure_type": r.structure_type,
-            "wing": _wing(r.structure, forward),
-            **decomp,
-        })
-    for r in booked_rows:
-        decomp = _decompose_row(
-            now=now,
-            pnl_now=float(r.pnl_now) if r.pnl_now is not None else None,
-            pnl_then=float(r.pnl_then) if r.pnl_then is not None else None,
-            spot_now=float(r.spot_now) if r.spot_now is not None else None,
-            spot_then=float(r.spot_then) if r.spot_then is not None else None,
-            iv_now=float(r.iv_now) if r.iv_now is not None else None,
-            iv_then=float(r.iv_then) if r.iv_then is not None else None,
-            delta=float(r.delta_now) if r.delta_now is not None else None,
-            gamma=float(r.gamma_now) if r.gamma_now is not None else None,
-            vega=float(r.vega_now) if r.vega_now is not None else None,
-            theta=float(r.theta_now) if r.theta_now is not None else None,
-            t_then=r.t_then,
-            delta_then=float(r.delta_then) if r.delta_then is not None else None,
-            gamma_then=float(r.gamma_then) if r.gamma_then is not None else None,
-            vega_then=float(r.vega_then) if r.vega_then is not None else None,
-            theta_then=float(r.theta_then) if r.theta_then is not None else None,
-            # booked_position_metric_history.current_gamma_usd_per_pip2 is $/pip²
-            gamma_scale=1.0 / (PIP_SIZE * PIP_SIZE),
-        )
-        per_position.append({
-            "id": int(r.id), "source": "booked",
-            "structure": None, "product_label": r.product_label,
-            "side": None, "tenor": r.tenor,
-            "attrib_tenor": _attrib_tenor_bucket(r.expiry, now.date()),
-            "structure_type": r.structure_type, "wing": "other",
-            **decomp,
-        })
-
-    # 4b. Pivot mode : bucket the per-position Taylor terms by a grouping key into a
-    #     P&L-attribution matrix (rows = groups, cols = greek P&L). The residual is
-    #     re-derived per bucket (actual − Σ explained) so every row foots exactly.
-    per_position = _filter_source(per_position, source)
-    meta = {
-        "lookback_hours": lookback_hours,
-        "computed_at": now.isoformat(),
-        "source": source,
-        # where dS came from: future_mark (open 6E now and at t-1), spot_cache
-        # (market-data latest_spot / hourly bars for a missing side), none.
-        "forward_source": forward_source,
-        "window_start": cutoff.isoformat(),
-    }
-
-    if group_by is not None:
-        if group_by not in _ATTRIB_GROUP_KEYS:
-            raise HTTPException(400, f"unknown group_by '{group_by}' (expected tenor / structure / wing)")
-        groups, totals = _attribution_groups(per_position, group_by)
-        return {"group_by": group_by, **meta, "groups": groups, "totals": totals}
-
-    # 4. Aggregate. Sum across positions where the term is not None.
-    def _sum(key: str) -> float | None:
-        vals = [row[key] for row in per_position if row[key] is not None]
-        return round(sum(vals), 2) if vals else None
-
-    return {
-        **meta,
-        "totals": {
-            "actual_pnl_usd": _sum("actual_pnl_usd"),
-            "delta_pnl_usd": _sum("delta_pnl_usd"),
-            "gamma_pnl_usd": _sum("gamma_pnl_usd"),
-            "vega_pnl_usd": _sum("vega_pnl_usd"),
-            "theta_pnl_usd": _sum("theta_pnl_usd"),
-            "residual_usd": _sum("residual_usd"),
-        },
-        "per_position": per_position,
-    }
+    stored = await read_attribution_latest(db, lookback_hours=lookback_hours, now=now)
+    if stored is None:
+        fallback = await spot_fallbacks(redis, now - timedelta(hours=lookback_hours))
+        stored = await compute_attribution(db, now=now, lookback_hours=lookback_hours, spot_fallback=fallback)
+        stored["meta"]["rollup"] = "inline"
+    else:
+        stored["meta"]["rollup"] = "materialised"
+    return assemble_attribution(stored["per_position"], stored["meta"], source=source, group_by=group_by)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -1980,57 +1485,64 @@ async def cash_holdings(db: DbDep) -> dict[str, Any]:
     }
 
 
+# The api never pays for a full rebuild on the request path: when the rollup
+# table is empty (engine not running yet) ONE bounded refresh per
+# _ROLLUP_FALLBACK_EVERY_S per process seeds it, index probes only.
+_ROLLUP_FALLBACK_EVERY_S = 600.0
+_rollup_fallback_at: float = 0.0
+
+
+async def _daily_rows_or_seed(db: AsyncSession, days: int) -> list[Any]:
+    global _rollup_fallback_at
+    rows = await read_portfolio_daily(db, days=days)
+    if rows:
+        return rows
+    now_m = asyncio.get_running_loop().time()
+    if now_m - _rollup_fallback_at < _ROLLUP_FALLBACK_EVERY_S:
+        return rows
+    _rollup_fallback_at = now_m
+    logger.warning("portfolio_daily_empty_inline_refresh days=%s", min(days, BACKFILL_DAYS))
+    try:
+        await refresh_portfolio_daily(db, days=min(days, BACKFILL_DAYS))
+    except Exception:
+        logger.warning("portfolio_daily_inline_refresh_failed", exc_info=True)
+        return rows
+    return await read_portfolio_daily(db, days=days)
+
+
 @router.get("/daily-pnl")
 async def daily_pnl(db: DbDep, days: int = Query(90, ge=1, le=730)) -> dict[str, Any]:
     """Daily P&L — MARK-TO-MARKET (R11 G-portfolio).
 
     A vol trader holds positions for weeks, so "realized on close" reads flat while
     the book is open. The headline daily P&L is therefore the day-over-day change in
-    EOD net-liquidation (``account_history``) — the honest total P&L, footing to the
-    equity curve. ``realized_usd`` (genuine closes only) is returned alongside for the
+    EOD net-liquidation — the honest total P&L, footing to the equity curve.
+    ``realized_usd`` (genuine closes only) is returned alongside for the
     realized/unrealized split, NOT as the bar height.
-    """
-    # 1) MTM: last net-liq per UTC day → day-over-day delta.
-    mtm_rows = (await db.execute(text("""
-        WITH eod AS (
-          SELECT DISTINCT ON (date_trunc('day', timestamp))
-                 date_trunc('day', timestamp)::date AS day, net_liq_usd
-            FROM account_history
-           WHERE timestamp >= NOW() - make_interval(days => :days)
-             AND net_liq_usd IS NOT NULL
-           ORDER BY date_trunc('day', timestamp), timestamp DESC
-        )
-        SELECT day, net_liq_usd,
-               net_liq_usd - LAG(net_liq_usd) OVER (ORDER BY day) AS mtm
-          FROM eod ORDER BY day
-    """), {"days": days})).all()
-    # 2) Realized per day from GENUINE closes only (net_pnl_usd computed).
-    real_rows = (await db.execute(text("""
-        SELECT date_trunc('day', closed_at)::date AS day,
-               COALESCE(SUM(net_pnl_usd), 0) AS realized,
-               COUNT(*) FILTER (WHERE net_pnl_usd IS NOT NULL) AS n_closed
-          FROM booked_position
-         WHERE state = 'closed' AND closed_at IS NOT NULL
-           AND closed_at >= NOW() - make_interval(days => :days)
-         GROUP BY 1
-    """), {"days": days})).all()
-    real_by_day = {r.day.isoformat(): (float(r.realized or 0.0), int(r.n_closed)) for r in real_rows}
 
+    Reads ``portfolio_daily`` (one row per UTC day, written by the analytics
+    engine, #368); ``computed_at`` is the rollup's time.
+    """
+    rows = await _daily_rows_or_seed(db, days)
     series: list[dict[str, Any]] = []
     cum = 0.0
-    for r in mtm_rows:
-        mtm = float(r.mtm) if r.mtm is not None else 0.0
+    for r in rows:
+        mtm = float(r.mtm_usd) if r.mtm_usd is not None else 0.0
         cum += mtm
-        day = r.day.isoformat()
-        realized, n_closed = real_by_day.get(day, (0.0, 0))
         series.append({
-            "day": day,
+            "day": r.day.isoformat(),
             "mtm_usd": round(mtm, 2),
-            "realized_usd": round(realized, 2),
+            "realized_usd": round(float(r.realized_usd or 0.0), 2),
             "cumulative_usd": round(cum, 2),
-            "n_closed": n_closed,
+            "n_closed": int(r.n_closed or 0),
+            "net_liq_close": float(r.net_liq_close) if r.net_liq_close is not None else None,
         })
-    return {"days": days, "series": series, "total_mtm_usd": round(cum, 2)}
+    computed_at = max((r.computed_at for r in rows), default=None)
+    return {
+        "days": days, "series": series, "total_mtm_usd": round(cum, 2),
+        "computed_at": computed_at.isoformat() if computed_at else None,
+        "source": "portfolio_daily",
+    }
 
 
 # Non-greek P&L pivot axes → the trade_structure column each groups by. Whitelisted
@@ -2243,30 +1755,21 @@ async def value_at_risk(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     )).all()}
     lookback = int(pf.get("var_lookback_days", 504))
     max_gap = int(pf.get("var_max_gap_days", _VAR_MAX_GAP_DAYS))
-    nl_sql = text("""
-        WITH daily AS (
-          SELECT DISTINCT ON (date_trunc('day', timestamp))
-                 date_trunc('day', timestamp) AS day, net_liq_usd
-            FROM account_history
-           WHERE timestamp >= NOW() - make_interval(days => :lookback) AND net_liq_usd IS NOT NULL
-           ORDER BY date_trunc('day', timestamp), timestamp DESC
-        )
-        SELECT day, net_liq_usd FROM daily ORDER BY day
-    """)
-    rows = [(r[0], float(r[1])) for r in (await db.execute(nl_sql, {"lookback": lookback})).all()]
+    # Daily closes from the materialised rollup (#368), never a per-day scan.
+    nav, rollup_at = await read_nav_series(db, days=lookback)
     # Only consecutive trading-day samples form a genuine 1-day P&L delta. A
     # multi-day hole (system downtime, capital deposit/withdrawal) is NOT a daily
     # loss — including it injects a huge phantom tail that dominates VaR/ES and
     # the histogram. Skip any step spanning more than the configured gap.
     deltas = [
-        rows[i][1] - rows[i - 1][1]
-        for i in range(1, len(rows))
-        if (rows[i][0] - rows[i - 1][0]).days <= max_gap
+        nav[i][1] - nav[i - 1][1]
+        for i in range(1, len(nav))
+        if (nav[i][0] - nav[i - 1][0]).days <= max_gap
     ]
     stats = _var_stats(deltas)
     mean_daily = sum(deltas) / len(deltas) if deltas else None
     return {
-        "computed_at": datetime.now(UTC).isoformat(),
+        "computed_at": (rollup_at or datetime.now(UTC)).isoformat(),
         "method": "account-history",
         "n_days": len(deltas),
         # live mean daily P&L → the table's expected-return column (× horizon),
@@ -2313,24 +1816,16 @@ async def greek_limits(db: DbDep) -> dict[str, Any]:
 async def portfolio_stats(db: DbDep) -> dict[str, Any]:
     """Headline performance stats (R11 G-portfolio).
 
-    Sharpe + drawdown from the daily net-liq curve (``account_history``),
-    hit-rate + cumulative realized from closed booked positions, cumulative
-    unrealized from the live book. Fields are ``None`` when the underlying
-    series is too short / empty (read-only public deployment at boot).
+    Sharpe + drawdown from the daily net-liq closes of ``portfolio_daily``
+    (materialised, #368), hit-rate + cumulative realized from closed booked
+    positions, cumulative unrealized from the live book. Fields are ``None``
+    when the underlying series is too short / empty (read-only public
+    deployment at boot). ``computed_at`` is the rollup's time.
     """
-    nl_sql = text("""
-        WITH daily AS (
-          SELECT DISTINCT ON (date_trunc('day', timestamp))
-                 date_trunc('day', timestamp) AS day, net_liq_usd
-            FROM account_history
-           WHERE timestamp >= NOW() - INTERVAL '365 days' AND net_liq_usd IS NOT NULL
-           ORDER BY date_trunc('day', timestamp), timestamp DESC
-        )
-        SELECT net_liq_usd FROM daily ORDER BY day
-    """)
-    nl = [float(r[0]) for r in (await db.execute(nl_sql)).all()]
+    rows = await _daily_rows_or_seed(db, 365)
+    nl = [float(r.net_liq_close) for r in rows if r.net_liq_close is not None]
+    rollup_at = max((r.computed_at for r in rows), default=None)
     sharpe, max_dd, current_dd = _sharpe_and_drawdown(nl)
-
     # GENUINE closes only for realized / hit-rate: a real close has net_pnl_usd
     # computed by the finaliser. A position that netted flat at IB is auto-closed by
     # reconciliation with net_pnl_usd NULL (close_reason 'reconciled_flat_at_ib') —
@@ -2345,17 +1840,14 @@ async def portfolio_stats(db: DbDep) -> dict[str, Any]:
     """))).one()
     n_closed = int(closed.n or 0)
     hit_rate = (float(closed.wins) / n_closed) if n_closed else None
-
     openp = (await db.execute(text(
         "SELECT COALESCE(SUM(current_pnl_usd), 0) AS u, COUNT(*) AS n FROM open_position"
     ))).one()
-
     # Ground-truth account change over the series (net-liq is the source of truth).
     # The frontend foots it: Δnet-liq ≈ realized + Δunrealized + (reconciliation gap).
     net_liq_change = (nl[-1] - nl[0]) if len(nl) >= 2 else None
-
     return {
-        "computed_at": datetime.now(UTC).isoformat(),
+        "computed_at": (rollup_at or datetime.now(UTC)).isoformat(),
         "sharpe": round(sharpe, 3) if sharpe is not None else None,
         "max_drawdown_pct": round(max_dd * 100, 2) if max_dd is not None else None,
         "current_drawdown_pct": round(current_dd * 100, 2) if current_dd is not None else None,

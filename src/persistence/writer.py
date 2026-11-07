@@ -18,12 +18,17 @@ Reference : releases/architecture_finale_project/07-async-db-writer.md
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections import defaultdict
+from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import Insert, insert
+from sqlalchemy import exc as sa_exc
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -35,6 +40,7 @@ from sqlalchemy.ext.asyncio import (
 from persistence.models import (
     AccountHistory,
     Base,
+    DbWriterDeadLetter,
     FeatureHistory,
     OpenPosition,
     OpenPositionHistory,
@@ -66,24 +72,42 @@ TABLE_MODELS: dict[str, type[Base]] = {
     "vol_surface_history": VolSurface,                        # renamed in migration 023
 }
 
-# Tables where duplicates on the natural key are safe to drop silently.
-# vol_surfaces and signals both have a UNIQUE constraint (see models.py),
-# and the engines can re-emit the same (timestamp, underlying[, tenor]) on
-# a retry : we want the first write to win and the second to be a no-op.
-# `position` uses the primary key ``id`` (a deterministic hash of the IB
-# composite key symbol/side/type/strike/maturity) : re-observing the
-# same open position on every risk cycle must be idempotent so that only
-# the first sighting creates the row ; subsequent observations land as
-# position_metric_history rows only.
-# Other tables (position_metric_history, account_history) have no natural
-# dedup key, duplicates there are real data and must not be silenced.
+# Tables where duplicates on the natural key are safe to drop silently
+# (``ON CONFLICT DO NOTHING``). Every table an engine streams through the
+# db-writer is here (#324, DI-02): the vol engine stamps ONE ``cycle_ts`` on
+# all the rows of a cycle, so a Redis redelivery or a writer retry after an
+# in-doubt commit re-sends the same natural key and is a no-op. Before this
+# the producer stamped ``datetime.now()`` at publish time, so only a
+# byte-identical frame could ever collide and the keys were decorative.
+# `open_position` uses the primary key ``id`` (a deterministic hash of the IB
+# composite key) : re-observing the same open position must be idempotent.
+# ``account_history`` / ``open_position_history`` are written by their
+# engines directly, not through this writer.
 IDEMPOTENT_TABLES: dict[str, list[str]] = {
-    "vol_surface_history": ["timestamp", "underlying"],                                   # renamed
-    "open_position": ["id"],                                                              # renamed in 033
-    "feature_history": ["symbol", "timestamp"],                                           # renamed
-    "pca_surface_snapshot_history": ["symbol", "timestamp"],                              # renamed in migration 036
-    "pca_signal_history": ["symbol", "timestamp", "pca_model_id", "pc_id"],               # renamed
+    "vol_surface_history": ["timestamp", "underlying"],
+    "open_position": ["id"],
+    "feature_history": ["symbol", "timestamp"],
+    "regime_snapshot_history": ["symbol", "timestamp"],                                  # migration 059
+    "pca_surface_snapshot_history": ["symbol", "timestamp"],
+    "pca_signal_history": ["symbol", "timestamp", "pca_model_id", "pc_id"],
 }
+
+# Errors that mean "this row (or batch) will never insert": fall back to
+# per-row writes and dead-letter what still fails. Transient errors
+# (OperationalError / InterfaceError) are NOT here: they go to the retry loop.
+_ROW_ERRORS: tuple[type[BaseException], ...] = (
+    sa_exc.IntegrityError, sa_exc.DataError, sa_exc.ProgrammingError, sa_exc.StatementError,
+    ValueError, TypeError,
+)
+
+
+def _metric(name: str) -> Any:
+    try:
+        from shared import observability
+
+        return getattr(observability, name)
+    except Exception:  # metrics are never load-bearing
+        return None
 
 
 Event = tuple[str, dict]
@@ -259,35 +283,83 @@ class AsyncDatabaseWriter:
             raise last_exc
 
     async def _write_batch(self, batch: list[Event]) -> None:
-        """Group events by target table and emit one bulk INSERT per table.
+        """Group events by target table and emit one bulk INSERT per table,
+        each table in its own transaction.
 
-        Events referencing a table not in ``TABLE_MODELS`` are logged and
-        skipped — the whole batch still commits so a single bad event does
-        not take down valid peers. For tables in ``IDEMPOTENT_TABLES`` the
-        INSERT is augmented with ``ON CONFLICT DO NOTHING`` when the engine
-        is PostgreSQL, so re-emitting the same natural key is a no-op.
+        Events referencing a table not in ``TABLE_MODELS`` go to the dead
+        letter. For tables in ``IDEMPOTENT_TABLES`` the INSERT carries
+        ``ON CONFLICT DO NOTHING`` on the natural key (PostgreSQL and SQLite),
+        so re-emitting the same key is a no-op. A bulk insert that fails on a
+        row error (constraint, type) is retried row by row and the rows that
+        still fail are parked in ``db_writer_dead_letter`` with the error
+        (#324, DI-04); the valid peers land. Transient errors propagate to the
+        retry loop, which re-sends the whole batch, now idempotently.
         """
         by_table: dict[str, list[dict]] = defaultdict(list)
         for table_name, payload in batch:
             if table_name not in TABLE_MODELS:
-                logger.warning("unknown table %r, dropping event", table_name)
+                logger.warning("unknown table %r, dead-lettering event", table_name)
+                await self._dead_letter(table_name, payload, "unknown table")
                 continue
             by_table[table_name].append(payload)
 
         if not by_table:
             return
 
-        async with self.session_factory() as session:
-            dialect_name = session.bind.dialect.name
-            for table_name, rows in by_table.items():
-                stmt = self._build_insert(table_name, rows, dialect_name)
-                await session.execute(stmt)
-            await session.commit()
+        written: dict[str, int] = {}
+        for table_name, rows in by_table.items():
+            try:
+                async with self.session_factory() as session:
+                    dialect_name = session.bind.dialect.name
+                    await session.execute(self._build_insert(table_name, rows, dialect_name))
+                    await session.commit()
+                written[table_name] = len(rows)
+            except (OperationalError, InterfaceError):
+                raise  # transient: the retry loop re-sends the whole batch
+            except _ROW_ERRORS as exc:
+                logger.warning(
+                    "bulk insert into %s failed (%s); falling back to per-row writes",
+                    table_name, type(exc).__name__,
+                )
+                written[table_name] = await self._write_rows_one_by_one(table_name, rows)
+            m = _metric("db_writer_rows_written_total")
+            if m is not None and written.get(table_name):
+                m.labels(table=table_name).inc(written[table_name])
 
-        logger.debug(
-            "wrote batch: %s",
-            {k: len(v) for k, v in by_table.items()},
-        )
+        logger.debug("wrote batch: %s", written)
+
+    async def _write_rows_one_by_one(self, table_name: str, rows: list[dict]) -> int:
+        """Per-row fallback: each row in its own transaction; a row that still
+        fails on a row error is dead-lettered. Returns the rows written."""
+        ok = 0
+        for row in rows:
+            try:
+                async with self.session_factory() as session:
+                    dialect_name = session.bind.dialect.name
+                    await session.execute(self._build_insert(table_name, [row], dialect_name))
+                    await session.commit()
+                ok += 1
+            except (OperationalError, InterfaceError):
+                raise
+            except _ROW_ERRORS as exc:
+                await self._dead_letter(table_name, row, f"{type(exc).__name__}: {exc}")
+        return ok
+
+    async def _dead_letter(self, table_name: str, payload: dict, error: str) -> None:
+        """Park one row with its error. Best effort: if even this fails the
+        row is logged in full and the counter still moves."""
+        m = _metric("db_writer_dead_letter_total")
+        if m is not None:
+            m.labels(table=table_name).inc()
+        try:
+            async with self.session_factory() as session:
+                session.add(DbWriterDeadLetter(
+                    table_name=str(table_name)[:64], payload=_jsonable(payload), error=str(error)[:2000],
+                ))
+                await session.commit()
+            logger.error("db_writer_dead_letter table=%s error=%s", table_name, str(error)[:200])
+        except Exception:
+            logger.exception("db_writer_dead_letter_write_failed table=%s payload=%r", table_name, payload)
 
     def _build_insert(
         self, table_name: str, rows: list[dict], dialect_name: str
@@ -302,9 +374,24 @@ class AsyncDatabaseWriter:
         emulating just for unit tests.
         """
         model = TABLE_MODELS[table_name]
-        if dialect_name == "postgresql" and table_name in IDEMPOTENT_TABLES:
-            pg_stmt = pg_insert(model).values(rows)
-            return pg_stmt.on_conflict_do_nothing(
-                index_elements=IDEMPOTENT_TABLES[table_name]
-            )
+        if table_name in IDEMPOTENT_TABLES:
+            keys = IDEMPOTENT_TABLES[table_name]
+            if dialect_name == "postgresql":
+                return pg_insert(model).values(rows).on_conflict_do_nothing(index_elements=keys)
+            if dialect_name == "sqlite":
+                return sqlite_insert(model).values(rows).on_conflict_do_nothing(index_elements=keys)
         return insert(model).values(rows)
+
+
+def _json_default(v: Any) -> Any:
+    if hasattr(v, "isoformat"):
+        return v.isoformat()
+    if isinstance(v, Decimal):
+        return float(v)
+    return str(v)
+
+
+def _jsonable(payload: dict) -> dict:
+    """Datetimes (coerced by the service), Decimals and anything else the
+    JSON column cannot take, made serialisable; nested values included."""
+    return json.loads(json.dumps(payload, default=_json_default))

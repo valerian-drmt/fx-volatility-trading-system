@@ -153,7 +153,7 @@ execution engine writes positions to Postgres and the UI reads them back on a
 |---|---|---|---|---|
 | 1 | `cpu_shares` per container (§3.1) and the analytics batch runs once (`VOL_INLINE_ANALYTICS=0`) — **shipped, #365** | `docker-compose.yml`, `engines/vol` | 1 h, deploy-time | 2.3 |
 | 2 | Push the hot path: execution publishes position and account deltas; UI subscribes to `/ws/positions`, `/ws/orders/{id}`, new `/ws/account`; REST poll becomes a 60 s reconciliation | execution, api/ws, frontend provider | 2 PRs | 2.2, 2.1 |
-| 3 | Materialise cold results: analytics computes attribution and daily rollups once per cycle into result tables; api endpoints become single-row reads (closes #286) | analytics, migration, api | 2 PRs | 2.1, 2.4 |
+| 3 | Materialise cold results: analytics computes attribution and daily rollups once per cycle into result tables; api endpoints become single-row reads (closes #286) — **shipped, #368**: `portfolio_daily` + `pnl_attribution_latest` (migration 057), `persistence/rollups.py`, analytics `ROLLUP_INTERVAL_S` loop (5 min); `/stats`, `/daily-pnl`, `/header`, `/var` fallback, greek caps and `/pnl-attribution` read one row, a grep gate keeps the scans out | analytics, migration, api | 2 PRs | 2.1, 2.4 |
 | 4 | Never blank a panel: last good value + freshness badge, no mock fallback, on the trade and risk bundles too | frontend provider | 1 PR | 2.2 |
 | 5 | Measure: `order_submit_latency_seconds` and `fill_to_screen_seconds` histograms, one Grafana panel with a 2 s target | execution, frontend beacon, grafana | 1 PR | all |
 | 6 | Only then, hardware: split hosts (trading core / analytics + obs) rather than grow one | infra | later | decided by 5 |

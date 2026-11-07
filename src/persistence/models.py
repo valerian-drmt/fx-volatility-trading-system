@@ -27,7 +27,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 JSONB_PORTABLE = JSON().with_variant(JSONB(), "postgresql")
 
@@ -104,15 +104,11 @@ class OpenPosition(Base):
         onupdate=func.now(),
     )
 
-    metric_history: Mapped[list[OpenPositionHistory]] = relationship(
-        back_populates="position",
-        cascade="all, delete-orphan",
-        # The FK already has ON DELETE CASCADE — let Postgres do the cascade.
-        # Without this, db.delete(position) loads the position's ENTIRE history
-        # collection into RAM first (1.9M-row table on prod → OOM crash-loop of
-        # execution-engine, 2026-10-04, 5 654 restarts).
-        passive_deletes=True,
-    )
+    # No relationship to ``open_position_history`` any more (#330, DI-03,
+    # migration 058): the history outlives the mirror row. Closing a position
+    # deletes this row and nothing else; the per-leg greeks / P&L series stays
+    # until the retention prune. Readers probe the history by ``position_id``
+    # (index ``(position_id, timestamp)``), never through an ORM collection.
     # Note: `trades` relationship removed — Trade ORM dropped in
     # migration 025 (legacy fills journal had no live writers).
 
@@ -126,9 +122,10 @@ class OpenPositionHistory(Base):
 
     # Schema mirrors ``open_position`` 1-to-1 plus position_id + timestamp.
     id: Mapped[int] = mapped_column(primary_key=True)
-    position_id: Mapped[int] = mapped_column(
-        ForeignKey("open_position.id", ondelete="CASCADE"), nullable=False
-    )
+    # Plain column since migration 058 (#330): the FK with ON DELETE CASCADE
+    # erased a leg's whole history when the position closed. The composite
+    # index (position_id, timestamp) from migration 044 serves every reader.
+    position_id: Mapped[int] = mapped_column(Integer, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
@@ -158,8 +155,6 @@ class OpenPositionHistory(Base):
     iv: Mapped[Decimal | None] = mapped_column(Numeric(8, 5))
     vanna_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     volga_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
-
-    position: Mapped[OpenPosition] = relationship(back_populates="metric_history")
 
 
 # Trade, Order, OrderEvent ORM classes deleted in migration 025 — all
@@ -231,6 +226,9 @@ class RegimeSnapshot(Base):
             "label IN ('calm','stressed','pre_event')",
             name="ck_regime_snapshot_history_label",
         ),
+        # Natural key for the db-writer's ON CONFLICT DO NOTHING (#324,
+        # migration 059): one row per vol-engine cycle per symbol.
+        UniqueConstraint("symbol", "timestamp", name="uq_regime_snapshot_symbol_ts"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1124,3 +1122,62 @@ class TradeEvent(Base):
     )
     description: Mapped[str | None] = mapped_column(String(500))
     payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False, default=dict)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Materialised portfolio rollups (#368, hot/cold T4). Writer = analytics
+# engine every ROLLUP_INTERVAL_S; readers = the daily portfolio endpoints.
+# ──────────────────────────────────────────────────────────────────────
+class PortfolioDaily(Base):
+    """One row per UTC day of account history: net-liq open / close, the
+    day-over-day MTM, realised P&L of genuine closes. Rebuilt from
+    ``account_history`` + ``booked_position`` by ``persistence.rollups``."""
+    __tablename__ = "portfolio_daily"
+    __table_args__ = (UniqueConstraint("day", name="uq_portfolio_daily_day"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    net_liq_open: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    net_liq_close: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    mtm_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    realized_usd: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False, default=0)
+    n_closed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    n_samples: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    first_sample_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sample_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PnlAttributionLatest(Base):
+    """The latest per-position P&L attribution for one lookback window, as
+    the analytics engine computed it (``core.risk.attribution``). The api
+    filters / pivots the stored rows; it never recomputes on the request path
+    while a fresh row exists."""
+    __tablename__ = "pnl_attribution_latest"
+    __table_args__ = (
+        UniqueConstraint("lookback_hours", name="uq_pnl_attribution_latest_lookback"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    lookback_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    forward_source: Mapped[str] = mapped_column(String(20), nullable=False)
+    n_positions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    per_position: Mapped[list] = mapped_column(JSONB_PORTABLE, nullable=False, default=list)
+
+
+class DbWriterDeadLetter(Base):
+    """A streamed row the db-writer could not insert on its own after the
+    per-row fallback (#324, DI-04): kept with the error instead of being
+    dropped with its batch. Replay is manual (``docs/ops/redis-durability.md``)."""
+    __tablename__ = "db_writer_dead_letter"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    table_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
+    error: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    replayed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -25,7 +25,7 @@ trade; each `trade_order` is a leg; `trade_fill` is one execution event.
 | `BookedPosition` | `booked_position` | trade-level entity: entry cost, state, P&L |
 | `BookedPositionMetricHistory` | `booked_position_metric_history` | per-cycle MTM + signal tracking |
 | `OpenPosition` | `open_position` | live IB book mirror (one row per contract) |
-| `OpenPositionHistory` | `open_position_history` | per-cycle greeks/pnl/iv per leg |
+| `OpenPositionHistory` | `open_position_history` | per-cycle greeks/pnl/iv per leg; no FK to the mirror since migration 058, so a close keeps the leg's history (#330) |
 | `HedgeOrder` | `hedge_order` | delta-rebalancing future order |
 | `ExitAlert` | `exit_alert` | one exit-rule trigger |
 | `Package` | `package` | optional grouping of several trades |
@@ -33,6 +33,8 @@ trade; each `trade_order` is a leg; `trade_fill` is one execution event.
 | `AccountHistory` | `account_history` | IB account snapshot (NetLiq, margin, cushion) |
 | `IbConnectionState` | `runtime_ib_session` | singleton broker connectivity row |
 | `BookStateSnapshot` | `book_state_snapshot_history` | aggregated book greeks + exposure |
+| `PortfolioDaily` | `portfolio_daily` | one row per UTC day: net-liq open/close, MTM, realised (analytics engine, every 5 min; #368) |
+| `PnlAttributionLatest` | `pnl_attribution_latest` | per-position P&L attribution per lookback window (analytics engine; the api reads one row) |
 
 ## Vol & analytics
 

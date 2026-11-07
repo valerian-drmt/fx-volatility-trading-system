@@ -37,6 +37,8 @@ async def run() -> None:
     # ANALYTICS_INTERVAL_MIN (default 60) → compute cadence in seconds.
     interval_min = float(os.environ.get("ANALYTICS_INTERVAL_MIN", "60"))
     interval_s = int(interval_min * 60)
+    # ROLLUP_INTERVAL_S (default 300) -> portfolio rollups cadence (#368).
+    rollup_interval_s = float(os.environ.get("ROLLUP_INTERVAL_S", "300"))
 
     redis = get_async_redis()
     engine = AnalyticsEngine(
@@ -44,6 +46,7 @@ async def run() -> None:
         symbol="EURUSD",
         interval_s=interval_s,
         sessionmaker=get_sessionmaker(),
+        rollup_interval_s=rollup_interval_s,
     )
 
     loop = asyncio.get_running_loop()
