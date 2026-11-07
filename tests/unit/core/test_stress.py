@@ -80,3 +80,20 @@ def test_future_pnl_and_delta():
 def _approx(x: float, rel: float):
     import pytest
     return pytest.approx(x, rel=rel)
+
+
+def test_vol_shock_through_zero_floors_the_iv_instead_of_dropping_the_option():
+    # Audit R3-19 (07#9): a -10 vol pt shock on an 8 % option used to skip
+    # the leg, so the most violent vol-down scenario showed 0 P&L. The
+    # option is priced at IV_FLOOR and loses (almost) its whole premium.
+    from core.risk.stress import IV_FLOOR
+
+    p = _opt(1.12, "C")  # OTM call, long
+    pnl = reval_book([p], SPOT, dvol_vp=-10.0, output="pnl")
+    expected = p["qty_signed"] * p["mult"] * (bs_price(SPOT, 1.12, 0.25, IV_FLOOR, "C") - p["price_base"])
+    assert pnl == _approx(expected, rel=1e-9)
+    assert pnl < 0 and abs(pnl + p["mult"] * p["price_base"]) < 1e-6 * p["mult"] * p["price_base"] + 1e-6
+    # the delta output at the same scenario is the floored option's delta, not 0
+    assert reval_book([p], SPOT, dvol_vp=-10.0, output="delta") == _approx(
+        p["qty_signed"] * p["mult"] * bs_delta(SPOT, 1.12, 0.25, IV_FLOOR, "C"), rel=1e-9,
+    )

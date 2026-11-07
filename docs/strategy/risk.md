@@ -86,6 +86,15 @@ marketable limit of every leg must sit within `LIVE_SUBMIT_COLLAR_PCT`
 the submit claim released. Not assessed, and recorded as a waiver: quoted
 size / liquidity (the preview has no per-leg depth yet).
 
+Between Arm and Submit, `core/execution/revalidation.py` re-runs the gates
+that can change while the operator sits on a preview: not actioned, not
+expired, signal still actionable, surface fresh, regime not `pre_event`.
+The surface gate fails closed since #339 (audit EX-08): a preview priced on
+a surface older than `max_iv_data_age_seconds` is refused with
+`surface_stale`, and a preview with no recorded age with
+`surface_age_unknown`. Like the pre-trade gate's `surface_stale`, it runs in
+live mode; mock and paper submits pass `max_iv_age_seconds=None`.
+
 ## Kill switch
 
 One durable flag (`config_scalar` namespace `risk`, name `trading_halted`),

@@ -9,7 +9,9 @@ Gates re-checked here (cf. STEP4 §7.2 step 3) :
   - preview not already actioned (submitted / cancelled)
   - state == 'valid_for_submit'
   - signal still actionable (current |z| ≥ threshold and same sign as armed_z)
-  - surface freshness (age below limit)
+  - surface freshness (age below limit, fails closed when the age is unknown;
+    the caller passes ``max_iv_age_seconds=None`` to turn the gate off, which
+    the submit path does outside live mode, mirroring the pre-trade gate #315)
   - regime not pre_event
 
 Pure function — caller passes the snapshot data, no DB / Redis here.
@@ -37,8 +39,8 @@ def revalidate_preview(
     armed_z: float | None,
     current_z: float | None,
     z_threshold_min: float,
-    surface_age_seconds: float,
-    max_iv_age_seconds: float,
+    surface_age_seconds: float | None,
+    max_iv_age_seconds: float | None,
     current_regime: str | None,
 ) -> RevalidationResult:
     """Run all gates. Stops at first failure (defense in depth).
@@ -49,6 +51,8 @@ def revalidate_preview(
     preview_user_action : None if pristine, else 'submitted' | 'cancelled'
     armed_z, current_z : pca z-scores (manual mode → both None, gate skipped)
     current_regime : 'calm' | 'stressed' | 'pre_event' | None (None → gate skipped)
+    surface_age_seconds : age of the surface the preview was priced on; None = unknown
+    max_iv_age_seconds : the limit; None = surface gate off (non-live modes)
     """
     if preview_user_action is not None:
         return RevalidationResult(
@@ -82,11 +86,21 @@ def revalidate_preview(
                 {"armed_z": armed_z, "current_z": current_z},
             )
 
-    # surface_stale check dropped on request (mirrors the same drop on
-    # the pre-submit ``iv_data_fresh`` gate). Surface freshness is shown
-    # in the YELLOW block of the trade panel so the operator can see it
-    # and decide; we no longer block at the orchestrator level.
-    _ = (surface_age_seconds, max_iv_age_seconds)  # silence unused
+    # Surface freshness (audit EX-08, #339): a preview priced on a surface
+    # older than the limit does not submit, and an unknown age is not a pass.
+    # The caller turns the gate off (``max_iv_age_seconds=None``) outside
+    # live mode, the same scope as the pre-trade gate's ``surface_stale``.
+    if max_iv_age_seconds is not None:
+        if surface_age_seconds is None:
+            return RevalidationResult(
+                False, "surface_age_unknown", {"max_iv_age_seconds": max_iv_age_seconds}
+            )
+        if surface_age_seconds > max_iv_age_seconds:
+            return RevalidationResult(
+                False,
+                "surface_stale",
+                {"surface_age_seconds": surface_age_seconds, "max_iv_age_seconds": max_iv_age_seconds},
+            )
 
     if current_regime == "pre_event":
         return RevalidationResult(

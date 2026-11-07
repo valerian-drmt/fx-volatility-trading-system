@@ -61,12 +61,30 @@ def test_skips_signal_gate_in_manual_mode():
     assert r.passed
 
 
-def test_does_not_block_on_stale_surface():
-    # surface_stale check was dropped on request — mirror of the
-    # iv_data_fresh pre-submit gate removal. Operator decides based on
-    # the YELLOW block freshness display.
+def test_blocks_on_stale_surface():
+    # Audit EX-08 (07#9): this test used to assert the fail-open as the
+    # contract. A preview priced on a 300 s-old surface does not submit
+    # against a 120 s limit.
     r = _ok(surface_age_seconds=300.0, max_iv_age_seconds=120.0)
-    assert r.passed
+    assert not r.passed and r.reason == "surface_stale"
+    assert r.details == {"surface_age_seconds": 300.0, "max_iv_age_seconds": 120.0}
+
+
+def test_unknown_surface_age_is_not_a_pass():
+    r = _ok(surface_age_seconds=None, max_iv_age_seconds=120.0)
+    assert not r.passed and r.reason == "surface_age_unknown"
+
+
+def test_surface_gate_off_outside_live_mode():
+    # The submit path passes None outside live mode (same scope as the
+    # pre-trade gate's surface_stale, #315); the other gates still run.
+    assert _ok(surface_age_seconds=300.0, max_iv_age_seconds=None).passed
+    r = _ok(surface_age_seconds=300.0, max_iv_age_seconds=None, current_regime="pre_event")
+    assert not r.passed and r.reason == "regime_pre_event"
+
+
+def test_surface_at_the_limit_passes():
+    assert _ok(surface_age_seconds=120.0, max_iv_age_seconds=120.0).passed
 
 
 def test_blocks_pre_event_regime():

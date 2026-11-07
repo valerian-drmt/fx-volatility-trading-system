@@ -42,6 +42,10 @@ _VEGA_PER_VOLPT = 0.01
 # same scale the risk engine persists (#313); it was 1e-4 here, 0.01 there.
 _VANNA_SCALE = 0.01
 _VOLGA_SCALE = 1e-4   # per vol pt² (0.01²)
+# A vol shock that drives an option's IV through zero prices it at this
+# floor (0.1 vol pt): the option then contributes its near-intrinsic value
+# to the scenario instead of being skipped (audit R3-19, #339).
+IV_FLOOR = 0.001
 
 ResolvedPosition = dict[str, Any]
 
@@ -109,9 +113,7 @@ def reval_book(
                 total += qm
             continue
         new_T = max(1e-4, p["T"] - dt_days / 365.0)
-        new_iv = _shocked_iv(p, new_spot, dvol_vp, dskew_vp, dfly_vp)
-        if new_iv <= 0:
-            continue
+        new_iv = max(IV_FLOOR, _shocked_iv(p, new_spot, dvol_vp, dskew_vp, dfly_vp))
         shocked = {**p, "T": new_T}
         if output == "pnl":
             total += qm * (bs_price(new_spot, p["K"], new_T, new_iv, p["right"]) - p["price_base"])

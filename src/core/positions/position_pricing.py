@@ -84,7 +84,13 @@ class PositionMark:
     total_vega_usd_per_volpt: float
     total_theta_usd_per_day: float
     legs: list[LegPricing]
-    n_surface_missing: int        # legs that fell back to entry IV
+    n_surface_missing: int        # legs that fell back to entry IV (or could not be priced)
+    n_unpriced: int = 0           # legs with no IV at all: their mark is absent, not zero (#339)
+
+    @property
+    def complete(self) -> bool:
+        """True when every leg carries a real mark (no leg left unpriced)."""
+        return self.n_unpriced == 0
 
 
 def _years_to_expiry(expiry: date, now: datetime) -> float:
@@ -115,6 +121,7 @@ def price_position(
     total_theta = 0.0
     leg_results: list[LegPricing] = []
     n_missing = 0
+    n_unpriced = 0
 
     for leg in legs:
         T = _years_to_expiry(leg.expiry, now)
@@ -131,12 +138,15 @@ def price_position(
                 n_missing += 1
                 iv_source = "fallback"
         if sigma is None or sigma <= 0:
-            # Cannot price ; emit a zero-greek leg so the caller sees the gap.
+            # Cannot price: the leg is reported with iv_source="none" and
+            # counted in n_unpriced; ``mark_value_usd`` then covers only the
+            # priced legs and ``complete`` is False (audit R3-01, #339).
             leg_results.append(LegPricing(
                 leg_idx=leg.leg_idx, price=0.0, delta=0.0, gamma=0.0, vega=0.0,
-                theta=0.0, iv_used=0.0, sign=0, qty_signed=0,
+                theta=0.0, iv_used=0.0, sign=0, qty_signed=0, iv_source="none",
             ))
             n_missing += 1
+            n_unpriced += 1
             continue
 
         price = bs_price(spot, leg.strike, T, sigma, right)
@@ -175,4 +185,5 @@ def price_position(
         total_theta_usd_per_day=total_theta,
         legs=leg_results,
         n_surface_missing=n_missing,
+        n_unpriced=n_unpriced,
     )

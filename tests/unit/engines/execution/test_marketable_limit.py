@@ -13,6 +13,9 @@ _TICK = 0.0001
 
 
 def test_buy_prices_at_the_ask_snapped_up() -> None:
+    # Audit EX-10 (07#9): pricing at IB's raw touch was pinned here with no
+    # refusal anywhere. The touch is still the price; the collar test below
+    # (``collar_ok``) is where an absurd touch is refused before it reaches IB.
     # BUY crosses at the ask, rounded UP to the tick so it's marketable.
     assert marketable_from_quote("BUY", 0.0100, 0.01234, 0.011, 0.009) == 0.0124
 
