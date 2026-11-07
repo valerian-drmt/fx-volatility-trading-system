@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
 from api.dependencies import get_db_session, get_redis
+from bus import keys
 from persistence.models import Base
 
 # Two audiences (see releases/PLAN_trader_vs_public.md):
@@ -55,15 +56,15 @@ MIGRATIONS_DIR = (
 # Whitelist: only these keys are inspectable. Prevents /dev/redis/value
 # from being used to scan Redis arbitrarily (sensitive keys, KEYS * scans).
 KNOWN_KEYS: list[str] = [
-    "heartbeat:market_data",
-    "heartbeat:vol_engine",
-    "heartbeat:risk_engine",
-    "heartbeat:db_writer",
-    "latest_spot:EURUSD",
-    "latest_vol_surface:EURUSD",
-    "latest_signals:EURUSD",
-    "latest_greeks:portfolio",
-    "latest_pnl_curve",
+    keys.HEARTBEAT.format(engine_name=keys.ENGINE_MARKET_DATA),
+    keys.HEARTBEAT.format(engine_name=keys.ENGINE_VOL),
+    keys.HEARTBEAT.format(engine_name=keys.ENGINE_RISK),
+    keys.HEARTBEAT.format(engine_name=keys.ENGINE_DB_WRITER),
+    keys.LATEST_SPOT.format(symbol="EURUSD"),
+    keys.LATEST_VOL_SURFACE.format(symbol="EURUSD"),
+    keys.LATEST_SIGNALS.format(symbol="EURUSD"),
+    keys.LATEST_GREEKS_PORTFOLIO,
+    keys.LATEST_PNL_CURVE,
 ]
 
 
@@ -77,11 +78,12 @@ def _parse_age(raw_str: str, now: datetime) -> float | None:
         return round((now - ts).total_seconds(), 2)
     except ValueError:
         pass
-    # latest_* keys store JSON with a top-level `timestamp` field.
+    # latest_* keys store JSON with a top-level `timestamp` field; the spot
+    # envelope (#327) uses `ts`.
     try:
         payload = json.loads(raw_str)
         if isinstance(payload, dict):
-            ts_str = payload.get("timestamp")
+            ts_str = payload.get("timestamp") or payload.get("ts")
             if isinstance(ts_str, str):
                 ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                 return round((now - ts).total_seconds(), 2)
@@ -118,11 +120,16 @@ async def redis_keys(
 # Per-engine config : (heartbeat key, primary output key, stale threshold sec).
 # Threshold matche le compose healthcheck (max age avant unhealthy).
 ENGINES_CONFIG: list[dict[str, Any]] = [
-    {"name": "market_data",  "hb": "heartbeat:market_data",  "out": "latest_spot:EURUSD",          "stale_s": 60},
-    {"name": "vol_engine",   "hb": "heartbeat:vol_engine",   "out": "latest_vol_surface:EURUSD",   "stale_s": 300},
-    {"name": "risk_engine",  "hb": "heartbeat:risk_engine",  "out": "latest_greeks:portfolio",     "stale_s": 30},
-    {"name": "db_writer",    "hb": "heartbeat:db_writer",    "out": None,                          "stale_s": 30},
-    {"name": "execution",    "hb": "heartbeat:execution",    "out": None,                          "stale_s": 10},
+    {"name": keys.ENGINE_MARKET_DATA, "hb": keys.HEARTBEAT.format(engine_name=keys.ENGINE_MARKET_DATA),
+     "out": keys.LATEST_SPOT.format(symbol="EURUSD"), "stale_s": 60},
+    {"name": keys.ENGINE_VOL, "hb": keys.HEARTBEAT.format(engine_name=keys.ENGINE_VOL),
+     "out": keys.LATEST_VOL_SURFACE.format(symbol="EURUSD"), "stale_s": 300},
+    {"name": keys.ENGINE_RISK, "hb": keys.HEARTBEAT.format(engine_name=keys.ENGINE_RISK),
+     "out": keys.LATEST_GREEKS_PORTFOLIO, "stale_s": 30},
+    {"name": keys.ENGINE_DB_WRITER, "hb": keys.HEARTBEAT.format(engine_name=keys.ENGINE_DB_WRITER),
+     "out": None, "stale_s": 30},
+    {"name": keys.ENGINE_EXECUTION, "hb": keys.HEARTBEAT.format(engine_name=keys.ENGINE_EXECUTION),
+     "out": None, "stale_s": 10},
 ]
 
 
@@ -981,7 +988,7 @@ async def cycle_progress(
 ) -> dict[str, Any]:
     """Return the vol-engine's current cycle stage + task and the list of
     completed (stage, task) pairs in this cycle."""
-    raw = await redis.hgetall("cycle_progress:vol_engine")
+    raw = await redis.hgetall(keys.CYCLE_PROGRESS.format(engine_name=keys.ENGINE_VOL))
     if not raw:
         return {
             "cycle_started_at": None,

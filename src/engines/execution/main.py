@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field, model_validator
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bus import keys
 from engines.execution.fills_handler import attach_fill_handlers
 from engines.execution.halt_guard import cancel_all_open, require_not_halted
 from engines.execution.hedge_executor import HedgeSubmitError, submit_hedge_order
@@ -305,7 +306,7 @@ async def _sync_heartbeat_age_s(redis: aioredis.Redis | None) -> float | None:
     if redis is None:
         return None
     try:
-        raw = await asyncio.wait_for(redis.get("heartbeat:execution"), 2.0)
+        raw = await asyncio.wait_for(redis.get(keys.HEARTBEAT.format(engine_name=keys.ENGINE_EXECUTION)), 2.0)
     except Exception:
         return None
     if not raw:

@@ -79,17 +79,16 @@ async def publish_tick(
     swallowed it. Cache SETs always happen regardless of the throttle.
     """
     ts_str = _iso_utc(timestamp)
-
-    await redis.set(
-        keys.LATEST_SPOT.format(symbol=symbol), str(mid), ex=keys.TTL_SPOT
-    )
-    await redis.set(
-        keys.LATEST_BID.format(symbol=symbol), str(bid), ex=keys.TTL_BID_ASK
-    )
-    await redis.set(
-        keys.LATEST_ASK.format(symbol=symbol), str(ask), ex=keys.TTL_BID_ASK
-    )
-
+    # Last-value keys carry their own stamp (#327, DI-09): ``{"value", "ts"}``
+    # so a reader can tell a 29 s old quote from a fresh one without the TTL
+    # as its only clock. ``bus.spot_cache.parse_spot`` reads both this
+    # envelope and the bare float the older engines wrote.
+    for key, value, ttl in (
+        (keys.LATEST_SPOT, mid, keys.TTL_SPOT),
+        (keys.LATEST_BID, bid, keys.TTL_BID_ASK),
+        (keys.LATEST_ASK, ask, keys.TTL_BID_ASK),
+    ):
+        await redis.set(key.format(symbol=symbol), _dumps({"value": value, "ts": ts_str}), ex=ttl)
     now_ms = time.monotonic() * 1000
     last_ms = _tick_last_publish_ms.get(symbol, 0.0)
     if now_ms - last_ms < TICK_PUBLISH_THROTTLE_MS:
@@ -126,12 +125,18 @@ async def publish_vol_update(
     surface_data: dict,
     signals_data: dict | list,
     timestamp: datetime | float | None = None,
+    spot: float | None = None,
 ) -> None:
-    """Write latest_vol_surface + latest_signals and PUBLISH on vol_update."""
+    """Write latest_vol_surface + latest_signals and PUBLISH on vol_update.
+
+    ``spot`` is the forward the surface was calibrated on; the position
+    monitor reads it off the payload (#327, DI-13: it used to read a field
+    nobody wrote)."""
     ts_str = _iso_utc(timestamp)
     surface_payload = _dumps({
         "symbol": symbol,
         "timestamp": ts_str,
+        "spot": spot,
         "surface": surface_data,
     })
     signals_payload = _dumps({
@@ -173,6 +178,17 @@ async def publish_risk_update(
             keys.LATEST_PNL_CURVE, pnl_payload, ex=keys.TTL_PNL_CURVE
         )
     await redis.publish(channels.CH_RISK_UPDATE, greeks_payload)
+
+
+async def set_market_status(redis: Redis, symbol: str, is_open: bool, timestamp: datetime | float | None = None) -> None:
+    """``market_status:{symbol}`` = ``{"open": bool, "ts"}`` (#327: the key had
+    a TTL and readers but no writer). The market-data engine writes it with
+    every heartbeat from ``shared.market_hours``."""
+    await redis.set(
+        keys.MARKET_STATUS.format(symbol=symbol),
+        _dumps({"open": bool(is_open), "ts": _iso_utc(timestamp)}),
+        ex=keys.TTL_MARKET_STATUS,
+    )
 
 
 async def set_heartbeat(

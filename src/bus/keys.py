@@ -55,6 +55,15 @@ MARKET_STATUS: str = "market_status:{symbol}"
 # Per-engine liveness (each engine writes its own key → monitoring)
 HEARTBEAT: str = "heartbeat:{engine_name}"
 
+# Execution-engine mark hashes (position_sync → api /positions): one field per
+# open position id, pruned to the open set each sync (#327).
+CONTRACT_MARKS: str = "contract_marks:{symbol}"
+OPTION_MARKS: str = "option_marks:{symbol}"
+UNREALIZED_PNL: str = "unrealized_pnl:{symbol}"
+
+# Vol-engine cycle progress (hash: stage / task / completed) for the dev panel.
+CYCLE_PROGRESS: str = "cycle_progress:{engine_name}"
+
 
 # --- TTL policy (seconds) ----------------------------------------------------
 
@@ -74,6 +83,10 @@ TTL_HEARTBEAT: int = 300
 # Medium TTL : refreshed every 10s to 60s — 60s ceiling matches the
 # snapshot cadence and leaves a 6× margin.
 TTL_ACCOUNT: int = 60
+# Mark hashes and the cycle-progress hash: one position sync / vol cycle
+# refreshes them; 600 s rides out an engine restart.
+TTL_MARKS: int = 600
+TTL_CYCLE_PROGRESS: int = 600
 
 # Long TTL : vol scan runs every ~3 minutes ; keep the surface valid for
 # 10 minutes so a skipped or slow scan does not blank the UI.
@@ -102,3 +115,4 @@ ENGINE_VOL: str = "vol_engine"
 ENGINE_RISK: str = "risk_engine"
 ENGINE_DB_WRITER: str = "db_writer"
 ENGINE_ANALYTICS: str = "analytics_engine"
+ENGINE_EXECUTION: str = "execution"

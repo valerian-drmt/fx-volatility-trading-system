@@ -20,6 +20,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 from bus import keys, publisher
+from shared.market_hours import is_fx_market_open
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,11 @@ class MarketDataEngine:
                 poll += 1
                 if poll % HEARTBEAT_EVERY_N_POLLS == 0:
                     await publisher.set_heartbeat(self.redis, keys.ENGINE_MARKET_DATA)
+                    # market_status:{symbol} had readers and a TTL but no writer (#327).
+                    try:
+                        await publisher.set_market_status(self.redis, self.symbol, is_fx_market_open())
+                    except Exception:
+                        logger.debug("market_status_publish_failed", exc_info=True)
                 await self._maybe_refresh_bars()
                 try:
                     await asyncio.wait_for(self._stop.wait(), timeout=POLL_INTERVAL_S)

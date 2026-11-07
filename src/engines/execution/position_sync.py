@@ -18,11 +18,13 @@ import logging
 import os
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from redis import asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bus import keys
 from bus.publisher import publish_account_snapshot, publish_positions_changed
 from core.products import product_label_from_symbol
 from engines.execution.latency import observe_positions_publish
@@ -256,6 +258,19 @@ async def sync_positions_from_ib(
     }
 
 
+async def _replace_hash(redis: aioredis.Redis, key: str, mapping: dict[str, Any]) -> None:
+    """``HSET`` the mapping and ``HDEL`` every field that is no longer in it, so
+    a closed position's mark leaves the hash with the position instead of
+    staying until the whole key expires (#327, DI-09: the TTL was refreshed
+    every cycle, so a stale field never expired)."""
+    stale = [f for f in await redis.hkeys(key) if (f.decode() if isinstance(f, bytes) else f) not in mapping]
+    if mapping:
+        await redis.hset(key, mapping=mapping)
+    if stale:
+        await redis.hdel(key, *stale)
+    await redis.expire(key, keys.TTL_MARKS)
+
+
 async def publish_portfolio_to_redis(
     db: AsyncSession,
     executor: OrderExecutor,
@@ -311,14 +326,11 @@ async def publish_portfolio_to_redis(
 
     try:
         if contract_marks:
-            await redis.hset("contract_marks:EUR", mapping=contract_marks)
-            await redis.expire("contract_marks:EUR", 600)
+            await _replace_hash(redis, keys.CONTRACT_MARKS.format(symbol="EUR"), contract_marks)
         if option_marks:
-            await redis.hset("option_marks:EUR", mapping=option_marks)
-            await redis.expire("option_marks:EUR", 600)
+            await _replace_hash(redis, keys.OPTION_MARKS.format(symbol="EUR"), option_marks)
         if unrealized_pnl:
-            await redis.hset("unrealized_pnl:EUR", mapping=unrealized_pnl)
-            await redis.expire("unrealized_pnl:EUR", 600)
+            await _replace_hash(redis, keys.UNREALIZED_PNL.format(symbol="EUR"), unrealized_pnl)
     except Exception:
         logger.exception("portfolio_redis_publish_failed")
         return {"published": 0, "error": "redis_publish_failed"}
@@ -601,7 +613,7 @@ async def position_sync_loop(
             if redis is not None:
                 try:
                     ts = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-                    await redis.set("heartbeat:execution", ts, ex=300)
+                    await redis.set(keys.HEARTBEAT.format(engine_name=keys.ENGINE_EXECUTION), ts, ex=keys.TTL_HEARTBEAT)
                 except Exception:
                     logger.exception("heartbeat_write_failed")
             logger.info(

@@ -28,6 +28,7 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bus import keys
 from bus.publisher import publish_exit_alert, publish_position_update
 from core.positions.delta_hedge import check_delta_hedge_needed, net_pending_hedge_delta
 from core.positions.exit_rules import (
@@ -627,7 +628,7 @@ class PositionMonitorScheduler:
             client = get_redis_client_or_none()
             if client is None:
                 return None, None, None
-            raw = await client.get(f"latest_vol_surface:{self.symbol}")
+            raw = await client.get(keys.LATEST_VOL_SURFACE.format(symbol=self.symbol))
             if not raw:
                 return None, None, None
             import json

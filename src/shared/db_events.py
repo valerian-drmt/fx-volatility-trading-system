@@ -12,7 +12,10 @@ from typing import Any
 
 from redis import asyncio as aioredis
 
-DB_EVENTS_CHANNEL = "db_events"
+from bus.channels import CH_DB_EVENTS
+
+# The name lives in ``bus.channels`` (#327); kept here for the import sites.
+DB_EVENTS_CHANNEL = CH_DB_EVENTS
 
 
 async def publish_db_event(redis: aioredis.Redis, table: str, payload: dict[str, Any]) -> int:

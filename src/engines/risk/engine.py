@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys, publisher
+from bus.spot_cache import parse_spot
 from core.pricing.bs import (
     bs_implied_vol,
     bs_price,
@@ -455,13 +456,13 @@ class RiskEngine:
         return None
 
     async def _read_option_marks(self) -> dict[int, float]:
-        return await self._read_redis_hash_floats("option_marks:EUR")
+        return await self._read_redis_hash_floats(keys.OPTION_MARKS.format(symbol="EUR"))
 
     async def _read_contract_marks(self) -> dict[int, float]:
-        return await self._read_redis_hash_floats("contract_marks:EUR")
+        return await self._read_redis_hash_floats(keys.CONTRACT_MARKS.format(symbol="EUR"))
 
     async def _read_unrealized_pnl(self) -> dict[int, float]:
-        return await self._read_redis_hash_floats("unrealized_pnl:EUR")
+        return await self._read_redis_hash_floats(keys.UNREALIZED_PNL.format(symbol="EUR"))
 
     async def _read_redis_hash_floats(self, key: str) -> dict[int, float]:
         """Read a Redis hash of ``{position_id: float_string}`` populated by
@@ -500,19 +501,8 @@ class RiskEngine:
         """
         key = keys.LATEST_SPOT.format(symbol=self.symbol)
         raw = await self.redis.get(key)
-        if raw is None:
-            return None
-        try:
-            payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
-            # Plain numeric (str(mid) on the market-data side) → direct cast.
-            if isinstance(payload, (int, float)):
-                return float(payload)
-            # Dict with "mid" / "bid" → historical fallback.
-            if isinstance(payload, dict):
-                return float(payload.get("mid") or payload.get("bid"))
-            return None
-        except (ValueError, TypeError, AttributeError):
-            return None
+        # One parser for every shape the key ever had (#327): bus.spot_cache.
+        return parse_spot(raw)[0]
 
     async def _read_surface(self) -> dict | None:
         key = keys.LATEST_VOL_SURFACE.format(symbol=self.symbol)
