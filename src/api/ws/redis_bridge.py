@@ -25,6 +25,7 @@ _FORWARDED: tuple[str, ...] = (
     channels.CH_SYSTEM_ALERTS,
     channels.CH_POSITIONS,
     channels.CH_EXIT_ALERTS,
+    channels.CH_SPOT_ORDERS,
 )
 
 # Pattern subscriptions — fanned out by the Redis-WS bridge below. We

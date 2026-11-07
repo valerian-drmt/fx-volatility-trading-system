@@ -192,6 +192,7 @@ export interface SpotOrderRow {
   limit_price: number | null;
   avg_fill_price: number | null;
   state: string; // pending / submitted / partially_filled / filled / cancelled / rejected
+  state_updated_at?: string | null; // ordering key for the push patch (#367)
   rejection_text: string | null;
   ib_order_id: number | null;
   ib_status?: string | null; // IB's raw status (PreSubmitted / Submitted / ...) (#376)

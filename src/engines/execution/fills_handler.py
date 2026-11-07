@@ -272,6 +272,15 @@ async def _persist_fill(
             await maybe_complete_structure(sm, structure_id)
 
 
+async def persist_fill(
+    fill: Any, order_id: int, sm: async_sessionmaker[AsyncSession],
+) -> None:
+    """Public entry for the reconnect replay (#321): a fill from ``reqExecutions``
+    goes through the same idempotent path as a live ``fillEvent``."""
+    async with _lock_for(order_id):
+        await _persist_fill(fill, order_id, sm)
+
+
 def _fill_currency(fill: Any) -> str | None:
     rep = getattr(fill, "commissionReport", None)
     cur = getattr(rep, "currency", None) or getattr(getattr(fill, "contract", None), "currency", None)

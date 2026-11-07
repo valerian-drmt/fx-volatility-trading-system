@@ -23,6 +23,7 @@ from redis import asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bus.publisher import publish_account_snapshot, publish_positions_changed
 from core.products import product_label_from_symbol
 from engines.execution.order_executor import OrderExecutor
 from persistence.models import (
@@ -34,6 +35,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.rows import account_snapshot_row, open_position_row
 from shared.contracts import build_ib_local_symbol, multiplier_for, parse_local_symbol
 
 # Auto-close booked positions the broker no longer holds (book ↔ IB reconciliation).
@@ -138,6 +140,10 @@ async def sync_positions_from_ib(
     now = datetime.now(UTC)
     opened = 0
     unchanged = 0
+    # Rows this pass changed (#366): published on ``positions`` after the
+    # commit so the desk patches them in place instead of waiting for a poll.
+    changed_rows: list[OpenPosition] = []
+    closed_rows: list[dict] = []
     for local_sym, ib_pos in ib_by_key.items():
         qty = abs(Decimal(str(ib_pos["position"])))
         side = "BUY" if ib_pos["position"] > 0 else "SELL"
@@ -169,6 +175,7 @@ async def sync_positions_from_ib(
             if row.quantity != qty or row.side != side:
                 row.quantity = qty
                 row.side = side
+                changed_rows.append(row)
             else:
                 unchanged += 1
             row.expiry = maturity
@@ -195,6 +202,7 @@ async def sync_positions_from_ib(
                 entry_timestamp=now,
             )
             db.add(row)
+            changed_rows.append(row)
             opened += 1
 
     # Closed positions = DELETE the row (audit trail lives in fills + snapshots).
@@ -210,6 +218,8 @@ async def sync_positions_from_ib(
     if trustworthy:
         for key, db_row in db_by_key.items():
             if key not in ib_by_key:
+                closed_rows.append({"id": db_row.id, "structure": db_row.structure,
+                                    "contract_id": db_row.contract_id})
                 await db.delete(db_row)
                 closed += 1
     elif any(k not in ib_by_key for k in db_by_key):
@@ -219,9 +229,28 @@ async def sync_positions_from_ib(
         )
 
     await db.commit()
+    published = False
+    if redis is not None and (changed_rows or closed_rows):
+        try:
+            today = now.date()
+            await publish_positions_changed(
+                redis,
+                rows=[open_position_row(r, today) for r in changed_rows],
+                closed=closed_rows,
+                n_open=len(ib_by_key),
+            )
+            published = True
+            logger.info(
+                "positions_published upserted=%d closed=%d sync_ms=%.0f",
+                len(changed_rows), len(closed_rows),
+                (datetime.now(UTC) - now).total_seconds() * 1000.0,
+            )
+        except Exception:
+            logger.warning("positions_publish_failed", exc_info=True)
     return {
         "synced": len(ib_active), "opened": opened, "closed": closed,
         "unchanged": unchanged, "deletes_skipped": not trustworthy,
+        "published": published,
     }
 
 
@@ -307,10 +336,13 @@ async def publish_portfolio_to_redis(
 # write path.
 
 
-async def insert_account_snap(db: AsyncSession, executor: OrderExecutor) -> bool:
+async def insert_account_snap(
+    db: AsyncSession, executor: OrderExecutor, redis: aioredis.Redis | None = None,
+) -> bool:
     """Insert a row into account_snaps. For each column several IB tags
     (aliases) are tried — paper and live sometimes return different
-    names. If none matches, the column stays null.
+    names. If none matches, the column stays null. With ``redis`` the row is
+    also published on the ``account`` channel (#366).
     """
     if not executor.is_connected():
         return False
@@ -338,6 +370,11 @@ async def insert_account_snap(db: AsyncSession, executor: OrderExecutor) -> bool
     )
     db.add(snap)
     await db.commit()
+    if redis is not None:
+        try:
+            await publish_account_snapshot(redis, account_snapshot_row(snap) or {})
+        except Exception:
+            logger.warning("account_publish_failed", exc_info=True)
     return True
 
 
@@ -556,7 +593,7 @@ async def position_sync_loop(
                     with tracer.start_as_current_span("exec_reconcile"):
                         recon = await reconcile_trade_positions(db, executor)
                     with tracer.start_as_current_span("exec_account_snap"):
-                        acct = await insert_account_snap(db, executor)
+                        acct = await insert_account_snap(db, executor, redis)
             # Heartbeat → Redis (TTL 300s). Visible dans EngineHealth /
             # /dev/engines comme les 4 autres engines.
             if redis is not None:

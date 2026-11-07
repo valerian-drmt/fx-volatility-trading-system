@@ -45,6 +45,13 @@ the typed OpenAPI client + `/ws/ticks|vol|risk` streams). There is **no mock
 fallback**: when the backend has no data yet, views render zeros / empty rows
 plus the per-panel `FreshBadge` state — never fabricated numbers.
 
+Positions, account and spot orders are **pushed** by the execution engine
+(`/ws/positions`, `/ws/account`, `/ws/spot_orders`, plus `/ws/orders/<id>`
+for the structures still working); the provider patches the REST slices in
+place (`data/live/patch.ts`) and the REST polls run every 60 s as
+reconciliation. The `WsChip` next to Open positions / Orders shows the socket
+state: red means the panel lives on the poll, it never blanks (#367).
+
 ## Deployment & security
 
 - **Single URL** `valeriandarmente.dev`, app under the

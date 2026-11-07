@@ -223,6 +223,69 @@ async def publish_position_update(
     await redis.publish(channels.CH_POSITIONS, _dumps(body))
 
 
+async def publish_positions_changed(
+    redis: Redis,
+    *,
+    rows: list[dict[str, Any]],
+    closed: list[dict[str, Any]],
+    n_open: int,
+    source: str = "execution_engine",
+    timestamp: datetime | float | None = None,
+) -> None:
+    """PUBLISH on ``positions``: the rows a position sync upserted (full row,
+    the shape of ``GET /positions/open``) and the ids it closed (#366). The desk
+    patches its Open positions table from this; the 60 s REST poll reconciles."""
+    body = {
+        "event": "positions_changed",
+        "source": source,
+        "rows": list(rows),
+        "closed": list(closed),
+        "n_open": int(n_open),
+        "timestamp": _iso_utc(timestamp),
+    }
+    await redis.publish(channels.CH_POSITIONS, _dumps(body))
+
+
+async def publish_account_snapshot(
+    redis: Redis,
+    latest: dict[str, Any],
+    *,
+    source: str = "execution_engine",
+    timestamp: datetime | float | None = None,
+) -> None:
+    """``account`` channel + ``account_snapshot`` cache key: the row the
+    execution-engine just inserted into ``account_history`` (#366), the
+    ``latest`` of ``GET /portfolio/account``."""
+    body = {
+        "event": "account_snapshot",
+        "source": source,
+        "latest": dict(latest),
+        "timestamp": _iso_utc(timestamp),
+    }
+    serialized = _dumps(body)
+    await redis.set(keys.ACCOUNT_SNAPSHOT, serialized, ex=keys.TTL_ACCOUNT)
+    await redis.publish(channels.CH_ACCOUNT, serialized)
+
+
+async def publish_spot_order(
+    redis: Redis,
+    row: dict[str, Any],
+    *,
+    source: str = "execution_engine",
+    timestamp: datetime | float | None = None,
+) -> None:
+    """PUBLISH on ``spot_orders``: one spot order row after any change
+    (created, IB ids stamped, status, fill, rejection), the shape of
+    ``GET /trade/spot-orders`` (#366)."""
+    body = {
+        "event": "spot_order_changed",
+        "source": source,
+        "row": dict(row),
+        "timestamp": _iso_utc(timestamp),
+    }
+    await redis.publish(channels.CH_SPOT_ORDERS, _dumps(body))
+
+
 async def publish_exit_alert(
     redis: Redis,
     payload: dict[str, Any],

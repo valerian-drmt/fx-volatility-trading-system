@@ -32,6 +32,7 @@ from engines.execution.ib_heartbeat import (
     mark_disconnected,
     stuck_order_watcher_loop,
 )
+from engines.execution.ib_session import IbSessionSupervisor
 from engines.execution.live_submit import (
     LiveSubmitAlreadyClaimed,
     LiveSubmitError,
@@ -57,7 +58,6 @@ from engines.execution.reconciler import reconcile_positions, reconcile_position
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
 from engines.execution.spot_orders import (
-    adopt_open_spot_orders,
     attach_spot_handlers,
     create_spot_order,
     mark_spot_failed,
@@ -91,6 +91,10 @@ RECONCILE_INTERVAL_S = float(os.getenv("RECONCILE_INTERVAL_S", "60.0"))
 # IB reconnect watchdog cadence — how often the lifespan task polls
 # ``executor.is_connected()`` and retries ``connect()`` while down.
 IB_RECONNECT_INTERVAL_S = float(os.getenv("IB_RECONNECT_INTERVAL_S", "10.0"))
+# Ready gate (#321): each step of the startup / reconnect reconciliation pass
+# (rehydrate, position sync, stuck-order reconcile) gets this budget; a step
+# over budget is reported failed and the pass moves on.
+SESSION_PASS_TIMEOUT_S = float(os.getenv("EXECUTION_SESSION_PASS_TIMEOUT_S", "60.0"))
 
 # Combo (BAG) execution : place combo-eligible option structures as a single IB
 # BAG so multi-leg trades fill all-or-nothing (no naked half-fill). OFF by default
@@ -143,14 +147,6 @@ async def lifespan(app: FastAPI):
     sm = get_sessionmaker()
     app.state.sessionmaker = sm
 
-    # Spot (CASH) orders IB still holds : re-wire status/fill handlers onto their
-    # rows (orders from a previous engine process) or create the row for an
-    # untracked one, so the Orders blotter follows them and can cancel (#291).
-    try:
-        await adopt_open_spot_orders(executor.open_trades(), sm)
-    except Exception:
-        logger.exception("spot_order_adoption_failed")
-
     # Seed the forward projection (leg_position) from the fill log so the book is
     # current before the first fill event this session (I3). Best-effort — never
     # block startup on it.
@@ -161,6 +157,37 @@ async def lifespan(app: FastAPI):
         logger.info("leg_projection_seeded legs=%s", n_legs)
     except Exception:
         logger.exception("leg_projection_seed_failed")
+
+    # Session supervisor + ready gate (#321, audit 04#5 / 04#8 / 04#9). One pass
+    # = handlers re-attached on every open IB order (options + spot), the
+    # session executions replayed through the idempotent fill path, one
+    # position sync and one stuck-order reconcile. Mutating routes answer 503
+    # until it has completed on the current connection; a socket drop or a
+    # 1100 closes the gate again and the watchdog reconnect re-runs the pass.
+    async def _pass_sync_positions() -> dict[str, Any]:
+        async with sm() as db:
+            return await sync_positions_from_ib(db, executor, redis)
+
+    session = IbSessionSupervisor(
+        executor, sm,
+        extra_steps={
+            "sync_positions": _pass_sync_positions,
+            "reconcile_stuck_orders": lambda: reconcile_stuck_orders(sm),
+        },
+        pass_timeout_s=SESSION_PASS_TIMEOUT_S,
+    )
+    session.install()
+    app.state.session = session
+    if executor.is_connected():
+        # The startup connect ran before install(): wire the hooks onto the
+        # live IB object now, then run the first pass before serving.
+        executor.wire_session_events()
+        try:
+            await session.on_connected()
+        except Exception:
+            logger.exception("session_startup_pass_failed")
+    else:
+        logger.warning("execution_startup_not_ready reason=ib_not_connected")
 
     sync_task = asyncio.create_task(
         position_sync_loop(sm, executor, redis=redis, interval_s=SYNC_INTERVAL_S)
@@ -203,12 +230,13 @@ async def lifespan(app: FastAPI):
     ib_watchdog_task = asyncio.create_task(
         maintain_ib_connection(
             executor, ib_watchdog_stop, interval_s=IB_RECONNECT_INTERVAL_S,
+            on_reconnected=session.on_connected, on_lost=session.on_disconnected,
         ),
         name="ib_reconnect_watchdog",
     )
     logger.info(
-        "execution_startup ib_connected=%s sync_interval=%.1fs heartbeat=%.1fs",
-        executor.is_connected(), SYNC_INTERVAL_S, HEARTBEAT_INTERVAL_S,
+        "execution_startup ib_connected=%s ready=%s sync_interval=%.1fs heartbeat=%.1fs",
+        executor.is_connected(), session.state.ready.is_set(), SYNC_INTERVAL_S, HEARTBEAT_INTERVAL_S,
     )
     try:
         yield
@@ -287,16 +315,35 @@ async def health(request: Request) -> Any:
     sync_ok = sync_age is not None and sync_age <= _MAX_SYNC_AGE_S
     if getattr(request.app.state, "redis", None) is None:
         sync_ok = True
+    # Upstream (1100) outage: the socket is up, so ib_ok stays True. Tolerate it
+    # for the same window as a stalled sync (the nightly IBC restart is ~2 min);
+    # longer than that the engine is as useless as disconnected (#321).
+    session = getattr(request.app.state, "session", None)
+    upstream_down_s = session.state.upstream_down_s() if session is not None else None
+    upstream_ok = upstream_down_s is None or upstream_down_s <= _MAX_SYNC_AGE_S
     body = {
-        "status": "OK" if (ib_ok and sync_ok) else "DEGRADED",
+        "status": "OK" if (ib_ok and sync_ok and upstream_ok) else "DEGRADED",
         "ib_connected": ib_ok,
         "sync_age_s": None if sync_age is None else round(sync_age, 1),
         "max_sync_age_s": _MAX_SYNC_AGE_S,
         "sync_interval_s": SYNC_INTERVAL_S,
+        "ready": session.state.ready.is_set() if session is not None else None,
+        "ready_reason": session.state.ready_reason if session is not None else None,
+        "ib_upstream_ok": upstream_down_s is None,
+        "upstream_down_s": None if upstream_down_s is None else round(upstream_down_s, 1),
     }
     if body["status"] != "OK":
         return JSONResponse(body, status_code=503)
     return body
+
+
+@app.get("/internal/session")
+async def session_state(request: Request) -> Any:
+    """Session supervisor state: gate, last reconciliation pass, event counts (#321)."""
+    session = getattr(request.app.state, "session", None)
+    if session is None:
+        return {"ready": None, "ready_reason": "no_supervisor"}
+    return session.state.snapshot()
 
 
 # --- Audit helpers ---------------------------------------------------------
@@ -342,6 +389,20 @@ def _executor_dep(request: Request) -> OrderExecutor:
 
 def _sm_dep(request: Request) -> async_sessionmaker[AsyncSession]:
     return request.app.state.sessionmaker
+
+
+def require_ready(request: Request) -> None:
+    """Ready gate (#321, audit 04#5): no order leaves the engine while its book
+    is knowingly behind IB. 503 with the gate's reason until the reconciliation
+    pass on the current connection has completed. Reads stay open."""
+    session = getattr(request.app.state, "session", None)
+    if session is None:  # tests that build the app without a lifespan
+        return
+    if not session.state.ready.is_set():
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "reconciliation_in_progress", "reason": session.state.ready_reason},
+        )
 
 
 class PlaceOrderBody(BaseModel):
@@ -392,7 +453,7 @@ class ClosePositionBySymbolBody(BaseModel):
     db_order_id: int | None = Field(default=None, gt=0)
 
 
-@router.post("/orders", dependencies=[Depends(require_not_halted)])
+@router.post("/orders", dependencies=[Depends(require_not_halted), Depends(require_ready)])
 async def place_order(
     body: PlaceOrderBody,
     ex: Annotated[OrderExecutor, Depends(_executor_dep)],
@@ -490,7 +551,7 @@ async def live_positions(ex: Annotated[OrderExecutor, Depends(_executor_dep)]) -
     return {"positions": positions, "count": len(positions)}
 
 
-@router.post("/positions/{con_id}/close", dependencies=[Depends(require_not_halted)])
+@router.post("/positions/{con_id}/close", dependencies=[Depends(require_not_halted), Depends(require_ready)])
 async def close_position(
     con_id: int,
     body: ClosePositionBody,
@@ -511,7 +572,7 @@ async def close_position(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@router.post("/positions/close-by-symbol", dependencies=[Depends(require_not_halted)])
+@router.post("/positions/close-by-symbol", dependencies=[Depends(require_not_halted), Depends(require_ready)])
 async def close_position_by_symbol(
     body: ClosePositionBySymbolBody,
     ex: Annotated[OrderExecutor, Depends(_executor_dep)],
@@ -699,7 +760,7 @@ async def reconcile_positions_now(
     return await reconcile_positions(sm, ex)
 
 
-@router.post("/structure/submit", dependencies=[Depends(require_not_halted)])
+@router.post("/structure/submit", dependencies=[Depends(require_not_halted), Depends(require_ready)])
 async def submit_structure(
     body: SubmitStructureBody,
     ex: Annotated[OrderExecutor, Depends(_executor_dep)],
@@ -760,7 +821,7 @@ async def submit_structure(
         ) from e
 
 
-@router.post("/structure/rollback", dependencies=[Depends(require_not_halted)])
+@router.post("/structure/rollback", dependencies=[Depends(require_not_halted), Depends(require_ready)])
 async def rollback_structure(
     body: RollbackStructureBody,
     ex: Annotated[OrderExecutor, Depends(_executor_dep)],
@@ -793,7 +854,7 @@ async def halt_cancel_all(
     return result
 
 
-@router.post("/hedge", dependencies=[Depends(require_not_halted)])
+@router.post("/hedge", dependencies=[Depends(require_not_halted), Depends(require_ready)])
 async def submit_hedge(
     body: HedgeOrderBody,
     ex: Annotated[OrderExecutor, Depends(_executor_dep)],

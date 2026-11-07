@@ -49,6 +49,7 @@ from persistence.models import (  # noqa: F401
     RegimeSnapshot,
     VolSurface,
 )
+from persistence.rows import account_snapshot_row
 from shared.contracts import parse_local_symbol
 
 logger = logging.getLogger(__name__)
@@ -79,21 +80,8 @@ _TENOR_BUCKETS = [
 
 
 def _serialize_snap(s: AccountHistory | None) -> dict[str, Any] | None:
-    if s is None:
-        return None
-    return {
-        "timestamp": s.timestamp.isoformat() if s.timestamp else None,
-        "net_liq_usd": float(s.net_liq_usd) if s.net_liq_usd is not None else None,
-        "cash_usd": float(s.cash_usd) if s.cash_usd is not None else None,
-        "unrealized_pnl_usd": float(s.unrealized_pnl_usd) if s.unrealized_pnl_usd is not None else None,
-        "gross_position_value": float(s.gross_position_value) if s.gross_position_value is not None else None,
-        "init_margin_req": float(s.init_margin_req) if s.init_margin_req is not None else None,
-        "maint_margin_req": float(s.maint_margin_req) if s.maint_margin_req is not None else None,
-        "excess_liquidity": float(s.excess_liquidity) if s.excess_liquidity is not None else None,
-        "cushion": float(s.cushion) if s.cushion is not None else None,
-        "open_positions_count": s.open_positions_count,
-        "currencies": s.currencies or {},
-    }
+    """Shared with the ``account`` channel through ``persistence.rows`` (#366)."""
+    return account_snapshot_row(s)
 
 
 def _freshness(reference: datetime | None) -> str:

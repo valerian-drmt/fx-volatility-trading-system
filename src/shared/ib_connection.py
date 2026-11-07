@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
 # Backoff math lives in shared.backoff (extracted so non-IB reconnect
@@ -54,6 +55,8 @@ async def maintain_ib_connection(
     *,
     interval_s: float = 10.0,
     connect_timeout: float = 5.0,
+    on_reconnected: Callable[[], Awaitable[Any]] | None = None,
+    on_lost: Callable[[], Any] | None = None,
 ) -> None:
     """Background watchdog for request-driven services (execution-engine).
 
@@ -67,18 +70,39 @@ async def maintain_ib_connection(
 
     Polling ``is_connected()`` is deliberate : ``ib.disconnectedEvent``
     delivery on a torn socket is best-effort, the poll is the guarantee.
+    ``on_lost`` fires once when the poll first sees the socket down (the
+    ``disconnectedEvent`` may not have been delivered); ``on_reconnected`` is
+    awaited after every successful reconnect so the caller can rehydrate the
+    new session (handlers, execution replay, ready gate; #321). Both are
+    guarded: a failing hook never kills the watchdog.
+
     Exits when ``stop`` is set.
     """
+    was_connected = executor.is_connected()
     while not stop.is_set():
         if not executor.is_connected():
+            if was_connected and on_lost is not None:
+                try:
+                    on_lost()
+                except Exception:
+                    logger.exception("ib_watchdog_on_lost_failed")
+            was_connected = False
             try:
                 await executor.connect(timeout=connect_timeout)
                 if executor.is_connected():
                     logger.info("ib_watchdog_reconnected")
+                    was_connected = True
+                    if on_reconnected is not None:
+                        try:
+                            await on_reconnected()
+                        except Exception:
+                            logger.exception("ib_watchdog_on_reconnected_failed")
             except Exception:
                 # connect() swallows its own failures — this is a belt for
                 # unexpected errors ; the watchdog must never die.
                 logger.exception("ib_watchdog_connect_failed")
+        else:
+            was_connected = True
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval_s)
         except TimeoutError:
