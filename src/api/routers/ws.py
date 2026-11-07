@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from api.ws.connection_manager import ConnectionManager
+from api.ws.origin import allowed_origins, origin_allowed
 from bus import channels
 
 logger = logging.getLogger("api.ws.endpoints")
@@ -16,6 +17,15 @@ router = APIRouter(tags=["websocket"])
 async def _serve(channel: str, ws: WebSocket) -> None:
     """Register ``ws`` on ``channel``, keep the connection open until the client leaves."""
     manager: ConnectionManager = ws.app.state.ws_manager
+    # Origin allowlist (#299, audit 01#2): a page on another site cannot open
+    # the desk's streams in a visitor's browser. Refused before accept, so
+    # the handshake answers 403; no Origin = not a browser = allowed read.
+    origin = ws.headers.get("origin")
+    if not origin_allowed(origin, allowed_origins()):
+        safe_origin = (origin or "").replace("\r", "\\r").replace("\n", "\\n")[:200]
+        logger.warning("ws_origin_refused", extra={"origin": safe_origin})
+        await ws.close(code=1008)
+        return
     await manager.connect(channel, ws)
     try:
         # Keep the socket alive. We do not expect client messages, but

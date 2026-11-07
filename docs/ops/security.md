@@ -62,3 +62,43 @@ Every write route takes a typed model with bounds (`api/schemas/orders.py`,
 contracts or 5 M of spot notional, strikes and prices positive and bounded,
 free text length-limited. A bad body is a 422 at the edge and never reaches
 the execution engine.
+
+## Rate limiting and login lockout
+
+nginx limits anonymous traffic per client address (`limit_req_zone`) and
+forwards `X-Forwarded-For: $remote_addr`, overwriting whatever the client
+sent. The api trusts that header only from nginx's pinned address
+(`FORWARDED_ALLOW_IPS=172.20.0.15`), so its own per-IP limiter
+(slowapi, 600/min, 5/min on `/login`) keys on the real client and a
+compose-internal peer cannot choose its key (#296, audit 01#4).
+
+`/login` also locks a username after `AUTH_LOCKOUT_THRESHOLD` failures
+(default 5) for `AUTH_LOCKOUT_SECONDS` (default 900), whatever the source
+address: 429 with `Retry-After`. The counter lives in the api process (one
+uvicorn worker); a restart clears it.
+
+## WebSocket streams
+
+Every `/ws/*` upgrade is checked against an Origin allowlist
+(`CORS_ORIGINS` + `WS_ALLOWED_ORIGINS`, by default `http://localhost` and
+`https://valeriandarmente.dev`): a page on another site cannot open the
+streams in a visitor's browser. A request without `Origin` is not a
+browser and is allowed; the streams are public reads (#299, audit 01#2).
+
+`/ws/orders/{structure_id}` stays public, by decision: the order and fill
+events it carries are the same rows the public `GET /api/v1/trade/submitted`
+and `GET /api/v1/orders` already serve, and the blotter is part of the
+showcase. Gating the socket alone would hide nothing. Revisit together with
+the REST reads if the blotter ever becomes trader-only.
+
+Empty channel keys are dropped on the last disconnect, so a registry of
+thousands of one-off paths (`/ws/orders/<id>`) does not grow forever.
+
+## nginx headers (#301)
+
+`server_tokens off` and `client_max_body_size 1m` at http level; CSP
+`connect-src` names the site's own `wss://` hosts instead of any `wss:`;
+`Permissions-Policy` disables camera, microphone, geolocation, payment, USB
+and FLoC; HSTS, nosniff, `X-Frame-Options: DENY`, `frame-ancestors 'none'`
+and the referrer policy as before. `tests/unit/infrastructure/test_nginx_config_syntax.py`
+asserts each of these, and CI runs `nginx -t` on every conf.

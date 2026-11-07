@@ -98,9 +98,11 @@ services:
       ENV: ${ENV:-dev}
       # uvicorn --proxy-headers only trusts X-Forwarded-For from
       # forwarded-allow-ips (default 127.0.0.1) — without this, every public
-      # visitor behind nginx shares ONE rate-limit bucket. "*" is safe here:
-      # api:8000 is reachable from compose-internal peers only.
-      FORWARDED_ALLOW_IPS: "*"
+      # visitor behind nginx shares ONE rate-limit bucket. Only nginx's pinned
+      # address is trusted (#296): a compose-internal peer cannot pick its own
+      # rate-limit key by sending X-Forwarded-For, and nginx itself overwrites
+      # the header with $remote_addr.
+      FORWARDED_ALLOW_IPS: "172.20.0.15"
       AUTH_SECRET: ${AUTH_SECRET:-dev-insecure-change-me}
       AUTH_USERNAME: ${AUTH_USERNAME:-trader}
       AUTH_SALT: ${AUTH_SALT:-fxvol}
@@ -599,8 +601,11 @@ services:
       frontend:
         condition: service_healthy
     networks:
-      - fxvol-public
-      - fxvol-internal
+      fxvol-public: {}
+      fxvol-internal:
+        # Pinned (reserved range .2-.127): the api's FORWARDED_ALLOW_IPS trusts
+        # exactly this address for X-Forwarded-For (#296).
+        ipv4_address: 172.20.0.15
     healthcheck:
       # /healthz exists in both confs; plain / follows the prod 301->https
       # and would wedge depends_on.

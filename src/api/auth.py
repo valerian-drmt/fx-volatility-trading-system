@@ -69,6 +69,48 @@ def verify_password(password: str, salt: str, expected_hash: str) -> bool:
     return hmac.compare_digest(hash_password(password, salt), expected_hash)
 
 
+class LoginLockout:
+    """Per-username failure counter (#296, audit 01#4). The per-IP throttle
+    on ``/login`` is keyed on what nginx forwards; a lockout on the username
+    holds whatever address the attempts come from. In-process state: the api
+    runs one uvicorn worker, and a restart clears it (an operator who is
+    locked out can also wait ``AUTH_LOCKOUT_SECONDS``)."""
+
+    _MAX_TRACKED = 1000
+
+    def __init__(self) -> None:
+        self._state: dict[str, tuple[int, float]] = {}   # username -> (failures, locked_until)
+
+    def locked_for(self, username: str, now: float | None = None) -> float:
+        """Seconds left on the lock, 0 when the username may try."""
+        now = time.time() if now is None else now
+        _, until = self._state.get(username, (0, 0.0))
+        return max(0.0, until - now)
+
+    def record_failure(self, username: str, *, threshold: int, seconds: int, now: float | None = None) -> float:
+        """Count one failure; returns the lock length when the threshold is reached, else 0."""
+        now = time.time() if now is None else now
+        failures, until = self._state.get(username, (0, 0.0))
+        failures += 1
+        if failures >= threshold:
+            until = now + seconds
+            failures = 0
+        if len(self._state) >= self._MAX_TRACKED and username not in self._state:
+            oldest = min(self._state, key=lambda k: self._state[k][1])
+            self._state.pop(oldest, None)
+        self._state[username] = (failures, until)
+        return max(0.0, until - now)
+
+    def reset(self, username: str) -> None:
+        self._state.pop(username, None)
+
+    def reset_all(self) -> None:
+        self._state.clear()
+
+
+lockout = LoginLockout()
+
+
 def require_write(
     settings: Annotated[Settings, Depends(get_settings)],
     fxvol_auth: Annotated[str | None, Cookie()] = None,

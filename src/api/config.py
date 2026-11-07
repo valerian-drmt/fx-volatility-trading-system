@@ -57,6 +57,15 @@ class Settings(_BaseSettings):
     AUTH_PASSWORD_HASH: str = Field(default="")                  # pbkdf2_hmac(sha256) hex
     AUTH_COOKIE_SECURE: bool = Field(default=True)               # set false only for local HTTP dev
     AUTH_TTL_SECONDS: int = Field(default=43200)                 # 12 h
+    # Login lockout (#296, audit 01#4): after N failures for one username the
+    # login answers 429 for this long, whatever the source address.
+    AUTH_LOCKOUT_THRESHOLD: int = Field(default=5)
+    AUTH_LOCKOUT_SECONDS: int = Field(default=900)
+    # WebSocket Origin allowlist (#299): the browser origins that may open the
+    # streams, on top of CORS_ORIGINS. localhost = the compose dev edge on :80.
+    WS_ALLOWED_ORIGINS: list[str] = Field(
+        default=["http://localhost", "https://valeriandarmente.dev"]
+    )
 
     # Backup freshness stamp (#343): path of the one-line file written by
     # infrastructure/ec2/postgres_backup.sh after each successful S3 upload
