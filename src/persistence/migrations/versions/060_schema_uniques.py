@@ -2,10 +2,10 @@
 
 * ``open_position.structure`` (the IB localSymbol) is the mirror's key: the
   position sync upserts by it, so two rows for one contract are a bug. The
-  unique index was created on the column's old name in migration 028
-  (``ix_positions_local_symbol_unique``) and followed the renames; this
-  migration (re)creates it under the same name ``IF NOT EXISTS`` so a host
-  where it was lost converges and the model's declaration matches.
+  unique index was created on the column's old name in migration 028 and
+  renamed to ``ix_positions_structure_unique`` in 029; this migration
+  (re)creates it under that name ``IF NOT EXISTS`` so a host where it was
+  lost converges and the model's declaration matches.
 * one PENDING hedge per position: the delta-hedge loop must never queue two
   hedges for the same leg (a partial unique index on ``state = 'pending'``).
 
@@ -29,7 +29,7 @@ depends_on: str | None = None
 
 def upgrade() -> None:
     op.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ix_positions_local_symbol_unique "
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_positions_structure_unique "
         "ON open_position (structure)"
     )
     op.execute(
