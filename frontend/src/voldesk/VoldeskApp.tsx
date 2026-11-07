@@ -25,6 +25,8 @@ import { RiskView } from "./views/RiskView";
 import { PortfolioView } from "./views/PortfolioView";
 import { SystemView } from "./views/SystemView";
 import { SettingsView } from "./views/SettingsView";
+import { useMarketOpen } from "../hooks/useMarketOpen";
+import { FEED_TONE_COLOR, feedState } from "../utils/marketHours";
 
 const ICONS: Record<string, ReactNode> = {
   dashboard: (
@@ -138,8 +140,12 @@ function Topbar({
   const { mid, bid, ask, dir, status } = ticker;
   const has = mid !== null;
   const arrow = dir >= 0 ? "▲" : "▼";
-  const dotColor = status === "live" ? "var(--pos)" : status === "stale" ? "var(--warn)" : "var(--neg)";
-  const stateLabel = status === "live" ? "Market open" : status === "stale" ? "feed stale" : "no feed";
+  // "no feed" only while the market is open: on a weekend the quiet stream
+  // is the calendar, not an outage, and the badge says so.
+  const marketOpen = useMarketOpen();
+  const feed = feedState(status, marketOpen);
+  const dotColor = FEED_TONE_COLOR[feed.tone];
+  const stateLabel = feed.label;
   return (
     <header className="topbar">
       <div className="brand">
@@ -159,7 +165,7 @@ function Topbar({
         </span>
       </div>
       <div className="tb-spacer" />
-      <span className={"tb-badge " + (status === "live" ? "open" : "")}>
+      <span className={"tb-badge " + (status === "live" ? "open" : "")} data-feed={feed.tone}>
         <span className="status-dot" style={{ background: dotColor }} />
         {stateLabel}
       </span>

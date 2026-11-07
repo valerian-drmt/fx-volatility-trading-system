@@ -1,27 +1,13 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client";
-
-function isFxMarketOpen(now: Date): boolean {
-  // FX cash market: Sun 22:00 UTC → Fri 22:00 UTC.
-  const dow = now.getUTCDay();           // 0 = Sun, 5 = Fri, 6 = Sat
-  const h = now.getUTCHours();
-  if (dow === 6) return false;
-  if (dow === 0) return h >= 22;
-  if (dow === 5) return h < 22;
-  return true;
-}
+import { useMarketOpen } from "../../hooks/useMarketOpen";
 
 export function StatusBadge(): JSX.Element {
-  const [open, setOpen] = useState(() => isFxMarketOpen(new Date()));
+  // One market-hours rule for the dev pages and the desk (utils/marketHours).
+  const open = useMarketOpen();
   // 'paper' | 'live' | null. Read from the singleton ib_session_state row
   // which the execution-engine heartbeat keeps fresh.
   const [accountType, setAccountType] = useState<string | null>(null);
-
-  useEffect(() => {
-    const tick = () => setOpen(isFxMarketOpen(new Date()));
-    const id = window.setInterval(tick, 60_000);
-    return () => window.clearInterval(id);
-  }, []);
 
   useEffect(() => {
     const load = async () => {
