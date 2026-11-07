@@ -40,7 +40,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys, publisher
-from bus.spot_cache import spot_fallbacks
+from bus.spot_cache import parse_spot, spot_fallbacks
 from core.vol.gmm_regime import MIN_OBS_GMM, fit_gmm, serialize_gmm
 from core.vol.pca_engine import (
     DELTAS,
@@ -377,22 +377,10 @@ class AnalyticsEngine:
         )
 
     async def _read_spot(self) -> float | None:
-        """Read the spot from Redis (``latest_spot:<symbol>``). Tolerates both
-        the plain-float string and the JSON-dict form, mirroring the risk
-        engine. Returns None when absent — ``spot_at_snapshot`` is nullable."""
+        """Read the spot from Redis (``latest_spot:<symbol>``) through the one
+        parser (#327). Returns None when absent — ``spot_at_snapshot`` is nullable."""
         try:
             raw = await self.redis.get(keys.LATEST_SPOT.format(symbol=self.symbol))
         except Exception:
             return None
-        if raw is None:
-            return None
-        try:
-            payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
-            if isinstance(payload, (int, float)):
-                return float(payload)
-            if isinstance(payload, dict):
-                v = payload.get("mid") or payload.get("bid")
-                return float(v) if v is not None else None
-            return None
-        except (ValueError, TypeError, AttributeError):
-            return None
+        return parse_spot(raw)[0]

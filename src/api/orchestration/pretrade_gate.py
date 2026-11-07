@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.orchestration.greek_caps import compute_live_caps
 from bus import keys
+from bus.spot_cache import parse_spot
 from core.risk.pretrade import BookGreeks, Caps, GateInputs, GateResult, TradeGreeks, evaluate_pretrade
 from core.units import EUR_FOP_MULTIPLIER, PIP_SIZE
 from persistence.halt import get_halt
@@ -60,9 +61,9 @@ async def _risk_heartbeat_age_s(redis: aioredis.Redis | None) -> float | None:
 async def _spot(redis: aioredis.Redis | None, payload: dict[str, Any]) -> float | None:
     if redis is not None:
         try:
-            raw = await redis.get(keys.LATEST_SPOT.format(symbol="EURUSD"))
-            if raw:
-                return float(raw)
+            spot = parse_spot(await redis.get(keys.LATEST_SPOT.format(symbol="EURUSD")))[0]
+            if spot is not None:
+                return spot
         except Exception:
             pass
     s = payload.get("spot") or (payload.get("market") or {}).get("spot")

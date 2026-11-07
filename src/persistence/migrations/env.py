@@ -59,7 +59,9 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    # compare_type: the drift gate (``alembic check`` in CI, #325) must see a
+    # column whose type changed in the model but not in a migration.
+    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
     with context.begin_transaction():
         context.run_migrations()
 

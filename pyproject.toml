@@ -116,6 +116,7 @@ select = [
     "B",     # flake8-bugbear
     "SIM",   # flake8-simplify
     "RUF",   # ruff-specific
+    "DTZ",   # flake8-datetimez: no naive datetimes anywhere (#326, audit 05#7)
 ]
 ignore = [
     "E501",   # line too long (handled by line-length)
@@ -135,7 +136,7 @@ ignore = [
 known-first-party = ["api", "bus", "core", "engines", "persistence", "shared"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["B018"]  # useless expression (assert patterns)
+"tests/*" = ["B018", "DTZ"]  # tests build naive datetimes on purpose (#326); the rule guards src/  # useless expression (assert patterns)
 
 [tool.pytest.ini_options]
 minversion = "8.0"

@@ -3163,6 +3163,13 @@ export interface components {
         };
         /** SmileResponse */
         SmileResponse: {
+            /** Age S */
+            age_s: number;
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
             /** Dte */
             dte: number | null;
             /** Points */
@@ -3171,6 +3178,13 @@ export interface components {
             rv_pct?: number | null;
             /** Sigma Fair Pct */
             sigma_fair_pct?: number | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "live" | "last-complete" | "historical" | "synthetic";
+            /** Stale */
+            stale: boolean;
             /** Svi Curve */
             svi_curve?: components["schemas"]["SmilePoint"][] | null;
             /** Symbol */
@@ -3214,8 +3228,23 @@ export interface components {
          *
          *     ``surface`` values can be either a per-tenor pillar dict, or an
          *     engine-level aggregate (float / dict prefixed with ``_``).
+         *     ``timestamp`` is kept as the historical name of ``as_of``.
          */
         SurfaceResponse: {
+            /** Age S */
+            age_s: number;
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "live" | "last-complete" | "historical" | "synthetic";
+            /** Stale */
+            stale: boolean;
             /** Surface */
             surface: {
                 [key: string]: unknown;
@@ -3247,8 +3276,22 @@ export interface components {
         };
         /** TermStructureResponse */
         TermStructureResponse: {
+            /** Age S */
+            age_s: number;
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
             /** Pillars */
             pillars: components["schemas"]["TermStructureRow"][];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "live" | "last-complete" | "historical" | "synthetic";
+            /** Stale */
+            stale: boolean;
             /** Symbol */
             symbol: string;
             /**

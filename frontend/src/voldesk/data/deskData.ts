@@ -114,7 +114,14 @@ export interface ConfigData {
   history: ConfigVersionRow[];
 }
 
+/** Where the server took the grid from (#328): the live engine cycle, the
+ * last complete grid persisted (market closed), an explicit historical read,
+ * or a synthetic sandbox grid. */
+export type VolSource = "live" | "last-complete" | "historical" | "synthetic" | null;
+
 export interface SurfaceData {
+  /** server-declared origin of the grid; drives the "last complete grid" label */
+  source?: VolSource;
   /** 6×5 IV grid (%), [tenorIdx][deltaIdx]. Live from /vol/surface (PR 1). */
   ivSurface: number[][];
   /** 6×5 per-cell rich/cheap z. Backend gap → mock until a per-cell-z endpoint. */

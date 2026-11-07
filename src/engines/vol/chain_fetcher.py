@@ -35,7 +35,7 @@ import logging
 import math
 import os
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -136,15 +136,15 @@ async def discover_chains(
 
     fut = Contract(symbol="EUR", secType="FUT", exchange="CME", currency="USD")
     details = await ib.reqContractDetailsAsync(fut)
-    now = datetime.now()
+    now = datetime.now(UTC)
     futures: list[tuple[int, Any]] = []
     for d in details:
         exp = d.contract.lastTradeDateOrContractMonth
         try:
             exp_date = (
-                datetime.strptime(exp, "%Y%m%d")
+                datetime.strptime(exp, "%Y%m%d").replace(tzinfo=UTC)
                 if len(exp) == 8
-                else datetime.strptime(exp, "%Y%m")
+                else datetime.strptime(exp, "%Y%m").replace(tzinfo=UTC)
             )
         except ValueError:
             continue
@@ -161,7 +161,7 @@ async def discover_chains(
                 continue
             for exp in sorted(ch.expirations):
                 try:
-                    exp_date = datetime.strptime(exp, "%Y%m%d")
+                    exp_date = datetime.strptime(exp, "%Y%m%d").replace(tzinfo=UTC)
                 except ValueError:
                     continue
                 dte_fop = (exp_date - now).days

@@ -56,3 +56,7 @@ CH_EXIT_ALERTS: str = "exit_alerts"
 # ``account`` channel its ``account_snapshot`` event (``latest`` of
 # ``GET /portfolio/account``). Messages carry ``event`` + ``source``.
 CH_SPOT_ORDERS: str = "spot_orders"
+
+# Engines → db-writer: one ``{"table", "payload"}`` frame per row to persist
+# (``shared.db_events.publish_db_event``). Pub/sub, fire and forget.
+CH_DB_EVENTS: str = "db_events"

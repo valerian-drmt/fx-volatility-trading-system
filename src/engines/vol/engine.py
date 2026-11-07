@@ -37,6 +37,7 @@ import os
 from typing import Any, Protocol
 
 from bus import keys, publisher
+from bus.spot_cache import parse_spot
 from core.vol.pchip_smile import interpolate_delta_pillars
 from core.vol.tenors import to_display_surface
 from shared.market_hours import is_fx_market_open, market_gate_active
@@ -50,6 +51,7 @@ SKIP_BACKOFF_S = 5.0   # short sleep when a cycle skipped (no spot / no surface)
 # beyond this window (history charts downsample to daily), so DELETE old rows
 # to keep vol_surface_history (~1.1 MB/day) and pca_signal_history bounded.
 HISTORY_RETENTION_DAYS = 90
+_PROGRESS_KEY = keys.CYCLE_PROGRESS.format(engine_name=keys.ENGINE_VOL)
 # 1 prune ≈ once/day. Vol cycle is CYCLE_S (180 s) → 480 cycles ≈ 24h.
 PRUNE_EVERY_CYCLES = 480
 
@@ -611,8 +613,8 @@ class VolEngine:
                 "task": task,
                 "completed": ",".join(sorted(self._progress_completed)),
             }
-            await self.redis.hset("cycle_progress:vol_engine", mapping=payload)
-            await self.redis.expire("cycle_progress:vol_engine", 600)
+            await self.redis.hset(_PROGRESS_KEY, mapping=payload)
+            await self.redis.expire(_PROGRESS_KEY, keys.TTL_CYCLE_PROGRESS)
         except Exception:
             logger.debug("publish_progress_failed", exc_info=True)
         # Anything we just published is finished as soon as the next mark arrives.
@@ -633,8 +635,8 @@ class VolEngine:
                 "task": "",
                 "completed": ",".join(sorted(self._progress_completed)),
             }
-            await self.redis.hset("cycle_progress:vol_engine", mapping=payload)
-            await self.redis.expire("cycle_progress:vol_engine", 600)
+            await self.redis.hset(_PROGRESS_KEY, mapping=payload)
+            await self.redis.expire(_PROGRESS_KEY, keys.TTL_CYCLE_PROGRESS)
         except Exception:
             logger.debug("publish_cycle_done_failed", exc_info=True)
 
@@ -722,6 +724,7 @@ class VolEngine:
             try:
                 await publisher.publish_vol_update(
                     self.redis, symbol=self.symbol, surface_data=surface, signals_data=[],
+                    spot=float(F),
                 )
                 await self._publish_progress("publish", "pubsub")
                 await publisher.set_heartbeat(self.redis, keys.ENGINE_VOL)
@@ -789,28 +792,9 @@ class VolEngine:
         except Exception:
             logger.exception("redis_get_failed", extra={"key": key})
             return None
-        if raw is None:
-            return None
-        # The publisher writes `str(mid)` (bus/publisher.py::publish_tick) so the
-        # payload is a plain float string. Fall back to the legacy dict shape
-        # `{"mid": x, "bid": y}` so callers that store JSON still work.
-        # Defense in depth : reject any non-positive value — IB returns -1 as
-        # a "no quote" sentinel during market-closed periods. The market-data
-        # engine already filters at the source, this guard catches any leftover
-        # rows in Redis from a previous run.
-        spot: float | None = None
-        try:
-            text = raw.decode() if isinstance(raw, bytes) else raw
-            spot = float(text)
-        except (ValueError, TypeError):
-            try:
-                payload = json.loads(raw)
-                spot = float(payload.get("mid") or payload.get("bid"))
-            except (ValueError, TypeError, AttributeError):
-                return None
-        if spot is None or spot <= 0:
-            return None
-        return spot
+        # One parser for the envelope, the bare float and the legacy dict
+        # (#327); non-positive = IB's "no quote" sentinel -> None.
+        return parse_spot(raw)[0]
 
     async def _compute_surface(self, F: float) -> dict[str, Any]:
         import inspect

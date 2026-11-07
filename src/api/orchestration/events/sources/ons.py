@@ -12,7 +12,7 @@ Source : https://www.ons.gov.uk/releasecalendar
 from __future__ import annotations
 
 import calendar
-from datetime import datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from api.orchestration.events.sources.base import EventSource, RawEvent
@@ -24,7 +24,7 @@ HORIZON_MONTHS = 6
 
 def _wednesday_in_week_of(year: int, month: int, day: int) -> datetime:
     """Return Wednesday of the week containing (year, month, day)."""
-    target = datetime(year, month, day)
+    target = datetime(year, month, day, tzinfo=UTC)
     delta = (target.weekday() - 2) % 7  # Wed = 2
     if delta == 0:
         return target
@@ -66,7 +66,7 @@ class ONSSource(EventSource):
             # GDP : ~12th of M+2 at 07:00 UK time. Take 12th of current month
             # (rough, but cheaper than tracking M+2 alignment).
             try:
-                ts = _at_release_time(datetime(year, month, 12))
+                ts = _at_release_time(datetime(year, month, 12, tzinfo=UTC))
                 if ts > now:
                     out.append(RawEvent(
                         event_type="GDP_GB", region="GB", impact="medium",

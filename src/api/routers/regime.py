@@ -8,7 +8,7 @@ Endpoints :
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -198,7 +198,7 @@ async def list_events(
 ) -> list[dict[str, Any]]:
     """Upcoming events; `past_days > 0` extends the window backwards so charts
     can plot recent past events too (default 0 keeps the future-only contract)."""
-    since = datetime.utcnow() - timedelta(days=past_days)
+    since = datetime.now(UTC) - timedelta(days=past_days)
     rows = (await db.execute(
         select(Event).where(Event.scheduled_at > since)
         .order_by(Event.scheduled_at).limit(n)

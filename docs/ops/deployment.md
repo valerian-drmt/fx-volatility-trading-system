@@ -125,6 +125,29 @@ a daily certbot renewal cron, and a nightly `pg_dump` to `s3://fxvol-backups/`
 freshness stamp feeds `/health/extended` and `fxvol_postgres_backup_age_seconds`,
 see `infrastructure/ec2/RESTORE.md` §5).
 
+## Migration compatibility rule
+
+A migration ships in the same PR as the code that needs it and is applied
+by `remote-deploy.sh` **before** the new containers start, while the previous
+release's containers are still running against the migrated schema for a few
+seconds (and for as long as a rollback keeps them). So every migration must
+be safe for the previous release's code:
+
+- **additive first**: new tables, nullable columns, new indexes; a column the
+  old code still writes is never dropped or renamed in the same release (two
+  steps: stop writing, then drop in the next release);
+- **no destructive type change** on a column the old code reads, unless the
+  old reader tolerates both (Float to Numeric is read back as a float by the
+  ORM, see `docs/architecture/database.md`);
+- **backfills in the migration, not in the app**: the old code must find the
+  rows it expects.
+
+CI enforces the mechanical half (#325): after `upgrade head` on an empty
+Postgres, `alembic check` fails on any model-vs-migration drift, and the
+last `ALEMBIC_ROUNDTRIP_STEPS` revisions are downgraded and re-applied. Bump
+that number in `.github/workflows/ci.yml` to the count of migrations since
+the last deployed tag when you cut a release.
+
 ## Rollback
 
 Re-run `deploy-prod` via `workflow_dispatch` with `deploy_sha` set to a previous

@@ -46,10 +46,29 @@ reconciles against never disagree on keys (`tests/fixtures/channels/`).
 WebSocket routes: `/ws/positions`, `/ws/account`, `/ws/spot_orders`,
 `/ws/orders/{structure_id}` (#366, #367).
 
-Cache keys (`keys.py`) carry a prescribed TTL: `latest_spot:{symbol}` (30 s),
-`latest_vol_surface:{symbol}` (600 s), `latest_greeks:portfolio` (30 s),
-`heartbeat:{engine_name}` (300 s), etc. Every engine writes its own
-`heartbeat:<name>` — the compose healthchecks compute `now - parse(ts)` against it.
+### Field-level contract (#327)
+
+Every name comes from `bus/keys.py` / `bus/channels.py`; a unit test
+(`tests/unit/bus/test_no_literal_names.py`) fails the build on a literal key
+or channel string anywhere else in `src/`. Payload fixtures:
+`tests/fixtures/payloads/<channel>.json` (#338) and
+`tests/fixtures/channels/*.json` for the execution-engine events (#366).
+
+| Key / channel | Writer | Value | TTL |
+|---|---|---|---|
+| `latest_spot:{symbol}`, `latest_bid:…`, `latest_ask:…` | market-data, every tick | `{"value": float, "ts": iso}` (readers also accept the older bare float; `bus.spot_cache.parse_spot`) | 30 s |
+| `latest_vol_surface:{symbol}` | vol-engine, per cycle | `{"symbol", "timestamp", "spot", "surface": {tenor: {label: {iv, strike}}, "_fair_q", "_har", …}}` | 600 s |
+| `latest_signals:{symbol}` | vol-engine | `{"symbol", "timestamp", "signals": […]}` | 600 s |
+| `latest_greeks:portfolio` | risk-engine, per cycle | aggregate greeks (`units` field says the scale, `docs/vol-modeling/units.md`) | 30 s |
+| `account_snapshot` | execution, per account snap | the `account` channel message (`latest` = `/portfolio/account.latest`) | 60 s |
+| `contract_marks:{symbol}`, `option_marks:…`, `unrealized_pnl:…` (hashes) | execution, per position sync | field = open position id, value = mark / premium / P&L; fields pruned to the open set each sync | 600 s |
+| `market_status:{symbol}` | market-data, with each heartbeat | `{"open": bool, "ts": iso}` from `shared.market_hours` | 300 s |
+| `heartbeat:{engine}` | every engine | bare ISO stamp; the compose healthchecks compute `now - ts` | 300 s |
+| `cycle_progress:vol_engine` (hash) | vol-engine | `stage`, `task`, `completed`, `cycle_started_at` | 600 s |
+| `analytics:regime_model:{symbol}`, `analytics:pc3_history:…` | analytics-engine | serialised GMM / PC3 arrays | 2 h |
+| `bars:{symbol}:{tf}` | market-data | JSON list of `{t, o, h, l, c}` | 6 h |
+| `trading:halted` | api (kill switch) | mirror of the DB flag | none |
+| `db_events` (channel) | vol / analytics engines | `{"table", "payload"}`, natural keys per `persistence.writer.IDEMPOTENT_TABLES` | pub/sub |
 
 ## db-writer: the Redis → Postgres sink
 

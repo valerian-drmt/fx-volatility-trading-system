@@ -408,6 +408,25 @@ jobs:
       - name: Run alembic upgrade head
         run: python -m alembic -c src/persistence/alembic.ini upgrade head
 
+      # Schema drift gate (#325, audit 05#5): the ORM models and the migration
+      # chain must describe the same schema. ``alembic check`` runs the
+      # autogenerate comparison and fails on any pending diff (type changes
+      # included, env.py sets compare_type).
+      - name: Schema drift gate (alembic check)
+        run: python -m alembic -c src/persistence/alembic.ini check
+
+      # Downgrade round trip over this release's migrations: head -> N back ->
+      # head. Early revisions are not round-trippable (renames across
+      # dropped tables); N covers everything since the last deployed tag and
+      # is bumped with each release (docs/ops/deployment.md).
+      - name: Migration round trip (head -> -N -> head)
+        env:
+          ALEMBIC_ROUNDTRIP_STEPS: "9"
+        run: |
+          python -m alembic -c src/persistence/alembic.ini downgrade "-${ALEMBIC_ROUNDTRIP_STEPS}"
+          python -m alembic -c src/persistence/alembic.ini upgrade head
+          python -m alembic -c src/persistence/alembic.ini check
+
       - name: Run db_integration tests
         run: python -m pytest -m db_integration -v
 

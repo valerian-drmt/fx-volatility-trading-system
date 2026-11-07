@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
+from bus import keys
 from core.execution.reconciliation import classify_break
 from core.ledger import LedgerFill, fold_fills, unrealized_pnl
 from core.products import product_label_from_symbol
@@ -113,7 +114,7 @@ async def _read_contract_marks(redis: Any) -> dict[int, float]:
     if redis is None:
         return {}
     try:
-        raw = await redis.hgetall("contract_marks:EUR")
+        raw = await redis.hgetall(keys.CONTRACT_MARKS.format(symbol="EUR"))
     except Exception:
         return {}
     if not raw:

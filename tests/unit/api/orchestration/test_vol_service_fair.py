@@ -18,7 +18,8 @@ def _surface() -> SimpleNamespace:
     return SimpleNamespace(
         symbol="EURUSD",
         timestamp=datetime(2026, 6, 17, 12, tzinfo=UTC),
-        surface={
+        as_of=datetime(2026, 6, 17, 12, tzinfo=UTC), source="live", stale=False, age_s=0.0,
+surface={
             "1M": {
                 "atm": {"iv": 0.065}, "dte": 30, "rv_pct": 5.5,  # per-tenor RV
                 "25dc": {"iv": 0.066}, "25dp": {"iv": 0.068},     # wings → RR/BF
@@ -74,7 +75,8 @@ async def test_term_structure_market_closed_uses_fair_q_only(monkeypatch):
     closed = SimpleNamespace(
         symbol="EURUSD",
         timestamp=datetime(2026, 6, 17, 22, tzinfo=UTC),
-        surface={
+        as_of=datetime(2026, 6, 17, 22, tzinfo=UTC), source="live", stale=False, age_s=0.0,
+surface={
             "_rv_full_pct": 6.0,
             "_fair_q": {
                 "1M": {"sigma_fair_q_pct": 5.8, "sigma_fair_p_pct": 5.2, "vrp_vol_pts": 0.6, "regime": "calm"},

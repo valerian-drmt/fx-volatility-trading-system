@@ -16,7 +16,7 @@ If precision matters more later, replace by a parser of
 from __future__ import annotations
 
 import calendar
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from api.orchestration.events.sources.base import EventSource, RawEvent
@@ -29,7 +29,7 @@ HORIZON_MONTHS = 6
 def _last_business_day(year: int, month: int) -> int:
     """Last weekday (Mon-Fri) of (year, month)."""
     last = calendar.monthrange(year, month)[1]
-    while datetime(year, month, last).weekday() >= 5:
+    while datetime(year, month, last, tzinfo=UTC).weekday() >= 5:
         last -= 1
     return last
 
@@ -56,7 +56,7 @@ class EurostatSource(EventSource):
 
             # 1. HICP flash : last business day of the month, at 11:00 CET.
             day = _last_business_day(year, month)
-            ts = _at_release_time(datetime(year, month, day))
+            ts = _at_release_time(datetime(year, month, day, tzinfo=UTC))
             if ts > now:
                 out.append(RawEvent(
                     event_type="CPI_FLASH_EU", region="EU", impact="high",
@@ -67,7 +67,7 @@ class EurostatSource(EventSource):
 
             # 2. HICP final : ~17th of the month, at 11:00 CET.
             try:
-                ts = _at_release_time(datetime(year, month, 17))
+                ts = _at_release_time(datetime(year, month, 17, tzinfo=UTC))
                 if ts > now:
                     out.append(RawEvent(
                         event_type="CPI_EU", region="EU", impact="high",
@@ -82,7 +82,7 @@ class EurostatSource(EventSource):
             if month in (1, 4, 7, 10):
                 # First Tuesday after the 28th approx (close enough at ±2d).
                 try:
-                    ts = _at_release_time(datetime(year, month, 30))
+                    ts = _at_release_time(datetime(year, month, 30, tzinfo=UTC))
                     if ts > now:
                         out.append(RawEvent(
                             event_type="GDP_EU", region="EU", impact="high",

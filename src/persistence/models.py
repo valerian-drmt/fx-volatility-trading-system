@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import (
     JSON,
@@ -23,13 +24,74 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.sql.expression import ColumnElement
+from sqlalchemy.types import TypeDecorator
 
 JSONB_PORTABLE = JSON().with_variant(JSONB(), "postgresql")
+
+
+class DescNullsLast(ColumnElement):
+    """Index expression ``<column> DESC NULLS LAST`` (migration 023). SQLite's
+    CREATE INDEX has no NULLS LAST, so the shared test schema gets ``DESC``;
+    Postgres gets the exact expression the migration wrote, which is what the
+    drift gate compares (#325)."""
+
+    inherit_cache = True
+
+    def __init__(self, column_name: str) -> None:
+        super().__init__()
+        self.column_name = column_name
+
+
+@compiles(DescNullsLast)
+def _compile_desc_nulls_last(element: DescNullsLast, compiler: Any, **kw: Any) -> str:
+    return f"{element.column_name} DESC"
+
+
+@compiles(DescNullsLast, "postgresql")
+def _compile_desc_nulls_last_pg(element: DescNullsLast, compiler: Any, **kw: Any) -> str:
+    return f"{element.column_name} DESC NULLS LAST"
+
+
+class MoneyNumeric(TypeDecorator):
+    """Exact in the database, convenient in Python (#326, audit 05#8).
+
+    Execution money and prices used to be ``Float`` (binary) while the ledger
+    tables were ``Numeric``. The column is now ``NUMERIC(p, s)``; a float, an
+    int or a Decimal binds (floats go through ``str`` so 2.37 stays 2.37) and
+    the value reads back as a plain float, so the call sites, the JSON
+    payloads and the tests that compare with float literals are untouched.
+    Policy table: ``docs/architecture/database.md``.
+    """
+
+    impl = Numeric
+    cache_ok = True
+
+    def __init__(self, precision: int = 15, scale: int = 2) -> None:
+        super().__init__(precision, scale)
+
+    def process_bind_param(self, value, dialect):  # type: ignore[override]
+        if value is None:
+            return None
+        if isinstance(value, Decimal):
+            return value
+        return Decimal(str(value))
+
+    def process_result_value(self, value, dialect):  # type: ignore[override]
+        return None if value is None else float(value)
+
+
+Money = MoneyNumeric(15, 2)    # USD amounts: premium, commission, slippage, cost, P&L
+Price = MoneyNumeric(18, 8)    # prices, strikes, spots
+Pct = MoneyNumeric(10, 4)      # IVs in percent
 
 
 class Base(DeclarativeBase):
@@ -47,6 +109,9 @@ class OpenPosition(Base):
     __tablename__ = "open_position"  # renamed in migration 033 (was 'position')
     __table_args__ = (
         CheckConstraint("side IN ('BUY', 'SELL')", name="ck_positions_side"),
+        # The mirror's natural key: one row per IB contract. Created in 028 on
+        # the column's old name, renamed in 029, re-asserted in 060 (#325).
+        Index("ix_positions_structure_unique", "structure", unique=True),
     )
 
     # Column order here mirrors the physical schema after migration 028 :
@@ -119,6 +184,13 @@ class OpenPositionHistory(Base):
     One row per OPEN position per 2s cycle."""
 
     __tablename__ = "open_position_history"  # renamed in migration 033
+
+    __table_args__ = (
+        # Migration 044: the attribution's per-position LATERAL probe and the
+        # retention prune walk these (#325 declares them for the drift gate).
+        Index("idx_open_position_history_position_ts", "position_id", "timestamp"),
+        Index("idx_open_position_history_ts", "timestamp"),
+    )
 
     # Schema mirrors ``open_position`` 1-to-1 plus position_id + timestamp.
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -204,6 +276,7 @@ class VolSurface(Base):
     __tablename__ = "vol_surface_history"  # renamed in migration 023
     __table_args__ = (
         UniqueConstraint("timestamp", "underlying", name="uq_vol_surfaces_ts_underlying"),
+        Index("ix_vol_surface_underlying_ts", "underlying", text("timestamp DESC")),  # migration 045
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -229,6 +302,8 @@ class RegimeSnapshot(Base):
         # Natural key for the db-writer's ON CONFLICT DO NOTHING (#324,
         # migration 059): one row per vol-engine cycle per symbol.
         UniqueConstraint("symbol", "timestamp", name="uq_regime_snapshot_symbol_ts"),
+        Index("ix_regime_snapshots_symbol_ts", "symbol", "timestamp"),  # migration 010
+        Index("ix_regime_snapshots_timestamp", "timestamp"),  # migration 010
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -281,6 +356,7 @@ class FeatureHistory(Base):
     __tablename__ = "feature_history"  # renamed in migration 023
     __table_args__ = (
         UniqueConstraint("symbol", "timestamp", name="uq_feature_history_symbol_ts"),
+        Index("ix_feature_history_symbol_ts", "symbol", "timestamp"),  # migration 010
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -309,6 +385,8 @@ class Event(Base):
     __table_args__ = (
         CheckConstraint("impact IN ('high','medium','low')", name="ck_events_impact"),
         UniqueConstraint("event_hash", name="uq_events_event_hash"),
+        Index("ix_events_event_hash", "event_hash"),  # migration 012
+        Index("ix_events_scheduled_at", "scheduled_at"),  # migration 010
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -347,6 +425,9 @@ class VolConfig(Base):
     """
 
     __tablename__ = "config_vol_engine"  # renamed in migration 040 (config_* prefix alignment)
+    __table_args__ = (
+        Index("idx_vol_config_version_desc", text("version DESC")),  # migration 004
+    )
 
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
     config: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
@@ -373,6 +454,7 @@ class SurfaceSnapshotHourly(Base):
     __tablename__ = "pca_surface_snapshot_history"  # renamed 023 → 036 (pca_* prefix alignment)
     __table_args__ = (
         UniqueConstraint("symbol", "timestamp", name="uq_surface_snap_hourly_symbol_ts"),
+        Index("ix_surface_snap_hourly_symbol_ts", "symbol", "timestamp"),  # migration 011
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -397,6 +479,10 @@ class PcaModel(Base):
     """Versioned PCA model — JSONB means/stds/loadings (schema-less for dim flex)."""
 
     __tablename__ = "pca_model"
+    __table_args__ = (
+        Index("ix_pca_models_active_unique", "is_active", unique=True,
+              postgresql_where=text("is_active = true")),  # migration 011: one live model
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     version: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
@@ -439,6 +525,8 @@ class PcaSignal(Base):
             "label IN ('CHEAP','FAIR','EXPENSIVE')", name="ck_pca_signals_label",
         ),
         CheckConstraint("pc_id > 0", name="ck_pca_signals_pc_id"),
+        Index("ix_pca_signal_symbol_pc_ts", "symbol", "pc_id", text("timestamp DESC")),  # migration 045
+        Index("ix_pca_signals_symbol_ts", "symbol", "timestamp"),  # migration 011
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -481,6 +569,8 @@ class TradePreviewRow(Base):
             "state IN ('valid_for_submit','blocked','expired','submitted','cancelled')",
             name="ck_trade_previews_state",
         ),
+        Index("ix_trade_previews_created", "created_at"),  # migration 013
+        Index("ix_trade_previews_state", "state", "created_at"),  # migration 013
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -508,6 +598,10 @@ class BookStateSnapshot(Base):
     """Aggregated book state (1 row is_current=true per symbol + history)."""
 
     __tablename__ = "book_state_snapshot_history"  # renamed 026 → 040 (_history suffix alignment)
+    __table_args__ = (
+        Index("ix_book_state_current", "symbol", "is_current", unique=True,
+              postgresql_where=text("is_current = true")),  # migration 013: one current row per symbol
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -554,6 +648,7 @@ class AppConfigScalar(Base):
     __tablename__ = "config_scalar"  # renamed from app_config_scalar in migration 037
     __table_args__ = (
         UniqueConstraint("namespace", "name", name="uq_config_scalar_ns_name"),
+        Index("ix_app_config_scalar_ns_active", "namespace", "is_active"),  # migration 024
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -604,6 +699,7 @@ class TradeStructure(Base):
             "state IN ('submitted','partial_fill','fully_filled','partial_fail','fully_failed','closed')",
             name="ck_trade_structures_state",
         ),
+        Index("ix_trade_structures_state", "state", "created_at"),  # migration 014
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -632,10 +728,10 @@ class TradeStructure(Base):
     state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     ib_combo_order_id: Mapped[str | None] = mapped_column(String(40))
     execution_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="mock")
-    total_premium_paid_usd: Mapped[float | None] = mapped_column(Float)
-    total_slippage_usd: Mapped[float | None] = mapped_column(Float)
-    total_commission_usd: Mapped[float | None] = mapped_column(Float)
-    total_entry_cost_usd: Mapped[float | None] = mapped_column(Float)
+    total_premium_paid_usd: Mapped[float | None] = mapped_column(Money)
+    total_slippage_usd: Mapped[float | None] = mapped_column(Money)
+    total_commission_usd: Mapped[float | None] = mapped_column(Money)
+    total_entry_cost_usd: Mapped[float | None] = mapped_column(Money)
     first_fill_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fully_filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -673,6 +769,7 @@ class StructureOrder(Base):
             "order_role IN ('entry','closing','unwind','hedge')",
             name="ck_structure_orders_order_role",
         ),
+        Index("ix_structure_orders_structure", "structure_id", "leg_idx"),  # migration 014
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -688,16 +785,16 @@ class StructureOrder(Base):
     contract_symbol: Mapped[str] = mapped_column(String(10), nullable=False, default="EUR")
     contract_type: Mapped[str] = mapped_column(String(10), nullable=False)
     contract_expiry: Mapped[date | None] = mapped_column(Date)
-    contract_strike: Mapped[float | None] = mapped_column(Float)
+    contract_strike: Mapped[float | None] = mapped_column(Price)
     contract_exchange: Mapped[str] = mapped_column(String(10), nullable=False, default="CME")
     contract_currency: Mapped[str] = mapped_column(String(5), nullable=False, default="USD")
     side: Mapped[str] = mapped_column(String(5), nullable=False)
     qty: Mapped[int] = mapped_column(Integer, nullable=False)
     order_type: Mapped[str] = mapped_column(String(10), nullable=False, default="LMT")
-    limit_price: Mapped[float | None] = mapped_column(Float)
+    limit_price: Mapped[float | None] = mapped_column(Price)
     time_in_force: Mapped[str] = mapped_column(String(5), nullable=False, default="DAY")
-    preview_iv_pct: Mapped[float | None] = mapped_column(Float)
-    preview_price: Mapped[float | None] = mapped_column(Float)
+    preview_iv_pct: Mapped[float | None] = mapped_column(Pct)
+    preview_price: Mapped[float | None] = mapped_column(Price)
     state: Mapped[str] = mapped_column(String(25), nullable=False)
     state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -709,11 +806,11 @@ class StructureOrder(Base):
     rejection_code: Mapped[str | None] = mapped_column(String(20))
     rejection_text: Mapped[str | None] = mapped_column(String(300))
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    avg_fill_price: Mapped[float | None] = mapped_column(Float)
-    total_commission_usd: Mapped[float | None] = mapped_column(Float, default=0.0)
+    avg_fill_price: Mapped[float | None] = mapped_column(Price)
+    total_commission_usd: Mapped[float | None] = mapped_column(Money, default=0.0)
     fully_filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    slippage_per_contract: Mapped[float | None] = mapped_column(Float)
-    total_slippage_usd: Mapped[float | None] = mapped_column(Float)
+    slippage_per_contract: Mapped[float | None] = mapped_column(Price)
+    total_slippage_usd: Mapped[float | None] = mapped_column(Money)
     # Migration 046 : correlation id (denormalised from the parent structure) so
     # the async fill callbacks can re-bind it — their logs then carry the same id
     # as the originating request. See shared.trace.
@@ -730,24 +827,27 @@ class StructureFill(Base):
     """One execution event on a leg."""
 
     __tablename__ = "trade_fill"  # renamed in migration 025
+    __table_args__ = (
+        Index("ix_structure_fills_order", "order_id", "timestamp"),  # migration 014
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_order.id"), nullable=False)
     ib_execution_id: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False)
-    fill_price: Mapped[float] = mapped_column(Float, nullable=False)
-    commission_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    fill_price: Mapped[float] = mapped_column(Price, nullable=False)
+    commission_usd: Mapped[float] = mapped_column(Money, nullable=False, default=0.0)
     # Currency of the fill / commission as IB reports it (migration 056, #322):
     # a 6E leg is USD, but nothing recorded it, and a CommissionReport can be
     # in another currency than the contract.
     currency: Mapped[str | None] = mapped_column(String(5))
     exchange: Mapped[str | None] = mapped_column(String(10))
     side: Mapped[str] = mapped_column(String(5), nullable=False)
-    spot_at_fill: Mapped[float | None] = mapped_column(Float)
-    bid_at_fill: Mapped[float | None] = mapped_column(Float)
-    ask_at_fill: Mapped[float | None] = mapped_column(Float)
-    iv_implied_from_fill: Mapped[float | None] = mapped_column(Float)
+    spot_at_fill: Mapped[float | None] = mapped_column(Price)
+    bid_at_fill: Mapped[float | None] = mapped_column(Price)
+    ask_at_fill: Mapped[float | None] = mapped_column(Price)
+    iv_implied_from_fill: Mapped[float | None] = mapped_column(Pct)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     # Migration 046 : correlation id (denormalised from the order) so a fill row
     # points straight back to its request's logs. See shared.trace.
@@ -797,6 +897,8 @@ class ReconciliationBreak(Base):
             "break_type IN ('missing_at_ib','unbooked_at_ib','direction','quantity')",
             name="ck_reconciliation_break_type",
         ),
+        Index("ix_reconciliation_break_open", "local_symbol",
+              postgresql_where=text("resolved_at IS NULL")),  # migration 048
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -829,27 +931,29 @@ class BookedPosition(Base):
             "state IN ('open','closing','closed','expired')",
             name="ck_trade_positions_state",
         ),
+        Index("ix_trade_positions_ib_reconciled_at", DescNullsLast("ib_reconciled_at")),  # migration 023
+        Index("ix_trade_positions_state", "state", "opened_at"),  # migration 014
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structure.id"), nullable=False, unique=True)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    entry_premium_usd: Mapped[float] = mapped_column(Float, nullable=False)
-    entry_total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    entry_premium_usd: Mapped[float] = mapped_column(Money, nullable=False)
+    entry_total_cost_usd: Mapped[float] = mapped_column(Money, nullable=False)
     state: Mapped[str] = mapped_column(String(15), nullable=False, default="open")
     state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     entry_vega_usd_per_volpt: Mapped[float | None] = mapped_column(Float)
     entry_gamma_usd_per_pip2: Mapped[float | None] = mapped_column(Float)
     entry_theta_usd_per_day: Mapped[float | None] = mapped_column(Float)
-    entry_spot: Mapped[float | None] = mapped_column(Float)
-    entry_iv_avg: Mapped[float | None] = mapped_column(Float)
+    entry_spot: Mapped[float | None] = mapped_column(Price)
+    entry_iv_avg: Mapped[float | None] = mapped_column(Pct)
     entry_regime: Mapped[str | None] = mapped_column(String(20))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     close_reason: Mapped[str | None] = mapped_column(String(80))
-    exit_premium_usd: Mapped[float | None] = mapped_column(Float)
-    exit_total_cost_usd: Mapped[float | None] = mapped_column(Float)
-    gross_pnl_usd: Mapped[float | None] = mapped_column(Float)
-    net_pnl_usd: Mapped[float | None] = mapped_column(Float)
+    exit_premium_usd: Mapped[float | None] = mapped_column(Money)
+    exit_total_cost_usd: Mapped[float | None] = mapped_column(Money)
+    gross_pnl_usd: Mapped[float | None] = mapped_column(Money)
+    net_pnl_usd: Mapped[float | None] = mapped_column(Money)
     # IB reconciliation (filled by execution-engine.position_sync each 30 s).
     ib_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ib_qty_total: Mapped[int | None] = mapped_column(Integer)
@@ -912,7 +1016,7 @@ class SpotOrder(Base):
     side: Mapped[str] = mapped_column(String(5), nullable=False)      # BUY / SELL (base ccy)
     qty: Mapped[int] = mapped_column(Integer, nullable=False)          # base-ccy notional
     order_type: Mapped[str] = mapped_column(String(10), nullable=False, default="LMT")
-    limit_price: Mapped[float | None] = mapped_column(Float)
+    limit_price: Mapped[float | None] = mapped_column(Price)
     ib_order_id: Mapped[str | None] = mapped_column(String(40))
     ib_perm_id: Mapped[str | None] = mapped_column(String(40))
     ib_local_symbol: Mapped[str | None] = mapped_column(String(20))   # "EUR.USD"
@@ -922,8 +1026,8 @@ class SpotOrder(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(),
     )
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    avg_fill_price: Mapped[float | None] = mapped_column(Float)
-    commission_usd: Mapped[float | None] = mapped_column(Float)
+    avg_fill_price: Mapped[float | None] = mapped_column(Price)
+    commission_usd: Mapped[float | None] = mapped_column(Money)
     filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejection_text: Mapped[str | None] = mapped_column(String(300))
     trace_id: Mapped[str | None] = mapped_column(String(32))
@@ -951,6 +1055,7 @@ class BookedPositionMetricHistory(Base):
     __tablename__ = "booked_position_metric_history"  # renamed + folded migration 026
     __table_args__ = (
         UniqueConstraint("position_id", "timestamp", name="uq_mtm_position_ts"),
+        Index("ix_mtm_position_ts", "position_id", "timestamp"),  # migration 016
         CheckConstraint(
             "signal_status IS NULL OR signal_status IN ('HOLD','TRIM','EXIT')",
             name="ck_signal_track_status",
@@ -1003,6 +1108,13 @@ class HedgeOrder(Base):
             "state IN ('pending','submitted','filled','failed')",
             name="ck_hedge_orders_state",
         ),
+        Index("ix_hedge_position_ts", "position_id", "triggered_at"),  # migration 016
+        # One PENDING hedge per position (migration 060, #325): the hedge loop
+        # must never queue two for the same leg.
+        Index(
+            "uq_hedge_order_pending_per_position", "position_id", unique=True,
+            postgresql_where=text("state = 'pending'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1019,10 +1131,10 @@ class HedgeOrder(Base):
     hedge_qty: Mapped[int] = mapped_column(Integer, nullable=False)
     side: Mapped[str] = mapped_column(String(5), nullable=False)
     ib_order_id: Mapped[str | None] = mapped_column(String(40))
-    fill_price: Mapped[float | None] = mapped_column(Float)
-    commission_usd: Mapped[float | None] = mapped_column(Float)
-    spread_paid_usd: Mapped[float | None] = mapped_column(Float)
-    total_cost_usd: Mapped[float | None] = mapped_column(Float)
+    fill_price: Mapped[float | None] = mapped_column(Price)
+    commission_usd: Mapped[float | None] = mapped_column(Money)
+    spread_paid_usd: Mapped[float | None] = mapped_column(Money)
+    total_cost_usd: Mapped[float | None] = mapped_column(Money)
     state: Mapped[str] = mapped_column(String(15), nullable=False)
 
 
@@ -1040,6 +1152,7 @@ class ExitAlert(Base):
             "('in_progress','done','failed','overridden')",
             name="ck_exit_alerts_exec_status",
         ),
+        Index("ix_exit_alerts_position_ts", "position_id", "timestamp"),  # migration 016
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1103,6 +1216,10 @@ class TradeEvent(Base):
             "severity IN ('debug','info','warning','error','critical')",
             name="ck_trade_event_severity",
         ),
+        Index("ix_trade_event_structure", "structure_id",
+              postgresql_where=text("structure_id IS NOT NULL")),  # migration 025
+        Index("ix_trade_event_ts", text("ts DESC")),  # migration 025
+        Index("ix_trade_event_type_ts", "event_type", text("ts DESC")),  # migration 025
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -1172,12 +1289,104 @@ class DbWriterDeadLetter(Base):
     per-row fallback (#324, DI-04): kept with the error instead of being
     dropped with its batch. Replay is manual (``docs/ops/redis-durability.md``)."""
     __tablename__ = "db_writer_dead_letter"
+    __table_args__ = (
+        Index("ix_db_writer_dead_letter_created", "created_at"),  # migration 059
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     table_name: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB_PORTABLE, nullable=False)
-    error: Mapped[str] = mapped_column(String, nullable=False)
+    error: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
     )
     replayed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---- Table comments (migration 042) --------------------------------------------------------
+# ``COMMENT ON TABLE`` for every business table, applied to the metadata so the
+# drift gate (``alembic check``, #325) sees the same comments the migration
+# wrote. One place, alphabetised; tests/unit/persistence/test_schema_declarations.py
+# checks this map equals the migration's.
+TABLE_COMMENTS: dict[str, str] = {
+    "account_history":
+        "Per-cycle audit snapshot of the IB account (cash, margin, gross/net liq). "
+        "Append-only ; written by execution-engine on each account-summary update.",
+    "book_state_snapshot_history":
+        "Audit log of every successful Submit — captures the full book state right "
+        "after the new trade is open. Append-only.",
+    "booked_position":
+        "User-level trades booked into the book (1 row per Submit). "
+        "Append-only ; lifecycle states tracked via state column.",
+    "booked_position_metric_history":
+        "Per-cycle greeks + P&L snapshot per booked_position row. "
+        "Append-only ; written by risk-engine every cycle.",
+    "config_exit_rules":
+        "Versioned set of systematic exit rules (z-flip / time / stop-loss / "
+        "DTE thresholds). Append-only ; latest row is the source of truth.",
+    "config_scalar":
+        "Generic scalar key/value config — namespace='risk' for trade-gating "
+        "limits, namespace='delta_hedge' for the hedger loop. UPDATE-in-place.",
+    "config_vol_engine":
+        "Versioned full vol-engine config (Pydantic JSON blob). Append-only ; "
+        "engines hot-reload via Redis pub/sub on insert.",
+    "event_calendar":
+        "Catalogue of economic events scraped from FRED / ECB / BoE / FOMC / "
+        "Eurostat / ONS. Idempotent UPSERT keyed by event_hash.",
+    "exit_alert":
+        "Triggered exit alerts pending operator review. "
+        "Append-only ; consumed by the exit-alert panel.",
+    "feature_history":
+        "Wide-format timeseries of derived vol features (ATM IV per tenor, "
+        "rv_yz, vol_of_vol, term_slope, z-scores). Append-only.",
+    "hedge_order":
+        "EUR FUT delta-hedge orders submitted by the delta-hedger loop. "
+        "Append-only ; one row per fire.",
+    "open_position":
+        "Live IB-side positions reconciled against ib_insync. UPDATE-in-place "
+        "by position-sync (5 s cadence) ; row deleted when fully closed.",
+    "open_position_history":
+        "Per-cycle greeks + P&L snapshot per open_position row. Append-only ; "
+        "written by risk-engine every cycle.",
+    "package":
+        "Murex-style operational grouping of multiple trade_structure rows. "
+        "Populated by manual API call ; FK target of trade_structure.package_id.",
+    "pca_model":
+        "Versioned PCA fit (means / stds / loadings / eigenvalues as JSONB). "
+        "Append-only ; is_active=true marks the live model.",
+    "pca_signal_history":
+        "One row per (PC, cycle) — z-score, label (CHEAP/FAIR/EXPENSIVE), "
+        "actionable flag, recommended structure. Append-only.",
+    "pca_surface_snapshot_history":
+        "30-dimensional hourly snapshot of the vol surface (6 tenors x 5 "
+        "deltas). The PCA fit input. Append-only.",
+    "regime_snapshot_history":
+        "One row per vol-engine cycle — regime label, the features that drove "
+        "the classification, GMM probas, event_dampener. Append-only.",
+    "runtime_ib_session":
+        "Singleton row tracking the IB session state — heartbeat, account "
+        "type (paper/live), cash + margin. UPDATE-in-place every ~10 s.",
+    "trade_event":
+        "Audit log of every order action (submit, cancel, fill, reject) tied "
+        "to a trade_structure row. Append-only ; replaces the legacy "
+        "execution_audit_log.",
+    "trade_fill":
+        "Per-leg fill confirmations from IB. Append-only ; one row per fill, "
+        "linked to trade_order.id.",
+    "trade_order":
+        "Active IB orders submitted as part of a trade_structure. "
+        "UPDATE-in-place on status transitions ; long-lived for audit.",
+    "trade_preview":
+        "Audit log : one row per Arm click on the UI. Tracks the (signal, "
+        "structure, state) tuple for 90 s — either Submit promotes it to a "
+        "trade_structure or it expires.",
+    "trade_structure":
+        "Root of the Murex package > trade > contract hierarchy. One row per "
+        "user-confirmed Submit ; lifecycle tracked via state column.",
+    "vol_surface_history":
+        "Per-cycle full vol surface fit (SVI/SSVI params + ATM per tenor) "
+        "stored as JSONB. Append-only ; written by vol-engine each cycle.",
+}
+
+for _table_name, _comment in TABLE_COMMENTS.items():
+    Base.metadata.tables[_table_name].comment = _comment
