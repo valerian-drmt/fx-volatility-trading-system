@@ -194,6 +194,8 @@ export interface SpotOrderRow {
   state: string; // pending / submitted / partially_filled / filled / cancelled / rejected
   rejection_text: string | null;
   ib_order_id: number | null;
+  ib_status?: string | null; // IB's raw status (PreSubmitted / Submitted / ...) (#376)
+  why_held?: string | null; // IB's whyHeld hint for a held order
 }
 export const fetchSpotOrders = (limit = 30) =>
   apiGet<SpotOrderRow[]>("/api/v1/trade/spot-orders", { query: { limit } });

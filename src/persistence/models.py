@@ -922,6 +922,11 @@ class SpotOrder(Base):
     filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejection_text: Mapped[str | None] = mapped_column(String(300))
     trace_id: Mapped[str | None] = mapped_column(String(32))
+    # Raw IB view of a working order (migration 054, #376): ``ib_status`` is
+    # IB's own string (PreSubmitted / Submitted / ...), ``why_held`` its hint for
+    # a held order. Both are what the blotter needs to say why a row waits.
+    ib_status: Mapped[str | None] = mapped_column(String(20))
+    why_held: Mapped[str | None] = mapped_column(String(60))
 
 
 # ──────────────────────────────────────────────────────────────────────

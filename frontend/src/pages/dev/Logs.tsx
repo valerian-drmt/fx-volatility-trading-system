@@ -24,6 +24,7 @@
  *   - Export the current result set as .log.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { classifyLogsError, type LogsError } from "./logsStatus";
 import { apiFetch, apiFetchJson } from "../../api/client";
 
 interface LogEntry {
@@ -69,7 +70,7 @@ export function Logs(): JSX.Element {
 
   const [data, setData] = useState<LogsResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LogsError | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => {
@@ -82,7 +83,7 @@ export function Logs(): JSX.Element {
   useEffect(() => {
     apiFetchJson<{ containers: string[] }>("/api/v1/dev/logs/containers")
       .then((j) => setContainers(j.containers ?? []))
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(classifyLogsError(null, String(e))));
   }, []);
 
   // ── Fetch logs ──
@@ -98,11 +99,13 @@ export function Logs(): JSX.Element {
       p.set("limit", String(limit));
       const r = await apiFetch(`/api/v1/dev/logs/query?${p.toString()}`);
       if (!r.ok) {
-        const txt = await r.text();
-        throw new Error(`HTTP ${r.status} : ${txt.slice(0, 200)}`);
+        // Classified, not dumped: "Loki down" with what to do, "login required",
+        // or the status (#378). Previous entries stay on screen (data untouched).
+        setError(classifyLogsError(r.status, await r.text()));
+        return;
       }
       setData(await r.json());
-    } catch (e) { setError(String(e)); }
+    } catch (e) { setError(classifyLogsError(null, String(e))); }
     finally { setLoading(false); }
   }, [container, level, pattern, minutes, limit]);
 
@@ -237,12 +240,19 @@ export function Logs(): JSX.Element {
       </div>
 
       {error && (
-        <div style={{
-          color: "#fbb", padding: "8px 12px", marginBottom: 8,
-          background: "#3a1a1a", border: "1px solid #5a2a2a",
-          borderRadius: 3, fontFamily: "Consolas, monospace", fontSize: 12,
-        }}>
-          {error}
+        <div
+          data-testid="logs-error"
+          data-kind={error.kind}
+          style={{
+            color: error.kind === "loki_down" ? "#fd9" : "#fbb", padding: "8px 12px", marginBottom: 8,
+            background: error.kind === "loki_down" ? "#3a2e14" : "#3a1a1a",
+            border: `1px solid ${error.kind === "loki_down" ? "#6a5420" : "#5a2a2a"}`,
+            borderRadius: 3, fontFamily: "Consolas, monospace", fontSize: 12,
+          }}
+        >
+          <div style={{ fontWeight: 700 }}>{error.title}</div>
+          <div style={{ opacity: 0.9, marginTop: 2 }}>{error.hint}</div>
+          <div style={{ opacity: 0.6, marginTop: 4, fontSize: 11 }}>{error.detail}</div>
         </div>
       )}
 

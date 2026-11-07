@@ -523,10 +523,14 @@ function SpotTicket({ bid, ask, ticksLive, onOrder, onSent }: {
   onSent?: () => void; // IB accepted -> refetch the Orders blotter (spot rows)
 }): JSX.Element {
   const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
-  const mid = (bid + ask) / 2;
+  const mid = (bid + ask) / 2 || NaN; // NaN when no quote: the conversions below guard it
   const [eurQty, setEurQty] = useState(100_000);
   const [usdQty, setUsdQty] = useState(() => Math.round(100_000 * ((bid + ask) / 2)));
   const [busy, setBusy] = useState(false);
+  // Synchronous re-entrancy guard: `busy` is React state and only flips on the
+  // next render, so two clicks ~70 ms apart both passed the check and placed
+  // two live orders (prod rows S1 and S2, 2026-11-05, #376).
+  const sendingRef = useRef(false);
   const [done, setDone] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const valid = eurQty > 0 && eurQty <= 5_000_000;
@@ -537,21 +541,22 @@ function SpotTicket({ bid, ask, ticksLive, onOrder, onSent }: {
   const canSend = canWrite && ticksLive;
   const onEur = (v: number): void => {
     setEurQty(v);
-    setUsdQty(Math.round(v * mid));
+    setUsdQty(Math.round(v * mid) || 0);
   };
   const onUsd = (v: number): void => {
     setUsdQty(v);
-    setEurQty(Math.round(v / mid));
+    setEurQty(Math.round(v / mid) || 0);
   };
   // IB quantifies EUR.USD in EUR base units for both directions :
   // BUY = buy EUR / sell USD, SELL = buy USD / sell EUR.
   const send = async (side: "BUY" | "SELL"): Promise<void> => {
-    if (busy || !canSend || !valid) return;
+    if (busy || sendingRef.current || !canSend || !valid) return;
     const limit = spotLimitPrice(side, bid, ask);
     if (limit == null) {
       setErr("no live EUR.USD quote — spot order not sent");
       return;
     }
+    sendingRef.current = true;
     setBusy(true);
     setErr(null);
     setDone(null);
@@ -567,6 +572,7 @@ function SpotTicket({ bid, ask, ticksLive, onOrder, onSent }: {
       setErr(note);
       onOrder({ action: "open", label, side, qty: eurQty, state: "rejected", note });
     } finally {
+      sendingRef.current = false;
       setBusy(false);
     }
   };
@@ -968,8 +974,10 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const account = td?.account ?? EMPTY_ACCOUNT;
   const cash = td?.cash ?? [];
   // Live EURUSD bid/ask (RT.1) ; fallback to a synthetic spread around the reference spot.
-  const spotBid = ticks.data?.bid ?? DATA.SPOT - 0.0001;
-  const spotAsk = ticks.data?.ask ?? DATA.SPOT + 0.0001;
+  // No tick -> 0: the chart draws no last-price line and the spot ticket is
+  // paused (ticksLive), never a synthetic spread around the preview constant (#369).
+  const spotBid = ticks.data?.bid ?? 0;
+  const spotAsk = ticks.data?.ask ?? 0;
 
   return (
     <div className={"trade-grid " + (tweaks.density || "regular")}>

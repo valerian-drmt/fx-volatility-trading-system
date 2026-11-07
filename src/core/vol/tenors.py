@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import date
 
 # The 6 display pillars + their target DTE (days). Single source of truth.
 # Matches CME's listed monthly-serial range (1M..6M). 1M-5M are real listed
@@ -93,6 +94,33 @@ def interpolate_pillar(
         if target_dte - a_lo.dte <= extrap_margin_days:
             return dict(a_lo.iv_by_pillar), "interp"
     return None, "missing"
+
+
+# The fixed attribution / display ladder, and the DTE midpoints between the
+# nominal pillar DTEs (30/60/90/120/150/180) that bucket a position onto it.
+TENOR_LADDER: tuple[str, ...] = ("1M", "2M", "3M", "4M", "5M", "6M")
+_LADDER_EDGES: tuple[tuple[int, str], ...] = (
+    (45, "1M"), (75, "2M"), (105, "3M"), (135, "4M"), (165, "5M"),
+)
+
+
+def tenor_bucket_from_expiry(expiry: date | None, today: date) -> str | None:
+    """Bucket a position onto the 1M..6M ladder by its days to expiry (#377).
+
+    This is THE tenor a panel shows for an open position: ``open_position.tenor``
+    is the label it was entered with and never rolls (a 3M option is still
+    tagged "3M" the week it expires; a 1W option carried its own out-of-order
+    row), so the Position breakdown and the P&L attribution by tenor used to
+    disagree about which bucket a leg sits in. Anything under ~1M clamps into
+    1M, anything past ~6M into 6M, so only the six ladder pillars ever appear.
+    """
+    if expiry is None:
+        return None
+    dte = (expiry - today).days
+    for edge, label in _LADDER_EDGES:
+        if dte <= edge:
+            return label
+    return "6M"
 
 
 def nearest_listed_dte(target_dte: int, listed_dtes: list[int]) -> int | None:

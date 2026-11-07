@@ -4804,6 +4804,7 @@ export interface operations {
             query?: {
                 lookback_hours?: number;
                 group_by?: string | null;
+                source?: string;
             };
             header?: never;
             path?: never;

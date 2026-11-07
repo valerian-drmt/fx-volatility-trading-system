@@ -1322,6 +1322,9 @@ def serialize_spot_order(o: SpotOrder) -> dict[str, Any]:
         # IB orderId : the handle the auth-gated DELETE /orders/{id} cancels.
         "ib_order_id": int(o.ib_order_id) if (o.ib_order_id or "").isdigit() else None,
         "ib_perm_id": o.ib_perm_id,
+        # Raw IB status (PreSubmitted / Submitted / ...) + whyHeld: why a row waits (#376).
+        "ib_status": o.ib_status,
+        "why_held": o.why_held,
     }
 
 

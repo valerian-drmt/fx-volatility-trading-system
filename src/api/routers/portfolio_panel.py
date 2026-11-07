@@ -14,6 +14,7 @@ P1 + P2 + P3 shipped.
 """
 from __future__ import annotations
 
+import asyncio
 import itertools
 import json
 import logging
@@ -36,6 +37,7 @@ from core.risk.stress import reval_book
 from core.risk.var_factors import factor_var_breakdown
 from core.risk.vega_pca import N_CELLS, PC_NAMES, cell_index, project_vega
 from core.units import PIP_SIZE
+from core.vol.tenors import tenor_bucket_from_expiry
 from persistence.models import (  # noqa: F401
     AccountHistory,
     AppConfigScalar,
@@ -1066,28 +1068,72 @@ _ATTRIB_WING_ORDER = ("Put wing", "Body (ATM)", "Call wing", "Future / delta-1",
 
 
 def _attrib_tenor_bucket(expiry: date | None, today: date) -> str | None:
-    """Map a position to the fixed 6-pillar attribution ladder (1M..6M) by DTE.
+    """The 1M..6M ladder by DTE — one implementation in core, shared with
+    ``/positions/open`` (``tenor_now``) so the Position breakdown and the
+    attribution by tenor put a leg in the same bucket (#377)."""
+    return tenor_bucket_from_expiry(expiry, today)
 
-    The tenor pivot shows exactly these six pillars — NOT the OTC position bucket
-    (``_tenor_bucket``, which carries 1W/2W/9M/… and skips 4M/5M entirely, so a
-    ~4.7M future landed in "6M" and a 2W option showed as its own out-of-order
-    row). Anything shorter than ~1M clamps into 1M, anything past ~6M into 6M, so
-    only 1M..6M ever appear. Thresholds are the midpoints between the nominal
-    pillar DTEs (30/60/90/120/150/180)."""
-    if expiry is None:
+
+_ATTRIB_SOURCES = ("ib_live", "booked", "all")
+
+
+def _filter_source(rows: list[dict[str, Any]], source: str) -> list[dict[str, Any]]:
+    """Pure: keep the rows of one source. The by-trade panel always showed IB
+    legs only while the by-tenor matrix summed IB + booked, so their totals
+    could differ; both now read the same filtered set (#377)."""
+    if source == "all":
+        return rows
+    return [r for r in rows if r.get("source") == source]
+
+
+def _iv_fraction_to_pts(iv: float | None) -> float | None:
+    """IB-live ``open_position.iv`` is a FRACTION (0.0605) while ``vega_usd`` is
+    $ per VOL POINT, so V·dσ needs dσ in points: ×100. Without it the vega term
+    was 100× too small and its P&L leaked into the residual (#377)."""
+    return None if iv is None else float(iv) * 100.0
+
+
+def spot_at_or_before(bars: list[dict[str, Any]] | None, cutoff: datetime) -> float | None:
+    """Pure: close of the latest candle that OPENED at or before ``cutoff``
+    (``t`` = bar-open epoch ms, as the market-data engine stores them)."""
+    if not bars:
         return None
-    dte = (expiry - today).days
-    if dte <= 45:
-        return "1M"
-    if dte <= 75:
-        return "2M"
-    if dte <= 105:
-        return "3M"
-    if dte <= 135:
-        return "4M"
-    if dte <= 165:
-        return "5M"
-    return "6M"
+    cutoff_ms = cutoff.timestamp() * 1000.0
+    best: float | None = None
+    best_t = float("-inf")
+    for b in bars:
+        try:
+            t, c = float(b["t"]), float(b["c"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if t <= cutoff_ms and t > best_t:
+            best, best_t = c, t
+    return best
+
+
+async def _spot_fallbacks(
+    redis: aioredis.Redis | None, cutoff: datetime,
+) -> tuple[float | None, float | None]:
+    """(spot_now, spot_then) from the market-data cache when no open 6E future
+    carries a mark / a t-1 snapshot: ``latest_spot`` for now, the hourly 1W
+    bar cache for then. Spot, not the future's forward, but the basis is
+    stable over a day and dS is what the delta / gamma terms need. Best
+    effort: any Redis trouble reads as (None, None)."""
+    if redis is None:
+        return None, None
+    try:
+        raw_spot = await asyncio.wait_for(redis.get(keys.LATEST_SPOT.format(symbol="EURUSD")), 2.0)
+        raw_bars = await asyncio.wait_for(redis.get(keys.BARS.format(symbol="EURUSD", timeframe="1W")), 2.0)
+    except Exception:
+        return None, None
+    spot_now = float(raw_spot) if raw_spot not in (None, "", b"") else None
+    bars = None
+    if raw_bars:
+        try:
+            bars = json.loads(raw_bars)
+        except (TypeError, ValueError):
+            bars = None
+    return spot_now, spot_at_or_before(bars if isinstance(bars, list) else None, cutoff)
 
 
 def _attribution_groups(
@@ -1253,8 +1299,14 @@ async def _underlying_forward(
 @router.get("/pnl-attribution")
 async def pnl_attribution(
     db: DbDep,
+    redis: RedisDep,
     lookback_hours: int = Query(24, ge=1, le=168),  # 1h..7d
     group_by: str | None = Query(None),  # None → totals+per_position ; tenor → matrix
+    # Which legs feed the totals / groups. ib_live = the IB mirror the desk
+    # trades on (default, what every panel shows); booked = the legacy
+    # mock-mode book; all = both. Totals and groups are computed on the same
+    # filtered set, so the by-tenor and by-trade panels foot (#377).
+    source: str = Query("ib_live", pattern="^(ib_live|booked|all)$"),
 ) -> dict[str, Any]:
     """Decompose realized P&L into greek contributions over the window.
 
@@ -1403,6 +1455,21 @@ async def pnl_attribution(
     # own market_price (which is the premium) — else dS is the premium change, so
     # delta·dS is garbage, ½Γ·dS² collapses to 0 and the residual eats the P&L.
     forward, forward_then = await _underlying_forward(db, cutoff)
+    forward_source = "future_mark"
+    if forward is None or forward_then is None:
+        # No open 6E with a mark, or one opened inside the window (no t-1
+        # snapshot): every option's delta / gamma term was None and the
+        # panels read "—" for a book that was moving (#377). Fall back to the
+        # spot cache for whichever side is missing.
+        fb_now, fb_then = await _spot_fallbacks(redis, cutoff)
+        if forward is None and fb_now is not None:
+            forward = fb_now
+            forward_source = "spot_cache"
+        if forward_then is None and fb_then is not None:
+            forward_then = fb_then
+            forward_source = "spot_cache"
+        if forward is None or forward_then is None:
+            forward_source = "none"
 
     per_position: list[dict[str, Any]] = []
     for r in ib_rows:
@@ -1432,8 +1499,9 @@ async def pnl_attribution(
             vega_then_u = float(r.vega_then) if r.vega_then is not None else None
             theta_u = float(r.theta_now) if r.theta_now is not None else None
             theta_then_u = float(r.theta_then) if r.theta_then is not None else None
-            iv_now_u = float(r.iv_now) if r.iv_now is not None else None
-            iv_then_u = float(r.iv_then) if r.iv_then is not None else None
+            # IB-live iv is a fraction, vega_usd is $/vol point: dσ in points.
+            iv_now_u = _iv_fraction_to_pts(r.iv_now)
+            iv_then_u = _iv_fraction_to_pts(r.iv_then)
             gscale = 1.0 / PIP_SIZE   # open_position.gamma_usd is $/pip → Γ_$
         decomp = _decompose_row(
             now=now,
@@ -1502,14 +1570,22 @@ async def pnl_attribution(
     # 4b. Pivot mode : bucket the per-position Taylor terms by a grouping key into a
     #     P&L-attribution matrix (rows = groups, cols = greek P&L). The residual is
     #     re-derived per bucket (actual − Σ explained) so every row foots exactly.
+    per_position = _filter_source(per_position, source)
+    meta = {
+        "lookback_hours": lookback_hours,
+        "computed_at": now.isoformat(),
+        "source": source,
+        # where dS came from: future_mark (open 6E now and at t-1), spot_cache
+        # (market-data latest_spot / hourly bars for a missing side), none.
+        "forward_source": forward_source,
+        "window_start": cutoff.isoformat(),
+    }
+
     if group_by is not None:
         if group_by not in _ATTRIB_GROUP_KEYS:
             raise HTTPException(400, f"unknown group_by '{group_by}' (expected tenor / structure / wing)")
         groups, totals = _attribution_groups(per_position, group_by)
-        return {
-            "group_by": group_by, "lookback_hours": lookback_hours,
-            "computed_at": now.isoformat(), "groups": groups, "totals": totals,
-        }
+        return {"group_by": group_by, **meta, "groups": groups, "totals": totals}
 
     # 4. Aggregate. Sum across positions where the term is not None.
     def _sum(key: str) -> float | None:
@@ -1517,8 +1593,7 @@ async def pnl_attribution(
         return round(sum(vals), 2) if vals else None
 
     return {
-        "lookback_hours": lookback_hours,
-        "computed_at": now.isoformat(),
+        **meta,
         "totals": {
             "actual_pnl_usd": _sum("actual_pnl_usd"),
             "delta_pnl_usd": _sum("delta_pnl_usd"),

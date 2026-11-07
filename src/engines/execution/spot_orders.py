@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -48,10 +49,47 @@ _STATUS_TO_STATE: dict[str, str] = {
 
 _TERMINAL = frozenset({"filled", "cancelled", "rejected"})
 
+# IDEALPRO minimum price variation for EUR.USD. A limit off this grid is refused
+# by IB with error 110 ("price does not conform to the minimum price
+# variation") and the order shows up as cancelled with no reason (#376).
+SPOT_TICK = 0.00005
+
 
 def map_spot_status(ib_status: str | None) -> str | None:
     """Pure : IB status string -> our state, None when it carries no transition."""
     return _STATUS_TO_STATE.get(ib_status or "")
+
+
+def snap_spot_limit(price: float | None, side: str, tick: float = SPOT_TICK) -> float | None:
+    """Pure : snap a limit onto the IDEALPRO tick, toward the aggressive side
+    (SELL rounds down, BUY rounds up) so a marketable limit stays marketable.
+    1.12258 SELL -> 1.12255 ; 1.12258 BUY -> 1.12260."""
+    if price is None or price <= 0:
+        return price
+    steps = price / tick
+    n = math.floor(steps + 1e-9) if side.upper() == "SELL" else math.ceil(steps - 1e-9)
+    return round(n * tick, 5)
+
+
+def ib_reason_from_trade(trade: Any) -> str | None:
+    """IB's own words for a refusal, read off ``trade.log`` (ib_insync appends a
+    TradeLogEntry per status/error, the error ones carry ``errorCode`` and a
+    message like ``Error 110, reqId 12: The price does not conform ...``).
+    None when the log holds no error. Pure over a duck-typed trade."""
+    entries = list(getattr(trade, "log", None) or [])
+    for entry in reversed(entries):
+        code = getattr(entry, "errorCode", 0) or 0
+        msg = str(getattr(entry, "message", "") or "").strip()
+        if code or msg.lower().startswith("error"):
+            return msg[:300] or f"IB error {code}"
+    return None
+
+
+def ib_why_held(trade: Any) -> str | None:
+    """``orderStatus.whyHeld`` (IB's hint for a PreSubmitted order), or None."""
+    wh = getattr(getattr(trade, "orderStatus", None), "whyHeld", None)
+    wh = str(wh or "").strip()
+    return wh[:60] or None
 
 
 async def create_spot_order(
@@ -97,27 +135,44 @@ async def stamp_ib_ids(
         ls = getattr(c, "localSymbol", None)
         if ls:
             row.ib_local_symbol = str(ls)[:20]
-        _apply_status(row, status)
+        _apply_status(row, status, reason=ib_reason_from_trade(trade), why_held=ib_why_held(trade))
         await db.commit()
 
 
-def _apply_status(row: SpotOrder, ib_status: str | None) -> bool:
-    """Apply an IB status to the row ; True when the state changed. Filled is
+def _apply_status(
+    row: SpotOrder, ib_status: str | None, *,
+    reason: str | None = None, why_held: str | None = None,
+) -> bool:
+    """Apply an IB status to the row ; True when something changed. Filled is
     only confirmed by fills (``_on_fill``) so a stale 'Filled' status with no
-    execution can't mark a row filled with qty_filled=0."""
+    execution can't mark a row filled with qty_filled=0.
+
+    The raw IB status (PreSubmitted vs Submitted) and ``whyHeld`` are kept on
+    the row so the blotter can show WHERE a waiting order sits; a Cancelled
+    that comes with an IB error in the trade log is IB refusing the order, so
+    it lands as ``rejected`` with IB's text, not as a silent cancel (#376)."""
+    changed = False
+    if ib_status and row.ib_status != ib_status[:20]:
+        row.ib_status = ib_status[:20]
+        changed = True
+    if (why_held or None) != row.why_held:
+        row.why_held = why_held or None
+        changed = True
     new_state = map_spot_status(ib_status)
+    if new_state == "cancelled" and reason:
+        new_state = "rejected"
     if new_state is None or new_state == "filled":
-        return False
+        return changed
     if row.state in _TERMINAL:
-        return False
+        return changed
     if new_state == "submitted" and row.state == "partially_filled":
-        return False
+        return changed
     if new_state == row.state:
-        return False
+        return changed
     row.state = new_state
     row.state_updated_at = datetime.now(UTC)
     if new_state == "rejected":
-        row.rejection_text = (ib_status or "")[:300]
+        row.rejection_text = (reason or ib_status or "")[:300]
     return True
 
 
@@ -146,10 +201,12 @@ async def _on_status(
                 return
             if row.trace_id:
                 bind_trace_id(row.trace_id)
-            if _apply_status(row, status):
+            reason = ib_reason_from_trade(trade)
+            why_held = ib_why_held(trade)
+            if _apply_status(row, status, reason=reason, why_held=why_held):
                 await db.commit()
-                logger.info("spot_order_state id=%s ib=%s state=%s",
-                            spot_order_id, status, row.state)
+                logger.info("spot_order_state id=%s ib=%s state=%s why_held=%s reason=%s",
+                            spot_order_id, status, row.state, why_held, reason)
     except Exception:
         logger.exception("spot_on_status_failed id=%s", spot_order_id)
     finally:

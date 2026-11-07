@@ -38,6 +38,7 @@ interface BackendPosition {
   side?: string;
   quantity?: number | null;
   tenor?: string | null;
+  tenor_now?: string | null; // 1M..6M bucket by DTE, shared with the attribution by tenor (#377)
   expiry?: string | null;
   current_pnl_usd?: number | null;
   market_price?: number | null;
@@ -78,7 +79,10 @@ export function adaptPositions(raw: unknown, now: number): Position[] {
       structure: r.structure ?? r.product_label ?? "—",
       side: r.side ?? "BUY",
       qty: n(r.quantity),
-      tenor: r.tenor ?? "",
+      // The bucket by days-to-expiry, not the entry label: the Position
+      // breakdown and the attribution by tenor must file a leg under the
+      // same tenor (#377). Entry label kept as the fallback for old payloads.
+      tenor: r.tenor_now ?? r.tenor ?? "",
       expiry: r.expiry ?? "",
       strike: 0, // backend row carries no strike → table omits the "K" hint
       entry: n(r.contract_price_entry),

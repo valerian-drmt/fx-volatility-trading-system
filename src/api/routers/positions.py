@@ -35,6 +35,7 @@ from api.orchestration.position_monitor import build_position_monitor_scheduler
 from core.execution.reconciliation import classify_break
 from core.ledger import LedgerFill, fold_fills, unrealized_pnl
 from core.products import product_label_from_symbol
+from core.vol.tenors import tenor_bucket_from_expiry
 from persistence.models import (
     AppConfigScalar,  # replaces DeltaHedgeConfig (migration 024)
     BookedPosition,
@@ -280,6 +281,7 @@ async def list_open(db: DbDep) -> list[dict[str, Any]]:
     rows = (await db.execute(
         select(OpenPosition).order_by(desc(OpenPosition.entry_timestamp))
     )).scalars().all()
+    today = datetime.now(UTC).date()
 
     def _f(v):  # Decimal → float for JSON
         return float(v) if v is not None else None
@@ -298,7 +300,12 @@ async def list_open(db: DbDep) -> list[dict[str, Any]]:
         "side": r.side,
         # ── Spec ──
         "quantity": _f(r.quantity),
+        # ``tenor`` is the entry label and never rolls; ``tenor_now`` is the
+        # 1M..6M bucket by days to expiry, the same function the P&L
+        # attribution by tenor uses, so every panel files a leg under one
+        # tenor (#377).
         "tenor": r.tenor,
+        "tenor_now": tenor_bucket_from_expiry(r.expiry, today),
         "expiry": r.expiry.isoformat() if r.expiry else None,
         # ── P&L & pricing ──
         "current_pnl_usd": _f(r.current_pnl_usd),

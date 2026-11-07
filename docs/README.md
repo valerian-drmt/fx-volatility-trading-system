@@ -64,6 +64,7 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [execution/oms.md](execution/oms.md) | Order management: free-legs book, structure submit, reconciliation, reaper/projection/reservation. |
 | [execution/order-lifecycle.md](execution/order-lifecycle.md) | Submit → IB → fills → booked position; states, idempotency, partial fills. |
 | [execution/ib-integration.md](execution/ib-integration.md) | IB Gateway, ib_insync, the four client IDs, single-session-per-userid, paper vs live. |
+| [execution/position-figures.md](execution/position-figures.md) | Which table feeds Position breakdown vs P&L attribution by tenor / by trade; units per figure; the footing invariants. |
 
 ## Observability
 

@@ -7,7 +7,7 @@
  * book impact, §3 skew flag, §4 bundled hedge, §5 premium reconciliation).
  * Same JSX / classNames / logic as the prototype — only types + ES modules added.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtCcy, fmtCcySigned, gk$, pnlCls } from "./format";
 import { DATA, EMPTY_GREEKS, fmt } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
@@ -15,6 +15,7 @@ import { ApiError } from "../../api/client";
 import { createTradePreview, submitTrade, type TradePreview } from "../../api/endpoints";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
+import { buildLegs, gridStrike, ivAt, ladderColumn, livePillarStrike, pillarStrike, tenorIdx, type Leg, type StrikeResolver } from "./orderPillars";
 import { builderToLegs } from "./orderLegs";
 
 const GATE_TITLE = "write disabled — auth required (Phase 2)";
@@ -54,16 +55,6 @@ const STRUCT: Record<string, StructMeta> = {
   "Calendar": { mode: "cal", order: ["v", "t", "vn", "g"], naked: () => false },
   "Future": { mode: "future", order: ["d"], naked: () => false },
 };
-interface Leg {
-  instrument: string;
-  type: string;
-  side: string;
-  qty: number;
-  strike: number;
-  tenor: string;
-  iv: number;
-  prem: number;
-}
 
 interface LegDetail {
   prem: number;
@@ -99,103 +90,7 @@ export interface Prefill {
   label: string;
 }
 
-function tenorIdx(t: string): number {
-  return Math.max(0, TENORS.indexOf(t));
-}
-function pillarStrike(t: string, p: string): number {
-  const s = DATA.smileFor(tenorIdx(t));
-  const j = PILLARS.indexOf(p);
-  return s.pts[j] ? s.pts[j]!.strike : DATA.SPOT;
-}
-function ivAt(t: string, strike: number): number {
-  const sm = DATA.smileFor(tenorIdx(t));
-  let best = sm.pts[0]!,
-    bd = 1e9;
-  sm.pts.forEach((pt) => {
-    const d = Math.abs(pt.strike - strike);
-    if (d < bd) {
-      bd = d;
-      best = pt;
-    }
-  });
-  return best.iv;
-}
 
-function buildLegs(
-  product: string,
-  side: string,
-  tenor: string,
-  farTenor: string,
-  strike: number,
-  qty: number,
-  wing: string,
-  spreadSide: string,
-  spreadNear: string,
-  spreadFar: string,
-): Leg[] {
-  // `wing` is a full delta pillar ("25Δc" / "ATM"); symmetric wings use its level
-  // ("25Δ"), single-strike structures (straddle/calendar) use the pillar itself.
-  const atm = +pillarStrike(tenor, "ATM").toFixed(4);
-  const level = wing === "ATM" ? "ATM" : wing.replace(/[pc]$/, "");
-  const wc = level === "ATM" ? atm : +pillarStrike(tenor, level + "c").toFixed(4);
-  const wp = level === "ATM" ? atm : +pillarStrike(tenor, level + "p").toFixed(4);
-  const sharedK = wing === "ATM" ? atm : +pillarStrike(tenor, wing).toFixed(4);
-  // a vertical spread needs width : an ATM strike-Δ would collapse both legs onto
-  // ATM (zero greeks) → fall back to the 25Δ wing so the spread is always real.
-  const scStrike = level === "ATM" ? +pillarStrike(tenor, "25Δc").toFixed(4) : wc;
-  const spStrike = level === "ATM" ? +pillarStrike(tenor, "25Δp").toFixed(4) : wp;
-  const opp = side === "BUY" ? "SELL" : "BUY";
-  const mk = (typ: string, sd: string, k: number, ten: string, q?: number): Leg => {
-    const iv = ivAt(ten, k);
-    const prem = DATA.SPOT * (iv / 100) * Math.sqrt((tenorIdx(ten) + 1) / 12) * 0.42;
-    return { instrument: "EURUSD", type: typ, side: sd, qty: q == null ? qty : q, strike: k, tenor: ten, iv, prem };
-  };
-  switch (product) {
-    case "Vanilla Call":
-      return [mk("Call", side, strike, tenor)];
-    case "Vanilla Put":
-      return [mk("Put", side, strike, tenor)];
-    case "Straddle":
-      return [mk("Call", side, sharedK, tenor), mk("Put", side, sharedK, tenor)];
-    case "Strangle":
-      // put below ATM, call above ATM ; width-guarded so an ATM wing doesn't
-      // collapse both onto ATM (that would be a straddle, not a strangle).
-      return [mk("Put", side, spStrike, tenor), mk("Call", side, scStrike, tenor)];
-    case "Straddle/Strangle":
-      // 50Δ (ATM) → straddle (same strike) ; 10Δ/25Δ → strangle (put wp / call wc)
-      return wing === "ATM"
-        ? [mk("Call", side, atm, tenor), mk("Put", side, atm, tenor)]
-        : [mk("Put", side, wp, tenor), mk("Call", side, wc, tenor)];
-    case "Butterfly":
-      // Textbook call butterfly : long low + short 2× ATM body + long high (all
-      // calls, one type). Uses the width-guarded wings (scStrike/spStrike) so an
-      // ATM wing selection doesn't collapse all 3 legs onto ATM (zero greeks).
-      return [mk("Call", side, spStrike, tenor), mk("Call", opp, atm, tenor, qty * 2), mk("Call", side, scStrike, tenor)];
-    case "Risk Reversal":
-      return [mk("Call", side, wc, tenor), mk("Put", opp, wp, tenor)];
-    case "Call Spread":
-      // vertical : long ATM call, short higher-strike call (defined risk)
-      return [mk("Call", side, atm, tenor), mk("Call", opp, scStrike, tenor)];
-    case "Put Spread":
-      // vertical : long ATM put, short lower-strike put (defined risk)
-      return [mk("Put", side, atm, tenor), mk("Put", opp, spStrike, tenor)];
-    case "Call/Put Spread": {
-      // 2 same-type legs on one wing : near = long (higher |Δ|, closer to F),
-      // far = short (lower |Δ|). Side swaps long/short (debit ⇄ credit).
-      const suf = spreadSide === "call" ? "c" : "p";
-      const typ = spreadSide === "call" ? "Call" : "Put";
-      const kFor = (lvl: string): number =>
-        lvl === "ATM" ? atm : +pillarStrike(tenor, lvl + suf).toFixed(4);
-      return [mk(typ, side, kFor(spreadNear), tenor), mk(typ, opp, kFor(spreadFar), tenor)];
-    }
-    case "Calendar":
-      return [mk("Call", opp, sharedK, tenor), mk("Call", side, sharedK, farTenor)];
-    case "Future":
-      return [{ instrument: "EURUSD", type: "Future", side, qty, strike: DATA.SPOT, tenor: "Sep26", iv: 0, prem: 0 }];
-    default:
-      return [];
-  }
-}
 
 // Surface a backend error as one readable line. Handles the plain {detail:"…"},
 // the {detail:{message}} submit shape, AND the execution-engine 502 envelopes
@@ -349,7 +244,12 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const mult = isFut ? CONTRACTS[csize]! : CONTRACTS["6E (€125k)"]!;
   // notional is sized in EUR (the 6E/M6E contracts are EUR-denominated); show its
   // USD leg too so the panel stays coherent whichever side is the call.
-  const spotMid = ((ticks.data?.bid ?? DATA.SPOT) + (ticks.data?.ask ?? DATA.SPOT)) / 2;
+  // Live mid once a tick has arrived (a stale stream keeps its last value);
+  // only a desk that never received one anchors on the preview constant, and
+  // says so next to every spot it prints (#369).
+  const ticksSeen = ticks.data != null;
+  const spotMid = ticksSeen ? ((ticks.data!.bid ?? 0) + (ticks.data!.ask ?? 0)) / 2 || DATA.SPOT : DATA.SPOT;
+  const spotNote = !ticksSeen ? "no live quote" : ticks.status !== "live" ? "stale" : "";
   const nominalEur = qty * mult;
   const nominalUsd = nominalEur * spotMid;
   // The side flips the currency legs : BUY EUR/USD = long EUR (+€) / short USD (−$) ;
@@ -363,10 +263,28 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const activeWing = meta.mode === "vspread"
     ? (spreadNear === "ATM" ? "ATM" : spreadNear + (spreadSide === "call" ? "c" : "p"))
     : wing;
+  const liveAtm = gridStrike(spotMid);
+  // ONE strike per pillar for the buttons, the legs AND the ladder (#379): the
+  // mock smile only lends its shape (offset from its own ATM); the level is live.
+  const livePillar = useCallback(
+    (t: string, p: string): number => livePillarStrike(liveAtm, t, p, pillarStrike),
+    [liveAtm],
+  );
+  // Preview IV for a live strike: the pillar whose LIVE strike is nearest, read
+  // off the mock smile by pillar (not by raw strike, which sat 400 pips away).
+  const liveIvAt = useCallback(
+    (t: string, k: number): number =>
+      ivAt(t, pillarStrike(t, PILLARS[ladderColumn(k, t, PILLARS, livePillar)]!)),
+    [livePillar],
+  );
+  const live = useMemo<StrikeResolver>(
+    () => ({ strike: livePillar, iv: liveIvAt, spot: spotMid }),
+    [livePillar, liveIvAt, spotMid],
+  );
+  const liveStrikeFor = (w: string): number => livePillar(tenor, w);
   // MARKET IV tracks the strike Δ chosen in contract details (not fixed to ATM) :
   // single-strike vanillas read the hand-typed strike, everything else the wing.
-  const mktIvStrike = meta.mode === "single" ? strike : pillarStrike(tenor, activeWing);
-  const mktIv = ivAt(tenor, mktIvStrike);
+  const mktIv = meta.mode === "single" ? liveIvAt(tenor, strike) : ivAt(tenor, pillarStrike(tenor, activeWing));
   const mktIvLabel = meta.mode === "single" ? `IV ${tenor}` : `${activeWing} IV ${tenor}`;
   // Calendar has two expiries → also surface the far-tenor IV in MARKET.
   const farIv = ivAt(farTenor, pillarStrike(farTenor, activeWing));
@@ -387,18 +305,13 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   // Anchor the single-strike default + the Δ-pillar shortcuts to the live ATM,
   // snapped to the 0.005 CME grid. (Structured products send delta_pillar and the
   // backend resolves strikes from the live surface, so they're unaffected.)
-  const gridStrike = (s: number): number => +(Math.round(s / 0.005) * 0.005).toFixed(4);
-  const liveAtm = gridStrike(spotMid);
-  const mockAtm = pillarStrike(tenor, "ATM");
-  const liveStrikeFor = (w: string): number =>
-    w === "ATM" ? liveAtm : gridStrike(liveAtm + (pillarStrike(tenor, w) - mockAtm));
   useEffect(() => {
     // keep the vanilla strike on the live ATM until the trader picks one
     if (meta.mode === "single" && !userStrikeRef.current) setStrike(liveAtm);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveAtm, meta.mode, tenor]);
 
-  const legs = useMemo(() => buildLegs(product, side, tenor, farTenor, strike, qty, wing, spreadSide, spreadNear, spreadFar), [product, side, tenor, farTenor, strike, qty, wing, spreadSide, spreadNear, spreadFar]);
+  const legs = useMemo(() => buildLegs(product, side, tenor, farTenor, strike, qty, wing, spreadSide, spreadNear, spreadFar, live), [product, side, tenor, farTenor, strike, qty, wing, spreadSide, spreadNear, spreadFar, live]);
   // EUR/USD call = right to buy EUR vs USD → "EUR Call / USD Put" (and the inverse for a put)
   const callPutLabel = [
     legs.some((l) => l.type === "Call") ? "EUR Call / USD Put" : null,
@@ -685,19 +598,15 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
           const cols: Leg[][] = PILLARS.map(() => []);
           for (const l of legs) {
             if (l.type === "Future") continue;
-            let best = 0, bestD = Infinity;
-            PILLARS.forEach((p, i) => {
-              const d = Math.abs(pillarStrike(l.tenor, p) - l.strike);
-              if (d < bestD) { bestD = d; best = i; }
-            });
-            cols[best]!.push(l);
+            // Same resolver as the Strike Δ buttons: the column IS the pillar (#379).
+            cols[ladderColumn(l.strike, l.tenor, PILLARS, livePillar)]!.push(l);
           }
           // multiplier relative to the base (smallest) leg qty → a doubled leg
           // (e.g. a butterfly's 2× ATM body) reads "2× Call 3M Short".
           const baseQty = Math.min(...legs.map((l) => l.qty));
           return (
             <div className="strike-ladder">
-              <div className="sl-title"><span>Legs on the smile</span><em className="unit mono">spot {DATA.SPOT.toFixed(4)}</em></div>
+              <div className="sl-title"><span>Legs on the smile</span><em className="unit mono">spot {ticksSeen ? spotMid.toFixed(4) : "\u2014"}{spotNote ? ` (${spotNote})` : ""}</em></div>
               <div className="sl-axis">
                 {PILLARS.map((p, i) => (
                   <div key={p} className="sl-col">
@@ -722,7 +631,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
       <div className="builder-block block-mkt">
         <div className="block-tag">MARKET</div>
         <div className="mkt-rows">
-          <div><span>Spot bid/ask</span><b className="mono">{(ticks.data?.bid ?? DATA.SPOT - 0.0001).toFixed(5)}/{(ticks.data?.ask ?? DATA.SPOT + 0.0001).toFixed(5)}</b></div>
+          <div><span>Spot bid/ask</span><b className="mono">{ticksSeen ? `${(ticks.data!.bid ?? 0).toFixed(5)}/${(ticks.data!.ask ?? 0).toFixed(5)}` : "\u2014 / \u2014"}{spotNote && <span className="dim small"> {spotNote}</span>}</b></div>
           {showWingSkew ? (
             <>
               <div><span>{wingLevel}c IV {tenor}</span><b className="mono">{callWingIv.toFixed(1)}%</b></div>

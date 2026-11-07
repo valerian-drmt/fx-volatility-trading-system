@@ -5,6 +5,7 @@
  *
  * Staleness thresholds reflect each engine's cadence: ticks fast, vol ~3 min.
  */
+import { useNow } from "./useNow";
 import { useWebSocket } from "./useWebSocket";
 import { type Fresh, makeFresh } from "../voldesk/data/freshness";
 
@@ -16,7 +17,11 @@ const WARN_MS = {
 
 function useStream<T>(path: string | null, warnMs: number, throttleMs = 0): Fresh<T> {
   const { last, asOf } = useWebSocket<T>(path, undefined, throttleMs);
-  return makeFresh<T>(last, asOf, warnMs);
+  // Re-derive the status on a 1 s clock: a stream that goes quiet (gateway
+  // restart, WS dropped) turns stale on its own instead of staying "live"
+  // until the next message re-renders it (#369).
+  const now = useNow(last !== null);
+  return makeFresh<T>(last, asOf, warnMs, now);
 }
 
 export interface TickMsg {
