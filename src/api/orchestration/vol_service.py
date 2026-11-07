@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from redis import asyncio as aioredis
@@ -11,11 +11,13 @@ from sqlalchemy.dialects.postgresql import array as pg_array
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.schemas.vol import (
+    STALE_AFTER_S,
     SmilePoint,
     SmileResponse,
     SurfaceResponse,
     TermStructureResponse,
     TermStructureRow,
+    VolSource,
 )
 from bus import keys
 from core.vol.tenors import DISPLAY_PILLARS, to_display_surface
@@ -33,6 +35,25 @@ _SMILE_ORDER: tuple[tuple[str, str, str], ...] = (
 
 class VolNotFound(Exception):
     """No vol data for the requested (symbol, timestamp, tenor) — caller returns 404."""
+
+
+def _as_dt(ts: datetime | str) -> datetime:
+    dt = datetime.fromisoformat(ts.replace("Z", "+00:00")) if isinstance(ts, str) else ts
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def staleness(ts: datetime | str, source: VolSource, now: datetime | None = None) -> dict[str, Any]:
+    """The four contract fields for a payload stamped ``ts`` from ``source``.
+    Pure; ``now`` is injectable for tests."""
+    as_of = _as_dt(ts)
+    age = max(0.0, ((now or datetime.now(UTC)) - as_of).total_seconds())
+    return {
+        "as_of": as_of,
+        "source": source,
+        # A synthetic grid is never fresh, whatever its stamp says.
+        "stale": source == "synthetic" or age > STALE_AFTER_S,
+        "age_s": round(age, 1),
+    }
 
 
 async def get_latest_surface(
@@ -55,6 +76,7 @@ async def get_latest_surface(
             # Re-key the raw listed-tenor surface onto the 6 display pillars
             # (1M,2M,3M,6M,9M,1Y), interpolating gaps + flagging source.
             surface=to_display_surface(payload.get("surface", {})),
+            **staleness(payload["timestamp"], "live"),
         )
     if db is not None:
         base = select(VolSurface).where(VolSurface.underlying == symbol)
@@ -82,6 +104,7 @@ async def get_latest_surface(
                 symbol=row.underlying,
                 timestamp=row.timestamp,
                 surface=to_display_surface(dict(row.surface_data or {})),
+                **staleness(row.timestamp, "last-complete"),
             )
     raise VolNotFound(f"No latest vol surface for symbol={symbol}")
 
@@ -100,6 +123,7 @@ async def get_surface_at(
         symbol=row.underlying,
         timestamp=row.timestamp,
         surface=to_display_surface(dict(row.surface_data or {})),
+        **staleness(row.timestamp, "historical"),
     )
 
 
@@ -201,7 +225,8 @@ async def get_term_structure(
             )
         )
     return TermStructureResponse(
-        symbol=surface.symbol, timestamp=surface.timestamp, pillars=rows
+        symbol=surface.symbol, timestamp=surface.timestamp, pillars=rows,
+        as_of=surface.as_of, source=surface.source, stale=surface.stale, age_s=surface.age_s,
     )
 
 
@@ -243,6 +268,7 @@ async def get_smile(
     return SmileResponse(
         symbol=row.underlying,
         timestamp=row.timestamp,
+        **staleness(row.timestamp, "last-complete"),
         tenor=tenor,
         dte=pillar.get("dte"),
         points=points,

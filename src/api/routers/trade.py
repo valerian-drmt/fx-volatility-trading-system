@@ -27,6 +27,7 @@ from api.auth import require_write
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.book_state_refresh import refresh_book_state
 from api.orchestration.pretrade_gate import run_pretrade_gate
+from bus import keys
 from core.execution.revalidation import revalidate_preview
 from core.execution.slippage import compute_limit_price
 from core.products import product_label_from_symbol
@@ -269,7 +270,7 @@ async def _read_surface_redis(symbol: str = "EURUSD") -> tuple[dict[str, Any] | 
         client = get_redis_client_or_none()
         if client is None:
             return None, 999.0
-        raw = await client.get(f"latest_vol_surface:{symbol}")
+        raw = await client.get(keys.LATEST_VOL_SURFACE.format(symbol=symbol))
         if not raw:
             return None, 999.0
         import json
@@ -372,12 +373,16 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
     limits = apply_regime_to_limits(raw_limits, regime)
     book = await _load_book(db, symbol, limits.get("starting_capital_usd", 100000.0))
     surface, surface_age_s = await _read_surface_redis(symbol)
+    surface_source = "live"
     if surface is None:
         # In manual mode markets-closed sandbox, fall back to a synthetic surface
         # so the user can still exercise the UX. Real flow needs Redis surface.
+        # The payload says so (#328): ``surface_source="synthetic"``, a warning,
+        # and the age is NOT reported as 0 any more.
         if manual_mode:
             surface = _synthetic_surface()
-            surface_age_s = 0.0
+            surface_age_s = 999.0
+            surface_source = "synthetic"
         else:
             raise HTTPException(503, "surface unavailable (vol-engine down or markets closed)")
 
@@ -653,6 +658,10 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         "state": state,
         "blocking_reasons": blocking,
         "surface_age_seconds": surface_age_s,
+        # Where the surface came from (#328): live | synthetic. A synthetic
+        # grid is a sandbox convenience; it never passes iv_data_fresh.
+        "surface_source": surface_source,
+        "warnings": (["synthetic_surface"] if surface_source == "synthetic" else []),
         # Spot used for the pricing/greeks computation. Echoed back so the
         # frontend can render "Market data · Spot" without a separate
         # /vol/term-structure round-trip (which sometimes returns no

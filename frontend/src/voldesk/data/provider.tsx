@@ -54,6 +54,7 @@ import {
   TicksContext,
   type TradeData,
   type VarData,
+  type VolSource,
 } from "./deskData";
 import { type Fresh } from "./freshness";
 import { adaptConfig } from "./live/config";
@@ -100,14 +101,22 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
     ivZ: number[][];
     sources: ("listed" | "interp" | "missing")[];
     asOf?: number | null;
+    source?: VolSource;
   }>(
     async () => {
       const raw = await fetchVolSurface();
       // The server's own stamp (vol-engine cycle time): the grid's age is the
       // age of the last complete grid, not of the last successful GET (#369).
-      const ts = (raw as { timestamp?: string | null }).timestamp;
+      // Contract since #328: as_of + source + stale; timestamp is the legacy
+      // name of as_of.
+      const r = raw as { as_of?: string | null; timestamp?: string | null; source?: string | null };
+      const ts = r.as_of ?? r.timestamp;
       const asOf = ts ? Date.parse(ts) : NaN;
-      return { ...adaptSurface(raw), asOf: Number.isFinite(asOf) ? asOf : null };
+      return {
+        ...adaptSurface(raw),
+        asOf: Number.isFinite(asOf) ? asOf : null,
+        source: (r.source ?? null) as VolSource,
+      };
     },
     VOL_WARN_MS,
     true,
@@ -326,6 +335,7 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
             tenors: liveSurface.data.tenors,
             deltas: DELTA_LABELS,
             sources: liveSurface.data.sources,
+            source: liveSurface.data.source ?? null,
           }
         : null,
     }),
