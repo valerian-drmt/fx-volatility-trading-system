@@ -13,6 +13,7 @@ from shared.trace import (
     bind_request_start,
     bind_trace_id,
     clear_request_start,
+    clear_trace_id,
     trace_headers,
 )
 
@@ -21,6 +22,10 @@ from shared.trace import (
 def _clean() -> None:
     latency.reset_for_tests()
     clear_request_start()
+    clear_trace_id()
+    yield
+    clear_request_start()
+    clear_trace_id()
 
 
 def _hist_count(name: str, **labels: str) -> float:
