@@ -55,8 +55,9 @@ class FREDSource(EventSource):
         self.horizon_days = horizon_days
 
     async def fetch(self) -> list[RawEvent]:
-        end = (date.today() + timedelta(days=self.horizon_days)).isoformat()
-        start = date.today().isoformat()
+        today = datetime.now(UTC).date()
+        end = (today + timedelta(days=self.horizon_days)).isoformat()
+        start = today.isoformat()
         params = {
             "api_key": self.api_key,
             "file_type": "json",

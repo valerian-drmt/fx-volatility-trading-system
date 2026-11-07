@@ -29,8 +29,42 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
 
 JSONB_PORTABLE = JSON().with_variant(JSONB(), "postgresql")
+
+
+class MoneyNumeric(TypeDecorator):
+    """Exact in the database, convenient in Python (#326, audit 05#8).
+
+    Execution money and prices used to be ``Float`` (binary) while the ledger
+    tables were ``Numeric``. The column is now ``NUMERIC(p, s)``; a float, an
+    int or a Decimal binds (floats go through ``str`` so 2.37 stays 2.37) and
+    the value reads back as a plain float, so the call sites, the JSON
+    payloads and the tests that compare with float literals are untouched.
+    Policy table: ``docs/architecture/database.md``.
+    """
+
+    impl = Numeric
+    cache_ok = True
+
+    def __init__(self, precision: int = 15, scale: int = 2) -> None:
+        super().__init__(precision, scale)
+
+    def process_bind_param(self, value, dialect):  # type: ignore[override]
+        if value is None:
+            return None
+        if isinstance(value, Decimal):
+            return value
+        return Decimal(str(value))
+
+    def process_result_value(self, value, dialect):  # type: ignore[override]
+        return None if value is None else float(value)
+
+
+Money = MoneyNumeric(15, 2)    # USD amounts: premium, commission, slippage, cost, P&L
+Price = MoneyNumeric(18, 8)    # prices, strikes, spots
+Pct = MoneyNumeric(10, 4)      # IVs in percent
 
 
 class Base(DeclarativeBase):
@@ -645,10 +679,10 @@ class TradeStructure(Base):
     state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     ib_combo_order_id: Mapped[str | None] = mapped_column(String(40))
     execution_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="mock")
-    total_premium_paid_usd: Mapped[float | None] = mapped_column(Float)
-    total_slippage_usd: Mapped[float | None] = mapped_column(Float)
-    total_commission_usd: Mapped[float | None] = mapped_column(Float)
-    total_entry_cost_usd: Mapped[float | None] = mapped_column(Float)
+    total_premium_paid_usd: Mapped[float | None] = mapped_column(Money)
+    total_slippage_usd: Mapped[float | None] = mapped_column(Money)
+    total_commission_usd: Mapped[float | None] = mapped_column(Money)
+    total_entry_cost_usd: Mapped[float | None] = mapped_column(Money)
     first_fill_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     fully_filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -701,16 +735,16 @@ class StructureOrder(Base):
     contract_symbol: Mapped[str] = mapped_column(String(10), nullable=False, default="EUR")
     contract_type: Mapped[str] = mapped_column(String(10), nullable=False)
     contract_expiry: Mapped[date | None] = mapped_column(Date)
-    contract_strike: Mapped[float | None] = mapped_column(Float)
+    contract_strike: Mapped[float | None] = mapped_column(Price)
     contract_exchange: Mapped[str] = mapped_column(String(10), nullable=False, default="CME")
     contract_currency: Mapped[str] = mapped_column(String(5), nullable=False, default="USD")
     side: Mapped[str] = mapped_column(String(5), nullable=False)
     qty: Mapped[int] = mapped_column(Integer, nullable=False)
     order_type: Mapped[str] = mapped_column(String(10), nullable=False, default="LMT")
-    limit_price: Mapped[float | None] = mapped_column(Float)
+    limit_price: Mapped[float | None] = mapped_column(Price)
     time_in_force: Mapped[str] = mapped_column(String(5), nullable=False, default="DAY")
-    preview_iv_pct: Mapped[float | None] = mapped_column(Float)
-    preview_price: Mapped[float | None] = mapped_column(Float)
+    preview_iv_pct: Mapped[float | None] = mapped_column(Pct)
+    preview_price: Mapped[float | None] = mapped_column(Price)
     state: Mapped[str] = mapped_column(String(25), nullable=False)
     state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -722,11 +756,11 @@ class StructureOrder(Base):
     rejection_code: Mapped[str | None] = mapped_column(String(20))
     rejection_text: Mapped[str | None] = mapped_column(String(300))
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    avg_fill_price: Mapped[float | None] = mapped_column(Float)
-    total_commission_usd: Mapped[float | None] = mapped_column(Float, default=0.0)
+    avg_fill_price: Mapped[float | None] = mapped_column(Price)
+    total_commission_usd: Mapped[float | None] = mapped_column(Money, default=0.0)
     fully_filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    slippage_per_contract: Mapped[float | None] = mapped_column(Float)
-    total_slippage_usd: Mapped[float | None] = mapped_column(Float)
+    slippage_per_contract: Mapped[float | None] = mapped_column(Price)
+    total_slippage_usd: Mapped[float | None] = mapped_column(Money)
     # Migration 046 : correlation id (denormalised from the parent structure) so
     # the async fill callbacks can re-bind it — their logs then carry the same id
     # as the originating request. See shared.trace.
@@ -749,18 +783,18 @@ class StructureFill(Base):
     ib_execution_id: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False)
-    fill_price: Mapped[float] = mapped_column(Float, nullable=False)
-    commission_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    fill_price: Mapped[float] = mapped_column(Price, nullable=False)
+    commission_usd: Mapped[float] = mapped_column(Money, nullable=False, default=0.0)
     # Currency of the fill / commission as IB reports it (migration 056, #322):
     # a 6E leg is USD, but nothing recorded it, and a CommissionReport can be
     # in another currency than the contract.
     currency: Mapped[str | None] = mapped_column(String(5))
     exchange: Mapped[str | None] = mapped_column(String(10))
     side: Mapped[str] = mapped_column(String(5), nullable=False)
-    spot_at_fill: Mapped[float | None] = mapped_column(Float)
-    bid_at_fill: Mapped[float | None] = mapped_column(Float)
-    ask_at_fill: Mapped[float | None] = mapped_column(Float)
-    iv_implied_from_fill: Mapped[float | None] = mapped_column(Float)
+    spot_at_fill: Mapped[float | None] = mapped_column(Price)
+    bid_at_fill: Mapped[float | None] = mapped_column(Price)
+    ask_at_fill: Mapped[float | None] = mapped_column(Price)
+    iv_implied_from_fill: Mapped[float | None] = mapped_column(Pct)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     # Migration 046 : correlation id (denormalised from the order) so a fill row
     # points straight back to its request's logs. See shared.trace.
@@ -847,22 +881,22 @@ class BookedPosition(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     structure_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_structure.id"), nullable=False, unique=True)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    entry_premium_usd: Mapped[float] = mapped_column(Float, nullable=False)
-    entry_total_cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
+    entry_premium_usd: Mapped[float] = mapped_column(Money, nullable=False)
+    entry_total_cost_usd: Mapped[float] = mapped_column(Money, nullable=False)
     state: Mapped[str] = mapped_column(String(15), nullable=False, default="open")
     state_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     entry_vega_usd_per_volpt: Mapped[float | None] = mapped_column(Float)
     entry_gamma_usd_per_pip2: Mapped[float | None] = mapped_column(Float)
     entry_theta_usd_per_day: Mapped[float | None] = mapped_column(Float)
-    entry_spot: Mapped[float | None] = mapped_column(Float)
-    entry_iv_avg: Mapped[float | None] = mapped_column(Float)
+    entry_spot: Mapped[float | None] = mapped_column(Price)
+    entry_iv_avg: Mapped[float | None] = mapped_column(Pct)
     entry_regime: Mapped[str | None] = mapped_column(String(20))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     close_reason: Mapped[str | None] = mapped_column(String(80))
-    exit_premium_usd: Mapped[float | None] = mapped_column(Float)
-    exit_total_cost_usd: Mapped[float | None] = mapped_column(Float)
-    gross_pnl_usd: Mapped[float | None] = mapped_column(Float)
-    net_pnl_usd: Mapped[float | None] = mapped_column(Float)
+    exit_premium_usd: Mapped[float | None] = mapped_column(Money)
+    exit_total_cost_usd: Mapped[float | None] = mapped_column(Money)
+    gross_pnl_usd: Mapped[float | None] = mapped_column(Money)
+    net_pnl_usd: Mapped[float | None] = mapped_column(Money)
     # IB reconciliation (filled by execution-engine.position_sync each 30 s).
     ib_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ib_qty_total: Mapped[int | None] = mapped_column(Integer)
@@ -925,7 +959,7 @@ class SpotOrder(Base):
     side: Mapped[str] = mapped_column(String(5), nullable=False)      # BUY / SELL (base ccy)
     qty: Mapped[int] = mapped_column(Integer, nullable=False)          # base-ccy notional
     order_type: Mapped[str] = mapped_column(String(10), nullable=False, default="LMT")
-    limit_price: Mapped[float | None] = mapped_column(Float)
+    limit_price: Mapped[float | None] = mapped_column(Price)
     ib_order_id: Mapped[str | None] = mapped_column(String(40))
     ib_perm_id: Mapped[str | None] = mapped_column(String(40))
     ib_local_symbol: Mapped[str | None] = mapped_column(String(20))   # "EUR.USD"
@@ -935,8 +969,8 @@ class SpotOrder(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(),
     )
     qty_filled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    avg_fill_price: Mapped[float | None] = mapped_column(Float)
-    commission_usd: Mapped[float | None] = mapped_column(Float)
+    avg_fill_price: Mapped[float | None] = mapped_column(Price)
+    commission_usd: Mapped[float | None] = mapped_column(Money)
     filled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejection_text: Mapped[str | None] = mapped_column(String(300))
     trace_id: Mapped[str | None] = mapped_column(String(32))
@@ -1040,10 +1074,10 @@ class HedgeOrder(Base):
     hedge_qty: Mapped[int] = mapped_column(Integer, nullable=False)
     side: Mapped[str] = mapped_column(String(5), nullable=False)
     ib_order_id: Mapped[str | None] = mapped_column(String(40))
-    fill_price: Mapped[float | None] = mapped_column(Float)
-    commission_usd: Mapped[float | None] = mapped_column(Float)
-    spread_paid_usd: Mapped[float | None] = mapped_column(Float)
-    total_cost_usd: Mapped[float | None] = mapped_column(Float)
+    fill_price: Mapped[float | None] = mapped_column(Price)
+    commission_usd: Mapped[float | None] = mapped_column(Money)
+    spread_paid_usd: Mapped[float | None] = mapped_column(Money)
+    total_cost_usd: Mapped[float | None] = mapped_column(Money)
     state: Mapped[str] = mapped_column(String(15), nullable=False)
 
 

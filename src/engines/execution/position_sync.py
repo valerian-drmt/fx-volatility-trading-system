@@ -57,7 +57,7 @@ def _expiry_to_date(s: str | None) -> date | None:
     if not s:
         return None
     try:
-        return datetime.strptime(s, "%Y%m%d").date()
+        return datetime.strptime(s, "%Y%m%d").replace(tzinfo=UTC).date()
     except ValueError:
         return None
 

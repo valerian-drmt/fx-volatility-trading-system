@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from redis import asyncio as aioredis
@@ -80,7 +80,7 @@ async def get_current(session: AsyncSession) -> ConfigRecord:
         return ConfigRecord(
             version=0,
             config=VolTradingConfig(),
-            updated_at=datetime.now().astimezone(),
+            updated_at=datetime.now(UTC).astimezone(),
             updated_by=None,
             comment="no rows yet, returning pydantic defaults",
         )

@@ -74,6 +74,26 @@ config). The config body is stored as JSONB, so adding a Pydantic field needs no
 migration. On write, the admin endpoint publishes the new version number on the
 `config:changed` Redis channel and the engines hot-reload without a restart.
 
+## Numeric policy (#326)
+
+| Kind of value | Column type | Python side |
+|---|---|---|
+| USD amounts: premium, commission, slippage, cost, realised / unrealised P&L | `NUMERIC(15, 2)` | `MoneyNumeric` → bound from float / Decimal, read back as float |
+| prices, strikes, spots, forwards, fill prices | `NUMERIC(18, 8)` | same decorator (`Price`) |
+| IVs in percent | `NUMERIC(10, 4)` | same decorator (`Pct`) |
+| ledger tables (`account_history`, `open_position*`, `booked_position_metric_history`) | `Numeric`, read as `Decimal` | unchanged: these feed sums and are converted at the serialiser |
+| risk metrics that are not money (greeks, thresholds, z-scores, ratios) | `Float` | plain floats |
+
+Why both: the ledger code already handles `Decimal`; the execution code and
+every JSON payload expect floats, so the execution tables get exactness in
+the database without a Decimal migration of the call sites. Migration 061
+converted the execution money columns; a new money column uses `Money` /
+`Price` / `Pct`, never `Float`.
+
+Timestamps are timezone-aware everywhere: `DateTime(timezone=True)` on
+every column and ruff's `DTZ` rules reject a naive `datetime.now()`,
+`utcnow()`, `date.today()` or a `strptime` without a zone.
+
 ## Migrations
 
 Schema changes are Alembic revisions under `src/persistence/migrations/versions/`
