@@ -107,10 +107,12 @@ function EmpiricalHist({ hist, var95, var99, es99, retk, letter, note, h = 88 }:
   );
 }
 
+// One horizon: the backend's. A full-revaluation VaR does not obey sqrt-t,
+// so the weekly / monthly / yearly rows that used to be sqrt-t multiples of
+// the 1-day figure are gone (#316, audit 03#6).
 interface VarRow {
   id: string;
   lbl: string;
-  days: number; // horizon in trading days → √t scaling (1 / 5 / 21 / 252)
 }
 interface VarCalc {
   v95: number | null;
@@ -129,44 +131,30 @@ function methodLabel(method: string | null, n: number): string {
 }
 
 function VarCard({ var95, var99, es99, meanDaily, nDays, method, hist, fresh, positions }: { var95: number | null; var99: number | null; es99: number | null; meanDaily: number | null; nDays: number; method: string | null; hist: HistBin[]; fresh: Fresh<unknown>; positions: Position[] }): JSX.Element {
-  const rows: VarRow[] = [
-    { id: "1d", lbl: "Daily", days: 1 },
-    { id: "1w", lbl: "Weekly", days: 5 },
-    { id: "1M", lbl: "Monthly", days: 21 },
-    { id: "1Y", lbl: "Yearly", days: 252 },
-  ];
+  const rows: VarRow[] = [{ id: "1d", lbl: "Daily" }];
   // The backend nulls every stat until it has VAR_MIN_DAYS of daily net-liq
   // deltas. Show dashes + a warm-up note rather than $0k VaR (a 0 loss is not
   // "no risk", it's "not computed yet").
   const ready = var95 !== null && var99 !== null && es99 !== null;
   const warmup = ready ? null : `accumulating history — ${nDays}/${VAR_MIN_DAYS} days`;
   const src = methodLabel(method, nDays);
-  // ES/VaR is horizon-invariant under √t scaling → the live 1d ratio holds for
-  // every row (no hardcoded per-horizon ratio).
   const ratio = ready && var99 !== null && var99 !== 0 && es99 !== null ? es99 / var99 : null;
-  const [tf, setTf] = useState("1d");
   const kc = (vk: number | null): string => {
     if (vk === null) return "—";
     const s = vk < 0 ? "−" : "+";
     const a = Math.abs(vk);
     return s + "$" + (a >= 1000 ? (a / 1000).toFixed(2) + "M" : Math.round(a) + "k");
   };
-  const calc = (r: VarRow): VarCalc => {
-    // √t scaling derived from the horizon (not hardcoded multipliers).
-    const m = Math.sqrt(r.days);
-    const v95 = var95 === null ? null : var95 * m,
-      v99 = var99 === null ? null : var99 * m,
-      es = es99 === null ? null : es99 * m;    // live 1d ES, √t-scaled
-    const retk = meanDaily === null ? null : meanDaily * r.days; // mean daily P&L ($k) × horizon
+  const calc = (): VarCalc => {
+    // The backend's 1-day figures as they are: no horizon multiplier.
+    const v95 = var95, v99 = var99, es = es99;
+    const retk = meanDaily; // mean daily P&L ($k)
     const sig = v95 === null ? 0 : Math.abs(v95) / 1.645;
     return { v95, v99, es, retk, muZ: sig && retk !== null ? retk / sig : null };
   };
-  const sel = rows.find((r) => r.id === tf) ?? rows[0]!,
-    c = calc(sel);
-  // empirical 1d distribution scaled to the selected horizon (same √t the table uses).
-  const selM = Math.sqrt(sel.days);
-  const histScaled = hist.map((b) => ({ lo: b.lo * selM, hi: b.hi * selM, count: b.count }));
-  const letter = ({ "1d": "D", "1w": "W", "1M": "M", "1Y": "Y" } as Record<string, string>)[sel.id] ?? "D";
+  const sel = rows[0]!,
+    c = calc();
+  const letter = "D";
   return (
     <Panel title="Value at Risk" dataPp="var" right={<PanelLive status={fresh.status} />} className="stress-panel">
       <div className="var-1x3">
@@ -178,9 +166,9 @@ function VarCard({ var95, var99, es99, meanDaily, nDays, method, hist, fresh, po
               </tr></thead>
               <tbody>
                 {rows.map((r) => {
-                  const x = calc(r);
+                  const x = calc();
                   return (
-                    <tr key={r.id} className={"var-row " + (r.id === tf ? "row-now" : "")} onClick={() => setTf(r.id)}>
+                    <tr key={r.id} className="var-row row-now">
                       <td className="l mono">{r.id} <span className="dim">{r.lbl}</span></td>
                       <td className={"r mono " + pnlCls(x.retk ?? 0)}>
                         {kc(x.retk)}
@@ -198,23 +186,12 @@ function VarCard({ var95, var99, es99, meanDaily, nDays, method, hist, fresh, po
           </div>
         </Panel>
         <Panel title="P&L distribution" dataPp="var-chart" right={<FreshBadge fresh={fresh} label={method === "historical-simulation" ? "simulated" : "empirical"} />} className="trade-block">
-          <div className="var-tf-group in-chart">
-            {rows.map((r) => (
-              <button
-                key={r.id}
-                className={"chip " + (r.id === tf ? "on" : "")}
-                onClick={() => setTf(r.id)}
-              >
-                {r.id}
-              </button>
-            ))}
-          </div>
           <div className="ret-chart">
-            <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · {src}</span></div>
-            <EmpiricalHist hist={histScaled} var95={c.v95 ?? 0} var99={c.v99 ?? 0} es99={c.es ?? 0} retk={c.retk ?? 0} letter={letter} note={warmup ?? undefined} />
+            <div className="ret-title">P&L distribution <span className="dim">· {sel.lbl} · 1-day · {src}</span></div>
+            <EmpiricalHist hist={hist} var95={c.v95 ?? 0} var99={c.v99 ?? 0} es99={c.es ?? 0} retk={c.retk ?? 0} letter={letter} note={warmup ?? undefined} />
             {warmup ? null : (
               <div className="hist-leg dim mono">
-                <span><i className="lg-line mu" />return (D/W/M/Y)</span>
+                <span><i className="lg-line mu" />mean daily return</span>
                 <span><i className="lg-line w" />VaR 95%</span>
                 <span><i className="lg-line n" />VaR 99%</span>
                 <span><i className="lg-dot" />ES (tail mean)</span>

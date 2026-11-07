@@ -885,7 +885,10 @@ async def _submit_preview_impl(
                     current_z_revalidate = float(latest_for_pc.z_score)
         if current_z_revalidate is None:
             current_z_revalidate = armed_z_revalidate
-    surface_age = float(payload_for_revalidation.get("surface_age_seconds") or 0.0)
+    # None (unknown) stays None: the revalidation gate fails closed on it in
+    # live mode instead of reading a missing age as "fresh" (EX-08, #339).
+    _raw_age = payload_for_revalidation.get("surface_age_seconds")
+    surface_age = float(_raw_age) if _raw_age is not None else None
     limits_for_revalidation = await _load_limits(db)
     regime_for_revalidation = await _load_regime(db)
     revalidation = revalidate_preview(
@@ -897,7 +900,10 @@ async def _submit_preview_impl(
         current_z=current_z_revalidate,
         z_threshold_min=limits_for_revalidation.get("z_threshold_min", 1.5),
         surface_age_seconds=surface_age,
-        max_iv_age_seconds=limits_for_revalidation.get("max_iv_data_age_seconds", 120.0),
+        max_iv_age_seconds=(
+            limits_for_revalidation.get("max_iv_data_age_seconds", 120.0)
+            if execution_mode == "live" else None
+        ),
         current_regime=regime_label(regime_for_revalidation) if regime_for_revalidation else None,
     )
     if not revalidation.passed:

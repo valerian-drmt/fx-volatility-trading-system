@@ -33,6 +33,23 @@ export function feedState(status: FreshStatus, marketOpen: boolean): FeedState {
   return { label: "no feed", tone: "down" };
 }
 
+/** Desk-wide banner while the market is closed (#347): says the grids on
+ * screen are the last complete ones and from when, instead of letting a
+ * Friday surface pass for a live one. `null` while the market is open. */
+export function closedBanner(
+  marketOpen: boolean,
+  gridAsOf: number | null | undefined,
+  source: string | null | undefined,
+): string | null {
+  if (marketOpen) return null;
+  if (gridAsOf == null) return "Markets closed · no complete grid yet";
+  const when = new Date(gridAsOf).toLocaleString("en-GB", {
+    day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC",
+  });
+  const what = source === "last-complete" ? "last complete grid" : "grid";
+  return `Markets closed · ${what} from ${when} UTC`;
+}
+
 export const FEED_TONE_COLOR: Record<FeedTone, string> = {
   open: "var(--pos)",
   closed: "var(--neg)", // red like the dev status badge: closed is a state to notice

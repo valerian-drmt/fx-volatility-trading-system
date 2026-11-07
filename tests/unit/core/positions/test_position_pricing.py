@@ -79,7 +79,11 @@ def test_price_position_falls_back_to_entry_iv():
     assert out.legs[0].iv_used == pytest.approx(0.08)
 
 
-def test_price_position_zero_when_no_iv_available():
+def test_price_position_flags_an_unpriceable_leg_instead_of_marking_it_zero():
+    # Audit R3-01 shape (07#9): this test used to assert ``mark_value_usd == 0``
+    # for a real position with no IV, i.e. "no data" rendered as "worth
+    # nothing". The mark is now reported as incomplete: the caller (the
+    # position monitor) keeps its fallback path instead of booking a zero.
     legs = [LegSpec(
         leg_idx=0, contract_type="call", strike=1.0850,
         expiry=date(2026, 8, 4), tenor="3M", side="BUY", qty=10,
@@ -89,5 +93,22 @@ def test_price_position_zero_when_no_iv_available():
         legs=legs, surface=None, spot=1.0850,
         now=datetime(2026, 5, 4, tzinfo=UTC),
     )
-    assert out.mark_value_usd == 0
-    assert out.legs[0].iv_used == 0
+    assert out.n_unpriced == 1 and out.n_surface_missing == 1
+    assert out.complete is False
+    assert out.legs[0].iv_source == "none" and out.legs[0].iv_used == 0
+    assert out.legs[0].qty_signed == 0, "an unpriced leg contributes no greeks"
+    assert out.mark_value_usd == 0, "nothing priced => nothing summed (not a market value)"
+
+
+def test_price_position_is_complete_when_every_leg_has_an_iv():
+    legs = [LegSpec(
+        leg_idx=0, contract_type="call", strike=1.0850,
+        expiry=date(2026, 8, 4), tenor="3M", side="BUY", qty=10,
+        fallback_iv=0.08,
+    )]
+    out = price_position(
+        legs=legs, surface=None, spot=1.0850,
+        now=datetime(2026, 5, 4, tzinfo=UTC),
+    )
+    assert out.complete is True and out.n_unpriced == 0
+    assert out.n_surface_missing == 1 and out.legs[0].iv_source == "fallback"

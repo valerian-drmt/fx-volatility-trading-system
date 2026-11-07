@@ -4,7 +4,7 @@
  * while it is open is the problem.
  */
 import { describe, expect, it } from "vitest";
-import { feedState, isFxMarketOpen } from "../marketHours";
+import { closedBanner, feedState, isFxMarketOpen } from "../marketHours";
 
 const at = (iso: string): Date => new Date(iso);
 
@@ -30,5 +30,19 @@ describe("feedState", () => {
   });
   it("a live stream is Market open even if the calendar disagrees (holiday session, clock skew)", () => {
     expect(feedState("live", false)).toEqual({ label: "Market open", tone: "open" });
+  });
+});
+
+describe("closedBanner", () => {
+  const friday = Date.UTC(2026, 10, 6, 21, 59);
+  it("is silent while the market is open", () => {
+    expect(closedBanner(true, friday, "last-complete")).toBeNull();
+  });
+  it("names the last complete grid and its UTC stamp while closed", () => {
+    expect(closedBanner(false, friday, "last-complete")).toBe("Markets closed · last complete grid from 06 Nov, 21:59 UTC");
+    expect(closedBanner(false, friday, "live")).toBe("Markets closed · grid from 06 Nov, 21:59 UTC");
+  });
+  it("says so when no grid has been persisted yet", () => {
+    expect(closedBanner(false, null, null)).toBe("Markets closed · no complete grid yet");
   });
 });

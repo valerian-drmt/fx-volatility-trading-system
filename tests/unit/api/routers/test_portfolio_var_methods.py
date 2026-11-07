@@ -106,10 +106,13 @@ class _Pos:
 @pytest.fixture
 def book(monkeypatch: pytest.MonkeyPatch):
     """Patch the book resolution so the tests never need a real DB row set."""
-    def _set(spot, baselines):
+    def _set(spot, baselines, dropped=None, fallback=None):
         async def _fake(_db):
-            # (spot, baselines, spot_source) since #310
-            return spot, baselines, "future_mark" if spot is not None else None
+            # ResolvedBook since #316: what was priced, what was not, and why.
+            return pp.ResolvedBook(
+                spot, baselines, "future_mark" if spot is not None else None,
+                list(dropped or []), dict(fallback or {}),
+            )
         monkeypatch.setattr(pp, "_resolve_book", _fake)
     return _set
 
@@ -128,6 +131,17 @@ async def test_var_prefers_historical_simulation(book):
     assert out["es_99_usd"] <= out["var_99_usd"] <= out["var_95_usd"] < 0
     # The chart plots the same population the quantiles came from.
     assert sum(b["count"] for b in out["hist"]) == out["n_days"]
+    # The payload names its convention and what it could not price (#316).
+    assert out["convention"] == "pnl_quantile" and out["horizon_days"] == 1
+    assert out["dropped"] == [] and out["fallback"] == {}
+
+
+async def test_var_reports_dropped_rows_and_the_spot_proxy(book):
+    book(1.10, _straddle(), dropped=[{"id": "13", "reason": "no_iv"}], fallback={"spot": "strike_proxy"})
+    out = await value_at_risk(_FakeDb(), _FakeRedis(_bars()))
+    assert out["n_positions"] == 2, "n_positions counts what was priced"
+    assert out["dropped"] == [{"id": "13", "reason": "no_iv"}]
+    assert out["fallback"] == {"spot": "strike_proxy"}
 
 
 async def test_var_falls_back_when_the_bar_cache_is_empty(book):

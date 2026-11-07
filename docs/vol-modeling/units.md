@@ -60,6 +60,11 @@ spot to print `delta_usd`), `gamma` $ per pip, `vega` $ per vol point,
 `vanna` $ per vol point, `volga` $ per vol point², `theta` $ per day, `pnl`
 in USD.
 
+A vol shock that would push an option's IV through zero prices the option
+at `IV_FLOOR` (0.1 vol pt) instead of skipping it (audit R3-19, #339): the
+leg then contributes its near-intrinsic value and its delta to the most
+violent vol-down scenarios rather than a silent zero.
+
 ## Preview → entry snapshot → monitor (`core.units`)
 
 | Quantity | Formula | Unit |

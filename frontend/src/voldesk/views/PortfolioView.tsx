@@ -17,6 +17,7 @@ import { useFetch } from "../../hooks/useFetch";
 import { useTicks } from "../data/deskData";
 import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
+import { WsChip } from "../components/WsChip";
 import { gk$, pnlCls } from "../components/format";
 import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
 import { groupByTradeId, structureName, structureSide } from "../components/tradeGrouping";
@@ -1055,7 +1056,7 @@ function ValuationChart({
 }
 
 export function PortfolioView(): JSX.Element {
-  const { portfolio, trade } = useDeskData();
+  const { portfolio, trade, streams } = useDeskData();
   const pd = portfolio.data;
   // Honest empty states: zeros until the live snapshot lands — never
   // fabricated book data (remediation 05 WI-2).
@@ -1121,7 +1122,7 @@ export function PortfolioView(): JSX.Element {
       <Panel
         title="Account & capital"
         dataPp="account"
-        right={<FreshBadge fresh={portfolio} label="IB account" />}
+        right={<><WsChip status={streams.account} /> <FreshBadge fresh={portfolio} label="IB account" /></>}
         className="acct-panel"
       >
         <div className="acct-cols">

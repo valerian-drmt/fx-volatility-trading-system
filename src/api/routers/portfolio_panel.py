@@ -18,6 +18,7 @@ import asyncio
 import itertools
 import json
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
@@ -52,6 +53,7 @@ from core.risk.hist_var import market_shocks, portfolio_pnl, simulate_pnl_by_pos
 from core.risk.marginal_var import component_var
 from core.risk.stress import reval_book
 from core.risk.var_factors import factor_var_breakdown
+from core.risk.var_stats import MIN_OBS, finite, quantile, var_summary
 from core.risk.vega_pca import N_CELLS, PC_NAMES, cell_index, project_vega
 from core.units import PIP_SIZE
 from persistence.models import (  # noqa: F401
@@ -764,21 +766,39 @@ _LADDER_AXES: dict[str, tuple[list[int], str, str]] = {
 _OUTPUTS = ("pnl", "delta", "gamma", "vega", "theta", "vanna", "volga")
 
 
-async def _resolve_book(
-    db: AsyncSession,
-) -> tuple[float | None, list[dict[str, Any]], str | None]:
-    """Resolve OPEN positions → (current_spot, baselines, spot_source) for
-    ``reval_book``.
+@dataclass(frozen=True)
+class ResolvedBook:
+    """What the stress / VaR endpoints price, and what they could not (#316,
+    audit 03#5): every open row is either in ``baselines`` or in ``dropped``
+    with a reason, and ``fallback`` names any proxy the numbers rest on."""
+
+    spot: float | None
+    baselines: list[dict[str, Any]]
+    spot_source: str | None
+    dropped: list[dict[str, Any]]
+    fallback: dict[str, str]
+
+    @property
+    def n_open(self) -> int:
+        return len(self.baselines) + len(self.dropped)
+
+
+async def _resolve_book(db: AsyncSession) -> ResolvedBook:
+    """Resolve OPEN positions -> ``ResolvedBook`` for ``reval_book``.
 
     Spot proxy : any FUTURE market_price (``spot_source="future_mark"``), else
     an option strike (``"strike_proxy"``: an ATM-ish guess that can be tens of
     pips off; every stress / ladder number built on it is approximate, and the
-    response says so instead of hiding it — audit 03#5, #310).
+    response says so in ``fallback`` instead of hiding it — audit 03#5, #310).
+
     Each option baseline stores the per-unit BS ``price_base`` at current iv.
+    An option with no iv, no expiry or an unparseable symbol is not silently
+    skipped: it lands in ``dropped`` with the reason, and ``n_positions``
+    counts only what was priced.
     """
     open_positions = (await db.execute(select(OpenPosition))).scalars().all()
     if not open_positions:
-        return None, [], None
+        return ResolvedBook(None, [], None, [], {})
 
     current_spot: float | None = None
     spot_source: str | None = None
@@ -798,14 +818,18 @@ async def _resolve_book(
                     "stress_spot_strike_proxy position_id=%s strike=%s", p.id, spec.strike,
                 )
                 break
+    fallback: dict[str, str] = {"spot": "strike_proxy"} if spot_source == "strike_proxy" else {}
     if current_spot is None:
-        return None, [], None
+        dropped_all = [{"id": str(p.id), "reason": "no_spot"} for p in open_positions]
+        return ResolvedBook(None, [], None, dropped_all, fallback)
 
     today = datetime.now(UTC).date()
     baselines: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
     for p in open_positions:
         spec = parse_local_symbol(p.structure)
         if spec is None:
+            dropped.append({"id": str(p.id), "reason": "unparseable_symbol"})
             continue
         qty_signed = float(p.quantity) * (1.0 if p.side == "BUY" else -1.0)
         if spec.instrument_type == "FUTURE":
@@ -823,7 +847,15 @@ async def _resolve_book(
                 "K": float(spec.strike), "T": T, "iv": iv_dec, "right": right,
                 "price_base": bs_price(current_spot, float(spec.strike), T, iv_dec, right),
             })
-    return current_spot, baselines, spot_source
+        else:
+            reason = (
+                "no_iv" if not p.iv
+                else "no_expiry" if not p.expiry
+                else "unsupported_contract"
+            )
+            dropped.append({"id": str(p.id), "reason": reason})
+            logger.warning("stress_position_dropped position_id=%s reason=%s", p.id, reason)
+    return ResolvedBook(current_spot, baselines, spot_source, dropped, fallback)
 
 
 @router.get("/stress-grid")
@@ -842,10 +874,11 @@ async def stress_grid(
     if output not in _OUTPUTS:
         raise HTTPException(422, f"output must be one of {_OUTPUTS}")
     row_bins, row_kw, row_unit = _STRESS_ROW_AXES[axis]
-    current_spot, baselines, spot_source = await _resolve_book(db)
+    book = await _resolve_book(db)
+    current_spot, baselines, spot_source = book.spot, book.baselines, book.spot_source
     base = {
         "current_spot": round(current_spot, 5) if current_spot else None,
-        "spot_source": spot_source,
+        "spot_source": spot_source, "dropped": book.dropped, "fallback": book.fallback,
         "axis": axis, "output": output,
         "spot_bins_bps": _STRESS_SPOT_BPS, "row_bins": row_bins, "row_unit": row_unit,
         "n_positions": len(baselines),
@@ -877,10 +910,11 @@ async def greeks_ladder(
     Δ/Γ/Vega revalued at that shock. ``hedge_delta_usd = −delta_usd``. The
     ``axis`` column name (``dspot_bps``/``dvol_vps``/…) reflects the chosen axis."""
     bins, kw, unit = _LADDER_AXES[axis]
-    current_spot, baselines, spot_source = await _resolve_book(db)
+    book = await _resolve_book(db)
+    current_spot, baselines, spot_source = book.spot, book.baselines, book.spot_source
     base = {
         "current_spot": round(current_spot, 5) if current_spot else None,
-        "spot_source": spot_source,
+        "spot_source": spot_source, "dropped": book.dropped, "fallback": book.fallback,
         "axis": axis, "bins": bins, "unit": unit, "n_positions": len(baselines),
     }
     if axis == "spot":
@@ -917,7 +951,8 @@ async def vega_pca(db: DbDep) -> dict[str, Any]:
     loadings + stds then give the book's vega P&L sensitivity to each PC
     (level / slope / curvature) -- see ``core.risk.vega_pca``.
     """
-    current_spot, baselines, spot_source = await _resolve_book(db)
+    book = await _resolve_book(db)
+    current_spot, baselines, spot_source = book.spot, book.baselines, book.spot_source
     opts = [b for b in baselines if b["type"] == "OPTION"]
     vega_cells = [0.0] * N_CELLS
     if current_spot is not None:
@@ -930,7 +965,7 @@ async def vega_pca(db: DbDep) -> dict[str, Any]:
     ).scalar_one_or_none()
     base = {
         "current_spot": round(current_spot, 5) if current_spot else None,
-        "spot_source": spot_source,
+        "spot_source": spot_source, "dropped": book.dropped, "fallback": book.fallback,
         "n_positions": len(opts),
     }
     if model is None:
@@ -965,7 +1000,8 @@ async def marginal_var(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """
     positions = (await db.execute(select(OpenPosition))).scalars().all()
     if not positions:
-        return {"positions": [], "total": None, "n_days": 0, "method": "historical-simulation"}
+        return {"positions": [], "total": None, "n_days": 0, "method": "historical-simulation",
+                "convention": "loss", "horizon_days": 1, "dropped": [], "fallback": {}}
     meta: dict[str, dict[str, Any]] = {}
     for pos in positions:
         cand = {
@@ -1018,7 +1054,16 @@ async def marginal_var(db: DbDep, redis: RedisDep) -> dict[str, Any]:
         {"portfolio_var_usd": res["portfolio_var_usd"], "diversification_pct": res["diversification_pct"]}
         if out else None
     )
-    return {"positions": out, "total": total, "n_days": res["n_days"], "method": method}
+    dropped = list(sim["meta"]["dropped"]) if sim is not None else []
+    dropped += res.get("dropped", [])
+    return {
+        "positions": out, "total": total, "n_days": res["n_days"], "method": method,
+        # Positive USD losses here; /var serves P&L quantiles (negative = loss).
+        # One helper decides both: core.risk.var_stats.
+        "convention": "loss", "horizon_days": 1,
+        "dropped": dropped,
+        "fallback": dict(sim["meta"]["fallback"]) if sim is not None else {},
+    }
 
 
 @router.get("/var-factors")
@@ -1029,12 +1074,13 @@ async def var_factors(db: DbDep) -> dict[str, Any]:
     revalued via ``core.risk.var_factors`` — derived entirely from the live book
     (the shock sizes are documented desk assumptions). Empty when the book/spot is missing.
     """
-    spot, baselines, spot_source = await _resolve_book(db)
+    book = await _resolve_book(db)
+    spot, baselines, spot_source = book.spot, book.baselines, book.spot_source
     if spot is None or not baselines:
         return {"current_spot": round(spot, 5) if spot else None, "n_positions": 0, "factors": []}
     return {
         "current_spot": round(spot, 5),
-        "spot_source": spot_source,
+        "spot_source": spot_source, "dropped": book.dropped, "fallback": book.fallback,
         "n_positions": len(baselines),
         "factors": factor_var_breakdown(baselines, spot),
     }
@@ -1336,21 +1382,15 @@ async def scenarios(db: DbDep) -> dict[str, Any]:
 # ───────────────────────── P4 — Trade holdings + performance (R11 G) ─────────
 
 
-def _percentile(sorted_vals: list[float], q: float) -> float | None:
-    """Linear-interpolated q-quantile (q in [0,1]) of an already-sorted list."""
-    if not sorted_vals:
-        return None
-    rank = q * (len(sorted_vals) - 1)
-    lo = int(rank)
-    hi = min(lo + 1, len(sorted_vals) - 1)
-    return sorted_vals[lo] + (rank - lo) * (sorted_vals[hi] - sorted_vals[lo])
+# The percentile, the sign and the clamps live in core.risk.var_stats (#316).
+_percentile = quantile
 
 
 # Max calendar-day span for two net-liq samples to count as a 1-day P&L delta.
 # 3 absorbs Fri→Mon weekends; anything longer is a data gap / capital move.
 _VAR_MAX_GAP_DAYS = 3
 # Below this the empirical quantiles are noise, whatever the method.
-_VAR_MIN_OBS = 5
+_VAR_MIN_OBS = MIN_OBS
 # Historical simulation has a full year of bars to draw on, so hold it to a much
 # higher bar than the account-history fallback: a 99% quantile off a part-filled
 # cache (a few weeks of bars) would be a worse number than no number at all.
@@ -1358,19 +1398,15 @@ _HIST_SIM_MIN_SCENARIOS = 60
 
 
 def _var_stats(deltas: list[float]) -> dict[str, float] | None:
-    """Pure compute (unit-tested): historical 1d VaR 95/99 + ES 99 (mean of the
-    losses at or below the 99% quantile) from a list of net-liq daily changes.
-    `None` when < ``_VAR_MIN_OBS`` observations. Values are losses (negative)."""
-    if len(deltas) < _VAR_MIN_OBS:
+    """Historical 1d VaR 95/99 + ES 99 from a P&L series, through the one
+    helper (``core.risk.var_stats``): finite values only, positive losses
+    clamped and ordered there, turned into P&L quantiles (negative = loss)
+    here because ``/var`` plots them on the P&L axis. ``None`` when fewer than
+    ``_VAR_MIN_OBS`` observations."""
+    summary = var_summary(deltas, min_obs=_VAR_MIN_OBS)
+    if summary is None:
         return None
-    s = sorted(deltas)
-    var95 = _percentile(s, 0.05)
-    var99 = _percentile(s, 0.01)
-    if var95 is None or var99 is None:
-        return None
-    tail = [x for x in s if x <= var99]
-    es99 = sum(tail) / len(tail) if tail else var99
-    return {"var_95": var95, "var_99": var99, "es_99": es99, "n": float(len(deltas))}
+    return {"var_95": -summary.var_95, "var_99": -summary.var_99, "es_99": -summary.es_99, "n": float(summary.n)}
 
 
 def _histogram(values: list[float], nbins: int = 0) -> list[dict[str, float]]:
@@ -1695,7 +1731,8 @@ async def _hist_sim(db: AsyncSession, redis: aioredis.Redis) -> dict[str, Any] |
     Returns the portfolio P&L vector, the per-position vectors keyed by open
     position id, and scenario metadata — or ``None`` when the book or the bar
     cache is missing, i.e. when there is nothing to simulate."""
-    spot, baselines, spot_source = await _resolve_book(db)
+    book = await _resolve_book(db)
+    spot, baselines, spot_source = book.spot, book.baselines, book.spot_source
     if spot is None or not baselines:
         return None
     shocks = market_shocks(await _daily_closes(redis))
@@ -1707,7 +1744,7 @@ async def _hist_sim(db: AsyncSession, redis: aioredis.Redis) -> dict[str, Any] |
         "by_id": {str(b["id"]): vec for b, vec in zip(baselines, by_position, strict=True)},
         "meta": {
             "current_spot": round(spot, 5),
-            "spot_source": spot_source,
+            "spot_source": spot_source, "dropped": book.dropped, "fallback": book.fallback,
             "n_positions": len(baselines),
             "n_scenarios": len(shocks),
         },
@@ -1735,11 +1772,13 @@ async def value_at_risk(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """
     sim = await _hist_sim(db, redis)
     if sim is not None:
-        pnl = sim["pnl"]
+        pnl = finite(sim["pnl"])
         stats = _var_stats(pnl)
         return {
             "computed_at": datetime.now(UTC).isoformat(),
             "method": "historical-simulation",
+            "convention": "pnl_quantile",
+            "horizon_days": 1,
             "n_days": len(pnl),
             "mean_daily_usd": round(sum(pnl) / len(pnl), 2) if pnl else None,
             "var_95_usd": round(stats["var_95"], 2) if stats else None,
@@ -1761,16 +1800,21 @@ async def value_at_risk(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     # multi-day hole (system downtime, capital deposit/withdrawal) is NOT a daily
     # loss — including it injects a huge phantom tail that dominates VaR/ES and
     # the histogram. Skip any step spanning more than the configured gap.
-    deltas = [
+    deltas = finite(
         nav[i][1] - nav[i - 1][1]
         for i in range(1, len(nav))
         if (nav[i][0] - nav[i - 1][0]).days <= max_gap
-    ]
+    )
     stats = _var_stats(deltas)
     mean_daily = sum(deltas) / len(deltas) if deltas else None
     return {
         "computed_at": (rollup_at or datetime.now(UTC)).isoformat(),
         "method": "account-history",
+        "convention": "pnl_quantile",
+        "horizon_days": 1,
+        "window_days": lookback,
+        "dropped": [],
+        "fallback": {},
         "n_days": len(deltas),
         # live mean daily P&L → the table's expected-return column (× horizon),
         # no longer a hardcoded assumed return.
