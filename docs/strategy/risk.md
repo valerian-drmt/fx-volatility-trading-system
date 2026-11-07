@@ -8,7 +8,7 @@ contributions, and keeps net delta inside a band. All the math is pure
 ## Greeks
 
 Per-leg greeks come from Black-76 (`bs_greeks` in
-[`structures.py`](../../src/engines/execution/structures.py)), aggregated signed
+[`core/structures.py`](../../src/core/structures.py)), aggregated signed
 across legs. The book tracks six sensitivities:
 
 | Greek | Unit | Meaning |

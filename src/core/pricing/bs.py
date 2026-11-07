@@ -1,6 +1,21 @@
 """
-Black-Scholes pricer for EUR FX options (zero rates approximation).
-Used for local greeks computation (no IB calls).
+Black-Scholes (Black-76 on the forward) for EUR FX options. THE pricing
+kernel: ``core.trade_preview`` and ``core.structures`` price through these
+functions, the vectorised ``core.risk.greeks`` mirrors them (#331).
+
+Conventions (``docs/vol-modeling/pricing.md``):
+
+* undiscounted, zero rates — the forward is the CME future; premium-paid
+  FOPs carry a known bias of about ``r_USD * T`` that is documented, not
+  modelled;
+* ``T`` in years, ``sigma`` as a fraction (0.07), ``right`` in {"C", "P"};
+* every function returns a plain ``float`` (never a numpy scalar: the preview
+  stores comparisons on these in JSON columns);
+* at the boundary (``T <= 0`` or ``sigma <= 0``) the price is the intrinsic
+  value and the greeks their limits (delta = the step, gamma / vega / theta /
+  vanna / volga = 0): an option on expiry day is worth its intrinsic, not
+  zero (audit QM-01); ``F <= 0`` / ``K <= 0`` is not an option at all and
+  prices 0 with zero greeks.
 """
 from __future__ import annotations
 
@@ -10,80 +25,112 @@ from scipy.optimize import brentq
 from scipy.stats import norm
 
 
+def _intrinsic(F: float, K: float, right: str) -> float:
+    return max(F - K, 0.0) if right == "C" else max(K - F, 0.0)
+
+
+def _degenerate(F: float, K: float, T: float, sigma: float) -> bool:
+    """True when there is no diffusion left to price: expiry or zero vol."""
+    return T <= 0 or sigma <= 0
+
+
+def _invalid(F: float, K: float) -> bool:
+    return F <= 0 or K <= 0 or not (math.isfinite(F) and math.isfinite(K))
+
+
+def _d1(F: float, K: float, T: float, sigma: float) -> float:
+    return (math.log(F / K) + 0.5 * sigma ** 2 * T) / (sigma * math.sqrt(T))
+
+
 def bs_price(F: float, K: float, T: float, sigma: float, right: str) -> float:
-    """BS option price (undiscounted, zero rates)."""
-    if sigma <= 0 or T <= 0 or F <= 0 or K <= 0:
+    """Option price (undiscounted). Intrinsic at expiry / zero vol."""
+    if _invalid(F, K):
         return 0.0
-    d1 = (math.log(F / K) + 0.5 * sigma ** 2 * T) / (sigma * math.sqrt(T))
+    if _degenerate(F, K, T, sigma):
+        return _intrinsic(F, K, right)
+    d1 = _d1(F, K, T, sigma)
     d2 = d1 - sigma * math.sqrt(T)
     if right == "C":
-        return F * norm.cdf(d1) - K * norm.cdf(d2)
-    return K * norm.cdf(-d2) - F * norm.cdf(-d1)
+        return float(F * norm.cdf(d1) - K * norm.cdf(d2))
+    return float(K * norm.cdf(-d2) - F * norm.cdf(-d1))
 
 
 def bs_delta(F: float, K: float, T: float, sigma: float, right: str) -> float:
-    """BS delta."""
-    if sigma <= 0 or T <= 0 or F <= 0 or K <= 0:
+    """Delta. At the boundary the step: call 1 if F > K else 0, put -1 if F < K else 0."""
+    if _invalid(F, K):
         return 0.0
-    d1 = (math.log(F / K) + 0.5 * sigma ** 2 * T) / (sigma * math.sqrt(T))
+    if _degenerate(F, K, T, sigma):
+        if right == "C":
+            return 1.0 if F > K else 0.0
+        return -1.0 if F < K else 0.0
+    d1 = _d1(F, K, T, sigma)
     if right == "C":
-        return norm.cdf(d1)
-    return norm.cdf(d1) - 1.0
+        return float(norm.cdf(d1))
+    return float(norm.cdf(d1) - 1.0)
 
 
 def bs_gamma(F: float, K: float, T: float, sigma: float) -> float:
-    """BS gamma (same for call and put)."""
-    if sigma <= 0 or T <= 0 or F <= 0 or K <= 0:
+    """Gamma (same for call and put); 0 at the boundary."""
+    if _invalid(F, K) or _degenerate(F, K, T, sigma):
         return 0.0
-    d1 = (math.log(F / K) + 0.5 * sigma ** 2 * T) / (sigma * math.sqrt(T))
-    return norm.pdf(d1) / (F * sigma * math.sqrt(T))
+    d1 = _d1(F, K, T, sigma)
+    return float(norm.pdf(d1) / (F * sigma * math.sqrt(T)))
 
 
 def bs_vega(F: float, K: float, T: float, sigma: float) -> float:
-    """BS vega (per 1 point of vol, not per 1%)."""
-    if sigma <= 0 or T <= 0 or F <= 0 or K <= 0:
+    """Vega per unit of sigma (per 1.00, not per 1 %); 0 at the boundary."""
+    if _invalid(F, K) or _degenerate(F, K, T, sigma):
         return 0.0
-    d1 = (math.log(F / K) + 0.5 * sigma ** 2 * T) / (sigma * math.sqrt(T))
-    return F * norm.pdf(d1) * math.sqrt(T)
+    d1 = _d1(F, K, T, sigma)
+    return float(F * norm.pdf(d1) * math.sqrt(T))
 
 
 def bs_theta(F: float, K: float, T: float, sigma: float, right: str) -> float:
-    """BS theta (per day, undiscounted)."""
-    if sigma <= 0 or T <= 0 or F <= 0 or K <= 0:
+    """Theta per DAY (undiscounted, so call = put); 0 at the boundary."""
+    if _invalid(F, K) or _degenerate(F, K, T, sigma):
         return 0.0
-    d1 = (math.log(F / K) + 0.5 * sigma ** 2 * T) / (sigma * math.sqrt(T))
-    # Theta per year, divide by 365 for per day
+    d1 = _d1(F, K, T, sigma)
     theta_year = -(F * norm.pdf(d1) * sigma) / (2.0 * math.sqrt(T))
-    return theta_year / 365.0
+    return float(theta_year / 365.0)
 
 
 def bs_vanna(F: float, K: float, T: float, sigma: float) -> float:
-    """∂²P/∂S∂σ — vanna in raw unit terms (same for call and put).
+    """∂²P/∂S∂σ in raw units (same for call and put); 0 at the boundary.
 
-    Multiply by ``qty × multiplier × 0.01`` to express in ``$/volpt``
-    (Δ change in $ per 1 vol pt move of IV).
+    Multiply by ``qty × multiplier × 0.01`` to express in ``$/volpt``.
     """
-    if sigma <= 0 or T <= 0 or F <= 0 or K <= 0:
+    if _invalid(F, K) or _degenerate(F, K, T, sigma):
         return 0.0
     sqrt_t = math.sqrt(T)
-    d1 = (math.log(F / K) + 0.5 * sigma ** 2 * T) / (sigma * sqrt_t)
+    d1 = _d1(F, K, T, sigma)
     d2 = d1 - sigma * sqrt_t
-    return -norm.pdf(d1) * d2 / sigma
+    return float(-norm.pdf(d1) * d2 / sigma)
 
 
 def bs_volga(F: float, K: float, T: float, sigma: float) -> float:
-    """∂²P/∂σ² — volga in raw unit terms (same for call and put).
+    """∂²P/∂σ² in raw units (same for call and put); 0 at the boundary.
 
-    Multiply by ``qty × multiplier × (0.01) ** 2`` to express in ``$/volpt²``
-    (vega change in $ per 1 vol pt² of IV move).
+    Multiply by ``qty × multiplier × (0.01) ** 2`` to express in ``$/volpt²``.
     """
-    if sigma <= 0 or T <= 0 or F <= 0 or K <= 0:
+    if _invalid(F, K) or _degenerate(F, K, T, sigma):
         return 0.0
     sqrt_t = math.sqrt(T)
-    d1 = (math.log(F / K) + 0.5 * sigma ** 2 * T) / (sigma * sqrt_t)
+    d1 = _d1(F, K, T, sigma)
     d2 = d1 - sigma * sqrt_t
     vega_unit = F * norm.pdf(d1) * sqrt_t
-    return vega_unit * d1 * d2 / sigma
+    return float(vega_unit * d1 * d2 / sigma)
+
+
+def bs_greeks(F: float, K: float, T: float, sigma: float, right: str) -> dict[str, float]:
+    """delta / gamma / vega / theta in RAW units from the same kernel:
+    delta a fraction, gamma per unit of F², vega per unit of sigma, theta per
+    YEAR. Callers scale (``/100`` for vol points, ``/365`` for per day)."""
+    return {
+        "delta": bs_delta(F, K, T, sigma, right),
+        "gamma": bs_gamma(F, K, T, sigma),
+        "vega": bs_vega(F, K, T, sigma),
+        "theta": bs_theta(F, K, T, sigma, right) * 365.0,
+    }
 
 
 def bs_implied_vol(

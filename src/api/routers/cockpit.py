@@ -128,15 +128,22 @@ async def trade_preview(
     body: TradePreviewRequest,
     redis: RedisDep,
 ) -> TradePreviewResponse:
-    from engines.execution import structures as S
+    from core import structures as S
 
     try:
         surface = await vol_service.get_latest_surface(redis, "EURUSD")
     except vol_service.VolNotFound as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
+    # The forward is the tenor's ATM strike on the published surface. No
+    # constant fallback (#331): without it the preview is a bootstrap answer.
     F_candidate = (surface.surface.get(body.tenor) or {}).get("atm", {}).get("strike")
-    forward = float(F_candidate) if isinstance(F_candidate, (int, float)) else 1.17
+    if not isinstance(F_candidate, (int, float)) or F_candidate <= 0:
+        return TradePreviewResponse(
+            structure=body.structure, legs=[], net_vega=0.0, net_gamma=0.0,
+            net_theta=0.0, net_delta=0.0, total_premium=0.0, bootstrap=True,
+        )
+    forward = float(F_candidate)
 
     if body.structure == "StraddleATM":
         s = S.StraddleATM(tenor=body.tenor, side=body.side, qty=body.qty)
