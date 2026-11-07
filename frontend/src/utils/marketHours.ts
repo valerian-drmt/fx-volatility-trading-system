@@ -35,7 +35,7 @@ export function feedState(status: FreshStatus, marketOpen: boolean): FeedState {
 
 export const FEED_TONE_COLOR: Record<FeedTone, string> = {
   open: "var(--pos)",
-  closed: "var(--text-dim)",
+  closed: "var(--neg)", // red like the dev status badge: closed is a state to notice
   warn: "var(--warn)",
   down: "var(--neg)",
 };
