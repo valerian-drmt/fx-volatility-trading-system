@@ -73,3 +73,4 @@ def test_level_filters_both_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     logging.getLogger("x").warning("kept")
     assert [r["event"] for r in _lines(buf)] == ["kept"]
     structlog.contextvars.clear_contextvars()
+    configure_logging(service_name="t", level="INFO")  # do not leave the pipeline at WARNING

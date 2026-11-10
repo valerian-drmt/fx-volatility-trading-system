@@ -37,7 +37,14 @@ def test_bound_trace_id_appears_on_log_lines():
     from shared.trace import bind_trace_id, clear_trace_id
 
     cap = structlog.testing.LogCapture()
-    structlog.configure(processors=[structlog.contextvars.merge_contextvars, cap])
+    # Explicit wrapper and no caching: a previous test may have left the
+    # shared pipeline at WARNING (it keeps wrapper_class / factory otherwise).
+    structlog.configure(
+        processors=[structlog.contextvars.merge_contextvars, cap],
+        wrapper_class=structlog.BoundLogger,
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=False,
+    )
     bind_trace_id("abc123def456aaaa")
     try:
         structlog.get_logger("t").info("hello")
