@@ -37,7 +37,10 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    sourcemap: true,
+    // Maps are built (CI keeps them in the build artifact for debugging) but
+    // not referenced from the bundle, not copied into the image and refused
+    // by nginx (#349, audit 09#9): the public desk ships no source.
+    sourcemap: "hidden",
     target: "es2022",
   },
 });

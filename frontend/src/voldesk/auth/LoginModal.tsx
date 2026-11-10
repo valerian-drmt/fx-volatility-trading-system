@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { useAuthStore } from "../../store/authStore";
 
@@ -12,6 +12,22 @@ export function LoginModal({ onClose }: { onClose: () => void }): JSX.Element {
   const [username, setUsername] = useState("trader");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  // Dialog behaviour (#349): focus lands on the password (the user is
+  // prefilled), Escape closes, focus returns to whatever opened the dialog.
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    passwordRef.current?.focus();
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      opener?.focus?.();
+    };
+  }, [onClose]);
 
   const submit = async (e: FormEvent): Promise<void> => {
     e.preventDefault();
@@ -26,10 +42,13 @@ export function LoginModal({ onClose }: { onClose: () => void }): JSX.Element {
       <form
         className="auth-modal"
         data-testid="login-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="login-title"
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
       >
-        <h2>Sign in</h2>
+        <h2 id="login-title">Sign in</h2>
         <p className="auth-sub">Write access (orders, config). Reads stay open.</p>
         <label>
           <span>User</span>
@@ -45,6 +64,7 @@ export function LoginModal({ onClose }: { onClose: () => void }): JSX.Element {
           <input
             name="password"
             type="password"
+            ref={passwordRef}
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

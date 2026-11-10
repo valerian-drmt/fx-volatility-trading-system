@@ -11,7 +11,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ["src/tests/setup.ts"],
     exclude: ["node_modules", "dist", "e2e/**"],
-    css: false,
+    // Styles are not processed, except the voldesk sheet so the a11y test can
+    // read its tokens through a ?raw import (#349).
+    css: { include: [/voldesk\.css/] },
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

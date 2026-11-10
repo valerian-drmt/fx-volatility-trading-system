@@ -23,4 +23,14 @@ describe("LoginModal", () => {
     expect(onClose).toHaveBeenCalled();
     expect(useAuthStore.getState().authenticated).toBe(false);
   });
+
+  it("is a labelled modal dialog that focuses the password and closes on Escape", () => {
+    const onClose = vi.fn();
+    render(<LoginModal onClose={onClose} />);
+    const dialog = screen.getByRole("dialog", { name: /sign in/i });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(document.activeElement).toBe(screen.getByLabelText(/password/i));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalled();
+  });
 });

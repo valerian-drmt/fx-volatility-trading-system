@@ -1,7 +1,7 @@
 :root{
   --bg:#0f1115; --bg-2:#14171d; --surface:#181b22; --bg-3:#1e222b;
   --border:#262a33; --line:#262a33;
-  --fg:#e6e8ee; --text:#e6e8ee; --muted:#8a90a0; --text-dim:#8a90a0; --text-faint:#5b6170;
+  --fg:#e6e8ee; --text:#e6e8ee; --muted:#8a90a0; --text-dim:#8a90a0; --text-faint:#868c9d;
   --accent:#4f9dff; --pos:#3fb950; --up:#3fb950; --neg:#f85149; --down:#f85149; --warn:#e0b341;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
@@ -306,6 +306,9 @@ input,select{font-family:inherit;font-size:13px}
 .field>span{font-size:10.5px;color:var(--text-dim);font-weight:600}
 .field select,.field input{background:var(--bg-3);border:1px solid var(--border);border-radius:5px;color:var(--fg);padding:7px 9px;width:100%}
 .field select:focus,.field input:focus{outline:none;border-color:var(--accent)}
+/* Keyboard focus is always visible (#349, audit 09#13): mouse focus keeps the
+   border cue above, keyboard focus adds a ring on every interactive element. */
+:where(a,button,input,select,textarea,summary,[tabindex]):focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .field-row{display:flex;gap:8px}
 .field-row .field{flex:1}
 .field-input{display:flex;align-items:center;background:var(--bg-3);border:1px solid var(--border);border-radius:5px;overflow:hidden}

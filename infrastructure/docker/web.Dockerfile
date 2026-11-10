@@ -20,7 +20,7 @@ RUN npm ci
 COPY frontend/ ./
 # The desk is live-only : it calls the backend same-origin (/api, /ws) via the
 # main nginx. No mock build flag — there is no mock mode.
-RUN npm run build
+RUN npm run build && find dist -name '*.map' -delete
 
 FROM ${NGINX_IMAGE} AS runtime
 

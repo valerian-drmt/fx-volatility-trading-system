@@ -162,7 +162,7 @@ function VarCard({ var95, var99, es99, meanDaily, nDays, method, hist, fresh, po
           <div className="table-scroll">
             <table className="dt var-table">
               <thead><tr>
-                <th className="l">Horizon</th><th className="r">exp. return μt</th><th className="r">VaR 95%</th><th className="r">VaR 99%</th><th className="r">ES 97.5%</th><th className="r">ES/VaR</th>
+                <th className="l">Horizon</th><th className="r">exp. return μt</th><th className="r">VaR 95%</th><th className="r">VaR 99%</th><th className="r">ES 99%</th><th className="r">ES/VaR</th>
               </tr></thead>
               <tbody>
                 {rows.map((r) => {
