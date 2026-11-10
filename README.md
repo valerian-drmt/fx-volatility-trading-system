@@ -1,9 +1,9 @@
 # FX Volatility Trading System
 
 **End-to-end trading platform for EUR/USD FX options — a microservices pipeline
-that turns a live Interactive Brokers feed into research-grade volatility signals,
-executes delta-hedged option structures, and serves it all through a real-time web
-desk.**
+that turns an Interactive Brokers paper feed into research-grade volatility signals,
+executes delta-hedged option structures on the paper account, and serves it all
+through a streaming web desk.** See [Known limitations](#known-limitations).
 
 [![CI](https://github.com/valerian-drmt/fx-volatility-trading-system/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/valerian-drmt/fx-volatility-trading-system/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
@@ -18,7 +18,7 @@ desk.**
   <img src="docs/pictures/dashboard.png" alt="The voldesk trading cockpit — live vol surface, PCA signals, positions and greeks" width="900">
 </p>
 
-A 7-view React trading desk on top of 5 async Python engines: live IB tick stream →
+A 7-view React trading desk on top of 6 async Python engines: IB tick stream (delayed) →
 vol-surface fit (SVI / SSVI, GARCH, HAR-RV) → GMM regime + PCA signal z-scores →
 delta-hedged order submission → versioned audit trail in Postgres.
 
@@ -48,7 +48,7 @@ behind an auth boundary. Every push to `main` redeploys it automatically (see
 
 ### Market data + execution
 - IB Gateway container (gnzsnz fork) serving the EUR/USD FOP chains
-- Real-time tick stream published on Redis (throttled ~200 ms)
+- Tick stream published on Redis (throttled ~200 ms); IB delayed market data, see Known limitations
 - Structure factory: **straddle**, **strangle**, **risk reversal**, **butterfly**,
   **calendar** — built by delta pillar + tenor, delta-hedged via a 6E futures leg
 - Marketable-limit pricing off the live touch; full order lifecycle (submit → fills
@@ -173,20 +173,40 @@ Full diagrams live in [`docs/architecture/`](docs/architecture/).
 
 ## Quickstart
 
-**Prerequisites**: Docker Desktop + Python 3.11 + Node 22.
+**Prerequisites**
+
+| Need | For | Without it |
+|---|---|---|
+| Docker Desktop (or Docker Engine + compose v2) | every path | nothing runs |
+| Python 3.11 + [uv](https://docs.astral.sh/uv/) 0.13 | tests, local tooling | the stack still runs in Docker |
+| Node 22 | frontend dev server and tests | the stack still runs in Docker |
+| An Interactive Brokers **paper** account | live quotes, chains, orders (`--profile ib` + `engines`) | the desk serves an empty / last-known market |
+| AWS account + CLI v2 with the `fxvol-dev` profile | the maintainer path (secrets from SSM) and prod | use `.env` (path A) |
+
+**Path A: no AWS, from `.env`** (anyone)
+
+```bash
+cp .env.example .env                         # set DB_PASSWORD; IB_* only for --profile ib
+docker compose up -d --build                 # core: api, frontend, nginx, postgres, redis
+docker compose exec api python -m alembic -c src/persistence/alembic.ini upgrade head
+# with an IB paper account: docker compose --profile engines --profile ib up -d
+```
+
+**Path B: maintainer, secrets from SSM** (Windows / PowerShell)
 
 ```powershell
-# 1. venv + deps (one-off)
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install "uv==0.13.7" && uv sync --locked --extra dev --extra api --extra quant --extra ib --extra writer   # uv.lock = the one resolved set
+. .\scripts\local\load_secrets.ps1          # SSM -> RAM, every PS session
+.\scripts\local\stack.ps1                    # build + up + alembic upgrade head
+.\scripts\local\stack.ps1 -NoBuild           # reuse cached images
+```
 
-# 2. Load secrets from SSM into the shell (dot-sourced — every PS session)
-. .\scripts\local\load_secrets.ps1
+`stack.ps1` also works on path A: with a `.env` that sets `DB_PASSWORD`, it skips SSM.
 
-# 3. Start the full stack (build + up + alembic upgrade head)
-.\scripts\local\stack.ps1
-.\scripts\local\stack.ps1 -NoBuild     # reuse cached images
+Development tooling (both paths):
+
+```bash
+pip install "uv==0.13.7"
+uv sync --locked --extra dev --extra api --extra quant --extra ib --extra writer   # uv.lock = the one resolved set
 ```
 
 Then:
@@ -198,6 +218,22 @@ PyCharm run configurations ship under [`.idea/runConfigurations/`](.idea/runConf
 (version-controlled, grouped **Local** and **EC2**) — no setup needed.
 
 ---
+
+## Known limitations
+
+Stated plainly so nobody has to find them (release gate §7, #351; checked
+against the code on 2026-11-10).
+
+| # | Limitation | Detail |
+|---|---|---|
+| L1 | **Paper account only** | `TRADING_MODE=paper`; no real-money session has ever run. Prod's gateway runs with `READ_ONLY_API=yes` unless the repo variable says otherwise. |
+| L2 | **Market data is delayed** | The engines request IB delayed data (`reqMarketDataType(3)`, about 15 to 20 minutes behind; execution uses 4, delayed-frozen). The desk's mid, bid / ask and surface are delayed values, not a live quote. |
+| L3 | **One IB session per user id** | A portal, mobile or TWS login on the same paper user kicks the gateway; quotes go to -1 with no error ([runbooks](docs/ops/runbooks.md#45-session-exclusivity)). |
+| L4 | **Closed markets serve the last grid** | Weekends and holidays, the desk shows the last complete surface with its timestamp and a closed-market banner; nothing updates until the open. |
+| L5 | **Alerts by email, one person** | Prometheus rules and the host disk guard mail an SNS topic; there is no paging, no on-call, no second operator. |
+| L6 | **Manual trading only** | Signals inform; every order is placed by the trader on the desk (`manual_mode`). Risk limits and the kill switch gate those orders; there is no signal-to-order automation. |
+| L7 | **One host, no high availability** | Everything runs on one EC2 instance. A host loss is a rebuild from `setup.sh` + the latest S3 dump ([runbooks](docs/ops/runbooks.md#3-restore-from-backup)); the restore drill has not been run yet. |
+| L8 | **IB-sourced data on a public page** | The public read-only desk shows IB-derived prices and surfaces; the redistribution terms are being settled (#307). |
 
 ## Deployment
 

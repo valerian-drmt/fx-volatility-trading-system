@@ -64,3 +64,17 @@ def test_docs_index_has_no_dead_links() -> None:
     index = (ROOT / "docs/README.md").read_text(encoding="utf-8")
     dead = [link for link in re.findall(r"\]\(([^)#]+\.md)\)", index) if not (ROOT / "docs" / link).exists()]
     assert dead == [], dead
+
+
+def test_onboarding_works_without_aws_and_limits_are_stated() -> None:
+    """#351: a documented no-SSM path and a Known limitations section."""
+    example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    assert re.search(r"^DB_PASSWORD=\S+", example, re.M), "the one required variable has a placeholder"
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    required = set(re.findall(r"\$\{([A-Z_]+):\?", compose))
+    assert required <= {"DB_PASSWORD"}, f"compose requires more than .env.example provides: {required}"
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "cp .env.example .env" in readme and "## Known limitations" in readme
+    section = readme.split("## Known limitations", 1)[1].split("\n## ", 1)[0]
+    assert all(f"| L{i} |" in section for i in range(1, 9))
+    assert "real-time web" not in readme.lower()
