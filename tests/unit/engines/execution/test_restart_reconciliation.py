@@ -187,3 +187,42 @@ async def test_reconcile_classifies_missing_at_ib_and_unbooked_at_ib(sqlite_sess
     by = {b.local_symbol: b for b in await _breaks(sqlite_sessionmaker)}
     assert by[CALL].break_type == "missing_at_ib" and float(by[CALL].diff) == 5.0
     assert by[FUT].break_type == "unbooked_at_ib" and float(by[FUT].broker_qty) == -1.0
+
+
+async def test_a_new_break_is_logged_counted_and_gauged_once(sqlite_sessionmaker: Any, caplog: pytest.LogCaptureFixture) -> None:
+    """#323: a new break raises one warning + one counter increment; a persisting
+    break does not repeat them; the gauge follows the open count; resolve logs info."""
+    import logging
+
+    from shared.observability import reconciliation_breaks_open, reconciliation_breaks_opened_total
+
+    def opened() -> float:
+        return reconciliation_breaks_opened_total.labels(break_type="quantity")._value.get()
+
+    await _seed_book(sqlite_sessionmaker, CALL, 5)
+    pid = await _seed_mirror(sqlite_sessionmaker, CALL, 3)
+    before = opened()
+    t0 = datetime(2026, 11, 7, 9, 0, tzinfo=UTC)
+    with caplog.at_level(logging.INFO, logger="engines.execution.reconciler"):
+        await reconcile_positions(sqlite_sessionmaker, _Executor(), now=t0)
+        await reconcile_positions(sqlite_sessionmaker, _Executor(), now=t0.replace(minute=1))
+        assert opened() - before == 1
+        assert reconciliation_breaks_open._value.get() == 1
+        warned = [r for r in caplog.records if r.getMessage() == "reconciliation_break_opened"]
+        assert len(warned) == 1 and warned[0].levelno == logging.WARNING and warned[0].contract == CALL
+
+        async with sqlite_sessionmaker() as db:
+            row = await db.get(OpenPosition, pid)
+            row.quantity = Decimal(5)
+            await db.commit()
+        await reconcile_positions(sqlite_sessionmaker, _Executor(), now=t0.replace(minute=2))
+    assert reconciliation_breaks_open._value.get() == 0
+    resolved = [r for r in caplog.records if r.getMessage() == "reconciliation_break_resolved"]
+    assert len(resolved) == 1 and resolved[0].open_for_s == 120.0
+
+
+def test_stale_booking_auto_close_is_a_warning_event() -> None:
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[4] / "src/engines/execution/position_sync.py").read_text(encoding="utf-8")
+    assert 'event_type="position_reconciled_closed", severity="warning"' in src

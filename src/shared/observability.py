@@ -168,6 +168,18 @@ history_prune_failures_total = Counter(
     ["engine", "table"],
 )
 
+reconciliation_breaks_opened_total = Counter(
+    "reconciliation_breaks_opened_total",
+    "Book-vs-broker breaks newly opened by the position reconciler (#323), by type "
+    "(quantity / missing_at_ib / unbooked_at_ib).",
+    ["break_type"],
+)
+
+reconciliation_breaks_open = Gauge(
+    "reconciliation_breaks_open",
+    "Book-vs-broker breaks currently open after the last reconciliation pass (#323).",
+)
+
 ib_session_events_total = Counter(
     "ib_session_events_total",
     "IB session events seen by an engine: errorEvent codes bucketed "

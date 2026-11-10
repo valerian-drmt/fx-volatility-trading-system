@@ -96,6 +96,16 @@ groups:
           summary: "db-writer parked {{ $value }} rows for {{ $labels.table }}"
           description: "`SELECT table_name, error, created_at FROM db_writer_dead_letter ORDER BY id DESC LIMIT 20` (docs/ops/redis-durability.md)."
 
+      # Book vs broker (#323): a break that stays open means the desk's book and
+      # IB disagree on a holding; 15 min rides out an in-flight fill.
+      - alert: ReconciliationBreakOpen
+        expr: max(reconciliation_breaks_open) > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $value }} book-vs-broker reconciliation break(s) open for 15 min"
+          description: "`GET /api/v1/positions/breaks` lists them; `docker logs fxvol-execution | grep reconciliation_break_opened` gives the contract, type and quantities."
+
       # Retention prune (#330): a table whose prune keeps failing grows without
       # bound; before this counter one blocked DELETE stopped both prunes silently.
       - alert: HistoryPruneFailing
