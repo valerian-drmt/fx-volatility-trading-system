@@ -162,30 +162,39 @@ markers = [
 
 [tool.coverage.run]
 source = ["src"]
+# Migrations run in the live-integration job (upgrade head + round trip),
+# never in the unit suite; counting them would hide the code that is tested.
+omit = ["src/persistence/migrations/*"]
 
 [tool.coverage.report]
+# src/ is namespace packages (no __init__.py): without this, a module no test
+# imports is absent from the report instead of counted at 0 %, and the first
+# test that imports it moves the package's number (#340).
+include_namespace_packages = true
 # Global floor (#340); the per-package floors below are the real gate.
-fail_under = 65
+fail_under = 63
 
 [tool.fxvol.coverage-floors]
 # Line coverage per src/ package, checked in CI by scripts/check_coverage.py
 # against the unit suite (#340, audit 07#13). Set ~1 point under the number
-# measured on 2026-11-10; they only move up (the script says when one can).
+# measured on 2026-11-10 with honest denominators (every module counted,
+# imported or not; migrations omitted). They only move up; the script says
+# when one can.
 "core" = 95
-"bus" = 86
+"bus" = 77
 "shared" = 85
-"persistence" = 87
+"persistence" = 88
 "api/middleware" = 98
 "api/schemas" = 98
 "api/ws" = 93
-"api/orchestration" = 54
+"api/orchestration" = 47
 "api/routers" = 39
-"engines/db_writer" = 88
-"engines/market_data" = 82
-"engines/analytics" = 70
+"engines/db_writer" = 72
+"engines/market_data" = 54
+"engines/analytics" = 58
 "engines/execution" = 59
-"engines/risk" = 50
-"engines/vol" = 24
+"engines/risk" = 46
+"engines/vol" = 22
 
 [tool.mypy]
 python_version = "3.11"
