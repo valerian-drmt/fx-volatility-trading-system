@@ -148,6 +148,13 @@ last `ALEMBIC_ROUNDTRIP_STEPS` revisions are downgraded and re-applied. Bump
 that number in `.github/workflows/ci.yml` to the count of migrations since
 the last deployed tag when you cut a release.
 
+## Serialised deploys
+
+`deploy.yml` runs in the `deploy-prod` concurrency group: a deploy waits for the
+one in progress, and of several pending deploys only the newest runs (it
+carries the older changes). So stacked PRs can merge back to back once their
+CI is green; the host still takes one deploy at a time.
+
 ## Rollback
 
 Re-run `deploy-prod` via `workflow_dispatch` with `deploy_sha` set to the
