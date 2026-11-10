@@ -94,3 +94,11 @@ def test_host_takes_security_updates_without_touching_docker_or_rebooting() -> N
     assert 'Unattended-Upgrade::Automatic-Reboot "false";' in setup
     for pkg in ("docker-ce", "containerd.io"):
         assert f'"{pkg}";' in setup
+
+
+def test_deploys_are_serialised() -> None:
+    """Back-to-back merges queue their deploys instead of racing on the host."""
+    import yaml
+
+    wf = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8"))
+    assert wf["concurrency"] == {"group": "deploy-prod", "cancel-in-progress": False}

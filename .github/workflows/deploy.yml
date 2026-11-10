@@ -46,6 +46,15 @@ permissions:
   packages: read
   id-token: write   # required for OIDC federation to AWS
 
+# One deploy at a time on the single host. A deploy that starts while another
+# runs waits instead of racing it (two `compose up` on one box). GitHub keeps
+# one pending run per group: when several merges land back to back, the
+# newest pending deploy replaces the older pending one, which is right since
+# main's newest build contains the older changes. Never cancel a running one.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   OWNER: ${{ github.repository_owner }}
