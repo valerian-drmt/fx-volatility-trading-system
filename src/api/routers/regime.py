@@ -106,7 +106,7 @@ async def state(
         # Always expose the shadow-computed probas when the DB has them.
         # Frontend uses ``method`` to decide whether they are actionable
         # (gmm_v1 → use them) or shadow-only informational (threshold_
-        # heuristic → display + "non pertinent" banner). Cf. STEP1 §13.
+        # heuristic → display + "non pertinent" banner). Cf. ``docs/vol-modeling/regime.md``.
         probabilities=(
             {
                 "calm": float(latest.p_calm),
@@ -223,7 +223,7 @@ async def transitions(
     Goal: detect whether the heuristic threshold (vov > 0.4 → pre_event) is
     too close to the measurement noise. If > 5 calm↔pre_event transitions
     per day, that is a signal to add hysteresis or a dynamic threshold
-    (cf. TODO.md / STEP1 §14).
+    (``docs/vol-modeling/regime.md``).
 
     Returns:
       - by_day : dict {YYYY-MM-DD: {transition_type: count}}
@@ -281,7 +281,7 @@ async def gmm_shadow_diagnostic(
 ) -> dict[str, Any]:
     """Compare the shadow GMM outputs vs the active heuristic over the last N
     snapshots. Used to decide when the GMM is good enough to take over the
-    label (cf. STEP1 §13 "switch criteria").
+    label (``docs/vol-modeling/regime.md``, switch criteria).
 
     Returns :
       - n_with_gmm : number of snapshots where GMM fitted (probabilities not null)

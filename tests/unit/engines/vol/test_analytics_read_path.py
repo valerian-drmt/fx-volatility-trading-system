@@ -1,4 +1,4 @@
-"""VolEngine analytics-read path (VOL_INLINE_ANALYTICS=0): the vol-engine serves
+"""VolEngine analytics-read path: the vol-engine serves
 the GMM regime model + PC3 history PUBLISHED by the analytics engine instead of
 computing them inline — train centrally, infer at the edge. The cheap per-cycle
 inference/z-score still runs here.
@@ -44,9 +44,9 @@ def _engine(store: dict[str, Any]) -> VolEngine:
 
 
 @pytest.fixture
-def analytics_mode(monkeypatch):
-    """Flip the module flag to the analytics-read path (default is inline)."""
-    monkeypatch.setattr(vol_engine_mod, "_INLINE_ANALYTICS", False)
+def analytics_mode():
+    """The analytics-read path is the only path since #334 (the inline flag is gone)."""
+    assert not hasattr(vol_engine_mod, "_INLINE_ANALYTICS")
 
 
 def _published_model() -> str:

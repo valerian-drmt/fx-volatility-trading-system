@@ -8,7 +8,9 @@ page : the React form (RJSF) is generated from this schema via
 ``/api/v1/admin/config/schema``.
 """
 from core.config.vol_params import (
+    CAPACITY_PRESETS,
     CalibrationConfig,
+    CapacityConfig,
     DeltaHedgeConfig,
     ExitRulesConfig,
     RegimeConfig,
@@ -20,7 +22,9 @@ from core.config.vol_params import (
 )
 
 __all__ = [
+    "CAPACITY_PRESETS",
     "CalibrationConfig",
+    "CapacityConfig",
     "DeltaHedgeConfig",
     "ExitRulesConfig",
     "RegimeConfig",

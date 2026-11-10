@@ -1351,7 +1351,7 @@ async def close_manual(position_id: int, db: DbDep) -> dict[str, Any]:
     """Mark a position for manual close. Step 5 phase 1 = state flip only.
 
     The actual closing-structure submit + fills will be wired when markets-open
-    phase lands (cf. MARKETS_OPEN_TODO.md). For now we record an audit alert.
+    phase lands (tracked on the GitHub board). For now we record an audit alert.
     """
     pos = (await db.execute(
         select(BookedPosition).where(BookedPosition.id == position_id).limit(1)

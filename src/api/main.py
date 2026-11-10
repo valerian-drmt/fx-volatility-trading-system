@@ -130,8 +130,7 @@ def _build_events_scheduler():
     """Wire the events pipeline (cf. docs/.../events_pipeline_spec.md §5).
 
     FRED only is implemented today (covers ~60% of high-impact events).
-    The 6 other sources are stubbed in ``sources/stubs.py`` and contribute
-    0 events with a NotImplementedError caught by the scheduler — they will
+    The other sources live under ``api/orchestration/events/sources/``.
     be enabled one by one as their parsers are written.
     """
     import os as _os

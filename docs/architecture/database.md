@@ -114,3 +114,11 @@ the live migration chain.
 
 - [backend.md](backend.md) — the `persistence` adapter and its contracts.
 - [data-flow.md](data-flow.md) — how rows get written by db-writer and the engines.
+
+## Append-only tables
+
+`config_vol_engine` (the versioned `VolTradingConfig`) is append-only by
+contract and, since migration 062 (#329), by the database: a `BEFORE UPDATE OR
+DELETE` trigger refuses both with an `integrity_constraint_violation`, whatever
+the role. A revert is a new row. Backtests pin `config_version=N` and the
+Settings tab's history pane read a history nothing can rewrite.

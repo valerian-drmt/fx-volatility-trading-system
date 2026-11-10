@@ -1,24 +1,21 @@
 """Entrypoint for the vol-engine container.
 
-SANDBOX NOTE (sandbox/r9-pipeline-verif) : ``fetch_fop_chain`` now wires
-through ``engines.vol.chain_fetcher.scan_all_tenors_concurrent``, a
-real async port of the monolith's FOP traversal with bounded
-parallelism (Semaphore). ``fetch_ohlc`` remains a synthetic stub until
-the historical bar fetch is ported.
+The chain fetch goes through ``engines.vol.chain_fetcher`` (bounded tenor
+parallelism, width and concurrency from the capacity dial); the daily bars
+through ``engines.vol.historical_fetcher``. The versioned config reaches the
+engine through ``bus.config_watch.ConfigWatcher`` (#329): the DB's latest row
+at start, every newer ``config:changed`` after that, a re-read on every
+resubscribe and on a timer.
 """
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import signal
 from typing import Any
 
-from redis import asyncio as aioredis
-
-from bus.channels import CH_CONFIG_CHANGED
 from bus.client import get_async_redis
-from core.config import VolTradingConfig
+from bus.config_watch import ConfigWatcher
 from shared.config import get_settings
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
@@ -28,52 +25,6 @@ logger = logging.getLogger(__name__)
 
 # P0 obs : Prometheus /metrics endpoint port. Spec § Phase 0 step 3.
 _METRICS_PORT = 9102
-
-
-async def _watch_config_changes(
-    redis: aioredis.Redis, engine: Any, stop: asyncio.Event,
-) -> None:
-    """Subscribe to CH_CONFIG_CHANGED and hot-reload the engine on each event.
-
-    Payload contract : JSON ``{"version": int, "config": {...VolTradingConfig}}``.
-    Self-contained -- no Postgres round-trip from the vol-engine, which
-    keeps sqlalchemy/asyncpg out of the engine image (engine-isolation
-    rule : only db-writer touches Postgres).
-    """
-    try:
-        pubsub = redis.pubsub()
-        await pubsub.subscribe(CH_CONFIG_CHANGED)
-    except Exception as exc:
-        logger.warning("vol_engine_config_watcher_subscribe_failed reason=%s", exc)
-        return
-
-    try:
-        while not stop.is_set():
-            try:
-                msg = await asyncio.wait_for(
-                    pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0),
-                    timeout=2.0,
-                )
-            except TimeoutError:
-                continue
-            if msg is None or msg.get("type") != "message":
-                continue
-            data = msg.get("data")
-            if isinstance(data, bytes):
-                data = data.decode()
-            try:
-                payload = json.loads(data)
-                cfg = VolTradingConfig.model_validate(payload["config"])
-            except Exception as exc:
-                logger.warning("vol_engine_config_payload_parse_failed reason=%s", exc)
-                continue
-            engine.apply_config(cfg)
-    finally:
-        try:
-            await pubsub.unsubscribe(CH_CONFIG_CHANGED)
-            await pubsub.close()
-        except Exception:
-            pass
 
 
 async def run() -> None:
@@ -112,7 +63,13 @@ async def run() -> None:
         chains = _chains_cache["chains"]
         if not chains:
             return {}
-        return await chain_fetcher.scan_all_tenors_concurrent(ib, F, chains)
+        # Width and concurrency from the capacity dial, read on every fetch
+        # (#372): a Settings change applies on the next cycle.
+        return await chain_fetcher.scan_all_tenors_concurrent(
+            ib, F, chains,
+            max_concurrent=engine.capacity.max_concurrent_scans,
+            n_side=engine.capacity.strikes_per_side,
+        )
 
     async def _ohlc_real() -> Any | None:
         """~1y of daily bars on the EUR continuous future (cached 30min).
@@ -143,11 +100,20 @@ async def run() -> None:
         on_ib_reconnected=_on_ib_reconnected,
     )
 
-    # Boot config comes from env vars (pydantic-settings) ; live updates
-    # flow in via CH_CONFIG_CHANGED. First-boot-after-PUT sees stale
-    # defaults until the next admin PUT -- acceptable tradeoff to keep
-    # sqlalchemy out of the engine image.
+    # Versioned config (#329): the DB's latest row before the first cycle,
+    # then every newer version over config:changed; older versions are
+    # ignored, a dropped subscription is retried, a timer re-reads the DB.
+    from persistence.config_store import load_latest_config
+    from persistence.db import get_sessionmaker
 
+    sessionmaker = get_sessionmaker()
+    watcher = ConfigWatcher(
+        redis,
+        apply=lambda version, cfg: engine.apply_config(cfg, version),
+        loader=lambda: load_latest_config(sessionmaker),
+        name="vol_engine",
+    )
+    await watcher.load_once()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
@@ -155,13 +121,13 @@ async def run() -> None:
         except NotImplementedError:
             signal.signal(sig, lambda _s, _f: engine.request_stop())
 
-    watcher = asyncio.create_task(_watch_config_changes(redis, engine, engine._stop))
+    watcher_task = asyncio.create_task(watcher.run(engine._stop), name="vol_config_watcher")
     try:
         await engine.run()
     finally:
-        watcher.cancel()
+        watcher_task.cancel()
         try:
-            await watcher
+            await watcher_task
         except (asyncio.CancelledError, Exception):
             pass
 

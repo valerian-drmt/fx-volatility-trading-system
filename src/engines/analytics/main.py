@@ -7,10 +7,10 @@ loop and the background heartbeat, then exits.
 from __future__ import annotations
 
 import asyncio
-import os
 import signal
 
 from bus.client import get_async_redis
+from bus.config_watch import ConfigWatcher
 from shared.config import get_settings
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
@@ -32,22 +32,22 @@ async def run() -> None:
     init_tracing(service_name=settings.SERVICE_NAME or "analytics_engine")
 
     from engines.analytics.engine import AnalyticsEngine
+    from persistence.config_store import load_latest_config
     from persistence.db import get_sessionmaker
 
-    # ANALYTICS_INTERVAL_MIN (default 60) → compute cadence in seconds.
-    interval_min = float(os.environ.get("ANALYTICS_INTERVAL_MIN", "60"))
-    interval_s = int(interval_min * 60)
-    # ROLLUP_INTERVAL_S (default 300) -> portfolio rollups cadence (#368).
-    rollup_interval_s = float(os.environ.get("ROLLUP_INTERVAL_S", "300"))
-
+    # Cadence, window, snapshot gap, rollup cadence and thread cap come from
+    # the capacity dial in the versioned config (#371 / #329): the DB's
+    # latest row before the first cycle, every newer version after that.
     redis = get_async_redis()
-    engine = AnalyticsEngine(
-        redis=redis,
-        symbol="EURUSD",
-        interval_s=interval_s,
-        sessionmaker=get_sessionmaker(),
-        rollup_interval_s=rollup_interval_s,
+    sessionmaker = get_sessionmaker()
+    engine = AnalyticsEngine(redis=redis, symbol="EURUSD", sessionmaker=sessionmaker)
+    watcher = ConfigWatcher(
+        redis,
+        apply=lambda version, cfg: engine.apply_config(cfg, version),
+        loader=lambda: load_latest_config(sessionmaker),
+        name="analytics_engine",
     )
+    await watcher.load_once()
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -56,7 +56,15 @@ async def run() -> None:
         except NotImplementedError:
             signal.signal(sig, lambda _s, _f: engine.request_stop())
 
-    await engine.run()
+    watcher_task = asyncio.create_task(watcher.run(engine._stop), name="analytics_config_watcher")
+    try:
+        await engine.run()
+    finally:
+        watcher_task.cancel()
+        try:
+            await watcher_task
+        except (asyncio.CancelledError, Exception):
+            pass
 
 
 def main() -> None:

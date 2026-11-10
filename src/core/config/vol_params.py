@@ -163,6 +163,68 @@ class CalibrationConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Capacity dial (#371 T7, #372 T8) — how hard the cold path may push the host
+# ---------------------------------------------------------------------------
+
+CapacityPreset = Literal["eco", "balanced", "full", "custom"]
+
+# One row per preset; "custom" keeps whatever the fields say. Editing a field
+# in the Settings tab sets preset="custom" (the frontend adds it to the patch).
+CAPACITY_PRESETS: dict[str, dict[str, int]] = {
+    "eco": {
+        "analytics_interval_min": 180, "training_window_days": 60, "thread_cap": 1,
+        "pca_snapshot_interval_min": 120, "rollup_interval_s": 600,
+        "strikes_per_side": 12, "max_concurrent_scans": 1,
+    },
+    "balanced": {
+        "analytics_interval_min": 60, "training_window_days": 90, "thread_cap": 1,
+        "pca_snapshot_interval_min": 60, "rollup_interval_s": 300,
+        "strikes_per_side": 18, "max_concurrent_scans": 1,
+    },
+    "full": {
+        "analytics_interval_min": 30, "training_window_days": 180, "thread_cap": 2,
+        "pca_snapshot_interval_min": 30, "rollup_interval_s": 120,
+        "strikes_per_side": 24, "max_concurrent_scans": 2,
+    },
+}
+
+
+class CapacityConfig(BaseModel):
+    """The capacity dial: cadence, window, thread cap and chain-scan width of
+    the cold path, hot-reloaded over ``config:changed`` (#371 / #372).
+
+    The analytics engine reads ``analytics_interval_min``,
+    ``training_window_days``, ``thread_cap`` (BLAS / scikit-learn threads via
+    ``threadpoolctl``), ``pca_snapshot_interval_min`` and ``rollup_interval_s``
+    at the start of each cycle; the vol engine reads ``strikes_per_side`` and
+    ``max_concurrent_scans`` on every chain fetch (wing coverage against IB
+    Gateway load: ``docs/vol-modeling/volatility-surface.md``).
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    preset: CapacityPreset = "balanced"
+    analytics_interval_min: int = Field(default=60, ge=5, le=1440)
+    training_window_days: int = Field(default=90, ge=14, le=365)
+    thread_cap: int = Field(default=1, ge=1, le=8)
+    pca_snapshot_interval_min: int = Field(default=60, ge=1, le=1440)
+    rollup_interval_s: int = Field(default=300, ge=30, le=3600)
+    strikes_per_side: int = Field(default=18, ge=6, le=40)
+    max_concurrent_scans: int = Field(default=1, ge=1, le=4)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _preset_fills_the_fields(cls, data: object) -> object:
+        """A named preset wins over the fields it defines, so choosing "eco"
+        is enough to get eco everywhere; "custom" leaves the fields alone."""
+        if isinstance(data, dict):
+            preset = data.get("preset", "balanced")
+            if preset in CAPACITY_PRESETS:
+                return {**data, **CAPACITY_PRESETS[preset]}
+        return data
+
+
+# ---------------------------------------------------------------------------
 # P5 — Delta hedge
 # ---------------------------------------------------------------------------
 
@@ -229,3 +291,4 @@ class VolTradingConfig(BaseModel):
     calibration: CalibrationConfig = Field(default_factory=CalibrationConfig)
     delta_hedge: DeltaHedgeConfig = Field(default_factory=DeltaHedgeConfig)
     structures: TradeStructuresConfig = Field(default_factory=TradeStructuresConfig)
+    capacity: CapacityConfig = Field(default_factory=CapacityConfig)

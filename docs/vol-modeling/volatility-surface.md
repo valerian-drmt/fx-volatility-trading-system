@@ -125,6 +125,24 @@ kept only as forward-looking diagnostics and last-resort fallbacks. This gives a
 fair *smile* the desk compares the live IV surface against; the difference drives
 the [rich/cheap PCA signals](pca-signals.md).
 
+## Chain width versus Gateway load (#372)
+
+The chain scan qualifies ``strikes_per_side`` strikes each side of ATM per
+tenor, calls and puts, and subscribes to each for its greeks. Every strike is
+one more `reqMktData` line on the IB Gateway during the scan window, so the
+knob is a direct trade between wing coverage and Gateway CPU:
+
+| strikes per side | lines per tenor (C+P) | what it buys |
+|---|---|---|
+| 12 (eco) | ~50 | the ATM and 25-delta pillars unchanged; the 10-delta wings rest on fewer observed points, so the SVI wing fit and `interpolate_delta_pillars` lean more on the fallback; about a third less scan-time CPU on the Gateway |
+| 18 (balanced, the default) | ~74 | the historical setting: under IB paper's ~100-line cap with sequential tenors |
+| 24 (full) | ~98 | more wing support for the 10-delta pillars; at the line cap, so only with `max_concurrent_scans = 1` |
+
+``max_concurrent_scans`` runs that many tenors at once: 2 halves the fetch
+window but doubles the open lines (above the cap, IB queues or rejects the
+excess and wing strikes drop silently). Both knobs live in the capacity dial
+(`CapacityConfig`, Settings tab) and apply on the next cycle, no restart.
+
 ## Surface build order
 
 `_compute_surface` runs the pipeline in a specific order so each stage sees what
