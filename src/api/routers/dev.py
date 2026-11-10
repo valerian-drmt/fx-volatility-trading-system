@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import re
 import shutil
 import time
@@ -27,6 +26,7 @@ from sqlalchemy import Text, cast, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
+from api.config import get_settings
 from api.dependencies import get_db_session, get_redis
 from bus import keys
 from persistence.models import Base
@@ -1493,7 +1493,7 @@ async def hardware() -> dict[str, Any]:
 # The pro way to graph "how much does each container consume over time" : the
 # data lives in Prometheus (scraped from cAdvisor), this just range-queries it
 # so the dev Hardware tab can plot the curves. Needs the `obs` compose profile.
-PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+PROMETHEUS_URL = get_settings().PROMETHEUS_URL
 # Fixed queries (no user-controlled URL/expr → no SSRF surface).
 _CPU_QUERY = 'sum by (name) (rate(container_cpu_usage_seconds_total{name=~"fxvol-.*"}[1m])) * 100'
 _MEM_QUERY = 'sum by (name) (container_memory_working_set_bytes{name=~"fxvol-.*"})'
@@ -1520,7 +1520,7 @@ async def _prom_range(
 # (Docker Desktop / WSL2 only exposes the root cgroup). Reads the Docker Engine
 # API over the mounted socket and keeps a short in-memory history, sampled on
 # each poll. The socket is mounted in local dev only (compose override).
-_DOCKER_SOCK = os.getenv("DOCKER_SOCK", "/var/run/docker.sock")
+_DOCKER_SOCK = get_settings().DOCKER_SOCK
 _HISTORY: dict[str, deque[tuple[float, float, float]]] = {}  # name -> (ts, cpu%, mem bytes)
 _HISTORY_MAXLEN = 1080  # ~3 h at one sample / 10 s
 _last_sample = 0.0

@@ -22,7 +22,6 @@ Exit 0 = healthy, 1 = unhealthy, with one line of reason on stdout so
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from datetime import UTC, datetime
 
@@ -94,9 +93,10 @@ def _main(argv: list[str]) -> int:
     import redis  # local import: keeps module import cheap for the pure helpers
 
     from bus import keys
+    from shared.config import get_settings
     from shared.market_hours import is_fx_market_open
 
-    client = redis.Redis.from_url(os.environ["REDIS_URL"], socket_timeout=3)
+    client = redis.Redis.from_url(get_settings().REDIS_URL, socket_timeout=3)
     now = datetime.now(UTC)
     heartbeat_raw = client.get(keys.HEARTBEAT.format(engine_name=args.engine))
 

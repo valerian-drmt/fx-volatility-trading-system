@@ -14,20 +14,20 @@ Endpoints unchanged from the client's point of view:
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.auth import require_write
+from api.config import get_settings
 from api.schemas.orders import ClosePositionBody, PlaceOrderBody
 from shared.internal_auth import internal_headers
 
 router = APIRouter(prefix="/api/v1", tags=["orders"])
 logger = logging.getLogger(__name__)
 
-EXECUTION_URL = os.getenv("EXECUTION_URL", "http://execution-engine:8001")
+EXECUTION_URL = get_settings().EXECUTION_URL
 TIMEOUT_S = 10.0
 
 

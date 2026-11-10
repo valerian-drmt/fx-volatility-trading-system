@@ -33,26 +33,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-import os
 import time
 from datetime import UTC, datetime
 from typing import Any
 
+from engines.vol.settings import get_vol_settings
+
 logger = logging.getLogger(__name__)
-
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, "").strip() or default)
-    except ValueError:
-        return default
-
-
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(os.getenv(name, "").strip() or default)
-    except ValueError:
-        return default
 
 
 # Anchor-discovery targets — the listed expiries we try to qualify, spanning the
@@ -78,7 +65,7 @@ DEFAULT_GREEKS_WAIT_S: int = 12
 DEFAULT_CANCEL_PAUSE_S: float = 0.5
 # Gap between successive reqMktData subscriptions within a tenor — turns the
 # ~74-line burst into a rolling stream (0.05s ≈ 3.7s spread/tenor). 0 disables.
-DEFAULT_SUBSCRIBE_GAP_S: float = _env_float("VOL_SUBSCRIBE_GAP_S", 0.05)
+DEFAULT_SUBSCRIBE_GAP_S: float = get_vol_settings().VOL_SUBSCRIBE_GAP_S
 
 
 def _safe(val: object) -> float | None:

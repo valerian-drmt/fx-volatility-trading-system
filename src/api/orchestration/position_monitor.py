@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -28,6 +27,7 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from api.config import get_settings
 from bus import keys
 from bus.publisher import publish_exit_alert, publish_position_update
 from core.positions.delta_hedge import check_delta_hedge_needed, net_pending_hedge_delta
@@ -162,10 +162,8 @@ class PositionMonitorScheduler:
         ids = list(self._pending_hedge_ids)
         self._pending_hedge_ids.clear()
         try:
-            import os
-
             import httpx
-            base = os.environ.get("EXECUTION_ENGINE_URL", "http://execution-engine:8001")
+            base = get_settings().EXECUTION_URL
             async with httpx.AsyncClient(timeout=10.0) as client:
                 for hid in ids:
                     try:
@@ -652,9 +650,10 @@ def build_position_monitor_scheduler() -> PositionMonitorScheduler:
     """Wire dependencies + read env-driven config."""
     from persistence.db import get_sessionmaker
 
-    interval = float(os.environ.get("POSITION_MONITOR_INTERVAL_S", "60.0"))
-    startup = float(os.environ.get("POSITION_MONITOR_STARTUP_DELAY_S", "30.0"))
-    symbol = os.environ.get("POSITION_MONITOR_SYMBOL", "EURUSD")
+    settings = get_settings()
+    interval = settings.POSITION_MONITOR_INTERVAL_S
+    startup = settings.POSITION_MONITOR_STARTUP_DELAY_S
+    symbol = settings.POSITION_MONITOR_SYMBOL
     return PositionMonitorScheduler(
         sessionmaker_factory=get_sessionmaker,
         symbol=symbol, interval_s=interval, startup_delay_s=startup,

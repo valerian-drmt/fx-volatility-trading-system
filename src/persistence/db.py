@@ -7,8 +7,6 @@ URL via ``monkeypatch`` before the first call.
 
 from __future__ import annotations
 
-import os
-
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -21,7 +19,9 @@ _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
 def _database_url() -> str:
-    url = os.environ.get("DATABASE_URL")
+    from shared.config import get_settings
+
+    url = get_settings().DATABASE_URL
     if not url:
         raise RuntimeError(
             "DATABASE_URL is not set. See .env.example for the expected format."
@@ -37,11 +37,9 @@ def _statement_timeout_ms() -> int:
     across UI polls until the pool is exhausted — the request fails fast with
     a 500 instead of taking every other endpoint down with it.
     """
-    raw = os.environ.get("DB_STATEMENT_TIMEOUT_MS", "").strip()
-    try:
-        return max(0, int(raw)) if raw else 0
-    except ValueError:
-        return 0
+    from shared.config import get_settings
+
+    return get_settings().db_statement_timeout_ms
 
 
 def get_engine() -> AsyncEngine:

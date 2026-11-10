@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
@@ -59,6 +58,7 @@ from engines.execution.reaper import reap_stale_orders, reaper_loop
 from engines.execution.reconciler import reconcile_positions, reconcile_positions_loop
 from engines.execution.redis_state import set_client as set_redis_client
 from engines.execution.rollback_runner import run_rollback
+from engines.execution.settings import get_execution_settings
 from engines.execution.spot_orders import (
     attach_spot_handlers,
     create_spot_order,
@@ -80,29 +80,30 @@ from shared.tracing import init_tracing
 # T1 logs unification : structlog JSON output like the other engines.
 # Replaces logging.basicConfig (which produced console-format lines that
 # Promtail couldn't parse to extract `level` for Loki).
-configure_logging(service_name="execution_engine", level=os.getenv("LOG_LEVEL", "INFO"))
+_settings = get_execution_settings()
+configure_logging(service_name="execution_engine", level=_settings.LOG_LEVEL)
 logger = logging.getLogger("execution")
 
 # P0 obs : Prometheus /metrics endpoint port. Spec § Phase 0 step 3.
 _METRICS_PORT = 9104
 
-SYNC_INTERVAL_S = float(os.getenv("SYNC_INTERVAL_S", "1.0"))
-HEARTBEAT_INTERVAL_S = float(os.getenv("HEARTBEAT_INTERVAL_S", "10.0"))
-STUCK_WATCH_INTERVAL_S = float(os.getenv("STUCK_WATCH_INTERVAL_S", "60.0"))
-STUCK_AFTER_S = float(os.getenv("STUCK_AFTER_S", "600.0"))
-RECONCILE_INTERVAL_S = float(os.getenv("RECONCILE_INTERVAL_S", "60.0"))
+SYNC_INTERVAL_S = _settings.SYNC_INTERVAL_S
+HEARTBEAT_INTERVAL_S = _settings.HEARTBEAT_INTERVAL_S
+STUCK_WATCH_INTERVAL_S = _settings.STUCK_WATCH_INTERVAL_S
+STUCK_AFTER_S = _settings.STUCK_AFTER_S
+RECONCILE_INTERVAL_S = _settings.RECONCILE_INTERVAL_S
 # IB reconnect watchdog cadence — how often the lifespan task polls
 # ``executor.is_connected()`` and retries ``connect()`` while down.
-IB_RECONNECT_INTERVAL_S = float(os.getenv("IB_RECONNECT_INTERVAL_S", "10.0"))
+IB_RECONNECT_INTERVAL_S = _settings.IB_RECONNECT_INTERVAL_S
 # Ready gate (#321): each step of the startup / reconnect reconciliation pass
 # (rehydrate, position sync, stuck-order reconcile) gets this budget; a step
 # over budget is reported failed and the pass moves on.
-SESSION_PASS_TIMEOUT_S = float(os.getenv("EXECUTION_SESSION_PASS_TIMEOUT_S", "60.0"))
+SESSION_PASS_TIMEOUT_S = _settings.EXECUTION_SESSION_PASS_TIMEOUT_S
 
 # Combo (BAG) execution : place combo-eligible option structures as a single IB
 # BAG so multi-leg trades fill all-or-nothing (no naked half-fill). OFF by default
 # — the per-leg path stays the tested fallback until validated on paper.
-EXECUTION_USE_COMBO = os.getenv("EXECUTION_USE_COMBO", "0").lower() in ("1", "true", "yes")
+EXECUTION_USE_COMBO = _settings.execution_use_combo
 
 
 def _scrub(value: Any) -> str:
@@ -119,23 +120,18 @@ async def lifespan(app: FastAPI):
     # P2 obs : OTel tracer init (post P2.1 validation).
     init_tracing(service_name="execution_engine")
 
-    redis = aioredis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"), decode_responses=False)
+    redis = aioredis.from_url(_settings.REDIS_URL, decode_responses=False)
     app.state.redis = redis
     set_redis_client(redis)
 
     # Must match the gateway's READ_ONLY_API: prod deliberately runs read-only,
     # and a writable handshake against a read-only gateway fails outright rather
     # than degrading (see OrderExecutor.readonly).
-    ib_readonly = os.getenv("IB_READ_ONLY", "no").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
     executor = OrderExecutor(
-        host=os.getenv("IB_HOST", "ib-gateway"),
-        port=int(os.getenv("IB_PORT", "4002")),
-        client_id=int(os.getenv("IB_CLIENT_ID", "5")),
-        readonly=ib_readonly,
+        host=_settings.IB_HOST,
+        port=_settings.IB_PORT,
+        client_id=_settings.IB_CLIENT_ID,
+        readonly=_settings.ib_read_only,
     )
     try:
         # 5s is tight once IB replays open orders on connect; the handshake is
@@ -299,7 +295,7 @@ async def _trace_middleware(request: Request, call_next):
 # and ignored. Now: 503 when IB is not connected or the position-sync loop has
 # not ticked within MAX_SYNC_AGE_S, so `docker ps`, the watchdog and compose
 # see the engine's real state (#344).
-_MAX_SYNC_AGE_S = float(os.getenv("EXECUTION_MAX_SYNC_AGE_S", str(max(120.0, 10 * SYNC_INTERVAL_S))))
+_MAX_SYNC_AGE_S = _settings.max_sync_age_s
 
 
 async def _sync_heartbeat_age_s(redis: aioredis.Redis | None) -> float | None:

@@ -133,7 +133,6 @@ def _build_events_scheduler():
     The other sources live under ``api/orchestration/events/sources/``.
     be enabled one by one as their parsers are written.
     """
-    import os as _os
 
     from api.orchestration.events.deduplicator import EventDeduplicator
     from api.orchestration.events.repository import EventsRepository
@@ -147,7 +146,7 @@ def _build_events_scheduler():
     from persistence.db import get_sessionmaker
 
     sources: list = []
-    fred_key = _os.environ.get("FRED_API_KEY") or ""
+    fred_key = get_settings().FRED_API_KEY
     if fred_key:
         sources.append(FREDSource(api_key=fred_key))
     sources.extend([

@@ -10,7 +10,6 @@ engine against persisted Redis state on a weekend.
 """
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 
 
@@ -37,6 +36,6 @@ def market_gate_active() -> bool:
     Honours the ``FORCE_RUN_MARKET_HOURS`` env var so an operator can
     re-run engines off-hours for replay / debug.
     """
-    if os.environ.get("FORCE_RUN_MARKET_HOURS") in ("1", "true", "True"):
-        return False
-    return True
+    from shared.config import get_settings
+
+    return not get_settings().force_run_market_hours

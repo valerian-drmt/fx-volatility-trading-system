@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
+from api.config import get_settings
 from api.dependencies import get_db_session, get_redis
 from api.orchestration import config_service
 from api.schemas.admin import ConfigPatchRequest, ConfigResponse, ConfigRevertRequest
@@ -195,12 +196,11 @@ async def get_halt_state(db: DbDep) -> dict[str, Any]:
 
 
 async def _forward_halt_to_execution() -> dict[str, Any]:
-    import os
 
     import httpx
 
     from shared.internal_auth import internal_headers
-    url = os.getenv("EXECUTION_URL", "http://execution-engine:8001") + "/internal/halt"
+    url = get_settings().EXECUTION_URL + "/internal/halt"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.post(url, headers=internal_headers())

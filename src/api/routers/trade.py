@@ -10,7 +10,6 @@ GET  /api/v1/trade/book                 current book state snapshot
 from __future__ import annotations
 
 import logging
-import os
 import secrets
 import traceback
 from datetime import UTC, date, datetime, timedelta
@@ -24,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from api.auth import require_write
+from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.book_state_refresh import refresh_book_state
 from api.orchestration.pretrade_gate import run_pretrade_gate
@@ -72,7 +72,7 @@ logger = logging.getLogger(__name__)
 # → naked half-fills. We cross the spread off the preview premium : BUY pays up
 # (+buffer), SELL accepts down (−buffer). The buffer only guarantees the cross ;
 # the fill is still at the NBBO touch. Futures stay MKT (deep, tight book).
-_MARKETABLE_LIMIT_BUFFER = float(os.getenv("MARKETABLE_LIMIT_BUFFER", "0.25"))
+_MARKETABLE_LIMIT_BUFFER = get_settings().MARKETABLE_LIMIT_BUFFER
 
 
 def _scrub(value: object) -> str:
@@ -230,23 +230,22 @@ async def _release_preview_lock(preview_id: str) -> None:
 async def _post_execution_engine(path: str, body: dict[str, Any]) -> dict[str, Any]:
     """HTTP POST to execution-engine on the internal Docker network.
 
-    URL via ``EXECUTION_ENGINE_URL`` (default ``http://execution-engine:8001``).
+    URL via ``EXECUTION_URL`` (default ``http://execution-engine:8001``).
     Failures bubble up as 502 — the structure rows are already persisted, so
     operator inspects + retries via ``POST /internal/structure/submit``.
     """
-    import os
 
     import httpx
 
     from shared.internal_auth import internal_headers
-    base = os.environ.get("EXECUTION_ENGINE_URL", "http://execution-engine:8001")
+    base = get_settings().EXECUTION_URL
     url = f"{base.rstrip('/')}{path}"
     # A live submit runs synchronously in the engine: per leg it does an IB
     # qualify + quote + place round-trip, so a multi-leg order with cold option
     # quotes legitimately takes tens of seconds. A tight client timeout would give
     # up while the engine is still placing the orders — a FALSE "unreachable" that
     # also risks a double-submit on retry. Keep it generous (env-tunable).
-    timeout_s = float(os.environ.get("EXECUTION_SUBMIT_TIMEOUT_S", "45"))
+    timeout_s = get_settings().EXECUTION_SUBMIT_TIMEOUT_S
     try:
         async with httpx.AsyncClient(timeout=timeout_s) as client:
             resp = await client.post(url, json=body, headers=internal_headers())

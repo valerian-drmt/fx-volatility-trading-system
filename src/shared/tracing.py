@@ -23,7 +23,6 @@ Compat notes :
 from __future__ import annotations
 
 import logging
-import os
 import socket
 from typing import Any
 
@@ -75,10 +74,13 @@ def init_tracing(service_name: str) -> Any:
     if isinstance(existing, TracerProvider):
         return trace.get_tracer(service_name)
 
-    if os.getenv("OTEL_SDK_DISABLED", "").lower() in {"1", "true", "yes"}:
+    from shared.config import get_settings
+
+    settings = get_settings()
+    if settings.otel_sdk_disabled:
         logger.info("otel_tracing_disabled service=%s (OTEL_SDK_DISABLED)", service_name)
         return _NoopTracer()
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4317")
+    endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT
     if not _collector_reachable(endpoint):
         logger.warning(
             "otel_collector_unreachable service=%s endpoint=%s — tracing disabled "
@@ -90,7 +92,7 @@ def init_tracing(service_name: str) -> Any:
     resource = Resource.create({
         "service.name": service_name,
         "service.namespace": "fxvol",
-        "deployment.environment": os.getenv("ENVIRONMENT", "dev"),
+        "deployment.environment": settings.ENVIRONMENT,
     })
     provider = TracerProvider(resource=resource)
     exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)

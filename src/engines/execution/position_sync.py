@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -29,6 +28,7 @@ from bus.publisher import publish_account_snapshot, publish_positions_changed
 from core.products import product_label_from_symbol
 from engines.execution.latency import observe_positions_publish
 from engines.execution.order_executor import OrderExecutor
+from engines.execution.settings import get_execution_settings
 from persistence.models import (
     AccountHistory,
     BookedPosition,
@@ -44,7 +44,7 @@ from shared.contracts import build_ib_local_symbol, multiplier_for, parse_local_
 # Auto-close booked positions the broker no longer holds (book ↔ IB reconciliation).
 # ON by default ; a stale booking that IB shows flat (for >1h) is closed with an
 # audit trail. Guarded so it NEVER fires on an empty/disconnected IB snapshot.
-_AUTOCLOSE_STALE = os.getenv("RECONCILE_AUTOCLOSE", "1").lower() in ("1", "true", "yes")
+_AUTOCLOSE_STALE = get_execution_settings().reconcile_autoclose
 
 logger = logging.getLogger(__name__)
 

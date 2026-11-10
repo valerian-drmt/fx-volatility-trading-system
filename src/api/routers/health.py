@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -56,7 +55,7 @@ def _build_identity() -> dict[str, str]:
         ver = _pkg_version("fxvol")
     except PackageNotFoundError:
         ver = "0.0.0"
-    sha = os.getenv("GIT_SHA", "unknown")
+    sha = get_settings().GIT_SHA
     # ``commit`` = ``git_sha`` (#370 acceptance wording); both stay.
     return {"version": ver, "git_sha": sha, "commit": sha}
 
