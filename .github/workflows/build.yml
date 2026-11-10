@@ -62,7 +62,7 @@ jobs:
         run: echo "semver=$(python3 scripts/ci/release_version.py semver)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push (api)
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           labels: |
             org.opencontainers.image.version=${{ steps.ver.outputs.semver }}
@@ -117,7 +117,7 @@ jobs:
         run: echo "semver=$(python3 scripts/ci/release_version.py semver)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push (frontend)
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           labels: |
             org.opencontainers.image.version=${{ steps.ver.outputs.semver }}
@@ -179,7 +179,7 @@ jobs:
         run: echo "semver=$(python3 scripts/ci/release_version.py semver)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push (${{ matrix.service.image }})
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           labels: |
             org.opencontainers.image.version=${{ steps.ver.outputs.semver }}
