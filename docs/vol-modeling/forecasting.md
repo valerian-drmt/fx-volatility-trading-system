@@ -81,6 +81,23 @@ vol_model = blend · vol_garch + (1 − blend) · vol_empirical
 Returns `{tenor: {sigma_model_pct}}`, or an empty dict on insufficient data /
 numerical divergence. GARCH is also P-measure.
 
+## Input sanitising and non-convergence (#312)
+
+* **Yang-Zhang**: rows with a non-finite or non-positive price, or a high below
+  the low, are dropped; three valid rows are the floor; `k` uses the number of
+  periods (`n - 1` for `n` rows), the textbook definition.
+* **HAR**: the projection seeds from the last 22 finite, positive daily RVs
+  (the old slice took the whole series and an unfiltered NaN poisoned the
+  recursion); `fit_and_project_har` feeds the projection the same filtered
+  closes the fit used.
+* **GARCH**: only finite, positive closes; a constant series fits nothing;
+  the optimiser's `convergence_flag` is honoured: on non-convergence the
+  GARCH leg is dropped and the tenor carries the empirical mean-reversion leg
+  alone, with `garch_converged: false` on every tenor. The term structure is
+  the **average** variance over `[0, T]`,
+  `var_lr + (var_c - var_lr)(1 - exp(-kT))/(kT)`, the quantity an option to
+  `T` prices, not the instantaneous variance at `T`.
+
 ## 4. VRP — the P → Q bridge
 
 `core.vol.vrp` ([`core/vol/vrp.py`](../../src/core/vol/vrp.py)) holds the variance

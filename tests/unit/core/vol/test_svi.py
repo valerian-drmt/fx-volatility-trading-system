@@ -49,15 +49,17 @@ def test_svi_curve_returns_requested_number_of_points() -> None:
     assert all(p["strike"] > 0 and p["iv_pct"] > 0 for p in curve)
 
 
-def test_fit_returns_none_when_fewer_than_three_points() -> None:
+def test_fit_returns_none_when_fewer_than_five_points() -> None:
+    # Five parameters need five observations (#311): four points used to "fit".
     assert fit_svi([1.17, 1.18], [0.06, 0.065], forward=1.17, tenor_years=1 / 12) is None
+    assert fit_svi([1.14, 1.16, 1.17, 1.19], [0.07, 0.063, 0.06, 0.066], forward=1.17, tenor_years=1 / 12) is None
 
 
 def test_fit_filters_nan_and_negative_ivs() -> None:
-    strikes = [1.12, 1.15, 1.17, 1.19, 1.22]
-    ivs = [np.nan, 0.07, 0.06, -1.0, 0.075]  # two invalid out of five
+    strikes = [1.10, 1.12, 1.14, 1.15, 1.17, 1.19, 1.22]
+    ivs = [0.082, np.nan, 0.072, 0.07, 0.06, -1.0, 0.075]  # two invalid out of seven
     fitted = fit_svi(strikes, ivs, forward=1.17, tenor_years=1 / 12)
-    # Three valid points → fit should succeed.
+    # Five valid points → fit should succeed.
     assert fitted is not None
 
 

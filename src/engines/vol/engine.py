@@ -218,7 +218,7 @@ def _svi_payload_from_params(
         w_fit = params.a + params.b * (params.rho * diff + sq)
         w_obs = np.asarray(ivs) ** 2 * T
         rmse = float(np.sqrt(np.mean((w_fit - w_obs) ** 2)))
-        g_min = butterfly_g_min(params)
+        g_min = butterfly_g_min(params, k_obs=k)  # the quoted range plus the wings (#311)
         if g_min < 0:
             logger.warning(
                 "svi_butterfly_violation",
@@ -281,7 +281,7 @@ def _fit_svi_per_tenor(
         )
         w_obs = np.asarray(ivs) ** 2 * T
         rmse = float(np.sqrt(np.mean((w_fit - w_obs) ** 2)))
-        g_min = butterfly_g_min(params)
+        g_min = butterfly_g_min(params, k_obs=np.log(np.asarray(strikes, dtype=float) / float(forward)))
         if g_min < 0:
             logger.warning(
                 "svi_butterfly_violation",
@@ -851,6 +851,25 @@ class VolEngine:
             )
         except Exception:
             logger.exception("svi_fit_per_tenor_failed")
+        # Cross-tenor calendar check (#311): total variance must not fall with
+        # maturity between consecutive fitted slices. Reported on the surface
+        # meta and logged; the preview reads ``_calendar.ok`` next to the
+        # butterfly flag.
+        try:
+            from core.vol.svi import calendar_violations
+
+            slices = [
+                (t, float(self.tenor_t[t]), p)
+                for t, p in svi_params_by_tenor.items()
+                if t in self.tenor_t and p is not None
+            ]
+            pairs = calendar_violations(slices)
+            out["_calendar"] = {"pairs": pairs, "ok": all(p["ok"] for p in pairs)}
+            bad = [p for p in pairs if not p["ok"]]
+            if bad:
+                logger.warning("svi_calendar_violation", extra={"pairs": bad})
+        except Exception:
+            logger.exception("svi_calendar_check_failed")
         # SSVI surface-level fit (Phase P2.2).
         await self._publish_progress("vol_surface", "ssvi_surface")
         try:

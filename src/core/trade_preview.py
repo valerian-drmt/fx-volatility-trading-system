@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
+from core.execution.revalidation import SIGNAL_ACTIONABLE_FACTOR, signal_still_actionable
 from core.pricing import bs as _bs
 from core.products import product_label_from_symbol
 from core.units import EUR_FOP_MULTIPLIER, FUTURE_MULTIPLIERS, PIP_SIZE, VOLPT
@@ -855,11 +856,10 @@ def run_pre_submit_checks(
         {"regime": regime_label},
     ))
 
-    z_flipped = (armed_z > 0) != (current_z > 0)
-    z_too_weak = abs(current_z) < threshold_min * 0.7
+    # Same rule as core.execution.revalidation (#314): the factor lives there.
     checks.append(Check(
-        "signal_still_actionable", not (z_flipped or z_too_weak),
-        {"armed_z": armed_z, "current_z": current_z},
+        "signal_still_actionable", signal_still_actionable(armed_z, current_z, threshold_min),
+        {"armed_z": armed_z, "current_z": current_z, "threshold": threshold_min * SIGNAL_ACTIONABLE_FACTOR},
     ))
 
     # max_loss_under_capital_limit + iv_data_fresh removed by request — the

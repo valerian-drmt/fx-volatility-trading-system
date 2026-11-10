@@ -22,6 +22,20 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+# The one factor both gates apply to ``z_threshold_min`` (#314, audit 02#13):
+# a signal is still actionable while |z| >= SIGNAL_ACTIONABLE_FACTOR x threshold.
+# The pre-submit check used 0.7 and the revalidation 1.0, so a preview could
+# pass at Arm and be refused at Submit on the same z. 1.0 is the contract:
+# the signal that armed must still clear the arming bar when it is submitted.
+SIGNAL_ACTIONABLE_FACTOR: float = 1.0
+
+
+def signal_still_actionable(armed_z: float, current_z: float, threshold_min: float) -> bool:
+    """Same sign as the armed signal and |z| still at or above the bar."""
+    if (armed_z > 0) != (current_z > 0):
+        return False
+    return abs(current_z) >= threshold_min * SIGNAL_ACTIONABLE_FACTOR
+
 
 @dataclass(frozen=True)
 class RevalidationResult:
@@ -73,17 +87,17 @@ def revalidate_preview(
 
     # Signal-still-actionable gate (skipped for manual mode where armed_z is None)
     if armed_z is not None and current_z is not None:
-        if abs(current_z) < z_threshold_min:
-            return RevalidationResult(
-                False,
-                "signal_no_longer_actionable",
-                {"current_z": current_z, "threshold": z_threshold_min},
-            )
         if (armed_z > 0) != (current_z > 0):
             return RevalidationResult(
                 False,
                 "signal_flipped",
                 {"armed_z": armed_z, "current_z": current_z},
+            )
+        if not signal_still_actionable(armed_z, current_z, z_threshold_min):
+            return RevalidationResult(
+                False,
+                "signal_no_longer_actionable",
+                {"current_z": current_z, "threshold": z_threshold_min * SIGNAL_ACTIONABLE_FACTOR},
             )
 
     # Surface freshness (audit EX-08, #339): a preview priced on a surface

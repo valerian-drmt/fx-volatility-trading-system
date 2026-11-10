@@ -67,6 +67,17 @@ defined but semantically empty until the data spans a traversed event. In the
 engine the GMM fits on just 2 features (`vol_level`, `vol_of_vol`) because
 `term_slope` is mostly NULL during bootstrap.
 
+### Standardised features (#314)
+
+The three features live on different scales (vol level in percent points,
+vol-of-vol and term slope much smaller), and the old `reg_covar = 0.5` on raw
+units swamped the two small ones. `fit_gmm` now standardises each column
+(mean / std, a constant column keeps std 1) before the fit, with
+`reg_covar = 1e-3` on the z-scores; the scale travels with the serialised
+model so the vol engine standardises the live observation the same way. A
+model published before this change carries no scale and is evaluated in raw
+units until the next refit.
+
 ## 4. The gate — regime to size multiplier
 
 `gate_decision(label, event_dampener, history_labels)` is the final authorization,

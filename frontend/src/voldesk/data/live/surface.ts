@@ -70,7 +70,8 @@ export function adaptSurface(
     // a pillar is interp if any present cell is flagged interp (server sets it
     // per cell; atm is the representative).
     const src = row.atm?.source ?? SURFACE_DELTA_KEYS.map((d) => row[d]?.source).find(Boolean);
-    return src === "interp" ? "interp" : "listed";
+    // "interp_inverted" (#311: the term bracket was inverted) is interp for the desk
+    return typeof src === "string" && src.startsWith("interp") ? "interp" : "listed";
   };
   return {
     tenors: [...SURFACE_TENOR_KEYS],
