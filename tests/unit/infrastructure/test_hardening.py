@@ -32,7 +32,7 @@ def test_service_images_drop_to_a_non_root_user() -> None:
         user = [ln for ln in text.splitlines() if ln.startswith("USER ")]
         assert user == ["USER fxvol"], name
         assert text.index("USER fxvol") < text.index("CMD ["), f"{name}: USER must precede CMD"
-        assert text.index("pip install") < text.index("USER fxvol"), f"{name}: install as root, then drop"
+        assert text.index("uv sync") < text.index("USER fxvol"), f"{name}: install as root, then drop"
 
 
 def test_obs_profile_runs_without_privilege_or_a_writable_socket() -> None:

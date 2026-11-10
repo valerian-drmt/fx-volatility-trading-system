@@ -15,7 +15,7 @@ set -eu
 BUCKET="${BACKUP_BUCKET:-fxvol-backups}"
 REGION="${AWS_REGION:-eu-west-1}"
 NAME="pg-restore-drill"
-IMAGE="${POSTGRES_IMAGE:-postgres:16-alpine}"
+IMAGE="${POSTGRES_IMAGE:-postgres:16.15-alpine3.24@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139}"
 # The prod host has 3.8 GB and already runs the stack: keep the scratch DB small.
 MEM="${DRILL_MEM:-256m}"
 

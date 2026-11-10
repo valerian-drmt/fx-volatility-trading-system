@@ -188,7 +188,7 @@ function legBlotterLabel(s: SubmittedTrade, leg: SubmittedLeg): string {
   // Prefer the structure's declared wing; fall back to strike-bucketing only when
   // it declares none — so a "25Δ" strangle never shows 10Δ legs.
   const wings = structureWings(s);
-  let wing: string | null = null;
+  let wing: string | null;
   if (wings.length === 1) wing = wings[0]!;
   else if (wings.length >= 2 && s.legs) wing = assignLegWing(s.legs, leg, wings);
   else wing = DATA.strikeToWing(leg.strike, s.reference_tenor ?? "");

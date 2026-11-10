@@ -309,7 +309,6 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   useEffect(() => {
     // keep the vanilla strike on the live ATM until the trader picks one
     if (meta.mode === "single" && !userStrikeRef.current) setStrike(liveAtm);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveAtm, meta.mode, tenor]);
 
   const legs = useMemo(() => buildLegs(product, side, tenor, farTenor, strike, qty, wing, spreadSide, spreadNear, spreadFar, live), [product, side, tenor, farTenor, strike, qty, wing, spreadSide, spreadNear, spreadFar, live]);

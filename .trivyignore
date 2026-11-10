@@ -1,0 +1,3 @@
+# Trivy findings accepted after triage (#304). One id per line, with the
+# reason and the date in a comment above it; the same entry goes in the
+# triage log of docs/ops/dependency-policy.md. Empty = nothing waived.

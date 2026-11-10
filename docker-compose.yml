@@ -10,7 +10,7 @@
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine3.24@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
     container_name: fxvol-postgres
     mem_limit: 512m
     cpu_shares: 256
@@ -52,7 +52,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.12-alpine3.22@sha256:acc6f0ac39f6fe3a39c57b3c943832f24f4eeff4e17f24960668e37d1e112a36
     container_name: fxvol-redis
     mem_limit: 320m
     cpu_shares: 256
@@ -501,7 +501,7 @@ services:
     # IBC dies "version X not installed". Bump this pin deliberately + refresh
     # the volume install (infrastructure/ib-gateway/README.md). Prod pins the
     # same tag via remote-deploy.sh's IB_GATEWAY_IMAGE.
-    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:10.49.1c}
+    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:10.49.1c@sha256:b6c839e6cbf55a622793df748cc28d80ff73fb9efff404c6e0271b1999f08b2c}
     container_name: fxvol-ib-gateway
     mem_limit: 1500m
     cpu_shares: 1024
@@ -577,7 +577,7 @@ services:
       start_period: 90s
 
   nginx:
-    image: nginx:alpine
+    image: nginx:1.31.8-alpine@sha256:713fc2ebfd92e8217db451477182ee91944b123d2b1ee9fd5a8c6e91ca6c3a11
     container_name: fxvol-nginx
     mem_limit: 64m
     cpu_shares: 1024

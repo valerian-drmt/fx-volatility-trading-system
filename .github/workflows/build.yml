@@ -86,10 +86,10 @@ jobs:
       # web.Dockerfile `npm ci` layer is already cached by buildx but the
       # hash hit on the action runner itself avoids re-downloading
       # ~200 MB of tarballs when buildx cold-starts.
-      - name: Set up Node 20 with npm cache
+      - name: Set up Node 22 with npm cache
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 

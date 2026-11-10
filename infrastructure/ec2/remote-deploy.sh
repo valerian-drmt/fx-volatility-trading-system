@@ -103,7 +103,7 @@ ANALYTICS_ENGINE_IMAGE=${reg}/fx-options-analytics-engine:${IMAGE_TAG}
 # volume: IBC then dies with "version X not installed: can't find jars folder"
 # and the engines stall unhealthy. Bumping this pin is deliberate and MUST be
 # paired with refreshing the volume's install (see infrastructure/ib-gateway/README.md).
-IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:10.49.1c
+IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:10.49.1c@sha256:b6c839e6cbf55a622793df748cc28d80ff73fb9efff404c6e0271b1999f08b2c
 ENVEOF
 
 # Broker credentials: fetched + rendered ONLY when the ib profile is armed, so

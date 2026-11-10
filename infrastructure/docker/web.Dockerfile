@@ -1,13 +1,14 @@
 # Multi-stage build for the React frontend image.
 #
-# Stage 1 compiles the bundle with Node 20 (matches the CI `frontend` job).
+# Stage 1 compiles the bundle with Node 22 (matches the CI `frontend` job).
 # Stage 2 copies the dist/ output into an nginx:alpine image configured with
 # frontend.conf (SPA fallback + immutable cache for hashed assets).
 #
 #   docker build -f infrastructure/docker/web.Dockerfile -t fx-options-frontend .
 
-ARG NODE_IMAGE=node:20-alpine
-ARG NGINX_IMAGE=nginx:alpine
+# Pinned by tag and digest (#305); Node 22 LTS (Node 20 is end-of-life).
+ARG NODE_IMAGE=node:22.23.4-alpine3.24@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202
+ARG NGINX_IMAGE=nginx:1.31.8-alpine@sha256:713fc2ebfd92e8217db451477182ee91944b123d2b1ee9fd5a8c6e91ca6c3a11
 
 FROM ${NODE_IMAGE} AS build
 

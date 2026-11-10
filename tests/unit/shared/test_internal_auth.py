@@ -59,13 +59,12 @@ def test_engine_refuses_a_missing_or_wrong_token_and_accepts_the_right_one(monke
 
 def test_every_internal_route_of_the_engine_carries_the_dependency() -> None:
     from engines.execution.main import app, require_internal_token
+    from tests.fixtures.routes import api_routes, route_dependency_calls
 
-    for route in app.routes:
-        path = getattr(route, "path", "")
-        if not path.startswith("/internal/"):
-            continue
-        deps = [d.call for d in getattr(route, "dependant").dependencies]  # noqa: B009
-        assert require_internal_token in deps, path
+    internal = [r for r in api_routes(app) if r.path.startswith("/internal/")]
+    assert internal, "the engine's /internal routes must be visible to the guard"
+    for route in internal:
+        assert require_internal_token in route_dependency_calls(route), route.path
 
 
 def test_token_env_name_is_what_compose_and_deploy_render() -> None:
