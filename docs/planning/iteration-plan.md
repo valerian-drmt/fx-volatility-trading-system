@@ -82,6 +82,20 @@ can close after iteration 15 if nothing new is found.
 #297, #287 secrets ──▶ password rotations (user action, recorded in #297)
 ```
 
+## Status on 2026-11-10
+
+Iterations 10 to 16 shipped to prod between 2026-11-10 10:00 and 17:00 UTC
+(PRs #395, #401, #402, #405, #417, #418, #419). What is left of them:
+
+| Item | Waiting on |
+|---|---|
+| Rollback drill, restore drill, IB paper smoke, runbook walks (#345, #346, #341) | the owner, weekend window (`docs/ops/runbooks.md`) |
+| IB redistribution and FRED storage decisions (#307) | the owner (`docs/ops/data-terms.md`) |
+| Response models for the remaining untyped routes (#416) | engineering, slice by slice against recorded payloads |
+| Obs image upgrade (#415), ib_async migration (#403, v1.1), React Compiler lint rules (#404) | engineering |
+| Host split (#374) | closed: not needed on the 2026-11-10 numbers; reopen rule on the ticket |
+| Re-verification of the 12 audit epics against `main` | one pass before tagging v1.0.0 |
+
 ## The iterations
 
 ### Iteration 1 — Stop the bleeding (safety P0 + one visible win)

@@ -42,6 +42,13 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
     ignore:
+      # A Postgres major cannot start on the previous major's data volume
+      # (pg_upgrade / dump + restore); Redis majors change persistence formats.
+      # Both are planned migrations with a runbook, never a weekly bump.
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "redis"
+        update-types: ["version-update:semver-major"]
       # The gateway build is pinned by hand after a paper soak (the 10.48 -> 10.49
       # volume drift outage is the precedent, docs/ops/dependency-policy.md).
       - dependency-name: "ghcr.io/gnzsnz/ib-gateway"
