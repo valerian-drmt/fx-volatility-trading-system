@@ -374,5 +374,15 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
  */
 function TicksProvider({ children }: { children: ReactNode }): JSX.Element {
   const ticks: Fresh<TickMsg> = useTicks();
+  // Fluidity beacon on the one stream that always flows (#374 follow-up): the
+  // positions channel alone gave the host-split decision zero samples. One
+  // render in ten reports publisher stamp -> screen and receive -> screen.
+  useEffect(() => {
+    const msg = ticks.data;
+    if (!msg || !shouldSample(Math.random())) return;
+    const published = msg.timestamp ? Date.parse(msg.timestamp) : NaN;
+    const payload = beaconPayload("ticks", Number.isFinite(published) ? published : null, ticks.asOf, Date.now());
+    if (payload) postBeacon(payload);
+  }, [ticks.data, ticks.asOf]);
   return <TicksContext.Provider value={ticks}>{children}</TicksContext.Provider>;
 }
