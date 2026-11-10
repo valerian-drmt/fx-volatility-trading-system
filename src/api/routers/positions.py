@@ -712,6 +712,7 @@ async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
 
 @router.get("/exit-rules-config")
 async def list_exit_rules_config(db: DbDep) -> list[dict[str, Any]]:
+    """Exit rules the position monitor evaluates, highest priority first, with their parameters and whether each is active."""
     rows = (await db.execute(
         select(ExitRulesConfig).order_by(desc(ExitRulesConfig.priority))
     )).scalars().all()
@@ -724,6 +725,7 @@ async def list_exit_rules_config(db: DbDep) -> list[dict[str, Any]]:
 
 @router.get("/delta-hedge-config")
 async def list_delta_hedge_config(db: DbDep) -> list[dict[str, Any]]:
+    """Delta-hedge settings (thresholds, sizes, cooldown) as name / value / unit rows."""
     # delta_hedge_config rows folded into config_scalar with
     # namespace='delta_hedge' (migration 024, table renamed 037).
     # Response shape preserved for API stability.
@@ -739,6 +741,7 @@ async def list_delta_hedge_config(db: DbDep) -> list[dict[str, Any]]:
 
 @router.get("/{position_id}")
 async def get_position(position_id: int, db: DbDep) -> dict[str, Any]:
+    """One booked position with its structure and its latest metrics row (greeks, mark, P&L). 404 when the id is unknown."""
     pos = (await db.execute(
         select(BookedPosition).where(BookedPosition.id == position_id).limit(1)
     )).scalar_one_or_none()
@@ -759,6 +762,7 @@ async def mtm_history(
     position_id: int, db: DbDep, hours: int = Query(24, ge=1, le=720),
     limit: int = Query(500, ge=1, le=5000),
 ) -> list[dict[str, Any]]:
+    """Mark-to-market history of one position over the last `hours`: spot, average leg IV, gross / net P&L and its vega / gamma / theta / other split."""
     cutoff = datetime.now(UTC) - timedelta(hours=hours)
     rows = (await db.execute(
         select(BookedPositionMetricHistory).where(BookedPositionMetricHistory.position_id == position_id)
@@ -781,6 +785,7 @@ async def mtm_history(
 async def position_alerts(
     position_id: int, db: DbDep, limit: int = Query(50, ge=1, le=500),
 ) -> list[dict[str, Any]]:
+    """Exit alerts raised for one position, newest first: rule, recommended action, priority and execution status."""
     rows = (await db.execute(
         select(ExitAlert).where(ExitAlert.position_id == position_id)
         .order_by(desc(ExitAlert.timestamp)).limit(limit)
@@ -801,6 +806,7 @@ async def position_alerts(
 async def position_hedges(
     position_id: int, db: DbDep, limit: int = Query(100, ge=1, le=500),
 ) -> list[dict[str, Any]]:
+    """Delta-hedge orders triggered for one position, newest first."""
     rows = (await db.execute(
         select(HedgeOrder).where(HedgeOrder.position_id == position_id)
         .order_by(desc(HedgeOrder.triggered_at)).limit(limit)

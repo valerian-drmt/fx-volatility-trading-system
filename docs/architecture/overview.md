@@ -21,8 +21,8 @@ Parameter Store at boot.
 
 ## The container stack
 
-The **core stack is 11 containers**; **six ship our own Python code** (marked `*`).
-An optional **7-container observability stack** starts under `--profile obs`.
+The **core stack is 12 containers**; **seven ship our own Python code** (marked `*`, 8 images with the frontend).
+An optional **9-container observability stack** starts under `--profile obs` (prod runs it).
 
 | Container | Runs | Source |
 |---|---|---|
@@ -33,14 +33,15 @@ An optional **7-container observability stack** starts under `--profile obs`.
 | `frontend` | React SPA (nginx:alpine) | `frontend/` |
 | `api` * | FastAPI REST + WS (8000) | `src/api/` + `src/core/` + `src/persistence/` + `src/bus/` |
 | `market-data` * | IB ticks/bars → Redis (clientID 1) | `src/engines/market_data/` |
-| `vol-engine` * | SVI/SSVI/GARCH/HAR/PCA/GMM (clientID 2) | `src/engines/vol/` |
+| `vol-engine` * | chains → SVI/SSVI/GARCH/HAR surface (clientID 2) | `src/engines/vol/` |
 | `risk-engine` * | greeks + delta hedge (clientID 3) | `src/engines/risk/` |
 | `db-writer` * | Redis → Postgres async sink | `src/engines/db_writer/` |
+| `analytics-engine` * | hourly GMM / PCA / PC3 batch + daily rollups, no IB | `src/engines/analytics/` |
 | `execution-engine` * | order submission (clientID 5, :8001) | `src/engines/execution/` |
 
-![System containers: api, 5 engines, redis, postgres, nginx, frontend, ib-gateway, obs](../diagrams/system-containers.svg)
+![System containers: api, 6 engines, redis, postgres, nginx, frontend, ib-gateway, obs](../diagrams/system-containers.svg)
 
-The five engines live behind the `engines` compose profile; a plain `docker compose
+The six engines live behind the `engines` compose profile; a plain `docker compose
 up` brings up the API demo without a live IB connection. `ib-gateway` is opt-in via
 `--profile ib`.
 

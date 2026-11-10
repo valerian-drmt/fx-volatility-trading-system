@@ -147,6 +147,11 @@ because the documentation currently claims each control is in place.
 
 ## 7. Known limitations — required before v1.0
 
+> **Status 2026-11-10 (#351): addressed.** `README.md` § Known limitations states L1-L8
+> as they are today. Since this list was written, L5 (alerting, #342), L6 (limits and kill
+> switch, #315), L8 (VolConfig hot reload, #329) and L9 (lockfile, #303) were fixed; L10
+> (restore drill) stays open until the first drill is logged in `RESTORE.md`.
+
 **No "known limitations" section exists in any document.** This gate is not a
 formality: several items below are currently contradicted by the marketing prose
 in `README.md`. The section must state at minimum:
@@ -167,6 +172,10 @@ in `README.md`. The section must state at minimum:
 ---
 
 ## 8. Open legal / business questions
+
+> **Status 2026-11-10 (#307):** attribution done (README + desk). §8.1 (IB redistribution) and
+> §8.2 (FRED storage) have a written recommendation in `docs/ops/data-terms.md` and wait for
+> the owner's decision. §8.3 decided (#306).
 
 These are **not resolvable by audit**. Each needs a decision recorded before the
 system is presented as a released product.

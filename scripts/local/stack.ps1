@@ -120,12 +120,20 @@ function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "    [OK] $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "    [!]  $msg" -ForegroundColor Yellow }
 
+# A repo-root .env that sets DB_PASSWORD (from .env.example, #351) is the
+# no-AWS path: docker compose reads it on its own, so the SSM loader is skipped.
+# The check reads no value: it only asks whether the line exists.
+function Test-LocalEnvFile {
+    $envFile = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) ".env"
+    return (Test-Path $envFile) -and [bool](Select-String -Path $envFile -Pattern '^DB_PASSWORD=.+' -Quiet)
+}
+
 try {
     # ---------- REFRESH mode: purge the RAM (WSL2 VM) without losing data ----------
     # down (volumes kept) -> wsl --shutdown (gives the RAM back to Windows) -> wait
     # for the Docker engine -> fall back into the normal up pipeline (NoBuild).
     if ($Refresh) {
-        if (-not $env:DB_PASSWORD) {
+        if (-not $env:DB_PASSWORD -and -not (Test-LocalEnvFile)) {
             Write-Step "Secrets missing -> loading from AWS SSM"
             & "$PSScriptRoot\load_secrets.ps1"
         }
@@ -161,7 +169,7 @@ try {
         if ($typed -cne 'PURGE') { Write-Warn "Aborted."; exit 0 }
 
         # 'compose down' interpolates ${DB_PASSWORD:?} at parse time -> secrets needed.
-        if (-not $env:DB_PASSWORD) {
+        if (-not $env:DB_PASSWORD -and -not (Test-LocalEnvFile)) {
             Write-Step "Secrets missing -> loading from AWS SSM"
             & "$PSScriptRoot\load_secrets.ps1"
         }
@@ -195,7 +203,7 @@ try {
         }
 
         # docker compose interpolates ${DB_PASSWORD:?} at parse time -> secrets required in env.
-        if (-not $env:DB_PASSWORD) {
+        if (-not $env:DB_PASSWORD -and -not (Test-LocalEnvFile)) {
             Write-Step "Secrets missing from the shell -> loading from AWS SSM"
             & "$PSScriptRoot\load_secrets.ps1"
         } else {
@@ -231,7 +239,7 @@ try {
     # ---------- Sous-mode -Down : stop & exit ----------
     if ($Down) {
         # compose interpolates ${DB_PASSWORD:?} at parse time even for 'down' -> secrets required.
-        if (-not $env:DB_PASSWORD) {
+        if (-not $env:DB_PASSWORD -and -not (Test-LocalEnvFile)) {
             Write-Step "Secrets missing from the shell -> loading from AWS SSM"
             & "$PSScriptRoot\load_secrets.ps1"
         }
@@ -257,7 +265,7 @@ try {
     #
     # All need the secrets: compose interpolates ${DB_PASSWORD:?} at parse time.
     if ($Build -or $Create -or $Start -or $Stop -or $Purge -or $Status) {
-        if (-not $env:DB_PASSWORD) {
+        if (-not $env:DB_PASSWORD -and -not (Test-LocalEnvFile)) {
             Write-Step "Secrets missing from the shell -> loading from AWS SSM"
             & "$PSScriptRoot\load_secrets.ps1"
         }

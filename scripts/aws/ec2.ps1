@@ -44,6 +44,11 @@
                    reboot, unattended-upgrades, uptime / disk / memory,
                    container states, newest backups in S3, watchdog state.
                    Prints no secret, no .env, no application log.
+  fluidity         Read-only go / no-go numbers for splitting the host (#374):
+                   p95 of order submit, fill-to-publish and the desk's
+                   publish-to-screen over 7 days, the worst 5-min p95, and the
+                   worst 5-min p95 while the analytics engine was cycling.
+                   Needs the obs profile (Prometheus) on the host.
   instance-status  EC2 state (running/stopped) + public IP.
   instance-stop    Stops the INSTANCE (cuts the ~$15/mo compute bill). Also stops the containers.
   instance-start   Starts the instance (the systemd unit re-ups the stack at boot if enabled).
@@ -81,7 +86,7 @@ param(
     [Parameter(Mandatory, Position = 0)]
     [ValidateSet(
         'connect', 'deploy', 'health', 'ps', 'stack', 'up', 'down', 'restart', 'logs',
-        'alembic', 'inventory', 'instance-status', 'instance-stop', 'instance-start'
+        'alembic', 'inventory', 'fluidity', 'instance-status', 'instance-stop', 'instance-start'
     )]
     [string]$Action,
 
@@ -263,6 +268,25 @@ switch ($Action) {
     }
 
     'ps'      { Invoke-OnHost "cd $HostDir && sudo docker compose ps" "Containers on the host" }
+
+    'fluidity' {
+        $cmd = @'
+q() { sudo docker exec fxvol-prometheus promtool query instant http://localhost:9090 "$1" 2>&1 | sed 's/^/    /' | head -4; }
+for spec in "order_submit_latency_seconds|order submit (api -> IB Submitted)"             "fill_to_publish_seconds|fill to positions publish"             "desk_publish_to_screen_seconds|desk publish to screen (browser)|{kind=\"publish\"}"; do
+  m="${spec%%|*}"; rest="${spec#*|}"; label="${rest%%|*}"; sel=""
+  case "$rest" in *"|"*) sel="${rest#*|}" ;; esac
+  p95="histogram_quantile(0.95, sum by (le) (rate(${m}_bucket${sel}[5m])))"
+  echo "== ${label}  (${m})"
+  echo "  samples over 7 d:";                      q "sum(increase(${m}_count${sel}[7d]))"
+  echo "  p95 over 7 d (s):";                      q "histogram_quantile(0.95, sum by (le) (rate(${m}_bucket${sel}[7d])))"
+  echo "  worst 5-min p95 over 7 d (s):";          q "max_over_time((${p95})[7d:5m])"
+  echo "  worst 5-min p95 during analytics cycles (s):"
+  q "max_over_time((${p95} and on() (sum(increase(engine_cycles_total{engine=\"analytics_engine\"}[5m])) > 0))[7d:5m])"
+done
+echo "== rule (#374): split the host only if a 'during analytics cycles' p95 is above 2 s with at least 20 samples"
+'@
+        Invoke-OnHost $cmd "Desk fluidity numbers for the host-split decision (#374)"
+    }
 
     'inventory' {
         $cmd = @'

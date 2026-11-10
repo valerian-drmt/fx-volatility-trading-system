@@ -1,9 +1,9 @@
 # FX Volatility Trading System
 
 **End-to-end trading platform for EUR/USD FX options — a microservices pipeline
-that turns a live Interactive Brokers feed into research-grade volatility signals,
-executes delta-hedged option structures, and serves it all through a real-time web
-desk.**
+that turns an Interactive Brokers paper feed into research-grade volatility signals,
+executes delta-hedged option structures on the paper account, and serves it all
+through a streaming web desk.** See [Known limitations](#known-limitations).
 
 [![CI](https://github.com/valerian-drmt/fx-volatility-trading-system/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/valerian-drmt/fx-volatility-trading-system/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
@@ -18,7 +18,7 @@ desk.**
   <img src="docs/pictures/dashboard.png" alt="The voldesk trading cockpit — live vol surface, PCA signals, positions and greeks" width="900">
 </p>
 
-A 7-view React trading desk on top of 5 async Python engines: live IB tick stream →
+A 7-view React trading desk on top of 6 async Python engines: IB tick stream (delayed) →
 vol-surface fit (SVI / SSVI, GARCH, HAR-RV) → GMM regime + PCA signal z-scores →
 delta-hedged order submission → versioned audit trail in Postgres.
 
@@ -37,8 +37,8 @@ behind an auth boundary. Every push to `main` redeploys it automatically (see
 |:---:|:---:|
 | ![Live vol surface, regime & PCA signals](docs/pictures/vol-surface.png) | ![Portfolio risk — greeks, VaR & P&L distribution](docs/pictures/risk.png) |
 | *Vol surface, regime & PCA signals* | *Risk — greeks, VaR & P&L distribution* |
-| ![Structured options book](docs/pictures/positions.png) | ![Microservices architecture](docs/pictures/architecture.png) |
-| *Structured options book* | *Microservices architecture (11 services)* |
+| ![Structured options book](docs/pictures/positions.png) | ![Container topology](docs/diagrams/system-containers.svg) |
+| *Structured options book* | *Container topology (12 core containers)* |
 
 > More views in [`docs/pictures/`](docs/pictures/).
 
@@ -48,7 +48,7 @@ behind an auth boundary. Every push to `main` redeploys it automatically (see
 
 ### Market data + execution
 - IB Gateway container (gnzsnz fork) serving the EUR/USD FOP chains
-- Real-time tick stream published on Redis (throttled ~200 ms)
+- Tick stream published on Redis (throttled ~200 ms); IB delayed market data, see Known limitations
 - Structure factory: **straddle**, **strangle**, **risk reversal**, **butterfly**,
   **calendar** — built by delta pillar + tenor, delta-hedged via a 6E futures leg
 - Marketable-limit pricing off the live touch; full order lifecycle (submit → fills
@@ -79,7 +79,7 @@ behind an auth boundary. Every push to `main` redeploys it automatically (see
 
 ## Architecture
 
-**11-container core stack** (6 ship our Python code) **+ an optional 7-container
+**12-container core stack** (7 ship our Python code) **+ an optional 9-container
 observability stack** (Prometheus / cAdvisor / Loki / Tempo / Grafana / promtail /
 otel-collector, opt-in via `--profile obs`).
 
@@ -133,17 +133,18 @@ otel-collector, opt-in via `--profile obs`).
 | `frontend` | React SPA | `frontend/` |
 | **`api`** | FastAPI REST + WS | `src/api/` + shared libs |
 | **`market-data`** | IB ticks → Redis (clientID 1) | `src/engines/market_data/` |
-| **`vol-engine`** | SVI/SSVI/GARCH/HAR/PCA/GMM (clientID 2) | `src/engines/vol/` |
+| **`vol-engine`** | Chains → SVI/SSVI/GARCH/HAR surface (clientID 2) | `src/engines/vol/` |
 | **`risk-engine`** | Greeks + delta hedge (clientID 3) | `src/engines/risk/` |
 | **`db-writer`** | Redis → Postgres async sink | `src/engines/db_writer/` |
+| **`analytics-engine`** | Hourly GMM regime / PCA / PC3 batch + daily rollups (no IB) | `src/engines/analytics/` |
 | **`execution-engine`** | Order submission (clientID 5, :8001) | `src/engines/execution/` |
 
 Networks: `fxvol-public` (nginx), `fxvol-internal` (services), `fxvol-external` (IB
-outbound). The 5 Python engines live behind the `engines` compose profile.
+outbound). The 6 Python engines live behind the `engines` compose profile, `ib-gateway` behind `ib`.
 
 Shared Python libs under `src/` (no container of their own):
 - **`core/`** — pure pricing + vol + risk algorithms (no I/O)
-- **`persistence/`** — SQLAlchemy 2 ORM (27 classes) + Alembic revisions + `AsyncDatabaseWriter`
+- **`persistence/`** — SQLAlchemy 2 ORM (31 classes) + Alembic revisions + `AsyncDatabaseWriter`
 - **`bus/`** — Redis pub/sub helpers + channel/key constants
 - **`shared/`** — config, structlog, IB connection wrapper, observability
 
@@ -172,20 +173,40 @@ Full diagrams live in [`docs/architecture/`](docs/architecture/).
 
 ## Quickstart
 
-**Prerequisites**: Docker Desktop + Python 3.11 + Node 22.
+**Prerequisites**
+
+| Need | For | Without it |
+|---|---|---|
+| Docker Desktop (or Docker Engine + compose v2) | every path | nothing runs |
+| Python 3.11 + [uv](https://docs.astral.sh/uv/) 0.13 | tests, local tooling | the stack still runs in Docker |
+| Node 22 | frontend dev server and tests | the stack still runs in Docker |
+| An Interactive Brokers **paper** account | live quotes, chains, orders (`--profile ib` + `engines`) | the desk serves an empty / last-known market |
+| AWS account + CLI v2 with the `fxvol-dev` profile | the maintainer path (secrets from SSM) and prod | use `.env` (path A) |
+
+**Path A: no AWS, from `.env`** (anyone)
+
+```bash
+cp .env.example .env                         # set DB_PASSWORD; IB_* only for --profile ib
+docker compose up -d --build                 # core: api, frontend, nginx, postgres, redis
+docker compose exec api python -m alembic -c src/persistence/alembic.ini upgrade head
+# with an IB paper account: docker compose --profile engines --profile ib up -d
+```
+
+**Path B: maintainer, secrets from SSM** (Windows / PowerShell)
 
 ```powershell
-# 1. venv + deps (one-off)
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install "uv==0.13.7" && uv sync --locked --extra dev --extra api --extra quant --extra ib --extra writer   # uv.lock = the one resolved set
+. .\scripts\local\load_secrets.ps1          # SSM -> RAM, every PS session
+.\scripts\local\stack.ps1                    # build + up + alembic upgrade head
+.\scripts\local\stack.ps1 -NoBuild           # reuse cached images
+```
 
-# 2. Load secrets from SSM into the shell (dot-sourced — every PS session)
-. .\scripts\local\load_secrets.ps1
+`stack.ps1` also works on path A: with a `.env` that sets `DB_PASSWORD`, it skips SSM.
 
-# 3. Start the full stack (build + up + alembic upgrade head)
-.\scripts\local\stack.ps1
-.\scripts\local\stack.ps1 -NoBuild     # reuse cached images
+Development tooling (both paths):
+
+```bash
+pip install "uv==0.13.7"
+uv sync --locked --extra dev --extra api --extra quant --extra ib --extra writer   # uv.lock = the one resolved set
 ```
 
 Then:
@@ -198,13 +219,39 @@ PyCharm run configurations ship under [`.idea/runConfigurations/`](.idea/runConf
 
 ---
 
+## Known limitations
+
+Stated plainly so nobody has to find them (release gate §7, #351; checked
+against the code on 2026-11-10).
+
+| # | Limitation | Detail |
+|---|---|---|
+| L1 | **Paper account only** | `TRADING_MODE=paper`; no real-money session has ever run. Prod's gateway runs with `READ_ONLY_API=yes` unless the repo variable says otherwise. |
+| L2 | **Market data is delayed** | The engines request IB delayed data (`reqMarketDataType(3)`, about 15 to 20 minutes behind; execution uses 4, delayed-frozen). The desk's mid, bid / ask and surface are delayed values, not a live quote. |
+| L3 | **One IB session per user id** | A portal, mobile or TWS login on the same paper user kicks the gateway; quotes go to -1 with no error ([runbooks](docs/ops/runbooks.md#45-session-exclusivity)). |
+| L4 | **Closed markets serve the last grid** | Weekends and holidays, the desk shows the last complete surface with its timestamp and a closed-market banner; nothing updates until the open. |
+| L5 | **Alerts by email, one person** | Prometheus rules and the host disk guard mail an SNS topic; there is no paging, no on-call, no second operator. |
+| L6 | **Manual trading only** | Signals inform; every order is placed by the trader on the desk (`manual_mode`). Risk limits and the kill switch gate those orders; there is no signal-to-order automation. |
+| L7 | **One host, no high availability** | Everything runs on one EC2 instance. A host loss is a rebuild from `setup.sh` + the latest S3 dump ([runbooks](docs/ops/runbooks.md#3-restore-from-backup)); the restore drill has not been run yet. |
+| L8 | **IB-sourced data on a public page** | The public read-only desk shows IB-derived prices and surfaces; the redistribution terms are being settled (#307). |
+
+## Data sources and attribution
+
+Market data comes from an Interactive Brokers **paper** account, **delayed**
+(see Known limitations L1, L2). Macro-event calendars: FRED® (Federal Reserve
+Bank of St. Louis), the Federal Reserve, the ECB, the Bank of England,
+Eurostat and the ONS. *This product uses the FRED® API but is not endorsed or
+certified by the Federal Reserve Bank of St. Louis.* ONS: contains public
+sector information licensed under the Open Government Licence v3.0. What is
+fetched, stored and decided per source: [`docs/ops/data-terms.md`](docs/ops/data-terms.md).
+
 ## Deployment
 
 Prod runs on a single AWS EC2 box, deployed **continuously from `main`** with no SSH
 and no stored AWS keys:
 
 ```
-push to main → GitHub Actions "build-and-push" (7 images → GHCR, tagged sha-<commit>)
+push to main → GitHub Actions "build-and-push" (8 images → GHCR, tagged sha-<commit>)
              → "deploy-prod": OIDC into AWS → S3 config payload → SSM RunShellScript
              → the host pulls the images, renders .env from SSM, migrates, restarts
              → smoke-checks the live /health endpoint
@@ -248,10 +295,10 @@ fx-volatility-trading-system/
 ├── docker-compose.yml
 ├── .github/workflows/             ci · build · deploy · codeql · security-scan
 ├── src/                           (PyPA src-layout, all Python)
-│   ├── api/                       → api container: main, 16 routers, ws, middleware, schemas, orchestration/events
-│   ├── engines/                   5 long-running services (market_data, vol, risk, db_writer, execution)
+│   ├── api/                       → api container: main, 17 routers, ws, middleware, schemas, orchestration/events
+│   ├── engines/                   6 long-running services (market_data, vol, risk, db_writer, analytics, execution)
 │   ├── core/                      pure algos — vol (svi/ssvi/garch/har_rv/pca/gmm/…), pricing/bs, risk/greeks
-│   ├── persistence/               DB adapter — models (27 ORM classes), db, writer, migrations/
+│   ├── persistence/               DB adapter — models (31 ORM classes), db, writer, migrations/ (68 revisions)
 │   ├── bus/                       Redis adapter — client, publisher, channels, keys
 │   └── shared/                    config, logging, ib_connection, observability
 ├── frontend/                      React + TS + Vite — 7 voldesk views + a dev console (/dev)

@@ -12,6 +12,7 @@ import { Panel, Tag } from "../components/common";
 import { gk$, pnlCls, type Tone } from "../components/format";
 import type { Status } from "../components/format";
 import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
+import { EventsAttribution } from "../components/DataAttribution";
 import { TickerChart } from "../components/TickerChart";
 import { EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
 import type { Cash } from "../data";
@@ -256,6 +257,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
                 ))
               )}
             </div>
+            <EventsAttribution />
           </Panel>
         </Panel>
 

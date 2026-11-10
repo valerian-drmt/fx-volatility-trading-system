@@ -18,7 +18,8 @@ import json
 import time
 from typing import Annotated, Any
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Security, status
+from fastapi.security import APIKeyCookie
 
 from api.config import Settings, get_settings
 
@@ -111,9 +112,15 @@ class LoginLockout:
 lockout = LoginLockout()
 
 
+# The cookie as an OpenAPI security scheme (#352): same name, same behaviour
+# (auto_error off: the 401 below stays ours), and the spec now says which
+# operations need it.
+trader_cookie = APIKeyCookie(name=COOKIE_NAME, scheme_name="traderCookie", auto_error=False)
+
+
 def require_write(
     settings: Annotated[Settings, Depends(get_settings)],
-    fxvol_auth: Annotated[str | None, Cookie()] = None,
+    fxvol_auth: Annotated[str | None, Security(trader_cookie)] = None,
 ) -> dict[str, Any]:
     """FastAPI dependency gating write endpoints — 401 without a valid auth cookie.
 

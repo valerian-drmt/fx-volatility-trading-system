@@ -11,9 +11,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Current Config */
+        /**
+         * Get Current Config
+         * @description The active `VolConfig` (version, payload, author, comment).
+         */
         get: operations["get_current_config_api_v1_admin_config_get"];
-        /** Update Config */
+        /**
+         * Update Config
+         * @description Append a new `VolConfig` version from a partial patch, validated against the schema (422 with the errors otherwise), and broadcast it to the engines.
+         */
         put: operations["update_config_api_v1_admin_config_put"];
         post?: never;
         delete?: never;
@@ -29,7 +35,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Config History */
+        /**
+         * List Config History
+         * @description Past `VolConfig` versions, newest first.
+         */
         get: operations["list_config_history_api_v1_admin_config_history_get"];
         put?: never;
         post?: never;
@@ -48,7 +57,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revert Config */
+        /**
+         * Revert Config
+         * @description Append a new version equal to an earlier one (the history stays append-only). 404 when the version does not exist.
+         */
         post: operations["revert_config_api_v1_admin_config_revert__version__post"];
         delete?: never;
         options?: never;
@@ -83,7 +95,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Halt State */
+        /**
+         * Get Halt State
+         * @description The kill switch: whether trading is halted, why, by whom and since when.
+         */
         get: operations["get_halt_state_api_v1_admin_halt_get"];
         put?: never;
         /**
@@ -91,7 +106,10 @@ export interface paths {
          * @description Stop everything: flag set (durable), orders at IB cancelled, alert published.
          */
         post: operations["halt_trading_api_v1_admin_halt_post"];
-        /** Resume Trading */
+        /**
+         * Resume Trading
+         * @description Lift the kill switch. Requires the trader cookie and a reason.
+         */
         delete: operations["resume_trading_api_v1_admin_halt_delete"];
         options?: never;
         head?: never;
@@ -172,7 +190,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Logout */
+        /**
+         * Logout
+         * @description Clear the trader's auth cookie. Always answers `authenticated: false`.
+         */
         post: operations["logout_api_v1_auth_logout_post"];
         delete?: never;
         options?: never;
@@ -593,7 +614,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live Positions */
+        /**
+         * Live Positions
+         * @description Positions as IB reports them right now (the broker's view, not the book).
+         */
         get: operations["live_positions_api_v1_exec_positions_get"];
         put?: never;
         post?: never;
@@ -612,7 +636,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Close Position */
+        /**
+         * Close Position
+         * @description Close one IB position (by contract id) through the execution engine.
+         */
         post: operations["close_position_api_v1_exec_positions__con_id__close_post"];
         delete?: never;
         options?: never;
@@ -629,7 +656,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Greeks */
+        /**
+         * Greeks
+         * @description Black-76 greeks (delta, gamma, vega, theta, vanna, volga) of one European FX option. Pure calculator, public.
+         */
         post: operations["greeks_api_v1_greeks_post"];
         delete?: never;
         options?: never;
@@ -737,7 +767,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Beacon */
+        /**
+         * Beacon
+         * @description Browser latency beacon: one timing sample from the desk, clamped and whitelisted, rate limited per IP. Not a mutation.
+         */
         post: operations["beacon_api_v1_metrics_beacon_post"];
         delete?: never;
         options?: never;
@@ -752,10 +785,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Orders */
+        /**
+         * List Orders
+         * @description Open orders as the execution engine holds them (forwarded to its `/internal/orders`).
+         */
         get: operations["list_orders_api_v1_orders_get"];
         put?: never;
-        /** Place Order */
+        /**
+         * Place Order
+         * @description Place one order through the execution engine. Requires the trader cookie; the engine's pre-trade gate and the kill switch apply.
+         */
         post: operations["place_order_api_v1_orders_post"];
         delete?: never;
         options?: never;
@@ -773,7 +812,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Cancel Order */
+        /**
+         * Cancel Order
+         * @description Cancel one working order at IB through the execution engine.
+         */
         delete: operations["cancel_order_api_v1_orders__order_id__delete"];
         options?: never;
         head?: never;
@@ -1539,7 +1581,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Delta Hedge Config */
+        /**
+         * List Delta Hedge Config
+         * @description Delta-hedge settings (thresholds, sizes, cooldown) as name / value / unit rows.
+         */
         get: operations["list_delta_hedge_config_api_v1_positions_delta_hedge_config_get"];
         put?: never;
         post?: never;
@@ -1556,7 +1601,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Exit Rules Config */
+        /**
+         * List Exit Rules Config
+         * @description Exit rules the position monitor evaluates, highest priority first, with their parameters and whether each is active.
+         */
         get: operations["list_exit_rules_config_api_v1_positions_exit_rules_config_get"];
         put?: never;
         post?: never;
@@ -1711,7 +1759,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Position */
+        /**
+         * Get Position
+         * @description One booked position with its structure and its latest metrics row (greeks, mark, P&L). 404 when the id is unknown.
+         */
         get: operations["get_position_api_v1_positions__position_id__get"];
         put?: never;
         post?: never;
@@ -1728,7 +1779,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Position Alerts */
+        /**
+         * Position Alerts
+         * @description Exit alerts raised for one position, newest first: rule, recommended action, priority and execution status.
+         */
         get: operations["position_alerts_api_v1_positions__position_id__alerts_get"];
         put?: never;
         post?: never;
@@ -1792,7 +1846,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Position Hedges */
+        /**
+         * Position Hedges
+         * @description Delta-hedge orders triggered for one position, newest first.
+         */
         get: operations["position_hedges_api_v1_positions__position_id__hedges_get"];
         put?: never;
         post?: never;
@@ -1809,7 +1866,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Mtm History */
+        /**
+         * Mtm History
+         * @description Mark-to-market history of one position over the last `hours`: spot, average leg IV, gross / net P&L and its vega / gamma / theta / other split.
+         */
         get: operations["mtm_history_api_v1_positions__position_id__mtm_history_get"];
         put?: never;
         post?: never;
@@ -1850,7 +1910,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Price */
+        /**
+         * Price
+         * @description Black-76 price of one European FX option from forward, strike, expiry and vol. Pure calculator, public.
+         */
         post: operations["price_api_v1_price_post"];
         delete?: never;
         options?: never;
@@ -1872,7 +1935,10 @@ export interface paths {
          */
         get: operations["list_events_api_v1_regime_events_get"];
         put?: never;
-        /** Insert Event */
+        /**
+         * Insert Event
+         * @description Add a macro event by hand (source `manual`) to the events calendar the regime gate reads.
+         */
         post: operations["insert_event_api_v1_regime_events_post"];
         delete?: never;
         options?: never;
@@ -1966,7 +2032,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** History */
+        /**
+         * History
+         * @description Regime snapshots for one symbol, newest first.
+         */
         get: operations["history_api_v1_regime_history_get"];
         put?: never;
         post?: never;
@@ -1983,7 +2052,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** State */
+        /**
+         * State
+         * @description Current volatility regime (calm / stressed / pre-event) with its probabilities and the trade gate it implies, from the latest snapshots.
+         */
         get: operations["state_api_v1_regime_state_get"];
         put?: never;
         post?: never;
@@ -2031,7 +2103,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** History */
+        /**
+         * History
+         * @description History of one PCA component's z-score for a symbol, newest first.
+         */
         get: operations["history_api_v1_signals_pca_history_get"];
         put?: never;
         post?: never;
@@ -2048,7 +2123,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Active Model */
+        /**
+         * Active Model
+         * @description The active PCA model for a symbol: version, fit window, observations used, variance explained, and whether enough hourly snapshots exist for a refit.
+         */
         get: operations["active_model_api_v1_signals_pca_model_get"];
         put?: never;
         post?: never;
@@ -2107,7 +2185,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Book */
+        /**
+         * Get Book
+         * @description The book seen by the pre-trade gate: open structures, aggregate greeks and how much of each limit they use.
+         */
         get: operations["get_book_api_v1_trade_book_get"];
         put?: never;
         post?: never;
@@ -2124,7 +2205,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Limits */
+        /**
+         * List Limits
+         * @description Active risk limits (name -> value, unit, description) the pre-trade gate checks.
+         */
         get: operations["list_limits_api_v1_trade_limits_get"];
         put?: never;
         post?: never;
@@ -2162,7 +2246,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Preview */
+        /**
+         * Get Preview
+         * @description One stored trade preview by id (legs, prices, the signal it was armed on). 404 when unknown.
+         */
         get: operations["get_preview_api_v1_trade_preview__preview_id__get"];
         put?: never;
         post?: never;
@@ -2181,7 +2268,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel Preview */
+        /**
+         * Cancel Preview
+         * @description Mark a stored preview as cancelled so it can no longer be submitted. 404 when unknown, 400 when it was already submitted or cancelled.
+         */
         post: operations["cancel_preview_api_v1_trade_preview__preview_id__cancel_post"];
         delete?: never;
         options?: never;
@@ -2378,7 +2468,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Model Health */
+        /**
+         * Model Health
+         * @description Row counts of the stored vol surfaces and SVI fits, the latest surface timestamp, and whether a PCA model is ready.
+         */
         get: operations["model_health_api_v1_vol_model_health_get"];
         put?: never;
         post?: never;
@@ -2504,7 +2597,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Trade Preview */
+        /**
+         * Trade Preview
+         * @description Price a structure (legs, greeks, premium) from the latest vol surface without placing anything. Requires the trader cookie.
+         */
         post: operations["trade_preview_api_v1_vol_trade_preview_post"];
         delete?: never;
         options?: never;
@@ -2763,6 +2859,14 @@ export interface components {
             name: string;
             /** State */
             state: string;
+        };
+        /** ErrorResponse */
+        ErrorResponse: {
+            /**
+             * Detail
+             * @description A message, or a structured object for validation and gate refusals.
+             */
+            detail: unknown;
         };
         /** EventIn */
         EventIn: {
@@ -3594,6 +3698,15 @@ export interface operations {
                     "application/json": components["schemas"]["ConfigResponse"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     update_config_api_v1_admin_config_put: {
@@ -3601,9 +3714,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -3620,6 +3731,15 @@ export interface operations {
                     "application/json": components["schemas"]["ConfigResponse"];
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3627,6 +3747,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -3660,6 +3789,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     revert_config_api_v1_admin_config_revert__version__post: {
@@ -3669,9 +3807,7 @@ export interface operations {
             path: {
                 version: number;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -3688,6 +3824,24 @@ export interface operations {
                     "application/json": components["schemas"]["ConfigResponse"];
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3695,6 +3849,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -3719,6 +3882,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     get_halt_state_api_v1_admin_halt_get: {
@@ -3741,6 +3913,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     halt_trading_api_v1_admin_halt_post: {
@@ -3748,9 +3929,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -3769,6 +3948,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3776,6 +3964,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -3785,9 +3982,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -3806,6 +4001,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3813,6 +4017,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -3824,9 +4037,7 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -3841,6 +4052,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3848,6 +4068,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -3874,6 +4103,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3881,6 +4119,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -3892,9 +4139,7 @@ export interface operations {
             path: {
                 domain: string;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -3913,6 +4158,24 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3920,6 +4183,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -3946,6 +4218,15 @@ export interface operations {
                     "application/json": components["schemas"]["AuthStatus"];
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3953,6 +4234,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -3973,6 +4263,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthStatus"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4006,6 +4305,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     bars_api_v1_bars_get: {
@@ -4037,6 +4345,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4073,6 +4390,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     cycle_progress_api_v1_dev_cycle_progress_get: {
@@ -4093,6 +4419,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4119,6 +4454,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4126,6 +4470,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4150,6 +4503,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     hardware_api_v1_dev_hardware_get: {
@@ -4172,6 +4534,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     logs_containers_api_v1_dev_logs_containers_get: {
@@ -4179,9 +4550,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4196,13 +4565,31 @@ export interface operations {
                     };
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A dependency is unavailable (execution engine, database, cache, IB session). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4218,9 +4605,7 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4235,6 +4620,24 @@ export interface operations {
                     };
                 };
             };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4242,6 +4645,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A dependency is unavailable (execution engine, database, cache, IB session). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4264,6 +4685,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4290,6 +4720,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4299,6 +4738,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     redis_keys_api_v1_dev_redis_keys_get: {
@@ -4306,9 +4754,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4323,13 +4769,22 @@ export interface operations {
                     };
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4341,9 +4796,7 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4358,6 +4811,24 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4365,6 +4836,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4389,6 +4869,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_tables_api_v1_dev_tables_get: {
@@ -4396,9 +4885,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4413,13 +4900,22 @@ export interface operations {
                     };
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4437,9 +4933,7 @@ export interface operations {
             path: {
                 name: string;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4454,6 +4948,33 @@ export interface operations {
                     };
                 };
             };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4461,6 +4982,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4485,6 +5015,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     close_position_api_v1_exec_positions__con_id__close_post: {
@@ -4494,9 +5033,7 @@ export interface operations {
             path: {
                 con_id: number;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -4515,6 +5052,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4522,6 +5068,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4557,6 +5112,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     health_api_v1_health_get: {
@@ -4577,6 +5141,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: string;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4601,6 +5174,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     health_ready_api_v1_health_ready_get: {
@@ -4619,6 +5201,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Postgres or Redis unreachable */
@@ -4661,6 +5252,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     beacon_api_v1_metrics_beacon_post: {
@@ -4696,6 +5296,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_orders_api_v1_orders_get: {
@@ -4718,6 +5327,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     place_order_api_v1_orders_post: {
@@ -4725,9 +5343,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -4746,6 +5362,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4753,6 +5378,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4764,9 +5398,7 @@ export interface operations {
             path: {
                 order_id: number;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -4781,6 +5413,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4788,6 +5429,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4812,6 +5462,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     aggregate_greeks_api_v1_portfolio_aggregate_greeks_get: {
@@ -4834,6 +5493,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     cash_holdings_api_v1_portfolio_cash_get: {
@@ -4854,6 +5522,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4889,6 +5566,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     equity_curve_api_v1_portfolio_equity_curve_get: {
@@ -4922,6 +5608,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     greek_limits_api_v1_portfolio_greek_limits_get: {
@@ -4942,6 +5637,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4977,6 +5681,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     greeks_history_api_v1_portfolio_greeks_history_get: {
@@ -5008,6 +5721,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5043,6 +5765,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     header_summary_api_v1_portfolio_header_get: {
@@ -5063,6 +5794,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5087,6 +5827,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     marginal_var_api_v1_portfolio_marginal_var_get: {
@@ -5109,6 +5858,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     pin_risk_api_v1_portfolio_pin_risk_get: {
@@ -5129,6 +5887,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5157,6 +5924,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -5164,6 +5940,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5191,6 +5976,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -5198,6 +5992,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5222,6 +6025,15 @@ export interface operations {
                     }[];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     scenarios_api_v1_portfolio_scenarios_get: {
@@ -5244,6 +6056,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     portfolio_stats_api_v1_portfolio_stats_get: {
@@ -5264,6 +6085,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5300,6 +6130,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     trade_markers_api_v1_portfolio_trade_markers_get: {
@@ -5331,6 +6170,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5366,6 +6214,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     value_at_risk_api_v1_portfolio_var_get: {
@@ -5386,6 +6243,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5410,6 +6276,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     vega_pca_api_v1_portfolio_vega_pca_get: {
@@ -5430,6 +6305,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5454,6 +6338,15 @@ export interface operations {
                     }[];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_active_api_v1_positions_active_get: {
@@ -5474,6 +6367,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5498,6 +6400,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_book_api_v1_positions_book_get: {
@@ -5518,6 +6429,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5553,6 +6473,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_delta_hedge_config_api_v1_positions_delta_hedge_config_get: {
@@ -5573,6 +6502,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5597,6 +6535,15 @@ export interface operations {
                     }[];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     ledger_api_v1_positions_ledger_get: {
@@ -5619,6 +6566,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     run_monitor_once_api_v1_positions_monitor_run_once_post: {
@@ -5626,9 +6582,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -5643,13 +6597,22 @@ export interface operations {
                     };
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5674,6 +6637,15 @@ export interface operations {
                     }[];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     reconciliation_api_v1_positions_reconciliation_get: {
@@ -5694,6 +6666,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5729,6 +6710,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     get_position_api_v1_positions__position_id__get: {
@@ -5753,6 +6743,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -5760,6 +6759,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5797,6 +6805,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     close_live_position_api_v1_positions__position_id__close_post: {
@@ -5806,9 +6823,7 @@ export interface operations {
             path: {
                 position_id: number;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -5827,6 +6842,24 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -5834,6 +6867,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5845,9 +6887,7 @@ export interface operations {
             path: {
                 position_id: number;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -5862,6 +6902,33 @@ export interface operations {
                     };
                 };
             };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -5869,6 +6936,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5904,6 +6980,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -5942,6 +7027,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     signal_tracking_api_v1_positions__position_id__signal_tracking_get: {
@@ -5977,6 +7071,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     price_api_v1_price_post: {
@@ -6008,6 +7111,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6044,6 +7156,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     insert_event_api_v1_regime_events_post: {
@@ -6051,9 +7172,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -6072,6 +7191,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6081,6 +7209,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     sync_events_from_feed_api_v1_regime_events_sync_post: {
@@ -6088,9 +7225,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -6105,13 +7240,40 @@ export interface operations {
                     };
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error; the body carries a trace id, never internals. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A dependency is unavailable (execution engine, database, cache, IB session). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6138,6 +7300,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6145,6 +7316,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6181,6 +7361,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     history_api_v1_regime_history_get: {
@@ -6215,6 +7404,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     state_api_v1_regime_state_get: {
@@ -6237,6 +7435,15 @@ export interface operations {
                     "application/json": components["schemas"]["RegimeStateOut"];
                 };
             };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6244,6 +7451,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6278,6 +7494,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6315,6 +7540,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     active_model_api_v1_signals_pca_model_get: {
@@ -6346,6 +7580,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6383,6 +7626,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     system_stats_api_v1_system_stats_get: {
@@ -6401,6 +7653,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemStats"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6436,6 +7697,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_limits_api_v1_trade_limits_get: {
@@ -6460,6 +7730,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     create_preview_api_v1_trade_preview_post: {
@@ -6469,9 +7748,7 @@ export interface operations {
             };
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -6490,6 +7767,24 @@ export interface operations {
                     };
                 };
             };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6497,6 +7792,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A dependency is unavailable (execution engine, database, cache, IB session). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6523,6 +7836,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6530,6 +7852,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6541,9 +7872,7 @@ export interface operations {
             path: {
                 preview_id: string;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -6558,6 +7887,33 @@ export interface operations {
                     };
                 };
             };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6565,6 +7921,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6600,6 +7965,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     list_structures_api_v1_trade_structures_get: {
@@ -6622,6 +7996,15 @@ export interface operations {
                     }[];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     submit_preview_api_v1_trade_submit_post: {
@@ -6629,9 +8012,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -6650,6 +8031,24 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state (already submitted, in flight, duplicate). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6657,6 +8056,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unexpected server error; the body carries a trace id, never internals. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6692,6 +8109,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     cancel_trade_api_v1_trades__trade_id__cancel_post: {
@@ -6701,9 +8127,7 @@ export interface operations {
             path: {
                 trade_id: number;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -6718,6 +8142,33 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflicts with the current state (already submitted, in flight, duplicate). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6725,6 +8176,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6736,9 +8196,7 @@ export interface operations {
             path: {
                 trade_id: number;
             };
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -6757,6 +8215,24 @@ export interface operations {
                     };
                 };
             };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6764,6 +8240,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6798,6 +8283,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     model_health_api_v1_vol_model_health_get: {
@@ -6816,6 +8310,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelHealthResponse"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6849,6 +8352,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     smile_api_v1_vol_smile__tenor__get: {
@@ -6873,6 +8385,15 @@ export interface operations {
                     "application/json": components["schemas"]["SmileResponse"];
                 };
             };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6880,6 +8401,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6904,6 +8434,15 @@ export interface operations {
                     "application/json": components["schemas"]["SurfaceResponse"];
                 };
             };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6911,6 +8450,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6937,6 +8485,15 @@ export interface operations {
                     "application/json": components["schemas"]["SurfaceResponse"];
                 };
             };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6944,6 +8501,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -6968,6 +8534,15 @@ export interface operations {
                     "application/json": components["schemas"]["TermStructureResponse"];
                 };
             };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6977,6 +8552,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     trade_preview_api_v1_vol_trade_preview_post: {
@@ -6984,9 +8568,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                fxvol_auth?: string | null;
-            };
+            cookie?: never;
         };
         requestBody: {
             content: {
@@ -7003,6 +8585,33 @@ export interface operations {
                     "application/json": components["schemas"]["TradePreviewResponse"];
                 };
             };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The referenced object does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -7010,6 +8619,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

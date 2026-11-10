@@ -49,4 +49,5 @@ def record_beacon(body: BeaconBody) -> dict[str, int]:
 @router.post("/beacon", status_code=202)
 @limiter.limit("120/minute")
 async def beacon(request: Request, body: BeaconBody) -> dict[str, int]:
+    """Browser latency beacon: one timing sample from the desk, clamped and whitelisted, rate limited per IP. Not a mutation."""
     return record_beacon(body)

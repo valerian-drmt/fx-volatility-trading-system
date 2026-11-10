@@ -9,7 +9,7 @@ below are the ones it asked to be written down (#300, #299, #296, #298, #301,
 
 | Audience | How it is recognised | What it may do |
 |---|---|---|
-| Public visitor | nothing | read the desk: every `GET` under `/api/v1` except the trader-only `/dev` reads, the WebSocket streams, Swagger at `/api/docs` |
+| Public visitor | nothing | read the desk: every `GET` under `/api/v1` except the trader-only `/dev` reads, the WebSocket streams, the OpenAPI spec at `/api/openapi.json` (Swagger / ReDoc only outside prod: the prod CSP would blank them, #352) |
 | The trader | the `fxvol_auth` cookie from `POST /api/v1/auth/login` (`api.auth.require_write`) | every `POST` / `PUT` / `DELETE`, the `/dev` reads that touch tables, logs or Redis, `/admin/halt` |
 | The api itself | `X-Internal-Token` (`shared.internal_auth`) | the execution engine's `/internal/*` routes |
 

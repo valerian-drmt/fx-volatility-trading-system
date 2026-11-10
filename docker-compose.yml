@@ -3,10 +3,10 @@
 # attach new services (api, frontend, nginx, ib-gateway) without
 # reworking the topology.
 #
-# Dev quick-iter continues to live in docker-compose.dev.yml — that one
-# only exposes postgres + redis on host ports so the app code can run
-# on the host with uvicorn / vite dev-server. Prefer this file when you
-# want a stack that mirrors prod (no host port exposure by default).
+# For a host-side dev loop (uvicorn / vite on the host), put the host port
+# mappings for postgres + redis in a docker-compose.override.yml (gitignored);
+# compose merges it automatically. This file mirrors prod: no host port
+# exposure by default.
 
 services:
   postgres:
@@ -104,7 +104,7 @@ services:
       # https://fredaccount.stlouisfed.org/apikeys (~30s). Without it, the
       # FRED source is skipped and only the stub sources run (= no events
       # collected automatically).
-      # Cf. docs/vol_trading_pca/events_pipeline_spec.md §8.
+      # Events pipeline: src/api/orchestration/events/.
       FRED_API_KEY: ${FRED_API_KEY:-}
       # Auth boundary (single-trader). Reads are public; writes need a valid
       # cookie. Login is CLOSED until AUTH_PASSWORD_HASH is set (pbkdf2_hmac
@@ -508,7 +508,7 @@ services:
     # Opt-in : `docker compose --profile ib up -d` to include IB Gateway.
     # Keeps the default `docker compose up` light and avoids the 4002
     # port-bind when another service (or a Windows reserved range) already
-    # owns it. The PyQt v1 app continues to connect to localhost:4002,
+    # owns it. A local tool can still connect to localhost:4002,
     # so it must be started explicitly when needed.
     profiles: ["ib"]
     restart: unless-stopped
@@ -534,7 +534,7 @@ services:
       # interpolation); the container only runs with the ib profile armed.
       VNC_SERVER_PASSWORD: ${VNC_PASSWORD:-}
     ports:
-      # Bind IB Gateway API port and VNC to 127.0.0.1 only — the PyQt v1
+      # Bind IB Gateway API port and VNC to 127.0.0.1 only — a local tool
       # app on the host still needs to reach the gateway on localhost:4002,
       # but we do NOT want to expose either port to the LAN.
       - "127.0.0.1:4002:4002"

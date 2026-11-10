@@ -85,3 +85,41 @@ by the maintainer — never run automatically.
 
 - A **Release** (board field: R11, R12…) groups a batch of PRs.
 - Closed by a `vX.Y.Z` **tag** on `main` once all its cards are ✅ Done.
+
+### Versioning (#353)
+
+- **One source**: `version` in `pyproject.toml`, PEP 440 (`1.0.0rc1`). Everything
+  else derives from it: the api (`importlib.metadata`), `/api/v1/health`
+  (`version` + `git_sha`), the desk footer (read from `/health`), the image
+  labels (`org.opencontainers.image.version`), the tag and the GitHub Release
+  (`scripts/ci/release_version.py semver` renders `1.0.0-rc.1`).
+  `frontend/package.json` carries the SemVer form; a test keeps them equal.
+- **Semantic Versioning** on what an operator or an API client sees:
+  MAJOR = a breaking change to a public REST route or WebSocket message, a
+  config key, or a migration the previous release cannot run against;
+  MINOR = a feature, a new route or field, a new migration that is
+  additive; PATCH = fixes only. Pre-releases: `aN`, `bN`, `rcN` in pyproject.
+- **CHANGELOG.md** gets its entries in the PR that makes the change, under
+  `[Unreleased]`; cutting a release moves them under the new version heading.
+
+### Cutting a release
+
+1. On `main` (local), move `[Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` in
+   `CHANGELOG.md` and set `version` in `pyproject.toml` (+ `frontend/package.json`,
+   `uv lock`). Commit `chore(release): vX.Y.Z`.
+2. Ship it with the next `git update`; wait for deploy-prod and check
+   `/api/v1/health` reports the version and the commit.
+3. Tag that commit and push the tag (part of the same `git update`):
+   `git tag -a vX.Y.Z -m vX.Y.Z <sha> && git push origin vX.Y.Z`.
+4. `release.yml` checks the tag equals pyproject's version and sits on `main`,
+   re-tags the 8 images `sha-<commit>` -> `X.Y.Z` (same digests, no rebuild),
+   and publishes the GitHub Release from the CHANGELOG section (a pre-release
+   for `-rc` / `-beta` / `-alpha`).
+
+Deploys stay continuous from `main` (deploy.yml); a tag never rebuilds or
+redeploys. Rolling back to a release = deploying its commit
+([runbooks](../docs/ops/runbooks.md#2-rollback)).
+
+The local tags `v1.0`, `v1.1.0` to `v1.12.0` and `oms-v1.0` predate this
+procedure, were never pushed and are not on `main`'s history; they are kept
+as `archive/<name>`.

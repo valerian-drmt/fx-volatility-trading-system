@@ -320,6 +320,7 @@ async def list_structures() -> list[dict[str, Any]]:
 
 @router.get("/limits")
 async def list_limits(db: DbDep) -> dict[str, dict[str, Any]]:
+    """Active risk limits (name -> value, unit, description) the pre-trade gate checks."""
     # risk_limits rows folded into config_scalar with namespace='risk'
     # (migration 024, table renamed 037). Same response shape preserved.
     rows = (await db.execute(
@@ -335,6 +336,7 @@ async def list_limits(db: DbDep) -> dict[str, dict[str, Any]]:
 
 @router.get("/book")
 async def get_book(db: DbDep, symbol: str = "EURUSD") -> dict[str, Any]:
+    """The book seen by the pre-trade gate: open structures, aggregate greeks and how much of each limit they use."""
     limits = await _load_limits(db)
     book = await _load_book(db, symbol, limits.get("starting_capital_usd", 100000.0))
     return {
@@ -724,6 +726,7 @@ def _synthetic_surface() -> dict[str, Any]:
 
 @router.get("/preview/{preview_id}")
 async def get_preview(preview_id: str, db: DbDep) -> dict[str, Any]:
+    """One stored trade preview by id (legs, prices, the signal it was armed on). 404 when unknown."""
     row = (await db.execute(
         select(TradePreviewRow).where(TradePreviewRow.preview_id == preview_id).limit(1)
     )).scalar_one_or_none()
@@ -1365,6 +1368,7 @@ async def list_spot_orders(
 
 @router.post("/preview/{preview_id}/cancel", dependencies=[Depends(require_write)])
 async def cancel_preview(preview_id: str, db: DbDep) -> dict[str, Any]:
+    """Mark a stored preview as cancelled so it can no longer be submitted. 404 when unknown, 400 when it was already submitted or cancelled."""
     row = (await db.execute(
         select(TradePreviewRow).where(TradePreviewRow.preview_id == preview_id).limit(1)
     )).scalar_one_or_none()

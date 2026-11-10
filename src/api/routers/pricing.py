@@ -22,11 +22,13 @@ router = APIRouter(prefix="/api/v1", tags=["pricing"])
 
 @router.post("/price", response_model=PriceResponse)
 def price(req: PriceRequest) -> PriceResponse:
+    """Black-76 price of one European FX option from forward, strike, expiry and vol. Pure calculator, public."""
     return compute_price(req)
 
 
 @router.post("/greeks", response_model=GreeksResponse)
 def greeks(req: GreeksRequest) -> GreeksResponse:
+    """Black-76 greeks (delta, gamma, vega, theta, vanna, volga) of one European FX option. Pure calculator, public."""
     return compute_greeks(req)
 
 

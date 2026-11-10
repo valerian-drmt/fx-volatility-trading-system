@@ -21,7 +21,9 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [architecture/backend.md](architecture/backend.md) | The `src/` layout (`api` / `core` / `engines` / `persistence` / `bus` / `shared`) and the five import-linter contracts. |
 | [architecture/data-flow.md](architecture/data-flow.md) | The live path: IB → engines → Redis pub/sub + cache → db-writer → Postgres; api reads DB + Redis; frontend via REST + WS. |
 | [architecture/frontend.md](architecture/frontend.md) | The voldesk React app: 7 views, zustand stores, the typed OpenAPI client, WS hooks, the `/dev` console. |
-| [architecture/database.md](architecture/database.md) | The Postgres schema: 27 ORM classes grouped by domain, Alembic flow, `VolConfig` versioning. |
+| [architecture/database.md](architecture/database.md) | The Postgres schema: 31 ORM classes grouped by domain, Alembic flow, `VolConfig` versioning. |
+| [architecture/websockets.md](architecture/websockets.md) | Every `/ws/*` stream: Redis channel, cadence, desk reader, one message example each (generated from the payload fixtures). |
+| REST reference | `/api/openapi.json` (public; Swagger at `/api/docs` locally): every operation described, `traderCookie` on the gated ones, error codes per route. |
 | [architecture/hot-cold-paths.md](architecture/hot-cold-paths.md) | Hot path (orders, fills, positions, account) vs cold path (surface, PCA, rollups): the six engines, the three collision points behind the November 2026 incidents, and the changes that separate them. |
 
 ## Planning
@@ -57,7 +59,6 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [strategy/structures.md](strategy/structures.md) | Straddle, strangle, risk reversal, butterfly, calendar — built by delta pillar + tenor. |
 | [strategy/signals-to-trades.md](strategy/signals-to-trades.md) | Mapping PC signals to structures (level→straddle, slope→calendar, curvature→butterfly, skew→risk-reversal). |
 | [strategy/risk.md](strategy/risk.md) | Greeks (Δ/Γ/V/Θ/vanna/volga), VaR, greek limits, P&L attribution, delta hedging. |
-| [strategy/greek-limits.md](strategy/greek-limits.md) | Implementation brief for the greek-limit framework — stress-loss budget `L* = α·NAV_base` projected onto each axis, NAV anchor, scenario grid. |
 
 ## Execution
 
@@ -83,6 +84,7 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [ops/deployment.md](ops/deployment.md) | Prod on AWS/EC2: push → GitHub Actions → OIDC → SSM → deploy, the deploy gate. |
 | [ops/runbooks.md](ops/runbooks.md) | Incident procedures: orientation, reboot, rollback (schema-aware), restore, IB session recovery; each with its last walk. |
 | [ops/secrets.md](ops/secrets.md) | The SSM inventory (every `/fxvol/prod/*` name, what reads it, what happens when absent), load-to-RAM, never-echo. |
+| [ops/data-terms.md](ops/data-terms.md) | Each data source: how it is fetched, what is stored, the attribution shown, and the decisions on IB redistribution and FRED storage. |
 | [ops/dependency-policy.md](ops/dependency-policy.md) | Lockfile, image pins, weekly scan, license gate, maintenance-risk register, triage log. |
 | [ops/redis-durability.md](ops/redis-durability.md) | What Redis holds, its TTLs, the eviction policy, and what a restart costs. |
 | [ops/alerting.md](ops/alerting.md) | Prometheus rules → Alertmanager → SNS, the host disk guard, the IB watchdog, one-time IAM / IMDS setup. |
