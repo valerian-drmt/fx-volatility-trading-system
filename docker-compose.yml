@@ -501,7 +501,7 @@ services:
     # IBC dies "version X not installed". Bump this pin deliberately + refresh
     # the volume install (infrastructure/ib-gateway/README.md). Prod pins the
     # same tag via remote-deploy.sh's IB_GATEWAY_IMAGE.
-    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:10.49.1c@sha256:b6c839e6cbf55a622793df748cc28d80ff73fb9efff404c6e0271b1999f08b2c}
+    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:10.51.1e@sha256:85975f493bcacc8341cb42e6946c460868d165e5f64d9924b1958c8f03e7bee4}
     container_name: fxvol-ib-gateway
     mem_limit: 1500m
     cpu_shares: 1024
@@ -669,7 +669,7 @@ services:
   # (email). Signs with the EC2 instance role through IMDS; locally the send
   # fails harmlessly and the UI on :9093 still shows the alerts.
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: prom/alertmanager:v0.34.2
     container_name: fxvol-alertmanager
     profiles: ["obs", "metrics"]
     mem_limit: 64m
@@ -698,7 +698,7 @@ services:
   # Per-container CPU/RAM/net/fs metrics → scraped by Prometheus. The standard
   # way to graph "how much does each container consume" (locally + on EC2).
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
     container_name: fxvol-cadvisor
     profiles: ["obs", "metrics"]
     # Measured ~21 MB locally. NOTE: on Docker Desktop / WSL2 cAdvisor only
@@ -742,7 +742,7 @@ services:
       start_period: 20s
 
   loki:
-    image: grafana/loki:3.2.0
+    image: grafana/loki:3.7.9
     container_name: fxvol-loki
     profiles: ["obs"]
     # Memory cap (#293). 2026-11-02 : the obs profile ran uncapped on the
@@ -769,7 +769,7 @@ services:
       start_period: 45s
 
   promtail:
-    image: grafana/promtail:3.2.0
+    image: grafana/promtail:3.6.8
     container_name: fxvol-promtail
     profiles: ["obs"]
     mem_limit: 64m   # #293 (measured ~25 MB)
@@ -820,7 +820,7 @@ services:
       start_period: 30s
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.110.0
+    image: otel/opentelemetry-collector-contrib:0.165.0
     container_name: fxvol-otel-collector
     profiles: ["obs"]
     mem_limit: 128m   # #293 ; memory_limiter processor at 96 MiB in obs/otel-collector.yml
@@ -846,7 +846,7 @@ services:
   # everything else (no exec, no create, no POST). promtail talks to it over
   # the internal network; the socket itself is mounted read-only here.
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:0.3.0
+    image: tecnativa/docker-socket-proxy:v0.5.0
     container_name: fxvol-docker-socket-proxy
     profiles: ["obs"]
     mem_limit: 32m
