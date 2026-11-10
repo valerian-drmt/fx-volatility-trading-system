@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from api.auth import require_write
 from api.main import app
+from tests.fixtures.routes import api_routes
 
 pytestmark = pytest.mark.unit
 
@@ -44,8 +45,8 @@ TRADER = {
 def _dev_routes() -> list[APIRoute]:
     return [
         r
-        for r in app.routes
-        if isinstance(r, APIRoute) and r.path.startswith("/api/v1/dev")
+        for r in api_routes(app)
+        if r.path.startswith("/api/v1/dev")
     ]
 
 

@@ -1,17 +1,24 @@
 name: security-scan
 
-# Weekly Trivy scan of the six production images on GHCR. Fails the run
-# (and opens a GitHub Security alert via SARIF upload) on any HIGH or
-# CRITICAL finding so CVEs that appeared after the last deploy surface
-# without waiting for the next release cycle.
+# Weekly dependency scan (#304, audit 10): pip-audit on uv.lock, npm audit
+# on the frontend lockfile, the two license gates, and Trivy on every image
+# the stack runs — the 8 images we build, at the tag prod is running (read
+# from /health, not :latest), plus the infra images pinned in
+# docker-compose.yml. HIGH / CRITICAL findings fail the run and land in the
+# Security tab as SARIF; triage decisions are recorded in
+# docs/ops/dependency-policy.md (pip-audit ignores, .trivyignore).
 #
-# Trigger : Monday 03:00 UTC + manual dispatch. Avoid running on every
-# push to keep the GHCR pull quota free for deploys.
+# Trigger: Monday 03:00 UTC + manual dispatch (optionally with a tag).
 
 on:
   schedule:
     - cron: "0 3 * * 1"
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Built-image tag to scan (default: the sha- tag prod reports on /health)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -21,13 +28,150 @@ permissions:
 env:
   REGISTRY: ghcr.io
   OWNER: ${{ github.repository_owner }}
+  PROD_HEALTH: https://valeriandarmente.dev/fx-volatility-trading-system/api/v1/health
+  UV_VERSION: "0.13.7"
 
 jobs:
-  trivy:
-    name: Trivy scan (${{ matrix.image }})
+  resolve:
+    name: Resolve the deployed tag and the infra images
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      infra: ${{ steps.infra.outputs.infra }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Deployed tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_TAG" ]; then
+            tag="$INPUT_TAG"
+          else
+            sha=$(curl -fsS --max-time 20 "$PROD_HEALTH" | jq -r '.git_sha // empty')
+            [ -n "$sha" ] || { echo "::error::prod /health returned no git_sha"; exit 1; }
+            tag="sha-$sha"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "scanning built images at $tag"
+
+      - name: Infra images from docker-compose.yml
+        id: infra
+        run: |
+          set -euo pipefail
+          infra=$(python3 - <<'EOF'
+          import json, re
+          text = open("docker-compose.yml", encoding="utf-8").read()
+          images = sorted({m for m in re.findall(r"^\s+image: (\S+)$", text, re.M) if not m.startswith("${")})
+          gateway = re.search(r"IB_GATEWAY_IMAGE:-(\S+)\}", text)
+          if gateway:
+              images.append(gateway.group(1))
+          print(json.dumps(images))
+          EOF
+          )
+          echo "infra=$infra" >> "$GITHUB_OUTPUT"
+          echo "$infra"
+
+  pip-audit:
+    name: pip-audit (uv.lock, all extras)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Export the lock and audit it
+        # --no-deps: the export is the fully resolved set, pinned; pip-audit
+        # must not re-resolve. Ignored ids live in the policy's triage log.
+        env:
+          PIP_AUDIT_IGNORE: ""   # space-separated vulnerability ids, each justified in docs/ops/dependency-policy.md
+        run: |
+          set -euo pipefail
+          python -m pip install "uv==$UV_VERSION" "pip-audit==2.10.1"
+          uv export --frozen --all-extras --no-emit-project --no-hashes -o requirements-lock.txt
+          ignores=""
+          for id in $PIP_AUDIT_IGNORE; do ignores="$ignores --ignore-vuln $id"; done
+          # shellcheck disable=SC2086
+          pip-audit -r requirements-lock.txt --no-deps --strict --desc on --progress-spinner off $ignores
+
+  npm-audit:
+    name: npm audit (frontend lockfile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install from the lockfile
+        run: npm ci --ignore-scripts
+
+      - name: Audit shipped packages (fails on high / critical)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit the dev toolchain (advisory)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  licenses:
+    name: License gates (Python + npm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Install the locked set
+        run: |
+          python -m pip install "uv==$UV_VERSION"
+          uv sync --locked --all-extras
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Python license gate
+        run: python scripts/ci/check_licenses.py
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install the frontend lockfile
+        run: npm ci --ignore-scripts
+        working-directory: frontend
+
+      - name: npm license gate (shipped packages)
+        run: node scripts/ci/check_licenses_npm.mjs
+
+  trivy-built:
+    name: Trivy built image (${{ matrix.image }})
+    needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     strategy:
       fail-fast: false
       matrix:
@@ -38,8 +182,8 @@ jobs:
           - fx-options-vol-engine
           - fx-options-risk-engine
           - fx-options-db-writer
+          - fx-options-analytics-engine
           - fx-options-execution
-
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -51,19 +195,51 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.24.0 (the tag is v-prefixed; 0.24.0 never existed)
+      - name: Trivy (deployed tag)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.image }}:latest
+          image-ref: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.image }}:${{ needs.resolve.outputs.tag }}
           format: sarif
           output: trivy-${{ matrix.image }}.sarif
           severity: HIGH,CRITICAL
           exit-code: "1"          # fail the job on any HIGH/CRITICAL
           ignore-unfixed: true    # unfixed upstream issues do not fail
+          trivyignores: .trivyignore
 
-      - name: Upload Trivy SARIF to GitHub Security tab
-        if: always()  # upload even on failure so the reviewer sees the findings
-        uses: github/codeql-action/upload-sarif@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: trivy-${{ matrix.image }}.sarif
           category: trivy-${{ matrix.image }}
+
+  trivy-infra:
+    name: Trivy infra image (${{ matrix.image }})
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.resolve.outputs.infra) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Trivy (pinned infra image)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}
+          format: sarif
+          output: trivy-infra-${{ strategy.job-index }}.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-infra-${{ strategy.job-index }}.sarif
+          category: trivy-infra-${{ strategy.job-index }}

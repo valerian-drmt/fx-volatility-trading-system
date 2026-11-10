@@ -420,7 +420,7 @@ export function OpenPositionsTable({
                         className="row-close"
                         disabled={tradeClosing}
                         title={tradeClosing ? "a close for this trade is already in flight" : `close all ${grp.legs.length} legs of this trade`}
-                        onClick={(e) => { e.stopPropagation(); onCloseTrade && onCloseTrade(grp.legs); }}
+                        onClick={(e) => { e.stopPropagation(); onCloseTrade?.(grp.legs); }}
                       >
                         {tradeClosing ? "Closing…" : "Close all"}
                       </button>

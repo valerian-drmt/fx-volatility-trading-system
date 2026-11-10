@@ -14,9 +14,12 @@ authors = [{ name = "Valérian Darmenté" }]
 # Base runtime — every service container needs these.
 # Engines + db-writer + api all install at minimum this set.
 dependencies = [
-    "numpy>=1.24",
-    "scipy>=1.10",
-    "pandas>=2.0",
+    # Ceilings on every runtime dependency (#303, audit 10#5): the resolved
+    # set is uv.lock; a major bump is a deliberate PR (docs/ops/dependency-policy.md).
+    # pandas 3 (copy-on-write, string dtype) is held back for v1.0 on purpose.
+    "numpy>=1.26,<3",
+    "scipy>=1.11,<2",
+    "pandas>=2.2,<3",
     "redis>=5.0,<6.0",
     "structlog>=24.1,<25.0",
     "pydantic>=2.0,<3.0",
@@ -25,7 +28,7 @@ dependencies = [
     "asyncpg>=0.29,<0.30",
     "alembic>=1.13,<1.14",
     # P0 observability — every container ships /metrics. Tiny (<200 KB).
-    "prometheus-client>=0.19,<0.21",
+    "prometheus-client>=0.19,<1",
     # P2 observability — OTel SDK for distributed tracing → Tempo.
     # Auto-instrumentation for SQLAlchemy + Redis kept off-tree to avoid
     # forced wiring on test envs (engines import them explicitly).
@@ -41,10 +44,12 @@ dependencies = [
 
 # ── Container-shaped extras ────────────────────────────────────────────
 api = [
-    "fastapi>=0.110,<0.112",
-    "uvicorn[standard]>=0.27,<0.29",
+    # fastapi / starlette on the supported line (#303, audit 10#1): the old
+    # <0.112 ceiling froze starlette 0.37 with nine published advisories.
+    "fastapi>=0.120,<1",
+    "uvicorn[standard]>=0.30,<1",
     "slowapi>=0.1.9,<0.2",
-    "httpx>=0.27,<0.28",
+    "httpx>=0.27,<1",
 ]
 
 # market-data + risk-engine + execution-engine talk to Interactive Brokers.
@@ -60,11 +65,11 @@ ib = [
 # vol-engine — IB + GARCH + DB read-side for Step 1 regime gating.
 quant = [
     "fxvol[ib]",
-    "arch>=6.0",
+    "arch>=6.0,<9",
     # Step 1 §3 zone 2 — GMM 3-component over (vol_level, vol_of_vol,
     # term_slope) → P(regime=calm/stressed/pre_event). Replaces the
     # threshold heuristic once feature_history has accumulated enough obs.
-    "scikit-learn>=1.4,<1.7",
+    "scikit-learn>=1.4,<1.8",
 ]
 
 # db-writer — never imports ib_insync (smaller image + smaller attack surface).
@@ -180,9 +185,9 @@ warn_return_any = false
 # ─────────────────────────────────────────────────────────────────────
 
 [tool.uv]
-# Pin the lock to a single Python version line so the lockfile stays
-# small. CI matrix pins 3.11 today ; 3.12 will be a deliberate bump.
-dev-dependencies = []
+# uv.lock is the one resolved set (#303): CI (`uv sync --locked`) and every
+# Dockerfile install from it; `requires-python` keeps it on the 3.11 line.
+# Refresh with `uv lock --upgrade-package <name>` (or Dependabot's pip PRs).
 
 # ─────────────────────────────────────────────────────────────────────
 # setuptools — find packages under src/ (PyPA src-layout).

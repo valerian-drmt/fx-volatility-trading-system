@@ -172,13 +172,13 @@ Full diagrams live in [`docs/architecture/`](docs/architecture/).
 
 ## Quickstart
 
-**Prerequisites**: Docker Desktop + Python 3.11 + Node 20.
+**Prerequisites**: Docker Desktop + Python 3.11 + Node 22.
 
 ```powershell
 # 1. venv + deps (one-off)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev,api,quant,ib,writer]"      # or: uv sync --extra dev --extra api --extra quant --extra ib --extra writer
+pip install "uv==0.13.7" && uv sync --locked --extra dev --extra api --extra quant --extra ib --extra writer   # uv.lock = the one resolved set
 
 # 2. Load secrets from SSM into the shell (dot-sourced — every PS session)
 . .\scripts\local\load_secrets.ps1

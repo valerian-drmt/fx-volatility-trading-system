@@ -13,6 +13,7 @@ from fastapi.routing import APIRoute
 
 from api.auth import require_write
 from api.main import app
+from tests.fixtures.routes import api_routes, route_dependency_calls
 
 pytestmark = pytest.mark.unit
 
@@ -33,14 +34,14 @@ PUBLIC_WRITE_PATHS = {
 
 
 def _is_gated(route: APIRoute) -> bool:
-    return any(getattr(d, "dependency", None) is require_write for d in route.dependencies)
+    return require_write in route_dependency_calls(route)
 
 
 def _write_routes() -> list[APIRoute]:
     return [
         r
-        for r in app.routes
-        if isinstance(r, APIRoute) and (r.methods & WRITE_METHODS)
+        for r in api_routes(app)
+        if r.methods & WRITE_METHODS
     ]
 
 

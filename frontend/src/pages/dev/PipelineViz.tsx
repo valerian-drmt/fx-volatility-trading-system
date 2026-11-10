@@ -374,7 +374,6 @@ function DagSchema({ dag, pipe, resolveNode }: {
     dag.edges.forEach((e) => g.setEdge(e.from, e.to));
     dagre.layout(g);
     return g;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dag]);
 
   const gw = (layout.graph().width as number) ?? 0;

@@ -2,14 +2,21 @@
 # Risk-engine service — installs the [ib] extra (ib-insync + base
 # runtime, no GARCH).
 
-ARG PYTHON_IMAGE=python:3.11-slim
+# Base images pinned by tag AND digest (#305, audit 10#6); Dependabot's
+# docker ecosystem refreshes both together. uv installs from uv.lock (#303).
+ARG PYTHON_IMAGE=python:3.11.18-slim-bookworm@sha256:a83ba18aef0f865b1a4a611c2cf460fe446f2795673bbb9fe43be570439e3b39
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490
 
+FROM ${UV_IMAGE} AS uv
 FROM ${PYTHON_IMAGE} AS base
+COPY --from=uv /uv /bin/uv
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    PATH=/app/.venv/bin:$PATH
 
 WORKDIR /app
 
@@ -17,9 +24,15 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
+# Dependencies first, from the lockfile only: this layer is cached until
+# pyproject.toml / uv.lock change; --locked refuses a stale lock, so the
+# image runs exactly the set CI tested (#303, audit 10#5).
+COPY pyproject.toml uv.lock README.md ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --no-install-project --no-editable --extra ib
 COPY src/ ./src/
-RUN --mount=type=cache,target=/root/.cache/pip pip install --upgrade pip && pip install ".[ib]"
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --no-editable --extra ib
 
 RUN useradd -m -u 1003 fxvol && chown -R fxvol:fxvol /app
 USER fxvol

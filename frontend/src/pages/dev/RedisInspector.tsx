@@ -83,7 +83,6 @@ export function useRedisInspector(): RedisInspectorState {
       if (selected) void fetchValue(selected);
     }, 3_000);
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
   return { keys, selected, value, error, loading, fetchKeys, fetchValue };

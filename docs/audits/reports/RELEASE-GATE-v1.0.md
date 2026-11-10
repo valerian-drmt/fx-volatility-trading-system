@@ -207,8 +207,11 @@ maintained community fork.
 - **Decision needed:** migrate before v1.0, or stay pinned **and** publish a
   written runbook covering "IB protocol change breaks ib-insync" as an accepted
   risk with a recovery plan.
-- **Status:** ❌ undecided. Compounded by DEP-01 (no lockfile), so the pin is
-  not even reproducible across image rebuilds.
+- **Status:** ✅ decided 2026-11-10 (#306): stay on `ib-insync==0.9.86` for
+  v1.0, now reproducible through `uv.lock` (DEP-01 closed by #303); the
+  migration runbook and the trigger for doing it earlier are in
+  `docs/ops/dependency-policy.md`; the migration itself is a v1.1 ticket
+  gated on the paper integration suite and a one-week read-only soak.
 
 ### 8.4 Public positioning of a paper system
 

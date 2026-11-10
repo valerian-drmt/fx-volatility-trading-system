@@ -13,7 +13,7 @@ export default defineConfig({
   base: "/fx-volatility-trading-system/",
   plugins: [react()],
   resolve: {
-    alias: { "@": path.resolve(__dirname, "src") },
+    alias: { "@": path.resolve(import.meta.dirname, "src") },
   },
   server: {
     port: 5173,
