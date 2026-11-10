@@ -157,6 +157,7 @@ async def history(
     pc_id: int = Query(1, ge=1, le=6),
     n: int = Query(90, ge=1, le=500),
 ) -> list[dict[str, Any]]:
+    """History of one PCA component's z-score for a symbol, newest first."""
     rows = (await db.execute(
         select(PcaSignal)
         .where(PcaSignal.symbol == symbol)
@@ -177,6 +178,7 @@ async def active_model(
     db: DbDep,
     symbol: str = Query("EURUSD", min_length=3, max_length=20),
 ) -> dict[str, Any]:
+    """The active PCA model for a symbol: version, fit window, observations used, variance explained, and whether enough hourly snapshots exist for a refit."""
     model = (await db.execute(
         select(PcaModel).where(PcaModel.is_active.is_(True)).limit(1)
     )).scalar_one_or_none()

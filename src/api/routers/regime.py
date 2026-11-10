@@ -69,6 +69,7 @@ class EventIn(BaseModel):
 async def state(
     db: DbDep, symbol: str = Query("EURUSD", min_length=3, max_length=20),
 ) -> RegimeStateOut:
+    """Current volatility regime (calm / stressed / pre-event) with its probabilities and the trade gate it implies, from the latest snapshots."""
     rows = (await db.execute(
         select(RegimeSnapshot)
         .where(RegimeSnapshot.symbol == symbol)
@@ -169,6 +170,7 @@ async def history(
     symbol: str = Query("EURUSD", min_length=3, max_length=20),
     n: int = Query(50, ge=1, le=500),
 ) -> list[dict[str, Any]]:
+    """Regime snapshots for one symbol, newest first."""
     rows = (await db.execute(
         select(RegimeSnapshot)
         .where(RegimeSnapshot.symbol == symbol)
@@ -370,6 +372,7 @@ async def sync_events_from_feed(request: Request) -> dict[str, Any]:
 
 @router.post("/events", dependencies=[Depends(require_write)])
 async def insert_event(payload: EventIn, db: DbDep) -> dict[str, Any]:
+    """Add a macro event by hand (source `manual`) to the events calendar the regime gate reads."""
     e = Event(
         event_type=payload.event_type, impact=payload.impact, region=payload.region,
         scheduled_at=payload.scheduled_at, description=payload.description,

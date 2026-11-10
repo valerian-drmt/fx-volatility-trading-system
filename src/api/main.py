@@ -18,6 +18,7 @@ from api.dependencies import set_redis_client
 from api.middleware.logging import AccessLogMiddleware, configure_logging
 from api.middleware.rate_limit import limiter, rate_limit_exceeded_handler
 from api.middleware.timing import TimingMiddleware
+from api.openapi_doc import install as install_openapi_docs
 from api.routers import admin as admin_router
 from api.routers import analytics as analytics_router
 from api.routers import auth as auth_router
@@ -164,14 +165,24 @@ def _build_events_scheduler():
 def create_app() -> FastAPI:
     """Factory — used by uvicorn + by tests (no side effect at import)."""
     settings = get_settings()
+    # Swagger / ReDoc pull their JS from a CDN that prod's CSP (script-src
+    # 'self') blocks, so in prod they would render blank: they are off there,
+    # and the JSON spec stays public at /api/openapi.json (#352, D-17).
+    interactive_docs = settings.ENV != "prod"
     app = FastAPI(
         title="FXVol API",
         version="0.4.0",
+        description=(
+            "Read endpoints are public. Writes, `/dev` and config need the trader cookie "
+            "(`traderCookie`, set by `POST /api/v1/auth/login`). WebSocket channels: "
+            "docs/architecture/websockets.md."
+        ),
         lifespan=lifespan,
-        docs_url="/api/docs",
-        redoc_url="/api/redoc",
+        docs_url="/api/docs" if interactive_docs else None,
+        redoc_url="/api/redoc" if interactive_docs else None,
         openapi_url="/api/openapi.json",
     )
+    install_openapi_docs(app)
 
     # Shared singleton (also imported by @limiter.limit decorators). The
     # middleware is what actually enforces default_limits — without it the

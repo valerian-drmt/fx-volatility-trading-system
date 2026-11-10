@@ -66,6 +66,7 @@ def login(
 
 @router.post("/logout", response_model=AuthStatus)
 def logout(response: Response) -> AuthStatus:
+    """Clear the trader's auth cookie. Always answers `authenticated: false`."""
     response.delete_cookie(COOKIE_NAME, path="/")
     return AuthStatus(authenticated=False)
 

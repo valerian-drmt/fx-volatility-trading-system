@@ -48,6 +48,7 @@ def _to_response(record: config_service.ConfigRecord) -> ConfigResponse:
 
 @router.get("/config", response_model=ConfigResponse)
 async def get_current_config(db: DbDep) -> ConfigResponse:
+    """The active `VolConfig` (version, payload, author, comment)."""
     return _to_response(await config_service.get_current(db))
 
 
@@ -61,6 +62,7 @@ async def get_config_schema() -> dict:
 async def update_config(
     req: ConfigPatchRequest, db: DbDep, redis: RedisDep,
 ) -> ConfigResponse:
+    """Append a new `VolConfig` version from a partial patch, validated against the schema (422 with the errors otherwise), and broadcast it to the engines."""
     try:
         record = await config_service.update(
             db, redis, patch=req.patch, user=req.user, comment=req.comment,
@@ -84,6 +86,7 @@ async def list_config_history(
     db: DbDep,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
 ) -> list[ConfigResponse]:
+    """Past `VolConfig` versions, newest first."""
     records = await config_service.history(db, limit=limit)
     return [_to_response(r) for r in records]
 
@@ -92,6 +95,7 @@ async def list_config_history(
 async def revert_config(
     version: int, req: ConfigRevertRequest, db: DbDep, redis: RedisDep,
 ) -> ConfigResponse:
+    """Append a new version equal to an earlier one (the history stays append-only). 404 when the version does not exist."""
     try:
         record = await config_service.revert(
             db, redis, target_version=version, user=req.user, comment=req.comment,
@@ -188,6 +192,7 @@ class HaltRequest(BaseModel):
 
 @router.get("/halt")
 async def get_halt_state(db: DbDep) -> dict[str, Any]:
+    """The kill switch: whether trading is halted, why, by whom and since when."""
     from persistence.halt import get_halt
 
     h = await get_halt(db)
@@ -228,6 +233,7 @@ async def halt_trading(body: HaltRequest, db: DbDep, redis: RedisDep) -> dict[st
 
 @router.delete("/halt", dependencies=[Depends(require_write)])
 async def resume_trading(body: HaltRequest, db: DbDep, redis: RedisDep) -> dict[str, Any]:
+    """Lift the kill switch. Requires the trader cookie and a reason."""
     from bus.halt import mirror_halt
     from persistence.halt import set_halt
 

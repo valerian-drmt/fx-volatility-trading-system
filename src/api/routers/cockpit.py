@@ -128,6 +128,7 @@ async def trade_preview(
     body: TradePreviewRequest,
     redis: RedisDep,
 ) -> TradePreviewResponse:
+    """Price a structure (legs, greeks, premium) from the latest vol surface without placing anything. Requires the trader cookie."""
     from core import structures as S
 
     try:
@@ -199,6 +200,7 @@ class ModelHealthResponse(BaseModel):
 
 @router.get("/model-health", response_model=ModelHealthResponse)
 async def model_health(db: DbDep) -> ModelHealthResponse:
+    """Row counts of the stored vol surfaces and SVI fits, the latest surface timestamp, and whether a PCA model is ready."""
     from persistence.models import VolSurface
 
     vs_count = int((await db.execute(
