@@ -84,6 +84,7 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 | [ops/deployment.md](ops/deployment.md) | Prod on AWS/EC2: push → GitHub Actions → OIDC → SSM → deploy, the deploy gate. |
 | [ops/runbooks.md](ops/runbooks.md) | Incident procedures: orientation, reboot, rollback (schema-aware), restore, IB session recovery; each with its last walk. |
 | [ops/secrets.md](ops/secrets.md) | The SSM inventory (every `/fxvol/prod/*` name, what reads it, what happens when absent), load-to-RAM, never-echo. |
+| [ops/data-terms.md](ops/data-terms.md) | Each data source: how it is fetched, what is stored, the attribution shown, and the decisions on IB redistribution and FRED storage. |
 | [ops/dependency-policy.md](ops/dependency-policy.md) | Lockfile, image pins, weekly scan, license gate, maintenance-risk register, triage log. |
 | [ops/redis-durability.md](ops/redis-durability.md) | What Redis holds, its TTLs, the eviction policy, and what a restart costs. |
 | [ops/alerting.md](ops/alerting.md) | Prometheus rules → Alertmanager → SNS, the host disk guard, the IB watchdog, one-time IAM / IMDS setup. |

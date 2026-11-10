@@ -235,6 +235,16 @@ against the code on 2026-11-10).
 | L7 | **One host, no high availability** | Everything runs on one EC2 instance. A host loss is a rebuild from `setup.sh` + the latest S3 dump ([runbooks](docs/ops/runbooks.md#3-restore-from-backup)); the restore drill has not been run yet. |
 | L8 | **IB-sourced data on a public page** | The public read-only desk shows IB-derived prices and surfaces; the redistribution terms are being settled (#307). |
 
+## Data sources and attribution
+
+Market data comes from an Interactive Brokers **paper** account, **delayed**
+(see Known limitations L1, L2). Macro-event calendars: FRED® (Federal Reserve
+Bank of St. Louis), the Federal Reserve, the ECB, the Bank of England,
+Eurostat and the ONS. *This product uses the FRED® API but is not endorsed or
+certified by the Federal Reserve Bank of St. Louis.* ONS: contains public
+sector information licensed under the Open Government Licence v3.0. What is
+fetched, stored and decided per source: [`docs/ops/data-terms.md`](docs/ops/data-terms.md).
+
 ## Deployment
 
 Prod runs on a single AWS EC2 box, deployed **continuously from `main`** with no SSH

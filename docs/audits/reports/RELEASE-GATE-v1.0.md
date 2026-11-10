@@ -173,6 +173,10 @@ in `README.md`. The section must state at minimum:
 
 ## 8. Open legal / business questions
 
+> **Status 2026-11-10 (#307):** attribution done (README + desk). §8.1 (IB redistribution) and
+> §8.2 (FRED storage) have a written recommendation in `docs/ops/data-terms.md` and wait for
+> the owner's decision. §8.3 decided (#306).
+
 These are **not resolvable by audit**. Each needs a decision recorded before the
 system is presented as a released product.
 

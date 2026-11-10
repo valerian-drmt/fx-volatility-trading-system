@@ -63,6 +63,9 @@ input,select{font-family:inherit;font-size:13px}
 .rail-item svg{flex-shrink:0}
 .rail-active{position:absolute;left:-8px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--accent)}
 .rail-sep{height:1px;background:var(--border);margin:8px 4px}
+.data-attrib{font-size:10px;line-height:1.35;color:var(--text-faint);margin:8px 0 0}
+nav .data-attrib{margin-top:auto;padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav .data-attrib + .build-stamp{margin-top:0}
 .build-stamp{margin-top:auto;padding:6px 6px 2px;font-size:10px;color:var(--text-faint);letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* page head */
