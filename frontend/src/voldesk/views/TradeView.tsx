@@ -25,6 +25,7 @@ import { adaptSpotOrders, spotLimitPrice } from "../data/live/spot";
 import { patchSpotOrderRows } from "../data/live/patch";
 import { useFetch } from "../../hooks/useFetch";
 import { type SpotOrderChangedMsg, useOrdersStream, useSpotOrdersStream } from "../../hooks/streams";
+import { asArray } from "../../utils/asArray";
 
 const GATE_TITLE = "write disabled — auth required (Phase 2)";
 
@@ -228,7 +229,7 @@ function structuredToRows(
   // "Vanilla Call". Falls back to `linked` when the backend didn't send `open`.
   const isOpen = (l: StructuredPositions["structures"][number]["legs"][number]): boolean =>
     l.open ?? l.linked;
-  for (const s of data.structures) {
+  for (const s of asArray(data.structures)) {
     const tid = String(s.structure_id);
     const filled = s.legs.filter(isOpen).length;
     const naked =
@@ -264,7 +265,7 @@ function structuredToRows(
       });
     }
   }
-  for (const u of data.unlinked) {
+  for (const u of asArray(data.unlinked)) {
     const pnl = u.pnl_usd ?? 0;
     positions.push({
       id: String(u.id), packageId: "", tradeId: "", conId: 0,
@@ -899,7 +900,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   // its own contract, volume (filled/total), and state. Single-leg orders stay one
   // row. groupWaiting (any leg still working) sorts the whole structure, keeping
   // its legs contiguous.
-  const dbRows: BlotterRow[] = (submitted.data ?? []).flatMap((s) => {
+  const dbRows: BlotterRow[] = asArray(submitted.data).flatMap((s) => {
     const legs = s.legs && s.legs.length > 0 ? s.legs : null;
     const groupWaiting = legs
       ? legs.some((l) => isWaitingState(l.state))

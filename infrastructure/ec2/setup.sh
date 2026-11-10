@@ -54,11 +54,33 @@ if ! swapon --show | grep -q /swapfile; then
     grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-echo "[setup] weekly docker prune (keeps <7d images: previous SHA survives for rollback)"
+echo "[setup] weekly docker prune (keeps the current AND previous release's images, #345)"
 install -m 0755 /dev/stdin /etc/cron.weekly/fxvol-docker-prune <<'CRON'
 #!/bin/sh
-docker system prune -af --filter "until=168h"
+exec /bin/bash /opt/fxvol/infrastructure/ec2/prune_images.sh >> /var/log/fxvol-prune.log 2>&1
 CRON
+
+echo "[setup] unattended security upgrades, no automatic reboot (#345, audit 08#16)"
+# Security pocket only, Docker excluded (its upgrade restarts the stack). A
+# pending kernel reboot shows as /var/run/reboot-required and is taken in the
+# weekend window of docs/ops/runbooks.md ("Host reboot"), never at random.
+apt-get install -y --no-install-recommends unattended-upgrades
+install -m 0644 /dev/stdin /etc/apt/apt.conf.d/52fxvol-unattended <<'APT'
+Unattended-Upgrade::Allowed-Origins {
+        "${distro_id}:${distro_codename}-security";
+};
+Unattended-Upgrade::Package-Blacklist {
+        "docker-ce";
+        "docker-ce-cli";
+        "containerd.io";
+};
+Unattended-Upgrade::Automatic-Reboot "false";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+APT
+install -m 0644 /dev/stdin /etc/apt/apt.conf.d/20auto-upgrades <<'APT'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT
 
 echo "[setup] create $APP_USER user and $APP_DIR"
 id -u "$APP_USER" > /dev/null 2>&1 || useradd -m -s /bin/bash "$APP_USER"

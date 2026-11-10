@@ -71,7 +71,8 @@ export function TickerChart({
     }
     reload();
   }, [tf, reload]);
-  const candles = useMemo(() => barsFetch.data ?? [], [barsFetch.data]);
+  // A malformed payload (an object, an error body) is "no bars", not a crash (#348).
+  const candles = useMemo(() => (Array.isArray(barsFetch.data) ? barsFetch.data : []), [barsFetch.data]);
   const N = candles.length;
 
   const W = 520,

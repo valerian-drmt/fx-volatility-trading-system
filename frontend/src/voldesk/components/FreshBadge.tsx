@@ -26,12 +26,13 @@ export function FreshBadge({
   label?: string;
 }): JSX.Element {
   const { status, ageMs } = fresh;
-  const word = status === "live" ? "live" : status === "stale" ? "stale" : "no data";
+  const failed = status === "missing" && !!fresh.error;
+  const word = status === "live" ? "live" : status === "stale" ? "stale" : failed ? "error" : "no data";
   const cls =
     status === "live" ? "pos" : status === "stale" ? "warn" : "neg";
   const age = status === "stale" ? ageLabel(ageMs) : "";
   return (
-    <span className="dim mono small fresh-badge">
+    <span className="dim mono small fresh-badge" title={fresh.error ?? undefined}>
       {label ? `${label} · ` : ""}
       <span className={cls}>
         <i className={"fresh-dot " + cls} aria-hidden="true" /> {word}

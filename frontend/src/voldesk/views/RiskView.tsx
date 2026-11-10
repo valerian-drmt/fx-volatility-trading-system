@@ -16,6 +16,7 @@ import { groupByTradeId, structureName, structureNamesByTrade } from "../compone
 import { type HistBin, VAR_MIN_DAYS, useDeskData } from "../data/deskData";
 import type { Fresh } from "../data/freshness";
 import { adaptGreeksLadder, adaptMarginalVar, adaptPinRisk, adaptStressGrid, type LiveLadder, type MarginalVarData, type MarginalVarRow, type PinRiskRow, type StressGridData } from "../data/live/portfolio";
+import { asArray } from "../../utils/asArray";
 
 // standard-normal CDF (Abramowitz & Stegun 7.1.26) → percentile of a z-score
 const normCdf = (z: number): number => {
@@ -162,7 +163,7 @@ function VarCard({ var95, var99, es99, meanDaily, nDays, method, hist, fresh, po
           <div className="table-scroll">
             <table className="dt var-table">
               <thead><tr>
-                <th className="l">Horizon</th><th className="r">exp. return μt</th><th className="r">VaR 95%</th><th className="r">VaR 99%</th><th className="r">ES 97.5%</th><th className="r">ES/VaR</th>
+                <th className="l">Horizon</th><th className="r">exp. return μt</th><th className="r">VaR 95%</th><th className="r">VaR 99%</th><th className="r">ES 99%</th><th className="r">ES/VaR</th>
               </tr></thead>
               <tbody>
                 {rows.map((r) => {
@@ -302,13 +303,13 @@ function StressEngine(): JSX.Element {
 function PinRiskTable({ positions }: { positions: Position[] }): JSX.Element {
   const kk = (v: number): string => (v >= 0 ? "+" : "-") + "$" + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + "k" : Math.round(Math.abs(v)));
   const pin = useFetch<PinRiskRow[]>(() => fetchPinRisk().then(adaptPinRisk), 120_000);
-  const pinRows = pin.data ?? [];
+  const pinRows = asArray(pin.data);
   // Authoritative structure name per trade, from the DB structured feed (Trade
   // view uses the same source). Prefer it over structureName(legs) inference,
   // which snaps a 25Δ strangle / straddle / calendar all to "Strangle 10Δ".
   const structured = useFetch<StructuredPositions>(() => fetchStructuredPositions(), 30_000);
   const structNames = useMemo(
-    () => structureNamesByTrade(structured.data?.structures ?? []),
+    () => structureNamesByTrade(asArray(structured.data?.structures)),
     [structured.data],
   );
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -414,7 +415,7 @@ function MarginalVarPanel({ positions }: { positions: Position[] }): JSX.Element
   // "Strangle 10Δ" when the legs carry no shared stored name).
   const structured = useFetch<StructuredPositions>(() => fetchStructuredPositions(), 30_000);
   const structNames = useMemo(
-    () => structureNamesByTrade(structured.data?.structures ?? []),
+    () => structureNamesByTrade(asArray(structured.data?.structures)),
     [structured.data],
   );
   const nameByTrade = useMemo(() => {
@@ -546,7 +547,7 @@ function LiveLadders(): JSX.Element {
     () => Promise.all(LADDER_AXES.map((a) => fetchGreeksLadder(a).then(adaptGreeksLadder))),
     120_000,
   );
-  const L = live.data ?? [];
+  const L = asArray(live.data);
   const at = (i: number): LiveLadder | null => L[i] ?? null;
   return (
     <Panel title="Greeks ladder" dataPp="greeks-ladder" right={<PanelLive status={live.status} />} pad className="ladder-panel">
@@ -608,14 +609,14 @@ export function RiskView(): JSX.Element {
                 </tbody>
               </table>
             </Panel>
-            <PinRiskTable positions={portfolio.data?.positions ?? []} />
+            <PinRiskTable positions={asArray(portfolio.data?.positions)} />
           </div>
       </Panel>
-      <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} nDays={vd.nDays} method={vd.method} hist={vd.hist} fresh={risk} positions={portfolio.data?.positions ?? []} />
+      <VarCard var95={vd.var95} var99={vd.var99} es99={vd.es99} meanDaily={vd.meanDaily} nDays={vd.nDays} method={vd.method} hist={vd.hist} fresh={risk} positions={asArray(portfolio.data?.positions)} />
       <StressEngine />
       <LiveLadders />
       <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status={portfolio.status} />} pad={false} className="ladder-panel">
-        <PositionBreakdown positions={portfolio.data?.positions ?? []} />
+        <PositionBreakdown positions={asArray(portfolio.data?.positions)} />
       </Panel>
     </div>
   );

@@ -19,8 +19,14 @@ pct="$(df -P / | awk 'NR==2 {gsub("%","",$5); print $5}')"
 [ "$pct" -ge "$WARN_PCT" ] || exit 0
 
 if [ "$pct" -ge "$CRIT_PCT" ]; then
-  docker image prune -af >/dev/null 2>&1 || true
+  # First the rollback-preserving prune (#345); only a disk still critical
+  # after it gives up the previous release's images.
+  /bin/bash /opt/fxvol/infrastructure/ec2/prune_images.sh >/dev/null 2>&1 || true
   pct_after="$(df -P / | awk 'NR==2 {gsub("%","",$5); print $5}')"
+  if [ "$pct_after" -ge "$CRIT_PCT" ]; then
+    docker image prune -af >/dev/null 2>&1 || true
+    pct_after="$(df -P / | awk 'NR==2 {gsub("%","",$5); print $5}')"
+  fi
 else
   pct_after="$pct"
 fi

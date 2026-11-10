@@ -87,6 +87,33 @@ All mandatory:
 | `ci_workflows/` | tests on `.github/workflows/*.yml` (existence, structure, triggers) | no container (static YAML analysis) |
 | `docker_compose/` | tests on `docker-compose.yml` (`compose config` syntax, expected services, well-defined healthchecks) | docker daemon but no container actually up |
 
+### IB paper suite (`pipeline_execution_engine/test_paper_smoke.py`)
+
+The only `integration` (IB) tests. Read-only: connect, account values,
+positions and open orders, through the execution engine's `OrderExecutor`.
+The 11 step4/step5 paper skeletons were deleted (#341): they had no assertion,
+and each behaviour is covered with IB mocked:
+
+| Skeleton | Covered by |
+|---|---|
+| submit creates structure + orders | `tests/unit/engines/execution/test_placement.py`, `tests/unit/api/routers/test_trade_submit_gating.py` |
+| partial fill updates state | `tests/unit/core/execution/test_fills.py`, `test_projection.py` |
+| rejection triggers rollback | `tests/unit/engines/execution/test_rollback_runner.py` |
+| duplicate fills are idempotent | `tests/unit/core/execution/test_fills.py`, `tests/integration/pipeline_db_writer` (writer idempotency on Postgres) |
+| lock prevents double submit | `tests/unit/api/routers/test_trade_submit_gating.py` |
+| MTM of a long straddle | `tests/unit/core/positions/test_mtm.py`, `test_position_pricing.py` |
+| attribution reconciles to total | `tests/unit/persistence/test_rollups.py`, `tests/unit/core/positions/test_mtm.py` |
+| signal reversal triggers exit | `tests/unit/core/positions/test_exit_rules.py` |
+| delta hedge triggered | `tests/unit/core/positions/test_delta_hedge.py` |
+| close flow end to end | `tests/unit/api/routers/test_close_dispatch_timeout.py` |
+| alert cooldown | `tests/unit/core/positions/test_delta_hedge.py` |
+
+Runs on record (append a row after each run):
+
+| Date | Gateway build | Result |
+|---|---|---|
+| _not yet run: needs the weekend window with the prod gateway stopped (docs/ops/runbooks.md 4.5)_ | | |
+
 ### Why not one folder per container pair (edge)
 
 Too fine-grained: there are 14+ edges in the graph. You end up with 14 folders of 1-2 files each, and semantic cohesion is lost ("test_redis_market_data" vs "test_redis_vol_engine" are nearly identical but duplicated).

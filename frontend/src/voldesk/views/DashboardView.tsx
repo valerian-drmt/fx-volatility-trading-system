@@ -23,6 +23,7 @@ import { ModeCard } from "./SignalsView";
 import { ClosedBanner } from "../components/ClosedBanner";
 import { useMarketOpen } from "../../hooks/useMarketOpen";
 import { FEED_TONE_COLOR, feedState } from "../../utils/marketHours";
+import { asArray } from "../../utils/asArray";
 
 // per-panel data-source indicator (live / stale / no-data) — same look as the
 // Risk tab's PanelLive, driven by a desk-domain freshness status.
@@ -148,7 +149,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   // fabricated book data (remediation 05 WI-2).
   const a = portfolio.data?.account ?? EMPTY_ACCOUNT,
     g = portfolio.data?.greeks ?? EMPTY_GREEKS;
-  const events = trade.data?.events ?? [];
+  const events = asArray(trade.data?.events);
   // No tick -> no spot: the $->EUR ratios read a dash and the chart draws
   // without a last-price line, never the 1.0842 preview constant (#369).
   const spot = ticks.data?.mid ?? null;
@@ -158,11 +159,11 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const surfStale = toTone(termStructure.status) === "down";
 
   // ── Portfolio card: live per-currency cash for the holdings donut.
-  const cashRows = trade.data?.cash ?? [];
+  const cashRows = asArray(trade.data?.cash);
   // Leverage from the live book — same math as the Portfolio tab's "Leverage &
   // buying power" table: gross = Σ|notional| (€), net = |Σ signed| (€), ratios
   // vs net liq converted $→€ at live spot.
-  const positions = trade.data?.positions ?? [];
+  const positions = asArray(trade.data?.positions);
   const grossLevM = positions.reduce((s, p) => s + Math.abs(p.nominal), 0) / 1e6;
   const netLevM = Math.abs(positions.reduce((s, p) => s + (p.side === "BUY" ? p.nominal : -p.nominal), 0)) / 1e6;
   const netLiqEurM = spot ? a.netLiq / spot / 1e6 : 0;
@@ -202,7 +203,7 @@ export function DashboardView({ go }: { go: (r: string) => void }): JSX.Element 
   const mktLabel = feed.label;
 
   // ── Signal card — the 3 live PC mode cards (PC1/PC2/PC3, 3M z-history view).
-  const pcsLive = pca.data?.pcs ?? [];
+  const pcsLive = asArray(pca.data?.pcs);
 
   return (
     <div className="dash-grid">

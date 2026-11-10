@@ -43,6 +43,7 @@ import {
   type ValuationKey,
   type ValuationSeries,
 } from "../data/live/portfolio";
+import { asArray } from "../../utils/asArray";
 
 // ─── Performance charts: fixed time axis with gaps ───────────────────────────
 // The net-liq series is resampled onto a FIXED grid of GRID_N samples spanning the
@@ -445,11 +446,11 @@ function PerformancePanel({
     reloadEq();
     reloadGk();
   }, [win, reloadEq, reloadGk]);
-  const equity = buildEquityGrid(eq.data ?? [], WINDOW_DAYS[win] ?? null, Date.now());
+  const equity = buildEquityGrid(asArray(eq.data), WINDOW_DAYS[win] ?? null, Date.now());
   const hist: GreekSeries = gk.data ?? { delta: [], gamma: [], vega: [], theta: [] };
   // Header stats follow the selected window (same math as the recap table) —
   // realized = equity Δ over the window, DDs from the window's running peak.
-  const cur = recapRow(win, eq.data ?? [], hist);
+  const cur = recapRow(win, asArray(eq.data), hist);
   // Recap table: one sweep over ALL 5 windows (equity + greek P&L per window).
   const recap = useFetch<RecapRow[]>(
     () =>
@@ -466,7 +467,7 @@ function PerformancePanel({
       ),
     300_000,
   );
-  const recapRows = recap.data ?? [];
+  const recapRows = asArray(recap.data);
   return (
     <Panel
       title="Performance"
@@ -1098,7 +1099,7 @@ export function PortfolioView(): JSX.Element {
     reloadVal();
   }, [valWin, reloadVal]);
   // Live per-currency cash balances (from /portfolio/cash via the trade slice).
-  const cashRows = trade.data?.cash ?? [];
+  const cashRows = asArray(trade.data?.cash);
   // Leverage from the live book: gross = Σ|notional|, net = |Σ signed notional| (€),
   // buying power from the IB heartbeat ($). Empty until positions/account load.
   const posForLev = pd?.positions ?? [];

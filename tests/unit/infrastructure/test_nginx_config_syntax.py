@@ -67,3 +67,12 @@ def test_nginx_prod_redirects_http_and_terminates_tls():
     assert "location /fx-volatility-trading-system/ws/" in conf
     assert "location /fx-volatility-trading-system/api/" in conf
     assert "Upgrade $http_upgrade" in conf
+
+
+def test_frontend_conf_refuses_source_maps() -> None:
+    """#349: the build keeps maps hidden, the image drops them, nginx refuses any stray .map."""
+    root = Path(__file__).resolve().parents[3]
+    conf = (root / "infrastructure/nginx/frontend.conf").read_text(encoding="utf-8")
+    assert r"location ~* \.map$" in conf and "return 404;" in conf
+    assert "find dist -name '*.map' -delete" in (root / "infrastructure/docker/web.Dockerfile").read_text(encoding="utf-8")
+    assert 'sourcemap: "hidden"' in (root / "frontend/vite.config.ts").read_text(encoding="utf-8")

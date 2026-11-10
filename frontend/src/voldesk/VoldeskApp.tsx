@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./voldesk.css";
 import { useAuthStore } from "../store/authStore";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { LoginModal } from "./auth/LoginModal";
 import { useTicks } from "./data/deskData";
 import { useTweaks } from "./useTweaks";
@@ -318,13 +319,19 @@ export default function VoldeskApp(): JSX.Element {
             </div>
           </div>
           <div className="page-body">
-            {route === "dashboard" && <DashboardView go={go} />}
-            {route === "trade" && <TradeView tweaks={tweaks} />}
-            {route === "signals" && <SignalsView />}
-            {route === "risk" && <RiskView />}
-            {route === "portfolio" && <PortfolioView />}
-            {route === "system" && <SystemView />}
-            {route === "settings" && <SettingsView />}
+            {/* One boundary per view (#348, audit 09#7): a throw in one view
+                shows an inline error there and leaves the shell, the rail and
+                the other views usable; keyed on the route so navigating away
+                and back retries. */}
+            <ErrorBoundary key={route} label={title}>
+              {route === "dashboard" && <DashboardView go={go} />}
+              {route === "trade" && <TradeView tweaks={tweaks} />}
+              {route === "signals" && <SignalsView />}
+              {route === "risk" && <RiskView />}
+              {route === "portfolio" && <PortfolioView />}
+              {route === "system" && <SystemView />}
+              {route === "settings" && <SettingsView />}
+            </ErrorBoundary>
           </div>
         </main>
       </div>

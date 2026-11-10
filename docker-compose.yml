@@ -650,6 +650,10 @@ services:
       - '--storage.tsdb.retention.time=${PROM_RETENTION_TIME:-7d}'
       - '--storage.tsdb.retention.size=${PROM_RETENTION_SIZE:-512MB}'
       - '--web.enable-lifecycle'
+      - '--enable-feature=expand-external-labels'
+    environment:
+      # obs/prometheus.yml labels every series with it (#346).
+      FXVOL_ENVIRONMENT: ${ENV:-dev}
     networks:
       - fxvol-internal
     expose:

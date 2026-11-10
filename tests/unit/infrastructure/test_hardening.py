@@ -100,3 +100,24 @@ def test_deploy_role_reads_command_results_in_one_region_only() -> None:
     by_sid = {s["Sid"]: s for s in policy["Statement"]}
     assert by_sid["ReadCommandResult"]["Condition"]["StringEquals"]["aws:RequestedRegion"] == "eu-west-1"
     assert by_sid["SendDeployCommand"]["Resource"] != "*"
+
+
+def test_prometheus_environment_label_follows_the_stack_env() -> None:
+    """#346 (audit 08#12): prod series were labelled environment=dev."""
+    prom = (ROOT / "obs" / "prometheus.yml").read_text(encoding="utf-8")
+    assert "environment: ${FXVOL_ENVIRONMENT}" in prom and "environment: dev" not in prom
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "'--enable-feature=expand-external-labels'" in compose
+    assert "FXVOL_ENVIRONMENT: ${ENV:-dev}" in compose
+
+
+def test_every_ssm_name_the_deploy_reads_is_in_the_inventory() -> None:
+    """#346 (audit 08#11): one inventory, matching what remote-deploy.sh reads."""
+    import re
+
+    deploy = (ROOT / "infrastructure" / "ec2" / "remote-deploy.sh").read_text(encoding="utf-8")
+    read = set(re.findall(r"ssm /fxvol/prod/([A-Z_]+)", deploy))
+    inventory = (ROOT / "docs" / "ops" / "secrets.md").read_text(encoding="utf-8")
+    missing = sorted(name for name in read if f"`{name}`" not in inventory and f"`{name}`," not in inventory)
+    assert "AUTH_SALT" in read
+    assert missing == [], missing

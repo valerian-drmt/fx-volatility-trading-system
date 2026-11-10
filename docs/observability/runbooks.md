@@ -24,9 +24,15 @@ at `127.0.0.1:3000` (anonymous Viewer access, edits via the login form).
 docker compose --profile metrics up -d
 ```
 
-It gives the /dev Hardware tab its per-container CPU/RAM graphs **without** the
-parts that must not run on a public host (Grafana's host-mapped port, promtail's
-read-write `docker.sock`). Prod runs `metrics`, never `obs`.
+It gives the /dev Hardware tab its per-container CPU/RAM graphs alone, for a
+host that cannot afford the full set. Since #298 prod runs the full `obs`
+profile (`COMPOSE_PROFILES=engines,ib,obs`): cAdvisor unprivileged, promtail
+behind `docker-socket-proxy`, Grafana loopback-only with anonymous access off
+and the admin password from SSM. Every series carries `environment="prod"`
+there (`obs/prometheus.yml`, from the stack's `ENV`).
+
+This page is the query guide. The incident procedures (reboot, rollback,
+restore, IB recovery) are in [`docs/ops/runbooks.md`](../ops/runbooks.md).
 
 ## Loki — query logs
 

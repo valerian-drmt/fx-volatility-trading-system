@@ -81,7 +81,9 @@ These docs describe the system as it is built. Diagrams are **SVG** files under
 |---|---|
 | [ops/local-stack.md](ops/local-stack.md) | Run locally: docker compose, `scripts/local` launchers, profiles, Alembic. |
 | [ops/deployment.md](ops/deployment.md) | Prod on AWS/EC2: push → GitHub Actions → OIDC → SSM → deploy, the deploy gate. |
-| [ops/secrets.md](ops/secrets.md) | SSM Parameter Store (KMS), load-to-RAM, never-on-disk, never-echo. |
+| [ops/runbooks.md](ops/runbooks.md) | Incident procedures: orientation, reboot, rollback (schema-aware), restore, IB session recovery; each with its last walk. |
+| [ops/secrets.md](ops/secrets.md) | The SSM inventory (every `/fxvol/prod/*` name, what reads it, what happens when absent), load-to-RAM, never-echo. |
+| [ops/dependency-policy.md](ops/dependency-policy.md) | Lockfile, image pins, weekly scan, license gate, maintenance-risk register, triage log. |
 | [ops/redis-durability.md](ops/redis-durability.md) | What Redis holds, its TTLs, the eviction policy, and what a restart costs. |
 | [ops/alerting.md](ops/alerting.md) | Prometheus rules → Alertmanager → SNS, the host disk guard, the IB watchdog, one-time IAM / IMDS setup. |
 | [ops/security.md](ops/security.md) | The auth boundary: public reads, the trader cookie, the api-only internal token, the public-route decisions. |

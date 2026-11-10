@@ -17,6 +17,9 @@ export interface Fresh<T> {
   asOf: number | null;
   /** now - asOf, or null when missing */
   ageMs: number | null;
+  /** last fetch failure (#348): with status "missing" the panel shows "error"
+   * instead of "no data"; with "stale" it explains why. Absent on streams. */
+  error?: string | null;
 }
 
 export function statusFor(

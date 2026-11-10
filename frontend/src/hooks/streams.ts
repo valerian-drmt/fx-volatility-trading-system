@@ -57,11 +57,16 @@ function useStream<T>(path: string | null, warnMs: number, throttleMs = 0): Fres
   return makeFresh<T>(last, asOf, warnMs, now);
 }
 
+/** One `ticks` message, as `bus.publisher.publish_tick` emits it. The shape is
+ * pinned to tests/fixtures/payloads/ticks.json, the fixture the backend
+ * publisher tests use (#348): src/hooks/__tests__/wsContract.test.ts. */
 export interface TickMsg {
   symbol?: string;
   mid?: number;
   bid?: number;
   ask?: number;
+  /** ISO-8601 UTC stamp of the quote */
+  timestamp?: string;
 }
 
 // Ticks fire ~5/s ; coalesce to a steady 1s beat (display-only smoothing).

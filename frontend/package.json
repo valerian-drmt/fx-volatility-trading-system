@@ -14,14 +14,14 @@
     "lint": "eslint src --max-warnings 0",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write src",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium",
     "gen:api": "openapi-typescript http://localhost:8000/openapi.json -o src/api/schema.d.ts",
-    "gen:api:check": "openapi-typescript http://localhost:8000/openapi.json -o /tmp/schema.d.ts && diff -q src/api/schema.d.ts /tmp/schema.d.ts"
+    "gen:api:check": "node scripts/check-api-drift.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",

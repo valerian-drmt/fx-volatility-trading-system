@@ -35,6 +35,11 @@ on:
         description: "Commit SHA to deploy (default: the build's commit / main HEAD)"
         required: false
         type: string
+      allow_schema_downgrade:
+        description: "Rollback past a migration: let the running image downgrade the DB to the target's head (after the pre-deploy dump)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -113,6 +118,7 @@ jobs:
           OWNER: ${{ env.OWNER }}
           PROFILES: ${{ vars.COMPOSE_PROFILES }}
           READONLY: ${{ vars.READ_ONLY_API }}
+          DOWNGRADE: ${{ inputs.allow_schema_downgrade == true && 'true' || 'false' }}
         run: |
           # Build the SendCommand parameters with jq so JSON escaping is correct.
           # Host bootstrap: pull payload from S3, extract, hand off to the
@@ -122,13 +128,13 @@ jobs:
           jq -n \
             --arg bucket "$BUCKET" --arg sha "$SHA" --arg region "$REGION" \
             --arg tag "$IMAGE_TAG" --arg owner "$OWNER" --arg profiles "$PROFILES" \
-            --arg readonly "$READONLY" '
+            --arg readonly "$READONLY" --arg downgrade "$DOWNGRADE" '
             { commands: [
                 "set -eu",
                 "cd /opt/fxvol",
                 "aws s3 cp s3://\($bucket)/\($sha).tar.gz /tmp/payload.tar.gz --region \($region)",
                 "tar xzf /tmp/payload.tar.gz -C /opt/fxvol",
-                "IMAGE_TAG=\($tag) OWNER=\($owner) AWS_REGION=\($region) COMPOSE_PROFILES=\"\($profiles)\" READ_ONLY_API=\"\($readonly)\" bash infrastructure/ec2/remote-deploy.sh"
+                "IMAGE_TAG=\($tag) OWNER=\($owner) AWS_REGION=\($region) COMPOSE_PROFILES=\"\($profiles)\" READ_ONLY_API=\"\($readonly)\" ALLOW_SCHEMA_DOWNGRADE=\($downgrade) bash infrastructure/ec2/remote-deploy.sh"
             ] }' > ssm-params.json
 
           cmd_id=$(aws ssm send-command \

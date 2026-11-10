@@ -26,6 +26,8 @@
   connect          Interactive shell on the host (SSM Session Manager).
   deploy           Triggers the GitHub 'deploy-prod' workflow (build->ghcr->host).
                    With -Sha: rollback/deploy a specific commit (deploy_sha).
+                   With -AllowSchemaDowngrade: a rollback past a migration may
+                   downgrade the DB (after the pre-deploy dump; docs/ops/runbooks.md).
   health           GET https://<Domain>/fx-volatility-trading-system/api/v1/health from the laptop.
   ps               Lists the containers running on the host.
   stack            Full health dashboard in one call: every container + status,
@@ -37,6 +39,11 @@
   restart <svc>    docker compose restart <svc> (e.g. nginx, api, frontend).
   logs <svc>       Tail a service's logs (-Tail N, default 80).
   alembic          docker compose exec api alembic upgrade head.
+  inventory        Read-only host checks for the runbooks (#346): ops crons and
+                   units present, backup stamp, rollback tag pair, pending
+                   reboot, unattended-upgrades, uptime / disk / memory,
+                   container states, newest backups in S3, watchdog state.
+                   Prints no secret, no .env, no application log.
   instance-status  EC2 state (running/stopped) + public IP.
   instance-stop    Stops the INSTANCE (cuts the ~$15/mo compute bill). Also stops the containers.
   instance-start   Starts the instance (the systemd unit re-ups the stack at boot if enabled).
@@ -74,9 +81,11 @@ param(
     [Parameter(Mandatory, Position = 0)]
     [ValidateSet(
         'connect', 'deploy', 'health', 'ps', 'stack', 'up', 'down', 'restart', 'logs',
-        'alembic', 'instance-status', 'instance-stop', 'instance-start'
+        'alembic', 'inventory', 'instance-status', 'instance-stop', 'instance-start'
     )]
     [string]$Action,
+
+    [switch]$AllowSchemaDowngrade,
 
     [Parameter(Position = 1)]
     [string]$Target,
@@ -224,7 +233,9 @@ switch ($Action) {
         Write-Step "Triggering the deploy-prod workflow"
         if ($Sha) {
             Write-Warn "Deploying a specific SHA (rollback) : $Sha"
-            & gh workflow run deploy-prod --repo $Repo -f "deploy_sha=$Sha"
+            $down = if ($AllowSchemaDowngrade) { 'true' } else { 'false' }
+            if ($AllowSchemaDowngrade) { Write-Warn "Schema downgrade allowed: the running image may downgrade the DB to the target's head" }
+            & gh workflow run deploy-prod --repo $Repo -f "deploy_sha=$Sha" -f "allow_schema_downgrade=$down"
         } else {
             & gh workflow run deploy-prod --repo $Repo
         }
@@ -252,6 +263,30 @@ switch ($Action) {
     }
 
     'ps'      { Invoke-OnHost "cd $HostDir && sudo docker compose ps" "Containers on the host" }
+
+    'inventory' {
+        $cmd = @'
+echo "== ops layer (crons, unit, daemon config)"
+for f in /etc/cron.daily/fxvol-postgres-backup /etc/cron.weekly/fxvol-docker-prune /etc/cron.d/fxvol-ib-watchdog /etc/cron.hourly/fxvol-disk-check /etc/systemd/system/fxvol-compose.service /etc/docker/daemon.json /etc/apt/apt.conf.d/52fxvol-unattended; do
+  if [ -e "$f" ]; then echo "present  $f"; else echo "MISSING  $f"; fi
+done
+echo "== state"
+echo "backup_stamp=$(cat /opt/fxvol/state/postgres-backup.last 2>/dev/null || echo none)"
+echo "current_tag=$(cat /opt/fxvol/state/current_tag 2>/dev/null || echo none) previous_tag=$(cat /opt/fxvol/state/previous_tag 2>/dev/null || echo none)"
+if [ -f /var/run/reboot-required ]; then echo "REBOOT PENDING since $(stat -c %y /var/run/reboot-required | cut -d. -f1)"; else echo "no reboot pending"; fi
+dpkg -l unattended-upgrades 2>/dev/null | awk '/^ii/{print "unattended-upgrades " $3}' || true
+echo "== host"
+uptime -p; df -hP / | tail -1; free -m | awk 'NR==2{print "memory used/total MB " $3 "/" $2}'
+echo "== containers"
+cd /opt/fxvol && sudo docker compose ps --format '{{.Name}} {{.Status}}' | sort
+echo "== backups (newest)"
+aws s3 ls s3://fxvol-backups/postgres/ --region eu-west-1 | grep -v PRE | tail -2
+aws s3 ls s3://fxvol-backups/postgres/pre-deploy/ --region eu-west-1 | tail -1
+echo "== ib watchdog"
+echo "last_recovery=$(date -u -d @$(cat /run/fxvol-ib-watchdog.last 2>/dev/null || echo 0) +%FT%TZ)"
+'@
+        Invoke-OnHost $cmd "Read-only host inventory (runbooks, #346)"
+    }
 
     'stack' {
         # One SSM round-trip for the whole picture. Sorted by memory so the

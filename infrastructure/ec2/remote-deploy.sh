@@ -12,11 +12,19 @@
 #   AWS_REGION        e.g. eu-west-1
 #   COMPOSE_PROFILES  optional; empty = core stack (api+frontend+nginx+pg+redis)
 #
-# Rollback: re-run the previous SHA (.\scripts\ops\ec2.ps1 deploy -Sha <prev>);
-# the pre-migration dump uploaded below is the DB restore point (see
-# infrastructure/ec2/RESTORE.md).
-# AUTH_SALT is deliberately not rendered: the api falls back to its code
-# default. Provision /fxvol/prod/AUTH_SALT in SSM only when rotating it.
+#   ALLOW_SCHEMA_DOWNGRADE  optional; "true" lets a rollback downgrade the
+#                     database to the target image's alembic head (#345)
+#
+# Rollback: deploy-prod via workflow_dispatch with deploy_sha=<previous sha>
+# (docs/ops/runbooks.md, "Rollback"). The previous release's images stay on the
+# host (prune_images.sh keeps current + previous tag). When the database is
+# ahead of the target image, the deploy stops unless ALLOW_SCHEMA_DOWNGRADE is
+# true; then the RUNNING image (which knows both revisions) downgrades after
+# the pre-deploy dump. The dump is the restore point (infrastructure/ec2/RESTORE.md).
+# AUTH_SALT is rendered when /fxvol/prod/AUTH_SALT exists (#346); absent, the
+# api keeps its code default and logs auth_salt_is_repo_default. Provision it
+# together with a new AUTH_PASSWORD_HASH computed with that salt
+# (docs/ops/secrets.md, "Inventory").
 set -euo pipefail
 
 cd /opt/fxvol
@@ -37,6 +45,7 @@ GHCR_TOKEN="$(ssm /fxvol/prod/GHCR_TOKEN 2>/dev/null || echo "")"
 # params in SSM before the first deploy.
 AUTH_SECRET="$(ssm /fxvol/prod/AUTH_SECRET 2>/dev/null || echo "")"
 AUTH_PASSWORD_HASH="$(ssm /fxvol/prod/AUTH_PASSWORD_HASH 2>/dev/null || echo "")"
+AUTH_SALT="$(ssm /fxvol/prod/AUTH_SALT 2>/dev/null || echo "")"
 # Redis auth (URL-safe chars only: embedded un-encoded in REDIS_URL). Required
 # on prod (#298): without it compose would fall back to the dev password.
 REDIS_PASSWORD="$(ssm /fxvol/prod/REDIS_PASSWORD 2>/dev/null || echo "")"
@@ -128,6 +137,7 @@ esac
 {
   if [ -n "${AUTH_SECRET}" ];        then echo "AUTH_SECRET=${AUTH_SECRET}"; fi
   if [ -n "${AUTH_PASSWORD_HASH}" ]; then echo "AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH}"; fi
+  if [ -n "${AUTH_SALT}" ];          then echo "AUTH_SALT=${AUTH_SALT}"; fi
   echo "REDIS_PASSWORD=${REDIS_PASSWORD}"
   if [ -n "${GRAFANA_ADMIN_PASSWORD}" ]; then
     echo "GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}"
@@ -172,6 +182,14 @@ SystemMaxUse=200M
 MaxRetentionSec=14day
 JRN
 systemctl restart systemd-journald 2>/dev/null || true
+# Weekly prune through the same script as the deploy (the old cron's
+# `system prune -af --filter until=168h` removed the previous release's
+# images once they were a week old, i.e. the rollback target, #345).
+install -m 0755 /dev/stdin /etc/cron.weekly/fxvol-docker-prune <<'CRON'
+#!/bin/sh
+# Managed by infrastructure/ec2/setup.sh + remote-deploy.sh — do not edit by hand.
+exec /bin/bash /opt/fxvol/infrastructure/ec2/prune_images.sh >> /var/log/fxvol-prune.log 2>&1
+CRON
 install -m 0755 /dev/stdin /etc/cron.hourly/fxvol-disk-check <<'CRON'
 #!/bin/sh
 # Managed by infrastructure/ec2/setup.sh + remote-deploy.sh — do not edit by hand.
@@ -235,6 +253,42 @@ if docker compose ps --status running postgres | grep -q postgres; then
   mig_env="$(mktemp /tmp/fxvol-migrate.XXXXXX)"
   printf 'DATABASE_URL=postgresql+asyncpg://fxvol:%s@postgres:5432/fxvol\n' \
     "${DB_PASSWORD}" > "$mig_env"
+
+  # Schema-aware rollback (#345, audit 08#6/08#7). If the database sits on a
+  # revision the target image does not know (a rollback past a migration),
+  # `upgrade head` with that image would fail on an unknown revision. The
+  # running api image knows both, so it performs the downgrade to the target
+  # image's head; only on explicit opt-in, after the pre-deploy dump above.
+  alembic_in() {  # alembic_in <image> <args...>
+    local image="$1"; shift
+    docker run --rm --network "$net" --env-file "$mig_env" "$image" \
+      python -m alembic -c src/persistence/alembic.ini "$@"
+  }
+  target_head="$(docker run --rm "${reg}/fx-options-api:${IMAGE_TAG}" \
+    python -m alembic -c src/persistence/alembic.ini heads 2>/dev/null | awk 'NR==1{print $1}')"
+  running_image="$(docker inspect fxvol-api --format '{{.Config.Image}}' 2>/dev/null || true)"
+  db_rev=""
+  if [ -n "$running_image" ]; then
+    db_rev="$(alembic_in "$running_image" current 2>/dev/null | awk '/^[0-9A-Za-z_]+/{print $1; exit}')"
+  fi
+  if [ -n "$db_rev" ] && [ -n "$target_head" ] && [ "$db_rev" != "$target_head" ] \
+     && ! docker run --rm "${reg}/fx-options-api:${IMAGE_TAG}" \
+          python -m alembic -c src/persistence/alembic.ini show "$db_rev" >/dev/null 2>&1; then
+    if [ "${ALLOW_SCHEMA_DOWNGRADE:-false}" != "true" ]; then
+      rm -f "$mig_env"
+      echo "remote-deploy: the database is at ${db_rev}, which ${IMAGE_TAG} does not know (its head is ${target_head})." >&2
+      echo "remote-deploy: this is a rollback past a migration; re-run with allow_schema_downgrade=true to downgrade with ${running_image}" >&2
+      exit 1
+    fi
+    echo "remote-deploy: schema downgrade ${db_rev} -> ${target_head} with ${running_image}"
+    down_rc=0
+    alembic_in "$running_image" downgrade "$target_head" || down_rc=$?
+    if [ "$down_rc" -ne 0 ]; then
+      rm -f "$mig_env"
+      echo "remote-deploy: downgrade failed (exit ${down_rc}); the stack is untouched, restore point = pre-${IMAGE_TAG} dump" >&2
+      exit "$down_rc"
+    fi
+  fi
   mig_rc=0
   docker run --rm --network "$net" \
     --env-file "$mig_env" \
@@ -275,15 +329,21 @@ docker compose exec -T nginx nginx -s reload
 # idempotent re-run is a no-op on the normal path.
 docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
 
-# Reclaim disk: drop every image no longer referenced by a running container —
-# i.e. the previous deploys' sha-<commit> tags. Each deploy pulls 7 fresh images,
+# Reclaim disk: drop the older deploys' sha-<commit> tags, but keep the
+# previous release's images so a rollback needs no pull (#345). Each deploy pulls 7 fresh images,
 # so without this the 29G root fills up after ~a dozen deploys; once it does,
 # 'docker compose pull' stalls mid-transfer and the SSM document-worker times out
 # ("ipc messaging received timeout signal") with an empty error — the whole
 # deploy fails for a reason that looks nothing like "disk full". Runs only after
 # the new stack is up (so its images are protected). Best-effort: a prune failure
 # must never fail an otherwise-good deploy.
-docker image prune -af || echo "remote-deploy: image prune skipped"
+# Record the release pair first: the prune keeps both tags (#345).
+prev_tag="$(cat /opt/fxvol/state/current_tag 2>/dev/null || true)"
+if [ -n "$prev_tag" ] && [ "$prev_tag" != "$IMAGE_TAG" ]; then
+  echo "$prev_tag" > /opt/fxvol/state/previous_tag
+fi
+echo "$IMAGE_TAG" > /opt/fxvol/state/current_tag
+bash /opt/fxvol/infrastructure/ec2/prune_images.sh || echo "remote-deploy: image prune skipped"
 
 # Regenerate the on-server command folder (/opt/fxvol/cmd) so a connected user
 # can `cd /opt/fxvol/cmd; ls; ./all/ps; ./containers/api`. Best-effort.

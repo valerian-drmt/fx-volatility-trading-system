@@ -75,7 +75,11 @@ jobs:
         run: python -m mypy
 
       - name: Run tests (pytest, excluding integration)
-        run: python -m pytest -m "not integration and not db_integration and not redis_integration" --cov=src --cov-report=term --cov-report=xml --junitxml=junit.xml
+        run: python -m pytest -m "not integration and not db_integration and not redis_integration" --cov=src --cov-report=term --cov-report=xml --cov-report=json --junitxml=junit.xml
+
+      # Per-package floors (#340): pyproject [tool.fxvol.coverage-floors].
+      - name: Coverage floors per package
+        run: python scripts/ci/check_coverage.py coverage.json
 
       - name: Upload coverage report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -140,8 +144,7 @@ jobs:
       - name: OpenAPI drift check (schema.d.ts vs live FastAPI)
         working-directory: frontend
         run: |
-          npx openapi-typescript ../openapi.json -o /tmp/schema.d.ts
-          diff -q src/api/schema.d.ts /tmp/schema.d.ts
+          node scripts/check-api-drift.mjs ../openapi.json
 
       - name: Lint (--max-warnings 0)
         working-directory: frontend
@@ -270,6 +273,8 @@ jobs:
       IB_USERID: ci-placeholder
       IB_PASSWORD: ci-placeholder
       PLAYWRIGHT_BASE_URL: http://localhost
+      # Unmocked round trip (#341): e2e/live-roundtrip.spec.ts runs only here.
+      E2E_LIVE: "1"
 
     steps:
       - name: Checkout
@@ -293,6 +298,19 @@ jobs:
           docker compose ps
           docker compose logs --tail=100
           exit 1
+
+      # Seed a market through the real bus code (no IB in CI): the vol engine's
+      # canonical surface payload, and ticks every 500 ms for the whole run.
+      - name: Seed the market (surface + ticks) through the bus
+        run: |
+          docker compose exec -T api python scripts/e2e/seed_market.py surface < tests/fixtures/payloads/vol_update.json
+          docker compose exec -d api python scripts/e2e/seed_market.py ticks --bid 1.12345 --ask 1.12347 --seconds 900
+          # the api answers the seeded surface before the browser starts
+          for i in $(seq 1 15); do
+            curl -fsS http://localhost/api/v1/vol/surface | grep -q '"1M"' && exit 0
+            sleep 2
+          done
+          echo "seeded surface not served"; curl -sS http://localhost/api/v1/vol/surface; exit 1
 
       - name: Set up Node 22
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

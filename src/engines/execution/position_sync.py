@@ -542,7 +542,9 @@ async def reconcile_trade_positions(
                 closed += 1
                 db.add(TradeEvent(
                     structure_id=tp.structure_id,
-                    event_type="position_reconciled_closed", severity="info",
+                    # warning (#323): a booking that dissolved at IB is a book-vs-broker
+                    # adjustment the operator must see, not routine flow.
+                    event_type="position_reconciled_closed", severity="warning",
                     description=(
                         f"booked position {tp.id} flat at IB (booked {booked_qty_total}) "
                         "→ closed by reconciliation"

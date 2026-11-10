@@ -17,6 +17,12 @@ type Post<P extends keyof paths, S extends 200> = paths[P] extends {
   ? R
   : never;
 
+type Put<P extends keyof paths, S extends 200> = paths[P] extends {
+  put: { responses: { [K in S]: { content: { "application/json": infer R } } } };
+}
+  ? R
+  : never;
+
 type PostBody<P extends keyof paths> = paths[P] extends {
   post: { requestBody: { content: { "application/json": infer B } } };
 }
@@ -109,13 +115,14 @@ export const fetchValuationHistory = (window = "30d") =>
   apiGet<ValuationHistoryRaw[]>("/api/v1/portfolio/valuation-history", { query: { window } });
 
 // ── R11 voldesk wiring (read) ───────────────────────────────────────────────
-// Typed against schema.d.ts. Endpoints returning a bare dict server-side surface
-// here as opaque values; the per-domain adapter (voldesk/data/live/*) maps them
-// to the DATA/DATA2 shapes the views consume.
+// Every helper is typed from schema.d.ts (#348): a renamed or removed path, or
+// an object that became a list, fails `tsc`. Endpoints whose router returns a
+// bare dict surface as Record<string, unknown> (or a list of them); the
+// per-domain adapter (voldesk/data/live/*) narrows them to the view shapes.
 
 // Regime
 export const fetchRegimeEvents = (n = 10, pastDays = 0) =>
-  apiGet<unknown>("/api/v1/regime/events", { query: { n, past_days: pastDays } });
+  apiGet<Get<"/api/v1/regime/events", 200>>("/api/v1/regime/events", { query: { n, past_days: pastDays } });
 
 // PCA signals
 export type PcaState = Get<"/api/v1/signals/pca/state", 200>;
@@ -126,36 +133,36 @@ export const fetchPcaHistory = (pcId: number, n = 120, symbol = "EURUSD") =>
   apiGet<PcaHistory>("/api/v1/signals/pca/history", { query: { symbol, pc_id: pcId, n } });
 
 // Positions (Step 5)
-export const fetchOpenPositions = () => apiGet<unknown>("/api/v1/positions/open");
+export const fetchOpenPositions = () => apiGet<Get<"/api/v1/positions/open", 200>>("/api/v1/positions/open");
 
 // Portfolio panels (A–J + scenarios)
-export const fetchPortfolioAccount = () => apiGet<unknown>("/api/v1/portfolio/account");
-export const fetchPortfolioCash = () => apiGet<unknown>("/api/v1/portfolio/cash");
+export const fetchPortfolioAccount = () => apiGet<Get<"/api/v1/portfolio/account", 200>>("/api/v1/portfolio/account");
+export const fetchPortfolioCash = () => apiGet<Get<"/api/v1/portfolio/cash", 200>>("/api/v1/portfolio/cash");
 export const fetchPortfolioDailyPnl = (days = 90) =>
-  apiGet<unknown>("/api/v1/portfolio/daily-pnl", { query: { days } });
-export const fetchPortfolioStats = () => apiGet<unknown>("/api/v1/portfolio/stats");
-export const fetchPortfolioVar = () => apiGet<unknown>("/api/v1/portfolio/var");
-export const fetchRiskPerTenor = () => apiGet<unknown>("/api/v1/portfolio/risk-per-tenor");
+  apiGet<Get<"/api/v1/portfolio/daily-pnl", 200>>("/api/v1/portfolio/daily-pnl", { query: { days } });
+export const fetchPortfolioStats = () => apiGet<Get<"/api/v1/portfolio/stats", 200>>("/api/v1/portfolio/stats");
+export const fetchPortfolioVar = () => apiGet<Get<"/api/v1/portfolio/var", 200>>("/api/v1/portfolio/var");
+export const fetchRiskPerTenor = () => apiGet<Get<"/api/v1/portfolio/risk-per-tenor", 200>>("/api/v1/portfolio/risk-per-tenor");
 export const fetchEquityCurve = (window = "30d") =>
-  apiGet<unknown>("/api/v1/portfolio/equity-curve", { query: { window } });
+  apiGet<Get<"/api/v1/portfolio/equity-curve", 200>>("/api/v1/portfolio/equity-curve", { query: { window } });
 export const fetchVegaPerTenor = () =>
-  apiGet<unknown>("/api/v1/portfolio/vega-per-tenor");
+  apiGet<Get<"/api/v1/portfolio/vega-per-tenor", 200>>("/api/v1/portfolio/vega-per-tenor");
 export const fetchStressGrid = (axis = "spot-vol", output = "pnl") =>
-  apiGet<unknown>("/api/v1/portfolio/stress-grid", { query: { axis, output } });
+  apiGet<Get<"/api/v1/portfolio/stress-grid", 200>>("/api/v1/portfolio/stress-grid", { query: { axis, output } });
 export const fetchGreeksLadder = (axis = "spot") =>
-  apiGet<unknown>("/api/v1/portfolio/greeks-ladder", { query: { axis } });
+  apiGet<Get<"/api/v1/portfolio/greeks-ladder", 200>>("/api/v1/portfolio/greeks-ladder", { query: { axis } });
 export const fetchPnlAttribution = (lookbackHours = 24) =>
-  apiGet<unknown>("/api/v1/portfolio/pnl-attribution", {
+  apiGet<Get<"/api/v1/portfolio/pnl-attribution", 200>>("/api/v1/portfolio/pnl-attribution", {
     query: { lookback_hours: lookbackHours },
   });
 
 // Same decomposition, bucketed by an axis (tenor / structure) → P&L-attribution matrix.
 export const fetchPnlAttributionMatrix = (groupBy = "tenor", lookbackHours = 24) =>
-  apiGet<unknown>("/api/v1/portfolio/pnl-attribution", {
+  apiGet<Get<"/api/v1/portfolio/pnl-attribution", 200>>("/api/v1/portfolio/pnl-attribution", {
     query: { group_by: groupBy, lookback_hours: lookbackHours },
   });
-export const fetchPinRisk = () => apiGet<unknown>("/api/v1/portfolio/pin-risk");
-export const fetchMarginalVar = () => apiGet<unknown>("/api/v1/portfolio/marginal-var");
+export const fetchPinRisk = () => apiGet<Get<"/api/v1/portfolio/pin-risk", 200>>("/api/v1/portfolio/pin-risk");
+export const fetchMarginalVar = () => apiGet<Get<"/api/v1/portfolio/marginal-var", 200>>("/api/v1/portfolio/marginal-var");
 
 // Trade (read)
 // Spot FX (EUR.USD cash) market order — write-gated proxy to the
@@ -200,24 +207,24 @@ export interface SpotOrderRow {
 }
 export const fetchSpotOrders = (limit = 30) =>
   apiGet<SpotOrderRow[]>("/api/v1/trade/spot-orders", { query: { limit } });
-export const fetchTradeLimits = () => apiGet<unknown>("/api/v1/trade/limits");
+export const fetchTradeLimits = () => apiGet<Get<"/api/v1/trade/limits", 200>>("/api/v1/trade/limits");
 export const fetchTradeBook = (symbol = "EURUSD") =>
-  apiGet<unknown>("/api/v1/trade/book", { query: { symbol } });
+  apiGet<Get<"/api/v1/trade/book", 200>>("/api/v1/trade/book", { query: { symbol } });
 
 // Admin config (read; write lands in Phase 2 behind auth)
 export type ConfigResponse = Get<"/api/v1/admin/config", 200>;
 export const fetchConfig = () => apiGet<ConfigResponse>("/api/v1/admin/config");
 export const fetchConfigHistory = (limit = 50) =>
-  apiGet<unknown>("/api/v1/admin/config/history", { query: { limit } });
+  apiGet<Get<"/api/v1/admin/config/history", 200>>("/api/v1/admin/config/history", { query: { limit } });
 // Settings write (Phase 2 / 2w) — gated by auth in prod (require_write), free locally.
 export const revertConfig = (version: number, comment?: string) =>
-  apiPost<unknown>(`/api/v1/admin/config/revert/${version}`, { user: "trader", comment });
+  apiPost<Post<"/api/v1/admin/config/revert/{version}", 200>>(`/api/v1/admin/config/revert/${version}`, { user: "trader", comment });
 export const putConfig = (patch: Record<string, unknown>, comment?: string) =>
-  apiPut<unknown>("/api/v1/admin/config", { patch, user: "trader", comment });
+  apiPut<Put<"/api/v1/admin/config", 200>>("/api/v1/admin/config", { patch, user: "trader", comment });
 export const fetchDomainSettings = (domain: string) =>
-  apiGet<unknown>(`/api/v1/admin/settings/${domain}`);
+  apiGet<Get<"/api/v1/admin/settings/{domain}", 200>>(`/api/v1/admin/settings/${domain}`);
 export const putDomainSettings = (domain: string, updates: Record<string, number>) =>
-  apiPut<unknown>(`/api/v1/admin/settings/${domain}`, { updates, user: "trader" });
+  apiPut<Put<"/api/v1/admin/settings/{domain}", 200>>(`/api/v1/admin/settings/${domain}`, { updates, user: "trader" });
 
 // ── Trade write (Phase 2 / 6w) — submit + close ──────────────────────────────
 // Paper-first: `execution_mode:"live"` routes to the IB *paper* account (the
@@ -340,5 +347,5 @@ export const cancelTrade = (structureId: number) =>
   apiPost<Record<string, unknown>>(`/api/v1/trades/${structureId}/cancel`, {});
 
 // Dev / system
-export const fetchDevEngines = () => apiGet<unknown>("/api/v1/dev/engines");
-export const fetchCycleProgress = () => apiGet<unknown>("/api/v1/dev/cycle-progress");
+export const fetchDevEngines = () => apiGet<Get<"/api/v1/dev/engines", 200>>("/api/v1/dev/engines");
+export const fetchCycleProgress = () => apiGet<Get<"/api/v1/dev/cycle-progress", 200>>("/api/v1/dev/cycle-progress");

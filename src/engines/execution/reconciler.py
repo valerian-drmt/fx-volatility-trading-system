@@ -30,7 +30,29 @@ from persistence.models import (
 
 logger = logging.getLogger(__name__)
 
+
+def _count_break(break_type: str) -> None:
+    try:
+        from shared.observability import reconciliation_breaks_opened_total
+
+        reconciliation_breaks_opened_total.labels(break_type=break_type).inc()
+    except Exception:  # metrics must never break the reconciler
+        pass
+
+
+def _set_open(n: int) -> None:
+    try:
+        from shared.observability import reconciliation_breaks_open
+
+        reconciliation_breaks_open.set(n)
+    except Exception:
+        pass
+
 RECONCILE_POSITIONS_INTERVAL_S = get_execution_settings().RECONCILE_POSITIONS_INTERVAL_S
+
+
+def _aware(ts: datetime) -> datetime:
+    return ts if ts.tzinfo else ts.replace(tzinfo=UTC)
 
 
 def _dec(x: float) -> Decimal:
@@ -92,6 +114,14 @@ async def reconcile_positions(
                     diff=_dec(br.diff), break_type=br.break_type,
                     detected_at=now, last_seen_at=now,
                 ))
+                # A new break is an operator matter (#323): the book and IB
+                # disagree on what we hold. Logged once, counted, alerted on.
+                logger.warning(
+                    "reconciliation_break_opened",
+                    extra={"contract": contract, "break_type": br.break_type, "book_qty": br.book_qty,
+                           "broker_qty": br.broker_qty, "diff": br.diff},
+                )
+                _count_break(br.break_type)
             else:
                 existing.book_qty = _dec(br.book_qty)
                 existing.broker_qty = _dec(br.broker_qty)
@@ -103,9 +133,15 @@ async def reconcile_positions(
         for contract, row in open_by_contract.items():
             if contract not in breaks:
                 row.resolved_at = now
+                logger.info(
+                    "reconciliation_break_resolved",
+                    extra={"contract": contract, "break_type": row.break_type,
+                           "open_for_s": round((now - _aware(row.detected_at)).total_seconds(), 1)},
+                )
 
         await db.commit()
 
+    _set_open(len(breaks))
     return {"open_breaks": len(breaks)}
 
 

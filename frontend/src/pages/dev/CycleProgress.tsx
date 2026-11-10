@@ -8,6 +8,18 @@ interface CycleProgressData {
   completed: string[];
 }
 
+const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+
+/** The router returns a bare dict (#348): narrow it instead of casting. */
+function adaptCycleProgress(raw: Record<string, unknown>): CycleProgressData {
+  return {
+    cycle_started_at: str(raw.cycle_started_at),
+    stage: str(raw.stage),
+    task: str(raw.task),
+    completed: Array.isArray(raw.completed) ? raw.completed.filter((x): x is string => typeof x === "string") : [],
+  };
+}
+
 /**
  * Live vol-engine cycle progress (GET /api/v1/dev/cycle-progress). Shows the
  * tasks completed this cycle, the active `stage · task`, and an explicit idle
@@ -16,10 +28,7 @@ interface CycleProgressData {
  * so it can be mounted in the PipelineViz inspector — or anywhere — unchanged.
  */
 export function CycleProgress(): JSX.Element {
-  const live = useFetch<CycleProgressData>(
-    () => fetchCycleProgress() as Promise<CycleProgressData>,
-    2000,
-  );
+  const live = useFetch<CycleProgressData>(() => fetchCycleProgress().then(adaptCycleProgress), 2000);
   const d = live.data;
   const active = d?.stage && d?.task ? `${d.stage} · ${d.task}` : null;
   const done = d?.completed ?? [];
