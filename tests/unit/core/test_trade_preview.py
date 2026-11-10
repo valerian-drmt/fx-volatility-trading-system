@@ -5,6 +5,9 @@ formula, scenario decomposition, all 7 pre-submit checks.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from functools import partial
+
 import pytest
 
 from core.trade_preview import (
@@ -12,8 +15,6 @@ from core.trade_preview import (
     TEMPLATES,
     bs_greeks,
     bs_price,
-    build_from_legs,
-    build_structure,
     classify_legs,
     compute_net_greeks,
     compute_sizing,
@@ -21,6 +22,17 @@ from core.trade_preview import (
     run_pre_submit_checks,
     simulate_scenarios,
 )
+from core.trade_preview import (
+    build_from_legs as _build_from_legs,
+)
+from core.trade_preview import (
+    build_structure as _build_structure,
+)
+
+# core takes the clock from the caller (#332); the tests pin one.
+AS_OF = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+build_structure = partial(_build_structure, as_of=AS_OF)
+build_from_legs = partial(_build_from_legs, as_of=AS_OF)
 
 
 def _mock_surface() -> dict:

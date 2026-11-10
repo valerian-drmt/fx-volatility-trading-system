@@ -1,41 +1,25 @@
-"""FX cash market hours helper.
+"""Market-hours gate for the engines: the clock and the operator override
+around the pure rule in ``core.market_hours`` (#332).
 
-The cash FX market is closed from Friday 22:00 UTC to Sunday 22:00 UTC.
-Engines that should not write garbage rows when no real prices are flowing
-gate themselves on :func:`is_fx_market_open`.
-
-Env override ``FORCE_RUN_MARKET_HOURS=1`` keeps cycles running even when
-the market is closed — useful for backtest replays or for re-running an
-engine against persisted Redis state on a weekend.
+``is_fx_market_open()`` with no argument reads the wall clock here, in the
+infrastructure layer, so ``core`` stays deterministic;
+``market_gate_active()`` honours ``FORCE_RUN_MARKET_HOURS`` so an operator
+can re-run engines off-hours for replay / debug.
 """
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from core.market_hours import is_fx_market_open as _is_open_at
+
 
 def is_fx_market_open(now: datetime | None = None) -> bool:
-    """True if the FX cash market is currently open.
-
-    Cash hours : Sun 22:00 UTC → Fri 22:00 UTC.
-    """
-    t = now if now is not None else datetime.now(UTC)
-    dow = t.weekday()  # 0 = Mon … 4 = Fri, 5 = Sat, 6 = Sun
-    h = t.hour
-    if dow == 5:                  # Saturday — closed all day
-        return False
-    if dow == 6:                  # Sunday — open from 22:00 UTC
-        return h >= 22
-    if dow == 4:                  # Friday — closed from 22:00 UTC
-        return h < 22
-    return True                   # Mon–Thu — open round the clock
+    """True if the FX cash market is open at ``now`` (default: the wall clock)."""
+    return _is_open_at(now if now is not None else datetime.now(UTC))
 
 
 def market_gate_active() -> bool:
-    """Return True when the engine should respect market hours.
-
-    Honours the ``FORCE_RUN_MARKET_HOURS`` env var so an operator can
-    re-run engines off-hours for replay / debug.
-    """
+    """Return True when the engine should respect market hours."""
     from shared.config import get_settings
 
     return not get_settings().force_run_market_hours

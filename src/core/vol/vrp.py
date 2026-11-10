@@ -15,11 +15,8 @@ Two surviving public symbols, both consumed by the regime-features pipeline :
 """
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Literal
-
-logger = logging.getLogger(__name__)
 
 Regime = Literal["calm", "stressed", "pre_event"]
 
@@ -49,13 +46,12 @@ def predict_vrp(tenor: str, regime: Regime = "calm") -> VrpEstimate:
     """VRP at ``tenor`` for ``regime`` (vol points, e.g. 0.6 = +60bp).
 
     Returns the tabulated default — empirical calibration needs ≥6 months of
-    aligned IV/RV history (future work). Unknown tenor → 0.8 + WARNING.
+    aligned IV/RV history (future work). Unknown tenor → 0.8.
     """
     bucket = VRP_DEFAULTS_VOL_PTS.get(regime, VRP_DEFAULTS_VOL_PTS["calm"])
     value = bucket.get(tenor)
     if value is None:
-        logger.warning("predict_vrp: unknown tenor %r, defaulting to 0.8", tenor)
-        value = 0.8
+        value = 0.8   # unknown tenor: the tabulated default (the caller sees source='default')
     return VrpEstimate(tenor=tenor, regime=regime, value_vol_pts=value, source="default")
 
 

@@ -63,8 +63,12 @@ jobs:
       - name: Architecture lint (import-linter contracts)
         run: PYTHONPATH=src lint-imports
 
-      # Advisory while the error count burns down — flip to blocking once clean.
-      - name: Type check (mypy, advisory)
+      # Gated: the packages that are clean stay clean (#335). The whole-tree
+      # run below stays advisory while core / api / engines burn down.
+      - name: Type check (mypy, gated packages)
+        run: python -m mypy src/shared src/bus src/persistence
+
+      - name: Type check (mypy, advisory on the whole tree)
         continue-on-error: true
         run: python -m mypy
 

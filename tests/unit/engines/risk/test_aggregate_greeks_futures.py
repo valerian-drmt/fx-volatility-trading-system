@@ -1,7 +1,7 @@
 """Regression: futures positions must contribute delta in _aggregate_greeks.
 
 Positions carry the canonical ``instrument_type == "FUTURE"``
-(shared.contracts), not the IB secType ``"FUT"``. The engine used to
+(core.contracts), not the IB secType ``"FUT"``. The engine used to
 compare against ``"FUT"``, silently zeroing every futures delta —
 including delta hedges — in the published portfolio greeks.
 """
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
+from core.contracts import INSTRUMENT_FUTURE
 from engines.risk.engine import RiskEngine
-from shared.contracts import INSTRUMENT_FUTURE
 
 pytestmark = pytest.mark.unit
 

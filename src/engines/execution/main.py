@@ -74,6 +74,7 @@ from shared.ib_connection import maintain_ib_connection
 from shared.internal_auth import INTERNAL_TOKEN_HEADER, internal_token, token_matches
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
+from shared.tasks import spawn_supervised
 from shared.trace import current_trace_id
 from shared.tracing import init_tracing
 
@@ -188,50 +189,47 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("execution_startup_not_ready reason=ib_not_connected")
 
-    sync_task = asyncio.create_task(
-        position_sync_loop(sm, executor, redis=redis, interval_s=SYNC_INTERVAL_S)
+    # Every loop runs under run_supervised (#337): an unexpected exit is
+    # logged, counted and restarted after a capped backoff; cancellation
+    # (shutdown) passes through. docs/architecture/backend.md, "Error policy".
+    _ENGINE = "execution_engine"
+    sync_task = spawn_supervised(
+        lambda: position_sync_loop(sm, executor, redis=redis, interval_s=SYNC_INTERVAL_S),
+        name="position_sync_loop", engine=_ENGINE,
     )
-    heartbeat_task = asyncio.create_task(
-        heartbeat_loop(sm, executor, interval_s=HEARTBEAT_INTERVAL_S),
-        name="ib_heartbeat_loop",
+    heartbeat_task = spawn_supervised(
+        lambda: heartbeat_loop(sm, executor, interval_s=HEARTBEAT_INTERVAL_S),
+        name="ib_heartbeat_loop", engine=_ENGINE,
     )
-    stuck_task = asyncio.create_task(
-        stuck_order_watcher_loop(
-            sm,
-            interval_s=STUCK_WATCH_INTERVAL_S,
-            stuck_after_seconds=STUCK_AFTER_S,
-        ),
-        name="stuck_order_watcher_loop",
+    stuck_task = spawn_supervised(
+        lambda: stuck_order_watcher_loop(sm, interval_s=STUCK_WATCH_INTERVAL_S, stuck_after_seconds=STUCK_AFTER_S),
+        name="stuck_order_watcher_loop", engine=_ENGINE,
     )
     # Backfill stuck combo legs from the live IB positions (gateway truth). Combo
     # BAG fills report on the combo conId → the per-leg router can miss them ; this
     # flips a submitted leg to filled once IB actually holds that contract.
-    reconcile_task = asyncio.create_task(
-        reconcile_loop(sm, interval_s=RECONCILE_INTERVAL_S),
-        name="order_reconcile_loop",
+    reconcile_task = spawn_supervised(
+        lambda: reconcile_loop(sm, interval_s=RECONCILE_INTERVAL_S),
+        name="order_reconcile_loop", engine=_ENGINE,
     )
     # Liveness (I2 / D1) : terminalise stale orders IB does not hold to `expired`.
     # Guarded by account_is_reporting ; the filled backfill stays in reconcile_loop.
-    reaper_task = asyncio.create_task(
-        reaper_loop(sm, executor),
-        name="order_reaper_loop",
-    )
+    reaper_task = spawn_supervised(lambda: reaper_loop(sm, executor), name="order_reaper_loop", engine=_ENGINE)
     # Reconciliation (I4 / D3) : materialise book (leg_position) vs broker (mirror)
     # breaks. Guarded by account_is_reporting. Setpoint = break 0.
-    reconcile_pos_task = asyncio.create_task(
-        reconcile_positions_loop(sm, executor),
-        name="position_reconcile_loop",
+    reconcile_pos_task = spawn_supervised(
+        lambda: reconcile_positions_loop(sm, executor), name="position_reconcile_loop", engine=_ENGINE,
     )
     # IB reconnect watchdog (ENG-1) : recovers from the nightly IB Gateway
     # restart AND retries a failed startup connect — ``OrderExecutor.connect``
     # is idempotent + failure-swallowing, so this loop is safe to run forever.
     ib_watchdog_stop = asyncio.Event()
-    ib_watchdog_task = asyncio.create_task(
-        maintain_ib_connection(
+    ib_watchdog_task = spawn_supervised(
+        lambda: maintain_ib_connection(
             executor, ib_watchdog_stop, interval_s=IB_RECONNECT_INTERVAL_S,
             on_reconnected=session.on_connected, on_lost=session.on_disconnected,
         ),
-        name="ib_reconnect_watchdog",
+        name="ib_reconnect_watchdog", engine=_ENGINE,
     )
     logger.info(
         "execution_startup ib_connected=%s ready=%s sync_interval=%.1fs heartbeat=%.1fs",

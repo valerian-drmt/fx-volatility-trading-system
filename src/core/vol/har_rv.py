@@ -25,14 +25,11 @@ Q-measure conversion the pricing layer should use.
 """
 from __future__ import annotations
 
-import logging
 import math
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-
-logger = logging.getLogger(__name__)
 
 WEEKLY_LAG = 5
 MONTHLY_LAG = 22

@@ -157,13 +157,23 @@ markers = [
 
 [tool.mypy]
 python_version = "3.11"
-# Start permissive ; tighten incrementally per module once `mypy --strict`
-# returns clean on it.
+# Permissive baseline for the whole tree (the advisory CI run); the three
+# clean packages are GATED in CI with the same config: `python -m mypy
+# src/shared src/bus src/persistence` must report zero errors (#335, audit
+# 06#8). Roadmap in docs/architecture/backend.md: core next, then api,
+# then engines, each one flipped to the gate when its count reaches zero.
 ignore_missing_imports = true
 namespace_packages = true
 explicit_package_bases = true
 mypy_path = "src"
 files = ["src"]
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+# Gated packages: no implicit Optional, every def typed where it matters.
+module = ["shared.*", "bus.*", "persistence.*"]
+no_implicit_optional = true
+warn_return_any = false
 
 # ─────────────────────────────────────────────────────────────────────
 # uv-specific config — only kicks in when uv is the runner.

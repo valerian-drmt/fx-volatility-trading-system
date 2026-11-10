@@ -12,8 +12,9 @@ include_external_packages = False
 # Contract 1 — core is pure
 #
 # Domain code (vol models, pricing, greeks) must not depend on any
-# infrastructure (DB, Redis bus) nor on any presentation layer (api,
-# engines). It is the only layer with no imports from this project.
+# infrastructure (DB, Redis bus, shared settings / logging / clock) nor on
+# any presentation layer (api, engines). It is the only layer with no
+# imports from this project (#332: shared joined the forbidden list).
 #
 # Every module under ``core/`` MUST also be :
 #   - side-effect free   (no Redis, no DB, no IB, no filesystem)
@@ -27,7 +28,7 @@ include_external_packages = False
 # to host the docstring.
 # ────────────────────────────────────────────────────────────────────
 [importlinter:contract:1]
-name = core is pure (no I/O, no presentation)
+name = core is pure (no I/O, no presentation, no shared infra)
 type = forbidden
 source_modules =
     core
@@ -36,6 +37,7 @@ forbidden_modules =
     engines
     bus
     persistence
+    shared
 
 # ────────────────────────────────────────────────────────────────────
 # Contract 2 — bus is an adapter

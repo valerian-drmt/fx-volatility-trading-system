@@ -91,7 +91,7 @@ async def prune_table(
     if spec.extra_where:
         sql += " " + spec.extra_where
     result = await db.execute(text(sql), {"cutoff": cutoff})
-    return int(result.rowcount or 0)
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 async def prune_table_batched(
@@ -111,7 +111,7 @@ async def prune_table_batched(
         async with sessionmaker() as db:
             result = await db.execute(text(sql), {"cutoff": cutoff, "n": int(batch_rows)})
             await db.commit()
-        n = int(result.rowcount or 0)
+        n = int(getattr(result, "rowcount", 0) or 0)
         total += n
         if n < batch_rows:
             return total

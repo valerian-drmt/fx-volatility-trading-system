@@ -27,6 +27,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from typing import Any
 from uuid import uuid4
 
 import structlog
@@ -82,6 +83,12 @@ cycle_duration = Histogram(
     "Wall-clock duration of one engine cycle.",
     ["engine"],
     buckets=(0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30, 60, 120),
+)
+
+engine_task_restarts_total = Counter(
+    "engine_task_restarts_total",
+    "Supervised background loops restarted after an unexpected exit (#337).",
+    ["engine", "task"],
 )
 
 last_cycle_ts = Gauge(
@@ -209,7 +216,7 @@ def observed_cycle(engine: str) -> Iterator[str]:
     try:
         from opentelemetry import trace
         tracer = trace.get_tracer(__name__)
-        span_cm = tracer.start_as_current_span(
+        span_cm: Any = tracer.start_as_current_span(
             f"{engine}_cycle",
             attributes={"engine": engine, "cycle_id": cid},
         )

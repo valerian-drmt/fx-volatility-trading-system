@@ -26,13 +26,10 @@ surface fit per vol-engine cycle, stored in the ``ssvi_params`` table.
 """
 from __future__ import annotations
 
-import logging
 from itertools import pairwise
 from typing import Any
 
 import numpy as np
-
-logger = logging.getLogger(__name__)
 
 _EPS = 1e-10
 
@@ -110,14 +107,7 @@ def fit_ssvi(
     rmse = float(np.sqrt(np.mean(result.fun**2)))
     slice_thetas = {float(T): float(atm_iv_by_tenor_years.get(T, ivs[i])) ** 2 * float(T) for i, T in enumerate(Ts)}
     calendar_ok, butterfly_ok = ssvi_arbitrage_flags(eta, gamma, rho, slice_thetas)
-    if not calendar_ok:
-        logger.warning(
-            "ssvi_calendar_arb", extra={"eta": eta, "gamma": gamma, "rho": rho, "thetas": slice_thetas},
-        )
-    if not butterfly_ok:
-        logger.warning(
-            "ssvi_butterfly_arb", extra={"eta": eta, "gamma": gamma, "rho": rho, "thetas": slice_thetas},
-        )
+    # No logging in core (#332): the vol engine logs the flags it gets back.
     return {
         "eta": round(eta, 6),
         "gamma": round(gamma, 6),

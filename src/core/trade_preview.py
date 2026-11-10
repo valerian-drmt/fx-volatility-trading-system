@@ -13,7 +13,7 @@ top-level function maps 1:1 to a section of the spec.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from core.execution.revalidation import SIGNAL_ACTIONABLE_FACTOR, signal_still_actionable
@@ -266,7 +266,7 @@ class Structure:
 # single source of truth for the USD-at-notional convention) — imported
 # above and re-exported here for backwards compatibility.
 # IB ``Contract.symbol`` convention : EUR for full size 6E, M6E for micro.
-# Cf. src/shared/contracts.py ContractSpec.symbol.
+# Cf. core/contracts.py ContractSpec.symbol.
 FUTURE_IB_SYMBOLS: dict[str, str] = {"full": "EUR", "micro": "M6E"}
 # Trader-friendly label shown in the UI (the IB Contract.symbol is not what
 # the operator reads on a chart — "6E" / "M6E" matches the ticker).
@@ -315,6 +315,7 @@ def build_structure(
     structure_type: str, near_tenor: str, far_tenor: str | None,
     surface: dict[str, Any],
     *,
+    as_of: datetime,
     delta_pillar_override: str | None = None,
     strike_override: float | None = None,
     future_contract_size: Literal["full", "micro"] | None = None,
@@ -344,7 +345,7 @@ def build_structure(
         node_strike = node.get("strike")
         iv = node.get("iv")
         dte = TENOR_TO_DTE.get(actual_tenor, 90)
-        expiry = (datetime.now(UTC) + timedelta(days=dte)).date().isoformat()
+        expiry = (as_of + timedelta(days=dte)).date().isoformat()  # the caller's clock (#332)
         is_future = lt["contract_type"] == "future"
         if is_future:
             strike: float | None = None
@@ -453,6 +454,8 @@ def classify_legs(legs: list[Leg], spot: float | None = None) -> str:
 def build_from_legs(
     leg_specs: list[dict[str, Any]],
     surface: dict[str, Any],
+    *,
+    as_of: datetime,
 ) -> Structure:
     """Build a *custom* Structure from free, user-composed legs (no template).
 
@@ -466,7 +469,7 @@ def build_from_legs(
         raise ValueError("at least one leg required")
     legs: list[Leg] = []
     fcs: Literal["full", "micro"] | None = None
-    now = datetime.now(UTC)
+    now = as_of  # the caller's clock (#332): core never reads the wall clock
     for i, spec in enumerate(leg_specs):
         ct = spec.get("contract_type")
         if ct not in ("call", "put", "future"):

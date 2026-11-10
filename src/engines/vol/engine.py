@@ -333,6 +333,8 @@ def _fit_ssvi_surface(
     result = fit_ssvi(observations, forward=float(forward), atm_iv_by_tenor_years={
         tenor_years[t]: iv for t, iv in atm_by_tenor.items() if t in tenor_years
     })
+    if result is not None and not (result.get("calendar_arb_free", True) and result.get("butterfly_arb_free", True)):
+        logger.warning("ssvi_arbitrage_flags", extra={k: result[k] for k in ("eta", "gamma", "rho", "calendar_arb_free", "butterfly_arb_free")})
     return result
 
 

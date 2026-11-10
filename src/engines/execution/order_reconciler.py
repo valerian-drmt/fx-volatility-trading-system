@@ -21,11 +21,11 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from core.contracts import parse_local_symbol
 from core.execution.fills import state_from_recorded_fills
 from engines.execution.fills_handler import maybe_complete_structure
 from persistence.models import OpenPosition, StructureFill, StructureOrder, TradeEvent
 from persistence.projection import rebuild_leg
-from shared.contracts import parse_local_symbol
 
 logger = logging.getLogger(__name__)
 
