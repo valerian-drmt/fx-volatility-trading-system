@@ -1,0 +1,84 @@
+name: release
+
+# Tag-triggered release (#353). Deploys stay continuous from main (deploy.yml);
+# a tag does NOT rebuild or redeploy. It marks a commit that is already built
+# and running: the workflow checks the tag matches pyproject's version and that
+# the commit is on main, re-tags the 8 images `sha-<commit>` -> `<version>` in
+# GHCR (same digests), and publishes a GitHub Release with the CHANGELOG section.
+#
+#   git tag -a v1.0.0-rc.1 -m "v1.0.0-rc.1" <sha-on-main> && git push origin v1.0.0-rc.1
+#
+# Procedure and versioning policy: .github/WORKFLOW.md section 7.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # create the GitHub Release
+  packages: write   # add the version tag to the GHCR images
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (full history for the main ancestry check)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag matches pyproject's version and sits on main
+        id: meta
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(python3 scripts/ci/release_version.py semver)
+          if [ "v${version}" != "$TAG" ]; then
+            echo "::error::tag $TAG does not match pyproject version v${version}"; exit 1
+          fi
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$TAG is not on main"; exit 1; }
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Re-tag the built images with the version (no rebuild)
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHA: ${{ steps.meta.outputs.sha }}
+        run: |
+          set -euo pipefail
+          for img in api frontend market-data vol-engine risk-engine db-writer analytics-engine execution; do
+            ref="${REGISTRY}/${OWNER}/fx-options-${img}"
+            docker buildx imagetools create --tag "${ref}:${VERSION}" "${ref}:sha-${SHA}"
+            echo "tagged ${ref}:${VERSION}"
+          done
+
+      - name: Release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: python3 scripts/ci/release_version.py notes "$VERSION" > release-notes.md
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" --title "$TAG" --notes-file release-notes.md --verify-tag $prerelease

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fxvol"
-version = "0.1.0"
+version = "1.0.0rc1"   # the one version source (#353): scripts/ci/release_version.py semver -> 1.0.0-rc.1
 description = "FX Volatility Trading System — microservices pipeline + research-grade vol signals + React cockpit + IB execution"
 readme = "README.md"
 license = { text = "MIT" }

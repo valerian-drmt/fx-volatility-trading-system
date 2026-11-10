@@ -57,9 +57,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Release version (pyproject, #353)
+        id: ver
+        run: echo "semver=$(python3 scripts/ci/release_version.py semver)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push (api)
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
+          labels: |
+            org.opencontainers.image.version=${{ steps.ver.outputs.semver }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
           context: .
           file: infrastructure/docker/api.Dockerfile
           push: true
@@ -103,9 +112,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Release version (pyproject, #353)
+        id: ver
+        run: echo "semver=$(python3 scripts/ci/release_version.py semver)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push (frontend)
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
+          labels: |
+            org.opencontainers.image.version=${{ steps.ver.outputs.semver }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
           context: .
           file: infrastructure/docker/web.Dockerfile
           push: true
@@ -156,9 +174,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Release version (pyproject, #353)
+        id: ver
+        run: echo "semver=$(python3 scripts/ci/release_version.py semver)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push (${{ matrix.service.image }})
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
+          labels: |
+            org.opencontainers.image.version=${{ steps.ver.outputs.semver }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
           context: .
           file: ${{ matrix.service.dockerfile }}
           push: true

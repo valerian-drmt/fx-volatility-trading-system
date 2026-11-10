@@ -162,6 +162,17 @@ def _build_events_scheduler():
     )
 
 
+def _api_version() -> str:
+    """The package version from pyproject (#353): one source for the api, /health,
+    the image labels, the tags and the desk footer."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("fxvol")
+    except PackageNotFoundError:
+        return "0.0.0"
+
+
 def create_app() -> FastAPI:
     """Factory — used by uvicorn + by tests (no side effect at import)."""
     settings = get_settings()
@@ -171,7 +182,7 @@ def create_app() -> FastAPI:
     interactive_docs = settings.ENV != "prod"
     app = FastAPI(
         title="FXVol API",
-        version="0.4.0",
+        version=_api_version(),
         description=(
             "Read endpoints are public. Writes, `/dev` and config need the trader cookie "
             "(`traderCookie`, set by `POST /api/v1/auth/login`). WebSocket channels: "

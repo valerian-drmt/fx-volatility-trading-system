@@ -17,6 +17,7 @@ import "./voldesk.css";
 import { useAuthStore } from "../store/authStore";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { LoginModal } from "./auth/LoginModal";
+import { BuildStamp } from "./components/BuildStamp";
 import { useTicks } from "./data/deskData";
 import { useTweaks } from "./useTweaks";
 import { DashboardView } from "./views/DashboardView";
@@ -239,6 +240,7 @@ function Rail({
         <NavIcon id="system" />
         {labels && <span>Dev</span>}
       </button>
+      <BuildStamp />
     </nav>
   );
 }
