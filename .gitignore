@@ -55,3 +55,6 @@ state/
 coverage.xml
 coverage.json
 junit.xml
+
+# Local compose overrides (host ports for a host-side dev loop)
+docker-compose.override.yml

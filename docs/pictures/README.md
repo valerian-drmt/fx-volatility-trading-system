@@ -12,7 +12,7 @@ and the 2×2 grid); the rest are reference shots linked from there.
 | ★ `vol-surface.png` | **Signals** | the SVI/SSVI vol surface + regime + PCA z-scores (the quant centrepiece) |
 | ★ `risk.png` | **Risk** | portfolio greeks (Δ/Γ/V/Θ/Vanna/Volga) + Value-at-Risk + P&L distribution, two 3-column rows |
 | ★ `positions.png` | **Trade → Open positions** | the structured book: straddle / strangle / butterfly / calendar / call spread + futures, greeks per leg |
-| ★ `architecture.png` | **System** | the container topology — the 11 services healthy |
+| `architecture.png` | **System** | the container topology as of 2026-08 (before the analytics engine); the README now embeds `docs/diagrams/system-containers.svg` |
 
 ## Reference shots
 

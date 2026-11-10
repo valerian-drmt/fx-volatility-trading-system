@@ -14,7 +14,7 @@ The stack spans three bridge networks defined in
 | Network | Members | Role |
 |---|---|---|
 | `fxvol-public` | `nginx` | The only internet-facing lane (:80/:443). |
-| `fxvol-internal` | api, frontend, postgres, redis, the 5 engines, ib-gateway, obs services | Back-of-house; not exposed to the LAN by default. |
+| `fxvol-internal` | api, frontend, postgres, redis, the 6 engines, ib-gateway, obs services | Back-of-house; not exposed to the LAN by default. |
 | `fxvol-external` | `ib-gateway` | Outbound-only lane to reach IB servers. |
 
 `fxvol-internal` pins subnet `172.20.0.0/24` with the dynamic pool confined to
@@ -35,7 +35,7 @@ api + frontend + nginx + postgres + redis):
 
 ```powershell
 docker compose up -d                              # core only
-docker compose --profile engines up -d            # + the 5 Python engines
+docker compose --profile engines up -d            # + the 6 Python engines
 docker compose --profile obs up -d                # + the LGTM stack
 ```
 

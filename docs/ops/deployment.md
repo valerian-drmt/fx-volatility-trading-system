@@ -17,7 +17,7 @@ the runner federates into AWS through GitHub OIDC and drives the host over SSM.
 `build-and-push` builds seven images and pushes each with two tags —
 `sha-<commit>` (reproducible) and `latest` — to `ghcr.io/<owner>/`:
 
-`fx-options-api`, `fx-options-frontend`, and the five engines
+`fx-options-api`, `fx-options-frontend`, and the six engines
 (`market-data`, `vol-engine`, `risk-engine`, `db-writer`, `execution`, the last
 via a matrix). Login uses the workflow `GITHUB_TOKEN`; buildx GHA cache is scoped
 per image.

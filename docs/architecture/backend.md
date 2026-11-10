@@ -13,10 +13,10 @@ ruff, pytest, and mypy config. The six top-level packages split into two
 
 | Package | Role | Highlights |
 |---|---|---|
-| `api/` | FastAPI app (presentation) | `main.py` (app + lifespan: events scheduler, WS bridge), 16 routers, `ws/` (connection manager + Redis→WS bridge), `middleware/`, `schemas/` (Pydantic v2), `orchestration/` (use cases + `events/` pipeline) |
+| `api/` | FastAPI app (presentation) | `main.py` (app + lifespan: events scheduler, WS bridge), 17 routers, `ws/` (connection manager + Redis→WS bridge), `middleware/`, `schemas/` (Pydantic v2), `orchestration/` (use cases + `events/` pipeline) |
 | `engines/` | 5 long-running services (presentation) | `market_data/`, `vol/`, `risk/`, `db_writer/`, `execution/` — each an `engine.py` + `main.py` loop |
 | `core/` | Pure domain, no I/O | `vol/` (svi, ssvi, garch, har_rv, pca_engine, gmm_regime, regime_engine, vrp, yang_zhang, …), `pricing/bs.py`, `risk/greeks.py` |
-| `persistence/` | DB adapter | `models.py` (27 ORM classes), `db.py` (async engine + session), `writer.py` (`AsyncDatabaseWriter`), `migrations/versions/` (Alembic) |
+| `persistence/` | DB adapter | `models.py` (31 ORM classes), `db.py` (async engine + session), `writer.py` (`AsyncDatabaseWriter`), `migrations/versions/` (Alembic) |
 | `bus/` | Redis adapter | `client.py` (async + sync factory), `publisher.py`, `channels.py`, `keys.py` |
 | `shared/` | Cross-cutting infra | `config.py` (base `Settings` — env-var schema), `logging.py` (structlog), `ib_connection.py` (IB wrapper + backoff), observability helpers |
 

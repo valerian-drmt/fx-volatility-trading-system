@@ -37,8 +37,8 @@ behind an auth boundary. Every push to `main` redeploys it automatically (see
 |:---:|:---:|
 | ![Live vol surface, regime & PCA signals](docs/pictures/vol-surface.png) | ![Portfolio risk — greeks, VaR & P&L distribution](docs/pictures/risk.png) |
 | *Vol surface, regime & PCA signals* | *Risk — greeks, VaR & P&L distribution* |
-| ![Structured options book](docs/pictures/positions.png) | ![Microservices architecture](docs/pictures/architecture.png) |
-| *Structured options book* | *Microservices architecture (11 services)* |
+| ![Structured options book](docs/pictures/positions.png) | ![Container topology](docs/diagrams/system-containers.svg) |
+| *Structured options book* | *Container topology (12 core containers)* |
 
 > More views in [`docs/pictures/`](docs/pictures/).
 
@@ -79,7 +79,7 @@ behind an auth boundary. Every push to `main` redeploys it automatically (see
 
 ## Architecture
 
-**11-container core stack** (6 ship our Python code) **+ an optional 7-container
+**12-container core stack** (7 ship our Python code) **+ an optional 9-container
 observability stack** (Prometheus / cAdvisor / Loki / Tempo / Grafana / promtail /
 otel-collector, opt-in via `--profile obs`).
 
@@ -133,17 +133,18 @@ otel-collector, opt-in via `--profile obs`).
 | `frontend` | React SPA | `frontend/` |
 | **`api`** | FastAPI REST + WS | `src/api/` + shared libs |
 | **`market-data`** | IB ticks → Redis (clientID 1) | `src/engines/market_data/` |
-| **`vol-engine`** | SVI/SSVI/GARCH/HAR/PCA/GMM (clientID 2) | `src/engines/vol/` |
+| **`vol-engine`** | Chains → SVI/SSVI/GARCH/HAR surface (clientID 2) | `src/engines/vol/` |
 | **`risk-engine`** | Greeks + delta hedge (clientID 3) | `src/engines/risk/` |
 | **`db-writer`** | Redis → Postgres async sink | `src/engines/db_writer/` |
+| **`analytics-engine`** | Hourly GMM regime / PCA / PC3 batch + daily rollups (no IB) | `src/engines/analytics/` |
 | **`execution-engine`** | Order submission (clientID 5, :8001) | `src/engines/execution/` |
 
 Networks: `fxvol-public` (nginx), `fxvol-internal` (services), `fxvol-external` (IB
-outbound). The 5 Python engines live behind the `engines` compose profile.
+outbound). The 6 Python engines live behind the `engines` compose profile, `ib-gateway` behind `ib`.
 
 Shared Python libs under `src/` (no container of their own):
 - **`core/`** — pure pricing + vol + risk algorithms (no I/O)
-- **`persistence/`** — SQLAlchemy 2 ORM (27 classes) + Alembic revisions + `AsyncDatabaseWriter`
+- **`persistence/`** — SQLAlchemy 2 ORM (31 classes) + Alembic revisions + `AsyncDatabaseWriter`
 - **`bus/`** — Redis pub/sub helpers + channel/key constants
 - **`shared/`** — config, structlog, IB connection wrapper, observability
 
@@ -204,7 +205,7 @@ Prod runs on a single AWS EC2 box, deployed **continuously from `main`** with no
 and no stored AWS keys:
 
 ```
-push to main → GitHub Actions "build-and-push" (7 images → GHCR, tagged sha-<commit>)
+push to main → GitHub Actions "build-and-push" (8 images → GHCR, tagged sha-<commit>)
              → "deploy-prod": OIDC into AWS → S3 config payload → SSM RunShellScript
              → the host pulls the images, renders .env from SSM, migrates, restarts
              → smoke-checks the live /health endpoint
@@ -248,10 +249,10 @@ fx-volatility-trading-system/
 ├── docker-compose.yml
 ├── .github/workflows/             ci · build · deploy · codeql · security-scan
 ├── src/                           (PyPA src-layout, all Python)
-│   ├── api/                       → api container: main, 16 routers, ws, middleware, schemas, orchestration/events
-│   ├── engines/                   5 long-running services (market_data, vol, risk, db_writer, execution)
+│   ├── api/                       → api container: main, 17 routers, ws, middleware, schemas, orchestration/events
+│   ├── engines/                   6 long-running services (market_data, vol, risk, db_writer, analytics, execution)
 │   ├── core/                      pure algos — vol (svi/ssvi/garch/har_rv/pca/gmm/…), pricing/bs, risk/greeks
-│   ├── persistence/               DB adapter — models (27 ORM classes), db, writer, migrations/
+│   ├── persistence/               DB adapter — models (31 ORM classes), db, writer, migrations/ (68 revisions)
 │   ├── bus/                       Redis adapter — client, publisher, channels, keys
 │   └── shared/                    config, logging, ib_connection, observability
 ├── frontend/                      React + TS + Vite — 7 voldesk views + a dev console (/dev)
