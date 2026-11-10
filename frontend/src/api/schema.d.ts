@@ -2818,6 +2818,25 @@ export interface components {
             user?: string | null;
         };
         /**
+         * CycleProgress
+         * @description The vol engine's progress through its current cycle.
+         */
+        CycleProgress: {
+            /**
+             * Completed
+             * @default []
+             */
+            completed: string[];
+            /** Cycle Started At */
+            cycle_started_at?: string | null;
+            /** Stage */
+            stage?: string | null;
+            /** Task */
+            task?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * DeltaHedgeConfig
          * @description Delta hedging behavior : static / threshold / scheduled.
          */
@@ -2838,6 +2857,19 @@ export interface components {
              * @default 0.05
              */
             threshold_delta: number;
+        };
+        /** DeltaHedgeSetting */
+        DeltaHedgeSetting: {
+            /** Config Name */
+            config_name: string;
+            /** Config Value */
+            config_value?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Unit */
+            unit?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** DomainSettingsPatch */
         DomainSettingsPatch: {
@@ -2883,6 +2915,23 @@ export interface components {
              * Format: date-time
              */
             scheduled_at: string;
+        };
+        /** ExitRuleConfig */
+        ExitRuleConfig: {
+            /** Description */
+            description?: string | null;
+            /** Is Active */
+            is_active: boolean;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            } | null;
+            /** Priority */
+            priority: number;
+            /** Rule Name */
+            rule_name: string;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * ExitRulesConfig
@@ -2973,6 +3022,22 @@ export interface components {
         HaltRequest: {
             /** Reason */
             reason: string;
+        };
+        /**
+         * HaltState
+         * @description The kill switch.
+         */
+        HaltState: {
+            /** Halted */
+            halted: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Set At */
+            set_at?: string | null;
+            /** Set By */
+            set_by?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * ImpliedVolRequest
@@ -3093,6 +3158,22 @@ export interface components {
              * Format: date-time
              */
             scheduled_at: string;
+        };
+        /** PcaSignalRow */
+        PcaSignalRow: {
+            /** Actionable */
+            actionable?: boolean | null;
+            /** Label */
+            label?: string | null;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Z Score */
+            z_score: number;
+        } & {
+            [key: string]: unknown;
         };
         /** PlaceOrderBody */
         PlaceOrderBody: {
@@ -3255,6 +3336,38 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** RegimeSnapshotRow */
+        RegimeSnapshotRow: {
+            /** Days To Next Event */
+            days_to_next_event?: number | null;
+            /** Event Dampener */
+            event_dampener?: boolean | null;
+            /** Label */
+            label?: string | null;
+            /** Method */
+            method?: string | null;
+            /** Next Event Type */
+            next_event_type?: string | null;
+            /** P Calm */
+            p_calm?: number | null;
+            /** P Pre Event */
+            p_pre_event?: number | null;
+            /** P Stressed */
+            p_stressed?: number | null;
+            /** Term Slope Pct */
+            term_slope_pct?: number | null;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Vol Level Pct */
+            vol_level_pct?: number | null;
+            /** Vol Of Vol Pct */
+            vol_of_vol_pct?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** RegimeStateOut */
         RegimeStateOut: {
             /** Days To Next Event */
@@ -3287,6 +3400,20 @@ export interface components {
              * Format: date-time
              */
             timestamp: string;
+        };
+        /**
+         * RiskLimit
+         * @description One active risk limit (`config_scalar`, namespace `risk`).
+         */
+        RiskLimit: {
+            /** Description */
+            description?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Value */
+            value: number;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * SignalConfig
@@ -3908,9 +4035,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["HaltState"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -4416,9 +4541,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["CycleProgress"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6499,9 +6622,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["DeltaHedgeSetting"][];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6530,9 +6651,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["ExitRuleConfig"][];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -7390,9 +7509,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["RegimeSnapshotRow"][];
                 };
             };
             /** @description Validation Error */
@@ -7526,9 +7643,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PcaSignalRow"][];
                 };
             };
             /** @description Validation Error */
@@ -7724,9 +7839,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: {
-                            [key: string]: unknown;
-                        };
+                        [key: string]: components["schemas"]["RiskLimit"];
                     };
                 };
             };

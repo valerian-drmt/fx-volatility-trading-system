@@ -1,0 +1,51 @@
+[
+ {
+  "rule_name": "pre_event_regime",
+  "is_active": true,
+  "priority": 6,
+  "params": {
+   "trigger_regimes": [
+    "pre_event"
+   ]
+  },
+  "description": "Exit any open position if regime becomes pre_event"
+ },
+ {
+  "rule_name": "time_to_expiry_critical",
+  "is_active": true,
+  "priority": 5,
+  "params": {
+   "min_days_remaining": 7
+  },
+  "description": "Hard exit if days_remaining < 7"
+ },
+ {
+  "rule_name": "signal_reverse",
+  "is_active": true,
+  "priority": 4,
+  "params": {
+   "weak_threshold": 0.5,
+   "flip_triggers_exit": true,
+   "weakening_50pct_triggers_trim": true
+  },
+  "description": "Exit if signal flipped or weakened to <0.5 ; trim if weakened >50%"
+ },
+ {
+  "rule_name": "stop_loss_vega",
+  "is_active": true,
+  "priority": 3,
+  "params": {
+   "loss_in_vega_units": 3.0
+  },
+  "description": "Exit if P&L < -3 Ã— entry_vega"
+ },
+ {
+  "rule_name": "time_based",
+  "is_active": true,
+  "priority": 2,
+  "params": {
+   "time_remaining_ratio_threshold": 0.3
+  },
+  "description": "Exit if days_remaining / days_at_entry < 0.3"
+ }
+]

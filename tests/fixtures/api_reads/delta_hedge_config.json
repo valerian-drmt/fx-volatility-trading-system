@@ -1,0 +1,26 @@
+[
+ {
+  "config_name": "rebalance_threshold_delta",
+  "config_value": 0.05,
+  "unit": "fraction",
+  "description": "Trigger hedge if |delta| > threshold"
+ },
+ {
+  "config_name": "min_hedge_qty",
+  "config_value": 1.0,
+  "unit": "count",
+  "description": "Skip hedges below this qty (round to 0)"
+ },
+ {
+  "config_name": "max_hedge_frequency_seconds",
+  "config_value": 300.0,
+  "unit": "seconds",
+  "description": "No hedge more often than every 5 min"
+ },
+ {
+  "config_name": "hedge_during_close",
+  "config_value": 0.0,
+  "unit": "boolean",
+  "description": "Continue hedging during position close phase ?"
+ }
+]

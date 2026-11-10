@@ -27,6 +27,7 @@ from api.config import get_settings
 from api.dependencies import get_db_session, get_redis
 from api.orchestration import config_service
 from api.schemas.admin import ConfigPatchRequest, ConfigResponse, ConfigRevertRequest
+from api.schemas.reads import HaltState
 from core import config_catalog as cc
 from persistence.models import AppConfigScalar
 
@@ -190,7 +191,7 @@ class HaltRequest(BaseModel):
     reason: str = Field(min_length=3, max_length=300)
 
 
-@router.get("/halt")
+@router.get("/halt", response_model=HaltState)
 async def get_halt_state(db: DbDep) -> dict[str, Any]:
     """The kill switch: whether trading is halted, why, by whom and since when."""
     from persistence.halt import get_halt

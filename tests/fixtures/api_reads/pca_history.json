@@ -1,0 +1,20 @@
+[
+ {
+  "timestamp": "2026-11-10T16:07:56.345059Z",
+  "z_score": 0.0333,
+  "label": "FAIR",
+  "actionable": false
+ },
+ {
+  "timestamp": "2026-11-10T16:04:56.343530Z",
+  "z_score": 0.0316,
+  "label": "FAIR",
+  "actionable": false
+ },
+ {
+  "timestamp": "2026-11-10T16:01:56.343139Z",
+  "z_score": 0.0189,
+  "label": "FAIR",
+  "actionable": false
+ }
+]

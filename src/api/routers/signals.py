@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
 from api.dependencies import get_db_session
+from api.schemas.reads import PcaSignalRow
 from core.vol.pca_engine import (
     N_FEATURES,
     actionable_check,
@@ -150,7 +151,7 @@ async def state(
     }
 
 
-@router.get("/signals/pca/history")
+@router.get("/signals/pca/history", response_model=list[PcaSignalRow])
 async def history(
     db: DbDep,
     symbol: str = Query("EURUSD", min_length=3, max_length=20),
