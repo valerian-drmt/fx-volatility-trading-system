@@ -17,7 +17,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -94,28 +94,34 @@ class LegSpec(BaseModel):
     chosen freely, nothing imposed). Used by the ``legs`` preview path."""
     contract_type: Literal["call", "put", "future"]
     side: Literal["BUY", "SELL"]
-    tenor: str                                       # e.g. "3M"
-    delta_pillar: str | None = None                  # 10dp/25dp/atm/25dc/10dc (options)
-    strike: float | None = None                      # explicit strike override (options)
-    qty_factor: int = 1                              # relative weight; ×base_qty at sizing
+    tenor: str = Field(min_length=1, max_length=8)                   # e.g. "3M"
+    delta_pillar: str | None = Field(default=None, max_length=8)     # 10dp/25dp/atm/25dc/10dc (options)
+    strike: float | None = Field(default=None, gt=0, lt=100)         # explicit strike override (options)
+    qty_factor: int = Field(default=1, ge=1, le=100)                 # relative weight; ×base_qty at sizing
     future_contract_size: Literal["full", "micro"] | None = None  # future legs only
 
 
+class SubmitBody(BaseModel):
+    """``POST /trade/submit`` (#300, audit 01#14): a preview id and the mode."""
+    preview_id: str = Field(min_length=1, max_length=64)
+    execution_mode: Literal["mock", "live"] = "mock"
+
+
 class PreviewRequest(BaseModel):
-    scenario: str | None = None             # fixture mode (returns canned preview)
+    scenario: str | None = Field(default=None, max_length=40)   # fixture mode (returns canned preview)
     # Free composition (G-trade.preview): when set, the preview is built from
     # these legs directly — no template, no imposed structure. Takes precedence
     # over structure_type.
     legs: list[LegSpec] | None = None
-    structure_type: str | None = None       # template path : user-picked structure
-    tenor: str | None = None                # manual mode reference tenor
-    tenor_far: str | None = None            # manual mode (calendar only)
-    qty: int | None = None                  # manual mode base_qty
-    delta_pillar: str | None = None         # single-leg only : override pillar
-    strike_override: float | None = None    # single-leg only : override strike
-    override_tenor: str | None = None
-    override_far_tenor: str | None = None
-    override_qty: int | None = None
+    structure_type: str | None = Field(default=None, max_length=40)   # template path : user-picked structure
+    tenor: str | None = Field(default=None, max_length=8)             # manual mode reference tenor
+    tenor_far: str | None = Field(default=None, max_length=8)         # manual mode (calendar only)
+    qty: int | None = Field(default=None, ge=1, le=1000)              # manual mode base_qty (contracts)
+    delta_pillar: str | None = Field(default=None, max_length=8)      # single-leg only : override pillar
+    strike_override: float | None = Field(default=None, gt=0, lt=100) # single-leg only : override strike
+    override_tenor: str | None = Field(default=None, max_length=8)
+    override_far_tenor: str | None = Field(default=None, max_length=8)
+    override_qty: int | None = Field(default=None, ge=1, le=1000)
     # CME EUR/USD future contract size : 'full' = 6E (€125 000) or
     # 'micro' = M6E (€12 500). Only used when structure_type is future_buy/sell.
     future_contract_size: Literal["full", "micro"] | None = None
@@ -232,7 +238,7 @@ async def _post_execution_engine(path: str, body: dict[str, Any]) -> dict[str, A
 
     import httpx
 
-    from shared.trace import trace_headers
+    from shared.internal_auth import internal_headers
     base = os.environ.get("EXECUTION_ENGINE_URL", "http://execution-engine:8001")
     url = f"{base.rstrip('/')}{path}"
     # A live submit runs synchronously in the engine: per leg it does an IB
@@ -243,7 +249,7 @@ async def _post_execution_engine(path: str, body: dict[str, Any]) -> dict[str, A
     timeout_s = float(os.environ.get("EXECUTION_SUBMIT_TIMEOUT_S", "45"))
     try:
         async with httpx.AsyncClient(timeout=timeout_s) as client:
-            resp = await client.post(url, json=body, headers=trace_headers())
+            resp = await client.post(url, json=body, headers=internal_headers())
         if resp.status_code >= 400:
             raise HTTPException(
                 502,
@@ -732,7 +738,7 @@ async def get_preview(preview_id: str, db: DbDep) -> dict[str, Any]:
 
 @router.post("/submit", dependencies=[Depends(require_write)])
 async def submit_preview(
-    body: dict[str, Any], db: DbDep,
+    submit: SubmitBody, db: DbDep,
 ) -> dict[str, Any]:
     """Step 4 — Submit a previewed trade (mock or live).
 
@@ -741,6 +747,7 @@ async def submit_preview(
     All errors also land in structlog with ``event='trade_submit_failed'``
     so Grafana / Loki can pick them up by ``{container="fxvol-api"} |= "trade_submit_failed"``.
     """
+    body: dict[str, Any] = submit.model_dump()
     preview_id = body.get("preview_id")
     execution_mode_arg = body.get("execution_mode", "mock")
     logger.info(

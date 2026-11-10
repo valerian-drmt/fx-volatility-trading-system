@@ -71,6 +71,7 @@ from persistence.db import get_sessionmaker
 from persistence.models import StructureOrder, TradeEvent
 from persistence.projection import rebuild_all
 from shared.ib_connection import maintain_ib_connection
+from shared.internal_auth import INTERNAL_TOKEN_HEADER, internal_token, token_matches
 from shared.logging import configure_logging
 from shared.observability import start_metrics_server
 from shared.trace import current_trace_id
@@ -351,7 +352,22 @@ async def health(request: Request) -> Any:
     return body
 
 
-@app.get("/internal/session")
+def require_internal_token(request: Request) -> None:
+    """Shared-secret gate on every ``/internal/*`` route (#300, audit 01#1).
+    503 when the engine has no token configured (fail closed), 403 when the
+    caller's ``X-Internal-Token`` does not match. ``/health`` stays open for
+    the container healthcheck."""
+    if not internal_token():
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "internal_token_unconfigured",
+                    "reason": "EXECUTION_INTERNAL_TOKEN is not set on the execution engine"},
+        )
+    if not token_matches(request.headers.get(INTERNAL_TOKEN_HEADER)):
+        raise HTTPException(status_code=403, detail={"code": "internal_token_invalid"})
+
+
+@app.get("/internal/session", dependencies=[Depends(require_internal_token)])
 async def session_state(request: Request) -> Any:
     """Session supervisor state: gate, last reconciliation pass, event counts (#321)."""
     session = getattr(request.app.state, "session", None)
@@ -391,7 +407,7 @@ async def _log_event(
 
 # --- Mutation endpoints ----------------------------------------------------
 
-router = APIRouter(prefix="/internal", tags=["execution"])
+router = APIRouter(prefix="/internal", tags=["execution"], dependencies=[Depends(require_internal_token)])
 
 
 def _executor_dep(request: Request) -> OrderExecutor:

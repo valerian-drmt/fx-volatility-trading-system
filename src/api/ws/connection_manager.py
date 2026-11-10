@@ -34,6 +34,8 @@ class ConnectionManager:
     async def disconnect(self, channel: str, ws: WebSocket) -> None:
         async with self._lock:
             self._conns[channel].discard(ws)
+            if not self._conns[channel]:
+                del self._conns[channel]   # no empty keys left behind (#299)
 
     def count(self, channel: str) -> int:
         return len(self._conns.get(channel, set()))
@@ -58,3 +60,5 @@ class ConnectionManager:
         if dead:
             async with self._lock:
                 self._conns[channel].difference_update(dead)
+                if not self._conns[channel]:
+                    del self._conns[channel]

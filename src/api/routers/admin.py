@@ -199,11 +199,11 @@ async def _forward_halt_to_execution() -> dict[str, Any]:
 
     import httpx
 
-    from shared.trace import trace_headers
+    from shared.internal_auth import internal_headers
     url = os.getenv("EXECUTION_URL", "http://execution-engine:8001") + "/internal/halt"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.post(url, headers=trace_headers())
+            r = await client.post(url, headers=internal_headers())
         return {"status": r.status_code, **(r.json() if r.headers.get("content-type", "").startswith("application/json") else {})}
     except Exception as e:  # the flag is already set; cancelling is best effort
         return {"status": None, "error": type(e).__name__}

@@ -58,27 +58,36 @@ jobs:
     steps:
       - name: Resolve commit to deploy
         id: resolve
+        # Inputs reach the shell through env, never interpolated into the
+        # script (#302, audit 10#7): a crafted deploy_sha cannot inject commands.
+        env:
+          INPUT_SHA: ${{ inputs.deploy_sha }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          REF_SHA: ${{ github.sha }}
         run: |
           # Manual SHA wins; else the commit the build ran on (auto path); else
           # the dispatch ref. Images + compose/infra all come from this commit.
-          if [ -n "${{ inputs.deploy_sha }}" ]; then
-            sha="${{ inputs.deploy_sha }}"
-          elif [ -n "${{ github.event.workflow_run.head_sha }}" ]; then
-            sha="${{ github.event.workflow_run.head_sha }}"
+          if [ -n "$INPUT_SHA" ]; then
+            sha="$INPUT_SHA"
+          elif [ -n "$RUN_SHA" ]; then
+            sha="$RUN_SHA"
           else
-            sha="${{ github.sha }}"
+            sha="$REF_SHA"
           fi
+          case "$sha" in
+            *[!0-9a-fA-F]*|"") echo "deploy_sha must be a hex commit sha, got: $sha" >&2; exit 1 ;;
+          esac
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "image_tag=sha-$sha" >> "$GITHUB_OUTPUT"
           echo "Deploying commit $sha (image tag sha-$sha)"
 
       - name: Checkout the deployed commit
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ steps.resolve.outputs.sha }}
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}

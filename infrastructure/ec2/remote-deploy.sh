@@ -37,10 +37,36 @@ GHCR_TOKEN="$(ssm /fxvol/prod/GHCR_TOKEN 2>/dev/null || echo "")"
 # params in SSM before the first deploy.
 AUTH_SECRET="$(ssm /fxvol/prod/AUTH_SECRET 2>/dev/null || echo "")"
 AUTH_PASSWORD_HASH="$(ssm /fxvol/prod/AUTH_PASSWORD_HASH 2>/dev/null || echo "")"
-# Redis auth (URL-safe chars only: embedded un-encoded in REDIS_URL). Absent
-# from SSM -> compose falls back to the weak dev default; provision it before
-# go-live (go/no-go checklist).
+# Redis auth (URL-safe chars only: embedded un-encoded in REDIS_URL). Required
+# on prod (#298): without it compose would fall back to the dev password.
 REDIS_PASSWORD="$(ssm /fxvol/prod/REDIS_PASSWORD 2>/dev/null || echo "")"
+if [ -z "${REDIS_PASSWORD}" ]; then
+  echo "refusing to deploy: /fxvol/prod/REDIS_PASSWORD is not provisioned (the stack would run on the dev Redis password)" >&2
+  exit 1
+fi
+# Grafana (obs profile only): no anonymous access and a provisioned admin
+# password on prod, or the deploy stops before touching the stack (#298).
+GRAFANA_ADMIN_PASSWORD=""
+case ",${COMPOSE_PROFILES:-}," in
+  *,obs,*)
+    GRAFANA_ADMIN_PASSWORD="$(ssm /fxvol/prod/GRAFANA_ADMIN_PASSWORD 2>/dev/null || echo "")"
+    if [ -z "${GRAFANA_ADMIN_PASSWORD}" ]; then
+      echo "refusing to deploy: COMPOSE_PROFILES includes obs but /fxvol/prod/GRAFANA_ADMIN_PASSWORD is not provisioned" >&2
+      exit 1
+    fi
+    ;;
+esac
+# api -> execution-engine shared secret (#300). SSM when provisioned; otherwise
+# a host-generated token kept in /etc/fxvol (root 0600, outside every bind
+# mount) so both containers agree across deploys and nothing ships unauthenticated.
+EXECUTION_INTERNAL_TOKEN="$(ssm /fxvol/prod/EXECUTION_INTERNAL_TOKEN 2>/dev/null || echo "")"
+if [ -z "${EXECUTION_INTERNAL_TOKEN}" ]; then
+  install -d -m 0700 /etc/fxvol
+  if [ ! -s /etc/fxvol/internal_token ]; then
+    ( umask 077; openssl rand -hex 32 > /etc/fxvol/internal_token )
+  fi
+  EXECUTION_INTERNAL_TOKEN="$(cat /etc/fxvol/internal_token)"
+fi
 
 reg="ghcr.io/${OWNER}"
 
@@ -102,7 +128,12 @@ esac
 {
   if [ -n "${AUTH_SECRET}" ];        then echo "AUTH_SECRET=${AUTH_SECRET}"; fi
   if [ -n "${AUTH_PASSWORD_HASH}" ]; then echo "AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH}"; fi
-  if [ -n "${REDIS_PASSWORD}" ];     then echo "REDIS_PASSWORD=${REDIS_PASSWORD}"; fi
+  echo "REDIS_PASSWORD=${REDIS_PASSWORD}"
+  if [ -n "${GRAFANA_ADMIN_PASSWORD}" ]; then
+    echo "GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}"
+    echo "GF_AUTH_ANONYMOUS_ENABLED=false"
+  fi
+  echo "EXECUTION_INTERNAL_TOKEN=${EXECUTION_INTERNAL_TOKEN}"
   echo "AUTH_USERNAME=trader"
   echo "AUTH_COOKIE_SECURE=true"
 } >> /opt/fxvol/.env

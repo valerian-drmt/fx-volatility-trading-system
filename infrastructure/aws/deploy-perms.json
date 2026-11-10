@@ -7,5 +7,6 @@
      "arn:aws:ssm:eu-west-1::document/AWS-RunShellScript"]},
   {"Sid":"ReadCommandResult","Effect":"Allow",
    "Action":["ssm:GetCommandInvocation","ssm:ListCommandInvocations","ssm:ListCommands"],
-   "Resource":"*"}
+   "Resource":"*",
+   "Condition":{"StringEquals":{"aws:RequestedRegion":"eu-west-1"}}}
 ]}

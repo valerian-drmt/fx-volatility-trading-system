@@ -27,6 +27,7 @@ from api.dependencies import get_db_session
 from api.routers.positions import close_one_open_position
 from core.execution.reaper_policy import plan_structure_terminal_state
 from persistence.models import OpenPosition, StructureOrder, TradeStructure
+from shared.internal_auth import internal_headers
 
 _EXECUTION_URL = os.getenv("EXECUTION_URL", "http://execution-engine:8001")
 # Non-terminal order states an operator can cancel from the blotter.
@@ -219,7 +220,8 @@ async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
             if o.ib_order_id:
                 async with httpx.AsyncClient(timeout=10.0) as client:
                     r = await client.delete(
-                        f"{_EXECUTION_URL}/internal/orders/{int(o.ib_order_id)}"
+                        f"{_EXECUTION_URL}/internal/orders/{int(o.ib_order_id)}",
+                        headers=internal_headers(),
                     )
                 # 404 = the order isn't live at IB anymore (already gone) → OK.
                 if r.status_code >= 400 and r.status_code != 404:

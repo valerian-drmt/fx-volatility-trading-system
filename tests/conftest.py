@@ -59,3 +59,21 @@ def ib_factories() -> Any:
 @pytest.fixture
 def canonical_payload() -> Callable[[str], dict[str, Any]]:
     return payload
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> Iterator[None]:
+    """slowapi's limiter is a module singleton keyed on the client address, and
+    every TestClient is "testclient": without a reset, login calls across the
+    whole session share one 5/minute bucket (#296)."""
+    try:
+        from api.auth import lockout
+        from api.middleware.rate_limit import limiter
+    except Exception:  # api extras not installed in this environment
+        yield
+        return
+    limiter.reset()
+    lockout.reset_all()
+    yield
+    limiter.reset()
+    lockout.reset_all()

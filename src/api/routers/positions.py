@@ -55,7 +55,8 @@ from persistence.models import (
 from persistence.reservation import recompute_reservation
 from persistence.rows import open_position_row
 from shared.contracts import multiplier_for, parse_local_symbol
-from shared.trace import current_trace_id, trace_headers
+from shared.internal_auth import internal_headers
+from shared.trace import current_trace_id
 
 router = APIRouter(prefix="/api/v1/positions", tags=["positions"])
 DbDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -1240,7 +1241,7 @@ async def close_one_open_position(
     url = f"{exec_url}/internal/positions/close-by-symbol"
     try:
         async with httpx.AsyncClient(timeout=_CLOSE_DISPATCH_TIMEOUT_S) as client:
-            r = await client.post(url, json=payload, headers=trace_headers())
+            r = await client.post(url, json=payload, headers=internal_headers())
     except httpx.HTTPError as e:
         outcome = classify_dispatch_failure(e)
         if outcome == "not_sent":

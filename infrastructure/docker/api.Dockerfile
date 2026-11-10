@@ -44,6 +44,13 @@ COPY scripts/ ./scripts/
 ARG GIT_SHA=unknown
 ENV GIT_SHA=${GIT_SHA}
 
+# Non-root runtime (#298, audit 01#10): the image installs as root, then drops
+# to an unprivileged user. The service listens above 1024 and writes nothing
+# (PYTHONDONTWRITEBYTECODE, logs to stdout), so no directory needs to be writable.
+RUN useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin fxvol \
+    && chown -R fxvol:fxvol /app
+USER fxvol
+
 EXPOSE 8000
 
 # Readiness, not liveness: /health/ready probes Postgres and Redis and answers
