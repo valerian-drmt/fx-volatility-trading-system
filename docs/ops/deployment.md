@@ -150,7 +150,34 @@ the last deployed tag when you cut a release.
 
 ## Rollback
 
-Re-run `deploy-prod` via `workflow_dispatch` with `deploy_sha` set to a previous
-commit — its `sha-<commit>` images are still in GHCR (kept <7 days by the weekly
-host prune), and the pre-migration dump in `s3://fxvol-backups/postgres/pre-deploy/`
-is the DB restore point (see `infrastructure/ec2/RESTORE.md`).
+Re-run `deploy-prod` via `workflow_dispatch` with `deploy_sha` set to the
+previous commit. The step-by-step procedure, with its checks, is in
+[`runbooks.md`](runbooks.md#rollback); what the pipeline guarantees (#345):
+
+- **Images.** Every `sha-<commit>` stays in GHCR. On the host,
+  `infrastructure/ec2/prune_images.sh` (run by each deploy and by the weekly
+  cron) keeps our 8 images at the **current and the previous** deployed tag
+  (`/opt/fxvol/state/current_tag`, `previous_tag`), so rolling back one release
+  needs no pull. Older tags, unused infra images and dangling layers go. Only
+  the hourly disk guard, past 90 % after that prune, drops the previous tag too.
+- **Schema.** Before migrating, `remote-deploy.sh` asks the target image for its
+  alembic head and the database for its revision. When the database is ahead
+  of the target (a rollback past a migration), the deploy **stops** unless the
+  dispatch sets `allow_schema_downgrade: true`; then the **running** api image,
+  which knows both revisions, runs `alembic downgrade <target head>` after the
+  pre-deploy dump. A downgrade drops what the newer migrations added, which is
+  why it is opt-in; the dump in `s3://fxvol-backups/postgres/pre-deploy/` is the
+  restore point (`infrastructure/ec2/RESTORE.md`).
+- **Compatibility.** The rule above (additive first, two-step drops) is what
+  makes "roll back the code, keep the schema" safe for one release, and the CI
+  round trip downgrades and re-applies the last migrations on every PR.
+
+## Base-image patch policy
+
+Base images are pinned by tag and digest (#305). Dependabot's `docker` and
+`docker-compose` ecosystems open the weekly digest bumps; merged, they go
+through build and deploy like any change, so OS-level fixes in the bases reach
+prod within a week without a separate scheduled rebuild. The weekly security
+scan (`security-scan.yml`) catches a base that stays vulnerable. The host OS
+takes Ubuntu security updates through `unattended-upgrades` (security pocket,
+Docker excluded, no automatic reboot); kernel reboots follow the runbook.
