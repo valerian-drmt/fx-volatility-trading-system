@@ -15,6 +15,23 @@ services:
     mem_limit: 512m
     cpu_shares: 256
     restart: unless-stopped
+    # Sized for a 512 MB container on the 3.8 GB host (#373, T9): buffers a
+    # quarter of the limit, the planner told what the page cache can hold,
+    # per-sort memory small (many pooled connections), vacuum memory generous
+    # for the nightly batched prune, autovacuum woken often enough to keep the
+    # two history tables (migration 063) flat. docs/architecture/database.md.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - autovacuum_naptime=30s
     environment:
       POSTGRES_DB: fxvol
       POSTGRES_USER: fxvol

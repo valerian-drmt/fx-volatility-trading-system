@@ -31,6 +31,7 @@ All IB I/O stays behind callables so the engine is testable without
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
 import json
 import logging
 from typing import Any, Protocol
@@ -40,6 +41,7 @@ from bus.spot_cache import parse_spot
 from core.config import CapacityConfig, VolTradingConfig
 from core.vol.pchip_smile import interpolate_delta_pillars
 from core.vol.tenors import to_display_surface
+from persistence.retention import next_retention_run
 from shared.market_hours import is_fx_market_open, market_gate_active
 
 logger = logging.getLogger(__name__)
@@ -52,8 +54,6 @@ SKIP_BACKOFF_S = 5.0   # short sleep when a cycle skipped (no spot / no surface)
 # to keep vol_surface_history (~1.1 MB/day) and pca_signal_history bounded.
 HISTORY_RETENTION_DAYS = 90
 _PROGRESS_KEY = keys.CYCLE_PROGRESS.format(engine_name=keys.ENGINE_VOL)
-# 1 prune ≈ once/day. Vol cycle is CYCLE_S (180 s) → 480 cycles ≈ 24h.
-PRUNE_EVERY_CYCLES = 480
 
 # The heavy hourly batch (GMM regime refit, PCA surface snapshot, PC3 rolling
 # history) lives in the ``analytics`` engine, cpu-capped off the real-time
@@ -485,8 +485,7 @@ class VolEngine:
         self._progress_completed: set[str] = set()
         self._progress_cycle_started_iso: str | None = None
         # Cycle counter + retention bookkeeping (mirror risk-engine pattern):
-        # prune on the first loop, then once every PRUNE_EVERY_CYCLES (~daily).
-        self._cycles_since_prune = PRUNE_EVERY_CYCLES
+        self._next_prune_at = next_retention_run()   # nightly, off-peak (#373)
         # Fair-vol memoization. Daily OHLC bars change ≤ once/day (the fetcher
         # caches), so the Yang-Zhang windows + GARCH + HAR fits are recomputed
         # only when a NEW bar arrives. Keyed on a cheap signature of the OHLC
@@ -561,15 +560,13 @@ class VolEngine:
                         except Exception:
                             logger.exception("on_ib_reconnected_hook_failed")
                 await publisher.set_heartbeat(self.redis, keys.ENGINE_VOL)
-                # Retention : prune old Signal-tab history once at startup, then
-                # ~daily (throttled by cycle count, like risk-engine).
-                if self._cycles_since_prune >= PRUNE_EVERY_CYCLES:
-                    self._cycles_since_prune = 0
+                # Retention : once a night at 02:30 UTC, in batches (#373).
+                if _dt.datetime.now(_dt.UTC) >= self._next_prune_at:
+                    self._next_prune_at = next_retention_run()
                     try:
                         await self._prune_history()
                     except Exception:
                         logger.exception("prune_history_failed")
-                self._cycles_since_prune += 1
                 deadline = _time.monotonic() + CYCLE_S
                 # P0 obs : cycle_id auto-bound to structlog + metrics emitted.
                 with observed_cycle("vol_engine"):

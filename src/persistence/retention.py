@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import text
@@ -51,6 +51,22 @@ VOL_ENGINE_TABLES: tuple[PruneSpec, ...] = (
 
 _ALLOWED_TABLES = frozenset(s.table for s in (*RISK_ENGINE_TABLES, *VOL_ENGINE_TABLES))
 
+# Off-peak schedule and batch size (#373, hot/cold T9): one run a night at
+# 02:30 UTC (after the IB Gateway's 23:59 UTC restart, before the London
+# open), in slices small enough that no hot read waits behind the delete.
+RETENTION_AT_UTC: tuple[int, int] = (2, 30)
+BATCH_ROWS: int = 50_000
+
+
+def next_retention_run(now: datetime | None = None) -> datetime:
+    """The next ``RETENTION_AT_UTC`` strictly after ``now``."""
+    now = now or datetime.now(UTC)
+    hour, minute = RETENTION_AT_UTC
+    candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= now:
+        candidate += timedelta(days=1)
+    return candidate
+
 
 def _record(engine: str, table: str, *, rows: int = 0, failed: bool = False) -> None:
     try:
@@ -78,22 +94,44 @@ async def prune_table(
     return int(result.rowcount or 0)
 
 
+async def prune_table_batched(
+    sessionmaker: async_sessionmaker[AsyncSession], spec: PruneSpec, cutoff: datetime,
+    *, batch_rows: int = BATCH_ROWS,
+) -> int:
+    """DELETE in slices of ``batch_rows`` ids, one short transaction each, until
+    a slice comes back short. Every history table has an integer ``id`` key."""
+    if spec.table not in _ALLOWED_TABLES:
+        raise ValueError(f"table {spec.table!r} is not in the retention whitelist")
+    inner = f"SELECT id FROM {spec.table} WHERE {spec.ts_column} < :cutoff"
+    if spec.extra_where:
+        inner += " " + spec.extra_where
+    sql = f"DELETE FROM {spec.table} WHERE id IN ({inner} LIMIT :n)"
+    total = 0
+    while True:
+        async with sessionmaker() as db:
+            result = await db.execute(text(sql), {"cutoff": cutoff, "n": int(batch_rows)})
+            await db.commit()
+        n = int(result.rowcount or 0)
+        total += n
+        if n < batch_rows:
+            return total
+
+
 async def run_retention(
     sessionmaker: async_sessionmaker[AsyncSession],
     *,
     engine: str,
     cutoff: datetime,
     tables: tuple[PruneSpec, ...] | list[PruneSpec],
+    batch_rows: int = BATCH_ROWS,
 ) -> dict[str, Any]:
-    """Prune every table on its own transaction. Never raises: the summary
+    """Prune every table on its own, in batches. Never raises: the summary
     maps each table to the rows removed or to ``"failed"``, and the counters
     carry the same information for the alert."""
     summary: dict[str, Any] = {}
     for spec in tables:
         try:
-            async with sessionmaker() as db:
-                n = await prune_table(db, spec, cutoff)
-                await db.commit()
+            n = await prune_table_batched(sessionmaker, spec, cutoff, batch_rows=batch_rows)
             summary[spec.table] = n
             _record(engine, spec.table, rows=n)
             logger.info("history_pruned", extra={"engine": engine, "table": spec.table, "rows": n,

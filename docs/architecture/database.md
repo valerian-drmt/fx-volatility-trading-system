@@ -122,3 +122,16 @@ contract and, since migration 062 (#329), by the database: a `BEFORE UPDATE OR
 DELETE` trigger refuses both with an `integrity_constraint_violation`, whatever
 the role. A revert is a new row. Backtests pin `config_version=N` and the
 Settings tab's history pane read a history nothing can rewrite.
+
+## Write-side hygiene (#373)
+
+| | Before | Since #373 |
+|---|---|---|
+| `open_position_history` cadence | one row per open position every 30 s, moved or not | the persist pass runs every 60 s; a row is written only when the position's greeks or P&L moved beyond `core/risk/history_policy.py`'s thresholds (1 % relative with a $1 floor on delta / gamma / vega / theta, $1 on P&L, 0.05 vol pt on IV) or when its last row is older than 15 min. The live row on `open_position` is still updated every pass. |
+| retention | at engine start, then every N cycles, one DELETE per table | once a night at 02:30 UTC (after the IB Gateway restart, before London), in 50 k-row batches, each its own short transaction (`persistence/retention.py`), so no hot read waits behind the delete |
+| autovacuum | defaults (20 % of the table) | migration 063: `autovacuum_vacuum_scale_factor 0.02`, `analyze 0.01`, `cost_delay 2 ms` on `open_position_history` and `booked_position_metric_history` |
+| server memory | image defaults (128 MB buffers, 4 GB cache assumption) | `shared_buffers 128MB`, `effective_cache_size 768MB`, `work_mem 8MB`, `maintenance_work_mem 64MB`, `autovacuum_naptime 30s` for the 512 MB container on the 3.8 GB host (compose `command`) |
+
+Acceptance: history row growth halves on a quiet book (measured as rows per
+position per day in `open_position_history`) and the nightly prune finishes
+in minutes with no p95 regression on the Desk fluidity panel.
