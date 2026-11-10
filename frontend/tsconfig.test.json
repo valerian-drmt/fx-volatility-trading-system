@@ -1,0 +1,6 @@
+{
+  // Type-checks everything, tests included (npm run typecheck). The build uses tsconfig.json.
+  "extends": "./tsconfig.json",
+  "include": ["src"],
+  "exclude": []
+}

@@ -24,5 +24,10 @@
     "paths": { "@/*": ["src/*"] }
   },
   "include": ["src"],
+  // The production build (`tsc -b` in `npm run build`, also inside the web
+  // image) leaves tests out: they import backend fixtures from outside
+  // frontend/ that the image does not contain. `npm run typecheck` checks
+  // them through tsconfig.test.json.
+  "exclude": ["src/**/__tests__/**", "src/tests/**"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

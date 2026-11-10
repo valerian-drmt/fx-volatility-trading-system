@@ -28,5 +28,5 @@ test("the vol engine's surface payload renders in the Signals grid", async ({ pa
   await page.goto("/fx-volatility-trading-system/#signals");
   const cell = page.locator(".gz-cell", { has: page.locator(".gz-iv") }).filter({ hasText: ATM_1M_IV }).first();
   await expect(cell).toBeVisible({ timeout: 20_000 });
-  await expect(cell).toHaveAttribute("title", new RegExp(`^1M ATM · IV ${ATM_1M_IV.replace(".", "\.")} `));
+  await expect(cell).toHaveAttribute("title", /^1M ATM · IV 6\.3 /);
 });
