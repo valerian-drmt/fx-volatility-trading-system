@@ -47,7 +47,7 @@ api = [
     # fastapi / starlette on the supported line (#303, audit 10#1): the old
     # <0.112 ceiling froze starlette 0.37 with nine published advisories.
     "fastapi>=0.120,<1",
-    "uvicorn[standard]>=0.30,<1",
+    "uvicorn[standard]>=0.54.0,<1",
     "slowapi>=0.1.9,<0.2",
     "httpx>=0.27,<1",
 ]
