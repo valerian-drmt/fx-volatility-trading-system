@@ -49,3 +49,9 @@ pin.json
 # stamp written by infrastructure/ec2/postgres_backup.sh). Created by docker
 # on a local `compose up`; never content to track.
 state/
+
+# Coverage outputs (pytest-cov, #340)
+.coverage
+coverage.xml
+coverage.json
+junit.xml

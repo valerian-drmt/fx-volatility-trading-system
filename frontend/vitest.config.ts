@@ -32,8 +32,13 @@ export default defineConfig({
       // Measured honest baseline with the full denominator: 17% (2026-07-18).
       // Floor set ~2 points below; ratchet upward as view/component tests
       // land — never lower it.
+      // #340 (2026-11-10): view smoke tests took lines from 18.9% to 39.8%
+      // (voldesk/views 0% -> 44.7%). Floors sit ~2 points under; ratchet up.
       thresholds: {
-        lines: 15,
+        lines: 38,
+        statements: 34,
+        functions: 31,
+        branches: 26,
       },
     },
   },

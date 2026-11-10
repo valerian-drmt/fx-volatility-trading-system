@@ -160,6 +160,33 @@ markers = [
     "redis_integration: Tests requiring a running Redis instance and REDIS_URL.",
 ]
 
+[tool.coverage.run]
+source = ["src"]
+
+[tool.coverage.report]
+# Global floor (#340); the per-package floors below are the real gate.
+fail_under = 65
+
+[tool.fxvol.coverage-floors]
+# Line coverage per src/ package, checked in CI by scripts/check_coverage.py
+# against the unit suite (#340, audit 07#13). Set ~1 point under the number
+# measured on 2026-11-10; they only move up (the script says when one can).
+"core" = 95
+"bus" = 86
+"shared" = 85
+"persistence" = 87
+"api/middleware" = 98
+"api/schemas" = 98
+"api/ws" = 93
+"api/orchestration" = 54
+"api/routers" = 39
+"engines/db_writer" = 88
+"engines/market_data" = 82
+"engines/analytics" = 70
+"engines/execution" = 59
+"engines/risk" = 50
+"engines/vol" = 24
+
 [tool.mypy]
 python_version = "3.11"
 # Permissive baseline for the whole tree (the advisory CI run); the three
