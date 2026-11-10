@@ -172,3 +172,13 @@ physical.
 **Acceptance.**
 - Trading core instance shows no analytics or observability container; T6
   panel meets the target during PCA cycles.
+
+
+**Go / no-go (2026-11-10).** Measured, not guessed: `.\scriptsws\ec2.ps1 fluidity`
+(read-only, needs the obs profile) prints for order submit, fill-to-publish and
+the desk's publish-to-screen the 7-day sample count and p95, the worst 5-minute
+p95, and the worst 5-minute p95 **while the analytics engine was cycling**.
+Split only if one of those last numbers is above 2 s with at least 20 samples
+behind it. Otherwise T10 closes as not needed, with the numbers on the ticket;
+the capacity dial (T7) is the cheaper lever to try first (Eco halves the
+analytics CPU) before buying a second host.
