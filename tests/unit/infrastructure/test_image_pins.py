@@ -91,3 +91,14 @@ def test_dependabot_covers_every_pin_source() -> None:
         assert f"package-ecosystem: {eco}" in cfg, eco
     for d in ("/infrastructure/docker", "/src/engines/vol", "/frontend"):
         assert d in cfg, d
+
+
+def test_dependabot_never_proposes_a_datastore_major() -> None:
+    """A Postgres major bump cannot reuse the data volume (#408 was one)."""
+    import yaml
+
+    cfg = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text(encoding="utf-8"))
+    compose = next(u for u in cfg["updates"] if u["package-ecosystem"] == "docker-compose")
+    ignored = {(i["dependency-name"], tuple(i.get("update-types", []))) for i in compose["ignore"]}
+    for name in ("postgres", "redis"):
+        assert (name, ("version-update:semver-major",)) in ignored, name
