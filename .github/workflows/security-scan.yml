@@ -204,6 +204,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"          # fail the job on any HIGH/CRITICAL
           ignore-unfixed: true    # unfixed upstream issues do not fail
+          limit-severities-for-sarif: true   # the Security tab gets the gate's scope, not every LOW
           trivyignores: .trivyignore
 
       - name: Upload SARIF
@@ -235,6 +236,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           ignore-unfixed: true
+          limit-severities-for-sarif: true
           trivyignores: .trivyignore
 
       - name: Upload SARIF

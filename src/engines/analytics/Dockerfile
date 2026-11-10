@@ -10,6 +10,9 @@ ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8
 FROM ${UV_IMAGE} AS uv
 FROM ${PYTHON_IMAGE} AS base
 COPY --from=uv /uv /bin/uv
+# The app lives in the uv venv; the base image's pip / setuptools / wheel are
+# never used and Trivy flags them (pip 24.0, wheel 0.45, jaraco.context 5.3).
+RUN python -m pip uninstall -y pip setuptools wheel
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
