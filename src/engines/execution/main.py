@@ -140,7 +140,7 @@ async def lifespan(app: FastAPI):
         await executor.connect(timeout=20.0)
     except Exception:
         logger.exception("ib_connect_failed_at_startup")
-    logger.info("execution_ib_mode readonly=%s", ib_readonly)
+    logger.info("execution_ib_mode readonly=%s", _settings.ib_read_only)
     app.state.executor = executor
 
     sm = get_sessionmaker()
