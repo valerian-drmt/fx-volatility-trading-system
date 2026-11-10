@@ -36,8 +36,10 @@ from core.pricing.bs import (
 )
 from core.risk.greek_scaling import future_greeks, option_greeks, sum_greeks
 from core.risk.greeks import bs_price_vec
+from core.risk.history_policy import GreeksPoint, snapshot_due
 from core.vol.iv_lookup import iv_at_strike
 from persistence.models import OpenPosition, OpenPositionHistory
+from persistence.retention import next_retention_run
 from shared.contracts import INSTRUMENT_FUTURE, multiplier_for, parse_local_symbol
 
 
@@ -61,13 +63,15 @@ CYCLE_SECONDS = 2.0
 PNL_CHART_POINTS = 120
 PNL_CHART_RANGE_PCT = 0.02  # ±2% around spot
 FALLBACK_IV = 0.08          # fallback when the surface has no matching tenor
-# open_position_history is read only at daily resolution (marginal-var,
-# pnl-attribution), so persist a snapshot every ~30s instead of every cycle
-# (≈15× less write volume / table bloat). The LIVE greeks still publish to Redis
-# every CYCLE_SECONDS. Retention then prunes anything past the window.
-HISTORY_PERSIST_CYCLES = 15   # 15 × CYCLE_SECONDS ≈ 30s
+# open_position_history is read at minute-to-daily resolution (marginal-var,
+# pnl-attribution, the daily rollups), so the persist pass runs every 60 s
+# (#373: was 30 s) and writes a row only for a position whose greeks or P&L
+# moved beyond core.risk.history_policy's thresholds, or whose last row is
+# older than its heartbeat floor. The live row on ``open_position`` is still
+# updated on every pass and the live greeks still publish to Redis every
+# CYCLE_SECONDS. Retention prunes past the window once a night (02:30 UTC).
+HISTORY_PERSIST_CYCLES = 30   # 30 × CYCLE_SECONDS = 60 s
 HISTORY_RETENTION_DAYS = 90
-PRUNE_EVERY_CYCLES = 43_200   # 43_200 × 2s ≈ 24h
 
 
 class _RedisLike(Protocol):
@@ -110,7 +114,12 @@ class RiskEngine:
         # history-write throttle + retention bookkeeping (see module constants)
         self._cycle = 0
         self._iv_fallback_legs = 0  # legs priced on FALLBACK_IV in the current pass (#310)
-        self._cycles_since_prune = PRUNE_EVERY_CYCLES  # prune on first loop, then ~daily
+        self._next_prune_at = next_retention_run()        # nightly, off-peak (#373)
+        # Last history row written per position: (when, the point), the input
+        # of the write policy. Empty after a restart, so the first pass writes
+        # every position once.
+        self._last_written: dict[int, tuple[datetime, GreeksPoint]] = {}
+        self._history_skipped = 0
 
     def request_stop(self) -> None:
         self._stop.set()
@@ -135,17 +144,13 @@ class RiskEngine:
                         client_id=self.client_id,
                     )
                 await publisher.set_heartbeat(self.redis, keys.ENGINE_RISK)
-                # Retention: prune old history once at startup, then ~daily.
-                if (
-                    self._sessionmaker is not None
-                    and self._cycles_since_prune >= PRUNE_EVERY_CYCLES
-                ):
-                    self._cycles_since_prune = 0
+                # Retention: once a night at 02:30 UTC, in batches (#373).
+                if self._sessionmaker is not None and datetime.now(UTC) >= self._next_prune_at:
+                    self._next_prune_at = next_retention_run()
                     try:
                         await self._prune_history()
                     except Exception:
                         logger.exception("prune_history_failed")
-                self._cycles_since_prune += 1
                 # P0 obs : cycle_id propagated to structlog + metrics emitted.
                 with observed_cycle("risk_engine"):
                     await self.run_cycle()
@@ -241,7 +246,7 @@ class RiskEngine:
         cutoff = datetime.now(UTC) - timedelta(days=HISTORY_RETENTION_DAYS)
         summary = await run_retention(
             self._sessionmaker, engine="risk_engine", cutoff=cutoff, tables=RISK_ENGINE_TABLES,
-        )
+        )  # 50 k-row batches, each its own short transaction (#373)
         logger.info("history_prune_done", extra={"retention_days": HISTORY_RETENTION_DAYS, **summary})
 
     async def _load_positions(self) -> list[dict]:
@@ -404,7 +409,15 @@ class RiskEngine:
                 live_pos.volga_usd = volga_dec
 
                 # 2. Snapshot = literal copy of every panel-E column at this
-                #    timestamp. Same shape as ``positions``.
+                #    timestamp, but only when it says something new (#373):
+                #    the policy compares with the last row written for this
+                #    position and forces one every HEARTBEAT_S regardless.
+                point = GreeksPoint(delta=delta, gamma=gamma, vega=vega, theta=theta, pnl=pnl, iv=iv, mark=mark)
+                prev = self._last_written.get(int(pos["id"]))
+                age_s = (now - prev[0]).total_seconds() if prev is not None else None
+                if not snapshot_due(prev[1] if prev is not None else None, point, last_written_age_s=age_s):
+                    self._history_skipped += 1
+                    continue
                 snap = OpenPositionHistory(
                     position_id=live_pos.id,
                     timestamp=now,
@@ -430,9 +443,12 @@ class RiskEngine:
                     volga_usd=volga_dec,
                 )
                 db.add(snap)
-
+                self._last_written[int(pos["id"])] = (now, point)
                 inserted += 1
             await db.commit()
+        if inserted or self._history_skipped:
+            logger.debug("history_rows_written", extra={"written": inserted, "skipped_quiet": self._history_skipped})
+            self._history_skipped = 0
         return inserted
 
     def _spot_from_portfolio(self) -> float | None:

@@ -25,7 +25,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-import os
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -44,6 +43,7 @@ from engines.execution.fills_handler import (
     attach_fill_handlers,
 )
 from engines.execution.latency import note_submit_start
+from engines.execution.settings import get_execution_settings
 from persistence.models import (
     StructureOrder,
     TradeEvent,
@@ -107,15 +107,11 @@ async def _release_submit_claim(
 
 
 def _allowed_symbols() -> tuple[str, ...]:
-    raw = os.getenv("ALLOWED_SYMBOLS", "EUR,M6E")
-    return tuple(s.strip().upper() for s in raw.split(",") if s.strip())
+    return get_execution_settings().allowed_symbols
 
 
 def _collar_pct() -> float:
-    try:
-        return float(os.getenv("LIVE_SUBMIT_COLLAR_PCT", "0.5"))
-    except ValueError:
-        return 0.5
+    return float(get_execution_settings().LIVE_SUBMIT_COLLAR_PCT)
 
 
 def collar_ok(limit: float, reference: float, pct: float) -> bool:

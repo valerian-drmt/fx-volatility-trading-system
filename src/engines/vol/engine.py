@@ -31,15 +31,17 @@ All IB I/O stays behind callables so the engine is testable without
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
 import json
 import logging
-import os
 from typing import Any, Protocol
 
 from bus import keys, publisher
 from bus.spot_cache import parse_spot
+from core.config import CapacityConfig, VolTradingConfig
 from core.vol.pchip_smile import interpolate_delta_pillars
 from core.vol.tenors import to_display_surface
+from persistence.retention import next_retention_run
 from shared.market_hours import is_fx_market_open, market_gate_active
 
 logger = logging.getLogger(__name__)
@@ -52,19 +54,13 @@ SKIP_BACKOFF_S = 5.0   # short sleep when a cycle skipped (no spot / no surface)
 # to keep vol_surface_history (~1.1 MB/day) and pca_signal_history bounded.
 HISTORY_RETENTION_DAYS = 90
 _PROGRESS_KEY = keys.CYCLE_PROGRESS.format(engine_name=keys.ENGINE_VOL)
-# 1 prune ≈ once/day. Vol cycle is CYCLE_S (180 s) → 480 cycles ≈ 24h.
-PRUNE_EVERY_CYCLES = 480
 
-# Heavy hourly batch (GMM regime refit, PCA surface snapshot, PC3 rolling
-# history) was extracted to the ``analytics`` engine so it can be cpu-capped off
-# the real-time path. Default "0" (#365, hot/cold T1): this engine READS the
-# analytics engine's published results (train-centrally / serve-at-the-edge :
-# it still runs the cheap per-cycle ``infer_proba`` on the live obs) and no
-# longer fits GMM / writes PCA snapshots itself, so the batch runs ONCE, on the
-# capped container. "1" keeps the legacy inline path (local runs without the
-# analytics engine); it is removed by #334 once prod has run a day on "0".
-# Read once at import : a restart applies the change.
-_INLINE_ANALYTICS: bool = os.environ.get("VOL_INLINE_ANALYTICS", "0") == "1"
+# The heavy hourly batch (GMM regime refit, PCA surface snapshot, PC3 rolling
+# history) lives in the ``analytics`` engine, cpu-capped off the real-time
+# path (#365, hot/cold T1). This engine READS its published results and runs
+# only the cheap per-cycle ``infer_proba`` on the live obs: train centrally,
+# serve at the edge. The legacy inline path and its VOL_INLINE_ANALYTICS flag
+# were removed in #334.
 DEFAULT_TENOR_T = {
     "1M": 1 / 12, "2M": 2 / 12, "3M": 3 / 12,
     "4M": 4 / 12, "5M": 5 / 12, "6M": 6 / 12,
@@ -489,8 +485,7 @@ class VolEngine:
         self._progress_completed: set[str] = set()
         self._progress_cycle_started_iso: str | None = None
         # Cycle counter + retention bookkeeping (mirror risk-engine pattern):
-        # prune on the first loop, then once every PRUNE_EVERY_CYCLES (~daily).
-        self._cycles_since_prune = PRUNE_EVERY_CYCLES
+        self._next_prune_at = next_retention_run()   # nightly, off-peak (#373)
         # Fair-vol memoization. Daily OHLC bars change ≤ once/day (the fetcher
         # caches), so the Yang-Zhang windows + GARCH + HAR fits are recomputed
         # only when a NEW bar arrives. Keyed on a cheap signature of the OHLC
@@ -498,28 +493,40 @@ class VolEngine:
         # _garch, _har} block to re-attach verbatim on unchanged input.
         self._fair_vol_cache_key: tuple[Any, int] | None = None
         self._fair_vol_cache: dict[str, Any] | None = None
+        # The versioned config as last applied (#329): the capacity dial is
+        # what this engine reads per cycle (chain width / concurrency, #372).
+        self.config: VolTradingConfig = VolTradingConfig()
+        self.config_version: int = -1
+        self.capacity: CapacityConfig = self.config.capacity
         # GMM regime fit memoization. feature_history moves ≤ hourly, so the GMM
         # is refit only when a new feature row lands; keyed on the latest
         # feature_history timestamp (+ training-row count for safety).
-        self._gmm_cache_key: tuple[Any, int] | None = None
-        self._gmm_cache: Any = None  # fitted (gmm, fit) tuple, or None
         # PC3 rolling skew/convex history memoization (200 snapshot rows).
         # Keyed on the latest snapshot timestamp — recomputed only on a new snap.
-        self._pc3_hist_cache_key: Any = None
-        self._pc3_hist_cache: tuple[list[float], list[float]] | None = None
 
-    def apply_config(self, config: Any) -> None:
-        """Hot-reload from a VolTradingConfig instance.
+    def apply_config(self, config: VolTradingConfig, version: int = -1) -> None:
+        """Hot-reload from a validated ``VolTradingConfig`` (#329).
 
-        Called by the config watcher when ``config:changed`` is published
-        on Redis. The pricing-signals fields (``signal.threshold_vol_pts``,
-        ``signal.model_p``) were dropped along with the per-tenor pricing
-        signals — there's nothing engine-side left to reload at this point,
-        but the hook stays so future tunables (PCA threshold, regime gate
-        knobs) can land here.
+        Called by ``bus.config_watch.ConfigWatcher`` with the DB's latest row
+        at start and with every newer version after that. The knobs this
+        engine reads live on ``self.capacity`` and are picked up by the next
+        chain fetch, no restart: ``strikes_per_side`` and
+        ``max_concurrent_scans`` (#372). The rest of the config is kept on
+        ``self.config`` for the pipeline helpers that read it.
         """
-        del config  # currently unused — kept for forward compatibility
-        logger.info("vol_engine_config_reloaded")
+        before = self.capacity
+        self.config = config
+        self.config_version = version
+        self.capacity = config.capacity
+        logger.info(
+            "vol_engine_config_reloaded",
+            extra={
+                "version": version, "preset": config.capacity.preset,
+                "strikes_per_side": config.capacity.strikes_per_side,
+                "max_concurrent_scans": config.capacity.max_concurrent_scans,
+                "changed": before != config.capacity,
+            },
+        )
 
     def request_stop(self) -> None:
         self._stop.set()
@@ -553,15 +560,13 @@ class VolEngine:
                         except Exception:
                             logger.exception("on_ib_reconnected_hook_failed")
                 await publisher.set_heartbeat(self.redis, keys.ENGINE_VOL)
-                # Retention : prune old Signal-tab history once at startup, then
-                # ~daily (throttled by cycle count, like risk-engine).
-                if self._cycles_since_prune >= PRUNE_EVERY_CYCLES:
-                    self._cycles_since_prune = 0
+                # Retention : once a night at 02:30 UTC, in batches (#373).
+                if _dt.datetime.now(_dt.UTC) >= self._next_prune_at:
+                    self._next_prune_at = next_retention_run()
                     try:
                         await self._prune_history()
                     except Exception:
                         logger.exception("prune_history_failed")
-                self._cycles_since_prune += 1
                 deadline = _time.monotonic() + CYCLE_S
                 # P0 obs : cycle_id auto-bound to structlog + metrics emitted.
                 with observed_cycle("vol_engine"):
@@ -712,12 +717,6 @@ class VolEngine:
                 signals = pca_rows["payload"].get("signals", [])
                 span.set_attribute("n_signals", len(signals))
 
-        # Step 2 — hourly snapshot for PCA fit history. Owned by the analytics
-        # engine unless VOL_INLINE_ANALYTICS keeps the legacy inline path.
-        hourly_snapshot = (
-            await self._maybe_collect_hourly_snapshot(surface, F)
-            if _INLINE_ANALYTICS else None
-        )
 
         await self._publish_progress("publish", "redis_set")
         with tracer.start_as_current_span("vol_redis_publish") as span:
@@ -772,11 +771,6 @@ class VolEngine:
                         self.redis, table="pca_signal_history",  # renamed in migration 023
                         payload={**sig_row, "timestamp": ts_iso},
                     )
-            if hourly_snapshot is not None:
-                await publish_db_event(
-                    self.redis, table="pca_surface_snapshot_history",  # renamed in migration 036
-                    payload=hourly_snapshot,
-                )
         except Exception:
             logger.exception("publish_db_event_failed")
         # Mark the cycle finished : flush ``db_events`` into completed so the
@@ -1187,10 +1181,9 @@ class VolEngine:
         (low vol+low vov) from stressed (high vol+high vov), with pre_event
         falling in the middle of the vol_level distribution.
 
-        The heavy FIT is either inline (legacy, VOL_INLINE_ANALYTICS=1, memoized
-        + off the event loop) or read from the analytics engine's published
-        model (=0). The cheap per-cycle ``infer_proba`` on the live obs always
-        stays here — train centrally, serve at the edge.
+        The heavy FIT is the analytics engine's; this reads its published
+        model. The cheap per-cycle ``infer_proba`` on the live obs stays
+        here — train centrally, serve at the edge.
         """
         try:
             import numpy as np
@@ -1222,47 +1215,23 @@ class VolEngine:
     async def _get_gmm_model(
         self, feature_history_rows: list[dict[str, float | None]],
     ) -> tuple[Any, Any]:
-        """Return the fitted ``(gmm, fit)`` regime model, or ``(None, None)``.
+        """Return the fitted ``(gmm, fit)`` regime model the analytics engine
+        published to Redis, or ``(None, None)``. No fit on this hot path: train
+        centrally, serve at the edge (#365; the inline fit left in #334)."""
+        from core.vol.gmm_regime import deserialize_gmm
 
-        VOL_INLINE_ANALYTICS=0 : deserialize the analytics engine's published
-        model from Redis (no fit on this hot path). =1 (legacy) : fit inline on
-        the 2-column (vol_level, vol_of_vol) training matrix — only 2 of 3
-        features because term_slope is mostly NULL during bootstrap — memoized on
-        the training-set signature (refit only when a new feature row lands, off
-        the event loop via ``asyncio.to_thread``).
-        """
-        import numpy as np
-
-        from core.vol.gmm_regime import MIN_OBS_GMM, deserialize_gmm, fit_gmm
-
-        if not _INLINE_ANALYTICS:
-            raw = await self.redis.get(
-                keys.LATEST_REGIME_MODEL.format(symbol=self.symbol)
-            )
-            if raw is None:
-                return None, None
-            payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
-            return deserialize_gmm(payload)
-
-        train: list[tuple[float, float]] = [
-            (r["vol_level"], r["vol_of_vol"])
-            for r in feature_history_rows
-            if r.get("vol_level") is not None and r.get("vol_of_vol") is not None
-        ]
-        if len(train) < MIN_OBS_GMM:
+        del feature_history_rows  # the training set is the analytics engine's business
+        raw = await self.redis.get(
+            keys.LATEST_REGIME_MODEL.format(symbol=self.symbol)
+        )
+        if raw is None:
             return None, None
-        fit_sig = (len(train), train[-1])
-        if self._gmm_cache_key == fit_sig and self._gmm_cache is not None:
-            return self._gmm_cache
-        X = np.asarray(train, dtype=float)
-        gmm, fit = await asyncio.to_thread(fit_gmm, X)
-        self._gmm_cache_key = fit_sig
-        self._gmm_cache = (gmm, fit)
-        return gmm, fit
+        payload = json.loads(raw) if isinstance(raw, (str, bytes)) else raw
+        return deserialize_gmm(payload)
 
     async def _read_pc3_history_from_analytics(self) -> tuple[list[float], list[float]]:
         """Read the analytics engine's published PC3 skew/convex rolling arrays
-        from Redis (VOL_INLINE_ANALYTICS=0). Empty on absence → the downstream
+        from Redis. Empty on absence → the downstream
         ``zscore_against`` degrades to 0, same as an empty inline history."""
         try:
             raw = await self.redis.get(
@@ -1293,8 +1262,6 @@ class VolEngine:
             from sqlalchemy import desc, select
 
             from core.vol.pca_engine import (
-                DELTAS,
-                TENORS,
                 actionable_check,
                 check_coherence,
                 classify_label,
@@ -1308,7 +1275,6 @@ class VolEngine:
             from persistence.models import (
                 PcaModel,
                 PcaSignal,
-                SurfaceSnapshotHourly,
             )
 
             x = feature_vector_from_surface(surface)
@@ -1357,42 +1323,7 @@ class VolEngine:
                 # pull + per-row pc3_sub_metrics recompute is memoized on the
                 # latest snapshot timestamp (P3). A cheap LIMIT-1 timestamp probe
                 # decides whether to refresh.
-                if not _INLINE_ANALYTICS:
-                    hist_skew, hist_convex = await self._read_pc3_history_from_analytics()
-                else:
-                    latest_snap_ts = (await session.execute(
-                        select(SurfaceSnapshotHourly.timestamp)
-                        .where(SurfaceSnapshotHourly.symbol == self.symbol)
-                        .order_by(desc(SurfaceSnapshotHourly.timestamp))
-                        .limit(1)
-                    )).scalar_one_or_none()
-                    if (
-                        self._pc3_hist_cache_key == latest_snap_ts
-                        and self._pc3_hist_cache is not None
-                    ):
-                        hist_skew, hist_convex = self._pc3_hist_cache
-                    else:
-                        snap_iv_cols = [
-                            f"iv_{t.lower()}_{d}" for t in TENORS for d in DELTAS
-                        ]
-                        snap_rows = (await session.execute(
-                            select(SurfaceSnapshotHourly)
-                            .where(SurfaceSnapshotHourly.symbol == self.symbol)
-                            .order_by(desc(SurfaceSnapshotHourly.timestamp))
-                            .limit(200)
-                        )).scalars().all()
-                        hist_skew = []
-                        hist_convex = []
-                        for r in snap_rows:
-                            vec = [getattr(r, c) for c in snap_iv_cols]
-                            if any(v is None for v in vec):
-                                continue
-                            xv = np.asarray([float(v) for v in vec])
-                            s, c = pc3_sub_metrics(xv)
-                            hist_skew.append(s)
-                            hist_convex.append(c)
-                        self._pc3_hist_cache_key = latest_snap_ts
-                        self._pc3_hist_cache = (hist_skew, hist_convex)
+                hist_skew, hist_convex = await self._read_pc3_history_from_analytics()
                 cur_skew, cur_convex = pc3_sub_metrics(x)
                 skew_z = zscore_against(cur_skew, hist_skew)
                 convex_z = zscore_against(cur_convex, hist_convex)
@@ -1471,55 +1402,6 @@ class VolEngine:
             return {"payload": payload, "signal_rows": signal_rows}
         except Exception:
             logger.exception("compute_pca_signals_failed")
-            return None
-
-    async def _maybe_collect_hourly_snapshot(
-        self, surface: dict[str, Any], spot: float,
-    ) -> dict[str, Any] | None:
-        """If the last snapshot is older than 1 hour, build a new 30-dim row."""
-        try:
-            from datetime import UTC, datetime, timedelta
-
-            from sqlalchemy import desc, select
-
-            from core.vol.pca_engine import DELTAS, TENORS, feature_vector_from_surface
-            from persistence.db import get_sessionmaker
-            from persistence.models import SurfaceSnapshotHourly
-
-            x = feature_vector_from_surface(surface)
-            if x is None:
-                return None
-            now = datetime.now(UTC)
-            async with get_sessionmaker()() as session:
-                last = (await session.execute(
-                    select(SurfaceSnapshotHourly.timestamp)
-                    .where(SurfaceSnapshotHourly.symbol == self.symbol)
-                    .order_by(desc(SurfaceSnapshotHourly.timestamp))
-                    .limit(1)
-                )).scalar_one_or_none()
-            # Min gap between PCA snapshots. Default ~hourly (decorrelated samples
-            # for a clean fit); override with PCA_SNAPSHOT_INTERVAL_MIN (e.g. 2)
-            # to bootstrap fast locally. The 0.9 factor avoids missing a tick when
-            # the cycle lands just under the interval.
-            gap_min = float(os.environ.get("PCA_SNAPSHOT_INTERVAL_MIN", "55"))
-            if last is not None and (now - last) < timedelta(minutes=gap_min * 0.9):
-                return None  # not yet time
-
-            row: dict[str, Any] = {
-                "timestamp": now.isoformat().replace("+00:00", "Z"),
-                "symbol": self.symbol, "source": "live_engine",
-                "spot_at_snapshot": float(spot),
-                "n_strikes_present": len(x),
-                "has_no_arb_violation": _any_butterfly_violation(surface),
-            }
-            i = 0
-            for t in TENORS:
-                for d in DELTAS:
-                    row[f"iv_{t.lower()}_{d}"] = float(x[i])
-                    i += 1
-            return row
-        except Exception:
-            logger.exception("maybe_collect_hourly_snapshot_failed")
             return None
 
     def _teardown(self) -> None:

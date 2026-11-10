@@ -31,7 +31,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
@@ -41,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys, publisher
 from bus.spot_cache import parse_spot, spot_fallbacks
+from core.config import CapacityConfig, VolTradingConfig
 from core.vol.gmm_regime import MIN_OBS_GMM, fit_gmm, serialize_gmm
 from core.vol.pca_engine import (
     DELTAS,
@@ -83,6 +85,19 @@ def _any_butterfly_violation(surface: dict[str, Any]) -> bool:
     return False
 
 
+@contextmanager
+def _thread_cap(limit: int) -> Iterator[None]:
+    """Cap BLAS / OpenMP / scikit-learn worker threads for the block
+    (``threadpoolctl`` ships with scikit-learn); a no-op where it is absent."""
+    try:
+        from threadpoolctl import threadpool_limits
+    except Exception:  # pragma: no cover - threadpoolctl missing in a slim env
+        yield
+        return
+    with threadpool_limits(limits=max(1, int(limit))):
+        yield
+
+
 class _RedisLike(Protocol):
     async def get(self, name: str) -> Any: ...
     async def set(self, name: str, value: str, ex: int | None = ...) -> Any: ...
@@ -104,12 +119,36 @@ class AnalyticsEngine:
         self.symbol = symbol
         self.interval_s = interval_s
         self.rollup_interval_s = rollup_interval_s
+        # The capacity dial (#371): applied by the config watcher, read at the
+        # start of every cycle. The constructor values are the pre-config
+        # defaults; ``apply_config`` overrides them.
+        self.capacity: CapacityConfig = CapacityConfig()
+        self.config_version: int = -1
         # Injected for tests ; falls back to the process-wide async sessionmaker.
         self._sessionmaker = sessionmaker or get_sessionmaker()
         self._stop = asyncio.Event()
 
     def request_stop(self) -> None:
         self._stop.set()
+
+    def apply_config(self, config: VolTradingConfig, version: int = -1) -> None:
+        """Hot-reload the capacity dial (#371, #329): cadence, training window,
+        PCA snapshot gap, rollup cadence and the thread cap all take effect on
+        the next loop iteration, no restart."""
+        cap = config.capacity
+        changed = cap != self.capacity
+        self.capacity = cap
+        self.config_version = version
+        self.interval_s = int(cap.analytics_interval_min * 60)
+        self.rollup_interval_s = float(cap.rollup_interval_s)
+        logger.info(
+            "analytics_config_reloaded",
+            extra={
+                "version": version, "preset": cap.preset, "interval_s": self.interval_s,
+                "training_window_days": cap.training_window_days, "thread_cap": cap.thread_cap,
+                "rollup_interval_s": self.rollup_interval_s, "changed": changed,
+            },
+        )
 
     async def run(self) -> None:
         """Start the decoupled heartbeat, then run the compute loop until stop."""
@@ -200,18 +239,21 @@ class AnalyticsEngine:
 
     async def run_cycle(self) -> None:
         """Run the 3 analytics steps best-effort — one failure never blocks the
-        others, and the cycle always returns without raising."""
-        for step in (
-            self._collect_snapshot,
-            self._refit_gmm,
-            self._recompute_pc3_history,
-        ):
-            try:
-                await step()
-            except Exception:
-                logger.exception(
-                    "analytics_step_failed", extra={"step": step.__name__}
-                )
+        others, and the cycle always returns without raising. The BLAS /
+        scikit-learn thread pools are capped to ``capacity.thread_cap`` for the
+        whole cycle (#371): the dial decides how wide the burst is."""
+        with _thread_cap(self.capacity.thread_cap):
+            for step in (
+                self._collect_snapshot,
+                self._refit_gmm,
+                self._recompute_pc3_history,
+            ):
+                try:
+                    await step()
+                except Exception:
+                    logger.exception(
+                        "analytics_step_failed", extra={"step": step.__name__}
+                    )
 
     # ------------------------------------------------------------------ step 1
     async def _collect_snapshot(self) -> None:
@@ -247,11 +289,11 @@ class AnalyticsEngine:
                 .order_by(desc(SurfaceSnapshotHourly.timestamp))
                 .limit(1)
             )).scalar_one_or_none()
-        # Min gap between PCA snapshots. Default ~hourly (decorrelated samples
-        # for a clean fit); override with PCA_SNAPSHOT_INTERVAL_MIN (e.g. 2) to
-        # bootstrap fast locally. The 0.9 factor avoids missing a tick when the
-        # cycle lands just under the interval.
-        gap_min = float(os.environ.get("PCA_SNAPSHOT_INTERVAL_MIN", "60"))
+        # Min gap between PCA snapshots: the capacity dial's
+        # ``pca_snapshot_interval_min`` (default hourly = decorrelated samples
+        # for a clean fit; a low value bootstraps the PCA fast). The 0.9 factor
+        # avoids missing a tick when the cycle lands just under the interval.
+        gap_min = float(self.capacity.pca_snapshot_interval_min)  # the dial (#371)
         if last is not None and (now - last) < timedelta(minutes=gap_min * 0.9):
             return  # not yet time
 
@@ -286,7 +328,7 @@ class AnalyticsEngine:
         would make ``predict_proba`` reject the 2-D obs at the edge.
         """
         now = datetime.now(UTC)
-        cutoff = now - timedelta(days=FEATURE_HISTORY_WINDOW_DAYS)
+        cutoff = now - timedelta(days=self.capacity.training_window_days)  # the dial (#371)
         async with self._sessionmaker() as session:
             rows = (await session.execute(
                 select(

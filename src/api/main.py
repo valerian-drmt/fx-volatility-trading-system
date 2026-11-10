@@ -130,11 +130,9 @@ def _build_events_scheduler():
     """Wire the events pipeline (cf. docs/.../events_pipeline_spec.md §5).
 
     FRED only is implemented today (covers ~60% of high-impact events).
-    The 6 other sources are stubbed in ``sources/stubs.py`` and contribute
-    0 events with a NotImplementedError caught by the scheduler — they will
+    The other sources live under ``api/orchestration/events/sources/``.
     be enabled one by one as their parsers are written.
     """
-    import os as _os
 
     from api.orchestration.events.deduplicator import EventDeduplicator
     from api.orchestration.events.repository import EventsRepository
@@ -148,7 +146,7 @@ def _build_events_scheduler():
     from persistence.db import get_sessionmaker
 
     sources: list = []
-    fred_key = _os.environ.get("FRED_API_KEY") or ""
+    fred_key = get_settings().FRED_API_KEY
     if fred_key:
         sources.append(FREDSource(api_key=fred_key))
     sources.extend([

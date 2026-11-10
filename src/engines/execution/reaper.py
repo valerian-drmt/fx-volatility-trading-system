@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -36,6 +35,7 @@ from core.execution.reaper_policy import (
     plan_structure_terminal_state,
 )
 from engines.execution.order_reconciler import _leg_matches_position
+from engines.execution.settings import get_execution_settings
 from persistence.models import (
     OpenPosition,
     StructureOrder,
@@ -46,8 +46,8 @@ from persistence.reservation import recompute_reservation
 
 logger = logging.getLogger(__name__)
 
-REAPER_INTERVAL_S = float(os.getenv("REAPER_INTERVAL_S", "30.0"))
-REAPER_TAU_STALE_S = float(os.getenv("REAPER_TAU_STALE_S", "300.0"))
+REAPER_INTERVAL_S = get_execution_settings().REAPER_INTERVAL_S
+REAPER_TAU_STALE_S = get_execution_settings().REAPER_TAU_STALE_S
 
 # IB order statuses that mean the order is still WORKING. A resting limit that
 # hasn't filled (e.g. a thin OTM wing) is neither held nor dead — the reaper must

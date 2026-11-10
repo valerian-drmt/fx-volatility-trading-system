@@ -77,3 +77,25 @@ def _reset_rate_limiter() -> Iterator[None]:
     yield
     limiter.reset()
     lockout.reset_all()
+
+
+@pytest.fixture(autouse=True)
+def _reset_settings_caches() -> Iterator[None]:
+    """Settings are lru_cached per process (#333); a test that sets an env var
+    must see it, so every cache is cleared before and after each test."""
+    def _clear() -> None:
+        try:
+            from shared.config import reset_settings_cache
+        except ImportError:  # pydantic absent: the nginx-config CI job installs pytest only
+            return
+        reset_settings_cache()
+        for mod, name in (("api.config", "get_settings"), ("engines.execution.settings", "get_execution_settings"),
+                          ("engines.vol.settings", "get_vol_settings")):
+            try:
+                getattr(__import__(mod, fromlist=[name]), name).cache_clear()
+            except Exception:
+                pass
+
+    _clear()
+    yield
+    _clear()

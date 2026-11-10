@@ -1776,7 +1776,7 @@ export interface paths {
          * @description Mark a position for manual close. Step 5 phase 1 = state flip only.
          *
          *     The actual closing-structure submit + fills will be wired when markets-open
-         *     phase lands (cf. MARKETS_OPEN_TODO.md). For now we record an audit alert.
+         *     phase lands (tracked on the GitHub board). For now we record an audit alert.
          */
         post: operations["close_manual_api_v1_positions__position_id__close_manual_post"];
         delete?: never;
@@ -1938,7 +1938,7 @@ export interface paths {
          * Gmm Shadow Diagnostic
          * @description Compare the shadow GMM outputs vs the active heuristic over the last N
          *     snapshots. Used to decide when the GMM is good enough to take over the
-         *     label (cf. STEP1 §13 "switch criteria").
+         *     label (``docs/vol-modeling/regime.md``, switch criteria).
          *
          *     Returns :
          *       - n_with_gmm : number of snapshots where GMM fitted (probabilities not null)
@@ -2007,7 +2007,7 @@ export interface paths {
          *     Goal: detect whether the heuristic threshold (vov > 0.4 → pre_event) is
          *     too close to the measurement noise. If > 5 calm↔pre_event transitions
          *     per day, that is a signal to add hysteresis or a dynamic threshold
-         *     (cf. TODO.md / STEP1 §14).
+         *     (``docs/vol-modeling/regime.md``).
          *
          *     Returns:
          *       - by_day : dict {YYYY-MM-DD: {transition_type: count}}
@@ -2597,6 +2597,61 @@ export interface components {
              * @default 12
              */
             w1_walk_forward_months: number;
+        };
+        /**
+         * CapacityConfig
+         * @description The capacity dial: cadence, window, thread cap and chain-scan width of
+         *     the cold path, hot-reloaded over ``config:changed`` (#371 / #372).
+         *
+         *     The analytics engine reads ``analytics_interval_min``,
+         *     ``training_window_days``, ``thread_cap`` (BLAS / scikit-learn threads via
+         *     ``threadpoolctl``), ``pca_snapshot_interval_min`` and ``rollup_interval_s``
+         *     at the start of each cycle; the vol engine reads ``strikes_per_side`` and
+         *     ``max_concurrent_scans`` on every chain fetch (wing coverage against IB
+         *     Gateway load: ``docs/vol-modeling/volatility-surface.md``).
+         */
+        CapacityConfig: {
+            /**
+             * Analytics Interval Min
+             * @default 60
+             */
+            analytics_interval_min: number;
+            /**
+             * Max Concurrent Scans
+             * @default 1
+             */
+            max_concurrent_scans: number;
+            /**
+             * Pca Snapshot Interval Min
+             * @default 60
+             */
+            pca_snapshot_interval_min: number;
+            /**
+             * Preset
+             * @default balanced
+             * @enum {string}
+             */
+            preset: "eco" | "balanced" | "full" | "custom";
+            /**
+             * Rollup Interval S
+             * @default 300
+             */
+            rollup_interval_s: number;
+            /**
+             * Strikes Per Side
+             * @default 18
+             */
+            strikes_per_side: number;
+            /**
+             * Thread Cap
+             * @default 1
+             */
+            thread_cap: number;
+            /**
+             * Training Window Days
+             * @default 90
+             */
+            training_window_days: number;
         };
         /** ClosePositionBody */
         ClosePositionBody: {
@@ -3499,6 +3554,7 @@ export interface components {
          */
         VolTradingConfig: {
             calibration?: components["schemas"]["CalibrationConfig"];
+            capacity?: components["schemas"]["CapacityConfig"];
             delta_hedge?: components["schemas"]["DeltaHedgeConfig"];
             exit_rules?: components["schemas"]["ExitRulesConfig"];
             regime?: components["schemas"]["RegimeConfig"];

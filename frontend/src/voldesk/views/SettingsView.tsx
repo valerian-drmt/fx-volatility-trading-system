@@ -222,6 +222,64 @@ function DomainSettingsPanel({ domain, cfgSections }: { domain: string; cfgSecti
   );
 }
 
+/** The capacity dial (#371 / #372): three presets plus the per-field table.
+ * A preset click commits `{capacity: {preset}}` (the backend fills the fields);
+ * editing a field commits it with `preset: "custom"` so the values stick. */
+const CAPACITY_PRESETS = ["eco", "balanced", "full"] as const;
+function CapacityPanel({ section }: { section: ConfigSection }): JSX.Element {
+  const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const dirty = Object.keys(edits).length;
+  const current = section.fields.find((f) => f.key === "preset")?.value ?? "balanced";
+  const commit = async (patch: Record<string, unknown>, comment: string): Promise<void> => {
+    if (busy || !canWrite) return;
+    setBusy(true);
+    try {
+      await putConfig(patch, comment);
+      window.location.reload();
+    } catch {
+      setBusy(false);
+    }
+  };
+  const onPreset = (preset: string): void => {
+    void commit({ capacity: { preset } }, `capacity preset ${preset} (desk)`);
+  };
+  const onSave = (): void => {
+    if (dirty === 0) return;
+    const patch = buildConfigPatch(edits) as { capacity?: Record<string, unknown> };
+    const capacity = { ...(patch.capacity ?? {}) };
+    if (!("preset" in capacity)) capacity["preset"] = "custom";
+    void commit({ capacity }, `capacity: edit ${dirty} field${dirty > 1 ? "s" : ""} (desk)`);
+  };
+  return (
+    <Panel title="Capacity dial" right={<span className="dim mono small">preset · {current}</span>} className="config-edit settings-domain" dataPp="capacity">
+      <div className="cfg-presets">
+        {CAPACITY_PRESETS.map((p) => (
+          <button key={p} className={"chip " + (p === current ? "on" : "")} disabled={busy || !canWrite} onClick={() => onPreset(p)}>
+            {p}
+          </button>
+        ))}
+        <span className="dim small">eco: hourly work every 3 h, 12 strikes per side, 1 thread · full: every 30 min, 24 strikes, 2 threads, 2 tenors at once</span>
+      </div>
+      <div className="cfg-sections">
+        <CfgSectionFields sections={[{ ...section, fields: section.fields.filter((f) => f.key !== "preset") }]} canWrite={canWrite} busy={busy} edits={edits} setEdits={setEdits} />
+      </div>
+      {canWrite && (
+        <div className="cfg-commit-bar">
+          <button className="btn-primary" disabled={busy || dirty === 0} onClick={onSave}>
+            {busy ? "Saving…" : dirty > 0 ? `Save ${dirty} change${dirty > 1 ? "s" : ""} as custom` : "Save"}
+          </button>
+          {dirty > 0 && <button className="row-close" disabled={busy} onClick={() => setEdits({})}>reset</button>}
+        </div>
+      )}
+      <div className="dim small" style={{ marginTop: 10 }}>
+        Hot-reloaded: the analytics engine picks the new cadence, window and thread cap on its next loop; the vol engine the new chain width on its next scan. Append-only versions, author and time in the history below.
+      </div>
+    </Panel>
+  );
+}
+
 /** Catch-all for VolConfig sections not mapped to a domain panel (e.g. a
  * newly-added backend section) — rendered only when non-empty so nothing
  * silently disappears from the desk. */
@@ -277,7 +335,8 @@ export function SettingsView(): JSX.Element {
   const sections = data?.sections ?? [];
   const sectionsFor = (domain: string): ConfigSection[] =>
     sections.filter((s) => (DOMAIN_CONFIG_SECTIONS[domain] ?? []).includes(s.name));
-  const mapped = new Set(Object.values(DOMAIN_CONFIG_SECTIONS).flat());
+  const mapped = new Set([...Object.values(DOMAIN_CONFIG_SECTIONS).flat(), "capacity"]);
+  const capacity = sections.find((s) => s.name === "capacity");
   const leftover = sections.filter((s) => !mapped.has(s.name));
   return (
     <div className="settings-view">
@@ -286,6 +345,7 @@ export function SettingsView(): JSX.Element {
         <DomainSettingsPanel domain="signal" cfgSections={sectionsFor("signal")} />
         <DomainSettingsPanel domain="risk" cfgSections={sectionsFor("risk")} />
         <DomainSettingsPanel domain="portfolio" cfgSections={sectionsFor("portfolio")} />
+        {capacity && <CapacityPanel section={capacity} />}
         {leftover.length > 0 && <OtherConfigPanel sections={leftover} />}
       </div>
       <Panel

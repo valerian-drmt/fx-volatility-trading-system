@@ -22,12 +22,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import random
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from api.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -100,10 +101,11 @@ def build_pca_refit_scheduler() -> PcaRefitScheduler:
     from api.routers.signals import perform_refit
     from persistence.db import get_sessionmaker
 
-    interval_h = float(os.environ.get("PCA_REFIT_INTERVAL_HOURS", "168.0"))
-    jitter_m = float(os.environ.get("PCA_REFIT_JITTER_MIN", "5.0"))
-    startup_s = float(os.environ.get("PCA_REFIT_STARTUP_DELAY_S", "60.0"))
-    symbol = os.environ.get("PCA_REFIT_SYMBOL", "EURUSD")
+    settings = get_settings()
+    interval_h = settings.PCA_REFIT_INTERVAL_HOURS
+    jitter_m = settings.PCA_REFIT_JITTER_MIN
+    startup_s = settings.PCA_REFIT_STARTUP_DELAY_S
+    symbol = settings.PCA_REFIT_SYMBOL
 
     return PcaRefitScheduler(
         sessionmaker_factory=get_sessionmaker,

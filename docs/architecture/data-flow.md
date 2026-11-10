@@ -37,7 +37,7 @@ that missed a message can still read current state.
 | `positions` | execution-engine (`positions_changed`: rows upserted / closed by a sync, shape of `/positions/open`); position monitor (MTM snapshot, `position_id`) | on change; per cycle |
 | `spot_orders` | execution-engine (`spot_order_changed`: shape of `/trade/spot-orders`) | per spot order change |
 | `exit_alerts` | position monitor | per cycle |
-| `config:changed` | admin endpoint | on config PUT/revert |
+| `config:changed` | admin endpoint | on config PUT/revert; engines apply by version through `bus.config_watch.ConfigWatcher` (DB latest at start, re-read on resubscribe and every 5 min, older versions ignored; #329) |
 
 Execution-engine messages carry `event` and `source`; a subscriber keys on
 `event`. The serialisers live in `persistence/rows.py` and are the same

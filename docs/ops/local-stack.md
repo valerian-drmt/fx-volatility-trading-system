@@ -95,3 +95,20 @@ docker compose exec -T api alembic -c src/persistence/alembic.ini revision --aut
 
 Observability queries and the /dev Hardware tab are covered in
 [../observability/runbooks.md](../observability/runbooks.md).
+
+## Environment schema (#333)
+
+Every environment variable is a field of a `pydantic-settings` class, one per
+service, read through a cached accessor; `os.getenv` outside these modules
+fails `tests/unit/shared/test_env_schema.py`:
+
+| Service | Class | Adds |
+|---|---|---|
+| every container | `shared.config.Settings` | `REDIS_URL`, `DATABASE_URL`, `IB_*`, `LOG_LEVEL`, `SERVICE_NAME`, `MARKET_SYMBOL`, `ENVIRONMENT`, `GIT_SHA`, `OTEL_*`, `DB_STATEMENT_TIMEOUT_MS`, `FORCE_RUN_MARKET_HOURS`, `EXECUTION_INTERNAL_TOKEN`, `TRADING_MODE`, `ALLOWED_SYMBOLS`, `MARKETABLE_LIMIT_BUFFER` |
+| api | `api.config.Settings` | `ENV`, auth and lockout, `WS_ALLOWED_ORIGINS`, `EXECUTION_URL` (the only name; `EXECUTION_ENGINE_URL` is gone), `EXECUTION_SUBMIT_TIMEOUT_S`, `PROMETHEUS_URL`, `DOCKER_SOCK`, `FRED_API_KEY`, `PCA_REFIT_*`, `POSITION_MONITOR_*`, `EXIT_AUTO_EXECUTE_ENABLED`, `CLOSE_*` |
+| execution-engine | `engines.execution.settings.ExecutionSettings` | the loop cadences, `IB_READ_ONLY`, `EXECUTION_USE_COMBO`, `RECONCILE_AUTOCLOSE`, `REAPER_*`, `LIVE_SUBMIT_COLLAR_PCT` |
+| vol-engine | `engines.vol.settings.VolSettings` | `VOL_SUBSCRIBE_GAP_S` (width and concurrency are in the capacity dial) |
+
+Flags that compose may render empty (`OTEL_SDK_DISABLED`, `FORCE_RUN_MARKET_HOURS`,
+`IB_READ_ONLY`, `EXECUTION_USE_COMBO`, `RECONCILE_AUTOCLOSE`, `EXIT_AUTO_EXECUTE_ENABLED`)
+are strings parsed by a property, so an empty value is the default, never a boot error.

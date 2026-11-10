@@ -15,14 +15,15 @@ internal route, never 200.
 from __future__ import annotations
 
 import hmac
-import os
 
 INTERNAL_TOKEN_HEADER = "X-Internal-Token"
 INTERNAL_TOKEN_ENV = "EXECUTION_INTERNAL_TOKEN"
 
 
 def internal_token() -> str:
-    return os.environ.get(INTERNAL_TOKEN_ENV, "").strip()
+    from shared.config import get_settings
+
+    return get_settings().EXECUTION_INTERNAL_TOKEN.strip()
 
 
 def token_matches(presented: str | None) -> bool:

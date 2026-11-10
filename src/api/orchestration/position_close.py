@@ -19,12 +19,12 @@ the same name.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from api.config import get_settings
 from core.positions.closing import EntryLegSnapshot, build_closing_legs
 from core.products import product_label_from_symbol
 from persistence.models import (
@@ -42,9 +42,7 @@ logger = logging.getLogger(__name__)
 
 def auto_execute_enabled() -> bool:
     """Phase 3 toggle. False → exit alerts stay manual-review only."""
-    return os.environ.get("EXIT_AUTO_EXECUTE_ENABLED", "false").lower() in (
-        "1", "true", "yes",
-    )
+    return get_settings().exit_auto_execute_enabled
 
 
 async def initiate_position_close(
@@ -174,9 +172,7 @@ async def initiate_position_close(
     if execution_mode == "live":
         try:
             import httpx
-            base = os.environ.get(
-                "EXECUTION_ENGINE_URL", "http://execution-engine:8001",
-            )
+            base = get_settings().EXECUTION_URL
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     f"{base.rstrip('/')}/internal/structure/submit",

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -21,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.execution.reconciliation import compute_breaks
+from engines.execution.settings import get_execution_settings
 from persistence.models import (
     LegPosition,
     OpenPosition,
@@ -30,9 +30,7 @@ from persistence.models import (
 
 logger = logging.getLogger(__name__)
 
-RECONCILE_POSITIONS_INTERVAL_S = float(
-    os.getenv("RECONCILE_POSITIONS_INTERVAL_S", "60.0")
-)
+RECONCILE_POSITIONS_INTERVAL_S = get_execution_settings().RECONCILE_POSITIONS_INTERVAL_S
 
 
 def _dec(x: float) -> Decimal:

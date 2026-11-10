@@ -10,7 +10,6 @@ read that fails leaves its input None, which the gate treats as a failure.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -18,6 +17,7 @@ from redis import asyncio as aioredis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.config import get_settings
 from api.orchestration.greek_caps import compute_live_caps
 from bus import keys
 from bus.spot_cache import parse_spot
@@ -33,12 +33,11 @@ DEFAULT_MAX_RISK_HEARTBEAT_AGE_S = 30.0
 
 
 def _allowed_symbols() -> tuple[str, ...]:
-    raw = os.getenv("ALLOWED_SYMBOLS", "EUR,M6E")
-    return tuple(s.strip().upper() for s in raw.split(",") if s.strip())
+    return get_settings().allowed_symbols
 
 
 def _required_account_type() -> str:
-    return "paper" if os.getenv("TRADING_MODE", "paper").lower() == "paper" else "live"
+    return get_settings().trading_mode
 
 
 async def _risk_heartbeat_age_s(redis: aioredis.Redis | None) -> float | None:

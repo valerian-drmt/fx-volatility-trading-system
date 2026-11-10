@@ -33,26 +33,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-import os
 import time
 from datetime import UTC, datetime
 from typing import Any
 
+from engines.vol.settings import get_vol_settings
+
 logger = logging.getLogger(__name__)
-
-
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.getenv(name, "").strip() or default)
-    except ValueError:
-        return default
-
-
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(os.getenv(name, "").strip() or default)
-    except ValueError:
-        return default
 
 
 # Anchor-discovery targets — the listed expiries we try to qualify, spanning the
@@ -69,15 +56,16 @@ DEFAULT_STRIKES_PER_SIDE: int = 18  # ATM ± 18 strikes per tenor
 # IB paper's ~100-line cap, so no wing strike is silently dropped (concurrency
 # 2-3 opens 148-220 lines, OVER the cap, and IB queues/rejects the excess). The
 # whole chain is still fetched every cycle; the SAME work is just spread across
-# the ~90-120s fetch window (well under the 180s budget). Env-overridable so
-# it's tunable on the box (container restart, no code redeploy) — raise
-# VOL_MAX_CONCURRENT only to trade data completeness for a faster/spikier fetch.
-DEFAULT_MAX_CONCURRENT: int = _env_int("VOL_MAX_CONCURRENT", 1)
+# the ~90-120s fetch window (well under the 180s budget). Both knobs live in
+# the capacity dial (``CapacityConfig.max_concurrent_scans`` /
+# ``strikes_per_side``, #372) and reach ``scan_all_tenors_concurrent`` per
+# cycle; these are the fallbacks when a caller passes nothing.
+DEFAULT_MAX_CONCURRENT: int = 1
 DEFAULT_GREEKS_WAIT_S: int = 12
 DEFAULT_CANCEL_PAUSE_S: float = 0.5
 # Gap between successive reqMktData subscriptions within a tenor — turns the
 # ~74-line burst into a rolling stream (0.05s ≈ 3.7s spread/tenor). 0 disables.
-DEFAULT_SUBSCRIBE_GAP_S: float = _env_float("VOL_SUBSCRIBE_GAP_S", 0.05)
+DEFAULT_SUBSCRIBE_GAP_S: float = get_vol_settings().VOL_SUBSCRIBE_GAP_S
 
 
 def _safe(val: object) -> float | None:
@@ -261,10 +249,11 @@ async def scan_one_tenor(
     wait_greeks_s: int = DEFAULT_GREEKS_WAIT_S,
     min_strikes: int = 5,
     subscribe_gap_s: float = DEFAULT_SUBSCRIBE_GAP_S,
+    n_side: int = DEFAULT_STRIKES_PER_SIDE,
 ) -> list[tuple[float, float, float]]:
     """Return (delta, iv, strike) triples for one tenor."""
     t0 = time.monotonic()
-    qualified = await _qualify_tenor_strikes(ib, chain, F)
+    qualified = await _qualify_tenor_strikes(ib, chain, F, n_side=n_side)
     if not qualified:
         return []
 
@@ -341,14 +330,16 @@ async def scan_one_tenor(
 async def scan_all_tenors_concurrent(
     ib: Any, F: float, chains: list[dict[str, Any]],
     max_concurrent: int = DEFAULT_MAX_CONCURRENT,
+    n_side: int = DEFAULT_STRIKES_PER_SIDE,
 ) -> dict[str, list[tuple[float, float, float]]]:
-    """Run scan_one_tenor in parallel, bounded by a semaphore."""
-    sem = asyncio.Semaphore(max_concurrent)
+    """Run scan_one_tenor in parallel, bounded by a semaphore. ``n_side``
+    strikes each side of ATM per tenor (the capacity dial, #372)."""
+    sem = asyncio.Semaphore(max(1, int(max_concurrent)))
     t0 = time.monotonic()
 
     async def _one(chain: dict[str, Any]) -> tuple[str, list[tuple[float, float, float]]]:
         async with sem:
-            triples = await scan_one_tenor(ib, chain, F)
+            triples = await scan_one_tenor(ib, chain, F, n_side=n_side)
             # Prefer the label assigned by discover_chains (guaranteed
             # unique per target DTE) over re-bucketing by age.
             label = chain.get("label") or tenor_label(chain["dte"])

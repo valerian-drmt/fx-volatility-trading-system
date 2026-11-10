@@ -23,6 +23,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from shared.config import Settings as _BaseSettings
+from shared.config import truthy
 
 # The committed dev fallback for AUTH_SECRET. Usable locally, rejected in prod
 # by the boot guard below.
@@ -42,6 +43,29 @@ class Settings(_BaseSettings):
     cors_origins: list[str] = Field(
         default=["http://localhost:3000", "http://localhost:5173"]
     )
+    # ---- api-only knobs (#333): every raw env read of the api folded here ------
+    # The execution engine's base URL: one name for every caller (#333).
+    EXECUTION_URL: str = Field(default="http://execution-engine:8001")
+    # A live submit places each leg synchronously at IB; keep the client budget generous.
+    EXECUTION_SUBMIT_TIMEOUT_S: float = Field(default=45.0)
+    PROMETHEUS_URL: str = Field(default="http://prometheus:9090")
+    DOCKER_SOCK: str = Field(default="/var/run/docker.sock")
+    FRED_API_KEY: str = Field(default="")
+    PCA_REFIT_INTERVAL_HOURS: float = Field(default=168.0)
+    PCA_REFIT_JITTER_MIN: float = Field(default=5.0)
+    PCA_REFIT_STARTUP_DELAY_S: float = Field(default=60.0)
+    PCA_REFIT_SYMBOL: str = Field(default="EURUSD")
+    POSITION_MONITOR_INTERVAL_S: float = Field(default=60.0)
+    POSITION_MONITOR_STARTUP_DELAY_S: float = Field(default=30.0)
+    POSITION_MONITOR_SYMBOL: str = Field(default="EURUSD")
+    EXIT_AUTO_EXECUTE_ENABLED: str = Field(default="false")   # phase-3 toggle, off = manual review
+    CLOSE_INFLIGHT_WINDOW_MIN: float = Field(default=3.0)
+    CLOSE_DISPATCH_TIMEOUT_S: float = Field(default=15.0)
+
+    @property
+    def exit_auto_execute_enabled(self) -> bool:
+        return truthy(self.EXIT_AUTO_EXECUTE_ENABLED)
+
     # Global per-IP default (slowapi middleware). 600/min: the dashboard
     # legitimately polls many endpoints at ~5s cadence; nginx still caps at
     # 30 r/s upstream. /login carries its own strict 5/min decorator.

@@ -18,7 +18,6 @@ GET  /api/v1/positions/delta-hedge-config     hot-reload config visibility
 from __future__ import annotations
 
 import math
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
@@ -30,6 +29,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
+from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
 from bus import keys
@@ -937,16 +937,16 @@ def _compute_breaks(
 # touch. Wide because option spreads are wide ; snapped to the 0.0001 grid or IB
 # rejects with Warning 110. Same buffer as the entry path (MARKETABLE_LIMIT_BUFFER).
 _OPT_TICK = 0.0001
-_MKT_CLOSE_BUFFER = float(os.getenv("MARKETABLE_LIMIT_BUFFER", "0.25"))
+_MKT_CLOSE_BUFFER = get_settings().MARKETABLE_LIMIT_BUFFER
 
 # How long a closing order counts as "in flight" for the stacking guard. Past
 # this, an unfilled close is treated as stuck/cancelled and no longer blocks a
 # fresh close (a cancelled order's DB row isn't always flipped terminal). A real
 # option close fills in ~30 s, so 3 min is a generous ceiling.
-_INFLIGHT_CLOSE_WINDOW = timedelta(minutes=float(os.getenv("CLOSE_INFLIGHT_WINDOW_MIN", "3")))
+_INFLIGHT_CLOSE_WINDOW = timedelta(minutes=get_settings().CLOSE_INFLIGHT_WINDOW_MIN)
 # Budget for the engine to ack a close at IB. The engine no longer runs its
 # position sync inside this request (#319), so an IB ack is all it waits for.
-_CLOSE_DISPATCH_TIMEOUT_S = float(os.getenv("CLOSE_DISPATCH_TIMEOUT_S", "15"))
+_CLOSE_DISPATCH_TIMEOUT_S = get_settings().CLOSE_DISPATCH_TIMEOUT_S
 
 DispatchFailure = Literal["not_sent", "unknown"]
 
@@ -1237,7 +1237,7 @@ async def close_one_open_position(
     }
     if limit_price is not None:
         payload["limit_price"] = limit_price
-    exec_url = os.getenv("EXECUTION_URL", "http://execution-engine:8001")
+    exec_url = get_settings().EXECUTION_URL
     url = f"{exec_url}/internal/positions/close-by-symbol"
     try:
         async with httpx.AsyncClient(timeout=_CLOSE_DISPATCH_TIMEOUT_S) as client:
@@ -1351,7 +1351,7 @@ async def close_manual(position_id: int, db: DbDep) -> dict[str, Any]:
     """Mark a position for manual close. Step 5 phase 1 = state flip only.
 
     The actual closing-structure submit + fills will be wired when markets-open
-    phase lands (cf. MARKETS_OPEN_TODO.md). For now we record an audit alert.
+    phase lands (tracked on the GitHub board). For now we record an audit alert.
     """
     pos = (await db.execute(
         select(BookedPosition).where(BookedPosition.id == position_id).limit(1)

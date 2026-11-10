@@ -15,6 +15,23 @@ services:
     mem_limit: 512m
     cpu_shares: 256
     restart: unless-stopped
+    # Sized for a 512 MB container on the 3.8 GB host (#373, T9): buffers a
+    # quarter of the limit, the planner told what the page cache can hold,
+    # per-sort memory small (many pooled connections), vacuum memory generous
+    # for the nightly batched prune, autovacuum woken often enough to keep the
+    # two history tables (migration 063) flat. docs/architecture/database.md.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - autovacuum_naptime=30s
     environment:
       POSTGRES_DB: fxvol
       POSTGRES_USER: fxvol
@@ -109,8 +126,8 @@ services:
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       # PCA model refit cadence (hours). Default weekly (168h); lower it (e.g.
-      # 0.1 ≈ 6min) to bootstrap fast locally alongside PCA_SNAPSHOT_INTERVAL_MIN
-      # on vol-engine. A refit re-projects the whole snapshot window, so hourly
+      # 0.1 ≈ 6min) to bootstrap fast locally alongside a low
+      # capacity.pca_snapshot_interval_min in Settings (#371). A refit re-projects the whole snapshot window, so hourly
       # refits churn pca_signal_history — keep it slow in steady state.
       PCA_REFIT_INTERVAL_HOURS: ${PCA_REFIT_INTERVAL_HOURS:-168.0}
       # Backup freshness (#343): prod sets /state/postgres-backup.last (the
@@ -212,10 +229,6 @@ services:
       IB_PORT: 4004
       IB_CLIENT_ID: 2
       REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
-      # Min minutes between PCA surface snapshots (default ~hourly = decorrelated
-      # samples). Lower it (e.g. 2) to bootstrap the PCA fast locally — pairs with
-      # PCA_REFIT_INTERVAL_HOURS on the api. Cf. _maybe_collect_hourly_snapshot.
-      PCA_SNAPSHOT_INTERVAL_MIN: ${PCA_SNAPSHOT_INTERVAL_MIN:-55}
       # Step 1 regime gating : vol-engine reads feature_history / events /
       # vrp_table_default at each cycle (cf. STEP1 §7).
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
@@ -223,20 +236,10 @@ services:
       # Signal calibration (ex config/vol_config.json, R9 inline en env).
       THRESHOLD_VOL_PTS: ${THRESHOLD_VOL_PTS:-1.0}
       MODEL_P: ${MODEL_P:-har}
-      # IB Gateway load smoothing — the vol cycle fetches the whole chain at
-      # once. Sequential tenors (=1) keep open reqMktData lines under IB paper's
-      # ~100-line cap (no dropped wing strikes) AND flatten IB's per-cycle CPU
-      # spike; the gap drips the ~74 subscriptions/tenor into a rolling stream.
-      # Raise concurrency only to trade data completeness for a faster fetch.
-      # Cf. engines.vol.chain_fetcher.
-      VOL_MAX_CONCURRENT: ${VOL_MAX_CONCURRENT:-1}
+      # IB Gateway load smoothing: tenor concurrency and strikes per side are
+      # in the capacity dial (Settings, #372); the subscribe gap drips the
+      # per-tenor subscriptions into a rolling stream. Cf. engines.vol.chain_fetcher.
       VOL_SUBSCRIBE_GAP_S: ${VOL_SUBSCRIBE_GAP_S:-0.05}
-      # Analytics cutover done (#365, hot/cold T1): "0" (default) serves the
-      # analytics engine's published GMM / snapshot / PC3 results, so the hourly
-      # batch runs once, on the cpu-capped analytics container. Set "1" only
-      # for a local run without the analytics engine (legacy inline path,
-      # removed by #334).
-      VOL_INLINE_ANALYTICS: ${VOL_INLINE_ANALYTICS:-0}
     depends_on:
       redis:
         condition: service_healthy
@@ -366,13 +369,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://fxvol:${DB_PASSWORD:?DB_PASSWORD is required}@postgres:5432/fxvol
       REDIS_URL: redis://:${REDIS_PASSWORD:-fxvol-dev}@redis:6379/0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      # Hourly batch cadence : train GMM regime model + collect the PCA surface
-      # snapshot + recompute the PC3 skew/convex history. Published to Redis for
-      # the vol-engine to consume (model-serving: train here, infer at the edge).
-      ANALYTICS_INTERVAL_MIN: ${ANALYTICS_INTERVAL_MIN:-60}
-      PCA_SNAPSHOT_INTERVAL_MIN: ${PCA_SNAPSHOT_INTERVAL_MIN:-55}
-      # Portfolio rollups (portfolio_daily + pnl_attribution_latest) cadence (#368).
-      ROLLUP_INTERVAL_S: ${ROLLUP_INTERVAL_S:-300}
+      # Cadence, training window, PCA snapshot gap, rollup cadence and thread
+      # cap come from the capacity dial in Settings (#371), hot-reloaded over
+      # config:changed; nothing to set here.
     depends_on:
       postgres:
         condition: service_healthy

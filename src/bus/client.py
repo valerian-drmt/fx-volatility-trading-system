@@ -21,8 +21,6 @@ Pool size : ``max_connections=50``, well above the steady-state load
 
 from __future__ import annotations
 
-import os
-
 import redis
 import redis.asyncio as aioredis
 
@@ -34,7 +32,9 @@ _sync_client: redis.Redis | None = None
 
 
 def _redis_url() -> str:
-    url = os.environ.get(_ENV_VAR)
+    from shared.config import get_settings
+
+    url = get_settings().REDIS_URL
     if not url:
         raise RuntimeError(
             f"{_ENV_VAR} is not set. See .env.example for the expected format."

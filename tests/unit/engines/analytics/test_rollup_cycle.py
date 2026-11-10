@@ -66,10 +66,19 @@ async def test_rollup_cycle_survives_a_failing_step(sqlite_sessionmaker: Any, mo
     assert out.get("attribution_error") is True and "portfolio_daily" in out
 
 
-def test_engine_reads_the_rollup_interval_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_engine_takes_the_rollup_interval_from_the_capacity_dial() -> None:
+    """Since #371 the cadence is a versioned-config knob, not an env var: the
+    entry point wires the config watcher and the engine follows apply_config."""
+    from pathlib import Path
+
+    from core.config import VolTradingConfig
     from engines.analytics.engine import DEFAULT_ROLLUP_INTERVAL_S
 
     assert DEFAULT_ROLLUP_INTERVAL_S == 300.0
-    from pathlib import Path
     src = Path("src/engines/analytics/main.py").read_text(encoding="utf-8")
-    assert "ROLLUP_INTERVAL_S" in src
+    assert "ConfigWatcher" in src and "ROLLUP_INTERVAL_S" not in src and "os.environ" not in src
+    from engines.analytics.engine import AnalyticsEngine
+
+    eng = AnalyticsEngine(_Redis(), sessionmaker=object())  # type: ignore[arg-type]
+    eng.apply_config(VolTradingConfig.model_validate({"capacity": {"preset": "custom", "rollup_interval_s": 45}}))
+    assert eng.rollup_interval_s == 45.0

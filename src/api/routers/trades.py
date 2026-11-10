@@ -12,7 +12,6 @@ POST /api/v1/trades/{trade_id}/close
 from __future__ import annotations
 
 import logging
-import os
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -23,13 +22,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
+from api.config import get_settings
 from api.dependencies import get_db_session
 from api.routers.positions import close_one_open_position
 from core.execution.reaper_policy import plan_structure_terminal_state
 from persistence.models import OpenPosition, StructureOrder, TradeStructure
 from shared.internal_auth import internal_headers
 
-_EXECUTION_URL = os.getenv("EXECUTION_URL", "http://execution-engine:8001")
+_EXECUTION_URL = get_settings().EXECUTION_URL
 # Non-terminal order states an operator can cancel from the blotter.
 _CANCELLABLE_STATES = ("pending", "submitted", "acknowledged", "partially_filled")
 
