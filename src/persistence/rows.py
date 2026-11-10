@@ -101,7 +101,7 @@ def spot_order_row(o: SpotOrder) -> dict[str, Any]:
         "filled_at": o.filled_at,
         "rejection_text": o.rejection_text,
         # IB orderId : the handle the auth-gated DELETE /orders/{id} cancels.
-        "ib_order_id": int(o.ib_order_id) if (o.ib_order_id or "").isdigit() else None,
+        "ib_order_id": int(o.ib_order_id) if o.ib_order_id is not None and o.ib_order_id.isdigit() else None,
         "ib_perm_id": o.ib_perm_id,
         # Raw IB status (PreSubmitted / Submitted / ...) + whyHeld: why a row waits (#376).
         "ib_status": o.ib_status,

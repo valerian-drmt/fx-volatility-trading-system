@@ -8,14 +8,13 @@ that automatic (see ``shared.trace``).
 """
 from __future__ import annotations
 
-import logging
 import time
 
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-from shared.redact import install_stdlib_redaction, redact_event_dict
+from shared.logging import configure_logging as _shared_configure_logging
 from shared.trace import (
     REQUEST_START_HEADER,
     TRACE_HEADER,
@@ -28,28 +27,11 @@ from shared.trace import (
 
 
 def configure_logging(level: str = "INFO") -> None:
-    """Wire structlog to stdlib logging with JSON renderer (idempotent).
-
-    ``redact_event_dict`` scrubs URL passwords and ``key=value`` credentials
-    from every structlog event before it is rendered, and the stdlib handlers
-    get the same scrubber as a filter, so no router can log a secret by
-    interpolating a URL or an exception text (#297).
-    """
-    logging.basicConfig(level=level.upper(), format="%(message)s")
-    install_stdlib_redaction()
-    structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,  # surfaces trace_id on every line
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            redact_event_dict,
-            structlog.processors.JSONRenderer(),
-        ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, level.upper(), logging.INFO)
-        ),
-        cache_logger_on_first_use=True,
-    )
+    """The api uses the one shared pipeline (#336): ``shared.logging``
+    bridges stdlib records through structlog's ``ProcessorFormatter`` so
+    ``extra=`` fields and the request's ``trace_id`` reach the JSON line,
+    and the secret scrubber runs on every record (#297)."""
+    _shared_configure_logging(service_name="api", level=level)
 
 
 class AccessLogMiddleware(BaseHTTPMiddleware):

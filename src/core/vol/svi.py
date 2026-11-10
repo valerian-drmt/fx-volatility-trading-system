@@ -28,11 +28,20 @@ This implementation keeps scope minimal :
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any
 
 import numpy as np
 
 _EPS = 1e-10
+# Five parameters: fewer observations than that is interpolation dressed as a fit (#311).
+MIN_POINTS: int = 5
+# Default g(k) grid when no quoted range is given: wide enough to cover the
+# 10-delta wings of every FX tenor we trade, not just the 20 % around ATM.
+DEFAULT_K_RANGE: tuple[float, float] = (-0.5, 0.5)
+# Extra log-moneyness past the quoted range on each side (the fit is also
+# used slightly beyond the last quote by the wing fallback).
+WING_PAD: float = 0.10
 
 
 @dataclass(frozen=True)
@@ -65,8 +74,9 @@ def fit_svi(
 ) -> SviParams | None:
     """Least-squares fit of SVI params to (strike, iv) observations.
 
-    Returns ``None`` when the fit is degenerate (fewer than 3 points, or
-    the optimiser fails to converge). Caller falls back to the raw
+    Returns ``None`` when the fit is degenerate: fewer than ``MIN_POINTS``
+    valid points (five parameters need at least five observations, #311) or
+    an optimiser that does not converge. Caller falls back to the raw
     observed smile in that case.
     """
     from scipy.optimize import least_squares
@@ -75,7 +85,7 @@ def fit_svi(
     iv = np.asarray(ivs, dtype=float)
     mask = np.isfinite(K) & np.isfinite(iv) & (K > 0) & (iv > 0)
     K, iv = K[mask], iv[mask]
-    if len(K) < 3:
+    if len(K) < MIN_POINTS:
         return None
 
     T = max(float(tenor_years), _EPS)
@@ -104,11 +114,17 @@ def fit_svi(
 
 def butterfly_g_min(
     params: SviParams,
-    k_min: float = -0.20,
-    k_max: float = 0.20,
+    k_min: float | None = None,
+    k_max: float | None = None,
     n_grid: int = 400,
+    k_obs: np.ndarray | list[float] | None = None,
 ) -> float:
     """Butterfly-arbitrage density check : min of g(k) on the grid.
+
+    The grid is the quoted log-moneyness range (``k_obs``) padded by
+    ``WING_PAD`` on each side, or ``DEFAULT_K_RANGE`` when no quotes are
+    given, or an explicit ``k_min`` / ``k_max`` (#311): the old fixed
+    ``[-0.2, 0.2]`` never looked at the wings where SVI goes negative first.
 
     Gatheral's butterfly-free condition requires the "density function" :
 
@@ -122,7 +138,17 @@ def butterfly_g_min(
     returns the **min of g over the grid** ; callers log a WARNING
     when this is < 0 and optionally drop the tenor from trade preview.
     """
-    k = np.linspace(k_min, k_max, n_grid)
+    if k_obs is not None and len(k_obs) > 0:
+        ko = np.asarray(k_obs, dtype=float)
+        ko = ko[np.isfinite(ko)]
+        if ko.size:
+            k_min = float(ko.min()) - WING_PAD if k_min is None else k_min
+            k_max = float(ko.max()) + WING_PAD if k_max is None else k_max
+    if k_min is None:
+        k_min = DEFAULT_K_RANGE[0]
+    if k_max is None:
+        k_max = DEFAULT_K_RANGE[1]
+    k = np.linspace(min(k_min, k_max), max(k_min, k_max), n_grid)
     diff = k - params.m
     sq = np.sqrt(diff * diff + params.sigma * params.sigma)
     w = params.a + params.b * (params.rho * diff + sq)
@@ -158,3 +184,40 @@ def svi_curve(
         {"strike": float(s), "iv_pct": float(v) * 100.0}
         for s, v in zip(strikes, iv, strict=True)
     ]
+
+
+def calendar_gap_min(
+    params_short: SviParams,
+    params_long: SviParams,
+    k_min: float = DEFAULT_K_RANGE[0],
+    k_max: float = DEFAULT_K_RANGE[1],
+    n_grid: int = 200,
+) -> float:
+    """Cross-tenor calendar check (#311): min over ``k`` of
+    ``w_long(k) - w_short(k)``. Total variance must not decrease with
+    maturity; a negative minimum means the longer slice sits below the
+    shorter one somewhere, i.e. a calendar-spread arbitrage between the two
+    fitted tenors. Returns the signed minimum so a caller can log how deep."""
+    k = np.linspace(k_min, k_max, n_grid)
+    gap = _total_variance(k, params_long) - _total_variance(k, params_short)
+    return float(np.min(gap))
+
+
+def calendar_violations(
+    slices: list[tuple[str, float, SviParams]],
+    k_min: float = DEFAULT_K_RANGE[0],
+    k_max: float = DEFAULT_K_RANGE[1],
+) -> list[dict[str, Any]]:
+    """Check every consecutive pair of tenor slices sorted by maturity.
+
+    ``slices`` holds ``(label, tenor_years, params)``. Returns one record per
+    pair ``{"short", "long", "gap_min", "ok"}``; ``ok`` False where the
+    longer slice dips under the shorter one."""
+    ordered = sorted(slices, key=lambda t: t[1])
+    out: list[dict[str, Any]] = []
+    for (l1, t1, p1), (l2, t2, p2) in pairwise(ordered):
+        if t2 <= t1:
+            continue
+        gap = calendar_gap_min(p1, p2, k_min, k_max)
+        out.append({"short": l1, "long": l2, "gap_min": round(gap, 8), "ok": gap >= -1e-9})
+    return out

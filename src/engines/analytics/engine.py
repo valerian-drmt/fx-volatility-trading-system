@@ -54,6 +54,7 @@ from persistence.db import get_sessionmaker
 from persistence.models import FeatureHistory, SurfaceSnapshotHourly
 from persistence.rollups import refresh_attribution, refresh_portfolio_daily
 from shared.db_events import publish_db_event
+from shared.tasks import spawn_supervised
 
 logger = logging.getLogger(__name__)
 
@@ -158,10 +159,9 @@ class AnalyticsEngine:
             "analytics_engine_started",
             extra={"symbol": self.symbol, "interval_s": self.interval_s},
         )
-        heartbeat_task = asyncio.create_task(
-            self._heartbeat_loop(), name="analytics_heartbeat"
-        )
-        rollup_task = asyncio.create_task(self._rollup_loop(), name="analytics_rollups")
+        # Supervised (#337): a side loop that dies is logged, counted and restarted.
+        heartbeat_task = spawn_supervised(self._heartbeat_loop, name="analytics_heartbeat", engine="analytics_engine")
+        rollup_task = spawn_supervised(self._rollup_loop, name="analytics_rollups", engine="analytics_engine")
         try:
             while not self._stop.is_set():
                 # P0 obs : one cycle_id per compute run + metrics emitted.

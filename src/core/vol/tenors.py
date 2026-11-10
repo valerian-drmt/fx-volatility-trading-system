@@ -63,14 +63,31 @@ class TenorAnchor:
     iv_by_pillar: dict[str, float]
 
 
+def term_inverted(iv_lo: float, dte_lo: int, iv_hi: float, dte_hi: int) -> bool:
+    """True when total variance DEcreases with maturity between the two anchors
+    (``σ²_hi·t_hi < σ²_lo·t_lo``): a calendar-arbitrage shape the term
+    interpolation must not paper over (#311, audit 02#6)."""
+    return iv_hi * iv_hi * dte_hi < iv_lo * iv_lo * dte_lo
+
+
 def _interp_iv(iv_lo: float, dte_lo: int, iv_hi: float, dte_hi: int, target: int) -> float:
     """Interpolate IV at ``target`` DTE via total variance (σ²·t) linear in calendar
-    time — the arbitrage-reasonable convention for the ATM/term direction."""
+    time — the arbitrage-reasonable convention for the ATM/term direction.
+
+    On an inverted term (see ``term_inverted``) the variance line can cross
+    zero inside the bracket; the old code clamped that to 0 and returned a
+    0 % IV without a word. Now the IV itself is interpolated linearly (always
+    between the two anchors) and the caller marks the pillar inverted."""
+    if target <= 0:
+        return iv_lo
+    if term_inverted(iv_lo, dte_lo, iv_hi, dte_hi):
+        frac = (target - dte_lo) / (dte_hi - dte_lo)
+        return iv_lo + (iv_hi - iv_lo) * frac
     w_lo = iv_lo * iv_lo * dte_lo
     w_hi = iv_hi * iv_hi * dte_hi
     frac = (target - dte_lo) / (dte_hi - dte_lo)
     w = w_lo + (w_hi - w_lo) * frac
-    return math.sqrt(max(w, 0.0) / target) if target > 0 else iv_lo
+    return math.sqrt(w / target)
 
 
 def interpolate_pillar(
@@ -102,11 +119,18 @@ def interpolate_pillar(
     if lo and hi:
         a_lo, a_hi = lo[-1], hi[0]
         out: dict[str, float] = {}
+        inverted = False
         for d in delta_pillars:
             iv_lo, iv_hi = a_lo.iv_by_pillar.get(d), a_hi.iv_by_pillar.get(d)
             if iv_lo is not None and iv_hi is not None:
                 out[d] = _interp_iv(iv_lo, a_lo.dte, iv_hi, a_hi.dte, target_dte)
-        return (out, "interp") if out else (None, "missing")
+                inverted = inverted or term_inverted(iv_lo, a_lo.dte, iv_hi, a_hi.dte)
+        if not out:
+            return None, "missing"
+        # An inverted bracket is reported as its own source (#311): the pillar
+        # still has a value (linear in IV, never a clamped 0 %), and the
+        # surface meta lists it so the desk and the preview can say so.
+        return out, ("interp_inverted" if inverted else "interp")
 
     # 3. just past the furthest anchor — hold it flat within the margin, else missing.
     if lo and not hi:
@@ -162,7 +186,7 @@ def surface_listed_tenors(surface: dict) -> list[str]:
             continue
         cells = [c for c in row.values() if isinstance(c, dict)]
         has_iv = any(isinstance(c.get("iv"), (int, float)) for c in cells)
-        is_interp = any(c.get("source") == "interp" for c in cells)
+        is_interp = any(str(c.get("source", "")).startswith("interp") for c in cells)
         if has_iv and not is_interp:
             out.append(t)
     return out
@@ -291,7 +315,7 @@ def to_display_surface(
                     # Idempotent: a cell already flagged interp (e.g. a 2nd pass
                     # over an already-display surface) stays interp — never
                     # downgrade an interpolated pillar to "listed".
-                    if isinstance(c, dict) and c.get("source") != "interp":
+                    if isinstance(c, dict) and not str(c.get("source", "")).startswith("interp"):
                         c["source"] = "listed"
                 out[pillar] = cell
                 continue

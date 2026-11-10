@@ -89,7 +89,7 @@ size / liquidity (the preview has no per-leg depth yet).
 Between Arm and Submit, `core/execution/revalidation.py` re-runs the gates
 that can change while the operator sits on a preview: not actioned, not
 expired, signal still actionable, surface fresh, regime not `pre_event`.
-The surface gate fails closed since #339 (audit EX-08): a preview priced on
+The signal gate uses one bar at Arm and at Submit since #314: `|z| >= z_threshold_min` (`SIGNAL_ACTIONABLE_FACTOR = 1.0` in `core/execution/revalidation.py`; the pre-submit check used 0.7 x, so a preview could arm and then be refused on the same z). The surface gate fails closed since #339 (audit EX-08): a preview priced on
 a surface older than `max_iv_data_age_seconds` is refused with
 `surface_stale`, and a preview with no recorded age with
 `surface_age_unknown`. Like the pre-trade gate's `surface_stale`, it runs in

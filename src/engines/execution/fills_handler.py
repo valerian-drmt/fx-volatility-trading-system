@@ -48,6 +48,7 @@ from persistence.models import (
 )
 from persistence.projection import rebuild_leg
 from persistence.reservation import recompute_reservation
+from shared.tasks import log_task_result
 from shared.trace import bind_trace_id, clear_trace_id
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ def _spawn(coro: Any) -> asyncio.Task[Any]:
     task = asyncio.create_task(coro)
     _BG.add(task)
     task.add_done_callback(_BG.discard)
+    task.add_done_callback(lambda t: log_task_result(t, engine="execution_engine"))  # #337
     return task
 
 

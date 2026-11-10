@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import MutableMapping
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -78,7 +79,7 @@ def _redact_value(value: Any) -> Any:
     return value
 
 
-def redact_event_dict(_logger: Any, _method: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+def redact_event_dict(_logger: Any, _method: str, event_dict: MutableMapping[str, Any]) -> MutableMapping[str, Any]:
     """structlog processor: scrub every string in the event dict (nested too)
     and blank any key that names a secret. Put it right before the renderer."""
     return _redact_value(event_dict)
@@ -89,6 +90,10 @@ class RedactingFilter(logging.Filter):
     interpolation of a URL or an exception text is covered as well."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        if not isinstance(record.msg, str):
+            # A structlog-born record carries its event dict in ``msg``; the
+            # ``ProcessorFormatter`` chain scrubs it (``redact_event_dict``).
+            return True
         try:
             msg = record.getMessage()
         except Exception:  # malformed %-args: let the record through unchanged

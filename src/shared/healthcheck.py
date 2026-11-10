@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import UTC, datetime
+from typing import cast
 
 
 def parse_heartbeat(raw: str | bytes | None) -> datetime | None:
@@ -109,7 +110,7 @@ def _main(argv: list[str]) -> int:
             "market_open": is_fx_market_open(now),
             "tick_present": bool(client.exists(tick_key)),
             "tick_ttl_s": keys.TTL_SPOT,
-            "tick_key_ttl_s": int(client.ttl(tick_key)),
+            "tick_key_ttl_s": int(cast("int", client.ttl(tick_key))),
             "tick_max_age_s": float(tick_max),
         }
 

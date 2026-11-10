@@ -28,6 +28,7 @@ from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.book_state_refresh import refresh_book_state
 from api.orchestration.pretrade_gate import run_pretrade_gate
 from bus import keys
+from core.contracts import build_ib_local_symbol
 from core.execution.revalidation import revalidate_preview
 from core.execution.slippage import compute_limit_price
 from core.products import product_label_from_symbol
@@ -61,7 +62,6 @@ from persistence.models import (
     TradeStructure,
 )
 from persistence.rows import spot_order_row
-from shared.contracts import build_ib_local_symbol
 from shared.trace import current_trace_id
 
 logger = logging.getLogger(__name__)
@@ -395,7 +395,7 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
     #    legs (products/delta/tenor/side); template path = a named reference.
     if free_legs:
         try:
-            structure = build_from_legs([leg.model_dump() for leg in req.legs], surface)
+            structure = build_from_legs([leg.model_dump() for leg in req.legs], surface, as_of=datetime.now(UTC))
         except ValueError as exc:
             raise HTTPException(400, f"invalid legs: {exc}") from exc
     else:
@@ -411,6 +411,7 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
                 delta_pillar_override=req.delta_pillar,
                 strike_override=req.strike_override,
                 future_contract_size=req.future_contract_size,
+                as_of=datetime.now(UTC),
             )
         except ValueError as exc:
             raise HTTPException(400, f"unknown structure: {exc}") from exc
@@ -590,7 +591,7 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
             "vega_sign": structure.vega_sign,
             "future_contract_size": structure.future_contract_size,
             # Trader-facing ticker (6E / M6E) — distinct from the IB API
-            # Contract.symbol which is "EUR" for 6E. Cf. shared/contracts.py.
+            # Contract.symbol which is "EUR" for 6E. Cf. core/contracts.py.
             "ib_symbol": (
                 "6E" if structure.future_contract_size == "full"
                 else "M6E" if structure.future_contract_size == "micro"

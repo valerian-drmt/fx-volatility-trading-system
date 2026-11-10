@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys
 from bus.publisher import publish_account_snapshot, publish_positions_changed
+from core.contracts import build_ib_local_symbol, multiplier_for, parse_local_symbol
 from core.products import product_label_from_symbol
 from engines.execution.latency import observe_positions_publish
 from engines.execution.order_executor import OrderExecutor
@@ -39,7 +40,6 @@ from persistence.models import (
     TradeStructure,
 )
 from persistence.rows import account_snapshot_row, open_position_row
-from shared.contracts import build_ib_local_symbol, multiplier_for, parse_local_symbol
 
 # Auto-close booked positions the broker no longer holds (book ↔ IB reconciliation).
 # ON by default ; a stale booking that IB shows flat (for >1h) is closed with an

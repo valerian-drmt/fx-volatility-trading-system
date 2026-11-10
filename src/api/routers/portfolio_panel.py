@@ -32,6 +32,7 @@ from api.orchestration.greek_caps import compute_live_caps
 from bus import keys
 from bus.account_cache import read_account_snapshot
 from bus.spot_cache import spot_fallbacks
+from core.contracts import parse_local_symbol
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
 from core.risk import greek_limits as gl
 from core.risk.attribution import (
@@ -79,7 +80,6 @@ from persistence.rollups import (
     underlying_forward,
 )
 from persistence.rows import account_snapshot_row
-from shared.contracts import parse_local_symbol
 
 logger = logging.getLogger(__name__)
 

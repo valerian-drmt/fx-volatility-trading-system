@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys, publisher
 from bus.spot_cache import parse_spot
+from core.contracts import INSTRUMENT_FUTURE, multiplier_for, parse_local_symbol
 from core.pricing.bs import (
     bs_implied_vol,
     bs_price,
@@ -40,7 +41,6 @@ from core.risk.history_policy import GreeksPoint, snapshot_due
 from core.vol.iv_lookup import iv_at_strike
 from persistence.models import OpenPosition, OpenPositionHistory
 from persistence.retention import next_retention_run
-from shared.contracts import INSTRUMENT_FUTURE, multiplier_for, parse_local_symbol
 
 
 def _days_to_tenor_bucket(days: int) -> str:
@@ -570,7 +570,7 @@ class RiskEngine:
             right = pos.get("option_type") or pos.get("right")
             instr = pos.get("instrument_type")
             qty = float(pos.get("quantity", 0))
-            # NB: positions carry the canonical "FUTURE" (shared.contracts),
+            # NB: positions carry the canonical "FUTURE" (core.contracts),
             # not the IB secType "FUT" — comparing against "FUT" silently
             # zeroed every futures delta.
             mult = float(pos.get("multiplier") or multiplier_for(pos.get("symbol")))

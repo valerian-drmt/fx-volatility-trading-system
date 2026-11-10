@@ -35,10 +35,31 @@ LABELS_3 = ("calm", "stressed", "pre_event")
 
 
 @dataclass(frozen=True)
+class FeatureScale:
+    """Per-feature mean / std the model was fitted on (#314, audit 02#12): the
+    live observation is standardised the same way before ``predict_proba``.
+    A constant feature keeps std 1 so it contributes nothing and divides by
+    nothing."""
+    mean: tuple[float, ...]
+    std: tuple[float, ...]
+
+    def apply(self, x: np.ndarray) -> np.ndarray:
+        return (np.asarray(x, dtype=float) - np.asarray(self.mean)) / np.asarray(self.std)
+
+
+def fit_scale(X: np.ndarray) -> FeatureScale:
+    mean = X.mean(axis=0)
+    std = X.std(axis=0, ddof=0)
+    std = np.where(std > 1e-12, std, 1.0)
+    return FeatureScale(mean=tuple(float(v) for v in mean), std=tuple(float(v) for v in std))
+
+
+@dataclass(frozen=True)
 class GmmFitResult:
     n_obs: int
     component_to_label: dict[int, str]   # GMM component idx → label
     converged: bool
+    scale: FeatureScale | None = None    # standardisation of the training features (#314)
 
 
 @dataclass(frozen=True)
@@ -58,31 +79,33 @@ def fit_gmm(X: np.ndarray) -> tuple[object | None, GmmFitResult | None]:
     """
     if X.ndim != 2 or X.shape[1] < 1:
         return None, None
+    X = np.asarray(X, dtype=float)
+    X = X[np.all(np.isfinite(X), axis=1)]
     if X.shape[0] < MIN_OBS_GMM:
         return None, None
-
     # Lazy import — sklearn is heavy (~30MB) and only needed when GMM fires.
     from sklearn.mixture import GaussianMixture
 
+    # Standardise first (#314, audit 02#12): vol_level in percent points,
+    # vol-of-vol and term slope on much smaller scales, and the old
+    # reg_covar=0.5 on raw units swamped the two small features entirely. On
+    # z-scores a small regulariser is enough against the calm-only collapse.
+    scale = fit_scale(X)
+    Z = scale.apply(X)
     gmm = GaussianMixture(
         n_components=3,
         covariance_type="full",
         random_state=GMM_RANDOM_STATE,
         max_iter=200,
-        # 0.5 = numerical-stability regularizer for the small-N regime
-        # we run in (N=200-500). Has no semantic meaning ; without it the
-        # 3 covariances collapse to near-singular when training data is
-        # tightly clustered (calm-only periods). The model is still
-        # SHADOW-ONLY at this stage (cf. STEP1 §13) — labels stay driven
-        # by threshold_heuristic until the data spans real regimes.
-        reg_covar=0.5,
+        reg_covar=1e-3,
     )
-    gmm.fit(X)
+    gmm.fit(Z)
     component_to_label = _map_components_to_labels(gmm.means_, vol_level_col=0)
     return gmm, GmmFitResult(
         n_obs=int(X.shape[0]),
         component_to_label=component_to_label,
         converged=bool(gmm.converged_),
+        scale=scale,
     )
 
 
@@ -94,7 +117,8 @@ def infer_proba(
     Returns a result dict with the predicted label + the 3 probas mapped to
     the (calm, stressed, pre_event) order.
     """
-    proba = gmm.predict_proba(x.reshape(1, -1))[0]  # shape (3,)
+    x_in = fit.scale.apply(x) if fit.scale is not None else np.asarray(x, dtype=float)
+    proba = gmm.predict_proba(x_in.reshape(1, -1))[0]  # shape (3,)
     by_label: dict[str, float] = {}
     for comp_idx, label in fit.component_to_label.items():
         by_label[label] = float(proba[comp_idx])
@@ -125,6 +149,7 @@ def serialize_gmm(gmm: object, fit: GmmFitResult) -> dict[str, Any]:
         "n_obs": int(fit.n_obs),
         "converged": bool(fit.converged),
         "component_to_label": {str(k): v for k, v in fit.component_to_label.items()},
+        "scale": {"mean": list(fit.scale.mean), "std": list(fit.scale.std)} if fit.scale is not None else None,
     }
 
 
@@ -146,10 +171,16 @@ def deserialize_gmm(payload: dict[str, Any]) -> tuple[object, GmmFitResult]:
     gmm.means_ = np.asarray(payload["means"], dtype=float)
     gmm.covariances_ = np.asarray(payload["covariances"], dtype=float)
     gmm.precisions_cholesky_ = np.asarray(payload["precisions_cholesky"], dtype=float)
+    raw_scale = payload.get("scale")
+    scale = (
+        FeatureScale(mean=tuple(float(v) for v in raw_scale["mean"]), std=tuple(float(v) for v in raw_scale["std"]))
+        if raw_scale else None   # a model published before #314 carries no scale: raw units
+    )
     fit = GmmFitResult(
         n_obs=int(payload["n_obs"]),
         component_to_label={int(k): v for k, v in payload["component_to_label"].items()},
         converged=bool(payload["converged"]),
+        scale=scale,
     )
     return gmm, fit
 

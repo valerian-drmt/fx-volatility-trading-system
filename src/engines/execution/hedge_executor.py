@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from engines.execution.placement import AlreadyClaimed, hedge_order_ref, place_with_claim
 from persistence.models import HedgeOrder
+from shared.tasks import log_task_result
 
 logger = logging.getLogger(__name__)
 
@@ -121,9 +122,10 @@ async def submit_hedge_order(
         _BG_TASKS: set[asyncio.Task] = set()
 
         def _on_hedge_status(t: Any) -> None:
-            task = asyncio.create_task(_finalise_hedge(sm, hedge_order_id, t))
+            task = asyncio.create_task(_finalise_hedge(sm, hedge_order_id, t), name="hedge_finalise")
             _BG_TASKS.add(task)
             task.add_done_callback(_BG_TASKS.discard)
+            task.add_done_callback(lambda done: log_task_result(done, engine="execution_engine"))  # #337
 
         trade.statusEvent += _on_hedge_status
 

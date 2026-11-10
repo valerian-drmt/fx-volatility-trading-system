@@ -25,14 +25,11 @@ Q-measure conversion the pricing layer should use.
 """
 from __future__ import annotations
 
-import logging
 import math
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-
-logger = logging.getLogger(__name__)
 
 WEEKLY_LAG = 5
 MONTHLY_LAG = 22
@@ -115,7 +112,14 @@ def project_horizon(coef: HarCoef, rv_series: np.ndarray, horizon_days: int) -> 
     """
     if horizon_days <= 0:
         return float("nan")
-    rv = list(rv_series[-max(MONTHLY_LAG, len(rv_series)) :])
+    # The seed is the last MONTHLY_LAG finite, positive daily RVs (#312): the
+    # old ``max`` took the WHOLE series, and an unfiltered NaN or 0 in it
+    # turned the recursion into NaN.
+    arr = np.asarray(rv_series, dtype=float)
+    arr = arr[np.isfinite(arr) & (arr > 0)]
+    if arr.size == 0:
+        return float("nan")
+    rv = list(arr[-min(MONTHLY_LAG, arr.size):])
     daily_forecasts: list[float] = []
     for _ in range(horizon_days):
         rv_d = math.log(max(rv[-1], 1e-4))
@@ -144,7 +148,9 @@ def fit_and_project_har(
     coef = fit_har_rv(arr)
     if coef is None:
         return {}
-    rv = _daily_rv_percent_from_closes(np.asarray(arr, dtype=float))
+    clean = np.asarray(arr, dtype=float)
+    clean = clean[np.isfinite(clean) & (clean > 0)]   # the same filter the fit applied (#312)
+    rv = _daily_rv_percent_from_closes(clean)
     out: dict[str, dict[str, float]] = {}
     for label, days in tenor_days.items():
         trading_days = max(1, round(days * 5 / 7))

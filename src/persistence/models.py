@@ -103,7 +103,7 @@ class OpenPosition(Base):
 
     Schema mirrors Portfolio panel section E. The IB ``localSymbol`` is the
     single canonical key (engines parse it via
-    ``shared.contracts.parse_local_symbol`` when they need contract specs).
+    ``core.contracts.parse_local_symbol`` when they need contract specs).
     """
 
     __tablename__ = "open_position"  # renamed in migration 033 (was 'position')

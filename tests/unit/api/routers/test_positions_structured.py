@@ -272,8 +272,8 @@ async def test_ledger_folds_fills_into_realized_pnl():
     from datetime import timedelta
 
     from api.routers.positions import ledger
+    from core.contracts import multiplier_for
     from persistence.models import StructureFill, StructureOrder, TradeStructure
-    from shared.contracts import multiplier_for
 
     maker, engine = await _make_session()
     try:

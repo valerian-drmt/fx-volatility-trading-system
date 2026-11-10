@@ -8,12 +8,17 @@ total variance ``θ = σ²_ATM · T`` :
 
 with ``φ(θ) = η θ^(-γ)``.
 
-SSVI guarantees no calendar arbitrage by construction when
-``2 γ ≥ 1 - ρ²`` and ``η > 0``. Butterfly arbitrage can still leak
-at the wings for extreme parameters, but in practice a bounded fit
-stays clean. We don't try to enforce butterfly free-ness here — the
-tenor-wise SVI in ``core/vol/svi.py`` already provides that check and
-SSVI is used as a surface-level smoother / sanity reference.
+Gatheral-Jacquier (2014), Theorems 4.1 and 4.2, for the power-law
+``φ(θ) = η θ^(-γ)`` (#311):
+
+* **calendar**: ``θ`` non-decreasing in maturity and ``0 < γ ≤ 1``
+  (``∂(θφ)/∂θ = η(1-γ)θ^(-γ) ≥ 0``; the upper bound of the theorem holds
+  for every ``γ`` in that range). The old ``2γ ≥ 1-ρ²`` was the Heston-like
+  φ's condition, not this one.
+* **butterfly**: for every slice ``θ``, ``θφ(θ)(1+|ρ|) < 4`` and
+  ``θφ(θ)²(1+|ρ|) ≤ 4``. ``fit_ssvi`` evaluates both on the observed
+  slices and reports ``calendar_arb_free`` / ``butterfly_arb_free``; the
+  tenor-wise SVI in ``core/vol/svi.py`` checks the density per tenor too.
 
 This module fits ``(η, γ, ρ)`` by minimising squared-error on total
 variance across ALL observed (T, K, IV) observations jointly — one
@@ -21,12 +26,10 @@ surface fit per vol-engine cycle, stored in the ``ssvi_params`` table.
 """
 from __future__ import annotations
 
-import logging
+from itertools import pairwise
 from typing import Any
 
 import numpy as np
-
-logger = logging.getLogger(__name__)
 
 _EPS = 1e-10
 
@@ -100,22 +103,40 @@ def fit_ssvi(
         return None
     if not result.success:
         return None
-    eta, gamma, rho = result.x
+    eta, gamma, rho = (float(v) for v in result.x)
     rmse = float(np.sqrt(np.mean(result.fun**2)))
-    # Calendar-arb sanity : 2γ ≥ 1 − ρ² should hold in Gatheral-Jacquier.
-    calendar_ok = (2.0 * gamma) >= (1.0 - rho * rho) - 1e-6
-    if not calendar_ok:
-        logger.warning(
-            "ssvi_calendar_arb_weak",
-            extra={"eta": float(eta), "gamma": float(gamma), "rho": float(rho)},
-        )
+    slice_thetas = {float(T): float(atm_iv_by_tenor_years.get(T, ivs[i])) ** 2 * float(T) for i, T in enumerate(Ts)}
+    calendar_ok, butterfly_ok = ssvi_arbitrage_flags(eta, gamma, rho, slice_thetas)
+    # No logging in core (#332): the vol engine logs the flags it gets back.
     return {
-        "eta": round(float(eta), 6),
-        "gamma": round(float(gamma), 6),
-        "rho": round(float(rho), 6),
+        "eta": round(eta, 6),
+        "gamma": round(gamma, 6),
+        "rho": round(rho, 6),
         "rmse_fit": round(rmse, 6),
         "calendar_arb_free": bool(calendar_ok),
+        "butterfly_arb_free": bool(butterfly_ok),
     }
+
+
+def ssvi_arbitrage_flags(
+    eta: float, gamma: float, rho: float, theta_by_tenor_years: dict[float, float],
+) -> tuple[bool, bool]:
+    """``(calendar_free, butterfly_free)`` for the power-law SSVI (Gatheral-
+    Jacquier 2014, Thm 4.1 / 4.2). Calendar: ``θ`` non-decreasing in ``T`` and
+    ``0 < γ ≤ 1``. Butterfly, on every observed slice: ``θφ(θ)(1+|ρ|) < 4``
+    and ``θφ(θ)²(1+|ρ|) ≤ 4``."""
+    tol = 1e-9
+    calendar = eta > 0 and 0.0 < gamma <= 1.0 + tol
+    ordered = [theta_by_tenor_years[t] for t in sorted(theta_by_tenor_years)]
+    if any(b < a - tol for a, b in pairwise(ordered)):
+        calendar = False
+    butterfly = True
+    for theta in theta_by_tenor_years.values():
+        phi = float(_phi(np.asarray([theta], dtype=float), eta, gamma)[0])
+        if theta * phi * (1.0 + abs(rho)) >= 4.0 - tol or theta * phi * phi * (1.0 + abs(rho)) > 4.0 + tol:
+            butterfly = False
+            break
+    return bool(calendar), bool(butterfly)
 
 
 def ssvi_curve_for_tenor(

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from shared.contracts import build_ib_local_symbol, parse_local_symbol
+from core.contracts import build_ib_local_symbol, parse_local_symbol
 
 
 def test_call_and_put_option_symbols() -> None:

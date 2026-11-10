@@ -33,6 +33,7 @@ from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
 from bus import keys
+from core.contracts import multiplier_for, parse_local_symbol
 from core.execution.reconciliation import classify_break
 from core.ledger import LedgerFill, fold_fills, unrealized_pnl
 from core.products import product_label_from_symbol
@@ -54,7 +55,6 @@ from persistence.models import (
 )
 from persistence.reservation import recompute_reservation
 from persistence.rows import open_position_row
-from shared.contracts import multiplier_for, parse_local_symbol
 from shared.internal_auth import internal_headers
 from shared.trace import current_trace_id
 

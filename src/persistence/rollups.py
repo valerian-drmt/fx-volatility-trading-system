@@ -31,10 +31,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.contracts import parse_local_symbol
 from core.risk.attribution import attrib_tenor_bucket, decompose_row, iv_fraction_to_pts
 from core.units import PIP_SIZE
 from persistence.models import AccountHistory, PnlAttributionLatest, PortfolioDaily
-from shared.contracts import parse_local_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -403,10 +403,14 @@ async def compute_attribution(
         is_future = (r.product_label or "").lower().startswith("future") or (r.structure or "").startswith("6E")
         if is_future:
             spot_now_u, spot_then_u = _f(r.spot_now), _f(r.spot_then)
-            gamma_u = gamma_then_u = 0.0
-            vega_u = vega_then_u = 0.0
-            theta_u = theta_then_u = 0.0
-            iv_now_u = iv_then_u = 0.0
+            gamma_u: float | None = 0.0
+            gamma_then_u: float | None = 0.0
+            vega_u: float | None = 0.0
+            vega_then_u: float | None = 0.0
+            theta_u: float | None = 0.0
+            theta_then_u: float | None = 0.0
+            iv_now_u: float | None = 0.0
+            iv_then_u: float | None = 0.0
             gscale = 1.0
         else:
             spot_now_u, spot_then_u = forward, forward_then
@@ -480,8 +484,8 @@ async def write_attribution_latest(db: AsyncSession, result: dict[str, Any]) -> 
     dialect = db.bind.dialect.name if db.bind is not None else "sqlite"
     set_ = {k: v for k, v in values.items() if k != "lookback_hours"}
     if dialect == "postgresql":
-        stmt = pg_insert(PnlAttributionLatest).values(**values)
-        stmt = stmt.on_conflict_do_update(index_elements=["lookback_hours"], set_={k: stmt.excluded[k] for k in set_})
+        stmt_p = pg_insert(PnlAttributionLatest).values(**values)
+        stmt: Any = stmt_p.on_conflict_do_update(index_elements=["lookback_hours"], set_={k: stmt_p.excluded[k] for k in set_})
     else:
         stmt_s = sqlite_insert(PnlAttributionLatest).values(**values)
         stmt = stmt_s.on_conflict_do_update(index_elements=["lookback_hours"], set_={k: stmt_s.excluded[k] for k in set_})

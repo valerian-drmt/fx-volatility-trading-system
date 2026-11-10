@@ -125,6 +125,16 @@ kept only as forward-looking diagnostics and last-resort fallbacks. This gives a
 fair *smile* the desk compares the live IV surface against; the difference drives
 the [rich/cheap PCA signals](pca-signals.md).
 
+## Static-arbitrage checks (#311)
+
+| Check | Where | What is tested |
+|---|---|---|
+| butterfly, per tenor | `core/vol/svi.py::butterfly_g_min` | Gatheral's `g(k) >= 0` on the **quoted log-moneyness range padded by 0.10 on each side** (default `[-0.5, 0.5]`), not the old `[-0.2, 0.2]` that never reached the wings; `_svi[tenor].butterfly_g_min` carries the minimum |
+| fit admissibility | `fit_svi` | at least `MIN_POINTS = 5` valid quotes for the 5 parameters, else no fit (the raw smile is kept) |
+| calendar, across tenors | `calendar_violations` | for consecutive fitted slices sorted by maturity, `min_k (w_long - w_short) >= 0`; `surface["_calendar"]` lists the pairs and `ok` |
+| SSVI (Gatheral-Jacquier 2014, power-law phi) | `core/vol/ssvi.py::ssvi_arbitrage_flags` | calendar: theta non-decreasing in T and `0 < gamma <= 1`; butterfly, on every slice: `theta*phi*(1+|rho|) < 4` and `theta*phi^2*(1+|rho|) <= 4`; both reported on `_ssvi` (`calendar_arb_free`, `butterfly_arb_free`) |
+| inverted term | `core/vol/tenors.py::term_inverted` | a display pillar bracketed by anchors whose total variance falls with maturity is interpolated linearly in IV and tagged `source="interp_inverted"` instead of a clamped 0 % |
+
 ## Chain width versus Gateway load (#372)
 
 The chain scan qualifies ``strikes_per_side`` strikes each side of ATM per

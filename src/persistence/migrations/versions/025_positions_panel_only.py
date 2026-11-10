@@ -4,7 +4,7 @@ After 024 added the panel-E denormalised columns, the legacy columns
 ``symbol`` / ``instrument_type`` / ``strike`` / ``option_type`` / ``entry_price``
 / ``multiplier`` are now redundant : the IB ``localSymbol`` (stored in
 ``local_symbol``) is the single canonical key. Engines reparse it via
-``shared.contracts.parse_local_symbol`` when they need contract details.
+``core.contracts.parse_local_symbol`` when they need contract details.
 
 Final schema after this migration matches Portfolio Panel section E :
     id · local_symbol · side · maturity · quantity · nominal_eur ·

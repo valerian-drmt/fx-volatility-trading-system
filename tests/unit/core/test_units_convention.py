@@ -81,7 +81,7 @@ def _scanner_surface() -> dict:
 
 
 def _straddle():
-    return build_structure("straddle_atm", "1M", None, _preview_surface())
+    return build_structure("straddle_atm", "1M", None, _preview_surface(), as_of=datetime(2026, 11, 10, 12, 0, tzinfo=UTC))
 
 
 # ── premium ─────────────────────────────────────────────────────────────
