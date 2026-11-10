@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.config import get_settings
 from api.dependencies import get_db_session, get_redis
+from api.schemas.reads import CycleProgress
 from bus import keys
 from persistence.models import Base
 
@@ -982,7 +983,7 @@ async def redis_value(
 # This endpoint surfaces that hash so the dev panel can render real progress
 # (vs the time-based fake we used pre-instrumentation).
 
-@router.get("/cycle-progress")
+@router.get("/cycle-progress", response_model=CycleProgress)
 async def cycle_progress(
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> dict[str, Any]:

@@ -27,6 +27,7 @@ from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.book_state_refresh import refresh_book_state
 from api.orchestration.pretrade_gate import run_pretrade_gate
+from api.schemas.reads import RiskLimit
 from bus import keys
 from core.contracts import build_ib_local_symbol
 from core.execution.revalidation import revalidate_preview
@@ -318,7 +319,7 @@ async def list_structures() -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/limits")
+@router.get("/limits", response_model=dict[str, RiskLimit])
 async def list_limits(db: DbDep) -> dict[str, dict[str, Any]]:
     """Active risk limits (name -> value, unit, description) the pre-trade gate checks."""
     # risk_limits rows folded into config_scalar with namespace='risk'

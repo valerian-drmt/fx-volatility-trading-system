@@ -32,6 +32,7 @@ from api.auth import require_write
 from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
+from api.schemas.reads import DeltaHedgeSetting, ExitRuleConfig
 from bus import keys
 from core.contracts import multiplier_for, parse_local_symbol
 from core.execution.reconciliation import classify_break
@@ -710,7 +711,7 @@ async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
     }
 
 
-@router.get("/exit-rules-config")
+@router.get("/exit-rules-config", response_model=list[ExitRuleConfig])
 async def list_exit_rules_config(db: DbDep) -> list[dict[str, Any]]:
     """Exit rules the position monitor evaluates, highest priority first, with their parameters and whether each is active."""
     rows = (await db.execute(
@@ -723,7 +724,7 @@ async def list_exit_rules_config(db: DbDep) -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/delta-hedge-config")
+@router.get("/delta-hedge-config", response_model=list[DeltaHedgeSetting])
 async def list_delta_hedge_config(db: DbDep) -> list[dict[str, Any]]:
     """Delta-hedge settings (thresholds, sizes, cooldown) as name / value / unit rows."""
     # delta_hedge_config rows folded into config_scalar with

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.dependencies import get_db_session
 from api.orchestration.regime_features import build_features_payload
+from api.schemas.reads import RegimeSnapshotRow
 from core.vol.regime_engine import gate_decision
 from persistence.models import Event, RegimeSnapshot
 
@@ -164,7 +165,7 @@ async def _fetch_next_events(
     return _to_out(next_any), _to_out(next_high)
 
 
-@router.get("/history")
+@router.get("/history", response_model=list[RegimeSnapshotRow])
 async def history(
     db: DbDep,
     symbol: str = Query("EURUSD", min_length=3, max_length=20),

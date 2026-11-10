@@ -1,0 +1,44 @@
+[
+ {
+  "timestamp": "2026-11-10T16:07:56.345059Z",
+  "label": "calm",
+  "method": "threshold_heuristic",
+  "vol_level_pct": 5.7432,
+  "vol_of_vol_pct": 0.2241,
+  "term_slope_pct": 0.8463,
+  "event_dampener": false,
+  "days_to_next_event": 6.7431,
+  "next_event_type": "CPI_EU",
+  "p_calm": 0.0041,
+  "p_stressed": 0.0,
+  "p_pre_event": 0.9959
+ },
+ {
+  "timestamp": "2026-11-10T16:04:56.343530Z",
+  "label": "calm",
+  "method": "threshold_heuristic",
+  "vol_level_pct": 5.7523,
+  "vol_of_vol_pct": 0.2241,
+  "term_slope_pct": 0.8629,
+  "event_dampener": false,
+  "days_to_next_event": 6.7452,
+  "next_event_type": "CPI_EU",
+  "p_calm": 0.0044,
+  "p_stressed": 0.0,
+  "p_pre_event": 0.9956
+ },
+ {
+  "timestamp": "2026-11-10T16:01:56.343139Z",
+  "label": "calm",
+  "method": "threshold_heuristic",
+  "vol_level_pct": 5.7507,
+  "vol_of_vol_pct": 0.2241,
+  "term_slope_pct": 0.8636,
+  "event_dampener": false,
+  "days_to_next_event": 6.7472,
+  "next_event_type": "CPI_EU",
+  "p_calm": 0.0043,
+  "p_stressed": 0.0,
+  "p_pre_event": 0.9957
+ }
+]
