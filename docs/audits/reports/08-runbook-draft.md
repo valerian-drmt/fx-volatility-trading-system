@@ -1,5 +1,8 @@
 # Ops runbook — DRAFT (Audit 8 deliverable)
 
+> **Superseded (2026-11-10, #346):** promoted and rewritten as
+> [`docs/ops/runbooks.md`](../../ops/runbooks.md). Kept as the audit's record.
+
 Reboot · Rollback · Restore-from-backup · IB-session recovery.
 
 > **Status: DRAFT.** Produced by Audit 8 by reading configuration only. **No step below was

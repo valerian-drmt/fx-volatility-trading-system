@@ -21,8 +21,10 @@
 # ahead of the target image, the deploy stops unless ALLOW_SCHEMA_DOWNGRADE is
 # true; then the RUNNING image (which knows both revisions) downgrades after
 # the pre-deploy dump. The dump is the restore point (infrastructure/ec2/RESTORE.md).
-# AUTH_SALT is deliberately not rendered: the api falls back to its code
-# default. Provision /fxvol/prod/AUTH_SALT in SSM only when rotating it.
+# AUTH_SALT is rendered when /fxvol/prod/AUTH_SALT exists (#346); absent, the
+# api keeps its code default and logs auth_salt_is_repo_default. Provision it
+# together with a new AUTH_PASSWORD_HASH computed with that salt
+# (docs/ops/secrets.md, "Inventory").
 set -euo pipefail
 
 cd /opt/fxvol
@@ -43,6 +45,7 @@ GHCR_TOKEN="$(ssm /fxvol/prod/GHCR_TOKEN 2>/dev/null || echo "")"
 # params in SSM before the first deploy.
 AUTH_SECRET="$(ssm /fxvol/prod/AUTH_SECRET 2>/dev/null || echo "")"
 AUTH_PASSWORD_HASH="$(ssm /fxvol/prod/AUTH_PASSWORD_HASH 2>/dev/null || echo "")"
+AUTH_SALT="$(ssm /fxvol/prod/AUTH_SALT 2>/dev/null || echo "")"
 # Redis auth (URL-safe chars only: embedded un-encoded in REDIS_URL). Required
 # on prod (#298): without it compose would fall back to the dev password.
 REDIS_PASSWORD="$(ssm /fxvol/prod/REDIS_PASSWORD 2>/dev/null || echo "")"
@@ -134,6 +137,7 @@ esac
 {
   if [ -n "${AUTH_SECRET}" ];        then echo "AUTH_SECRET=${AUTH_SECRET}"; fi
   if [ -n "${AUTH_PASSWORD_HASH}" ]; then echo "AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH}"; fi
+  if [ -n "${AUTH_SALT}" ];          then echo "AUTH_SALT=${AUTH_SALT}"; fi
   echo "REDIS_PASSWORD=${REDIS_PASSWORD}"
   if [ -n "${GRAFANA_ADMIN_PASSWORD}" ]; then
     echo "GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}"

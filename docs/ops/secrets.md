@@ -5,19 +5,33 @@ KMS-encrypted (`SecureString`). There is no `.env` file in git and no secret in
 any container image. Related: [deployment.md](deployment.md),
 [local-stack.md](local-stack.md).
 
-## Parameters
+## Inventory
 
-| Parameter | Used by |
-|---|---|
-| `/fxvol/prod/DB_PASSWORD` | Postgres + every service's `DATABASE_URL`. |
-| `/fxvol/prod/REDIS_PASSWORD` | Redis `--requirepass` + `REDIS_URL`. |
-| `/fxvol/prod/IB_USERID`, `/IB_PASSWORD` | IB Gateway login (ib profile only). |
-| `/fxvol/prod/VNC_PASSWORD` | IB Gateway VNC server. |
-| `/fxvol/prod/AUTH_SECRET`, `/AUTH_PASSWORD_HASH` | The single-trader write-login boundary. |
-| `/fxvol/prod/EXECUTION_INTERNAL_TOKEN` | Shared secret the api sends on every execution-engine `/internal/*` call (#300). Optional: when absent the host generates one into `/etc/fxvol/internal_token` at deploy and reuses it. |
-| `/fxvol/prod/GRAFANA_ADMIN_PASSWORD` | Grafana admin when the `obs` profile runs; the deploy refuses to start the profile without it (#298). |
-| `/fxvol/prod/FRED_API_KEY` | Events pipeline (optional). |
-| `/fxvol/prod/GHCR_TOKEN` | GHCR pull, only if the packages are private (optional). |
+The one list of what lives under `/fxvol/prod/*` (#346, audit 08#11 / 11#8).
+"In SSM" is the state on 2026-11-10 (`aws ssm describe-parameters`, names and
+types only). `remote-deploy.sh` reads every row below on the host; nothing
+passes through GitHub.
+
+| Parameter | Type | In SSM | Used by | When absent |
+|---|---|---|---|---|
+| `DB_PASSWORD` | SecureString | yes | Postgres + every `DATABASE_URL` | deploy fails (required) |
+| `REDIS_PASSWORD` | SecureString | yes | Redis `--requirepass` + `REDIS_URL` | deploy refuses to run (#298) |
+| `AUTH_SECRET` | SecureString | yes | signs the write-login cookie | api refuses to boot with the repo default (ENV=prod guard) |
+| `AUTH_PASSWORD_HASH` | SecureString | yes | the trader's password hash | api refuses to boot (ENV=prod guard) |
+| `AUTH_SALT` | SecureString | **no** | salt of `AUTH_PASSWORD_HASH` | api uses the code default and logs `auth_salt_is_repo_default`. Provision it **together with** a new `AUTH_PASSWORD_HASH` computed with that salt, or login breaks |
+| `IB_USERID`, `IB_PASSWORD` | SecureString | yes | IB Gateway login | read only with the `ib` profile; the gateway cannot log in |
+| `VNC_PASSWORD` | SecureString | yes | IB Gateway VNC (loopback) | read only with the `ib` profile |
+| `GRAFANA_ADMIN_PASSWORD` | SecureString | yes | Grafana admin (obs profile) | deploy refuses the `obs` profile (#298) |
+| `EXECUTION_INTERNAL_TOKEN` | SecureString | **no** | api -> execution-engine `/internal/*` (#300) | host generates `/etc/fxvol/internal_token` (root 0600) and reuses it; provision to rotate |
+| `FRED_API_KEY` | String | yes | events pipeline (FRED calendar) | events from FRED skipped |
+| `GHCR_TOKEN` | SecureString | **no** | `docker login ghcr.io` | not needed while the packages are public |
+| `TRADING_MODE` | String | yes, **unused** | nothing: the deploy renders `TRADING_MODE=paper` itself | safe to delete in the console |
+
+Check presence without reading a value:
+
+```bash
+MSYS_NO_PATHCONV=1 aws ssm describe-parameters --profile admin --region eu-west-1   --parameter-filters "Key=Name,Option=BeginsWith,Values=/fxvol/prod/"   --query 'Parameters[].[Name,Type,LastModifiedDate]' --output text
+```
 
 ## Load-to-RAM, never on disk
 

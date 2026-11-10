@@ -7,7 +7,9 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    environment: dev
+    # From the stack's ENV (prod on the host, dev locally) through
+    # --enable-feature=expand-external-labels (#346, audit 08#12).
+    environment: ${FXVOL_ENVIRONMENT}
 
 # Alert rules + their router (#342). Rules: obs/alerts.yml ; routing and the
 # SNS receiver: obs/alertmanager.yml ; runbook: docs/ops/alerting.md.
