@@ -8,6 +8,7 @@
 import { gk$, pnlCls } from "./format";
 import { fetchStructuredPositions, type StructuredPositions } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
+import { asArray } from "../../utils/asArray";
 
 // clean structure name from the enum ("risk_reversal" → "Risk Reversal")
 function prettyStruct(t: string, label: string | null): string {
@@ -37,8 +38,8 @@ function legWingTag(contract_type: string, level: string | null): string {
 export function StructuredPositions(): JSX.Element {
   const q = useFetch<StructuredPositions>(() => fetchStructuredPositions(), 60_000, true, 20_000);
   const data = q.data;
-  const structures = data?.structures ?? [];
-  const unlinked = data?.unlinked ?? [];
+  const structures = asArray(data?.structures);
+  const unlinked = asArray(data?.unlinked);
 
   if (q.status === "missing" && !data) {
     return <div className="dim small mono sp-empty">positions unavailable — needs the API + execution engine up</div>;
