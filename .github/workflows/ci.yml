@@ -3,8 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+  # Every PR, whatever its base: a stacked PR (B based on A's branch) gets its
+  # own CI while A's runs, so the stack merges back to back once green.
   pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       run_integration:

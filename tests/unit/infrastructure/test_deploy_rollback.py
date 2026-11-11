@@ -102,3 +102,12 @@ def test_deploys_are_serialised() -> None:
 
     wf = yaml.safe_load((ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8"))
     assert wf["concurrency"] == {"group": "deploy-prod", "cancel-in-progress": False}
+
+
+def test_ci_runs_on_stacked_pull_requests() -> None:
+    """A PR based on another PR's branch gets CI too (no base-branch filter)."""
+    import yaml
+
+    wf = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    on = wf.get("on") or wf.get(True)
+    assert "pull_request" in on and not (on["pull_request"] or {}).get("branches")
