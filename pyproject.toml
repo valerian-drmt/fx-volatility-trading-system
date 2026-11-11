@@ -19,7 +19,7 @@ dependencies = [
     # pandas 3 (copy-on-write, string dtype) is held back for v1.0 on purpose.
     "numpy>=1.26,<3",
     "scipy>=1.11,<2",
-    "pandas>=2.2,<3",
+    "pandas>=3.1.1,<4",
     "redis>=5.0,<6.0",
     "structlog>=24.1,<25.0",
     "pydantic>=2.0,<3.0",
