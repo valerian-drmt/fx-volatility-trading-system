@@ -6,7 +6,7 @@ import pytest
 from core.execution.order_states import IB_STATUS_TO_STATE, TERMINAL_STATES, next_state
 
 
-def test_every_ib_status_ib_insync_emits_is_in_the_table() -> None:
+def test_every_ib_status_ib_async_emits_is_in_the_table() -> None:
     for s in ("PendingSubmit", "ApiPending", "PreSubmitted", "Submitted", "PendingCancel",
               "Cancelled", "ApiCancelled", "Filled", "Inactive"):
         assert s in IB_STATUS_TO_STATE

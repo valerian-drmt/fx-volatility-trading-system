@@ -10,7 +10,7 @@ Covers :
     (fills do), partial fills fold cumulatively, a full fill terminalises ;
   * the orderRef shape is invisible to the reaper's structure parser.
 
-Uses an in-memory aiosqlite DB ; ib_insync Trade/Fill objects are
+Uses an in-memory aiosqlite DB ; ib_async Trade/Fill objects are
 SimpleNamespaces.
 """
 from __future__ import annotations

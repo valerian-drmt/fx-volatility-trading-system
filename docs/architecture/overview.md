@@ -14,7 +14,7 @@ Python engines, and the infrastructure they depend on — orchestrated by
 
 ![System context: trader, the desk, IB, event sources, SSM](../diagrams/system-context.svg)
 
-The desk is single-user. It talks to Interactive Brokers over `ib_insync` (ticks,
+The desk is single-user. It talks to Interactive Brokers over `ib_async` (ticks,
 EUR/USD FOP chains, orders), polls public economic-calendar sources (FRED / ECB /
 BoE / Eurostat / ONS) for the event pipeline, and reads its secrets from AWS SSM
 Parameter Store at boot.

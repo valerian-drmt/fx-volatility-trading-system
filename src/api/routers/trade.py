@@ -825,7 +825,7 @@ async def _submit_preview_impl(
         raise HTTPException(400, "preview_id required")
 
     # execution_mode : 'mock' (default — synthetic fills, no IB) or 'live'
-    # ('live' currently no-ops past the gating check ; real ib_insync wiring
+    # ('live' currently no-ops past the gating check ; real ib_async wiring
     # arrives in Passe B). The gate on `is_connected` is enforced for live.
     execution_mode = str(body.get("execution_mode", "mock")).lower()
     if execution_mode not in ("mock", "live"):
@@ -1010,7 +1010,7 @@ async def _submit_preview_impl(
 
     # ── LIVE PATH ──────────────────────────────────────────────────────
     # Persist orders in 'pending' state, then call execution-engine which
-    # places them via ib_insync and wires fills handlers. The cascade to
+    # places them via ib_async and wires fills handlers. The cascade to
     # state='filled' / 'fully_filled' / trade_positions arrives via events.
     if execution_mode == "live":
         # For futures, route the order to the right CME ticker — 6E for

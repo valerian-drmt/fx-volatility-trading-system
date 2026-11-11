@@ -49,7 +49,7 @@ async def fetch_bars(ib: Any, symbol: str = "EURUSD") -> dict[str, list[dict[str
     """Fetch OHLC bars for every timeframe. Returns ``{tf: [{t,o,h,l,c}, ...]}``
     (ascending by time). A timeframe that errors / returns nothing maps to ``[]``
     so a single bad request never blocks the others."""
-    from ib_insync import Forex
+    from ib_async import Forex
 
     contract = Forex(symbol)
     try:

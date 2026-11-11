@@ -425,7 +425,7 @@ services:
       # jts.ini on every boot, so maintaining TrustedIPs by hand never sticks.
       IB_PORT: 4004
       IB_CLIENT_ID: 5
-      # Must mirror ib-gateway's READ_ONLY_API. A writable ib_insync
+      # Must mirror ib-gateway's READ_ONLY_API. A writable ib_async
       # handshake against a read-only gateway calls reqAutoOpenOrders,
       # which IB rejects (Error 321), so connect never completes and the
       # engine stays down instead of degrading to reads (account summary,

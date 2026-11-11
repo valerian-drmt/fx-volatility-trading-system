@@ -23,7 +23,7 @@ async def run() -> None:
     # P2 obs : OTel tracer (rollout post P2.1 validation).
     init_tracing(service_name=settings.SERVICE_NAME or "risk_engine")
 
-    from ib_insync import IB
+    from ib_async import IB
 
     from engines.risk.engine import RiskEngine
     from persistence.db import get_sessionmaker

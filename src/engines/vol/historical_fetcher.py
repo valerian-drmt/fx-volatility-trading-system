@@ -58,7 +58,7 @@ async def fetch_daily_ohlc(
     ):
         return _cache["df"]
 
-    from ib_insync import Contract
+    from ib_async import Contract
 
     cont_fut = Contract(
         symbol=contract_symbol,

@@ -70,7 +70,7 @@ def test_every_runtime_dependency_has_a_ceiling_and_the_lock_is_committed() -> N
     unbounded = [s for s in specs if not s.startswith(("fxvol[", "tzdata")) and not re.search(r"<|==|~=", s)]
     assert unbounded == [], f"runtime dependencies without a ceiling: {unbounded}"
     assert (ROOT / "uv.lock").is_file()
-    assert "ib-insync==0.9.86" in specs, "exact pin until the ib_async migration (#306)"
+    assert "ib-async==2.1.0" in specs, "the IB client is exact-pinned (#403)"
 
 
 def test_ci_installs_from_the_lock_on_node_22() -> None:

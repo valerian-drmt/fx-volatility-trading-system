@@ -57,7 +57,7 @@ async def submit_hedge_order(
     if not executor.is_connected():
         raise HedgeSubmitError("IB Gateway not connected")
 
-    from ib_insync import Contract, LimitOrder
+    from ib_async import Contract, LimitOrder
 
     sm = sessionmaker_factory
     async with sm() as db:
@@ -95,7 +95,7 @@ async def submit_hedge_order(
         if lmt is None:
             try:
                 ticker = ib.reqMktData(contract, "", False, False)
-                # Allow ib_insync a moment to deliver the snapshot.
+                # Allow ib_async a moment to deliver the snapshot.
                 await asyncio.sleep(0.5)
                 quote = ticker.ask if hedge.side == "BUY" else ticker.bid
                 lmt = float(quote) if quote and quote > 0 else None

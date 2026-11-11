@@ -84,7 +84,7 @@ async def run_rollback(
     if not executor.is_connected():
         raise RuntimeError("IB Gateway not connected — cannot rollback")
 
-    from ib_insync import LimitOrder
+    from ib_async import LimitOrder
 
     if plan is not None:
         logger.warning(
@@ -194,7 +194,7 @@ async def run_rollback(
             # Place via IB. Contract must already be qualified — we reuse
             # the entry's qualification via permId lookup if available, else
             # rebuild and re-qualify.
-            from ib_insync import Contract
+            from ib_async import Contract
 
             from core.execution.contract_builder import build_contract_kwargs
 

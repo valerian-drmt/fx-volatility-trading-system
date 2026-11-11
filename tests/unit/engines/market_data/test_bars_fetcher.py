@@ -1,7 +1,7 @@
 """Unit tests for the market-data historical-bars fetcher.
 
 The pure epoch conversion is tested directly; the IB round-trip is tested with
-a fake IB (skipped when ib_insync isn't installed, since the module imports
+a fake IB (skipped when ib_async isn't installed, since the module imports
 ``Forex`` lazily).
 """
 from __future__ import annotations
@@ -55,7 +55,7 @@ class _FakeIB:
 
 @pytest.mark.asyncio
 async def test_fetch_bars_normalises_and_sorts():
-    pytest.importorskip("ib_insync")
+    pytest.importorskip("ib_async")
     ib = _FakeIB()
     out = await fetch_bars(ib, "EURUSD")
 
@@ -73,7 +73,7 @@ async def test_fetch_bars_normalises_and_sorts():
 
 @pytest.mark.asyncio
 async def test_fetch_bars_qualify_failure_returns_empty():
-    pytest.importorskip("ib_insync")
+    pytest.importorskip("ib_async")
 
     class _BadIB(_FakeIB):
         async def qualifyContractsAsync(self, contract):
@@ -87,7 +87,7 @@ async def test_fetch_bars_qualify_failure_returns_empty():
 async def test_fetch_bars_one_bad_timeframe_does_not_break_others():
     """A single timeframe whose rows fail to convert must map to [] on its own,
     never propagate and empty the whole result (the prod bars regression)."""
-    pytest.importorskip("ib_insync")
+    pytest.importorskip("ib_async")
 
     class _MixedIB(_FakeIB):
         async def reqHistoricalDataAsync(self, contract, **kw):

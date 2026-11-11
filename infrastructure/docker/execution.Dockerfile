@@ -4,7 +4,7 @@
 # this service via internal HTTP.
 #
 # Installs the [api,ib] extras : uvicorn (HTTP server on :8001) +
-# ib-insync + tzdata.
+# ib-async + tzdata.
 #
 #   docker build -f infrastructure/docker/execution.Dockerfile -t fx-options-execution .
 

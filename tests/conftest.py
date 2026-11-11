@@ -3,7 +3,7 @@
 - ``sqlite_sessionmaker``: in-memory SQLite with the full schema and FOREIGN
   KEYS ON (one implementation for the whole suite, see ``tests/fixtures/db.py``).
 - ``frozen_clock``: freezegun at a fixed instant; returns the frozen datetime.
-- ``ib_factories``: the ib_insync object factories (trade / fill / report / IB).
+- ``ib_factories``: the ib_async object factories (trade / fill / report / IB).
 - ``canonical_payload``: loader for the one-per-channel / per-event payloads.
 
 Test order is randomised by pytest-randomly (dev extra); the seed is printed

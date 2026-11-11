@@ -54,8 +54,8 @@ api = [
 
 # market-data + risk-engine + execution-engine talk to Interactive Brokers.
 ib = [
-    "ib-insync==0.9.86",
-    # Required by ib_insync.parseIBDatetime which uses ZoneInfo('US/Central').
+    "ib-async==2.1.0",  # maintained fork of the archived ib-async, exact pin (#403)
+    # Required by ib_async.parseIBDatetime which uses ZoneInfo('US/Central').
     # python:3.11-slim does NOT ship system tzdata ; without this, IB callbacks
     # crash silently on accounts with execution history. Documented incident
     # 28/04/2026 (sandbox R9).
@@ -72,7 +72,7 @@ quant = [
     "scikit-learn>=1.9.1,<1.10",
 ]
 
-# db-writer — never imports ib_insync (smaller image + smaller attack surface).
+# db-writer — never imports ib_async (smaller image + smaller attack surface).
 writer = [
     "psycopg2-binary>=2.9,<3.0",
 ]

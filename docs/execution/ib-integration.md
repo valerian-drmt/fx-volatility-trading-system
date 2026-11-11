@@ -1,7 +1,7 @@
 # IB integration
 
 Every service that touches the market opens its own connection to the IB Gateway
-via `ib_insync`. The connection wrapper with backoff is
+via `ib_async`. The connection wrapper with backoff is
 [`src/shared/ib_connection.py`](../../src/shared/ib_connection.py); the execution
 engine's connection is
 [`engines/execution/order_executor.py`](../../src/engines/execution/order_executor.py).
@@ -14,7 +14,7 @@ network. Outbound IB traffic is isolated on that network.
 
 ## One client ID per service
 
-`ib_insync` requires a distinct `clientId` per socket. Each engine binds its own
+`ib_async` requires a distinct `clientId` per socket. Each engine binds its own
 via `IB_CLIENT_ID` (`docker-compose.yml`):
 
 | Service | clientId |
@@ -101,7 +101,7 @@ Orders route to the IB **paper** account (the order builder stamps every ticket
 `PAPER ACCOUNT`). The gateway's `READ_ONLY_API` setting is mirrored into the
 engine as `IB_READ_ONLY` (`docker-compose.yml`, both default `no`). The
 `OrderExecutor(readonly=...)` flag must match the gateway: when the gateway is
-read-only, `ib_insync`'s default handshake calls `reqAutoOpenOrders`, IB rejects
+read-only, `ib_async`'s default handshake calls `reqAutoOpenOrders`, IB rejects
 it ("Error 321 ... Read-Only mode"), and the connect never completes — passing
 `readonly` through skips that call so the engine degrades to reads instead of
 failing to connect.

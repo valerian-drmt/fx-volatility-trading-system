@@ -12,7 +12,7 @@ EXEC-2 — DB never diverges from IB mid-submit:
   * phase 2 commits PER LEG — a failure at leg k leaves legs 1..k-1 committed
     with their ib_order_id, and the structure marked partial_fail.
 
-`ib_insync` is not imported ; we monkey-patch a stub module (same convention
+`ib_async` is not imported ; we monkey-patch a stub module (same convention
 as test_rollback_runner.py).
 """
 from __future__ import annotations
@@ -32,9 +32,9 @@ pytestmark = pytest.mark.asyncio
 
 
 
-# --- Stub ib_insync ---------------------------------------------------------
+# --- Stub ib_async ---------------------------------------------------------
 def _install_ibinsync_stub(monkeypatch):
-    fake_mod = ModuleType("ib_insync")
+    fake_mod = ModuleType("ib_async")
 
     class _Contract:
         def __init__(self, **kw):
@@ -65,7 +65,7 @@ def _install_ibinsync_stub(monkeypatch):
     fake_mod.LimitOrder = _LimitOrder
     fake_mod.MarketOrder = _MarketOrder
     fake_mod.ComboLeg = _ComboLeg
-    monkeypatch.setitem(sys.modules, "ib_insync", fake_mod)
+    monkeypatch.setitem(sys.modules, "ib_async", fake_mod)
 
 
 class _Slot:

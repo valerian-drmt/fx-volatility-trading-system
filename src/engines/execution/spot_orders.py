@@ -7,7 +7,7 @@ Orders blotter, no state after the "Sent" line, lost on refresh (issue #291).
 This module keeps spot orders OUT of the structure machinery on purpose (no
 booking, reaper, reservation or position-sync involvement) : one ``spot_order``
 row per ticket send, written BEFORE the IB placement, then kept current by the
-ib_insync ``statusEvent`` / ``fillEvent`` callbacks attached here.
+ib_async ``statusEvent`` / ``fillEvent`` callbacks attached here.
 """
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def spot_order_ref(spot_order_id: int) -> str:
     return f"{SPOT_ORDER_REF_PREFIX}{spot_order_id}"
 
 
-# ib_insync OrderStatus.status -> spot_order.state (None = ignore)
+# ib_async OrderStatus.status -> spot_order.state (None = ignore)
 _STATUS_TO_STATE: dict[str, str] = {
     "PendingSubmit": "submitted",
     "ApiPending": "submitted",
@@ -221,7 +221,7 @@ async def _on_status(
 async def _on_fill(
     trade: Any, fill: Any, spot_order_id: int, sm: async_sessionmaker[AsyncSession],
 ) -> None:
-    """Fold the Trade's cumulative fills into the row (ib_insync keeps
+    """Fold the Trade's cumulative fills into the row (ib_async keeps
     ``trade.fills`` complete, so a re-fold is idempotent)."""
     fills = list(getattr(trade, "fills", None) or [fill])
     await fold_spot_fills(spot_order_id, fills, sm, contract=getattr(fill, "contract", None))

@@ -164,7 +164,7 @@ Full diagrams live in [`docs/architecture/`](docs/architecture/).
 | Frontend | React 18 + Vite + TypeScript strict + zustand + plotly.js |
 | Persistence | PostgreSQL 16 + SQLAlchemy 2 async + Alembic |
 | Cache + bus | Redis 7 (pub/sub + cache) |
-| IB connectivity | ib_insync (async) |
+| IB connectivity | ib_async (async) |
 | Vol models | numpy, scipy, arch (GARCH), scikit-learn (GMM), custom SVI/SSVI |
 | Secrets | AWS SSM Parameter Store + KMS |
 | CI / CD | GitHub Actions — ruff, pytest, import-linter, OpenAPI drift, vitest, Playwright; OIDC deploy to AWS EC2 |

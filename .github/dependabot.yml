@@ -70,8 +70,8 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
     ignore:
-      # Exact-pinned on purpose: archived upstream, migration tracked separately (#306).
-      - dependency-name: "ib-insync"
+      # Exact-pinned on purpose: the IB client moves only after a paper check (#403).
+      - dependency-name: "ib-async"
 
   - package-ecosystem: npm
     directory: /frontend
