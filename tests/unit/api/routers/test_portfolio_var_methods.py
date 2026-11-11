@@ -107,7 +107,7 @@ class _Pos:
 def book(monkeypatch: pytest.MonkeyPatch):
     """Patch the book resolution so the tests never need a real DB row set."""
     def _set(spot, baselines, dropped=None, fallback=None):
-        async def _fake(_db):
+        async def _fake(_db, _redis=None):
             # ResolvedBook since #316: what was priced, what was not, and why.
             return pp.ResolvedBook(
                 spot, baselines, "future_mark" if spot is not None else None,

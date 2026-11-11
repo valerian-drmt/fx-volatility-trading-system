@@ -18,6 +18,8 @@ import asyncio
 import itertools
 import json
 import logging
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
@@ -783,7 +785,41 @@ class ResolvedBook:
         return len(self.baselines) + len(self.dropped)
 
 
-async def _resolve_book(db: AsyncSession) -> ResolvedBook:
+async def _surface_forward(redis: aioredis.Redis | None, symbol: str = "EURUSD") -> float | None:
+    """The forward the vol engine published with its latest surface: the 6E
+    options' own underlying, refreshed every vol cycle (#432)."""
+    if redis is None:
+        return None
+    try:
+        raw = await redis.get(keys.LATEST_VOL_SURFACE.format(symbol=symbol))
+        forward = json.loads(raw).get("forward") if raw else None
+        value = float(forward) if forward is not None else None
+    except Exception:  # a cache miss or a bad payload is "no forward", never a 500
+        return None
+    return value if value is not None and math.isfinite(value) and value > 0 else None
+
+
+async def _book_spot(open_positions: Sequence[Any], redis: aioredis.Redis | None) -> tuple[float | None, str | None]:
+    """The underlying level the book is revalued around, best source first:
+    a held 6E future's IB mark; else the vol surface's forward (paper IB often
+    marks nothing, #432); else an option strike (an ATM-ish guess, tens of pips
+    off). Returns ``(spot, source)``; ``(None, None)`` when none applies."""
+    for p in open_positions:
+        spec = parse_local_symbol(p.structure)
+        if spec and spec.instrument_type == "FUTURE" and p.market_price:
+            return float(p.market_price), "future_mark"
+    forward = await _surface_forward(redis)
+    if forward is not None:
+        return forward, "surface_forward"
+    for p in open_positions:
+        spec = parse_local_symbol(p.structure)
+        if spec and spec.option_type and spec.strike:
+            logger.warning("stress_spot_strike_proxy position_id=%s strike=%s", p.id, spec.strike)
+            return float(spec.strike), "strike_proxy"
+    return None, None
+
+
+async def _resolve_book(db: AsyncSession, redis: aioredis.Redis | None = None) -> ResolvedBook:
     """Resolve OPEN positions -> ``ResolvedBook`` for ``reval_book``.
 
     Spot proxy : any FUTURE market_price (``spot_source="future_mark"``), else
@@ -800,25 +836,9 @@ async def _resolve_book(db: AsyncSession) -> ResolvedBook:
     if not open_positions:
         return ResolvedBook(None, [], None, [], {})
 
-    current_spot: float | None = None
-    spot_source: str | None = None
-    for p in open_positions:
-        spec = parse_local_symbol(p.structure)
-        if spec and spec.instrument_type == "FUTURE" and p.market_price:
-            current_spot = float(p.market_price)
-            spot_source = "future_mark"
-            break
-    if current_spot is None:
-        for p in open_positions:
-            spec = parse_local_symbol(p.structure)
-            if p.market_price and p.iv and spec and spec.strike:
-                current_spot = float(spec.strike)
-                spot_source = "strike_proxy"
-                logger.warning(
-                    "stress_spot_strike_proxy position_id=%s strike=%s", p.id, spec.strike,
-                )
-                break
-    fallback: dict[str, str] = {"spot": "strike_proxy"} if spot_source == "strike_proxy" else {}
+    current_spot, spot_source = await _book_spot(open_positions, redis)
+    # Anything but the held future's own mark is a proxy, and the payload says so.
+    fallback: dict[str, str] = {"spot": spot_source} if spot_source in ("surface_forward", "strike_proxy") else {}
     if current_spot is None:
         dropped_all = [{"id": str(p.id), "reason": "no_spot"} for p in open_positions]
         return ResolvedBook(None, [], None, dropped_all, fallback)
@@ -861,6 +881,7 @@ async def _resolve_book(db: AsyncSession) -> ResolvedBook:
 @router.get("/stress-grid")
 async def stress_grid(
     db: DbDep,
+    redis: RedisDep,
     axis: str = Query("spot-vol", pattern="^spot-(vol|time|skew|fly)$"),
     output: str = Query("pnl"),
 ) -> dict[str, Any]:
@@ -874,7 +895,7 @@ async def stress_grid(
     if output not in _OUTPUTS:
         raise HTTPException(422, f"output must be one of {_OUTPUTS}")
     row_bins, row_kw, row_unit = _STRESS_ROW_AXES[axis]
-    book = await _resolve_book(db)
+    book = await _resolve_book(db, redis)
     current_spot, baselines, spot_source = book.spot, book.baselines, book.spot_source
     base = {
         "current_spot": round(current_spot, 5) if current_spot else None,
@@ -904,13 +925,14 @@ async def stress_grid(
 @router.get("/greeks-ladder")
 async def greeks_ladder(
     db: DbDep,
+    redis: RedisDep,
     axis: str = Query("spot", pattern="^(spot|vol|time|skew|fly)$"),
 ) -> dict[str, Any]:
     """Per-bin greeks ladder along one axis (R11 G-risk 5.3). Each row = P&L +
     Δ/Γ/Vega revalued at that shock. ``hedge_delta_usd = −delta_usd``. The
     ``axis`` column name (``dspot_bps``/``dvol_vps``/…) reflects the chosen axis."""
     bins, kw, unit = _LADDER_AXES[axis]
-    book = await _resolve_book(db)
+    book = await _resolve_book(db, redis)
     current_spot, baselines, spot_source = book.spot, book.baselines, book.spot_source
     base = {
         "current_spot": round(current_spot, 5) if current_spot else None,
@@ -943,7 +965,7 @@ async def greeks_ladder(
 
 
 @router.get("/vega-pca")
-async def vega_pca(db: DbDep) -> dict[str, Any]:
+async def vega_pca(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """Project the book's per-cell vega onto the active PCA loadings (R11 G-risk).
 
     Each open option is classified into a 30-dim grid cell (DTE -> tenor, BS delta
@@ -951,7 +973,7 @@ async def vega_pca(db: DbDep) -> dict[str, Any]:
     loadings + stds then give the book's vega P&L sensitivity to each PC
     (level / slope / curvature) -- see ``core.risk.vega_pca``.
     """
-    book = await _resolve_book(db)
+    book = await _resolve_book(db, redis)
     current_spot, baselines, spot_source = book.spot, book.baselines, book.spot_source
     opts = [b for b in baselines if b["type"] == "OPTION"]
     vega_cells = [0.0] * N_CELLS
@@ -1067,14 +1089,14 @@ async def marginal_var(db: DbDep, redis: RedisDep) -> dict[str, Any]:
 
 
 @router.get("/var-factors")
-async def var_factors(db: DbDep) -> dict[str, Any]:
+async def var_factors(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """Scenario VaR by factor (spot / level / skew / curv) over the open book (R11 G-risk).
 
     Each factor's VaR is the book's loss under its 1-day 99% adverse move, full-BS
     revalued via ``core.risk.var_factors`` — derived entirely from the live book
     (the shock sizes are documented desk assumptions). Empty when the book/spot is missing.
     """
-    book = await _resolve_book(db)
+    book = await _resolve_book(db, redis)
     spot, baselines, spot_source = book.spot, book.baselines, book.spot_source
     if spot is None or not baselines:
         return {"current_spot": round(spot, 5) if spot else None, "n_positions": 0, "factors": []}
@@ -1156,7 +1178,7 @@ _BREACH_BPS = 50  # ±50 bp around the strike
 
 
 @router.get("/pin-risk")
-async def pin_risk(db: DbDep) -> dict[str, Any]:
+async def pin_risk(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """Full BS revaluation per option at strike (pin) and strike ± 50 bp.
 
     The frontend's old linearised approximation (Δ × ΔS) was a poor
@@ -1174,19 +1196,8 @@ async def pin_risk(db: DbDep) -> dict[str, Any]:
     if not open_positions:
         return {"current_spot": None, "rows": [], "n_options": 0}
 
-    # Same spot proxy as stress-grid (most reliable from a held FUTURE).
-    current_spot: float | None = None
-    for p in open_positions:
-        spec = parse_local_symbol(p.structure)
-        if spec and spec.instrument_type == "FUTURE" and p.market_price:
-            current_spot = float(p.market_price)
-            break
-    if current_spot is None:
-        for p in open_positions:
-            spec = parse_local_symbol(p.structure)
-            if spec and spec.option_type and spec.strike and p.market_price:
-                current_spot = float(spec.strike)
-                break
+    # Same underlying level as stress-grid (#432).
+    current_spot, _source = await _book_spot(open_positions, redis)
     if current_spot is None:
         return {"current_spot": None, "rows": [], "n_options": 0}
 
@@ -1731,7 +1742,7 @@ async def _hist_sim(db: AsyncSession, redis: aioredis.Redis) -> dict[str, Any] |
     Returns the portfolio P&L vector, the per-position vectors keyed by open
     position id, and scenario metadata — or ``None`` when the book or the bar
     cache is missing, i.e. when there is nothing to simulate."""
-    book = await _resolve_book(db)
+    book = await _resolve_book(db, redis)
     spot, baselines, spot_source = book.spot, book.baselines, book.spot_source
     if spot is None or not baselines:
         return None
