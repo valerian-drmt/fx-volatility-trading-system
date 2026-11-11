@@ -13,10 +13,15 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import TypeAdapter
 
 from api.schemas.reads import (
+    BookState,
     CycleProgress,
     DeltaHedgeSetting,
+    EnginesStatus,
     ExitRuleConfig,
     HaltState,
+    MacroEvent,
+    OpenPositionRow,
+    PcaModelState,
     PcaSignalRow,
     RegimeSnapshotRow,
     RiskLimit,
@@ -32,6 +37,11 @@ CASES: list[tuple[str, Any]] = [
     ("regime_history", list[RegimeSnapshotRow]),
     ("pca_history", list[PcaSignalRow]),
     ("cycle_progress", CycleProgress),
+    ("positions_open", list[OpenPositionRow]),
+    ("pca_model", PcaModelState),
+    ("trade_book", BookState),
+    ("regime_events", list[MacroEvent]),
+    ("dev_engines", EnginesStatus),
 ]
 
 
@@ -50,6 +60,7 @@ def test_the_routes_declare_the_models() -> None:
     spec = create_app().openapi()
     for path in ("/api/v1/trade/limits", "/api/v1/admin/halt", "/api/v1/positions/exit-rules-config",
                  "/api/v1/positions/delta-hedge-config", "/api/v1/regime/history",
-                 "/api/v1/signals/pca/history", "/api/v1/dev/cycle-progress"):
+                 "/api/v1/signals/pca/history", "/api/v1/dev/cycle-progress", "/api/v1/positions/open",
+                 "/api/v1/signals/pca/model", "/api/v1/trade/book", "/api/v1/regime/events", "/api/v1/dev/engines"):
         schema = json.dumps(spec["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]["schema"])
         assert "$ref" in schema, path

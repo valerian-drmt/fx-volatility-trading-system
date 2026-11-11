@@ -32,7 +32,7 @@ from api.auth import require_write
 from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
-from api.schemas.reads import DeltaHedgeSetting, ExitRuleConfig
+from api.schemas.reads import DeltaHedgeSetting, ExitRuleConfig, OpenPositionRow
 from bus import keys
 from core.contracts import multiplier_for, parse_local_symbol
 from core.execution.reconciliation import classify_break
@@ -271,7 +271,7 @@ def _serialize_position(pos: BookedPosition, struct: TradeStructure | None,
     }
 
 
-@router.get("/open")
+@router.get("/open", response_model=list[OpenPositionRow])
 async def list_open(db: DbDep) -> list[dict[str, Any]]:
     """Raw ``open_position`` rows — one record per live IB contract.
 

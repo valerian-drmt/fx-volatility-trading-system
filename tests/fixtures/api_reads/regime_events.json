@@ -1,0 +1,20 @@
+[
+ {
+  "id": 72,
+  "event_type": "GDP_GB",
+  "impact": "medium",
+  "region": "GB",
+  "scheduled_at": "2026-11-12T07:00:00Z",
+  "description": "UK GDP estimate (ONS)",
+  "source": "ONS"
+ },
+ {
+  "id": 59,
+  "event_type": "CPI_EU",
+  "impact": "high",
+  "region": "EU",
+  "scheduled_at": "2026-11-17T10:00:00Z",
+  "description": "Eurozone HICP final",
+  "source": "Eurostat"
+ }
+]

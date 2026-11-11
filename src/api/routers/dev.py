@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.config import get_settings
 from api.dependencies import get_db_session, get_redis
-from api.schemas.reads import CycleProgress
+from api.schemas.reads import CycleProgress, EnginesStatus
 from bus import keys
 from persistence.models import Base
 
@@ -134,7 +134,7 @@ ENGINES_CONFIG: list[dict[str, Any]] = [
 ]
 
 
-@router.get("/engines")
+@router.get("/engines", response_model=EnginesStatus)
 async def engines_status(
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> dict[str, Any]:

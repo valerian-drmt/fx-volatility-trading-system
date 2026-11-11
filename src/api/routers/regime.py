@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.dependencies import get_db_session
 from api.orchestration.regime_features import build_features_payload
-from api.schemas.reads import RegimeSnapshotRow
+from api.schemas.reads import MacroEvent, RegimeSnapshotRow
 from core.vol.regime_engine import gate_decision
 from persistence.models import Event, RegimeSnapshot
 
@@ -194,7 +194,7 @@ async def history(
     ]
 
 
-@router.get("/events")
+@router.get("/events", response_model=list[MacroEvent])
 async def list_events(
     db: DbDep, n: int = Query(10, ge=1, le=100),
     past_days: int = Query(0, ge=0, le=60),

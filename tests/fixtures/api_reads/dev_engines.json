@@ -1,0 +1,55 @@
+{
+ "engines": [
+  {
+   "name": "market_data",
+   "status": "OK",
+   "hb_age_s": 0.41,
+   "hb_ttl_s": 300,
+   "stale_threshold_s": 60,
+   "out_key": "latest_spot:EURUSD",
+   "out_age_s": 0.0
+  },
+  {
+   "name": "vol_engine",
+   "status": "OK",
+   "hb_age_s": 105.87,
+   "hb_ttl_s": 194,
+   "stale_threshold_s": 300,
+   "out_key": "latest_vol_surface:EURUSD",
+   "out_age_s": 167.92
+  },
+  {
+   "name": "risk_engine",
+   "status": "OK",
+   "hb_age_s": 1.38,
+   "hb_ttl_s": 299,
+   "stale_threshold_s": 30,
+   "out_key": "latest_greeks:portfolio",
+   "out_age_s": 1.38
+  },
+  {
+   "name": "db_writer",
+   "status": "OK",
+   "hb_age_s": 4.48,
+   "hb_ttl_s": 296,
+   "stale_threshold_s": 30,
+   "out_key": null,
+   "out_age_s": null
+  },
+  {
+   "name": "execution",
+   "status": "OK",
+   "hb_age_s": 4.19,
+   "hb_ttl_s": 296,
+   "stale_threshold_s": 10,
+   "out_key": null,
+   "out_age_s": null
+  }
+ ],
+ "ib_gateway": {
+  "status": "OK",
+  "host": "ib-gateway",
+  "port": 4002
+ },
+ "timestamp": "2026-11-11T09:29:33.948177Z"
+}
