@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { fetchHealth } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 import { toSemver } from "../../utils/version";

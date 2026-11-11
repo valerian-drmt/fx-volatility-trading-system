@@ -4,6 +4,7 @@
  * `js/views_portfolio.jsx` (global-window pattern) into typed ES modules.
  * 1:1 port — same JSX, same classNames, same logic. Mock data for now.
  */
+import type { JSX } from "react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchEquityCurve,

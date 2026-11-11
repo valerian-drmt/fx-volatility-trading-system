@@ -4,6 +4,7 @@
  * and a desk whose sockets cannot connect still renders its REST data: the
  * chip goes red, nothing blanks.
  */
+import type { JSX } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";

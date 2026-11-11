@@ -13,6 +13,7 @@
  * / Hong Kong), one row each, lit on the candles whose UTC hour falls inside that
  * market's trading window — so overlapping sessions (e.g. London∩NY) never stack.
  */
+import type { JSX } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchBars, type Bar } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";

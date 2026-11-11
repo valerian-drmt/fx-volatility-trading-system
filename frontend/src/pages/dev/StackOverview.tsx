@@ -11,6 +11,7 @@
  * Arrow convention: A → B means "B uses A" (cf. container_deps.md).
  * The engines sit in the middle because they are the central business layer.
  */
+import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../api/client";
 

@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -463,7 +464,7 @@ describe("DataProvider (live-only)", () => {
           surface: { "1M": { "10dp": { iv: 0.11 }, atm: { iv: 0.1 } } },
         }),
       ),
-      // provider fetches term-structure too (onUnhandledRequest: "error")
+      // provider fetches term-structure too (onUnhandledFrame: "error")
       http.get("*/api/v1/vol/term-structure", () =>
         HttpResponse.json({ symbol: "EURUSD", timestamp: "2026-06-16T00:00:00Z", pillars: [] }),
       ),

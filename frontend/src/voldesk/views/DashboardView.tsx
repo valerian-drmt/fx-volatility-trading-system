@@ -5,6 +5,7 @@
  * the EUR/USD candlestick (session bands + macro-event dots) with the upcoming
  * macro events listed beneath it.
  */
+import type { JSX } from "react";
 import type { ReactNode } from "react";
 import { fetchEquityCurve, fetchRegimeEvents } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";

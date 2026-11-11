@@ -3,6 +3,7 @@
  * when its warn window passes with no re-render trigger, and a server `asOf`
  * (when the payload carries one) is what the age is measured from.
  */
+import type { JSX } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deriveFresh, useFetch } from "../useFetch";

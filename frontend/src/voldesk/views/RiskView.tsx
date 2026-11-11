@@ -3,6 +3,7 @@
  * prototype's `js/views_risk.jsx` (global-window JSX) into typed ES modules.
  * Exports only RiskView; all sub-components stay local (lint).
  */
+import type { JSX } from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { fetchGreeksLadder, fetchMarginalVar, fetchPinRisk, fetchStressGrid, fetchStructuredPositions, type StructuredPositions } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";

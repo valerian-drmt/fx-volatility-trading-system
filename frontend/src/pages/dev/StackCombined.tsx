@@ -11,6 +11,7 @@
  *
  * Tout auto-refresh 3s. Pas de bouton refresh.
  */
+import type { JSX } from "react";
 import { useAuthStore } from "../../store/authStore";
 import { EngineHealth } from "./EngineHealth";
 import { RedisKeysPanel, RedisValuePanel, useRedisInspector } from "./RedisInspector";

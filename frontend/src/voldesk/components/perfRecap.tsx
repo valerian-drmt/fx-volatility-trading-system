@@ -5,6 +5,7 @@
  * peak (same formula as the underwater plot), and the 4 cumulative greek-P&L
  * Taylor terms (Δ over window).
  */
+import type { JSX } from "react";
 import { fmt } from "../data";
 import type { EquityPoint, GreekSeries } from "../data/live/portfolio";
 import { pnlCls } from "./format";

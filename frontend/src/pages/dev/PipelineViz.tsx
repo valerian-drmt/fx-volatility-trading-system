@@ -10,6 +10,7 @@
  * from /ws/ticks. Other panels fall back to their domain freshness (uniform) until
  * wired the same way.
  */
+import type { JSX } from "react";
 import dagre from "@dagrejs/dagre";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWsLog } from "../../hooks/useWsLog";

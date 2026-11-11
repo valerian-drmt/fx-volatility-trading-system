@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { fetchCycleProgress } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
 

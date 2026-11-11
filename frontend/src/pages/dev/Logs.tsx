@@ -23,6 +23,7 @@
  *     expand to a tree on click. Level field gets a coloured badge.
  *   - Export the current result set as .log.
  */
+import type { JSX } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { classifyLogsError, type LogsError } from "./logsStatus";
 import { apiFetch, apiFetchJson } from "../../api/client";

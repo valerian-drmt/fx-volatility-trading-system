@@ -8,6 +8,7 @@
  * yet (cold start / market closed) the domain is simply `missing`/`stale` via
  * the `Fresh<T>` contract and the views render the empty/neutral state.
  */
+import type { JSX } from "react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchConfig,

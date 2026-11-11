@@ -5,6 +5,7 @@
  * rendered by TradeView — dropped. Order entry is the WRITE path: it stays mock
  * until the auth boundary + backend wiring lands (IMPLEMENTATION.md §3bis/§5).
  */
+import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Panel } from "../components/common";
 import { fmtCcySigned, gk$, pnlCls } from "../components/format";

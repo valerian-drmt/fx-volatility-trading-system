@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { useAuthStore } from "../../store/authStore";

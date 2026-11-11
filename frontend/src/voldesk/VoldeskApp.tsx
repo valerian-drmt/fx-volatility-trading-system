@@ -12,6 +12,7 @@
  *     console is a separate path-routed root in main.tsx). Base-aware via
  *     import.meta.env.BASE_URL so it survives the deploy subpath.
  */
+import type { JSX } from "react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./voldesk.css";
 import { useAuthStore } from "../store/authStore";

@@ -4,6 +4,7 @@
  * Portfolio. Net greeks read the single reconciled store (DATA.greeks), so the
  * book foots identically to Risk.
  */
+import type { JSX } from "react";
 import { Fragment, useState } from "react";
 import { pnlCls } from "./format";
 import { legStrikeNum, structureName, structureSide } from "./tradeGrouping";

@@ -2,6 +2,7 @@
  * Engine Health — 4 engine cards + 1 IB Gateway card, fed by
  * GET /api/v1/dev/engines. Manual refresh + auto-refresh 5s (toggle).
  */
+import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../api/client";
 

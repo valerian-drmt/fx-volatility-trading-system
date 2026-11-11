@@ -3,6 +3,7 @@
  * (#347): "Markets closed · last complete grid from <stamp> UTC". The
  * topbar badge says closed; this says what the grids on screen are.
  */
+import type { JSX } from "react";
 import { useMarketOpen } from "../../hooks/useMarketOpen";
 import { closedBanner } from "../../utils/marketHours";
 import { useDeskData } from "../data/deskData";

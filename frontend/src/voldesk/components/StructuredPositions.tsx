@@ -5,6 +5,7 @@
  * separate "Unlinked" section for IB-account positions not booked through the desk.
  * Fixes the flat, symbol-derived, whole-account view (see /positions/structured).
  */
+import type { JSX } from "react";
 import { gk$, pnlCls } from "./format";
 import { fetchStructuredPositions, type StructuredPositions } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";
