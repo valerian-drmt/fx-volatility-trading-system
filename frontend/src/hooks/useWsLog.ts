@@ -6,7 +6,7 @@
  *  - keeps the last N messages in a FIFO buffer
  *  - exposes pause / resume / clear
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export type WsStatus = "connecting" | "open" | "retry" | "closed";
 
@@ -37,7 +37,10 @@ export function useWsLog(url: string, max = 50): UseWsLogResult {
   const [paused, setPaused] = useState(false);
   const [rate, setRate] = useState(0);
   const pausedRef = useRef(paused);
-  pausedRef.current = paused;
+  // Latest-value refs are written after render, before the effects that read them (#404).
+  useLayoutEffect(() => {
+    pausedRef.current = paused;
+  });
   // Rolling buffer of epoch-ms timestamps for the last 5 s. Lives in
   // a ref so updating it doesn't trigger renders.
   const tsBufferRef = useRef<number[]>([]);

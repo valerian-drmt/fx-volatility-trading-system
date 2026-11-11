@@ -11,7 +11,7 @@
  * keeping the badge it had at fetch time. A failed reload keeps the data and
  * forces "stale" until the next success.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { type Fresh, statusFor } from "../voldesk/data/freshness";
 import { useNow } from "./useNow";
 
@@ -38,9 +38,12 @@ export function useFetch<T>(
   const [held, setHeld] = useState<Held<T>>({ data: null, asOf: null, errored: false, error: null });
   const [tick, setTick] = useState(0);
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
   const asOfFromRef = useRef(asOfFrom);
-  asOfFromRef.current = asOfFrom;
+  // Latest-value refs are written after render, before the effects that read them (#404).
+  useLayoutEffect(() => {
+    fetcherRef.current = fetcher;
+    asOfFromRef.current = asOfFrom;
+  });
 
   useEffect(() => {
     if (!enabled) return;

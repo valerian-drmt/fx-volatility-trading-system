@@ -13,7 +13,7 @@
  *     import.meta.env.BASE_URL so it survives the deploy subpath.
  */
 import type { JSX } from "react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import "./voldesk.css";
 import { useAuthStore } from "../store/authStore";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -254,7 +254,6 @@ export default function VoldeskApp(): JSX.Element {
   const [clock, setClock] = useState<string>("");
   // Live EURUSD ticks via the shared desk domain (/ws/ticks, one WS connection).
   const tick = useTicks();
-  const prevMidRef = useRef<number | null>(null);
   // setTweak is wired for the (not-yet-ported) Settings/Tweaks UI.
   void setTweak;
 
@@ -278,6 +277,7 @@ export default function VoldeskApp(): JSX.Element {
 
   // Clock — always ticking (1s), independent of the price feed.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- wall clock: show the time at mount, then every second (external clock)
     setClock(new Date().toLocaleTimeString("en-GB"));
     const id = setInterval(() => setClock(new Date().toLocaleTimeString("en-GB")), 1000);
     return () => clearInterval(id);
@@ -285,10 +285,9 @@ export default function VoldeskApp(): JSX.Element {
 
   // Track previous mid to colour the up/down arrow.
   const liveMid = tick.data?.mid ?? null;
-  const prevMid = prevMidRef.current;
-  useEffect(() => {
-    if (liveMid !== null) prevMidRef.current = liveMid;
-  }, [liveMid]);
+  const [mids, setMids] = useState<{ cur: number | null; prev: number | null }>({ cur: null, prev: null });
+  if (liveMid !== null && liveMid !== mids.cur) setMids({ cur: liveMid, prev: mids.cur });
+  const prevMid = liveMid === mids.cur ? mids.prev : mids.cur;
 
   const ticker: TickerView = {
     mid: liveMid,

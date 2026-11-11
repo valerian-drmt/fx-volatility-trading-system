@@ -142,6 +142,7 @@ export function StackOverview(): JSX.Element {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- poll loop: the first fetch starts on mount (external fetch)
     void fetchData();
     timerRef.current = window.setInterval(fetchData, POLL_MS);
     return () => {

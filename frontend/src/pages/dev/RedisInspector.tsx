@@ -78,6 +78,7 @@ export function useRedisInspector(): RedisInspectorState {
 
   // Auto-refresh 3s: re-fetch keys + re-fetch value (if one is selected).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- poll loop: the first fetch starts on mount (external fetch)
     void fetchKeys();
     const id = window.setInterval(() => {
       void fetchKeys();

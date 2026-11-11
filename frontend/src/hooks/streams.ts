@@ -46,7 +46,9 @@ function useStreamState<T>(
   // by how long ago the last event came (a quiet book is not a dead feed), so
   // the provider is not re-rendered every second on its behalf.
   return useMemo(
-    () => ({ ...makeFresh<T>(last, asOf, warnMs, asOf ?? Date.now()), wsStatus: status }),
+    // `now` = the event's own stamp: a stream's age is not read (see above), and
+    // makeFresh ignores `now` when there is no event yet.
+    () => ({ ...makeFresh<T>(last, asOf, warnMs, asOf ?? 0), wsStatus: status }),
     [last, asOf, warnMs, status],
   );
 }

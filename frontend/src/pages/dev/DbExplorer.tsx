@@ -110,6 +110,7 @@ export function DbExplorer(): JSX.Element {
 
   // ── Reset paging / sort / filters when the table changes ──
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- table switch / request start: reset paging and the loading flag (external fetch)
     setOffset(0);
     setOrderBy(null);
     setOrderDir("desc");
@@ -132,6 +133,7 @@ export function DbExplorer(): JSX.Element {
       .join(",");
     if (filterStr) params.set("filters", filterStr);
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- table switch / request start: reset paging and the loading flag (external fetch)
     setLoading(true);
     setError(null);
     apiFetch(`/api/v1/dev/tables/${selected}?${params.toString()}`)
@@ -631,18 +633,18 @@ function Cell({ value, fam }: {
     </span>;
   }
   if (fam === "timestamp") {
+    let iso: string | null = null;
     try {
       const d = new Date(String(value));
-      if (!Number.isNaN(d.getTime())) {
-        return (
-          <span style={{ color: "#ad7" }}>
-            {d.toISOString().replace("T", " ").slice(0, 19)}
-            <span style={{ color: "#666" }}> UTC</span>
-          </span>
-        );
-      }
+      if (!Number.isNaN(d.getTime())) iso = d.toISOString().replace("T", " ").slice(0, 19);
     } catch { /* fallthrough */ }
-    return <span>{String(value)}</span>;
+    if (iso === null) return <span>{String(value)}</span>;
+    return (
+      <span style={{ color: "#ad7" }}>
+        {iso}
+        <span style={{ color: "#666" }}> UTC</span>
+      </span>
+    );
   }
   if (fam === "date") {
     return <span style={{ color: "#ad7" }}>{String(value).slice(0, 10)}</span>;

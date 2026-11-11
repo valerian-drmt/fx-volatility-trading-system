@@ -267,6 +267,7 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
   useEffect(() => {
     if (posStream.data && posStream.asOf !== null) {
       const entry = { msg: posStream.data, at: posStream.asOf };
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- WebSocket push: fold the message into the overlay (external stream)
       setPosOverlay((prev) => [...prev.slice(-49), entry]);
       if (shouldSample(Math.random())) {
         const published = Date.parse(posStream.data.timestamp);
@@ -277,6 +278,7 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
   useEffect(() => {
     const landed = liveTrade.asOf;
     if (landed === null) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- WebSocket push: fold the message into the overlay (external stream)
     setPosOverlay((prev) => {
       const kept = prev.filter((e) => e.at > landed - OVERLAP_MS);
       return kept.length === prev.length ? prev : kept;
@@ -285,8 +287,8 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
   const trade = useMemo<FetchResult<TradeData>>(() => {
     const d = liveTrade.data;
     if (!d || posOverlay.length === 0) return liveTrade;
-    const now = Date.now();
-    const positions = posOverlay.reduce((acc, e) => patchPositions(acc, e.msg, now), d.positions);
+    // Each patch is stamped with the time its push landed, not the render time.
+    const positions = posOverlay.reduce((acc, e) => patchPositions(acc, e.msg, e.at), d.positions);
     if (positions === d.positions) return liveTrade;
     return { ...liveTrade, data: { ...d, positions, greeks: deriveNetGreeks(positions) } };
   }, [liveTrade, posOverlay]);
@@ -301,6 +303,7 @@ export function DataProvider({ children }: { children: ReactNode }): JSX.Element
 
   const [acctMsg, setAcctMsg] = useState<AccountSnapshotMsg | null>(null);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- WebSocket push: fold the message into the overlay (external stream)
     if (acctStream.data) setAcctMsg(acctStream.data);
   }, [acctStream.data]);
   const portfolio = useMemo<FetchResult<PortfolioData>>(() => {

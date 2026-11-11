@@ -13,16 +13,17 @@ export default defineConfig([
   globalIgnores(["dist", "coverage", "playwright-report", "test-results", "vite.config.ts", "vite.config.js", "vite.config.d.ts"]),
   {
     files: ["**/*.{ts,tsx}"],
-    extends: [js.configs.recommended, tseslint.configs.recommended, reactRefresh.configs.vite, prettier],
-    plugins: { "react-hooks": reactHooks },
+    extends: [
+      js.configs.recommended,
+      tseslint.configs.recommended,
+      // react-hooks v7: the classic hook rules plus the React Compiler rules
+      // (refs, set-state-in-effect, purity, immutability, error-boundaries), #404.
+      reactHooks.configs.flat.recommended,
+      reactRefresh.configs.vite,
+      prettier,
+    ],
     languageOptions: { ecmaVersion: 2022, sourceType: "module", globals: globals.browser },
     rules: {
-      // The two classic hook rules, as before. The v7 preset adds the React
-      // Compiler rules (refs / set-state-in-effect / immutability / purity /
-      // error-boundaries), which flag ~20 pre-existing patterns; adopting them
-      // is its own ticket, not part of the toolchain bump (#308).
-      "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "warn",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/consistent-type-imports": "error",

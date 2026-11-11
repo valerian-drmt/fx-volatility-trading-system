@@ -93,6 +93,7 @@ export function Migrations(): JSX.Element {
 
   // Load the selected revision's source on demand.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nothing selected: drop the previous revision's source
     if (!selectedId) { setDetail(null); return; }
     apiFetch(`/api/v1/dev/migrations/${encodeURIComponent(selectedId)}`)
       .then(async (r) => {

@@ -231,6 +231,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
 
   useEffect(() => {
     if (prefill) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a new prefill request from another panel resets the form (prop-driven reset)
       setProduct(prefill.product);
       setSide(prefill.side || "BUY");
       if (prefill.tenor) setTenor(prefill.tenor);
