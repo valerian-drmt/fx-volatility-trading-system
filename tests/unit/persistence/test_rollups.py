@@ -65,7 +65,7 @@ async def test_refresh_folds_one_row_per_day_with_open_close_mtm_and_realized(sq
 
     async with sqlite_sessionmaker() as db:
         out = await refresh_portfolio_daily(db, now=NOW)
-        rows = await read_portfolio_daily(db, days=10)
+        rows = await read_portfolio_daily(db, days=10, now=NOW)
     assert out["rows"] == 3 and len(rows) == 3
     d4, d5, d6 = rows
     assert (d4.day, float(d4.net_liq_open), float(d4.net_liq_close), d4.n_samples) == (date(2026, 11, 4), 100_000.0, 100_500.0, 2)
@@ -73,7 +73,7 @@ async def test_refresh_folds_one_row_per_day_with_open_close_mtm_and_realized(sq
     assert float(d5.mtm_usd) == 500.0 and float(d5.realized_usd) == 250.0 and d5.n_closed == 1
     assert float(d6.mtm_usd) == 300.0 and d6.n_closed == 0
     async with sqlite_sessionmaker() as db:
-        nav, computed_at = await read_nav_series(db, days=10)
+        nav, computed_at = await read_nav_series(db, days=10, now=NOW)
         n_rows = len((await db.execute(select(PortfolioDaily))).scalars().all())
     assert [v for _, v in nav] == [100_500.0, 101_000.0, 101_300.0] and computed_at is not None
     assert n_rows == 3
@@ -91,7 +91,7 @@ async def test_rolling_refresh_upserts_today_and_keeps_the_mtm_chain(sqlite_sess
     await _seed_account(sqlite_sessionmaker, [(_d(6, 11), 95_200)])
     async with sqlite_sessionmaker() as db:
         out = await refresh_portfolio_daily(db, now=NOW)
-        rows = await read_portfolio_daily(db, days=10)
+        rows = await read_portfolio_daily(db, days=10, now=NOW)
     assert out["days"] == ROLLING_DAYS and len(rows) == 6, "rolling refresh rewrites, never duplicates"
     by_day = {r.day: r for r in rows}
     assert float(by_day[date(2026, 11, 6)].net_liq_close) == 95_200.0

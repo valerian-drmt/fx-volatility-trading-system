@@ -79,3 +79,98 @@ class CycleProgress(_Open):
     stage: str | None = None
     task: str | None = None
     completed: list[str] = []
+
+
+# ---- slice 2 (#416) ---------------------------------------------------------------------------
+
+
+class OpenPositionRow(_Open):
+    """One `/positions/open` row (the IB mirror), as `persistence.rows.open_position_row` builds it."""
+
+    id: int
+    package_id: int | None = None
+    trade_id: int | None = None
+    contract_id: int | None = None
+    product_label: str | None = None
+    structure: str | None = None
+    side: str | None = None
+    quantity: float | None = None
+    tenor: str | None = None
+    tenor_now: str | None = None
+    expiry: str | None = None
+    current_pnl_usd: float | None = None
+    market_price: float | None = None
+    contract_price_entry: float | None = None
+    nominal_eur: float | None = None
+    delta_usd: float | None = None
+    gamma_usd: float | None = None
+    vega_usd: float | None = None
+    theta_usd: float | None = None
+    vanna_usd: float | None = None
+    volga_usd: float | None = None
+    iv: float | None = None
+    timestamp: str | None = None
+    entry_timestamp: str | None = None
+
+
+class FitWindow(_Open):
+    start: datetime | None = None
+    end: datetime | None = None
+
+
+class PcaModelState(_Open):
+    """The active PCA model for a symbol and its refit readiness."""
+
+    active: bool
+    version: str | None = None
+    n_obs_used: int | None = None
+    fit_window: FitWindow | None = None
+    variance_explained: list[float] | None = None
+    available_hourly_snapshots: int | None = None
+    min_obs_for_refit: int | None = None
+    ready_to_refit: bool | None = None
+
+
+class BookState(_Open):
+    """The book as the pre-trade gate sees it."""
+
+    symbol: str
+    total_vega_usd: float | None = None
+    total_gamma_usd: float | None = None
+    total_theta_usd: float | None = None
+    total_delta: float | None = None
+    n_open_structures: int | None = None
+    n_open_legs: int | None = None
+    notional_engaged_usd: float | None = None
+    capital_total_usd: float | None = None
+    margin_used_usd: float | None = None
+    is_current: bool | None = None
+    is_bootstrap: bool | None = None
+
+
+class MacroEvent(_Open):
+    id: int
+    event_type: str
+    impact: str | None = None
+    region: str | None = None
+    scheduled_at: datetime
+    description: str | None = None
+    source: str | None = None
+
+
+class EngineHeartbeat(_Open):
+    name: str
+    status: str
+    hb_age_s: float | None = None
+    hb_ttl_s: int | None = None
+    stale_threshold_s: int | None = None
+    out_key: str | None = None
+    out_age_s: float | None = None
+
+
+class EnginesStatus(_Open):
+    """Per-engine heartbeat and output freshness, plus the IB gateway's state."""
+
+    engines: list[EngineHeartbeat]
+    ib_gateway: dict[str, Any] | None = None
+    timestamp: str | None = None

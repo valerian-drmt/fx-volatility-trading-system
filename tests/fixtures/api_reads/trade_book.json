@@ -1,0 +1,14 @@
+{
+ "symbol": "EURUSD",
+ "total_vega_usd": 0.0,
+ "total_gamma_usd": 0.0,
+ "total_theta_usd": 0.0,
+ "total_delta": 0.0,
+ "n_open_structures": 0,
+ "n_open_legs": 0,
+ "notional_engaged_usd": 0.0,
+ "capital_total_usd": 100000.0,
+ "margin_used_usd": 0.0,
+ "is_current": true,
+ "is_bootstrap": true
+}

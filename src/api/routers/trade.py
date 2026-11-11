@@ -27,7 +27,7 @@ from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.book_state_refresh import refresh_book_state
 from api.orchestration.pretrade_gate import run_pretrade_gate
-from api.schemas.reads import RiskLimit
+from api.schemas.reads import BookState, RiskLimit
 from bus import keys
 from core.contracts import build_ib_local_symbol
 from core.execution.revalidation import revalidate_preview
@@ -335,7 +335,7 @@ async def list_limits(db: DbDep) -> dict[str, dict[str, Any]]:
     }
 
 
-@router.get("/book")
+@router.get("/book", response_model=BookState)
 async def get_book(db: DbDep, symbol: str = "EURUSD") -> dict[str, Any]:
     """The book seen by the pre-trade gate: open structures, aggregate greeks and how much of each limit they use."""
     limits = await _load_limits(db)

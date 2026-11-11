@@ -2646,6 +2646,38 @@ export interface components {
             receive_to_screen_ms?: number | null;
         };
         /**
+         * BookState
+         * @description The book as the pre-trade gate sees it.
+         */
+        BookState: {
+            /** Capital Total Usd */
+            capital_total_usd?: number | null;
+            /** Is Bootstrap */
+            is_bootstrap?: boolean | null;
+            /** Is Current */
+            is_current?: boolean | null;
+            /** Margin Used Usd */
+            margin_used_usd?: number | null;
+            /** N Open Legs */
+            n_open_legs?: number | null;
+            /** N Open Structures */
+            n_open_structures?: number | null;
+            /** Notional Engaged Usd */
+            notional_engaged_usd?: number | null;
+            /** Symbol */
+            symbol: string;
+            /** Total Delta */
+            total_delta?: number | null;
+            /** Total Gamma Usd */
+            total_gamma_usd?: number | null;
+            /** Total Theta Usd */
+            total_theta_usd?: number | null;
+            /** Total Vega Usd */
+            total_vega_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * CalibrationConfig
          * @description Walk-forward + backtest calibration hyperparameters.
          */
@@ -2883,6 +2915,25 @@ export interface components {
              */
             user: string;
         };
+        /** EngineHeartbeat */
+        EngineHeartbeat: {
+            /** Hb Age S */
+            hb_age_s?: number | null;
+            /** Hb Ttl S */
+            hb_ttl_s?: number | null;
+            /** Name */
+            name: string;
+            /** Out Age S */
+            out_age_s?: number | null;
+            /** Out Key */
+            out_key?: string | null;
+            /** Stale Threshold S */
+            stale_threshold_s?: number | null;
+            /** Status */
+            status: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** EngineStats */
         EngineStats: {
             /** Heartbeat Age S */
@@ -2891,6 +2942,22 @@ export interface components {
             name: string;
             /** State */
             state: string;
+        };
+        /**
+         * EnginesStatus
+         * @description Per-engine heartbeat and output freshness, plus the IB gateway's state.
+         */
+        EnginesStatus: {
+            /** Engines */
+            engines: components["schemas"]["EngineHeartbeat"][];
+            /** Ib Gateway */
+            ib_gateway?: {
+                [key: string]: unknown;
+            } | null;
+            /** Timestamp */
+            timestamp?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** ErrorResponse */
         ErrorResponse: {
@@ -2958,6 +3025,15 @@ export interface components {
              * @default 0.5
              */
             z_flip_exit_threshold: number;
+        };
+        /** FitWindow */
+        FitWindow: {
+            /** End */
+            end?: string | null;
+            /** Start */
+            start?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** GateOut */
         GateOut: {
@@ -3130,6 +3206,28 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** MacroEvent */
+        MacroEvent: {
+            /** Description */
+            description?: string | null;
+            /** Event Type */
+            event_type: string;
+            /** Id */
+            id: number;
+            /** Impact */
+            impact?: string | null;
+            /** Region */
+            region?: string | null;
+            /**
+             * Scheduled At
+             * Format: date-time
+             */
+            scheduled_at: string;
+            /** Source */
+            source?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** ModelHealthResponse */
         ModelHealthResponse: {
             /** Last Vol Surface Ts */
@@ -3158,6 +3256,85 @@ export interface components {
              * Format: date-time
              */
             scheduled_at: string;
+        };
+        /**
+         * OpenPositionRow
+         * @description One `/positions/open` row (the IB mirror), as `persistence.rows.open_position_row` builds it.
+         */
+        OpenPositionRow: {
+            /** Contract Id */
+            contract_id?: number | null;
+            /** Contract Price Entry */
+            contract_price_entry?: number | null;
+            /** Current Pnl Usd */
+            current_pnl_usd?: number | null;
+            /** Delta Usd */
+            delta_usd?: number | null;
+            /** Entry Timestamp */
+            entry_timestamp?: string | null;
+            /** Expiry */
+            expiry?: string | null;
+            /** Gamma Usd */
+            gamma_usd?: number | null;
+            /** Id */
+            id: number;
+            /** Iv */
+            iv?: number | null;
+            /** Market Price */
+            market_price?: number | null;
+            /** Nominal Eur */
+            nominal_eur?: number | null;
+            /** Package Id */
+            package_id?: number | null;
+            /** Product Label */
+            product_label?: string | null;
+            /** Quantity */
+            quantity?: number | null;
+            /** Side */
+            side?: string | null;
+            /** Structure */
+            structure?: string | null;
+            /** Tenor */
+            tenor?: string | null;
+            /** Tenor Now */
+            tenor_now?: string | null;
+            /** Theta Usd */
+            theta_usd?: number | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Trade Id */
+            trade_id?: number | null;
+            /** Vanna Usd */
+            vanna_usd?: number | null;
+            /** Vega Usd */
+            vega_usd?: number | null;
+            /** Volga Usd */
+            volga_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * PcaModelState
+         * @description The active PCA model for a symbol and its refit readiness.
+         */
+        PcaModelState: {
+            /** Active */
+            active: boolean;
+            /** Available Hourly Snapshots */
+            available_hourly_snapshots?: number | null;
+            fit_window?: components["schemas"]["FitWindow"] | null;
+            /** Min Obs For Refit */
+            min_obs_for_refit?: number | null;
+            /** N Obs Used */
+            n_obs_used?: number | null;
+            /** Ready To Refit */
+            ready_to_refit?: boolean | null;
+            /** Variance Explained */
+            variance_explained?: number[] | null;
+            /** Version */
+            version?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** PcaSignalRow */
         PcaSignalRow: {
@@ -4621,9 +4798,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EnginesStatus"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6751,9 +6926,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["OpenPositionRow"][];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -7261,9 +7434,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["MacroEvent"][];
                 };
             };
             /** @description Validation Error */
@@ -7683,9 +7854,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PcaModelState"];
                 };
             };
             /** @description Validation Error */
@@ -7798,9 +7967,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["BookState"];
                 };
             };
             /** @description Validation Error */
