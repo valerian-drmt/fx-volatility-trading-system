@@ -155,8 +155,11 @@ jobs:
             --query "Command.CommandId" --output text)
           echo "SSM command id: $cmd_id"
 
-          # Poll to a terminal state.
-          for i in $(seq 1 60); do
+          # Poll to a terminal state. 15 min: a deploy that pulls new obs or
+          # gateway images (~2 GB) runs past 5 min, and the job then failed while
+          # the host finished the deploy (2026-10-14, 2026-11-11). The job's own
+          # timeout-minutes stays the outer bound.
+          for i in $(seq 1 180); do
             status=$(aws ssm get-command-invocation --region "$REGION" \
               --command-id "$cmd_id" --instance-id "$INSTANCE" \
               --query Status --output text 2>/dev/null || echo Pending)
@@ -170,7 +173,7 @@ jobs:
                   --query StandardErrorContent --output text
                 exit 1 ;;
             esac
-            if [ "$i" = "60" ]; then echo "timed out waiting for SSM command"; exit 1; fi
+            if [ "$i" = "180" ]; then echo "timed out waiting for SSM command"; exit 1; fi
             sleep 5
           done
 
