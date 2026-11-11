@@ -1,0 +1,77 @@
+{
+ "axis": "spot",
+ "bins": [
+  -400,
+  -200,
+  0,
+  200,
+  400
+ ],
+ "current_spot": 1.11363,
+ "dropped": [],
+ "fallback": {
+  "spot": "surface_forward"
+ },
+ "n_positions": 6,
+ "rows": [
+  {
+   "axis_value": -400,
+   "delta_usd": -272069.16,
+   "dspot_bps": -400,
+   "gamma_usd_per_pip": 699.82,
+   "hedge_delta_usd": 272069.16,
+   "pnl_usd": 1270.14,
+   "spot": 1.06908,
+   "vega_usd_per_volpt": 1130.29
+  },
+  {
+   "axis_value": -200,
+   "delta_usd": -38974.18,
+   "dspot_bps": -200,
+   "gamma_usd_per_pip": 1118.85,
+   "hedge_delta_usd": 38974.18,
+   "pnl_usd": -2018.12,
+   "spot": 1.09136,
+   "vega_usd_per_volpt": 1902.61
+  },
+  {
+   "axis_value": 0,
+   "delta_usd": 235822.06,
+   "dspot_bps": 0,
+   "gamma_usd_per_pip": 1006.08,
+   "hedge_delta_usd": -235822.06,
+   "pnl_usd": 0.0,
+   "spot": 1.11363,
+   "vega_usd_per_volpt": 1826.99
+  },
+  {
+   "axis_value": 200,
+   "delta_usd": 442818.17,
+   "dspot_bps": 200,
+   "gamma_usd_per_pip": 692.0,
+   "hedge_delta_usd": -442818.17,
+   "pnl_usd": 6920.92,
+   "spot": 1.1359,
+   "vega_usd_per_volpt": 1354.23
+  },
+  {
+   "axis_value": 400,
+   "delta_usd": 621830.84,
+   "dspot_bps": 400,
+   "gamma_usd_per_pip": 967.07,
+   "hedge_delta_usd": -621830.84,
+   "pnl_usd": 17476.07,
+   "spot": 1.15818,
+   "vega_usd_per_volpt": 1463.23
+  }
+ ],
+ "spot_bins_bps": [
+  -400,
+  -200,
+  0,
+  200,
+  400
+ ],
+ "spot_source": "surface_forward",
+ "unit": "bp"
+}

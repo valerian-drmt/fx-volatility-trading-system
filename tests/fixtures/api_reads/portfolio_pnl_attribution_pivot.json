@@ -1,0 +1,39 @@
+{
+ "by": "structure",
+ "groups": [
+  {
+   "label": "long strangle 10d",
+   "n": 1,
+   "nominal_eur": 12500000.0,
+   "pnl_usd": -13996.0,
+   "vanna_usd": 0.37,
+   "volga_usd": 0.01
+  },
+  {
+   "label": "butterfly",
+   "n": 3,
+   "nominal_eur": 5000000.0,
+   "pnl_usd": -23.63,
+   "vanna_usd": -40076.72,
+   "volga_usd": 107.79
+  },
+  {
+   "label": "long put",
+   "n": 1,
+   "nominal_eur": 1250000.0,
+   "pnl_usd": 8670.47,
+   "vanna_usd": 18910.58,
+   "volga_usd": 20.07
+  },
+  {
+   "label": "long future",
+   "n": 1,
+   "nominal_eur": 875000.0,
+   "pnl_usd": -13368.47,
+   "vanna_usd": 0.0,
+   "volga_usd": 0.0
+  }
+ ],
+ "total_nominal_eur": 19625000.0,
+ "total_usd": -18717.63
+}

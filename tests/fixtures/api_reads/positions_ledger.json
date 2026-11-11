@@ -1,0 +1,334 @@
+{
+ "as_of": "2026-11-11T11:32:17.215906+00:00",
+ "positions": [
+  {
+   "avg_cost": 1.128629,
+   "commission": 0.0,
+   "contract": "6EH7",
+   "multiplier": 125000.0,
+   "net_qty": 7.0,
+   "realized_pnl": 11387.5,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 1.143021,
+   "commission": 63.96,
+   "contract": "6EU6",
+   "multiplier": 125000.0,
+   "net_qty": -13.0,
+   "realized_pnl": 163.72,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 1.127977,
+   "commission": 199.26,
+   "contract": "6EZ6",
+   "multiplier": 125000.0,
+   "net_qty": -13.0,
+   "realized_pnl": -115174.26,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0163,
+   "commission": 0.0,
+   "contract": "EUUF7 C1150",
+   "multiplier": 125000.0,
+   "net_qty": 11.0,
+   "realized_pnl": -135725.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0,
+   "commission": 0.0,
+   "contract": "EUUF7 C1180",
+   "multiplier": 125000.0,
+   "net_qty": 0.0,
+   "realized_pnl": 60000.0,
+   "unrealized_pnl": 0.0
+  },
+  {
+   "avg_cost": 0.0275,
+   "commission": 0.0,
+   "contract": "EUUG7 C1110",
+   "multiplier": 125000.0,
+   "net_qty": 10.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0142,
+   "commission": 0.0,
+   "contract": "EUUG7 C1130",
+   "multiplier": 125000.0,
+   "net_qty": -20.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0051,
+   "commission": 0.0,
+   "contract": "EUUG7 C1155",
+   "multiplier": 125000.0,
+   "net_qty": 10.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0008,
+   "commission": 246.0,
+   "contract": "EUUQ6 C1155",
+   "multiplier": 125000.0,
+   "net_qty": 100.0,
+   "realized_pnl": -246.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0014,
+   "commission": 246.0,
+   "contract": "EUUQ6 P1125",
+   "multiplier": 125000.0,
+   "net_qty": 100.0,
+   "realized_pnl": -246.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0037,
+   "commission": 0.0,
+   "contract": "EUUQ6 P1140",
+   "multiplier": 125000.0,
+   "net_qty": 10.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0101,
+   "commission": 0.0,
+   "contract": "EUUU6 C1140",
+   "multiplier": 125000.0,
+   "net_qty": 10.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0069,
+   "commission": 0.0,
+   "contract": "EUUU6 C1145",
+   "multiplier": 125000.0,
+   "net_qty": -10.0,
+   "realized_pnl": -125.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0,
+   "commission": 0.0,
+   "contract": "EUUU6 C1165",
+   "multiplier": 125000.0,
+   "net_qty": 0.0,
+   "realized_pnl": -700.0,
+   "unrealized_pnl": 0.0
+  },
+  {
+   "avg_cost": 0.0,
+   "commission": 0.0,
+   "contract": "EUUU6 P1130",
+   "multiplier": 125000.0,
+   "net_qty": 0.0,
+   "realized_pnl": -375.0,
+   "unrealized_pnl": 0.0
+  },
+  {
+   "avg_cost": 0.022,
+   "commission": 0.0,
+   "contract": "EUUV6 C1130",
+   "multiplier": 125000.0,
+   "net_qty": -10.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0108,
+   "commission": 0.0,
+   "contract": "EUUV6 C1145",
+   "multiplier": 125000.0,
+   "net_qty": -100.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.01,
+   "commission": 0.0,
+   "contract": "EUUV6 C1150",
+   "multiplier": 125000.0,
+   "net_qty": 20.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0075,
+   "commission": 0.0,
+   "contract": "EUUV6 C1155",
+   "multiplier": 125000.0,
+   "net_qty": -100.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0057,
+   "commission": 0.0,
+   "contract": "EUUV6 C1160",
+   "multiplier": 125000.0,
+   "net_qty": -10.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0031,
+   "commission": 49.2,
+   "contract": "EUUV6 C1170",
+   "multiplier": 125000.0,
+   "net_qty": -89.0,
+   "realized_pnl": -424.2,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0049,
+   "commission": 0.0,
+   "contract": "EUUV6 P1130",
+   "multiplier": 125000.0,
+   "net_qty": 100.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0116,
+   "commission": 246.0,
+   "contract": "EUUV6 P1145",
+   "multiplier": 125000.0,
+   "net_qty": -110.0,
+   "realized_pnl": -246.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.012,
+   "commission": 0.0,
+   "contract": "EUUV6 P1150",
+   "multiplier": 125000.0,
+   "net_qty": -20.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0128,
+   "commission": 0.0,
+   "contract": "EUUV6 P1155",
+   "multiplier": 125000.0,
+   "net_qty": -100.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.03724,
+   "commission": 0.0,
+   "contract": "EUUX6 C1115",
+   "multiplier": 125000.0,
+   "net_qty": 10.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0001,
+   "commission": 0.0,
+   "contract": "EUUX6 C1145",
+   "multiplier": 125000.0,
+   "net_qty": 10.0,
+   "realized_pnl": 13437.5,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0117,
+   "commission": 0.0,
+   "contract": "EUUX6 C1150",
+   "multiplier": 125000.0,
+   "net_qty": -10.0,
+   "realized_pnl": -437.5,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0044,
+   "commission": 0.0,
+   "contract": "EUUX6 C1170",
+   "multiplier": 125000.0,
+   "net_qty": 10.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0037,
+   "commission": 7.38,
+   "contract": "EUUX6 C1175",
+   "multiplier": 125000.0,
+   "net_qty": -10.0,
+   "realized_pnl": -469.88,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0,
+   "commission": 0.0,
+   "contract": "EUUX6 P1120",
+   "multiplier": 125000.0,
+   "net_qty": 0.0,
+   "realized_pnl": -125.0,
+   "unrealized_pnl": 0.0
+  },
+  {
+   "avg_cost": 0.0056,
+   "commission": 0.0,
+   "contract": "EUUX6 P1125",
+   "multiplier": 125000.0,
+   "net_qty": 10.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0,
+   "commission": 0.0,
+   "contract": "EUUZ6 C1180",
+   "multiplier": 125000.0,
+   "net_qty": 0.0,
+   "realized_pnl": -2500.0,
+   "unrealized_pnl": 0.0
+  },
+  {
+   "avg_cost": 0.0011,
+   "commission": 0.0,
+   "contract": "EUUZ6 C1210",
+   "multiplier": 125000.0,
+   "net_qty": 100.0,
+   "realized_pnl": 0.0,
+   "unrealized_pnl": null
+  },
+  {
+   "avg_cost": 0.0,
+   "commission": 0.0,
+   "contract": "EUUZ6 P1075",
+   "multiplier": 125000.0,
+   "net_qty": 0.0,
+   "realized_pnl": -25200.0,
+   "unrealized_pnl": 0.0
+  },
+  {
+   "avg_cost": 0.0,
+   "commission": 0.0,
+   "contract": "EUUZ6 P1150",
+   "multiplier": 125000.0,
+   "net_qty": 0.0,
+   "realized_pnl": -1250.0,
+   "unrealized_pnl": 0.0
+  }
+ ],
+ "totals": {
+  "commission": 1057.8,
+  "realized_pnl": -198255.12,
+  "unrealized_pnl": 0.0
+ }
+}

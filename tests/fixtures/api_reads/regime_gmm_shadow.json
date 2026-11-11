@@ -1,0 +1,18 @@
+{
+ "agreement_ratio": 0.0,
+ "by_label": {
+  "calm": {
+   "pre_event": 500
+  }
+ },
+ "n_total": 500,
+ "n_with_gmm": 500,
+ "promotion_gates": {
+  "agreement_ratio_ok": false,
+  "agreement_ratio_required": 0.7,
+  "manual_check_needed": "training set must span \u2265 1 traversed high-impact event",
+  "n_required": 1000,
+  "n_with_gmm_ok": false
+ },
+ "ready_to_promote": false
+}

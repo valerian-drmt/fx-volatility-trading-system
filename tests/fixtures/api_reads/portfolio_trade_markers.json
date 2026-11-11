@@ -1,0 +1,74 @@
+[
+ {
+  "closed_at": "2026-11-07T03:13:38.958123+00:00",
+  "entry_spot": null,
+  "id": 16,
+  "net_pnl_usd": null,
+  "opened_at": "2026-07-23T14:18:55.335781+00:00",
+  "state": "closed",
+  "type": "butterfly"
+ },
+ {
+  "closed_at": "2026-11-04T13:06:57.542751+00:00",
+  "entry_spot": null,
+  "id": 22,
+  "net_pnl_usd": null,
+  "opened_at": "2026-07-23T14:34:50.684774+00:00",
+  "state": "closed",
+  "type": "long future"
+ },
+ {
+  "closed_at": "2026-11-04T13:06:57.542751+00:00",
+  "entry_spot": null,
+  "id": 24,
+  "net_pnl_usd": null,
+  "opened_at": "2026-07-23T14:36:28.528150+00:00",
+  "state": "closed",
+  "type": "short future"
+ },
+ {
+  "closed_at": "2026-11-04T13:06:57.542751+00:00",
+  "entry_spot": null,
+  "id": 25,
+  "net_pnl_usd": null,
+  "opened_at": "2026-07-23T14:36:31.678952+00:00",
+  "state": "closed",
+  "type": "short future"
+ },
+ {
+  "closed_at": "2026-11-04T14:16:51.561074+00:00",
+  "entry_spot": null,
+  "id": 27,
+  "net_pnl_usd": null,
+  "opened_at": "2026-07-23T14:36:39.580113+00:00",
+  "state": "closed",
+  "type": "call spread"
+ },
+ {
+  "closed_at": null,
+  "entry_spot": null,
+  "id": 31,
+  "net_pnl_usd": null,
+  "opened_at": "2026-11-04T14:12:14.339127+00:00",
+  "state": "open",
+  "type": "butterfly"
+ },
+ {
+  "closed_at": "2026-11-05T12:44:22.891043+00:00",
+  "entry_spot": null,
+  "id": 32,
+  "net_pnl_usd": null,
+  "opened_at": "2026-11-05T11:44:19.526575+00:00",
+  "state": "closed",
+  "type": "long future"
+ },
+ {
+  "closed_at": null,
+  "entry_spot": null,
+  "id": 33,
+  "net_pnl_usd": null,
+  "opened_at": "2026-11-05T11:57:43.598768+00:00",
+  "state": "open",
+  "type": "long put"
+ }
+]

@@ -1,0 +1,27 @@
+{
+ "cpu": {
+  "cores": 2,
+  "load_avg": [
+   2.05,
+   1.69,
+   1.85
+  ],
+  "per_core": [
+   5.0,
+   5.0
+  ],
+  "percent": 4.9
+ },
+ "disk": {
+  "percent": 64.6,
+  "total_gb": 48.3,
+  "used_gb": 31.2
+ },
+ "gpu": [],
+ "memory": {
+  "percent": 69.3,
+  "total_gb": 3.75,
+  "used_gb": 2.59
+ },
+ "timestamp": "2026-11-11T11:32:38.566978Z"
+}

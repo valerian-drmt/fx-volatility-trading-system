@@ -1,0 +1,174 @@
+[
+ {
+  "display_name": "Long straddle ATM",
+  "leg_template": [
+   {
+    "contract_type": "call",
+    "delta_pillar": "atm",
+    "qty_factor": 1,
+    "side": "BUY"
+   },
+   {
+    "contract_type": "put",
+    "delta_pillar": "atm",
+    "qty_factor": 1,
+    "side": "BUY"
+   }
+  ],
+  "max_legs": 2,
+  "min_legs": 2,
+  "rationale_for_pc": "PC1 CHEAP : level low \u2192 buy vol",
+  "requires_delta_hedge": true,
+  "structure_type": "straddle_atm",
+  "typical_gamma_sign": "positive",
+  "typical_theta_sign": "negative",
+  "typical_vega_sign": "positive"
+ },
+ {
+  "display_name": "Short OTM strangle",
+  "leg_template": [
+   {
+    "contract_type": "call",
+    "delta_pillar": "25dc",
+    "qty_factor": 1,
+    "side": "SELL"
+   },
+   {
+    "contract_type": "put",
+    "delta_pillar": "25dp",
+    "qty_factor": 1,
+    "side": "SELL"
+   }
+  ],
+  "max_legs": 2,
+  "min_legs": 2,
+  "rationale_for_pc": "PC1 EXPENSIVE : level high \u2192 sell vol",
+  "requires_delta_hedge": true,
+  "structure_type": "short_strangle",
+  "typical_gamma_sign": "negative",
+  "typical_theta_sign": "positive",
+  "typical_vega_sign": "negative"
+ },
+ {
+  "display_name": "Calendar buy long-dated",
+  "leg_template": [
+   {
+    "contract_type": "call",
+    "delta_pillar": "atm",
+    "qty_factor": 1,
+    "side": "SELL",
+    "tenor_role": "near"
+   },
+   {
+    "contract_type": "call",
+    "delta_pillar": "atm",
+    "qty_factor": 1,
+    "side": "BUY",
+    "tenor_role": "far"
+   }
+  ],
+  "max_legs": 2,
+  "min_legs": 2,
+  "rationale_for_pc": "PC2 CHEAP : term inverted",
+  "requires_delta_hedge": true,
+  "structure_type": "calendar_long",
+  "typical_gamma_sign": "neutral",
+  "typical_theta_sign": "neutral",
+  "typical_vega_sign": "positive"
+ },
+ {
+  "display_name": "Calendar sell long-dated",
+  "leg_template": [
+   {
+    "contract_type": "call",
+    "delta_pillar": "atm",
+    "qty_factor": 1,
+    "side": "BUY",
+    "tenor_role": "near"
+   },
+   {
+    "contract_type": "call",
+    "delta_pillar": "atm",
+    "qty_factor": 1,
+    "side": "SELL",
+    "tenor_role": "far"
+   }
+  ],
+  "max_legs": 2,
+  "min_legs": 2,
+  "rationale_for_pc": "PC2 EXPENSIVE : term steep",
+  "requires_delta_hedge": true,
+  "structure_type": "calendar_short",
+  "typical_gamma_sign": "neutral",
+  "typical_theta_sign": "neutral",
+  "typical_vega_sign": "negative"
+ },
+ {
+  "display_name": "Long butterfly (10d wings)",
+  "leg_template": [
+   {
+    "contract_type": "call",
+    "delta_pillar": "10dc",
+    "overridable": true,
+    "qty_factor": 1,
+    "side": "BUY"
+   },
+   {
+    "contract_type": "call",
+    "delta_pillar": "atm",
+    "overridable": false,
+    "qty_factor": 2,
+    "side": "SELL"
+   },
+   {
+    "contract_type": "call",
+    "delta_pillar": "10dp",
+    "overridable": true,
+    "qty_factor": 1,
+    "side": "BUY"
+   }
+  ],
+  "max_legs": 3,
+  "min_legs": 3,
+  "rationale_for_pc": "PC3 CHEAP : wings cheap",
+  "requires_delta_hedge": true,
+  "structure_type": "long_butterfly_25d",
+  "typical_gamma_sign": "neutral",
+  "typical_theta_sign": "neutral",
+  "typical_vega_sign": "neutral"
+ },
+ {
+  "display_name": "Short butterfly (10d wings)",
+  "leg_template": [
+   {
+    "contract_type": "call",
+    "delta_pillar": "10dc",
+    "overridable": true,
+    "qty_factor": 1,
+    "side": "SELL"
+   },
+   {
+    "contract_type": "call",
+    "delta_pillar": "atm",
+    "overridable": false,
+    "qty_factor": 2,
+    "side": "BUY"
+   },
+   {
+    "contract_type": "call",
+    "delta_pillar": "10dp",
+    "overridable": true,
+    "qty_factor": 1,
+    "side": "SELL"
+   }
+  ],
+  "max_legs": 3,
+  "min_legs": 3,
+  "rationale_for_pc": "PC3 EXPENSIVE : wings rich",
+  "requires_delta_hedge": true,
+  "structure_type": "short_butterfly_25d",
+  "typical_gamma_sign": "neutral",
+  "typical_theta_sign": "neutral",
+  "typical_vega_sign": "neutral"
+ }
+]

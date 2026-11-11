@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.config import get_settings
 from api.dependencies import get_db_session, get_redis
+from api.schemas import route_models as rm
 from api.schemas.reads import CycleProgress, EnginesStatus
 from bus import keys
 from persistence.models import Base
@@ -93,7 +94,7 @@ def _parse_age(raw_str: str, now: datetime) -> float | None:
     return None
 
 
-@router.get("/redis/keys", dependencies=_TRADER)
+@router.get("/redis/keys", response_model=rm.RedisKeys, response_model_exclude_unset=True, dependencies=_TRADER)
 async def redis_keys(
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> dict[str, Any]:
@@ -262,7 +263,7 @@ STACK_LAYOUT: list[dict[str, Any]] = [
 ]
 
 
-@router.get("/stack")
+@router.get("/stack", response_model=rm.DevStack, response_model_exclude_unset=True)
 async def stack_overview(
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
 ) -> dict[str, Any]:
@@ -395,7 +396,7 @@ async def stack_overview(
 # The endpoints only emit SELECT — no INSERT/UPDATE/DELETE here.
 
 
-@router.get("/tables", dependencies=_TRADER)
+@router.get("/tables", response_model=rm.TablesList, response_model_exclude_unset=True, dependencies=_TRADER)
 async def list_tables() -> dict[str, Any]:
     """Auto-discover every ORM-declared table with light metadata.
 
@@ -464,7 +465,7 @@ def _reorder_columns(table: str, row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-@router.get("/tables/{name}", dependencies=_TRADER)
+@router.get("/tables/{name}", response_model=rm.TablePage, response_model_exclude_unset=True, dependencies=_TRADER)
 async def read_table(
     name: str,
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -640,7 +641,7 @@ async def read_table(
 LOKI_BASE = "http://loki:3100"
 
 
-@router.get("/logs/containers", dependencies=_TRADER)
+@router.get("/logs/containers", response_model=rm.LogContainers, response_model_exclude_unset=True, dependencies=_TRADER)
 async def logs_containers() -> dict[str, Any]:
     """Return the distinct values of the ``container`` Loki label."""
     import httpx
@@ -662,7 +663,7 @@ async def logs_containers() -> dict[str, Any]:
     return {"containers": values}
 
 
-@router.get("/logs/query", dependencies=_TRADER)
+@router.get("/logs/query", response_model=rm.LogQueryResult, response_model_exclude_unset=True, dependencies=_TRADER)
 async def logs_query(
     container: str | None = None,
     pattern: str | None = None,
@@ -873,7 +874,7 @@ def _build_migration_chain() -> list[dict[str, Any]]:
     return chain
 
 
-@router.get("/migrations")
+@router.get("/migrations", response_model=rm.DevMigrations, response_model_exclude_unset=True)
 async def list_migrations(
     db: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> dict[str, Any]:
@@ -918,7 +919,7 @@ async def list_migrations(
     }
 
 
-@router.get("/migrations/{rev_id}")
+@router.get("/migrations/{rev_id}", response_model=rm.MigrationDetail, response_model_exclude_unset=True)
 async def get_migration(rev_id: str) -> dict[str, Any]:
     """Return the full source + extracted upgrade/downgrade bodies of one
     revision, so the front-end can render syntax-highlighted code.
@@ -958,7 +959,7 @@ async def get_migration(rev_id: str) -> dict[str, Any]:
     }
 
 
-@router.get("/redis/value", dependencies=_TRADER)
+@router.get("/redis/value", response_model=rm.RedisValue, response_model_exclude_unset=True, dependencies=_TRADER)
 async def redis_value(
     key: str,
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
@@ -1021,7 +1022,7 @@ async def cycle_progress(
 # on the schema at the next refresh.
 
 
-@router.get("/db-schema")
+@router.get("/db-schema", response_model=rm.DevDbSchema, response_model_exclude_unset=True)
 async def db_schema(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     source: str = "orm",
@@ -1473,7 +1474,7 @@ async def _read_gpu() -> list[dict[str, Any]]:
         return []
 
 
-@router.get("/hardware")
+@router.get("/hardware", response_model=rm.DevHardware, response_model_exclude_unset=True)
 async def hardware() -> dict[str, Any]:
     """Host CPU / RAM / disk (from /proc) + best-effort GPU (nvidia-smi).
 
@@ -1577,7 +1578,7 @@ async def _sample_docker() -> None:
         pass  # socket absent (prod) / docker unreachable → leave history untouched
 
 
-@router.get("/containers/metrics")
+@router.get("/containers/metrics", response_model=rm.DevContainersMetrics, response_model_exclude_unset=True)
 async def container_metrics(minutes: int = 15, step_s: int = 0) -> dict[str, Any]:
     """Per-container CPU % + RAM (bytes) time-series over the last ``minutes``.
 

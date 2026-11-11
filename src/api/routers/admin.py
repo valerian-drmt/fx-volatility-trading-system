@@ -26,6 +26,7 @@ from api.auth import require_write
 from api.config import get_settings
 from api.dependencies import get_db_session, get_redis
 from api.orchestration import config_service
+from api.schemas import route_models as rm
 from api.schemas.admin import ConfigPatchRequest, ConfigResponse, ConfigRevertRequest
 from api.schemas.reads import HaltState
 from core import config_catalog as cc
@@ -53,7 +54,7 @@ async def get_current_config(db: DbDep) -> ConfigResponse:
     return _to_response(await config_service.get_current(db))
 
 
-@router.get("/config/schema")
+@router.get("/config/schema", response_model=dict[str, Any])
 async def get_config_schema() -> dict:
     """Raw JSON Schema of :class:`VolTradingConfig` for React JSON Schema Form."""
     return config_service.export_json_schema()
@@ -142,7 +143,7 @@ async def _domain_payload(db: AsyncSession, domain: str) -> dict[str, Any]:
     return {"domain": domain, "title": cc.DOMAIN_TITLES.get(domain, domain), "params": params}
 
 
-@router.get("/settings/{domain}")
+@router.get("/settings/{domain}", response_model=rm.AdminSettingsDomain, response_model_exclude_unset=True)
 async def get_domain_settings(domain: str, db: DbDep) -> dict[str, Any]:
     """Effective settings for a domain = code defaults overlaid by config_scalar."""
     if domain not in cc.DOMAINS:
@@ -150,7 +151,7 @@ async def get_domain_settings(domain: str, db: DbDep) -> dict[str, Any]:
     return await _domain_payload(db, domain)
 
 
-@router.put("/settings/{domain}", dependencies=[Depends(require_write)])
+@router.put("/settings/{domain}", response_model=rm.AdminSettingsDomain, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def put_domain_settings(domain: str, req: DomainSettingsPatch, db: DbDep) -> dict[str, Any]:
     """Upsert a domain's policy knobs — applied live by the consuming endpoints."""
     if domain not in cc.DOMAINS:
@@ -215,7 +216,7 @@ async def _forward_halt_to_execution() -> dict[str, Any]:
         return {"status": None, "error": type(e).__name__}
 
 
-@router.post("/halt", dependencies=[Depends(require_write)])
+@router.post("/halt", response_model=rm.HaltSetResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def halt_trading(body: HaltRequest, db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """Stop everything: flag set (durable), orders at IB cancelled, alert published."""
     from bus.halt import mirror_halt
@@ -232,7 +233,7 @@ async def halt_trading(body: HaltRequest, db: DbDep, redis: RedisDep) -> dict[st
             "execution_cancel": cancel}
 
 
-@router.delete("/halt", dependencies=[Depends(require_write)])
+@router.delete("/halt", response_model=rm.HaltClearResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def resume_trading(body: HaltRequest, db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """Lift the kill switch. Requires the trader cookie and a reason."""
     from bus.halt import mirror_halt

@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
 from api.dependencies import get_db_session
+from api.schemas import route_models as rm
 from api.schemas.reads import PcaModelState, PcaSignalRow
 from core.vol.pca_engine import (
     N_FEATURES,
@@ -47,7 +48,7 @@ N_COMPONENTS = 6
 MIN_OBS_FOR_FIT = N_COMPONENTS
 
 
-@router.get("/signals/pca/state")
+@router.get("/signals/pca/state", response_model=rm.SignalsPcaState, response_model_exclude_unset=True)
 async def state(
     db: DbDep,
     symbol: str = Query("EURUSD", min_length=3, max_length=20),
@@ -323,7 +324,7 @@ async def perform_refit(db: AsyncSession, symbol: str = "EURUSD") -> dict[str, A
     }
 
 
-@router.post("/admin/pca/refit", dependencies=[Depends(require_write)])
+@router.post("/admin/pca/refit", response_model=rm.PcaRefitResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def refit(db: DbDep, symbol: str = Query("EURUSD")) -> dict[str, Any]:
     """Manual refit (kept alongside the background scheduler so the user can
     force a refit after seeding new data or tweaking thresholds)."""

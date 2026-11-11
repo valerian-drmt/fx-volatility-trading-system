@@ -1,0 +1,4972 @@
+[
+ {
+  "contracts_usd": 35065.19,
+  "eur_cash_usd": 190255.24,
+  "net_liq_usd": 166804.39,
+  "timestamp": "2026-10-12T11:30:00+00:00",
+  "usd_cash_usd": -58516.04
+ },
+ {
+  "contracts_usd": 35199.24,
+  "eur_cash_usd": 190273.96,
+  "net_liq_usd": 167888.19,
+  "timestamp": "2026-10-12T12:00:00+00:00",
+  "usd_cash_usd": -57585.01
+ },
+ {
+  "contracts_usd": 35335.16,
+  "eur_cash_usd": 190332.7,
+  "net_liq_usd": 168261.48,
+  "timestamp": "2026-10-12T12:30:00+00:00",
+  "usd_cash_usd": -57406.38
+ },
+ {
+  "contracts_usd": 35762.27,
+  "eur_cash_usd": 190333.55,
+  "net_liq_usd": 170331.41,
+  "timestamp": "2026-10-12T13:00:00+00:00",
+  "usd_cash_usd": -55764.42
+ },
+ {
+  "contracts_usd": 35608.77,
+  "eur_cash_usd": 190272.26,
+  "net_liq_usd": 168400.06,
+  "timestamp": "2026-10-12T13:30:00+00:00",
+  "usd_cash_usd": -57480.97
+ },
+ {
+  "contracts_usd": 35516.98,
+  "eur_cash_usd": 190255.24,
+  "net_liq_usd": 166614.15,
+  "timestamp": "2026-10-12T14:00:00+00:00",
+  "usd_cash_usd": -59158.07
+ },
+ {
+  "contracts_usd": 34728.17,
+  "eur_cash_usd": 190238.21,
+  "net_liq_usd": 164890.97,
+  "timestamp": "2026-10-12T14:30:00+00:00",
+  "usd_cash_usd": -60075.41
+ },
+ {
+  "contracts_usd": 35752.57,
+  "eur_cash_usd": 190169.26,
+  "net_liq_usd": 163571.51,
+  "timestamp": "2026-10-12T15:00:00+00:00",
+  "usd_cash_usd": -62350.31
+ },
+ {
+  "contracts_usd": 34864.68,
+  "eur_cash_usd": 189957.29,
+  "net_liq_usd": 154766.0,
+  "timestamp": "2026-10-12T15:30:00+00:00",
+  "usd_cash_usd": -70055.97
+ },
+ {
+  "contracts_usd": 34939.69,
+  "eur_cash_usd": 189970.06,
+  "net_liq_usd": 155195.25,
+  "timestamp": "2026-10-12T16:00:00+00:00",
+  "usd_cash_usd": -69714.5
+ },
+ {
+  "contracts_usd": 35912.85,
+  "eur_cash_usd": 189963.25,
+  "net_liq_usd": 157016.45,
+  "timestamp": "2026-10-12T16:30:00+00:00",
+  "usd_cash_usd": -68859.65
+ },
+ {
+  "contracts_usd": 35917.45,
+  "eur_cash_usd": 189997.3,
+  "net_liq_usd": 156968.59,
+  "timestamp": "2026-10-12T17:00:00+00:00",
+  "usd_cash_usd": -68946.16
+ },
+ {
+  "contracts_usd": 35956.57,
+  "eur_cash_usd": 189970.91,
+  "net_liq_usd": 156855.76,
+  "timestamp": "2026-10-12T17:30:00+00:00",
+  "usd_cash_usd": -69071.72
+ },
+ {
+  "contracts_usd": 35952.59,
+  "eur_cash_usd": 189974.32,
+  "net_liq_usd": 156859.83,
+  "timestamp": "2026-10-12T18:00:00+00:00",
+  "usd_cash_usd": -69067.07
+ },
+ {
+  "contracts_usd": 35543.14,
+  "eur_cash_usd": 189926.64,
+  "net_liq_usd": 154745.88,
+  "timestamp": "2026-10-12T18:30:00+00:00",
+  "usd_cash_usd": -70723.9
+ },
+ {
+  "contracts_usd": 36209.81,
+  "eur_cash_usd": 189951.33,
+  "net_liq_usd": 155795.28,
+  "timestamp": "2026-10-12T19:00:00+00:00",
+  "usd_cash_usd": -70365.86
+ },
+ {
+  "contracts_usd": 36399.96,
+  "eur_cash_usd": 189911.32,
+  "net_liq_usd": 154462.79,
+  "timestamp": "2026-10-12T19:30:00+00:00",
+  "usd_cash_usd": -71848.49
+ },
+ {
+  "contracts_usd": 36270.2,
+  "eur_cash_usd": 169983.76,
+  "net_liq_usd": 154449.23,
+  "timestamp": "2026-10-12T20:00:00+00:00",
+  "usd_cash_usd": -51804.73
+ },
+ {
+  "contracts_usd": 36228.18,
+  "eur_cash_usd": 170004.33,
+  "net_liq_usd": 154634.25,
+  "timestamp": "2026-10-12T20:30:00+00:00",
+  "usd_cash_usd": -51598.26
+ },
+ {
+  "contracts_usd": 36457.91,
+  "eur_cash_usd": 169991.38,
+  "net_liq_usd": 152757.41,
+  "timestamp": "2026-10-12T21:00:00+00:00",
+  "usd_cash_usd": -53691.87
+ },
+ {
+  "contracts_usd": 36440.53,
+  "eur_cash_usd": 170008.9,
+  "net_liq_usd": 152757.56,
+  "timestamp": "2026-10-12T21:30:00+00:00",
+  "usd_cash_usd": -53691.87
+ },
+ {
+  "contracts_usd": 36151.25,
+  "eur_cash_usd": 170049.28,
+  "net_liq_usd": 156860.16,
+  "timestamp": "2026-10-12T22:00:00+00:00",
+  "usd_cash_usd": -49340.37
+ },
+ {
+  "contracts_usd": 36338.4,
+  "eur_cash_usd": 170026.43,
+  "net_liq_usd": 155446.84,
+  "timestamp": "2026-10-12T22:30:00+00:00",
+  "usd_cash_usd": -50917.99
+ },
+ {
+  "contracts_usd": 36010.64,
+  "eur_cash_usd": 170047.76,
+  "net_liq_usd": 156313.58,
+  "timestamp": "2026-10-12T23:00:00+00:00",
+  "usd_cash_usd": -49744.82
+ },
+ {
+  "contracts_usd": 35949.56,
+  "eur_cash_usd": 170076.72,
+  "net_liq_usd": 157225.92,
+  "timestamp": "2026-10-12T23:30:00+00:00",
+  "usd_cash_usd": -48800.36
+ },
+ {
+  "contracts_usd": 34812.81,
+  "eur_cash_usd": 170030.24,
+  "net_liq_usd": 154693.27,
+  "timestamp": "2026-10-13T00:00:00+00:00",
+  "usd_cash_usd": -50149.78
+ },
+ {
+  "contracts_usd": 35415.7,
+  "eur_cash_usd": 170033.28,
+  "net_liq_usd": 156312.78,
+  "timestamp": "2026-10-13T00:30:00+00:00",
+  "usd_cash_usd": -49136.2
+ },
+ {
+  "contracts_usd": 34968.67,
+  "eur_cash_usd": 170185.68,
+  "net_liq_usd": 161642.41,
+  "timestamp": "2026-10-13T01:00:00+00:00",
+  "usd_cash_usd": -43511.93
+ },
+ {
+  "contracts_usd": 34824.47,
+  "eur_cash_usd": 170230.63,
+  "net_liq_usd": 163617.41,
+  "timestamp": "2026-10-13T01:30:00+00:00",
+  "usd_cash_usd": -41437.69
+ },
+ {
+  "contracts_usd": 35461.0,
+  "eur_cash_usd": 170300.74,
+  "net_liq_usd": 166691.48,
+  "timestamp": "2026-10-13T02:00:00+00:00",
+  "usd_cash_usd": -39070.26
+ },
+ {
+  "contracts_usd": 35352.87,
+  "eur_cash_usd": 170332.74,
+  "net_liq_usd": 167855.69,
+  "timestamp": "2026-10-13T02:30:00+00:00",
+  "usd_cash_usd": -37829.92
+ },
+ {
+  "contracts_usd": 35208.27,
+  "eur_cash_usd": 170295.41,
+  "net_liq_usd": 166017.85,
+  "timestamp": "2026-10-13T03:00:00+00:00",
+  "usd_cash_usd": -39485.83
+ },
+ {
+  "contracts_usd": 35240.43,
+  "eur_cash_usd": 170283.98,
+  "net_liq_usd": 165842.33,
+  "timestamp": "2026-10-13T03:30:00+00:00",
+  "usd_cash_usd": -39682.08
+ },
+ {
+  "contracts_usd": 35405.48,
+  "eur_cash_usd": 170251.97,
+  "net_liq_usd": 164732.89,
+  "timestamp": "2026-10-13T04:00:00+00:00",
+  "usd_cash_usd": -40924.56
+ },
+ {
+  "contracts_usd": 36556.02,
+  "eur_cash_usd": 170248.16,
+  "net_liq_usd": 165530.99,
+  "timestamp": "2026-10-13T04:30:00+00:00",
+  "usd_cash_usd": -41273.19
+ },
+ {
+  "contracts_usd": 36458.08,
+  "eur_cash_usd": 170273.31,
+  "net_liq_usd": 166666.71,
+  "timestamp": "2026-10-13T05:00:00+00:00",
+  "usd_cash_usd": -40064.68
+ },
+ {
+  "contracts_usd": 35299.76,
+  "eur_cash_usd": 170342.65,
+  "net_liq_usd": 168056.87,
+  "timestamp": "2026-10-13T05:30:00+00:00",
+  "usd_cash_usd": -37585.54
+ },
+ {
+  "contracts_usd": 35153.31,
+  "eur_cash_usd": 170269.5,
+  "net_liq_usd": 164996.18,
+  "timestamp": "2026-10-13T06:00:00+00:00",
+  "usd_cash_usd": -40426.63
+ },
+ {
+  "contracts_usd": 35062.28,
+  "eur_cash_usd": 170360.17,
+  "net_liq_usd": 168613.5,
+  "timestamp": "2026-10-13T06:30:00+00:00",
+  "usd_cash_usd": -36808.95
+ },
+ {
+  "contracts_usd": 36738.28,
+  "eur_cash_usd": 170527.8,
+  "net_liq_usd": 177390.76,
+  "timestamp": "2026-10-13T07:00:00+00:00",
+  "usd_cash_usd": -29875.32
+ },
+ {
+  "contracts_usd": 35018.41,
+  "eur_cash_usd": 170508.75,
+  "net_liq_usd": 175169.07,
+  "timestamp": "2026-10-13T07:30:00+00:00",
+  "usd_cash_usd": -30358.09
+ },
+ {
+  "contracts_usd": 34919.76,
+  "eur_cash_usd": 170461.51,
+  "net_liq_usd": 172846.96,
+  "timestamp": "2026-10-13T08:00:00+00:00",
+  "usd_cash_usd": -32534.32
+ },
+ {
+  "contracts_usd": 33620.89,
+  "eur_cash_usd": 170389.89,
+  "net_liq_usd": 168844.92,
+  "timestamp": "2026-10-13T08:30:00+00:00",
+  "usd_cash_usd": -35165.86
+ },
+ {
+  "contracts_usd": 33619.32,
+  "eur_cash_usd": 170354.84,
+  "net_liq_usd": 167035.98,
+  "timestamp": "2026-10-13T09:00:00+00:00",
+  "usd_cash_usd": -36938.18
+ },
+ {
+  "contracts_usd": 33374.93,
+  "eur_cash_usd": 170331.22,
+  "net_liq_usd": 166018.95,
+  "timestamp": "2026-10-13T09:30:00+00:00",
+  "usd_cash_usd": -37687.2
+ },
+ {
+  "contracts_usd": 33830.23,
+  "eur_cash_usd": 170397.51,
+  "net_liq_usd": 169194.65,
+  "timestamp": "2026-10-13T10:00:00+00:00",
+  "usd_cash_usd": -35033.09
+ },
+ {
+  "contracts_usd": 34456.95,
+  "eur_cash_usd": 170440.18,
+  "net_liq_usd": 171599.75,
+  "timestamp": "2026-10-13T10:30:00+00:00",
+  "usd_cash_usd": -33297.37
+ },
+ {
+  "contracts_usd": 32665.69,
+  "eur_cash_usd": 170505.71,
+  "net_liq_usd": 172476.18,
+  "timestamp": "2026-10-13T11:00:00+00:00",
+  "usd_cash_usd": -30695.21
+ },
+ {
+  "contracts_usd": 33041.46,
+  "eur_cash_usd": 170523.23,
+  "net_liq_usd": 173534.93,
+  "timestamp": "2026-10-13T11:30:00+00:00",
+  "usd_cash_usd": -30029.76
+ },
+ {
+  "contracts_usd": 33321.2,
+  "eur_cash_usd": 170534.66,
+  "net_liq_usd": 173976.33,
+  "timestamp": "2026-10-13T12:00:00+00:00",
+  "usd_cash_usd": -29879.53
+ },
+ {
+  "contracts_usd": 32683.08,
+  "eur_cash_usd": 170623.05,
+  "net_liq_usd": 177810.17,
+  "timestamp": "2026-10-13T12:30:00+00:00",
+  "usd_cash_usd": -25495.96
+ },
+ {
+  "contracts_usd": 32191.72,
+  "eur_cash_usd": 170671.05,
+  "net_liq_usd": 177670.32,
+  "timestamp": "2026-10-13T13:00:00+00:00",
+  "usd_cash_usd": -25192.45
+ },
+ {
+  "contracts_usd": 32725.38,
+  "eur_cash_usd": 170549.9,
+  "net_liq_usd": 172618.84,
+  "timestamp": "2026-10-13T13:30:00+00:00",
+  "usd_cash_usd": -30656.44
+ },
+ {
+  "contracts_usd": 33066.75,
+  "eur_cash_usd": 170547.61,
+  "net_liq_usd": 174451.91,
+  "timestamp": "2026-10-13T14:00:00+00:00",
+  "usd_cash_usd": -29162.45
+ },
+ {
+  "contracts_usd": 33345.56,
+  "eur_cash_usd": 170572.76,
+  "net_liq_usd": 176199.28,
+  "timestamp": "2026-10-13T14:30:00+00:00",
+  "usd_cash_usd": -27719.04
+ },
+ {
+  "contracts_usd": 32606.06,
+  "eur_cash_usd": 170586.47,
+  "net_liq_usd": 175999.6,
+  "timestamp": "2026-10-13T15:00:00+00:00",
+  "usd_cash_usd": -27192.94
+ },
+ {
+  "contracts_usd": 32785.1,
+  "eur_cash_usd": 170578.09,
+  "net_liq_usd": 177145.42,
+  "timestamp": "2026-10-13T15:30:00+00:00",
+  "usd_cash_usd": -26217.77
+ },
+ {
+  "contracts_usd": 32771.35,
+  "eur_cash_usd": 170594.09,
+  "net_liq_usd": 175839.73,
+  "timestamp": "2026-10-13T16:00:00+00:00",
+  "usd_cash_usd": -27525.71
+ },
+ {
+  "contracts_usd": 32007.88,
+  "eur_cash_usd": 170533.14,
+  "net_liq_usd": 172847.07,
+  "timestamp": "2026-10-13T16:30:00+00:00",
+  "usd_cash_usd": -29693.95
+ },
+ {
+  "contracts_usd": 32048.39,
+  "eur_cash_usd": 170530.85,
+  "net_liq_usd": 173129.11,
+  "timestamp": "2026-10-13T17:00:00+00:00",
+  "usd_cash_usd": -29450.13
+ },
+ {
+  "contracts_usd": 32024.84,
+  "eur_cash_usd": 170571.23,
+  "net_liq_usd": 174986.62,
+  "timestamp": "2026-10-13T17:30:00+00:00",
+  "usd_cash_usd": -27609.45
+ },
+ {
+  "contracts_usd": 31360.07,
+  "eur_cash_usd": 170648.95,
+  "net_liq_usd": 177719.01,
+  "timestamp": "2026-10-13T18:00:00+00:00",
+  "usd_cash_usd": -24290.01
+ },
+ {
+  "contracts_usd": 31758.35,
+  "eur_cash_usd": 170719.05,
+  "net_liq_usd": 179769.33,
+  "timestamp": "2026-10-13T18:30:00+00:00",
+  "usd_cash_usd": -22708.07
+ },
+ {
+  "contracts_usd": 32432.14,
+  "eur_cash_usd": 170681.72,
+  "net_liq_usd": 179650.03,
+  "timestamp": "2026-10-13T19:00:00+00:00",
+  "usd_cash_usd": -23463.83
+ },
+ {
+  "contracts_usd": 31983.86,
+  "eur_cash_usd": 170641.33,
+  "net_liq_usd": 177281.64,
+  "timestamp": "2026-10-13T19:30:00+00:00",
+  "usd_cash_usd": -25343.55
+ },
+ {
+  "contracts_usd": 30170.51,
+  "eur_cash_usd": 170642.86,
+  "net_liq_usd": 175653.7,
+  "timestamp": "2026-10-13T20:00:00+00:00",
+  "usd_cash_usd": -25159.67
+ },
+ {
+  "contracts_usd": 31083.4,
+  "eur_cash_usd": 170648.95,
+  "net_liq_usd": 177221.03,
+  "timestamp": "2026-10-13T20:30:00+00:00",
+  "usd_cash_usd": -24511.32
+ },
+ {
+  "contracts_usd": 31099.02,
+  "eur_cash_usd": 170628.38,
+  "net_liq_usd": 177241.62,
+  "timestamp": "2026-10-13T21:00:00+00:00",
+  "usd_cash_usd": -24485.78
+ },
+ {
+  "contracts_usd": 31075.63,
+  "eur_cash_usd": 170651.24,
+  "net_liq_usd": 177241.09,
+  "timestamp": "2026-10-13T21:30:00+00:00",
+  "usd_cash_usd": -24485.78
+ },
+ {
+  "contracts_usd": 31160.21,
+  "eur_cash_usd": 170645.91,
+  "net_liq_usd": 176572.89,
+  "timestamp": "2026-10-13T22:00:00+00:00",
+  "usd_cash_usd": -25233.22
+ },
+ {
+  "contracts_usd": 31132.99,
+  "eur_cash_usd": 170652.76,
+  "net_liq_usd": 176735.1,
+  "timestamp": "2026-10-13T22:30:00+00:00",
+  "usd_cash_usd": -25050.65
+ },
+ {
+  "contracts_usd": 31141.29,
+  "eur_cash_usd": 170651.24,
+  "net_liq_usd": 176679.11,
+  "timestamp": "2026-10-13T23:00:00+00:00",
+  "usd_cash_usd": -25113.42
+ },
+ {
+  "contracts_usd": 30837.52,
+  "eur_cash_usd": 170694.67,
+  "net_liq_usd": 178249.8,
+  "timestamp": "2026-10-13T23:30:00+00:00",
+  "usd_cash_usd": -23282.39
+ },
+ {
+  "contracts_usd": 31113.81,
+  "eur_cash_usd": 170707.62,
+  "net_liq_usd": 178767.74,
+  "timestamp": "2026-10-14T00:00:00+00:00",
+  "usd_cash_usd": -23053.69
+ },
+ {
+  "contracts_usd": 31034.02,
+  "eur_cash_usd": 170725.15,
+  "net_liq_usd": 179772.88,
+  "timestamp": "2026-10-14T00:30:00+00:00",
+  "usd_cash_usd": -21986.29
+ },
+ {
+  "contracts_usd": 30427.44,
+  "eur_cash_usd": 170725.15,
+  "net_liq_usd": 179336.05,
+  "timestamp": "2026-10-14T01:00:00+00:00",
+  "usd_cash_usd": -21816.54
+ },
+ {
+  "contracts_usd": 29897.57,
+  "eur_cash_usd": 170792.2,
+  "net_liq_usd": 180786.54,
+  "timestamp": "2026-10-14T01:30:00+00:00",
+  "usd_cash_usd": -19903.23
+ },
+ {
+  "contracts_usd": 30405.58,
+  "eur_cash_usd": 170773.92,
+  "net_liq_usd": 181466.67,
+  "timestamp": "2026-10-14T02:00:00+00:00",
+  "usd_cash_usd": -19712.82
+ },
+ {
+  "contracts_usd": 30967.18,
+  "eur_cash_usd": 170825.73,
+  "net_liq_usd": 183895.08,
+  "timestamp": "2026-10-14T02:30:00+00:00",
+  "usd_cash_usd": -17897.83
+ },
+ {
+  "contracts_usd": 31067.61,
+  "eur_cash_usd": 170832.59,
+  "net_liq_usd": 184503.08,
+  "timestamp": "2026-10-14T03:00:00+00:00",
+  "usd_cash_usd": -17397.12
+ },
+ {
+  "contracts_usd": 29300.62,
+  "eur_cash_usd": 170779.25,
+  "net_liq_usd": 180589.7,
+  "timestamp": "2026-10-14T03:30:00+00:00",
+  "usd_cash_usd": -19490.17
+ },
+ {
+  "contracts_usd": 29501.5,
+  "eur_cash_usd": 170831.06,
+  "net_liq_usd": 183038.2,
+  "timestamp": "2026-10-14T04:00:00+00:00",
+  "usd_cash_usd": -17294.36
+ },
+ {
+  "contracts_usd": 30184.76,
+  "eur_cash_usd": 170814.3,
+  "net_liq_usd": 182341.54,
+  "timestamp": "2026-10-14T04:30:00+00:00",
+  "usd_cash_usd": -18657.52
+ },
+ {
+  "contracts_usd": 29326.99,
+  "eur_cash_usd": 170771.63,
+  "net_liq_usd": 180192.26,
+  "timestamp": "2026-10-14T05:00:00+00:00",
+  "usd_cash_usd": -19906.36
+ },
+ {
+  "contracts_usd": 29328.56,
+  "eur_cash_usd": 170780.01,
+  "net_liq_usd": 180293.77,
+  "timestamp": "2026-10-14T05:30:00+00:00",
+  "usd_cash_usd": -19814.8
+ },
+ {
+  "contracts_usd": 29274.86,
+  "eur_cash_usd": 170791.44,
+  "net_liq_usd": 180924.07,
+  "timestamp": "2026-10-14T06:00:00+00:00",
+  "usd_cash_usd": -19142.23
+ },
+ {
+  "contracts_usd": 28895.82,
+  "eur_cash_usd": 170823.44,
+  "net_liq_usd": 181552.11,
+  "timestamp": "2026-10-14T06:30:00+00:00",
+  "usd_cash_usd": -18167.15
+ },
+ {
+  "contracts_usd": 29724.64,
+  "eur_cash_usd": 170761.72,
+  "net_liq_usd": 179991.68,
+  "timestamp": "2026-10-14T07:00:00+00:00",
+  "usd_cash_usd": -20494.68
+ },
+ {
+  "contracts_usd": 28626.39,
+  "eur_cash_usd": 170676.38,
+  "net_liq_usd": 175439.68,
+  "timestamp": "2026-10-14T07:30:00+00:00",
+  "usd_cash_usd": -23863.09
+ },
+ {
+  "contracts_usd": 29222.4,
+  "eur_cash_usd": 170767.82,
+  "net_liq_usd": 179954.58,
+  "timestamp": "2026-10-14T08:00:00+00:00",
+  "usd_cash_usd": -20035.64
+ },
+ {
+  "contracts_usd": 26353.57,
+  "eur_cash_usd": 170608.57,
+  "net_liq_usd": 170610.02,
+  "timestamp": "2026-10-14T08:30:00+00:00",
+  "usd_cash_usd": -26352.12
+ },
+ {
+  "contracts_usd": 27388.63,
+  "eur_cash_usd": 170603.24,
+  "net_liq_usd": 170275.07,
+  "timestamp": "2026-10-14T09:00:00+00:00",
+  "usd_cash_usd": -27716.8
+ },
+ {
+  "contracts_usd": 27556.16,
+  "eur_cash_usd": 170574.28,
+  "net_liq_usd": 170574.22,
+  "timestamp": "2026-10-14T09:30:00+00:00",
+  "usd_cash_usd": -27556.23
+ },
+ {
+  "contracts_usd": 27561.83,
+  "eur_cash_usd": 170550.66,
+  "net_liq_usd": 168253.62,
+  "timestamp": "2026-10-14T10:00:00+00:00",
+  "usd_cash_usd": -29858.87
+ },
+ {
+  "contracts_usd": 27581.82,
+  "eur_cash_usd": 170534.66,
+  "net_liq_usd": 168420.98,
+  "timestamp": "2026-10-14T10:30:00+00:00",
+  "usd_cash_usd": -29695.5
+ },
+ {
+  "contracts_usd": 27955.8,
+  "eur_cash_usd": 170574.28,
+  "net_liq_usd": 170311.14,
+  "timestamp": "2026-10-14T11:00:00+00:00",
+  "usd_cash_usd": -28218.94
+ },
+ {
+  "contracts_usd": 26771.79,
+  "eur_cash_usd": 170586.47,
+  "net_liq_usd": 167763.02,
+  "timestamp": "2026-10-14T11:30:00+00:00",
+  "usd_cash_usd": -29595.24
+ },
+ {
+  "contracts_usd": 26084.41,
+  "eur_cash_usd": 170585.71,
+  "net_liq_usd": 170318.15,
+  "timestamp": "2026-10-14T12:00:00+00:00",
+  "usd_cash_usd": -26351.97
+ },
+ {
+  "contracts_usd": 28756.63,
+  "eur_cash_usd": 169712.51,
+  "net_liq_usd": 133244.61,
+  "timestamp": "2026-10-14T12:30:00+00:00",
+  "usd_cash_usd": -65224.53
+ },
+ {
+  "contracts_usd": 30284.97,
+  "eur_cash_usd": 169489.25,
+  "net_liq_usd": 131972.94,
+  "timestamp": "2026-10-14T13:00:00+00:00",
+  "usd_cash_usd": -67801.28
+ },
+ {
+  "contracts_usd": 28150.75,
+  "eur_cash_usd": 169432.11,
+  "net_liq_usd": 123568.44,
+  "timestamp": "2026-10-14T13:30:00+00:00",
+  "usd_cash_usd": -74014.41
+ },
+ {
+  "contracts_usd": 27264.86,
+  "eur_cash_usd": 169518.21,
+  "net_liq_usd": 128170.92,
+  "timestamp": "2026-10-14T14:00:00+00:00",
+  "usd_cash_usd": -68612.15
+ },
+ {
+  "contracts_usd": 27384.07,
+  "eur_cash_usd": 169467.92,
+  "net_liq_usd": 124999.14,
+  "timestamp": "2026-10-14T14:30:00+00:00",
+  "usd_cash_usd": -71852.85
+ },
+ {
+  "contracts_usd": 28450.76,
+  "eur_cash_usd": 169495.35,
+  "net_liq_usd": 125672.93,
+  "timestamp": "2026-10-14T15:00:00+00:00",
+  "usd_cash_usd": -72273.18
+ },
+ {
+  "contracts_usd": 28760.97,
+  "eur_cash_usd": 169495.35,
+  "net_liq_usd": 126576.53,
+  "timestamp": "2026-10-14T15:30:00+00:00",
+  "usd_cash_usd": -71679.79
+ },
+ {
+  "contracts_usd": 28228.7,
+  "eur_cash_usd": 169376.48,
+  "net_liq_usd": 123057.52,
+  "timestamp": "2026-10-14T16:00:00+00:00",
+  "usd_cash_usd": -74547.67
+ },
+ {
+  "contracts_usd": 29060.87,
+  "eur_cash_usd": 169489.25,
+  "net_liq_usd": 126704.55,
+  "timestamp": "2026-10-14T16:30:00+00:00",
+  "usd_cash_usd": -71845.58
+ },
+ {
+  "contracts_usd": 28796.24,
+  "eur_cash_usd": 169680.5,
+  "net_liq_usd": 135999.91,
+  "timestamp": "2026-10-14T17:00:00+00:00",
+  "usd_cash_usd": -62476.83
+ },
+ {
+  "contracts_usd": 28793.58,
+  "eur_cash_usd": 169698.79,
+  "net_liq_usd": 135760.34,
+  "timestamp": "2026-10-14T17:30:00+00:00",
+  "usd_cash_usd": -62732.03
+ },
+ {
+  "contracts_usd": 27950.21,
+  "eur_cash_usd": 169911.38,
+  "net_liq_usd": 142054.46,
+  "timestamp": "2026-10-14T18:00:00+00:00",
+  "usd_cash_usd": -55807.13
+ },
+ {
+  "contracts_usd": 28259.16,
+  "eur_cash_usd": 169957.86,
+  "net_liq_usd": 144126.41,
+  "timestamp": "2026-10-14T18:30:00+00:00",
+  "usd_cash_usd": -54090.61
+ },
+ {
+  "contracts_usd": 29270.25,
+  "eur_cash_usd": 169955.57,
+  "net_liq_usd": 144477.0,
+  "timestamp": "2026-10-14T19:00:00+00:00",
+  "usd_cash_usd": -54748.82
+ },
+ {
+  "contracts_usd": 28947.34,
+  "eur_cash_usd": 169995.19,
+  "net_liq_usd": 146440.69,
+  "timestamp": "2026-10-14T19:30:00+00:00",
+  "usd_cash_usd": -52501.84
+ },
+ {
+  "contracts_usd": 29273.93,
+  "eur_cash_usd": 169973.86,
+  "net_liq_usd": 146486.37,
+  "timestamp": "2026-10-14T20:00:00+00:00",
+  "usd_cash_usd": -52761.42
+ },
+ {
+  "contracts_usd": 29343.19,
+  "eur_cash_usd": 170000.53,
+  "net_liq_usd": 147591.73,
+  "timestamp": "2026-10-14T20:30:00+00:00",
+  "usd_cash_usd": -51751.99
+ },
+ {
+  "contracts_usd": 29881.38,
+  "eur_cash_usd": 169969.29,
+  "net_liq_usd": 148487.51,
+  "timestamp": "2026-10-14T21:00:00+00:00",
+  "usd_cash_usd": -51363.16
+ },
+ {
+  "contracts_usd": 29857.92,
+  "eur_cash_usd": 169993.67,
+  "net_liq_usd": 148488.43,
+  "timestamp": "2026-10-14T21:30:00+00:00",
+  "usd_cash_usd": -51363.16
+ },
+ {
+  "contracts_usd": 30044.73,
+  "eur_cash_usd": 170122.44,
+  "net_liq_usd": 151529.38,
+  "timestamp": "2026-10-14T22:00:00+00:00",
+  "usd_cash_usd": -48637.79
+ },
+ {
+  "contracts_usd": 29597.05,
+  "eur_cash_usd": 170248.93,
+  "net_liq_usd": 157233.76,
+  "timestamp": "2026-10-14T22:30:00+00:00",
+  "usd_cash_usd": -42612.21
+ },
+ {
+  "contracts_usd": 30784.26,
+  "eur_cash_usd": 170372.36,
+  "net_liq_usd": 162766.21,
+  "timestamp": "2026-10-14T23:00:00+00:00",
+  "usd_cash_usd": -38390.42
+ },
+ {
+  "contracts_usd": 29009.25,
+  "eur_cash_usd": 170608.57,
+  "net_liq_usd": 169540.23,
+  "timestamp": "2026-10-14T23:30:00+00:00",
+  "usd_cash_usd": -30077.59
+ },
+ {
+  "contracts_usd": 30064.84,
+  "eur_cash_usd": 170578.85,
+  "net_liq_usd": 171568.77,
+  "timestamp": "2026-10-15T00:00:00+00:00",
+  "usd_cash_usd": -29074.92
+ },
+ {
+  "contracts_usd": 30209.19,
+  "eur_cash_usd": 170587.24,
+  "net_liq_usd": 169716.22,
+  "timestamp": "2026-10-15T00:30:00+00:00",
+  "usd_cash_usd": -31080.2
+ },
+ {
+  "contracts_usd": 29311.92,
+  "eur_cash_usd": 170885.16,
+  "net_liq_usd": 181152.69,
+  "timestamp": "2026-10-15T01:00:00+00:00",
+  "usd_cash_usd": -19044.39
+ },
+ {
+  "contracts_usd": 29362.8,
+  "eur_cash_usd": 170812.01,
+  "net_liq_usd": 177200.28,
+  "timestamp": "2026-10-15T01:30:00+00:00",
+  "usd_cash_usd": -22974.54
+ },
+ {
+  "contracts_usd": 29781.47,
+  "eur_cash_usd": 170925.54,
+  "net_liq_usd": 183498.39,
+  "timestamp": "2026-10-15T02:00:00+00:00",
+  "usd_cash_usd": -17208.62
+ },
+ {
+  "contracts_usd": 31823.4,
+  "eur_cash_usd": 171242.52,
+  "net_liq_usd": 197953.34,
+  "timestamp": "2026-10-15T02:30:00+00:00",
+  "usd_cash_usd": -5112.58
+ },
+ {
+  "contracts_usd": 31544.13,
+  "eur_cash_usd": 171040.6,
+  "net_liq_usd": 190787.11,
+  "timestamp": "2026-10-15T03:00:00+00:00",
+  "usd_cash_usd": -11797.62
+ },
+ {
+  "contracts_usd": 31896.35,
+  "eur_cash_usd": 171120.61,
+  "net_liq_usd": 191933.19,
+  "timestamp": "2026-10-15T03:30:00+00:00",
+  "usd_cash_usd": -11083.77
+ },
+ {
+  "contracts_usd": 30092.99,
+  "eur_cash_usd": 170960.59,
+  "net_liq_usd": 184618.78,
+  "timestamp": "2026-10-15T04:00:00+00:00",
+  "usd_cash_usd": -16434.81
+ },
+ {
+  "contracts_usd": 29590.31,
+  "eur_cash_usd": 170921.74,
+  "net_liq_usd": 182273.63,
+  "timestamp": "2026-10-15T04:30:00+00:00",
+  "usd_cash_usd": -18238.41
+ },
+ {
+  "contracts_usd": 29531.71,
+  "eur_cash_usd": 170863.06,
+  "net_liq_usd": 179865.99,
+  "timestamp": "2026-10-15T05:00:00+00:00",
+  "usd_cash_usd": -20528.78
+ },
+ {
+  "contracts_usd": 30955.26,
+  "eur_cash_usd": 170926.31,
+  "net_liq_usd": 183561.97,
+  "timestamp": "2026-10-15T05:30:00+00:00",
+  "usd_cash_usd": -18319.59
+ },
+ {
+  "contracts_usd": 29952.92,
+  "eur_cash_usd": 170800.58,
+  "net_liq_usd": 178164.79,
+  "timestamp": "2026-10-15T06:00:00+00:00",
+  "usd_cash_usd": -22588.72
+ },
+ {
+  "contracts_usd": 30038.71,
+  "eur_cash_usd": 170777.72,
+  "net_liq_usd": 177634.83,
+  "timestamp": "2026-10-15T06:30:00+00:00",
+  "usd_cash_usd": -23181.6
+ },
+ {
+  "contracts_usd": 29226.27,
+  "eur_cash_usd": 170876.02,
+  "net_liq_usd": 179637.85,
+  "timestamp": "2026-10-15T07:00:00+00:00",
+  "usd_cash_usd": -20464.44
+ },
+ {
+  "contracts_usd": 28563.43,
+  "eur_cash_usd": 170823.44,
+  "net_liq_usd": 178026.43,
+  "timestamp": "2026-10-15T07:30:00+00:00",
+  "usd_cash_usd": -21360.44
+ },
+ {
+  "contracts_usd": 28605.67,
+  "eur_cash_usd": 171093.18,
+  "net_liq_usd": 188144.05,
+  "timestamp": "2026-10-15T08:00:00+00:00",
+  "usd_cash_usd": -11554.79
+ },
+ {
+  "contracts_usd": 27973.0,
+  "eur_cash_usd": 170902.69,
+  "net_liq_usd": 180294.52,
+  "timestamp": "2026-10-15T08:30:00+00:00",
+  "usd_cash_usd": -18581.17
+ },
+ {
+  "contracts_usd": 28455.38,
+  "eur_cash_usd": 171005.55,
+  "net_liq_usd": 186031.54,
+  "timestamp": "2026-10-15T09:00:00+00:00",
+  "usd_cash_usd": -13429.39
+ },
+ {
+  "contracts_usd": 28730.21,
+  "eur_cash_usd": 170976.6,
+  "net_liq_usd": 182510.16,
+  "timestamp": "2026-10-15T09:30:00+00:00",
+  "usd_cash_usd": -17196.64
+ },
+ {
+  "contracts_usd": 28871.49,
+  "eur_cash_usd": 170776.96,
+  "net_liq_usd": 175094.39,
+  "timestamp": "2026-10-15T10:00:00+00:00",
+  "usd_cash_usd": -24554.06
+ },
+ {
+  "contracts_usd": 29744.45,
+  "eur_cash_usd": 170888.97,
+  "net_liq_usd": 180911.66,
+  "timestamp": "2026-10-15T10:30:00+00:00",
+  "usd_cash_usd": -19721.76
+ },
+ {
+  "contracts_usd": 30643.35,
+  "eur_cash_usd": 170915.64,
+  "net_liq_usd": 183653.32,
+  "timestamp": "2026-10-15T11:00:00+00:00",
+  "usd_cash_usd": -17905.67
+ },
+ {
+  "contracts_usd": 30261.27,
+  "eur_cash_usd": 170806.68,
+  "net_liq_usd": 177614.43,
+  "timestamp": "2026-10-15T11:30:00+00:00",
+  "usd_cash_usd": -23453.52
+ },
+ {
+  "contracts_usd": 29669.34,
+  "eur_cash_usd": 170747.25,
+  "net_liq_usd": 176261.4,
+  "timestamp": "2026-10-15T12:00:00+00:00",
+  "usd_cash_usd": -24155.19
+ },
+ {
+  "contracts_usd": 31725.56,
+  "eur_cash_usd": 170791.44,
+  "net_liq_usd": 182627.66,
+  "timestamp": "2026-10-15T12:30:00+00:00",
+  "usd_cash_usd": -19889.34
+ },
+ {
+  "contracts_usd": 30023.6,
+  "eur_cash_usd": 170840.21,
+  "net_liq_usd": 180001.57,
+  "timestamp": "2026-10-15T13:00:00+00:00",
+  "usd_cash_usd": -20862.24
+ },
+ {
+  "contracts_usd": 30352.45,
+  "eur_cash_usd": 170926.31,
+  "net_liq_usd": 184555.49,
+  "timestamp": "2026-10-15T13:30:00+00:00",
+  "usd_cash_usd": -16723.26
+ },
+ {
+  "contracts_usd": 30216.62,
+  "eur_cash_usd": 170834.87,
+  "net_liq_usd": 179562.21,
+  "timestamp": "2026-10-15T14:00:00+00:00",
+  "usd_cash_usd": -21489.28
+ },
+ {
+  "contracts_usd": 29660.69,
+  "eur_cash_usd": 170775.44,
+  "net_liq_usd": 174509.31,
+  "timestamp": "2026-10-15T14:30:00+00:00",
+  "usd_cash_usd": -25926.82
+ },
+ {
+  "contracts_usd": 29912.67,
+  "eur_cash_usd": 170729.72,
+  "net_liq_usd": 175722.0,
+  "timestamp": "2026-10-15T15:00:00+00:00",
+  "usd_cash_usd": -24920.39
+ },
+ {
+  "contracts_usd": 29778.77,
+  "eur_cash_usd": 170767.82,
+  "net_liq_usd": 174762.94,
+  "timestamp": "2026-10-15T15:30:00+00:00",
+  "usd_cash_usd": -25783.65
+ },
+ {
+  "contracts_usd": 30227.13,
+  "eur_cash_usd": 170786.11,
+  "net_liq_usd": 177854.19,
+  "timestamp": "2026-10-15T16:00:00+00:00",
+  "usd_cash_usd": -23159.04
+ },
+ {
+  "contracts_usd": 30469.22,
+  "eur_cash_usd": 170841.73,
+  "net_liq_usd": 178178.55,
+  "timestamp": "2026-10-15T16:30:00+00:00",
+  "usd_cash_usd": -23132.4
+ },
+ {
+  "contracts_usd": 30436.55,
+  "eur_cash_usd": 170832.59,
+  "net_liq_usd": 179399.31,
+  "timestamp": "2026-10-15T17:00:00+00:00",
+  "usd_cash_usd": -21869.83
+ },
+ {
+  "contracts_usd": 30563.65,
+  "eur_cash_usd": 170895.83,
+  "net_liq_usd": 183931.52,
+  "timestamp": "2026-10-15T17:30:00+00:00",
+  "usd_cash_usd": -17527.95
+ },
+ {
+  "contracts_usd": 30699.81,
+  "eur_cash_usd": 170959.83,
+  "net_liq_usd": 185069.03,
+  "timestamp": "2026-10-15T18:00:00+00:00",
+  "usd_cash_usd": -16590.61
+ },
+ {
+  "contracts_usd": 29515.88,
+  "eur_cash_usd": 170861.54,
+  "net_liq_usd": 179350.67,
+  "timestamp": "2026-10-15T18:30:00+00:00",
+  "usd_cash_usd": -21026.75
+ },
+ {
+  "contracts_usd": 29591.16,
+  "eur_cash_usd": 170786.11,
+  "net_liq_usd": 176197.58,
+  "timestamp": "2026-10-15T19:00:00+00:00",
+  "usd_cash_usd": -24179.68
+ },
+ {
+  "contracts_usd": 30290.28,
+  "eur_cash_usd": 170867.64,
+  "net_liq_usd": 181554.65,
+  "timestamp": "2026-10-15T19:30:00+00:00",
+  "usd_cash_usd": -19603.27
+ },
+ {
+  "contracts_usd": 30139.29,
+  "eur_cash_usd": 170904.21,
+  "net_liq_usd": 182158.71,
+  "timestamp": "2026-10-15T20:00:00+00:00",
+  "usd_cash_usd": -18884.79
+ },
+ {
+  "contracts_usd": 31337.44,
+  "eur_cash_usd": 170977.36,
+  "net_liq_usd": 186922.54,
+  "timestamp": "2026-10-15T20:30:00+00:00",
+  "usd_cash_usd": -15392.26
+ },
+ {
+  "contracts_usd": 31388.03,
+  "eur_cash_usd": 170957.55,
+  "net_liq_usd": 186103.32,
+  "timestamp": "2026-10-15T21:00:00+00:00",
+  "usd_cash_usd": -16242.25
+ },
+ {
+  "contracts_usd": 31377.41,
+  "eur_cash_usd": 170967.45,
+  "net_liq_usd": 186102.61,
+  "timestamp": "2026-10-15T21:30:00+00:00",
+  "usd_cash_usd": -16242.25
+ },
+ {
+  "contracts_usd": 31219.23,
+  "eur_cash_usd": 170861.54,
+  "net_liq_usd": 181060.19,
+  "timestamp": "2026-10-15T22:00:00+00:00",
+  "usd_cash_usd": -21020.58
+ },
+ {
+  "contracts_usd": 31067.57,
+  "eur_cash_usd": 170885.16,
+  "net_liq_usd": 182082.88,
+  "timestamp": "2026-10-15T22:30:00+00:00",
+  "usd_cash_usd": -19869.85
+ },
+ {
+  "contracts_usd": 31764.4,
+  "eur_cash_usd": 170878.3,
+  "net_liq_usd": 182641.87,
+  "timestamp": "2026-10-15T23:00:00+00:00",
+  "usd_cash_usd": -20000.83
+ },
+ {
+  "contracts_usd": 30426.3,
+  "eur_cash_usd": 170875.26,
+  "net_liq_usd": 180884.59,
+  "timestamp": "2026-10-15T23:30:00+00:00",
+  "usd_cash_usd": -20416.96
+ },
+ {
+  "contracts_usd": 29395.63,
+  "eur_cash_usd": 170846.3,
+  "net_liq_usd": 178765.08,
+  "timestamp": "2026-10-16T00:00:00+00:00",
+  "usd_cash_usd": -21476.85
+ },
+ {
+  "contracts_usd": 29283.21,
+  "eur_cash_usd": 170868.4,
+  "net_liq_usd": 179482.91,
+  "timestamp": "2026-10-16T00:30:00+00:00",
+  "usd_cash_usd": -20668.7
+ },
+ {
+  "contracts_usd": 29776.74,
+  "eur_cash_usd": 170861.54,
+  "net_liq_usd": 179885.51,
+  "timestamp": "2026-10-16T01:00:00+00:00",
+  "usd_cash_usd": -20752.77
+ },
+ {
+  "contracts_usd": 29145.95,
+  "eur_cash_usd": 170870.68,
+  "net_liq_usd": 179592.19,
+  "timestamp": "2026-10-16T01:30:00+00:00",
+  "usd_cash_usd": -20424.44
+ },
+ {
+  "contracts_usd": 30437.75,
+  "eur_cash_usd": 170931.64,
+  "net_liq_usd": 183241.43,
+  "timestamp": "2026-10-16T02:00:00+00:00",
+  "usd_cash_usd": -18127.97
+ },
+ {
+  "contracts_usd": 30275.38,
+  "eur_cash_usd": 170973.55,
+  "net_liq_usd": 184603.27,
+  "timestamp": "2026-10-16T02:30:00+00:00",
+  "usd_cash_usd": -16645.66
+ },
+ {
+  "contracts_usd": 29626.6,
+  "eur_cash_usd": 170957.55,
+  "net_liq_usd": 183192.69,
+  "timestamp": "2026-10-16T03:00:00+00:00",
+  "usd_cash_usd": -17391.46
+ },
+ {
+  "contracts_usd": 30885.36,
+  "eur_cash_usd": 171268.43,
+  "net_liq_usd": 196104.88,
+  "timestamp": "2026-10-16T03:30:00+00:00",
+  "usd_cash_usd": -6048.9
+ },
+ {
+  "contracts_usd": 30579.54,
+  "eur_cash_usd": 171162.51,
+  "net_liq_usd": 191936.6,
+  "timestamp": "2026-10-16T04:00:00+00:00",
+  "usd_cash_usd": -9805.46
+ },
+ {
+  "contracts_usd": 28534.79,
+  "eur_cash_usd": 171100.8,
+  "net_liq_usd": 187295.8,
+  "timestamp": "2026-10-16T04:30:00+00:00",
+  "usd_cash_usd": -12339.79
+ },
+ {
+  "contracts_usd": 28208.79,
+  "eur_cash_usd": 171049.74,
+  "net_liq_usd": 185395.37,
+  "timestamp": "2026-10-16T05:00:00+00:00",
+  "usd_cash_usd": -13863.16
+ },
+ {
+  "contracts_usd": 27291.77,
+  "eur_cash_usd": 171012.41,
+  "net_liq_usd": 183453.96,
+  "timestamp": "2026-10-16T05:30:00+00:00",
+  "usd_cash_usd": -14850.22
+ },
+ {
+  "contracts_usd": 27941.65,
+  "eur_cash_usd": 171160.23,
+  "net_liq_usd": 189508.97,
+  "timestamp": "2026-10-16T06:00:00+00:00",
+  "usd_cash_usd": -9592.91
+ },
+ {
+  "contracts_usd": 28955.49,
+  "eur_cash_usd": 171186.9,
+  "net_liq_usd": 191683.55,
+  "timestamp": "2026-10-16T06:30:00+00:00",
+  "usd_cash_usd": -8458.84
+ },
+ {
+  "contracts_usd": 29253.36,
+  "eur_cash_usd": 171401.01,
+  "net_liq_usd": 199002.82,
+  "timestamp": "2026-10-16T07:00:00+00:00",
+  "usd_cash_usd": -1651.54
+ },
+ {
+  "contracts_usd": 29075.02,
+  "eur_cash_usd": 171278.33,
+  "net_liq_usd": 194208.01,
+  "timestamp": "2026-10-16T07:30:00+00:00",
+  "usd_cash_usd": -6145.35
+ },
+ {
+  "contracts_usd": 29283.41,
+  "eur_cash_usd": 171365.19,
+  "net_liq_usd": 198065.71,
+  "timestamp": "2026-10-16T08:00:00+00:00",
+  "usd_cash_usd": -2582.89
+ },
+ {
+  "contracts_usd": 30081.66,
+  "eur_cash_usd": 171352.24,
+  "net_liq_usd": 199701.42,
+  "timestamp": "2026-10-16T08:30:00+00:00",
+  "usd_cash_usd": -1732.49
+ },
+ {
+  "contracts_usd": 29737.84,
+  "eur_cash_usd": 171449.01,
+  "net_liq_usd": 203193.22,
+  "timestamp": "2026-10-16T09:00:00+00:00",
+  "usd_cash_usd": 2006.36
+ },
+ {
+  "contracts_usd": 29337.48,
+  "eur_cash_usd": 171479.49,
+  "net_liq_usd": 203142.4,
+  "timestamp": "2026-10-16T09:30:00+00:00",
+  "usd_cash_usd": 2325.43
+ },
+ {
+  "contracts_usd": 31840.7,
+  "eur_cash_usd": 171708.84,
+  "net_liq_usd": 214379.27,
+  "timestamp": "2026-10-16T10:00:00+00:00",
+  "usd_cash_usd": 10829.73
+ },
+ {
+  "contracts_usd": 30173.91,
+  "eur_cash_usd": 171598.35,
+  "net_liq_usd": 207882.8,
+  "timestamp": "2026-10-16T10:30:00+00:00",
+  "usd_cash_usd": 6110.53
+ },
+ {
+  "contracts_usd": 31481.8,
+  "eur_cash_usd": 171580.07,
+  "net_liq_usd": 208456.67,
+  "timestamp": "2026-10-16T11:00:00+00:00",
+  "usd_cash_usd": 5394.8
+ },
+ {
+  "contracts_usd": 29956.6,
+  "eur_cash_usd": 171532.06,
+  "net_liq_usd": 206362.67,
+  "timestamp": "2026-10-16T11:30:00+00:00",
+  "usd_cash_usd": 4874.0
+ },
+ {
+  "contracts_usd": 29105.75,
+  "eur_cash_usd": 171424.63,
+  "net_liq_usd": 200837.65,
+  "timestamp": "2026-10-16T12:00:00+00:00",
+  "usd_cash_usd": 307.27
+ },
+ {
+  "contracts_usd": 29004.62,
+  "eur_cash_usd": 171337.76,
+  "net_liq_usd": 197172.32,
+  "timestamp": "2026-10-16T12:30:00+00:00",
+  "usd_cash_usd": -3170.06
+ },
+ {
+  "contracts_usd": 28169.21,
+  "eur_cash_usd": 171312.62,
+  "net_liq_usd": 195608.97,
+  "timestamp": "2026-10-16T13:00:00+00:00",
+  "usd_cash_usd": -3872.86
+ },
+ {
+  "contracts_usd": 29687.12,
+  "eur_cash_usd": 171511.49,
+  "net_liq_usd": 206640.26,
+  "timestamp": "2026-10-16T13:30:00+00:00",
+  "usd_cash_usd": 5441.65
+ },
+ {
+  "contracts_usd": 30509.36,
+  "eur_cash_usd": 171520.63,
+  "net_liq_usd": 207088.68,
+  "timestamp": "2026-10-16T14:00:00+00:00",
+  "usd_cash_usd": 5058.69
+ },
+ {
+  "contracts_usd": 30585.15,
+  "eur_cash_usd": 171545.02,
+  "net_liq_usd": 205583.49,
+  "timestamp": "2026-10-16T14:30:00+00:00",
+  "usd_cash_usd": 3453.33
+ },
+ {
+  "contracts_usd": 29924.21,
+  "eur_cash_usd": 171407.1,
+  "net_liq_usd": 201337.61,
+  "timestamp": "2026-10-16T15:00:00+00:00",
+  "usd_cash_usd": 6.3
+ },
+ {
+  "contracts_usd": 27702.37,
+  "eur_cash_usd": 171191.47,
+  "net_liq_usd": 189388.58,
+  "timestamp": "2026-10-16T15:30:00+00:00",
+  "usd_cash_usd": -9505.26
+ },
+ {
+  "contracts_usd": 27560.49,
+  "eur_cash_usd": 171064.98,
+  "net_liq_usd": 184523.18,
+  "timestamp": "2026-10-16T16:00:00+00:00",
+  "usd_cash_usd": -14102.3
+ },
+ {
+  "contracts_usd": 29672.47,
+  "eur_cash_usd": 170948.4,
+  "net_liq_usd": 184051.57,
+  "timestamp": "2026-10-16T16:30:00+00:00",
+  "usd_cash_usd": -16569.3
+ },
+ {
+  "contracts_usd": 29299.54,
+  "eur_cash_usd": 171043.65,
+  "net_liq_usd": 185679.0,
+  "timestamp": "2026-10-16T17:00:00+00:00",
+  "usd_cash_usd": -14664.19
+ },
+ {
+  "contracts_usd": 29609.91,
+  "eur_cash_usd": 171093.18,
+  "net_liq_usd": 188252.4,
+  "timestamp": "2026-10-16T17:30:00+00:00",
+  "usd_cash_usd": -12450.68
+ },
+ {
+  "contracts_usd": 29380.74,
+  "eur_cash_usd": 171148.8,
+  "net_liq_usd": 191102.24,
+  "timestamp": "2026-10-16T18:00:00+00:00",
+  "usd_cash_usd": -9427.3
+ },
+ {
+  "contracts_usd": 29299.26,
+  "eur_cash_usd": 171170.9,
+  "net_liq_usd": 191303.66,
+  "timestamp": "2026-10-16T18:30:00+00:00",
+  "usd_cash_usd": -9166.5
+ },
+ {
+  "contracts_usd": 29461.7,
+  "eur_cash_usd": 171243.28,
+  "net_liq_usd": 194984.08,
+  "timestamp": "2026-10-16T19:00:00+00:00",
+  "usd_cash_usd": -5720.9
+ },
+ {
+  "contracts_usd": 29450.0,
+  "eur_cash_usd": 171253.95,
+  "net_liq_usd": 194688.27,
+  "timestamp": "2026-10-16T19:30:00+00:00",
+  "usd_cash_usd": -6015.68
+ },
+ {
+  "contracts_usd": 29523.59,
+  "eur_cash_usd": 171261.57,
+  "net_liq_usd": 194752.32,
+  "timestamp": "2026-10-16T20:00:00+00:00",
+  "usd_cash_usd": -6032.84
+ },
+ {
+  "contracts_usd": 29108.89,
+  "eur_cash_usd": 171266.9,
+  "net_liq_usd": 195115.28,
+  "timestamp": "2026-10-16T20:30:00+00:00",
+  "usd_cash_usd": -5260.51
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T21:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T21:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T22:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T22:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T23:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T23:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T00:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T00:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T01:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T01:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T02:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28286.87,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T02:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28569.07,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 194554.3,
+  "timestamp": "2026-10-17T03:00:00+00:00",
+  "usd_cash_usd": -5260.34
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T03:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T04:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T04:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T05:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T05:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T06:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T06:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T07:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T07:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T08:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T08:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T09:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T09:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T10:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T10:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T11:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T11:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T12:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T12:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T13:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T13:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T14:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T14:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T15:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T15:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T16:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T16:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T17:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T17:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T18:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T18:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T19:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T19:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T20:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T20:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T21:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T21:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T22:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T22:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T23:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": null,
+  "eur_cash_usd": null,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-17T23:30:00+00:00",
+  "usd_cash_usd": null
+ },
+ {
+  "contracts_usd": null,
+  "eur_cash_usd": null,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T00:00:00+00:00",
+  "usd_cash_usd": null
+ },
+ {
+  "contracts_usd": null,
+  "eur_cash_usd": null,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T00:30:00+00:00",
+  "usd_cash_usd": null
+ },
+ {
+  "contracts_usd": null,
+  "eur_cash_usd": null,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T01:00:00+00:00",
+  "usd_cash_usd": null
+ },
+ {
+  "contracts_usd": null,
+  "eur_cash_usd": null,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T01:30:00+00:00",
+  "usd_cash_usd": null
+ },
+ {
+  "contracts_usd": null,
+  "eur_cash_usd": null,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T02:00:00+00:00",
+  "usd_cash_usd": null
+ },
+ {
+  "contracts_usd": null,
+  "eur_cash_usd": null,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T02:30:00+00:00",
+  "usd_cash_usd": null
+ },
+ {
+  "contracts_usd": null,
+  "eur_cash_usd": null,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T03:00:00+00:00",
+  "usd_cash_usd": null
+ },
+ {
+  "contracts_usd": null,
+  "eur_cash_usd": null,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T03:30:00+00:00",
+  "usd_cash_usd": null
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T04:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T04:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T05:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T05:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T06:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T06:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T07:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28569.07,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 194554.3,
+  "timestamp": "2026-10-18T07:30:00+00:00",
+  "usd_cash_usd": -5260.34
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T08:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T08:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T09:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T09:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T10:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T10:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T11:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T11:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T12:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T12:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T13:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T13:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T14:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T14:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T15:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T15:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T16:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T16:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T17:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T17:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T18:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T18:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T19:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T19:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T20:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28212.65,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T20:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28413.33,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193247.66,
+  "timestamp": "2026-10-18T21:00:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 28363.91,
+  "eur_cash_usd": 171245.57,
+  "net_liq_usd": 193198.24,
+  "timestamp": "2026-10-18T21:30:00+00:00",
+  "usd_cash_usd": -6411.24
+ },
+ {
+  "contracts_usd": 30747.7,
+  "eur_cash_usd": 171106.13,
+  "net_liq_usd": 189958.04,
+  "timestamp": "2026-10-18T22:00:00+00:00",
+  "usd_cash_usd": -11895.79
+ },
+ {
+  "contracts_usd": 30000.07,
+  "eur_cash_usd": 170964.4,
+  "net_liq_usd": 183414.79,
+  "timestamp": "2026-10-18T22:30:00+00:00",
+  "usd_cash_usd": -17549.68
+ },
+ {
+  "contracts_usd": 30079.24,
+  "eur_cash_usd": 170964.4,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-18T23:00:00+00:00",
+  "usd_cash_usd": -18257.22
+ },
+ {
+  "contracts_usd": 30079.24,
+  "eur_cash_usd": 170964.4,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-18T23:30:00+00:00",
+  "usd_cash_usd": -18257.22
+ },
+ {
+  "contracts_usd": 30079.24,
+  "eur_cash_usd": 170964.4,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-19T00:30:00+00:00",
+  "usd_cash_usd": -18257.22
+ },
+ {
+  "contracts_usd": 30079.24,
+  "eur_cash_usd": 170964.4,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-19T01:30:00+00:00",
+  "usd_cash_usd": -18257.22
+ },
+ {
+  "contracts_usd": 30079.24,
+  "eur_cash_usd": 170964.4,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-19T02:00:00+00:00",
+  "usd_cash_usd": -18257.22
+ },
+ {
+  "contracts_usd": 30079.24,
+  "eur_cash_usd": 170964.4,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-19T02:30:00+00:00",
+  "usd_cash_usd": -18257.22
+ },
+ {
+  "contracts_usd": 30079.24,
+  "eur_cash_usd": 170964.4,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-19T11:30:00+00:00",
+  "usd_cash_usd": -18257.22
+ },
+ {
+  "contracts_usd": 17306.11,
+  "eur_cash_usd": 145675.2,
+  "net_liq_usd": 155990.33,
+  "timestamp": "2026-11-02T10:00:00+00:00",
+  "usd_cash_usd": -6990.98
+ },
+ {
+  "contracts_usd": 16113.54,
+  "eur_cash_usd": 145565.42,
+  "net_liq_usd": 150596.66,
+  "timestamp": "2026-11-02T10:30:00+00:00",
+  "usd_cash_usd": -11082.3
+ },
+ {
+  "contracts_usd": 16967.93,
+  "eur_cash_usd": 145642.72,
+  "net_liq_usd": 154697.8,
+  "timestamp": "2026-11-02T11:00:00+00:00",
+  "usd_cash_usd": -7912.85
+ },
+ {
+  "contracts_usd": 16718.54,
+  "eur_cash_usd": 145611.54,
+  "net_liq_usd": 152928.69,
+  "timestamp": "2026-11-02T11:30:00+00:00",
+  "usd_cash_usd": -9401.39
+ },
+ {
+  "contracts_usd": 17300.95,
+  "eur_cash_usd": 145699.24,
+  "net_liq_usd": 156902.41,
+  "timestamp": "2026-11-02T12:00:00+00:00",
+  "usd_cash_usd": -6097.77
+ },
+ {
+  "contracts_usd": 16809.82,
+  "eur_cash_usd": 145643.37,
+  "net_liq_usd": 154587.42,
+  "timestamp": "2026-11-02T12:30:00+00:00",
+  "usd_cash_usd": -7865.76
+ },
+ {
+  "contracts_usd": 16307.91,
+  "eur_cash_usd": 145673.25,
+  "net_liq_usd": 155356.54,
+  "timestamp": "2026-11-02T13:00:00+00:00",
+  "usd_cash_usd": -6624.62
+ },
+ {
+  "contracts_usd": 17145.67,
+  "eur_cash_usd": 145729.12,
+  "net_liq_usd": 158178.53,
+  "timestamp": "2026-11-02T13:30:00+00:00",
+  "usd_cash_usd": -4696.26
+ },
+ {
+  "contracts_usd": 16642.59,
+  "eur_cash_usd": 145729.77,
+  "net_liq_usd": 157659.53,
+  "timestamp": "2026-11-02T14:00:00+00:00",
+  "usd_cash_usd": -4712.83
+ },
+ {
+  "contracts_usd": 16320.51,
+  "eur_cash_usd": 145661.56,
+  "net_liq_usd": 154540.33,
+  "timestamp": "2026-11-02T14:30:00+00:00",
+  "usd_cash_usd": -7441.74
+ },
+ {
+  "contracts_usd": 15660.34,
+  "eur_cash_usd": 145629.73,
+  "net_liq_usd": 152844.17,
+  "timestamp": "2026-11-02T15:00:00+00:00",
+  "usd_cash_usd": -8445.9
+ },
+ {
+  "contracts_usd": 14401.8,
+  "eur_cash_usd": 145480.97,
+  "net_liq_usd": 145489.07,
+  "timestamp": "2026-11-02T15:30:00+00:00",
+  "usd_cash_usd": -14393.7
+ },
+ {
+  "contracts_usd": 14515.18,
+  "eur_cash_usd": 145480.32,
+  "net_liq_usd": 145995.01,
+  "timestamp": "2026-11-02T16:00:00+00:00",
+  "usd_cash_usd": -14000.48
+ },
+ {
+  "contracts_usd": 14744.44,
+  "eur_cash_usd": 145552.42,
+  "net_liq_usd": 148491.44,
+  "timestamp": "2026-11-02T16:30:00+00:00",
+  "usd_cash_usd": -11805.42
+ },
+ {
+  "contracts_usd": 15227.48,
+  "eur_cash_usd": 145624.53,
+  "net_liq_usd": 151127.21,
+  "timestamp": "2026-11-02T17:00:00+00:00",
+  "usd_cash_usd": -9724.8
+ },
+ {
+  "contracts_usd": 14493.77,
+  "eur_cash_usd": 145585.55,
+  "net_liq_usd": 149593.84,
+  "timestamp": "2026-11-02T17:30:00+00:00",
+  "usd_cash_usd": -10485.48
+ },
+ {
+  "contracts_usd": 15057.82,
+  "eur_cash_usd": 145444.59,
+  "net_liq_usd": 144640.68,
+  "timestamp": "2026-11-02T18:00:00+00:00",
+  "usd_cash_usd": -15861.73
+ },
+ {
+  "contracts_usd": 14445.96,
+  "eur_cash_usd": 145449.78,
+  "net_liq_usd": 144629.35,
+  "timestamp": "2026-11-02T18:30:00+00:00",
+  "usd_cash_usd": -15266.4
+ },
+ {
+  "contracts_usd": 14821.96,
+  "eur_cash_usd": 145482.27,
+  "net_liq_usd": 145521.13,
+  "timestamp": "2026-11-02T19:00:00+00:00",
+  "usd_cash_usd": -14783.09
+ },
+ {
+  "contracts_usd": 14390.49,
+  "eur_cash_usd": 145404.31,
+  "net_liq_usd": 143814.85,
+  "timestamp": "2026-11-02T19:30:00+00:00",
+  "usd_cash_usd": -15979.95
+ },
+ {
+  "contracts_usd": 14546.52,
+  "eur_cash_usd": 145429.0,
+  "net_liq_usd": 143133.5,
+  "timestamp": "2026-11-02T20:00:00+00:00",
+  "usd_cash_usd": -16842.02
+ },
+ {
+  "contracts_usd": 14403.04,
+  "eur_cash_usd": 145452.38,
+  "net_liq_usd": 144113.65,
+  "timestamp": "2026-11-02T20:30:00+00:00",
+  "usd_cash_usd": -15741.77
+ },
+ {
+  "contracts_usd": 14671.24,
+  "eur_cash_usd": 145399.76,
+  "net_liq_usd": 142347.32,
+  "timestamp": "2026-11-02T21:00:00+00:00",
+  "usd_cash_usd": -17723.69
+ },
+ {
+  "contracts_usd": 15009.2,
+  "eur_cash_usd": 145361.44,
+  "net_liq_usd": 140831.9,
+  "timestamp": "2026-11-02T21:30:00+00:00",
+  "usd_cash_usd": -19538.74
+ },
+ {
+  "contracts_usd": 14422.38,
+  "eur_cash_usd": 145381.58,
+  "net_liq_usd": 140053.41,
+  "timestamp": "2026-11-02T22:00:00+00:00",
+  "usd_cash_usd": -19750.54
+ },
+ {
+  "contracts_usd": 14439.33,
+  "eur_cash_usd": 145366.63,
+  "net_liq_usd": 140055.42,
+  "timestamp": "2026-11-02T22:30:00+00:00",
+  "usd_cash_usd": -19750.54
+ },
+ {
+  "contracts_usd": 14504.87,
+  "eur_cash_usd": 145342.6,
+  "net_liq_usd": 139720.52,
+  "timestamp": "2026-11-02T23:00:00+00:00",
+  "usd_cash_usd": -20126.95
+ },
+ {
+  "contracts_usd": 15393.44,
+  "eur_cash_usd": 145393.27,
+  "net_liq_usd": 143025.77,
+  "timestamp": "2026-11-02T23:30:00+00:00",
+  "usd_cash_usd": -17760.94
+ },
+ {
+  "contracts_usd": 15643.08,
+  "eur_cash_usd": 145454.33,
+  "net_liq_usd": 145240.18,
+  "timestamp": "2026-11-03T00:00:00+00:00",
+  "usd_cash_usd": -15857.23
+ },
+ {
+  "contracts_usd": 14929.16,
+  "eur_cash_usd": 145357.54,
+  "net_liq_usd": 140435.25,
+  "timestamp": "2026-11-03T00:30:00+00:00",
+  "usd_cash_usd": -19851.45
+ },
+ {
+  "contracts_usd": 14931.16,
+  "eur_cash_usd": 145345.2,
+  "net_liq_usd": 140521.61,
+  "timestamp": "2026-11-03T01:00:00+00:00",
+  "usd_cash_usd": -19754.75
+ },
+ {
+  "contracts_usd": 15109.99,
+  "eur_cash_usd": 145313.37,
+  "net_liq_usd": 139303.69,
+  "timestamp": "2026-11-03T01:30:00+00:00",
+  "usd_cash_usd": -21119.66
+ },
+ {
+  "contracts_usd": 14582.2,
+  "eur_cash_usd": 145273.74,
+  "net_liq_usd": 137083.05,
+  "timestamp": "2026-11-03T02:00:00+00:00",
+  "usd_cash_usd": -22772.89
+ },
+ {
+  "contracts_usd": 14976.18,
+  "eur_cash_usd": 145305.57,
+  "net_liq_usd": 139417.46,
+  "timestamp": "2026-11-03T02:30:00+00:00",
+  "usd_cash_usd": -20864.29
+ },
+ {
+  "contracts_usd": 14519.01,
+  "eur_cash_usd": 145297.78,
+  "net_liq_usd": 138416.65,
+  "timestamp": "2026-11-03T03:00:00+00:00",
+  "usd_cash_usd": -21400.13
+ },
+ {
+  "contracts_usd": 14854.52,
+  "eur_cash_usd": 145397.82,
+  "net_liq_usd": 142199.6,
+  "timestamp": "2026-11-03T03:30:00+00:00",
+  "usd_cash_usd": -18052.74
+ },
+ {
+  "contracts_usd": 14610.87,
+  "eur_cash_usd": 145362.74,
+  "net_liq_usd": 140024.94,
+  "timestamp": "2026-11-03T04:00:00+00:00",
+  "usd_cash_usd": -19948.67
+ },
+ {
+  "contracts_usd": 14474.26,
+  "eur_cash_usd": 145369.23,
+  "net_liq_usd": 141096.42,
+  "timestamp": "2026-11-03T04:30:00+00:00",
+  "usd_cash_usd": -18747.07
+ },
+ {
+  "contracts_usd": 14990.44,
+  "eur_cash_usd": 145408.21,
+  "net_liq_usd": 142821.17,
+  "timestamp": "2026-11-03T05:00:00+00:00",
+  "usd_cash_usd": -17577.48
+ },
+ {
+  "contracts_usd": 14956.17,
+  "eur_cash_usd": 145416.0,
+  "net_liq_usd": 143035.08,
+  "timestamp": "2026-11-03T05:30:00+00:00",
+  "usd_cash_usd": -17337.09
+ },
+ {
+  "contracts_usd": 15382.91,
+  "eur_cash_usd": 145445.24,
+  "net_liq_usd": 144492.53,
+  "timestamp": "2026-11-03T06:00:00+00:00",
+  "usd_cash_usd": -16335.61
+ },
+ {
+  "contracts_usd": 14555.08,
+  "eur_cash_usd": 145369.23,
+  "net_liq_usd": 141233.99,
+  "timestamp": "2026-11-03T06:30:00+00:00",
+  "usd_cash_usd": -18690.33
+ },
+ {
+  "contracts_usd": 15699.15,
+  "eur_cash_usd": 145529.69,
+  "net_liq_usd": 147573.34,
+  "timestamp": "2026-11-03T07:00:00+00:00",
+  "usd_cash_usd": -13655.49
+ },
+ {
+  "contracts_usd": 15930.8,
+  "eur_cash_usd": 145521.24,
+  "net_liq_usd": 148214.08,
+  "timestamp": "2026-11-03T07:30:00+00:00",
+  "usd_cash_usd": -13237.96
+ },
+ {
+  "contracts_usd": 14357.37,
+  "eur_cash_usd": 145488.76,
+  "net_liq_usd": 145125.09,
+  "timestamp": "2026-11-03T08:00:00+00:00",
+  "usd_cash_usd": -14721.04
+ },
+ {
+  "contracts_usd": 14006.99,
+  "eur_cash_usd": 145425.75,
+  "net_liq_usd": 142484.93,
+  "timestamp": "2026-11-03T08:30:00+00:00",
+  "usd_cash_usd": -16947.81
+ },
+ {
+  "contracts_usd": 14158.07,
+  "eur_cash_usd": 145372.48,
+  "net_liq_usd": 140433.75,
+  "timestamp": "2026-11-03T09:00:00+00:00",
+  "usd_cash_usd": -19096.8
+ },
+ {
+  "contracts_usd": 14063.67,
+  "eur_cash_usd": 145397.17,
+  "net_liq_usd": 142086.79,
+  "timestamp": "2026-11-03T09:30:00+00:00",
+  "usd_cash_usd": -17374.05
+ },
+ {
+  "contracts_usd": 13354.12,
+  "eur_cash_usd": 145327.66,
+  "net_liq_usd": 137691.87,
+  "timestamp": "2026-11-03T10:00:00+00:00",
+  "usd_cash_usd": -20989.9
+ },
+ {
+  "contracts_usd": 12189.78,
+  "eur_cash_usd": 145281.54,
+  "net_liq_usd": 135086.31,
+  "timestamp": "2026-11-03T10:30:00+00:00",
+  "usd_cash_usd": -22385.01
+ },
+ {
+  "contracts_usd": 12563.79,
+  "eur_cash_usd": 145210.08,
+  "net_liq_usd": 132753.5,
+  "timestamp": "2026-11-03T11:00:00+00:00",
+  "usd_cash_usd": -25020.37
+ },
+ {
+  "contracts_usd": 12881.99,
+  "eur_cash_usd": 145236.71,
+  "net_liq_usd": 134613.96,
+  "timestamp": "2026-11-03T11:30:00+00:00",
+  "usd_cash_usd": -23504.74
+ },
+ {
+  "contracts_usd": 12712.57,
+  "eur_cash_usd": 145286.08,
+  "net_liq_usd": 135621.27,
+  "timestamp": "2026-11-03T12:00:00+00:00",
+  "usd_cash_usd": -22377.38
+ },
+ {
+  "contracts_usd": 12816.12,
+  "eur_cash_usd": 145247.76,
+  "net_liq_usd": 135073.79,
+  "timestamp": "2026-11-03T12:30:00+00:00",
+  "usd_cash_usd": -22990.09
+ },
+ {
+  "contracts_usd": 13763.19,
+  "eur_cash_usd": 145277.64,
+  "net_liq_usd": 137694.82,
+  "timestamp": "2026-11-03T13:00:00+00:00",
+  "usd_cash_usd": -21346.01
+ },
+ {
+  "contracts_usd": 13442.88,
+  "eur_cash_usd": 145438.09,
+  "net_liq_usd": 142293.77,
+  "timestamp": "2026-11-03T13:30:00+00:00",
+  "usd_cash_usd": -16587.21
+ },
+ {
+  "contracts_usd": 13508.61,
+  "eur_cash_usd": 145349.74,
+  "net_liq_usd": 140606.84,
+  "timestamp": "2026-11-03T14:00:00+00:00",
+  "usd_cash_usd": -18251.52
+ },
+ {
+  "contracts_usd": 13339.75,
+  "eur_cash_usd": 145469.92,
+  "net_liq_usd": 143834.95,
+  "timestamp": "2026-11-03T14:30:00+00:00",
+  "usd_cash_usd": -14974.72
+ },
+ {
+  "contracts_usd": 12084.29,
+  "eur_cash_usd": 145207.48,
+  "net_liq_usd": 132176.81,
+  "timestamp": "2026-11-03T15:00:00+00:00",
+  "usd_cash_usd": -25114.96
+ },
+ {
+  "contracts_usd": 14160.77,
+  "eur_cash_usd": 145434.84,
+  "net_liq_usd": 143101.48,
+  "timestamp": "2026-11-03T15:30:00+00:00",
+  "usd_cash_usd": -16494.13
+ },
+ {
+  "contracts_usd": 13933.97,
+  "eur_cash_usd": 145440.69,
+  "net_liq_usd": 143935.41,
+  "timestamp": "2026-11-03T16:00:00+00:00",
+  "usd_cash_usd": -15439.25
+ },
+ {
+  "contracts_usd": 13115.22,
+  "eur_cash_usd": 145403.66,
+  "net_liq_usd": 140983.25,
+  "timestamp": "2026-11-03T16:30:00+00:00",
+  "usd_cash_usd": -17535.63
+ },
+ {
+  "contracts_usd": 13589.68,
+  "eur_cash_usd": 145450.43,
+  "net_liq_usd": 143158.57,
+  "timestamp": "2026-11-03T17:00:00+00:00",
+  "usd_cash_usd": -15881.55
+ },
+ {
+  "contracts_usd": 13735.55,
+  "eur_cash_usd": 145445.89,
+  "net_liq_usd": 143018.05,
+  "timestamp": "2026-11-03T17:30:00+00:00",
+  "usd_cash_usd": -16163.39
+ },
+ {
+  "contracts_usd": 14070.63,
+  "eur_cash_usd": 145472.52,
+  "net_liq_usd": 144832.45,
+  "timestamp": "2026-11-03T18:00:00+00:00",
+  "usd_cash_usd": -14710.7
+ },
+ {
+  "contracts_usd": 14148.64,
+  "eur_cash_usd": 145453.68,
+  "net_liq_usd": 144038.53,
+  "timestamp": "2026-11-03T18:30:00+00:00",
+  "usd_cash_usd": -15563.79
+ },
+ {
+  "contracts_usd": 14614.77,
+  "eur_cash_usd": 145421.2,
+  "net_liq_usd": 143075.97,
+  "timestamp": "2026-11-03T19:00:00+00:00",
+  "usd_cash_usd": -16960.0
+ },
+ {
+  "contracts_usd": 14245.49,
+  "eur_cash_usd": 145395.22,
+  "net_liq_usd": 141735.67,
+  "timestamp": "2026-11-03T19:30:00+00:00",
+  "usd_cash_usd": -17905.03
+ },
+ {
+  "contracts_usd": 14166.01,
+  "eur_cash_usd": 145403.66,
+  "net_liq_usd": 141820.0,
+  "timestamp": "2026-11-03T20:00:00+00:00",
+  "usd_cash_usd": -17749.68
+ },
+ {
+  "contracts_usd": 13659.88,
+  "eur_cash_usd": 145399.11,
+  "net_liq_usd": 141480.24,
+  "timestamp": "2026-11-03T20:30:00+00:00",
+  "usd_cash_usd": -17578.76
+ },
+ {
+  "contracts_usd": 13634.67,
+  "eur_cash_usd": 145411.46,
+  "net_liq_usd": 141586.91,
+  "timestamp": "2026-11-03T21:00:00+00:00",
+  "usd_cash_usd": -17459.22
+ },
+ {
+  "contracts_usd": 13697.94,
+  "eur_cash_usd": 145386.77,
+  "net_liq_usd": 140886.99,
+  "timestamp": "2026-11-03T21:30:00+00:00",
+  "usd_cash_usd": -18197.72
+ },
+ {
+  "contracts_usd": 13617.95,
+  "eur_cash_usd": 145391.97,
+  "net_liq_usd": 141513.03,
+  "timestamp": "2026-11-03T22:00:00+00:00",
+  "usd_cash_usd": -17496.89
+ },
+ {
+  "contracts_usd": 13657.6,
+  "eur_cash_usd": 145355.59,
+  "net_liq_usd": 141516.3,
+  "timestamp": "2026-11-03T22:30:00+00:00",
+  "usd_cash_usd": -17496.89
+ },
+ {
+  "contracts_usd": 13591.62,
+  "eur_cash_usd": 145404.31,
+  "net_liq_usd": 141615.27,
+  "timestamp": "2026-11-03T23:00:00+00:00",
+  "usd_cash_usd": -17380.66
+ },
+ {
+  "contracts_usd": 14403.55,
+  "eur_cash_usd": 145586.85,
+  "net_liq_usd": 148881.37,
+  "timestamp": "2026-11-03T23:30:00+00:00",
+  "usd_cash_usd": -11109.03
+ },
+ {
+  "contracts_usd": 15419.82,
+  "eur_cash_usd": 145777.84,
+  "net_liq_usd": 157006.25,
+  "timestamp": "2026-11-04T00:00:00+00:00",
+  "usd_cash_usd": -4191.41
+ },
+ {
+  "contracts_usd": 15016.67,
+  "eur_cash_usd": 145695.99,
+  "net_liq_usd": 154737.07,
+  "timestamp": "2026-11-04T00:30:00+00:00",
+  "usd_cash_usd": -5975.58
+ },
+ {
+  "contracts_usd": 17316.86,
+  "eur_cash_usd": 146079.26,
+  "net_liq_usd": 172046.26,
+  "timestamp": "2026-11-04T01:00:00+00:00",
+  "usd_cash_usd": 8650.15
+ },
+ {
+  "contracts_usd": 17176.21,
+  "eur_cash_usd": 145993.51,
+  "net_liq_usd": 168714.55,
+  "timestamp": "2026-11-04T01:30:00+00:00",
+  "usd_cash_usd": 5544.83
+ },
+ {
+  "contracts_usd": 18812.67,
+  "eur_cash_usd": 146137.72,
+  "net_liq_usd": 175298.41,
+  "timestamp": "2026-11-04T02:00:00+00:00",
+  "usd_cash_usd": 10348.01
+ },
+ {
+  "contracts_usd": 19113.43,
+  "eur_cash_usd": 146213.08,
+  "net_liq_usd": 178716.03,
+  "timestamp": "2026-11-04T02:30:00+00:00",
+  "usd_cash_usd": 13389.52
+ },
+ {
+  "contracts_usd": 16586.01,
+  "eur_cash_usd": 146011.7,
+  "net_liq_usd": 167807.0,
+  "timestamp": "2026-11-04T03:00:00+00:00",
+  "usd_cash_usd": 5209.29
+ },
+ {
+  "contracts_usd": 18153.17,
+  "eur_cash_usd": 146071.46,
+  "net_liq_usd": 172500.25,
+  "timestamp": "2026-11-04T03:30:00+00:00",
+  "usd_cash_usd": 8275.62
+ },
+ {
+  "contracts_usd": 18222.76,
+  "eur_cash_usd": 146156.56,
+  "net_liq_usd": 175863.37,
+  "timestamp": "2026-11-04T04:00:00+00:00",
+  "usd_cash_usd": 11484.05
+ },
+ {
+  "contracts_usd": 17118.62,
+  "eur_cash_usd": 145972.72,
+  "net_liq_usd": 167293.64,
+  "timestamp": "2026-11-04T04:30:00+00:00",
+  "usd_cash_usd": 4202.3
+ },
+ {
+  "contracts_usd": 15960.06,
+  "eur_cash_usd": 145866.83,
+  "net_liq_usd": 162616.2,
+  "timestamp": "2026-11-04T05:00:00+00:00",
+  "usd_cash_usd": 789.31
+ },
+ {
+  "contracts_usd": 17025.4,
+  "eur_cash_usd": 146008.45,
+  "net_liq_usd": 167396.13,
+  "timestamp": "2026-11-04T05:30:00+00:00",
+  "usd_cash_usd": 4362.28
+ },
+ {
+  "contracts_usd": 15695.4,
+  "eur_cash_usd": 145897.37,
+  "net_liq_usd": 161167.3,
+  "timestamp": "2026-11-04T06:00:00+00:00",
+  "usd_cash_usd": -425.47
+ },
+ {
+  "contracts_usd": 15548.78,
+  "eur_cash_usd": 145949.98,
+  "net_liq_usd": 162156.4,
+  "timestamp": "2026-11-04T06:30:00+00:00",
+  "usd_cash_usd": 657.64
+ },
+ {
+  "contracts_usd": 15997.45,
+  "eur_cash_usd": 145923.35,
+  "net_liq_usd": 166846.13,
+  "timestamp": "2026-11-04T07:00:00+00:00",
+  "usd_cash_usd": 4925.33
+ },
+ {
+  "contracts_usd": 15017.32,
+  "eur_cash_usd": 145998.06,
+  "net_liq_usd": 165394.28,
+  "timestamp": "2026-11-04T07:30:00+00:00",
+  "usd_cash_usd": 4378.91
+ },
+ {
+  "contracts_usd": 15775.36,
+  "eur_cash_usd": 146007.15,
+  "net_liq_usd": 169401.73,
+  "timestamp": "2026-11-04T08:00:00+00:00",
+  "usd_cash_usd": 7619.22
+ },
+ {
+  "contracts_usd": 15810.98,
+  "eur_cash_usd": 146123.43,
+  "net_liq_usd": 172123.37,
+  "timestamp": "2026-11-04T08:30:00+00:00",
+  "usd_cash_usd": 10188.96
+ },
+ {
+  "contracts_usd": 17421.47,
+  "eur_cash_usd": 146267.64,
+  "net_liq_usd": 178212.91,
+  "timestamp": "2026-11-04T09:00:00+00:00",
+  "usd_cash_usd": 14523.8
+ },
+ {
+  "contracts_usd": 16844.02,
+  "eur_cash_usd": 146311.17,
+  "net_liq_usd": 178371.29,
+  "timestamp": "2026-11-04T09:30:00+00:00",
+  "usd_cash_usd": 15216.1
+ },
+ {
+  "contracts_usd": 16706.14,
+  "eur_cash_usd": 146305.32,
+  "net_liq_usd": 176383.67,
+  "timestamp": "2026-11-04T10:00:00+00:00",
+  "usd_cash_usd": 13372.2
+ },
+ {
+  "contracts_usd": 15971.58,
+  "eur_cash_usd": 146155.91,
+  "net_liq_usd": 172589.26,
+  "timestamp": "2026-11-04T10:30:00+00:00",
+  "usd_cash_usd": 10461.77
+ },
+ {
+  "contracts_usd": 15914.99,
+  "eur_cash_usd": 146111.74,
+  "net_liq_usd": 172876.85,
+  "timestamp": "2026-11-04T11:00:00+00:00",
+  "usd_cash_usd": 10850.12
+ },
+ {
+  "contracts_usd": 16447.89,
+  "eur_cash_usd": 146242.96,
+  "net_liq_usd": 175938.69,
+  "timestamp": "2026-11-04T11:30:00+00:00",
+  "usd_cash_usd": 13247.84
+ },
+ {
+  "contracts_usd": 17501.28,
+  "eur_cash_usd": 146312.47,
+  "net_liq_usd": 182283.01,
+  "timestamp": "2026-11-04T12:00:00+00:00",
+  "usd_cash_usd": 18469.27
+ },
+ {
+  "contracts_usd": 17764.83,
+  "eur_cash_usd": 147358.16,
+  "net_liq_usd": 181955.16,
+  "timestamp": "2026-11-04T12:30:00+00:00",
+  "usd_cash_usd": 16832.18
+ },
+ {
+  "contracts_usd": 17128.67,
+  "eur_cash_usd": 147380.4,
+  "net_liq_usd": 181138.61,
+  "timestamp": "2026-11-04T13:00:00+00:00",
+  "usd_cash_usd": 16629.54
+ },
+ {
+  "contracts_usd": 15328.73,
+  "eur_cash_usd": 147300.59,
+  "net_liq_usd": 179580.5,
+  "timestamp": "2026-11-04T13:30:00+00:00",
+  "usd_cash_usd": 16951.17
+ },
+ {
+  "contracts_usd": -17292.54,
+  "eur_cash_usd": 147309.1,
+  "net_liq_usd": 176567.62,
+  "timestamp": "2026-11-04T14:00:00+00:00",
+  "usd_cash_usd": 46551.06
+ },
+ {
+  "contracts_usd": -17148.14,
+  "eur_cash_usd": 147170.43,
+  "net_liq_usd": 176543.43,
+  "timestamp": "2026-11-04T14:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16725.77,
+  "eur_cash_usd": 146984.0,
+  "net_liq_usd": 176779.37,
+  "timestamp": "2026-11-04T15:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16528.94,
+  "eur_cash_usd": 146968.3,
+  "net_liq_usd": 176960.5,
+  "timestamp": "2026-11-04T15:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16454.98,
+  "eur_cash_usd": 146813.93,
+  "net_liq_usd": 176880.09,
+  "timestamp": "2026-11-04T16:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16252.72,
+  "eur_cash_usd": 146766.18,
+  "net_liq_usd": 177034.6,
+  "timestamp": "2026-11-04T16:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16711.09,
+  "eur_cash_usd": 147002.97,
+  "net_liq_usd": 176813.02,
+  "timestamp": "2026-11-04T17:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16654.52,
+  "eur_cash_usd": 147002.32,
+  "net_liq_usd": 176868.94,
+  "timestamp": "2026-11-04T17:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16514.35,
+  "eur_cash_usd": 146929.05,
+  "net_liq_usd": 176935.84,
+  "timestamp": "2026-11-04T18:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16231.64,
+  "eur_cash_usd": 146720.39,
+  "net_liq_usd": 177009.89,
+  "timestamp": "2026-11-04T18:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16376.63,
+  "eur_cash_usd": 146827.67,
+  "net_liq_usd": 176972.18,
+  "timestamp": "2026-11-04T19:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16271.03,
+  "eur_cash_usd": 146813.93,
+  "net_liq_usd": 177064.04,
+  "timestamp": "2026-11-04T19:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16598.03,
+  "eur_cash_usd": 146904.85,
+  "net_liq_usd": 176827.96,
+  "timestamp": "2026-11-04T20:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16585.3,
+  "eur_cash_usd": 146913.36,
+  "net_liq_usd": 176849.2,
+  "timestamp": "2026-11-04T20:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16506.83,
+  "eur_cash_usd": 146910.09,
+  "net_liq_usd": 176924.4,
+  "timestamp": "2026-11-04T21:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16445.36,
+  "eur_cash_usd": 146891.77,
+  "net_liq_usd": 176967.55,
+  "timestamp": "2026-11-04T21:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16400.53,
+  "eur_cash_usd": 146906.16,
+  "net_liq_usd": 177026.77,
+  "timestamp": "2026-11-04T22:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16431.62,
+  "eur_cash_usd": 146928.4,
+  "net_liq_usd": 177017.92,
+  "timestamp": "2026-11-04T22:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16583.98,
+  "eur_cash_usd": 146959.14,
+  "net_liq_usd": 176896.3,
+  "timestamp": "2026-11-04T23:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16568.74,
+  "eur_cash_usd": 146980.08,
+  "net_liq_usd": 176932.48,
+  "timestamp": "2026-11-04T23:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16746.38,
+  "eur_cash_usd": 147061.19,
+  "net_liq_usd": 176835.95,
+  "timestamp": "2026-11-05T00:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16844.73,
+  "eur_cash_usd": 147127.25,
+  "net_liq_usd": 176803.66,
+  "timestamp": "2026-11-05T00:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16934.37,
+  "eur_cash_usd": 147181.55,
+  "net_liq_usd": 176768.32,
+  "timestamp": "2026-11-05T01:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -17156.21,
+  "eur_cash_usd": 147248.27,
+  "net_liq_usd": 176613.2,
+  "timestamp": "2026-11-05T01:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16972.01,
+  "eur_cash_usd": 147201.82,
+  "net_liq_usd": 176750.95,
+  "timestamp": "2026-11-05T02:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -17085.36,
+  "eur_cash_usd": 147224.72,
+  "net_liq_usd": 176660.5,
+  "timestamp": "2026-11-05T02:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -17215.25,
+  "eur_cash_usd": 147287.51,
+  "net_liq_usd": 176593.4,
+  "timestamp": "2026-11-05T03:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -17299.38,
+  "eur_cash_usd": 147372.55,
+  "net_liq_usd": 176594.31,
+  "timestamp": "2026-11-05T03:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -17385.17,
+  "eur_cash_usd": 147356.2,
+  "net_liq_usd": 176492.17,
+  "timestamp": "2026-11-05T04:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -17350.1,
+  "eur_cash_usd": 147338.53,
+  "net_liq_usd": 176509.57,
+  "timestamp": "2026-11-05T04:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -17273.46,
+  "eur_cash_usd": 147344.42,
+  "net_liq_usd": 176592.1,
+  "timestamp": "2026-11-05T05:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -17148.17,
+  "eur_cash_usd": 147318.91,
+  "net_liq_usd": 176691.88,
+  "timestamp": "2026-11-05T05:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -17328.23,
+  "eur_cash_usd": 147350.31,
+  "net_liq_usd": 176543.22,
+  "timestamp": "2026-11-05T06:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -17357.9,
+  "eur_cash_usd": 147364.7,
+  "net_liq_usd": 176527.94,
+  "timestamp": "2026-11-05T06:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16792.81,
+  "eur_cash_usd": 147171.73,
+  "net_liq_usd": 176900.06,
+  "timestamp": "2026-11-05T07:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16908.41,
+  "eur_cash_usd": 147110.9,
+  "net_liq_usd": 176723.63,
+  "timestamp": "2026-11-05T07:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16871.31,
+  "eur_cash_usd": 147131.18,
+  "net_liq_usd": 176781.01,
+  "timestamp": "2026-11-05T08:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16813.97,
+  "eur_cash_usd": 147092.58,
+  "net_liq_usd": 176799.75,
+  "timestamp": "2026-11-05T08:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16705.17,
+  "eur_cash_usd": 147088.66,
+  "net_liq_usd": 176904.63,
+  "timestamp": "2026-11-05T09:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16508.13,
+  "eur_cash_usd": 146948.68,
+  "net_liq_usd": 176961.69,
+  "timestamp": "2026-11-05T09:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16540.89,
+  "eur_cash_usd": 146963.72,
+  "net_liq_usd": 176943.97,
+  "timestamp": "2026-11-05T10:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16309.24,
+  "eur_cash_usd": 146893.73,
+  "net_liq_usd": 177105.63,
+  "timestamp": "2026-11-05T10:30:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -16265.26,
+  "eur_cash_usd": 146854.49,
+  "net_liq_usd": 177110.37,
+  "timestamp": "2026-11-05T11:00:00+00:00",
+  "usd_cash_usd": 46521.14
+ },
+ {
+  "contracts_usd": -4752.65,
+  "eur_cash_usd": 146804.77,
+  "net_liq_usd": 176670.47,
+  "timestamp": "2026-11-05T11:30:00+00:00",
+  "usd_cash_usd": 34618.34
+ },
+ {
+  "contracts_usd": -4627.82,
+  "eur_cash_usd": 146796.27,
+  "net_liq_usd": 176597.79,
+  "timestamp": "2026-11-05T12:00:00+00:00",
+  "usd_cash_usd": 34429.34
+ },
+ {
+  "contracts_usd": -4807.01,
+  "eur_cash_usd": 146836.17,
+  "net_liq_usd": 176808.45,
+  "timestamp": "2026-11-05T12:30:00+00:00",
+  "usd_cash_usd": 34779.29
+ },
+ {
+  "contracts_usd": -4506.16,
+  "eur_cash_usd": 146770.1,
+  "net_liq_usd": 176512.31,
+  "timestamp": "2026-11-05T13:00:00+00:00",
+  "usd_cash_usd": 34248.36
+ },
+ {
+  "contracts_usd": -4567.37,
+  "eur_cash_usd": 146788.42,
+  "net_liq_usd": 176547.02,
+  "timestamp": "2026-11-05T13:30:00+00:00",
+  "usd_cash_usd": 34325.97
+ },
+ {
+  "contracts_usd": -4145.7,
+  "eur_cash_usd": 146711.89,
+  "net_liq_usd": 176514.66,
+  "timestamp": "2026-11-05T14:00:00+00:00",
+  "usd_cash_usd": 33948.48
+ },
+ {
+  "contracts_usd": -4464.94,
+  "eur_cash_usd": 146783.19,
+  "net_liq_usd": 176689.28,
+  "timestamp": "2026-11-05T14:30:00+00:00",
+  "usd_cash_usd": 34371.03
+ },
+ {
+  "contracts_usd": -5022.96,
+  "eur_cash_usd": 146888.5,
+  "net_liq_usd": 176935.02,
+  "timestamp": "2026-11-05T15:00:00+00:00",
+  "usd_cash_usd": 35069.48
+ },
+ {
+  "contracts_usd": -5070.2,
+  "eur_cash_usd": 146895.04,
+  "net_liq_usd": 176862.3,
+  "timestamp": "2026-11-05T15:30:00+00:00",
+  "usd_cash_usd": 35037.45
+ },
+ {
+  "contracts_usd": -4607.51,
+  "eur_cash_usd": 146819.16,
+  "net_liq_usd": 176849.19,
+  "timestamp": "2026-11-05T16:00:00+00:00",
+  "usd_cash_usd": 34637.54
+ },
+ {
+  "contracts_usd": -5316.81,
+  "eur_cash_usd": 146973.53,
+  "net_liq_usd": 177247.64,
+  "timestamp": "2026-11-05T16:30:00+00:00",
+  "usd_cash_usd": 35590.91
+ },
+ {
+  "contracts_usd": -5253.57,
+  "eur_cash_usd": 146942.14,
+  "net_liq_usd": 177107.69,
+  "timestamp": "2026-11-05T17:00:00+00:00",
+  "usd_cash_usd": 35419.12
+ },
+ {
+  "contracts_usd": -5733.14,
+  "eur_cash_usd": 147032.41,
+  "net_liq_usd": 177330.15,
+  "timestamp": "2026-11-05T17:30:00+00:00",
+  "usd_cash_usd": 36030.89
+ },
+ {
+  "contracts_usd": -5307.71,
+  "eur_cash_usd": 146965.69,
+  "net_liq_usd": 177215.72,
+  "timestamp": "2026-11-05T18:00:00+00:00",
+  "usd_cash_usd": 35557.74
+ },
+ {
+  "contracts_usd": -4835.36,
+  "eur_cash_usd": 146887.85,
+  "net_liq_usd": 177031.32,
+  "timestamp": "2026-11-05T18:30:00+00:00",
+  "usd_cash_usd": 34978.83
+ },
+ {
+  "contracts_usd": -4469.82,
+  "eur_cash_usd": 146817.85,
+  "net_liq_usd": 176968.15,
+  "timestamp": "2026-11-05T19:00:00+00:00",
+  "usd_cash_usd": 34620.12
+ },
+ {
+  "contracts_usd": -4684.84,
+  "eur_cash_usd": 146858.41,
+  "net_liq_usd": 176977.69,
+  "timestamp": "2026-11-05T19:30:00+00:00",
+  "usd_cash_usd": 34804.12
+ },
+ {
+  "contracts_usd": -4550.89,
+  "eur_cash_usd": 146831.59,
+  "net_liq_usd": 176917.4,
+  "timestamp": "2026-11-05T20:00:00+00:00",
+  "usd_cash_usd": 34636.7
+ },
+ {
+  "contracts_usd": -4354.19,
+  "eur_cash_usd": 146772.72,
+  "net_liq_usd": 176785.28,
+  "timestamp": "2026-11-05T20:30:00+00:00",
+  "usd_cash_usd": 34366.75
+ },
+ {
+  "contracts_usd": -4201.33,
+  "eur_cash_usd": 146758.98,
+  "net_liq_usd": 176702.65,
+  "timestamp": "2026-11-05T21:00:00+00:00",
+  "usd_cash_usd": 34144.99
+ },
+ {
+  "contracts_usd": -4184.53,
+  "eur_cash_usd": 146764.87,
+  "net_liq_usd": 176731.59,
+  "timestamp": "2026-11-05T21:30:00+00:00",
+  "usd_cash_usd": 34151.25
+ },
+ {
+  "contracts_usd": -4355.61,
+  "eur_cash_usd": 146758.98,
+  "net_liq_usd": 176609.28,
+  "timestamp": "2026-11-05T22:00:00+00:00",
+  "usd_cash_usd": 34205.91
+ },
+ {
+  "contracts_usd": -4362.65,
+  "eur_cash_usd": 146760.29,
+  "net_liq_usd": 176603.55,
+  "timestamp": "2026-11-05T22:30:00+00:00",
+  "usd_cash_usd": 34205.91
+ },
+ {
+  "contracts_usd": -4892.74,
+  "eur_cash_usd": 146874.76,
+  "net_liq_usd": 176892.64,
+  "timestamp": "2026-11-05T23:00:00+00:00",
+  "usd_cash_usd": 34910.62
+ },
+ {
+  "contracts_usd": -4799.17,
+  "eur_cash_usd": 146877.38,
+  "net_liq_usd": 176926.97,
+  "timestamp": "2026-11-05T23:30:00+00:00",
+  "usd_cash_usd": 34848.76
+ },
+ {
+  "contracts_usd": -4680.94,
+  "eur_cash_usd": 146851.87,
+  "net_liq_usd": 176984.64,
+  "timestamp": "2026-11-06T00:00:00+00:00",
+  "usd_cash_usd": 34813.71
+ },
+ {
+  "contracts_usd": -4540.0,
+  "eur_cash_usd": 146802.16,
+  "net_liq_usd": 176783.39,
+  "timestamp": "2026-11-06T00:30:00+00:00",
+  "usd_cash_usd": 34521.23
+ },
+ {
+  "contracts_usd": -4277.35,
+  "eur_cash_usd": 146758.33,
+  "net_liq_usd": 176671.77,
+  "timestamp": "2026-11-06T01:00:00+00:00",
+  "usd_cash_usd": 34190.79
+ },
+ {
+  "contracts_usd": -3657.6,
+  "eur_cash_usd": 146674.6,
+  "net_liq_usd": 176597.69,
+  "timestamp": "2026-11-06T01:30:00+00:00",
+  "usd_cash_usd": 33580.69
+ },
+ {
+  "contracts_usd": -3522.76,
+  "eur_cash_usd": 146645.82,
+  "net_liq_usd": 176640.54,
+  "timestamp": "2026-11-06T02:00:00+00:00",
+  "usd_cash_usd": 33517.48
+ },
+ {
+  "contracts_usd": -3447.83,
+  "eur_cash_usd": 146617.69,
+  "net_liq_usd": 176434.39,
+  "timestamp": "2026-11-06T02:30:00+00:00",
+  "usd_cash_usd": 33264.53
+ },
+ {
+  "contracts_usd": -3153.11,
+  "eur_cash_usd": 146581.06,
+  "net_liq_usd": 176467.49,
+  "timestamp": "2026-11-06T03:00:00+00:00",
+  "usd_cash_usd": 33039.54
+ },
+ {
+  "contracts_usd": -2706.55,
+  "eur_cash_usd": 146513.03,
+  "net_liq_usd": 176265.65,
+  "timestamp": "2026-11-06T03:30:00+00:00",
+  "usd_cash_usd": 32459.17
+ },
+ {
+  "contracts_usd": -2364.26,
+  "eur_cash_usd": 146428.0,
+  "net_liq_usd": 176007.62,
+  "timestamp": "2026-11-06T04:00:00+00:00",
+  "usd_cash_usd": 31943.88
+ },
+ {
+  "contracts_usd": -2669.01,
+  "eur_cash_usd": 146497.99,
+  "net_liq_usd": 176183.42,
+  "timestamp": "2026-11-06T04:30:00+00:00",
+  "usd_cash_usd": 32354.44
+ },
+ {
+  "contracts_usd": -2683.62,
+  "eur_cash_usd": 146494.72,
+  "net_liq_usd": 176189.53,
+  "timestamp": "2026-11-06T05:00:00+00:00",
+  "usd_cash_usd": 32378.43
+ },
+ {
+  "contracts_usd": -2541.11,
+  "eur_cash_usd": 146476.4,
+  "net_liq_usd": 176242.9,
+  "timestamp": "2026-11-06T05:30:00+00:00",
+  "usd_cash_usd": 32307.61
+ },
+ {
+  "contracts_usd": -2358.78,
+  "eur_cash_usd": 146433.89,
+  "net_liq_usd": 175997.71,
+  "timestamp": "2026-11-06T06:00:00+00:00",
+  "usd_cash_usd": 31922.61
+ },
+ {
+  "contracts_usd": -1562.31,
+  "eur_cash_usd": 146299.14,
+  "net_liq_usd": 175732.13,
+  "timestamp": "2026-11-06T06:30:00+00:00",
+  "usd_cash_usd": 30995.31
+ },
+ {
+  "contracts_usd": -1312.95,
+  "eur_cash_usd": 146247.46,
+  "net_liq_usd": 175688.14,
+  "timestamp": "2026-11-06T07:00:00+00:00",
+  "usd_cash_usd": 30753.62
+ },
+ {
+  "contracts_usd": -1063.5,
+  "eur_cash_usd": 146263.16,
+  "net_liq_usd": 175970.39,
+  "timestamp": "2026-11-06T07:30:00+00:00",
+  "usd_cash_usd": 30770.73
+ },
+ {
+  "contracts_usd": -1418.74,
+  "eur_cash_usd": 146343.62,
+  "net_liq_usd": 176222.57,
+  "timestamp": "2026-11-06T08:00:00+00:00",
+  "usd_cash_usd": 31297.7
+ },
+ {
+  "contracts_usd": -1430.62,
+  "eur_cash_usd": 146295.21,
+  "net_liq_usd": 175837.68,
+  "timestamp": "2026-11-06T08:30:00+00:00",
+  "usd_cash_usd": 30973.09
+ },
+ {
+  "contracts_usd": -523.85,
+  "eur_cash_usd": 146155.89,
+  "net_liq_usd": 175739.78,
+  "timestamp": "2026-11-06T09:00:00+00:00",
+  "usd_cash_usd": 30107.75
+ },
+ {
+  "contracts_usd": -359.87,
+  "eur_cash_usd": 146155.89,
+  "net_liq_usd": 175832.83,
+  "timestamp": "2026-11-06T09:30:00+00:00",
+  "usd_cash_usd": 30036.82
+ },
+ {
+  "contracts_usd": -681.3,
+  "eur_cash_usd": 146180.74,
+  "net_liq_usd": 175843.34,
+  "timestamp": "2026-11-06T10:00:00+00:00",
+  "usd_cash_usd": 30343.9
+ },
+ {
+  "contracts_usd": -525.01,
+  "eur_cash_usd": 146157.19,
+  "net_liq_usd": 175837.04,
+  "timestamp": "2026-11-06T10:30:00+00:00",
+  "usd_cash_usd": 30204.86
+ },
+ {
+  "contracts_usd": -1099.55,
+  "eur_cash_usd": 146252.04,
+  "net_liq_usd": 175883.69,
+  "timestamp": "2026-11-06T11:00:00+00:00",
+  "usd_cash_usd": 30731.2
+ },
+ {
+  "contracts_usd": -703.65,
+  "eur_cash_usd": 146179.43,
+  "net_liq_usd": 175824.9,
+  "timestamp": "2026-11-06T11:30:00+00:00",
+  "usd_cash_usd": 30349.12
+ },
+ {
+  "contracts_usd": -676.05,
+  "eur_cash_usd": 146170.28,
+  "net_liq_usd": 175737.05,
+  "timestamp": "2026-11-06T12:00:00+00:00",
+  "usd_cash_usd": 30242.83
+ },
+ {
+  "contracts_usd": -175.14,
+  "eur_cash_usd": 146092.44,
+  "net_liq_usd": 175581.42,
+  "timestamp": "2026-11-06T12:30:00+00:00",
+  "usd_cash_usd": 29664.13
+ },
+ {
+  "contracts_usd": 280.9,
+  "eur_cash_usd": 146036.18,
+  "net_liq_usd": 175657.85,
+  "timestamp": "2026-11-06T13:00:00+00:00",
+  "usd_cash_usd": 29340.77
+ },
+ {
+  "contracts_usd": 1354.28,
+  "eur_cash_usd": 145844.52,
+  "net_liq_usd": 175113.37,
+  "timestamp": "2026-11-06T13:30:00+00:00",
+  "usd_cash_usd": 27914.57
+ },
+ {
+  "contracts_usd": 2515.94,
+  "eur_cash_usd": 145646.33,
+  "net_liq_usd": 174961.57,
+  "timestamp": "2026-11-06T14:00:00+00:00",
+  "usd_cash_usd": 26799.3
+ },
+ {
+  "contracts_usd": 1256.59,
+  "eur_cash_usd": 145860.88,
+  "net_liq_usd": 175312.52,
+  "timestamp": "2026-11-06T14:30:00+00:00",
+  "usd_cash_usd": 28195.05
+ },
+ {
+  "contracts_usd": 545.08,
+  "eur_cash_usd": 145989.08,
+  "net_liq_usd": 175483.88,
+  "timestamp": "2026-11-06T15:00:00+00:00",
+  "usd_cash_usd": 28949.72
+ },
+ {
+  "contracts_usd": 1292.1,
+  "eur_cash_usd": 145839.95,
+  "net_liq_usd": 175216.95,
+  "timestamp": "2026-11-06T15:30:00+00:00",
+  "usd_cash_usd": 28084.9
+ },
+ {
+  "contracts_usd": 1213.38,
+  "eur_cash_usd": 145849.76,
+  "net_liq_usd": 175175.05,
+  "timestamp": "2026-11-06T16:00:00+00:00",
+  "usd_cash_usd": 28111.92
+ },
+ {
+  "contracts_usd": 764.31,
+  "eur_cash_usd": 145926.29,
+  "net_liq_usd": 175314.36,
+  "timestamp": "2026-11-06T16:30:00+00:00",
+  "usd_cash_usd": 28623.76
+ },
+ {
+  "contracts_usd": 1390.63,
+  "eur_cash_usd": 145827.52,
+  "net_liq_usd": 175222.0,
+  "timestamp": "2026-11-06T17:00:00+00:00",
+  "usd_cash_usd": 28003.85
+ },
+ {
+  "contracts_usd": 1525.72,
+  "eur_cash_usd": 145792.85,
+  "net_liq_usd": 175027.02,
+  "timestamp": "2026-11-06T17:30:00+00:00",
+  "usd_cash_usd": 27708.45
+ },
+ {
+  "contracts_usd": 1392.55,
+  "eur_cash_usd": 145793.5,
+  "net_liq_usd": 174956.78,
+  "timestamp": "2026-11-06T18:00:00+00:00",
+  "usd_cash_usd": 27770.72
+ },
+ {
+  "contracts_usd": 1404.69,
+  "eur_cash_usd": 145809.86,
+  "net_liq_usd": 175129.95,
+  "timestamp": "2026-11-06T18:30:00+00:00",
+  "usd_cash_usd": 27915.4
+ },
+ {
+  "contracts_usd": 1748.43,
+  "eur_cash_usd": 145768.65,
+  "net_liq_usd": 175095.14,
+  "timestamp": "2026-11-06T19:00:00+00:00",
+  "usd_cash_usd": 27578.07
+ },
+ {
+  "contracts_usd": 1907.45,
+  "eur_cash_usd": 145702.58,
+  "net_liq_usd": 174864.33,
+  "timestamp": "2026-11-06T19:30:00+00:00",
+  "usd_cash_usd": 27254.3
+ },
+ {
+  "contracts_usd": 1972.83,
+  "eur_cash_usd": 145708.47,
+  "net_liq_usd": 174827.01,
+  "timestamp": "2026-11-06T20:00:00+00:00",
+  "usd_cash_usd": 27145.71
+ },
+ {
+  "contracts_usd": 1799.82,
+  "eur_cash_usd": 145743.79,
+  "net_liq_usd": 174914.42,
+  "timestamp": "2026-11-06T20:30:00+00:00",
+  "usd_cash_usd": 27370.81
+ },
+ {
+  "contracts_usd": 1608.7,
+  "eur_cash_usd": 145763.41,
+  "net_liq_usd": 174913.05,
+  "timestamp": "2026-11-06T21:00:00+00:00",
+  "usd_cash_usd": 27540.93
+ },
+ {
+  "contracts_usd": 1986.25,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 175035.66,
+  "timestamp": "2026-11-06T21:30:00+00:00",
+  "usd_cash_usd": 27312.81
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-06T22:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-06T22:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-06T23:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-06T23:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T00:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T00:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T01:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T01:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T02:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T02:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1712.53,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T03:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1722.55,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174948.45,
+  "timestamp": "2026-11-07T03:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.81,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.6,
+  "timestamp": "2026-11-07T04:00:00+00:00",
+  "usd_cash_usd": 27489.2
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T04:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T05:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T05:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T06:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T06:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T07:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T07:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T08:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T08:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T09:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T09:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T10:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T10:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T11:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T11:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T12:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T12:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T13:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T13:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T14:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T14:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T15:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T15:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T16:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T16:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T17:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T17:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T18:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T18:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T19:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T19:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T20:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T20:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T21:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T21:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T22:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T22:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T23:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T23:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T00:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T00:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T01:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T01:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T02:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T02:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T03:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T03:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T04:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T04:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T05:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T05:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T06:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T06:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T07:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T07:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T08:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.81,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.6,
+  "timestamp": "2026-11-08T08:30:00+00:00",
+  "usd_cash_usd": 27489.2
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T09:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T09:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T10:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T10:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T11:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T11:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T12:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T12:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T13:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T13:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T14:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T14:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T15:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T15:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T16:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T16:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T17:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T17:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T18:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T18:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T19:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T19:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T20:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T20:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T21:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1616.78,
+  "eur_cash_usd": 145736.59,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T21:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1623.02,
+  "eur_cash_usd": 145739.21,
+  "net_liq_usd": 174851.53,
+  "timestamp": "2026-11-08T22:00:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1504.41,
+  "eur_cash_usd": 145826.86,
+  "net_liq_usd": 174820.57,
+  "timestamp": "2026-11-08T22:30:00+00:00",
+  "usd_cash_usd": 27489.3
+ },
+ {
+  "contracts_usd": 1416.28,
+  "eur_cash_usd": 145805.28,
+  "net_liq_usd": 174939.08,
+  "timestamp": "2026-11-08T23:00:00+00:00",
+  "usd_cash_usd": 27717.53
+ },
+ {
+  "contracts_usd": 1001.54,
+  "eur_cash_usd": 145856.3,
+  "net_liq_usd": 174805.57,
+  "timestamp": "2026-11-08T23:30:00+00:00",
+  "usd_cash_usd": 27947.74
+ },
+ {
+  "contracts_usd": 1028.66,
+  "eur_cash_usd": 145879.19,
+  "net_liq_usd": 175026.97,
+  "timestamp": "2026-11-09T00:00:00+00:00",
+  "usd_cash_usd": 28119.11
+ },
+ {
+  "contracts_usd": 1186.38,
+  "eur_cash_usd": 145854.34,
+  "net_liq_usd": 175032.16,
+  "timestamp": "2026-11-09T00:30:00+00:00",
+  "usd_cash_usd": 27991.44
+ },
+ {
+  "contracts_usd": 535.7,
+  "eur_cash_usd": 145965.54,
+  "net_liq_usd": 175258.3,
+  "timestamp": "2026-11-09T01:00:00+00:00",
+  "usd_cash_usd": 28757.06
+ },
+ {
+  "contracts_usd": 585.37,
+  "eur_cash_usd": 145939.37,
+  "net_liq_usd": 175170.4,
+  "timestamp": "2026-11-09T01:30:00+00:00",
+  "usd_cash_usd": 28645.66
+ },
+ {
+  "contracts_usd": 679.59,
+  "eur_cash_usd": 145922.36,
+  "net_liq_usd": 175052.77,
+  "timestamp": "2026-11-09T02:00:00+00:00",
+  "usd_cash_usd": 28450.81
+ },
+ {
+  "contracts_usd": 442.05,
+  "eur_cash_usd": 145919.75,
+  "net_liq_usd": 174960.94,
+  "timestamp": "2026-11-09T02:30:00+00:00",
+  "usd_cash_usd": 28599.14
+ },
+ {
+  "contracts_usd": 576.82,
+  "eur_cash_usd": 145912.55,
+  "net_liq_usd": 174916.72,
+  "timestamp": "2026-11-09T03:00:00+00:00",
+  "usd_cash_usd": 28427.34
+ },
+ {
+  "contracts_usd": 645.8,
+  "eur_cash_usd": 145904.05,
+  "net_liq_usd": 174924.83,
+  "timestamp": "2026-11-09T03:30:00+00:00",
+  "usd_cash_usd": 28374.98
+ },
+ {
+  "contracts_usd": 286.63,
+  "eur_cash_usd": 145953.11,
+  "net_liq_usd": 174920.24,
+  "timestamp": "2026-11-09T04:00:00+00:00",
+  "usd_cash_usd": 28680.5
+ },
+ {
+  "contracts_usd": 45.4,
+  "eur_cash_usd": 145983.85,
+  "net_liq_usd": 174955.29,
+  "timestamp": "2026-11-09T04:30:00+00:00",
+  "usd_cash_usd": 28926.04
+ },
+ {
+  "contracts_usd": -17.63,
+  "eur_cash_usd": 145996.93,
+  "net_liq_usd": 175006.42,
+  "timestamp": "2026-11-09T05:00:00+00:00",
+  "usd_cash_usd": 29027.12
+ },
+ {
+  "contracts_usd": 106.93,
+  "eur_cash_usd": 145992.36,
+  "net_liq_usd": 175118.89,
+  "timestamp": "2026-11-09T05:30:00+00:00",
+  "usd_cash_usd": 29019.61
+ },
+ {
+  "contracts_usd": -292.05,
+  "eur_cash_usd": 146057.77,
+  "net_liq_usd": 175168.13,
+  "timestamp": "2026-11-09T06:00:00+00:00",
+  "usd_cash_usd": 29402.42
+ },
+ {
+  "contracts_usd": -383.24,
+  "eur_cash_usd": 146057.11,
+  "net_liq_usd": 175129.8,
+  "timestamp": "2026-11-09T06:30:00+00:00",
+  "usd_cash_usd": 29455.93
+ },
+ {
+  "contracts_usd": -540.28,
+  "eur_cash_usd": 146097.01,
+  "net_liq_usd": 175292.62,
+  "timestamp": "2026-11-09T07:00:00+00:00",
+  "usd_cash_usd": 29735.89
+ },
+ {
+  "contracts_usd": -832.98,
+  "eur_cash_usd": 146165.7,
+  "net_liq_usd": 175488.45,
+  "timestamp": "2026-11-09T07:30:00+00:00",
+  "usd_cash_usd": 30155.73
+ },
+ {
+  "contracts_usd": -2105.23,
+  "eur_cash_usd": 146357.35,
+  "net_liq_usd": 175740.39,
+  "timestamp": "2026-11-09T08:00:00+00:00",
+  "usd_cash_usd": 31488.27
+ },
+ {
+  "contracts_usd": -1933.51,
+  "eur_cash_usd": 146348.2,
+  "net_liq_usd": 175814.08,
+  "timestamp": "2026-11-09T08:30:00+00:00",
+  "usd_cash_usd": 31399.4
+ },
+ {
+  "contracts_usd": -2177.06,
+  "eur_cash_usd": 146361.28,
+  "net_liq_usd": 175675.61,
+  "timestamp": "2026-11-09T09:00:00+00:00",
+  "usd_cash_usd": 31491.4
+ },
+ {
+  "contracts_usd": -2417.85,
+  "eur_cash_usd": 146424.73,
+  "net_liq_usd": 175903.72,
+  "timestamp": "2026-11-09T09:30:00+00:00",
+  "usd_cash_usd": 31896.84
+ },
+ {
+  "contracts_usd": -2470.54,
+  "eur_cash_usd": 146428.65,
+  "net_liq_usd": 175893.65,
+  "timestamp": "2026-11-09T10:00:00+00:00",
+  "usd_cash_usd": 31935.54
+ },
+ {
+  "contracts_usd": -2318.93,
+  "eur_cash_usd": 146406.41,
+  "net_liq_usd": 175841.74,
+  "timestamp": "2026-11-09T10:30:00+00:00",
+  "usd_cash_usd": 31754.25
+ },
+ {
+  "contracts_usd": -2474.16,
+  "eur_cash_usd": 107623.49,
+  "net_liq_usd": 175801.19,
+  "timestamp": "2026-11-09T11:00:00+00:00",
+  "usd_cash_usd": 70651.85
+ },
+ {
+  "contracts_usd": -2182.8,
+  "eur_cash_usd": 107607.63,
+  "net_liq_usd": 175834.37,
+  "timestamp": "2026-11-09T11:30:00+00:00",
+  "usd_cash_usd": 70409.55
+ },
+ {
+  "contracts_usd": -2181.95,
+  "eur_cash_usd": 107588.39,
+  "net_liq_usd": 175718.25,
+  "timestamp": "2026-11-09T12:00:00+00:00",
+  "usd_cash_usd": 70311.81
+ },
+ {
+  "contracts_usd": -2520.15,
+  "eur_cash_usd": 107604.26,
+  "net_liq_usd": 175814.3,
+  "timestamp": "2026-11-09T12:30:00+00:00",
+  "usd_cash_usd": 70730.19
+ },
+ {
+  "contracts_usd": -2506.55,
+  "eur_cash_usd": 107646.57,
+  "net_liq_usd": 175859.36,
+  "timestamp": "2026-11-09T13:00:00+00:00",
+  "usd_cash_usd": 70719.34
+ },
+ {
+  "contracts_usd": -3064.39,
+  "eur_cash_usd": 107713.89,
+  "net_liq_usd": 176079.49,
+  "timestamp": "2026-11-09T13:30:00+00:00",
+  "usd_cash_usd": 71429.99
+ },
+ {
+  "contracts_usd": -2806.05,
+  "eur_cash_usd": 107668.21,
+  "net_liq_usd": 175936.77,
+  "timestamp": "2026-11-09T14:00:00+00:00",
+  "usd_cash_usd": 71074.62
+ },
+ {
+  "contracts_usd": -2843.86,
+  "eur_cash_usd": 107686.96,
+  "net_liq_usd": 175976.23,
+  "timestamp": "2026-11-09T14:30:00+00:00",
+  "usd_cash_usd": 71133.13
+ },
+ {
+  "contracts_usd": -2375.95,
+  "eur_cash_usd": 107623.01,
+  "net_liq_usd": 175843.74,
+  "timestamp": "2026-11-09T15:00:00+00:00",
+  "usd_cash_usd": 70596.68
+ },
+ {
+  "contracts_usd": -2758.63,
+  "eur_cash_usd": 107661.48,
+  "net_liq_usd": 175799.93,
+  "timestamp": "2026-11-09T15:30:00+00:00",
+  "usd_cash_usd": 70897.08
+ },
+ {
+  "contracts_usd": -3178.92,
+  "eur_cash_usd": 107727.35,
+  "net_liq_usd": 176136.24,
+  "timestamp": "2026-11-09T16:00:00+00:00",
+  "usd_cash_usd": 71587.81
+ },
+ {
+  "contracts_usd": -3336.12,
+  "eur_cash_usd": 107734.08,
+  "net_liq_usd": 176077.98,
+  "timestamp": "2026-11-09T16:30:00+00:00",
+  "usd_cash_usd": 71680.02
+ },
+ {
+  "contracts_usd": -3594.5,
+  "eur_cash_usd": 107773.51,
+  "net_liq_usd": 176214.09,
+  "timestamp": "2026-11-09T17:00:00+00:00",
+  "usd_cash_usd": 72035.08
+ },
+ {
+  "contracts_usd": -3269.67,
+  "eur_cash_usd": 107731.68,
+  "net_liq_usd": 176105.1,
+  "timestamp": "2026-11-09T17:30:00+00:00",
+  "usd_cash_usd": 71643.09
+ },
+ {
+  "contracts_usd": -3537.63,
+  "eur_cash_usd": 107753.31,
+  "net_liq_usd": 176066.14,
+  "timestamp": "2026-11-09T18:00:00+00:00",
+  "usd_cash_usd": 71850.46
+ },
+ {
+  "contracts_usd": -3422.22,
+  "eur_cash_usd": 107747.06,
+  "net_liq_usd": 176089.46,
+  "timestamp": "2026-11-09T18:30:00+00:00",
+  "usd_cash_usd": 71764.61
+ },
+ {
+  "contracts_usd": -3895.7,
+  "eur_cash_usd": 107802.84,
+  "net_liq_usd": 176116.52,
+  "timestamp": "2026-11-09T19:00:00+00:00",
+  "usd_cash_usd": 72209.38
+ },
+ {
+  "contracts_usd": -4792.05,
+  "eur_cash_usd": 107924.48,
+  "net_liq_usd": 176573.38,
+  "timestamp": "2026-11-09T19:30:00+00:00",
+  "usd_cash_usd": 73440.95
+ },
+ {
+  "contracts_usd": -4790.5,
+  "eur_cash_usd": 107919.67,
+  "net_liq_usd": 176417.1,
+  "timestamp": "2026-11-09T20:00:00+00:00",
+  "usd_cash_usd": 73287.93
+ },
+ {
+  "contracts_usd": -4726.04,
+  "eur_cash_usd": 107916.79,
+  "net_liq_usd": 176390.96,
+  "timestamp": "2026-11-09T20:30:00+00:00",
+  "usd_cash_usd": 73200.21
+ },
+ {
+  "contracts_usd": -4597.29,
+  "eur_cash_usd": 107895.15,
+  "net_liq_usd": 176415.46,
+  "timestamp": "2026-11-09T21:00:00+00:00",
+  "usd_cash_usd": 73117.59
+ },
+ {
+  "contracts_usd": -4914.01,
+  "eur_cash_usd": 107932.66,
+  "net_liq_usd": 176515.3,
+  "timestamp": "2026-11-09T21:30:00+00:00",
+  "usd_cash_usd": 73496.65
+ },
+ {
+  "contracts_usd": -4868.37,
+  "eur_cash_usd": 107910.54,
+  "net_liq_usd": 176502.83,
+  "timestamp": "2026-11-09T22:00:00+00:00",
+  "usd_cash_usd": 73460.66
+ },
+ {
+  "contracts_usd": -4847.68,
+  "eur_cash_usd": 107887.94,
+  "net_liq_usd": 176500.92,
+  "timestamp": "2026-11-09T22:30:00+00:00",
+  "usd_cash_usd": 73460.66
+ },
+ {
+  "contracts_usd": -4891.19,
+  "eur_cash_usd": 107924.0,
+  "net_liq_usd": 176449.67,
+  "timestamp": "2026-11-09T23:00:00+00:00",
+  "usd_cash_usd": 73416.85
+ },
+ {
+  "contracts_usd": -4816.56,
+  "eur_cash_usd": 107912.94,
+  "net_liq_usd": 176396.62,
+  "timestamp": "2026-11-09T23:30:00+00:00",
+  "usd_cash_usd": 73300.24
+ },
+ {
+  "contracts_usd": -4536.06,
+  "eur_cash_usd": 107882.65,
+  "net_liq_usd": 176434.46,
+  "timestamp": "2026-11-10T00:00:00+00:00",
+  "usd_cash_usd": 73087.87
+ },
+ {
+  "contracts_usd": -4691.99,
+  "eur_cash_usd": 107898.04,
+  "net_liq_usd": 176353.47,
+  "timestamp": "2026-11-10T00:30:00+00:00",
+  "usd_cash_usd": 73147.43
+ },
+ {
+  "contracts_usd": -5127.57,
+  "eur_cash_usd": 107953.33,
+  "net_liq_usd": 176505.26,
+  "timestamp": "2026-11-10T01:00:00+00:00",
+  "usd_cash_usd": 73679.5
+ },
+ {
+  "contracts_usd": -4659.84,
+  "eur_cash_usd": 107921.12,
+  "net_liq_usd": 176572.15,
+  "timestamp": "2026-11-10T01:30:00+00:00",
+  "usd_cash_usd": 73310.88
+ },
+ {
+  "contracts_usd": -4741.15,
+  "eur_cash_usd": 107909.58,
+  "net_liq_usd": 176383.97,
+  "timestamp": "2026-11-10T02:00:00+00:00",
+  "usd_cash_usd": 73215.54
+ },
+ {
+  "contracts_usd": -4654.83,
+  "eur_cash_usd": 107890.82,
+  "net_liq_usd": 176362.98,
+  "timestamp": "2026-11-10T02:30:00+00:00",
+  "usd_cash_usd": 73126.98
+ },
+ {
+  "contracts_usd": -4767.61,
+  "eur_cash_usd": 107909.1,
+  "net_liq_usd": 176377.99,
+  "timestamp": "2026-11-10T03:00:00+00:00",
+  "usd_cash_usd": 73236.51
+ },
+ {
+  "contracts_usd": -4925.43,
+  "eur_cash_usd": 107926.89,
+  "net_liq_usd": 176402.87,
+  "timestamp": "2026-11-10T03:30:00+00:00",
+  "usd_cash_usd": 73401.42
+ },
+ {
+  "contracts_usd": -4937.52,
+  "eur_cash_usd": 107916.79,
+  "net_liq_usd": 176323.11,
+  "timestamp": "2026-11-10T04:00:00+00:00",
+  "usd_cash_usd": 73343.84
+ },
+ {
+  "contracts_usd": -5164.01,
+  "eur_cash_usd": 107972.56,
+  "net_liq_usd": 176623.34,
+  "timestamp": "2026-11-10T04:30:00+00:00",
+  "usd_cash_usd": 73814.79
+ },
+ {
+  "contracts_usd": -5348.69,
+  "eur_cash_usd": 107980.74,
+  "net_liq_usd": 176600.9,
+  "timestamp": "2026-11-10T05:00:00+00:00",
+  "usd_cash_usd": 73968.85
+ },
+ {
+  "contracts_usd": -4912.99,
+  "eur_cash_usd": 107934.1,
+  "net_liq_usd": 176527.56,
+  "timestamp": "2026-11-10T05:30:00+00:00",
+  "usd_cash_usd": 73506.46
+ },
+ {
+  "contracts_usd": -5059.78,
+  "eur_cash_usd": 107959.58,
+  "net_liq_usd": 176551.87,
+  "timestamp": "2026-11-10T06:00:00+00:00",
+  "usd_cash_usd": 73652.07
+ },
+ {
+  "contracts_usd": -5204.68,
+  "eur_cash_usd": 107958.62,
+  "net_liq_usd": 176541.71,
+  "timestamp": "2026-11-10T06:30:00+00:00",
+  "usd_cash_usd": 73787.77
+ },
+ {
+  "contracts_usd": -5775.51,
+  "eur_cash_usd": 108049.97,
+  "net_liq_usd": 176713.64,
+  "timestamp": "2026-11-10T07:00:00+00:00",
+  "usd_cash_usd": 74439.18
+ },
+ {
+  "contracts_usd": -6222.55,
+  "eur_cash_usd": 108099.5,
+  "net_liq_usd": 176839.86,
+  "timestamp": "2026-11-10T07:30:00+00:00",
+  "usd_cash_usd": 74962.91
+ },
+ {
+  "contracts_usd": -6222.6,
+  "eur_cash_usd": 108114.4,
+  "net_liq_usd": 177039.75,
+  "timestamp": "2026-11-10T08:00:00+00:00",
+  "usd_cash_usd": 75147.95
+ },
+ {
+  "contracts_usd": -6845.7,
+  "eur_cash_usd": 108187.97,
+  "net_liq_usd": 177118.15,
+  "timestamp": "2026-11-10T08:30:00+00:00",
+  "usd_cash_usd": 75775.89
+ },
+ {
+  "contracts_usd": -5528.21,
+  "eur_cash_usd": 108015.84,
+  "net_liq_usd": 176793.6,
+  "timestamp": "2026-11-10T09:00:00+00:00",
+  "usd_cash_usd": 74305.98
+ },
+ {
+  "contracts_usd": -5128.7,
+  "eur_cash_usd": 107961.5,
+  "net_liq_usd": 176680.45,
+  "timestamp": "2026-11-10T09:30:00+00:00",
+  "usd_cash_usd": 73847.65
+ },
+ {
+  "contracts_usd": -4570.07,
+  "eur_cash_usd": 107894.67,
+  "net_liq_usd": 176628.39,
+  "timestamp": "2026-11-10T10:00:00+00:00",
+  "usd_cash_usd": 73303.79
+ },
+ {
+  "contracts_usd": -4809.22,
+  "eur_cash_usd": 107924.48,
+  "net_liq_usd": 176654.47,
+  "timestamp": "2026-11-10T10:30:00+00:00",
+  "usd_cash_usd": 73539.21
+ },
+ {
+  "contracts_usd": -4717.93,
+  "eur_cash_usd": 107882.17,
+  "net_liq_usd": 176469.8,
+  "timestamp": "2026-11-10T11:00:00+00:00",
+  "usd_cash_usd": 73305.56
+ },
+ {
+  "contracts_usd": -4334.42,
+  "eur_cash_usd": 107870.15,
+  "net_liq_usd": 176516.58,
+  "timestamp": "2026-11-10T11:30:00+00:00",
+  "usd_cash_usd": 72980.85
+ },
+ {
+  "contracts_usd": -4328.75,
+  "eur_cash_usd": 107858.13,
+  "net_liq_usd": 176454.53,
+  "timestamp": "2026-11-10T12:00:00+00:00",
+  "usd_cash_usd": 72925.15
+ },
+ {
+  "contracts_usd": -4121.62,
+  "eur_cash_usd": 107838.9,
+  "net_liq_usd": 176431.93,
+  "timestamp": "2026-11-10T12:30:00+00:00",
+  "usd_cash_usd": 72714.65
+ },
+ {
+  "contracts_usd": -4107.99,
+  "eur_cash_usd": 107823.99,
+  "net_liq_usd": 176337.09,
+  "timestamp": "2026-11-10T13:00:00+00:00",
+  "usd_cash_usd": 72621.09
+ },
+ {
+  "contracts_usd": -2416.53,
+  "eur_cash_usd": 107576.85,
+  "net_liq_usd": 175736.87,
+  "timestamp": "2026-11-10T13:30:00+00:00",
+  "usd_cash_usd": 70576.54
+ }
+]

@@ -1,0 +1,10 @@
+{
+ "commit": "e19b6bc12f53c6c6ebca63afff50f77ef8109888",
+ "components": {
+  "database": "OK",
+  "redis": "OK"
+ },
+ "git_sha": "e19b6bc12f53c6c6ebca63afff50f77ef8109888",
+ "status": "OK",
+ "version": "1.0.0rc1"
+}

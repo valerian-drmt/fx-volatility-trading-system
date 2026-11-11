@@ -1,0 +1,70 @@
+{
+ "convention": "loss",
+ "dropped": [],
+ "fallback": {
+  "spot": "surface_forward"
+ },
+ "horizon_days": 1,
+ "method": "historical-simulation",
+ "n_days": 237,
+ "positions": [
+  {
+   "component_usd": 5106.54,
+   "factor": "spot",
+   "id": "51",
+   "label": "Future - 6E",
+   "pct": 243.5,
+   "standalone_usd": 8685.2,
+   "trade": "T-88"
+  },
+  {
+   "component_usd": 0.38,
+   "factor": "skew",
+   "id": "41",
+   "label": "Vanilla Call",
+   "pct": 0.0,
+   "standalone_usd": 0.0,
+   "trade": "T-60"
+  },
+  {
+   "component_usd": -7064.99,
+   "factor": "spot",
+   "id": "50",
+   "label": "Vanilla Call",
+   "pct": -336.9,
+   "standalone_usd": 12924.51,
+   "trade": "T-79"
+  },
+  {
+   "component_usd": 1599.09,
+   "factor": "spot",
+   "id": "49",
+   "label": "Vanilla Call",
+   "pct": 76.3,
+   "standalone_usd": 1241.89,
+   "trade": "T-79"
+  },
+  {
+   "component_usd": -2841.52,
+   "factor": "spot",
+   "id": "52",
+   "label": "Vanilla Put",
+   "pct": -135.5,
+   "standalone_usd": 4988.2,
+   "trade": "T-87"
+  },
+  {
+   "component_usd": 5297.58,
+   "factor": "spot",
+   "id": "48",
+   "label": "Vanilla Call",
+   "pct": 252.6,
+   "standalone_usd": 4389.6,
+   "trade": "T-79"
+  }
+ ],
+ "total": {
+  "diversification_pct": 93.5,
+  "portfolio_var_usd": 2097.08
+ }
+}

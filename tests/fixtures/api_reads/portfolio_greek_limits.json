@@ -1,0 +1,13 @@
+{
+ "alpha": 0.05,
+ "computed_at": "2026-11-11T11:32:37.216567+00:00",
+ "cross_budget_usd": 1621.09,
+ "delta_cap_usd": 95354.03,
+ "gamma_cap_pip": 1119.22,
+ "loss_budget_usd": 16210.94,
+ "nav_base_usd": 324218.73,
+ "nav_live_usd": 175736.87,
+ "regime_mult": 1.0200472730456096,
+ "spot": 1.11363,
+ "vega_cap_usd": 1986.54
+}

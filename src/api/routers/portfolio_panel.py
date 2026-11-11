@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis
 from api.orchestration.greek_caps import compute_live_caps
+from api.schemas import route_models as rm
 from bus import keys
 from bus.account_cache import read_account_snapshot
 from bus.spot_cache import spot_fallbacks
@@ -129,7 +130,7 @@ def _freshness(reference: datetime | None) -> str:
     return "missing"
 
 
-@router.get("/account")
+@router.get("/account", response_model=rm.PortfolioAccount, response_model_exclude_unset=True)
 async def get_account(db: DbDep) -> dict[str, Any]:
     """Latest account snapshot + the closest snapshot ≥24h before it.
 
@@ -164,7 +165,7 @@ async def get_account(db: DbDep) -> dict[str, Any]:
     }
 
 
-@router.get("/header")
+@router.get("/header", response_model=rm.PortfolioHeader, response_model_exclude_unset=True)
 async def header_summary(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """One-shot endpoint for the dashboard sticky header (panel A).
 
@@ -238,7 +239,7 @@ async def header_summary(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     }
 
 
-@router.get("/equity-curve")
+@router.get("/equity-curve", response_model=list[rm.PortfolioEquityCurveRow], response_model_exclude_unset=True)
 async def equity_curve(
     db: DbDep,
     window: Literal["1d", "7d", "30d", "1y", "all"] = Query("30d"),
@@ -331,7 +332,7 @@ def _valuation_series(
     return out
 
 
-@router.get("/valuation-history")
+@router.get("/valuation-history", response_model=list[rm.PortfolioValuationHistoryRow], response_model_exclude_unset=True)
 async def valuation_history(
     db: DbDep,
     window: Literal["1d", "7d", "30d", "1y", "all"] = Query("30d"),
@@ -388,7 +389,7 @@ async def valuation_history(
     )
 
 
-@router.get("/trade-markers")
+@router.get("/trade-markers", response_model=list[rm.PortfolioTradeMarkersRow], response_model_exclude_unset=True)
 async def trade_markers(
     db: DbDep,
     days: int = Query(30, ge=1, le=730),
@@ -426,7 +427,7 @@ async def trade_markers(
     ]
 
 
-@router.get("/greeks-history")
+@router.get("/greeks-history", response_model=list[rm.PortfolioGreeksHistoryRow], response_model_exclude_unset=True)
 async def greeks_history(
     db: DbDep,
     window: Literal["1d", "7d", "30d", "1y", "all"] = Query("30d"),
@@ -517,7 +518,7 @@ def _taylor_pnl_series(
     return out
 
 
-@router.get("/greek-pnl-history")
+@router.get("/greek-pnl-history", response_model=list[rm.PortfolioGreekPnlHistoryRow], response_model_exclude_unset=True)
 async def greek_pnl_history(
     db: DbDep,
     window: Literal["1d", "7d", "30d", "1y", "all"] = Query("30d"),
@@ -580,7 +581,7 @@ async def greek_pnl_history(
     return _taylor_pnl_series(per_position, forward, buckets)
 
 
-@router.get("/aggregate-greeks")
+@router.get("/aggregate-greeks", response_model=rm.PortfolioAggregateGreeks, response_model_exclude_unset=True)
 async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
     """Σ Δ Γ V Θ across all OPEN positions (latest snap per position).
 
@@ -613,7 +614,7 @@ async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
     }
 
 
-@router.get("/vega-per-tenor")
+@router.get("/vega-per-tenor", response_model=list[rm.PortfolioVegaPerTenorRow], response_model_exclude_unset=True)
 async def vega_per_tenor(db: DbDep) -> list[dict[str, Any]]:
     """Vega ($/volpt) bucketed by days-to-expiry. Single SQL pass."""
     # Vega lives directly on ``positions.vega_usd`` since migration 028.
@@ -650,7 +651,7 @@ async def vega_per_tenor(db: DbDep) -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/risk-per-tenor")
+@router.get("/risk-per-tenor", response_model=list[rm.PortfolioRiskPerTenorRow], response_model_exclude_unset=True)
 async def risk_per_tenor(db: DbDep) -> list[dict[str, Any]]:
     """Vega + vanna + volga ($) bucketed by DTE (R11 G-risk). Reads the
     denormalised greek columns on ``open_position`` (no reval needed)."""
@@ -683,7 +684,7 @@ async def risk_per_tenor(db: DbDep) -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/hedge-summary")
+@router.get("/hedge-summary", response_model=rm.PortfolioHedgeSummary, response_model_exclude_unset=True)
 async def hedge_summary(db: DbDep) -> dict[str, Any]:
     """Multi-window cumul of `hedge_orders`. Pattern Risk Ops standard :
     a drift surfaces by comparing several windows side-by-side (today
@@ -880,7 +881,7 @@ async def _resolve_book(db: AsyncSession, redis: aioredis.Redis | None = None) -
     return ResolvedBook(current_spot, baselines, spot_source, dropped, fallback)
 
 
-@router.get("/stress-grid")
+@router.get("/stress-grid", response_model=rm.PortfolioStressGrid, response_model_exclude_unset=True)
 async def stress_grid(
     db: DbDep,
     redis: RedisDep,
@@ -924,7 +925,7 @@ async def stress_grid(
     return {**base, "grid": grid}
 
 
-@router.get("/greeks-ladder")
+@router.get("/greeks-ladder", response_model=rm.PortfolioGreeksLadder, response_model_exclude_unset=True)
 async def greeks_ladder(
     db: DbDep,
     redis: RedisDep,
@@ -966,7 +967,7 @@ async def greeks_ladder(
     return {**base, "rows": rows}
 
 
-@router.get("/vega-pca")
+@router.get("/vega-pca", response_model=rm.PortfolioVegaPca, response_model_exclude_unset=True)
 async def vega_pca(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """Project the book's per-cell vega onto the active PCA loadings (R11 G-risk).
 
@@ -1008,7 +1009,7 @@ async def vega_pca(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     return {**base, "model_version": model.version, "pcs": pcs}
 
 
-@router.get("/marginal-var")
+@router.get("/marginal-var", response_model=rm.PortfolioMarginalVar, response_model_exclude_unset=True)
 async def marginal_var(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """Per-position component VaR over the open book (R11 G-risk).
 
@@ -1090,7 +1091,7 @@ async def marginal_var(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     }
 
 
-@router.get("/var-factors")
+@router.get("/var-factors", response_model=rm.PortfolioVarFactors, response_model_exclude_unset=True)
 async def var_factors(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """Scenario VaR by factor (spot / level / skew / curv) over the open book (R11 G-risk).
 
@@ -1135,7 +1136,7 @@ _spot_fallbacks = spot_fallbacks
 spot_at_or_before = spot_at_or_before  # re-exported for the attribution tests
 
 
-@router.get("/pnl-attribution")
+@router.get("/pnl-attribution", response_model=rm.PortfolioPnlAttribution, response_model_exclude_unset=True)
 async def pnl_attribution(
     db: DbDep,
     redis: RedisDep,
@@ -1179,7 +1180,7 @@ async def pnl_attribution(
 _BREACH_BPS = 50  # ±50 bp around the strike
 
 
-@router.get("/pin-risk")
+@router.get("/pin-risk", response_model=rm.PortfolioPinRisk, response_model_exclude_unset=True)
 async def pin_risk(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """Full BS revaluation per option at strike (pin) and strike ± 50 bp.
 
@@ -1273,7 +1274,7 @@ _SCENARIO_IV_STEPS_VOLPT: list[float] = [
 ]
 
 
-@router.get("/scenarios")
+@router.get("/scenarios", response_model=rm.PortfolioScenarios, response_model_exclude_unset=True)
 async def scenarios(db: DbDep) -> dict[str, Any]:
     """Two-axis full-reval scenario surface for the live book.
 
@@ -1487,7 +1488,7 @@ def _currency_cash(balance: Any) -> float:
     return _coerce_float(balance) or 0.0
 
 
-@router.get("/cash")
+@router.get("/cash", response_model=rm.PortfolioCash, response_model_exclude_unset=True)
 async def cash_holdings(db: DbDep) -> dict[str, Any]:
     """Per-currency cash detail for the Trade holdings donut (R11 G-trade).
 
@@ -1559,7 +1560,7 @@ async def _daily_rows_or_seed(db: AsyncSession, days: int) -> list[Any]:
     return await read_portfolio_daily(db, days=days)
 
 
-@router.get("/daily-pnl")
+@router.get("/daily-pnl", response_model=rm.PortfolioDailyPnl, response_model_exclude_unset=True)
 async def daily_pnl(db: DbDep, days: int = Query(90, ge=1, le=730)) -> dict[str, Any]:
     """Daily P&L — MARK-TO-MARKET (R11 G-portfolio).
 
@@ -1599,7 +1600,7 @@ async def daily_pnl(db: DbDep, days: int = Query(90, ge=1, le=730)) -> dict[str,
 _PNL_PIVOT_COLS = {"structure": "structure_type", "tenor": "reference_tenor"}
 
 
-@router.get("/pnl-attribution-pivot")
+@router.get("/pnl-attribution-pivot", response_model=rm.PortfolioPnlAttributionPivot, response_model_exclude_unset=True)
 async def pnl_attribution_pivot(
     db: DbDep, by: str = Query("structure"), days: int = Query(90, ge=1, le=730),
 ) -> dict[str, Any]:
@@ -1764,7 +1765,7 @@ async def _hist_sim(db: AsyncSession, redis: aioredis.Redis) -> dict[str, Any] |
     }
 
 
-@router.get("/var")
+@router.get("/var", response_model=rm.PortfolioVar, response_model_exclude_unset=True)
 async def value_at_risk(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     """1-day Value-at-Risk — VaR 95 / 99 + ES 99, as losses (negative USD).
 
@@ -1839,7 +1840,7 @@ async def value_at_risk(db: DbDep, redis: RedisDep) -> dict[str, Any]:
     }
 
 
-@router.get("/greek-limits")
+@router.get("/greek-limits", response_model=rm.PortfolioGreekLimits, response_model_exclude_unset=True)
 async def greek_limits(db: DbDep) -> dict[str, Any]:
     """Derived greek caps from the stress-loss budget (docs/strategy/greek-limits.md §2/§6/§8).
 
@@ -1869,7 +1870,7 @@ async def greek_limits(db: DbDep) -> dict[str, Any]:
     }
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=rm.PortfolioStats, response_model_exclude_unset=True)
 async def portfolio_stats(db: DbDep) -> dict[str, Any]:
     """Headline performance stats (R11 G-portfolio).
 

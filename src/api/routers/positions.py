@@ -32,6 +32,7 @@ from api.auth import require_write
 from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.position_monitor import build_position_monitor_scheduler
+from api.schemas import route_models as rm
 from api.schemas.reads import DeltaHedgeSetting, ExitRuleConfig, OpenPositionRow
 from bus import keys
 from core.contracts import multiplier_for, parse_local_symbol
@@ -290,7 +291,7 @@ async def list_open(db: DbDep) -> list[dict[str, Any]]:
     return [open_position_row(r, today) for r in rows]
 
 
-@router.get("/book")
+@router.get("/book", response_model=list[rm.PositionsBookRow], response_model_exclude_unset=True)
 async def list_book(db: DbDep) -> list[dict[str, Any]]:
     """The BOOK — one row per leg, position folded forward from that leg's fills.
 
@@ -335,7 +336,7 @@ async def list_book(db: DbDep) -> list[dict[str, Any]]:
     return out
 
 
-@router.get("/breaks")
+@router.get("/breaks", response_model=list[rm.PositionsBreaksRow], response_model_exclude_unset=True)
 async def list_breaks(db: DbDep, include_resolved: bool = Query(False)) -> list[dict[str, Any]]:
     """Materialised reconciliation breaks (I4) — book (leg_position) vs broker
     (IB mirror) gaps. Open breaks (``resolved_at`` NULL) by default; a break is
@@ -362,7 +363,7 @@ async def list_breaks(db: DbDep, include_resolved: bool = Query(False)) -> list[
     } for r in rows]
 
 
-@router.get("/structured")
+@router.get("/structured", response_model=rm.PositionsStructured, response_model_exclude_unset=True)
 async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> dict[str, Any]:
     """Open positions grouped by the booked ``trade_structure`` — so a Risk
     Reversal reads as ONE 2-leg group labelled from ``structure_type`` +
@@ -519,7 +520,7 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
     return {"structures": out_structs, "unlinked": unlinked}
 
 
-@router.get("/reconciliation")
+@router.get("/reconciliation", response_model=rm.PositionsReconciliation, response_model_exclude_unset=True)
 async def reconciliation(db: DbDep) -> dict[str, Any]:
     """Book vs broker reconciliation — the desk's own record vs what IB holds.
 
@@ -569,7 +570,7 @@ async def reconciliation(db: DbDep) -> dict[str, Any]:
     }
 
 
-@router.get("/ledger")
+@router.get("/ledger", response_model=rm.PositionsLedger, response_model_exclude_unset=True)
 async def ledger(db: DbDep) -> dict[str, Any]:
     """Positions + realised / unrealised P&L folded from the append-only
     ``trade_fill`` event log (average-cost — see ``core.ledger``).
@@ -631,7 +632,7 @@ async def ledger(db: DbDep) -> dict[str, Any]:
     }
 
 
-@router.get("/active")
+@router.get("/active", response_model=list[rm.PositionsActiveRow], response_model_exclude_unset=True)
 async def list_active(db: DbDep) -> list[dict[str, Any]]:
     """Union of booked structures (`trade_positions`) and live IB rows
     (`positions`). The frontend distinguishes via the ``source`` field
@@ -672,7 +673,7 @@ async def list_active(db: DbDep) -> list[dict[str, Any]]:
     return out
 
 
-@router.get("/aggregate")
+@router.get("/aggregate", response_model=rm.PositionsAggregate, response_model_exclude_unset=True)
 async def aggregate_greeks(db: DbDep) -> dict[str, Any]:
     """Sum of current greeks across all open positions (for Panel 4 zone B)."""
     rows = (await db.execute(
@@ -740,7 +741,7 @@ async def list_delta_hedge_config(db: DbDep) -> list[dict[str, Any]]:
     ]
 
 
-@router.get("/{position_id}")
+@router.get("/{position_id}", response_model=rm.PositionDetail, response_model_exclude_unset=True)
 async def get_position(position_id: int, db: DbDep) -> dict[str, Any]:
     """One booked position with its structure and its latest metrics row (greeks, mark, P&L). 404 when the id is unknown."""
     pos = (await db.execute(
@@ -758,7 +759,7 @@ async def get_position(position_id: int, db: DbDep) -> dict[str, Any]:
     return _serialize_position(pos, struct, latest)
 
 
-@router.get("/{position_id}/mtm-history")
+@router.get("/{position_id}/mtm-history", response_model=list[rm.PositionMtmPoint], response_model_exclude_unset=True)
 async def mtm_history(
     position_id: int, db: DbDep, hours: int = Query(24, ge=1, le=720),
     limit: int = Query(500, ge=1, le=5000),
@@ -782,7 +783,7 @@ async def mtm_history(
     ]
 
 
-@router.get("/{position_id}/alerts")
+@router.get("/{position_id}/alerts", response_model=list[rm.PositionAlertRow], response_model_exclude_unset=True)
 async def position_alerts(
     position_id: int, db: DbDep, limit: int = Query(50, ge=1, le=500),
 ) -> list[dict[str, Any]]:
@@ -803,7 +804,7 @@ async def position_alerts(
     ]
 
 
-@router.get("/{position_id}/hedges")
+@router.get("/{position_id}/hedges", response_model=list[rm.PositionHedgeRow], response_model_exclude_unset=True)
 async def position_hedges(
     position_id: int, db: DbDep, limit: int = Query(100, ge=1, le=500),
 ) -> list[dict[str, Any]]:
@@ -824,7 +825,7 @@ async def position_hedges(
     ]
 
 
-@router.get("/{position_id}/signal-tracking")
+@router.get("/{position_id}/signal-tracking", response_model=list[rm.SignalTrackingPoint], response_model_exclude_unset=True)
 async def signal_tracking(
     position_id: int, db: DbDep, limit: int = Query(200, ge=1, le=2000),
 ) -> list[dict[str, Any]]:
@@ -1333,7 +1334,7 @@ async def close_one_open_position(
     }
 
 
-@router.post("/{position_id}/close", dependencies=[Depends(require_write)])
+@router.post("/{position_id}/close", response_model=rm.ClosePositionResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def close_live_position(
     position_id: int, body: ClosePositionRequest, db: DbDep,
 ) -> dict[str, Any]:
@@ -1353,7 +1354,7 @@ async def close_live_position(
     )
 
 
-@router.post("/{position_id}/close-manual", dependencies=[Depends(require_write)])
+@router.post("/{position_id}/close-manual", response_model=rm.ManualCloseResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def close_manual(position_id: int, db: DbDep) -> dict[str, Any]:
     """Mark a position for manual close. Step 5 phase 1 = state flip only.
 
@@ -1385,7 +1386,7 @@ async def close_manual(position_id: int, db: DbDep) -> dict[str, Any]:
     return {"position_id": position_id, "state": pos.state, "phase": "mock"}
 
 
-@router.post("/monitor/run-once", dependencies=[Depends(require_write)])
+@router.post("/monitor/run-once", response_model=rm.MonitorRunReport, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def run_monitor_once() -> dict[str, Any]:
     """Trigger one monitoring cycle on demand. Useful from the dev panel.
 

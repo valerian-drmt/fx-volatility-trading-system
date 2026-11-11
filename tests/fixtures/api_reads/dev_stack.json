@@ -1,0 +1,194 @@
+{
+ "containers": [
+  {
+   "desc": "React SPA (nginx static)",
+   "image": "fx-options-frontend:local",
+   "layer": "edge",
+   "name": "frontend",
+   "status": "OK"
+  },
+  {
+   "desc": "Reverse proxy (80/443)",
+   "image": "nginx:alpine",
+   "layer": "edge",
+   "name": "nginx",
+   "status": "OK"
+  },
+  {
+   "desc": "FastAPI REST + WS bridge",
+   "image": "fx-options-api:local",
+   "layer": "app",
+   "name": "api",
+   "status": "OK"
+  },
+  {
+   "desc": "Pub/sub + cache",
+   "image": "redis:7-alpine",
+   "layer": "data",
+   "name": "redis",
+   "status": "OK"
+  },
+  {
+   "desc": "Persistence (12 tables)",
+   "image": "postgres:16-alpine",
+   "layer": "data",
+   "name": "postgres",
+   "status": "OK"
+  },
+  {
+   "desc": "IB API gateway (4002)",
+   "image": "ghcr.io/gnzsnz/ib-gateway",
+   "layer": "external",
+   "name": "ib-gateway",
+   "status": "OK"
+  },
+  {
+   "desc": "Tick stream \u2192 Redis",
+   "image": "fx-options-market-data:local",
+   "layer": "engines",
+   "name": "market-data",
+   "status": "OK"
+  },
+  {
+   "desc": "SVI/SSVI fit + signals",
+   "image": "fx-options-vol-engine:local",
+   "layer": "engines",
+   "name": "vol-engine",
+   "status": "OK"
+  },
+  {
+   "desc": "Greeks + P&L curve",
+   "image": "fx-options-risk-engine:local",
+   "layer": "engines",
+   "name": "risk-engine",
+   "status": "OK"
+  },
+  {
+   "desc": "Redis events \u2192 Postgres",
+   "image": "fx-options-db-writer:local",
+   "layer": "engines",
+   "name": "db-writer",
+   "status": "OK"
+  },
+  {
+   "desc": "Orders/positions IB \u2192 DB (1s)",
+   "image": "fx-options-execution:local",
+   "layer": "engines",
+   "name": "execution",
+   "status": "OK"
+  },
+  {
+   "desc": "Docker logs \u2192 Loki",
+   "image": "grafana/promtail",
+   "layer": "obs",
+   "name": "promtail",
+   "status": "OK"
+  },
+  {
+   "desc": "OTLP traces \u2192 Tempo",
+   "image": "otel/opentelemetry-collector",
+   "layer": "obs",
+   "name": "otel-collector",
+   "status": "OK"
+  },
+  {
+   "desc": "Logs store",
+   "image": "grafana/loki",
+   "layer": "obs",
+   "name": "loki",
+   "status": "OK"
+  },
+  {
+   "desc": "Metrics scrape + store",
+   "image": "prom/prometheus",
+   "layer": "obs",
+   "name": "prometheus",
+   "status": "OK"
+  },
+  {
+   "desc": "Traces store",
+   "image": "grafana/tempo",
+   "layer": "obs",
+   "name": "tempo",
+   "status": "OK"
+  },
+  {
+   "desc": "Dashboards UI (:3000)",
+   "image": "grafana/grafana-oss",
+   "layer": "obs",
+   "name": "grafana",
+   "status": "OK"
+  }
+ ],
+ "edges": [
+  {
+   "from": "postgres",
+   "to": "api"
+  },
+  {
+   "from": "redis",
+   "to": "api"
+  },
+  {
+   "from": "postgres",
+   "to": "db-writer"
+  },
+  {
+   "from": "redis",
+   "to": "db-writer"
+  },
+  {
+   "from": "redis",
+   "to": "market-data"
+  },
+  {
+   "from": "ib-gateway",
+   "to": "market-data"
+  },
+  {
+   "from": "redis",
+   "to": "vol-engine"
+  },
+  {
+   "from": "ib-gateway",
+   "to": "vol-engine"
+  },
+  {
+   "from": "redis",
+   "to": "risk-engine"
+  },
+  {
+   "from": "ib-gateway",
+   "to": "risk-engine"
+  },
+  {
+   "from": "api",
+   "to": "nginx"
+  },
+  {
+   "from": "frontend",
+   "to": "nginx"
+  },
+  {
+   "from": "promtail",
+   "to": "loki"
+  },
+  {
+   "from": "otel-collector",
+   "to": "tempo"
+  },
+  {
+   "from": "loki",
+   "to": "grafana"
+  },
+  {
+   "from": "prometheus",
+   "to": "grafana"
+  },
+  {
+   "from": "tempo",
+   "to": "grafana"
+  }
+ ],
+ "timestamp": "2026-11-11T11:32:37.621949Z"
+}

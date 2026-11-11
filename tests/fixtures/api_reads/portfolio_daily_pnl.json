@@ -1,0 +1,392 @@
+{
+ "computed_at": "2026-11-11T11:27:56.691126+00:00",
+ "days": 90,
+ "series": [
+  {
+   "cumulative_usd": 15194.69,
+   "day": "2026-08-14",
+   "mtm_usd": 15194.69,
+   "n_closed": 0,
+   "net_liq_close": 327469.02,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 14834.02,
+   "day": "2026-08-15",
+   "mtm_usd": -360.67,
+   "n_closed": 0,
+   "net_liq_close": 327108.35,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 13664.33,
+   "day": "2026-08-16",
+   "mtm_usd": -1169.69,
+   "n_closed": 0,
+   "net_liq_close": 325938.66,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 20937.06,
+   "day": "2026-08-17",
+   "mtm_usd": 7272.73,
+   "n_closed": 0,
+   "net_liq_close": 333211.39,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 20455.2,
+   "day": "2026-08-18",
+   "mtm_usd": -481.86,
+   "n_closed": 0,
+   "net_liq_close": 332729.53,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 42618.95,
+   "day": "2026-08-19",
+   "mtm_usd": 22163.75,
+   "n_closed": 0,
+   "net_liq_close": 354893.28,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 47426.51,
+   "day": "2026-08-20",
+   "mtm_usd": 4807.56,
+   "n_closed": 0,
+   "net_liq_close": 359700.84,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 47102.41,
+   "day": "2026-08-21",
+   "mtm_usd": -324.1,
+   "n_closed": 0,
+   "net_liq_close": 359376.74,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 47497.16,
+   "day": "2026-08-22",
+   "mtm_usd": 394.75,
+   "n_closed": 0,
+   "net_liq_close": 359771.49,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 44326.95,
+   "day": "2026-08-23",
+   "mtm_usd": -3170.21,
+   "n_closed": 0,
+   "net_liq_close": 356601.28,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 45132.74,
+   "day": "2026-08-24",
+   "mtm_usd": 805.79,
+   "n_closed": 0,
+   "net_liq_close": 357407.07,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 47968.7,
+   "day": "2026-08-25",
+   "mtm_usd": 2835.96,
+   "n_closed": 0,
+   "net_liq_close": 360243.03,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 41918.11,
+   "day": "2026-08-26",
+   "mtm_usd": -6050.59,
+   "n_closed": 0,
+   "net_liq_close": 354192.44,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 41308.69,
+   "day": "2026-08-27",
+   "mtm_usd": -609.42,
+   "n_closed": 0,
+   "net_liq_close": 353583.02,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 21025.71,
+   "day": "2026-08-28",
+   "mtm_usd": -20282.98,
+   "n_closed": 0,
+   "net_liq_close": 333300.04,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 21653.09,
+   "day": "2026-08-29",
+   "mtm_usd": 627.38,
+   "n_closed": 0,
+   "net_liq_close": 333927.42,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 22731.62,
+   "day": "2026-08-30",
+   "mtm_usd": 1078.53,
+   "n_closed": 0,
+   "net_liq_close": 335005.95,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 31923.67,
+   "day": "2026-08-31",
+   "mtm_usd": 9192.05,
+   "n_closed": 0,
+   "net_liq_close": 344198.0,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 28437.94,
+   "day": "2026-09-01",
+   "mtm_usd": -3485.73,
+   "n_closed": 0,
+   "net_liq_close": 340712.27,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 29513.72,
+   "day": "2026-09-02",
+   "mtm_usd": 1075.78,
+   "n_closed": 0,
+   "net_liq_close": 341788.05,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 38941.43,
+   "day": "2026-09-03",
+   "mtm_usd": 9427.71,
+   "n_closed": 0,
+   "net_liq_close": 351215.76,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 42979.66,
+   "day": "2026-09-04",
+   "mtm_usd": 4038.23,
+   "n_closed": 0,
+   "net_liq_close": 355253.99,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": 42979.66,
+   "day": "2026-09-05",
+   "mtm_usd": 0.0,
+   "n_closed": 0,
+   "net_liq_close": 355253.99,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -53378.38,
+   "day": "2026-10-04",
+   "mtm_usd": -96358.04,
+   "n_closed": 0,
+   "net_liq_close": 258895.95,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -96722.12,
+   "day": "2026-10-05",
+   "mtm_usd": -43343.74,
+   "n_closed": 0,
+   "net_liq_close": 215552.21,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -77085.78,
+   "day": "2026-10-06",
+   "mtm_usd": 19636.34,
+   "n_closed": 0,
+   "net_liq_close": 235188.55,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -115901.87,
+   "day": "2026-10-07",
+   "mtm_usd": -38816.09,
+   "n_closed": 0,
+   "net_liq_close": 196372.46,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -107549.46,
+   "day": "2026-10-08",
+   "mtm_usd": 8352.41,
+   "n_closed": 0,
+   "net_liq_close": 204724.87,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -122339.14,
+   "day": "2026-10-09",
+   "mtm_usd": -14789.68,
+   "n_closed": 0,
+   "net_liq_close": 189935.19,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -122338.06,
+   "day": "2026-10-10",
+   "mtm_usd": 1.08,
+   "n_closed": 0,
+   "net_liq_close": 189936.27,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -121916.2,
+   "day": "2026-10-11",
+   "mtm_usd": 421.86,
+   "n_closed": 0,
+   "net_liq_close": 190358.13,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -155048.41,
+   "day": "2026-10-12",
+   "mtm_usd": -33132.21,
+   "n_closed": 0,
+   "net_liq_close": 157225.92,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -134024.53,
+   "day": "2026-10-13",
+   "mtm_usd": 21023.88,
+   "n_closed": 0,
+   "net_liq_close": 178249.8,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -142734.1,
+   "day": "2026-10-14",
+   "mtm_usd": -8709.57,
+   "n_closed": 0,
+   "net_liq_close": 169540.23,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -131389.74,
+   "day": "2026-10-15",
+   "mtm_usd": 11344.36,
+   "n_closed": 0,
+   "net_liq_close": 180884.59,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -119153.13,
+   "day": "2026-10-16",
+   "mtm_usd": 12236.61,
+   "n_closed": 0,
+   "net_liq_close": 193121.2,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -119227.35,
+   "day": "2026-10-17",
+   "mtm_usd": -74.22,
+   "n_closed": 0,
+   "net_liq_close": 193046.98,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -129487.9,
+   "day": "2026-10-18",
+   "mtm_usd": -10260.55,
+   "n_closed": 0,
+   "net_liq_close": 182786.43,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -129487.9,
+   "day": "2026-10-19",
+   "mtm_usd": 0.0,
+   "n_closed": 0,
+   "net_liq_close": 182786.43,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -169248.56,
+   "day": "2026-11-02",
+   "mtm_usd": -39760.66,
+   "n_closed": 0,
+   "net_liq_close": 143025.77,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -163392.96,
+   "day": "2026-11-03",
+   "mtm_usd": 5855.6,
+   "n_closed": 0,
+   "net_liq_close": 148881.37,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -135341.85,
+   "day": "2026-11-04",
+   "mtm_usd": 28051.11,
+   "n_closed": 0,
+   "net_liq_close": 176932.48,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -135347.36,
+   "day": "2026-11-05",
+   "mtm_usd": -5.51,
+   "n_closed": 0,
+   "net_liq_close": 176926.97,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -137335.9,
+   "day": "2026-11-06",
+   "mtm_usd": -1988.54,
+   "n_closed": 0,
+   "net_liq_close": 174938.43,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -137431.65,
+   "day": "2026-11-07",
+   "mtm_usd": -95.75,
+   "n_closed": 0,
+   "net_liq_close": 174842.68,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -137468.76,
+   "day": "2026-11-08",
+   "mtm_usd": -37.11,
+   "n_closed": 0,
+   "net_liq_close": 174805.57,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -135877.71,
+   "day": "2026-11-09",
+   "mtm_usd": 1591.05,
+   "n_closed": 0,
+   "net_liq_close": 176396.62,
+   "realized_usd": 0.0
+  },
+  {
+   "cumulative_usd": -136537.46,
+   "day": "2026-11-10",
+   "mtm_usd": -659.75,
+   "n_closed": 0,
+   "net_liq_close": 175736.87,
+   "realized_usd": 0.0
+  }
+ ],
+ "source": "portfolio_daily",
+ "total_mtm_usd": -136537.46
+}
