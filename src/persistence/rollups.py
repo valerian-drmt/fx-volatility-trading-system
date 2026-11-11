@@ -202,18 +202,21 @@ async def latest_account_row(db: AsyncSession) -> dict[str, Any] | None:
 
 # ───────────────────────────────────────────── portfolio_daily : readers ───
 
-async def read_portfolio_daily(db: AsyncSession, *, days: int) -> list[PortfolioDaily]:
-    """The last ``days`` daily rows, oldest first."""
-    start = datetime.now(UTC).date() - timedelta(days=days - 1)
+async def read_portfolio_daily(db: AsyncSession, *, days: int, now: datetime | None = None) -> list[PortfolioDaily]:
+    """The last ``days`` daily rows, oldest first. ``now`` pins the clock (tests,
+    replays); like ``refresh_portfolio_daily``, it defaults to the wall clock."""
+    start = (now or datetime.now(UTC)).date() - timedelta(days=days - 1)
     return list((await db.execute(
         select(PortfolioDaily).where(PortfolioDaily.day >= start).order_by(PortfolioDaily.day)
     )).scalars().all())
 
 
-async def read_nav_series(db: AsyncSession, *, days: int) -> tuple[list[tuple[date, float]], datetime | None]:
+async def read_nav_series(
+    db: AsyncSession, *, days: int, now: datetime | None = None,
+) -> tuple[list[tuple[date, float]], datetime | None]:
     """``(day, net_liq_close)`` pairs oldest first + the rollup's computed_at.
     Replaces the per-request ``DISTINCT ON`` daily close everywhere."""
-    rows = await read_portfolio_daily(db, days=days)
+    rows = await read_portfolio_daily(db, days=days, now=now)
     series = [(r.day, float(r.net_liq_close)) for r in rows if r.net_liq_close is not None]
     computed_at = max((r.computed_at for r in rows), default=None)
     return series, computed_at
