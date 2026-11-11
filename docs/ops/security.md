@@ -16,6 +16,8 @@ below are the ones it asked to be written down (#300, #299, #296, #298, #301,
 The site is a public portfolio piece: the read side is meant to be seen. What
 it must never do is let a visitor move the book or read a secret.
 
+![Only nginx faces the internet; the api gates writes on the trader cookie, the execution engine on a shared token, the Docker socket sits behind a read-only proxy, and Grafana and the IB Gateway are loopback-only](../diagrams/security-trust-boundaries.svg)
+
 ## The execution engine's `/internal/*` routes
 
 Every one of them places, cancels or reconciles orders. They answer only on

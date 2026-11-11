@@ -16,6 +16,12 @@ into a public repo or a served log. This is the highest-stakes audit.
 - `.github/workflows/` — CI secrets usage, deploy pipeline permissions.
 - Frontend API client (token handling, storage).
 
+![Three gates stand between the internet and an IB order: nginx, the trader cookie on every write, the internal token on the execution engine](../diagrams/security-order-path-gates.svg)
+
+The trust boundaries as they stand on `main` after the fixes this audit drove
+(#296, #298 to #302); the decisions behind each gate are in
+[docs/ops/security.md](../ops/security.md).
+
 ## What to check
 
 ### Auth boundary

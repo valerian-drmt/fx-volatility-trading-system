@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="1180" viewBox="0 0 1100 1180" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="1180" fill="#ffffff"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker><marker id="ar" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker><marker id="ag" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker><marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker><marker id="ac" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker><marker id="ay" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker></defs>
+  <text x="550.0" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">From a PCA reading to a submitted structure: the preview arms, the submit re-checks and gates</text>
+  <rect x="15.0" y="50" width="150" height="34" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="90.0" y="70.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">voldesk (trader)</text>
+  <rect x="425.0" y="50" width="190" height="34" rx="6" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.4"/>
+  <text x="520.0" y="70.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">api  /trade, /signals</text>
+  <rect x="735.0" y="50" width="100" height="34" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="785.0" y="70.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Redis</text>
+  <rect x="855.0" y="50" width="100" height="34" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="905.0" y="70.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Postgres</text>
+  <rect x="965.0" y="50" width="120" height="34" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="1025.0" y="70.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">execution-engine</text>
+  <line x1="90" y1="84" x2="90" y2="1160" stroke="#555555" stroke-width="1" stroke-dasharray="6 4"/>
+  <line x1="520" y1="84" x2="520" y2="1160" stroke="#555555" stroke-width="1" stroke-dasharray="6 4"/>
+  <line x1="785" y1="84" x2="785" y2="1160" stroke="#555555" stroke-width="1" stroke-dasharray="6 4"/>
+  <line x1="905" y1="84" x2="905" y2="1160" stroke="#555555" stroke-width="1" stroke-dasharray="6 4"/>
+  <line x1="1025" y1="84" x2="1025" y2="1160" stroke="#555555" stroke-width="1" stroke-dasharray="6 4"/>
+  <line x1="90" y1="112" x2="518" y2="112" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="305.0" y="106" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">GET /signals/pca/state</text>
+  <line x1="520" y1="138" x2="903" y2="138" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="712.5" y="132" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">latest pca_signals per PC</text>
+  <line x1="520" y1="164" x2="92" y2="164" stroke="#555555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#a)"/>
+  <text x="305.0" y="158" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">z-scores + WAIT / ARM / STRONG / EXTREME badge</text>
+  <rect x="20" y="178" width="330" height="58" rx="6" fill="#f4f5f7" stroke="#555555" stroke-width="1.4"/>
+  <text x="185.0" y="194.0" font-size="12" fill="#222" text-anchor="middle">The trader reads z and composes the position:</text>
+  <text x="185.0" y="210.0" font-size="12" fill="#222" text-anchor="middle">free legs or a named template.</text>
+  <text x="185.0" y="226.0" font-size="12" fill="#222" text-anchor="middle">signal_to_structure() is not called on this path.</text>
+  <rect x="20" y="250" width="1060" height="390" fill="none" stroke="#3b6ea8" stroke-dasharray="6 4"/>
+  <rect x="20" y="250" width="250" height="22" rx="0" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="145.0" y="264.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Arm · POST /trade/preview</text>
+  <line x1="90" y1="292" x2="518" y2="292" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="305.0" y="286" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">POST /trade/preview {legs | structure_type, qty}</text>
+  <line x1="520" y1="322" x2="903" y2="322" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="712.5" y="316" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">_load_limits, _load_regime, _load_book</text>
+  <line x1="520" y1="350" x2="783" y2="350" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="652.5" y="344" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">_read_surface_redis</text>
+  <text x="793" y="368" font-size="12" fill="#555" text-anchor="start" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">none: _synthetic_surface()</text>
+  <rect x="350" y="380" width="340" height="78" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="520.0" y="398.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">build_from_legs / build_structure</text>
+  <text x="520.0" y="414.0" font-size="12" fill="#222" text-anchor="middle">price_structure → compute_net_greeks</text>
+  <text x="520.0" y="430.0" font-size="12" fill="#222" text-anchor="middle">compute_sizing: qty_override = user qty</text>
+  <text x="520.0" y="446.0" font-size="12" fill="#222" text-anchor="middle">apply_regime_to_limits: stressed ×0.7, pre_event ×0</text>
+  <rect x="350" y="470" width="340" height="110" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="520.0" y="488.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">run_pre_submit_checks (5 checks)</text>
+  <text x="520.0" y="504.0" font-size="12" fill="#222" text-anchor="middle">regime_not_pre_event · signal_still_actionable</text>
+  <text x="520.0" y="520.0" font-size="12" fill="#222" text-anchor="middle">vega_under_book_limit: |book + trade vega| ≤ max</text>
+  <text x="520.0" y="536.0" font-size="12" fill="#222" text-anchor="middle">no_arb_violation_on_legs · minimum_liquidity</text>
+  <text x="520.0" y="552.0" font-size="12" fill="#222" text-anchor="middle">manual preview: armed z = current z = 2.0;</text>
+  <text x="520.0" y="568.0" font-size="12" fill="#222" text-anchor="middle">arb and liquidity inputs are constants (pass)</text>
+  <text x="330" y="530" font-size="12" fill="#b02a37" text-anchor="end" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">any check fails → state blocked</text>
+  <line x1="520" y1="600" x2="903" y2="600" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="712.5" y="594" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">INSERT trade_previews: valid_for_submit | blocked, +120 s</text>
+  <line x1="520" y1="628" x2="92" y2="628" stroke="#555555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#a)"/>
+  <text x="305.0" y="622" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">preview: state, blocking_reasons, expires_at</text>
+  <rect x="20" y="656" width="1060" height="504" fill="none" stroke="#d9480f" stroke-dasharray="6 4"/>
+  <rect x="20" y="656" width="250" height="22" rx="0" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.4"/>
+  <text x="145.0" y="670.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Submit · POST /trade/submit</text>
+  <line x1="90" y1="696" x2="518" y2="696" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <text x="305.0" y="690" font-size="12" fill="#d9480f" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">POST /trade/submit {preview_id, execution_mode}</text>
+  <line x1="520" y1="726" x2="783" y2="726" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="652.5" y="720" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">SET NX submit lock, TTL 10 s</text>
+  <text x="330" y="730" font-size="12" fill="#b02a37" text-anchor="end" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">409 held · 503 lock unavailable</text>
+  <line x1="520" y1="756" x2="903" y2="756" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="712.5" y="750" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">SELECT trade_previews FOR UPDATE</text>
+  <text x="330" y="760" font-size="12" fill="#b02a37" text-anchor="end" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">404 preview not found</text>
+  <line x1="520" y1="786" x2="903" y2="786" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="712.5" y="780" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">live only: ib_connection_state</text>
+  <text x="330" y="790" font-size="12" fill="#b02a37" text-anchor="end" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">503 ib_disconnected</text>
+  <rect x="350" y="802" width="340" height="94" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="520.0" y="820.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">revalidate_preview (stops at first failure)</text>
+  <text x="520.0" y="836.0" font-size="12" fill="#222" text-anchor="middle">not actioned · state valid_for_submit · not expired</text>
+  <text x="520.0" y="852.0" font-size="12" fill="#222" text-anchor="middle">if armed on a signal: same sign, |z| ≥ z_threshold_min</text>
+  <text x="520.0" y="868.0" font-size="12" fill="#222" text-anchor="middle">live: surface age ≤ max_iv_data_age_seconds</text>
+  <text x="520.0" y="884.0" font-size="12" fill="#222" text-anchor="middle">regime ≠ pre_event</text>
+  <text x="330" y="852" font-size="12" fill="#b02a37" text-anchor="end" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">400 revalidation_failed</text>
+  <line x1="520" y1="922" x2="903" y2="922" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="712.5" y="916" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">trading_halted, open_position greeks, caps</text>
+  <line x1="520" y1="948" x2="783" y2="948" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="652.5" y="942" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">heartbeat:risk_engine, spot</text>
+  <rect x="350" y="960" width="340" height="94" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="520.0" y="978.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">run_pretrade_gate → evaluate_pretrade (all reasons)</text>
+  <text x="520.0" y="994.0" font-size="12" fill="#222" text-anchor="middle">kill switch · symbols in allow-list (EUR, M6E)</text>
+  <text x="520.0" y="1010.0" font-size="12" fill="#222" text-anchor="middle">live: account type · risk heartbeat ≤ 30 s · surface age</text>
+  <text x="520.0" y="1026.0" font-size="12" fill="#222" text-anchor="middle">arbitrage flag · every open position priced</text>
+  <text x="520.0" y="1042.0" font-size="12" fill="#222" text-anchor="middle">post-trade |Δ|, |vega|, |Γ| ≤ caps · notional ≤ 5 M EUR</text>
+  <text x="330" y="1010" font-size="12" fill="#b02a37" text-anchor="end" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">400 pretrade_gate_failed</text>
+  <line x1="520" y1="1078" x2="903" y2="1078" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <text x="712.5" y="1072" font-size="12" fill="#146c43" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">INSERT trade_structure (submitted) + structure_orders</text>
+  <line x1="520" y1="1108" x2="1023" y2="1108" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <text x="772.5" y="1102" font-size="12" fill="#146c43" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">live: POST /internal/structure/submit</text>
+  <text x="1017" y="1126" font-size="12" fill="#b02a37" text-anchor="end" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">423 when halted</text>
+  <text x="528" y="1126" font-size="12" fill="#555" text-anchor="start" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">mock: synthetic fills at the preview price, no IB</text>
+  <line x1="520" y1="1148" x2="92" y2="1148" stroke="#555555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#a)"/>
+  <text x="305.0" y="1142" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">SubmitResult {structure_id, state: submitted}</text>
+</svg>

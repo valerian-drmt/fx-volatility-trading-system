@@ -46,6 +46,11 @@ The execution engine keeps orders in flight across the Gateway's nightly
 restart, a torn socket and an IBKR upstream outage. Module:
 `engines/execution/ib_session.py` (#321).
 
+The diagram follows one night: the startup connect, the Gateway restart, the
+10 s watchdog retries, then the reconnect and the pass that reopens the gate.
+
+![The execution engine loses IB at the nightly restart, the watchdog reconnects, and a pass reopens the gate](../diagrams/ib-session-reconnect.svg)
+
 | Signal | How it is seen | What happens |
 |---|---|---|
 | socket down | `maintain_ib_connection` poll, `disconnectedEvent` | gate closes (`ib_disconnected`); watchdog reconnects and runs the pass |
@@ -72,6 +77,16 @@ until the pass has completed on the current connection. Reads stay open.
 event counts). Metric: `ib_session_events_total{engine,kind}` with
 `upstream_lost`, `restored_data_lost`, `restored_data_kept`, `socket_closed`,
 `order_rejected`, `farm_status`, `connected`, `disconnected`.
+
+## Order to fill
+
+A live structure submit runs synchronously up to the last `placeOrder`; every
+status and fill after that arrives as an `ib_async` event on the handlers
+`attach_fill_handlers` wired, through the same idempotent `persist_fill` path the
+reconnect pass replays (code: `engines/execution/live_submit.py`,
+`engines/execution/fills_handler.py`).
+
+![A live structure: each leg is committed as it is placed, its fills arrive later as IB events](../diagrams/order-fill-sequence.svg)
 
 ## Market-data types
 

@@ -5,6 +5,11 @@ Metric naming and label-cardinality rules for the stack. The primitives live in
 config in [`obs/prometheus.yml`](../../obs/prometheus.yml). See the operator
 playbooks in [runbooks.md](runbooks.md).
 
+The `obs` compose profile is three signal paths into three stores, plus one
+alert path out:
+
+![Logs go through alloy to Loki, traces through otel-collector to Tempo, metrics are scraped by Prometheus, and only Prometheus alerts leave the host, through Alertmanager and SNS](../diagrams/obs-profile-components.svg)
+
 ## Metric naming
 
 Every metric follows the Prometheus convention `<namespace>_<subsystem>_<name>_<unit>`:
@@ -42,7 +47,7 @@ on exception it flips `status="error"` and re-raises. It also emits `cycle_start
 
 Labels stay **low-cardinality**. Allowed label values are bounded sets:
 
-- `engine` — one of `market_data`, `vol_engine`, `risk_engine`, `execution`, `db_writer`.
+- `engine` — one of `market_data`, `vol_engine`, `risk_engine`, `execution_engine`, `db_writer`, `analytics_engine`.
 - `status` — `ok` / `error`.
 - `client_id` — the four fixed IB client IDs (1/2/3/5).
 - `request_type` — a bounded set of IB call kinds.
@@ -54,18 +59,21 @@ body and are queried via LogQL, never promoted to a Loki/Prometheus label.
 
 ## Scrape jobs
 
-`obs/prometheus.yml` scrapes at a 15s interval with `external_labels: {environment: dev}`:
+`obs/prometheus.yml` scrapes at a 15s interval with `external_labels: {environment: ${FXVOL_ENVIRONMENT}}` (`prod` on the host, `dev` locally):
 
 | Job | Targets | Purpose |
 |---|---|---|
-| `engines` | `market-data:9101`, `vol-engine:9102`, `risk-engine:9103`, `execution-engine:9104`, `db-writer:9105` | Per-engine cycle + IB metrics. |
-| `cadvisor` | `cadvisor:8080` | Per-container CPU/RAM/net/fs → the /dev Hardware tab. |
+| `api` | `api:8000` | Request timings + `fxvol_postgres_backup_age_seconds`. |
+| `engines` | `market-data:9101`, `vol-engine:9102`, `risk-engine:9103`, `execution-engine:9104`, `db-writer:9105`, `analytics-engine:9106` | Per-engine cycle + IB metrics. |
+| `cadvisor` | `cadvisor:8080` (5s interval) | Per-container CPU/RAM/net/fs → the /dev Hardware tab. |
 | `prometheus` | `localhost:9090` | Self-scrape (health + tsdb size). |
 | `loki` | `loki:3100` | Loki ingest rate + storage. |
+| `tempo` | `tempo:3200` | Tempo liveness (the image has no shell for a healthcheck). |
 
 ## Log labels (Alloy → Loki)
 
-Alloy scrapes container stdout via Docker service discovery
+Alloy scrapes container stdout via Docker service discovery, through
+`docker-socket-proxy:2375` (it has no socket of its own)
 ([`obs/alloy.alloy`](../../obs/alloy.alloy)). Only low-cardinality fields become
 Loki labels: `container`, `engine` (compose service), `stream` (stdout/stderr) and
 `level`. `level` is extracted from JSON engine logs, or via per-service regex

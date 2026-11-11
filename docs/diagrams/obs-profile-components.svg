@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="680" viewBox="0 0 1100 680" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="680" fill="#ffffff"/>
+  <defs>
+    <marker id="m-hot" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="s-hot" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#d9480f"/></marker>
+    <marker id="m-cold" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="s-cold" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#3b6ea8"/></marker>
+    <marker id="m-shared" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker>
+    <marker id="s-shared" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b7791f"/></marker>
+    <marker id="m-fail" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="s-fail" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b02a37"/></marker>
+    <marker id="m-ok" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <marker id="s-ok" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#146c43"/></marker>
+    <marker id="m-neutral" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-neutral" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+    <marker id="m-grey" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-grey" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+  </defs>
+  <text x="550" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">The obs profile: three signal paths into three stores, one alert path out</text>
+  <text x="550" y="50" font-size="12" fill="#555" text-anchor="middle">docker compose --profile obs (prod: COMPOSE_PROFILES=engines,ib,obs); caps are mem_limit in docker-compose.yml</text>
+  <rect x="20" y="80" width="200" height="70" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="120" y="104" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">Docker engine</text>
+  <text x="120" y="120" font-size="12" fill="#555" text-anchor="middle">/var/run/docker.sock</text>
+  <text x="120" y="136" font-size="12" fill="#555" text-anchor="middle">every fxvol container's stdout</text>
+  <rect x="270" y="80" width="165" height="70" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="352" y="103" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">docker-socket-proxy</text>
+  <text x="352" y="119" font-size="12" fill="#555" text-anchor="middle">64m · socket mounted ro</text>
+  <text x="352" y="135" font-size="12" fill="#555" text-anchor="middle">GET /containers/* only</text>
+  <rect x="480" y="80" width="165" height="70" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="562" y="104" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">alloy</text>
+  <text x="562" y="120" font-size="12" fill="#555" text-anchor="middle">128m · Docker discovery</text>
+  <text x="562" y="136" font-size="12" fill="#555" text-anchor="middle">labels + level extraction</text>
+  <rect x="700" y="80" width="180" height="70" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="790" y="96" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">loki</text>
+  <text x="790" y="112" font-size="12" fill="#555" text-anchor="middle">320m · 14 d retention</text>
+  <text x="790" y="128" font-size="12" fill="#555" text-anchor="middle">labels container, engine,</text>
+  <text x="790" y="144" font-size="12" fill="#555" text-anchor="middle">stream, level</text>
+  <path d="M220,115 L268,115" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M435,115 L478,115" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M645,115 L698,115" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <rect x="20" y="185" width="200" height="125" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="120" y="212" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">6 engines</text>
+  <text x="120" y="228" font-size="12" fill="#555" text-anchor="middle">market-data, vol, risk,</text>
+  <text x="120" y="244" font-size="12" fill="#555" text-anchor="middle">execution, db-writer,</text>
+  <text x="120" y="260" font-size="12" fill="#555" text-anchor="middle">analytics · 384m-512m each</text>
+  <text x="120" y="276" font-size="12" fill="#555" text-anchor="middle">/metrics :9101-9106</text>
+  <text x="120" y="292" font-size="12" fill="#555" text-anchor="middle">OTLP gRPC export</text>
+  <rect x="270" y="200" width="165" height="70" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="352" y="224" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">otel-collector</text>
+  <text x="352" y="240" font-size="12" fill="#555" text-anchor="middle">128m · OTLP :4317</text>
+  <text x="352" y="256" font-size="12" fill="#555" text-anchor="middle">memory_limiter + batch</text>
+  <rect x="700" y="200" width="180" height="70" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="790" y="224" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">tempo</text>
+  <text x="790" y="240" font-size="12" fill="#555" text-anchor="middle">320m · 7 d retention</text>
+  <text x="790" y="256" font-size="12" fill="#555" text-anchor="middle">OTLP ingest :4317</text>
+  <path d="M220,235 L268,235" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <path d="M435,235 L698,235" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="520" y="217" width="92" height="16" fill="#ffffff"/>
+  <text x="566" y="228" font-size="12" fill="#b7791f" text-anchor="middle">batched spans</text>
+  <path d="M220,292 L760,292 L760,328" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="388" y="275" width="184" height="16" fill="#ffffff"/>
+  <text x="480" y="286" font-size="12" fill="#146c43" text-anchor="middle">scraped /metrics every 15 s</text>
+  <rect x="480" y="340" width="165" height="80" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="562" y="361" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">cadvisor</text>
+  <text x="562" y="377" font-size="12" fill="#555" text-anchor="middle">128m · unprivileged</text>
+  <text x="562" y="393" font-size="12" fill="#555" text-anchor="middle">reads /sys, /var/lib/docker</text>
+  <text x="562" y="409" font-size="12" fill="#555" text-anchor="middle">(ro) per container</text>
+  <rect x="700" y="330" width="180" height="120" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="790" y="363" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">prometheus</text>
+  <text x="790" y="379" font-size="12" fill="#555" text-anchor="middle">256m · 7 d or 512 MB</text>
+  <text x="790" y="395" font-size="12" fill="#555" text-anchor="middle">jobs: engines, api,</text>
+  <text x="790" y="411" font-size="12" fill="#555" text-anchor="middle">cadvisor (5 s), loki,</text>
+  <text x="790" y="427" font-size="12" fill="#555" text-anchor="middle">tempo, itself</text>
+  <path d="M645,380 L698,380" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="659" y="362" width="26" height="16" fill="#ffffff"/>
+  <text x="672" y="373" font-size="12" fill="#146c43" text-anchor="middle">5 s</text>
+  <rect x="20" y="400" width="200" height="60" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="120" y="419" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">api</text>
+  <text x="120" y="435" font-size="12" fill="#555" text-anchor="middle">512m · :8000/metrics</text>
+  <text x="120" y="451" font-size="12" fill="#555" text-anchor="middle">incl. backup age</text>
+  <path d="M220,432 L698,432" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="274" y="439" width="112" height="16" fill="#ffffff"/>
+  <text x="330" y="450" font-size="12" fill="#146c43" text-anchor="middle">scraped /metrics</text>
+  <path d="M790,450 L790,498" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="621" y="467" width="164" height="16" fill="#ffffff"/>
+  <text x="782" y="478" font-size="12" fill="#b02a37" text-anchor="end">rules in alerts.yml fire</text>
+  <rect x="700" y="500" width="180" height="60" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="790" y="527" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">alertmanager</text>
+  <text x="790" y="543" font-size="12" fill="#555" text-anchor="middle">64m · group, inhibit, repeat</text>
+  <rect x="915" y="500" width="170" height="60" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="1000" y="519" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">SNS fxvol-alarms</text>
+  <text x="1000" y="535" font-size="12" fill="#555" text-anchor="middle">signed with the</text>
+  <text x="1000" y="551" font-size="12" fill="#555" text-anchor="middle">instance role (IMDS)</text>
+  <path d="M880,530 L913,530" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="915" y="595" width="170" height="45" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="1000" y="614" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">email</text>
+  <text x="1000" y="630" font-size="12" fill="#555" text-anchor="middle">confirmed subscription</text>
+  <path d="M1000,560 L1000,593" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="915" y="170" width="170" height="150" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="1000" y="210" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">grafana</text>
+  <text x="1000" y="226" font-size="12" fill="#555" text-anchor="middle">256m</text>
+  <text x="1000" y="242" font-size="12" fill="#555" text-anchor="middle">127.0.0.1:3000 only</text>
+  <text x="1000" y="258" font-size="12" fill="#555" text-anchor="middle">prod: SSM port forward</text>
+  <text x="1000" y="274" font-size="12" fill="#555" text-anchor="middle">datasources:</text>
+  <text x="1000" y="290" font-size="12" fill="#555" text-anchor="middle">Prometheus, Loki, Tempo</text>
+  <path d="M880,115 L900,115 L900,200 L913,200" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M880,235 L913,235" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <path d="M880,345 L900,345 L900,290 L913,290" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="20" y="509" width="16" height="14" rx="3" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="42" y="520" font-size="12" fill="#555">logs</text>
+  <rect x="90.4" y="509" width="16" height="14" rx="3" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="112" y="520" font-size="12" fill="#555">traces</text>
+  <rect x="174.0" y="509" width="16" height="14" rx="3" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="196" y="520" font-size="12" fill="#555">metrics</text>
+  <rect x="264.2" y="509" width="16" height="14" rx="3" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="286" y="520" font-size="12" fill="#555">alerts</text>
+  <text x="20" y="548" font-size="12" fill="#555">Every service sits on fxvol-internal; only grafana</text>
+  <text x="20" y="566" font-size="12" fill="#555">binds a host port, and only on loopback.</text>
+  <text x="20" y="596" font-size="12" fill="#555">alloy never sees the socket itself: the proxy refuses</text>
+  <text x="20" y="614" font-size="12" fill="#555">POST, exec and create (POST=0).</text>
+</svg>

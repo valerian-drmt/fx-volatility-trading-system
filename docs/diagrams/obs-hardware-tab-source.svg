@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="470" viewBox="0 0 1100 470" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="470" fill="#ffffff"/>
+  <defs>
+    <marker id="m-hot" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="s-hot" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#d9480f"/></marker>
+    <marker id="m-cold" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="s-cold" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#3b6ea8"/></marker>
+    <marker id="m-shared" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker>
+    <marker id="s-shared" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b7791f"/></marker>
+    <marker id="m-fail" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="s-fail" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b02a37"/></marker>
+    <marker id="m-ok" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <marker id="s-ok" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#146c43"/></marker>
+    <marker id="m-neutral" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-neutral" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+    <marker id="m-grey" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-grey" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+  </defs>
+  <text x="550" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">The /dev Hardware tab reads cAdvisor through Prometheus, else the Docker socket</text>
+  <text x="550" y="50" font-size="12" fill="#555" text-anchor="middle">GET /api/v1/dev/containers/metrics (src/api/routers/dev.py container_metrics)</text>
+  <rect x="30" y="90" width="200" height="60" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="130" y="117" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">Hardware tab poll</text>
+  <text x="130" y="133" font-size="12" fill="#555" text-anchor="middle">the browser polls the api</text>
+  <path d="M230,120 L318,120" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <rect x="320" y="85" width="230" height="70" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="435" y="109" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">query Prometheus</text>
+  <text x="435" y="125" font-size="12" fill="#555" text-anchor="middle">cAdvisor CPU + RAM series</text>
+  <text x="435" y="141" font-size="12" fill="#555" text-anchor="middle">range over 1 min to 24 h</text>
+  <path d="M550,120 L628,120" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <polygon points="720,75.0 810.0,120 720,165.0 630.0,120" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="720" y="116" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">any per-container</text>
+  <text x="720" y="132" font-size="12" fill="#222" text-anchor="middle">points?</text>
+  <path d="M810,120 L878,120" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="831" y="101" width="26" height="16" fill="#ffffff"/>
+  <text x="844" y="112" font-size="12" fill="#146c43" text-anchor="middle">yes</text>
+  <rect x="880" y="85" width="195" height="70" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="978" y="108" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">source = "prometheus"</text>
+  <text x="978" y="124" font-size="12" fill="#555" text-anchor="middle">persistent history</text>
+  <text x="978" y="140" font-size="12" fill="#555" text-anchor="middle">EC2 / any Linux host</text>
+  <path d="M720,165 L720,228" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="732" y="189" width="19" height="16" fill="#ffffff"/>
+  <text x="735" y="200" font-size="12" fill="#b02a37">no</text>
+  <rect x="600" y="230" width="240" height="70" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="720" y="254" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">sample docker.sock</text>
+  <text x="720" y="270" font-size="12" fill="#555" text-anchor="middle">/containers/json + /stats</text>
+  <text x="720" y="286" font-size="12" fill="#555" text-anchor="middle">in-memory history, about 3 h</text>
+  <path d="M840,265 L878,265" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <rect x="880" y="230" width="195" height="70" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="978" y="253" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">source = "docker"</text>
+  <text x="978" y="269" font-size="12" fill="#555" text-anchor="middle">socket mounted only by</text>
+  <text x="978" y="285" font-size="12" fill="#555" text-anchor="middle">docker-compose.override.yml</text>
+  <path d="M720,300 L720,358" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="732" y="324" width="138" height="16" fill="#ffffff"/>
+  <text x="735" y="335" font-size="12" fill="#b02a37">socket absent (prod)</text>
+  <rect x="600" y="360" width="240" height="60" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="720" y="386" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">reachable = false</text>
+  <text x="720" y="402" font-size="12" fill="#555" text-anchor="middle">empty graphs</text>
+  <rect x="30" y="230" width="520" height="190" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="290" y="274" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">Why Prometheus can come back empty</text>
+  <text x="290" y="290" font-size="12" fill="#555" text-anchor="middle">Docker Desktop / WSL2: cAdvisor sees only the root cgroup,</text>
+  <text x="290" y="306" font-size="12" fill="#555" text-anchor="middle">so every per-container series is missing. The local api</text>
+  <text x="290" y="322" font-size="12" fill="#555" text-anchor="middle">falls back to the socket, which the dev override mounts.</text>
+  <text x="290" y="338" font-size="12" fill="#555" text-anchor="middle">Linux host on the containerd image store: cAdvisor cannot</text>
+  <text x="290" y="354" font-size="12" fill="#555" text-anchor="middle">resolve each container's layer and registers nothing.</text>
+  <text x="290" y="370" font-size="12" fill="#555" text-anchor="middle">setup.sh pins the classic overlay2 store (daemon.json).</text>
+  <text x="290" y="386" font-size="12" fill="#555" text-anchor="middle">The prod api never has the socket (root-equivalent).</text>
+</svg>

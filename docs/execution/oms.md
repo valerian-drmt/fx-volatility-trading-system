@@ -35,6 +35,11 @@ then POSTs `execution-engine:8001/internal/structure/submit`. The engine reads t
 pending legs and places them — combo (BAG) or per-leg — see
 [order-lifecycle.md](order-lifecycle.md).
 
+Every leg row (entry, closing or unwind) then runs the same order machine, and
+its structure ends in one of three terminal states:
+
+![Every order leaves the working states for exactly one terminal state, and terminal rows never move](../diagrams/oms-state-machine.svg)
+
 ## Reservation (anti-over-close)
 
 [`core/execution/reservation.py`](../../src/core/execution/reservation.py) guards
@@ -53,11 +58,12 @@ fill releases the entry leg's reservation (`recompute_reservation`).
 ## Position sync vs the IB mirror
 
 [`engines/execution/position_sync.py`](../../src/engines/execution/position_sync.py)
-runs at api startup and on a periodic loop (default 30s):
+runs at execution-engine startup and then every `SYNC_INTERVAL_S` (5 s in
+`docker-compose.yml`):
 
-- **`sync_positions_from_ib`** upserts IB → DB `open_position`, matched on the
-  tuple `(symbol, instrument_type, strike, maturity, option_type)` — no con_id
-  column needed.
+- **`sync_positions_from_ib`** upserts IB → DB `open_position`, keyed on the IB
+  `localSymbol` (stored in `open_position.structure`) — no con_id column
+  needed.
 - **`publish_portfolio_to_redis`** publishes IB-canonical marks for every open
   position on Redis hashes (`contract_marks` / `option_marks` / `unrealized_pnl`);
   the risk-engine is the sole writer of `position_snapshots`.
@@ -87,6 +93,11 @@ break list. `engines.execution.reconciler` folds the two dicts and persists the
 breaks; `GET /positions/reconciliation` reuses the same classification.
 
 ## Related modules
+
+Five supervised loops in the execution engine keep the book and the mirror
+honest; each reads one of the two truths and writes only its own edge:
+
+![Five execution-engine loops repair the book from two truths: recorded fills and the IB mirror](../diagrams/oms-loops.svg)
 
 - **reaper** ([`engines/execution/reaper.py`](../../src/engines/execution/reaper.py))
   — sweeps orphan IB orders (crash between `placeOrder` and its commit) and adopts

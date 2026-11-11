@@ -19,7 +19,14 @@ asked to be written down (02#1 / QM-09).
 
 Outputs are plain Python floats in price points. Scaling to money is the
 caller's job and is written in [units.md](units.md): `× qty × multiplier`
-for premium, `/ 100` for vega per vol point, `/ 365` for theta per day.
+for premium, `/ 100` for vega per vol point, `/ 365` for the per-year theta
+that `bs_greeks` returns (`bs_theta` alone is already per day).
+
+In the trade preview, `F` is always `_spot_from_surface`: the ATM strike of
+the 1M pillar, else 2M, else 3M (1.0 when the surface has none); the future
+mark is not read on that path.
+
+![One kernel, two scalings: a leg is priced and its greeks scaled from the same surface cell](../diagrams/pricing-pipeline.svg)
 
 ## The boundary
 

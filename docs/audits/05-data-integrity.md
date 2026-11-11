@@ -20,6 +20,13 @@ half the services saw. Silent wrongness is the theme.
 ## What to check
 
 ### Write pipeline
+
+![A streamed row lands once on its natural key and a bad row is dead-lettered instead of sinking its batch, while open_position, account_history and open_position_history are written directly by their engines](../diagrams/data-integrity-write-paths.svg)
+
+The write paths on `main` after #324 (db-writer delivery semantics): what this section asked is
+answered in the diagram, and the gaps that remain by design are drawn in red
+(pub/sub keeps no backlog, a full queue drops and counts).
+
 - [ ] db-writer idempotency: what is the dedup key; can a Redis redelivery or writer
       retry double-insert a row?
 - [ ] Batch failure semantics: one bad row in a batch — is the whole batch lost, retried

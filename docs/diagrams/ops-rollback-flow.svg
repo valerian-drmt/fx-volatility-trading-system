@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="610" viewBox="0 0 1100 610" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="610" fill="#ffffff"/>
+  <defs>
+    <marker id="m-hot" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="s-hot" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#d9480f"/></marker>
+    <marker id="m-cold" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="s-cold" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#3b6ea8"/></marker>
+    <marker id="m-shared" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker>
+    <marker id="s-shared" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b7791f"/></marker>
+    <marker id="m-fail" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="s-fail" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b02a37"/></marker>
+    <marker id="m-ok" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <marker id="s-ok" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#146c43"/></marker>
+    <marker id="m-neutral" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-neutral" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+    <marker id="m-grey" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-grey" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+  </defs>
+  <text x="550" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">A rollback past a migration stops unless the downgrade is explicitly allowed, and always after a dump</text>
+  <rect x="10" y="60" width="1080" height="150" rx="8" fill="none" stroke="#555555" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="20" y="78" font-size="12" fill="#555555" font-weight="bold">operator (laptop)</text>
+  <rect x="20" y="95" width="200" height="70" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="120" y="119" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">previous good sha</text>
+  <text x="120" y="135" font-size="12" fill="#555" text-anchor="middle">inventory: previous_tag</text>
+  <text x="120" y="151" font-size="12" fill="#555" text-anchor="middle">or gh run list</text>
+  <path d="M220,130 L243,130" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <polygon points="330,82.0 415.0,130 330,178.0 245.0,130" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="330" y="126" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">migrations</text>
+  <text x="330" y="142" font-size="12" fill="#222" text-anchor="middle">in between?</text>
+  <rect x="470" y="82" width="360" height="44" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="650" y="108" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">ec2.ps1 deploy -Sha &lt;previous&gt;</text>
+  <rect x="470" y="148" width="360" height="44" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="650" y="174" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">ec2.ps1 deploy -Sha &lt;previous&gt; -AllowSchemaDowngrade</text>
+  <path d="M372,106 L395,104 L468,104" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <rect x="410" y="86" width="19" height="16" fill="#ffffff"/>
+  <text x="420" y="97" font-size="12" fill="#3b6ea8" text-anchor="middle">no</text>
+  <path d="M372,154 L395,170 L468,170" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="407" y="153" width="26" height="16" fill="#ffffff"/>
+  <text x="420" y="164" font-size="12" fill="#b7791f" text-anchor="middle">yes</text>
+  <rect x="880" y="95" width="200" height="70" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="980" y="119" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">deploy-prod workflow</text>
+  <text x="980" y="135" font-size="12" fill="#555" text-anchor="middle">OIDC into AWS</text>
+  <text x="980" y="151" font-size="12" fill="#555" text-anchor="middle">SSM send-command</text>
+  <path d="M830,104 L855,104 L855,120 L878,120" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <path d="M830,170 L855,170 L855,140 L878,140" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <path d="M980,165 L980,253" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <rect x="10" y="225" width="1080" height="320" rx="8" fill="none" stroke="#555555" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="20" y="243" font-size="12" fill="#555555" font-weight="bold">host: infrastructure/ec2/remote-deploy.sh</text>
+  <rect x="880" y="255" width="200" height="64" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="980" y="276" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">pull images</text>
+  <text x="980" y="292" font-size="12" fill="#555" text-anchor="middle">pre-deploy dump to S3</text>
+  <text x="980" y="308" font-size="12" fill="#555" text-anchor="middle">postgres/pre-deploy/</text>
+  <path d="M878,287 L812,287" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <polygon points="700,242.0 810.0,287 700,332.0 590.0,287" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="700" y="283" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">target image knows</text>
+  <text x="700" y="299" font-size="12" fill="#222" text-anchor="middle">the DB revision?</text>
+  <path d="M590,287 L552,287" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="561" y="269" width="19" height="16" fill="#ffffff"/>
+  <text x="571" y="280" font-size="12" fill="#b02a37" text-anchor="middle">no</text>
+  <polygon points="450,242.0 550.0,287 450,332.0 350.0,287" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="450" y="283" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">downgrade</text>
+  <text x="450" y="299" font-size="12" fill="#222" text-anchor="middle">allowed?</text>
+  <path d="M350,287 L292,287" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="311" y="269" width="19" height="16" fill="#ffffff"/>
+  <text x="321" y="280" font-size="12" fill="#b02a37" text-anchor="middle">no</text>
+  <rect x="20" y="255" width="270" height="64" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="155" y="283" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">exit 1: rollback past a migration</text>
+  <text x="155" y="299" font-size="12" fill="#555" text-anchor="middle">nothing changed</text>
+  <path d="M450,332 L450,373" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="457" y="346" width="26" height="16" fill="#ffffff"/>
+  <text x="460" y="357" font-size="12" fill="#b7791f">yes</text>
+  <rect x="350" y="375" width="200" height="64" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="450" y="395" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">running image downgrades</text>
+  <text x="450" y="411" font-size="12" fill="#555" text-anchor="middle">alembic downgrade</text>
+  <text x="450" y="427" font-size="12" fill="#555" text-anchor="middle">&lt;target head&gt;</text>
+  <path d="M350,407 L292,407" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="302" y="389" width="39" height="16" fill="#ffffff"/>
+  <text x="321" y="400" font-size="12" fill="#b02a37" text-anchor="middle">fails</text>
+  <rect x="20" y="375" width="270" height="64" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="155" y="403" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">exit: stack untouched</text>
+  <text x="155" y="419" font-size="12" fill="#555" text-anchor="middle">restore point = pre-deploy dump</text>
+  <path d="M700,332 L700,373" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="707" y="346" width="26" height="16" fill="#ffffff"/>
+  <text x="710" y="357" font-size="12" fill="#146c43">yes</text>
+  <path d="M550,407 L588,407" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="590" y="375" width="220" height="64" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="700" y="403" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">target image: upgrade head</text>
+  <text x="700" y="419" font-size="12" fill="#555" text-anchor="middle">no-op on a clean rollback</text>
+  <path d="M700,439 L700,463" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="590" y="465" width="220" height="64" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="700" y="493" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">compose up -d: swap</text>
+  <text x="700" y="509" font-size="12" fill="#555" text-anchor="middle">record previous_tag, prune</text>
+  <path d="M810,497 L878,497" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="880" y="465" width="200" height="64" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="980" y="485" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">verify</text>
+  <text x="980" y="501" font-size="12" fill="#555" text-anchor="middle">ec2.ps1 health: git_sha =</text>
+  <text x="980" y="517" font-size="12" fill="#555" text-anchor="middle">previous, ready 200</text>
+  <text x="20" y="572" font-size="12" fill="#555">A downgrade drops what the newer migrations added (columns, tables, their rows). The pre-deploy dump</text>
+  <text x="20" y="590" font-size="12" fill="#555">s3://fxvol-backups/postgres/pre-deploy/fxvol-pre-sha-&lt;bad&gt;-*.dump is the way back. Roll forward = an ordinary deploy of the fix.</text>
+</svg>

@@ -28,6 +28,11 @@ if pc_label == "skew":        return RiskReversal25d(tenor=tenor,
                                   direction="LONG_CALL" if side == "BUY" else "LONG_PUT")
 ```
 
+The map is a reference, not a pipeline step: `POST /trade/preview` does not
+call `signal_to_structure()`. Signal-driven auto-structuring was removed; the
+trader reads the z-scores and composes the position (free legs or a named
+template), and the preview runs with `mode = "manual"`.
+
 ## Direction: cheap vs expensive
 
 `direction` carries the sign of the trade. `"CHEAP"` (default) → `BUY` the
@@ -63,8 +68,28 @@ The GMM regime (`RegimeConfig`) modulates the raw signal before it sizes a trade
 - `event_dampener_horizon_days` / `event_dampener_multiplier` damp signals in the
   run-up to a scheduled macro event.
 
-`SizingConfig` then sizes the position:
+`SizingConfig` describes the intended formula
 `base_size × conviction × book_penalty × event`, capped at
-`max_loss_pct_capital` (2% of capital). The resulting structure + tenor + side
-is what flows into the order builder and on to
+`max_loss_pct_capital` (2% of capital), but no code reads it. The preview
+sizes with `compute_sizing` in `core/trade_preview.py`
+(`base × z_factor × book_penalty × event_dampener × regime_mult`), and in the
+manual mode it always runs today the trader's `qty` overrides the result.
+The regime acts on the limits instead: `apply_regime_to_limits` scales
+`max_book_vega_usd` and `max_loss_per_trade_pct` by 0.7 in `stressed` and 0 in
+`pre_event`.
+
+## From a reading to a submitted trade
+
+The arm step builds, prices and checks the preview; the submit step re-checks
+it and runs the fail-closed pre-trade gate before any order reaches
 [execution](../execution/oms.md).
+
+![The preview arms on five pre-submit checks; the submit takes a lock, revalidates, and passes the pre-trade gate before any order exists](../diagrams/signal-to-submit-sequence.svg)
+
+Two of the five pre-submit checks never refuse today: `no_arb_violation_on_legs`
+and `minimum_liquidity` get constant inputs (`has_arb_violation=False`,
+`min_quoted_size=99`), and `signal_still_actionable` sees `armed_z = current_z
+= 2.0` on a manual preview. The checks that can block an armed preview are
+`regime_not_pre_event` and `vega_under_book_limit`; everything else is caught
+at submit by `revalidate_preview` and `run_pretrade_gate`
+(see [risk.md](risk.md)).

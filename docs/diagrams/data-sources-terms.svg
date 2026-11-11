@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="610" viewBox="0 0 1100 610" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="610" fill="#ffffff"/>
+  <defs>
+    <marker id="m-hot" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="s-hot" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#d9480f"/></marker>
+    <marker id="m-cold" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="s-cold" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#3b6ea8"/></marker>
+    <marker id="m-shared" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker>
+    <marker id="s-shared" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b7791f"/></marker>
+    <marker id="m-fail" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="s-fail" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b02a37"/></marker>
+    <marker id="m-ok" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <marker id="s-ok" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#146c43"/></marker>
+    <marker id="m-neutral" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-neutral" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+    <marker id="m-grey" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-grey" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+  </defs>
+  <text x="550" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">Three kinds of source, two open terms questions: raw IB quotes shown publicly (D1), FRED rows stored (D2)</text>
+  <text x="125" y="70" font-size="13" fill="#555" text-anchor="middle" font-weight="bold">source</text>
+  <text x="390" y="70" font-size="13" fill="#555" text-anchor="middle" font-weight="bold">fetched by</text>
+  <text x="685" y="70" font-size="13" fill="#555" text-anchor="middle" font-weight="bold">stored</text>
+  <text x="972" y="70" font-size="13" fill="#555" text-anchor="middle" font-weight="bold">shown on the public desk</text>
+  <rect x="20" y="90" width="210" height="150" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="125" y="154" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">Interactive Brokers</text>
+  <text x="125" y="170" font-size="12" fill="#555" text-anchor="middle">paper account</text>
+  <text x="125" y="186" font-size="12" fill="#555" text-anchor="middle">via IB Gateway</text>
+  <rect x="275" y="90" width="230" height="150" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="390" y="138" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">4 IB-bound engines</text>
+  <text x="390" y="154" font-size="12" fill="#555" text-anchor="middle">ib_async, delayed data:</text>
+  <text x="390" y="170" font-size="12" fill="#555" text-anchor="middle">reqMarketDataType(3);</text>
+  <text x="390" y="186" font-size="12" fill="#555" text-anchor="middle">execution uses 4</text>
+  <text x="390" y="202" font-size="12" fill="#555" text-anchor="middle">(delayed-frozen)</text>
+  <rect x="560" y="90" width="250" height="60" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="685" y="117" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">Redis, TTL</text>
+  <text x="685" y="133" font-size="12" fill="#555" text-anchor="middle">latest_spot / bid / ask, bars:*</text>
+  <rect x="560" y="165" width="250" height="75" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="685" y="191" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">Postgres</text>
+  <text x="685" y="207" font-size="12" fill="#555" text-anchor="middle">vol surfaces and fits, positions,</text>
+  <text x="685" y="223" font-size="12" fill="#555" text-anchor="middle">orders, fills, account values</text>
+  <rect x="865" y="90" width="215" height="60" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="972" y="117" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">raw quotes</text>
+  <text x="972" y="133" font-size="12" fill="#555" text-anchor="middle">top-bar quote, /ws/ticks, bars</text>
+  <rect x="865" y="165" width="215" height="75" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="972" y="191" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">derived analytics</text>
+  <text x="972" y="207" font-size="12" fill="#555" text-anchor="middle">IV surface, signals, regime,</text>
+  <text x="972" y="223" font-size="12" fill="#555" text-anchor="middle">greeks, the paper book</text>
+  <path d="M230,165 L273,165" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M505,120 L558,120" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M505,200 L558,200" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M810,120 L863,120" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <path d="M810,200 L863,200" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <text x="1080" y="268" font-size="12" fill="#555" text-anchor="end">rail label: "Market data: IB, delayed · paper"</text>
+  <rect x="20" y="300" width="210" height="80" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="125" y="329" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">FRED</text>
+  <text x="125" y="345" font-size="12" fill="#555" text-anchor="middle">St. Louis Fed</text>
+  <text x="125" y="361" font-size="12" fill="#555" text-anchor="middle">API key from SSM</text>
+  <rect x="275" y="300" width="230" height="80" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="390" y="321" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">api events pipeline</text>
+  <text x="390" y="337" font-size="12" fill="#555" text-anchor="middle">GET /fred/releases/dates</text>
+  <text x="390" y="353" font-size="12" fill="#555" text-anchor="middle">at run time, whitelisted</text>
+  <text x="390" y="369" font-size="12" fill="#555" text-anchor="middle">US releases only</text>
+  <rect x="560" y="300" width="250" height="80" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="685" y="337" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">Postgres events</text>
+  <text x="685" y="353" font-size="12" fill="#555" text-anchor="middle">FRED release dates</text>
+  <rect x="865" y="300" width="215" height="80" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="972" y="329" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">macro-events panel</text>
+  <text x="972" y="345" font-size="12" fill="#555" text-anchor="middle">+ regime gate</text>
+  <text x="972" y="361" font-size="12" fill="#555" text-anchor="middle">FRED notice shown</text>
+  <path d="M230,340 L273,340" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M505,340 L558,340" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M810,340 L863,340" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="20" y="420" width="210" height="100" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="125" y="459" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">central banks + stats</text>
+  <text x="125" y="475" font-size="12" fill="#555" text-anchor="middle">FOMC, ECB, BoE dates</text>
+  <text x="125" y="491" font-size="12" fill="#555" text-anchor="middle">Eurostat, ONS schedules</text>
+  <rect x="275" y="420" width="230" height="100" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="390" y="451" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">no runtime fetch</text>
+  <text x="390" y="467" font-size="12" fill="#555" text-anchor="middle">dates hardcoded from the</text>
+  <text x="390" y="483" font-size="12" fill="#555" text-anchor="middle">official sites; Eurostat /</text>
+  <text x="390" y="499" font-size="12" fill="#555" text-anchor="middle">ONS computed from rules</text>
+  <rect x="560" y="420" width="250" height="100" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="685" y="467" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">Postgres events</text>
+  <text x="685" y="483" font-size="12" fill="#555" text-anchor="middle">rows per meeting / release</text>
+  <rect x="865" y="420" width="215" height="100" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="972" y="459" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">macro-events panel</text>
+  <text x="972" y="475" font-size="12" fill="#555" text-anchor="middle">each source named;</text>
+  <text x="972" y="491" font-size="12" fill="#555" text-anchor="middle">ONS: OGL v3.0 statement</text>
+  <path d="M230,470 L273,470" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <path d="M505,470 L558,470" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <path d="M810,470 L863,470" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="20" y="554" width="16" height="14" rx="3" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="42" y="565" font-size="12" fill="#555">open owner decision</text>
+  <rect x="189.4" y="554" width="16" height="14" rx="3" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="211" y="565" font-size="12" fill="#555">settled</text>
+  <rect x="279.6" y="554" width="16" height="14" rx="3" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="302" y="565" font-size="12" fill="#555">pipeline step</text>
+  <text x="20" y="592" font-size="12" fill="#555">D1 recommendation: raw quotes behind the trader login, derived analytics public.  D2: FRED into a 24 h Redis cache, not Postgres.</text>
+</svg>

@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="720" viewBox="0 0 1100 720" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="720" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+  </defs>
+  <text x="550" y="28" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">Five execution-engine loops repair the book from two truths: recorded fills and the IB mirror</text>
+  <g font-weight="bold" fill="#555" font-size="13">
+    <text x="170" y="70" text-anchor="middle">reads</text><text x="510" y="70" text-anchor="middle">loop (engines/execution, run_supervised)</text><text x="895" y="70" text-anchor="middle">writes</text>
+  </g>
+  <rect x="360" y="85" width="300" height="88" rx="6" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="510" y="105" text-anchor="middle" font-weight="bold" fill="#222">position_sync_loop</text>
+  <text x="510" y="123" text-anchor="middle" fill="#555">every SYNC_INTERVAL_S (5 s in compose)</text>
+  <text x="510" y="141" text-anchor="middle" fill="#222">IB positions into the mirror; autoclose</text>
+  <rect x="30" y="116" width="135" height="26" rx="13" fill="#ffffff" stroke="#555"/>
+  <text x="98" y="133" text-anchor="middle" fill="#222">IB positions</text>
+  <rect x="175" y="116" width="135" height="26" rx="13" fill="#ffffff" stroke="#555"/>
+  <text x="242" y="133" text-anchor="middle" fill="#222">IB account</text>
+  <line x1="312" y1="129" x2="358" y2="129" stroke="#3b6ea8" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <rect x="720" y="116" width="112" height="26" rx="13" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="776" y="133" text-anchor="middle" fill="#222">open_position</text>
+  <rect x="839" y="116" width="112" height="26" rx="13" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="895" y="133" text-anchor="middle" fill="#222">booked_position</text>
+  <rect x="958" y="116" width="112" height="26" rx="13" fill="#ffffff" stroke="#555"/>
+  <text x="1014" y="133" text-anchor="middle" fill="#222">Redis marks</text>
+  <line x1="660" y1="129" x2="718" y2="129" stroke="#d9480f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="360" y="187" width="300" height="88" rx="6" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="510" y="207" text-anchor="middle" font-weight="bold" fill="#222">order_reaper_loop</text>
+  <text x="510" y="225" text-anchor="middle" fill="#555">every 30 s, stale after 300 s</text>
+  <text x="510" y="243" text-anchor="middle" fill="#222">adopt by orderRef; not at IB → expired</text>
+  <rect x="375" y="251" width="270" height="18" rx="3" fill="#ffffff" stroke="#b02a37"/>
+  <text x="510" y="264" text-anchor="middle" fill="#b02a37">guard: account_is_reporting()</text>
+  <rect x="30" y="218" width="135" height="26" rx="13" fill="#ffffff" stroke="#555"/>
+  <text x="98" y="235" text-anchor="middle" fill="#222">IB trades</text>
+  <rect x="175" y="218" width="135" height="26" rx="13" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="242" y="235" text-anchor="middle" fill="#222">open_position</text>
+  <line x1="312" y1="231" x2="358" y2="231" stroke="#3b6ea8" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <rect x="720" y="218" width="112" height="26" rx="13" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="776" y="235" text-anchor="middle" fill="#222">trade_order</text>
+  <rect x="839" y="218" width="112" height="26" rx="13" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="895" y="235" text-anchor="middle" fill="#222">trade_structure</text>
+  <rect x="958" y="218" width="112" height="26" rx="13" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="1014" y="235" text-anchor="middle" fill="#222">leg_position</text>
+  <line x1="660" y1="231" x2="718" y2="231" stroke="#d9480f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="360" y="289" width="300" height="88" rx="6" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="510" y="309" text-anchor="middle" font-weight="bold" fill="#222">order_reconcile_loop</text>
+  <text x="510" y="327" text-anchor="middle" fill="#555">every 60 s (reconcile_stuck_orders)</text>
+  <text x="510" y="345" text-anchor="middle" fill="#222">own fills cover qty, or mirror holds it → filled</text>
+  <rect x="30" y="320" width="135" height="26" rx="13" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="98" y="337" text-anchor="middle" fill="#222">trade_fill</text>
+  <rect x="175" y="320" width="135" height="26" rx="13" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="242" y="337" text-anchor="middle" fill="#222">open_position</text>
+  <line x1="312" y1="333" x2="358" y2="333" stroke="#3b6ea8" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <rect x="720" y="320" width="112" height="26" rx="13" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="776" y="337" text-anchor="middle" fill="#222">trade_order</text>
+  <rect x="839" y="320" width="112" height="26" rx="13" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="895" y="337" text-anchor="middle" fill="#222">leg_position</text>
+  <rect x="958" y="320" width="112" height="26" rx="13" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="1014" y="337" text-anchor="middle" fill="#222">trade_structure</text>
+  <line x1="660" y1="333" x2="718" y2="333" stroke="#d9480f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="360" y="391" width="300" height="88" rx="6" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="510" y="411" text-anchor="middle" font-weight="bold" fill="#222">position_reconcile_loop</text>
+  <text x="510" y="429" text-anchor="middle" fill="#555">every 60 s (reconcile_positions)</text>
+  <text x="510" y="447" text-anchor="middle" fill="#222">book vs mirror per contract → breaks</text>
+  <rect x="375" y="455" width="270" height="18" rx="3" fill="#ffffff" stroke="#b02a37"/>
+  <text x="510" y="468" text-anchor="middle" fill="#b02a37">guard: account_is_reporting()</text>
+  <rect x="30" y="422" width="135" height="26" rx="13" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="98" y="439" text-anchor="middle" fill="#222">leg_position</text>
+  <rect x="175" y="422" width="135" height="26" rx="13" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="242" y="439" text-anchor="middle" fill="#222">open_position</text>
+  <line x1="312" y1="435" x2="358" y2="435" stroke="#3b6ea8" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <rect x="800" y="422" width="190" height="26" rx="13" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="895" y="439" text-anchor="middle" fill="#222">reconciliation_break</text>
+  <line x1="660" y1="435" x2="798" y2="435" stroke="#d9480f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="360" y="493" width="300" height="88" rx="6" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="510" y="513" text-anchor="middle" font-weight="bold" fill="#222">stuck_order_watcher_loop</text>
+  <text x="510" y="531" text-anchor="middle" fill="#555">every 60 s, stuck after 600 s</text>
+  <text x="510" y="549" text-anchor="middle" fill="#222">alert only, never changes an order</text>
+  <rect x="102" y="524" width="135" height="26" rx="13" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="170" y="541" text-anchor="middle" fill="#222">trade_order</text>
+  <line x1="312" y1="537" x2="358" y2="537" stroke="#3b6ea8" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <rect x="800" y="524" width="190" height="26" rx="13" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="895" y="541" text-anchor="middle" fill="#222">trade_event (critical)</text>
+  <line x1="660" y1="537" x2="798" y2="537" stroke="#d9480f" stroke-width="1.6" marker-end="url(#ah)"/>
+  <rect x="30" y="601" width="1040" height="96" rx="3" fill="#ffffff" stroke="#555"/>
+  <rect x="45" y="613" width="22" height="14" rx="7" fill="#ffffff" stroke="#555"/>
+  <text x="75" y="625" fill="#222">IB via OrderExecutor, Redis</text>
+  <rect x="283.2" y="613" width="22" height="14" rx="7" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="313.2" y="625" fill="#222">IB mirror (only position_sync writes it)</text>
+  <rect x="607.2" y="613" width="22" height="14" rx="7" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="637.2" y="625" fill="#222">our book (fills, orders, legs)</text>
+  <rect x="865.2" y="613" width="22" height="14" rx="7" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="895.2" y="625" fill="#222">breaks and alerts</text>
+  <line x1="45" y1="646" x2="85" y2="646" stroke="#3b6ea8" stroke-width="1.4" stroke-dasharray="5 3" marker-end="url(#a)"/><text x="95" y="650" fill="#222">reads</text>
+  <line x1="160" y1="646" x2="200" y2="646" stroke="#d9480f" stroke-width="1.6" marker-end="url(#ah)"/><text x="210" y="650" fill="#222">writes</text>
+  <text x="290" y="650" fill="#222">Only order_reconciler writes the filled edge from the mirror; the reaper leaves a held order to it and only expires.</text>
+  <text x="45" y="677" fill="#222">After every (re)connect the session pass also runs sync_positions_from_ib and reconcile_stuck_orders once, before the ready gate opens.</text>
+</svg>

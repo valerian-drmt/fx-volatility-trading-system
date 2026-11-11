@@ -94,6 +94,8 @@ The pipeline side is in [`deployment.md`](deployment.md#rollback): the
 previous release's images stay on the host, and a rollback past a migration
 stops unless explicitly allowed.
 
+![A rollback past a migration stops unless the downgrade is explicitly allowed, and the downgrade only runs after the pre-deploy dump](../diagrams/ops-rollback-flow.svg)
+
 1. Find the previous good sha: `inventory` prints `previous_tag=sha-<sha>`, or
    `gh run list --workflow deploy.yml --limit 5`.
 2. Did the bad release add migrations? Compare the heads:
@@ -175,6 +177,8 @@ API Trusted IPs), `/etc/letsencrypt`, and the obs volumes. See
   closed-market banner. Not an incident.
 
 ### 4.2 Triage
+
+![The failure signature picks the fix; only a dead Gateway app or a lost upstream session is cured by the restart sequence](../diagrams/ops-ib-recovery.svg)
 
 ```bash
 cd /opt/fxvol

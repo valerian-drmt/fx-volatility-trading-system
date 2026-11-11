@@ -1,0 +1,183 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="674" viewBox="0 0 1100 674" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="674" fill="#ffffff"/>
+  <text x="550" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">Pure code carries a 95 % coverage floor; the four engines that talk to IB sit between 22 and 59 %</text>
+  <text x="550" y="52" text-anchor="middle" fill="#555">Layers of src/ and the frontend against the kinds of test that reach them (tests/, pyproject coverage floors, ci.yml), main on 2026-11-11</text>
+  <text x="20" y="92" text-anchor="start" font-weight="bold" fill="#222">Layer</text>
+  <text x="281" y="92" text-anchor="middle" font-weight="bold" fill="#222">Unit files</text>
+  <text x="330" y="92" text-anchor="start" font-weight="bold" fill="#222">Line coverage floor in CI</text>
+  <text x="650" y="92" text-anchor="middle" font-weight="bold" fill="#222">Postgres live</text>
+  <text x="775" y="92" text-anchor="middle" font-weight="bold" fill="#222">Redis live</text>
+  <text x="895" y="92" text-anchor="middle" font-weight="bold" fill="#222">IB paper</text>
+  <text x="1022" y="92" text-anchor="middle" font-weight="bold" fill="#222">Browser e2e</text>
+  <text x="900" y="108" text-anchor="middle" fill="#555">manual only</text>
+  <text x="710" y="108" text-anchor="middle" fill="#555">every push and PR (live-integration job)</text>
+  <text x="1022" y="108" text-anchor="middle" fill="#555">every push and PR</text>
+  <rect x="16" y="122" width="1068" height="28" fill="#f6f6f6"/>
+  <text x="20" y="140" fill="#222">core</text>
+  <text x="281" y="140" text-anchor="middle" fill="#222">54</text>
+  <rect x="330" y="129" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="129" width="190" height="14" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="538" y="140" fill="#222">95 %</text>
+  <text x="650" y="140" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="140" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="140" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="140" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="20" y="168" fill="#222">bus</text>
+  <text x="281" y="168" text-anchor="middle" fill="#222">5</text>
+  <rect x="330" y="157" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="157" width="154" height="14" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="538" y="168" fill="#222">77 %</text>
+  <text x="650" y="168" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <rect x="722" y="154" width="106" height="20" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="775" y="168" text-anchor="middle" fill="#222">pub/sub live</text>
+  <text x="895" y="168" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <rect x="962" y="154" width="120" height="20" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="1022" y="168" text-anchor="middle" fill="#222">live round trip</text>
+  <rect x="16" y="178" width="1068" height="28" fill="#f6f6f6"/>
+  <text x="20" y="196" fill="#222">shared</text>
+  <text x="281" y="196" text-anchor="middle" fill="#222">12</text>
+  <rect x="330" y="185" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="185" width="170" height="14" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="538" y="196" fill="#222">85 %</text>
+  <text x="650" y="196" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="196" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="196" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="196" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="20" y="224" fill="#222">persistence</text>
+  <text x="281" y="224" text-anchor="middle" fill="#222">9</text>
+  <rect x="330" y="213" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="213" width="176" height="14" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="538" y="224" fill="#222">88 %</text>
+  <rect x="592" y="210" width="116" height="20" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="650" y="224" text-anchor="middle" fill="#222">migrations, config</text>
+  <text x="775" y="224" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="224" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="224" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <rect x="16" y="234" width="1068" height="28" fill="#f6f6f6"/>
+  <text x="20" y="252" fill="#222">api auth, schemas, middleware</text>
+  <text x="281" y="252" text-anchor="middle" fill="#222">7</text>
+  <rect x="330" y="241" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="241" width="196" height="14" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="538" y="252" fill="#222">98 %</text>
+  <text x="650" y="252" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="252" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="252" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="252" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="20" y="280" fill="#222">api/ws (bridge, origin)</text>
+  <text x="281" y="280" text-anchor="middle" fill="#222">3</text>
+  <rect x="330" y="269" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="269" width="186" height="14" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="538" y="280" fill="#222">93 %</text>
+  <text x="650" y="280" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="280" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="280" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <rect x="962" y="266" width="120" height="20" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="1022" y="280" text-anchor="middle" fill="#222">live round trip</text>
+  <rect x="16" y="290" width="1068" height="28" fill="#f6f6f6"/>
+  <text x="20" y="308" fill="#222">api/orchestration</text>
+  <text x="281" y="308" text-anchor="middle" fill="#222">9</text>
+  <rect x="330" y="297" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="297" width="94" height="14" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="538" y="308" fill="#222">47 %</text>
+  <text x="650" y="308" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="308" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="308" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="308" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="20" y="336" fill="#222">api/routers</text>
+  <text x="281" y="336" text-anchor="middle" fill="#222">23</text>
+  <rect x="330" y="325" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="325" width="78" height="14" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="538" y="336" fill="#222">39 %</text>
+  <rect x="592" y="322" width="116" height="20" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="650" y="336" text-anchor="middle" fill="#222">portfolio panels</text>
+  <text x="775" y="336" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="336" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="336" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <rect x="16" y="346" width="1068" height="28" fill="#f6f6f6"/>
+  <text x="20" y="364" fill="#222">engines/db_writer</text>
+  <text x="281" y="364" text-anchor="middle" fill="#222">2</text>
+  <rect x="330" y="353" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="353" width="144" height="14" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="538" y="364" fill="#222">72 %</text>
+  <rect x="592" y="350" width="116" height="20" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="650" y="364" text-anchor="middle" fill="#222">idempotency</text>
+  <text x="775" y="364" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="364" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="364" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="20" y="392" fill="#222">engines/execution</text>
+  <text x="281" y="392" text-anchor="middle" fill="#222">18</text>
+  <rect x="330" y="381" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="381" width="118" height="14" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="538" y="392" fill="#222">59 %</text>
+  <text x="650" y="392" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="392" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <rect x="842" y="378" width="106" height="20" rx="3" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="895" y="392" text-anchor="middle" fill="#222">paper smoke</text>
+  <text x="1022" y="392" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <rect x="16" y="402" width="1068" height="28" fill="#f6f6f6"/>
+  <text x="20" y="420" fill="#222">engines/market_data</text>
+  <text x="281" y="420" text-anchor="middle" fill="#222">2</text>
+  <rect x="330" y="409" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="409" width="108" height="14" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="538" y="420" fill="#222">54 %</text>
+  <text x="650" y="420" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="420" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="420" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="420" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="20" y="448" fill="#222">engines/analytics</text>
+  <text x="281" y="448" text-anchor="middle" fill="#222">5</text>
+  <rect x="330" y="437" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="437" width="116" height="14" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="538" y="448" fill="#222">58 %</text>
+  <text x="650" y="448" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="448" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="448" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="448" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <rect x="16" y="458" width="1068" height="28" fill="#f6f6f6"/>
+  <text x="20" y="476" fill="#222">engines/risk</text>
+  <text x="281" y="476" text-anchor="middle" fill="#222">3</text>
+  <rect x="330" y="465" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="465" width="92" height="14" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="538" y="476" fill="#222">46 %</text>
+  <text x="650" y="476" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="476" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="476" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="476" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="20" y="504" fill="#222">engines/vol</text>
+  <text x="281" y="504" text-anchor="middle" fill="#222">3</text>
+  <rect x="330" y="493" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="493" width="44" height="14" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="538" y="504" fill="#222">22 %</text>
+  <text x="650" y="504" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="504" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="504" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="1022" y="504" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <rect x="16" y="514" width="1068" height="28" fill="#f6f6f6"/>
+  <text x="20" y="532" fill="#222">frontend (vitest)</text>
+  <text x="281" y="532" text-anchor="middle" fill="#222">23</text>
+  <rect x="330" y="521" width="200" height="14" fill="#ffffff" stroke="#cccccc"/>
+  <rect x="330" y="521" width="76" height="14" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="538" y="532" fill="#222">38 %</text>
+  <text x="650" y="532" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="775" y="532" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <text x="895" y="532" text-anchor="middle" fill="#bbbbbb">&#8211;</text>
+  <rect x="962" y="518" width="120" height="20" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="1022" y="532" text-anchor="middle" fill="#222">smoke + round trip</text>
+  <line x1="16" y1="542" x2="1084" y2="542" stroke="#cccccc"/>
+  <rect x="20" y="557" width="22" height="14" rx="3" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="50" y="568" fill="#222">floor 85 % or more</text>
+  <rect x="232" y="557" width="22" height="14" rx="3" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="262" y="568" fill="#222">50 to 84 %</text>
+  <rect x="444" y="557" width="22" height="14" rx="3" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="474" y="568" fill="#222">under 50 %</text>
+  <rect x="656" y="557" width="22" height="14" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="686" y="568" fill="#222">runs on every push</text>
+  <rect x="868" y="557" width="22" height="14" rx="3" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="898" y="568" fill="#222">runs by hand only</text>
+  <rect x="16" y="586" width="530" height="46" rx="4" fill="#ffffff" stroke="#555555"/>
+  <text x="28" y="605" fill="#222">Floors are per package (scripts/ci/check_coverage.py),</text>
+  <text x="28" y="622" fill="#555">set about one point under the 2026-11-10 measure; frontend = vitest lines</text>
+  <rect x="554" y="586" width="530" height="46" rx="4" fill="#ffffff" stroke="#555555"/>
+  <text x="566" y="605" fill="#222">Live round trip: the compose job seeds Redis through bus code</text>
+  <text x="566" y="622" fill="#555">and the desk must show it via api, WS bridge and nginx</text>
+</svg>

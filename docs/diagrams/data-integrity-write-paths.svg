@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="700" viewBox="0 0 1100 700" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="700" fill="#ffffff"/>
+  <defs>
+    <marker id="mc" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="mn" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="mf" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="mo" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <marker id="mh" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+  </defs>
+  <text x="550" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">A streamed row lands once on its natural key; a bad row is dead-lettered, not its batch</text>
+  <text x="550" y="52" text-anchor="middle" fill="#555">shared/db_events.py  &#8594;  Redis db_events  &#8594;  engines/db_writer/service.py  &#8594;  persistence/writer.py  &#8594;  Postgres  (main, 2026-11-11)</text>
+  <rect x="16" y="110" width="180" height="74" rx="4" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.2"/>
+  <text x="106" y="136" text-anchor="middle" fill="#222" font-weight="bold">vol-engine</text>
+  <text x="106" y="151" text-anchor="middle" fill="#555">4 tables per scan (~3 min)</text>
+  <text x="106" y="166" text-anchor="middle" fill="#555">one cycle_ts on every row</text>
+  <rect x="16" y="214" width="180" height="58" rx="4" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.2"/>
+  <text x="106" y="240" text-anchor="middle" fill="#222" font-weight="bold">analytics-engine</text>
+  <text x="106" y="254" text-anchor="middle" fill="#555">hourly PCA snapshot</text>
+  <rect x="228" y="140" width="170" height="74" rx="4" fill="#fff3cd" stroke="#b7791f" stroke-width="1.2"/>
+  <text x="313" y="166" text-anchor="middle" fill="#222" font-weight="bold">Redis db_events</text>
+  <text x="313" y="181" text-anchor="middle" fill="#555">pub/sub, fire and forget</text>
+  <text x="313" y="196" text-anchor="middle" fill="#555">{table, payload} JSON</text>
+  <path d="M196,147 L226,165" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#mc)"/>
+  <path d="M196,243 L226,195" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#mc)"/>
+  <rect x="228" y="262" width="170" height="50" rx="4" fill="#f8d7da" stroke="#b02a37" stroke-width="1.2"/>
+  <text x="313" y="284" text-anchor="middle" fill="#222" font-weight="bold">no db-writer subscribed:</text>
+  <text x="313" y="298" text-anchor="middle" fill="#555">frame lost, no backlog</text>
+  <path d="M313,214 L313,260" fill="none" stroke="#b02a37" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#mf)"/>
+  <rect x="424" y="74" width="404" height="420" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="436" y="93" font-weight="bold" fill="#222">db-writer</text>
+  <rect x="440" y="104" width="200" height="44" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="540" y="122" text-anchor="middle" fill="#222" font-weight="bold">parse the frame</text>
+  <text x="540" y="138" text-anchor="middle" fill="#555">table + payload</text>
+  <rect x="664" y="104" width="152" height="44" rx="4" fill="#f8d7da" stroke="#b02a37" stroke-width="1.2"/>
+  <text x="740" y="122" text-anchor="middle" fill="#222" font-weight="bold">malformed:</text>
+  <text x="740" y="138" text-anchor="middle" fill="#555">logged, dropped</text>
+  <rect x="440" y="172" width="200" height="44" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="540" y="190" text-anchor="middle" fill="#222" font-weight="bold">asyncio queue</text>
+  <text x="540" y="206" text-anchor="middle" fill="#555">max 10,000 frames</text>
+  <rect x="664" y="172" width="152" height="44" rx="4" fill="#f8d7da" stroke="#b02a37" stroke-width="1.2"/>
+  <text x="740" y="190" text-anchor="middle" fill="#222" font-weight="bold">full: dropped,</text>
+  <text x="740" y="206" text-anchor="middle" fill="#555">counted by a metric</text>
+  <rect x="440" y="240" width="200" height="44" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="540" y="258" text-anchor="middle" fill="#222" font-weight="bold">batch</text>
+  <text x="540" y="274" text-anchor="middle" fill="#555">100 rows or 5 s</text>
+  <rect x="440" y="308" width="200" height="58" rx="4" fill="#d1e7dd" stroke="#146c43" stroke-width="1.2"/>
+  <text x="540" y="326" text-anchor="middle" fill="#222" font-weight="bold">bulk INSERT</text>
+  <text x="540" y="341" text-anchor="middle" fill="#555">ON CONFLICT (natural key)</text>
+  <text x="540" y="356" text-anchor="middle" fill="#555">DO NOTHING</text>
+  <rect x="664" y="228" width="152" height="58" rx="4" fill="#fff3cd" stroke="#b7791f" stroke-width="1.2"/>
+  <text x="740" y="246" text-anchor="middle" fill="#222" font-weight="bold">transient DB error:</text>
+  <text x="740" y="261" text-anchor="middle" fill="#555">batch re-sent, 3 tries,</text>
+  <text x="740" y="276" text-anchor="middle" fill="#555">a re-send is a no-op</text>
+  <rect x="440" y="396" width="200" height="74" rx="4" fill="#f8d7da" stroke="#b02a37" stroke-width="1.2"/>
+  <text x="540" y="414" text-anchor="middle" fill="#222" font-weight="bold">unknown table or</text>
+  <text x="540" y="430" text-anchor="middle" fill="#555">row error: retry row</text>
+  <text x="540" y="444" text-anchor="middle" fill="#555">by row, dead-letter</text>
+  <text x="540" y="460" text-anchor="middle" fill="#555">what still fails</text>
+  <path d="M398,177 L438,126" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#mn)"/>
+  <path d="M640,126 L662,126" fill="none" stroke="#b02a37" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#mf)"/>
+  <path d="M540,148 L540,170" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <path d="M640,194 L662,194" fill="none" stroke="#b02a37" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#mf)"/>
+  <path d="M540,216 L540,238" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <path d="M540,284 L540,306" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <path d="M540,366 L540,394" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#mf)"/>
+  <path d="M640,322 L740,322 L740,288" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#mn)"/>
+  <path d="M664,262 L642,262" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#mn)"/>
+  <rect x="850" y="74" width="234" height="420" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="862" y="93" font-weight="bold" fill="#222">Postgres: table (natural key)</text>
+  <rect x="862" y="104" width="210" height="42" rx="4" fill="#d1e7dd" stroke="#146c43" stroke-width="1.2"/>
+  <text x="967" y="122" text-anchor="middle" fill="#222" font-weight="bold">vol_surface_history</text>
+  <text x="967" y="136" text-anchor="middle" fill="#555">(timestamp, underlying)</text>
+  <rect x="862" y="154" width="210" height="42" rx="4" fill="#d1e7dd" stroke="#146c43" stroke-width="1.2"/>
+  <text x="967" y="172" text-anchor="middle" fill="#222" font-weight="bold">feature_history</text>
+  <text x="967" y="186" text-anchor="middle" fill="#555">(symbol, timestamp)</text>
+  <rect x="862" y="204" width="210" height="42" rx="4" fill="#d1e7dd" stroke="#146c43" stroke-width="1.2"/>
+  <text x="967" y="222" text-anchor="middle" fill="#222" font-weight="bold">regime_snapshot_history</text>
+  <text x="967" y="236" text-anchor="middle" fill="#555">(symbol, timestamp)</text>
+  <rect x="862" y="254" width="210" height="42" rx="4" fill="#d1e7dd" stroke="#146c43" stroke-width="1.2"/>
+  <text x="967" y="272" text-anchor="middle" fill="#222" font-weight="bold">pca_signal_history</text>
+  <text x="967" y="286" text-anchor="middle" fill="#555">(symbol, timestamp, model, pc)</text>
+  <rect x="862" y="304" width="210" height="42" rx="4" fill="#d1e7dd" stroke="#146c43" stroke-width="1.2"/>
+  <text x="967" y="322" text-anchor="middle" fill="#222" font-weight="bold">pca_surface_snapshot_history</text>
+  <text x="967" y="336" text-anchor="middle" fill="#555">(symbol, timestamp)</text>
+  <rect x="862" y="404" width="210" height="58" rx="4" fill="#f8d7da" stroke="#b02a37" stroke-width="1.2"/>
+  <text x="967" y="422" text-anchor="middle" fill="#222" font-weight="bold">db_writer_dead_letter</text>
+  <text x="967" y="437" text-anchor="middle" fill="#555">row + error kept,</text>
+  <text x="967" y="452" text-anchor="middle" fill="#555">replayed by hand</text>
+  <path d="M640,352 L848,352" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#mo)"/>
+  <text x="745" y="345" text-anchor="middle" fill="#146c43">rows land</text>
+  <path d="M640,433 L860,433" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#mf)"/>
+  <line x1="16" y1="522" x2="1084" y2="522" stroke="#cccccc"/>
+  <text x="16" y="546" font-weight="bold" fill="#222">Direct writes: these tables never cross db-writer; each engine commits in its own session</text>
+  <rect x="16" y="566" width="220" height="44" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="126" y="584" text-anchor="middle" fill="#222" font-weight="bold">execution position sync</text>
+  <text x="126" y="600" text-anchor="middle" fill="#555">every 1 s</text>
+  <rect x="16" y="626" width="220" height="44" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="126" y="644" text-anchor="middle" fill="#222" font-weight="bold">risk-engine</text>
+  <text x="126" y="660" text-anchor="middle" fill="#555">every 30 s</text>
+  <rect x="862" y="566" width="210" height="44" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="967" y="584" text-anchor="middle" fill="#222" font-weight="bold">open_position</text>
+  <text x="967" y="600" text-anchor="middle" fill="#555">account_history</text>
+  <rect x="862" y="626" width="210" height="44" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="967" y="652" text-anchor="middle" fill="#222" font-weight="bold">open_position_history</text>
+  <path d="M236,588 L860,588" fill="none" stroke="#d9480f" stroke-width="1.5" marker-end="url(#mh)"/>
+  <text x="548" y="580" text-anchor="middle" fill="#d9480f">upsert + insert, committed by the sync loop</text>
+  <path d="M236,648 L860,648" fill="none" stroke="#d9480f" stroke-width="1.5" marker-end="url(#mh)"/>
+  <text x="548" y="640" text-anchor="middle" fill="#d9480f">insert</text>
+</svg>

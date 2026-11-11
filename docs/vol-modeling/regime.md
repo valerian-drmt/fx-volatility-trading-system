@@ -20,7 +20,7 @@ snapshot.
 | Feature | Definition |
 |---------|------------|
 | `vol_level` | ATM IV at 3M (percent) |
-| `vol_of_vol` | rolling 30-obs std of the 3M ATM IV (needs ≥ 20 obs) |
+| `vol_of_vol` | std of the last 30 days of 3M ATM IV from `feature_history` (needs ≥ 20 obs, else `None`) |
 | `term_slope` | `iv_atm_6m − iv_atm_1m` (percent) |
 
 Each feature is z-scored against a 90-day rolling history via
@@ -93,7 +93,9 @@ if label == "stressed":  return (True,  "regime_stressed",  0.7)
 if label == "calm":      return (True,  "regime_calm",      1.0)
 ```
 
-So the `size_mult` a [PCA signal](pca-signals.md) is scaled by is:
+The rules are tested in that order, so the event dampener wins over the label:
+a held `pre_event` label with an event inside 5 days returns
+`(True, "event_dampener_active", 0.5)`. The decision table is:
 
 | Condition | Authorized | size_mult |
 |-----------|-----------|-----------|
@@ -102,6 +104,16 @@ So the `size_mult` a [PCA signal](pca-signals.md) is scaled by is:
 | pre_event | no | 0.0 |
 | stressed | yes | 0.7 |
 | calm | yes | 1.0 |
+
+![The regime label is recomputed from scratch every cycle; only the gate remembers three cycles](../diagrams/regime-state-machine.svg)
+
+The label itself has no memory: `detect_regime` runs on each vol-engine cycle
+(180 s) and any label can follow any other. The three-cycle memory lives in
+`gate_decision`, which reads the current label plus the two before it. Its
+result is served by `GET /regime/state` and logged by the vol engine; the
+trade preview does not call it (it refuses `pre_event` through its own
+`regime_not_pre_event` check and scales its limits with
+`apply_regime_to_limits`).
 
 ## 5. Event dampener
 
@@ -112,12 +124,14 @@ blocking outright.
 
 ## How regime gates the desk
 
-- **Sizing** — the gate `size_mult` scales every actionable signal.
+- **Sizing** — the gate `size_mult` is published for the desk; the trade
+  preview does not apply it (see the gate section above).
 - **Fair value** — `detect_regime` also selects the [VRP bucket](forecasting.md)
   in `build_fair_q`, so the regime shifts the fair smile itself (a stressed regime
   widens the expected IV−RV premium).
 - **Persistence** — the 3-cycle stability rule means a single anomalous cycle
-  never flips the desk into or out of trading.
+  never flips the published gate into or out of authorization (the label
+  shown next to it can still change every cycle).
 
 ## See also
 

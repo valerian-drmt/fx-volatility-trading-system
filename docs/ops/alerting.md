@@ -5,6 +5,10 @@ topic `fxvol-alarms` had a confirmed email subscription and zero publishers.
 
 ## Two independent paths
 
+Both end at the same SNS topic; only the first depends on the obs profile:
+
+![Prometheus rules reach the mailbox through Alertmanager, its inhibit rules and the instance role, while the host disk cron publishes to the same SNS topic without the obs profile](../diagrams/alerting-paths.svg)
+
 | Path | Runs where | Covers | Needs |
 |---|---|---|---|
 | Prometheus rules → Alertmanager → SNS | the `obs` profile on the host (`obs/alerts.yml`, `obs/alertmanager.yml`) | engines down or stalled, api down, IB session down, crash loops, db-writer lag, disk, memory caps, backup age | the obs profile up; instance role with `sns:Publish`; IMDS reachable from the container |

@@ -1,15 +1,14 @@
 """Sync IB live positions → Postgres `positions` + insert `position_snapshots`.
 
 Pipeline :
-  - **sync_positions_from_ib** : upserts IB → DB. Matched by the tuple
-    (symbol, instrument_type, strike, maturity, option_type) — no need to
-    add a con_id column to OpenPosition.
+  - **sync_positions_from_ib** : upserts IB → DB, matched on the IB
+    ``localSymbol`` (the ``open_position.structure`` column).
   - **publish_portfolio_to_redis** : for every OPEN position, publishes the
     IB-canonical data on Redis hashes (contract_marks / option_marks /
     unrealized_pnl). No DB write here — risk-engine is the only writer of
     ``position_snapshots`` (cf. PORTFOLIO_PANEL_LIVE.md).
 
-Runs at api startup + via a periodic loop (30s).
+Runs at execution-engine startup, then every ``SYNC_INTERVAL_S`` (5 s in compose).
 """
 from __future__ import annotations
 

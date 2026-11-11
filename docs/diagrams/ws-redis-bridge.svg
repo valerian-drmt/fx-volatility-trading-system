@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="690" viewBox="0 0 1100 690" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="690" fill="#ffffff"/>
+  <defs>
+    <marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="ac" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="an" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="af" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+  </defs>
+  <text x="550" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">One bridge subscribes to every channel; each message reaches only the sockets of its channel</text>
+  <text x="550" y="52" text-anchor="middle" fill="#555">bus/publisher.py  &#8594;  Redis pub/sub  &#8594;  api/ws/redis_bridge.py  &#8594;  api/ws/connection_manager.py  &#8594;  api/routers/ws.py  &#8594;  nginx  &#8594;  hooks/streams.ts</text>
+  <text x="101" y="86" text-anchor="middle" font-size="13" font-weight="bold" fill="#222">Publisher</text>
+  <text x="290" y="86" text-anchor="middle" font-size="13" font-weight="bold" fill="#222">Redis channel</text>
+  <text x="550" y="86" text-anchor="middle" font-size="13" font-weight="bold" fill="#222">api process</text>
+  <text x="807" y="86" text-anchor="middle" font-size="13" font-weight="bold" fill="#222">WebSocket</text>
+  <text x="995" y="86" text-anchor="middle" font-size="13" font-weight="bold" fill="#222">Desk reader</text>
+  <rect x="395" y="96" width="310" height="472" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <rect x="405" y="104" width="140" height="456" rx="4" fill="#fff3cd" stroke="#b7791f"/>
+  <rect x="560" y="104" width="135" height="456" rx="4" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="475" y="122" text-anchor="middle" fill="#222" font-weight="bold">redis_to_ws_bridge</text>
+  <text x="475" y="137" text-anchor="middle" fill="#222">SUBSCRIBE 8 channels</text>
+  <text x="475" y="152" text-anchor="middle" fill="#222">PSUBSCRIBE orders:*</text>
+  <text x="627" y="122" text-anchor="middle" fill="#222" font-weight="bold">ConnectionManager</text>
+  <text x="627" y="137" text-anchor="middle" fill="#222">channel &#8594; sockets</text>
+  <text x="627" y="152" text-anchor="middle" fill="#222">broadcast(channel)</text>
+  <rect x="16" y="172" width="170" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="101" y="186" text-anchor="middle" fill="#222" font-weight="bold">market-data</text>
+  <text x="101" y="201" text-anchor="middle" fill="#555">tick, max 1 per 200 ms</text>
+  <rect x="210" y="172" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="290" y="193" text-anchor="middle" fill="#222" font-weight="bold">ticks</text>
+  <line x1="186" y1="189" x2="208" y2="189" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="370" y1="189" x2="726" y2="189" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="728" y="172" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="808" y="193" text-anchor="middle" fill="#222" font-weight="bold">/ws/ticks</text>
+  <line x1="888" y1="189" x2="904" y2="189" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="906" y="172" width="178" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="995" y="186" text-anchor="middle" fill="#222" font-weight="bold">top bar bid / ask / mid</text>
+  <text x="995" y="201" text-anchor="middle" fill="#555">(useTicks, 1 s smoothing)</text>
+  <rect x="16" y="216" width="170" height="34" rx="4" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.2"/>
+  <text x="101" y="230" text-anchor="middle" fill="#222" font-weight="bold">vol-engine</text>
+  <text x="101" y="245" text-anchor="middle" fill="#555">end of scan, ~3 min</text>
+  <rect x="210" y="216" width="160" height="34" rx="4" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.2"/>
+  <text x="290" y="237" text-anchor="middle" fill="#222" font-weight="bold">vol_update</text>
+  <line x1="186" y1="233" x2="208" y2="233" stroke="#3b6ea8" stroke-width="1.4" marker-end="url(#ac)"/>
+  <line x1="370" y1="233" x2="726" y2="233" stroke="#3b6ea8" stroke-width="1.4" marker-end="url(#ac)"/>
+  <rect x="728" y="216" width="160" height="34" rx="4" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.2"/>
+  <text x="808" y="237" text-anchor="middle" fill="#222" font-weight="bold">/ws/vol</text>
+  <line x1="888" y1="233" x2="904" y2="233" stroke="#3b6ea8" stroke-width="1.4" marker-end="url(#ac)"/>
+  <rect x="906" y="216" width="178" height="34" rx="4" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.2"/>
+  <text x="995" y="230" text-anchor="middle" fill="#222" font-weight="bold">re-fetch surface snapshots</text>
+  <text x="995" y="245" text-anchor="middle" fill="#555">at most every 30 s</text>
+  <rect x="16" y="260" width="170" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="101" y="274" text-anchor="middle" fill="#222" font-weight="bold">risk-engine</text>
+  <text x="101" y="289" text-anchor="middle" fill="#555">end of cycle, ~2 s</text>
+  <rect x="210" y="260" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="290" y="281" text-anchor="middle" fill="#222" font-weight="bold">risk_update</text>
+  <line x1="186" y1="277" x2="208" y2="277" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="370" y1="277" x2="726" y2="277" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="728" y="260" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="808" y="281" text-anchor="middle" fill="#222" font-weight="bold">/ws/risk</text>
+  <line x1="888" y1="277" x2="904" y2="277" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="906" y="260" width="178" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="995" y="274" text-anchor="middle" fill="#222" font-weight="bold">re-fetch risk + portfolio</text>
+  <text x="995" y="289" text-anchor="middle" fill="#555">at most every 15 s</text>
+  <rect x="16" y="304" width="170" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="101" y="318" text-anchor="middle" fill="#222" font-weight="bold">execution</text>
+  <text x="101" y="333" text-anchor="middle" fill="#555">fills_handler</text>
+  <rect x="210" y="304" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="290" y="318" text-anchor="middle" fill="#222" font-weight="bold">orders:&lt;structure_id&gt;</text>
+  <text x="290" y="333" text-anchor="middle" fill="#555">via PSUBSCRIBE orders:*</text>
+  <line x1="186" y1="321" x2="208" y2="321" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="370" y1="321" x2="726" y2="321" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <text x="475" y="316" text-anchor="middle" fill="#555">pmessage</text>
+  <text x="627" y="316" text-anchor="middle" fill="#555">one key per id</text>
+  <rect x="728" y="304" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="808" y="325" text-anchor="middle" fill="#222" font-weight="bold">/ws/orders/{structure_id}</text>
+  <line x1="888" y1="321" x2="904" y2="321" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="906" y="304" width="178" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="995" y="318" text-anchor="middle" fill="#222" font-weight="bold">order ticket while</text>
+  <text x="995" y="333" text-anchor="middle" fill="#555">a submit is working</text>
+  <rect x="16" y="348" width="170" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="101" y="362" text-anchor="middle" fill="#222" font-weight="bold">execution position sync</text>
+  <text x="101" y="377" text-anchor="middle" fill="#555">+ api position monitor</text>
+  <rect x="210" y="348" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="290" y="369" text-anchor="middle" fill="#222" font-weight="bold">positions</text>
+  <line x1="186" y1="365" x2="208" y2="365" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="370" y1="365" x2="726" y2="365" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="728" y="348" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="808" y="369" text-anchor="middle" fill="#222" font-weight="bold">/ws/positions</text>
+  <line x1="888" y1="365" x2="904" y2="365" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="906" y="348" width="178" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="995" y="362" text-anchor="middle" fill="#222" font-weight="bold">positions table patch</text>
+  <text x="995" y="377" text-anchor="middle" fill="#555">(MTM snapshot ignored)</text>
+  <rect x="16" y="392" width="170" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="101" y="406" text-anchor="middle" fill="#222" font-weight="bold">execution</text>
+  <text x="101" y="421" text-anchor="middle" fill="#555">position sync</text>
+  <rect x="210" y="392" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="290" y="413" text-anchor="middle" fill="#222" font-weight="bold">account</text>
+  <line x1="186" y1="409" x2="208" y2="409" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="370" y1="409" x2="726" y2="409" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="728" y="392" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="808" y="413" text-anchor="middle" fill="#222" font-weight="bold">/ws/account</text>
+  <line x1="888" y1="409" x2="904" y2="409" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="906" y="392" width="178" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="995" y="413" text-anchor="middle" fill="#222" font-weight="bold">cash / margin panels</text>
+  <rect x="16" y="436" width="170" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="101" y="450" text-anchor="middle" fill="#222" font-weight="bold">execution</text>
+  <text x="101" y="465" text-anchor="middle" fill="#555">spot order change</text>
+  <rect x="210" y="436" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="290" y="457" text-anchor="middle" fill="#222" font-weight="bold">spot_orders</text>
+  <line x1="186" y1="453" x2="208" y2="453" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="370" y1="453" x2="726" y2="453" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="728" y="436" width="160" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="808" y="457" text-anchor="middle" fill="#222" font-weight="bold">/ws/spot_orders</text>
+  <line x1="888" y1="453" x2="904" y2="453" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <rect x="906" y="436" width="178" height="34" rx="4" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.2"/>
+  <text x="995" y="457" text-anchor="middle" fill="#222" font-weight="bold">spot blotter rows</text>
+  <rect x="16" y="480" width="170" height="34" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <text x="101" y="501" text-anchor="middle" fill="#222" font-weight="bold">api position monitor</text>
+  <rect x="210" y="480" width="160" height="34" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <text x="290" y="501" text-anchor="middle" fill="#222" font-weight="bold">exit_alerts</text>
+  <line x1="186" y1="497" x2="208" y2="497" stroke="#555555" stroke-width="1.4" marker-end="url(#an)"/>
+  <line x1="370" y1="497" x2="726" y2="497" stroke="#555555" stroke-width="1.4" marker-end="url(#an)"/>
+  <rect x="728" y="480" width="160" height="34" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <text x="808" y="501" text-anchor="middle" fill="#222" font-weight="bold">/ws/exit_alerts</text>
+  <line x1="888" y1="497" x2="904" y2="497" stroke="#555555" stroke-width="1.4" marker-end="url(#an)"/>
+  <rect x="906" y="480" width="178" height="34" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <text x="995" y="501" text-anchor="middle" fill="#222" font-weight="bold">not read by the desk</text>
+  <rect x="16" y="524" width="170" height="34" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <text x="101" y="538" text-anchor="middle" fill="#222" font-weight="bold">api /admin/halt</text>
+  <text x="101" y="553" text-anchor="middle" fill="#555">(bus.halt mirror)</text>
+  <rect x="210" y="524" width="160" height="34" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <text x="290" y="545" text-anchor="middle" fill="#222" font-weight="bold">system_alerts</text>
+  <line x1="186" y1="541" x2="208" y2="541" stroke="#555555" stroke-width="1.4" marker-end="url(#an)"/>
+  <line x1="370" y1="541" x2="620" y2="541" stroke="#555555" stroke-width="1.4"/>
+  <path d="M614,535 L626,547 M626,535 L614,547" stroke="#b02a37" stroke-width="2"/>
+  <rect x="728" y="524" width="356" height="34" rx="4" fill="#f8d7da" stroke="#b02a37" stroke-width="1.2"/>
+  <text x="906" y="538" text-anchor="middle" fill="#222" font-weight="bold">no /ws/ endpoint serves this channel</text>
+  <text x="906" y="553" text-anchor="middle" fill="#555">forwarded by the bridge, reaches no client</text>
+  <rect x="40" y="583" width="22" height="14" rx="3" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="70" y="594" fill="#222">hot path: an operator waits on it</text>
+  <rect x="305" y="583" width="22" height="14" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="335" y="594" fill="#222">cold path: invalidation beat</text>
+  <rect x="570" y="583" width="22" height="14" rx="3" fill="#ffffff" stroke="#555555" stroke-dasharray="5 3"/>
+  <text x="600" y="594" fill="#222">no desk reader</text>
+  <rect x="835" y="583" width="22" height="14" rx="3" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="865" y="594" fill="#222">forwarded but unserved</text>
+  <rect x="16" y="616" width="348" height="46" rx="4" fill="#ffffff" stroke="#555555"/>
+  <text x="28" y="635" fill="#222">Upgrade: Origin not on the allowlist</text>
+  <text x="28" y="652" fill="#555">closes 1008 before accept; no Origin = accepted</text>
+  <rect x="376" y="616" width="348" height="46" rx="4" fill="#ffffff" stroke="#555555"/>
+  <text x="388" y="635" fill="#222">At most once: pub/sub keeps no backlog;</text>
+  <text x="388" y="652" fill="#555">after a reconnect the desk re-reads REST</text>
+  <rect x="736" y="616" width="348" height="46" rx="4" fill="#ffffff" stroke="#555555"/>
+  <text x="748" y="635" fill="#222">Redis error: the bridge resubscribes after 2 s;</text>
+  <text x="748" y="652" fill="#555">a failed send drops only that socket</text>
+</svg>

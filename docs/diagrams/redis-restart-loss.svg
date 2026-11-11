@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="600" viewBox="0 0 1100 600" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="600" fill="#ffffff"/>
+  <defs>
+    <marker id="m-hot" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="s-hot" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#d9480f"/></marker>
+    <marker id="m-cold" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="s-cold" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#3b6ea8"/></marker>
+    <marker id="m-shared" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker>
+    <marker id="s-shared" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b7791f"/></marker>
+    <marker id="m-fail" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="s-fail" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b02a37"/></marker>
+    <marker id="m-ok" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <marker id="s-ok" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#146c43"/></marker>
+    <marker id="m-neutral" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-neutral" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+    <marker id="m-grey" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-grey" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+  </defs>
+  <text x="550" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">Redis carries values and frames, Postgres keeps the record: a restart costs freshness and in-flight frames only</text>
+  <rect x="20" y="90" width="190" height="80" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="115" y="119" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">engines</text>
+  <text x="115" y="135" font-size="12" fill="#555" text-anchor="middle">market-data, vol, risk,</text>
+  <text x="115" y="151" font-size="12" fill="#555" text-anchor="middle">execution, analytics</text>
+  <rect x="20" y="230" width="190" height="60" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="115" y="257" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">api</text>
+  <text x="115" y="273" font-size="12" fill="#555" text-anchor="middle">trade previews, submit locks</text>
+  <rect x="270" y="75" width="380" height="250" rx="8" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="460" y="97" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">redis  (container cap 320m)</text>
+  <text x="460" y="115" font-size="12" fill="#555" text-anchor="middle">maxmemory 256 MB · volatile-lru · RDB save, no AOF</text>
+  <rect x="290" y="130" width="340" height="82" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="460" y="152" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">TTL keys: last values</text>
+  <text x="460" y="168" font-size="12" fill="#555" text-anchor="middle">latest_spot:*, latest_vol_surface:*, heartbeat:*,</text>
+  <text x="460" y="184" font-size="12" fill="#555" text-anchor="middle">account_snapshot, trade:preview:* ...</text>
+  <text x="460" y="200" font-size="12" fill="#555" text-anchor="middle">TTL 10 s to 6 h, RDB snapshot to redis_data</text>
+  <rect x="290" y="232" width="340" height="76" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="460" y="259" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">db_events pub/sub channel</text>
+  <text x="460" y="275" font-size="12" fill="#555" text-anchor="middle">fire and forget: nothing stored,</text>
+  <text x="460" y="291" font-size="12" fill="#555" text-anchor="middle">a subscriber that is down misses frames</text>
+  <path d="M210,130 L288,160" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="202" y="115" width="85" height="16" fill="#ffffff"/>
+  <text x="245" y="126" font-size="12" fill="#b7791f" text-anchor="middle">SET with TTL</text>
+  <path d="M210,260 L288,190" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <path d="M210,150 L288,262" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="206" y="204" width="52" height="16" fill="#ffffff"/>
+  <text x="232" y="215" font-size="12" fill="#b7791f" text-anchor="middle">PUBLISH</text>
+  <rect x="720" y="90" width="170" height="60" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="805" y="116" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">api reads + WS bridge</text>
+  <text x="805" y="132" font-size="12" fill="#555" text-anchor="middle">serve the desk</text>
+  <rect x="720" y="240" width="170" height="60" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="805" y="267" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">db-writer</text>
+  <text x="805" y="283" font-size="12" fill="#555" text-anchor="middle">queue, ON CONFLICT</text>
+  <path d="M630,165 L650,165 L650,120 L718,120" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="672" y="102" width="26" height="16" fill="#ffffff"/>
+  <text x="685" y="113" font-size="12" fill="#b7791f" text-anchor="middle">GET</text>
+  <path d="M630,270 L718,270" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="641" y="252" width="65" height="16" fill="#ffffff"/>
+  <text x="674" y="263" font-size="12" fill="#b7791f" text-anchor="middle">SUBSCRIBE</text>
+  <rect x="940" y="160" width="140" height="120" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="1010" y="193" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">postgres</text>
+  <text x="1010" y="209" font-size="12" fill="#555" text-anchor="middle">system of record:</text>
+  <text x="1010" y="225" font-size="12" fill="#555" text-anchor="middle">orders, fills,</text>
+  <text x="1010" y="241" font-size="12" fill="#555" text-anchor="middle">positions, config,</text>
+  <text x="1010" y="257" font-size="12" fill="#555" text-anchor="middle">history</text>
+  <path d="M890,270 L938,255" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <path d="M115,170 L115,200 L230,200 L230,345 L1010,345 L1010,282" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="452" y="327" width="336" height="16" fill="#ffffff"/>
+  <text x="620" y="338" font-size="12" fill="#146c43" text-anchor="middle">risk and execution write their own tables directly</text>
+  <text x="20" y="392" font-size="13" fill="#222" font-weight="bold">On a Redis restart</text>
+  <rect x="20" y="405" width="340" height="110" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="190" y="433" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">TTL keys: stale, then rewritten</text>
+  <text x="190" y="449" font-size="12" fill="#555" text-anchor="middle">panels keep last values with a stale badge</text>
+  <text x="190" y="465" font-size="12" fill="#555" text-anchor="middle">until the next cycle (seconds to minutes);</text>
+  <text x="190" y="481" font-size="12" fill="#555" text-anchor="middle">/health/extended shows engines DOWN</text>
+  <text x="190" y="497" font-size="12" fill="#555" text-anchor="middle">until they heartbeat again</text>
+  <rect x="380" y="405" width="340" height="110" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="550" y="433" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">frames published while db-writer is down</text>
+  <text x="550" y="449" font-size="12" fill="#555" text-anchor="middle">lost: pub/sub has no backlog.</text>
+  <text x="550" y="465" font-size="12" fill="#555" text-anchor="middle">The only real loss. Inside the writer,</text>
+  <text x="550" y="481" font-size="12" fill="#555" text-anchor="middle">retries, per-row fallback and dead letters</text>
+  <text x="550" y="497" font-size="12" fill="#555" text-anchor="middle">close the rest (#324)</text>
+  <rect x="740" y="405" width="340" height="110" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="910" y="433" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">trading record: nothing lost</text>
+  <text x="910" y="449" font-size="12" fill="#555" text-anchor="middle">every order, fill, position and config</text>
+  <text x="910" y="465" font-size="12" fill="#555" text-anchor="middle">change is in Postgres before anything</text>
+  <text x="910" y="481" font-size="12" fill="#555" text-anchor="middle">reads it; a submit lock lost with Redis</text>
+  <text x="910" y="497" font-size="12" fill="#555" text-anchor="middle">is backed by a DB uniqueness (#319)</text>
+  <text x="20" y="548" font-size="12" fill="#555">A key written without a TTL is never evicted: under memory pressure, writes fail loudly (OOM command not allowed) instead</text>
+  <text x="20" y="566" font-size="12" fill="#555">of silently dropping state. FLUSHDB, FLUSHALL and CONFIG are renamed away (infrastructure/redis/redis.conf).</text>
+</svg>

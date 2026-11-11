@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="690" viewBox="0 0 1100 690" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="690" fill="#ffffff"/>
+  <defs>
+    <marker id="mh" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="mn" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="mo" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+  </defs>
+  <text x="550" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">Three gates stand between the internet and an IB order: nginx, the trader cookie, the internal token</text>
+  <text x="550" y="52" text-anchor="middle" fill="#555">Trust boundaries on main, 2026-11-11 (docs/ops/security.md). Only nginx publishes a port to the internet; secrets come from SSM on the host.</text>
+  <rect x="16" y="70" width="196" height="220" rx="6" fill="#ffffff" stroke="#555555" stroke-dasharray="6 4"/>
+  <text x="28" y="90" font-weight="bold" fill="#222">Internet (untrusted)</text>
+  <rect x="232" y="70" width="852" height="456" rx="6" fill="#ffffff" stroke="#555555" stroke-dasharray="6 4"/>
+  <text x="244" y="90" font-weight="bold" fill="#222">EC2 host (no inbound SSH)</text>
+  <rect x="428" y="100" width="644" height="412" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-dasharray="6 4"/>
+  <text x="440" y="119" font-weight="bold" fill="#3b6ea8">fxvol-internal network: no port published to the internet</text>
+  <rect x="30" y="110" width="168" height="50" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="114" y="128" text-anchor="middle" fill="#222" font-weight="bold">Public visitor</text>
+  <text x="114" y="143" text-anchor="middle" fill="#555">no credential</text>
+  <rect x="30" y="200" width="168" height="50" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="114" y="218" text-anchor="middle" fill="#222" font-weight="bold">Trader</text>
+  <text x="114" y="233" text-anchor="middle" fill="#555">fxvol_auth cookie</text>
+  <rect x="250" y="130" width="160" height="200" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="330" y="150" text-anchor="middle" font-weight="bold" fill="#222">nginx</text>
+  <text x="330" y="165" text-anchor="middle" fill="#555">fxvol-public, :80 / :443</text>
+  <rect x="260" y="178" width="140" height="142" rx="4" fill="#fff3cd" stroke="#b7791f" stroke-width="1.2"/>
+  <text x="330" y="196" text-anchor="middle" fill="#222" font-weight="bold">Gate 1</text>
+  <text x="330" y="211" text-anchor="middle" fill="#555">TLS</text>
+  <text x="330" y="226" text-anchor="middle" fill="#555">only the app prefix</text>
+  <text x="330" y="241" text-anchor="middle" fill="#555">is proxied, else 404</text>
+  <text x="330" y="256" text-anchor="middle" fill="#555">limit_req api, ws</text>
+  <text x="330" y="271" text-anchor="middle" fill="#555">XFF = peer address</text>
+  <rect x="448" y="132" width="170" height="44" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="533" y="150" text-anchor="middle" fill="#222" font-weight="bold">frontend :8080</text>
+  <text x="533" y="165" text-anchor="middle" fill="#555">static bundle</text>
+  <rect x="448" y="196" width="170" height="170" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="533" y="215" text-anchor="middle" font-weight="bold" fill="#222">api :8000</text>
+  <text x="533" y="230" text-anchor="middle" fill="#555">every GET is public</text>
+  <rect x="458" y="242" width="150" height="114" rx="4" fill="#fff3cd" stroke="#b7791f" stroke-width="1.2"/>
+  <text x="533" y="260" text-anchor="middle" fill="#222" font-weight="bold">Gate 2</text>
+  <text x="533" y="275" text-anchor="middle" fill="#555">POST / PUT / DELETE:</text>
+  <text x="533" y="290" text-anchor="middle" fill="#555">require_write (HMAC</text>
+  <text x="533" y="305" text-anchor="middle" fill="#555">cookie, expiry)</text>
+  <text x="533" y="320" text-anchor="middle" fill="#555">/ws/*: Origin allowlist</text>
+  <rect x="448" y="400" width="170" height="100" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="533" y="419" text-anchor="middle" font-weight="bold" fill="#222">execution :8001</text>
+  <rect x="458" y="428" width="150" height="62" rx="4" fill="#fff3cd" stroke="#b7791f" stroke-width="1.2"/>
+  <text x="533" y="446" text-anchor="middle" fill="#222" font-weight="bold">Gate 3</text>
+  <text x="533" y="461" text-anchor="middle" fill="#555">/internal/*: X-Internal-</text>
+  <text x="533" y="476" text-anchor="middle" fill="#555">Token, never fails open</text>
+  <rect x="656" y="200" width="180" height="44" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="746" y="218" text-anchor="middle" fill="#222" font-weight="bold">redis</text>
+  <text x="746" y="233" text-anchor="middle" fill="#555">password from SSM</text>
+  <rect x="656" y="262" width="180" height="44" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="746" y="280" text-anchor="middle" fill="#222" font-weight="bold">postgres</text>
+  <text x="746" y="295" text-anchor="middle" fill="#555">password from SSM</text>
+  <rect x="656" y="330" width="180" height="58" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="746" y="348" text-anchor="middle" fill="#222" font-weight="bold">5 engines</text>
+  <text x="746" y="363" text-anchor="middle" fill="#555">market-data, vol, risk,</text>
+  <text x="746" y="378" text-anchor="middle" fill="#555">analytics, db-writer</text>
+  <rect x="870" y="132" width="190" height="58" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="965" y="150" text-anchor="middle" fill="#222" font-weight="bold">grafana (obs)</text>
+  <text x="965" y="165" text-anchor="middle" fill="#555">127.0.0.1:3000 only,</text>
+  <text x="965" y="180" text-anchor="middle" fill="#555">reached by SSM port-forward</text>
+  <rect x="870" y="330" width="190" height="58" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="965" y="348" text-anchor="middle" fill="#222" font-weight="bold">ib-gateway</text>
+  <text x="965" y="363" text-anchor="middle" fill="#555">+ fxvol-external (egress)</text>
+  <text x="965" y="378" text-anchor="middle" fill="#555">4002 / 5900 on 127.0.0.1</text>
+  <rect x="870" y="560" width="190" height="44" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="965" y="578" text-anchor="middle" fill="#222" font-weight="bold">IB servers</text>
+  <text x="965" y="593" text-anchor="middle" fill="#555">paper account</text>
+  <rect x="30" y="560" width="190" height="50" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="125" y="578" text-anchor="middle" fill="#222" font-weight="bold">GitHub Actions deploy</text>
+  <text x="125" y="593" text-anchor="middle" fill="#555">OIDC role, no static keys</text>
+  <rect x="250" y="440" width="160" height="50" rx="4" fill="#ffffff" stroke="#555555" stroke-width="1.2"/>
+  <text x="330" y="458" text-anchor="middle" fill="#222" font-weight="bold">remote-deploy.sh</text>
+  <text x="330" y="473" text-anchor="middle" fill="#555">reads secrets on host</text>
+  <rect x="300" y="572" width="300" height="50" rx="4" fill="#d1e7dd" stroke="#146c43" stroke-width="1.2"/>
+  <text x="450" y="590" text-anchor="middle" fill="#222" font-weight="bold">SSM Parameter Store /fxvol/prod/*</text>
+  <text x="450" y="605" text-anchor="middle" fill="#555">KMS-encrypted, read by the instance role</text>
+  <path d="M198,145 L248,145" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <text x="223" y="138" text-anchor="middle" fill="#555555">read</text>
+  <path d="M198,225 L248,225" fill="none" stroke="#d9480f" stroke-width="1.5" marker-end="url(#mh)"/>
+  <text x="222" y="218" text-anchor="middle" fill="#d9480f">write</text>
+  <path d="M410,154 L446,154" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <path d="M410,215 L446,215" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <path d="M410,300 L456,300" fill="none" stroke="#d9480f" stroke-width="1.5" marker-end="url(#mh)"/>
+  <path d="M618,222 L654,222" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <path d="M618,284 L654,284" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <path d="M533,366 L533,398" fill="none" stroke="#d9480f" stroke-width="1.5" marker-end="url(#mh)"/>
+  <text x="541" y="386" text-anchor="start" fill="#d9480f">order</text>
+  <path d="M836,359 L868,359" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <path d="M618,470 L965,470 L965,390" fill="none" stroke="#d9480f" stroke-width="1.5" marker-end="url(#mh)"/>
+  <text x="790" y="464" text-anchor="middle" fill="#d9480f">orders over the IB API</text>
+  <path d="M1015,388 L1015,558" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <text x="1023" y="545" text-anchor="start" fill="#555555">egress only</text>
+  <path d="M125,560 L125,465 L248,465" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#mn)"/>
+  <text x="130" y="456" text-anchor="start" fill="#555555">ssm:SendCommand</text>
+  <path d="M360,572 L360,492" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#mo)"/>
+  <text x="368" y="540" text-anchor="start" fill="#146c43">secrets in RAM, never via GitHub</text>
+  <rect x="40" y="645" width="22" height="14" rx="3" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="70" y="656" fill="#222">gate a request must pass</text>
+  <rect x="300" y="645" width="22" height="14" rx="3" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="330" y="656" fill="#222">the path to an IB order</text>
+  <rect x="560" y="645" width="22" height="14" rx="3" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="590" y="656" fill="#222">secret store</text>
+  <rect x="820" y="645" width="22" height="14" rx="3" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="850" y="656" fill="#222">internal network</text>
+</svg>

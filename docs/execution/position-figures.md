@@ -9,10 +9,12 @@ against the live book on 2026-11-06 (8 open IB legs, 3 trades, 1 future).
 
 ## The sources
 
+![The three position panels read the same IB mirror, so their per-leg figures foot](../diagrams/position-figures-sources.svg)
+
 | Table | Written by | Cadence | Holds |
 |---|---|---|---|
-| `open_position` | execution `position_sync_loop` (rows), risk engine (greeks, mark, pnl, iv) | rows every 30 s, greeks every 2 s | the IB mirror: one row per live contract, **current** state |
-| `open_position_history` | risk engine | every ~30 s | the time series of `open_position` (same columns + `timestamp`) |
+| `open_position` | execution `position_sync_loop` (rows), risk engine (greeks, mark, pnl, iv) | rows every `SYNC_INTERVAL_S` (5 s in compose), greeks every 2 s | the IB mirror: one row per live contract, **current** state |
+| `open_position_history` | risk engine | a 60 s pass, one row per position only when it moved or its heartbeat is due (#373) | the time series of `open_position` (same columns + `timestamp`) |
 | `booked_position` + `booked_position_metric_history` | position monitor | per monitor cycle | the legacy mock-mode book; on prod these rows are artefacts without a structure |
 | `leg_position` (via `/positions/book`) | position projector | on every fill | what we hold per leg, folded from fills; not a greeks source |
 | Redis `latest_spot:EURUSD`, `bars:EURUSD:1W` | market data | tick / 15 min | spot now and the hourly spot history |
@@ -81,4 +83,6 @@ against the live book on 2026-11-06 (8 open IB legs, 3 trades, 1 future).
   `/positions/breaks`.
 - Booked positions (`source=booked`) are the mock-mode book. On prod they
   are excluded from every total by default; #330 covers their retention.
-- Materialising these rollups (#368) must build from the sources named here.
+- The attribution rollup is materialised (#368): the analytics engine writes
+  `pnl_attribution_latest` every 5 min from the sources named here, and the
+  endpoint computes inline from the same sources only when no fresh row exists.

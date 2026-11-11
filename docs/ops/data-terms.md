@@ -7,6 +7,8 @@ attribution strings below are the ones the desk and the README show
 
 ## Sources
 
+![Every source is attributed; the two open decisions are the raw IB quotes on the public desk (D1) and FRED release dates stored in Postgres (D2)](../diagrams/data-sources-terms.svg)
+
 | Source | How | What is stored | Attribution shown |
 |---|---|---|---|
 | Interactive Brokers (paper account) | `ib_async` to IB Gateway, **delayed** market data (`reqMarketDataType(3)`, execution `4`) | ticks (Redis, TTL), vol surfaces and fits, positions, orders, fills, account values (Postgres) | rail: "Market data: IB, delayed · paper"; README |

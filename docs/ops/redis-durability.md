@@ -6,6 +6,8 @@ config). This note is the acceptable-loss statement the audit asked for
 (08#10, #343); it used to live only as a comment in
 `infrastructure/redis/redis.conf`.
 
+![A Redis restart costs cache freshness and the pub/sub frames published while db-writer is down; the trading record in Postgres loses nothing](../diagrams/redis-restart-loss.svg)
+
 ## Configuration
 
 | Setting | Value | Why |
