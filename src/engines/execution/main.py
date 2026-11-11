@@ -80,7 +80,7 @@ from shared.tracing import init_tracing
 
 # T1 logs unification : structlog JSON output like the other engines.
 # Replaces logging.basicConfig (which produced console-format lines that
-# Promtail couldn't parse to extract `level` for Loki).
+# Alloy couldn't parse to extract `level` for Loki).
 _settings = get_execution_settings()
 configure_logging(service_name="execution_engine", level=_settings.LOG_LEVEL)
 logger = logging.getLogger("execution")

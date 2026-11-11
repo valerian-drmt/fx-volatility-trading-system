@@ -40,7 +40,7 @@ limits_config:
   ingestion_burst_size_mb: 16
   max_global_streams_per_user: 5000
   reject_old_samples: true
-  reject_old_samples_max_age: 168h  # 7 jours pour les replays Promtail
+  reject_old_samples_max_age: 168h  # 7 days, so an Alloy replay after downtime still lands
 
 compactor:
   working_directory: /loki/compactor

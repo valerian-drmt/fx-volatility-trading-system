@@ -30,7 +30,7 @@ api + frontend + nginx + postgres + redis):
 | *(none)* | Core: api, frontend, nginx, postgres, redis | — |
 | `engines` | market-data, vol-engine, risk-engine, db-writer, execution-engine | `--profile engines` |
 | `ib` | ib-gateway | `--profile ib` |
-| `obs` | prometheus, cadvisor, loki, promtail, tempo, otel-collector, grafana | `--profile obs` |
+| `obs` | prometheus, cadvisor, loki, alloy, tempo, otel-collector, grafana | `--profile obs` |
 | `metrics` | prometheus + cadvisor only (subset of `obs`) | `--profile metrics` |
 
 ```powershell

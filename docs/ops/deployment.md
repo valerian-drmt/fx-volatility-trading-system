@@ -102,7 +102,7 @@ Repo variables consumed by `deploy.yml`:
 | `DEPLOY_BUCKET` | S3 bucket for the config payload. |
 | `EC2_INSTANCE_ID` | SSM target instance. |
 | `DEPLOY_DOMAIN` | Smoke-check host. |
-| `COMPOSE_PROFILES` | Empty = core; `engines,ib` for live trading; `engines,ib,obs` is the prod allowlist since #298 (obs hardened: cadvisor unprivileged, promtail behind `docker-socket-proxy`, Grafana loopback-only with the admin password from SSM). The deploy refuses `obs` without `/fxvol/prod/GRAFANA_ADMIN_PASSWORD` and any deploy without `/fxvol/prod/REDIS_PASSWORD`. |
+| `COMPOSE_PROFILES` | Empty = core; `engines,ib` for live trading; `engines,ib,obs` is the prod allowlist since #298 (obs hardened: cadvisor unprivileged, alloy behind `docker-socket-proxy`, Grafana loopback-only with the admin password from SSM). The deploy refuses `obs` without `/fxvol/prod/GRAFANA_ADMIN_PASSWORD` and any deploy without `/fxvol/prod/REDIS_PASSWORD`. |
 | `READ_ONLY_API` | Threads into `.env` as `READ_ONLY_API`. |
 
 ### READ_ONLY_API

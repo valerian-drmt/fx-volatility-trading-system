@@ -109,7 +109,7 @@ asserts each of these, and CI runs `nginx -t` on every conf.
   10001); the images install as root and drop privileges before `CMD`.
 * The prod profile allowlist is `engines,ib,obs`. The `obs` set runs with
   cAdvisor unprivileged (read-only `/`, `/sys`, `/var/lib/docker` mounts),
-  promtail without a Docker socket (container discovery and log reads go
+  alloy without a Docker socket (container discovery and log reads go
   through `docker-socket-proxy`, which allows `GET /containers/*` only and
   mounts the socket read-only), Grafana bound to `127.0.0.1:3000` with
   anonymous access off and the admin password from

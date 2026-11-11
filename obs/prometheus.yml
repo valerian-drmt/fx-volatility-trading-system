@@ -7,8 +7,8 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    # From the stack's ENV (prod on the host, dev locally) through
-    # --enable-feature=expand-external-labels (#346, audit 08#12).
+    # From the stack's ENV (prod on the host, dev locally); Prometheus 3
+    # expands env vars in external labels by default (#346, audit 08#12).
     environment: ${FXVOL_ENVIRONMENT}
 
 # Alert rules + their router (#342). Rules: obs/alerts.yml ; routing and the
@@ -59,3 +59,8 @@ scrape_configs:
   - job_name: 'loki'
     static_configs:
       - targets: ['loki:3100']
+
+  # Tempo self-metrics: its liveness signal since the image has no wget (#415).
+  - job_name: 'tempo'
+    static_configs:
+      - targets: ['tempo:3200']

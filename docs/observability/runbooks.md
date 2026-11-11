@@ -14,7 +14,7 @@ The observability services live on the `obs` compose profile — opt-in, so a pl
 docker compose --profile obs up -d
 ```
 
-This starts `prometheus`, `cadvisor`, `loki`, `promtail`, `tempo`,
+This starts `prometheus`, `cadvisor`, `loki`, `alloy`, `tempo`,
 `otel-collector` and `grafana`, all on `fxvol-internal`. Grafana maps to the host
 at `127.0.0.1:3000` (anonymous Viewer access, edits via the login form).
 
@@ -26,7 +26,7 @@ docker compose --profile metrics up -d
 
 It gives the /dev Hardware tab its per-container CPU/RAM graphs alone, for a
 host that cannot afford the full set. Since #298 prod runs the full `obs`
-profile (`COMPOSE_PROFILES=engines,ib,obs`): cAdvisor unprivileged, promtail
+profile (`COMPOSE_PROFILES=engines,ib,obs`): cAdvisor unprivileged, alloy
 behind `docker-socket-proxy`, Grafana loopback-only with anonymous access off
 and the admin password from SSM. Every series carries `environment="prod"`
 there (`obs/prometheus.yml`, from the stack's `ENV`).
@@ -37,7 +37,7 @@ restore, IB recovery) are in [`docs/ops/runbooks.md`](../ops/runbooks.md).
 ## Loki — query logs
 
 Open Grafana → Explore → **Loki**. Labels are `container`, `engine`, `stream`,
-`level` (see [conventions.md](conventions.md#log-labels-promtail--loki)).
+`level` (see [conventions.md](conventions.md#log-labels-alloy--loki)).
 
 ```logql
 # tail vol-engine errors

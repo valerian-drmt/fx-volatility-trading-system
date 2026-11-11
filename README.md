@@ -80,7 +80,7 @@ behind an auth boundary. Every push to `main` redeploys it automatically (see
 ## Architecture
 
 **12-container core stack** (7 ship our Python code) **+ an optional 9-container
-observability stack** (Prometheus / cAdvisor / Loki / Tempo / Grafana / promtail /
+observability stack** (Prometheus / cAdvisor / Loki / Tempo / Grafana / Alloy /
 otel-collector, opt-in via `--profile obs`).
 
 ```

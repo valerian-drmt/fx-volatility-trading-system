@@ -42,10 +42,13 @@ cd frontend && npm install vite@^8 --save-dev && npm run lint && npm run typeche
 # a base image: paste the new tag@digest into the ARG (Dependabot does this for you)
 ```
 
-The ib-gateway build is the exception: bump the tag + digest on local compose
-first, run the paper session for a week (the engines log `ib_connected` with
-the server version), then ship. The 10.48 -> 10.49 jump that crash-looped prod
-on a persisted volume is the precedent (`docs/ops/deployment.md`).
+The ib-gateway build is the exception: Dependabot ignores it and the pin moves
+by hand (compose default, `remote-deploy.sh`, `test_image_pins.py`). The 10.48 ->
+10.49 jump that crash-looped prod on a persisted volume is the precedent; since
+#415 the deploy copies the new build into the volume itself
+(`ensure_ib_gateway_build`, `infrastructure/ib-gateway/README.md`). After the
+deploy, check that the engines log `ib_connected` with the new server version;
+the previous build stays in the volume, so rolling back to the old pin boots.
 
 ## Weekly scan (`.github/workflows/security-scan.yml`)
 
@@ -141,5 +144,6 @@ first).
 | 2026-11-10 | First Trivy baseline (run 42828512811): our 8 images carry only the base image's unused `pip` 24.0 / `wheel` 0.45 / `jaraco.context` 5.3 (3 HIGH) | trivy-built | fixed: the Python images uninstall pip / setuptools / wheel after copying uv (the app runs from the uv venv) |
 | 2026-11-10 | nginx, redis, frontend: one MEDIUM each (zlib CVE-2026-4738, fix in Alpine zlib 1.4) | trivy-infra | below the gate; picked up by the next digest refresh from Dependabot |
 | 2026-11-10 | postgres 16.15: 1 CRITICAL + 24 HIGH, all Go stdlib 1.24.6 inside `gosu` | trivy-infra | not reachable: gosu only drops privileges at container start, no network input; wait for the upstream image rebuild (Dependabot digest bump), revisit 2026-12-10 |
-| 2026-11-10 | docker-socket-proxy 0.3.0: musl CVE-2025-26519 (2 HIGH), latest upstream release | trivy-infra | accepted: internal network only, reads the socket for promtail, no user input; revisit 2026-12-10 |
-| 2026-11-10 | obs profile (grafana 11.3, prometheus 2.55, alertmanager 0.27, loki / promtail 3.2, tempo 2.6, otelcol 0.110, cadvisor 0.49): 45 CRITICAL, ~760 HIGH, mostly old Go stdlib and bundled libraries | trivy-infra | fix by upgrading the profile (prometheus 3, grafana 13, cadvisor 0.55, otelcol 0.165): #415; the infra scan stays red until then |
+| 2026-11-10 | docker-socket-proxy 0.3.0: musl CVE-2025-26519 (2 HIGH), latest upstream release | trivy-infra | accepted: internal network only, reads the socket for the log shipper, no user input; revisit 2026-12-10 |
+| 2026-11-10 | obs profile (grafana 11.3, prometheus 2.55, alertmanager 0.27, loki / promtail 3.2, tempo 2.6, otelcol 0.110, cadvisor 0.49): 45 CRITICAL, ~760 HIGH, mostly old Go stdlib and bundled libraries | trivy-infra | closed by #415: every obs image on its latest release, promtail replaced by Alloy (see the 2026-11-11 row) |
+| 2026-11-11 | obs profile after #415 (prometheus 3.16, alertmanager 0.35, grafana 13.0.2, loki 3.7.9, alloy 1.21.3, tempo 2.10.10, otelcol 0.165, cadvisor 0.55.1, docker-socket-proxy 0.5.0): 6 CRITICAL, ~210 HIGH left (fixed upstream, unfixed ignored), down from 45 / ~760. Grafana: Go stdlib in its bundled elasticsearch plugin (unused; plugin preinstall disabled) and alpine curl; cAdvisor: Go stdlib and alpine openssl; socket-proxy: alpine pcre2 / openssl; the rest 1-3 each | local trivy 0.69.3 | accepted: each image is the latest upstream release, all run on the internal network with no user input (Grafana loopback-only behind login); Dependabot's infra-images group takes the rebuilds; revisit 2026-12-10 |

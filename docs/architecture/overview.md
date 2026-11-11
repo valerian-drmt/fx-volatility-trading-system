@@ -56,7 +56,7 @@ Three bridge networks isolate traffic (see [`docker-compose.yml`](../../docker-c
 
 ### Observability (opt-in)
 
-`--profile obs` adds Prometheus, cAdvisor, Loki, promtail, Tempo, otel-collector, and
+`--profile obs` adds Prometheus, cAdvisor, Loki, Alloy, Tempo, otel-collector, and
 Grafana. A narrower `metrics` profile (Prometheus + cAdvisor only) exists so prod can
 serve the `/dev` Hardware graphs without the parts that must not run on a public host.
 

@@ -38,7 +38,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
     # NOTE : jsonlog destination would write to a file, not stdout —
     # Docker stdout stays plain text by design in postgres:16-alpine.
-    # Level extraction is done downstream in obs/promtail.yml via a
+    # Level extraction is done downstream in obs/alloy.alloy via a
     # regex stage matching the `[pid] SEVERITY:` pattern.
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -501,7 +501,7 @@ services:
     # IBC dies "version X not installed". Bump this pin deliberately + refresh
     # the volume install (infrastructure/ib-gateway/README.md). Prod pins the
     # same tag via remote-deploy.sh's IB_GATEWAY_IMAGE.
-    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:10.49.1c@sha256:b6c839e6cbf55a622793df748cc28d80ff73fb9efff404c6e0271b1999f08b2c}
+    image: ${IB_GATEWAY_IMAGE:-ghcr.io/gnzsnz/ib-gateway:10.51.1e@sha256:85975f493bcacc8341cb42e6946c460868d165e5f64d9924b1958c8f03e7bee4}
     container_name: fxvol-ib-gateway
     mem_limit: 1500m
     cpu_shares: 1024
@@ -622,14 +622,14 @@ services:
   # `metrics` is a deliberate SUBSET of `obs`: prometheus + cadvisor only, i.e.
   # exactly what the /dev Hardware tab needs to plot per-container CPU/RAM. It
   # exists so a minimal host can have those graphs alone. Since #298 the full
-  # `obs` set is the prod allowlist too: cadvisor unprivileged, promtail behind
+  # `obs` set is the prod allowlist too: cadvisor unprivileged, alloy behind
   # docker-socket-proxy, Grafana loopback-only with anonymous access off and
   # the admin password from SSM. cadvisor/prometheus list both profiles, so
   # `--profile obs` starts the full LGTM set — tempo + otel-collector included:
   # the t3.medium has the RAM headroom, so traces stay part of `./all/up`.
 
   prometheus:
-    image: prom/prometheus:v2.55.0
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
     container_name: fxvol-prometheus
     profiles: ["obs", "metrics"]
     # Measured ~91 MB with the full 17-container local stack; the prod box is
@@ -650,7 +650,6 @@ services:
       - '--storage.tsdb.retention.time=${PROM_RETENTION_TIME:-7d}'
       - '--storage.tsdb.retention.size=${PROM_RETENTION_SIZE:-512MB}'
       - '--web.enable-lifecycle'
-      - '--enable-feature=expand-external-labels'
     environment:
       # obs/prometheus.yml labels every series with it (#346).
       FXVOL_ENVIRONMENT: ${ENV:-dev}
@@ -669,7 +668,7 @@ services:
   # (email). Signs with the EC2 instance role through IMDS; locally the send
   # fails harmlessly and the UI on :9093 still shows the alerts.
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: prom/alertmanager:v0.35.0@sha256:e638797febd034838eca8b98cdbd46f951e9bf7f178777aa8669167406a9946c
     container_name: fxvol-alertmanager
     profiles: ["obs", "metrics"]
     mem_limit: 64m
@@ -698,7 +697,7 @@ services:
   # Per-container CPU/RAM/net/fs metrics → scraped by Prometheus. The standard
   # way to graph "how much does each container consume" (locally + on EC2).
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: gcr.io/cadvisor/cadvisor:v0.55.1@sha256:3de2bd5203120b866d74a9b283b2ffb8ec382fbf9dc321814700c6ea6f44ec57
     container_name: fxvol-cadvisor
     profiles: ["obs", "metrics"]
     # Measured ~21 MB locally. NOTE: on Docker Desktop / WSL2 cAdvisor only
@@ -742,7 +741,7 @@ services:
       start_period: 20s
 
   loki:
-    image: grafana/loki:3.2.0
+    image: grafana/loki:3.7.9@sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
     container_name: fxvol-loki
     profiles: ["obs"]
     # Memory cap (#293). 2026-11-02 : the obs profile ran uncapped on the
@@ -761,28 +760,34 @@ services:
       - fxvol-internal
     expose:
       - "3100"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3100/ready"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 45s
+    # No healthcheck: since #415 the image is distroless (no shell, no wget).
+    # Prometheus scrapes :3100/metrics, so `up{job="loki"}` is the liveness
+    # signal; nothing waits on this service being healthy.
 
-  promtail:
-    image: grafana/promtail:3.2.0
-    container_name: fxvol-promtail
+  # Ships container stdout to Loki (#415): Grafana Alloy, promtail's
+  # successor (promtail is end-of-life upstream). Same pipeline, converted
+  # with `alloy convert`; see obs/alloy.alloy.
+  alloy:
+    image: grafana/alloy:v1.21.3@sha256:8ab871206bd2d8f89277f53abffee5f452a293980788d52f85fa183a87a505a4
+    container_name: fxvol-alloy
     profiles: ["obs"]
-    mem_limit: 64m   # #293 (measured ~25 MB)
+    mem_limit: 128m   # #415: ~40 MB idle with the obs set; same cap as otel-collector
     cpu_shares: 128
+    environment:
+      GOMEMLIMIT: 100MiB
     restart: unless-stopped
-    command: -config.file=/etc/promtail/config.yml
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - --server.http.listen-addr=127.0.0.1:12345
+      - /etc/alloy/config.alloy
     volumes:
-      - ./obs/promtail.yml:/etc/promtail/config.yml:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./obs/alloy.alloy:/etc/alloy/config.alloy:ro
+      - alloy_data:/var/lib/alloy/data
       # No Docker socket here (#298, audit 01#8): container discovery and log
       # reads go through docker-socket-proxy, which allows GET /containers only.
     depends_on:
-      # started, NOT healthy: promtail retries pushing to Loki, so waiting on
+      # started, NOT healthy: Alloy retries pushing to Loki, so waiting on
       # Loki's slow health (start_period 45s) only made `up` race and fail.
       loki:
         condition: service_started
@@ -792,7 +797,7 @@ services:
       - fxvol-internal
 
   tempo:
-    image: grafana/tempo:2.6.0
+    image: grafana/tempo:2.10.10@sha256:12b0820f13ffa10ce956b6e9acc3b03f3cffded99109be6cc09d106fe56e5d38
     container_name: fxvol-tempo
     profiles: ["obs"]
     # Memory cap (#293). 2026-11-02 : the obs profile ran uncapped on the
@@ -812,15 +817,12 @@ services:
     expose:
       - "3200"   # Tempo HTTP query
       - "4317"   # OTLP gRPC ingest (from otel-collector)
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3200/ready"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+    # No healthcheck: since #415 the image is distroless (no shell, no wget).
+    # Prometheus scrapes :3200/metrics, so `up{job="tempo"}` is the liveness
+    # signal; nothing waits on this service being healthy.
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.110.0
+    image: otel/opentelemetry-collector-contrib:0.165.0@sha256:e40d61f10c9a617cca1ffd1be4d7e2b3a4b0f0001798ff07e58cabe82e618cea
     container_name: fxvol-otel-collector
     profiles: ["obs"]
     mem_limit: 128m   # #293 ; memory_limiter processor at 96 MiB in obs/otel-collector.yml
@@ -843,17 +845,19 @@ services:
 
   # The only obs container that touches the Docker socket (#298): a filtering
   # proxy that answers GET /containers/* (list, inspect, logs) and refuses
-  # everything else (no exec, no create, no POST). promtail talks to it over
+  # everything else (no exec, no create, no POST). alloy talks to it over
   # the internal network; the socket itself is mounted read-only here.
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:0.3.0
+    image: tecnativa/docker-socket-proxy:v0.5.0@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
     container_name: fxvol-docker-socket-proxy
     profiles: ["obs"]
-    mem_limit: 32m
+    mem_limit: 64m   # v0.5.0 idles at ~30 MB (#415)
     cpu_shares: 64
     restart: unless-stopped
     environment:
       CONTAINERS: "1"
+      # Alloy's Docker discovery reads each container's networks (GET only).
+      NETWORKS: "1"
       POST: "0"
       LOG_LEVEL: warning
     volumes:
@@ -864,10 +868,10 @@ services:
       - "2375"
 
   grafana:
-    image: grafana/grafana-oss:11.3.0
+    image: grafana/grafana-oss:13.0.2@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
     container_name: fxvol-grafana
     profiles: ["obs"]
-    mem_limit: 192m   # #293 (measured ~110 MB with the provisioned dashboards)
+    mem_limit: 256m   # #293, raised by #415: Grafana 13 idles at ~160 MB with the provisioned dashboards
     cpu_shares: 128
     restart: unless-stopped
     environment:
@@ -882,6 +886,9 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_SECURITY_ALLOW_EMBEDDING: "false"
       GF_SECURITY_COOKIE_SAMESITE: "lax"
+      # Grafana 12+ downloads bundled plugins at boot; this stack uses only the
+      # built-in Prometheus / Loki / Tempo datasources (#415).
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./obs/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -925,7 +932,7 @@ networks:
     ipam:
       config:
         # ip_range is MANDATORY: without it Docker auto-assigns the dynamic IPs
-        # (db-writer, nginx, promtail, grafana…) across the whole /24 starting at .2,
+        # (db-writer, nginx, alloy, grafana…) across the whole /24 starting at .2,
         # and grabs .10/.11/.12/.13/.14 — the engines' pinned static IPs.
         # The 1st engine that wants its .10 then crashes with "Address already in use".
         # So we confine the dynamic pool to the upper half (.128–.254) and keep
@@ -949,3 +956,4 @@ volumes:
   grafana_data:
   # P2 obs — Tempo traces storage (7 days retention).
   tempo_data:
+  alloy_data:

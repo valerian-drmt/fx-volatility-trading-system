@@ -87,10 +87,16 @@ which goes stale when IB is unreachable). This bit prod on 2026-07-31
 
 Because of this, `IB_GATEWAY_IMAGE` is **pinned to a specific build**, not
 `:latest` — both in `infrastructure/ec2/remote-deploy.sh` (prod `.env`) and as
-the compose default. Bumping it is a deliberate two-step change:
+the compose default. Bumping it means updating the pin in both places (and
+`tests/unit/infrastructure/test_image_pins.py`). On prod the deploy then
+refreshes the volume itself: `ensure_ib_gateway_build` in `remote-deploy.sh`
+(#415) sees that the volume lacks the pinned build, backs up the settings to
+`/var/backups/fxvol/ibgw_jts_settings_<ts>.tgz`, and copies the new build in
+next to them before `compose up`. Older builds stay so a rollback boots; prune
+them by hand once the bump has settled.
 
-1. Update the pin in both places to the new tag (e.g. `:10.50.1x`).
-2. Refresh the volume's install so the new jars land next to the kept settings.
+Locally, or to do it by hand, refresh the volume's install so the new jars land
+next to the kept settings.
    Either recreate the volume (loses the Trusted-IPs GUI config → redo it over
    VNC 127.0.0.1:5900), **or** the non-destructive surgical copy:
 

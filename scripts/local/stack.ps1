@@ -10,7 +10,7 @@
     4. docker compose up -d --build (unless -NoBuild) on ALL profiles
        (engines + ib + obs) to build every container of the project
        (api, frontend, nginx, 5 engines, ib-gateway, prometheus, loki,
-        promtail, tempo, otel-collector, grafana).
+        alloy, tempo, otel-collector, grafana).
     5. Wait for Postgres healthy
     6. Alembic upgrade head
     7. Restart nginx (refresh DNS upstreams)
