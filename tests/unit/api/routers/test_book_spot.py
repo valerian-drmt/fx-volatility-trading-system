@@ -43,6 +43,28 @@ async def test_a_held_future_mark_wins() -> None:
     assert (spot, src) == (1.1290, "future_mark")
 
 
+async def test_the_publishers_real_payload_is_read() -> None:
+    """`publish_vol_update` writes the calibration level as `spot` and no
+    `forward` key: reading only `forward` fell through to a strike 900 pips
+    off on prod (2026-11-11). Build the payload with the real publisher."""
+    from bus import publisher
+
+    class _Capture:
+        def __init__(self) -> None:
+            self.kv: dict[str, str] = {}
+
+        async def set(self, key: str, value: str, ex: int | None = None) -> None:
+            self.kv[key] = value
+
+        async def publish(self, _channel: str, _data: str) -> None:
+            return None
+
+    cap = _Capture()
+    await publisher.publish_vol_update(cap, symbol="EURUSD", surface_data={}, signals_data=[], spot=1.1183)
+    spot, src = await pp._book_spot([_pos(PUT, None)], _Redis(cap.kv["latest_vol_surface:EURUSD"]))
+    assert (spot, src) == (1.1183, "surface_forward")
+
+
 async def test_unmarked_book_uses_the_surface_forward() -> None:
     """The prod case: no IB mark anywhere, fresh surface in Redis."""
     spot, src = await pp._book_spot([_pos(PUT, None), _pos(FUT, None, 2)], _Redis(_surface(1.1249)))

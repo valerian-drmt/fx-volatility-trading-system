@@ -786,13 +786,15 @@ class ResolvedBook:
 
 
 async def _surface_forward(redis: aioredis.Redis | None, symbol: str = "EURUSD") -> float | None:
-    """The forward the vol engine published with its latest surface: the 6E
-    options' own underlying, refreshed every vol cycle (#432)."""
+    """The level the vol engine calibrated its latest surface on, refreshed
+    every vol cycle (#432). `publish_vol_update` writes it as `spot` (the
+    calibration forward); `forward` is read first for payloads that carry it."""
     if redis is None:
         return None
     try:
         raw = await redis.get(keys.LATEST_VOL_SURFACE.format(symbol=symbol))
-        forward = json.loads(raw).get("forward") if raw else None
+        payload = json.loads(raw) if raw else {}
+        forward = payload.get("forward", payload.get("spot"))
         value = float(forward) if forward is not None else None
     except Exception:  # a cache miss or a bad payload is "no forward", never a 500
         return None
