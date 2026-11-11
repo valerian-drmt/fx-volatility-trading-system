@@ -111,8 +111,8 @@ ANALYTICS_ENGINE_IMAGE=${reg}/fx-options-analytics-engine:${IMAGE_TAG}
 # that bumps the Gateway build (e.g. 10.48->10.49) leaves the old jars in the
 # volume: IBC then dies with "version X not installed: can't find jars folder"
 # and the engines stall unhealthy. Bumping this pin is deliberate and MUST be
-# paired with refreshing the volume's install (see infrastructure/ib-gateway/README.md).
-IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:10.49.1c@sha256:b6c839e6cbf55a622793df748cc28d80ff73fb9efff404c6e0271b1999f08b2c
+# paired with refreshing the volume's install: ensure_ib_gateway_build below does it (#415).
+IB_GATEWAY_IMAGE=ghcr.io/gnzsnz/ib-gateway:10.51.1e@sha256:85975f493bcacc8341cb42e6946c460868d165e5f64d9924b1958c8f03e7bee4
 ENVEOF
 
 # Broker credentials: fetched + rendered ONLY when the ib profile is armed, so
@@ -300,6 +300,37 @@ if docker compose ps --status running postgres | grep -q postgres; then
     exit "$mig_rc"
   fi
 fi
+
+# The persisted ib_gateway_jts volume must hold the pinned Gateway build before
+# the container starts (#415). Docker seeds a named volume from the image only
+# once, so after a pin bump the volume still has the old jars and IBC dies with
+# "version X not installed" (prod, 2026-07-31). Copy the new build in next to
+# the kept settings, after a tarball backup; no-op when it is already there or
+# when the volume does not exist yet (first boot seeds it from the image).
+ensure_ib_gateway_build() {
+  case ",${COMPOSE_PROFILES:-}," in *,ib,*) ;; *) return 0 ;; esac
+  local img vol build
+  img="$(sed -n 's/^IB_GATEWAY_IMAGE=//p' .env | tail -1)"
+  vol="$(docker volume ls -q | grep -E '(^|_)ib_gateway_jts$' | head -1 || true)"
+  [ -n "$img" ] && [ -n "$vol" ] || return 0
+  docker pull -q "$img" >/dev/null
+  build="$(docker run --rm --entrypoint sh "$img" -c 'ls /home/ibgateway/Jts/ibgateway' | tail -1)"
+  [ -n "$build" ] || { echo "remote-deploy: no Gateway build found in ${img}" >&2; return 1; }
+  if docker run --rm -u root -v "${vol}:/vol:ro" --entrypoint sh "$img" -c "test -d /vol/ibgateway/${build}/jars"; then
+    return 0
+  fi
+  echo "remote-deploy: ib_gateway_jts lacks Gateway ${build}; backing up its settings and copying the build in"
+  mkdir -p /var/backups/fxvol
+  docker stop fxvol-ib-gateway >/dev/null 2>&1 || true
+  # Settings only (API / Trusted-IPs config, jts.ini): the installs come from
+  # images. Older builds stay in the volume (~520 MB each) so a rollback to the
+  # previous pin still boots; prune them by hand once a bump has settled.
+  docker run --rm -u root -v "${vol}:/vol:ro" -v /var/backups/fxvol:/b --entrypoint sh "$img" \
+    -c "tar czf /b/ibgw_jts_settings_$(date -u +%Y%m%dT%H%M%SZ).tgz --exclude=./ibgateway -C /vol ."
+  docker run --rm -u root -v "${vol}:/vol" --entrypoint sh "$img" \
+    -c "mkdir -p /vol/ibgateway && tar -C /home/ibgateway/Jts/ibgateway -cf - ${build} | tar -C /vol/ibgateway -xpf -"
+}
+ensure_ib_gateway_build
 
 # Recreating nginx races docker-proxy releasing :80/:443 — the new container can
 # bind before the outgoing one's proxy has let go, and compose aborts with

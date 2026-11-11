@@ -55,7 +55,7 @@ def test_compose_infra_images_are_exact_and_match_the_dockerfiles() -> None:
     web_nginx = _args((ROOT / "infrastructure/docker/web.Dockerfile").read_text(encoding="utf-8"))["NGINX_IMAGE"]
     assert web_nginx in infra, "the edge nginx and the frontend's nginx are the same build"
     gateway = re.search(r"IB_GATEWAY_IMAGE:-(\S+)\}", compose).group(1)
-    assert PINNED.match(gateway) and "10.49.1c" in gateway
+    assert PINNED.match(gateway) and "10.51.1e" in gateway
     deploy = (ROOT / "infrastructure/ec2/remote-deploy.sh").read_text(encoding="utf-8")
     assert f"IB_GATEWAY_IMAGE={gateway}" in deploy, "compose default and remote-deploy pin the same gateway build"
 

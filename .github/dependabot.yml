@@ -52,6 +52,11 @@ updates:
       # The gateway build is pinned by hand after a paper soak (the 10.48 -> 10.49
       # volume drift outage is the precedent, docs/ops/dependency-policy.md).
       - dependency-name: "ghcr.io/gnzsnz/ib-gateway"
+      # Tempo 3 replaced the ingester / compactor and its monolithic mode logs
+      # a scheduler error every 15 s; the obs profile stays on the 2.x line
+      # until that settles (#415).
+      - dependency-name: "grafana/tempo"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: uv
     directory: /

@@ -63,10 +63,10 @@ body and are queried via LogQL, never promoted to a Loki/Prometheus label.
 | `prometheus` | `localhost:9090` | Self-scrape (health + tsdb size). |
 | `loki` | `loki:3100` | Loki ingest rate + storage. |
 
-## Log labels (Promtail → Loki)
+## Log labels (Alloy → Loki)
 
-Promtail scrapes container stdout via Docker service discovery
-([`obs/promtail.yml`](../../obs/promtail.yml)). Only low-cardinality fields become
+Alloy scrapes container stdout via Docker service discovery
+([`obs/alloy.alloy`](../../obs/alloy.alloy)). Only low-cardinality fields become
 Loki labels: `container`, `engine` (compose service), `stream` (stdout/stderr) and
 `level`. `level` is extracted from JSON engine logs, or via per-service regex
 fallbacks for redis / postgres / ib-gateway plain-text lines (unmatched lines get

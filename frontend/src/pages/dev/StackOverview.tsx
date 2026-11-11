@@ -86,7 +86,7 @@ const POSITIONS: Record<string, { x: number; y: number }> = {
   "nginx":       { x: 275, y: 420 },
   "frontend":    { x: 475, y: 420 },
   // Row 5 (obs collectors, 2 boxes) — panel OBS (y=535..750)
-  "promtail":       { x: 275, y: 550 },
+  "alloy":          { x: 275, y: 550 },
   "otel-collector": { x: 475, y: 550 },
   // Row 6 (obs stores + UI, 4 boxes) — same panel
   "loki":       { x: 75,  y: 650 },
@@ -117,7 +117,7 @@ const EDGES: { from: string; to: string }[] = [
   { from: "api",      to: "nginx" },
   { from: "frontend", to: "nginx" },
   // Observability flows (kept minimal to avoid spaghetti)
-  { from: "promtail",       to: "loki" },        // Docker logs → Loki
+  { from: "alloy",          to: "loki" },        // Docker logs → Loki
   { from: "otel-collector", to: "tempo" },       // OTLP traces → Tempo
   { from: "loki",           to: "grafana" },
   { from: "prometheus",     to: "grafana" },

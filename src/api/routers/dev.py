@@ -239,7 +239,7 @@ async def _tcp_probe(host: str, port: int, timeout_s: float = 2.0) -> str:
 # Static metadata for the 17 containers de la stack — known at compose time.
 # `image` est le tag attendu, `layer` groupe la viz, `desc` est un one-liner.
 # Layer obs (6 containers) = profil docker compose ``obs`` : collectors
-# (promtail, otel-collector), stores (prometheus, loki, tempo), UI (grafana).
+# (alloy, otel-collector), stores (prometheus, loki, tempo), UI (grafana).
 STACK_LAYOUT: list[dict[str, Any]] = [
     {"name": "frontend",      "image": "fx-options-frontend:local",   "layer": "edge",    "desc": "React SPA (nginx static)"},
     {"name": "nginx",         "image": "nginx:alpine",                "layer": "edge",    "desc": "Reverse proxy (80/443)"},
@@ -253,7 +253,7 @@ STACK_LAYOUT: list[dict[str, Any]] = [
     {"name": "db-writer",     "image": "fx-options-db-writer:local",  "layer": "engines", "desc": "Redis events → Postgres"},
     {"name": "execution",     "image": "fx-options-execution:local",  "layer": "engines", "desc": "Orders/positions IB → DB (1s)"},
     # ─── Observability stack (profil obs) ───
-    {"name": "promtail",      "image": "grafana/promtail",            "layer": "obs",     "desc": "Docker logs → Loki"},
+    {"name": "alloy",         "image": "grafana/alloy",               "layer": "obs",     "desc": "Docker logs → Loki"},
     {"name": "otel-collector","image": "otel/opentelemetry-collector","layer": "obs",     "desc": "OTLP traces → Tempo"},
     {"name": "loki",          "image": "grafana/loki",                "layer": "obs",     "desc": "Logs store"},
     {"name": "prometheus",    "image": "prom/prometheus",             "layer": "obs",     "desc": "Metrics scrape + store"},
@@ -303,7 +303,7 @@ async def stack_overview(
     exec_status = await _tcp_probe("execution-engine", 8001)
 
     # Observability stack — TCP probe on the canonical port of each
-    # component when it exposes one. promtail / otel-collector have
+    # component when it exposes one. alloy / otel-collector have
     # no public TCP listener we can cheaply probe ; treat them as
     # presence-tracked at the docker level (fall back to "OK" when
     # the rest of the obs stack answers, "DOWN" otherwise).
@@ -312,7 +312,7 @@ async def stack_overview(
     tempo_status   = await _tcp_probe("tempo",         3200)
     grafana_status = await _tcp_probe("grafana",       3000)
     obs_any_up = "OK" in (prom_status, loki_status, tempo_status, grafana_status)
-    promtail_status = "OK" if obs_any_up else "DOWN"
+    alloy_status    = "OK" if obs_any_up else "DOWN"
     otel_status     = "OK" if obs_any_up else "DOWN"
 
     # 2. Engines : reuse the per-engine config from /engines
@@ -340,7 +340,7 @@ async def stack_overview(
         "db-writer":   engines_status.get("db_writer", "DOWN"),
         "execution":  exec_status,
         # Observability layer
-        "promtail":      promtail_status,
+        "alloy":         alloy_status,
         "otel-collector": otel_status,
         "loki":          loki_status,
         "prometheus":    prom_status,
@@ -367,7 +367,7 @@ async def stack_overview(
         {"from": "api",         "to": "nginx"},
         {"from": "frontend",    "to": "nginx"},
         # Observability flows (kept minimal to avoid spaghetti)
-        {"from": "promtail",       "to": "loki"},        # Docker logs → Loki
+        {"from": "alloy",          "to": "loki"},        # Docker logs → Loki
         {"from": "otel-collector", "to": "tempo"},       # OTLP traces → Tempo
         {"from": "loki",           "to": "grafana"},
         {"from": "prometheus",     "to": "grafana"},
@@ -624,7 +624,7 @@ async def read_table(
 # ──────────────────────────────────────────────────────────────────────
 # Log Search — Loki proxy
 # ──────────────────────────────────────────────────────────────────────
-# The obs profile bundles a Loki instance fed by promtail (Docker logs
+# The obs profile bundles a Loki instance fed by Alloy (Docker logs
 # → Loki). Grafana Explore is the canonical UI but is 5-10 s + 6 clicks
 # away for a "tail vol-engine for errors" question. This proxy gives the
 # DB-Schema-style dev tab a 1-click answer.
@@ -706,7 +706,7 @@ async def logs_query(
         safe = container.replace('"', '\\"')
         selectors.append(f'container="{safe}"')
     else:
-        # Promtail tags every container with a non-empty ``container``
+        # Alloy tags every container with a non-empty ``container``
         # label, so this selector picks up everything the obs stack
         # collects.
         selectors.append('container=~".+"')

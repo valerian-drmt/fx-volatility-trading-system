@@ -65,7 +65,7 @@ chmod +x "$CMD/all/stats"
 # no build on the VM). Profiles come from /opt/fxvol/.env which compose reads.
 for svc in postgres redis api market-data vol-engine risk-engine db-writer \
            execution-engine frontend nginx ib-gateway \
-           prometheus cadvisor loki promtail tempo otel-collector grafana; do
+           prometheus cadvisor loki alloy tempo otel-collector grafana; do
   printf '#!/usr/bin/env bash\ncd %s && exec sudo docker compose up -d --no-deps %s "$@"\n' "$APP" "$svc" > "$CMD/containers/$svc"
   chmod +x "$CMD/containers/$svc"
 done

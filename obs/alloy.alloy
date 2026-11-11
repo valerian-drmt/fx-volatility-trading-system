@@ -1,0 +1,120 @@
+// Grafana Alloy: ships container stdout to Loki (#415). Replaces promtail,
+// which is end-of-life upstream; generated from the old obs/promtail.yml with
+// `alloy convert --source-format=promtail` and kept equivalent:
+//   - discovery and log reads go through docker-socket-proxy (#298):
+//     GET /containers only, no Docker socket in this container;
+//   - JSON fields (level, event, cycle_id, trace_id) are parsed; `level` is
+//     the only one promoted to a label (low cardinality), the ids stay in the
+//     line (docs/observability/CONVENTIONS.md);
+//   - redis / postgres / ib-gateway plain-text lines get a level from a regex;
+//     anything left without one is labelled `unknown`.
+// Read positions live in --storage.path (the alloy_data volume), so a restart
+// does not re-ship old lines.
+
+discovery.docker "docker" {
+	host             = "tcp://docker-socket-proxy:2375"
+	refresh_interval = "5s"
+
+	filter {
+		name   = "label"
+		values = ["com.docker.compose.project=fx-volatility-trading-system"]
+	}
+}
+
+loki.process "docker" {
+	forward_to = [loki.write.default.receiver]
+
+	stage.json {
+		expressions = {
+			cycle_id  = "cycle_id",
+			event     = "event",
+			level     = "level",
+			timestamp = "timestamp",
+			trace_id  = "trace_id",
+		}
+	}
+
+	stage.match {
+		selector = "{engine=\"redis\"}"
+
+		stage.regex {
+			expression = "^[0-9:]+ (?P<sev>[\\*#\\-!\\.MSC])"
+		}
+
+		stage.template {
+			source   = "level"
+			template = "{{- if eq .sev \"#\" -}}warning\n{{- else if eq .sev \"!\" -}}error\n{{- else if eq .sev \"*\" -}}notice\n{{- else -}}info\n{{- end -}}"
+		}
+	}
+
+	stage.match {
+		selector = "{engine=\"postgres\"}"
+
+		stage.regex {
+			expression = "\\] (?P<severity_raw>DEBUG[1-5]|LOG|INFO|NOTICE|WARNING|ERROR|FATAL|PANIC):"
+		}
+
+		stage.template {
+			source   = "level"
+			template = "{{- if .severity_raw -}}{{ .severity_raw | lower }}{{- end -}}"
+		}
+	}
+
+	stage.match {
+		selector = "{engine=\"ib-gateway\"}"
+
+		stage.regex {
+			expression = "\\[(?P<level_raw>error|warn|info)\\]"
+		}
+
+		stage.template {
+			source   = "level"
+			template = "{{- if .level_raw -}}{{ .level_raw }}{{- end -}}"
+		}
+	}
+
+	stage.template {
+		source   = "level"
+		template = "{{- if .level -}}{{ .level }}{{- else -}}unknown{{- end -}}"
+	}
+
+	stage.labels {
+		values = {
+			level = null,
+		}
+	}
+}
+
+discovery.relabel "docker" {
+	targets = []
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		target_label  = "engine"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_log_stream"]
+		target_label  = "stream"
+	}
+}
+
+loki.source.docker "docker" {
+	host          = "tcp://docker-socket-proxy:2375"
+	targets       = discovery.docker.docker.targets
+	forward_to    = [loki.process.docker.receiver]
+	relabel_rules = discovery.relabel.docker.rules
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+	external_labels = {}
+}

@@ -1,6 +1,6 @@
 """Container and workflow hardening, the half that runs offline (#298, #302).
 
-Dockerfiles drop privileges, cAdvisor is not privileged, promtail has no
+Dockerfiles drop privileges, cAdvisor is not privileged, alloy has no
 Docker socket (it goes through the filtering proxy), every action is pinned
 to a commit sha, every workflow declares permissions, workflow inputs never
 reach a ``run:`` block by interpolation, Dependabot covers the actions.
@@ -40,14 +40,19 @@ def test_obs_profile_runs_without_privilege_or_a_writable_socket() -> None:
     svc = compose["services"]
     assert not svc["cadvisor"].get("privileged"), "cadvisor must not be privileged"
     assert all(v.endswith(":ro") for v in svc["cadvisor"]["volumes"]), svc["cadvisor"]["volumes"]
-    assert not any("docker.sock" in v for v in svc["promtail"]["volumes"]), "promtail reads through the proxy"
+    assert not any("docker.sock" in v for v in svc["alloy"]["volumes"]), "alloy reads through the proxy"
     proxy = svc["docker-socket-proxy"]
     assert proxy["environment"]["CONTAINERS"] == "1" and proxy["environment"]["POST"] == "0"
+    # GET-only grants: containers (list, inspect, logs) and networks (Alloy discovery).
+    granted = {k for k, v in proxy["environment"].items() if v == "1"}
+    assert granted == {"CONTAINERS", "NETWORKS"}, granted
     assert proxy["volumes"] == ["/var/run/docker.sock:/var/run/docker.sock:ro"]
     assert proxy["profiles"] == ["obs"] and proxy["networks"] == ["fxvol-internal"]
     assert "ports" not in proxy
-    promtail_cfg = (ROOT / "obs" / "promtail.yml").read_text(encoding="utf-8")
-    assert "tcp://docker-socket-proxy:2375" in promtail_cfg and "unix:///var/run/docker.sock" not in promtail_cfg
+    alloy_cfg = (ROOT / "obs" / "alloy.alloy").read_text(encoding="utf-8")
+    # discovery and the log source both go through the proxy
+    assert alloy_cfg.count('"tcp://docker-socket-proxy:2375"') == 2
+    assert "unix:///var/run/docker.sock" not in alloy_cfg
     assert svc["grafana"]["ports"] == ["127.0.0.1:3000:3000"], "Grafana stays loopback-only"
 
 
@@ -107,7 +112,9 @@ def test_prometheus_environment_label_follows_the_stack_env() -> None:
     prom = (ROOT / "obs" / "prometheus.yml").read_text(encoding="utf-8")
     assert "environment: ${FXVOL_ENVIRONMENT}" in prom and "environment: dev" not in prom
     compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-    assert "'--enable-feature=expand-external-labels'" in compose
+    # Prometheus 3 expands env vars in external labels by default (#415);
+    # the v2 feature flag is gone, and the label resolved to `dev` locally.
+    assert "prom/prometheus:v3." in compose and "expand-external-labels'" not in compose
     assert "FXVOL_ENVIRONMENT: ${ENV:-dev}" in compose
 
 

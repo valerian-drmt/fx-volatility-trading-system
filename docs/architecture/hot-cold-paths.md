@@ -133,7 +133,7 @@ when the analytics batch and a trader's click compete, the click wins 8:1.
 | 1024 | execution, api, market-data, ib-gateway, nginx | the hot path: an order, a fill, a tick, the page that shows them |
 | 512 | risk-engine, frontend | greeks the trader reads every few seconds; static files |
 | 256 | vol-engine, db-writer, postgres, redis | per-cycle work and the stores, which must not starve but never block a click |
-| 128 | analytics-engine (also `cpus: 0.5`), prometheus, cadvisor, loki, promtail, tempo, otel-collector, grafana | the cold path and observability: everything that can wait |
+| 128 | analytics-engine (also `cpus: 0.5`), prometheus, cadvisor, loki, alloy, tempo, otel-collector, grafana | the cold path and observability: everything that can wait |
 
 Alongside the weights the vol engine stopped running the hourly batch itself:
 `VOL_INLINE_ANALYTICS` defaults to `0`, so GMM refit, PCA surface snapshot and

@@ -29,6 +29,8 @@ describe("useFetch contract", () => {
     const fetcher = (): Promise<number> => Promise.resolve(7);
     const { rerender } = render(<Identity seen={seen} fetcher={fetcher} />);
     await waitFor(() => expect(screen.getByTestId("v").textContent).toBe("7"));
+    // `seen` fills from an effect, which can land after the DOM shows 7 on a slow runner.
+    await waitFor(() => expect(seen[seen.length - 1]?.data).toBe(7));
     const before = seen[seen.length - 1];
     rerender(<Identity seen={seen} fetcher={fetcher} />);
     rerender(<Identity seen={seen} fetcher={fetcher} />);
