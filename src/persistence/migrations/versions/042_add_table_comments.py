@@ -54,7 +54,7 @@ TABLE_COMMENTS: dict[str, str] = {
         "EUR FUT delta-hedge orders submitted by the delta-hedger loop. "
         "Append-only ; one row per fire.",
     "open_position":
-        "Live IB-side positions reconciled against ib_insync. UPDATE-in-place "
+        "Live IB-side positions reconciled against ib_async. UPDATE-in-place "
         "by position-sync (5 s cadence) ; row deleted when fully closed.",
     "open_position_history":
         "Per-cycle greeks + P&L snapshot per open_position row. Append-only ; "

@@ -11,7 +11,7 @@ fxvol-internal network ; override via env ``OTEL_EXPORTER_OTLP_ENDPOINT``.
 Spec : docs/LGTM_IMPLEMENTATION_SPEC.md § Phase 2.
 
 Compat notes :
-- Engines use ib_insync which calls ``nest_asyncio.apply()`` on its IB
+- Engines use ib_async which calls ``nest_asyncio.apply()`` on its IB
   event loop. OTel spans propagate via ``contextvars`` which are
   asyncio-aware (3.7+), so the parent/child relationship survives
   ``await`` boundaries naturally. Do NOT auto-instrument asyncio

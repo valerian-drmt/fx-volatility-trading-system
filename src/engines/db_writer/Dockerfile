@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # db-writer service — installs the [writer] extra (psycopg2-binary on
-# top of base runtime). Deliberately does NOT pull ib-insync, making
+# top of base runtime). Deliberately does NOT pull ib-async, making
 # this image ~150 MB lighter than the engine containers.
 
 # Base images pinned by tag AND digest (#305, audit 10#6); Dependabot's

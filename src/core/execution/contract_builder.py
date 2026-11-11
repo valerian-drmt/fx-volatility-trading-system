@@ -1,6 +1,6 @@
 """Pure helpers : preview-leg → IB Contract / Order kwargs.
 
-Returns dialect-free dicts so unit tests don't import ib_insync. The
+Returns dialect-free dicts so unit tests don't import ib_async. The
 execution-engine wraps the dicts into ``Contract(**kwargs)`` /
 ``LimitOrder(**kwargs)`` at runtime.
 
@@ -98,7 +98,7 @@ def build_contract_kwargs(
     currency: str = "USD",
     sec_type: str = "FOP",
 ) -> dict[str, object]:
-    """Build the kwargs for ``ib_insync.Contract`` — FOP (option) or FUT.
+    """Build the kwargs for ``ib_async.Contract`` — FOP (option) or FUT.
 
     Futures path (``contract_type='future'`` or ``sec_type='FUT'``) :
     strike is ignored, `tradingClass` empty, the `symbol` carries the
@@ -137,9 +137,9 @@ def build_order_kwargs(
     *,
     side: str, qty: int, limit_price: float, time_in_force: str = "DAY",
 ) -> dict[str, object]:
-    """Build the kwargs for ``ib_insync.LimitOrder`` for a single leg.
+    """Build the kwargs for ``ib_async.LimitOrder`` for a single leg.
 
-    ib_insync.LimitOrder signature : ``LimitOrder(action, totalQuantity, lmtPrice)``.
+    ib_async.LimitOrder signature : ``LimitOrder(action, totalQuantity, lmtPrice)``.
     The dict shape we return is consumed by ``LimitOrder(**kwargs)`` ; the
     extra ``tif`` field is set after construction.
     """
@@ -203,8 +203,8 @@ def build_combo(
     (``limit_price=None`` — the desk sends legs as market orders) the ``lmtPrice``
     key is OMITTED and the caller places a market BAG.
 
-    Returns dialect-free dicts (no ib_insync import) so this is unit-testable ;
-    the engine wraps ``comboLegs`` into ``ib_insync.ComboLeg`` and the order into
+    Returns dialect-free dicts (no ib_async import) so this is unit-testable ;
+    the engine wraps ``comboLegs`` into ``ib_async.ComboLeg`` and the order into
     ``LimitOrder`` at runtime.
     """
     legs = list(legs)

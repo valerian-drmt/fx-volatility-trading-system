@@ -120,7 +120,7 @@ async def discover_chains(
     trading_class: str = "EUU",
 ) -> list[dict[str, Any]]:
     """Return the EUU option chain closest to each target DTE."""
-    from ib_insync import Contract
+    from ib_async import Contract
 
     fut = Contract(symbol="EUR", secType="FUT", exchange="CME", currency="USD")
     details = await ib.reqContractDetailsAsync(fut)
@@ -212,7 +212,7 @@ async def _qualify_tenor_strikes(
     n_side: int = DEFAULT_STRIKES_PER_SIDE,
 ) -> dict[float, dict[str, Any]]:
     """Qualify ~2*n_side strikes around F, both C and P sides."""
-    from ib_insync import Contract
+    from ib_async import Contract
 
     expiry = chain["expiry"]
     strikes = chain["strikes"]

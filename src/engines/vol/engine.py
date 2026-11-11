@@ -26,7 +26,7 @@ Measure convention (refactor plan P0.3) :
   via the VRP conversion before generating a signal.
 
 All IB I/O stays behind callables so the engine is testable without
-``ib_insync``.
+``ib_async``.
 """
 from __future__ import annotations
 

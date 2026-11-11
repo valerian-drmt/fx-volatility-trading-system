@@ -11,7 +11,7 @@ Our states (``trade_order.state``):
     pending -> submitted -> partially_filled -> filled
                         \\-> cancelled | rejected | expired
 
-IB statuses (ib_insync ``OrderStatus``): PendingSubmit, ApiPending,
+IB statuses (ib_async ``OrderStatus``): PendingSubmit, ApiPending,
 PreSubmitted, Submitted, PendingCancel, Cancelled, ApiCancelled, Filled,
 Inactive. Anything else is logged as unknown and ignored.
 """

@@ -126,7 +126,7 @@ def test_place_order_trade_returns_raw_trade_with_order_ref() -> None:
     _, order = fake.placed[0]
     assert order.orderRef == "fxvol:spot:12"
     assert order.orderType == "LMT" and order.lmtPrice == 1.12325
-    # The raw ib_insync Trade (not the dict) so callers can attach handlers.
+    # The raw ib_async Trade (not the dict) so callers can attach handlers.
     assert trade.order.orderId == 1 and trade.orderStatus.status == "Submitted"
 
 

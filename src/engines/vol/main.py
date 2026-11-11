@@ -38,7 +38,7 @@ async def run() -> None:
     # validating the flame graph in Grafana.
     init_tracing(service_name=settings.SERVICE_NAME or "vol_engine")
 
-    from ib_insync import IB
+    from ib_async import IB
 
     from engines.vol.engine import VolEngine
 

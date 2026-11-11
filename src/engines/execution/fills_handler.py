@@ -1,4 +1,4 @@
-"""ib_insync event handlers — order status + execution callbacks.
+"""ib_async event handlers — order status + execution callbacks.
 
 Wired by ``live_submit.attach_fill_handlers`` to a freshly-placed Trade.
 The Trade object exposes two relevant events :
@@ -6,7 +6,7 @@ The Trade object exposes two relevant events :
     PreSubmitted, Filled, Cancelled, ApiCancelled, Inactive, Rejected, ...).
   * ``trade.fillEvent`` — fired on each ``Execution`` (partial or full).
 
-Persistence uses a fresh ``AsyncSession`` per event because ib_insync events
+Persistence uses a fresh ``AsyncSession`` per event because ib_async events
 fire from the asyncio loop and we don't want long-lived sessions across
 arbitrary callback boundaries.
 
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 # Event handlers
 # --------------------------------------------------------------------------
 
-# One asyncio.Lock per order id (#322, audit 04#7 / DI-36): ib_insync fires one
+# One asyncio.Lock per order id (#322, audit 04#7 / DI-36): ib_async fires one
 # task per event, and two fills of the same order used to recompute the
 # aggregates concurrently, the second commit overwriting the first. Every DB
 # touch of an order's row goes through its lock; the dict only grows by one
@@ -93,7 +93,7 @@ def attach_fill_handlers(
 ) -> None:
     """Wire the event callbacks. Called once per placed Trade.
 
-    ``commissionReportEvent`` (#322): ib_insync delivers the CommissionReport
+    ``commissionReportEvent`` (#322): ib_async delivers the CommissionReport
     AFTER the fill event, so the report attached to the Fill at fillEvent time
     is empty and commission was permanently 0.0 (EX-03). The report handler
     updates the fill row and recomputes the order's aggregates."""
@@ -322,7 +322,7 @@ async def _recompute_aggregates(db: AsyncSession, order: StructureOrder) -> Any:
 async def _on_commission_report(
     fill: Any, report: Any, order_id: int, sm: async_sessionmaker[AsyncSession],
 ) -> None:
-    """ib_insync ``commissionReportEvent(trade, fill, report)``: the commission
+    """ib_async ``commissionReportEvent(trade, fill, report)``: the commission
     for one execution, delivered after the fill. Updates the fill row by
     ``execId`` and re-folds the order's aggregates (#322)."""
     try:
@@ -340,7 +340,7 @@ async def _on_commission_report(
             )).scalar_one_or_none()
             if row is None:
                 # Report before the fill row exists (ordering is not guaranteed):
-                # the fill handler reads fill.commissionReport, which ib_insync
+                # the fill handler reads fill.commissionReport, which ib_async
                 # has populated by then, so nothing is lost.
                 logger.info("commission_report_before_fill order_id=%s exec_id=%s", order_id, exec_id)
                 return

@@ -7,7 +7,7 @@ Here we verify the *runner* :
     opposite-side LimitOrders for partials, persists `unwind` rows, and
     writes audit log entries with the right event_type.
 
-`ib_insync` is not imported by tests ; we monkey-patch the module's
+`ib_async` is not imported by tests ; we monkey-patch the module's
 `Contract` and `LimitOrder` symbols to lightweight stubs.
 """
 from __future__ import annotations
@@ -27,13 +27,13 @@ pytestmark = pytest.mark.asyncio
 
 
 
-# --- Stub ib_insync ---------------------------------------------------------
+# --- Stub ib_async ---------------------------------------------------------
 def _install_ibinsync_stub(monkeypatch):
-    """Inject a fake ib_insync module so rollback_runner can import Contract /
+    """Inject a fake ib_async module so rollback_runner can import Contract /
     LimitOrder without bringing in the real lib (which we don't want to drive
     in unit tests).
     """
-    fake_mod = ModuleType("ib_insync")
+    fake_mod = ModuleType("ib_async")
 
     class _Contract:
         def __init__(self, **kw):
@@ -49,7 +49,7 @@ def _install_ibinsync_stub(monkeypatch):
 
     fake_mod.Contract = _Contract
     fake_mod.LimitOrder = _LimitOrder
-    monkeypatch.setitem(sys.modules, "ib_insync", fake_mod)
+    monkeypatch.setitem(sys.modules, "ib_async", fake_mod)
 
 
 class _FakeTrade:

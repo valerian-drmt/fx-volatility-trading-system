@@ -65,10 +65,10 @@ All mandatory:
 - ✅ No network I/O (no `redis.from_url`, no `httpx.get`, no socket)
 - ✅ No disk I/O outside tmp (no real SQLite writes; pytest's `tmp_path` fixture OK)
 - ✅ No Docker container
-- ✅ Mocks/stubs for external dependencies (`AsyncMock` for ib_insync, `fakeredis` or MagicMock for Redis)
+- ✅ Mocks/stubs for external dependencies (`AsyncMock` for ib_async, `fakeredis` or MagicMock for Redis)
 - ✅ < 100ms per typical test (the total for `tests/unit/` must stay < 30s)
 
-**Simple reviewer rule**: if you see `import redis` or `import psycopg` or `from ib_insync import IB` in the test, it's integration, not unit. Exception: importing types for annotations does not count.
+**Simple reviewer rule**: if you see `import redis` or `import psycopg` or `from ib_async import IB` in the test, it's integration, not unit. Exception: importing types for annotations does not count.
 
 ---
 
@@ -208,7 +208,7 @@ A: Mirror `src/`. `src/engines/` exists to group the 5 engines, so `tests/unit/e
 | `sqlite_sessionmaker_no_fk` | same, FKs off | the rare test that builds rows in isolation on purpose (say why in a comment) |
 | `tests.fixtures.db.make_sqlite_sessionmaker()` | the function behind both (`(maker, engine)`) | modules that need their own lifecycle; `await engine.dispose()` when done |
 | `frozen_clock` | freezegun at `2026-11-06T12:00:00Z` | anything that reads `datetime.now()`; no `asyncio.sleep` to "age" a value |
-| `ib_factories` / `tests.fixtures.ib` | `fake_trade`, `fake_fill`, `fake_commission_report`, `fake_contract`, `FakeIB`, `FakeEvent` | ib_insync shapes as the handlers see them: empty commission report at fill time, `trade.log` with an error entry for a reject, `whyHeld` for a hold |
+| `ib_factories` / `tests.fixtures.ib` | `fake_trade`, `fake_fill`, `fake_commission_report`, `fake_contract`, `FakeIB`, `FakeEvent` | ib_async shapes as the handlers see them: empty commission report at fill time, `trade.log` with an error entry for a reject, `whyHeld` for a hold |
 | `canonical_payload(name)` / `tests.fixtures.payloads` | one JSON per Redis channel (`ticks`, `account`, `vol_update`, `risk_update`, `positions`, `orders`, `exit_alerts`, `db_events`) and per IB event (`ib_order_status`, `ib_execution`, `ib_commission_report`, `ib_error`) | producer and consumer tests built on the same shape; `tests/unit/fixtures/test_harness.py` checks the Redis ones against `bus.publisher` |
 
 Test order is randomised (`pytest-randomly`, dev extra): the seed is printed at

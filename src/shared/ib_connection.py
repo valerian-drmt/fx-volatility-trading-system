@@ -8,7 +8,7 @@ restart window — the service retries with an exponential backoff capped
 at 60 seconds, yielding control via ``asyncio.sleep`` so the event loop
 can still process signals.
 
-Decoupled from ``ib_insync`` so the backoff math can be unit-tested
+Decoupled from ``ib_async`` so the backoff math can be unit-tested
 without an IB mock.
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 class _IBLike(Protocol):
-    """Minimal protocol for an ``ib_insync.IB`` instance we can mock."""
+    """Minimal protocol for an ``ib_async.IB`` instance we can mock."""
 
     def isConnected(self) -> bool: ...
     async def connectAsync(

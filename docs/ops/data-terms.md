@@ -9,7 +9,7 @@ attribution strings below are the ones the desk and the README show
 
 | Source | How | What is stored | Attribution shown |
 |---|---|---|---|
-| Interactive Brokers (paper account) | `ib_insync` to IB Gateway, **delayed** market data (`reqMarketDataType(3)`, execution `4`) | ticks (Redis, TTL), vol surfaces and fits, positions, orders, fills, account values (Postgres) | rail: "Market data: IB, delayed · paper"; README |
+| Interactive Brokers (paper account) | `ib_async` to IB Gateway, **delayed** market data (`reqMarketDataType(3)`, execution `4`) | ticks (Redis, TTL), vol surfaces and fits, positions, orders, fills, account values (Postgres) | rail: "Market data: IB, delayed · paper"; README |
 | FRED (Federal Reserve Bank of St. Louis) | `GET /fred/releases/dates` with an API key | release **dates** of whitelisted US releases in `events` | the FRED notice under Macro events and in the README |
 | Federal Reserve (FOMC) | meeting dates, hardcoded from federalreserve.gov | rows in `events` | "Federal Reserve" under Macro events |
 | ECB | monetary-policy meeting dates, hardcoded from ecb.europa.eu | rows in `events` | "ECB" |
