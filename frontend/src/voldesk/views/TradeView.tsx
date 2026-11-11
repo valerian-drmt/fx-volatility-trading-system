@@ -27,6 +27,7 @@ import { patchSpotOrderRows } from "../data/live/patch";
 import { useFetch } from "../../hooks/useFetch";
 import { type SpotOrderChangedMsg, useOrdersStream, useSpotOrdersStream } from "../../hooks/streams";
 import { asArray } from "../../utils/asArray";
+import { useNow } from "../../hooks/useNow";
 
 const GATE_TITLE = "write disabled — auth required (Phase 2)";
 
@@ -320,6 +321,7 @@ function ClosePanel({
     if (!req) return;
     // A fresh close request (Close / Close all clicked in Open positions) always
     // returns to the form, clearing any leftover confirmation / error.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- push / poll / close request from outside the component (external event)
     setDone(null);
     setErr(null);
     if (req.kind === "contract") {
@@ -773,6 +775,8 @@ function IndicatorsPanel({
 }
 
 export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
+  // A 1 s clock for the blotter's stale-order age (#404: no Date.now in render).
+  const nowMs = useNow(true, 1_000);
   const [closeReq, setCloseReq] = useState<CloseReq | null>(null);
   // Keys with a close in flight (accepted by IB but the position hasn't cleared
   // yet). Key = position id, or "t:<tradeId>" for a whole-trade close → maps to
@@ -811,12 +815,14 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   useEffect(() => {
     if (spotStream.data && spotStream.asOf !== null) {
       const entry = { msg: spotStream.data, at: spotStream.asOf };
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- push / poll / close request from outside the component (external event)
       setSpotOverlay((prev) => [...prev.slice(-49), entry]);
     }
   }, [spotStream.data, spotStream.asOf]);
   useEffect(() => {
     const landed = spotOrders.asOf;
     if (landed === null) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- push / poll / close request from outside the component (external event)
     setSpotOverlay((prev) => {
       const kept = prev.filter((e) => e.at > landed - 3_000);
       return kept.length === prev.length ? prev : kept;
@@ -868,6 +874,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const seq = useRef(0);
   const addOrder = (rec: OrderRecord): void => {
     if (rec.state === "rejected") {
+      // eslint-disable-next-line react-hooks/purity -- event handler (an order came back), not render
       const now = Date.now();
       setRejects((prev) => [{
         id: "r" + seq.current++, ts: fmtBlotterTs(new Date()), tsSort: now,
@@ -1006,6 +1013,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   // each positions poll (~15 s), which also covers the TTL check.
   useEffect(() => {
     const now = Date.now();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- push / poll / close request from outside the component (external event)
     setClosingKeys((prev) => {
       const next: Record<string, number> = {};
       let changed = false;
@@ -1067,7 +1075,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
               <tbody>
                 {orders.map((o) => {
                   const tone = stateTone(o.state);
-                  const ageMs = Date.now() - o.tsSort;
+                  const ageMs = nowMs - o.tsSort;
                   const stale = tone === "pending" && ageMs > STALE_MS;
                   return (
                     <tr key={o.id}>

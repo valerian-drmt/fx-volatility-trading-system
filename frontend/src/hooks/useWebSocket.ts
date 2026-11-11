@@ -12,7 +12,7 @@
  * `orders:<id>` channel; the set of paths can change between renders and only
  * the added / removed sockets are opened / closed.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 function wsBase(): string {
   const override = import.meta.env["VITE_WS_BASE_URL"];
@@ -99,10 +99,14 @@ export function useWebSocket<T>(
     asOf: null,
   });
   const parseRef = useRef(parse);
-  parseRef.current = parse;
+  // Latest-value refs are written after render, before the effects that read them (#404).
+  useLayoutEffect(() => {
+    parseRef.current = parse;
+  });
 
   useEffect(() => {
     if (!path) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the socket path went away: reset to closed (external system)
       setState({ last: null, status: "closed", asOf: null });
       return;
     }
@@ -158,7 +162,10 @@ export function useMultiWebSocket<T>(
   const key = paths.join("|");
   const [state, setState] = useState<MultiWsState<T>>({ last: null, status: "closed", asOf: null, nOpen: 0 });
   const parseRef = useRef(parse);
-  parseRef.current = parse;
+  // Latest-value refs are written after render, before the effects that read them (#404).
+  useLayoutEffect(() => {
+    parseRef.current = parse;
+  });
   const socketsRef = useRef<Map<string, ManagedSocket>>(new Map());
   const statusRef = useRef<Map<string, WsStatus>>(new Map());
 

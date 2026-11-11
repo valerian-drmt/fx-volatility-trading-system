@@ -45,6 +45,7 @@ import {
   type ValuationSeries,
 } from "../data/live/portfolio";
 import { asArray } from "../../utils/asArray";
+import { useNow } from "../../hooks/useNow";
 
 // ─── Performance charts: fixed time axis with gaps ───────────────────────────
 // The net-liq series is resampled onto a FIXED grid of GRID_N samples spanning the
@@ -369,12 +370,16 @@ function DrawdownSvg({ grid, status }: { grid: EqGrid; status: string }): JSX.El
     pb = 26;
   const base = pt, // 0% at the top — the underwater surface
     floor = h - pb;
-  let peak = -Infinity;
-  const dd = grid.series.map((v) => {
-    if (v == null) return null;
+  const dd: (number | null)[] = [];
+  for (let i = 0, peak = -Infinity; i < grid.series.length; i++) {
+    const v = grid.series[i];
+    if (v == null) {
+      dd.push(null);
+      continue;
+    }
     peak = Math.max(peak, v);
-    return (v - peak) / peak;
-  });
+    dd.push((v - peak) / peak);
+  }
   const ddVals = dd.filter((v): v is number => v != null);
   if (ddVals.length < 2) return emptyChart(w, h, status);
   const ddMin = Math.min(...ddVals, -0.0001);
@@ -425,6 +430,8 @@ function PerformancePanel({
   unreal: number;
   markers: TradeEvent[];
 }): JSX.Element {
+  // Window end; a minute clock is fine for day-scale windows (#404: no Date.now in render).
+  const nowMs = useNow(true, 60_000);
   const [win, setWin] = useState<string>("7D");
   // One windowed equity fetch + one greek-P&L-history fetch feed both halves.
   const eq = useFetch<EquityPoint[]>(
@@ -447,7 +454,7 @@ function PerformancePanel({
     reloadEq();
     reloadGk();
   }, [win, reloadEq, reloadGk]);
-  const equity = buildEquityGrid(asArray(eq.data), WINDOW_DAYS[win] ?? null, Date.now());
+  const equity = buildEquityGrid(asArray(eq.data), WINDOW_DAYS[win] ?? null, nowMs);
   const hist: GreekSeries = gk.data ?? { delta: [], gamma: [], vega: [], theta: [] };
   // Header stats follow the selected window (same math as the recap table) —
   // realized = equity Δ over the window, DDs from the window's running peak.
@@ -532,7 +539,7 @@ function PerformancePanel({
                 {g.label} P&L <em className="unit">Taylor · cumulative $</em>
               </div>
               <GreekPnlChart
-                grid={buildEquityGrid(hist[g.key], WINDOW_DAYS[win] ?? null, Date.now())}
+                grid={buildEquityGrid(hist[g.key], WINDOW_DAYS[win] ?? null, nowMs)}
                 status={gk.status}
                 markers={markers}
                 id={g.key}
@@ -981,13 +988,15 @@ function ValuationChart({
   status: string;
   win: string;
 }): JSX.Element {
+  // Window end; a minute clock is fine for day-scale windows (#404: no Date.now in render).
+  const nowMs = useNow(true, 60_000);
   const w = 760,
     h = 250,
     pl = 56,
     pr = 12,
     pt = 14,
     pb = 26;
-  const now = Date.now();
+  const now = nowMs;
   const wd = WINDOW_DAYS[win] ?? null;
   const grids: Record<ValuationKey, EqGrid> = {
     usd: buildEquityGrid(s?.usd ?? [], wd, now),

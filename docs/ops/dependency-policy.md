@@ -93,8 +93,8 @@ non-dev tree; both print the full inventory on every run.
 | `react-plotly.js` | was unmaintained (2.6.0, 2022) | resolved: 4.1.0 (2026) on plotly.js 3.x, shipped with #308 |
 | `slowapi` | slow upstream (0.1.10) | accepted for v1.0; the replacement is a starlette middleware with a Redis counter, one file, when a CVE or a starlette break forces it |
 | `eventkit`, `nest-asyncio` | pulled by ib-insync, quiet upstream | go away with the ib_async migration |
-| `pandas` 3.x | copy-on-write and string dtype semantics | held back `<3` for v1.0; revisit in v1.1 with the quant suite green on 3.x |
-| React Compiler lint rules (`eslint-plugin-react-hooks` 7 preset) | 45 pre-existing findings (set-state-in-effect 18, refs 12, purity 7, immutability 3, error-boundaries 2) | the two classic hook rules stay enforced; adopting the compiler rules is its own ticket |
+| `pandas` 3.x | copy-on-write and string dtype semantics | resolved: pandas 3.1 with the full suite (quant included) green, 2026-11-11 (Dependabot #445, shipped in #447) |
+| React Compiler lint rules (`eslint-plugin-react-hooks` 7 preset) | 42 findings when adopted (set-state-in-effect 18, refs 12, purity 7, immutability 3, error-boundaries 2) | resolved by #404: `reactHooks.configs.flat.recommended` enforced; refs / purity / immutability / error-boundaries fixed in the code (latest-value refs written in a layout effect, render-time `Date.now` on the shared `useNow` clock, prefix sums instead of render-time mutation); each set-state-in-effect that syncs an external system (socket, poll, timer, prop reset) carries a targeted disable with its reason |
 
 ### ib_async migration runbook (#306)
 

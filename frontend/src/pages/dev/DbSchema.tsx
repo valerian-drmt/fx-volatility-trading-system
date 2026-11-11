@@ -286,6 +286,7 @@ export function DbSchema(): JSX.Element {
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const [scale, setScale] = useState(1);
+  const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{
     startX: number; startY: number;
     origTx: number; origTy: number;
@@ -585,6 +586,7 @@ export function DbSchema(): JSX.Element {
 
   // ── Pointer handlers ──
   const onMouseDown = (e: React.MouseEvent): void => {
+    setDragging(true);
     dragRef.current = {
       startX: e.clientX, startY: e.clientY,
       origTx: tx, origTy: ty, moved: false,
@@ -602,6 +604,7 @@ export function DbSchema(): JSX.Element {
     // Click on empty canvas (no drag) → clear selection.
     if (dragRef.current && !dragRef.current.moved) setSelected(null);
     dragRef.current = null;
+    setDragging(false);
   };
   const onWheel = (e: React.WheelEvent): void => {
     e.preventDefault();
@@ -843,7 +846,7 @@ export function DbSchema(): JSX.Element {
           border: "1px solid #222",
           borderRadius: 4,
           overflow: "hidden",
-          cursor: dragRef.current ? "grabbing" : "grab",
+          cursor: dragging ? "grabbing" : "grab",
           position: "relative",
         }}
         onMouseDown={onMouseDown}

@@ -6,6 +6,7 @@
  */
 import type { JSX } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { describe, expect, it } from "vitest";
 import { useFetch, type FetchResult } from "../useFetch";
 
@@ -14,7 +15,10 @@ function Probe({ fetcher, sink }: {
   sink: { current: FetchResult<number> | null };
 }): JSX.Element {
   const res = useFetch<number>(fetcher, 60_000);
-  sink.current = res;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability -- test probe: hands the hook's result to the test
+    sink.current = res;
+  });
   return (
     <div>
       <span data-testid="status">{res.status}</span>

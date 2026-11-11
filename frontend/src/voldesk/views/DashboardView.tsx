@@ -75,14 +75,15 @@ function HoldingsDonut({ netLiq, cash }: { netLiq: number; cash: Cash[] }): JSX.
   const totAbs = DONUT_PARTS.reduce((s, p) => s + Math.abs(vals[p.key]!), 0) || 1;
   const R = 40;
   const C = 2 * Math.PI * R;
-  let acc = 0;
+  // Each arc starts where the previous ones end: a prefix sum of the fractions.
+  const fracs = DONUT_PARTS.map((p) => Math.abs(vals[p.key]!) / totAbs);
+  const starts = fracs.map((_, i) => fracs.slice(0, i).reduce((s, f) => s + f, 0));
   return (
     <div className="hold-donut">
       <svg width="118" height="118" viewBox="0 0 118 118">
-        {DONUT_PARTS.map((p) => {
-          const frac = Math.abs(vals[p.key]!) / totAbs;
-          const off = -acc * C;
-          acc += frac;
+        {DONUT_PARTS.map((p, i) => {
+          const frac = fracs[i]!;
+          const off = -starts[i]! * C;
           return (
             <circle
               key={p.key}
