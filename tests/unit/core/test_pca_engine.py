@@ -64,7 +64,7 @@ def test_sign_correct_handles_flip():
 
 def test_sign_correct_first_fit_no_reference():
     fit = fit_pca_svd(_synthetic_X())
-    corrected, cos, flips = sign_correct_loadings(fit.loadings, None)
+    _corrected, cos, flips = sign_correct_loadings(fit.loadings, None)
     assert all(not f for f in flips)
     assert all(not np.isfinite(c) for c in cos)
 

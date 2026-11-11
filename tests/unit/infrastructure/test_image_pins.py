@@ -46,7 +46,7 @@ def test_compose_infra_images_are_exact_and_match_the_dockerfiles() -> None:
     images = re.findall(r"^\s+image: (\S+)$", compose, re.M)
     infra = [i for i in images if not i.startswith("${")]
     for image in infra:
-        name, _, tag = image.partition(":")
+        _name, _, tag = image.partition(":")
         assert tag, f"{image}: no tag"
         assert tag.split("@")[0] not in FLOATING, f"{image}: floating tag"
     for prefix in ("postgres:", "redis:", "nginx:"):
