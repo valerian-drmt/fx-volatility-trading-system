@@ -1,6 +1,6 @@
-"""Read IB's own words off an ib_insync ``Trade`` (#320 / #376).
+"""Read IB's own words off an ib_async ``Trade`` (#320 / #376).
 
-ib_insync appends a ``TradeLogEntry`` per status change and per error
+ib_async appends a ``TradeLogEntry`` per status change and per error
 (``errorCode`` set, message like ``Error 201, reqId 7: Order rejected -
 reason: ...``). ``orderStatus.whyHeld`` carries IB's hint for a held order.
 Both are what the blotter needs to say WHY an order waits or died; the

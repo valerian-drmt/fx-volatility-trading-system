@@ -2547,7 +2547,7 @@
      "unique": false
     }
    ],
-   "comment": "Live IB-side positions reconciled against ib_insync. UPDATE-in-place by position-sync (5 s cadence) ; row deleted when fully closed.",
+   "comment": "Live IB-side positions reconciled against ib_async. UPDATE-in-place by position-sync (5 s cadence) ; row deleted when fully closed.",
    "composite_unique": [],
    "n_columns": 23,
    "name": "open_position"

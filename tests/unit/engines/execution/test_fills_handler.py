@@ -1,12 +1,12 @@
 """Unit tests for engines.execution.fills_handler.
 
-Verifies the persistence behaviour of the two ib_insync callbacks :
+Verifies the persistence behaviour of the two ib_async callbacks :
   * `_on_order_status` flips DB state on Submitted / Cancelled / Inactive.
   * `_on_execution` writes a fill row, dedupes on ib_execution_id, recomputes
     aggregates, and triggers the structure-completion cascade
     (`maybe_complete_structure`) when all legs are filled.
 
-Uses an in-memory aiosqlite DB ; the ib_insync `Trade`/`Fill` objects are
+Uses an in-memory aiosqlite DB ; the ib_async `Trade`/`Fill` objects are
 SimpleNamespaces.
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ pytestmark = pytest.mark.asyncio
 def _fake_trade(*, status: str = "Submitted", error: str | None = None,
                 why_held: str | None = None) -> SimpleNamespace:
     """Trade object shape consumed by `_on_order_status`. ``error`` adds an IB
-    error entry to ``trade.log`` the way ib_insync does (#320)."""
+    error entry to ``trade.log`` the way ib_async does (#320)."""
     log = [SimpleNamespace(status=status, message=error or "", errorCode=201 if error else 0)]
     return SimpleNamespace(
         orderStatus=SimpleNamespace(status=status, whyHeld=why_held or ""),
@@ -313,7 +313,7 @@ async def test_fill_inherits_and_binds_the_order_trace_id():
 # ── #322 : serialised fills, commission report, currency ──────────────────────
 
 async def test_concurrent_fills_of_one_order_fold_into_consistent_aggregates():
-    """DI-36 / 04#7: ib_insync fires one task per fill; without the per-order
+    """DI-36 / 04#7: ib_async fires one task per fill; without the per-order
     lock the second recompute could overwrite the first (qty 3 instead of 5)."""
     import asyncio
 

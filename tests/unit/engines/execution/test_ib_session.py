@@ -256,7 +256,7 @@ async def test_1101_reopens_only_after_a_full_pass(sqlite_sessionmaker) -> None:
     await sup.on_connected()
     sup.on_error(-1, 1100, "lost")
     sup.on_error(-1, 1101, "restored - data lost")
-    # The pass is scheduled, not run inline (ib_insync fires the event synchronously).
+    # The pass is scheduled, not run inline (ib_async fires the event synchronously).
     for _ in range(50):
         if sup.state.ready.is_set():
             break

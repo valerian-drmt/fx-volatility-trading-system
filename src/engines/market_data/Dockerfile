@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Market-data service — async IB tick publisher.
 #
-# Installs the [ib] extra (ib-insync + tzdata + base runtime). Multi-
+# Installs the [ib] extra (ib-async + tzdata + base runtime). Multi-
 # stage pattern shared with risk-engine ; only the CMD differs.
 
 # Base images pinned by tag AND digest (#305, audit 10#6); Dependabot's
@@ -25,7 +25,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Minimal apt — ib_insync is pure Python, numpy/scipy wheels exist for
+# Minimal apt — ib_async is pure Python, numpy/scipy wheels exist for
 # manylinux so build-essential is not needed at runtime.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \

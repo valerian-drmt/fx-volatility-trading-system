@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Risk-engine service — installs the [ib] extra (ib-insync + base
+# Risk-engine service — installs the [ib] extra (ib-async + base
 # runtime, no GARCH).
 
 # Base images pinned by tag AND digest (#305, audit 10#6); Dependabot's

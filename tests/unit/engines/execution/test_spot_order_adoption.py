@@ -19,7 +19,7 @@ pytestmark = pytest.mark.asyncio
 
 
 class _Event:
-    """Minimal stand-in for ib_insync's Event (supports ``+=``)."""
+    """Minimal stand-in for ib_async's Event (supports ``+=``)."""
 
     def __init__(self) -> None:
         self.handlers: list = []

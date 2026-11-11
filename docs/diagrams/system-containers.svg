@@ -93,7 +93,7 @@
 
   <!-- engines to ib -->
   <line x1="660" y1="410" x2="898" y2="512" stroke="#333" marker-end="url(#a)"/>
-  <text x="800" y="452" font-style="italic" fill="#555">ib_insync</text>
+  <text x="800" y="452" font-style="italic" fill="#555">ib_async</text>
   <line x1="660" y1="505" x2="898" y2="525" stroke="#333" marker-end="url(#a)"/>
   <line x1="660" y1="690" x2="898" y2="548" stroke="#333" marker-end="url(#a)"/>
 </svg>

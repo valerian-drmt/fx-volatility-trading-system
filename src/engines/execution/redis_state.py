@@ -1,7 +1,7 @@
 """Module-level Redis client for execution-engine event handlers.
 
 Set by ``main.lifespan`` at startup ; read by fills / hedge / rollback
-handlers which fire from ib_insync callbacks (no FastAPI request context).
+handlers which fire from ib_async callbacks (no FastAPI request context).
 ``None`` when Redis is not configured ; publishers no-op silently.
 """
 from __future__ import annotations

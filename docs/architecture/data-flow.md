@@ -9,7 +9,7 @@ calls the API; the API forwards order actions to the execution-engine over HTTP.
 
 ## The four IB client IDs
 
-Each engine that touches IB Gateway opens its own `ib_insync` session with a distinct
+Each engine that touches IB Gateway opens its own `ib_async` session with a distinct
 client ID (a single userid allows one session per client ID):
 
 | Engine | clientID | Consumes from IB | Produces |

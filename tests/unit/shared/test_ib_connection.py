@@ -18,7 +18,7 @@ from shared.ib_connection import connect_ib_with_backoff, maintain_ib_connection
 
 
 class FakeIB:
-    """Scripted ib_insync.IB stand-in : fails N connects, then succeeds."""
+    """Scripted ib_async.IB stand-in : fails N connects, then succeeds."""
 
     def __init__(self, fail_first_n: int = 0) -> None:
         self.connected = False

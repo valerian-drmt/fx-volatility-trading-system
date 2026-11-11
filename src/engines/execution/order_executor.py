@@ -1,8 +1,8 @@
-"""Async wrapper around ib_insync for place/cancel/close from the api.
+"""Async wrapper around ib_async for place/cancel/close from the api.
 
 IB connection shared by the FastAPI lifespan (a single `IB` instance,
 clientId=4). All methods are safe to call concurrently inside the
-FastAPI event loop (ib_insync uses asyncio internally).
+FastAPI event loop (ib_async uses asyncio internally).
 
 Used by `api.routers.orders`. If the IB connection is DOWN (Gateway
 unreachable, TrustedIPs broken), the endpoints return 503.
@@ -78,7 +78,7 @@ class OrderExecutorUnavailable(RuntimeError):
 
 
 class OrderExecutor:
-    """One IB connection, shared across requests. Async-safe via ib_insync."""
+    """One IB connection, shared across requests. Async-safe via ib_async."""
 
     def __init__(
         self, host: str, port: int, client_id: int, readonly: bool = False
@@ -87,7 +87,7 @@ class OrderExecutor:
         self.port = port
         self.client_id = client_id
         # Mirrors the gateway's own READ_ONLY_API setting. When the gateway runs
-        # read-only, ib_insync's default handshake calls reqAutoOpenOrders, IB
+        # read-only, ib_async's default handshake calls reqAutoOpenOrders, IB
         # rejects it ("Error 321 ... The API interface is currently in Read-Only
         # mode") and the connect never completes — so the engine stays down
         # instead of degrading to reads. Passing readonly through skips that call.
@@ -96,13 +96,13 @@ class OrderExecutor:
         self._lock = asyncio.Lock()
         # Session hooks (#321): set by ``ib_session.IbSessionSupervisor.install``.
         # Re-attached to every new ``IB()`` the connect builds, so a reconnect
-        # never silently drops them. Signatures follow ib_insync's events.
+        # never silently drops them. Signatures follow ib_async's events.
         self.on_error: Callable[[int, int, str, Any], None] | None = None
         self.on_disconnected: Callable[[], None] | None = None
 
     async def connect(self, timeout: float = 5.0) -> None:
         """Open the IB connection. Idempotent (no reconnect when already OK)."""
-        from ib_insync import IB
+        from ib_async import IB
 
         async with self._lock:
             if self._ib is not None and self._ib.isConnected():
@@ -238,7 +238,7 @@ class OrderExecutor:
         return [trade_to_dict(t) for t in trades]
 
     def open_trades(self) -> list[Any]:
-        """Raw open ib_insync Trades (handlers can be attached) ; [] when the
+        """Raw open ib_async Trades (handlers can be attached) ; [] when the
         gateway is not connected. Used by the spot-order startup adoption."""
         if self._ib is None or not self._ib.isConnected():
             return []
@@ -372,10 +372,10 @@ class OrderExecutor:
         return trade_to_dict(await self.place_order_trade(req))
 
     async def place_order_trade(self, req: OrderRequest, *, order_ref: str | None = None) -> Any:
-        """Place at IB and return the raw ib_insync ``Trade`` so the caller can
+        """Place at IB and return the raw ib_async ``Trade`` so the caller can
         attach event handlers (spot orders persist their IB lifecycle, #291).
         ``order_ref`` is stamped on ``Order.orderRef`` (IB persists it)."""
-        from ib_insync import Contract, LimitOrder, MarketOrder
+        from ib_async import Contract, LimitOrder, MarketOrder
 
         ib = self._ensure()
         contract = Contract(
@@ -425,7 +425,7 @@ class OrderExecutor:
         """Submit a reverse LimitOrder to close the position identified by `con_id`.
         ``order_ref`` (#318): the key stamped on ``Order.orderRef`` so the order can
         be found again at IB (operator closes have no row to claim)."""
-        from ib_insync import LimitOrder
+        from ib_async import LimitOrder
 
         ib = self._ensure()
         positions = ib.positions()
@@ -465,11 +465,11 @@ class OrderExecutor:
 
         ``qty=None`` means close the full open quantity.
 
-        Returns the raw ``ib_insync`` ``Trade`` object so the caller can
+        Returns the raw ``ib_async`` ``Trade`` object so the caller can
         both serialize it (``trade_to_dict``) AND attach fills_handler
         callbacks (status / fill events → DB ``trade_order`` updates).
         """
-        from ib_insync import LimitOrder, MarketOrder
+        from ib_async import LimitOrder, MarketOrder
 
         ib = self._ensure()
         positions = ib.positions()
@@ -525,7 +525,7 @@ class OrderExecutor:
 
 
 def trade_to_dict(trade: Any) -> dict[str, Any]:
-    """Serialize an ib_insync Trade into a JSON-safe dict."""
+    """Serialize an ib_async Trade into a JSON-safe dict."""
     o = trade.order
     c = trade.contract
     s = trade.orderStatus

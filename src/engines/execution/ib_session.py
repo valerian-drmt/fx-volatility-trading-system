@@ -317,7 +317,7 @@ class IbSessionSupervisor:
         self._bg.add(task)
         task.add_done_callback(self._bg.discard)
 
-    # -- ib_insync callbacks (sync; they fire from the event loop) -----------
+    # -- ib_async callbacks (sync; they fire from the event loop) -----------
 
     def on_error(self, req_id: int, code: int, message: str, contract: Any = None) -> None:
         label = classify_error_code(int(code))

@@ -89,14 +89,21 @@ non-dev tree; both print the full inventory on every run.
 
 | Dependency | Risk | Decision (2026-11-10) |
 |---|---|---|
-| `ib-insync==0.9.86` | archived upstream (author deceased); no patch path if the IB wire protocol changes | **stay pinned for v1.0**, migrate to `ib_async` in v1.1 (#306, runbook below) |
+| `ib-insync==0.9.86` | archived upstream (author deceased); no patch path if the IB wire protocol changes | resolved 2026-11-11: `ib-async==2.1.0` (maintained fork, BSD-2), exact pin (#403, runbook below) |
 | `react-plotly.js` | was unmaintained (2.6.0, 2022) | resolved: 4.1.0 (2026) on plotly.js 3.x, shipped with #308 |
 | `slowapi` | slow upstream (0.1.10) | accepted for v1.0; the replacement is a starlette middleware with a Redis counter, one file, when a CVE or a starlette break forces it |
-| `eventkit`, `nest-asyncio` | pulled by ib-insync, quiet upstream | go away with the ib_async migration |
+| `eventkit`, `nest-asyncio` | pulled by ib-insync, quiet upstream | `eventkit` replaced by the maintained `aeventkit` fork with ib-async (#403); `nest-asyncio` is still a dependency of ib-async, accepted |
 | `pandas` 3.x | copy-on-write and string dtype semantics | resolved: pandas 3.1 with the full suite (quant included) green, 2026-11-11 (Dependabot #445, shipped in #447) |
 | React Compiler lint rules (`eslint-plugin-react-hooks` 7 preset) | 42 findings when adopted (set-state-in-effect 18, refs 12, purity 7, immutability 3, error-boundaries 2) | resolved by #404: `reactHooks.configs.flat.recommended` enforced; refs / purity / immutability / error-boundaries fixed in the code (latest-value refs written in a layout effect, render-time `Date.now` on the shared `useNow` clock, prefix sums instead of render-time mutation); each set-state-in-effect that syncs an external system (socket, poll, timer, prop reset) carries a targeted disable with its reason |
 
-### ib_async migration runbook (#306)
+### ib_async migration runbook (#306, done 2026-11-11 in #403)
+
+Status: steps 1-4 done (pin, rename, behaviour review, unit suite green
+unchanged). Prod runs the paper account, so step 6 runs as the deploy itself:
+after the deploy the desk is checked for quotes, chains, positions and fills
+reconciliation, and a regression rolls back per step 7. The local paper suite
+(step 5) needs the prod gateway stopped and stays an operator weekend walk.
+
 
 Why not now: the migration can only be validated by the IB paper suite
 (`IB_RUN_INTEGRATION=1`) and a soak, and the single paper session is owned by

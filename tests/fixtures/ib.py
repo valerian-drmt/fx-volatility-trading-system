@@ -1,9 +1,9 @@
-"""ib_insync object factories for unit tests (#338, audit 07#10).
+"""ib_async object factories for unit tests (#338, audit 07#10).
 
 Realistic shapes, including the two details that bit production:
 
 - ``fake_fill`` carries an EMPTY ``commissionReport`` by default, because that
-  is what ib_insync hands to ``fillEvent``; the real report arrives later on
+  is what ib_async hands to ``fillEvent``; the real report arrives later on
   ``commissionReportEvent`` (EX-03, #322). Pass ``commission=`` to model the
   report having already landed.
 - ``fake_trade`` carries a ``log`` list of ``TradeLogEntry``-shaped entries;

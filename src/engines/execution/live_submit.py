@@ -7,7 +7,7 @@ API flow
        (state='pending', limit_price already computed)
      - then HTTP-POSTs ``execution-engine:8001/internal/structure/submit``
        with the new ``structure_id``.
-2. This module reads the orders, places them via ib_insync, attaches event
+2. This module reads the orders, places them via ib_async, attaches event
    handlers (``_on_order_status`` / ``_on_execution``), and returns a stub
    summary. Persistence of fills + cascade to ``trade_positions`` happens
    asynchronously inside the event callbacks (cf. ``fills_handler.py``).
@@ -221,7 +221,7 @@ async def submit_structure_live(
     if not executor.is_connected():
         raise LiveSubmitError("IB Gateway not connected")
 
-    from ib_insync import ComboLeg, Contract, LimitOrder, MarketOrder
+    from ib_async import ComboLeg, Contract, LimitOrder, MarketOrder
 
     sm = sessionmaker_factory
     async with sm() as db:

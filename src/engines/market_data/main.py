@@ -9,7 +9,7 @@ Wires together the pieces :
 - ``shared.config.get_settings`` → env-driven config
 - ``shared.logging.configure_logging`` → JSON logs with service_name
 - ``bus.get_async_redis`` → process-wide Redis pool
-- ``ib_insync.IB`` → one connection per service (client_id injected)
+- ``ib_async.IB`` → one connection per service (client_id injected)
 - ``engines.market_data.engine.MarketDataEngine`` → the actual loop
 
 Handles SIGTERM gracefully : signals the engine to stop, lets ``run()``
@@ -41,8 +41,8 @@ async def run() -> None:
     # P2 obs : OTel tracer (rollout post P2.1 validation).
     init_tracing(service_name=settings.SERVICE_NAME or "market_data")
 
-    # ib_insync import is deferred so the unit tests don't need the dep tree.
-    from ib_insync import IB
+    # ib_async import is deferred so the unit tests don't need the dep tree.
+    from ib_async import IB
 
     ib = IB()
     redis = get_async_redis()
@@ -51,7 +51,7 @@ async def run() -> None:
 
     # In the monolith, the engine pulled ticks from a ``Ticker`` event queue ;
     # here we delegate that plumbing to a small helper defined below so the
-    # engine class stays agnostic of ib_insync types.
+    # engine class stays agnostic of ib_async types.
     latest: dict[str, Any] = {}
 
     def _on_ticker_update(tick: Any) -> None:
@@ -117,14 +117,14 @@ async def _subscribe_ib_ticks(ib: Any, on_update: Any, symbol: str) -> None:
 
     Called once after ib is connected (via the engine's post_connect_hook).
     Kept as a dedicated async function so tests can monkeypatch it without
-    pulling ib_insync into the test env.
+    pulling ib_async into the test env.
 
     Uses delayed market data (type 3) so the subscription does not
     conflict with a competing live session (Error 10197) elsewhere
     (native IB Gateway, TWS, mobile app). Delayed data is ~20 min old
     but sufficient for the pipeline smoke.
     """
-    from ib_insync import Forex
+    from ib_async import Forex
 
     try:
         ib.reqMarketDataType(3)

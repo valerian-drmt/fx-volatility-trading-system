@@ -115,7 +115,7 @@ async def place_with_claim(
     order: Any,
     state_after: str = "submitted",
 ) -> Any:
-    """Claim → orderRef → placeOrder → stamp. Returns the ib_insync Trade."""
+    """Claim → orderRef → placeOrder → stamp. Returns the ib_async Trade."""
     if not await claim_submit(sm, model, row_id):
         raise AlreadyClaimed(getattr(model, "__tablename__", str(model)), row_id)
     order.orderRef = order_ref

@@ -4,7 +4,7 @@
 # Installs the [api] extra of the fxvol project — fastapi + uvicorn +
 # slowapi + prometheus + httpx, on top of the base runtime (numpy /
 # scipy / pandas / redis / structlog / pydantic / SQLAlchemy / asyncpg
-# / alembic). No ib_insync, no arch — the api is pure stateless.
+# / alembic). No ib_async, no arch — the api is pure stateless.
 #
 #   docker build -f infrastructure/docker/api.Dockerfile -t fx-options-api .
 
