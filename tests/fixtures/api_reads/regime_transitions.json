@@ -1,0 +1,11 @@
+{
+ "by_day": {},
+ "calm_pre_event_count": 0,
+ "calm_pre_event_per_day": 0.0,
+ "hint": "OK",
+ "n_snapshots": 2334,
+ "symbol": "EURUSD",
+ "threshold_warning": false,
+ "total_transitions": 0,
+ "window_days": 7
+}

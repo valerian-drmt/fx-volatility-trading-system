@@ -25,6 +25,7 @@ from api.auth import require_write
 from api.config import get_settings
 from api.dependencies import get_db_session
 from api.routers.positions import close_one_open_position
+from api.schemas import route_models as rm
 from core.execution.reaper_policy import plan_structure_terminal_state
 from persistence.models import OpenPosition, StructureOrder, TradeStructure
 from shared.internal_auth import internal_headers
@@ -78,7 +79,7 @@ class CloseTradeRequest(BaseModel):
     limit_price: float | None = Field(default=None, gt=0)
 
 
-@router.post("/{trade_id}/close", dependencies=[Depends(require_write)])
+@router.post("/{trade_id}/close", response_model=rm.TradeCloseResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def close_trade(
     trade_id: int, body: CloseTradeRequest, db: DbDep,
 ) -> dict[str, Any]:
@@ -184,7 +185,7 @@ async def close_trade(
     }
 
 
-@router.post("/{trade_id}/cancel", dependencies=[Depends(require_write)])
+@router.post("/{trade_id}/cancel", response_model=rm.TradeCancelResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
     """Cancel every non-terminal order of ``trade_id`` at IB, then terminalise the
     structure. Frees a stuck 'submitted' trade in two ways :

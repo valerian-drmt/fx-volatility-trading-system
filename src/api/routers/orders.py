@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from api.auth import require_write
 from api.config import get_settings
+from api.schemas import route_models as rm
 from api.schemas.orders import ClosePositionBody, PlaceOrderBody
 from shared.internal_auth import internal_headers
 
@@ -52,31 +53,31 @@ async def _forward(method: str, path: str, json: dict | None = None) -> dict[str
     return r.json()
 
 
-@router.get("/orders")
+@router.get("/orders", response_model=rm.OrdersList, response_model_exclude_unset=True)
 async def list_orders(_: Request) -> dict[str, Any]:
     """Open orders as the execution engine holds them (forwarded to its `/internal/orders`)."""
     return await _forward("GET", "/internal/orders")
 
 
-@router.post("/orders", dependencies=[Depends(require_write)])
+@router.post("/orders", response_model=rm.IbOrder, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def place_order(body: PlaceOrderBody, _: Request) -> dict[str, Any]:
     """Place one order through the execution engine. Requires the trader cookie; the engine's pre-trade gate and the kill switch apply."""
     return await _forward("POST", "/internal/orders", json=body.model_dump())
 
 
-@router.delete("/orders/{order_id}", dependencies=[Depends(require_write)])
+@router.delete("/orders/{order_id}", response_model=rm.IbOrder, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def cancel_order(order_id: int, _: Request) -> dict[str, Any]:
     """Cancel one working order at IB through the execution engine."""
     return await _forward("DELETE", f"/internal/orders/{order_id}")
 
 
-@router.get("/exec/positions")
+@router.get("/exec/positions", response_model=rm.IbPositionsList, response_model_exclude_unset=True)
 async def live_positions(_: Request) -> dict[str, Any]:
     """Positions as IB reports them right now (the broker's view, not the book)."""
     return await _forward("GET", "/internal/positions")
 
 
-@router.post("/exec/positions/{con_id}/close", dependencies=[Depends(require_write)])
+@router.post("/exec/positions/{con_id}/close", response_model=rm.IbOrder, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def close_position(con_id: int, body: ClosePositionBody, _: Request) -> dict[str, Any]:
     """Close one IB position (by contract id) through the execution engine."""
     return await _forward("POST", f"/internal/positions/{con_id}/close", json=body.model_dump())

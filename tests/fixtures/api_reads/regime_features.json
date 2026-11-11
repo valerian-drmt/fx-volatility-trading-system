@@ -1,0 +1,90 @@
+{
+ "features": [
+  {
+   "bucket": "0",
+   "delta_z_1h": 0.1,
+   "expected_z": {
+    "context": {
+     "days_bucket": 2,
+     "event_type": "CPI_EU",
+     "tod_bucket": "london_open"
+    },
+    "mu": 1.5067922619047625,
+    "n_obs": 168,
+    "relaxation": "exact",
+    "sigma": 0.6657530364894206,
+    "status": "valid"
+   },
+   "name": "vol_level",
+   "pct": 65,
+   "signal": "noise",
+   "value": 5.83,
+   "vs_expected": "overpriced",
+   "z": 0.1
+  },
+  {
+   "bucket": "-",
+   "delta_z_1h": -0.01,
+   "expected_z": {
+    "context": {
+     "days_bucket": 2,
+     "event_type": "CPI_EU",
+     "tod_bucket": "london_open"
+    },
+    "mu": 2.3879142857142863,
+    "n_obs": 168,
+    "relaxation": "exact",
+    "sigma": 1.1371635377995022,
+    "status": "valid"
+   },
+   "name": "vol_of_vol",
+   "pct": 72,
+   "signal": "noise",
+   "value": 0.22,
+   "vs_expected": "overpriced",
+   "z": -0.15
+  },
+  {
+   "bucket": "+",
+   "delta_z_1h": 0.02,
+   "expected_z": {
+    "context": {
+     "days_bucket": 2,
+     "event_type": "CPI_EU",
+     "tod_bucket": "london_open"
+    },
+    "mu": -0.6139169811320755,
+    "n_obs": 159,
+    "relaxation": "exact",
+    "sigma": 0.9161913213868582,
+    "status": "valid"
+   },
+   "name": "term_slope",
+   "pct": 92,
+   "signal": "weak",
+   "value": 0.85,
+   "vs_expected": "overpriced",
+   "z": 1.32
+  }
+ ],
+ "symbol": "EURUSD",
+ "synthesis": {
+  "action": "size \u00d7 1.0 + monitor",
+  "dominant": "term_slope",
+  "joint_pattern": "(0,-,+)",
+  "regime": {
+   "action_default": "observation_only_log_for_review",
+   "asymmetry_note": "tail_combination_unseen_in_15_base_regimes",
+   "family": "Z_fallback",
+   "id": 99,
+   "intensity_count": 0,
+   "name": "unmapped_extreme"
+  },
+  "vs_expected": {
+   "delta_sigma": 1.93,
+   "feature": "term_slope",
+   "label": "overpriced"
+  }
+ },
+ "timestamp": "2026-11-11T11:29:47.322394Z"
+}

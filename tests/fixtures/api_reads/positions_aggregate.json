@@ -1,0 +1,8 @@
+{
+ "n_delta_unknown": 0,
+ "n_open_positions": 2,
+ "total_delta_unhedged": -4.5856,
+ "total_gamma_usd_per_pip2": 0.1064,
+ "total_theta_usd_per_day": -70.89,
+ "total_vega_usd_per_volpt": 1913.14
+}

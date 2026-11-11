@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.config import get_settings
 from api.dependencies import get_db_session, get_redis
+from api.schemas import route_models as rm
 from bus import keys
 
 router = APIRouter(prefix="/api/v1", tags=["health"])
@@ -60,14 +61,14 @@ def _build_identity() -> dict[str, str]:
     return {"version": ver, "git_sha": sha, "commit": sha}
 
 
-@router.get("/health")
+@router.get("/health", response_model=rm.Health, response_model_exclude_unset=True)
 def health() -> dict[str, str]:
     """Liveness probe — always 200 as long as the FastAPI process answers,
     plus the build identity so a caller can tell WHICH build answers."""
     return {"status": "OK", **_build_identity()}
 
 
-@router.get("/health/ready", responses={503: {"description": "Postgres or Redis unreachable"}})
+@router.get("/health/ready", response_model=rm.HealthReady, response_model_exclude_unset=True, responses={503: {"description": "Postgres or Redis unreachable"}})
 async def health_ready(
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
@@ -91,7 +92,7 @@ async def health_ready(
     return body
 
 
-@router.get("/health/extended")
+@router.get("/health/extended", response_model=rm.HealthExtended, response_model_exclude_unset=True)
 async def health_extended(
     redis: Annotated[aioredis.Redis, Depends(get_redis)],
     db: Annotated[AsyncSession, Depends(get_db_session)],

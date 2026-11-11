@@ -1,0 +1,65 @@
+{
+ "available_funds_usd": 168198.35,
+ "buying_power_usd": 1121322.31,
+ "freshness": "missing",
+ "latest": {
+  "cash_usd": 159239.7,
+  "currencies": {
+   "EUR": {
+    "CashBalance": 96162.38,
+    "ExchangeRate": 1.0,
+    "FuturesPNL": 0.0,
+    "NetLiquidationByCurrency": 96216.61,
+    "RealizedPnL": 0.0,
+    "UnrealizedPnL": 0.0
+   },
+   "USD": {
+    "CashBalance": 70576.5446,
+    "ExchangeRate": 0.8937434,
+    "FuturesPNL": -2831.61,
+    "NetLiquidationByCurrency": 88974.3824,
+    "RealizedPnL": 0.0,
+    "UnrealizedPnL": -15690.68
+   }
+  },
+  "cushion": 0.96,
+  "excess_liquidity": 169181.63,
+  "gross_position_value": 61678.55,
+  "init_margin_req": 7538.53,
+  "maint_margin_req": 6555.24,
+  "net_liq_usd": 175736.87,
+  "open_positions_count": 6,
+  "timestamp": "2026-11-10T13:49:47.410864+00:00",
+  "unrealized_pnl_usd": -14023.44
+ },
+ "prev_24h": {
+  "cash_usd": 159307.1,
+  "currencies": {
+   "EUR": {
+    "CashBalance": 96162.3801,
+    "ExchangeRate": 1.0,
+    "FuturesPNL": 0.0,
+    "NetLiquidationByCurrency": 96196.1801,
+    "RealizedPnL": 0.0,
+    "UnrealizedPnL": 0.0
+   },
+   "USD": {
+    "CashBalance": 70674.2811,
+    "ExchangeRate": 0.8934611,
+    "FuturesPNL": 4484.88,
+    "NetLiquidationByCurrency": 89190.2153,
+    "RealizedPnL": 0.0,
+    "UnrealizedPnL": -15467.88
+   }
+  },
+  "cushion": 0.96,
+  "excess_liquidity": 169158.67,
+  "gross_position_value": 61748.5,
+  "init_margin_req": 7734.32,
+  "maint_margin_req": 6725.49,
+  "net_liq_usd": 175884.17,
+  "open_positions_count": 7,
+  "timestamp": "2026-11-09T13:49:44.644096+00:00",
+  "unrealized_pnl_usd": -13819.95
+ }
+}

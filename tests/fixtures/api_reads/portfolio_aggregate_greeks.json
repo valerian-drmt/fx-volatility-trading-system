@@ -1,0 +1,9 @@
+{
+ "computed_at": "2026-11-11T11:31:47.789351+00:00",
+ "n_open_positions": 6,
+ "n_with_snapshot": 6,
+ "total_delta_usd": 232837.11,
+ "total_gamma_usd": 1009.9,
+ "total_theta_usd": -66.03,
+ "total_vega_usd": 1832.49
+}

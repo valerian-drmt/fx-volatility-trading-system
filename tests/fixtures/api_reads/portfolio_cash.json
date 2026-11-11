@@ -1,0 +1,22 @@
+{
+ "currencies": [
+  {
+   "ccy": "EUR",
+   "rate": 1.11363,
+   "settled": 96162.38,
+   "unsettled": null,
+   "usd_value": 107089.31
+  },
+  {
+   "ccy": "USD",
+   "rate": 1.0,
+   "settled": 70576.5446,
+   "unsettled": null,
+   "usd_value": 70576.54
+  }
+ ],
+ "eurusd_spot": 1.11363,
+ "freshness": "missing",
+ "timestamp": "2026-11-10T13:49:47.410864+00:00",
+ "total_usd": 177665.85
+}

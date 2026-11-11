@@ -1,0 +1,496 @@
+{
+ "$defs": {
+  "CalibrationConfig": {
+   "description": "Walk-forward + backtest calibration hyperparameters.",
+   "properties": {
+    "ewma_lambda_fair_smile": {
+     "default": 0.94,
+     "maximum": 0.999,
+     "minimum": 0.5,
+     "title": "Ewma Lambda Fair Smile",
+     "type": "number"
+    },
+    "har_components": {
+     "default": [
+      1,
+      5,
+      22
+     ],
+     "maxItems": 3,
+     "minItems": 3,
+     "prefixItems": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "integer"
+      },
+      {
+       "type": "integer"
+      }
+     ],
+     "title": "Har Components",
+     "type": "array"
+    },
+    "vrp_mae_improvement_threshold": {
+     "default": 0.2,
+     "maximum": 1.0,
+     "minimum": 0.0,
+     "title": "Vrp Mae Improvement Threshold",
+     "type": "number"
+    },
+    "vrp_train_split": {
+     "default": 0.7,
+     "maximum": 0.9,
+     "minimum": 0.5,
+     "title": "Vrp Train Split",
+     "type": "number"
+    },
+    "w1_clip_max": {
+     "default": 1.0,
+     "maximum": 1.0,
+     "minimum": 0.5,
+     "title": "W1 Clip Max",
+     "type": "number"
+    },
+    "w1_clip_min": {
+     "default": 0.0,
+     "maximum": 0.5,
+     "minimum": 0.0,
+     "title": "W1 Clip Min",
+     "type": "number"
+    },
+    "w1_walk_forward_months": {
+     "default": 12,
+     "maximum": 36,
+     "minimum": 3,
+     "title": "W1 Walk Forward Months",
+     "type": "integer"
+    }
+   },
+   "title": "CalibrationConfig",
+   "type": "object"
+  },
+  "CapacityConfig": {
+   "description": "The capacity dial: cadence, window, thread cap and chain-scan width of\nthe cold path, hot-reloaded over ``config:changed`` (#371 / #372).\n\nThe analytics engine reads ``analytics_interval_min``,\n``training_window_days``, ``thread_cap`` (BLAS / scikit-learn threads via\n``threadpoolctl``), ``pca_snapshot_interval_min`` and ``rollup_interval_s``\nat the start of each cycle; the vol engine reads ``strikes_per_side`` and\n``max_concurrent_scans`` on every chain fetch (wing coverage against IB\nGateway load: ``docs/vol-modeling/volatility-surface.md``).",
+   "properties": {
+    "analytics_interval_min": {
+     "default": 60,
+     "maximum": 1440,
+     "minimum": 5,
+     "title": "Analytics Interval Min",
+     "type": "integer"
+    },
+    "max_concurrent_scans": {
+     "default": 1,
+     "maximum": 4,
+     "minimum": 1,
+     "title": "Max Concurrent Scans",
+     "type": "integer"
+    },
+    "pca_snapshot_interval_min": {
+     "default": 60,
+     "maximum": 1440,
+     "minimum": 1,
+     "title": "Pca Snapshot Interval Min",
+     "type": "integer"
+    },
+    "preset": {
+     "default": "balanced",
+     "enum": [
+      "eco",
+      "balanced",
+      "full",
+      "custom"
+     ],
+     "title": "Preset",
+     "type": "string"
+    },
+    "rollup_interval_s": {
+     "default": 300,
+     "maximum": 3600,
+     "minimum": 30,
+     "title": "Rollup Interval S",
+     "type": "integer"
+    },
+    "strikes_per_side": {
+     "default": 18,
+     "maximum": 40,
+     "minimum": 6,
+     "title": "Strikes Per Side",
+     "type": "integer"
+    },
+    "thread_cap": {
+     "default": 1,
+     "maximum": 8,
+     "minimum": 1,
+     "title": "Thread Cap",
+     "type": "integer"
+    },
+    "training_window_days": {
+     "default": 90,
+     "maximum": 365,
+     "minimum": 14,
+     "title": "Training Window Days",
+     "type": "integer"
+    }
+   },
+   "title": "CapacityConfig",
+   "type": "object"
+  },
+  "DeltaHedgeConfig": {
+   "description": "Delta hedging behavior : static / threshold / scheduled.",
+   "properties": {
+    "mode": {
+     "default": "threshold",
+     "enum": [
+      "static",
+      "threshold",
+      "scheduled"
+     ],
+     "title": "Mode",
+     "type": "string"
+    },
+    "scheduled_interval_minutes": {
+     "default": 60,
+     "maximum": 1440,
+     "minimum": 5,
+     "title": "Scheduled Interval Minutes",
+     "type": "integer"
+    },
+    "threshold_delta": {
+     "default": 0.05,
+     "maximum": 0.5,
+     "minimum": 0.01,
+     "title": "Threshold Delta",
+     "type": "number"
+    }
+   },
+   "title": "DeltaHedgeConfig",
+   "type": "object"
+  },
+  "ExitRulesConfig": {
+   "description": "Thresholds that trigger systematic exits on open structures.",
+   "properties": {
+    "stop_loss_vega_multiplier": {
+     "default": 3.0,
+     "maximum": 10.0,
+     "minimum": 1.0,
+     "title": "Stop Loss Vega Multiplier",
+     "type": "number"
+    },
+    "time_remaining_min_ratio": {
+     "default": 0.3,
+     "maximum": 0.5,
+     "minimum": 0.1,
+     "title": "Time Remaining Min Ratio",
+     "type": "number"
+    },
+    "time_to_expiry_force_exit_days": {
+     "default": 7,
+     "maximum": 30,
+     "minimum": 1,
+     "title": "Time To Expiry Force Exit Days",
+     "type": "integer"
+    },
+    "z_flip_exit_threshold": {
+     "default": 0.5,
+     "maximum": 1.0,
+     "minimum": 0.0,
+     "title": "Z Flip Exit Threshold",
+     "type": "number"
+    }
+   },
+   "title": "ExitRulesConfig",
+   "type": "object"
+  },
+  "RegimeConfig": {
+   "description": "Features + thresholds for the GMM-based regime detector.",
+   "properties": {
+    "event_dampener_horizon_days": {
+     "default": 5,
+     "maximum": 30,
+     "minimum": 1,
+     "title": "Event Dampener Horizon Days",
+     "type": "integer"
+    },
+    "gmm_components": {
+     "default": 3,
+     "maximum": 6,
+     "minimum": 2,
+     "title": "Gmm Components",
+     "type": "integer"
+    },
+    "regime_labels": {
+     "default": [
+      "calm",
+      "stressed",
+      "pre_event"
+     ],
+     "maxItems": 3,
+     "minItems": 3,
+     "prefixItems": [
+      {
+       "enum": [
+        "calm",
+        "stressed",
+        "pre_event"
+       ],
+       "type": "string"
+      },
+      {
+       "enum": [
+        "calm",
+        "stressed",
+        "pre_event"
+       ],
+       "type": "string"
+      },
+      {
+       "enum": [
+        "calm",
+        "stressed",
+        "pre_event"
+       ],
+       "type": "string"
+      }
+     ],
+     "title": "Regime Labels",
+     "type": "array"
+    },
+    "stressed_sizing_multiplier": {
+     "default": 0.7,
+     "maximum": 1.0,
+     "minimum": 0.1,
+     "title": "Stressed Sizing Multiplier",
+     "type": "number"
+    },
+    "vol_of_vol_window_days": {
+     "default": 20,
+     "maximum": 90,
+     "minimum": 5,
+     "title": "Vol Of Vol Window Days",
+     "type": "integer"
+    }
+   },
+   "title": "RegimeConfig",
+   "type": "object"
+  },
+  "SignalConfig": {
+   "description": "z-score thresholds for the PCA signal panel.",
+   "properties": {
+    "pca_rolling_months": {
+     "default": 3,
+     "maximum": 12,
+     "minimum": 1,
+     "title": "Pca Rolling Months",
+     "type": "integer"
+    },
+    "variance_explained_min": {
+     "default": 0.85,
+     "maximum": 0.99,
+     "minimum": 0.6,
+     "title": "Variance Explained Min",
+     "type": "number"
+    },
+    "z_threshold_arm": {
+     "default": 1.5,
+     "maximum": 3.0,
+     "minimum": 0.5,
+     "title": "Z Threshold Arm",
+     "type": "number"
+    },
+    "z_threshold_extreme": {
+     "default": 3.0,
+     "maximum": 5.0,
+     "minimum": 2.5,
+     "title": "Z Threshold Extreme",
+     "type": "number"
+    },
+    "z_threshold_strong": {
+     "default": 2.0,
+     "maximum": 4.0,
+     "minimum": 1.5,
+     "title": "Z Threshold Strong",
+     "type": "number"
+    }
+   },
+   "title": "SignalConfig",
+   "type": "object"
+  },
+  "SizingConfig": {
+   "description": "OpenPosition sizing formula : base \u00d7 conviction \u00d7 book_penalty \u00d7 event.",
+   "properties": {
+    "alpha_book": {
+     "default": 0.2,
+     "maximum": 1.0,
+     "minimum": 0.0,
+     "title": "Alpha Book",
+     "type": "number"
+    },
+    "base_size": {
+     "default": 10,
+     "maximum": 1000,
+     "minimum": 1,
+     "title": "Base Size",
+     "type": "integer"
+    },
+    "book_rejection_threshold": {
+     "default": 0.8,
+     "maximum": 1.0,
+     "minimum": 0.3,
+     "title": "Book Rejection Threshold",
+     "type": "number"
+    },
+    "event_dampener_multiplier": {
+     "default": 0.5,
+     "maximum": 1.0,
+     "minimum": 0.1,
+     "title": "Event Dampener Multiplier",
+     "type": "number"
+    },
+    "max_loss_pct_capital": {
+     "default": 0.02,
+     "maximum": 0.1,
+     "minimum": 0.001,
+     "title": "Max Loss Pct Capital",
+     "type": "number"
+    }
+   },
+   "title": "SizingConfig",
+   "type": "object"
+  },
+  "SurfaceConfig": {
+   "description": "Tenor grid, fit diagnostics, no-arb tolerances.",
+   "properties": {
+    "butterfly_check_grid": {
+     "default": 100,
+     "maximum": 500,
+     "minimum": 20,
+     "title": "Butterfly Check Grid",
+     "type": "integer"
+    },
+    "delta_pillars": {
+     "items": {
+      "type": "integer"
+     },
+     "title": "Delta Pillars",
+     "type": "array"
+    },
+    "ssvi_vs_svi_tolerance": {
+     "default": 0.2,
+     "maximum": 0.5,
+     "minimum": 0.05,
+     "title": "Ssvi Vs Svi Tolerance",
+     "type": "number"
+    },
+    "svi_rmse_max_warn": {
+     "default": 0.003,
+     "maximum": 0.01,
+     "minimum": 0.0001,
+     "title": "Svi Rmse Max Warn",
+     "type": "number"
+    },
+    "tenors_days": {
+     "items": {
+      "type": "integer"
+     },
+     "title": "Tenors Days",
+     "type": "array"
+    }
+   },
+   "title": "SurfaceConfig",
+   "type": "object"
+  },
+  "TradeStructuresConfig": {
+   "description": "Which structure is generated for each signal origin.",
+   "properties": {
+    "default_tenor_days": {
+     "default": 90,
+     "maximum": 365,
+     "minimum": 7,
+     "title": "Default Tenor Days",
+     "type": "integer"
+    },
+    "pc1_structure": {
+     "default": "straddle_atm",
+     "enum": [
+      "straddle_atm",
+      "calendar_spread",
+      "risk_reversal_25d",
+      "butterfly_25d"
+     ],
+     "title": "Pc1 Structure",
+     "type": "string"
+    },
+    "pc2_structure": {
+     "default": "calendar_spread",
+     "enum": [
+      "straddle_atm",
+      "calendar_spread",
+      "risk_reversal_25d",
+      "butterfly_25d"
+     ],
+     "title": "Pc2 Structure",
+     "type": "string"
+    },
+    "pc3_convex_structure": {
+     "default": "butterfly_25d",
+     "enum": [
+      "straddle_atm",
+      "calendar_spread",
+      "risk_reversal_25d",
+      "butterfly_25d"
+     ],
+     "title": "Pc3 Convex Structure",
+     "type": "string"
+    },
+    "pc3_skew_structure": {
+     "default": "risk_reversal_25d",
+     "enum": [
+      "straddle_atm",
+      "calendar_spread",
+      "risk_reversal_25d",
+      "butterfly_25d"
+     ],
+     "title": "Pc3 Skew Structure",
+     "type": "string"
+    }
+   },
+   "title": "TradeStructuresConfig",
+   "type": "object"
+  }
+ },
+ "description": "Root config persisted as JSONB in the ``vol_config`` table.\n\nAdding a new tunable parameter is a 2-step operation :\n  1. add the field to the relevant section below (or create a new\n     section if no existing one fits).\n  2. reference ``get_current_config().section.field`` from the\n     consuming service code.\n\nThe admin UI picks up the new field automatically because RJSF\ngenerates the form from this schema's JSON Schema export.",
+ "properties": {
+  "calibration": {
+   "$ref": "#/$defs/CalibrationConfig"
+  },
+  "capacity": {
+   "$ref": "#/$defs/CapacityConfig"
+  },
+  "delta_hedge": {
+   "$ref": "#/$defs/DeltaHedgeConfig"
+  },
+  "exit_rules": {
+   "$ref": "#/$defs/ExitRulesConfig"
+  },
+  "regime": {
+   "$ref": "#/$defs/RegimeConfig"
+  },
+  "signal": {
+   "$ref": "#/$defs/SignalConfig"
+  },
+  "sizing": {
+   "$ref": "#/$defs/SizingConfig"
+  },
+  "structures": {
+   "$ref": "#/$defs/TradeStructuresConfig"
+  },
+  "surface": {
+   "$ref": "#/$defs/SurfaceConfig"
+  }
+ },
+ "title": "VolTradingConfig",
+ "type": "object"
+}

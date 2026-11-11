@@ -15,7 +15,11 @@ from pydantic import BaseModel, ConfigDict
 
 
 class _Open(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    # Extra keys pass through; a key that is not a Python name (`$defs`, `from`)
+    # is declared under an alias and serialised back under it. Routes using these
+    # models set response_model_exclude_unset, so a field the payload did not
+    # carry stays absent instead of coming back as null.
+    model_config = ConfigDict(extra="allow", serialize_by_alias=True, validate_by_name=True, validate_by_alias=True)
 
 
 class RiskLimit(_Open):

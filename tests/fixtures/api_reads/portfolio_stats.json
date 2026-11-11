@@ -1,0 +1,14 @@
+{
+ "computed_at": "2026-11-11T11:27:56.691126+00:00",
+ "cum_realized_usd": 0.0,
+ "cum_unrealized_usd": -18717.63,
+ "current_drawdown_pct": -51.22,
+ "hit_rate": null,
+ "max_drawdown_pct": -60.3,
+ "n_closed": 0,
+ "n_days": 53,
+ "n_open": 6,
+ "n_reconciled_flat": 31,
+ "net_liq_change_usd": -133576.48,
+ "sharpe": -1.594
+}

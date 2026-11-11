@@ -1,0 +1,30 @@
+{
+ "current_spot": 1.11363,
+ "dropped": [],
+ "fallback": {
+  "spot": "surface_forward"
+ },
+ "model_version": "pca_v1_2026_11_11_111830",
+ "n_positions": 5,
+ "pcs": [
+  {
+   "name": "level",
+   "pc": 1,
+   "variance_pct": 85.0,
+   "vega_usd": 189.52
+  },
+  {
+   "name": "slope",
+   "pc": 2,
+   "variance_pct": 10.5,
+   "vega_usd": -196.52
+  },
+  {
+   "name": "curvature",
+   "pc": 3,
+   "variance_pct": 2.4,
+   "vega_usd": -22.62
+  }
+ ],
+ "spot_source": "surface_forward"
+}

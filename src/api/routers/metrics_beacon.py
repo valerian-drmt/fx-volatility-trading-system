@@ -21,6 +21,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from api.middleware.rate_limit import limiter
+from api.schemas import route_models as rm
 
 router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
 
@@ -46,7 +47,7 @@ def record_beacon(body: BeaconBody) -> dict[str, int]:
     return {"recorded": n}
 
 
-@router.post("/beacon", status_code=202)
+@router.post("/beacon", response_model=rm.BeaconAck, response_model_exclude_unset=True, status_code=202)
 @limiter.limit("120/minute")
 async def beacon(request: Request, body: BeaconBody) -> dict[str, int]:
     """Browser latency beacon: one timing sample from the desk, clamped and whitelisted, rate limited per IP. Not a mutation."""

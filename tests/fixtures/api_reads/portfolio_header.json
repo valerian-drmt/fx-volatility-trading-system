@@ -1,0 +1,30 @@
+{
+ "account": {
+  "as_of": "2026-11-10T13:49:47.410864+00:00",
+  "cash_usd": 159239.7,
+  "cushion": 0.96,
+  "excess_liquidity": 169181.63,
+  "init_margin_req": 7538.53,
+  "n_open_positions": 6,
+  "net_liq_usd": 175736.87,
+  "util_pct": 0.04289668980675484
+ },
+ "computed_at": "2026-11-11T11:32:17.887520+00:00",
+ "greeks": {
+  "delta_usd": 232837.11,
+  "gamma_usd": 1009.9,
+  "theta_usd": -66.03,
+  "vega_usd": 1832.49
+ },
+ "pnl": {
+  "open_unrealized_usd": -18717.63,
+  "prev_close_day": "2026-11-10",
+  "total_24h_usd": 0.0
+ },
+ "rollup_computed_at": "2026-11-11T11:27:56.691126+00:00",
+ "var_1d_99": {
+  "method": "historical",
+  "n_days": 24,
+  "usd": -42519.63
+ }
+}

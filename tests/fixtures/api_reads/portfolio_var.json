@@ -1,0 +1,66 @@
+{
+ "computed_at": "2026-11-11T11:32:36.715690+00:00",
+ "convention": "pnl_quantile",
+ "current_spot": 1.11363,
+ "dropped": [],
+ "es_99_usd": -2317.03,
+ "fallback": {
+  "spot": "surface_forward"
+ },
+ "hist": [
+  {
+   "count": 9,
+   "hi": -1387.9,
+   "lo": -2437.45
+  },
+  {
+   "count": 87,
+   "hi": -338.36,
+   "lo": -1387.9
+  },
+  {
+   "count": 97,
+   "hi": 711.18,
+   "lo": -338.36
+  },
+  {
+   "count": 27,
+   "hi": 1760.72,
+   "lo": 711.18
+  },
+  {
+   "count": 10,
+   "hi": 2810.26,
+   "lo": 1760.72
+  },
+  {
+   "count": 4,
+   "hi": 3859.81,
+   "lo": 2810.26
+  },
+  {
+   "count": 1,
+   "hi": 4909.35,
+   "lo": 3859.81
+  },
+  {
+   "count": 1,
+   "hi": 5958.89,
+   "lo": 4909.35
+  },
+  {
+   "count": 1,
+   "hi": 7008.43,
+   "lo": 5958.89
+  }
+ ],
+ "horizon_days": 1,
+ "mean_daily_usd": 39.71,
+ "method": "historical-simulation",
+ "n_days": 237,
+ "n_positions": 6,
+ "n_scenarios": 237,
+ "spot_source": "surface_forward",
+ "var_95_usd": -1046.38,
+ "var_99_usd": -2097.08
+}

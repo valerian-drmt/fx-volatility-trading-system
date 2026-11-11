@@ -2612,6 +2612,38 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminSettingsDomain */
+        AdminSettingsDomain: {
+            /** Domain */
+            domain?: string | null;
+            /** Params */
+            params?: components["schemas"]["AdminSettingsDomainParamsItem"][] | null;
+            /** Title */
+            title?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** AdminSettingsDomainParamsItem */
+        AdminSettingsDomainParamsItem: {
+            /** Default */
+            default?: unknown;
+            /** Description */
+            description?: string | null;
+            /** Is Default */
+            is_default?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Namespace */
+            namespace?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Updated By */
+            updated_by?: unknown;
+            /** Value */
+            value?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
         /** AuthStatus */
         AuthStatus: {
             /** Authenticated */
@@ -2632,6 +2664,16 @@ export interface components {
             o: number;
             /** T */
             t: number;
+        };
+        /**
+         * BeaconAck
+         * @description How many timings a beacon recorded.
+         */
+        BeaconAck: {
+            /** Recorded */
+            recorded?: unknown;
+        } & {
+            [key: string]: unknown;
         };
         /** BeaconBody */
         BeaconBody: {
@@ -2796,6 +2838,34 @@ export interface components {
              */
             qty: number;
         };
+        /**
+         * ClosePositionResult
+         * @description A live close sent for one open position.
+         */
+        ClosePositionResult: {
+            /** Closed Qty */
+            closed_qty?: unknown;
+            /** Ib */
+            ib?: unknown;
+            /** Limit Price */
+            limit_price?: unknown;
+            /** Local Symbol */
+            local_symbol?: unknown;
+            /** Open Qty Before */
+            open_qty_before?: unknown;
+            /** Order Id */
+            order_id?: unknown;
+            /** Order Type */
+            order_type?: unknown;
+            /** Position Id */
+            position_id?: unknown;
+            /** Structure Id */
+            structure_id?: unknown;
+            /** Trace Id */
+            trace_id?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
         /** CloseTradeRequest */
         CloseTradeRequest: {
             /** Limit Price */
@@ -2903,6 +2973,228 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** DevContainersMetrics */
+        DevContainersMetrics: {
+            /** Cpu */
+            cpu?: components["schemas"]["DevContainersMetricsCpuItem"][] | null;
+            /** End */
+            end?: string | null;
+            /** Mem */
+            mem?: components["schemas"]["DevContainersMetricsMemItem"][] | null;
+            /** Reachable */
+            reachable?: boolean | null;
+            /** Source */
+            source?: string | null;
+            /** Start */
+            start?: string | null;
+            /** Step */
+            step?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevContainersMetricsCpuItem */
+        DevContainersMetricsCpuItem: {
+            /** Name */
+            name?: string | null;
+            /** Points */
+            points?: number[][] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevContainersMetricsMemItem */
+        DevContainersMetricsMemItem: {
+            /** Name */
+            name?: string | null;
+            /** Points */
+            points?: number[][] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevDbSchema */
+        DevDbSchema: {
+            /** N Relationships */
+            n_relationships?: number | null;
+            /** N Tables */
+            n_tables?: number | null;
+            /** Relationships */
+            relationships?: components["schemas"]["DevDbSchemaRelationshipsItem"][] | null;
+            /** Source */
+            source?: string | null;
+            /** Tables */
+            tables?: components["schemas"]["DevDbSchemaTablesItem"][] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevDbSchemaRelationshipsItem */
+        DevDbSchemaRelationshipsItem: {
+            /** Cardinality */
+            cardinality?: string | null;
+            /** Composite */
+            composite?: boolean | null;
+            /** From Columns */
+            from_columns?: string[] | null;
+            /** From Table */
+            from_table?: string | null;
+            /** Label */
+            label?: string | null;
+            /** On Delete */
+            on_delete?: string | null;
+            /** On Update */
+            on_update?: string | null;
+            /** Optional */
+            optional?: boolean | null;
+            /** Self Loop */
+            self_loop?: boolean | null;
+            /** To Columns */
+            to_columns?: string[] | null;
+            /** To Table */
+            to_table?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevDbSchemaTablesItem */
+        DevDbSchemaTablesItem: {
+            /** Check Constraints */
+            check_constraints?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Columns */
+            columns?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Comment */
+            comment?: string | null;
+            /** Composite Unique */
+            composite_unique?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** N Columns */
+            n_columns?: number | null;
+            /** Name */
+            name?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevHardware */
+        DevHardware: {
+            cpu?: components["schemas"]["DevHardwareCpu"] | null;
+            disk?: components["schemas"]["DevHardwareDisk"] | null;
+            /** Gpu */
+            gpu?: unknown[] | null;
+            memory?: components["schemas"]["DevHardwareMemory"] | null;
+            /** Timestamp */
+            timestamp?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevHardwareCpu */
+        DevHardwareCpu: {
+            /** Cores */
+            cores?: number | null;
+            /** Load Avg */
+            load_avg?: number[] | null;
+            /** Per Core */
+            per_core?: number[] | null;
+            /** Percent */
+            percent?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevHardwareDisk */
+        DevHardwareDisk: {
+            /** Percent */
+            percent?: number | null;
+            /** Total Gb */
+            total_gb?: number | null;
+            /** Used Gb */
+            used_gb?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevHardwareMemory */
+        DevHardwareMemory: {
+            /** Percent */
+            percent?: number | null;
+            /** Total Gb */
+            total_gb?: number | null;
+            /** Used Gb */
+            used_gb?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevMigrations */
+        DevMigrations: {
+            /** Chain */
+            chain?: components["schemas"]["DevMigrationsChainItem"][] | null;
+            /** Current */
+            current?: string | null;
+            /** Head */
+            head?: string | null;
+            /** In Sync */
+            in_sync?: boolean | null;
+            /** N Applied */
+            n_applied?: number | null;
+            /** N Pending */
+            n_pending?: number | null;
+            /** N Total */
+            n_total?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevMigrationsChainItem */
+        DevMigrationsChainItem: {
+            /** Created */
+            created?: string | null;
+            /** Down Revision */
+            down_revision?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Parent Title */
+            parent_title?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Title */
+            title?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevStack */
+        DevStack: {
+            /** Containers */
+            containers?: components["schemas"]["DevStackContainersItem"][] | null;
+            /** Edges */
+            edges?: components["schemas"]["DevStackEdgesItem"][] | null;
+            /** Timestamp */
+            timestamp?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevStackContainersItem */
+        DevStackContainersItem: {
+            /** Desc */
+            desc?: string | null;
+            /** Image */
+            image?: string | null;
+            /** Layer */
+            layer?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Status */
+            status?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** DevStackEdgesItem */
+        DevStackEdgesItem: {
+            /** From */
+            from?: string | null;
+            /** To */
+            to?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** DomainSettingsPatch */
         DomainSettingsPatch: {
             /** Updates */
@@ -2982,6 +3274,18 @@ export interface components {
              * Format: date-time
              */
             scheduled_at: string;
+        };
+        /**
+         * EventInserted
+         * @description A macro event written to the calendar.
+         */
+        EventInserted: {
+            /** Id */
+            id?: unknown;
+            /** Scheduled At */
+            scheduled_at?: unknown;
+        } & {
+            [key: string]: unknown;
         };
         /** ExitRuleConfig */
         ExitRuleConfig: {
@@ -3094,10 +3398,38 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * HaltClearResult
+         * @description The kill switch after a resume.
+         */
+        HaltClearResult: {
+            /** Halted */
+            halted?: unknown;
+            /** Reason */
+            reason?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
         /** HaltRequest */
         HaltRequest: {
             /** Reason */
             reason: string;
+        };
+        /**
+         * HaltSetResult
+         * @description The kill switch after a halt.
+         */
+        HaltSetResult: {
+            /** Execution Cancel */
+            execution_cancel?: unknown;
+            /** Halted */
+            halted?: unknown;
+            /** Reason */
+            reason?: unknown;
+            /** Set At */
+            set_at?: unknown;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * HaltState
@@ -3112,6 +3444,141 @@ export interface components {
             set_at?: string | null;
             /** Set By */
             set_by?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** Health */
+        Health: {
+            /** Commit */
+            commit?: string | null;
+            /** Git Sha */
+            git_sha?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Version */
+            version?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** HealthExtended */
+        HealthExtended: {
+            /** Commit */
+            commit?: string | null;
+            components?: components["schemas"]["HealthExtendedComponents"] | null;
+            /** Git Sha */
+            git_sha?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Version */
+            version?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** HealthExtendedComponents */
+        HealthExtendedComponents: {
+            /** Backup */
+            backup?: string | null;
+            /** Database */
+            database?: string | null;
+            engines?: components["schemas"]["HealthExtendedComponentsEngines"] | null;
+            /** Redis */
+            redis?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** HealthExtendedComponentsEngines */
+        HealthExtendedComponentsEngines: {
+            /** Analytics Engine */
+            analytics_engine?: string | null;
+            /** Db Writer */
+            db_writer?: string | null;
+            /** Execution */
+            execution?: string | null;
+            /** Market Data */
+            market_data?: string | null;
+            /** Risk Engine */
+            risk_engine?: string | null;
+            /** Vol Engine */
+            vol_engine?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** HealthReady */
+        HealthReady: {
+            /** Commit */
+            commit?: string | null;
+            components?: components["schemas"]["HealthReadyComponents"] | null;
+            /** Git Sha */
+            git_sha?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Version */
+            version?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** HealthReadyComponents */
+        HealthReadyComponents: {
+            /** Database */
+            database?: string | null;
+            /** Redis */
+            redis?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * IbOrder
+         * @description One IB order as the execution engine reports it.
+         */
+        IbOrder: {
+            /** Con Id */
+            con_id?: unknown;
+            /** Expiry */
+            expiry?: unknown;
+            /** Filled */
+            filled?: unknown;
+            /** Limit Price */
+            limit_price?: unknown;
+            /** Local Symbol */
+            local_symbol?: unknown;
+            /** Order Id */
+            order_id?: unknown;
+            /** Order Ref */
+            order_ref?: unknown;
+            /** Perm Id */
+            perm_id?: unknown;
+            /** Qty */
+            qty?: unknown;
+            /** Remaining */
+            remaining?: unknown;
+            /** Right */
+            right?: unknown;
+            /** Sec Type */
+            sec_type?: unknown;
+            /** Side */
+            side?: unknown;
+            /** Spot Order Id */
+            spot_order_id?: unknown;
+            /** Status */
+            status?: unknown;
+            /** Strike */
+            strike?: unknown;
+            /** Symbol */
+            symbol?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * IbPositionsList
+         * @description The execution engine's IB positions.
+         */
+        IbPositionsList: {
+            /** Count */
+            count?: unknown;
+            /** Positions */
+            positions?: unknown;
         } & {
             [key: string]: unknown;
         };
@@ -3199,6 +3666,48 @@ export interface components {
             /** Tenor */
             tenor: string;
         };
+        /**
+         * LogContainers
+         * @description The containers Loki holds logs for.
+         */
+        LogContainers: {
+            /** Containers */
+            containers?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * LogEntry
+         * @description One log line from Loki.
+         */
+        LogEntry: {
+            /** Container */
+            container?: unknown;
+            /** Labels */
+            labels?: unknown;
+            /** Message */
+            message?: unknown;
+            /** Ts */
+            ts?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * LogQueryResult
+         * @description Log lines matching a query, newest first.
+         */
+        LogQueryResult: {
+            /** Entries */
+            entries?: components["schemas"]["LogEntry"][] | null;
+            /** Minutes */
+            minutes?: unknown;
+            /** Query */
+            query?: unknown;
+            /** Total */
+            total?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
         /** LoginBody */
         LoginBody: {
             /** Password */
@@ -3228,6 +3737,38 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /**
+         * ManualCloseResult
+         * @description A position marked closed by hand.
+         */
+        ManualCloseResult: {
+            /** Phase */
+            phase?: unknown;
+            /** Position Id */
+            position_id?: unknown;
+            /** State */
+            state?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * MigrationDetail
+         * @description One Alembic migration's source and its upgrade / downgrade bodies.
+         */
+        MigrationDetail: {
+            /** Content */
+            content?: unknown;
+            /** Downgrade */
+            downgrade?: unknown;
+            /** Filename */
+            filename?: unknown;
+            /** Id */
+            id?: unknown;
+            /** Upgrade */
+            upgrade?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
         /** ModelHealthResponse */
         ModelHealthResponse: {
             /** Last Vol Surface Ts */
@@ -3238,6 +3779,20 @@ export interface components {
             svi_params_count: number;
             /** Vol Surfaces Count */
             vol_surfaces_count: number;
+        };
+        /**
+         * MonitorRunReport
+         * @description One pass of the position monitor.
+         */
+        MonitorRunReport: {
+            /** Alerts */
+            alerts?: unknown;
+            /** Hedges */
+            hedges?: unknown;
+            /** Open Positions */
+            open_positions?: unknown;
+        } & {
+            [key: string]: unknown;
         };
         /** NextEventOut */
         NextEventOut: {
@@ -3314,6 +3869,18 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * OrdersList
+         * @description The execution engine's open orders.
+         */
+        OrdersList: {
+            /** Count */
+            count?: unknown;
+            /** Orders */
+            orders?: components["schemas"]["IbOrder"][] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * PcaModelState
          * @description The active PCA model for a symbol and its refit readiness.
          */
@@ -3333,6 +3900,24 @@ export interface components {
             variance_explained?: number[] | null;
             /** Version */
             version?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * PcaRefitResult
+         * @description A PCA refit: the new model version and how it compares.
+         */
+        PcaRefitResult: {
+            /** Cosine Similarity */
+            cosine_similarity?: unknown;
+            /** N Obs Used */
+            n_obs_used?: unknown;
+            /** Previous Version */
+            previous_version?: unknown;
+            /** Variance Explained Ratio */
+            variance_explained_ratio?: unknown;
+            /** Version */
+            version?: unknown;
         } & {
             [key: string]: unknown;
         };
@@ -3388,6 +3973,1365 @@ export interface components {
             symbol: string;
             /** Trading Class */
             trading_class?: string | null;
+        };
+        /** PortfolioAccount */
+        PortfolioAccount: {
+            /** Available Funds Usd */
+            available_funds_usd?: number | null;
+            /** Buying Power Usd */
+            buying_power_usd?: number | null;
+            /** Freshness */
+            freshness?: string | null;
+            latest?: components["schemas"]["PortfolioAccountLatest"] | null;
+            prev_24h?: components["schemas"]["PortfolioAccountPrev24h"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioAccountLatest */
+        PortfolioAccountLatest: {
+            /** Cash Usd */
+            cash_usd?: number | null;
+            /** Currencies */
+            currencies?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
+            /** Cushion */
+            cushion?: number | null;
+            /** Excess Liquidity */
+            excess_liquidity?: number | null;
+            /** Gross Position Value */
+            gross_position_value?: number | null;
+            /** Init Margin Req */
+            init_margin_req?: number | null;
+            /** Maint Margin Req */
+            maint_margin_req?: number | null;
+            /** Net Liq Usd */
+            net_liq_usd?: number | null;
+            /** Open Positions Count */
+            open_positions_count?: number | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Unrealized Pnl Usd */
+            unrealized_pnl_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioAccountPrev24h */
+        PortfolioAccountPrev24h: {
+            /** Cash Usd */
+            cash_usd?: number | null;
+            /** Currencies */
+            currencies?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            } | null;
+            /** Cushion */
+            cushion?: number | null;
+            /** Excess Liquidity */
+            excess_liquidity?: number | null;
+            /** Gross Position Value */
+            gross_position_value?: number | null;
+            /** Init Margin Req */
+            init_margin_req?: number | null;
+            /** Maint Margin Req */
+            maint_margin_req?: number | null;
+            /** Net Liq Usd */
+            net_liq_usd?: number | null;
+            /** Open Positions Count */
+            open_positions_count?: number | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Unrealized Pnl Usd */
+            unrealized_pnl_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioAggregateGreeks */
+        PortfolioAggregateGreeks: {
+            /** Computed At */
+            computed_at?: string | null;
+            /** N Open Positions */
+            n_open_positions?: number | null;
+            /** N With Snapshot */
+            n_with_snapshot?: number | null;
+            /** Total Delta Usd */
+            total_delta_usd?: number | null;
+            /** Total Gamma Usd */
+            total_gamma_usd?: number | null;
+            /** Total Theta Usd */
+            total_theta_usd?: number | null;
+            /** Total Vega Usd */
+            total_vega_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioCash */
+        PortfolioCash: {
+            /** Currencies */
+            currencies?: components["schemas"]["PortfolioCashCurrenciesItem"][] | null;
+            /** Eurusd Spot */
+            eurusd_spot?: number | null;
+            /** Freshness */
+            freshness?: string | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Total Usd */
+            total_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioCashCurrenciesItem */
+        PortfolioCashCurrenciesItem: {
+            /** Ccy */
+            ccy?: string | null;
+            /** Rate */
+            rate?: number | null;
+            /** Settled */
+            settled?: number | null;
+            /** Unsettled */
+            unsettled?: unknown;
+            /** Usd Value */
+            usd_value?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioDailyPnl */
+        PortfolioDailyPnl: {
+            /** Computed At */
+            computed_at?: string | null;
+            /** Days */
+            days?: number | null;
+            /** Series */
+            series?: components["schemas"]["PortfolioDailyPnlSeriesItem"][] | null;
+            /** Source */
+            source?: string | null;
+            /** Total Mtm Usd */
+            total_mtm_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioDailyPnlSeriesItem */
+        PortfolioDailyPnlSeriesItem: {
+            /** Cumulative Usd */
+            cumulative_usd?: number | null;
+            /** Day */
+            day?: string | null;
+            /** Mtm Usd */
+            mtm_usd?: number | null;
+            /** N Closed */
+            n_closed?: number | null;
+            /** Net Liq Close */
+            net_liq_close?: number | null;
+            /** Realized Usd */
+            realized_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioEquityCurveRow */
+        PortfolioEquityCurveRow: {
+            /** Is Eod */
+            is_eod?: boolean | null;
+            /** Net Liq Usd */
+            net_liq_usd?: number | null;
+            /** Timestamp */
+            timestamp?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioGreekLimits */
+        PortfolioGreekLimits: {
+            /** Alpha */
+            alpha?: number | null;
+            /** Computed At */
+            computed_at?: string | null;
+            /** Cross Budget Usd */
+            cross_budget_usd?: number | null;
+            /** Delta Cap Usd */
+            delta_cap_usd?: number | null;
+            /** Gamma Cap Pip */
+            gamma_cap_pip?: number | null;
+            /** Loss Budget Usd */
+            loss_budget_usd?: number | null;
+            /** Nav Base Usd */
+            nav_base_usd?: number | null;
+            /** Nav Live Usd */
+            nav_live_usd?: number | null;
+            /** Regime Mult */
+            regime_mult?: number | null;
+            /** Spot */
+            spot?: number | null;
+            /** Vega Cap Usd */
+            vega_cap_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioGreekPnlHistoryRow */
+        PortfolioGreekPnlHistoryRow: {
+            /** Delta Pnl Usd */
+            delta_pnl_usd?: number | null;
+            /** Gamma Pnl Usd */
+            gamma_pnl_usd?: number | null;
+            /** Theta Pnl Usd */
+            theta_pnl_usd?: number | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Vega Pnl Usd */
+            vega_pnl_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioGreeksHistoryRow */
+        PortfolioGreeksHistoryRow: {
+            /** Delta Usd */
+            delta_usd?: number | null;
+            /** Gamma Usd */
+            gamma_usd?: number | null;
+            /** Theta Usd */
+            theta_usd?: number | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Vega Usd */
+            vega_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioGreeksLadder */
+        PortfolioGreeksLadder: {
+            /** Axis */
+            axis?: string | null;
+            /** Bins */
+            bins?: (number)[] | null;
+            /** Current Spot */
+            current_spot?: number | null;
+            /** Dropped */
+            dropped?: unknown[] | null;
+            fallback?: components["schemas"]["PortfolioGreeksLadderFallback"] | null;
+            /** N Positions */
+            n_positions?: number | null;
+            /** Rows */
+            rows?: components["schemas"]["PortfolioGreeksLadderRowsItem"][] | null;
+            /** Spot Bins Bps */
+            spot_bins_bps?: (number)[] | null;
+            /** Spot Source */
+            spot_source?: string | null;
+            /** Unit */
+            unit?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioGreeksLadderFallback */
+        PortfolioGreeksLadderFallback: {
+            /** Spot */
+            spot?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioGreeksLadderRowsItem */
+        PortfolioGreeksLadderRowsItem: {
+            /** Axis Value */
+            axis_value?: number | null;
+            /** Delta Usd */
+            delta_usd?: number | null;
+            /** Dspot Bps */
+            dspot_bps?: number | null;
+            /** Gamma Usd Per Pip */
+            gamma_usd_per_pip?: number | null;
+            /** Hedge Delta Usd */
+            hedge_delta_usd?: number | null;
+            /** Pnl Usd */
+            pnl_usd?: number | null;
+            /** Spot */
+            spot?: number | null;
+            /** Vega Usd Per Volpt */
+            vega_usd_per_volpt?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHeader */
+        PortfolioHeader: {
+            account?: components["schemas"]["PortfolioHeaderAccount"] | null;
+            /** Computed At */
+            computed_at?: string | null;
+            greeks?: components["schemas"]["PortfolioHeaderGreeks"] | null;
+            pnl?: components["schemas"]["PortfolioHeaderPnl"] | null;
+            /** Rollup Computed At */
+            rollup_computed_at?: string | null;
+            var_1d_99?: components["schemas"]["PortfolioHeaderVar1d99"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHeaderAccount */
+        PortfolioHeaderAccount: {
+            /** As Of */
+            as_of?: string | null;
+            /** Cash Usd */
+            cash_usd?: number | null;
+            /** Cushion */
+            cushion?: number | null;
+            /** Excess Liquidity */
+            excess_liquidity?: number | null;
+            /** Init Margin Req */
+            init_margin_req?: number | null;
+            /** N Open Positions */
+            n_open_positions?: number | null;
+            /** Net Liq Usd */
+            net_liq_usd?: number | null;
+            /** Util Pct */
+            util_pct?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHeaderGreeks */
+        PortfolioHeaderGreeks: {
+            /** Delta Usd */
+            delta_usd?: number | null;
+            /** Gamma Usd */
+            gamma_usd?: number | null;
+            /** Theta Usd */
+            theta_usd?: number | null;
+            /** Vega Usd */
+            vega_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHeaderPnl */
+        PortfolioHeaderPnl: {
+            /** Open Unrealized Usd */
+            open_unrealized_usd?: number | null;
+            /** Prev Close Day */
+            prev_close_day?: string | null;
+            /** Total 24H Usd */
+            total_24h_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHeaderVar1d99 */
+        PortfolioHeaderVar1d99: {
+            /** Method */
+            method?: string | null;
+            /** N Days */
+            n_days?: number | null;
+            /** Usd */
+            usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHedgeSummary */
+        PortfolioHedgeSummary: {
+            /** Computed At */
+            computed_at?: string | null;
+            mtd?: components["schemas"]["PortfolioHedgeSummaryMtd"] | null;
+            rolling_30d?: components["schemas"]["PortfolioHedgeSummaryRolling30d"] | null;
+            rolling_7d?: components["schemas"]["PortfolioHedgeSummaryRolling7d"] | null;
+            today?: components["schemas"]["PortfolioHedgeSummaryToday"] | null;
+            wtd?: components["schemas"]["PortfolioHedgeSummaryWtd"] | null;
+            ytd?: components["schemas"]["PortfolioHedgeSummaryYtd"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHedgeSummaryMtd */
+        PortfolioHedgeSummaryMtd: {
+            /** Cum Cost Usd */
+            cum_cost_usd?: number | null;
+            /** N Hedges */
+            n_hedges?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHedgeSummaryRolling30d */
+        PortfolioHedgeSummaryRolling30d: {
+            /** Cum Cost Usd */
+            cum_cost_usd?: number | null;
+            /** N Hedges */
+            n_hedges?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHedgeSummaryRolling7d */
+        PortfolioHedgeSummaryRolling7d: {
+            /** Cum Cost Usd */
+            cum_cost_usd?: number | null;
+            /** N Hedges */
+            n_hedges?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHedgeSummaryToday */
+        PortfolioHedgeSummaryToday: {
+            /** Cum Cost Usd */
+            cum_cost_usd?: number | null;
+            /** N Hedges */
+            n_hedges?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHedgeSummaryWtd */
+        PortfolioHedgeSummaryWtd: {
+            /** Cum Cost Usd */
+            cum_cost_usd?: number | null;
+            /** N Hedges */
+            n_hedges?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioHedgeSummaryYtd */
+        PortfolioHedgeSummaryYtd: {
+            /** Cum Cost Usd */
+            cum_cost_usd?: number | null;
+            /** N Hedges */
+            n_hedges?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioMarginalVar */
+        PortfolioMarginalVar: {
+            /** Convention */
+            convention?: string | null;
+            /** Dropped */
+            dropped?: unknown[] | null;
+            fallback?: components["schemas"]["PortfolioMarginalVarFallback"] | null;
+            /** Horizon Days */
+            horizon_days?: number | null;
+            /** Method */
+            method?: string | null;
+            /** N Days */
+            n_days?: number | null;
+            /** Positions */
+            positions?: components["schemas"]["PortfolioMarginalVarPositionsItem"][] | null;
+            total?: components["schemas"]["PortfolioMarginalVarTotal"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioMarginalVarFallback */
+        PortfolioMarginalVarFallback: {
+            /** Spot */
+            spot?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioMarginalVarPositionsItem */
+        PortfolioMarginalVarPositionsItem: {
+            /** Component Usd */
+            component_usd?: number | null;
+            /** Factor */
+            factor?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Pct */
+            pct?: number | null;
+            /** Standalone Usd */
+            standalone_usd?: number | null;
+            /** Trade */
+            trade?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioMarginalVarTotal */
+        PortfolioMarginalVarTotal: {
+            /** Diversification Pct */
+            diversification_pct?: number | null;
+            /** Portfolio Var Usd */
+            portfolio_var_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioPinRisk */
+        PortfolioPinRisk: {
+            /** Breach Bps */
+            breach_bps?: number | null;
+            /** Current Spot */
+            current_spot?: number | null;
+            /** N Options */
+            n_options?: number | null;
+            /** Rows */
+            rows?: components["schemas"]["PortfolioPinRiskRowsItem"][] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioPinRiskRowsItem */
+        PortfolioPinRiskRowsItem: {
+            /** Delta Usd */
+            delta_usd?: number | null;
+            /** Distance Pips */
+            distance_pips?: number | null;
+            /** Dte Days */
+            dte_days?: number | null;
+            /** Expiry */
+            expiry?: string | null;
+            /** Id */
+            id?: number | null;
+            /** Option Type */
+            option_type?: string | null;
+            /** Pnl At Breach Dn Usd */
+            pnl_at_breach_dn_usd?: number | null;
+            /** Pnl At Breach Up Usd */
+            pnl_at_breach_up_usd?: number | null;
+            /** Pnl At Pin Usd */
+            pnl_at_pin_usd?: number | null;
+            /** Pnl Now Usd */
+            pnl_now_usd?: number | null;
+            /** Product Label */
+            product_label?: string | null;
+            /** Qty */
+            qty?: number | null;
+            /** Side */
+            side?: string | null;
+            /** Strike */
+            strike?: number | null;
+            /** Structure */
+            structure?: string | null;
+            /** Trade Id */
+            trade_id?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioPnlAttribution */
+        PortfolioPnlAttribution: {
+            /** Computed At */
+            computed_at?: string | null;
+            /** Forward Source */
+            forward_source?: string | null;
+            /** Lookback Hours */
+            lookback_hours?: number | null;
+            /** Per Position */
+            per_position?: components["schemas"]["PortfolioPnlAttributionPerPositionItem"][] | null;
+            /** Rollup */
+            rollup?: string | null;
+            /** Source */
+            source?: string | null;
+            totals?: components["schemas"]["PortfolioPnlAttributionTotals"] | null;
+            /** Window Start */
+            window_start?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioPnlAttributionPerPositionItem */
+        PortfolioPnlAttributionPerPositionItem: {
+            /** Actual Pnl Usd */
+            actual_pnl_usd?: number | null;
+            /** Attrib Tenor */
+            attrib_tenor?: string | null;
+            /** Contract Id */
+            contract_id?: number | null;
+            /** Delta Pnl Usd */
+            delta_pnl_usd?: number | null;
+            /** Gamma Pnl Usd */
+            gamma_pnl_usd?: number | null;
+            /** Id */
+            id?: number | null;
+            /** Iv */
+            iv?: number | null;
+            /** Nominal Eur */
+            nominal_eur?: number | null;
+            /** Product Label */
+            product_label?: string | null;
+            /** Residual Usd */
+            residual_usd?: number | null;
+            /** Side */
+            side?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Structure */
+            structure?: string | null;
+            /** Structure Type */
+            structure_type?: string | null;
+            /** Tenor */
+            tenor?: string | null;
+            /** Theta Pnl Usd */
+            theta_pnl_usd?: number | null;
+            /** Trade Id */
+            trade_id?: number | null;
+            /** Vega Pnl Usd */
+            vega_pnl_usd?: number | null;
+            /** Wing */
+            wing?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioPnlAttributionPivot */
+        PortfolioPnlAttributionPivot: {
+            /** By */
+            by?: string | null;
+            /** Groups */
+            groups?: components["schemas"]["PortfolioPnlAttributionPivotGroupsItem"][] | null;
+            /** Total Nominal Eur */
+            total_nominal_eur?: number | null;
+            /** Total Usd */
+            total_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioPnlAttributionPivotGroupsItem */
+        PortfolioPnlAttributionPivotGroupsItem: {
+            /** Label */
+            label?: string | null;
+            /** N */
+            n?: number | null;
+            /** Nominal Eur */
+            nominal_eur?: number | null;
+            /** Pnl Usd */
+            pnl_usd?: number | null;
+            /** Vanna Usd */
+            vanna_usd?: number | null;
+            /** Volga Usd */
+            volga_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioPnlAttributionTotals */
+        PortfolioPnlAttributionTotals: {
+            /** Actual Pnl Usd */
+            actual_pnl_usd?: number | null;
+            /** Delta Pnl Usd */
+            delta_pnl_usd?: number | null;
+            /** Gamma Pnl Usd */
+            gamma_pnl_usd?: number | null;
+            /** Residual Usd */
+            residual_usd?: number | null;
+            /** Theta Pnl Usd */
+            theta_pnl_usd?: number | null;
+            /** Vega Pnl Usd */
+            vega_pnl_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioRiskPerTenorRow */
+        PortfolioRiskPerTenorRow: {
+            /** Bucket */
+            bucket?: string | null;
+            /** Dte Hi */
+            dte_hi?: number | null;
+            /** Dte Lo */
+            dte_lo?: number | null;
+            /** N Positions */
+            n_positions?: number | null;
+            /** Vanna Usd */
+            vanna_usd?: number | null;
+            /** Vega Usd */
+            vega_usd?: number | null;
+            /** Volga Usd */
+            volga_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioScenarios */
+        PortfolioScenarios: {
+            /** By Iv */
+            by_iv?: unknown[] | null;
+            /** By Spot */
+            by_spot?: unknown[] | null;
+            /** Current Iv Avg Pct */
+            current_iv_avg_pct?: unknown;
+            /** Current Spot */
+            current_spot?: unknown;
+            /** Iv Steps Volpt */
+            iv_steps_volpt?: number[] | null;
+            /** N Positions */
+            n_positions?: number | null;
+            /** Spot Steps Pct */
+            spot_steps_pct?: number[] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioStats */
+        PortfolioStats: {
+            /** Computed At */
+            computed_at?: string | null;
+            /** Cum Realized Usd */
+            cum_realized_usd?: number | null;
+            /** Cum Unrealized Usd */
+            cum_unrealized_usd?: number | null;
+            /** Current Drawdown Pct */
+            current_drawdown_pct?: number | null;
+            /** Hit Rate */
+            hit_rate?: unknown;
+            /** Max Drawdown Pct */
+            max_drawdown_pct?: number | null;
+            /** N Closed */
+            n_closed?: number | null;
+            /** N Days */
+            n_days?: number | null;
+            /** N Open */
+            n_open?: number | null;
+            /** N Reconciled Flat */
+            n_reconciled_flat?: number | null;
+            /** Net Liq Change Usd */
+            net_liq_change_usd?: number | null;
+            /** Sharpe */
+            sharpe?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioStressGrid */
+        PortfolioStressGrid: {
+            /** Axis */
+            axis?: string | null;
+            /** Current Spot */
+            current_spot?: number | null;
+            /** Dropped */
+            dropped?: unknown[] | null;
+            fallback?: components["schemas"]["PortfolioStressGridFallback"] | null;
+            /** Grid */
+            grid?: number[][] | null;
+            /** N Positions */
+            n_positions?: number | null;
+            /** Output */
+            output?: string | null;
+            /** Row Bins */
+            row_bins?: (number)[] | null;
+            /** Row Unit */
+            row_unit?: string | null;
+            /** Spot Bins Bps */
+            spot_bins_bps?: (number)[] | null;
+            /** Spot Source */
+            spot_source?: string | null;
+            /** Vol Bins Vps */
+            vol_bins_vps?: (number)[] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioStressGridFallback */
+        PortfolioStressGridFallback: {
+            /** Spot */
+            spot?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioTradeMarkersRow */
+        PortfolioTradeMarkersRow: {
+            /** Closed At */
+            closed_at?: string | null;
+            /** Entry Spot */
+            entry_spot?: number | null;
+            /** Id */
+            id?: number | null;
+            /** Net Pnl Usd */
+            net_pnl_usd?: number | null;
+            /** Opened At */
+            opened_at?: string | null;
+            /** State */
+            state?: string | null;
+            /** Type */
+            type?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioValuationHistoryRow */
+        PortfolioValuationHistoryRow: {
+            /** Contracts Usd */
+            contracts_usd?: number | null;
+            /** Eur Cash Usd */
+            eur_cash_usd?: number | null;
+            /** Net Liq Usd */
+            net_liq_usd?: number | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            /** Usd Cash Usd */
+            usd_cash_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioVar */
+        PortfolioVar: {
+            /** Computed At */
+            computed_at?: string | null;
+            /** Convention */
+            convention?: string | null;
+            /** Current Spot */
+            current_spot?: number | null;
+            /** Dropped */
+            dropped?: unknown[] | null;
+            /** Es 99 Usd */
+            es_99_usd?: number | null;
+            fallback?: components["schemas"]["PortfolioVarFallback"] | null;
+            /** Hist */
+            hist?: components["schemas"]["PortfolioVarHistItem"][] | null;
+            /** Horizon Days */
+            horizon_days?: number | null;
+            /** Mean Daily Usd */
+            mean_daily_usd?: number | null;
+            /** Method */
+            method?: string | null;
+            /** N Days */
+            n_days?: number | null;
+            /** N Positions */
+            n_positions?: number | null;
+            /** N Scenarios */
+            n_scenarios?: number | null;
+            /** Spot Source */
+            spot_source?: string | null;
+            /** Var 95 Usd */
+            var_95_usd?: number | null;
+            /** Var 99 Usd */
+            var_99_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioVarFactors */
+        PortfolioVarFactors: {
+            /** Current Spot */
+            current_spot?: number | null;
+            /** Dropped */
+            dropped?: unknown[] | null;
+            /** Factors */
+            factors?: components["schemas"]["PortfolioVarFactorsFactorsItem"][] | null;
+            fallback?: components["schemas"]["PortfolioVarFactorsFallback"] | null;
+            /** N Positions */
+            n_positions?: number | null;
+            /** Spot Source */
+            spot_source?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioVarFactorsFactorsItem */
+        PortfolioVarFactorsFactorsItem: {
+            /** Key */
+            key?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Var Usd */
+            var_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioVarFactorsFallback */
+        PortfolioVarFactorsFallback: {
+            /** Spot */
+            spot?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioVarFallback */
+        PortfolioVarFallback: {
+            /** Spot */
+            spot?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioVarHistItem */
+        PortfolioVarHistItem: {
+            /** Count */
+            count?: number | null;
+            /** Hi */
+            hi?: number | null;
+            /** Lo */
+            lo?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioVegaPca */
+        PortfolioVegaPca: {
+            /** Current Spot */
+            current_spot?: number | null;
+            /** Dropped */
+            dropped?: unknown[] | null;
+            fallback?: components["schemas"]["PortfolioVegaPcaFallback"] | null;
+            /** Model Version */
+            model_version?: string | null;
+            /** N Positions */
+            n_positions?: number | null;
+            /** Pcs */
+            pcs?: components["schemas"]["PortfolioVegaPcaPcsItem"][] | null;
+            /** Spot Source */
+            spot_source?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioVegaPcaFallback */
+        PortfolioVegaPcaFallback: {
+            /** Spot */
+            spot?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioVegaPcaPcsItem */
+        PortfolioVegaPcaPcsItem: {
+            /** Name */
+            name?: string | null;
+            /** Pc */
+            pc?: number | null;
+            /** Variance Pct */
+            variance_pct?: number | null;
+            /** Vega Usd */
+            vega_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PortfolioVegaPerTenorRow */
+        PortfolioVegaPerTenorRow: {
+            /** Bucket */
+            bucket?: string | null;
+            /** Dte Hi */
+            dte_hi?: number | null;
+            /** Dte Lo */
+            dte_lo?: number | null;
+            /** N Positions */
+            n_positions?: number | null;
+            /** Vega Usd */
+            vega_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * PositionAlertRow
+         * @description One exit-rule alert raised on a position.
+         */
+        PositionAlertRow: {
+            /** Action Recommended */
+            action_recommended?: unknown;
+            /** Auto Executed */
+            auto_executed?: unknown;
+            /** Closing Structure Id */
+            closing_structure_id?: unknown;
+            /** Execution Status */
+            execution_status?: unknown;
+            /** Id */
+            id?: unknown;
+            /** Priority */
+            priority?: unknown;
+            /** Rule Detail */
+            rule_detail?: unknown;
+            /** Rule Triggered */
+            rule_triggered?: unknown;
+            /** Timestamp */
+            timestamp?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * PositionDetail
+         * @description One booked position with its structure and latest mark (`GET /positions/{id}`).
+         */
+        PositionDetail: {
+            /** Armed Signal Label */
+            armed_signal_label?: unknown;
+            /** Armed Z Score */
+            armed_z_score?: unknown;
+            /** Contract Price Entry */
+            contract_price_entry?: unknown;
+            /** Contract Price Market */
+            contract_price_market?: unknown;
+            /** Current Delta Unhedged */
+            current_delta_unhedged?: unknown;
+            /** Current Gamma Usd Per Pip2 */
+            current_gamma_usd_per_pip2?: unknown;
+            /** Current Pnl Gross Usd */
+            current_pnl_gross_usd?: unknown;
+            /** Current Pnl Net Usd */
+            current_pnl_net_usd?: unknown;
+            /** Current Theta Usd Per Day */
+            current_theta_usd_per_day?: unknown;
+            /** Current Vega Usd Per Volpt */
+            current_vega_usd_per_volpt?: unknown;
+            /** Entry Gamma Usd Per Pip2 */
+            entry_gamma_usd_per_pip2?: unknown;
+            /** Entry Iv Avg */
+            entry_iv_avg?: unknown;
+            /** Entry Premium Usd */
+            entry_premium_usd?: unknown;
+            /** Entry Spot */
+            entry_spot?: unknown;
+            /** Entry Theta Usd Per Day */
+            entry_theta_usd_per_day?: unknown;
+            /** Entry Total Cost Usd */
+            entry_total_cost_usd?: unknown;
+            /** Entry Vega Usd Per Volpt */
+            entry_vega_usd_per_volpt?: unknown;
+            /** Expiry Date */
+            expiry_date?: unknown;
+            /** Gamma Pnl Usd */
+            gamma_pnl_usd?: unknown;
+            /** Ib Qty Diff */
+            ib_qty_diff?: unknown;
+            /** Ib Qty Total */
+            ib_qty_total?: unknown;
+            /** Ib Reconciled At */
+            ib_reconciled_at?: unknown;
+            /** Ib Sync Status */
+            ib_sync_status?: unknown;
+            /** Id */
+            id?: unknown;
+            /** Last Mtm At */
+            last_mtm_at?: unknown;
+            /** Nominal Eur */
+            nominal_eur?: unknown;
+            /** Opened At */
+            opened_at?: unknown;
+            /** Product Label */
+            product_label?: unknown;
+            /** Reference Tenor */
+            reference_tenor?: unknown;
+            /** Source */
+            source?: unknown;
+            /** State */
+            state?: unknown;
+            /** Structure */
+            structure?: unknown;
+            /** Structure Id */
+            structure_id?: unknown;
+            /** Structure Type */
+            structure_type?: unknown;
+            /** Tenor */
+            tenor?: unknown;
+            /** Theta Pnl Usd */
+            theta_pnl_usd?: unknown;
+            /** Triggering Pc */
+            triggering_pc?: unknown;
+            /** Vega Pnl Usd */
+            vega_pnl_usd?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * PositionHedgeRow
+         * @description One delta hedge placed for a position.
+         */
+        PositionHedgeRow: {
+            /** Delta Imbalance At Trigger */
+            delta_imbalance_at_trigger?: unknown;
+            /** Fill Price */
+            fill_price?: unknown;
+            /** Hedge Qty */
+            hedge_qty?: unknown;
+            /** Ib Order Id */
+            ib_order_id?: unknown;
+            /** Id */
+            id?: unknown;
+            /** Side */
+            side?: unknown;
+            /** State */
+            state?: unknown;
+            /** Total Cost Usd */
+            total_cost_usd?: unknown;
+            /** Triggered At */
+            triggered_at?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * PositionMtmPoint
+         * @description One mark-to-market snapshot of a position.
+         */
+        PositionMtmPoint: {
+            /** Gamma Pnl Usd */
+            gamma_pnl_usd?: unknown;
+            /** Iv Avg Legs Pct */
+            iv_avg_legs_pct?: unknown;
+            /** Other Pnl Usd */
+            other_pnl_usd?: unknown;
+            /** Pnl Gross Usd */
+            pnl_gross_usd?: unknown;
+            /** Pnl Net Usd */
+            pnl_net_usd?: unknown;
+            /** Spot */
+            spot?: unknown;
+            /** Theta Pnl Usd */
+            theta_pnl_usd?: unknown;
+            /** Timestamp */
+            timestamp?: unknown;
+            /** Vega Pnl Usd */
+            vega_pnl_usd?: unknown;
+            /** Vega Usd Per Volpt */
+            vega_usd_per_volpt?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsActiveRow */
+        PositionsActiveRow: {
+            /** Armed Signal Label */
+            armed_signal_label?: unknown;
+            /** Armed Z Score */
+            armed_z_score?: unknown;
+            /** Contract Price Entry */
+            contract_price_entry?: number | null;
+            /** Contract Price Market */
+            contract_price_market?: unknown;
+            /** Current Delta Unhedged */
+            current_delta_unhedged?: number | null;
+            /** Current Gamma Usd Per Pip2 */
+            current_gamma_usd_per_pip2?: number | null;
+            /** Current Pnl Gross Usd */
+            current_pnl_gross_usd?: number | null;
+            /** Current Pnl Net Usd */
+            current_pnl_net_usd?: number | null;
+            /** Current Theta Usd Per Day */
+            current_theta_usd_per_day?: number | null;
+            /** Current Vega Usd Per Volpt */
+            current_vega_usd_per_volpt?: number | null;
+            /** Entry Gamma Usd Per Pip2 */
+            entry_gamma_usd_per_pip2?: unknown;
+            /** Entry Iv Avg */
+            entry_iv_avg?: unknown;
+            /** Entry Premium Usd */
+            entry_premium_usd?: number | null;
+            /** Entry Spot */
+            entry_spot?: unknown;
+            /** Entry Theta Usd Per Day */
+            entry_theta_usd_per_day?: unknown;
+            /** Entry Total Cost Usd */
+            entry_total_cost_usd?: number | null;
+            /** Entry Vega Usd Per Volpt */
+            entry_vega_usd_per_volpt?: unknown;
+            /** Expiry Date */
+            expiry_date?: string | null;
+            /** Gamma Pnl Usd */
+            gamma_pnl_usd?: number | null;
+            /** Ib Qty Diff */
+            ib_qty_diff?: number | null;
+            /** Ib Qty Total */
+            ib_qty_total?: number | null;
+            /** Ib Reconciled At */
+            ib_reconciled_at?: string | null;
+            /** Ib Sync Status */
+            ib_sync_status?: string | null;
+            /** Id */
+            id?: number | null;
+            /** Instrument Type */
+            instrument_type?: string | null;
+            /** Iv */
+            iv?: number | null;
+            /** Last Mtm At */
+            last_mtm_at?: string | null;
+            /** Nominal Eur */
+            nominal_eur?: number | null;
+            /** Opened At */
+            opened_at?: string | null;
+            /** Option Type */
+            option_type?: string | null;
+            /** Product Label */
+            product_label?: string | null;
+            /** Quantity */
+            quantity?: number | null;
+            /** Reference Tenor */
+            reference_tenor?: string | null;
+            /** Side */
+            side?: string | null;
+            /** Source */
+            source?: string | null;
+            /** State */
+            state?: string | null;
+            /** Strike */
+            strike?: number | null;
+            /** Structure */
+            structure?: string | null;
+            /** Structure Id */
+            structure_id?: number | null;
+            /** Structure Type */
+            structure_type?: string | null;
+            /** Symbol */
+            symbol?: string | null;
+            /** Tenor */
+            tenor?: string | null;
+            /** Theta Pnl Usd */
+            theta_pnl_usd?: number | null;
+            /** Triggering Pc */
+            triggering_pc?: unknown;
+            /** Vanna Usd */
+            vanna_usd?: number | null;
+            /** Vega Pnl Usd */
+            vega_pnl_usd?: number | null;
+            /** Volga Usd */
+            volga_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsAggregate */
+        PositionsAggregate: {
+            /** N Delta Unknown */
+            n_delta_unknown?: number | null;
+            /** N Open Positions */
+            n_open_positions?: number | null;
+            /** Total Delta Unhedged */
+            total_delta_unhedged?: number | null;
+            /** Total Gamma Usd Per Pip2 */
+            total_gamma_usd_per_pip2?: number | null;
+            /** Total Theta Usd Per Day */
+            total_theta_usd_per_day?: number | null;
+            /** Total Vega Usd Per Volpt */
+            total_vega_usd_per_volpt?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsBookRow */
+        PositionsBookRow: {
+            /** Available */
+            available?: number | null;
+            /** Avg Price */
+            avg_price?: number | null;
+            /** Contract Expiry */
+            contract_expiry?: string | null;
+            /** Contract Strike */
+            contract_strike?: number | null;
+            /** Contract Type */
+            contract_type?: string | null;
+            /** Ib Local Symbol */
+            ib_local_symbol?: string | null;
+            /** Leg Idx */
+            leg_idx?: number | null;
+            /** Open Qty */
+            open_qty?: number | null;
+            /** Order Id */
+            order_id?: number | null;
+            /** Order Role */
+            order_role?: string | null;
+            /** Rebuilt At */
+            rebuilt_at?: string | null;
+            /** Reserved Qty */
+            reserved_qty?: number | null;
+            /** Side */
+            side?: string | null;
+            /** Structure Id */
+            structure_id?: number | null;
+            /** Structure Type */
+            structure_type?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsBreaksRow */
+        PositionsBreaksRow: {
+            /** Book Qty */
+            book_qty?: number | null;
+            /** Break Type */
+            break_type?: string | null;
+            /** Broker Qty */
+            broker_qty?: number | null;
+            /** Contract */
+            contract?: string | null;
+            /** Detected At */
+            detected_at?: string | null;
+            /** Diff */
+            diff?: number | null;
+            /** Id */
+            id?: number | null;
+            /** Last Seen At */
+            last_seen_at?: string | null;
+            /** Resolved At */
+            resolved_at?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsLedger */
+        PositionsLedger: {
+            /** As Of */
+            as_of?: string | null;
+            /** Positions */
+            positions?: components["schemas"]["PositionsLedgerPositionsItem"][] | null;
+            totals?: components["schemas"]["PositionsLedgerTotals"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsLedgerPositionsItem */
+        PositionsLedgerPositionsItem: {
+            /** Avg Cost */
+            avg_cost?: number | null;
+            /** Commission */
+            commission?: number | null;
+            /** Contract */
+            contract?: string | null;
+            /** Multiplier */
+            multiplier?: number | null;
+            /** Net Qty */
+            net_qty?: number | null;
+            /** Realized Pnl */
+            realized_pnl?: number | null;
+            /** Unrealized Pnl */
+            unrealized_pnl?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsLedgerTotals */
+        PositionsLedgerTotals: {
+            /** Commission */
+            commission?: number | null;
+            /** Realized Pnl */
+            realized_pnl?: number | null;
+            /** Unrealized Pnl */
+            unrealized_pnl?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsReconciliation */
+        PositionsReconciliation: {
+            /** As Of */
+            as_of?: string | null;
+            /** Breaks */
+            breaks?: components["schemas"]["PositionsReconciliationBreaksItem"][] | null;
+            /** N Breaks */
+            n_breaks?: number | null;
+            /** N Contracts */
+            n_contracts?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsReconciliationBreaksItem */
+        PositionsReconciliationBreaksItem: {
+            /** Actual Net */
+            actual_net?: number | null;
+            /** Break */
+            break?: number | null;
+            /** Contract */
+            contract?: string | null;
+            /** Expected Net */
+            expected_net?: number | null;
+            /** Kind */
+            kind?: string | null;
+            /** Structure Id */
+            structure_id?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsStructured */
+        PositionsStructured: {
+            /** Structures */
+            structures?: components["schemas"]["PositionsStructuredStructuresItem"][] | null;
+            /** Unlinked */
+            unlinked?: unknown[] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** PositionsStructuredStructuresItem */
+        PositionsStructuredStructuresItem: {
+            /** Base Qty */
+            base_qty?: number | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Legs */
+            legs?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Net */
+            net?: {
+                [key: string]: unknown;
+            } | null;
+            /** Product Label */
+            product_label?: unknown;
+            /** State */
+            state?: string | null;
+            /** Structure Id */
+            structure_id?: number | null;
+            /** Structure Type */
+            structure_type?: string | null;
+            /** Tenor */
+            tenor?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * PreviewCancelled
+         * @description A preview the trader dropped.
+         */
+        PreviewCancelled: {
+            /** Preview Id */
+            preview_id?: unknown;
+            /** State */
+            state?: unknown;
+        } & {
+            [key: string]: unknown;
         };
         /** PreviewRequest */
         PreviewRequest: {
@@ -3454,6 +5398,48 @@ export interface components {
             price: number;
         };
         /**
+         * RedisKeyRow
+         * @description One watched Redis key.
+         */
+        RedisKeyRow: {
+            /** Age S */
+            age_s?: unknown;
+            /** Exists */
+            exists?: unknown;
+            /** Key */
+            key?: unknown;
+            /** Ttl */
+            ttl?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * RedisKeys
+         * @description Watched Redis keys.
+         */
+        RedisKeys: {
+            /** Keys */
+            keys?: components["schemas"]["RedisKeyRow"][] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * RedisValue
+         * @description One Redis value, parsed when it is JSON.
+         */
+        RedisValue: {
+            /** Is Json */
+            is_json?: unknown;
+            /** Key */
+            key?: unknown;
+            /** Raw */
+            raw?: unknown;
+            /** Value */
+            value?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * RegimeConfig
          * @description Features + thresholds for the GMM-based regime detector.
          */
@@ -3491,6 +5477,127 @@ export interface components {
              * @default 20
              */
             vol_of_vol_window_days: number;
+        };
+        /** RegimeFeatures */
+        RegimeFeatures: {
+            /** Features */
+            features?: components["schemas"]["RegimeFeaturesFeaturesItem"][] | null;
+            /** Symbol */
+            symbol?: string | null;
+            synthesis?: components["schemas"]["RegimeFeaturesSynthesis"] | null;
+            /** Timestamp */
+            timestamp?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RegimeFeaturesFeaturesItem */
+        RegimeFeaturesFeaturesItem: {
+            /** Bucket */
+            bucket?: string | null;
+            /** Delta Z 1H */
+            delta_z_1h?: number | null;
+            /** Expected Z */
+            expected_z?: {
+                [key: string]: unknown;
+            } | null;
+            /** Name */
+            name?: string | null;
+            /** Pct */
+            pct?: number | null;
+            /** Signal */
+            signal?: string | null;
+            /** Value */
+            value?: number | null;
+            /** Vs Expected */
+            vs_expected?: string | null;
+            /** Z */
+            z?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RegimeFeaturesSynthesis */
+        RegimeFeaturesSynthesis: {
+            /** Action */
+            action?: string | null;
+            /** Dominant */
+            dominant?: string | null;
+            /** Joint Pattern */
+            joint_pattern?: string | null;
+            regime?: components["schemas"]["RegimeFeaturesSynthesisRegime"] | null;
+            vs_expected?: components["schemas"]["RegimeFeaturesSynthesisVsExpected"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RegimeFeaturesSynthesisRegime */
+        RegimeFeaturesSynthesisRegime: {
+            /** Action Default */
+            action_default?: string | null;
+            /** Asymmetry Note */
+            asymmetry_note?: string | null;
+            /** Family */
+            family?: string | null;
+            /** Id */
+            id?: number | null;
+            /** Intensity Count */
+            intensity_count?: number | null;
+            /** Name */
+            name?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RegimeFeaturesSynthesisVsExpected */
+        RegimeFeaturesSynthesisVsExpected: {
+            /** Delta Sigma */
+            delta_sigma?: number | null;
+            /** Feature */
+            feature?: string | null;
+            /** Label */
+            label?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RegimeGmmShadow */
+        RegimeGmmShadow: {
+            /** Agreement Ratio */
+            agreement_ratio?: number | null;
+            by_label?: components["schemas"]["RegimeGmmShadowByLabel"] | null;
+            /** N Total */
+            n_total?: number | null;
+            /** N With Gmm */
+            n_with_gmm?: number | null;
+            promotion_gates?: components["schemas"]["RegimeGmmShadowPromotionGates"] | null;
+            /** Ready To Promote */
+            ready_to_promote?: boolean | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RegimeGmmShadowByLabel */
+        RegimeGmmShadowByLabel: {
+            calm?: components["schemas"]["RegimeGmmShadowByLabelCalm"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RegimeGmmShadowByLabelCalm */
+        RegimeGmmShadowByLabelCalm: {
+            /** Pre Event */
+            pre_event?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RegimeGmmShadowPromotionGates */
+        RegimeGmmShadowPromotionGates: {
+            /** Agreement Ratio Ok */
+            agreement_ratio_ok?: boolean | null;
+            /** Agreement Ratio Required */
+            agreement_ratio_required?: number | null;
+            /** Manual Check Needed */
+            manual_check_needed?: string | null;
+            /** N Required */
+            n_required?: number | null;
+            /** N With Gmm Ok */
+            n_with_gmm_ok?: boolean | null;
+        } & {
+            [key: string]: unknown;
         };
         /** RegimeResponse */
         RegimeResponse: {
@@ -3578,6 +5685,31 @@ export interface components {
              */
             timestamp: string;
         };
+        /** RegimeTransitions */
+        RegimeTransitions: {
+            /** By Day */
+            by_day?: {
+                [key: string]: unknown;
+            } | null;
+            /** Calm Pre Event Count */
+            calm_pre_event_count?: number | null;
+            /** Calm Pre Event Per Day */
+            calm_pre_event_per_day?: number | null;
+            /** Hint */
+            hint?: string | null;
+            /** N Snapshots */
+            n_snapshots?: number | null;
+            /** Symbol */
+            symbol?: string | null;
+            /** Threshold Warning */
+            threshold_warning?: boolean | null;
+            /** Total Transitions */
+            total_transitions?: number | null;
+            /** Window Days */
+            window_days?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
         /**
          * RiskLimit
          * @description One active risk limit (`config_scalar`, namespace `risk`).
@@ -3622,6 +5754,157 @@ export interface components {
              * @default 2
              */
             z_threshold_strong: number;
+        };
+        /**
+         * SignalTrackingPoint
+         * @description The arming signal's evolution since entry.
+         */
+        SignalTrackingPoint: {
+            /** Current Label */
+            current_label?: unknown;
+            /** Current Z Score */
+            current_z_score?: unknown;
+            /** Entry Label */
+            entry_label?: unknown;
+            /** Entry Z Score */
+            entry_z_score?: unknown;
+            /** Sign Flipped */
+            sign_flipped?: unknown;
+            /** Status */
+            status?: unknown;
+            /** Timestamp */
+            timestamp?: unknown;
+            /** Triggering Pc */
+            triggering_pc?: unknown;
+            /** Weakening Ratio */
+            weakening_ratio?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalsPcaState */
+        SignalsPcaState: {
+            coherence?: components["schemas"]["SignalsPcaStateCoherence"] | null;
+            /** Fit Timestamp */
+            fit_timestamp?: string | null;
+            /** Fit Window End */
+            fit_window_end?: string | null;
+            /** Fit Window Start */
+            fit_window_start?: string | null;
+            /** Loadings Grid */
+            loadings_grid?: number[][][] | null;
+            loadings_stable?: components["schemas"]["SignalsPcaStateLoadingsStable"] | null;
+            /** Model Version */
+            model_version?: string | null;
+            /** N Obs In Fit */
+            n_obs_in_fit?: number | null;
+            signals?: components["schemas"]["SignalsPcaStateSignals"] | null;
+            /** State */
+            state?: string | null;
+            /** Timestamp */
+            timestamp?: string | null;
+            variance_explained?: components["schemas"]["SignalsPcaStateVarianceExplained"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalsPcaStateCoherence */
+        SignalsPcaStateCoherence: {
+            /** All Coherent */
+            all_coherent?: boolean | null;
+            /** Contradictions */
+            contradictions?: unknown[] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalsPcaStateLoadingsStable */
+        SignalsPcaStateLoadingsStable: {
+            /** Pc1 */
+            pc1?: boolean | null;
+            /** Pc2 */
+            pc2?: boolean | null;
+            /** Pc3 */
+            pc3?: boolean | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalsPcaStateSignals */
+        SignalsPcaStateSignals: {
+            pc1?: components["schemas"]["SignalsPcaStateSignalsPc1"] | null;
+            pc2?: components["schemas"]["SignalsPcaStateSignalsPc2"] | null;
+            pc3?: components["schemas"]["SignalsPcaStateSignalsPc3"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalsPcaStateSignalsPc1 */
+        SignalsPcaStateSignalsPc1: {
+            /** Actionable */
+            actionable?: boolean | null;
+            /** Actionable Reason */
+            actionable_reason?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Raw Score */
+            raw_score?: number | null;
+            /** Reason Category */
+            reason_category?: string | null;
+            /** Sub Signals */
+            sub_signals?: unknown;
+            /** Z Score */
+            z_score?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalsPcaStateSignalsPc2 */
+        SignalsPcaStateSignalsPc2: {
+            /** Actionable */
+            actionable?: boolean | null;
+            /** Actionable Reason */
+            actionable_reason?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Raw Score */
+            raw_score?: number | null;
+            /** Reason Category */
+            reason_category?: string | null;
+            /** Sub Signals */
+            sub_signals?: unknown;
+            /** Z Score */
+            z_score?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalsPcaStateSignalsPc3 */
+        SignalsPcaStateSignalsPc3: {
+            /** Actionable */
+            actionable?: boolean | null;
+            /** Actionable Reason */
+            actionable_reason?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Raw Score */
+            raw_score?: number | null;
+            /** Reason Category */
+            reason_category?: string | null;
+            /** Sub Signals */
+            sub_signals?: {
+                [key: string]: unknown;
+            } | null;
+            /** Z Score */
+            z_score?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalsPcaStateVarianceExplained */
+        SignalsPcaStateVarianceExplained: {
+            /** Cumulative */
+            cumulative?: number | null;
+            /** Pc1 */
+            pc1?: number | null;
+            /** Pc2 */
+            pc2?: number | null;
+            /** Pc3 */
+            pc3?: number | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * SizingConfig
@@ -3717,6 +6000,38 @@ export interface components {
             preview_id: string;
         };
         /**
+         * SubmitResult
+         * @description A preview submitted: the structure and position it opened.
+         */
+        SubmitResult: {
+            /** Execution Engine */
+            execution_engine?: unknown;
+            /** Execution Mode */
+            execution_mode?: unknown;
+            /** Fully Filled At */
+            fully_filled_at?: unknown;
+            /** N Orders Submitted */
+            n_orders_submitted?: unknown;
+            /** Position Id */
+            position_id?: unknown;
+            /** State */
+            state?: unknown;
+            /** Structure Id */
+            structure_id?: unknown;
+            /** Success */
+            success?: unknown;
+            /** Total Commission Usd */
+            total_commission_usd?: unknown;
+            /** Total Entry Cost Usd */
+            total_entry_cost_usd?: unknown;
+            /** Total Premium Paid Usd */
+            total_premium_paid_usd?: unknown;
+            /** Trace Id */
+            trace_id?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * SurfaceConfig
          * @description Tenor grid, fit diagnostics, no-arb tolerances.
          */
@@ -3793,6 +6108,58 @@ export interface components {
              */
             timestamp: string;
         };
+        /**
+         * TablePage
+         * @description One page of a table's rows.
+         */
+        TablePage: {
+            /** Columns */
+            columns?: unknown;
+            /** Columns Meta */
+            columns_meta?: unknown;
+            /** Filters */
+            filters?: unknown;
+            /** Limit */
+            limit?: unknown;
+            /** Offset */
+            offset?: unknown;
+            /** Order By */
+            order_by?: unknown;
+            /** Order Dir */
+            order_dir?: unknown;
+            /** Rows */
+            rows?: unknown;
+            /** Table */
+            table?: unknown;
+            /** Total */
+            total?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * TableRow
+         * @description One ORM table.
+         */
+        TableRow: {
+            /** N Columns */
+            n_columns?: unknown;
+            /** Name */
+            name?: unknown;
+            /** Pk */
+            pk?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * TablesList
+         * @description Every ORM table.
+         */
+        TablesList: {
+            /** Tables */
+            tables?: components["schemas"]["TableRow"][] | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** TermStructureResponse */
         TermStructureResponse: {
             /** Age S */
@@ -3848,6 +6215,92 @@ export interface components {
             /** Vrp Vol Pts */
             vrp_vol_pts?: number | null;
         };
+        /**
+         * TradeCancelResult
+         * @description The working orders of a trade cancelled.
+         */
+        TradeCancelResult: {
+            /** Cancelled */
+            cancelled?: unknown;
+            /** Failed */
+            failed?: unknown;
+            /** Results */
+            results?: unknown;
+            /** Structure State */
+            structure_state?: unknown;
+            /** Trade Id */
+            trade_id?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * TradeCloseResult
+         * @description A close sent for every leg of a trade.
+         */
+        TradeCloseResult: {
+            /** Closed Legs */
+            closed_legs?: unknown;
+            /** Failed Legs */
+            failed_legs?: unknown;
+            /** Results */
+            results?: unknown;
+            /** Total Legs */
+            total_legs?: unknown;
+            /** Trade Id */
+            trade_id?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * TradePreview
+         * @description A trade preview: structure, pricing, costs, scenarios and pre-submit checks.
+         */
+        TradePreview: {
+            /** Blocking Reasons */
+            blocking_reasons?: unknown;
+            /** Costs */
+            costs?: unknown;
+            /** Created At */
+            created_at?: unknown;
+            /** Expires At */
+            expires_at?: unknown;
+            /** Greeks Net */
+            greeks_net?: unknown;
+            /** Legs Greeks */
+            legs_greeks?: unknown;
+            /** Mode */
+            mode?: unknown;
+            /** Pnl Grid */
+            pnl_grid?: unknown;
+            /** Pre Submit Checks */
+            pre_submit_checks?: unknown;
+            /** Preview Id */
+            preview_id?: unknown;
+            /** Pricing */
+            pricing?: unknown;
+            /** Scenarios */
+            scenarios?: unknown;
+            /** Signal Source */
+            signal_source?: unknown;
+            /** Sizing */
+            sizing?: unknown;
+            /** Spot */
+            spot?: unknown;
+            /** State */
+            state?: unknown;
+            /** Structure */
+            structure?: unknown;
+            /** Surface Age Seconds */
+            surface_age_seconds?: unknown;
+            /** Surface Source */
+            surface_source?: unknown;
+            /** User Action */
+            user_action?: unknown;
+            /** Warnings */
+            warnings?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
         /** TradePreviewRequest */
         TradePreviewRequest: {
             /**
@@ -3886,6 +6339,53 @@ export interface components {
             /** Total Premium */
             total_premium: number;
         };
+        /** TradeSpotOrdersRow */
+        TradeSpotOrdersRow: {
+            /** Avg Fill Price */
+            avg_fill_price?: number | null;
+            /** Commission Usd */
+            commission_usd?: number | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Exchange */
+            exchange?: string | null;
+            /** Filled At */
+            filled_at?: string | null;
+            /** Ib Order Id */
+            ib_order_id?: number | null;
+            /** Ib Perm Id */
+            ib_perm_id?: string | null;
+            /** Ib Status */
+            ib_status?: string | null;
+            /** Id */
+            id?: number | null;
+            /** Limit Price */
+            limit_price?: number | null;
+            /** Local Symbol */
+            local_symbol?: string | null;
+            /** Order Type */
+            order_type?: string | null;
+            /** Qty */
+            qty?: number | null;
+            /** Qty Filled */
+            qty_filled?: number | null;
+            /** Rejection Text */
+            rejection_text?: string | null;
+            /** Side */
+            side?: string | null;
+            /** State */
+            state?: string | null;
+            /** State Updated At */
+            state_updated_at?: string | null;
+            /** Symbol */
+            symbol?: string | null;
+            /** Why Held */
+            why_held?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
         /**
          * TradeStructuresConfig
          * @description Which structure is generated for each signal origin.
@@ -3920,6 +6420,114 @@ export interface components {
              * @enum {string}
              */
             pc3_skew_structure: "straddle_atm" | "calendar_spread" | "risk_reversal_25d" | "butterfly_25d";
+        };
+        /** TradeStructuresRow */
+        TradeStructuresRow: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Leg Template */
+            leg_template?: components["schemas"]["TradeStructuresRowLegTemplateItem"][] | null;
+            /** Max Legs */
+            max_legs?: number | null;
+            /** Min Legs */
+            min_legs?: number | null;
+            /** Rationale For Pc */
+            rationale_for_pc?: string | null;
+            /** Requires Delta Hedge */
+            requires_delta_hedge?: boolean | null;
+            /** Structure Type */
+            structure_type?: string | null;
+            /** Typical Gamma Sign */
+            typical_gamma_sign?: string | null;
+            /** Typical Theta Sign */
+            typical_theta_sign?: string | null;
+            /** Typical Vega Sign */
+            typical_vega_sign?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TradeStructuresRowLegTemplateItem */
+        TradeStructuresRowLegTemplateItem: {
+            /** Contract Type */
+            contract_type?: string | null;
+            /** Delta Pillar */
+            delta_pillar?: string | null;
+            /** Overridable */
+            overridable?: boolean | null;
+            /** Qty Factor */
+            qty_factor?: number | null;
+            /** Side */
+            side?: string | null;
+            /** Tenor Role */
+            tenor_role?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TradeSubmittedRow */
+        TradeSubmittedRow: {
+            /** Base Qty */
+            base_qty?: number | null;
+            /** Closes Trade Id */
+            closes_trade_id?: number | null;
+            /** Contract */
+            contract?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Execution Mode */
+            execution_mode?: string | null;
+            /** Id */
+            id?: number | null;
+            /** Legs */
+            legs?: components["schemas"]["TradeSubmittedRowLegsItem"][] | null;
+            /** Order Role */
+            order_role?: string | null;
+            /** Position Id */
+            position_id?: number | null;
+            /** Position State */
+            position_state?: string | null;
+            /** Preview Id */
+            preview_id?: string | null;
+            /** Product Label */
+            product_label?: string | null;
+            /** Qty Filled */
+            qty_filled?: number | null;
+            /** Qty Total */
+            qty_total?: number | null;
+            /** Reference Tenor */
+            reference_tenor?: string | null;
+            /** State */
+            state?: string | null;
+            /** Structure Type */
+            structure_type?: string | null;
+            /** Total Commission Usd */
+            total_commission_usd?: number | null;
+            /** Total Entry Cost Usd */
+            total_entry_cost_usd?: number | null;
+            /** Total Premium Paid Usd */
+            total_premium_paid_usd?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TradeSubmittedRowLegsItem */
+        TradeSubmittedRowLegsItem: {
+            /** Contract */
+            contract?: string | null;
+            /** Contract Type */
+            contract_type?: string | null;
+            /** Leg Idx */
+            leg_idx?: number | null;
+            /** Qty */
+            qty?: number | null;
+            /** Qty Filled */
+            qty_filled?: number | null;
+            /** Side */
+            side?: string | null;
+            /** State */
+            state?: string | null;
+            /** Strike */
+            strike?: number | null;
+        } & {
+            [key: string]: unknown;
         };
         /** ValidationError */
         ValidationError: {
@@ -4245,9 +6853,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["HaltSetResult"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -4298,9 +6904,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["HaltClearResult"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -4349,9 +6953,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PcaRefitResult"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -4400,9 +7002,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AdminSettingsDomain"];
                 };
             };
             /** @description The referenced object does not exist. */
@@ -4455,9 +7055,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AdminSettingsDomain"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -4678,9 +7276,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DevContainersMetrics"];
                 };
             };
             /** @description Validation Error */
@@ -4749,9 +7345,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DevDbSchema"];
                 };
             };
             /** @description Request rejected by a business rule (the detail says which). */
@@ -4827,9 +7421,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DevHardware"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -4858,9 +7450,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["LogContainers"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -4913,9 +7503,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["LogQueryResult"];
                 };
             };
             /** @description Request rejected by a business rule (the detail says which). */
@@ -4980,9 +7568,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DevMigrations"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5013,9 +7599,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MigrationDetail"];
                 };
             };
             /** @description The referenced object does not exist. */
@@ -5062,9 +7646,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RedisKeys"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -5104,9 +7686,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RedisValue"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -5162,9 +7742,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["DevStack"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5193,9 +7771,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TablesList"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -5241,9 +7817,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TablePage"];
                 };
             };
             /** @description Request rejected by a business rule (the detail says which). */
@@ -5308,9 +7882,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IbPositionsList"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5345,9 +7917,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IbOrder"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -5436,9 +8006,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: string;
-                    };
+                    "application/json": components["schemas"]["Health"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5467,9 +8035,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["HealthExtended"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5498,7 +8064,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["HealthReady"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5580,9 +8146,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: number;
-                    };
+                    "application/json": components["schemas"]["BeaconAck"];
                 };
             };
             /** @description Validation Error */
@@ -5620,9 +8184,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["OrdersList"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5655,9 +8217,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IbOrder"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -5706,9 +8266,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IbOrder"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -5755,9 +8313,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioAccount"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5786,9 +8342,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioAggregateGreeks"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5817,9 +8371,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioCash"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5850,9 +8402,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioDailyPnl"];
                 };
             };
             /** @description Validation Error */
@@ -5892,9 +8442,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PortfolioEquityCurveRow"][];
                 };
             };
             /** @description Validation Error */
@@ -5932,9 +8480,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioGreekLimits"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -5965,9 +8511,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PortfolioGreekPnlHistoryRow"][];
                 };
             };
             /** @description Validation Error */
@@ -6007,9 +8551,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PortfolioGreeksHistoryRow"][];
                 };
             };
             /** @description Validation Error */
@@ -6049,9 +8591,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioGreeksLadder"];
                 };
             };
             /** @description Validation Error */
@@ -6089,9 +8629,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioHeader"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6120,9 +8658,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioHedgeSummary"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6151,9 +8687,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioMarginalVar"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6182,9 +8716,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioPinRisk"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6217,9 +8749,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioPnlAttribution"];
                 };
             };
             /** @description Request rejected by a business rule (the detail says which). */
@@ -6269,9 +8799,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioPnlAttributionPivot"];
                 };
             };
             /** @description Request rejected by a business rule (the detail says which). */
@@ -6318,9 +8846,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PortfolioRiskPerTenorRow"][];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6349,9 +8875,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioScenarios"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6380,9 +8904,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioStats"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6414,9 +8936,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioStressGrid"];
                 };
             };
             /** @description Validation Error */
@@ -6456,9 +8976,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PortfolioTradeMarkersRow"][];
                 };
             };
             /** @description Validation Error */
@@ -6498,9 +9016,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PortfolioValuationHistoryRow"][];
                 };
             };
             /** @description Validation Error */
@@ -6538,9 +9054,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioVar"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6569,9 +9083,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioVarFactors"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6600,9 +9112,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PortfolioVegaPca"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6631,9 +9141,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PortfolioVegaPerTenorRow"][];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6662,9 +9170,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PositionsActiveRow"][];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6693,9 +9199,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PositionsAggregate"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6724,9 +9228,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PositionsBookRow"][];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6757,9 +9259,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PositionsBreaksRow"][];
                 };
             };
             /** @description Validation Error */
@@ -6855,9 +9355,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PositionsLedger"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6886,9 +9384,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["MonitorRunReport"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -6955,9 +9451,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PositionsReconciliation"];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -6988,9 +9482,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PositionsStructured"];
                 };
             };
             /** @description Validation Error */
@@ -7030,9 +9522,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PositionDetail"];
                 };
             };
             /** @description The referenced object does not exist. */
@@ -7083,9 +9573,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PositionAlertRow"][];
                 };
             };
             /** @description Validation Error */
@@ -7129,9 +9617,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ClosePositionResult"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -7189,9 +9675,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ManualCloseResult"];
                 };
             };
             /** @description Request rejected by a business rule (the detail says which). */
@@ -7260,9 +9744,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PositionHedgeRow"][];
                 };
             };
             /** @description Validation Error */
@@ -7305,9 +9787,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["PositionMtmPoint"][];
                 };
             };
             /** @description Validation Error */
@@ -7349,9 +9829,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["SignalTrackingPoint"][];
                 };
             };
             /** @description Validation Error */
@@ -7476,9 +9954,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["EventInserted"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -7526,7 +10002,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: unknown;
+                        [key: string]: number;
                     };
                 };
             };
@@ -7585,9 +10061,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RegimeFeatures"];
                 };
             };
             /** @description The referenced object does not exist. */
@@ -7637,9 +10111,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RegimeGmmShadow"];
                 };
             };
             /** @description Validation Error */
@@ -7770,9 +10242,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RegimeTransitions"];
                 };
             };
             /** @description Validation Error */
@@ -7896,9 +10366,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["SignalsPcaState"];
                 };
             };
             /** @description Validation Error */
@@ -8042,9 +10510,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TradePreview"];
                 };
             };
             /** @description Request rejected by a business rule (the detail says which). */
@@ -8111,9 +10577,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TradePreview"];
                 };
             };
             /** @description The referenced object does not exist. */
@@ -8162,9 +10626,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PreviewCancelled"];
                 };
             };
             /** @description Request rejected by a business rule (the detail says which). */
@@ -8231,9 +10693,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["TradeSpotOrdersRow"][];
                 };
             };
             /** @description Validation Error */
@@ -8271,9 +10731,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["TradeStructuresRow"][];
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
@@ -8306,9 +10764,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["SubmitResult"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -8375,9 +10831,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["TradeSubmittedRow"][];
                 };
             };
             /** @description Validation Error */
@@ -8417,9 +10871,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TradeCancelResult"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -8490,9 +10942,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TradeCloseResult"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */

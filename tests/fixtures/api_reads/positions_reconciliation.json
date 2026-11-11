@@ -1,0 +1,199 @@
+{
+ "as_of": "2026-11-11T11:32:17.094077+00:00",
+ "breaks": [
+  {
+   "actual_net": 0.0,
+   "break": -13.0,
+   "contract": "6EU6",
+   "expected_net": -13.0,
+   "kind": "missing_at_ib",
+   "structure_id": 23
+  },
+  {
+   "actual_net": 0.0,
+   "break": -13.0,
+   "contract": "6EZ6",
+   "expected_net": -13.0,
+   "kind": "missing_at_ib",
+   "structure_id": 8
+  },
+  {
+   "actual_net": 0.0,
+   "break": 11.0,
+   "contract": "EUUF7 C1150",
+   "expected_net": 11.0,
+   "kind": "missing_at_ib",
+   "structure_id": 66
+  },
+  {
+   "actual_net": 0.0,
+   "break": 100.0,
+   "contract": "EUUQ6 C1155",
+   "expected_net": 100.0,
+   "kind": "missing_at_ib",
+   "structure_id": 58
+  },
+  {
+   "actual_net": 0.0,
+   "break": 100.0,
+   "contract": "EUUQ6 P1125",
+   "expected_net": 100.0,
+   "kind": "missing_at_ib",
+   "structure_id": 58
+  },
+  {
+   "actual_net": 0.0,
+   "break": 10.0,
+   "contract": "EUUQ6 P1140",
+   "expected_net": 10.0,
+   "kind": "missing_at_ib",
+   "structure_id": 22
+  },
+  {
+   "actual_net": 0.0,
+   "break": 10.0,
+   "contract": "EUUU6 C1140",
+   "expected_net": 10.0,
+   "kind": "missing_at_ib",
+   "structure_id": 24
+  },
+  {
+   "actual_net": 0.0,
+   "break": -10.0,
+   "contract": "EUUU6 C1145",
+   "expected_net": -10.0,
+   "kind": "missing_at_ib",
+   "structure_id": 43
+  },
+  {
+   "actual_net": 0.0,
+   "break": -10.0,
+   "contract": "EUUV6 C1130",
+   "expected_net": -10.0,
+   "kind": "missing_at_ib",
+   "structure_id": null
+  },
+  {
+   "actual_net": 0.0,
+   "break": -100.0,
+   "contract": "EUUV6 C1145",
+   "expected_net": -100.0,
+   "kind": "missing_at_ib",
+   "structure_id": 56
+  },
+  {
+   "actual_net": 0.0,
+   "break": 20.0,
+   "contract": "EUUV6 C1150",
+   "expected_net": 20.0,
+   "kind": "missing_at_ib",
+   "structure_id": null
+  },
+  {
+   "actual_net": 0.0,
+   "break": -100.0,
+   "contract": "EUUV6 C1155",
+   "expected_net": -100.0,
+   "kind": "missing_at_ib",
+   "structure_id": null
+  },
+  {
+   "actual_net": 0.0,
+   "break": -10.0,
+   "contract": "EUUV6 C1160",
+   "expected_net": -10.0,
+   "kind": "missing_at_ib",
+   "structure_id": null
+  },
+  {
+   "actual_net": 0.0,
+   "break": -89.0,
+   "contract": "EUUV6 C1170",
+   "expected_net": -89.0,
+   "kind": "missing_at_ib",
+   "structure_id": 34
+  },
+  {
+   "actual_net": 0.0,
+   "break": 100.0,
+   "contract": "EUUV6 P1130",
+   "expected_net": 100.0,
+   "kind": "missing_at_ib",
+   "structure_id": null
+  },
+  {
+   "actual_net": 0.0,
+   "break": -110.0,
+   "contract": "EUUV6 P1145",
+   "expected_net": -110.0,
+   "kind": "missing_at_ib",
+   "structure_id": 56
+  },
+  {
+   "actual_net": 0.0,
+   "break": -20.0,
+   "contract": "EUUV6 P1150",
+   "expected_net": -20.0,
+   "kind": "missing_at_ib",
+   "structure_id": null
+  },
+  {
+   "actual_net": 0.0,
+   "break": -100.0,
+   "contract": "EUUV6 P1155",
+   "expected_net": -100.0,
+   "kind": "missing_at_ib",
+   "structure_id": null
+  },
+  {
+   "actual_net": 0.0,
+   "break": 10.0,
+   "contract": "EUUX6 C1115",
+   "expected_net": 10.0,
+   "kind": "missing_at_ib",
+   "structure_id": 54
+  },
+  {
+   "actual_net": 0.0,
+   "break": 10.0,
+   "contract": "EUUX6 C1145",
+   "expected_net": 10.0,
+   "kind": "missing_at_ib",
+   "structure_id": 43
+  },
+  {
+   "actual_net": 0.0,
+   "break": -10.0,
+   "contract": "EUUX6 C1150",
+   "expected_net": -10.0,
+   "kind": "missing_at_ib",
+   "structure_id": 28
+  },
+  {
+   "actual_net": 0.0,
+   "break": 10.0,
+   "contract": "EUUX6 C1170",
+   "expected_net": 10.0,
+   "kind": "missing_at_ib",
+   "structure_id": 54
+  },
+  {
+   "actual_net": 0.0,
+   "break": -10.0,
+   "contract": "EUUX6 C1175",
+   "expected_net": -10.0,
+   "kind": "missing_at_ib",
+   "structure_id": 32
+  },
+  {
+   "actual_net": 0.0,
+   "break": 10.0,
+   "contract": "EUUX6 P1125",
+   "expected_net": 10.0,
+   "kind": "missing_at_ib",
+   "structure_id": null
+  }
+ ],
+ "n_breaks": 24,
+ "n_contracts": 37
+}

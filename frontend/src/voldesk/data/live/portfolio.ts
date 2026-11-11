@@ -24,6 +24,11 @@ import {
 import { EMPTY_ACCOUNT } from "../neutral";
 import type { HistBin, TenorRisk, VarData } from "../deskData";
 import type { BookComposition, PerfStats, VegaTenor, WaterfallStep } from "../extended";
+import type { components } from "../../../api/schema";
+
+// The payload shapes come from the API's response models (#416): a renamed or
+// dropped field fails `tsc` here instead of rendering as a silent zero.
+type S = components["schemas"];
 
 const n = (v: unknown): number => (typeof v === "number" ? v : 0);
 // Like `n` but keeps "absent" absent: a backend null is a value the desk could not
@@ -32,24 +37,11 @@ const nn = (v: unknown): number | null => (typeof v === "number" ? v : null);
 const r1 = (v: number): number => Math.round(v * 10) / 10;
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 
-interface AccountSnap {
-  net_liq_usd?: number | null;
-  cash_usd?: number | null;
-  init_margin_req?: number | null;
-  maint_margin_req?: number | null;
-  excess_liquidity?: number | null;
-  cushion?: number | null;
-  open_positions_count?: number | null;
-}
-
 /** /portfolio/account → the `AccountState` shape (deltas from prev_24h);
  * fields the snapshot doesn't carry stay neutral zeros. */
 export function adaptAccount(raw: unknown): AccountState {
-  const o = (raw ?? {}) as {
-    latest?: AccountSnap | null; prev_24h?: AccountSnap | null;
-    buying_power_usd?: number | null; available_funds_usd?: number | null;
-  };
-  const L = o.latest ?? {};
+  const o = (raw ?? {}) as S["PortfolioAccount"];
+  const L: S["PortfolioAccountLatest"] = o.latest ?? {};
   const P = o.prev_24h ?? null;
   const netLiq = n(L.net_liq_usd);
   const cash = n(L.cash_usd);
@@ -75,15 +67,9 @@ export function adaptAccount(raw: unknown): AccountState {
   };
 }
 
-interface VegaBucket {
-  bucket?: string;
-  vega_usd?: number | null;
-  n_positions?: number | null;
-}
-
 /** /portfolio/vega-per-tenor → mock VegaTenor[] (vega_usd $ → $k). */
 export function adaptVegaPerTenor(raw: unknown): VegaTenor[] {
-  const rows = Array.isArray(raw) ? (raw as VegaBucket[]) : [];
+  const rows = Array.isArray(raw) ? (raw as S["PortfolioVegaPerTenorRow"][]) : [];
   return rows.map((b) => ({
     tenor: b.bucket ?? "",
     vega: r1(n(b.vega_usd) / 1000),
@@ -92,21 +78,9 @@ export function adaptVegaPerTenor(raw: unknown): VegaTenor[] {
   }));
 }
 
-interface StatsResp {
-  sharpe?: number | null;
-  max_drawdown_pct?: number | null;
-  current_drawdown_pct?: number | null;
-  hit_rate?: number | null;
-  cum_realized_usd?: number | null;
-  cum_unrealized_usd?: number | null;
-  n_closed?: number | null;
-  n_reconciled_flat?: number | null;
-  net_liq_change_usd?: number | null;
-}
-
 /** /portfolio/stats → mock perfStats ($ → $k ; hit_rate ratio → %). */
 export function adaptPerfStats(raw: unknown): PerfStats {
-  const s = (raw ?? {}) as StatsResp;
+  const s = (raw ?? {}) as S["PortfolioStats"];
   return {
     cumRealized: r1(n(s.cum_realized_usd) / 1000),
     cumUnrealized: r1(n(s.cum_unrealized_usd) / 1000),
@@ -124,22 +98,13 @@ export function adaptPerfStats(raw: unknown): PerfStats {
 /** /portfolio/daily-pnl → number[] of MARK-TO-MARKET P&L per day, in $k (Δ net-liq).
  * Realized-on-close reads flat while the book is open, so the bars are MTM. */
 export function adaptDailyPnl(raw: unknown): number[] {
-  const series = ((raw ?? {}) as { series?: { mtm_usd?: number | null }[] }).series ?? [];
+  const series = ((raw ?? {}) as S["PortfolioDailyPnl"]).series ?? [];
   return series.map((d) => r1(n(d.mtm_usd) / 1000));
-}
-
-interface AttribTotals {
-  actual_pnl_usd?: number | null;
-  delta_pnl_usd?: number | null;
-  gamma_pnl_usd?: number | null;
-  vega_pnl_usd?: number | null;
-  theta_pnl_usd?: number | null;
-  residual_usd?: number | null;
 }
 
 /** /portfolio/pnl-attribution totals → the greek-pivot waterfall ($ → $k). */
 export function adaptWaterfallGreek(raw: unknown): WaterfallStep[] {
-  const t = ((raw ?? {}) as { totals?: AttribTotals }).totals ?? {};
+  const t: S["PortfolioPnlAttributionTotals"] = ((raw ?? {}) as S["PortfolioPnlAttribution"]).totals ?? {};
   const k = (v: number | null | undefined): number => r1(n(v) / 1000);
   return [
     // Delta, Gamma, Vega, Theta — same order as the Risk tab's Portfolio greeks panel.
@@ -185,16 +150,7 @@ export function deriveBookComposition(positions: Position[]): BookComposition {
 /** /portfolio/var → 1d VaR 95/99 + ES 99 ($k) + empirical histogram ($k bins).
  * `perTenor` is filled by the provider from /risk-per-tenor. */
 export function adaptVar(raw: unknown): VarData {
-  const v = (raw ?? {}) as {
-    var_95_usd?: number | null;
-    var_99_usd?: number | null;
-    es_99_usd?: number | null;
-    mean_daily_usd?: number | null;
-    n_days?: number | null;
-    method?: string | null;
-    n_positions?: number | null;
-    hist?: { lo?: number; hi?: number; count?: number }[];
-  };
+  const v = (raw ?? {}) as S["PortfolioVar"];
   const hist: HistBin[] = (v.hist ?? []).map((b) => ({
     lo: n(b.lo) / 1000,
     hi: n(b.hi) / 1000,
@@ -216,18 +172,10 @@ export function adaptVar(raw: unknown): VarData {
   };
 }
 
-interface RiskTenorRow {
-  bucket?: string;
-  vega_usd?: number | null;
-  vanna_usd?: number | null;
-  volga_usd?: number | null;
-  n_positions?: number | null;
-}
-
 /** /portfolio/risk-per-tenor → vega/vanna/volga by tenor, $ → $k (all displayed
  * with the "k" suffix). */
 export function adaptRiskPerTenor(raw: unknown): TenorRisk[] {
-  const rows = Array.isArray(raw) ? (raw as RiskTenorRow[]) : [];
+  const rows = Array.isArray(raw) ? (raw as S["PortfolioRiskPerTenorRow"][]) : [];
   return rows.map((r) => ({
     tenor: r.bucket ?? "",
     vega: n(r.vega_usd) / 1000,
@@ -249,7 +197,7 @@ export interface EquityPoint {
  * exist across the full width. */
 export function adaptEquityCurve(raw: unknown): EquityPoint[] {
   const rows = Array.isArray(raw)
-    ? (raw as { timestamp?: string; net_liq_usd?: number | null }[])
+    ? (raw as S["PortfolioEquityCurveRow"][])
     : [];
   return rows
     .map((p) => ({ t: p.timestamp ? Date.parse(p.timestamp) : NaN, v: n(p.net_liq_usd) }))
@@ -264,13 +212,7 @@ export type GreekSeries = Record<GreekKey, EquityPoint[]>;
  * for the Performance 2×2 greek-P&L grid. */
 export function adaptGreekPnlHistory(raw: unknown): GreekSeries {
   const rows = Array.isArray(raw)
-    ? (raw as {
-        timestamp?: string;
-        delta_pnl_usd?: number | null;
-        gamma_pnl_usd?: number | null;
-        vega_pnl_usd?: number | null;
-        theta_pnl_usd?: number | null;
-      }[])
+    ? (raw as S["PortfolioGreekPnlHistoryRow"][])
     : [];
   const out: GreekSeries = { delta: [], gamma: [], vega: [], theta: [] };
   for (const r of rows) {
@@ -292,13 +234,7 @@ export type ValuationSeries = Record<ValuationKey, EquityPoint[]>;
 /** /portfolio/valuation-history → the Account panel's stacked valuation chart. */
 export function adaptValuationHistory(raw: unknown): ValuationSeries {
   const rows = Array.isArray(raw)
-    ? (raw as {
-        timestamp?: string;
-        net_liq_usd?: number | null;
-        usd_cash_usd?: number | null;
-        eur_cash_usd?: number | null;
-        contracts_usd?: number | null;
-      }[])
+    ? (raw as S["PortfolioValuationHistoryRow"][])
     : [];
   const out: ValuationSeries = { usd: [], eur: [], contracts: [], total: [] };
   for (const r of rows) {
@@ -392,7 +328,7 @@ export interface PositionAttribMatrix {
 
 /** /portfolio/pnl-attribution (no group_by) → per-leg attribution matrix (IB legs). */
 export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
-  const o = (raw ?? {}) as { per_position?: Record<string, unknown>[]; computed_at?: string | null };
+  const o = (raw ?? {}) as S["PortfolioPnlAttribution"];
   const rows: PositionAttribRow[] = (o.per_position ?? [])
     .filter((r) => r.source === "ib_live")
     .map((r) => ({
@@ -448,14 +384,7 @@ export interface TradeEvent {
 /** /portfolio/trade-markers → flat open/close events for the ticker overlay. */
 export function adaptTradeMarkers(raw: unknown): TradeEvent[] {
   const rows = Array.isArray(raw)
-    ? (raw as {
-        id?: number;
-        type?: string;
-        opened_at?: string | null;
-        entry_spot?: number | null;
-        closed_at?: string | null;
-        net_pnl_usd?: number | null;
-      }[])
+    ? (raw as S["PortfolioTradeMarkersRow"][])
     : [];
   const out: TradeEvent[] = [];
   for (const r of rows) {

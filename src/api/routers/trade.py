@@ -27,6 +27,7 @@ from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.book_state_refresh import refresh_book_state
 from api.orchestration.pretrade_gate import run_pretrade_gate
+from api.schemas import route_models as rm
 from api.schemas.reads import BookState, RiskLimit
 from bus import keys
 from core.contracts import build_ib_local_symbol
@@ -295,7 +296,7 @@ async def _read_surface_redis(symbol: str = "EURUSD") -> tuple[dict[str, Any] | 
         return None, 999.0
 
 
-@router.get("/structures")
+@router.get("/structures", response_model=list[rm.TradeStructuresRow], response_model_exclude_unset=True)
 async def list_structures() -> list[dict[str, Any]]:
     """Catalogue of the 6 PCA-actionable structures. Source : the
     ``TEMPLATES`` dict in ``core.trade_preview`` (in_catalog=True
@@ -353,7 +354,7 @@ async def get_book(db: DbDep, symbol: str = "EURUSD") -> dict[str, Any]:
     }
 
 
-@router.post("/preview", dependencies=[Depends(require_write)])
+@router.post("/preview", response_model=rm.TradePreview, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EURUSD")) -> dict[str, Any]:
     """Build a full trade preview from a pca_signals.id. Persists to trade_previews
     and returns the payload conforming to STEP3 §4."""
@@ -725,7 +726,7 @@ def _synthetic_surface() -> dict[str, Any]:
     return out
 
 
-@router.get("/preview/{preview_id}")
+@router.get("/preview/{preview_id}", response_model=rm.TradePreview, response_model_exclude_unset=True)
 async def get_preview(preview_id: str, db: DbDep) -> dict[str, Any]:
     """One stored trade preview by id (legs, prices, the signal it was armed on). 404 when unknown."""
     row = (await db.execute(
@@ -740,7 +741,7 @@ async def get_preview(preview_id: str, db: DbDep) -> dict[str, Any]:
     }
 
 
-@router.post("/submit", dependencies=[Depends(require_write)])
+@router.post("/submit", response_model=rm.SubmitResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def submit_preview(
     submit: SubmitBody, db: DbDep,
 ) -> dict[str, Any]:
@@ -1260,7 +1261,7 @@ async def _submit_preview_impl(
     }
 
 
-@router.get("/submitted")
+@router.get("/submitted", response_model=list[rm.TradeSubmittedRow], response_model_exclude_unset=True)
 async def list_submitted_structures(
     db: DbDep, limit: int = Query(50, ge=1, le=500),
 ) -> list[dict[str, Any]]:
@@ -1355,7 +1356,7 @@ def serialize_spot_order(o: SpotOrder) -> dict[str, Any]:
     return spot_order_row(o)
 
 
-@router.get("/spot-orders")
+@router.get("/spot-orders", response_model=list[rm.TradeSpotOrdersRow], response_model_exclude_unset=True)
 async def list_spot_orders(
     db: DbDep, limit: int = Query(30, ge=1, le=200),
 ) -> list[dict[str, Any]]:
@@ -1367,7 +1368,7 @@ async def list_spot_orders(
     return [serialize_spot_order(o) for o in rows]
 
 
-@router.post("/preview/{preview_id}/cancel", dependencies=[Depends(require_write)])
+@router.post("/preview/{preview_id}/cancel", response_model=rm.PreviewCancelled, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def cancel_preview(preview_id: str, db: DbDep) -> dict[str, Any]:
     """Mark a stored preview as cancelled so it can no longer be submitted. 404 when unknown, 400 when it was already submitted or cancelled."""
     row = (await db.execute(

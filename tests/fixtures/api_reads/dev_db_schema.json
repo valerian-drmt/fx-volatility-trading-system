@@ -1,0 +1,6115 @@
+{
+ "n_relationships": 22,
+ "n_tables": 31,
+ "relationships": [
+  {
+   "cardinality": "1:1",
+   "composite": false,
+   "from_columns": [
+    "structure_id"
+   ],
+   "from_table": "booked_position",
+   "label": "structure",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": false,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "trade_structure"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "position_id"
+   ],
+   "from_table": "booked_position_metric_history",
+   "label": "position",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": false,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "booked_position"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "closing_structure_id"
+   ],
+   "from_table": "exit_alert",
+   "label": "closing_structure",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "trade_structure"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "position_id"
+   ],
+   "from_table": "exit_alert",
+   "label": "position",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": false,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "booked_position"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "position_id"
+   ],
+   "from_table": "hedge_order",
+   "label": "position",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": false,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "booked_position"
+  },
+  {
+   "cardinality": "1:1",
+   "composite": false,
+   "from_columns": [
+    "order_id"
+   ],
+   "from_table": "leg_position",
+   "label": "order",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": false,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "trade_order"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "package_id"
+   ],
+   "from_table": "open_position",
+   "label": "package",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "package"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "trade_id"
+   ],
+   "from_table": "open_position",
+   "label": "trade",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "trade_structure"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "package_id"
+   ],
+   "from_table": "open_position_history",
+   "label": "package",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "package"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "trade_id"
+   ],
+   "from_table": "open_position_history",
+   "label": "trade",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "trade_structure"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "superseded_by"
+   ],
+   "from_table": "pca_model",
+   "label": "superseded_by",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": true,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "pca_model"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "pca_model_id"
+   ],
+   "from_table": "pca_signal_history",
+   "label": "pca_model",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": false,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "pca_model"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "position_id"
+   ],
+   "from_table": "trade_event",
+   "label": "position",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "booked_position"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "structure_id"
+   ],
+   "from_table": "trade_event",
+   "label": "structure",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "trade_structure"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "order_id"
+   ],
+   "from_table": "trade_event",
+   "label": "order",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "trade_order"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "order_id"
+   ],
+   "from_table": "trade_fill",
+   "label": "order",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": false,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "trade_order"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "closes_order_id"
+   ],
+   "from_table": "trade_order",
+   "label": "closes_order",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": true,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "trade_order"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "structure_id"
+   ],
+   "from_table": "trade_order",
+   "label": "structure",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": false,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "trade_structure"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "pca_signal_id"
+   ],
+   "from_table": "trade_preview",
+   "label": "pca_signal",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "pca_signal_history"
+  },
+  {
+   "cardinality": "1:1",
+   "composite": false,
+   "from_columns": [
+    "preview_id"
+   ],
+   "from_table": "trade_structure",
+   "label": "preview",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "preview_id"
+   ],
+   "to_table": "trade_preview"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "package_id"
+   ],
+   "from_table": "trade_structure",
+   "label": "package",
+   "on_delete": "SET NULL",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "package"
+  },
+  {
+   "cardinality": "N:1",
+   "composite": false,
+   "from_columns": [
+    "pca_signal_id"
+   ],
+   "from_table": "trade_structure",
+   "label": "pca_signal",
+   "on_delete": "NO ACTION",
+   "on_update": "NO ACTION",
+   "optional": true,
+   "self_loop": false,
+   "to_columns": [
+    "id"
+   ],
+   "to_table": "pca_signal_history"
+  }
+ ],
+ "source": "orm",
+ "tables": [
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": true,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "net_liq_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "cash_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "unrealized_pnl_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "accrued_cash",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "gross_position_value",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "init_margin_req",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "maint_margin_req",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "excess_liquidity",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "cushion",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(8, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "currencies",
+     "nullable": true,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "open_positions_count",
+     "nullable": true,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    }
+   ],
+   "comment": "Per-cycle audit snapshot of the IB account (cash, margin, gross/net liq). Append-only ; written by execution-engine on each account-summary update.",
+   "composite_unique": [],
+   "n_columns": 13,
+   "name": "account_history"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "symbol",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_vega_usd",
+     "nullable": false,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_gamma_usd",
+     "nullable": false,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_theta_usd",
+     "nullable": false,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_delta",
+     "nullable": false,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vega_by_tenor",
+     "nullable": true,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vega_by_pc_source",
+     "nullable": true,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "n_open_structures",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "n_open_legs",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "notional_engaged_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "capital_total_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "margin_used_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "is_current",
+     "nullable": false,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    }
+   ],
+   "comment": "Audit log of every successful Submit \u2014 captures the full book state right after the new trade is open. Append-only.",
+   "composite_unique": [],
+   "n_columns": 15,
+   "name": "book_state_snapshot_history"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_trade_positions_state",
+     "sql": "state IN ('open','closing','closed','expired')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "structure_id",
+     "nullable": false,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "opened_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_premium_usd",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_total_cost_usd",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "state",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(15)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "state_updated_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_vega_usd_per_volpt",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_gamma_usd_per_pip2",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_theta_usd_per_day",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_spot",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_iv_avg",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_regime",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "closed_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "close_reason",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(80)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "exit_premium_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "exit_total_cost_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "gross_pnl_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "net_pnl_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_reconciled_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_qty_total",
+     "nullable": true,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_qty_diff",
+     "nullable": true,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    }
+   ],
+   "comment": "User-level trades booked into the book (1 row per Submit). Append-only ; lifecycle states tracked via state column.",
+   "composite_unique": [],
+   "n_columns": 22,
+   "name": "booked_position"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_signal_track_status",
+     "sql": "signal_status IS NULL OR signal_status IN ('HOLD','TRIM','EXIT')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "position_id",
+     "nullable": false,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "spot",
+     "nullable": false,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_avg_legs_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "current_pnl_gross_usd",
+     "nullable": false,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "current_pnl_net_usd",
+     "nullable": false,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vega_pnl_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "gamma_pnl_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "theta_pnl_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "other_pnl_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "current_vega_usd_per_volpt",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "current_gamma_usd_per_pip2",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "current_theta_usd_per_day",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "current_delta_unhedged",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "triggering_pc",
+     "nullable": true,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "current_z_score",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "current_label",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(15)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_z_score",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_label",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(15)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "weakening_ratio",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "sign_flipped",
+     "nullable": true,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "signal_status",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    }
+   ],
+   "comment": "Per-cycle greeks + P&L snapshot per booked_position row. Append-only ; written by risk-engine every cycle.",
+   "composite_unique": [
+    {
+     "columns": [
+      "position_id",
+      "timestamp"
+     ],
+     "name": "uq_mtm_position_ts"
+    }
+   ],
+   "n_columns": 23,
+   "name": "booked_position_metric_history"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_exit_rules_priority",
+     "sql": "priority BETWEEN 1 AND 10"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "rule_name",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "is_active",
+     "nullable": false,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "priority",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "params",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "description",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(300)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "updated_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "updated_by",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    }
+   ],
+   "comment": "Versioned set of systematic exit rules (z-flip / time / stop-loss / DTE thresholds). Append-only ; latest row is the source of truth.",
+   "composite_unique": [],
+   "n_columns": 8,
+   "name": "config_exit_rules"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "namespace",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "name",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(60)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "value",
+     "nullable": false,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "unit",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "description",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(300)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "is_active",
+     "nullable": false,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "updated_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "updated_by",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    }
+   ],
+   "comment": "Generic scalar key/value config \u2014 namespace='risk' for trade-gating limits, namespace='delta_hedge' for the hedger loop. UPDATE-in-place.",
+   "composite_unique": [
+    {
+     "columns": [
+      "namespace",
+      "name"
+     ],
+     "name": "uq_config_scalar_ns_name"
+    }
+   ],
+   "n_columns": 9,
+   "name": "config_scalar"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "version",
+     "nullable": false,
+     "pk": true,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "config",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "updated_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "updated_by",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(64)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "comment",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(500)",
+     "unique": false
+    }
+   ],
+   "comment": "Versioned full vol-engine config (Pydantic JSON blob). Append-only ; engines hot-reload via Redis pub/sub on insert.",
+   "composite_unique": [],
+   "n_columns": 5,
+   "name": "config_vol_engine"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "table_name",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(64)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "payload",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "error",
+     "nullable": false,
+     "pk": false,
+     "type": "TEXT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": true,
+     "name": "created_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "replayed_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    }
+   ],
+   "comment": null,
+   "composite_unique": [],
+   "n_columns": 6,
+   "name": "db_writer_dead_letter"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_events_impact",
+     "sql": "impact IN ('high','medium','low')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": true,
+     "name": "event_hash",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(16)",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "event_type",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "impact",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "region",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": true,
+     "name": "scheduled_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "description",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(500)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "source",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "source_url",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(500)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "inserted_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    }
+   ],
+   "comment": "Catalogue of economic events scraped from FRED / ECB / BoE / FOMC / Eurostat / ONS. Idempotent UPSERT keyed by event_hash.",
+   "composite_unique": [],
+   "n_columns": 10,
+   "name": "event_calendar"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_exit_alerts_action",
+     "sql": "action_recommended IN ('EXIT','TRIM','ALERT_ONLY')"
+    },
+    {
+     "name": "ck_exit_alerts_exec_status",
+     "sql": "execution_status IS NULL OR execution_status IN ('in_progress','done','failed','overridden')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "position_id",
+     "nullable": false,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "rule_triggered",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "action_recommended",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(15)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "priority",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "rule_detail",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "auto_executed",
+     "nullable": false,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "execution_status",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "closing_structure_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "notes",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(500)",
+     "unique": false
+    }
+   ],
+   "comment": "Triggered exit alerts pending operator review. Append-only ; consumed by the exit-alert panel.",
+   "composite_unique": [],
+   "n_columns": 11,
+   "name": "exit_alert"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "symbol",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_atm_1m_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_atm_3m_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_atm_6m_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "rv_yz_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vol_of_vol_30d_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "term_slope_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vol_level_z90",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vol_of_vol_z90",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "term_slope_z90",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    }
+   ],
+   "comment": "Wide-format timeseries of derived vol features (ATM IV per tenor, rv_yz, vol_of_vol, term_slope, z-scores). Append-only.",
+   "composite_unique": [
+    {
+     "columns": [
+      "symbol",
+      "timestamp"
+     ],
+     "name": "uq_feature_history_symbol_ts"
+    }
+   ],
+   "n_columns": 12,
+   "name": "feature_history"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_hedge_orders_side",
+     "sql": "side IN ('BUY','SELL')"
+    },
+    {
+     "name": "ck_hedge_orders_state",
+     "sql": "state IN ('pending','submitted','filled','failed')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": true,
+     "name": "position_id",
+     "nullable": false,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "triggered_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "submitted_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "submit_claimed_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "filled_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "delta_imbalance_at_trigger",
+     "nullable": false,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "rebalance_threshold_used",
+     "nullable": false,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "hedge_qty",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "side",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(5)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_order_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "fill_price",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "commission_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "spread_paid_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_cost_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "state",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(15)",
+     "unique": false
+    }
+   ],
+   "comment": "EUR FUT delta-hedge orders submitted by the delta-hedger loop. Append-only ; one row per fire.",
+   "composite_unique": [],
+   "n_columns": 16,
+   "name": "hedge_order"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "order_id",
+     "nullable": false,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "open_qty",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "reserved_qty",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "avg_price",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "realized_pnl_usd",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "rebuilt_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    }
+   ],
+   "comment": null,
+   "composite_unique": [],
+   "n_columns": 7,
+   "name": "leg_position"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_positions_side",
+     "sql": "side IN ('BUY', 'SELL')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": true,
+     "name": "structure",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "product_label",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "contract_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "trade_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "package_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "side",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "tenor",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "expiry",
+     "nullable": true,
+     "pk": false,
+     "type": "DATE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "quantity",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "nominal_eur",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "contract_price_entry",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "market_price",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "current_pnl_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "delta_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "gamma_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vega_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "theta_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(8, 5)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vanna_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "volga_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "entry_timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    }
+   ],
+   "comment": "Live IB-side positions reconciled against ib_insync. UPDATE-in-place by position-sync (5 s cadence) ; row deleted when fully closed.",
+   "composite_unique": [],
+   "n_columns": 23,
+   "name": "open_position"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "position_id",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": true,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "structure",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "product_label",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "contract_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "trade_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "package_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "side",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "tenor",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "expiry",
+     "nullable": true,
+     "pk": false,
+     "type": "DATE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "quantity",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "nominal_eur",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "contract_price_entry",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "market_price",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "current_pnl_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "delta_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "gamma_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vega_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "theta_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(8, 5)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vanna_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "volga_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    }
+   ],
+   "comment": "Per-cycle greeks + P&L snapshot per open_position row. Append-only ; written by risk-engine every cycle.",
+   "composite_unique": [],
+   "n_columns": 23,
+   "name": "open_position_history"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "created_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "label",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(80)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "description",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(300)",
+     "unique": false
+    }
+   ],
+   "comment": "Murex-style operational grouping of multiple trade_structure rows. Populated by manual API call ; FK target of trade_structure.package_id.",
+   "composite_unique": [],
+   "n_columns": 4,
+   "name": "package"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "version",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(60)",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "fit_timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "fit_window_start",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "fit_window_end",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "n_obs_used",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "means",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "stds",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "loadings",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "eigenvalues",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "variance_explained_ratio",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "n_components_kept",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": true,
+     "name": "is_active",
+     "nullable": false,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "superseded_by",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "cosine_similarity_pc1",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(8, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "cosine_similarity_pc2",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(8, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "cosine_similarity_pc3",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(8, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "sign_flip_pc1",
+     "nullable": true,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "sign_flip_pc2",
+     "nullable": true,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "sign_flip_pc3",
+     "nullable": true,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "notes",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(500)",
+     "unique": false
+    }
+   ],
+   "comment": "Versioned PCA fit (means / stds / loadings / eigenvalues as JSONB). Append-only ; is_active=true marks the live model.",
+   "composite_unique": [],
+   "n_columns": 21,
+   "name": "pca_model"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_pca_signals_pc_id",
+     "sql": "pc_id > 0"
+    },
+    {
+     "name": "ck_pca_signals_label",
+     "sql": "label IN ('CHEAP','FAIR','EXPENSIVE')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "symbol",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "pca_model_id",
+     "nullable": false,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "pc_id",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "raw_score",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "z_score",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "label",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(15)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "actionable",
+     "nullable": false,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "actionable_reason",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(80)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "sub_signals",
+     "nullable": true,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    }
+   ],
+   "comment": "One row per (PC, cycle) \u2014 z-score, label (CHEAP/FAIR/EXPENSIVE), actionable flag, recommended structure. Append-only.",
+   "composite_unique": [
+    {
+     "columns": [
+      "symbol",
+      "timestamp",
+      "pca_model_id",
+      "pc_id"
+     ],
+     "name": "uq_pca_signals_symbol_ts_model_pc"
+    }
+   ],
+   "n_columns": 11,
+   "name": "pca_signal_history"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "symbol",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "source",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "spot_at_snapshot",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "n_strikes_present",
+     "nullable": true,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "has_no_arb_violation",
+     "nullable": false,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_1m_10dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_1m_25dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_1m_atm",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_1m_25dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_1m_10dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_2m_10dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_2m_25dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_2m_atm",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_2m_25dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_2m_10dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_3m_10dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_3m_25dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_3m_atm",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_3m_25dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_3m_10dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_4m_10dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_4m_25dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_4m_atm",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_4m_25dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_4m_10dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_5m_10dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_5m_25dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_5m_atm",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_5m_25dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_5m_10dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_6m_10dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_6m_25dp",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_6m_atm",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_6m_25dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_6m_10dc",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 6)",
+     "unique": false
+    }
+   ],
+   "comment": "30-dimensional hourly snapshot of the vol surface (6 tenors x 5 deltas). The PCA fit input. Append-only.",
+   "composite_unique": [
+    {
+     "columns": [
+      "symbol",
+      "timestamp"
+     ],
+     "name": "uq_surface_snap_hourly_symbol_ts"
+    }
+   ],
+   "n_columns": 37,
+   "name": "pca_surface_snapshot_history"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "lookback_hours",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "computed_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "window_start",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "forward_source",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "n_positions",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "per_position",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    }
+   ],
+   "comment": null,
+   "composite_unique": [],
+   "n_columns": 7,
+   "name": "pnl_attribution_latest"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "day",
+     "nullable": false,
+     "pk": false,
+     "type": "DATE",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "net_liq_open",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "net_liq_close",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "mtm_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "realized_usd",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "n_closed",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "n_samples",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "first_sample_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "last_sample_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "computed_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    }
+   ],
+   "comment": null,
+   "composite_unique": [],
+   "n_columns": 11,
+   "name": "portfolio_daily"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_reconciliation_break_type",
+     "sql": "break_type IN ('missing_at_ib','unbooked_at_ib','direction','quantity')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": true,
+     "name": "local_symbol",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "book_qty",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "broker_qty",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "diff",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "break_type",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "detected_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "last_seen_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "resolved_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    }
+   ],
+   "comment": null,
+   "composite_unique": [],
+   "n_columns": 9,
+   "name": "reconciliation_break"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_regime_snapshot_history_label",
+     "sql": "label IN ('calm','stressed','pre_event')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": true,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "symbol",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "label",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "method",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vol_level_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vol_of_vol_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "term_slope_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vol_level_z",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "vol_of_vol_z",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "term_slope_z",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "p_calm",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(6, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "p_stressed",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(6, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "p_pre_event",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(6, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "event_dampener",
+     "nullable": false,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "days_to_next_event",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "next_event_type",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "bucket_vol_level",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "delta_z_1h_vol_level",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "pct_vol_level",
+     "nullable": true,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "signal_vol_level",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "bucket_vol_of_vol",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "delta_z_1h_vol_of_vol",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "pct_vol_of_vol",
+     "nullable": true,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "signal_vol_of_vol",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "bucket_term_slope",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "delta_z_1h_term_slope",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "pct_term_slope",
+     "nullable": true,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "signal_term_slope",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(8)",
+     "unique": false
+    }
+   ],
+   "comment": "One row per vol-engine cycle \u2014 regime label, the features that drove the classification, GMM probas, event_dampener. Append-only.",
+   "composite_unique": [
+    {
+     "columns": [
+      "symbol",
+      "timestamp"
+     ],
+     "name": "uq_regime_snapshot_symbol_ts"
+    }
+   ],
+   "n_columns": 29,
+   "name": "regime_snapshot_history"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_ib_connection_account_type",
+     "sql": "account_type IS NULL OR account_type IN ('paper','live')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "broker",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "is_connected",
+     "nullable": false,
+     "pk": false,
+     "type": "BOOLEAN",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "last_heartbeat",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "account_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "account_type",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "available_funds_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "buying_power_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "margin_used_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "FLOAT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "gateway_version",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "api_version",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "last_disconnect_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "n_disconnects_24h",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "updated_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    }
+   ],
+   "comment": "Singleton row tracking the IB session state \u2014 heartbeat, account type (paper/live), cash + margin. UPDATE-in-place every ~10 s.",
+   "composite_unique": [],
+   "n_columns": 14,
+   "name": "runtime_ib_session"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": true,
+     "name": "created_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "symbol",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "currency",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(5)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "exchange",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "side",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(5)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "qty",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "order_type",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "limit_price",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_order_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_perm_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_local_symbol",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "state",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(25)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "state_updated_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "qty_filled",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "avg_fill_price",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "commission_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "filled_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "rejection_text",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(300)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "trace_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(32)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_status",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "why_held",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(60)",
+     "unique": false
+    }
+   ],
+   "comment": null,
+   "composite_unique": [],
+   "n_columns": 22,
+   "name": "spot_order"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_trade_event_severity",
+     "sql": "severity IN ('debug','info','warning','error','critical')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "ts",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": true,
+     "name": "event_type",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "severity",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(15)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": true,
+     "name": "structure_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "order_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "position_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "description",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(500)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "payload",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    }
+   ],
+   "comment": "Audit log of every order action (submit, cancel, fill, reject) tied to a trade_structure row. Append-only ; replaces the legacy execution_audit_log.",
+   "composite_unique": [],
+   "n_columns": 9,
+   "name": "trade_event"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "order_id",
+     "nullable": false,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_execution_id",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(60)",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "qty_filled",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "fill_price",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "commission_usd",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "currency",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(5)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "exchange",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "side",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(5)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "spot_at_fill",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "bid_at_fill",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ask_at_fill",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "iv_implied_from_fill",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "received_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "trace_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(32)",
+     "unique": false
+    }
+   ],
+   "comment": "Per-leg fill confirmations from IB. Append-only ; one row per fill, linked to trade_order.id.",
+   "composite_unique": [],
+   "n_columns": 16,
+   "name": "trade_fill"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_structure_orders_side",
+     "sql": "side IN ('BUY','SELL')"
+    },
+    {
+     "name": "ck_structure_orders_order_role",
+     "sql": "order_role IN ('entry','closing','unwind','hedge')"
+    },
+    {
+     "name": "ck_structure_orders_state",
+     "sql": "state IN ('pending','submitted','acknowledged','partially_filled','filled','rejected','cancelled','expired')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "structure_id",
+     "nullable": false,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "leg_idx",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "order_role",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_order_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_perm_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_local_symbol",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "contract_symbol",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "contract_type",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "contract_expiry",
+     "nullable": true,
+     "pk": false,
+     "type": "DATE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "contract_strike",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "contract_exchange",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "contract_currency",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(5)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "side",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(5)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "qty",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "order_type",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "limit_price",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "time_in_force",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(5)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "preview_iv_pct",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "preview_price",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "state",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(25)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "state_updated_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "submitted_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "submit_claimed_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "acknowledged_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "rejected_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "rejection_code",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "rejection_text",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(300)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "qty_filled",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "avg_fill_price",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_commission_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "fully_filled_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "slippage_per_contract",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(18, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_slippage_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "trace_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(32)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "closes_order_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    }
+   ],
+   "comment": "Active IB orders submitted as part of a trade_structure. UPDATE-in-place on status transitions ; long-lived for audit.",
+   "composite_unique": [
+    {
+     "columns": [
+      "structure_id",
+      "leg_idx",
+      "order_role"
+     ],
+     "name": "uq_structure_orders_structure_leg_role"
+    }
+   ],
+   "n_columns": 36,
+   "name": "trade_order"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_trade_previews_state",
+     "sql": "state IN ('valid_for_submit','blocked','expired','submitted','cancelled')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "preview_id",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": true,
+     "name": "created_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "expires_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "pca_signal_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "triggering_pc",
+     "nullable": true,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "armed_z_score",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "armed_signal_label",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(15)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "structure_type",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "product_label",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "reference_tenor",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "structure_full_payload",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "state",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(25)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "pre_submit_checks",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "blocking_reasons",
+     "nullable": true,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "user_action",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "user_action_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "submitted_trade_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    }
+   ],
+   "comment": "Audit log : one row per Arm click on the UI. Tracks the (signal, structure, state) tuple for 90 s \u2014 either Submit promotes it to a trade_structure or it expires.",
+   "composite_unique": [],
+   "n_columns": 18,
+   "name": "trade_preview"
+  },
+  {
+   "check_constraints": [
+    {
+     "name": "ck_trade_structures_state",
+     "sql": "state IN ('submitted','partial_fill','fully_filled','partial_fail','fully_failed','closed')"
+    }
+   ],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "created_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "preview_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": true
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "pca_signal_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "triggering_pc",
+     "nullable": true,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "armed_z_score",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(10, 4)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "armed_signal_label",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(15)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "structure_type",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "product_label",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": true,
+     "indexed": false,
+     "name": "package_id",
+     "nullable": true,
+     "pk": false,
+     "type": "BIGINT",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "reference_tenor",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(10)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "expiry_date",
+     "nullable": true,
+     "pk": false,
+     "type": "DATE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "base_qty",
+     "nullable": false,
+     "pk": false,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "state",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(25)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": "now()",
+     "fk": false,
+     "indexed": false,
+     "name": "state_updated_at",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "ib_combo_order_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(40)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "execution_mode",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_premium_paid_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_slippage_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_commission_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "total_entry_cost_usd",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 2)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "first_fill_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "fully_filled_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "closed_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "close_reason",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(80)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "trace_id",
+     "nullable": true,
+     "pk": false,
+     "type": "VARCHAR(32)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "submit_claimed_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "rollback_started_at",
+     "nullable": true,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    }
+   ],
+   "comment": "Root of the Murex package > trade > contract hierarchy. One row per user-confirmed Submit ; lifecycle tracked via state column.",
+   "composite_unique": [],
+   "n_columns": 28,
+   "name": "trade_structure"
+  },
+  {
+   "check_constraints": [],
+   "columns": [
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "id",
+     "nullable": false,
+     "pk": true,
+     "type": "INTEGER",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "timestamp",
+     "nullable": false,
+     "pk": false,
+     "type": "TIMESTAMP WITH TIME ZONE",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": true,
+     "name": "underlying",
+     "nullable": false,
+     "pk": false,
+     "type": "VARCHAR(20)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "spot",
+     "nullable": false,
+     "pk": false,
+     "type": "NUMERIC(15, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "forward",
+     "nullable": true,
+     "pk": false,
+     "type": "NUMERIC(15, 8)",
+     "unique": false
+    },
+    {
+     "comment": null,
+     "default": null,
+     "fk": false,
+     "indexed": false,
+     "name": "surface_data",
+     "nullable": false,
+     "pk": false,
+     "type": "JSONB",
+     "unique": false
+    }
+   ],
+   "comment": "Per-cycle full vol surface fit (SVI/SSVI params + ATM per tenor) stored as JSONB. Append-only ; written by vol-engine each cycle.",
+   "composite_unique": [
+    {
+     "columns": [
+      "timestamp",
+      "underlying"
+     ],
+     "name": "uq_vol_surfaces_ts_underlying"
+    }
+   ],
+   "n_columns": 6,
+   "name": "vol_surface_history"
+  }
+ ]
+}

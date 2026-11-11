@@ -1,0 +1,96 @@
+{
+ "domain": "risk",
+ "params": [
+  {
+   "default": 0.05,
+   "description": "Daily stress-loss appetite as a fraction of the capital base (L* = \u03b1\u00b7nav_base)",
+   "is_default": true,
+   "name": "alpha",
+   "namespace": "greek_limits",
+   "unit": "frac_capital",
+   "updated_by": null,
+   "value": 0.05
+  },
+  {
+   "default": 0.15,
+   "description": "Share of the loss budget allocated to the delta axis",
+   "is_default": true,
+   "name": "beta_delta",
+   "namespace": "greek_limits",
+   "unit": "weight",
+   "updated_by": null,
+   "value": 0.15
+  },
+  {
+   "default": 0.5,
+   "description": "Share of the loss budget allocated to the vega axis (largest on a vol book)",
+   "is_default": true,
+   "name": "beta_vega",
+   "namespace": "greek_limits",
+   "unit": "weight",
+   "updated_by": null,
+   "value": 0.5
+  },
+  {
+   "default": 0.25,
+   "description": "Share of the loss budget allocated to the gamma axis",
+   "is_default": true,
+   "name": "beta_gamma",
+   "namespace": "greek_limits",
+   "unit": "weight",
+   "updated_by": null,
+   "value": 0.25
+  },
+  {
+   "default": 0.1,
+   "description": "Share allocated to cross greeks (vanna + volga)",
+   "is_default": true,
+   "name": "beta_cross",
+   "namespace": "greek_limits",
+   "unit": "weight",
+   "updated_by": null,
+   "value": 0.1
+  },
+  {
+   "default": 0.025,
+   "description": "1-day spot stress (0.025 = 2.5% \u2248 270 pips)",
+   "is_default": true,
+   "name": "shock_spot",
+   "namespace": "greek_limits",
+   "unit": "frac_spot",
+   "updated_by": null,
+   "value": 0.025
+  },
+  {
+   "default": 4.0,
+   "description": "1-day vol stress, in vol points",
+   "is_default": true,
+   "name": "shock_vol",
+   "namespace": "greek_limits",
+   "unit": "vol_pts",
+   "updated_by": null,
+   "value": 4.0
+  },
+  {
+   "default": 0.9,
+   "description": "nav_base floor as a fraction of the high-water mark (anti-procyclicality)",
+   "is_default": true,
+   "name": "nav_hwm_floor",
+   "namespace": "greek_limits",
+   "unit": "fraction",
+   "updated_by": null,
+   "value": 0.9
+  },
+  {
+   "default": 20.0,
+   "description": "EWMA half-life (days) for the nav_base anchor",
+   "is_default": true,
+   "name": "nav_halflife_days",
+   "namespace": "greek_limits",
+   "unit": "days",
+   "updated_by": null,
+   "value": 20.0
+  }
+ ],
+ "title": "Risk settings"
+}

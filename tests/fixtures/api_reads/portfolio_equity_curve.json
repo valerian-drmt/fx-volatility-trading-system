@@ -1,0 +1,3552 @@
+[
+ {
+  "is_eod": false,
+  "net_liq_usd": 166804.39,
+  "timestamp": "2026-10-12T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 167888.19,
+  "timestamp": "2026-10-12T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 168261.48,
+  "timestamp": "2026-10-12T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 170331.41,
+  "timestamp": "2026-10-12T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 168400.06,
+  "timestamp": "2026-10-12T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 166614.15,
+  "timestamp": "2026-10-12T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 164890.97,
+  "timestamp": "2026-10-12T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 163571.51,
+  "timestamp": "2026-10-12T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 154766.0,
+  "timestamp": "2026-10-12T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 155195.25,
+  "timestamp": "2026-10-12T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 157016.45,
+  "timestamp": "2026-10-12T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 156968.59,
+  "timestamp": "2026-10-12T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 156855.76,
+  "timestamp": "2026-10-12T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 156859.83,
+  "timestamp": "2026-10-12T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 154745.88,
+  "timestamp": "2026-10-12T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 155795.28,
+  "timestamp": "2026-10-12T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 154462.79,
+  "timestamp": "2026-10-12T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 154449.23,
+  "timestamp": "2026-10-12T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 154634.25,
+  "timestamp": "2026-10-12T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 152757.41,
+  "timestamp": "2026-10-12T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 152757.56,
+  "timestamp": "2026-10-12T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 156860.16,
+  "timestamp": "2026-10-12T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 155446.84,
+  "timestamp": "2026-10-12T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 156313.58,
+  "timestamp": "2026-10-12T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 157225.92,
+  "timestamp": "2026-10-12T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 154693.27,
+  "timestamp": "2026-10-13T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 156312.78,
+  "timestamp": "2026-10-13T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 161642.41,
+  "timestamp": "2026-10-13T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 163617.41,
+  "timestamp": "2026-10-13T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 166691.48,
+  "timestamp": "2026-10-13T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 167855.69,
+  "timestamp": "2026-10-13T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 166017.85,
+  "timestamp": "2026-10-13T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 165842.33,
+  "timestamp": "2026-10-13T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 164732.89,
+  "timestamp": "2026-10-13T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 165530.99,
+  "timestamp": "2026-10-13T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 166666.71,
+  "timestamp": "2026-10-13T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 168056.87,
+  "timestamp": "2026-10-13T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 164996.18,
+  "timestamp": "2026-10-13T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 168613.5,
+  "timestamp": "2026-10-13T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177390.76,
+  "timestamp": "2026-10-13T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175169.07,
+  "timestamp": "2026-10-13T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 172846.96,
+  "timestamp": "2026-10-13T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 168844.92,
+  "timestamp": "2026-10-13T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 167035.98,
+  "timestamp": "2026-10-13T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 166018.95,
+  "timestamp": "2026-10-13T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 169194.65,
+  "timestamp": "2026-10-13T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 171599.75,
+  "timestamp": "2026-10-13T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 172476.18,
+  "timestamp": "2026-10-13T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 173534.93,
+  "timestamp": "2026-10-13T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 173976.33,
+  "timestamp": "2026-10-13T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177810.17,
+  "timestamp": "2026-10-13T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177670.32,
+  "timestamp": "2026-10-13T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 172618.84,
+  "timestamp": "2026-10-13T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174451.91,
+  "timestamp": "2026-10-13T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176199.28,
+  "timestamp": "2026-10-13T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175999.6,
+  "timestamp": "2026-10-13T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177145.42,
+  "timestamp": "2026-10-13T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175839.73,
+  "timestamp": "2026-10-13T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 172847.07,
+  "timestamp": "2026-10-13T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 173129.11,
+  "timestamp": "2026-10-13T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174986.62,
+  "timestamp": "2026-10-13T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177719.01,
+  "timestamp": "2026-10-13T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179769.33,
+  "timestamp": "2026-10-13T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179650.03,
+  "timestamp": "2026-10-13T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177281.64,
+  "timestamp": "2026-10-13T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175653.7,
+  "timestamp": "2026-10-13T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177221.03,
+  "timestamp": "2026-10-13T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177241.62,
+  "timestamp": "2026-10-13T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 177241.09,
+  "timestamp": "2026-10-13T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176572.89,
+  "timestamp": "2026-10-13T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176735.1,
+  "timestamp": "2026-10-13T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176679.11,
+  "timestamp": "2026-10-13T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 178249.8,
+  "timestamp": "2026-10-13T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 178767.74,
+  "timestamp": "2026-10-14T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179772.88,
+  "timestamp": "2026-10-14T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179336.05,
+  "timestamp": "2026-10-14T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 180786.54,
+  "timestamp": "2026-10-14T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 181466.67,
+  "timestamp": "2026-10-14T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 183895.08,
+  "timestamp": "2026-10-14T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 184503.08,
+  "timestamp": "2026-10-14T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 180589.7,
+  "timestamp": "2026-10-14T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 183038.2,
+  "timestamp": "2026-10-14T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182341.54,
+  "timestamp": "2026-10-14T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 180192.26,
+  "timestamp": "2026-10-14T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 180293.77,
+  "timestamp": "2026-10-14T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 180924.07,
+  "timestamp": "2026-10-14T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 181552.11,
+  "timestamp": "2026-10-14T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179991.68,
+  "timestamp": "2026-10-14T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175439.68,
+  "timestamp": "2026-10-14T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179954.58,
+  "timestamp": "2026-10-14T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 170610.02,
+  "timestamp": "2026-10-14T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 170275.07,
+  "timestamp": "2026-10-14T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 170574.22,
+  "timestamp": "2026-10-14T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 168253.62,
+  "timestamp": "2026-10-14T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 168420.98,
+  "timestamp": "2026-10-14T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 170311.14,
+  "timestamp": "2026-10-14T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 167763.02,
+  "timestamp": "2026-10-14T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 170318.15,
+  "timestamp": "2026-10-14T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 133244.61,
+  "timestamp": "2026-10-14T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 131972.94,
+  "timestamp": "2026-10-14T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 123568.44,
+  "timestamp": "2026-10-14T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 128170.92,
+  "timestamp": "2026-10-14T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 124999.14,
+  "timestamp": "2026-10-14T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 125672.93,
+  "timestamp": "2026-10-14T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 126576.53,
+  "timestamp": "2026-10-14T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 123057.52,
+  "timestamp": "2026-10-14T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 126704.55,
+  "timestamp": "2026-10-14T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 135999.91,
+  "timestamp": "2026-10-14T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 135760.34,
+  "timestamp": "2026-10-14T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 142054.46,
+  "timestamp": "2026-10-14T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 144126.41,
+  "timestamp": "2026-10-14T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 144477.0,
+  "timestamp": "2026-10-14T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 146440.69,
+  "timestamp": "2026-10-14T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 146486.37,
+  "timestamp": "2026-10-14T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 147591.73,
+  "timestamp": "2026-10-14T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 148487.51,
+  "timestamp": "2026-10-14T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 148488.43,
+  "timestamp": "2026-10-14T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 151529.38,
+  "timestamp": "2026-10-14T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 157233.76,
+  "timestamp": "2026-10-14T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 162766.21,
+  "timestamp": "2026-10-14T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 169540.23,
+  "timestamp": "2026-10-14T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 171568.77,
+  "timestamp": "2026-10-15T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 169716.22,
+  "timestamp": "2026-10-15T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 181152.69,
+  "timestamp": "2026-10-15T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177200.28,
+  "timestamp": "2026-10-15T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 183498.39,
+  "timestamp": "2026-10-15T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 197953.34,
+  "timestamp": "2026-10-15T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 190787.11,
+  "timestamp": "2026-10-15T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 191933.19,
+  "timestamp": "2026-10-15T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 184618.78,
+  "timestamp": "2026-10-15T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182273.63,
+  "timestamp": "2026-10-15T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179865.99,
+  "timestamp": "2026-10-15T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 183561.97,
+  "timestamp": "2026-10-15T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 178164.79,
+  "timestamp": "2026-10-15T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177634.83,
+  "timestamp": "2026-10-15T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179637.85,
+  "timestamp": "2026-10-15T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 178026.43,
+  "timestamp": "2026-10-15T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 188144.05,
+  "timestamp": "2026-10-15T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 180294.52,
+  "timestamp": "2026-10-15T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 186031.54,
+  "timestamp": "2026-10-15T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182510.16,
+  "timestamp": "2026-10-15T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175094.39,
+  "timestamp": "2026-10-15T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 180911.66,
+  "timestamp": "2026-10-15T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 183653.32,
+  "timestamp": "2026-10-15T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177614.43,
+  "timestamp": "2026-10-15T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176261.4,
+  "timestamp": "2026-10-15T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182627.66,
+  "timestamp": "2026-10-15T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 180001.57,
+  "timestamp": "2026-10-15T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 184555.49,
+  "timestamp": "2026-10-15T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179562.21,
+  "timestamp": "2026-10-15T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174509.31,
+  "timestamp": "2026-10-15T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175722.0,
+  "timestamp": "2026-10-15T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174762.94,
+  "timestamp": "2026-10-15T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177854.19,
+  "timestamp": "2026-10-15T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 178178.55,
+  "timestamp": "2026-10-15T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179399.31,
+  "timestamp": "2026-10-15T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 183931.52,
+  "timestamp": "2026-10-15T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 185069.03,
+  "timestamp": "2026-10-15T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179350.67,
+  "timestamp": "2026-10-15T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176197.58,
+  "timestamp": "2026-10-15T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 181554.65,
+  "timestamp": "2026-10-15T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182158.71,
+  "timestamp": "2026-10-15T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 186922.54,
+  "timestamp": "2026-10-15T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 186103.32,
+  "timestamp": "2026-10-15T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 186102.61,
+  "timestamp": "2026-10-15T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 181060.19,
+  "timestamp": "2026-10-15T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182082.88,
+  "timestamp": "2026-10-15T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182641.87,
+  "timestamp": "2026-10-15T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 180884.59,
+  "timestamp": "2026-10-15T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 178765.08,
+  "timestamp": "2026-10-16T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179482.91,
+  "timestamp": "2026-10-16T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179885.51,
+  "timestamp": "2026-10-16T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179592.19,
+  "timestamp": "2026-10-16T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 183241.43,
+  "timestamp": "2026-10-16T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 184603.27,
+  "timestamp": "2026-10-16T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 183192.69,
+  "timestamp": "2026-10-16T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 196104.88,
+  "timestamp": "2026-10-16T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 191936.6,
+  "timestamp": "2026-10-16T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 187295.8,
+  "timestamp": "2026-10-16T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 185395.37,
+  "timestamp": "2026-10-16T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 183453.96,
+  "timestamp": "2026-10-16T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 189508.97,
+  "timestamp": "2026-10-16T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 191683.55,
+  "timestamp": "2026-10-16T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 199002.82,
+  "timestamp": "2026-10-16T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 194208.01,
+  "timestamp": "2026-10-16T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 198065.71,
+  "timestamp": "2026-10-16T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 199701.42,
+  "timestamp": "2026-10-16T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 203193.22,
+  "timestamp": "2026-10-16T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 203142.4,
+  "timestamp": "2026-10-16T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 214379.27,
+  "timestamp": "2026-10-16T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 207882.8,
+  "timestamp": "2026-10-16T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 208456.67,
+  "timestamp": "2026-10-16T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 206362.67,
+  "timestamp": "2026-10-16T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 200837.65,
+  "timestamp": "2026-10-16T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 197172.32,
+  "timestamp": "2026-10-16T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 195608.97,
+  "timestamp": "2026-10-16T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 206640.26,
+  "timestamp": "2026-10-16T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 207088.68,
+  "timestamp": "2026-10-16T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 205583.49,
+  "timestamp": "2026-10-16T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 201337.61,
+  "timestamp": "2026-10-16T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 189388.58,
+  "timestamp": "2026-10-16T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 184523.18,
+  "timestamp": "2026-10-16T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 184051.57,
+  "timestamp": "2026-10-16T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 185679.0,
+  "timestamp": "2026-10-16T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 188252.4,
+  "timestamp": "2026-10-16T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 191102.24,
+  "timestamp": "2026-10-16T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 191303.66,
+  "timestamp": "2026-10-16T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 194984.08,
+  "timestamp": "2026-10-16T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 194688.27,
+  "timestamp": "2026-10-16T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 194752.32,
+  "timestamp": "2026-10-16T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 195115.28,
+  "timestamp": "2026-10-16T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-16T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193121.2,
+  "timestamp": "2026-10-17T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 194554.3,
+  "timestamp": "2026-10-17T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-17T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-17T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": null,
+  "timestamp": "2026-10-18T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 194554.3,
+  "timestamp": "2026-10-18T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193046.98,
+  "timestamp": "2026-10-18T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 193247.66,
+  "timestamp": "2026-10-18T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 193198.24,
+  "timestamp": "2026-10-18T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 189958.04,
+  "timestamp": "2026-10-18T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 183414.79,
+  "timestamp": "2026-10-18T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-18T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-18T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-19T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-19T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-19T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-19T02:30:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 182786.43,
+  "timestamp": "2026-10-19T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 155990.33,
+  "timestamp": "2026-11-02T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 150596.66,
+  "timestamp": "2026-11-02T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 154697.8,
+  "timestamp": "2026-11-02T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 152928.69,
+  "timestamp": "2026-11-02T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 156902.41,
+  "timestamp": "2026-11-02T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 154587.42,
+  "timestamp": "2026-11-02T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 155356.54,
+  "timestamp": "2026-11-02T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 158178.53,
+  "timestamp": "2026-11-02T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 157659.53,
+  "timestamp": "2026-11-02T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 154540.33,
+  "timestamp": "2026-11-02T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 152844.17,
+  "timestamp": "2026-11-02T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 145489.07,
+  "timestamp": "2026-11-02T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 145995.01,
+  "timestamp": "2026-11-02T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 148491.44,
+  "timestamp": "2026-11-02T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 151127.21,
+  "timestamp": "2026-11-02T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 149593.84,
+  "timestamp": "2026-11-02T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 144640.68,
+  "timestamp": "2026-11-02T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 144629.35,
+  "timestamp": "2026-11-02T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 145521.13,
+  "timestamp": "2026-11-02T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 143814.85,
+  "timestamp": "2026-11-02T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 143133.5,
+  "timestamp": "2026-11-02T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 144113.65,
+  "timestamp": "2026-11-02T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 142347.32,
+  "timestamp": "2026-11-02T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 140831.9,
+  "timestamp": "2026-11-02T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 140053.41,
+  "timestamp": "2026-11-02T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 140055.42,
+  "timestamp": "2026-11-02T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 139720.52,
+  "timestamp": "2026-11-02T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 143025.77,
+  "timestamp": "2026-11-02T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 145240.18,
+  "timestamp": "2026-11-03T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 140435.25,
+  "timestamp": "2026-11-03T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 140521.61,
+  "timestamp": "2026-11-03T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 139303.69,
+  "timestamp": "2026-11-03T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 137083.05,
+  "timestamp": "2026-11-03T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 139417.46,
+  "timestamp": "2026-11-03T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 138416.65,
+  "timestamp": "2026-11-03T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 142199.6,
+  "timestamp": "2026-11-03T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 140024.94,
+  "timestamp": "2026-11-03T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 141096.42,
+  "timestamp": "2026-11-03T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 142821.17,
+  "timestamp": "2026-11-03T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 143035.08,
+  "timestamp": "2026-11-03T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 144492.53,
+  "timestamp": "2026-11-03T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 141233.99,
+  "timestamp": "2026-11-03T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 147573.34,
+  "timestamp": "2026-11-03T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 148214.08,
+  "timestamp": "2026-11-03T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 145125.09,
+  "timestamp": "2026-11-03T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 142484.93,
+  "timestamp": "2026-11-03T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 140433.75,
+  "timestamp": "2026-11-03T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 142086.79,
+  "timestamp": "2026-11-03T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 137691.87,
+  "timestamp": "2026-11-03T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 135086.31,
+  "timestamp": "2026-11-03T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 132753.5,
+  "timestamp": "2026-11-03T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 134613.96,
+  "timestamp": "2026-11-03T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 135621.27,
+  "timestamp": "2026-11-03T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 135073.79,
+  "timestamp": "2026-11-03T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 137694.82,
+  "timestamp": "2026-11-03T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 142293.77,
+  "timestamp": "2026-11-03T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 140606.84,
+  "timestamp": "2026-11-03T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 143834.95,
+  "timestamp": "2026-11-03T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 132176.81,
+  "timestamp": "2026-11-03T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 143101.48,
+  "timestamp": "2026-11-03T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 143935.41,
+  "timestamp": "2026-11-03T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 140983.25,
+  "timestamp": "2026-11-03T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 143158.57,
+  "timestamp": "2026-11-03T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 143018.05,
+  "timestamp": "2026-11-03T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 144832.45,
+  "timestamp": "2026-11-03T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 144038.53,
+  "timestamp": "2026-11-03T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 143075.97,
+  "timestamp": "2026-11-03T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 141735.67,
+  "timestamp": "2026-11-03T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 141820.0,
+  "timestamp": "2026-11-03T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 141480.24,
+  "timestamp": "2026-11-03T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 141586.91,
+  "timestamp": "2026-11-03T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 140886.99,
+  "timestamp": "2026-11-03T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 141513.03,
+  "timestamp": "2026-11-03T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 141516.3,
+  "timestamp": "2026-11-03T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 141615.27,
+  "timestamp": "2026-11-03T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 148881.37,
+  "timestamp": "2026-11-03T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 157006.25,
+  "timestamp": "2026-11-04T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 154737.07,
+  "timestamp": "2026-11-04T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 172046.26,
+  "timestamp": "2026-11-04T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 168714.55,
+  "timestamp": "2026-11-04T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175298.41,
+  "timestamp": "2026-11-04T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 178716.03,
+  "timestamp": "2026-11-04T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 167807.0,
+  "timestamp": "2026-11-04T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 172500.25,
+  "timestamp": "2026-11-04T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175863.37,
+  "timestamp": "2026-11-04T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 167293.64,
+  "timestamp": "2026-11-04T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 162616.2,
+  "timestamp": "2026-11-04T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 167396.13,
+  "timestamp": "2026-11-04T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 161167.3,
+  "timestamp": "2026-11-04T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 162156.4,
+  "timestamp": "2026-11-04T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 166846.13,
+  "timestamp": "2026-11-04T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 165394.28,
+  "timestamp": "2026-11-04T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 169401.73,
+  "timestamp": "2026-11-04T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 172123.37,
+  "timestamp": "2026-11-04T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 178212.91,
+  "timestamp": "2026-11-04T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 178371.29,
+  "timestamp": "2026-11-04T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176383.67,
+  "timestamp": "2026-11-04T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 172589.26,
+  "timestamp": "2026-11-04T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 172876.85,
+  "timestamp": "2026-11-04T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175938.69,
+  "timestamp": "2026-11-04T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 182283.01,
+  "timestamp": "2026-11-04T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 181955.16,
+  "timestamp": "2026-11-04T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 181138.61,
+  "timestamp": "2026-11-04T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 179580.5,
+  "timestamp": "2026-11-04T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176567.62,
+  "timestamp": "2026-11-04T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176543.43,
+  "timestamp": "2026-11-04T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176779.37,
+  "timestamp": "2026-11-04T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176960.5,
+  "timestamp": "2026-11-04T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176880.09,
+  "timestamp": "2026-11-04T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177034.6,
+  "timestamp": "2026-11-04T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176813.02,
+  "timestamp": "2026-11-04T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176868.94,
+  "timestamp": "2026-11-04T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176935.84,
+  "timestamp": "2026-11-04T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177009.89,
+  "timestamp": "2026-11-04T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176972.18,
+  "timestamp": "2026-11-04T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177064.04,
+  "timestamp": "2026-11-04T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176827.96,
+  "timestamp": "2026-11-04T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176849.2,
+  "timestamp": "2026-11-04T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176924.4,
+  "timestamp": "2026-11-04T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 176967.55,
+  "timestamp": "2026-11-04T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177026.77,
+  "timestamp": "2026-11-04T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177017.92,
+  "timestamp": "2026-11-04T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176896.3,
+  "timestamp": "2026-11-04T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176932.48,
+  "timestamp": "2026-11-04T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176835.95,
+  "timestamp": "2026-11-05T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176803.66,
+  "timestamp": "2026-11-05T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176768.32,
+  "timestamp": "2026-11-05T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176613.2,
+  "timestamp": "2026-11-05T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176750.95,
+  "timestamp": "2026-11-05T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176660.5,
+  "timestamp": "2026-11-05T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176593.4,
+  "timestamp": "2026-11-05T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176594.31,
+  "timestamp": "2026-11-05T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176492.17,
+  "timestamp": "2026-11-05T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176509.57,
+  "timestamp": "2026-11-05T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176592.1,
+  "timestamp": "2026-11-05T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176691.88,
+  "timestamp": "2026-11-05T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176543.22,
+  "timestamp": "2026-11-05T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176527.94,
+  "timestamp": "2026-11-05T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176900.06,
+  "timestamp": "2026-11-05T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176723.63,
+  "timestamp": "2026-11-05T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176781.01,
+  "timestamp": "2026-11-05T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176799.75,
+  "timestamp": "2026-11-05T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176904.63,
+  "timestamp": "2026-11-05T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176961.69,
+  "timestamp": "2026-11-05T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176943.97,
+  "timestamp": "2026-11-05T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177105.63,
+  "timestamp": "2026-11-05T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177110.37,
+  "timestamp": "2026-11-05T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176670.47,
+  "timestamp": "2026-11-05T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176597.79,
+  "timestamp": "2026-11-05T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176808.45,
+  "timestamp": "2026-11-05T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176512.31,
+  "timestamp": "2026-11-05T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176547.02,
+  "timestamp": "2026-11-05T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176514.66,
+  "timestamp": "2026-11-05T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176689.28,
+  "timestamp": "2026-11-05T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176935.02,
+  "timestamp": "2026-11-05T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176862.3,
+  "timestamp": "2026-11-05T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176849.19,
+  "timestamp": "2026-11-05T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177247.64,
+  "timestamp": "2026-11-05T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177107.69,
+  "timestamp": "2026-11-05T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177330.15,
+  "timestamp": "2026-11-05T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177215.72,
+  "timestamp": "2026-11-05T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177031.32,
+  "timestamp": "2026-11-05T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176968.15,
+  "timestamp": "2026-11-05T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176977.69,
+  "timestamp": "2026-11-05T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176917.4,
+  "timestamp": "2026-11-05T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176785.28,
+  "timestamp": "2026-11-05T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176702.65,
+  "timestamp": "2026-11-05T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 176731.59,
+  "timestamp": "2026-11-05T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176609.28,
+  "timestamp": "2026-11-05T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176603.55,
+  "timestamp": "2026-11-05T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176892.64,
+  "timestamp": "2026-11-05T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176926.97,
+  "timestamp": "2026-11-05T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176984.64,
+  "timestamp": "2026-11-06T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176783.39,
+  "timestamp": "2026-11-06T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176671.77,
+  "timestamp": "2026-11-06T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176597.69,
+  "timestamp": "2026-11-06T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176640.54,
+  "timestamp": "2026-11-06T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176434.39,
+  "timestamp": "2026-11-06T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176467.49,
+  "timestamp": "2026-11-06T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176265.65,
+  "timestamp": "2026-11-06T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176007.62,
+  "timestamp": "2026-11-06T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176183.42,
+  "timestamp": "2026-11-06T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176189.53,
+  "timestamp": "2026-11-06T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176242.9,
+  "timestamp": "2026-11-06T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175997.71,
+  "timestamp": "2026-11-06T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175732.13,
+  "timestamp": "2026-11-06T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175688.14,
+  "timestamp": "2026-11-06T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175970.39,
+  "timestamp": "2026-11-06T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176222.57,
+  "timestamp": "2026-11-06T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175837.68,
+  "timestamp": "2026-11-06T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175739.78,
+  "timestamp": "2026-11-06T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175832.83,
+  "timestamp": "2026-11-06T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175843.34,
+  "timestamp": "2026-11-06T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175837.04,
+  "timestamp": "2026-11-06T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175883.69,
+  "timestamp": "2026-11-06T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175824.9,
+  "timestamp": "2026-11-06T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175737.05,
+  "timestamp": "2026-11-06T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175581.42,
+  "timestamp": "2026-11-06T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175657.85,
+  "timestamp": "2026-11-06T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175113.37,
+  "timestamp": "2026-11-06T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174961.57,
+  "timestamp": "2026-11-06T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175312.52,
+  "timestamp": "2026-11-06T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175483.88,
+  "timestamp": "2026-11-06T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175216.95,
+  "timestamp": "2026-11-06T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175175.05,
+  "timestamp": "2026-11-06T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175314.36,
+  "timestamp": "2026-11-06T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175222.0,
+  "timestamp": "2026-11-06T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175027.02,
+  "timestamp": "2026-11-06T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174956.78,
+  "timestamp": "2026-11-06T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175129.95,
+  "timestamp": "2026-11-06T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175095.14,
+  "timestamp": "2026-11-06T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174864.33,
+  "timestamp": "2026-11-06T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174827.01,
+  "timestamp": "2026-11-06T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174914.42,
+  "timestamp": "2026-11-06T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174913.05,
+  "timestamp": "2026-11-06T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 175035.66,
+  "timestamp": "2026-11-06T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-06T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-06T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-06T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-06T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174938.43,
+  "timestamp": "2026-11-07T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174948.45,
+  "timestamp": "2026-11-07T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.6,
+  "timestamp": "2026-11-07T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-07T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.6,
+  "timestamp": "2026-11-08T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 174842.68,
+  "timestamp": "2026-11-08T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174851.53,
+  "timestamp": "2026-11-08T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174820.57,
+  "timestamp": "2026-11-08T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174939.08,
+  "timestamp": "2026-11-08T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174805.57,
+  "timestamp": "2026-11-08T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175026.97,
+  "timestamp": "2026-11-09T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175032.16,
+  "timestamp": "2026-11-09T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175258.3,
+  "timestamp": "2026-11-09T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175170.4,
+  "timestamp": "2026-11-09T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175052.77,
+  "timestamp": "2026-11-09T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174960.94,
+  "timestamp": "2026-11-09T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174916.72,
+  "timestamp": "2026-11-09T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174924.83,
+  "timestamp": "2026-11-09T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174920.24,
+  "timestamp": "2026-11-09T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 174955.29,
+  "timestamp": "2026-11-09T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175006.42,
+  "timestamp": "2026-11-09T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175118.89,
+  "timestamp": "2026-11-09T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175168.13,
+  "timestamp": "2026-11-09T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175129.8,
+  "timestamp": "2026-11-09T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175292.62,
+  "timestamp": "2026-11-09T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175488.45,
+  "timestamp": "2026-11-09T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175740.39,
+  "timestamp": "2026-11-09T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175814.08,
+  "timestamp": "2026-11-09T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175675.61,
+  "timestamp": "2026-11-09T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175903.72,
+  "timestamp": "2026-11-09T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175893.65,
+  "timestamp": "2026-11-09T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175841.74,
+  "timestamp": "2026-11-09T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175801.19,
+  "timestamp": "2026-11-09T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175834.37,
+  "timestamp": "2026-11-09T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175718.25,
+  "timestamp": "2026-11-09T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175814.3,
+  "timestamp": "2026-11-09T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175859.36,
+  "timestamp": "2026-11-09T13:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176079.49,
+  "timestamp": "2026-11-09T13:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175936.77,
+  "timestamp": "2026-11-09T14:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175976.23,
+  "timestamp": "2026-11-09T14:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175843.74,
+  "timestamp": "2026-11-09T15:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 175799.93,
+  "timestamp": "2026-11-09T15:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176136.24,
+  "timestamp": "2026-11-09T16:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176077.98,
+  "timestamp": "2026-11-09T16:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176214.09,
+  "timestamp": "2026-11-09T17:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176105.1,
+  "timestamp": "2026-11-09T17:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176066.14,
+  "timestamp": "2026-11-09T18:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176089.46,
+  "timestamp": "2026-11-09T18:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176116.52,
+  "timestamp": "2026-11-09T19:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176573.38,
+  "timestamp": "2026-11-09T19:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176417.1,
+  "timestamp": "2026-11-09T20:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176390.96,
+  "timestamp": "2026-11-09T20:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176415.46,
+  "timestamp": "2026-11-09T21:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 176515.3,
+  "timestamp": "2026-11-09T21:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176502.83,
+  "timestamp": "2026-11-09T22:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176500.92,
+  "timestamp": "2026-11-09T22:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176449.67,
+  "timestamp": "2026-11-09T23:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176396.62,
+  "timestamp": "2026-11-09T23:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176434.46,
+  "timestamp": "2026-11-10T00:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176353.47,
+  "timestamp": "2026-11-10T00:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176505.26,
+  "timestamp": "2026-11-10T01:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176572.15,
+  "timestamp": "2026-11-10T01:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176383.97,
+  "timestamp": "2026-11-10T02:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176362.98,
+  "timestamp": "2026-11-10T02:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176377.99,
+  "timestamp": "2026-11-10T03:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176402.87,
+  "timestamp": "2026-11-10T03:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176323.11,
+  "timestamp": "2026-11-10T04:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176623.34,
+  "timestamp": "2026-11-10T04:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176600.9,
+  "timestamp": "2026-11-10T05:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176527.56,
+  "timestamp": "2026-11-10T05:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176551.87,
+  "timestamp": "2026-11-10T06:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176541.71,
+  "timestamp": "2026-11-10T06:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176713.64,
+  "timestamp": "2026-11-10T07:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176839.86,
+  "timestamp": "2026-11-10T07:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177039.75,
+  "timestamp": "2026-11-10T08:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 177118.15,
+  "timestamp": "2026-11-10T08:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176793.6,
+  "timestamp": "2026-11-10T09:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176680.45,
+  "timestamp": "2026-11-10T09:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176628.39,
+  "timestamp": "2026-11-10T10:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176654.47,
+  "timestamp": "2026-11-10T10:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176469.8,
+  "timestamp": "2026-11-10T11:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176516.58,
+  "timestamp": "2026-11-10T11:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176454.53,
+  "timestamp": "2026-11-10T12:00:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176431.93,
+  "timestamp": "2026-11-10T12:30:00+00:00"
+ },
+ {
+  "is_eod": false,
+  "net_liq_usd": 176337.09,
+  "timestamp": "2026-11-10T13:00:00+00:00"
+ },
+ {
+  "is_eod": true,
+  "net_liq_usd": 175736.87,
+  "timestamp": "2026-11-10T13:30:00+00:00"
+ }
+]

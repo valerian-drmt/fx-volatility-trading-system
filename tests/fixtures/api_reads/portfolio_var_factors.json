@@ -1,0 +1,31 @@
+{
+ "current_spot": 1.11363,
+ "dropped": [],
+ "factors": [
+  {
+   "key": "spot",
+   "label": "Spot",
+   "var_usd": 2037.67
+  },
+  {
+   "key": "level",
+   "label": "ATM level",
+   "var_usd": 2615.12
+  },
+  {
+   "key": "skew",
+   "label": "Skew (RR)",
+   "var_usd": 93.67
+  },
+  {
+   "key": "curv",
+   "label": "Curvature (BF)",
+   "var_usd": 0.0
+  }
+ ],
+ "fallback": {
+  "spot": "surface_forward"
+ },
+ "n_positions": 6,
+ "spot_source": "surface_forward"
+}

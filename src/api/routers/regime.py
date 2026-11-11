@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.dependencies import get_db_session
 from api.orchestration.regime_features import build_features_payload
+from api.schemas import route_models as rm
 from api.schemas.reads import MacroEvent, RegimeSnapshotRow
 from core.vol.regime_engine import gate_decision
 from persistence.models import Event, RegimeSnapshot
@@ -122,7 +123,7 @@ async def state(
     )
 
 
-@router.get("/features")
+@router.get("/features", response_model=rm.RegimeFeatures, response_model_exclude_unset=True)
 async def features(
     db: DbDep,
     symbol: str = Query("EURUSD", min_length=3, max_length=20),
@@ -215,7 +216,7 @@ async def list_events(
     ]
 
 
-@router.get("/transitions")
+@router.get("/transitions", response_model=rm.RegimeTransitions, response_model_exclude_unset=True)
 async def transitions(
     db: DbDep,
     symbol: str = Query("EURUSD", min_length=3, max_length=20),
@@ -276,7 +277,7 @@ async def transitions(
     }
 
 
-@router.get("/gmm/shadow")
+@router.get("/gmm/shadow", response_model=rm.RegimeGmmShadow, response_model_exclude_unset=True)
 async def gmm_shadow_diagnostic(
     db: DbDep,
     symbol: str = Query("EURUSD", min_length=3, max_length=20),
@@ -352,7 +353,7 @@ async def gmm_shadow_diagnostic(
     }
 
 
-@router.post("/events/sync", dependencies=[Depends(require_write)])
+@router.post("/events/sync", response_model=dict[str, int], response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def sync_events_from_feed(request: Request) -> dict[str, Any]:
     """Trigger one full events sync cycle on demand (admin tool).
 
@@ -371,7 +372,7 @@ async def sync_events_from_feed(request: Request) -> dict[str, Any]:
     return report
 
 
-@router.post("/events", dependencies=[Depends(require_write)])
+@router.post("/events", response_model=rm.EventInserted, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def insert_event(payload: EventIn, db: DbDep) -> dict[str, Any]:
     """Add a macro event by hand (source `manual`) to the events calendar the regime gate reads."""
     e = Event(

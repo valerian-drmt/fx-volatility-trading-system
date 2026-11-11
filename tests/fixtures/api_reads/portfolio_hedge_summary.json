@@ -1,0 +1,27 @@
+{
+ "computed_at": "2026-11-11T11:32:35.402502+00:00",
+ "mtd": {
+  "cum_cost_usd": 0.0,
+  "n_hedges": 0
+ },
+ "rolling_30d": {
+  "cum_cost_usd": 0.0,
+  "n_hedges": 0
+ },
+ "rolling_7d": {
+  "cum_cost_usd": 0.0,
+  "n_hedges": 0
+ },
+ "today": {
+  "cum_cost_usd": 0.0,
+  "n_hedges": 0
+ },
+ "wtd": {
+  "cum_cost_usd": 0.0,
+  "n_hedges": 0
+ },
+ "ytd": {
+  "cum_cost_usd": 0.0,
+  "n_hedges": 0
+ }
+}

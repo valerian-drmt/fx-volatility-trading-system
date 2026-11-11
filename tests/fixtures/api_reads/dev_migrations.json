@@ -1,0 +1,622 @@
+{
+ "chain": [
+  {
+   "created": "2026-04-17 16:33:16.314453+00:00",
+   "down_revision": null,
+   "filename": "001_initial_schema.py",
+   "id": "001_initial_schema",
+   "parent_title": null,
+   "status": "applied",
+   "title": "initial schema \u2014 7 tables (R1 PR #5)"
+  },
+  {
+   "created": "2026-04-17 17:10:00.000000+00:00",
+   "down_revision": "001_initial_schema",
+   "filename": "002_add_indices.py",
+   "id": "002_add_indices",
+   "parent_title": "initial schema \u2014 7 tables (R1 PR #5)",
+   "status": "applied",
+   "title": "add indices and GIN on JSONB \u2014 R1 PR #6"
+  },
+  {
+   "created": "2026-04-21 08:57:43.366204+00:00",
+   "down_revision": "002_add_indices",
+   "filename": "254fc54bb36f_add_col_x.py",
+   "id": "254fc54bb36f",
+   "parent_title": "add indices and GIN on JSONB \u2014 R1 PR #6",
+   "status": "applied",
+   "title": "add col X \u2014 accidental autogen artifact, retained for chain integrity."
+  },
+  {
+   "created": "2026-04-22 18:30:00.000000+00:00",
+   "down_revision": "254fc54bb36f",
+   "filename": "003_svi_ssvi_params.py",
+   "id": "003_svi_ssvi_params",
+   "parent_title": "add col X \u2014 accidental autogen artifact, retained for chain integrity.",
+   "status": "applied",
+   "title": "SVI + SSVI parameter storage tables (Phase P2.1 + P2.2)"
+  },
+  {
+   "created": "2026-04-23 16:00:00.000000+00:00",
+   "down_revision": "003_svi_ssvi_params",
+   "filename": "004_add_vol_config_table.py",
+   "id": "004_add_vol_config_table",
+   "parent_title": "SVI + SSVI parameter storage tables (Phase P2.1 + P2.2)",
+   "status": "applied",
+   "title": "Append-only versioned ``vol_config`` table (R9 admin config plan T1)"
+  },
+  {
+   "created": "2026-04-29",
+   "down_revision": "004_add_vol_config_table",
+   "filename": "005_add_orders_table.py",
+   "id": "005_add_orders_table",
+   "parent_title": "Append-only versioned ``vol_config`` table (R9 admin config plan T1)",
+   "status": "applied",
+   "title": "Add orders table \u2014 track IB order lifecycle."
+  },
+  {
+   "created": "2026-04-29",
+   "down_revision": "005_add_orders_table",
+   "filename": "006_drop_position_exit_cols.py",
+   "id": "006_drop_position_exit_cols",
+   "parent_title": "Add orders table \u2014 track IB order lifecycle.",
+   "status": "applied",
+   "title": "Drop positions.exit_price / positions.exit_timestamp."
+  },
+  {
+   "created": "2026-04-29",
+   "down_revision": "006_drop_position_exit_cols",
+   "filename": "007_add_order_events_table.py",
+   "id": "007_add_order_events_table",
+   "parent_title": "Drop positions.exit_price / positions.exit_timestamp.",
+   "status": "applied",
+   "title": "Add order_events table \u2014 append-only audit log for user \u2192 IB actions."
+  },
+  {
+   "created": "2026-04-29",
+   "down_revision": "007_add_order_events_table",
+   "filename": "008_account_snaps_cleanup.py",
+   "id": "008_account_snaps_cleanup",
+   "parent_title": "Add order_events table \u2014 append-only audit log for user \u2192 IB actions.",
+   "status": "applied",
+   "title": "account_snaps : drop NULL cols + ajouter m\u00e9triques utiles."
+  },
+  {
+   "created": "2026-04-30",
+   "down_revision": "008_account_snaps_cleanup",
+   "filename": "009_vol_tables_cleanup.py",
+   "id": "009_vol_tables_cleanup",
+   "parent_title": "account_snaps : drop NULL cols + ajouter m\u00e9triques utiles.",
+   "status": "applied",
+   "title": "vol tables : drop unused JSONB cols + add P-measure/VRP cols to signals."
+  },
+  {
+   "created": "2026-04-30",
+   "down_revision": "009_vol_tables_cleanup",
+   "filename": "010_step1_regime_tables.py",
+   "id": "010_step1_regime_tables",
+   "parent_title": "vol tables : drop unused JSONB cols + add P-measure/VRP cols to signals.",
+   "status": "applied",
+   "title": "Step 1 \u2014 Regime gating : 4 new tables + seed VRP defaults."
+  },
+  {
+   "created": "2026-04-30",
+   "down_revision": "010_step1_regime_tables",
+   "filename": "011_step2_pca_tables.py",
+   "id": "011_step2_pca_tables",
+   "parent_title": "Step 1 \u2014 Regime gating : 4 new tables + seed VRP defaults.",
+   "status": "applied",
+   "title": "Step 2 \u2014 PCA factor model tables + seed signal_recommendations_map."
+  },
+  {
+   "created": "2026-04-30",
+   "down_revision": "011_step2_pca_tables",
+   "filename": "012_events_hash_unique.py",
+   "id": "012_events_hash_unique",
+   "parent_title": "Step 2 \u2014 PCA factor model tables + seed signal_recommendations_map.",
+   "status": "applied",
+   "title": "events table : add event_hash column + UNIQUE constraint."
+  },
+  {
+   "created": "2026-05-02",
+   "down_revision": "012_events_hash_unique",
+   "filename": "013_step3_trade_preview_tables.py",
+   "id": "013_step3_trade_preview_tables",
+   "parent_title": "events table : add event_hash column + UNIQUE constraint.",
+   "status": "applied",
+   "title": "Step 3 \u2014 Trade preview tables."
+  },
+  {
+   "created": "2026-05-02",
+   "down_revision": "013_step3_trade_preview_tables",
+   "filename": "014_step4_execution_tables.py",
+   "id": "014_step4_execution_tables",
+   "parent_title": "Step 3 \u2014 Trade preview tables.",
+   "status": "applied",
+   "title": "Step 4 \u2014 Execution (mock-mode sandbox, no IB wiring yet)."
+  },
+  {
+   "created": "2026-05-03",
+   "down_revision": "014_step4_execution_tables",
+   "filename": "015_step4_phase2_extras.py",
+   "id": "015_step4_phase2_extras",
+   "parent_title": "Step 4 \u2014 Execution (mock-mode sandbox, no IB wiring yet).",
+   "status": "applied",
+   "title": "Step 4 phase-2 extras \u2014 order_role on structure_orders + ib_connection_state."
+  },
+  {
+   "created": "2026-05-03",
+   "down_revision": "015_step4_phase2_extras",
+   "filename": "016_step5_position_monitoring.py",
+   "id": "016_step5_position_monitoring",
+   "parent_title": "Step 4 phase-2 extras \u2014 order_role on structure_orders + ib_connection_state.",
+   "status": "applied",
+   "title": "Step 5 \u2014 Position monitoring tables (Active Positions panel)."
+  },
+  {
+   "created": "2026-05-04",
+   "down_revision": "016_step5_position_monitoring",
+   "filename": "017_unwind_unique_includes_role.py",
+   "id": "017_unwind_unique_includes_role",
+   "parent_title": "Step 5 \u2014 Position monitoring tables (Active Positions panel).",
+   "status": "applied",
+   "title": "Replace UNIQUE(structure_id, leg_idx) with UNIQUE(structure_id, leg_idx, order_role)."
+  },
+  {
+   "created": "2026-05-04",
+   "down_revision": "017_unwind_unique_includes_role",
+   "filename": "018_features_enrichment.py",
+   "id": "018_features_enrichment",
+   "parent_title": "Replace UNIQUE(structure_id, leg_idx) with UNIQUE(structure_id, leg_idx, order_role).",
+   "status": "applied",
+   "title": "Step 2 \u2014 features enrichment : 5 columns \u00d7 3 features on regime_snapshots,"
+  },
+  {
+   "created": "2026-05-07",
+   "down_revision": "018_features_enrichment",
+   "filename": "019_drop_unused_vol_tables.py",
+   "id": "019_drop_unused_vol_tables",
+   "parent_title": "Step 2 \u2014 features enrichment : 5 columns \u00d7 3 features on regime_snapshots,",
+   "status": "applied",
+   "title": "Drop 4 unused vol-domain tables."
+  },
+  {
+   "created": "2026-05-07",
+   "down_revision": "019_drop_unused_vol_tables",
+   "filename": "020_rename_vol_tables.py",
+   "id": "020_rename_vol_tables",
+   "parent_title": "Drop 4 unused vol-domain tables.",
+   "status": "applied",
+   "title": "Rename 11 vol-domain tables to consistent ``<domain>_<role>`` naming."
+  },
+  {
+   "created": "2026-05-07",
+   "down_revision": "020_rename_vol_tables",
+   "filename": "021_drop_pricing_signal_snapshot.py",
+   "id": "021_drop_pricing_signal_snapshot",
+   "parent_title": "Rename 11 vol-domain tables to consistent ``<domain>_<role>`` naming.",
+   "status": "applied",
+   "title": "Drop the per-tenor pricing signal table."
+  },
+  {
+   "created": "2026-05-07",
+   "down_revision": "021_drop_pricing_signal_snapshot",
+   "filename": "022_purge_market_closed_rows.py",
+   "id": "022_purge_market_closed_rows",
+   "parent_title": "Drop the per-tenor pricing signal table.",
+   "status": "applied",
+   "title": "Purge ``vol_surface_snapshot`` rows where the market was closed."
+  },
+  {
+   "created": "2026-05-09",
+   "down_revision": "022_purge_market_closed_rows",
+   "filename": "023_trade_positions_ib_recon.py",
+   "id": "023_trade_positions_ib_recon",
+   "parent_title": "Purge ``vol_surface_snapshot`` rows where the market was closed.",
+   "status": "applied",
+   "title": "Add IB reconciliation columns on trade_positions."
+  },
+  {
+   "created": "2026-05-09",
+   "down_revision": "023_trade_positions_ib_recon",
+   "filename": "024_position_panel_cols.py",
+   "id": "024_position_panel_cols",
+   "parent_title": "Add IB reconciliation columns on trade_positions.",
+   "status": "applied",
+   "title": "Add panel-E-shaped columns to positions and position_snapshots."
+  },
+  {
+   "created": "2026-05-09",
+   "down_revision": "024_position_panel_cols",
+   "filename": "025_positions_panel_only.py",
+   "id": "025_positions_panel_only",
+   "parent_title": "Add panel-E-shaped columns to positions and position_snapshots.",
+   "status": "applied",
+   "title": "Drop legacy operational columns from ``positions`` \u2014 panel E shape only."
+  },
+  {
+   "created": "2026-05-09",
+   "down_revision": "025_positions_panel_only",
+   "filename": "026_positions_live_cols.py",
+   "id": "026_positions_live_cols",
+   "parent_title": "Drop legacy operational columns from ``positions`` \u2014 panel E shape only.",
+   "status": "applied",
+   "title": "Add live (per-cycle-updated) panel E columns directly on ``positions``."
+  },
+  {
+   "created": "2026-05-09",
+   "down_revision": "026_positions_live_cols",
+   "filename": "027_positions_closed_at.py",
+   "id": "027_positions_closed_at",
+   "parent_title": "Add live (per-cycle-updated) panel E columns directly on ``positions``.",
+   "status": "applied",
+   "title": "Replace ``status`` enum + ``created_at`` audit on positions by ``closed_at``."
+  },
+  {
+   "created": "2026-05-09",
+   "down_revision": "027_positions_closed_at",
+   "filename": "028_positions_panel_exact.py",
+   "id": "028_positions_panel_exact",
+   "parent_title": "Replace ``status`` enum + ``created_at`` audit on positions by ``closed_at``.",
+   "status": "applied",
+   "title": "Recreate ``positions`` with EXACTLY the 16 panel-E columns, in order."
+  },
+  {
+   "created": "2026-05-09",
+   "down_revision": "028_positions_panel_exact",
+   "filename": "029_positions_rename_cols.py",
+   "id": "029_positions_rename_cols",
+   "parent_title": "Recreate ``positions`` with EXACTLY the 16 panel-E columns, in order.",
+   "status": "applied",
+   "title": "Rename ``local_symbol`` \u2192 ``structure`` and ``maturity`` \u2192 ``expiry``."
+  },
+  {
+   "created": "2026-05-09",
+   "down_revision": "029_positions_rename_cols",
+   "filename": "030_snapshots_mirror_positions.py",
+   "id": "030_snapshots_mirror_positions",
+   "parent_title": "Rename ``local_symbol`` \u2192 ``structure`` and ``maturity`` \u2192 ``expiry``.",
+   "status": "applied",
+   "title": "Recreate ``position_snapshots`` to mirror the ``positions`` schema."
+  },
+  {
+   "created": "2026-05-09",
+   "down_revision": "030_snapshots_mirror_positions",
+   "filename": "031_iv_vanna_volga.py",
+   "id": "031_iv_vanna_volga",
+   "parent_title": "Recreate ``position_snapshots`` to mirror the ``positions`` schema.",
+   "status": "applied",
+   "title": "Add IV / Vanna / Volga columns to ``positions`` and ``position_snapshots``."
+  },
+  {
+   "created": "2026-05-11",
+   "down_revision": "031_iv_vanna_volga",
+   "filename": "023_theme1_renames.py",
+   "id": "023_theme1_renames",
+   "parent_title": "Add IV / Vanna / Volga columns to ``positions`` and ``position_snapshots``.",
+   "status": "applied",
+   "title": "Theme 1 schema cleanup \u2014 rename 6 vol/indicator tables."
+  },
+  {
+   "created": "2026-05-11",
+   "down_revision": "023_theme1_renames",
+   "filename": "024_theme4_app_config.py",
+   "id": "024_theme4_app_config",
+   "parent_title": "Theme 1 schema cleanup \u2014 rename 6 vol/indicator tables.",
+   "status": "applied",
+   "title": "Theme 4 \u2014 fold delta_hedge_config + risk_limits into app_config_scalar."
+  },
+  {
+   "created": "2026-05-11",
+   "down_revision": "024_theme4_app_config",
+   "filename": "025_theme3_trade_order.py",
+   "id": "025_theme3_trade_order",
+   "parent_title": "Theme 4 \u2014 fold delta_hedge_config + risk_limits into app_config_scalar.",
+   "status": "applied",
+   "title": "Theme 3 \u2014 Trade/Order schema refactor."
+  },
+  {
+   "created": "2026-05-12",
+   "down_revision": "025_theme3_trade_order",
+   "filename": "026_theme2_portfolio.py",
+   "id": "026_theme2_portfolio",
+   "parent_title": "Theme 3 \u2014 Trade/Order schema refactor.",
+   "status": "applied",
+   "title": "Theme 2 \u2014 Portfolio schema refactor."
+  },
+  {
+   "created": "2026-06-03",
+   "down_revision": "026_theme2_portfolio",
+   "filename": "032_product_label_dual_column.py",
+   "id": "032_product_label_dual_column",
+   "parent_title": "Theme 2 \u2014 Portfolio schema refactor.",
+   "status": "applied",
+   "title": "Add ``product_label`` user-friendly twin column alongside existing"
+  },
+  {
+   "created": "2026-06-04",
+   "down_revision": "032_product_label_dual_column",
+   "filename": "033_open_position_rename.py",
+   "id": "033_open_position_rename",
+   "parent_title": "Add ``product_label`` user-friendly twin column alongside existing",
+   "status": "applied",
+   "title": "Rename position tables + drop ``updated_at`` in favour of ``timestamp``."
+  },
+  {
+   "created": "2026-06-04",
+   "down_revision": "033_open_position_rename",
+   "filename": "034_package_trade_contract_ids.py",
+   "id": "034_package_trade_contract_ids",
+   "parent_title": "Rename position tables + drop ``updated_at`` in favour of ``timestamp``.",
+   "status": "applied",
+   "title": "Introduce the 3-level Murex-aligned identity stack on ``open_position``."
+  },
+  {
+   "created": "2026-06-04",
+   "down_revision": "034_package_trade_contract_ids",
+   "filename": "035_trade_order_ib_local_symbol.py",
+   "id": "035_trade_order_ib_local_symbol",
+   "parent_title": "Introduce the 3-level Murex-aligned identity stack on ``open_position``.",
+   "status": "applied",
+   "title": "Add ``trade_order.ib_local_symbol`` to record the actual IB contract."
+  },
+  {
+   "created": "2026-06-06",
+   "down_revision": "035_trade_order_ib_local_symbol",
+   "filename": "036_rename_pca_surface_snapshot.py",
+   "id": "036_rename_pca_surface_snapshot",
+   "parent_title": "Add ``trade_order.ib_local_symbol`` to record the actual IB contract.",
+   "status": "applied",
+   "title": "Rename ``surface_pca_snapshot_history`` \u2192 ``pca_surface_snapshot_history``."
+  },
+  {
+   "created": "2026-06-06",
+   "down_revision": "036_rename_pca_surface_snapshot",
+   "filename": "037_rename_config_tables.py",
+   "id": "037_rename_config_tables",
+   "parent_title": "Rename ``surface_pca_snapshot_history`` \u2192 ``pca_surface_snapshot_history``.",
+   "status": "applied",
+   "title": "Rename ``app_config_scalar`` \u2192 ``config_scalar`` and"
+  },
+  {
+   "created": "2026-06-06",
+   "down_revision": "037_rename_config_tables",
+   "filename": "038_drop_vrp_default_curve.py",
+   "id": "038_drop_vrp_default_curve",
+   "parent_title": "Rename ``app_config_scalar`` \u2192 ``config_scalar`` and",
+   "status": "applied",
+   "title": "Drop ``vrp_default_curve`` \u2014 collapse onto ``core.vol.vrp.VRP_DEFAULTS_VOL_PTS``."
+  },
+  {
+   "created": "2026-06-06",
+   "down_revision": "038_drop_vrp_default_curve",
+   "filename": "039_drop_lookup_tables.py",
+   "id": "039_drop_lookup_tables",
+   "parent_title": "Drop ``vrp_default_curve`` \u2014 collapse onto ``core.vol.vrp.VRP_DEFAULTS_VOL_PTS``.",
+   "status": "applied",
+   "title": "Drop 3 lookup tables \u2014 collapse onto Python source-of-truth modules."
+  },
+  {
+   "created": "2026-06-06",
+   "down_revision": "039_drop_lookup_tables",
+   "filename": "040_rename_config_history_tables.py",
+   "id": "040_rename_config_history_tables",
+   "parent_title": "Drop 3 lookup tables \u2014 collapse onto Python source-of-truth modules.",
+   "status": "applied",
+   "title": "Rename 4 tables for naming consistency :"
+  },
+  {
+   "created": "2026-06-06",
+   "down_revision": "040_rename_config_history_tables",
+   "filename": "041_ib_session_to_runtime.py",
+   "id": "041_ib_session_to_runtime",
+   "parent_title": "Rename 4 tables for naming consistency :",
+   "status": "applied",
+   "title": "Rename ``config_ib_session`` \u2192 ``runtime_ib_session``."
+  },
+  {
+   "created": "2026-06-06",
+   "down_revision": "041_ib_session_to_runtime",
+   "filename": "042_add_table_comments.py",
+   "id": "042_add_table_comments",
+   "parent_title": "Rename ``config_ib_session`` \u2192 ``runtime_ib_session``.",
+   "status": "applied",
+   "title": "Add ``COMMENT ON TABLE`` for every business table."
+  },
+  {
+   "created": "2026-06-17",
+   "down_revision": "042_add_table_comments",
+   "filename": "043_drop_recommended_structure.py",
+   "id": "043_drop_recommended_structure",
+   "parent_title": "Add ``COMMENT ON TABLE`` for every business table.",
+   "status": "applied",
+   "title": "Drop ``pca_signal_history.recommended_structure``."
+  },
+  {
+   "created": "2026-06-27",
+   "down_revision": "043_drop_recommended_structure",
+   "filename": "044_index_open_position_history.py",
+   "id": "044_index_open_position_history",
+   "parent_title": "Drop ``pca_signal_history.recommended_structure``.",
+   "status": "applied",
+   "title": "Index ``open_position_history`` (readers + retention)."
+  },
+  {
+   "created": "2026-06-28",
+   "down_revision": "044_index_open_position_history",
+   "filename": "045_signal_surface_idx.py",
+   "id": "045_signal_surface_idx",
+   "parent_title": "Index ``open_position_history`` (readers + retention).",
+   "status": "applied",
+   "title": "Indexes for the Signal-tab read paths."
+  },
+  {
+   "created": "2026-07-03",
+   "down_revision": "045_signal_surface_idx",
+   "filename": "046_trace_id.py",
+   "id": "046_trace_id",
+   "parent_title": "Indexes for the Signal-tab read paths.",
+   "status": "applied",
+   "title": "Add ``trace_id`` correlation id to the trade rows."
+  },
+  {
+   "created": "2026-07-07",
+   "down_revision": "046_trace_id",
+   "filename": "047_leg_position.py",
+   "id": "047_leg_position",
+   "parent_title": "Add ``trace_id`` correlation id to the trade rows.",
+   "status": "applied",
+   "title": "OMS P1/P2 \u2014 forward per-leg position (the book) + closing-order link."
+  },
+  {
+   "created": "2026-07-07",
+   "down_revision": "047_leg_position",
+   "filename": "048_reconciliation_break.py",
+   "id": "048_reconciliation_break",
+   "parent_title": "OMS P1/P2 \u2014 forward per-leg position (the book) + closing-order link.",
+   "status": "applied",
+   "title": "OMS P1 \u2014 materialise book vs broker reconciliation breaks (invariant I4)."
+  },
+  {
+   "created": "2026-07-16",
+   "down_revision": "048_reconciliation_break",
+   "filename": "049_sync_drift.py",
+   "id": "049_sync_drift",
+   "parent_title": "OMS P1 \u2014 materialise book vs broker reconciliation breaks (invariant I4).",
+   "status": "applied",
+   "title": "Sync 3 live-DB drifts surfaced by the DB Schema dev tab (DIFF mode)."
+  },
+  {
+   "created": "2026-07-18",
+   "down_revision": "049_sync_drift",
+   "filename": "050_submit_claims.py",
+   "id": "050_submit_claims",
+   "parent_title": "Sync 3 live-DB drifts surfaced by the DB Schema dev tab (DIFF mode).",
+   "status": "applied",
+   "title": "Add submit/rollback claim stamps to trade_structure (EXEC-1 / EXEC-3)."
+  },
+  {
+   "created": "2026-11-04",
+   "down_revision": "050_submit_claims",
+   "filename": "051_acct_ts_idx_dedup.py",
+   "id": "051_acct_ts_idx_dedup",
+   "parent_title": "Add submit/rollback claim stamps to trade_structure (EXEC-1 / EXEC-3).",
+   "status": "applied",
+   "title": "Index ``account_history.timestamp`` + drop duplicate ``open_position_history`` indexes."
+  },
+  {
+   "created": "2026-11-05",
+   "down_revision": "051_acct_ts_idx_dedup",
+   "filename": "052_spot_order.py",
+   "id": "052_spot_order",
+   "parent_title": "Index ``account_history.timestamp`` + drop duplicate ``open_position_history`` indexes.",
+   "status": "applied",
+   "title": "Create ``spot_order`` \u2014 persisted spot FX (CASH) orders from the Trade tab."
+  },
+  {
+   "created": "2026-11-06",
+   "down_revision": "052_spot_order",
+   "filename": "053_uq_structure_preview.py",
+   "id": "053_uq_structure_preview",
+   "parent_title": "Create ``spot_order`` \u2014 persisted spot FX (CASH) orders from the Trade tab.",
+   "status": "applied",
+   "title": "UNIQUE ``trade_structure.preview_id`` \u2014 one structure per preview (#319)."
+  },
+  {
+   "created": "2026-11-06",
+   "down_revision": "053_uq_structure_preview",
+   "filename": "054_spot_order_ib_status.py",
+   "id": "054_spot_order_ib_status",
+   "parent_title": "UNIQUE ``trade_structure.preview_id`` \u2014 one structure per preview (#319).",
+   "status": "applied",
+   "title": "``spot_order.ib_status`` + ``why_held`` \u2014 why a spot order waits (#376)."
+  },
+  {
+   "created": "2026-11-06",
+   "down_revision": "054_spot_order_ib_status",
+   "filename": "055_submit_claim_cols.py",
+   "id": "055_submit_claim_cols",
+   "parent_title": "``spot_order.ib_status`` + ``why_held`` \u2014 why a spot order waits (#376).",
+   "status": "applied",
+   "title": "``submit_claimed_at`` on ``trade_order`` and ``hedge_order`` (#318)."
+  },
+  {
+   "created": "2026-11-06",
+   "down_revision": "055_submit_claim_cols",
+   "filename": "056_trade_fill_currency.py",
+   "id": "056_trade_fill_currency",
+   "parent_title": "``submit_claimed_at`` on ``trade_order`` and ``hedge_order`` (#318).",
+   "status": "applied",
+   "title": "``trade_fill.currency`` (#322, audit 05#4)."
+  },
+  {
+   "created": "2026-11-06",
+   "down_revision": "056_trade_fill_currency",
+   "filename": "057_portfolio_rollups.py",
+   "id": "057_portfolio_rollups",
+   "parent_title": "``trade_fill.currency`` (#322, audit 05#4).",
+   "status": "applied",
+   "title": "``portfolio_daily`` + ``pnl_attribution_latest`` (#368, hot/cold T4, closes #286)."
+  },
+  {
+   "created": "2026-11-06",
+   "down_revision": "057_portfolio_rollups",
+   "filename": "058_history_fk_detach.py",
+   "id": "058_history_fk_detach",
+   "parent_title": "``portfolio_daily`` + ``pnl_attribution_latest`` (#368, hot/cold T4, closes #286).",
+   "status": "applied",
+   "title": "Detach ``open_position_history`` from the ``open_position`` FK (#330, audit DI-03)."
+  },
+  {
+   "created": "2026-11-06",
+   "down_revision": "058_history_fk_detach",
+   "filename": "059_writer_delivery.py",
+   "id": "059_writer_delivery",
+   "parent_title": "Detach ``open_position_history`` from the ``open_position`` FK (#330, audit DI-03).",
+   "status": "applied",
+   "title": "db-writer delivery semantics (#324, audit DI-02 / DI-04 / DI-07)."
+  },
+  {
+   "created": "2026-11-07",
+   "down_revision": "059_writer_delivery",
+   "filename": "060_schema_uniques.py",
+   "id": "060_schema_uniques",
+   "parent_title": "db-writer delivery semantics (#324, audit DI-02 / DI-04 / DI-07).",
+   "status": "applied",
+   "title": "Natural-key uniques the models now declare (#325, audit 05#5 / 05#6)."
+  },
+  {
+   "created": "2026-11-07",
+   "down_revision": "060_schema_uniques",
+   "filename": "061_money_numeric.py",
+   "id": "061_money_numeric",
+   "parent_title": "Natural-key uniques the models now declare (#325, audit 05#5 / 05#6).",
+   "status": "applied",
+   "title": "Execution money and prices as NUMERIC (#326, audit 05#8)."
+  },
+  {
+   "created": "2026-11-10",
+   "down_revision": "061_money_numeric",
+   "filename": "062_config_append_only.py",
+   "id": "062_config_append_only",
+   "parent_title": "Execution money and prices as NUMERIC (#326, audit 05#8).",
+   "status": "applied",
+   "title": "config_vol_engine is append-only, enforced by the database (#329, audit 05#12)."
+  },
+  {
+   "created": "2026-11-10",
+   "down_revision": "062_config_append_only",
+   "filename": "063_history_autovacuum.py",
+   "id": "063_history_autovacuum",
+   "parent_title": "config_vol_engine is append-only, enforced by the database (#329, audit 05#12).",
+   "status": "current",
+   "title": "Autovacuum tuned for the two append-and-prune history tables (#373, T9)."
+  }
+ ],
+ "current": "063_history_autovacuum",
+ "head": "063_history_autovacuum",
+ "in_sync": true,
+ "n_applied": 68,
+ "n_pending": 0,
+ "n_total": 68
+}
