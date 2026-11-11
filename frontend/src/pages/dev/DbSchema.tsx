@@ -29,6 +29,7 @@
  * constraints (nodes sized to actual card dimensions, edges given a
  * label box so the crow's-foot anchors land in clean gaps).
  */
+import type { JSX } from "react";
 import dagre from "@dagrejs/dagre";
 import { apiFetch } from "../../api/client";
 import { useEffect, useMemo, useRef, useState } from "react";

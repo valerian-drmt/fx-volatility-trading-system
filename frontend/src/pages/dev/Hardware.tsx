@@ -4,6 +4,7 @@
  * (Prometheus/cAdvisor, or the Docker-socket fallback) + a host snapshot from
  * GET /api/v1/dev/hardware. Read-only, dev-only.
  */
+import type { JSX } from "react";
 import type { Data, Layout } from "plotly.js";
 import { apiFetch } from "../../api/client";
 import { useEffect, useRef, useState } from "react";

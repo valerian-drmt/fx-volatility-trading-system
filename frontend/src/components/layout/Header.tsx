@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { StatusBadge } from "./StatusBadge";
 
 export function Header(): JSX.Element {

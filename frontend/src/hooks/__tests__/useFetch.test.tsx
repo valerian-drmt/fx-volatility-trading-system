@@ -4,6 +4,7 @@
  * used to flip views onto fabricated mock fallbacks). A fetch that never
  * succeeded stays an honest "missing".
  */
+import type { JSX } from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useFetch, type FetchResult } from "../useFetch";

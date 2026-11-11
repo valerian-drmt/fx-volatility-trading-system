@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 /**
  * Source attribution for data shown on the desk (#307, audit 10#13). The
  * wording is the one each provider asks for; docs/ops/data-terms.md is the

@@ -7,6 +7,7 @@
  *   closed      -> "push down · 60 s poll" (red)
  * The poll keeps the panel alive either way; the chip only changes colour.
  */
+import type { JSX } from "react";
 import type { WsStatus } from "../../hooks/useWebSocket";
 
 export function WsChip({ status, label = "push" }: { status: WsStatus; label?: string }): JSX.Element {

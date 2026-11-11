@@ -2,6 +2,7 @@
  * VOLDESK — System (container stack, engine heartbeats, schema).
  * Faithful 1:1 port of the prototype's `js/views_misc.jsx` SystemView.
  */
+import type { JSX } from "react";
 import { Panel, StatusDot } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { useDeskData } from "../data/deskData";

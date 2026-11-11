@@ -4,6 +4,7 @@
  *
  * These mirror the prototype 1:1 (same classNames → same `voldesk.css`).
  */
+import type { JSX } from "react";
 import type { ReactNode } from "react";
 import { pnlCls, type Status, type Tone } from "./format";
 

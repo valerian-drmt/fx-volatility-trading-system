@@ -15,6 +15,7 @@
  *
  * Constant /dev URL, never changes.
  */
+import type { JSX } from "react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Header } from "../components/layout/Header";

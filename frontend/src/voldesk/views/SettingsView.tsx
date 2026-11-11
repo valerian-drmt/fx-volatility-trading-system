@@ -8,6 +8,7 @@
  *     hot-applied config_scalar knobs. One Save per panel commits both:
  *     scalar edits upsert config_scalar, config edits append a new version.
  */
+import type { JSX } from "react";
 import { useState } from "react";
 import { fetchDomainSettings, putConfig, putDomainSettings, revertConfig } from "../../api/endpoints";
 import { useFetch } from "../../hooks/useFetch";

@@ -3,6 +3,7 @@
  * changes (the provider memoises on it), and a fetch that fails before any data
  * arrived says "error" instead of "no data".
  */
+import type { JSX } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { useEffect } from "react";
 import { describe, expect, it } from "vitest";

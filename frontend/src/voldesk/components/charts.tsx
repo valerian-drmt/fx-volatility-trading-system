@@ -5,6 +5,7 @@
  * prototype's CandleChart / GaussCurve / Sparkline / ZGauge were only used by
  * the parking-bench TestView (not in the nav) and are intentionally dropped.
  */
+import type { JSX } from "react";
 import { memo, useMemo } from "react";
 import { fmt } from "../data";
 

@@ -7,6 +7,7 @@
  * In mock mode every domain reports `live` with infinite freshness, so the badge
  * reads "live" exactly as the prototype's static caption did.
  */
+import type { JSX } from "react";
 import type { Fresh } from "../data/freshness";
 
 function ageLabel(ageMs: number | null): string {

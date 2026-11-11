@@ -84,3 +84,8 @@ updates:
       frontend-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      # The types follow the Node line the frontend runs on (Node 22, the CI
+      # setup-node and the frontend Dockerfile); a types major moves with it.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]

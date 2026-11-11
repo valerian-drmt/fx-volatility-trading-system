@@ -7,6 +7,7 @@
  * book impact, §3 skew flag, §4 bundled hedge, §5 premium reconciliation).
  * Same JSX / classNames / logic as the prototype — only types + ES modules added.
  */
+import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtCcy, fmtCcySigned, gk$, pnlCls } from "./format";
 import { DATA, EMPTY_GREEKS, fmt } from "../data";

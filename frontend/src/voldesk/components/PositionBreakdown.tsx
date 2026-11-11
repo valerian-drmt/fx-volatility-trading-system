@@ -4,6 +4,7 @@
  * per multi-leg trade (caret ▸, aggregated greeks / P&L) with its legs
  * indented. Shared by Risk + Portfolio.
  */
+import type { JSX } from "react";
 import { Fragment, useState } from "react";
 import { fmt } from "../data";
 import type { Position } from "../data";

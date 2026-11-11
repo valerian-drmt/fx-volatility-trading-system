@@ -26,6 +26,7 @@
  * through the backend's validation against ``Base.metadata`` ; filter
  * values are bound as SQL parameters server-side.
  */
+import type { JSX } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch, apiFetchJson } from "../../api/client";
 

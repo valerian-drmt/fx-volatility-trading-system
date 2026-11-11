@@ -12,6 +12,7 @@
  * The 2 panels can be placed in separate grid cells (cf. StackCombined.tsx)
  * by sharing the same hook instance at the parent level.
  */
+import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client";
 

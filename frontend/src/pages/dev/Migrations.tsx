@@ -22,6 +22,7 @@
  * chain and the DB is caught here. Together they bracket every way
  * the schema can go out of sync.
  */
+import type { JSX } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../api/client";
 

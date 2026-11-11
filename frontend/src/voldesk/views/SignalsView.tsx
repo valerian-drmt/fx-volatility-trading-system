@@ -8,6 +8,7 @@
  * tabs to consume; they have no in-view consumer, so they are not ported here
  * (this module exports only the `SignalsView` component).
  */
+import type { JSX } from "react";
 import { Fragment, memo, useMemo, useState } from "react";
 import { Heatmap } from "../components/charts";
 import { Panel, Tag } from "../components/common";
