@@ -114,6 +114,23 @@ the position monitor's automatic hedge is refused by the engine. A database
 that cannot be read counts as halted (503). Resuming is a deliberate second
 call with its own reason; nothing resumes on its own.
 
+## A position under the limits and the kill switch
+
+The limits act once, at submit. After entry a booked position moves only
+through the position monitor's exit rules (every 60 s), a manual close, or
+IB reconciliation; the code has no warning or breach state, so a book that
+drifts past a greek cap is neither flagged nor closed.
+
+![A booked position has no limit state: exit rules close it, and a kill switch set mid-close leaves it in closing](../diagrams/position-limits-killswitch-states.svg)
+
+`initiate_position_close` flips the position to `closing` and commits before
+it calls the execution engine. When the kill switch is on, that call answers
+423 and nothing rolls the position back to `open`: it stays `closing` with
+pending closing orders, and the position monitor, which selects only `open`
+positions, does not retry it.
+Automatic closes run only when `EXIT_AUTO_EXECUTE_ENABLED` is set; otherwise
+an `EXIT` decision is an `ExitAlert` row for the operator.
+
 ## VaR
 
 Methodology, as served by `GET /portfolio/var` and `GET /portfolio/marginal-var`

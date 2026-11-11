@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="500" viewBox="0 0 1100 500" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="500" fill="#ffffff"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker><marker id="ar" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker><marker id="ag" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker><marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker><marker id="ac" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker><marker id="ay" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker></defs>
+  <text x="550.0" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">Which unit at which layer: points at IB, fractions on the surface, dollars in the desk</text>
+  <text x="110.0" y="70" font-size="12" fill="#555" text-anchor="middle" font-weight="bold">Market</text>
+  <text x="330.0" y="70" font-size="12" fill="#555" text-anchor="middle" font-weight="bold">Surface</text>
+  <text x="550.0" y="70" font-size="12" fill="#555" text-anchor="middle" font-weight="bold">Kernel</text>
+  <text x="770.0" y="70" font-size="12" fill="#555" text-anchor="middle" font-weight="bold">Desk units</text>
+  <text x="990.0" y="70" font-size="12" fill="#555" text-anchor="middle" font-weight="bold">Consumers</text>
+  <rect x="20" y="90" width="180" height="110" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="110.0" y="116.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">IB chain and quotes</text>
+  <text x="110.0" y="132.0" font-size="12" fill="#222" text-anchor="middle">option price: price pts</text>
+  <text x="110.0" y="148.0" font-size="12" fill="#222" text-anchor="middle">delta: call-delta [0, 1]</text>
+  <text x="110.0" y="164.0" font-size="12" fill="#222" text-anchor="middle">put: 1 + δ_put</text>
+  <text x="110.0" y="180.0" font-size="12" fill="#222" text-anchor="middle">6E future: USD per EUR</text>
+  <rect x="240" y="90" width="180" height="110" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="330.0" y="116.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Surface payload (Redis)</text>
+  <text x="330.0" y="132.0" font-size="12" fill="#222" text-anchor="middle">cell iv: fraction 0.0605</text>
+  <text x="330.0" y="148.0" font-size="12" fill="#222" text-anchor="middle">cell strike: price pts</text>
+  <text x="330.0" y="164.0" font-size="12" fill="#222" text-anchor="middle">_rv_full_pct, rv_pct,</text>
+  <text x="330.0" y="180.0" font-size="12" fill="#222" text-anchor="middle">_har, _garch, _fair_q: %</text>
+  <rect x="460" y="90" width="180" height="142" rx="6" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.4"/>
+  <text x="550.0" y="108.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">core.pricing.bs</text>
+  <text x="550.0" y="124.0" font-size="12" fill="#222" text-anchor="middle">F, K: price points</text>
+  <text x="550.0" y="140.0" font-size="12" fill="#222" text-anchor="middle">T: years = dte / 365</text>
+  <text x="550.0" y="156.0" font-size="12" fill="#222" text-anchor="middle">σ: fraction</text>
+  <text x="550.0" y="172.0" font-size="12" fill="#222" text-anchor="middle">price: price points</text>
+  <text x="550.0" y="188.0" font-size="12" fill="#222" text-anchor="middle">bs_theta: per day</text>
+  <text x="550.0" y="204.0" font-size="12" fill="#222" text-anchor="middle">bs_greeks theta: per year</text>
+  <text x="550.0" y="220.0" font-size="12" fill="#222" text-anchor="middle">bs_vega: per 1.00 of σ</text>
+  <rect x="680" y="90" width="180" height="126" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="770.0" y="108.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Preview (core.units)</text>
+  <text x="770.0" y="124.0" font-size="12" fill="#222" text-anchor="middle">premium: pts × 125 000</text>
+  <text x="770.0" y="140.0" font-size="12" fill="#222" text-anchor="middle">vega × 0.01: $ / vol pt</text>
+  <text x="770.0" y="156.0" font-size="12" fill="#222" text-anchor="middle">gamma × 1e-8: $ / pip²</text>
+  <text x="770.0" y="172.0" font-size="12" fill="#222" text-anchor="middle">theta ÷ 365: $ / day</text>
+  <text x="770.0" y="188.0" font-size="12" fill="#222" text-anchor="middle">delta × F: USD exposure</text>
+  <text x="770.0" y="204.0" font-size="12" fill="#222" text-anchor="middle">greeks_net, per unit</text>
+  <rect x="900" y="90" width="180" height="110" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="990.0" y="116.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Order to IB</text>
+  <text x="990.0" y="132.0" font-size="12" fill="#222" text-anchor="middle">preview_price =</text>
+  <text x="990.0" y="148.0" font-size="12" fill="#222" text-anchor="middle">USD ÷ 125 000 = pts</text>
+  <text x="990.0" y="164.0" font-size="12" fill="#222" text-anchor="middle">lmtPrice, fills: pts</text>
+  <text x="990.0" y="180.0" font-size="12" fill="#222" text-anchor="middle">LMT = pts × (1 ± 0.25)</text>
+  <rect x="240" y="290" width="180" height="126" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="330.0" y="308.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Models on the surface</text>
+  <text x="330.0" y="324.0" font-size="12" fill="#222" text-anchor="middle">SVI: k = ln(K/F)</text>
+  <text x="330.0" y="340.0" font-size="12" fill="#222" text-anchor="middle">w = σ² T, T in years</text>
+  <text x="330.0" y="356.0" font-size="12" fill="#222" text-anchor="middle">tenors: calendar days</text>
+  <text x="330.0" y="372.0" font-size="12" fill="#222" text-anchor="middle">YZ, HAR, GARCH: annual %</text>
+  <text x="330.0" y="388.0" font-size="12" fill="#222" text-anchor="middle">VRP: additive vol pts</text>
+  <text x="330.0" y="404.0" font-size="12" fill="#222" text-anchor="middle">PCA, regime: %, z</text>
+  <rect x="680" y="290" width="180" height="142" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="770.0" y="308.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">open_position (risk)</text>
+  <text x="770.0" y="324.0" font-size="12" fill="#222" text-anchor="middle">greek_scaling, mult in EUR</text>
+  <text x="770.0" y="340.0" font-size="12" fill="#222" text-anchor="middle">delta_eur = δ × qty × mult</text>
+  <text x="770.0" y="356.0" font-size="12" fill="#222" text-anchor="middle">delta_usd = delta_eur × F</text>
+  <text x="770.0" y="372.0" font-size="12" fill="#222" text-anchor="middle">gamma_usd × 1e-4: $ / pip</text>
+  <text x="770.0" y="388.0" font-size="12" fill="#222" text-anchor="middle">vega_usd × 0.01: $ / vol pt</text>
+  <text x="770.0" y="404.0" font-size="12" fill="#222" text-anchor="middle">theta_usd: $ / day</text>
+  <text x="770.0" y="420.0" font-size="12" fill="#222" text-anchor="middle">volga × 0.01²: $ / vol pt²</text>
+  <rect x="900" y="290" width="180" height="142" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="990.0" y="308.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Pre-trade gate</text>
+  <text x="990.0" y="324.0" font-size="12" fill="#222" text-anchor="middle">book: open_position sums</text>
+  <text x="990.0" y="340.0" font-size="12" fill="#222" text-anchor="middle">trade gamma: ÷ 1e-4</text>
+  <text x="990.0" y="356.0" font-size="12" fill="#222" text-anchor="middle">→ $ / pip, matches</text>
+  <text x="990.0" y="372.0" font-size="12" fill="#222" text-anchor="middle">trade delta_unhedged read</text>
+  <text x="990.0" y="388.0" font-size="12" fill="#222" text-anchor="middle">as contracts × 125 000 × F,</text>
+  <text x="990.0" y="404.0" font-size="12" fill="#222" text-anchor="middle">but it is already USD:</text>
+  <text x="990.0" y="420.0" font-size="12" fill="#222" text-anchor="middle">scaled twice</text>
+  <line x1="200" y1="145" x2="238" y2="145" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <line x1="420" y1="145" x2="458" y2="145" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="440" y="138" font-size="12" fill="#555" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">× 100</text>
+  <text x="440" y="166" font-size="12" fill="#555" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">÷ 100</text>
+  <line x1="640" y1="150" x2="678" y2="150" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <path d="M550.0,232 V360 H678" fill="none" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <line x1="860" y1="145" x2="898" y2="145" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <line x1="330.0" y1="200" x2="330.0" y2="288" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <line x1="860" y1="360" x2="898" y2="360" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <path d="M840,216 V252 H990.0 V288" fill="none" stroke="#b02a37" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text x="998.0" y="274" font-size="12" fill="#b02a37" text-anchor="start" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">greeks_net</text>
+  <text x="550" y="462" font-size="12" fill="#555" text-anchor="middle">mult = 125 000 EUR for 6E and EUU options, 12 500 for M6E · PIP_SIZE = 1e-4 · VOLPT = 0.01 (core.units)</text>
+  <text x="550" y="482" font-size="12" fill="#555" text-anchor="middle">Leg IV crosses the surface → kernel boundary as entry_iv_pct = iv × 100, then σ = entry_iv_pct ÷ 100</text>
+</svg>

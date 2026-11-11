@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="640" viewBox="0 0 1100 640" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="640" fill="#ffffff"/>
+  <defs>
+    <marker id="m-hot" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="s-hot" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#d9480f"/></marker>
+    <marker id="m-cold" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="s-cold" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#3b6ea8"/></marker>
+    <marker id="m-shared" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker>
+    <marker id="s-shared" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b7791f"/></marker>
+    <marker id="m-fail" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="s-fail" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b02a37"/></marker>
+    <marker id="m-ok" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <marker id="s-ok" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#146c43"/></marker>
+    <marker id="m-neutral" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-neutral" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+    <marker id="m-grey" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-grey" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+  </defs>
+  <text x="550" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">Every version change enters as a PR against a lockfile or digest; the weekly scan feeds the same loop</text>
+  <rect x="20" y="70" width="230" height="125" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="135" y="97" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Dependabot, Mondays</text>
+  <text x="135" y="113" font-size="12" fill="#555" text-anchor="middle">uv, npm, docker, docker-compose,</text>
+  <text x="135" y="129" font-size="12" fill="#555" text-anchor="middle">github-actions; minor + patch</text>
+  <text x="135" y="145" font-size="12" fill="#555" text-anchor="middle">grouped, a major is its own PR</text>
+  <text x="135" y="161" font-size="12" fill="#555" text-anchor="middle">ignores: ib-gateway, ib-async,</text>
+  <text x="135" y="177" font-size="12" fill="#555" text-anchor="middle">postgres / redis / tempo majors</text>
+  <rect x="20" y="215" width="230" height="80" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="135" y="243" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">manual bump</text>
+  <text x="135" y="259" font-size="12" fill="#555" text-anchor="middle">uv lock --upgrade-package &lt;n&gt;</text>
+  <text x="135" y="275" font-size="12" fill="#555" text-anchor="middle">ib-gateway pin after a paper soak</text>
+  <rect x="300" y="90" width="260" height="185" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="430" y="131" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">pull request + CI</text>
+  <text x="430" y="147" font-size="12" fill="#555" text-anchor="middle">uv lock --check</text>
+  <text x="430" y="163" font-size="12" fill="#555" text-anchor="middle">uv sync --locked, pytest</text>
+  <text x="430" y="179" font-size="12" fill="#555" text-anchor="middle">test_image_pins.py:</text>
+  <text x="430" y="195" font-size="12" fill="#555" text-anchor="middle">tag@digest, ceilings, lock, Node</text>
+  <text x="430" y="211" font-size="12" fill="#555" text-anchor="middle">frontend lint, typecheck,</text>
+  <text x="430" y="227" font-size="12" fill="#555" text-anchor="middle">test, build</text>
+  <text x="430" y="243" font-size="12" fill="#555" text-anchor="middle">major: test evidence in the PR</text>
+  <path d="M250,132 L298,150" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M250,255 L298,230" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="610" y="145" width="190" height="70" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="705" y="176" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">squash merge</text>
+  <text x="705" y="192" font-size="12" fill="#555" text-anchor="middle">main</text>
+  <path d="M560,180 L608,180" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="564" y="161" width="39" height="16" fill="#ffffff"/>
+  <text x="584" y="172" font-size="12" fill="#146c43" text-anchor="middle">green</text>
+  <rect x="850" y="130" width="230" height="100" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="965" y="160" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">build-and-push</text>
+  <text x="965" y="176" font-size="12" fill="#555" text-anchor="middle">Dockerfiles: uv sync --locked</text>
+  <text x="965" y="192" font-size="12" fill="#555" text-anchor="middle">--no-dev --extra &lt;container&gt;</text>
+  <text x="965" y="208" font-size="12" fill="#555" text-anchor="middle">images tagged sha-&lt;commit&gt;</text>
+  <path d="M800,180 L848,180" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="850" y="300" width="230" height="80" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="965" y="328" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">deploy-prod</text>
+  <text x="965" y="344" font-size="12" fill="#555" text-anchor="middle">workflow_run after build,</text>
+  <text x="965" y="360" font-size="12" fill="#555" text-anchor="middle">DEPLOY_ENABLED</text>
+  <path d="M965,230 L965,298" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="560" y="300" width="240" height="80" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="680" y="328" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">prod host</text>
+  <text x="680" y="344" font-size="12" fill="#555" text-anchor="middle">pulls sha-&lt;commit&gt;; /health</text>
+  <text x="680" y="360" font-size="12" fill="#555" text-anchor="middle">reports the git_sha</text>
+  <path d="M848,340 L802,340" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="20" y="435" width="300" height="165" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="170" y="474" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">security-scan, Mondays 03:00 UTC</text>
+  <text x="170" y="490" font-size="12" fill="#555" text-anchor="middle">pip-audit: uv.lock, all extras</text>
+  <text x="170" y="506" font-size="12" fill="#555" text-anchor="middle">npm-audit: shipped packages</text>
+  <text x="170" y="522" font-size="12" fill="#555" text-anchor="middle">licenses: Python + npm gates</text>
+  <text x="170" y="538" font-size="12" fill="#555" text-anchor="middle">trivy-built: the 8 images at</text>
+  <text x="170" y="554" font-size="12" fill="#555" text-anchor="middle">prod's sha- tag</text>
+  <text x="170" y="570" font-size="12" fill="#555" text-anchor="middle">trivy-infra: every compose pin</text>
+  <path d="M680,380 L680,395 L170,395 L170,433" fill="none" stroke="#b02a37" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#m-fail)"/>
+  <rect x="341" y="377" width="158" height="16" fill="#ffffff"/>
+  <text x="420" y="388" font-size="12" fill="#b02a37" text-anchor="middle">scans the tag prod runs</text>
+  <rect x="370" y="470" width="190" height="80" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="465" y="498" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">findings</text>
+  <text x="465" y="514" font-size="12" fill="#555" text-anchor="middle">Security tab (SARIF)</text>
+  <text x="465" y="530" font-size="12" fill="#555" text-anchor="middle">+ run log</text>
+  <path d="M320,510 L368,510" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <polygon points="690,460.0 790.0,510 690,560.0 590.0,510" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="690" y="506" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">reachable in</text>
+  <text x="690" y="522" font-size="12" fill="#222" text-anchor="middle">this stack?</text>
+  <path d="M560,510 L588,510" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <path d="M690,460 L690,415 L270,415 L270,297" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="378" y="421" width="125" height="16" fill="#ffffff"/>
+  <text x="440" y="432" font-size="12" fill="#b7791f" text-anchor="middle">yes: fix by a bump</text>
+  <path d="M790,510 L848,510" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <rect x="808" y="491" width="19" height="16" fill="#ffffff"/>
+  <text x="818" y="502" font-size="12" fill="#222" text-anchor="middle">no</text>
+  <rect x="850" y="460" width="230" height="100" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="965" y="482" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">accept</text>
+  <text x="965" y="498" font-size="12" fill="#555" text-anchor="middle">ignore list: PIP_AUDIT_IGNORE,</text>
+  <text x="965" y="514" font-size="12" fill="#555" text-anchor="middle">.trivyignore, npm overrides</text>
+  <text x="965" y="530" font-size="12" fill="#555" text-anchor="middle">+ triage log row with a</text>
+  <text x="965" y="546" font-size="12" fill="#555" text-anchor="middle">date to revisit</text>
+</svg>

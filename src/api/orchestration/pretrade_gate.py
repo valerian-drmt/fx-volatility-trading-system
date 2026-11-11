@@ -74,8 +74,11 @@ async def _spot(redis: aioredis.Redis | None, payload: dict[str, Any]) -> float 
 
 def trade_greeks_from_preview(payload: dict[str, Any], spot: float | None) -> TradeGreeks | None:
     """Full-size structure greeks in desk units from the armed preview's
-    ``greeks_net`` (core.units: vega $/vol pt, gamma $/pip², delta in contract
-    equivalents) -> gamma $/pip, delta USD exposure."""
+    ``greeks_net`` (core.trade_preview._leg_greeks: vega $/vol pt, gamma
+    $/pip², delta already in USD, bs_delta × spot × multiplier) -> gamma $/pip,
+    delta USD exposure. The delta used to be multiplied by the contract
+    multiplier and spot a second time, so the delta cap refused any trade
+    that was not delta-neutral."""
     g = payload.get("greeks_net") or {}
     legs = (payload.get("structure") or {}).get("legs") or []
     if not g or not legs or spot is None:
@@ -83,13 +86,13 @@ def trade_greeks_from_preview(payload: dict[str, Any], spot: float | None) -> Tr
     try:
         vega = float(g.get("vega_usd_per_volpt") or 0.0)
         gamma_pip = float(g.get("gamma_usd_per_pip2") or 0.0) / PIP_SIZE
-        delta_contracts = float(g.get("delta_unhedged") or 0.0)
+        delta_usd = float(g.get("delta_unhedged") or 0.0)
     except (TypeError, ValueError):
         return None
     mult = float((payload.get("structure") or {}).get("future_multiplier_eur") or EUR_FOP_MULTIPLIER)
     notional = sum(abs(float(leg.get("qty") or 0)) for leg in legs) * mult
     return TradeGreeks(
-        delta_usd=delta_contracts * EUR_FOP_MULTIPLIER * spot,
+        delta_usd=delta_usd,
         vega_usd_per_volpt=vega,
         gamma_usd_per_pip=gamma_pip,
         notional_eur=notional,

@@ -6,10 +6,15 @@ publisher test that pins it) and regenerate.
 
 ## How the streams work
 
+![One bridge task in the api subscribes to every forwarded Redis channel, and the connection manager sends each message only to the sockets of its channel](../diagrams/ws-redis-bridge.svg)
+
 - **Transport.** `wss://<host>/fx-volatility-trading-system/ws/<name>` in prod
   (nginx strips the prefix), `ws://localhost/ws/<name>` locally. Each socket is a
-  one-way stream: the api subscribes to one Redis channel and forwards every
-  message to every client, verbatim, as a JSON text frame. Clients send nothing.
+  one-way stream of one Redis channel: a single bridge task in the api
+  (`api.ws.redis_bridge`) subscribes to every forwarded channel, and the
+  connection manager sends each message, verbatim, as a JSON text frame, to
+  every client of that channel. Clients send nothing. `system_alerts` is
+  forwarded too but no socket serves it.
 - **Access.** Public, like the REST reads. The upgrade is refused with close code
   1008 when the `Origin` header is not on the allowlist (`WS_ALLOWED_ORIGINS` +
   the CORS origins); a client that sends no `Origin` (not a browser) is accepted

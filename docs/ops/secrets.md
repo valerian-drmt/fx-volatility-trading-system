@@ -35,6 +35,8 @@ MSYS_NO_PATHCONV=1 aws ssm describe-parameters --profile admin --region eu-west-
 
 ## Load-to-RAM, never on disk
 
+![Secrets reach a container's RAM from Parameter Store over the host's instance role or the laptop's MFA profile; the GitHub deploy role only carries non-secret config](../diagrams/secrets-flow.svg)
+
 Secrets are loaded into a process environment and never written to disk locally:
 
 - **Local (Windows)** — [`scripts/local/load_secrets.ps1`](../../scripts/local/load_secrets.ps1)
@@ -42,7 +44,8 @@ Secrets are loaded into a process environment and never written to disk locally:
   current PowerShell session as env vars. Docker Compose inherits them from the
   parent process. Nothing is persisted; closing the shell clears them.
 - **EC2 (host)** — [`scripts/aws/load_secrets.sh`](../../scripts/aws/load_secrets.sh)
-  is the shell equivalent for manual host work.
+  is the shell equivalent for manual host work: it renders `/run/fxvol.env`
+  (tmpfs, `root:fxvol` 0640), so the values live in RAM and vanish at reboot.
 
 The one file that *does* hold rendered values is `/opt/fxvol/.env` on the prod
 host — written mode `0600` (`umask 077`) by `remote-deploy.sh`, read only by the

@@ -7,6 +7,8 @@ both the risk engine's persisted rows and its published aggregate use since
 #313). This page is the table the audit asked for (02#7, 03#1), lifted from
 the findings appendix and kept current.
 
+![Which unit at which layer: points at IB, fractions on the surface, dollars in the desk](../diagrams/units-map.svg)
+
 ## Greeks on an open position (`open_position`, `open_position_history`, `risk_update`)
 
 `qty` is signed (long +, short −), `mult` is the contract notional in EUR
@@ -75,6 +77,12 @@ violent vol-down scenarios rather than a silent zero.
 | `theta_usd_per_day` | per-day theta × ±qty × 125 000 | $ per day |
 | `delta_usd` | bs_delta × spot × ±qty × 125 000 | USD exposure |
 | IB prices (`lmtPrice`, fills, `preview_price`) | | price points; USD = points × 125 000 × qty |
+
+The preview's `greeks_net.delta_unhedged` is this USD exposure (× `base_qty`).
+`trade_greeks_from_preview` in `api/orchestration/pretrade_gate.py` reads it
+as contract equivalents and multiplies it by 125 000 × spot again, so the
+pre-trade gate's trade delta, and its `cap_delta` check, is scaled twice
+(the gamma conversion there, `gamma_usd_per_pip2 ÷ PIP_SIZE`, is correct).
 
 ## Vol surface and models
 

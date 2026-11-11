@@ -84,6 +84,9 @@ can close after iteration 15 if nothing new is found.
 
 ## Status on 2026-11-10
 
+![All 16 iterations shipped between 6 and 10 November 2026, against a plan of two weeks each](../diagrams/iteration-timeline.svg)
+
+Iterations 1 to 9 shipped on 6 and 7 November (PRs #382 to #386, #389 to #394).
 Iterations 10 to 16 shipped to prod between 2026-11-10 10:00 and 17:00 UTC
 (PRs #395, #401, #402, #405, #417, #418, #419). What is left of them:
 

@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="790" viewBox="0 0 1100 790" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="790" fill="#ffffff"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker><marker id="ar" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker><marker id="ag" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker><marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker><marker id="ac" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker><marker id="ay" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker></defs>
+  <text x="550.0" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">Two state machines: the desk kill switch, and a booked position that no risk limit moves</text>
+  <rect x="20" y="50" width="1060" height="240" fill="none" stroke="#555555" stroke-dasharray="6 4"/>
+  <rect x="20" y="50" width="380" height="22" rx="0" fill="#f4f5f7" stroke="#555555" stroke-width="1.4"/>
+  <text x="210.0" y="64.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Desk: kill switch (config_scalar risk / trading_halted)</text>
+  <rect x="60" y="100" width="210" height="56" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="165.0" y="123.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">trading</text>
+  <text x="165.0" y="139.0" font-size="12" fill="#222" text-anchor="middle">trading_halted = false</text>
+  <rect x="830" y="100" width="210" height="56" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="935.0" y="123.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">halted</text>
+  <text x="935.0" y="139.0" font-size="12" fill="#222" text-anchor="middle">trading_halted = true</text>
+  <line x1="270" y1="115" x2="828" y2="115" stroke="#b02a37" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text x="550" y="109" font-size="12" fill="#b02a37" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">POST /admin/halt {reason}</text>
+  <line x1="830" y1="143" x2="272" y2="143" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <text x="550" y="161" font-size="12" fill="#146c43" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">DELETE /admin/halt {reason}: a deliberate call, nothing resumes on its own</text>
+  <rect x="300" y="184" width="500" height="82" rx="6" fill="#f4f5f7" stroke="#555555" stroke-width="1.4"/>
+  <text x="550.0" y="201" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Setting the flag</text>
+  <text x="550.0" y="217" font-size="12" fill="#222" text-anchor="middle">1. writes it and a trading_halted trade event (who, when, why)</text>
+  <text x="550.0" y="233" font-size="12" fill="#222" text-anchor="middle">2. mirrors Redis trading:halted, publishes on system_alerts</text>
+  <text x="550.0" y="249" font-size="12" fill="#222" text-anchor="middle">3. execution-engine /internal/halt: cancel_all_open + reqGlobalCancel</text>
+  <rect x="40" y="184" width="240" height="82" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="160.0" y="201" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">While trading</text>
+  <text x="160.0" y="217" font-size="12" fill="#222" text-anchor="middle">every /trade/submit still runs</text>
+  <text x="160.0" y="233" font-size="12" fill="#222" text-anchor="middle">the pre-trade gate: caps,</text>
+  <text x="160.0" y="249" font-size="12" fill="#222" text-anchor="middle">notional, liveness, allow-list</text>
+  <rect x="820" y="184" width="240" height="82" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="940.0" y="201" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">While halted</text>
+  <text x="940.0" y="217" font-size="12" fill="#222" text-anchor="middle">engine order routes → 423</text>
+  <text x="940.0" y="233" font-size="12" fill="#222" text-anchor="middle">/trade/submit → trading_halted</text>
+  <text x="940.0" y="249" font-size="12" fill="#222" text-anchor="middle">flag unreadable → 503, refused</text>
+  <rect x="20" y="310" width="1060" height="465" fill="none" stroke="#555555" stroke-dasharray="6 4"/>
+  <rect x="20" y="310" width="300" height="22" rx="0" fill="#f4f5f7" stroke="#555555" stroke-width="1.4"/>
+  <text x="170.0" y="324.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">A booked position (BookedPosition.state)</text>
+  <circle cx="50" cy="418" r="7" fill="#222"/>
+  <line x1="57" y1="418" x2="128" y2="418" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="30" y="364" font-size="12" fill="#222" text-anchor="start">entry structure</text>
+  <text x="30" y="380" font-size="12" fill="#222" text-anchor="start">fully_filled (fills_handler)</text>
+  <rect x="130" y="390" width="200" height="56" rx="6" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.4"/>
+  <text x="230.0" y="413.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">open</text>
+  <text x="230.0" y="429.0" font-size="12" fill="#222" text-anchor="middle">position_monitor every 60 s</text>
+  <rect x="520" y="390" width="200" height="56" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="620.0" y="413.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">closing</text>
+  <text x="620.0" y="429.0" font-size="12" fill="#222" text-anchor="middle">close in flight</text>
+  <rect x="880" y="390" width="180" height="56" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="970.0" y="413.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">closed</text>
+  <text x="970.0" y="429.0" font-size="12" fill="#222" text-anchor="middle">closed_at, close_reason</text>
+  <rect x="880" y="520" width="180" height="64" rx="6" fill="#f4f5f7" stroke="#555555" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="970.0" y="539.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">expired</text>
+  <text x="970.0" y="555.0" font-size="12" fill="#222" text-anchor="middle">allowed by the CHECK,</text>
+  <text x="970.0" y="571.0" font-size="12" fill="#222" text-anchor="middle">no code path sets it</text>
+  <line x1="330" y1="404" x2="518" y2="404" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="424" y="382" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">EXIT + auto-execute on:</text>
+  <text x="424" y="398" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">initiate_position_close()</text>
+  <line x1="330" y1="434" x2="518" y2="434" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="424" y="452" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">POST …/close-manual</text>
+  <line x1="720" y1="418" x2="878" y2="418" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <text x="800" y="410" font-size="12" fill="#146c43" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">structure fully_filled</text>
+  <text x="800" y="436" font-size="12" fill="#146c43" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">finalise_position_close</text>
+  <path d="M230,390 C230,345 970,345 970,388" fill="none" stroke="#555555" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#a)"/>
+  <text x="600" y="350" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">position_sync: IB holds none of the legs for &gt; 1 h (reconcile_autoclose) → reconciled_flat_at_ib</text>
+  <path d="M180,446 C180,505 280,505 280,448" fill="none" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="300" y="482" font-size="12" fill="#222" text-anchor="start">no rule, TRIM, or EXIT with</text>
+  <text x="300" y="498" font-size="12" fill="#222" text-anchor="start">auto-execute off: ExitAlert only</text>
+  <text x="300" y="514" font-size="12" fill="#222" text-anchor="start">(5 min alert cooldown)</text>
+  <line x1="620" y1="446" x2="620" y2="518" stroke="#b02a37" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <rect x="540" y="520" width="300" height="80" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="690.0" y="537" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">kill switch on during the close</text>
+  <text x="690.0" y="553" font-size="12" fill="#222" text-anchor="middle">/internal/structure/submit → 423;</text>
+  <text x="690.0" y="569" font-size="12" fill="#222" text-anchor="middle">the state stays closing with pending</text>
+  <text x="690.0" y="585" font-size="12" fill="#222" text-anchor="middle">orders: no rollback to open</text>
+  <rect x="40" y="620" width="470" height="136" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="52" y="642" font-size="12" fill="#222" text-anchor="start" font-weight="bold">Exit rules, every 60 s (highest priority wins)</text>
+  <text x="52" y="658" font-size="12" fill="#222" text-anchor="start">6  pre_event_regime: regime is pre_event → EXIT</text>
+  <text x="52" y="674" font-size="12" fill="#222" text-anchor="start">5  time_to_expiry_critical: &lt; 7 days left → EXIT</text>
+  <text x="52" y="690" font-size="12" fill="#222" text-anchor="start">4  signal_reverse: z flipped or |z| &lt; 0.5 → EXIT</text>
+  <text x="52" y="706" font-size="12" fill="#222" text-anchor="start">3  signal_reverse: |z| &lt; 50 % of entry |z| → TRIM</text>
+  <text x="52" y="722" font-size="12" fill="#222" text-anchor="start">3  stop_loss_vega: MTM &lt; −3 × |entry vega| → EXIT</text>
+  <text x="52" y="738" font-size="12" fill="#222" text-anchor="start">2  time_based: days left / DTE at entry &lt; 0.3 → EXIT</text>
+  <rect x="540" y="620" width="520" height="136" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="552" y="642" font-size="12" fill="#222" text-anchor="start" font-weight="bold">Limits act at submit only</text>
+  <text x="552" y="658" font-size="12" fill="#222" text-anchor="start">The greek caps (delta, vega, gamma) and the notional cap are</text>
+  <text x="552" y="674" font-size="12" fill="#222" text-anchor="start">checked by the pre-trade gate when a structure is submitted.</text>
+  <text x="552" y="690" font-size="12" fill="#222" text-anchor="start">There is no ok / warning / breach state on an open position:</text>
+  <text x="552" y="706" font-size="12" fill="#222" text-anchor="start">a book that drifts past a cap after entry is neither flagged</text>
+  <text x="552" y="722" font-size="12" fill="#222" text-anchor="start">nor closed; only exit rules, a manual close or reconciliation move it.</text>
+</svg>

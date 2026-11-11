@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="960" viewBox="0 0 1100 960" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="960" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555"/></marker>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="ag" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <style>.h{paint-order:stroke;stroke:#ffffff;stroke-width:5px;stroke-linejoin:round}</style>
+  </defs>
+  <text x="550" y="28" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">Every order leaves the working states for exactly one terminal state, and terminal rows never move</text>
+
+  <!-- ============ Panel 1: trade_order ============ -->
+  <rect x="15" y="45" width="1070" height="475" rx="4" fill="none" stroke="#555"/>
+  <text x="30" y="66" font-size="14" font-weight="bold" fill="#222">trade_order: one row per leg; entry, closing and unwind legs share this machine</text>
+
+  <!-- states -->
+  <rect x="30" y="160" width="130" height="50" rx="8" fill="#ffffff" stroke="#555"/>
+  <text x="95" y="182" text-anchor="middle" font-weight="bold" fill="#222">pending</text>
+  <text x="95" y="198" text-anchor="middle" fill="#555">no ib_order_id</text>
+
+  <rect x="250" y="110" width="520" height="130" rx="6" fill="none" stroke="#3b6ea8" stroke-dasharray="6 4"/>
+  <text x="758" y="232" text-anchor="end" fill="#3b6ea8" font-weight="bold">working: reapable, cancellable</text>
+  <rect x="270" y="160" width="170" height="50" rx="8" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="355" y="182" text-anchor="middle" font-weight="bold" fill="#222">submitted</text>
+  <text x="355" y="198" text-anchor="middle" fill="#555">ib_order_id set</text>
+  <rect x="580" y="160" width="170" height="50" rx="8" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="665" y="182" text-anchor="middle" font-weight="bold" fill="#222">partially_filled</text>
+  <text x="665" y="198" text-anchor="middle" fill="#555">0 &lt; qty_filled &lt; qty</text>
+
+  <rect x="900" y="160" width="160" height="50" rx="8" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="980" y="182" text-anchor="middle" font-weight="bold" fill="#222">filled</text>
+  <text x="980" y="198" text-anchor="middle" fill="#555">terminal</text>
+
+  <rect x="250" y="320" width="160" height="50" rx="8" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="330" y="342" text-anchor="middle" font-weight="bold" fill="#222">cancelled</text>
+  <text x="330" y="358" text-anchor="middle" fill="#555">terminal</text>
+  <rect x="480" y="320" width="160" height="50" rx="8" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="560" y="342" text-anchor="middle" font-weight="bold" fill="#222">rejected</text>
+  <text x="560" y="358" text-anchor="middle" fill="#555">terminal</text>
+  <rect x="710" y="320" width="160" height="50" rx="8" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="790" y="342" text-anchor="middle" font-weight="bold" fill="#222">expired</text>
+  <text x="790" y="358" text-anchor="middle" fill="#555">terminal</text>
+
+  <!-- edges -->
+  <line x1="160" y1="185" x2="268" y2="185" stroke="#555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="205" y="178" text-anchor="middle" fill="#222">placed</text>
+  <line x1="440" y1="185" x2="578" y2="185" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <text x="509" y="178" text-anchor="middle" fill="#146c43">1st fill</text>
+  <line x1="750" y1="185" x2="898" y2="185" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <text x="824" y="178" text-anchor="middle" fill="#146c43">fills cover qty</text>
+  <path d="M355,160 C355,85 900,85 960,158" fill="none" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <text x="655" y="90" text-anchor="middle" fill="#146c43" class="h">full fill in one execution, or IB holds the contract</text>
+  <path d="M320,210 C300,232 410,232 390,212" fill="none" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="412" y="230" fill="#555">held / noop</text>
+
+  <line x1="330" y1="240" x2="330" y2="318" stroke="#b02a37" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text x="322" y="285" text-anchor="end" fill="#b02a37">IB Cancelled</text>
+  <line x1="560" y1="240" x2="560" y2="318" stroke="#b02a37" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text x="568" y="272" fill="#b02a37">Inactive or Cancelled</text>
+  <text x="568" y="288" fill="#b02a37">with an IB error</text>
+  <line x1="740" y1="240" x2="770" y2="318" stroke="#b02a37" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text x="772" y="272" fill="#b02a37">stale &gt; 300 s, not working</text>
+  <text x="772" y="288" fill="#b02a37">and not held at IB</text>
+  <path d="M95,210 L95,345 L248,345" fill="none" stroke="#b02a37" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#ar)"/>
+  <text x="103" y="338" fill="#b02a37">manual cancel</text>
+
+  <!-- legend: who writes each edge -->
+  <rect x="30" y="392" width="1040" height="118" rx="3" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="42" y="411" font-weight="bold" fill="#222">Who writes each edge</text>
+  <text x="42" y="430" fill="#222">placed: live_submit commit per leg, placement.place_with_claim, reaper orderRef adoption, session rehydrate after a reconnect</text>
+  <text x="42" y="448" fill="#222">fills: fills_handler._persist_fill, idempotent on ib_execution_id; order_reconciler from recorded fills, or filled when the IB mirror holds the contract</text>
+  <text x="42" y="466" fill="#222">cancelled / rejected: the IB status event via order_states.next_state; POST /trades/{id}/cancel also cancels any non-terminal leg directly</text>
+  <text x="42" y="484" fill="#222">expired: reaper, older than REAPER_TAU_STALE_S and only while account_is_reporting(); a dead close releases its reservation</text>
+  <text x="42" y="502" fill="#222">a Filled status alone changes nothing (fill_pending). "acknowledged" is valid in the schema and counted as working, but never written</text>
+
+  <!-- ============ Panel 2: trade_structure ============ -->
+  <rect x="15" y="540" width="1070" height="405" rx="4" fill="none" stroke="#555"/>
+  <text x="30" y="561" font-size="14" font-weight="bold" fill="#222">trade_structure, and the booked_position it opens or closes</text>
+
+  <rect x="30" y="650" width="140" height="50" rx="8" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="100" y="672" text-anchor="middle" font-weight="bold" fill="#222">submitted</text>
+  <text x="100" y="688" text-anchor="middle" fill="#555">entry or closing</text>
+
+  <rect x="400" y="590" width="160" height="44" rx="8" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="480" y="617" text-anchor="middle" font-weight="bold" fill="#222">fully_filled</text>
+  <rect x="400" y="655" width="160" height="44" rx="8" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="480" y="682" text-anchor="middle" font-weight="bold" fill="#222">partial_fail</text>
+  <rect x="400" y="720" width="160" height="44" rx="8" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="480" y="747" text-anchor="middle" font-weight="bold" fill="#222">fully_failed</text>
+
+  <line x1="170" y1="665" x2="398" y2="612" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <text x="245" y="622" text-anchor="middle" fill="#146c43" class="h">all primary legs filled</text>
+  <line x1="170" y1="677" x2="398" y2="677" stroke="#b7791f" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="285" y="671" text-anchor="middle" fill="#222" class="h">leg k threw, or mixed</text>
+  <line x1="170" y1="690" x2="398" y2="742" stroke="#b02a37" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text x="250" y="740" text-anchor="middle" fill="#b02a37" class="h">all terminal, none filled</text>
+
+  <!-- booked_position mini FSM -->
+  <text x="640" y="583" font-weight="bold" fill="#222">booked_position</text>
+  <rect x="640" y="595" width="140" height="44" rx="8" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="710" y="622" text-anchor="middle" font-weight="bold" fill="#222">open</text>
+  <rect x="900" y="595" width="160" height="44" rx="8" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="980" y="622" text-anchor="middle" font-weight="bold" fill="#222">closing</text>
+  <rect x="900" y="700" width="160" height="44" rx="8" fill="#ffffff" stroke="#555"/>
+  <text x="980" y="727" text-anchor="middle" font-weight="bold" fill="#222">closed</text>
+
+  <line x1="560" y1="612" x2="638" y2="617" stroke="#146c43" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#ag)"/>
+  <text x="598" y="604" text-anchor="middle" fill="#146c43">entry</text>
+  <line x1="780" y1="617" x2="898" y2="617" stroke="#555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="839" y="610" text-anchor="middle" fill="#222">close request</text>
+  <line x1="980" y1="639" x2="980" y2="698" stroke="#555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="970" y="666" text-anchor="end" fill="#222">closing structure fully_filled</text>
+  <text x="970" y="682" text-anchor="end" fill="#555">finalise_position_close</text>
+  <path d="M710,639 L710,722 L898,722" fill="none" stroke="#555" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <text x="720" y="740" fill="#555">IB flat &gt; 1 h, autoclose</text>
+
+  <!-- rollback -->
+  <path d="M560,690 L600,690 L600,800 L638,800" fill="none" stroke="#b7791f" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <rect x="640" y="770" width="430" height="60" rx="3" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="652" y="790" font-weight="bold" fill="#222">POST /structure/rollback (rollback_runner)</text>
+  <text x="652" y="806" fill="#222">cancel the working legs, then place unwind legs: new trade_order</text>
+  <text x="652" y="822" fill="#222">rows, role unwind, opposite side, residual qty only</text>
+
+  <!-- legend 2 -->
+  <rect x="30" y="845" width="1040" height="90" rx="3" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="42" y="864" fill="#222">fully_filled: maybe_complete_structure once every leg of the primary role (entry, or closing for a close-only structure) is filled</text>
+  <text x="42" y="882" fill="#222">partial_fail / fully_failed: live_submit when leg k throws; the reaper or a manual cancel through plan_structure_terminal_state once all legs are terminal</text>
+  <text x="42" y="900" fill="#222">close request: a new closing structure whose legs carry closes_order_id, so their qty is reserved on the entry leg (I5) until they fill or expire</text>
+  <text x="42" y="918" fill="#222">hedge orders live in their own hedge_orders table: pending → filled | failed (hedge_executor); order_role "hedge" is allowed but not written</text>
+</svg>

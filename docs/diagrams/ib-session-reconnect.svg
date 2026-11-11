@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="1160" viewBox="0 0 1100 1160" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="1160" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555"/></marker>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="ag" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+  </defs>
+  <text x="550" y="28" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">The execution engine loses IB at the nightly restart, the watchdog reconnects, a pass reopens the gate</text>
+
+  <!-- lifeline heads -->
+  <g fill="#222" font-weight="bold" text-anchor="middle">
+    <rect x="30" y="48" width="160" height="40" rx="4" fill="#ffffff" stroke="#555"/><text x="110" y="66">ib-gateway</text>
+    <text x="110" y="81" font-weight="normal" fill="#555">IB Gateway + IBC</text>
+    <rect x="255" y="48" width="170" height="40" rx="4" fill="#ffffff" stroke="#555"/><text x="340" y="66">OrderExecutor</text>
+    <text x="340" y="81" font-weight="normal" fill="#555">order_executor.py</text>
+    <rect x="480" y="48" width="180" height="40" rx="4" fill="#dbe6f4" stroke="#3b6ea8"/><text x="570" y="66">maintain_ib_connection</text>
+    <text x="570" y="81" font-weight="normal" fill="#555">shared/ib_connection.py</text>
+    <rect x="710" y="48" width="180" height="40" rx="4" fill="#fff3cd" stroke="#b7791f"/><text x="800" y="66">IbSessionSupervisor</text>
+    <text x="800" y="81" font-weight="normal" fill="#555">ib_session.py, ready gate</text>
+    <rect x="940" y="48" width="140" height="40" rx="4" fill="#ffffff" stroke="#555"/><text x="1010" y="66">Postgres</text>
+    <text x="1010" y="81" font-weight="normal" fill="#555">trade_order, trade_fill</text>
+  </g>
+  <g stroke="#555" stroke-dasharray="4 4">
+    <line x1="110" y1="88" x2="110" y2="1140"/><line x1="340" y1="88" x2="340" y2="1140"/><line x1="570" y1="88" x2="570" y2="1140"/><line x1="800" y1="88" x2="800" y2="1140"/><line x1="1010" y1="88" x2="1010" y2="1140"/>
+  </g>
+
+  <!-- A: startup -->
+  <rect x="20" y="100" width="1060" height="180" fill="none" stroke="#3b6ea8" stroke-dasharray="6 4"/>
+  <rect x="20" y="100" width="300" height="20" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="30" y="114" font-weight="bold" fill="#222">startup: lifespan, connect(timeout=20)</text>
+  <line x1="340" y1="145" x2="110" y2="145" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="225" y="139" text-anchor="middle" fill="#222">IB().connectAsync(clientId 5)</text>
+  <line x1="340" y1="175" x2="110" y2="175" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="225" y="169" text-anchor="middle" fill="#222">reqMarketDataType(4)</text>
+  <line x1="340" y1="205" x2="110" y2="205" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="225" y="199" text-anchor="middle" fill="#222">reqPositions, reqAccountSummary</text>
+  <line x1="340" y1="240" x2="800" y2="240" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="455" y="234" text-anchor="middle" fill="#222">wire_session_events()</text>
+  <text x="685" y="234" text-anchor="middle" fill="#222">on_connected(): first pass</text>
+  <rect x="815" y="222" width="250" height="40" rx="3" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="940" y="238" text-anchor="middle" fill="#222">pass done, gate opens</text>
+  <text x="940" y="254" text-anchor="middle" fill="#222">ready_reason = "ready"</text>
+
+  <!-- B: nightly restart -->
+  <rect x="20" y="295" width="1060" height="115" fill="none" stroke="#b02a37" stroke-dasharray="6 4"/>
+  <rect x="20" y="295" width="380" height="20" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="30" y="309" font-weight="bold" fill="#222">nightly IBC auto-restart, about 23:59 UTC</text>
+  <line x1="110" y1="340" x2="340" y2="340" stroke="#b02a37" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#ar)"/>
+  <text x="225" y="334" text-anchor="middle" fill="#b02a37">socket torn down</text>
+  <line x1="340" y1="375" x2="800" y2="375" stroke="#b02a37" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#ar)"/>
+  <text x="455" y="369" text-anchor="middle" fill="#b02a37">disconnectedEvent</text>
+  <text x="685" y="369" text-anchor="middle" fill="#b02a37">on_disconnected(), best-effort</text>
+  <rect x="815" y="357" width="250" height="40" rx="3" fill="#f8d7da" stroke="#b02a37"/>
+  <text x="940" y="373" text-anchor="middle" fill="#222">gate closes: "ib_disconnected"</text>
+  <text x="940" y="389" text-anchor="middle" fill="#222">mutating routes answer 503</text>
+
+  <!-- C: watchdog loop while down -->
+  <rect x="20" y="425" width="1060" height="205" fill="none" stroke="#3b6ea8" stroke-dasharray="6 4"/>
+  <rect x="20" y="425" width="470" height="20" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="30" y="439" font-weight="bold" fill="#222">loop, every IB_RECONNECT_INTERVAL_S = 10 s, while down</text>
+  <line x1="570" y1="470" x2="340" y2="470" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="455" y="464" text-anchor="middle" fill="#222">is_connected()</text>
+  <line x1="340" y1="495" x2="570" y2="495" stroke="#555" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <text x="455" y="489" text-anchor="middle" fill="#555">False</text>
+  <line x1="570" y1="525" x2="800" y2="525" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="685" y="519" text-anchor="middle" fill="#222">on_lost(), first miss only</text>
+  <line x1="570" y1="560" x2="340" y2="560" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="455" y="554" text-anchor="middle" fill="#222">connect(timeout=5)</text>
+  <line x1="340" y1="585" x2="110" y2="585" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="225" y="579" text-anchor="middle" fill="#222">new IB().connectAsync</text>
+  <line x1="110" y1="612" x2="340" y2="612" stroke="#b02a37" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#ar)"/>
+  <text x="225" y="606" text-anchor="middle" fill="#b02a37">OSError / timeout</text>
+  <text x="355" y="616" fill="#555">swallowed, retry next tick</text>
+
+  <!-- D: gateway back -->
+  <rect x="20" y="645" width="1060" height="390" fill="none" stroke="#146c43" stroke-dasharray="6 4"/>
+  <rect x="20" y="645" width="330" height="20" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="30" y="659" font-weight="bold" fill="#222">gateway back: the next tick reconnects</text>
+  <line x1="570" y1="690" x2="340" y2="690" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="455" y="684" text-anchor="middle" fill="#222">connect(timeout=5)</text>
+  <line x1="340" y1="715" x2="110" y2="715" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="225" y="709" text-anchor="middle" fill="#222">connectAsync + subscriptions</text>
+  <line x1="110" y1="740" x2="340" y2="740" stroke="#146c43" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#ag)"/>
+  <text x="225" y="734" text-anchor="middle" fill="#146c43">connected, hooks re-wired</text>
+  <line x1="570" y1="770" x2="800" y2="770" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="685" y="764" text-anchor="middle" fill="#222">on_reconnected = on_connected</text>
+
+  <rect x="330" y="785" width="740" height="240" fill="none" stroke="#b7791f" stroke-dasharray="4 3"/>
+  <rect x="330" y="785" width="420" height="20" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="340" y="799" font-weight="bold" fill="#222">run_pass (serialised by a lock, each step ≤ 60 s)</text>
+  <rect x="815" y="812" width="250" height="24" rx="3" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="940" y="829" text-anchor="middle" fill="#222">gate: "reconciliation_in_progress"</text>
+  <line x1="800" y1="855" x2="340" y2="855" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="355" y="849" fill="#222">open_trades(): re-attach handlers</text>
+  <text x="585" y="849" fill="#555">orderRef fxvol:&lt;sid&gt;:&lt;oid&gt;</text>
+  <line x1="800" y1="885" x2="340" y2="885" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="355" y="879" fill="#222">replay_executions(): reqExecutions</text>
+  <line x1="800" y1="915" x2="1010" y2="915" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="905" y="909" text-anchor="middle" fill="#222">persist_fill, dedupe execId</text>
+  <line x1="800" y1="945" x2="1010" y2="945" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="905" y="939" text-anchor="middle" fill="#222">sync_positions_from_ib</text>
+  <line x1="800" y1="975" x2="1010" y2="975" stroke="#555" stroke-width="1.2" marker-end="url(#a)"/>
+  <text x="905" y="969" text-anchor="middle" fill="#222">reconcile_stuck_orders</text>
+  <rect x="815" y="990" width="250" height="26" rx="3" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="940" y="1008" text-anchor="middle" fill="#222">connected, upstream ok: gate opens</text>
+
+  <!-- E: upstream codes -->
+  <rect x="20" y="1050" width="1060" height="90" rx="3" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="35" y="1070" font-weight="bold" fill="#222">ib.errorEvent while the socket stays up (on_error); the 10 s poll never sees these</text>
+  <text x="35" y="1092" fill="#222">1100 upstream lost: gate closes "ib_upstream_down"; /health 503 once down longer than EXECUTION_MAX_SYNC_AGE_S</text>
+  <text x="35" y="1112" fill="#222">1102 restored, data kept: gate reopens, nothing replayed</text>
+  <text x="35" y="1130" fill="#222">1101 restored, data lost: run_pass(trigger="1101"), then the gate reopens</text>
+</svg>

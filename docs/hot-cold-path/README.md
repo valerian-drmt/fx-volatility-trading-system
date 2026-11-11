@@ -6,6 +6,14 @@ rollups, attribution). The six engines are already separate processes; this
 programme adds the rules that keep the cold work from standing in the hot
 work's way, and the measurements that prove it.
 
+![Six engines on two paths: the hot producers and the cold producers write to the same Redis and the same Postgres, and the UI reads both through one api](../diagrams/hot-cold-topology.svg)
+
+The diagram is the starting point of the programme: orange producers serve an
+operator who is waiting, blue producers can be a minute late, and every
+shared box (Redis, Postgres, the api pool) is a place where the two collide.
+The target state, with the edges the tasks add, is the last diagram of
+[01-problems.md](01-problems.md).
+
 | File | What it holds |
 |---|---|
 | [01-problems.md](01-problems.md) | The problem register: ten problems (P1 to P10), each with symptom, mechanism, evidence, impact and the incident that revealed it. |

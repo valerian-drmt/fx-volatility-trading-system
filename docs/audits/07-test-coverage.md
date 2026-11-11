@@ -15,6 +15,12 @@ after fixes from earlier audits land, so it measures the final pre-release state
 - Frontend: vitest suites + MSW handlers, playwright e2e specs.
 - CI wiring: which suites actually gate merges, coverage thresholds.
 
+![Pure code carries a 95 % coverage floor while the four engines that talk to IB sit between 22 and 59 %, and only seven layers are reached by a live Postgres, Redis, IB or browser test](../diagrams/test-coverage-map.svg)
+
+The map on `main` after #339, #340 and #341: unit-file counts from `tests/unit/`,
+floors from `[tool.fxvol.coverage-floors]` in `pyproject.toml` (frontend: the
+vitest line threshold), live suites from `.github/workflows/ci.yml`.
+
 ## What to check
 
 ### Critical-path coverage (the core of this audit)

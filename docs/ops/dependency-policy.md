@@ -4,6 +4,8 @@ How the stack pins, refreshes, scans and licenses what it depends on
 (audit 10, tickets #303 #304 #305 #306 #308). The triage log at the bottom is
 the record a scanner finding points to.
 
+![Every version change enters as a pull request against a lockfile or a digest, and the weekly scan's findings feed the same loop or an ignore list with a revisit date](../diagrams/dependency-update-flow.svg)
+
 ## Sources of truth
 
 | What | Pinned where | Resolved set | Refreshed by |
@@ -21,8 +23,8 @@ Rules:
   The image runs exactly the set the tests ran on.
 - A major bump is its own PR with the test evidence; Dependabot groups only
   minor and patch bumps.
-- Exact pins (`==`) need a reason in a comment next to them. Today: `ib-insync`
-  (below).
+- Exact pins (`==`) need a reason in a comment next to them. Today: `ib-async`
+  (below; Dependabot ignores it).
 - No `latest`, no bare major tag (`16-alpine`), anywhere the stack runs.
   `tests/unit/infrastructure/test_image_pins.py` enforces the tag + digest
   form, the ceilings, the lockfile and the Node line.

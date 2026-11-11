@@ -121,8 +121,19 @@ assembles the fair term structure per tenor:
 
 1. `σ_fair^P` ← horizon-matched Yang-Zhang `rv_pct`, else full-sample `_rv_full_pct`,
    else HAR / GARCH as a last resort (`pick_sigma_fair_p`).
-2. `regime` ← `detect_regime(vol_level=rv_full, term_slope)` (see [regime](regime.md)).
+2. `regime` ← `detect_regime(vol_level_pct=_rv_full_pct, vol_of_vol_pct=None,
+   term_slope_pct=slope)` (see [regime](regime.md)). The slope is passed but
+   unused and the vol of vol is `None`, so here the regime is only ever `calm`
+   or `stressed` (`_rv_full_pct > 10`); the `pre_event` VRP row is never
+   selected by `build_fair_q`.
 3. `σ_fair^Q = σ_fair^P + VRP(tenor, regime)`.
+
+![Fair vol is Yang-Zhang RV plus the VRP; HAR and GARCH ride along as diagnostics](../diagrams/fair-vol-forecast-flow.svg)
+
+The OHLC block (both Yang-Zhang flavours, GARCH, HAR) is refitted only when a
+new daily bar lands (`_ohlc_signature`), off the event loop; `build_fair_q`
+runs every cycle on the cached block. The engine gates the fits on the number
+of closes: GARCH from 5, HAR from 45.
 
 Output per tenor: `{sigma_fair_p_pct, vrp_vol_pts, sigma_fair_q_pct, regime,
 fair_source}`. HAR-RV and GARCH stay attached to the surface (`_har`, `_garch`)

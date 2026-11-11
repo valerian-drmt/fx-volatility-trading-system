@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="690" viewBox="0 0 1100 690" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="690" fill="#ffffff"/>
+  <defs>
+    <marker id="m-hot" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="s-hot" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#d9480f"/></marker>
+    <marker id="m-cold" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="s-cold" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#3b6ea8"/></marker>
+    <marker id="m-shared" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker>
+    <marker id="s-shared" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b7791f"/></marker>
+    <marker id="m-fail" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="s-fail" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b02a37"/></marker>
+    <marker id="m-ok" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <marker id="s-ok" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#146c43"/></marker>
+    <marker id="m-neutral" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-neutral" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+    <marker id="m-grey" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-grey" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+  </defs>
+  <text x="550" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">Only nginx faces the internet; every other door is internal, token-gated or loopback-only</text>
+  <text x="550" y="50" font-size="12" fill="#555" text-anchor="middle">docker-compose.yml networks and ports, infrastructure/nginx/nginx.conf, api.auth, shared.internal_auth</text>
+  <rect x="10" y="70" width="185" height="560" rx="8" fill="none" stroke="#555555" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="20" y="88" font-size="12" fill="#555555" font-weight="bold">internet</text>
+  <rect x="22" y="105" width="160" height="56" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="102" y="130" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">public visitor</text>
+  <text x="102" y="146" font-size="12" fill="#555" text-anchor="middle">no credential</text>
+  <rect x="22" y="190" width="160" height="70" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="102" y="214" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">trader</text>
+  <text x="102" y="230" font-size="12" fill="#555" text-anchor="middle">fxvol_auth cookie</text>
+  <text x="102" y="246" font-size="12" fill="#555" text-anchor="middle">POST /auth/login</text>
+  <rect x="22" y="520" width="160" height="70" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="102" y="544" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">operator laptop</text>
+  <text x="102" y="560" font-size="12" fill="#555" text-anchor="middle">fxvol-dev (MFA)</text>
+  <text x="102" y="576" font-size="12" fill="#555" text-anchor="middle">SSM session</text>
+  <rect x="210" y="70" width="190" height="290" rx="8" fill="none" stroke="#d9480f" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="220" y="88" font-size="12" fill="#d9480f" font-weight="bold">fxvol-public</text>
+  <text x="316" y="88" font-size="12" fill="#555">edge</text>
+  <rect x="220" y="105" width="170" height="240" rx="6" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.4"/>
+  <text x="305" y="174" font-size="13" fill="#222" text-anchor="middle" font-weight="bold">nginx</text>
+  <text x="305" y="190" font-size="12" fill="#555" text-anchor="middle">:80 -&gt; 301 https</text>
+  <text x="305" y="206" font-size="12" fill="#555" text-anchor="middle">:443 TLS</text>
+  <text x="305" y="222" font-size="12" fill="#555" text-anchor="middle">30 r/s api, 5 r/s ws</text>
+  <text x="305" y="238" font-size="12" fill="#555" text-anchor="middle">sets X-Forwarded-For</text>
+  <text x="305" y="254" font-size="12" fill="#555" text-anchor="middle">pinned 172.20.0.15</text>
+  <text x="305" y="270" font-size="12" fill="#555" text-anchor="middle">CSP, HSTS, DENY</text>
+  <text x="305" y="286" font-size="12" fill="#555" text-anchor="middle">unknown path: 404</text>
+  <rect x="420" y="70" width="390" height="470" rx="8" fill="none" stroke="#3b6ea8" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="430" y="88" font-size="12" fill="#3b6ea8" font-weight="bold">fxvol-internal</text>
+  <text x="541" y="88" font-size="12" fill="#555">(no host port)</text>
+  <rect x="440" y="100" width="160" height="46" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="520" y="119" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">frontend</text>
+  <text x="520" y="135" font-size="12" fill="#555" text-anchor="middle">:8080 static bundle</text>
+  <rect x="440" y="165" width="350" height="125" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="615" y="192" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">api  172.20.0.13:8000</text>
+  <text x="615" y="208" font-size="12" fill="#555" text-anchor="middle">public: GET /api/v1/*, /ws/* (Origin allowlist)</text>
+  <text x="615" y="224" font-size="12" fill="#555" text-anchor="middle">cookie (require_write): POST / PUT / DELETE,</text>
+  <text x="615" y="240" font-size="12" fill="#555" text-anchor="middle">/dev tables, logs, redis; /admin/halt</text>
+  <text x="615" y="256" font-size="12" fill="#555" text-anchor="middle">rate limit keyed on X-Forwarded-For,</text>
+  <text x="615" y="272" font-size="12" fill="#555" text-anchor="middle">trusted from 172.20.0.15 only</text>
+  <rect x="440" y="330" width="200" height="76" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="540" y="348" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">execution-engine</text>
+  <text x="540" y="364" font-size="12" fill="#555" text-anchor="middle">/internal/* needs</text>
+  <text x="540" y="380" font-size="12" fill="#555" text-anchor="middle">X-Internal-Token</text>
+  <text x="540" y="396" font-size="12" fill="#555" text-anchor="middle">403 bad, 503 unset</text>
+  <rect x="660" y="330" width="130" height="76" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="725" y="356" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">postgres, redis</text>
+  <text x="725" y="372" font-size="12" fill="#555" text-anchor="middle">password auth</text>
+  <text x="725" y="388" font-size="12" fill="#555" text-anchor="middle">values from SSM</text>
+  <rect x="440" y="440" width="200" height="76" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="540" y="466" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">docker-socket-proxy</text>
+  <text x="540" y="482" font-size="12" fill="#555" text-anchor="middle">GET /containers/* only</text>
+  <text x="540" y="498" font-size="12" fill="#555" text-anchor="middle">POST=0, no exec</text>
+  <rect x="660" y="440" width="130" height="76" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="725" y="466" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">alloy</text>
+  <text x="725" y="482" font-size="12" fill="#555" text-anchor="middle">log shipper</text>
+  <text x="725" y="498" font-size="12" fill="#555" text-anchor="middle">no socket</text>
+  <rect x="440" y="575" width="200" height="46" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="540" y="594" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">/var/run/docker.sock</text>
+  <text x="540" y="610" font-size="12" fill="#555" text-anchor="middle">host, mounted ro</text>
+  <rect x="830" y="70" width="260" height="260" rx="8" fill="none" stroke="#146c43" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="840" y="88" font-size="12" fill="#146c43" font-weight="bold">host loopback only</text>
+  <text x="980" y="88" font-size="12" fill="#555">127.0.0.1</text>
+  <rect x="845" y="105" width="230" height="70" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="960" y="128" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">grafana  :3000</text>
+  <text x="960" y="144" font-size="12" fill="#555" text-anchor="middle">anonymous off on prod</text>
+  <text x="960" y="160" font-size="12" fill="#555" text-anchor="middle">admin password from SSM</text>
+  <rect x="845" y="195" width="230" height="110" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="960" y="222" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">ib-gateway</text>
+  <text x="960" y="238" font-size="12" fill="#555" text-anchor="middle">API :4002, VNC :5900</text>
+  <text x="960" y="254" font-size="12" fill="#555" text-anchor="middle">engines reach it on</text>
+  <text x="960" y="270" font-size="12" fill="#555" text-anchor="middle">fxvol-internal; Trusted IPs</text>
+  <text x="960" y="286" font-size="12" fill="#555" text-anchor="middle">= the engine addresses</text>
+  <rect x="830" y="360" width="260" height="110" rx="8" fill="none" stroke="#555555" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="840" y="378" font-size="12" fill="#555555" font-weight="bold">fxvol-external</text>
+  <text x="951" y="378" font-size="12" fill="#555">outbound</text>
+  <rect x="845" y="395" width="230" height="56" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="960" y="419" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">IBKR servers</text>
+  <text x="960" y="435" font-size="12" fill="#555" text-anchor="middle">paper account</text>
+  <path d="M182,133 L218,150" fill="none" stroke="#d9480f" stroke-width="1.5" marker-end="url(#m-hot)"/>
+  <rect x="180" y="169" width="39" height="16" fill="#ffffff"/>
+  <text x="200" y="180" font-size="12" fill="#d9480f" text-anchor="middle">HTTPS</text>
+  <path d="M182,225 L218,225" fill="none" stroke="#d9480f" stroke-width="1.5" marker-end="url(#m-hot)"/>
+  <path d="M390,125 L438,123" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M390,228 L438,228" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <rect x="375" y="209" width="79" height="16" fill="#ffffff"/>
+  <text x="414" y="220" font-size="12" fill="#3b6ea8" text-anchor="middle">/api/, /ws/</text>
+  <path d="M540,290 L540,328" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="547" y="303" width="39" height="16" fill="#ffffff"/>
+  <text x="550" y="314" font-size="12" fill="#b7791f">token</text>
+  <path d="M725,290 L725,328" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M660,478 L642,478" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <path d="M540,516 L540,573" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="547" y="539" width="59" height="16" fill="#ffffff"/>
+  <text x="550" y="550" font-size="12" fill="#b02a37">ro mount</text>
+  <path d="M900,305 L900,393" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <path d="M182,555 L300,555 L300,655 L1095,655 L1095,250 L1077,250" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+  <rect x="498" y="637" width="283" height="16" fill="#ffffff"/>
+  <text x="640" y="648" font-size="12" fill="#146c43" text-anchor="middle">SSM port forward / tunnel: no inbound port</text>
+  <path d="M1095,250 L1095,140 L1077,140" fill="none" stroke="#146c43" stroke-width="1.5" marker-end="url(#m-ok)"/>
+</svg>

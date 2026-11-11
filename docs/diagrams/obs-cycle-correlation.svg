@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="640" viewBox="0 0 1100 640" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="640" fill="#ffffff"/>
+  <defs>
+    <marker id="m-hot" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="s-hot" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#d9480f"/></marker>
+    <marker id="m-cold" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="s-cold" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#3b6ea8"/></marker>
+    <marker id="m-shared" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker>
+    <marker id="s-shared" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b7791f"/></marker>
+    <marker id="m-fail" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="s-fail" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b02a37"/></marker>
+    <marker id="m-ok" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <marker id="s-ok" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#146c43"/></marker>
+    <marker id="m-neutral" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-neutral" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+    <marker id="m-grey" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-grey" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+  </defs>
+  <text x="550" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">One engine cycle leaves a log trail and a trace, joined by cycle_id and trace_id</text>
+  <rect x="20" y="62" width="150" height="44" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="95" y="80" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">engine</text>
+  <text x="95" y="96" font-size="12" fill="#555" text-anchor="middle">observed_cycle()</text>
+  <line x1="95" y1="106" x2="95" y2="620" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="200" y="62" width="150" height="44" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="275" y="80" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">otel-collector</text>
+  <text x="275" y="96" font-size="12" fill="#555" text-anchor="middle">:4317</text>
+  <line x1="275" y1="106" x2="275" y2="620" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="370" y="62" width="150" height="44" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="445" y="80" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">tempo</text>
+  <text x="445" y="96" font-size="12" fill="#555" text-anchor="middle">:4317 / :3200</text>
+  <line x1="445" y1="106" x2="445" y2="620" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="540" y="62" width="150" height="44" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="615" y="80" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">alloy</text>
+  <text x="615" y="96" font-size="12" fill="#555" text-anchor="middle">via socket proxy</text>
+  <line x1="615" y1="106" x2="615" y2="620" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="710" y="62" width="150" height="44" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="785" y="80" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">loki</text>
+  <text x="785" y="96" font-size="12" fill="#555" text-anchor="middle">:3100</text>
+  <line x1="785" y1="106" x2="785" y2="620" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="915" y="62" width="150" height="44" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="990" y="80" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">operator</text>
+  <text x="990" y="96" font-size="12" fill="#555" text-anchor="middle">Grafana Explore</text>
+  <line x1="990" y1="106" x2="990" y2="620" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="20" y="118" width="1060" height="262" rx="8" fill="none" stroke="#555555" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="30" y="136" font-size="12" fill="#555555" font-weight="bold">during the cycle</text>
+  <rect x="25" y="140" width="140" height="52" rx="3" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="95" y="158" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">root span</text>
+  <text x="95" y="174" font-size="12" fill="#222" text-anchor="middle">&lt;engine&gt;_cycle</text>
+  <text x="95" y="188" font-size="12" fill="#222" text-anchor="middle">trace_id -&gt; structlog</text>
+  <path d="M95,225 L612,225" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <rect x="199" y="207" width="402" height="16" fill="#ffffff"/>
+  <text x="400" y="218" font-size="12" fill="#3b6ea8" text-anchor="middle">stdout JSON: cycle_start / cycle_end with cycle_id, trace_id</text>
+  <path d="M615,265 L782,265" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <rect x="684" y="247" width="32" height="16" fill="#ffffff"/>
+  <text x="700" y="258" font-size="12" fill="#3b6ea8" text-anchor="middle">push</text>
+  <text x="800" y="287" font-size="12" fill="#555">labels: container, engine,</text>
+  <text x="800" y="303" font-size="12" fill="#555">stream, level; ids stay</text>
+  <text x="800" y="319" font-size="12" fill="#555">in the message body</text>
+  <path d="M95,295 L272,295" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="132" y="277" width="105" height="16" fill="#ffffff"/>
+  <text x="185" y="288" font-size="12" fill="#b7791f" text-anchor="middle">OTLP/gRPC spans</text>
+  <path d="M275,335 L442,335" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="327" y="317" width="65" height="16" fill="#ffffff"/>
+  <text x="360" y="328" font-size="12" fill="#b7791f" text-anchor="middle">batch 5 s</text>
+  <rect x="20" y="395" width="1060" height="220" rx="8" fill="none" stroke="#555555" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="30" y="413" font-size="12" fill="#555555" font-weight="bold">investigation in Grafana</text>
+  <path d="M990,440 L788,440" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <rect x="788" y="422" width="204" height="16" fill="#ffffff"/>
+  <text x="890" y="433" font-size="12" fill="#3b6ea8" text-anchor="middle">{engine=~".+"} |= "&lt;cycle_id&gt;"</text>
+  <path d="M785,476 L987,476" fill="none" stroke="#3b6ea8" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#m-cold)"/>
+  <rect x="804" y="458" width="171" height="16" fill="#ffffff"/>
+  <text x="890" y="469" font-size="12" fill="#3b6ea8" text-anchor="middle">lines; trace_id is a link</text>
+  <path d="M990,516 L448,516" fill="none" stroke="#b7791f" stroke-width="1.5" marker-end="url(#m-shared)"/>
+  <rect x="540" y="498" width="356" height="16" fill="#ffffff"/>
+  <text x="718" y="509" font-size="12" fill="#b7791f" text-anchor="middle">click trace_id (Loki derived field) -&gt; open the trace</text>
+  <path d="M445,552 L987,552" fill="none" stroke="#b7791f" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#m-shared)"/>
+  <rect x="560" y="534" width="316" height="16" fill="#ffffff"/>
+  <text x="718" y="545" font-size="12" fill="#b7791f" text-anchor="middle">root span + child spans (fetch, calibrate, ...)</text>
+  <path d="M990,592 L788,592" fill="none" stroke="#3b6ea8" stroke-width="1.5" marker-end="url(#m-cold)"/>
+  <rect x="838" y="559" width="105" height="16" fill="#ffffff"/>
+  <text x="890" y="570" font-size="12" fill="#3b6ea8" text-anchor="middle">tracesToLogsV2:</text>
+  <rect x="778" y="574" width="224" height="16" fill="#ffffff"/>
+  <text x="890" y="585" font-size="12" fill="#3b6ea8" text-anchor="middle">cycle_id + engine, span +/- 5 min</text>
+</svg>

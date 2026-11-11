@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="670" viewBox="0 0 1100 670" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="670" fill="#ffffff"/>
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555"/></marker>
+    <marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <style>.h{paint-order:stroke;stroke:#ffffff;stroke-width:5px;stroke-linejoin:round}</style>
+  </defs>
+  <text x="550" y="28" text-anchor="middle" font-size="16" font-weight="bold" fill="#222">The three position panels read the same IB mirror, so their per-leg figures foot</text>
+  <g font-weight="bold" fill="#555" font-size="13" text-anchor="middle">
+    <text x="125" y="70">writers</text><text x="400" y="70">tables and keys</text><text x="690" y="70">rollup and endpoints</text><text x="970" y="70">panels</text>
+  </g>
+
+  <!-- writers -->
+  <rect x="30" y="90" width="190" height="56" rx="6" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="125" y="113" text-anchor="middle" font-weight="bold" fill="#222">execution-engine</text>
+  <text x="125" y="130" text-anchor="middle" fill="#555">position_sync_loop</text>
+  <rect x="30" y="200" width="190" height="56" rx="6" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="125" y="223" text-anchor="middle" font-weight="bold" fill="#222">risk-engine</text>
+  <text x="125" y="240" text-anchor="middle" fill="#555">2 s cycle</text>
+  <rect x="30" y="330" width="190" height="56" rx="6" fill="#fbe3d6" stroke="#d9480f"/>
+  <text x="125" y="353" text-anchor="middle" font-weight="bold" fill="#222">market-data</text>
+  <text x="125" y="370" text-anchor="middle" fill="#555">ticks, bars</text>
+
+  <!-- stores -->
+  <rect x="290" y="90" width="220" height="56" rx="6" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="400" y="113" text-anchor="middle" font-weight="bold" fill="#222">open_position</text>
+  <text x="400" y="130" text-anchor="middle" fill="#555">IB mirror, one row per contract</text>
+  <rect x="290" y="200" width="220" height="56" rx="6" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="400" y="223" text-anchor="middle" font-weight="bold" fill="#222">open_position_history</text>
+  <text x="400" y="240" text-anchor="middle" fill="#555">greeks at t-1, 90 days</text>
+  <rect x="290" y="330" width="220" height="56" rx="6" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="400" y="353" text-anchor="middle" font-weight="bold" fill="#222">Redis spot (dS fallback)</text>
+  <text x="400" y="370" text-anchor="middle" fill="#555">latest_spot, bars:EURUSD:1W</text>
+  <rect x="290" y="430" width="220" height="46" rx="6" fill="#ffffff" stroke="#555" stroke-dasharray="5 3"/>
+  <text x="400" y="451" text-anchor="middle" font-weight="bold" fill="#555">booked_position</text>
+  <text x="400" y="467" text-anchor="middle" fill="#555">mock-mode book, source=booked</text>
+
+  <!-- rollup, endpoints -->
+  <rect x="580" y="90" width="220" height="56" rx="6" fill="#ffffff" stroke="#555"/>
+  <text x="690" y="113" text-anchor="middle" font-weight="bold" fill="#222">GET /positions/open</text>
+  <text x="690" y="130" text-anchor="middle" fill="#555">current greeks, tenor_now</text>
+  <rect x="580" y="250" width="220" height="72" rx="6" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="690" y="271" text-anchor="middle" font-weight="bold" fill="#222">analytics-engine rollup</text>
+  <text x="690" y="288" text-anchor="middle" fill="#555">every 5 min: compute_attribution</text>
+  <text x="690" y="305" text-anchor="middle" fill="#555">per leg, Taylor terms on t-1 greeks</text>
+  <rect x="580" y="370" width="220" height="46" rx="6" fill="#dbe6f4" stroke="#3b6ea8"/>
+  <text x="690" y="398" text-anchor="middle" font-weight="bold" fill="#222">pnl_attribution_latest</text>
+  <rect x="580" y="460" width="220" height="92" rx="6" fill="#ffffff" stroke="#555"/>
+  <text x="690" y="480" text-anchor="middle" font-weight="bold" fill="#222">GET /portfolio/pnl-attribution</text>
+  <text x="690" y="498" text-anchor="middle" fill="#222">source=ib_live filter first,</text>
+  <text x="690" y="515" text-anchor="middle" fill="#222">then Σ legs = Σ groups = totals</text>
+  <text x="690" y="540" text-anchor="middle" fill="#555">no fresh row: computes inline</text>
+
+  <!-- panels -->
+  <rect x="870" y="90" width="200" height="56" rx="6" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="970" y="113" text-anchor="middle" font-weight="bold" fill="#222">Position breakdown</text>
+  <text x="970" y="130" text-anchor="middle" fill="#555">P&amp;L since entry</text>
+  <rect x="870" y="445" width="200" height="50" rx="6" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="970" y="466" text-anchor="middle" font-weight="bold" fill="#222">Attribution by trade</text>
+  <text x="970" y="483" text-anchor="middle" fill="#555">last 24 h</text>
+  <rect x="870" y="515" width="200" height="50" rx="6" fill="#d1e7dd" stroke="#146c43"/>
+  <text x="970" y="536" text-anchor="middle" font-weight="bold" fill="#222">Attribution by tenor</text>
+  <text x="970" y="553" text-anchor="middle" fill="#555">group_by=tenor, last 24 h</text>
+
+  <!-- writer edges -->
+  <line x1="220" y1="118" x2="288" y2="118" stroke="#d9480f" stroke-width="1.5" marker-end="url(#ah)"/>
+  <text x="254" y="111" text-anchor="middle" fill="#222">rows 5 s</text>
+  <line x1="220" y1="210" x2="288" y2="140" stroke="#d9480f" stroke-width="1.5" marker-end="url(#ah)"/>
+  <text x="252" y="172" text-anchor="middle" fill="#222" class="h">greeks 2 s</text>
+  <line x1="220" y1="235" x2="288" y2="235" stroke="#d9480f" stroke-width="1.5" marker-end="url(#ah)"/>
+  <text x="254" y="228" text-anchor="middle" fill="#222">60 s pass</text>
+  <line x1="220" y1="358" x2="288" y2="358" stroke="#d9480f" stroke-width="1.5" marker-end="url(#ah)"/>
+  <text x="254" y="351" text-anchor="middle" fill="#222">tick, 15 min</text>
+
+  <!-- read edges -->
+  <line x1="510" y1="118" x2="578" y2="118" stroke="#555" stroke-width="1.3" marker-end="url(#a)"/>
+  <line x1="800" y1="118" x2="868" y2="118" stroke="#555" stroke-width="1.3" marker-end="url(#a)"/>
+  <line x1="510" y1="140" x2="578" y2="262" stroke="#555" stroke-width="1.3" marker-end="url(#a)"/>
+  <line x1="510" y1="240" x2="578" y2="282" stroke="#555" stroke-width="1.3" marker-end="url(#a)"/>
+  <line x1="510" y1="352" x2="578" y2="302" stroke="#555" stroke-width="1.3" marker-end="url(#a)"/>
+  <line x1="510" y1="445" x2="578" y2="314" stroke="#555" stroke-width="1.2" stroke-dasharray="5 3" marker-end="url(#a)"/>
+  <line x1="690" y1="322" x2="690" y2="368" stroke="#d9480f" stroke-width="1.5" marker-end="url(#ah)"/>
+  <line x1="690" y1="416" x2="690" y2="458" stroke="#555" stroke-width="1.3" marker-end="url(#a)"/>
+  <line x1="800" y1="485" x2="868" y2="472" stroke="#555" stroke-width="1.3" marker-end="url(#a)"/>
+  <line x1="800" y1="520" x2="868" y2="538" stroke="#555" stroke-width="1.3" marker-end="url(#a)"/>
+
+  <!-- notes -->
+  <rect x="30" y="585" width="1040" height="70" rx="3" fill="#fff3cd" stroke="#b7791f"/>
+  <text x="42" y="605" fill="#222">One tenor function, core.vol.tenors.tenor_bucket_from_expiry, serves tenor_now (breakdown) and attrib_tenor (attribution).</text>
+  <text x="42" y="625" fill="#222">The breakdown P&amp;L is IB unrealised since entry; the attribution is a 24 h window difference, so the two numbers differ by design.</text>
+  <text x="42" y="645" fill="#222">Booked rows (dashed) are excluded from every total unless source=booked or all.</text>
+</svg>

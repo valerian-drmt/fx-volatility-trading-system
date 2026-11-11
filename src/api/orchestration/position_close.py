@@ -180,9 +180,20 @@ async def initiate_position_close(
                     headers=internal_headers(),
                 )
             submitted = {"status": resp.status_code, "body": resp.json()}
-        except Exception as e:
+            refused = resp.status_code in _REFUSED_BEFORE_PLACING
+        except httpx.ConnectError as e:
             logger.exception("close_dispatch_failed pos=%s", position_id)
             submitted = {"error": str(e)[:300]}
+            refused = True  # the request never reached the engine
+        except Exception as e:
+            # A timeout or a broken reply: orders may have gone out, so the
+            # position stays `closing` and the reconciler settles it.
+            logger.exception("close_dispatch_failed pos=%s", position_id)
+            submitted = {"error": str(e)[:300]}
+            refused = False
+        if refused:
+            await _revert_refused_close(sm, position_id, closing_structure_id, exit_alert_id, submitted)
+            submitted["reverted"] = True
 
     return {
         "position_id": position_id,
@@ -190,6 +201,61 @@ async def initiate_position_close(
         "n_legs": len(closing_legs),
         "execution_engine": submitted,
     }
+
+
+# The execution engine answers these before placing any order: 423 while the
+# kill switch is on, 503 while its book is not reconciled (ready gate).
+_REFUSED_BEFORE_PLACING = frozenset({423, 503})
+
+
+async def _revert_refused_close(
+    sm: async_sessionmaker[AsyncSession],
+    position_id: int,
+    closing_structure_id: int,
+    exit_alert_id: int | None,
+    reply: dict[str, Any],
+) -> None:
+    """Undo a close the execution engine refused before placing anything.
+
+    The position was committed `closing` before the dispatch. Left there, it is
+    stuck: the exit monitor only selects `open` positions, so nothing retries
+    it. It goes back to `open`, the closing structure and its legs end failed
+    (terminal, so the reservation ledger releases the entry legs), and the
+    alert says the close failed. The next monitor pass can try again.
+    """
+    async with sm() as db:
+        pos = await db.get(BookedPosition, position_id)
+        if pos is not None and pos.state == "closing":
+            pos.state = "open"
+        struct = await db.get(TradeStructure, closing_structure_id)
+        if struct is not None:
+            struct.state = "fully_failed"
+        orders = (await db.execute(
+            select(StructureOrder).where(StructureOrder.structure_id == closing_structure_id)
+        )).scalars().all()
+        touched: set[int] = set()
+        for o in orders:
+            if o.state == "pending":
+                o.state = "rejected"
+            if o.closes_order_id is not None:
+                touched.add(int(o.closes_order_id))
+        await db.flush()
+        for eid in touched:
+            await recompute_reservation(db, entry_order_id=eid)
+        if exit_alert_id is not None:
+            alert = await db.get(ExitAlert, exit_alert_id)
+            if alert is not None:
+                alert.execution_status = "failed"
+        db.add(TradeEvent(
+            structure_id=closing_structure_id,
+            position_id=position_id,
+            event_type="position_close_refused",
+            severity="warning",
+            description=f"execution engine refused the close of position {position_id}; position reopened",
+            payload={"position_id": position_id, "reply": reply},
+        ))
+        await db.commit()
+    logger.warning("position_close_refused_reverted pos=%s structure=%s", position_id, closing_structure_id)
 
 
 # Note: ``finalise_position_close`` lives in

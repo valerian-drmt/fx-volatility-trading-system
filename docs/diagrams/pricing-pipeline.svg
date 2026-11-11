@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="560" viewBox="0 0 1100 560" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="560" fill="#ffffff"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker><marker id="ar" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker><marker id="ag" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker><marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker><marker id="ac" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker><marker id="ay" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker></defs>
+  <text x="550.0" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">One kernel, two scalings: a leg is priced and its greeks scaled from the same surface cell</text>
+  <rect x="30" y="80" width="250" height="150" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="155.0" y="118.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Surface (Redis, vol-engine)</text>
+  <text x="155.0" y="134.0" font-size="12" fill="#222" text-anchor="middle">{tenor: {pillar: {iv, strike}}}</text>
+  <text x="155.0" y="150.0" font-size="12" fill="#222" text-anchor="middle">pillars 10dp 25dp atm 25dc 10dc</text>
+  <text x="155.0" y="166.0" font-size="12" fill="#222" text-anchor="middle">iv a fraction, strike in price pts</text>
+  <text x="155.0" y="182.0" font-size="12" fill="#222" text-anchor="middle">missing: _synthetic_surface(),</text>
+  <text x="155.0" y="198.0" font-size="12" fill="#222" text-anchor="middle">surface_source = synthetic</text>
+  <rect x="330" y="80" width="330" height="150" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="495.0" y="118.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">build_from_legs / build_structure</text>
+  <text x="495.0" y="134.0" font-size="12" fill="#222" text-anchor="middle">snap_tenor: nearest listed tenor</text>
+  <text x="495.0" y="150.0" font-size="12" fill="#222" text-anchor="middle">dte = TENOR_TO_DTE[tenor], calendar days</text>
+  <text x="495.0" y="166.0" font-size="12" fill="#222" text-anchor="middle">strike = pillar strike, or the override</text>
+  <text x="495.0" y="182.0" font-size="12" fill="#222" text-anchor="middle">entry_iv_pct = iv × 100</text>
+  <text x="495.0" y="198.0" font-size="12" fill="#222" text-anchor="middle">future legs: no strike, no IV</text>
+  <rect x="710" y="80" width="360" height="150" rx="6" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.4"/>
+  <text x="890.0" y="118.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">core.pricing.bs · Black-76, undiscounted</text>
+  <text x="890.0" y="134.0" font-size="12" fill="#222" text-anchor="middle">F = _spot_from_surface: ATM strike of</text>
+  <text x="890.0" y="150.0" font-size="12" fill="#222" text-anchor="middle">1M, else 2M, else 3M (1.0 if none)</text>
+  <text x="890.0" y="166.0" font-size="12" fill="#222" text-anchor="middle">T = dte / 365 · σ = entry_iv_pct / 100</text>
+  <text x="890.0" y="182.0" font-size="12" fill="#222" text-anchor="middle">T ≤ 0 or σ ≤ 0: intrinsic, step delta</text>
+  <text x="890.0" y="198.0" font-size="12" fill="#222" text-anchor="middle">outputs in price points</text>
+  <line x1="280" y1="155" x2="328" y2="155" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <line x1="660" y1="155" x2="708" y2="155" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <rect x="330" y="300" width="330" height="130" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="495.0" y="336.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">price_structure</text>
+  <text x="495.0" y="352.0" font-size="12" fill="#222" text-anchor="middle">leg price = bs_price × 125 000 (USD)</text>
+  <text x="495.0" y="368.0" font-size="12" fill="#222" text-anchor="middle">total = Σ ±price × qty_factor</text>
+  <text x="495.0" y="384.0" font-size="12" fill="#222" text-anchor="middle">+ paid (BUY), − received (SELL)</text>
+  <text x="495.0" y="400.0" font-size="12" fill="#222" text-anchor="middle">max_loss = premium if long, else 1e9</text>
+  <rect x="710" y="300" width="360" height="146" rx="6" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="890.0" y="320" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">compute_net_greeks → _leg_greeks</text>
+  <text x="890.0" y="336" font-size="12" fill="#222" text-anchor="middle">mult = ±qty_factor × 125 000</text>
+  <text x="890.0" y="352" font-size="12" fill="#222" text-anchor="middle">vega × 0.01 × mult  ($ per vol pt)</text>
+  <text x="890.0" y="368" font-size="12" fill="#222" text-anchor="middle">gamma × 0.0001² × mult  ($ per pip²)</text>
+  <text x="890.0" y="384" font-size="12" fill="#222" text-anchor="middle">theta (per year) ÷ 365 × mult  ($ per day)</text>
+  <text x="890.0" y="400" font-size="12" fill="#222" text-anchor="middle">delta × F × mult  (USD exposure)</text>
+  <text x="890.0" y="416" font-size="12" fill="#222" text-anchor="middle">future: ±qty_factor × 125 000 | 12 500 × F</text>
+  <path d="M760,230 L560,298" fill="none" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <text x="700" y="262" font-size="12" fill="#d9480f" text-anchor="start" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">bs_price</text>
+  <line x1="890" y1="230" x2="890" y2="298" stroke="#d9480f" stroke-width="1.4" marker-end="url(#ah)"/>
+  <text x="898" y="268" font-size="12" fill="#d9480f" text-anchor="start" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">bs_greeks</text>
+  <rect x="30" y="300" width="250" height="146" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="155.0" y="320" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">trade preview payload</text>
+  <text x="155.0" y="336" font-size="12" fill="#222" text-anchor="middle">greeks_net = per unit × base_qty</text>
+  <text x="155.0" y="352" font-size="12" fill="#222" text-anchor="middle">legs[].entry_price_per_contract_usd</text>
+  <text x="155.0" y="368" font-size="12" fill="#222" text-anchor="middle">at submit: ÷ 125 000 → price pts</text>
+  <text x="155.0" y="384" font-size="12" fill="#222" text-anchor="middle">BUY / SELL limit = pts × (1 ± 0.25),</text>
+  <text x="155.0" y="400" font-size="12" fill="#222" text-anchor="middle">rounded to 4 dp (futures: MKT)</text>
+  <line x1="330" y1="365" x2="282" y2="365" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <path d="M890,446 V500 H155 V448" fill="none" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <text x="520" y="494" font-size="12" fill="#146c43" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">net greeks per structure unit</text>
+  <text x="550" y="535" font-size="12" fill="#555" text-anchor="middle">125 000 = EUR_FOP_MULTIPLIER (core.units); 0.25 = MARKETABLE_LIMIT_BUFFER; F also stands in for spot</text>
+</svg>

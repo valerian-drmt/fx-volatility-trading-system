@@ -6,7 +6,7 @@ booked position. The live path is
 and the fill callbacks in
 [`fills_handler.py`](../../src/engines/execution/fills_handler.py).
 
-![Order (leg) state machine](../diagrams/order-state-machine.svg)
+![Every order leaves the working states for exactly one terminal state, and terminal rows never move.](../diagrams/oms-state-machine.svg)
 
 ## States
 

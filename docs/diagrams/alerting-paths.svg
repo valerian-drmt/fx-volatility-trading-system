@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="680" viewBox="0 0 1100 680" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="680" fill="#ffffff"/>
+  <defs>
+    <marker id="m-hot" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker>
+    <marker id="s-hot" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#d9480f"/></marker>
+    <marker id="m-cold" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker>
+    <marker id="s-cold" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#3b6ea8"/></marker>
+    <marker id="m-shared" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker>
+    <marker id="s-shared" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b7791f"/></marker>
+    <marker id="m-fail" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker>
+    <marker id="s-fail" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#b02a37"/></marker>
+    <marker id="m-ok" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker>
+    <marker id="s-ok" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#146c43"/></marker>
+    <marker id="m-neutral" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-neutral" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+    <marker id="m-grey" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker>
+    <marker id="s-grey" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto"><path d="M10,0 L0,4 L10,8 z" fill="#555555"/></marker>
+  </defs>
+  <text x="550" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">Two independent paths reach the mailbox: Prometheus rules through Alertmanager, and a host cron</text>
+  <rect x="15" y="60" width="160" height="44" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="95" y="78" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">host cron</text>
+  <text x="95" y="94" font-size="12" fill="#555" text-anchor="middle">disk_check.sh</text>
+  <line x1="95" y1="104" x2="95" y2="665" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="195" y="60" width="160" height="44" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="275" y="78" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">prometheus</text>
+  <text x="275" y="94" font-size="12" fill="#555" text-anchor="middle">obs/alerts.yml</text>
+  <line x1="275" y1="104" x2="275" y2="665" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="390" y="60" width="160" height="44" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="470" y="78" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">alertmanager</text>
+  <text x="470" y="94" font-size="12" fill="#555" text-anchor="middle">obs/alertmanager.yml</text>
+  <line x1="470" y1="104" x2="470" y2="665" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="580" y="60" width="160" height="44" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="660" y="78" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">IMDS</text>
+  <text x="660" y="94" font-size="12" fill="#555" text-anchor="middle">EC2 instance role</text>
+  <line x1="660" y1="104" x2="660" y2="665" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="755" y="60" width="160" height="44" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="835" y="78" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">SNS</text>
+  <text x="835" y="94" font-size="12" fill="#555" text-anchor="middle">fxvol-alarms</text>
+  <line x1="835" y1="104" x2="835" y2="665" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="925" y="60" width="160" height="44" rx="6" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="1005" y="78" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">mailbox</text>
+  <text x="1005" y="94" font-size="12" fill="#555" text-anchor="middle">email subscription</text>
+  <line x1="1005" y1="104" x2="1005" y2="665" stroke="#555" stroke-dasharray="4 4"/>
+  <rect x="20" y="116" width="1060" height="352" rx="8" fill="none" stroke="#555555" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="30" y="134" font-size="12" fill="#555555" font-weight="bold">obs path</text>
+  <text x="98" y="134" font-size="12" fill="#555">(needs the obs profile up)</text>
+  <rect x="185" y="140" width="180" height="52" rx="3" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="275" y="160" font-size="12" fill="#222" text-anchor="middle">rule true for its for:</text>
+  <text x="275" y="177" font-size="12" fill="#222" text-anchor="middle">window (0-30 min): firing</text>
+  <path d="M275,214 L467,214" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="296" y="196" width="151" height="16" fill="#ffffff"/>
+  <text x="372" y="207" font-size="12" fill="#b02a37" text-anchor="middle">alert + severity label</text>
+  <rect x="310" y="228" width="320" height="86" rx="3" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="470" y="246" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">group by alertname, wait 30 s</text>
+  <text x="470" y="263" font-size="12" fill="#222" text-anchor="middle">inhibit: DiskUsageCritical firing silences</text>
+  <text x="470" y="279" font-size="12" fill="#222" text-anchor="middle">EngineDown, ApiDown, EngineCycleStalled,</text>
+  <text x="470" y="295" font-size="12" fill="#222" text-anchor="middle">DbWriterLag and DiskUsageHigh</text>
+  <path d="M470,336 L657,336" fill="none" stroke="#555555" stroke-width="1.5" marker-end="url(#m-neutral)"/>
+  <rect x="478" y="318" width="171" height="16" fill="#ffffff"/>
+  <text x="563" y="329" font-size="12" fill="#222" text-anchor="middle">credentials (hop limit 2)</text>
+  <path d="M660,368 L473,368" fill="none" stroke="#555555" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#m-neutral)"/>
+  <rect x="491" y="350" width="145" height="16" fill="#ffffff"/>
+  <text x="563" y="361" font-size="12" fill="#222" text-anchor="middle">role with sns:Publish</text>
+  <path d="M470,402 L832,402" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="509" y="384" width="283" height="16" fill="#ffffff"/>
+  <text x="651" y="395" font-size="12" fill="#b02a37" text-anchor="middle">Publish, SigV4: [fxvol FIRING] &lt;alertname&gt;</text>
+  <path d="M835,432 L1002,432" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="898" y="414" width="39" height="16" fill="#ffffff"/>
+  <text x="918" y="425" font-size="12" fill="#b02a37" text-anchor="middle">email</text>
+  <rect x="183" y="443" width="574" height="16" fill="#ffffff"/>
+  <text x="470" y="454" font-size="12" fill="#555" text-anchor="middle">repeat while firing: critical every 4 h, warning every 24 h; RESOLVED is sent on clear</text>
+  <rect x="20" y="482" width="1060" height="182" rx="8" fill="none" stroke="#555555" stroke-width="1.4" stroke-dasharray="7 5"/>
+  <text x="30" y="500" font-size="12" fill="#555555" font-weight="bold">host path</text>
+  <text x="105" y="500" font-size="12" fill="#555">(works with the obs profile down)</text>
+  <rect x="26" y="506" width="152" height="86" rx="3" fill="#f2f2f2" stroke="#555555" stroke-width="1.4"/>
+  <text x="102" y="524" font-size="12" fill="#222" text-anchor="middle">hourly: root fs &gt;= 80 %</text>
+  <text x="102" y="540" font-size="12" fill="#222" text-anchor="middle">&gt;= 90 %: prune images</text>
+  <text x="102" y="556" font-size="12" fill="#222" text-anchor="middle">first, then report</text>
+  <text x="102" y="574" font-size="12" fill="#222" text-anchor="middle">6 h cooldown</text>
+  <path d="M95,612 L832,612" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="282" y="594" width="376" height="16" fill="#ffffff"/>
+  <text x="470" y="605" font-size="12" fill="#b02a37" text-anchor="middle">aws sns publish (instance role): [fxvol WARNING] disk N%</text>
+  <path d="M835,642 L1002,642" fill="none" stroke="#b02a37" stroke-width="1.5" marker-end="url(#m-fail)"/>
+  <rect x="898" y="624" width="39" height="16" fill="#ffffff"/>
+  <text x="918" y="635" font-size="12" fill="#b02a37" text-anchor="middle">email</text>
+</svg>

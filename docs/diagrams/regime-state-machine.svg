@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="720" viewBox="0 0 1100 720" font-family="Helvetica, Arial, sans-serif" font-size="12">
+  <rect width="1100" height="720" fill="#ffffff"/>
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#555555"/></marker><marker id="ar" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b02a37"/></marker><marker id="ag" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#146c43"/></marker><marker id="ah" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#d9480f"/></marker><marker id="ac" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#3b6ea8"/></marker><marker id="ay" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b7791f"/></marker></defs>
+  <text x="550.0" y="30" font-size="16" fill="#222" text-anchor="middle" font-weight="bold">The regime label is recomputed from scratch every cycle; only the gate remembers three cycles</text>
+  <rect x="20" y="50" width="1060" height="320" fill="none" stroke="#555555" stroke-dasharray="6 4"/>
+  <rect x="20" y="50" width="430" height="22" rx="0" fill="#f4f5f7" stroke="#555555" stroke-width="1.4"/>
+  <text x="235.0" y="64.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Label: detect_regime, run by the vol-engine every 180 s cycle</text>
+  <rect x="40" y="110" width="270" height="112" rx="6" fill="#dbe6f4" stroke="#3b6ea8" stroke-width="1.4"/>
+  <text x="175.0" y="130" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Inputs (compute_regime_snapshot)</text>
+  <text x="175.0" y="146" font-size="12" fill="#222" text-anchor="middle">vol_level = 3M ATM IV, percent</text>
+  <text x="175.0" y="162" font-size="12" fill="#222" text-anchor="middle">vol_of_vol = std of the last 30 d of</text>
+  <text x="175.0" y="178" font-size="12" fill="#222" text-anchor="middle">3M ATM IV (≥ 20 obs, else None)</text>
+  <text x="175.0" y="194" font-size="12" fill="#222" text-anchor="middle">term_slope = 6M − 1M: unused</text>
+  <path d="M400,178 L418,196 L400,214 L382,196 z" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <line x1="310" y1="180" x2="382" y2="194" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <rect x="700" y="84" width="210" height="52" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="805.0" y="113.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">calm</text>
+  <rect x="700" y="170" width="210" height="52" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="805.0" y="199.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">stressed</text>
+  <rect x="700" y="256" width="210" height="52" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="805.0" y="285.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">pre_event</text>
+  <path d="M412,184 L698,110" fill="none" stroke="#146c43" stroke-width="1.4" marker-end="url(#ag)"/>
+  <text x="510" y="122" font-size="12" fill="#146c43" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">level ≤ 10 and vov ≤ 0.4 (or None)</text>
+  <line x1="418" y1="196" x2="698" y2="196" stroke="#b02a37" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text x="560" y="190" font-size="12" fill="#b02a37" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">level &gt; 10, or vov &gt; 1.0</text>
+  <path d="M412,208 L698,282" fill="none" stroke="#b7791f" stroke-width="1.4" marker-end="url(#ay)"/>
+  <text x="520" y="282" font-size="12" fill="#b7791f" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">level ≤ 10 and 0.4 &lt; vov ≤ 1.0</text>
+  <line x1="910" y1="110" x2="950" y2="110" stroke="#555555" stroke-width="1.4"/>
+  <line x1="910" y1="196" x2="950" y2="196" stroke="#555555" stroke-width="1.4"/>
+  <line x1="910" y1="282" x2="950" y2="282" stroke="#555555" stroke-width="1.4"/>
+  <path d="M950,110 V340 H400 V216" fill="none" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="675" y="334" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">next cycle: evaluated again with no memory of the last label</text>
+  <text x="960" y="150" font-size="12" fill="#555" text-anchor="start">any label can</text>
+  <text x="960" y="166" font-size="12" fill="#555" text-anchor="start">follow any other</text>
+  <text x="960" y="182" font-size="12" fill="#555" text-anchor="start">in one cycle</text>
+  <rect x="20" y="390" width="1060" height="315" fill="none" stroke="#555555" stroke-dasharray="6 4"/>
+  <rect x="20" y="390" width="470" height="22" rx="0" fill="#f4f5f7" stroke="#555555" stroke-width="1.4"/>
+  <text x="255.0" y="404.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">Gate: gate_decision(label, event_dampener, labels at t, t-1, t-2)</text>
+  <circle cx="60" cy="470" r="7" fill="#222"/>
+  <line x1="67" y1="470" x2="98" y2="470" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="40" y="446" font-size="12" fill="#222" text-anchor="start">fewer than 3 snapshots</text>
+  <rect x="100" y="450" width="200" height="76" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="200.0" y="475.0" font-size="12" fill="#222" text-anchor="middle" font-weight="bold">regime_unstable</text>
+  <text x="200.0" y="491.0" font-size="12" fill="#222" text-anchor="middle">authorized: no</text>
+  <text x="200.0" y="507.0" font-size="12" fill="#222" text-anchor="middle">size_mult 0.0</text>
+  <rect x="420" y="430" width="650" height="260" rx="8" fill="#f4f5f7" stroke="#555555" stroke-width="1.4" stroke-dasharray="6 4"/>
+  <text x="436" y="450" font-size="12" fill="#222" text-anchor="start" font-weight="bold">held: the same label at t, t-1, t-2</text>
+  <line x1="300" y1="470" x2="418" y2="470" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="360" y="462" font-size="12" fill="#222" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">3 equal labels</text>
+  <line x1="418" y1="508" x2="302" y2="508" stroke="#b02a37" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text x="360" y="526" font-size="12" fill="#b02a37" text-anchor="middle" stroke="#ffffff" stroke-width="4" stroke-linejoin="round" paint-order="stroke">label changes</text>
+  <path d="M470,554 L488,572 L470,590 L452,572 z" fill="#ffffff" stroke="#555555" stroke-width="1.4"/>
+  <text x="470" y="610" font-size="12" fill="#555" text-anchor="middle">first match</text>
+  <text x="470" y="626" font-size="12" fill="#555" text-anchor="middle">wins</text>
+  <rect x="560" y="462" width="280" height="46" rx="6" fill="#fff3cd" stroke="#b7791f" stroke-width="1.4"/>
+  <text x="700.0" y="480.0" font-size="12" fill="#222" text-anchor="middle">1  event_dampener (event &lt; 5 days)</text>
+  <text x="700.0" y="496.0" font-size="12" fill="#222" text-anchor="middle">event_dampener_active · yes · 0.5</text>
+  <line x1="488" y1="572" x2="558" y2="485" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <rect x="560" y="518" width="280" height="46" rx="6" fill="#f8d7da" stroke="#b02a37" stroke-width="1.4"/>
+  <text x="700.0" y="536.0" font-size="12" fill="#222" text-anchor="middle">2  label pre_event</text>
+  <text x="700.0" y="552.0" font-size="12" fill="#222" text-anchor="middle">regime_pre_event · no · 0.0</text>
+  <line x1="488" y1="572" x2="558" y2="541" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <rect x="560" y="574" width="280" height="46" rx="6" fill="#fbe3d6" stroke="#d9480f" stroke-width="1.4"/>
+  <text x="700.0" y="592.0" font-size="12" fill="#222" text-anchor="middle">3  label stressed</text>
+  <text x="700.0" y="608.0" font-size="12" fill="#222" text-anchor="middle">regime_stressed · yes · 0.7</text>
+  <line x1="488" y1="572" x2="558" y2="597" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <rect x="560" y="630" width="280" height="46" rx="6" fill="#d1e7dd" stroke="#146c43" stroke-width="1.4"/>
+  <text x="700.0" y="648.0" font-size="12" fill="#222" text-anchor="middle">4  label calm</text>
+  <text x="700.0" y="664.0" font-size="12" fill="#222" text-anchor="middle">regime_calm · yes · 1.0</text>
+  <line x1="488" y1="572" x2="558" y2="653" stroke="#555555" stroke-width="1.4" marker-end="url(#a)"/>
+  <text x="860" y="480" font-size="12" fill="#222" text-anchor="start" font-weight="bold">reason · authorized · size_mult</text>
+  <text x="860" y="504" font-size="12" fill="#222" text-anchor="start">The dampener is tested before</text>
+  <text x="860" y="520" font-size="12" fill="#222" text-anchor="start">the label, so a held pre_event</text>
+  <text x="860" y="536" font-size="12" fill="#222" text-anchor="start">with an event inside 5 days</text>
+  <text x="860" y="552" font-size="12" fill="#222" text-anchor="start">reads authorized at 0.5.</text>
+  <text x="860" y="584" font-size="12" fill="#555" text-anchor="start">Read by GET /regime/state and</text>
+  <text x="860" y="600" font-size="12" fill="#555" text-anchor="start">the vol-engine cycle log only.</text>
+  <text x="860" y="616" font-size="12" fill="#555" text-anchor="start">The trade preview does not call</text>
+  <text x="860" y="632" font-size="12" fill="#555" text-anchor="start">it: there pre_event is refused</text>
+  <text x="860" y="648" font-size="12" fill="#555" text-anchor="start">by regime_not_pre_event.</text>
+</svg>

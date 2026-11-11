@@ -14,11 +14,13 @@ The observability services live on the `obs` compose profile — opt-in, so a pl
 docker compose --profile obs up -d
 ```
 
-This starts `prometheus`, `cadvisor`, `loki`, `alloy`, `tempo`,
-`otel-collector` and `grafana`, all on `fxvol-internal`. Grafana maps to the host
+This starts `prometheus`, `alertmanager`, `cadvisor`, `loki`, `alloy`,
+`docker-socket-proxy`, `tempo`, `otel-collector` and `grafana`, all on
+`fxvol-internal`. Grafana maps to the host
 at `127.0.0.1:3000` (anonymous Viewer access, edits via the login form).
 
-`metrics` is a deliberate **subset** — `prometheus` + `cadvisor` only:
+`metrics` is a deliberate **subset** — `prometheus` + `cadvisor` (and
+`alertmanager`, which lists both profiles):
 
 ```powershell
 docker compose --profile metrics up -d
@@ -76,6 +78,11 @@ target should be `UP`.
 
 ## Tempo — traces
 
+One cycle is reachable from either side: its log lines carry `cycle_id` and
+`trace_id`, its root span carries `cycle_id` and `engine`.
+
+![A cycle's log lines and its trace are joined in Grafana by trace_id one way and cycle_id + engine the other](../diagrams/obs-cycle-correlation.svg)
+
 Explore → **Tempo** → Search by service or `cycle_id`. Each engine cycle is a root
 span `<engine>_cycle`; child spans (fetch, calibrate, …) nest under it. From a
 span, `tracesToLogsV2` opens the matching Loki logs (keyed on `cycle_id` +
@@ -96,7 +103,9 @@ disk-usage panel.
 
 The app's /dev Hardware tab graphs cAdvisor's per-container metrics
 (`cadvisor:8080`, scraped by Prometheus). "How much is vol-engine using right now?"
-is answered there.
+is answered there. The api picks its source per request:
+
+![The Hardware tab reads cAdvisor through Prometheus and falls back to the Docker socket only where the dev override mounts it](../diagrams/obs-hardware-tab-source.svg)
 
 Caveat: on Docker Desktop / WSL2 cAdvisor only sees the root cgroup and reports
 nothing per-container — the api then falls back to the `docker.sock` path. On a

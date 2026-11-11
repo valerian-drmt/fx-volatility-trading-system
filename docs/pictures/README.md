@@ -14,6 +14,11 @@ and the 2×2 grid); the rest are reference shots linked from there.
 | ★ `positions.png` | **Trade → Open positions** | the structured book: straddle / strangle / butterfly / calendar / call spread + futures, greeks per leg |
 | `architecture.png` | **System** | the container topology as of 2026-08 (before the analytics engine); the README now embeds `docs/diagrams/system-containers.svg` |
 
+`architecture.png` predates the analytics engine; the topology it shows now
+lives in a diagram that is kept current:
+
+![The current container topology: nginx in front of the frontend and the api, six engines on Redis and Postgres, one IB Gateway, the obs profile alongside](../diagrams/system-containers.svg)
+
 ## Reference shots
 
 | File | View | Shows |
