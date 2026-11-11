@@ -105,3 +105,28 @@ def test_the_route_declares_its_model(slug: str, path: str, model: Any) -> None:
     spec = create_app().openapi()
     schema = spec["paths"][path]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
     assert schema, path
+
+
+def test_a_value_the_declared_type_rejects_is_sent_as_the_untyped_route_sent_it() -> None:
+    """Prod regression of #416: handlers build rows from ORM objects, so a `str`
+    field gets a datetime and a number field a Decimal. The model must pass them
+    on as jsonable_encoder did (isoformat, float), never answer 500."""
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+    ts = datetime(2026, 11, 11, 12, 0, tzinfo=UTC)
+
+    @app.get("/rows", response_model=list[rm.TradeSubmittedRow], response_model_exclude_unset=True)
+    def rows() -> list[dict[str, Any]]:
+        return [{"id": 7, "created_at": ts, "total_premium_paid_usd": Decimal("12.5"), "state": ["odd"]}]
+
+    r = TestClient(app).get("/rows")
+    assert r.status_code == 200
+    row = r.json()[0]
+    assert row["created_at"] == ts.isoformat()
+    assert row["state"] == ["odd"]
+    assert row["id"] == 7

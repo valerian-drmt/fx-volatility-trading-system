@@ -8,10 +8,44 @@ OpenAPI drift gate and the generated frontend types.
 """
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
+from datetime import date, datetime
+from decimal import Decimal
+from enum import Enum
+from typing import Annotated, Any, TypeVar
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError, ValidatorFunctionWrapHandler, WrapValidator
+
+T = TypeVar("T")
+
+
+def _as_sent(value: Any, handler: ValidatorFunctionWrapHandler) -> Any:
+    """Validate as declared; a value the declared type rejects is passed on as
+    the old untyped route would have sent it, never turned into a 500. The
+    handlers build rows from ORM objects, so a `str` field can receive a
+    datetime and a number field a Decimal: those become what
+    `jsonable_encoder` made of them (isoformat, float)."""
+    try:
+        return handler(value)
+    except ValidationError:
+        pass
+    if isinstance(value, (datetime, date)):
+        value = value.isoformat()
+    elif isinstance(value, Decimal):
+        value = float(value)
+    elif isinstance(value, UUID):
+        value = str(value)
+    elif isinstance(value, Enum):
+        value = value.value
+    try:
+        return handler(value)
+    except ValidationError:
+        return value
+
+
+# A declared field type that documents the shape (OpenAPI, frontend types) but
+# never rejects a payload: see `_as_sent`.
+Lenient = Annotated[T, WrapValidator(_as_sent)]
 
 
 class _Open(BaseModel):
