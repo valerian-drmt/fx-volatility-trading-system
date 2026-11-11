@@ -14,1043 +14,1043 @@ from typing import Any
 
 from pydantic import Field
 
-from api.schemas.reads import _Open
+from api.schemas.reads import Lenient, _Open
 
 
 class Health(_Open):
-    commit: str | None = None
-    git_sha: str | None = None
-    status: str | None = None
-    version: str | None = None
+    commit: Lenient[str | None] = None
+    git_sha: Lenient[str | None] = None
+    status: Lenient[str | None] = None
+    version: Lenient[str | None] = None
 
 
 class HealthReady(_Open):
-    commit: str | None = None
-    components: HealthReadyComponents | None = None
-    git_sha: str | None = None
-    status: str | None = None
-    version: str | None = None
+    commit: Lenient[str | None] = None
+    components: Lenient[HealthReadyComponents | None] = None
+    git_sha: Lenient[str | None] = None
+    status: Lenient[str | None] = None
+    version: Lenient[str | None] = None
 
 
 class HealthReadyComponents(_Open):
-    database: str | None = None
-    redis: str | None = None
+    database: Lenient[str | None] = None
+    redis: Lenient[str | None] = None
 
 
 class HealthExtended(_Open):
-    commit: str | None = None
-    components: HealthExtendedComponents | None = None
-    git_sha: str | None = None
-    status: str | None = None
-    timestamp: str | None = None
-    version: str | None = None
+    commit: Lenient[str | None] = None
+    components: Lenient[HealthExtendedComponents | None] = None
+    git_sha: Lenient[str | None] = None
+    status: Lenient[str | None] = None
+    timestamp: Lenient[str | None] = None
+    version: Lenient[str | None] = None
 
 
 class HealthExtendedComponents(_Open):
-    backup: str | None = None
-    database: str | None = None
-    engines: HealthExtendedComponentsEngines | None = None
-    redis: str | None = None
+    backup: Lenient[str | None] = None
+    database: Lenient[str | None] = None
+    engines: Lenient[HealthExtendedComponentsEngines | None] = None
+    redis: Lenient[str | None] = None
 
 
 class HealthExtendedComponentsEngines(_Open):
-    analytics_engine: str | None = None
-    db_writer: str | None = None
-    execution: str | None = None
-    market_data: str | None = None
-    risk_engine: str | None = None
-    vol_engine: str | None = None
+    analytics_engine: Lenient[str | None] = None
+    db_writer: Lenient[str | None] = None
+    execution: Lenient[str | None] = None
+    market_data: Lenient[str | None] = None
+    risk_engine: Lenient[str | None] = None
+    vol_engine: Lenient[str | None] = None
 
 
 class PositionsBookRow(_Open):
-    available: float | None = None
-    avg_price: float | None = None
-    contract_expiry: str | None = None
-    contract_strike: float | None = None
-    contract_type: str | None = None
-    ib_local_symbol: str | None = None
-    leg_idx: int | float | None = None
-    open_qty: float | None = None
-    order_id: int | float | None = None
-    order_role: str | None = None
-    rebuilt_at: str | None = None
-    reserved_qty: float | None = None
-    side: str | None = None
-    structure_id: int | float | None = None
-    structure_type: str | None = None
+    available: Lenient[float | None] = None
+    avg_price: Lenient[float | None] = None
+    contract_expiry: Lenient[str | None] = None
+    contract_strike: Lenient[float | None] = None
+    contract_type: Lenient[str | None] = None
+    ib_local_symbol: Lenient[str | None] = None
+    leg_idx: Lenient[int | float | None] = None
+    open_qty: Lenient[float | None] = None
+    order_id: Lenient[int | float | None] = None
+    order_role: Lenient[str | None] = None
+    rebuilt_at: Lenient[str | None] = None
+    reserved_qty: Lenient[float | None] = None
+    side: Lenient[str | None] = None
+    structure_id: Lenient[int | float | None] = None
+    structure_type: Lenient[str | None] = None
 
 
 class PositionsBreaksRow(_Open):
-    book_qty: float | None = None
-    break_type: str | None = None
-    broker_qty: float | None = None
-    contract: str | None = None
-    detected_at: str | None = None
-    diff: float | None = None
-    id: int | float | None = None
-    last_seen_at: str | None = None
+    book_qty: Lenient[float | None] = None
+    break_type: Lenient[str | None] = None
+    broker_qty: Lenient[float | None] = None
+    contract: Lenient[str | None] = None
+    detected_at: Lenient[str | None] = None
+    diff: Lenient[float | None] = None
+    id: Lenient[int | float | None] = None
+    last_seen_at: Lenient[str | None] = None
     resolved_at: Any = None
 
 
 class PositionsStructured(_Open):
-    structures: list[PositionsStructuredStructuresItem] | None = None
-    unlinked: list[Any] | None = None
+    structures: Lenient[list[PositionsStructuredStructuresItem] | None] = None
+    unlinked: Lenient[list[Any] | None] = None
 
 
 class PositionsStructuredStructuresItem(_Open):
-    base_qty: int | float | None = None
-    created_at: str | None = None
-    legs: list[dict[str, Any]] | None = None
-    net: dict[str, Any] | None = None
+    base_qty: Lenient[int | float | None] = None
+    created_at: Lenient[str | None] = None
+    legs: Lenient[list[dict[str, Any]] | None] = None
+    net: Lenient[dict[str, Any] | None] = None
     product_label: Any = None
-    state: str | None = None
-    structure_id: int | float | None = None
-    structure_type: str | None = None
-    tenor: str | None = None
+    state: Lenient[str | None] = None
+    structure_id: Lenient[int | float | None] = None
+    structure_type: Lenient[str | None] = None
+    tenor: Lenient[str | None] = None
 
 
 class PositionsReconciliation(_Open):
-    as_of: str | None = None
-    breaks: list[PositionsReconciliationBreaksItem] | None = None
-    n_breaks: int | float | None = None
-    n_contracts: int | float | None = None
+    as_of: Lenient[str | None] = None
+    breaks: Lenient[list[PositionsReconciliationBreaksItem] | None] = None
+    n_breaks: Lenient[int | float | None] = None
+    n_contracts: Lenient[int | float | None] = None
 
 
 class PositionsReconciliationBreaksItem(_Open):
-    actual_net: float | None = None
-    f_break: float | None = Field(default=None, alias="break")
-    contract: str | None = None
-    expected_net: float | None = None
-    kind: str | None = None
-    structure_id: int | float | None = None
+    actual_net: Lenient[float | None] = None
+    f_break: Lenient[float | None] = Field(default=None, alias="break")
+    contract: Lenient[str | None] = None
+    expected_net: Lenient[float | None] = None
+    kind: Lenient[str | None] = None
+    structure_id: Lenient[int | float | None] = None
 
 
 class PositionsLedger(_Open):
-    as_of: str | None = None
-    positions: list[PositionsLedgerPositionsItem] | None = None
-    totals: PositionsLedgerTotals | None = None
+    as_of: Lenient[str | None] = None
+    positions: Lenient[list[PositionsLedgerPositionsItem] | None] = None
+    totals: Lenient[PositionsLedgerTotals | None] = None
 
 
 class PositionsLedgerPositionsItem(_Open):
-    avg_cost: float | None = None
-    commission: float | None = None
-    contract: str | None = None
-    multiplier: float | None = None
-    net_qty: float | None = None
-    realized_pnl: float | None = None
-    unrealized_pnl: float | None = None
+    avg_cost: Lenient[float | None] = None
+    commission: Lenient[float | None] = None
+    contract: Lenient[str | None] = None
+    multiplier: Lenient[float | None] = None
+    net_qty: Lenient[float | None] = None
+    realized_pnl: Lenient[float | None] = None
+    unrealized_pnl: Lenient[float | None] = None
 
 
 class PositionsLedgerTotals(_Open):
-    commission: float | None = None
-    realized_pnl: float | None = None
-    unrealized_pnl: float | None = None
+    commission: Lenient[float | None] = None
+    realized_pnl: Lenient[float | None] = None
+    unrealized_pnl: Lenient[float | None] = None
 
 
 class PositionsActiveRow(_Open):
     armed_signal_label: Any = None
     armed_z_score: Any = None
-    contract_price_entry: float | None = None
+    contract_price_entry: Lenient[float | None] = None
     contract_price_market: Any = None
-    current_delta_unhedged: float | None = None
-    current_gamma_usd_per_pip2: float | None = None
-    current_pnl_gross_usd: float | None = None
-    current_pnl_net_usd: float | None = None
-    current_theta_usd_per_day: float | None = None
-    current_vega_usd_per_volpt: float | None = None
+    current_delta_unhedged: Lenient[float | None] = None
+    current_gamma_usd_per_pip2: Lenient[float | None] = None
+    current_pnl_gross_usd: Lenient[float | None] = None
+    current_pnl_net_usd: Lenient[float | None] = None
+    current_theta_usd_per_day: Lenient[float | None] = None
+    current_vega_usd_per_volpt: Lenient[float | None] = None
     entry_gamma_usd_per_pip2: Any = None
     entry_iv_avg: Any = None
-    entry_premium_usd: float | None = None
+    entry_premium_usd: Lenient[float | None] = None
     entry_spot: Any = None
     entry_theta_usd_per_day: Any = None
-    entry_total_cost_usd: float | None = None
+    entry_total_cost_usd: Lenient[float | None] = None
     entry_vega_usd_per_volpt: Any = None
-    expiry_date: str | None = None
-    gamma_pnl_usd: float | None = None
-    ib_qty_diff: int | float | None = None
-    ib_qty_total: int | float | None = None
-    ib_reconciled_at: str | None = None
-    ib_sync_status: str | None = None
-    id: int | float | None = None
-    last_mtm_at: str | None = None
-    nominal_eur: float | None = None
-    opened_at: str | None = None
-    product_label: str | None = None
-    reference_tenor: str | None = None
-    source: str | None = None
-    state: str | None = None
-    structure: str | None = None
-    structure_id: int | float | None = None
-    structure_type: str | None = None
-    tenor: str | None = None
-    theta_pnl_usd: float | None = None
+    expiry_date: Lenient[str | None] = None
+    gamma_pnl_usd: Lenient[float | None] = None
+    ib_qty_diff: Lenient[int | float | None] = None
+    ib_qty_total: Lenient[int | float | None] = None
+    ib_reconciled_at: Lenient[str | None] = None
+    ib_sync_status: Lenient[str | None] = None
+    id: Lenient[int | float | None] = None
+    last_mtm_at: Lenient[str | None] = None
+    nominal_eur: Lenient[float | None] = None
+    opened_at: Lenient[str | None] = None
+    product_label: Lenient[str | None] = None
+    reference_tenor: Lenient[str | None] = None
+    source: Lenient[str | None] = None
+    state: Lenient[str | None] = None
+    structure: Lenient[str | None] = None
+    structure_id: Lenient[int | float | None] = None
+    structure_type: Lenient[str | None] = None
+    tenor: Lenient[str | None] = None
+    theta_pnl_usd: Lenient[float | None] = None
     triggering_pc: Any = None
-    vega_pnl_usd: float | None = None
-    instrument_type: str | None = None
-    iv: float | None = None
-    option_type: str | None = None
-    quantity: float | None = None
-    side: str | None = None
-    strike: float | None = None
-    symbol: str | None = None
-    vanna_usd: float | None = None
-    volga_usd: float | None = None
+    vega_pnl_usd: Lenient[float | None] = None
+    instrument_type: Lenient[str | None] = None
+    iv: Lenient[float | None] = None
+    option_type: Lenient[str | None] = None
+    quantity: Lenient[float | None] = None
+    side: Lenient[str | None] = None
+    strike: Lenient[float | None] = None
+    symbol: Lenient[str | None] = None
+    vanna_usd: Lenient[float | None] = None
+    volga_usd: Lenient[float | None] = None
 
 
 class PositionsAggregate(_Open):
-    n_delta_unknown: int | float | None = None
-    n_open_positions: int | float | None = None
-    total_delta_unhedged: float | None = None
-    total_gamma_usd_per_pip2: float | None = None
-    total_theta_usd_per_day: float | None = None
-    total_vega_usd_per_volpt: float | None = None
+    n_delta_unknown: Lenient[int | float | None] = None
+    n_open_positions: Lenient[int | float | None] = None
+    total_delta_unhedged: Lenient[float | None] = None
+    total_gamma_usd_per_pip2: Lenient[float | None] = None
+    total_theta_usd_per_day: Lenient[float | None] = None
+    total_vega_usd_per_volpt: Lenient[float | None] = None
 
 
 class PortfolioAccount(_Open):
-    available_funds_usd: float | None = None
-    buying_power_usd: float | None = None
-    freshness: str | None = None
-    latest: PortfolioAccountLatest | None = None
-    prev_24h: PortfolioAccountPrev24h | None = None
+    available_funds_usd: Lenient[float | None] = None
+    buying_power_usd: Lenient[float | None] = None
+    freshness: Lenient[str | None] = None
+    latest: Lenient[PortfolioAccountLatest | None] = None
+    prev_24h: Lenient[PortfolioAccountPrev24h | None] = None
 
 
 class PortfolioAccountLatest(_Open):
-    cash_usd: float | None = None
-    currencies: dict[str, dict[str, Any]] | None = None
-    cushion: float | None = None
-    excess_liquidity: float | None = None
-    gross_position_value: float | None = None
-    init_margin_req: float | None = None
-    maint_margin_req: float | None = None
-    net_liq_usd: float | None = None
-    open_positions_count: int | float | None = None
-    timestamp: str | None = None
-    unrealized_pnl_usd: float | None = None
+    cash_usd: Lenient[float | None] = None
+    currencies: Lenient[dict[str, dict[str, Any]] | None] = None
+    cushion: Lenient[float | None] = None
+    excess_liquidity: Lenient[float | None] = None
+    gross_position_value: Lenient[float | None] = None
+    init_margin_req: Lenient[float | None] = None
+    maint_margin_req: Lenient[float | None] = None
+    net_liq_usd: Lenient[float | None] = None
+    open_positions_count: Lenient[int | float | None] = None
+    timestamp: Lenient[str | None] = None
+    unrealized_pnl_usd: Lenient[float | None] = None
 
 
 class PortfolioAccountPrev24h(_Open):
-    cash_usd: float | None = None
-    currencies: dict[str, dict[str, Any]] | None = None
-    cushion: float | None = None
-    excess_liquidity: float | None = None
-    gross_position_value: float | None = None
-    init_margin_req: float | None = None
-    maint_margin_req: float | None = None
-    net_liq_usd: float | None = None
-    open_positions_count: int | float | None = None
-    timestamp: str | None = None
-    unrealized_pnl_usd: float | None = None
+    cash_usd: Lenient[float | None] = None
+    currencies: Lenient[dict[str, dict[str, Any]] | None] = None
+    cushion: Lenient[float | None] = None
+    excess_liquidity: Lenient[float | None] = None
+    gross_position_value: Lenient[float | None] = None
+    init_margin_req: Lenient[float | None] = None
+    maint_margin_req: Lenient[float | None] = None
+    net_liq_usd: Lenient[float | None] = None
+    open_positions_count: Lenient[int | float | None] = None
+    timestamp: Lenient[str | None] = None
+    unrealized_pnl_usd: Lenient[float | None] = None
 
 
 class PortfolioHeader(_Open):
-    account: PortfolioHeaderAccount | None = None
-    computed_at: str | None = None
-    greeks: PortfolioHeaderGreeks | None = None
-    pnl: PortfolioHeaderPnl | None = None
-    rollup_computed_at: str | None = None
-    var_1d_99: PortfolioHeaderVar1d99 | None = None
+    account: Lenient[PortfolioHeaderAccount | None] = None
+    computed_at: Lenient[str | None] = None
+    greeks: Lenient[PortfolioHeaderGreeks | None] = None
+    pnl: Lenient[PortfolioHeaderPnl | None] = None
+    rollup_computed_at: Lenient[str | None] = None
+    var_1d_99: Lenient[PortfolioHeaderVar1d99 | None] = None
 
 
 class PortfolioHeaderAccount(_Open):
-    as_of: str | None = None
-    cash_usd: float | None = None
-    cushion: float | None = None
-    excess_liquidity: float | None = None
-    init_margin_req: float | None = None
-    n_open_positions: int | float | None = None
-    net_liq_usd: float | None = None
-    util_pct: float | None = None
+    as_of: Lenient[str | None] = None
+    cash_usd: Lenient[float | None] = None
+    cushion: Lenient[float | None] = None
+    excess_liquidity: Lenient[float | None] = None
+    init_margin_req: Lenient[float | None] = None
+    n_open_positions: Lenient[int | float | None] = None
+    net_liq_usd: Lenient[float | None] = None
+    util_pct: Lenient[float | None] = None
 
 
 class PortfolioHeaderGreeks(_Open):
-    delta_usd: float | None = None
-    gamma_usd: float | None = None
-    theta_usd: float | None = None
-    vega_usd: float | None = None
+    delta_usd: Lenient[float | None] = None
+    gamma_usd: Lenient[float | None] = None
+    theta_usd: Lenient[float | None] = None
+    vega_usd: Lenient[float | None] = None
 
 
 class PortfolioHeaderPnl(_Open):
-    open_unrealized_usd: float | None = None
-    prev_close_day: str | None = None
-    total_24h_usd: float | None = None
+    open_unrealized_usd: Lenient[float | None] = None
+    prev_close_day: Lenient[str | None] = None
+    total_24h_usd: Lenient[float | None] = None
 
 
 class PortfolioHeaderVar1d99(_Open):
-    method: str | None = None
-    n_days: int | float | None = None
-    usd: float | None = None
+    method: Lenient[str | None] = None
+    n_days: Lenient[int | float | None] = None
+    usd: Lenient[float | None] = None
 
 
 class PortfolioEquityCurveRow(_Open):
-    is_eod: bool | None = None
-    net_liq_usd: float | None = None
-    timestamp: str | None = None
+    is_eod: Lenient[bool | None] = None
+    net_liq_usd: Lenient[float | None] = None
+    timestamp: Lenient[str | None] = None
 
 
 class PortfolioValuationHistoryRow(_Open):
-    contracts_usd: float | None = None
-    eur_cash_usd: float | None = None
-    net_liq_usd: float | None = None
-    timestamp: str | None = None
-    usd_cash_usd: float | None = None
+    contracts_usd: Lenient[float | None] = None
+    eur_cash_usd: Lenient[float | None] = None
+    net_liq_usd: Lenient[float | None] = None
+    timestamp: Lenient[str | None] = None
+    usd_cash_usd: Lenient[float | None] = None
 
 
 class PortfolioTradeMarkersRow(_Open):
-    closed_at: str | None = None
+    closed_at: Lenient[str | None] = None
     # null in every recorded row (no closed trade, no entry spot); numbers when set
-    entry_spot: float | None = None
-    id: int | float | None = None
-    net_pnl_usd: float | None = None
-    opened_at: str | None = None
-    state: str | None = None
-    type: str | None = None
+    entry_spot: Lenient[float | None] = None
+    id: Lenient[int | float | None] = None
+    net_pnl_usd: Lenient[float | None] = None
+    opened_at: Lenient[str | None] = None
+    state: Lenient[str | None] = None
+    type: Lenient[str | None] = None
 
 
 class PortfolioGreeksHistoryRow(_Open):
-    delta_usd: float | None = None
-    gamma_usd: float | None = None
-    theta_usd: float | None = None
-    timestamp: str | None = None
-    vega_usd: float | None = None
+    delta_usd: Lenient[float | None] = None
+    gamma_usd: Lenient[float | None] = None
+    theta_usd: Lenient[float | None] = None
+    timestamp: Lenient[str | None] = None
+    vega_usd: Lenient[float | None] = None
 
 
 class PortfolioGreekPnlHistoryRow(_Open):
-    delta_pnl_usd: float | None = None
-    gamma_pnl_usd: float | None = None
-    theta_pnl_usd: float | None = None
-    timestamp: str | None = None
-    vega_pnl_usd: float | None = None
+    delta_pnl_usd: Lenient[float | None] = None
+    gamma_pnl_usd: Lenient[float | None] = None
+    theta_pnl_usd: Lenient[float | None] = None
+    timestamp: Lenient[str | None] = None
+    vega_pnl_usd: Lenient[float | None] = None
 
 
 class PortfolioAggregateGreeks(_Open):
-    computed_at: str | None = None
-    n_open_positions: int | float | None = None
-    n_with_snapshot: int | float | None = None
-    total_delta_usd: float | None = None
-    total_gamma_usd: float | None = None
-    total_theta_usd: float | None = None
-    total_vega_usd: float | None = None
+    computed_at: Lenient[str | None] = None
+    n_open_positions: Lenient[int | float | None] = None
+    n_with_snapshot: Lenient[int | float | None] = None
+    total_delta_usd: Lenient[float | None] = None
+    total_gamma_usd: Lenient[float | None] = None
+    total_theta_usd: Lenient[float | None] = None
+    total_vega_usd: Lenient[float | None] = None
 
 
 class PortfolioVegaPerTenorRow(_Open):
-    bucket: str | None = None
-    dte_hi: int | float | None = None
-    dte_lo: int | float | None = None
-    n_positions: int | float | None = None
-    vega_usd: float | None = None
+    bucket: Lenient[str | None] = None
+    dte_hi: Lenient[int | float | None] = None
+    dte_lo: Lenient[int | float | None] = None
+    n_positions: Lenient[int | float | None] = None
+    vega_usd: Lenient[float | None] = None
 
 
 class PortfolioRiskPerTenorRow(_Open):
-    bucket: str | None = None
-    dte_hi: int | float | None = None
-    dte_lo: int | float | None = None
-    n_positions: int | float | None = None
-    vanna_usd: float | None = None
-    vega_usd: float | None = None
-    volga_usd: float | None = None
+    bucket: Lenient[str | None] = None
+    dte_hi: Lenient[int | float | None] = None
+    dte_lo: Lenient[int | float | None] = None
+    n_positions: Lenient[int | float | None] = None
+    vanna_usd: Lenient[float | None] = None
+    vega_usd: Lenient[float | None] = None
+    volga_usd: Lenient[float | None] = None
 
 
 class PortfolioHedgeSummary(_Open):
-    computed_at: str | None = None
-    mtd: PortfolioHedgeSummaryMtd | None = None
-    rolling_30d: PortfolioHedgeSummaryRolling30d | None = None
-    rolling_7d: PortfolioHedgeSummaryRolling7d | None = None
-    today: PortfolioHedgeSummaryToday | None = None
-    wtd: PortfolioHedgeSummaryWtd | None = None
-    ytd: PortfolioHedgeSummaryYtd | None = None
+    computed_at: Lenient[str | None] = None
+    mtd: Lenient[PortfolioHedgeSummaryMtd | None] = None
+    rolling_30d: Lenient[PortfolioHedgeSummaryRolling30d | None] = None
+    rolling_7d: Lenient[PortfolioHedgeSummaryRolling7d | None] = None
+    today: Lenient[PortfolioHedgeSummaryToday | None] = None
+    wtd: Lenient[PortfolioHedgeSummaryWtd | None] = None
+    ytd: Lenient[PortfolioHedgeSummaryYtd | None] = None
 
 
 class PortfolioHedgeSummaryMtd(_Open):
-    cum_cost_usd: float | None = None
-    n_hedges: int | float | None = None
+    cum_cost_usd: Lenient[float | None] = None
+    n_hedges: Lenient[int | float | None] = None
 
 
 class PortfolioHedgeSummaryRolling30d(_Open):
-    cum_cost_usd: float | None = None
-    n_hedges: int | float | None = None
+    cum_cost_usd: Lenient[float | None] = None
+    n_hedges: Lenient[int | float | None] = None
 
 
 class PortfolioHedgeSummaryRolling7d(_Open):
-    cum_cost_usd: float | None = None
-    n_hedges: int | float | None = None
+    cum_cost_usd: Lenient[float | None] = None
+    n_hedges: Lenient[int | float | None] = None
 
 
 class PortfolioHedgeSummaryToday(_Open):
-    cum_cost_usd: float | None = None
-    n_hedges: int | float | None = None
+    cum_cost_usd: Lenient[float | None] = None
+    n_hedges: Lenient[int | float | None] = None
 
 
 class PortfolioHedgeSummaryWtd(_Open):
-    cum_cost_usd: float | None = None
-    n_hedges: int | float | None = None
+    cum_cost_usd: Lenient[float | None] = None
+    n_hedges: Lenient[int | float | None] = None
 
 
 class PortfolioHedgeSummaryYtd(_Open):
-    cum_cost_usd: float | None = None
-    n_hedges: int | float | None = None
+    cum_cost_usd: Lenient[float | None] = None
+    n_hedges: Lenient[int | float | None] = None
 
 
 class PortfolioStressGrid(_Open):
-    axis: str | None = None
-    current_spot: float | None = None
-    dropped: list[Any] | None = None
-    fallback: PortfolioStressGridFallback | None = None
-    grid: list[list[float]] | None = None
-    n_positions: int | float | None = None
-    output: str | None = None
-    row_bins: list[int | float] | None = None
-    row_unit: str | None = None
-    spot_bins_bps: list[int | float] | None = None
-    spot_source: str | None = None
-    vol_bins_vps: list[int | float] | None = None
+    axis: Lenient[str | None] = None
+    current_spot: Lenient[float | None] = None
+    dropped: Lenient[list[Any] | None] = None
+    fallback: Lenient[PortfolioStressGridFallback | None] = None
+    grid: Lenient[list[list[float]] | None] = None
+    n_positions: Lenient[int | float | None] = None
+    output: Lenient[str | None] = None
+    row_bins: Lenient[list[int | float] | None] = None
+    row_unit: Lenient[str | None] = None
+    spot_bins_bps: Lenient[list[int | float] | None] = None
+    spot_source: Lenient[str | None] = None
+    vol_bins_vps: Lenient[list[int | float] | None] = None
 
 
 class PortfolioStressGridFallback(_Open):
-    spot: str | None = None
+    spot: Lenient[str | None] = None
 
 
 class PortfolioGreeksLadder(_Open):
-    axis: str | None = None
-    bins: list[int | float] | None = None
-    current_spot: float | None = None
-    dropped: list[Any] | None = None
-    fallback: PortfolioGreeksLadderFallback | None = None
-    n_positions: int | float | None = None
-    rows: list[PortfolioGreeksLadderRowsItem] | None = None
-    spot_bins_bps: list[int | float] | None = None
-    spot_source: str | None = None
-    unit: str | None = None
+    axis: Lenient[str | None] = None
+    bins: Lenient[list[int | float] | None] = None
+    current_spot: Lenient[float | None] = None
+    dropped: Lenient[list[Any] | None] = None
+    fallback: Lenient[PortfolioGreeksLadderFallback | None] = None
+    n_positions: Lenient[int | float | None] = None
+    rows: Lenient[list[PortfolioGreeksLadderRowsItem] | None] = None
+    spot_bins_bps: Lenient[list[int | float] | None] = None
+    spot_source: Lenient[str | None] = None
+    unit: Lenient[str | None] = None
 
 
 class PortfolioGreeksLadderFallback(_Open):
-    spot: str | None = None
+    spot: Lenient[str | None] = None
 
 
 class PortfolioGreeksLadderRowsItem(_Open):
-    axis_value: int | float | None = None
-    delta_usd: float | None = None
-    dspot_bps: int | float | None = None
-    gamma_usd_per_pip: float | None = None
-    hedge_delta_usd: float | None = None
-    pnl_usd: float | None = None
-    spot: float | None = None
-    vega_usd_per_volpt: float | None = None
+    axis_value: Lenient[int | float | None] = None
+    delta_usd: Lenient[float | None] = None
+    dspot_bps: Lenient[int | float | None] = None
+    gamma_usd_per_pip: Lenient[float | None] = None
+    hedge_delta_usd: Lenient[float | None] = None
+    pnl_usd: Lenient[float | None] = None
+    spot: Lenient[float | None] = None
+    vega_usd_per_volpt: Lenient[float | None] = None
 
 
 class PortfolioVegaPca(_Open):
-    current_spot: float | None = None
-    dropped: list[Any] | None = None
-    fallback: PortfolioVegaPcaFallback | None = None
-    f_model_version: str | None = Field(default=None, alias="model_version")
-    n_positions: int | float | None = None
-    pcs: list[PortfolioVegaPcaPcsItem] | None = None
-    spot_source: str | None = None
+    current_spot: Lenient[float | None] = None
+    dropped: Lenient[list[Any] | None] = None
+    fallback: Lenient[PortfolioVegaPcaFallback | None] = None
+    f_model_version: Lenient[str | None] = Field(default=None, alias="model_version")
+    n_positions: Lenient[int | float | None] = None
+    pcs: Lenient[list[PortfolioVegaPcaPcsItem] | None] = None
+    spot_source: Lenient[str | None] = None
 
 
 class PortfolioVegaPcaFallback(_Open):
-    spot: str | None = None
+    spot: Lenient[str | None] = None
 
 
 class PortfolioVegaPcaPcsItem(_Open):
-    name: str | None = None
-    pc: int | float | None = None
-    variance_pct: float | None = None
-    vega_usd: float | None = None
+    name: Lenient[str | None] = None
+    pc: Lenient[int | float | None] = None
+    variance_pct: Lenient[float | None] = None
+    vega_usd: Lenient[float | None] = None
 
 
 class PortfolioMarginalVar(_Open):
-    convention: str | None = None
-    dropped: list[Any] | None = None
-    fallback: PortfolioMarginalVarFallback | None = None
-    horizon_days: int | float | None = None
-    method: str | None = None
-    n_days: int | float | None = None
-    positions: list[PortfolioMarginalVarPositionsItem] | None = None
-    total: PortfolioMarginalVarTotal | None = None
+    convention: Lenient[str | None] = None
+    dropped: Lenient[list[Any] | None] = None
+    fallback: Lenient[PortfolioMarginalVarFallback | None] = None
+    horizon_days: Lenient[int | float | None] = None
+    method: Lenient[str | None] = None
+    n_days: Lenient[int | float | None] = None
+    positions: Lenient[list[PortfolioMarginalVarPositionsItem] | None] = None
+    total: Lenient[PortfolioMarginalVarTotal | None] = None
 
 
 class PortfolioMarginalVarFallback(_Open):
-    spot: str | None = None
+    spot: Lenient[str | None] = None
 
 
 class PortfolioMarginalVarPositionsItem(_Open):
-    component_usd: float | None = None
-    factor: str | None = None
-    id: str | None = None
-    label: str | None = None
-    pct: float | None = None
-    standalone_usd: float | None = None
-    trade: str | None = None
+    component_usd: Lenient[float | None] = None
+    factor: Lenient[str | None] = None
+    id: Lenient[str | None] = None
+    label: Lenient[str | None] = None
+    pct: Lenient[float | None] = None
+    standalone_usd: Lenient[float | None] = None
+    trade: Lenient[str | None] = None
 
 
 class PortfolioMarginalVarTotal(_Open):
-    diversification_pct: float | None = None
-    portfolio_var_usd: float | None = None
+    diversification_pct: Lenient[float | None] = None
+    portfolio_var_usd: Lenient[float | None] = None
 
 
 class PortfolioVarFactors(_Open):
-    current_spot: float | None = None
-    dropped: list[Any] | None = None
-    factors: list[PortfolioVarFactorsFactorsItem] | None = None
-    fallback: PortfolioVarFactorsFallback | None = None
-    n_positions: int | float | None = None
-    spot_source: str | None = None
+    current_spot: Lenient[float | None] = None
+    dropped: Lenient[list[Any] | None] = None
+    factors: Lenient[list[PortfolioVarFactorsFactorsItem] | None] = None
+    fallback: Lenient[PortfolioVarFactorsFallback | None] = None
+    n_positions: Lenient[int | float | None] = None
+    spot_source: Lenient[str | None] = None
 
 
 class PortfolioVarFactorsFactorsItem(_Open):
-    key: str | None = None
-    label: str | None = None
-    var_usd: float | None = None
+    key: Lenient[str | None] = None
+    label: Lenient[str | None] = None
+    var_usd: Lenient[float | None] = None
 
 
 class PortfolioVarFactorsFallback(_Open):
-    spot: str | None = None
+    spot: Lenient[str | None] = None
 
 
 class PortfolioPnlAttribution(_Open):
-    computed_at: str | None = None
-    forward_source: str | None = None
-    lookback_hours: int | float | None = None
-    per_position: list[PortfolioPnlAttributionPerPositionItem] | None = None
-    rollup: str | None = None
-    source: str | None = None
-    totals: PortfolioPnlAttributionTotals | None = None
-    window_start: str | None = None
+    computed_at: Lenient[str | None] = None
+    forward_source: Lenient[str | None] = None
+    lookback_hours: Lenient[int | float | None] = None
+    per_position: Lenient[list[PortfolioPnlAttributionPerPositionItem] | None] = None
+    rollup: Lenient[str | None] = None
+    source: Lenient[str | None] = None
+    totals: Lenient[PortfolioPnlAttributionTotals | None] = None
+    window_start: Lenient[str | None] = None
 
 
 class PortfolioPnlAttributionPerPositionItem(_Open):
-    actual_pnl_usd: float | None = None
-    attrib_tenor: str | None = None
-    contract_id: int | float | None = None
-    delta_pnl_usd: float | None = None
-    gamma_pnl_usd: float | None = None
-    id: int | float | None = None
-    iv: float | None = None
-    nominal_eur: float | None = None
-    product_label: str | None = None
-    residual_usd: float | None = None
-    side: str | None = None
-    source: str | None = None
-    structure: str | None = None
-    structure_type: str | None = None
-    tenor: str | None = None
-    theta_pnl_usd: float | None = None
-    trade_id: int | float | None = None
-    vega_pnl_usd: float | None = None
-    wing: str | None = None
+    actual_pnl_usd: Lenient[float | None] = None
+    attrib_tenor: Lenient[str | None] = None
+    contract_id: Lenient[int | float | None] = None
+    delta_pnl_usd: Lenient[float | None] = None
+    gamma_pnl_usd: Lenient[float | None] = None
+    id: Lenient[int | float | None] = None
+    iv: Lenient[float | None] = None
+    nominal_eur: Lenient[float | None] = None
+    product_label: Lenient[str | None] = None
+    residual_usd: Lenient[float | None] = None
+    side: Lenient[str | None] = None
+    source: Lenient[str | None] = None
+    structure: Lenient[str | None] = None
+    structure_type: Lenient[str | None] = None
+    tenor: Lenient[str | None] = None
+    theta_pnl_usd: Lenient[float | None] = None
+    trade_id: Lenient[int | float | None] = None
+    vega_pnl_usd: Lenient[float | None] = None
+    wing: Lenient[str | None] = None
 
 
 class PortfolioPnlAttributionTotals(_Open):
-    actual_pnl_usd: float | None = None
-    delta_pnl_usd: float | None = None
-    gamma_pnl_usd: float | None = None
-    residual_usd: float | None = None
-    theta_pnl_usd: float | None = None
-    vega_pnl_usd: float | None = None
+    actual_pnl_usd: Lenient[float | None] = None
+    delta_pnl_usd: Lenient[float | None] = None
+    gamma_pnl_usd: Lenient[float | None] = None
+    residual_usd: Lenient[float | None] = None
+    theta_pnl_usd: Lenient[float | None] = None
+    vega_pnl_usd: Lenient[float | None] = None
 
 
 class PortfolioPinRisk(_Open):
-    breach_bps: int | float | None = None
-    current_spot: float | None = None
-    n_options: int | float | None = None
-    rows: list[PortfolioPinRiskRowsItem] | None = None
+    breach_bps: Lenient[int | float | None] = None
+    current_spot: Lenient[float | None] = None
+    n_options: Lenient[int | float | None] = None
+    rows: Lenient[list[PortfolioPinRiskRowsItem] | None] = None
 
 
 class PortfolioPinRiskRowsItem(_Open):
-    delta_usd: float | None = None
-    distance_pips: float | None = None
-    dte_days: int | float | None = None
-    expiry: str | None = None
-    id: int | float | None = None
-    option_type: str | None = None
-    pnl_at_breach_dn_usd: float | None = None
-    pnl_at_breach_up_usd: float | None = None
-    pnl_at_pin_usd: float | None = None
-    pnl_now_usd: float | None = None
-    product_label: str | None = None
-    qty: float | None = None
-    side: str | None = None
-    strike: float | None = None
-    structure: str | None = None
-    trade_id: int | float | None = None
+    delta_usd: Lenient[float | None] = None
+    distance_pips: Lenient[float | None] = None
+    dte_days: Lenient[int | float | None] = None
+    expiry: Lenient[str | None] = None
+    id: Lenient[int | float | None] = None
+    option_type: Lenient[str | None] = None
+    pnl_at_breach_dn_usd: Lenient[float | None] = None
+    pnl_at_breach_up_usd: Lenient[float | None] = None
+    pnl_at_pin_usd: Lenient[float | None] = None
+    pnl_now_usd: Lenient[float | None] = None
+    product_label: Lenient[str | None] = None
+    qty: Lenient[float | None] = None
+    side: Lenient[str | None] = None
+    strike: Lenient[float | None] = None
+    structure: Lenient[str | None] = None
+    trade_id: Lenient[int | float | None] = None
 
 
 class PortfolioScenarios(_Open):
-    by_iv: list[Any] | None = None
-    by_spot: list[Any] | None = None
+    by_iv: Lenient[list[Any] | None] = None
+    by_spot: Lenient[list[Any] | None] = None
     current_iv_avg_pct: Any = None
     current_spot: Any = None
-    iv_steps_volpt: list[float] | None = None
-    n_positions: int | float | None = None
-    spot_steps_pct: list[float] | None = None
+    iv_steps_volpt: Lenient[list[float] | None] = None
+    n_positions: Lenient[int | float | None] = None
+    spot_steps_pct: Lenient[list[float] | None] = None
 
 
 class PortfolioCash(_Open):
-    currencies: list[PortfolioCashCurrenciesItem] | None = None
-    eurusd_spot: float | None = None
-    freshness: str | None = None
-    timestamp: str | None = None
-    total_usd: float | None = None
+    currencies: Lenient[list[PortfolioCashCurrenciesItem] | None] = None
+    eurusd_spot: Lenient[float | None] = None
+    freshness: Lenient[str | None] = None
+    timestamp: Lenient[str | None] = None
+    total_usd: Lenient[float | None] = None
 
 
 class PortfolioCashCurrenciesItem(_Open):
-    ccy: str | None = None
-    rate: float | None = None
-    settled: float | None = None
+    ccy: Lenient[str | None] = None
+    rate: Lenient[float | None] = None
+    settled: Lenient[float | None] = None
     unsettled: Any = None
-    usd_value: float | None = None
+    usd_value: Lenient[float | None] = None
 
 
 class PortfolioDailyPnl(_Open):
-    computed_at: str | None = None
-    days: int | float | None = None
-    series: list[PortfolioDailyPnlSeriesItem] | None = None
-    source: str | None = None
-    total_mtm_usd: float | None = None
+    computed_at: Lenient[str | None] = None
+    days: Lenient[int | float | None] = None
+    series: Lenient[list[PortfolioDailyPnlSeriesItem] | None] = None
+    source: Lenient[str | None] = None
+    total_mtm_usd: Lenient[float | None] = None
 
 
 class PortfolioDailyPnlSeriesItem(_Open):
-    cumulative_usd: float | None = None
-    day: str | None = None
-    mtm_usd: float | None = None
-    n_closed: int | float | None = None
-    net_liq_close: float | None = None
-    realized_usd: float | None = None
+    cumulative_usd: Lenient[float | None] = None
+    day: Lenient[str | None] = None
+    mtm_usd: Lenient[float | None] = None
+    n_closed: Lenient[int | float | None] = None
+    net_liq_close: Lenient[float | None] = None
+    realized_usd: Lenient[float | None] = None
 
 
 class PortfolioPnlAttributionPivot(_Open):
-    by: str | None = None
-    groups: list[PortfolioPnlAttributionPivotGroupsItem] | None = None
-    total_nominal_eur: float | None = None
-    total_usd: float | None = None
+    by: Lenient[str | None] = None
+    groups: Lenient[list[PortfolioPnlAttributionPivotGroupsItem] | None] = None
+    total_nominal_eur: Lenient[float | None] = None
+    total_usd: Lenient[float | None] = None
 
 
 class PortfolioPnlAttributionPivotGroupsItem(_Open):
-    label: str | None = None
-    n: int | float | None = None
-    nominal_eur: float | None = None
-    pnl_usd: float | None = None
-    vanna_usd: float | None = None
-    volga_usd: float | None = None
+    label: Lenient[str | None] = None
+    n: Lenient[int | float | None] = None
+    nominal_eur: Lenient[float | None] = None
+    pnl_usd: Lenient[float | None] = None
+    vanna_usd: Lenient[float | None] = None
+    volga_usd: Lenient[float | None] = None
 
 
 class PortfolioVar(_Open):
-    computed_at: str | None = None
-    convention: str | None = None
-    current_spot: float | None = None
-    dropped: list[Any] | None = None
-    es_99_usd: float | None = None
-    fallback: PortfolioVarFallback | None = None
-    hist: list[PortfolioVarHistItem] | None = None
-    horizon_days: int | float | None = None
-    mean_daily_usd: float | None = None
-    method: str | None = None
-    n_days: int | float | None = None
-    n_positions: int | float | None = None
-    n_scenarios: int | float | None = None
-    spot_source: str | None = None
-    var_95_usd: float | None = None
-    var_99_usd: float | None = None
+    computed_at: Lenient[str | None] = None
+    convention: Lenient[str | None] = None
+    current_spot: Lenient[float | None] = None
+    dropped: Lenient[list[Any] | None] = None
+    es_99_usd: Lenient[float | None] = None
+    fallback: Lenient[PortfolioVarFallback | None] = None
+    hist: Lenient[list[PortfolioVarHistItem] | None] = None
+    horizon_days: Lenient[int | float | None] = None
+    mean_daily_usd: Lenient[float | None] = None
+    method: Lenient[str | None] = None
+    n_days: Lenient[int | float | None] = None
+    n_positions: Lenient[int | float | None] = None
+    n_scenarios: Lenient[int | float | None] = None
+    spot_source: Lenient[str | None] = None
+    var_95_usd: Lenient[float | None] = None
+    var_99_usd: Lenient[float | None] = None
 
 
 class PortfolioVarFallback(_Open):
-    spot: str | None = None
+    spot: Lenient[str | None] = None
 
 
 class PortfolioVarHistItem(_Open):
-    count: int | float | None = None
-    hi: float | None = None
-    lo: float | None = None
+    count: Lenient[int | float | None] = None
+    hi: Lenient[float | None] = None
+    lo: Lenient[float | None] = None
 
 
 class PortfolioGreekLimits(_Open):
-    alpha: float | None = None
-    computed_at: str | None = None
-    cross_budget_usd: float | None = None
-    delta_cap_usd: float | None = None
-    gamma_cap_pip: float | None = None
-    loss_budget_usd: float | None = None
-    nav_base_usd: float | None = None
-    nav_live_usd: float | None = None
-    regime_mult: float | None = None
-    spot: float | None = None
-    vega_cap_usd: float | None = None
+    alpha: Lenient[float | None] = None
+    computed_at: Lenient[str | None] = None
+    cross_budget_usd: Lenient[float | None] = None
+    delta_cap_usd: Lenient[float | None] = None
+    gamma_cap_pip: Lenient[float | None] = None
+    loss_budget_usd: Lenient[float | None] = None
+    nav_base_usd: Lenient[float | None] = None
+    nav_live_usd: Lenient[float | None] = None
+    regime_mult: Lenient[float | None] = None
+    spot: Lenient[float | None] = None
+    vega_cap_usd: Lenient[float | None] = None
 
 
 class PortfolioStats(_Open):
-    computed_at: str | None = None
-    cum_realized_usd: float | None = None
-    cum_unrealized_usd: float | None = None
-    current_drawdown_pct: float | None = None
+    computed_at: Lenient[str | None] = None
+    cum_realized_usd: Lenient[float | None] = None
+    cum_unrealized_usd: Lenient[float | None] = None
+    current_drawdown_pct: Lenient[float | None] = None
     hit_rate: Any = None
-    max_drawdown_pct: float | None = None
-    n_closed: int | float | None = None
-    n_days: int | float | None = None
-    n_open: int | float | None = None
-    n_reconciled_flat: int | float | None = None
-    net_liq_change_usd: float | None = None
-    sharpe: float | None = None
+    max_drawdown_pct: Lenient[float | None] = None
+    n_closed: Lenient[int | float | None] = None
+    n_days: Lenient[int | float | None] = None
+    n_open: Lenient[int | float | None] = None
+    n_reconciled_flat: Lenient[int | float | None] = None
+    net_liq_change_usd: Lenient[float | None] = None
+    sharpe: Lenient[float | None] = None
 
 
 class AdminSettingsDomain(_Open):
-    domain: str | None = None
-    params: list[AdminSettingsDomainParamsItem] | None = None
-    title: str | None = None
+    domain: Lenient[str | None] = None
+    params: Lenient[list[AdminSettingsDomainParamsItem] | None] = None
+    title: Lenient[str | None] = None
 
 
 class AdminSettingsDomainParamsItem(_Open):
     default: Any = None
-    description: str | None = None
-    is_default: bool | None = None
-    name: str | None = None
-    namespace: str | None = None
-    unit: str | None = None
+    description: Lenient[str | None] = None
+    is_default: Lenient[bool | None] = None
+    name: Lenient[str | None] = None
+    namespace: Lenient[str | None] = None
+    unit: Lenient[str | None] = None
     updated_by: Any = None
     value: Any = None
 
 
 class DevStack(_Open):
-    containers: list[DevStackContainersItem] | None = None
-    edges: list[DevStackEdgesItem] | None = None
-    timestamp: str | None = None
+    containers: Lenient[list[DevStackContainersItem] | None] = None
+    edges: Lenient[list[DevStackEdgesItem] | None] = None
+    timestamp: Lenient[str | None] = None
 
 
 class DevStackContainersItem(_Open):
-    desc: str | None = None
-    image: str | None = None
-    layer: str | None = None
-    name: str | None = None
-    status: str | None = None
+    desc: Lenient[str | None] = None
+    image: Lenient[str | None] = None
+    layer: Lenient[str | None] = None
+    name: Lenient[str | None] = None
+    status: Lenient[str | None] = None
 
 
 class DevStackEdgesItem(_Open):
-    f_from: str | None = Field(default=None, alias="from")
-    to: str | None = None
+    f_from: Lenient[str | None] = Field(default=None, alias="from")
+    to: Lenient[str | None] = None
 
 
 class DevMigrations(_Open):
-    chain: list[DevMigrationsChainItem] | None = None
-    current: str | None = None
-    head: str | None = None
-    in_sync: bool | None = None
-    n_applied: int | float | None = None
-    n_pending: int | float | None = None
-    n_total: int | float | None = None
+    chain: Lenient[list[DevMigrationsChainItem] | None] = None
+    current: Lenient[str | None] = None
+    head: Lenient[str | None] = None
+    in_sync: Lenient[bool | None] = None
+    n_applied: Lenient[int | float | None] = None
+    n_pending: Lenient[int | float | None] = None
+    n_total: Lenient[int | float | None] = None
 
 
 class DevMigrationsChainItem(_Open):
-    created: str | None = None
-    down_revision: str | None = None
-    filename: str | None = None
-    id: str | None = None
-    parent_title: str | None = None
-    status: str | None = None
-    title: str | None = None
+    created: Lenient[str | None] = None
+    down_revision: Lenient[str | None] = None
+    filename: Lenient[str | None] = None
+    id: Lenient[str | None] = None
+    parent_title: Lenient[str | None] = None
+    status: Lenient[str | None] = None
+    title: Lenient[str | None] = None
 
 
 class DevDbSchema(_Open):
-    n_relationships: int | float | None = None
-    n_tables: int | float | None = None
-    relationships: list[DevDbSchemaRelationshipsItem] | None = None
-    source: str | None = None
-    tables: list[DevDbSchemaTablesItem] | None = None
+    n_relationships: Lenient[int | float | None] = None
+    n_tables: Lenient[int | float | None] = None
+    relationships: Lenient[list[DevDbSchemaRelationshipsItem] | None] = None
+    source: Lenient[str | None] = None
+    tables: Lenient[list[DevDbSchemaTablesItem] | None] = None
 
 
 class DevDbSchemaRelationshipsItem(_Open):
-    cardinality: str | None = None
-    composite: bool | None = None
-    from_columns: list[str] | None = None
-    from_table: str | None = None
-    label: str | None = None
-    on_delete: str | None = None
-    on_update: str | None = None
-    optional: bool | None = None
-    self_loop: bool | None = None
-    to_columns: list[str] | None = None
-    to_table: str | None = None
+    cardinality: Lenient[str | None] = None
+    composite: Lenient[bool | None] = None
+    from_columns: Lenient[list[str] | None] = None
+    from_table: Lenient[str | None] = None
+    label: Lenient[str | None] = None
+    on_delete: Lenient[str | None] = None
+    on_update: Lenient[str | None] = None
+    optional: Lenient[bool | None] = None
+    self_loop: Lenient[bool | None] = None
+    to_columns: Lenient[list[str] | None] = None
+    to_table: Lenient[str | None] = None
 
 
 class DevDbSchemaTablesItem(_Open):
-    check_constraints: list[dict[str, Any]] | None = None
-    columns: list[dict[str, Any]] | None = None
-    comment: str | None = None
-    composite_unique: list[dict[str, Any]] | None = None
-    n_columns: int | float | None = None
-    name: str | None = None
+    check_constraints: Lenient[list[dict[str, Any]] | None] = None
+    columns: Lenient[list[dict[str, Any]] | None] = None
+    comment: Lenient[str | None] = None
+    composite_unique: Lenient[list[dict[str, Any]] | None] = None
+    n_columns: Lenient[int | float | None] = None
+    name: Lenient[str | None] = None
 
 
 class DevHardware(_Open):
-    cpu: DevHardwareCpu | None = None
-    disk: DevHardwareDisk | None = None
-    gpu: list[Any] | None = None
-    memory: DevHardwareMemory | None = None
-    timestamp: str | None = None
+    cpu: Lenient[DevHardwareCpu | None] = None
+    disk: Lenient[DevHardwareDisk | None] = None
+    gpu: Lenient[list[Any] | None] = None
+    memory: Lenient[DevHardwareMemory | None] = None
+    timestamp: Lenient[str | None] = None
 
 
 class DevHardwareCpu(_Open):
-    cores: int | float | None = None
-    load_avg: list[float] | None = None
-    per_core: list[float] | None = None
-    percent: float | None = None
+    cores: Lenient[int | float | None] = None
+    load_avg: Lenient[list[float] | None] = None
+    per_core: Lenient[list[float] | None] = None
+    percent: Lenient[float | None] = None
 
 
 class DevHardwareDisk(_Open):
-    percent: float | None = None
-    total_gb: float | None = None
-    used_gb: float | None = None
+    percent: Lenient[float | None] = None
+    total_gb: Lenient[float | None] = None
+    used_gb: Lenient[float | None] = None
 
 
 class DevHardwareMemory(_Open):
-    percent: float | None = None
-    total_gb: float | None = None
-    used_gb: float | None = None
+    percent: Lenient[float | None] = None
+    total_gb: Lenient[float | None] = None
+    used_gb: Lenient[float | None] = None
 
 
 class DevContainersMetrics(_Open):
-    cpu: list[DevContainersMetricsCpuItem] | None = None
-    end: str | None = None
-    mem: list[DevContainersMetricsMemItem] | None = None
-    reachable: bool | None = None
-    source: str | None = None
-    start: str | None = None
-    step: int | float | None = None
+    cpu: Lenient[list[DevContainersMetricsCpuItem] | None] = None
+    end: Lenient[str | None] = None
+    mem: Lenient[list[DevContainersMetricsMemItem] | None] = None
+    reachable: Lenient[bool | None] = None
+    source: Lenient[str | None] = None
+    start: Lenient[str | None] = None
+    step: Lenient[int | float | None] = None
 
 
 class DevContainersMetricsCpuItem(_Open):
-    name: str | None = None
-    points: list[list[float]] | None = None
+    name: Lenient[str | None] = None
+    points: Lenient[list[list[float]] | None] = None
 
 
 class DevContainersMetricsMemItem(_Open):
-    name: str | None = None
-    points: list[list[float]] | None = None
+    name: Lenient[str | None] = None
+    points: Lenient[list[list[float]] | None] = None
 
 
 class RegimeFeatures(_Open):
-    features: list[RegimeFeaturesFeaturesItem] | None = None
-    symbol: str | None = None
-    synthesis: RegimeFeaturesSynthesis | None = None
-    timestamp: str | None = None
+    features: Lenient[list[RegimeFeaturesFeaturesItem] | None] = None
+    symbol: Lenient[str | None] = None
+    synthesis: Lenient[RegimeFeaturesSynthesis | None] = None
+    timestamp: Lenient[str | None] = None
 
 
 class RegimeFeaturesFeaturesItem(_Open):
-    bucket: str | None = None
-    delta_z_1h: float | None = None
-    expected_z: dict[str, Any] | None = None
-    name: str | None = None
-    pct: int | float | None = None
-    signal: str | None = None
-    value: float | None = None
-    vs_expected: str | None = None
-    z: float | None = None
+    bucket: Lenient[str | None] = None
+    delta_z_1h: Lenient[float | None] = None
+    expected_z: Lenient[dict[str, Any] | None] = None
+    name: Lenient[str | None] = None
+    pct: Lenient[int | float | None] = None
+    signal: Lenient[str | None] = None
+    value: Lenient[float | None] = None
+    vs_expected: Lenient[str | None] = None
+    z: Lenient[float | None] = None
 
 
 class RegimeFeaturesSynthesis(_Open):
-    action: str | None = None
-    dominant: str | None = None
-    joint_pattern: str | None = None
-    regime: RegimeFeaturesSynthesisRegime | None = None
-    vs_expected: RegimeFeaturesSynthesisVsExpected | None = None
+    action: Lenient[str | None] = None
+    dominant: Lenient[str | None] = None
+    joint_pattern: Lenient[str | None] = None
+    regime: Lenient[RegimeFeaturesSynthesisRegime | None] = None
+    vs_expected: Lenient[RegimeFeaturesSynthesisVsExpected | None] = None
 
 
 class RegimeFeaturesSynthesisRegime(_Open):
-    action_default: str | None = None
-    asymmetry_note: str | None = None
-    family: str | None = None
-    id: int | float | None = None
-    intensity_count: int | float | None = None
-    name: str | None = None
+    action_default: Lenient[str | None] = None
+    asymmetry_note: Lenient[str | None] = None
+    family: Lenient[str | None] = None
+    id: Lenient[int | float | None] = None
+    intensity_count: Lenient[int | float | None] = None
+    name: Lenient[str | None] = None
 
 
 class RegimeFeaturesSynthesisVsExpected(_Open):
-    delta_sigma: float | None = None
-    feature: str | None = None
-    label: str | None = None
+    delta_sigma: Lenient[float | None] = None
+    feature: Lenient[str | None] = None
+    label: Lenient[str | None] = None
 
 
 class RegimeTransitions(_Open):
-    by_day: dict[str, Any] | None = None
-    calm_pre_event_count: int | float | None = None
-    calm_pre_event_per_day: float | None = None
-    hint: str | None = None
-    n_snapshots: int | float | None = None
-    symbol: str | None = None
-    threshold_warning: bool | None = None
-    total_transitions: int | float | None = None
-    window_days: int | float | None = None
+    by_day: Lenient[dict[str, Any] | None] = None
+    calm_pre_event_count: Lenient[int | float | None] = None
+    calm_pre_event_per_day: Lenient[float | None] = None
+    hint: Lenient[str | None] = None
+    n_snapshots: Lenient[int | float | None] = None
+    symbol: Lenient[str | None] = None
+    threshold_warning: Lenient[bool | None] = None
+    total_transitions: Lenient[int | float | None] = None
+    window_days: Lenient[int | float | None] = None
 
 
 class RegimeGmmShadow(_Open):
-    agreement_ratio: float | None = None
-    by_label: RegimeGmmShadowByLabel | None = None
-    n_total: int | float | None = None
-    n_with_gmm: int | float | None = None
-    promotion_gates: RegimeGmmShadowPromotionGates | None = None
-    ready_to_promote: bool | None = None
+    agreement_ratio: Lenient[float | None] = None
+    by_label: Lenient[RegimeGmmShadowByLabel | None] = None
+    n_total: Lenient[int | float | None] = None
+    n_with_gmm: Lenient[int | float | None] = None
+    promotion_gates: Lenient[RegimeGmmShadowPromotionGates | None] = None
+    ready_to_promote: Lenient[bool | None] = None
 
 
 class RegimeGmmShadowByLabel(_Open):
-    calm: RegimeGmmShadowByLabelCalm | None = None
+    calm: Lenient[RegimeGmmShadowByLabelCalm | None] = None
 
 
 class RegimeGmmShadowByLabelCalm(_Open):
-    pre_event: int | float | None = None
+    pre_event: Lenient[int | float | None] = None
 
 
 class RegimeGmmShadowPromotionGates(_Open):
-    agreement_ratio_ok: bool | None = None
-    agreement_ratio_required: float | None = None
-    manual_check_needed: str | None = None
-    n_required: int | float | None = None
-    n_with_gmm_ok: bool | None = None
+    agreement_ratio_ok: Lenient[bool | None] = None
+    agreement_ratio_required: Lenient[float | None] = None
+    manual_check_needed: Lenient[str | None] = None
+    n_required: Lenient[int | float | None] = None
+    n_with_gmm_ok: Lenient[bool | None] = None
 
 
 class SignalsPcaState(_Open):
-    coherence: SignalsPcaStateCoherence | None = None
-    fit_timestamp: str | None = None
-    fit_window_end: str | None = None
-    fit_window_start: str | None = None
-    loadings_grid: list[list[list[float]]] | None = None
-    loadings_stable: SignalsPcaStateLoadingsStable | None = None
-    f_model_version: str | None = Field(default=None, alias="model_version")
-    n_obs_in_fit: int | float | None = None
-    signals: SignalsPcaStateSignals | None = None
-    state: str | None = None
-    timestamp: str | None = None
-    variance_explained: SignalsPcaStateVarianceExplained | None = None
+    coherence: Lenient[SignalsPcaStateCoherence | None] = None
+    fit_timestamp: Lenient[str | None] = None
+    fit_window_end: Lenient[str | None] = None
+    fit_window_start: Lenient[str | None] = None
+    loadings_grid: Lenient[list[list[list[float]]] | None] = None
+    loadings_stable: Lenient[SignalsPcaStateLoadingsStable | None] = None
+    f_model_version: Lenient[str | None] = Field(default=None, alias="model_version")
+    n_obs_in_fit: Lenient[int | float | None] = None
+    signals: Lenient[SignalsPcaStateSignals | None] = None
+    state: Lenient[str | None] = None
+    timestamp: Lenient[str | None] = None
+    variance_explained: Lenient[SignalsPcaStateVarianceExplained | None] = None
 
 
 class SignalsPcaStateCoherence(_Open):
-    all_coherent: bool | None = None
-    contradictions: list[Any] | None = None
+    all_coherent: Lenient[bool | None] = None
+    contradictions: Lenient[list[Any] | None] = None
 
 
 class SignalsPcaStateLoadingsStable(_Open):
-    pc1: bool | None = None
-    pc2: bool | None = None
-    pc3: bool | None = None
+    pc1: Lenient[bool | None] = None
+    pc2: Lenient[bool | None] = None
+    pc3: Lenient[bool | None] = None
 
 
 class SignalsPcaStateSignals(_Open):
-    pc1: SignalsPcaStateSignalsPc1 | None = None
-    pc2: SignalsPcaStateSignalsPc2 | None = None
-    pc3: SignalsPcaStateSignalsPc3 | None = None
+    pc1: Lenient[SignalsPcaStateSignalsPc1 | None] = None
+    pc2: Lenient[SignalsPcaStateSignalsPc2 | None] = None
+    pc3: Lenient[SignalsPcaStateSignalsPc3 | None] = None
 
 
 class SignalsPcaStateSignalsPc1(_Open):
-    actionable: bool | None = None
-    actionable_reason: str | None = None
-    label: str | None = None
-    raw_score: float | None = None
-    reason_category: str | None = None
+    actionable: Lenient[bool | None] = None
+    actionable_reason: Lenient[str | None] = None
+    label: Lenient[str | None] = None
+    raw_score: Lenient[float | None] = None
+    reason_category: Lenient[str | None] = None
     sub_signals: Any = None
-    z_score: float | None = None
+    z_score: Lenient[float | None] = None
 
 
 class SignalsPcaStateSignalsPc2(_Open):
-    actionable: bool | None = None
-    actionable_reason: str | None = None
-    label: str | None = None
-    raw_score: float | None = None
-    reason_category: str | None = None
+    actionable: Lenient[bool | None] = None
+    actionable_reason: Lenient[str | None] = None
+    label: Lenient[str | None] = None
+    raw_score: Lenient[float | None] = None
+    reason_category: Lenient[str | None] = None
     sub_signals: Any = None
-    z_score: float | None = None
+    z_score: Lenient[float | None] = None
 
 
 class SignalsPcaStateSignalsPc3(_Open):
-    actionable: bool | None = None
-    actionable_reason: str | None = None
-    label: str | None = None
-    raw_score: float | None = None
-    reason_category: str | None = None
-    sub_signals: dict[str, Any] | None = None
-    z_score: float | None = None
+    actionable: Lenient[bool | None] = None
+    actionable_reason: Lenient[str | None] = None
+    label: Lenient[str | None] = None
+    raw_score: Lenient[float | None] = None
+    reason_category: Lenient[str | None] = None
+    sub_signals: Lenient[dict[str, Any] | None] = None
+    z_score: Lenient[float | None] = None
 
 
 class SignalsPcaStateVarianceExplained(_Open):
-    cumulative: float | None = None
-    pc1: float | None = None
-    pc2: float | None = None
-    pc3: float | None = None
+    cumulative: Lenient[float | None] = None
+    pc1: Lenient[float | None] = None
+    pc2: Lenient[float | None] = None
+    pc3: Lenient[float | None] = None
 
 
 class TradeStructuresRow(_Open):
-    display_name: str | None = None
-    leg_template: list[TradeStructuresRowLegTemplateItem] | None = None
-    max_legs: int | float | None = None
-    min_legs: int | float | None = None
-    rationale_for_pc: str | None = None
-    requires_delta_hedge: bool | None = None
-    structure_type: str | None = None
-    typical_gamma_sign: str | None = None
-    typical_theta_sign: str | None = None
-    typical_vega_sign: str | None = None
+    display_name: Lenient[str | None] = None
+    leg_template: Lenient[list[TradeStructuresRowLegTemplateItem] | None] = None
+    max_legs: Lenient[int | float | None] = None
+    min_legs: Lenient[int | float | None] = None
+    rationale_for_pc: Lenient[str | None] = None
+    requires_delta_hedge: Lenient[bool | None] = None
+    structure_type: Lenient[str | None] = None
+    typical_gamma_sign: Lenient[str | None] = None
+    typical_theta_sign: Lenient[str | None] = None
+    typical_vega_sign: Lenient[str | None] = None
 
 
 class TradeStructuresRowLegTemplateItem(_Open):
-    contract_type: str | None = None
-    delta_pillar: str | None = None
-    qty_factor: int | float | None = None
-    side: str | None = None
-    tenor_role: str | None = None
-    overridable: bool | None = None
+    contract_type: Lenient[str | None] = None
+    delta_pillar: Lenient[str | None] = None
+    qty_factor: Lenient[int | float | None] = None
+    side: Lenient[str | None] = None
+    tenor_role: Lenient[str | None] = None
+    overridable: Lenient[bool | None] = None
 
 
 class TradeSubmittedRow(_Open):
-    base_qty: int | float | None = None
-    closes_trade_id: int | float | None = None
-    contract: str | None = None
-    created_at: str | None = None
-    execution_mode: str | None = None
-    id: int | float | None = None
-    legs: list[TradeSubmittedRowLegsItem] | None = None
-    order_role: str | None = None
-    position_id: int | float | None = None
-    position_state: str | None = None
-    preview_id: str | None = None
-    product_label: str | None = None
-    qty_filled: int | float | None = None
-    qty_total: int | float | None = None
-    reference_tenor: str | None = None
-    state: str | None = None
-    structure_type: str | None = None
-    total_commission_usd: float | None = None
-    total_entry_cost_usd: float | None = None
-    total_premium_paid_usd: float | None = None
+    base_qty: Lenient[int | float | None] = None
+    closes_trade_id: Lenient[int | float | None] = None
+    contract: Lenient[str | None] = None
+    created_at: Lenient[str | None] = None
+    execution_mode: Lenient[str | None] = None
+    id: Lenient[int | float | None] = None
+    legs: Lenient[list[TradeSubmittedRowLegsItem] | None] = None
+    order_role: Lenient[str | None] = None
+    position_id: Lenient[int | float | None] = None
+    position_state: Lenient[str | None] = None
+    preview_id: Lenient[str | None] = None
+    product_label: Lenient[str | None] = None
+    qty_filled: Lenient[int | float | None] = None
+    qty_total: Lenient[int | float | None] = None
+    reference_tenor: Lenient[str | None] = None
+    state: Lenient[str | None] = None
+    structure_type: Lenient[str | None] = None
+    total_commission_usd: Lenient[float | None] = None
+    total_entry_cost_usd: Lenient[float | None] = None
+    total_premium_paid_usd: Lenient[float | None] = None
 
 
 class TradeSubmittedRowLegsItem(_Open):
-    contract: str | None = None
-    contract_type: str | None = None
-    leg_idx: int | float | None = None
-    qty: int | float | None = None
-    qty_filled: int | float | None = None
-    side: str | None = None
-    state: str | None = None
-    strike: float | None = None
+    contract: Lenient[str | None] = None
+    contract_type: Lenient[str | None] = None
+    leg_idx: Lenient[int | float | None] = None
+    qty: Lenient[int | float | None] = None
+    qty_filled: Lenient[int | float | None] = None
+    side: Lenient[str | None] = None
+    state: Lenient[str | None] = None
+    strike: Lenient[float | None] = None
 
 
 class TradeSpotOrdersRow(_Open):
-    avg_fill_price: float | None = None
-    commission_usd: float | None = None
-    created_at: str | None = None
-    currency: str | None = None
-    exchange: str | None = None
-    filled_at: str | None = None
-    ib_order_id: int | float | None = None
-    ib_perm_id: str | None = None
-    ib_status: str | None = None
-    id: int | float | None = None
-    limit_price: float | None = None
-    local_symbol: str | None = None
-    order_type: str | None = None
-    qty: int | float | None = None
-    qty_filled: int | float | None = None
-    rejection_text: str | None = None
-    side: str | None = None
-    state: str | None = None
-    state_updated_at: str | None = None
-    symbol: str | None = None
+    avg_fill_price: Lenient[float | None] = None
+    commission_usd: Lenient[float | None] = None
+    created_at: Lenient[str | None] = None
+    currency: Lenient[str | None] = None
+    exchange: Lenient[str | None] = None
+    filled_at: Lenient[str | None] = None
+    ib_order_id: Lenient[int | float | None] = None
+    ib_perm_id: Lenient[str | None] = None
+    ib_status: Lenient[str | None] = None
+    id: Lenient[int | float | None] = None
+    limit_price: Lenient[float | None] = None
+    local_symbol: Lenient[str | None] = None
+    order_type: Lenient[str | None] = None
+    qty: Lenient[int | float | None] = None
+    qty_filled: Lenient[int | float | None] = None
+    rejection_text: Lenient[str | None] = None
+    side: Lenient[str | None] = None
+    state: Lenient[str | None] = None
+    state_updated_at: Lenient[str | None] = None
+    symbol: Lenient[str | None] = None
     why_held: Any = None
 
 
@@ -1316,7 +1316,7 @@ class IbOrder(_Open):
 class OrdersList(_Open):
     """The execution engine's open orders."""
 
-    orders: list[IbOrder] | None = None
+    orders: Lenient[list[IbOrder] | None] = None
     count: Any = None
 
 
@@ -1339,7 +1339,7 @@ class RedisKeyRow(_Open):
 class RedisKeys(_Open):
     """Watched Redis keys."""
 
-    keys: list[RedisKeyRow] | None = None
+    keys: Lenient[list[RedisKeyRow] | None] = None
 
 
 class RedisValue(_Open):
@@ -1362,7 +1362,7 @@ class TableRow(_Open):
 class TablesList(_Open):
     """Every ORM table."""
 
-    tables: list[TableRow] | None = None
+    tables: Lenient[list[TableRow] | None] = None
 
 
 class TablePage(_Open):
@@ -1398,7 +1398,7 @@ class LogEntry(_Open):
 class LogQueryResult(_Open):
     """Log lines matching a query, newest first."""
 
-    entries: list[LogEntry] | None = None
+    entries: Lenient[list[LogEntry] | None] = None
     total: Any = None
     query: Any = None
     minutes: Any = None
