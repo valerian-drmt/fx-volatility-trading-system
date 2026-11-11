@@ -207,7 +207,7 @@ async def test_double_submit_places_each_leg_exactly_once(monkeypatch):
 
     maker, engine = await _make_session()
     try:
-        struct_id, order_ids = await _seed(maker, legs=2)
+        struct_id, _order_ids = await _seed(maker, legs=2)
         ib = _FakeIB()
         executor = _FakeExecutor(ib)
 
@@ -359,7 +359,7 @@ async def test_mid_submit_place_failure_keeps_placed_leg_committed(monkeypatch):
 
     maker, engine = await _make_session()
     try:
-        struct_id, order_ids = await _seed(maker, legs=2)
+        struct_id, _order_ids = await _seed(maker, legs=2)
         ib = _FakeIB(fail_place_after=1)  # leg 1 places, leg 2 raises
         with pytest.raises(LiveSubmitError, match="failed after 1/2"):
             await submit_structure_live(

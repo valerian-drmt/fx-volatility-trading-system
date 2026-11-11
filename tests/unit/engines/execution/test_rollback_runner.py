@@ -142,7 +142,7 @@ async def test_run_rollback_cancels_pending_and_unwinds_partial(monkeypatch):
 
     maker, engine = await _make_session()
     try:
-        struct_id, order_ids = await _seed_structure_with_orders(
+        struct_id, _order_ids = await _seed_structure_with_orders(
             maker,
             configs=[
                 # Leg 0 : pending (cancellable, no fills) — pure cancel.
