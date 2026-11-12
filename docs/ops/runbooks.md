@@ -226,3 +226,40 @@ portal or mobile login, and never run a local stack with the `ib` profile
 while prod holds the session.
 
 **Walked:** partly (see the table at the top).
+
+## 5. Read-only analysis access to the prod database
+
+Postgres has no public port. Analysis queries go through an SSM tunnel to the
+host's loopback, as a role that can only read.
+
+| Piece | Where | What it guarantees |
+|---|---|---|
+| Role `fxvol_reader` | migration `064_reader_role` | SELECT only; every transaction read-only; 30 s statement timeout; 60 s idle-in-transaction timeout; 3 connections |
+| Login | `remote-deploy.sh`, `set_reader_login` | LOGIN exists only while `/fxvol/prod/DB_READONLY_PASSWORD` does; sent as a SCRAM verifier, never in clear |
+| Port | `docker-compose.yml`, `127.0.0.1:15432` on the host | loopback only, reachable through SSM (IAM-authenticated), never from the internet |
+| Tunnel | `.\scriptsws\ec2.ps1 db-tunnel` | `localhost:15433` on the PC, open only while the window is |
+| Client | `scripts/local/prod_db.py` | one read-only transaction per call, 200 rows by default |
+
+**Open the access (once):**
+
+1. AWS console, Parameter Store: create `/fxvol/prod/DB_READONLY_PASSWORD`
+   (SecureString, 32+ random URL-safe characters).
+2. Deploy (any merge to `main`, or `.\scriptsws\ec2.ps1 deploy`). The log
+   line `fxvol_reader login enabled` confirms it.
+
+**Each session:**
+
+```powershell
+.\scripts\local\load_secrets.ps1          # loads DB_READONLY_PASSWORD with the rest
+.\scriptsws\ec2.ps1 db-tunnel           # in a second window; leave it open
+python scripts/local/prod_db.py --tables
+python scripts/local/prod_db.py "SELECT status, count(*) FROM position GROUP BY 1"
+```
+
+A tool launched from the shell where `load_secrets.ps1` ran inherits the
+variable and can run `prod_db.py` the same way.
+
+**Close the access:** delete the parameter in the console and redeploy; the
+deploy sets the role back to NOLOGIN. **Rotate:** change the value, redeploy.
+
+**Walked:** no (added 2026-11-12).

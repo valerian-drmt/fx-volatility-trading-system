@@ -360,6 +360,26 @@ docker compose exec -T nginx nginx -s reload
 # idempotent re-run is a no-op on the normal path.
 docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgrade head
 
+# --- read-only analysis role (migration 064, docs/ops/runbooks.md section 5) --------
+# LOGIN only while /fxvol/prod/DB_READONLY_PASSWORD exists; deleting the
+# parameter and redeploying closes the access. The password goes to Postgres as
+# a SCRAM verifier over stdin: never in clear on the server, never in argv.
+# Best-effort: this must never fail an otherwise-good deploy.
+set_reader_login() {
+  local ro_pw verifier
+  ro_pw="$(ssm /fxvol/prod/DB_READONLY_PASSWORD 2>/dev/null || echo "")"
+  if [ -n "$ro_pw" ]; then
+    verifier="$(printf '%s' "$ro_pw" | python3 infrastructure/ec2/scram_verifier.py)" || return 1
+    printf "ALTER ROLE fxvol_reader WITH LOGIN PASSWORD '%s';
+" "$verifier"       | docker compose exec -T postgres psql -U fxvol -d fxvol -q -v ON_ERROR_STOP=1 >/dev/null || return 1
+    echo "remote-deploy: fxvol_reader login enabled"
+  else
+    echo "ALTER ROLE fxvol_reader WITH NOLOGIN PASSWORD NULL;"       | docker compose exec -T postgres psql -U fxvol -d fxvol -q -v ON_ERROR_STOP=1 >/dev/null || return 1
+    echo "remote-deploy: fxvol_reader login disabled (no DB_READONLY_PASSWORD in SSM)"
+  fi
+}
+set_reader_login || echo "remote-deploy: could not set the fxvol_reader login (non-fatal)" >&2
+
 # Reclaim disk: drop the older deploys' sha-<commit> tags, but keep the
 # previous release's images so a rollback needs no pull (#345). Each deploy pulls 7 fresh images,
 # so without this the 29G root fills up after ~a dozen deploys; once it does,

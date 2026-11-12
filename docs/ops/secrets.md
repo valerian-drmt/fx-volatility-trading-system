@@ -22,6 +22,7 @@ passes through GitHub.
 | `IB_USERID`, `IB_PASSWORD` | SecureString | yes | IB Gateway login | read only with the `ib` profile; the gateway cannot log in |
 | `VNC_PASSWORD` | SecureString | yes | IB Gateway VNC (loopback) | read only with the `ib` profile |
 | `GRAFANA_ADMIN_PASSWORD` | SecureString | yes | Grafana admin (obs profile) | deploy refuses the `obs` profile (#298) |
+| `DB_READONLY_PASSWORD` | SecureString | **no** | login of the read-only role `fxvol_reader` (runbooks section 5) | the role stays NOLOGIN: no analysis access |
 | `EXECUTION_INTERNAL_TOKEN` | SecureString | **no** | api -> execution-engine `/internal/*` (#300) | host generates `/etc/fxvol/internal_token` (root 0600) and reuses it; provision to rotate |
 | `FRED_API_KEY` | String | yes | events pipeline (FRED calendar) | events from FRED skipped |
 | `GHCR_TOKEN` | SecureString | **no** | `docker login ghcr.io` | not needed while the packages are public |

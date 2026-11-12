@@ -43,6 +43,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    # Host loopback only, never a public port: the entry point of the SSM
+    # tunnel for read-only analysis (`ec2.ps1 db-tunnel`, role fxvol_reader,
+    # docs/ops/runbooks.md section 5). Same pattern as Grafana's 127.0.0.1:3000.
+    ports:
+      - "127.0.0.1:15432:5432"
     networks:
       - fxvol-internal
     healthcheck:
