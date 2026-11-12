@@ -15,7 +15,7 @@ never printed, never written, never passed on a command line.
 
 Paper only, three times over: the deploy grants the login only for a paper
 account, the execution engine revokes it on the first heartbeat of a live
-account, and this script checks ``ib_connection_state.account_type`` itself.
+account, and this script checks ``runtime_ib_session.account_type`` itself.
 
     python scripts/local/prod_db.py --tables
     python scripts/local/prod_db.py "SELECT status, count(*) FROM position GROUP BY 1"
@@ -42,7 +42,7 @@ PARAM = "/fxvol/prod/DB_READONLY_PASSWORD"
 # Git Bash rewrites a leading "/" in an argument into a Windows path.
 AWS_ENV = {**os.environ, "MSYS_NO_PATHCONV": "1", "MSYS2_ARG_CONV_EXCL": "*"}
 
-ACCOUNT_TYPE_SQL = "SELECT account_type FROM ib_connection_state WHERE broker = 'IB' LIMIT 1"
+ACCOUNT_TYPE_SQL = "SELECT account_type FROM runtime_ib_session WHERE broker = 'IB' LIMIT 1"
 TABLES_SQL = """
 SELECT c.relname AS table, c.reltuples::bigint AS est_rows,
        pg_size_pretty(pg_total_relation_size(c.oid)) AS size
