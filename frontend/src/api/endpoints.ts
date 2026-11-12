@@ -316,12 +316,19 @@ export interface StructuredLeg {
   position_id: number | null; con_id: number | null; held_qty: number | null; held_side: string | null;
   entry: number | null; nominal_eur: number | null; tenor: string | null;
   opened: string | null; updated: string | null;
+  // The position line this leg carries (#461), null when it carries none.
+  line_id?: string | null; line_status?: string | null;
+  book_qty?: number | null; broker_qty?: number | null;
+  order_role?: string; booked_expiry?: string | null;
 }
 export interface StructuredStructure {
   structure_id: number; structure_type: string; product_label: string | null;
   tenor: string; state: string; base_qty: number; created_at: string | null;
   legs: StructuredLeg[];
-  net: { delta_usd: number; gamma_usd: number; vega_usd: number; theta_usd: number; pnl_usd: number; n_linked: number };
+  net: {
+    delta_usd: number; gamma_usd: number; vega_usd: number; theta_usd: number; pnl_usd: number;
+    n_linked: number; n_lines?: number;
+  };
 }
 export interface UnlinkedPosition {
   id: number; symbol: string; product_label: string | null; side: string;
@@ -329,6 +336,9 @@ export interface UnlinkedPosition {
   mark: number | null; pnl_usd: number | null; delta_usd: number | null;
   gamma_usd: number | null; vega_usd: number | null; theta_usd: number | null;
   vanna_usd: number | null; volga_usd: number | null; iv: number | null;
+  entry?: number | null;
+  line_id?: string | null; line_status?: string | null;
+  book_qty?: number | null; broker_qty?: number | null;
 }
 export interface StructuredPositions { structures: StructuredStructure[]; unlinked: UnlinkedPosition[] }
 export const fetchStructuredPositions = () =>

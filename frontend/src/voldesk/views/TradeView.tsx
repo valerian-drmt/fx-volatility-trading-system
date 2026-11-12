@@ -264,6 +264,8 @@ function structuredToRows(
         updated: l.updated ?? "", opened: l.opened ?? "",
         pnlPct: nominal ? (pnl / nominal) * 100 : 0, dte: dteOf(l.expiry ?? ""),
         netted,
+        lineId: l.line_id ?? undefined, lineStatus: l.line_status ?? undefined,
+        unpriced: l.delta_usd == null,
       });
     }
   }
@@ -273,10 +275,12 @@ function structuredToRows(
       id: String(u.id), packageId: "", tradeId: "", conId: 0,
       product: u.product_label ?? "—", structure: u.symbol ?? "—",
       side: u.side ?? "BUY", qty: u.qty ?? 0, tenor: u.tenor ?? "", expiry: u.expiry ?? "",
-      strike: 0, entry: 0, mark: u.mark ?? 0, iv: (u.iv ?? 0) * 100, pnl, nominal: 0,
+      strike: 0, entry: u.entry ?? 0, mark: u.mark ?? 0, iv: (u.iv ?? 0) * 100, pnl, nominal: 0,
       delta: u.delta_usd ?? 0, gamma: u.gamma_usd ?? 0, vega: u.vega_usd ?? 0, theta: u.theta_usd ?? 0,
       vanna: (u.vanna_usd ?? 0) / 1000, volga: (u.volga_usd ?? 0) / 1000,
       updated: "", opened: "", pnlPct: 0, dte: dteOf(u.expiry ?? ""),
+      lineId: u.line_id ?? undefined, lineStatus: u.line_status ?? undefined,
+      unpriced: u.delta_usd == null,
     });
   }
   return { positions, ctx };

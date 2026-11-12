@@ -7,6 +7,7 @@
 import type { JSX } from "react";
 import { Fragment, useState } from "react";
 import { pnlCls } from "./format";
+import { LineStatusTag } from "./LineStatus";
 import { legStrikeNum, structureName, structureSide } from "./tradeGrouping";
 import { EMPTY_GREEKS, fmt } from "../data";
 import type { Greeks, Position } from "../data";
@@ -140,9 +141,12 @@ function legRow(
   // Locked while this leg (or its whole trade) has a close in flight.
   const isClosing = closing.has(p.id) || (p.tradeId != null && closing.has("t:" + p.tradeId));
   return (
-    <tr key={p.id} className={main ? "pkg-start" : "pos-leg"}>
+    <tr key={p.lineId ?? p.id} className={main ? "pkg-start" : "pos-leg"} data-line-id={p.lineId}>
       <td className="l mono dim">{main ? (p.tradeId ? "#" + p.tradeId : "—") : ""}</td>
-      <td className="l mono dim">{p.structure || "—"}</td>
+      <td className="l mono dim">
+        {p.structure || "—"}
+        <LineStatusTag status={p.lineStatus} />
+      </td>
       <td className="l">
         <span className="sym">{main ? "" : "↳ "}{legProductLabel(p, legWing)}</span>
         {fmtFillDate(p.opened) && (
