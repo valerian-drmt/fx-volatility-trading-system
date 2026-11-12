@@ -51,7 +51,10 @@ async def test_future_open_probes_history_anchored_on_position_id():
     # whole-table ORDER BY timestamp with the 6E filter applied via the join.
     assert "LATERAL" in sql
     assert "h.position_id = op.id" in sql
-    assert db.execute.await_args_list[1].args[1] == {"cutoff": CUTOFF}
+    params = db.execute.await_args_list[1].args[1]
+    assert params["cutoff"] == CUTOFF
+    assert 0 < (CUTOFF - params["floor"]).total_seconds() <= 3600, "the t-1 price must be near the cutoff (#467)"
+    assert "h.timestamp >= :floor" in sql
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.dependencies import get_db_session, get_redis
 from api.orchestration.greek_caps import compute_live_caps
+from api.orchestration.position_lines import attribution_rows, load_line_set
 from api.schemas import route_models as rm
 from bus import keys
 from bus.account_cache import read_account_snapshot
@@ -1169,7 +1170,10 @@ async def pnl_attribution(
         stored["meta"]["rollup"] = "inline"
     else:
         stored["meta"]["rollup"] = "materialised"
-    return assemble_attribution(stored["per_position"], stored["meta"], source=source, group_by=group_by)
+    # Same lines as /positions/open and /positions/structured (#461): the
+    # stored decomposition is per mirror row, the panel is per position line.
+    rows = attribution_rows(stored["per_position"], await load_line_set(db))
+    return assemble_attribution(rows, stored["meta"], source=source, group_by=group_by)
 
 
 # ──────────────────────────────────────────────────────────────────────
