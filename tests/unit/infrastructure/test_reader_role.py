@@ -79,7 +79,7 @@ def test_deploy_sets_the_reader_login_from_a_verifier_and_closes_it_without_a_pa
 def test_deploy_grants_the_login_for_a_paper_account_only() -> None:
     gate = _deploy_gate()
     # both the configured mode and the account the gateway reported must be paper
-    assert "SELECT account_type FROM ib_connection_state WHERE broker = 'IB'" in gate
+    assert "SELECT account_type FROM runtime_ib_session WHERE broker = 'IB'" in gate
     assert '[ "$configured_mode" != "paper" ] || [ "$account_type" != "paper" ]' in gate
     refusal = gate.index('ro_pw=""')
     assert gate.index("configured_mode=") < refusal < gate.index('if [ -n "$ro_pw" ]'), (
@@ -112,3 +112,13 @@ def test_reader_role_migration_grants_select_only() -> None:
         assert forbidden not in body, forbidden
     assert "default_transaction_read_only = on" in body and "statement_timeout = '30s'" in body
     assert "NOLOGIN" in body
+
+
+def test_the_gates_read_the_table_the_model_maps_to() -> None:
+    """The first deploy read a table name that no longer exists and stayed closed."""
+    models = (ROOT / "src" / "persistence" / "models.py").read_text(encoding="utf-8")
+    after_class = models.split("class IbConnectionState(Base):", 1)[1]
+    table = after_class.split('__tablename__ = "', 1)[1].split('"', 1)[0]
+    client = _load(ROOT / "scripts" / "local" / "prod_db.py")
+    assert f"FROM {table} " in client.ACCOUNT_TYPE_SQL
+    assert _deploy_gate().count(f"FROM {table} WHERE broker = 'IB'") == 2

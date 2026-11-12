@@ -366,7 +366,7 @@ docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgr
 # a SCRAM verifier over stdin: never in clear on the server, never in argv.
 # PAPER ONLY: the login is granted only when the stack is configured for paper
 # AND the account the gateway last reported is a paper one
-# (ib_connection_state.account_type, written by the execution engine from the
+# (runtime_ib_session.account_type, written by the execution engine from the
 # IB account id). Anything else, unknown included, closes the access; the
 # execution engine also closes it on the first heartbeat of a live account.
 # Best-effort: this must never fail an otherwise-good deploy.
@@ -376,14 +376,14 @@ set_reader_login() {
   ro_pw="$(ssm /fxvol/prod/DB_READONLY_PASSWORD 2>/dev/null || echo "")"
   local seen
   account_type="$("${psql_cmd[@]}" -At \
-    -c "SELECT account_type FROM ib_connection_state WHERE broker = 'IB' LIMIT 1" </dev/null 2>/dev/null || echo "")"
+    -c "SELECT account_type FROM runtime_ib_session WHERE broker = 'IB' LIMIT 1" </dev/null 2>/dev/null || echo "")"
   # What the gate saw, without the account id: its first letter is the paper/live marker.
   seen="$("${psql_cmd[@]}" -At -c "SELECT 'rows=' || count(*) || ' type=' || coalesce(max(account_type), 'null')
       || ' connected=' || coalesce(bool_or(is_connected)::text, 'null')
       || ' id_prefix=' || coalesce(max(left(account_id, 1)), 'null')
       || ' heartbeat_age_s=' || coalesce(round(extract(epoch FROM now() - max(last_heartbeat)))::text, 'null')
-    FROM ib_connection_state WHERE broker = 'IB'" </dev/null 2>&1 || true)"
-  echo "remote-deploy: ib_connection_state: ${seen:-no answer from psql}"
+    FROM runtime_ib_session WHERE broker = 'IB'" </dev/null 2>&1 || true)"
+  echo "remote-deploy: runtime_ib_session: ${seen:-no answer from psql}"
   configured_mode="$(sed -n 's/^TRADING_MODE=//p' < /opt/fxvol/.env)"
   if [ "$configured_mode" != "paper" ] || [ "$account_type" != "paper" ]; then
     ro_pw=""

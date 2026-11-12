@@ -245,7 +245,7 @@ is a paper account.
 
 | Gate | When it runs | What it does |
 |---|---|---|
-| Deploy (`set_reader_login`) | every deploy | grants LOGIN only if the rendered `TRADING_MODE` is `paper` **and** `ib_connection_state.account_type` is `paper`; otherwise sets NOLOGIN and clears the password |
+| Deploy (`set_reader_login`) | every deploy | grants LOGIN only if the rendered `TRADING_MODE` is `paper` **and** `runtime_ib_session.account_type` is `paper`; otherwise sets NOLOGIN and clears the password |
 | Execution engine (`close_reader_access`) | every heartbeat (10 s) | the gateway reports a live account id (`U...` / `F...`): `ALTER ROLE fxvol_reader NOLOGIN`, open sessions terminated, `reader_access_closed_live_account` logged at critical |
 | Client (`prod_db.py`) | every call | reads `account_type` first and refuses anything that is not `paper` (exit code 4) |
 
