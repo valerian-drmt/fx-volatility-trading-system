@@ -64,6 +64,14 @@ async def close_structure_if_flat(
     )).scalars().all()
     if any(float(lp.open_qty or 0) != 0.0 for lp in legs):
         return False
+    # Flat needs EVIDENCE. A filled entry leg with no ``leg_position`` row has
+    # no recorded execution at all (its fills never reached us): the book knows
+    # nothing about it, which is not the same as holding nothing. Prod,
+    # 2026-11-12: trade 87 (order 108, filled 10, zero fills) was closed by
+    # this function while the broker still held the put.
+    with_row = {int(lp.order_id) for lp in legs}
+    if any(int(o.qty_filled or 0) > 0 and int(o.id) not in with_row for o in entries):
+        return False
 
     now = now or datetime.now(UTC)
     struct.state = "closed"

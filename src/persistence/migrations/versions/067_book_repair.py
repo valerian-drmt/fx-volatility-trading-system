@@ -91,6 +91,28 @@ def upgrade() -> None:
             {"e": entry_id, "c": close_id},
         )
 
+    # 1b. a trade closed although one of its filled entry legs has no recorded
+    #     execution was closed on no evidence (trade 87 on prod, closed by the
+    #     first lifecycle pass of the release before this one): reopen it, and
+    #     its booked position, before step 2 gives the leg its quantity.
+    no_evidence = (
+        "SELECT o.structure_id FROM trade_order o "
+        " WHERE o.order_role = 'entry' AND o.state = 'filled' "
+        "   AND o.qty_filled > COALESCE((SELECT sum(f.qty_filled) FROM trade_fill f WHERE f.order_id = o.id), 0) "
+        "   AND NOT EXISTS (SELECT 1 FROM position_event e WHERE e.order_id = o.id)"
+    )
+    bind.execute(sa.text(
+        "UPDATE booked_position SET state = 'open', closed_at = NULL, close_reason = NULL, "
+        "       exit_total_cost_usd = NULL, gross_pnl_usd = NULL, net_pnl_usd = NULL, "
+        "       state_updated_at = CURRENT_TIMESTAMP "
+        f" WHERE state IN ('closed', 'expired') AND structure_id IN ({no_evidence})"
+    ))
+    unclosed = bind.execute(sa.text(
+        "UPDATE trade_structure SET state = 'fully_filled', closed_at = NULL, close_reason = NULL, "
+        "       state_updated_at = CURRENT_TIMESTAMP "
+        f" WHERE state = 'closed' AND id IN ({no_evidence})"
+    )).rowcount
+
     # 2. a filled order with missing executions gets its quantity
     repaired = bind.execute(sa.text(
         "INSERT INTO position_event (order_id, kind, side, qty, price, occurred_at, dedup_key, source, note) "
@@ -117,8 +139,8 @@ def upgrade() -> None:
     )).rowcount
 
     logger.info(
-        "book_repair closes_linked=%s of %s unlinked, repair_events=%s, booked_reopened=%s",
-        len(links), len(closes), repaired, reopened,
+        "book_repair closes_linked=%s of %s unlinked, trades_unclosed=%s, repair_events=%s, booked_reopened=%s",
+        len(links), len(closes), unclosed, repaired, reopened,
     )
 
 

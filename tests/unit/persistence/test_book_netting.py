@@ -253,3 +253,16 @@ async def test_full_rebuild_equals_incremental(sqlite_sessionmaker: Any) -> None
         await rebuild_all(db)
         await db.flush()
         assert {oid: await _open_qty(db, oid) for oid in before} == before == {put.id: 40, call.id: 100, close.id: 0}
+
+
+async def test_a_filled_leg_with_no_recorded_execution_is_not_flat(sqlite_sessionmaker: Any) -> None:
+    """Prod, 2026-11-12: trade 87 has one entry order marked filled (10) with
+    no fill row and so no leg_position. "No row" read as "flat" and the trade
+    was closed while the broker held the put. No evidence is not flat."""
+    async with sqlite_sessionmaker() as db:
+        s = await _structure(db, stype="vanilla_put")
+        await _order(db, s, idx=0, side="BUY", qty=10, symbol="EUUG7 P1120")   # filled, no fills, no leg row
+        await db.flush()
+        assert await close_structure_if_flat(db, structure_id=s.id) is False
+        assert (await db.get(TradeStructure, s.id)).state == "fully_filled"
+
