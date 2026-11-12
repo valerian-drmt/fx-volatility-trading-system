@@ -80,5 +80,5 @@ def test_execution_engine_loops_are_spawned_supervised() -> None:
     from pathlib import Path
 
     src = (Path(__file__).resolve().parents[3] / "src" / "engines" / "execution" / "main.py").read_text(encoding="utf-8")
-    assert src.count("spawn_supervised(") == 7, "the seven side loops"
+    assert src.count("spawn_supervised(") == 8, "the eight side loops"
     assert "asyncio.create_task(" not in src.split("app = FastAPI(")[0].split("async def lifespan")[1]

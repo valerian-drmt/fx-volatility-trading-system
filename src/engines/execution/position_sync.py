@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -28,22 +28,16 @@ from core.contracts import build_ib_local_symbol, multiplier_for, parse_local_sy
 from core.products import product_label_from_symbol
 from engines.execution.latency import observe_positions_publish
 from engines.execution.order_executor import OrderExecutor
-from engines.execution.settings import get_execution_settings
+from persistence.instruments import instrument_from_ib_position, upsert_instruments
 from persistence.models import (
     AccountHistory,
     BookedPosition,
-    BookedPositionMetricHistory,
+    LegPosition,
     OpenPosition,
     StructureOrder,
-    TradeEvent,
     TradeStructure,
 )
 from persistence.rows import account_snapshot_row, open_position_row
-
-# Auto-close booked positions the broker no longer holds (book ↔ IB reconciliation).
-# ON by default ; a stale booking that IB shows flat (for >1h) is closed with an
-# audit trail. Guarded so it NEVER fires on an empty/disconnected IB snapshot.
-_AUTOCLOSE_STALE = get_execution_settings().reconcile_autoclose
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +132,11 @@ async def sync_positions_from_ib(
     # on the next cycle. Symbol candidates absorb the calibrated-strike
     # vs IB-rounded-strike mismatch.
     leg_to_trade = await _build_leg_to_trade_map(db)
+    try:
+        async with db.begin_nested():
+            await upsert_instruments(db, [instrument_from_ib_position(p) for p in ib_by_key.values()])
+    except Exception:
+        logger.warning("instrument_upsert_failed", exc_info=True)
 
     now = datetime.now(UTC)
     opened = 0
@@ -433,6 +432,10 @@ async def _build_leg_to_trade_map(
         .order_by(TradeStructure.created_at)
     )).scalars().all()
     out: dict[str, tuple[str, int, int | None]] = {}
+    flat = {
+        int(oid): float(q or 0) == 0.0
+        for oid, q in (await db.execute(select(LegPosition.order_id, LegPosition.open_qty))).all()
+    }
     for ts in structures:
         legs = (await db.execute(
             select(StructureOrder).where(
@@ -442,8 +445,13 @@ async def _build_leg_to_trade_map(
         )).scalars().all()
         for leg in legs:
             key = leg.ib_local_symbol or _structure_order_to_ib_key(leg)
-            if key is not None:
-                out[key] = (ts.structure_type, ts.id, ts.package_id)
+            if key is None:
+                continue
+            # A leg the book has brought back to zero (closed, expired) owns
+            # nothing: the contract belongs to a trade that still holds it.
+            if leg.ib_local_symbol is not None and flat.get(int(leg.id), False):
+                continue
+            out[key] = (ts.structure_type, ts.id, ts.package_id)
     return out
 
 
@@ -465,15 +473,22 @@ async def reconcile_trade_positions(
     db: AsyncSession,
     executor: OrderExecutor,
 ) -> dict:
-    """Match each open `trade_position` leg to IB positions and persist
-    ``ib_reconciled_at`` / ``ib_qty_total`` / ``ib_qty_diff``.
+    """Stamp on each open ``booked_position`` how much of its legs IB holds:
+    ``ib_reconciled_at`` / ``ib_qty_total`` / ``ib_qty_diff``. Information
+    only (#464).
 
-    Matching is keyed on the contract tuple
-    ``(symbol, instrument_type, strike, maturity, option_type)``.
+    The match is on the contract each leg actually FILLED
+    (``trade_order.ib_local_symbol``, stamped by the fill handler). It used to
+    be a symbol rebuilt from the preview's strike and date: ``EUUZ6 P1077``
+    for a leg filled as ``EUUZ6 P1075``, ``6EG7`` for ``6EH7``. That never
+    matched, the count read 0, and after one hour the row was closed with
+    ``reconciled_flat_at_ib``: 31 of 33 booked trades on prod, two of them
+    still held.
 
-    A booked structure (e.g. straddle = 2 legs) reconciles to the SUM of
-    abs(qty) across IB rows that match any of its legs. ``ib_qty_diff``
-    is ``booked − ib_total`` (positive ⇒ IB short of expected).
+    This function no longer closes anything. A booked trade is closed by the
+    book, when its legs are flat (``persistence.book_close``); a difference
+    with the broker is a reconciliation break (``engines.execution.reconciler``),
+    visible on every position panel.
 
     Skips silently if IB is offline (leaves ``ib_reconciled_at`` untouched
     so the frontend can colour the badge "stale" / "missing").
@@ -496,11 +511,6 @@ async def reconcile_trade_positions(
 
     now = datetime.now(UTC)
     reconciled = 0
-    closed = 0
-    # "flat at IB" is only actionable when IB is actively reporting the account
-    # (account values streaming). Then an empty position list = genuinely flat →
-    # safe to close the stale book. If the feed is dead we never touch it.
-    ib_data_live = executor.account_is_reporting()
     for tp in open_trade_positions:
         legs = (await db.execute(
             select(StructureOrder).where(
@@ -511,62 +521,16 @@ async def reconcile_trade_positions(
         if not legs:
             continue
         booked_qty_total = sum(int(leg.qty_filled or leg.qty or 0) for leg in legs)
-        ib_qty_total = 0
-        for leg in legs:
-            key = _structure_order_to_ib_key(leg)
-            if key is not None:
-                ib_qty_total += ib_qty_by_key.get(key, 0)
+        ib_qty_total = sum(
+            ib_qty_by_key.get(str(leg.ib_local_symbol), 0) for leg in legs if leg.ib_local_symbol
+        )
         tp.ib_reconciled_at = now
         tp.ib_qty_total = ib_qty_total
         tp.ib_qty_diff = booked_qty_total - ib_qty_total
         reconciled += 1
-        if ib_qty_total == 0 and tp.opened_at < now - timedelta(hours=1):
-            if _AUTOCLOSE_STALE and ib_data_live:
-                # broker holds none of this booking's legs → close it (audited).
-                # This is a book-vs-broker adjustment, NOT a trade: leave net_pnl_usd
-                # NULL so it never pollutes realized/hit-rate stats. But CAPTURE the
-                # last-known mark P&L in the audit event so the P&L that dissolved via
-                # netting is attributable — it's what explains the portfolio-stats
-                # "reconciliation gap" (Δ net-liq that isn't realized + unrealized).
-                last_mark = (await db.execute(
-                    select(BookedPositionMetricHistory.current_pnl_net_usd)
-                    .where(BookedPositionMetricHistory.position_id == tp.id)
-                    .order_by(BookedPositionMetricHistory.timestamp.desc())
-                    .limit(1)
-                )).scalar_one_or_none()
-                tp.state = "closed"
-                tp.closed_at = now
-                tp.state_updated_at = now
-                tp.close_reason = "reconciled_flat_at_ib"
-                closed += 1
-                db.add(TradeEvent(
-                    structure_id=tp.structure_id,
-                    # warning (#323): a booking that dissolved at IB is a book-vs-broker
-                    # adjustment the operator must see, not routine flow.
-                    event_type="position_reconciled_closed", severity="warning",
-                    description=(
-                        f"booked position {tp.id} flat at IB (booked {booked_qty_total}) "
-                        "→ closed by reconciliation"
-                    ),
-                    payload={
-                        "booked_position_id": tp.id,
-                        "booked_qty": booked_qty_total,
-                        # P&L dissolved via netting (audit only — NOT realized P&L).
-                        "dissolved_mark_pnl_usd": (
-                            round(float(last_mark), 2) if last_mark is not None else None
-                        ),
-                    },
-                ))
-            else:
-                logger.warning(
-                    "trade_position_unreconciled id=%d opened_at=%s booked_qty=%d",
-                    tp.id, tp.opened_at.isoformat(), booked_qty_total,
-                )
 
     await db.commit()
-    if closed:
-        logger.info("reconcile_closed_stale count=%d", closed)
-    return {"reconciled": reconciled, "closed": closed}
+    return {"reconciled": reconciled, "closed": 0}
 
 
 async def position_sync_loop(

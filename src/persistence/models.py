@@ -782,6 +782,9 @@ class StructureOrder(Base):
     # Populated by fills_handler on first fill ; exact match key for the
     # leg→trade resolution in position_sync (avoids fuzzy strike rounding).
     ib_local_symbol: Mapped[str | None] = mapped_column(String(20))
+    # IB contract id of the contract actually filled (#460), stamped with
+    # ``ib_local_symbol`` on the first fill. NULL until then.
+    con_id: Mapped[int | None] = mapped_column(BigInteger)
     contract_symbol: Mapped[str] = mapped_column(String(10), nullable=False, default="EUR")
     contract_type: Mapped[str] = mapped_column(String(10), nullable=False)
     contract_expiry: Mapped[date | None] = mapped_column(Date)
@@ -914,6 +917,71 @@ class ReconciliationBreak(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now(),
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Instrument(Base):
+    """One row per contract the broker has ever shown us, keyed by the IB
+    contract id (#460). The identity every book-to-broker comparison uses:
+    type, multiplier, listed expiry and strike come from IB, never from a
+    symbol rebuilt out of a preview's numbers. Upserted by the execution
+    engine from every position sync and every fill."""
+    __tablename__ = "instrument"
+    __table_args__ = (
+        Index("ix_instrument_local_symbol", "local_symbol"),
+    )
+    con_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    local_symbol: Mapped[str] = mapped_column(String(20), nullable=False)
+    sec_type: Mapped[str] = mapped_column(String(8), nullable=False)    # FOP / FUT / CASH
+    symbol: Mapped[str | None] = mapped_column(String(10))
+    currency: Mapped[str | None] = mapped_column(String(5))
+    exchange: Mapped[str | None] = mapped_column(String(12))
+    multiplier: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    expiry: Mapped[date | None] = mapped_column(Date)
+    strike: Mapped[Decimal | None] = mapped_column(Numeric(15, 8))
+    option_right: Mapped[str | None] = mapped_column(String(1))
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+
+
+class PositionEvent(Base):
+    """A change to a leg's position that is NOT an execution (#463).
+
+    Fills are the only input of the book as long as nothing else moves a
+    position. Three things do: a contract expires (IB drops it, no fill), an
+    option is exercised or assigned, and a repair stands in for a fill the
+    engine never received. Each is one row here, folded with the fills by
+    ``persistence.projection``; nothing else may change ``leg_position``.
+
+    ``side`` / ``qty`` / ``price`` read like a fill on the leg: an expiry of a
+    long leg is a SELL of the open quantity at 0 (or at the settlement price).
+    ``dedup_key`` makes the writers idempotent (one expiry per leg and date).
+    """
+    __tablename__ = "position_event"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('expiry','exercise','assignment','repair')",
+            name="ck_position_event_kind",
+        ),
+        CheckConstraint("side IN ('BUY','SELL')", name="ck_position_event_side"),
+        UniqueConstraint("order_id", "kind", "dedup_key", name="uq_position_event_dedup"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("trade_order.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(12), nullable=False)
+    side: Mapped[str] = mapped_column(String(5), nullable=False)
+    qty: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(15, 8), nullable=False, default=0)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    dedup_key: Mapped[str] = mapped_column(String(60), nullable=False)
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
 
 
 class BookedPosition(Base):

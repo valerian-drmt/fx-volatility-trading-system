@@ -47,3 +47,47 @@ def fold_fills(fills: Iterable[Fill]) -> LegFold:
         return LegFold(open_qty=open_qty, avg_price=None, filled_qty=filled_qty)
     notional = sum(f.qty * f.price for f in items)
     return LegFold(open_qty=open_qty, avg_price=notional / filled_qty, filled_qty=filled_qty)
+
+
+# ── Netting (#462) ────────────────────────────────────────────────────────────
+# A leg's position is the fold of its OWN executions and of every execution
+# that the book attributes to it: the fills of the closing orders that name it
+# (``closes_order_id``) and its lifecycle events (expiry, exercise, repair).
+# The link is still known at fill time and still never comes from the IB
+# mirror (I7); what changed is that a close now reduces the leg it closes
+# instead of living for ever as an opposite position on its own row.
+
+
+@dataclass(frozen=True)
+class BookEntry:
+    """One execution or lifecycle event applied to a leg, in execution order."""
+
+    side: str      # 'BUY' / 'SELL'
+    qty: float     # magnitude
+    price: float
+    own: bool = True   # False: a close or an event attributed to this leg
+
+
+@dataclass(frozen=True)
+class NetLeg:
+    open_qty: float            # signed, after closes and events
+    avg_price: float | None    # avg cost of what is still open; entry VWAP when flat
+    realized_pnl_usd: float    # on the quantity closed, at ``multiplier``
+
+
+def net_leg(entries: Iterable[BookEntry], *, multiplier: float) -> NetLeg:
+    """Average-cost fold of everything attributed to one leg. Pure."""
+    from core.ledger import LedgerFill
+    from core.ledger import fold_fills as ledger_fold
+
+    items = [e for e in entries if e.qty > 0]
+    if not items:
+        return NetLeg(open_qty=0.0, avg_price=None, realized_pnl_usd=0.0)
+    led = ledger_fold([
+        LedgerFill(contract="leg", side=(e.side or "").upper(), qty=e.qty, price=e.price,
+                   commission=0.0, multiplier=multiplier)
+        for e in items
+    ])["leg"]
+    own = fold_fills(Fill(side=e.side, qty=e.qty, price=e.price) for e in items if e.own)
+    avg = led.avg_cost if led.net_qty != 0 else own.avg_price
+    return NetLeg(open_qty=led.net_qty, avg_price=avg, realized_pnl_usd=led.realized_pnl)

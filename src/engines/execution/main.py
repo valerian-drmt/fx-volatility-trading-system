@@ -34,12 +34,14 @@ from engines.execution.ib_heartbeat import (
 )
 from engines.execution.ib_session import IbSessionSupervisor
 from engines.execution.latency import note_submit_start
+from engines.execution.lifecycle import lifecycle_loop
 from engines.execution.live_submit import (
     LiveSubmitAlreadyClaimed,
     LiveSubmitError,
     submit_structure_live,
 )
 from engines.execution.live_submit import order_ref as structure_order_ref
+from engines.execution.manual_tickets import book_manual_ticket, fail_manual_ticket, ticket_fields
 from engines.execution.order_executor import (
     OrderExecutor,
     OrderExecutorUnavailable,
@@ -220,6 +222,11 @@ async def lifespan(app: FastAPI):
     reconcile_pos_task = spawn_supervised(
         lambda: reconcile_positions_loop(sm, executor), name="position_reconcile_loop", engine=_ENGINE,
     )
+    # Contract lifecycle (#463): an expired contract closes its book legs, a
+    # trade whose legs are all flat is closed. Guarded by account_is_reporting.
+    lifecycle_task = spawn_supervised(
+        lambda: lifecycle_loop(sm, executor), name="lifecycle_loop", engine=_ENGINE,
+    )
     # IB reconnect watchdog (ENG-1) : recovers from the nightly IB Gateway
     # restart AND retries a failed startup connect — ``OrderExecutor.connect``
     # is idempotent + failure-swallowing, so this loop is safe to run forever.
@@ -239,9 +246,9 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         ib_watchdog_stop.set()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, ib_watchdog_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, ib_watchdog_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, ib_watchdog_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, ib_watchdog_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -485,6 +492,7 @@ async def place_order(
 ) -> dict[str, Any]:
     payload = body.model_dump()
     spot_id: int | None = None
+    manual: tuple[int, int] | None = None
     try:
         if body.sec_type == "CASH":
             # IDEALPRO refuses a limit off its 0.00005 tick (error 110) and the
@@ -512,18 +520,27 @@ async def place_order(
             result = trade_to_dict(trade)
             result["spot_order_id"] = spot_id
         else:
-            # Operator one-shot (EX-23, #318): no row to claim, but a key IB
-            # keeps and we echo, so the order can be found again.
-            ref = manual_order_ref()
+            # Operator one-shot, booked like any trade (#466): the rows exist
+            # before the order reaches IB, the fill handlers keep them
+            # current. It used to place with no row at all, so the position
+            # it opened was "unbooked at IB" by construction.
+            manual = await book_manual_ticket(sm, **ticket_fields(body))
+            ref = structure_order_ref(manual[0], manual[1])
+            await claim_submit(sm, StructureOrder, manual[1])
             trade = await ex.place_order_trade(OrderRequest(**payload), order_ref=ref)
+            await stamp_placement(sm, StructureOrder, manual[1], trade)
+            attach_fill_handlers(trade=trade, order_id=manual[1], sessionmaker_factory=sm)
             result = trade_to_dict(trade)
             result["order_ref"] = ref
+            result["structure_id"], result["db_order_id"] = manual
         await _log_event(sm, action_type="SUBMIT", request_payload=payload,
                          response_payload=result, success=True)
         return result
     except (OrderExecutorUnavailable, ValueError) as e:
         if spot_id is not None:
             await mark_spot_failed(sm, spot_id, str(e))
+        if manual is not None:
+            await fail_manual_ticket(sm, structure_id=manual[0], order_id=manual[1], reason=str(e))
         await _log_event(sm, action_type="SUBMIT", request_payload=payload,
                          response_payload=None, success=False, error_message=str(e)[:500])
         raise HTTPException(status_code=400, detail=str(e)) from e

@@ -48,7 +48,7 @@ page lists every diagram with the note that owns it.
 | [architecture/backend.md](architecture/backend.md) | The `src/` layout (`api` / `core` / `engines` / `persistence` / `bus` / `shared`) and the five import-linter contracts. |
 | [architecture/data-flow.md](architecture/data-flow.md) | The live path: IB → engines → Redis pub/sub + cache → db-writer → Postgres; api reads DB + Redis; frontend via REST + WS. |
 | [architecture/frontend.md](architecture/frontend.md) | The voldesk React app: 7 views, zustand stores, the typed OpenAPI client, WS hooks, the `/dev` console. |
-| [architecture/database.md](architecture/database.md) | The Postgres schema: 31 ORM classes grouped by domain, Alembic flow, `VolConfig` versioning. |
+| [architecture/database.md](architecture/database.md) | The Postgres schema: 33 ORM classes grouped by domain, Alembic flow, `VolConfig` versioning. |
 | [architecture/websockets.md](architecture/websockets.md) | Every `/ws/*` stream: Redis channel, cadence, desk reader, one message example each (generated from the payload fixtures). |
 | REST reference | `/api/openapi.json` (public; Swagger at `/api/docs` locally): every operation described, `traderCookie` on the gated ones, error codes per route. |
 | [architecture/hot-cold-paths.md](architecture/hot-cold-paths.md) | Hot path (orders, fills, positions, account) vs cold path (surface, PCA, rollups): the six engines, the three collision points behind the November 2026 incidents, and the changes that separate them. |

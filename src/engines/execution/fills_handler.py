@@ -38,7 +38,9 @@ from core.execution.order_states import next_state
 from engines.execution.ib_trade_log import ib_reason_from_trade, ib_why_held
 from engines.execution.latency import note_fill, observe_orders_publish, observe_submitted
 from engines.execution.redis_state import get_client as _get_redis
+from persistence.book_close import close_after_leg_change
 from persistence.book_state import refresh_book_state
+from persistence.instruments import instrument_from_ib_contract, upsert_instruments
 from persistence.models import (
     BookedPosition,
     StructureFill,
@@ -248,6 +250,15 @@ async def _persist_fill(
             ls = getattr(getattr(fill, "contract", None), "localSymbol", None)
             if ls:
                 order.ib_local_symbol = str(ls)[:20]
+        if order.con_id is None:
+            item = instrument_from_ib_contract(getattr(fill, "contract", None))
+            if item is not None:
+                order.con_id = item["con_id"]
+                try:
+                    async with db.begin_nested():
+                        await upsert_instruments(db, [item])
+                except Exception:
+                    logger.warning("instrument_upsert_failed order_id=%s", order_id, exc_info=True)
         agg = await _recompute_aggregates(db, order)
         full_fill = False
         if agg.fully_filled and order.state != "filled":
@@ -280,6 +291,21 @@ async def _persist_fill(
         note_fill(local_symbol, ts)
         if agg.fully_filled:
             await maybe_complete_structure(sm, structure_id)
+        await settle_book(sm, order_id)
+
+
+async def settle_book(sm: async_sessionmaker[AsyncSession], order_id: int) -> None:
+    """Close the trade this fill left flat, and the trade of the leg it
+    closes (#462). After ``maybe_complete_structure`` so an entry that fills
+    is ``fully_filled`` before it can be ``closed``. Never raises: the fill
+    is already booked, a missed close is picked up by the lifecycle sweep."""
+    try:
+        async with sm() as db:
+            closed = await close_after_leg_change(db, order_id=order_id)
+            if closed:
+                await db.commit()
+    except Exception:
+        logger.exception("settle_book_failed order_id=%s", order_id)
 
 
 async def persist_fill(
@@ -498,6 +524,8 @@ async def _book_combo_filled(
         await db.commit()
     if structure_id is not None:
         await maybe_complete_structure(sm, structure_id)
+        for oid in order_ids:
+            await settle_book(sm, oid)
 
 
 # --------------------------------------------------------------------------
