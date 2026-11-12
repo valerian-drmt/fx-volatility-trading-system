@@ -36,11 +36,17 @@ export function patchPositions(positions: Position[], msg: PositionsChangedMsg, 
       changed = true;
       continue;
     }
-    const next = byId.get(p.id);
-    if (next === undefined) {
+    const pushed = byId.get(p.id);
+    if (pushed === undefined) {
       out.push(p);
       continue;
     }
+    // A push carries the broker mirror row, not the position line (#461): the
+    // row keeps the line identity it got from the last read.
+    const next: Position =
+      pushed.lineId === undefined && p.lineId !== undefined
+        ? { ...pushed, lineId: p.lineId, lineStatus: p.lineStatus, netted: p.netted ?? false }
+        : pushed;
     byId.delete(p.id);
     if (samePosition(p, next)) out.push(p);
     else {
