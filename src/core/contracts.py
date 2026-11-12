@@ -62,6 +62,11 @@ def is_linear(instrument_type: str | None) -> bool:
     return instrument_type in LINEAR_INSTRUMENTS
 
 
+def is_cash_symbol(local_symbol: str | None) -> bool:
+    """True for an IB spot FX (CASH) local symbol, e.g. ``EUR.USD``."""
+    return bool(local_symbol) and _SPOT_RE.match(local_symbol or "") is not None
+
+
 @dataclass(frozen=True)
 class ContractSpec:
     """Decoded view of an IB ``localSymbol``. ``maturity`` is intentionally

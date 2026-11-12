@@ -19,6 +19,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from core.contracts import is_cash_symbol
 from core.execution.reconciliation import compute_breaks
 from engines.execution.settings import get_execution_settings
 from persistence.models import (
@@ -77,6 +78,11 @@ async def _broker_by_contract(db: AsyncSession) -> dict[str, float]:
     out: dict[str, float] = {}
     for p in rows:
         if not p.structure:
+            continue
+        if is_cash_symbol(p.structure):
+            # Spot FX is cash management, not a booked position (#466): IB
+            # lists a virtual FX position and drops it at its nightly restart,
+            # so it can never match a leg. The panels show it as cash.
             continue
         q = float(p.quantity or 0)
         signed = q if (p.side or "").upper() == "BUY" else -q
