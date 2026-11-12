@@ -3858,6 +3858,10 @@ export interface components {
             gamma_usd?: number | null;
             /** Id */
             id: number;
+            /** Identity */
+            identity?: {
+                [key: string]: unknown;
+            } | null;
             /** Iv */
             iv?: number | null;
             /** Line Id */

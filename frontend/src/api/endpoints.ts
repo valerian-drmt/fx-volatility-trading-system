@@ -320,6 +320,7 @@ export interface StructuredLeg {
   line_id?: string | null; line_status?: string | null;
   book_qty?: number | null; broker_qty?: number | null;
   order_role?: string; booked_expiry?: string | null;
+  identity?: unknown;
 }
 export interface StructuredStructure {
   structure_id: number; structure_type: string; product_label: string | null;
@@ -339,6 +340,7 @@ export interface UnlinkedPosition {
   entry?: number | null;
   line_id?: string | null; line_status?: string | null;
   book_qty?: number | null; broker_qty?: number | null;
+  identity?: unknown;
 }
 export interface StructuredPositions { structures: StructuredStructure[]; unlinked: UnlinkedPosition[] }
 export const fetchStructuredPositions = () =>

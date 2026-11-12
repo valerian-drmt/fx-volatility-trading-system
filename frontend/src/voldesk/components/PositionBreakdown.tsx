@@ -9,8 +9,8 @@ import { Fragment, useState } from "react";
 import { fmt } from "../data";
 import type { Position } from "../data";
 import { pnlCls } from "./format";
-import { LineStatusTag } from "./LineStatus";
-import { groupByTradeId, structureName, structureSide } from "./tradeGrouping";
+import { GroupIdentityCells, IdentityCells, IdentityHead } from "./LineIdentity";
+import { groupLines, identFrom } from "./lineIdent";
 
 interface NumVals {
   delta: number | null;   // null = nothing priced the line: shown "—", not 0
@@ -59,19 +59,7 @@ export function PositionBreakdown({ positions: all }: { positions: Position[] })
 
   const legRow = (p: Position, main: boolean): JSX.Element => (
     <tr key={p.lineId ?? p.id} className={main ? undefined : "pos-leg"} data-line-id={p.lineId}>
-      <td className="l grp-fix mono dim">{main ? p.tradeId || p.packageId || "—" : ""}</td>
-      <td className="l grp-fix mono dim">{p.conId || "—"}</td>
-      <td className="l grp-fix">
-        <span className="sym">{main ? "" : "↳ "}{p.product || "—"}</span>
-      </td>
-      <td className="l grp-fix">
-        <span className="sym">{p.structure}</span>
-        <LineStatusTag status={p.lineStatus} />
-      </td>
-      <td className="l grp-fix">
-        <span className={"side-pill " + (p.side === "BUY" ? "long" : "short")}>{p.side}</span>
-      </td>
-      <td className="r mono dim grp-fix">{p.tenor || "—"}</td>
+      <IdentityCells ident={p.ident ?? identFrom(p)} main={main} status={p.lineStatus} cls="grp-fix" />
       <td className="r mono dim grp-fix">{p.iv ? p.iv.toFixed(1) : "—"}</td>
       <td className="r mono dim grp-fix">{p.unpriced ? "—" : (p.nominal / 1e6).toFixed(2) + "M"}</td>
       {numCells(p.unpriced ? { ...legVals(p), delta: null, pnl: null } : legVals(p), !!p.iv)}
@@ -83,12 +71,7 @@ export function PositionBreakdown({ positions: all }: { positions: Position[] })
       <table className="dt pb-table">
         <thead>
           <tr>
-            <th className="l grp-fix">Trade</th>
-            <th className="l grp-fix">Contract</th>
-            <th className="l grp-fix">Product</th>
-            <th className="l grp-fix">Structure</th>
-            <th className="l grp-fix">Side</th>
-            <th className="r grp-fix">Tenor</th>
+            <IdentityHead cls="grp-fix" />
             <th className="r grp-fix">IV</th>
             <th className="r grp-fix">Nominal €</th>
             <th className="r grp-grk col-grp">Δ</th>
@@ -103,12 +86,12 @@ export function PositionBreakdown({ positions: all }: { positions: Position[] })
         <tbody>
           {positions.length === 0 && (
             <tr>
-              <td colSpan={15} className="l dim small mono" style={{ padding: "16px 10px" }}>
+              <td colSpan={16} className="l dim small mono" style={{ padding: "16px 10px" }}>
                 no open positions
               </td>
             </tr>
           )}
-          {groupByTradeId(positions).map((grp) => {
+          {groupLines(positions).map((grp) => {
             if (grp.legs.length === 1) return legRow(grp.legs[0]!, true);
             const isOpen = expanded.has(grp.key);
             const sum = (f: (p: Position) => number): number => grp.legs.reduce((s, p) => s + f(p), 0);
@@ -116,31 +99,16 @@ export function PositionBreakdown({ positions: all }: { positions: Position[] })
               delta: sum((p) => p.delta), gamma: sum((p) => p.gamma), vega: sum((p) => p.vega),
               theta: sum((p) => p.theta), vanna: sum((p) => p.vanna), volga: sum((p) => p.volga), pnl: sum((p) => p.pnl),
             };
-            const tenors = new Set(grp.legs.map((l) => l.tenor).filter(Boolean));
-            const side = structureSide(grp.legs);
             const hasGreeks = grp.legs.some((l) => !!l.iv);
             return (
               <Fragment key={grp.key}>
                 <tr className={"pos-main" + (isOpen ? " open" : "")} onClick={() => toggle(grp.key)}>
-                  <td className="l grp-fix mono dim">
-                    <button
-                      className="pos-caret"
-                      onClick={(e) => { e.stopPropagation(); toggle(grp.key); }}
-                      aria-expanded={isOpen}
-                    >
-                      {isOpen ? "▾" : "▸"}
-                    </button>
-                    {grp.tradeId ? "#" + grp.tradeId : "—"}
-                  </td>
-                  <td className="l grp-fix mono dim">{grp.legs.length} legs</td>
-                  <td className="l grp-fix">
-                    <span className="sym">{structureName(grp.legs)}</span>
-                  </td>
-                  <td className="l grp-fix mono dim">—</td>
-                  <td className="l grp-fix">
-                    <span className={"side-pill " + (side === "BUY" ? "long" : "short")}>{side}</span>
-                  </td>
-                  <td className="r mono dim grp-fix">{tenors.size === 1 ? [...tenors][0] : "—"}</td>
+                  <GroupIdentityCells
+                    idents={grp.legs.map((p) => p.ident ?? identFrom(p))}
+                    isOpen={isOpen}
+                    onToggle={() => toggle(grp.key)}
+                    cls="grp-fix"
+                  />
                   <td className="r mono dim grp-fix">—</td>
                   <td className="r mono dim grp-fix">{(sum((p) => p.nominal) / 1e6).toFixed(2)}M</td>
                   {numCells(agg, hasGreeks)}

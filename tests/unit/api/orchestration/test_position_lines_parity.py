@@ -142,3 +142,26 @@ async def test_trade_panel_shows_the_flagged_leg_inside_its_trade(sqlite_session
         assert by_id[t["t60"]]["net"]["n_linked"] == 1 and by_id[t["t60"]]["net"]["n_lines"] == 2
         fut = by_id[t["t88"]]["legs"][0]
         assert fut["line_status"] == "qty_mismatch" and fut["held_qty"] == 5 and fut["open_qty"] == 7
+
+
+async def test_the_three_panels_describe_a_line_with_the_same_identity(sqlite_sessionmaker: Any) -> None:
+    """Same lines is not enough: the first columns (trade, contract, product,
+    symbol, side, quantity, tenor, legs) must be THE SAME on the three
+    panels; only the columns after them differ."""
+    async with sqlite_sessionmaker() as db:
+        t = await _seed(db)
+        trade = await list_structured(db, limit=50)
+        risk = {r["line_id"]: r["identity"] for r in await list_open(db)}
+        portfolio = {r["line_id"]: r["identity"] for r in attribution_rows([], await load_line_set(db))}
+        desk = {leg["line_id"]: leg["identity"] for s in trade["structures"] for leg in s["legs"] if leg["open"]}
+        desk.update({u["line_id"]: u["identity"] for u in trade["unlinked"]})
+        assert desk == risk == portfolio
+
+        strangle_call = risk[f"EUUZ6 C1210|T{t['t60']}"]
+        assert strangle_call["structure_type"] == "long strangle 10d" and strangle_call["leg_label"] == "Vanilla Call"
+        assert (strangle_call["side"], strangle_call["qty"]) == ("BUY", 100)
+        assert (strangle_call["legs_open"], strangle_call["legs_total"]) == (2, 2)
+        shared = risk[f"EUUG7 C1110|T{t['t79']}"]
+        assert shared["qty"] == 10 and shared["legs_total"] == 1
+        assert risk["EUUG7 P1120|-"]["trade_id"] is None and risk["EUUG7 P1120|-"]["legs_total"] == 1
+

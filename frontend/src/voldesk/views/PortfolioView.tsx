@@ -21,8 +21,8 @@ import { FreshBadge } from "../components/FreshBadge";
 import { WsChip } from "../components/WsChip";
 import { gk$, pnlCls } from "../components/format";
 import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
-import { groupByTradeId, structureName, structureSide } from "../components/tradeGrouping";
-import { LineStatusTag } from "../components/LineStatus";
+import { GroupIdentityCells, IdentityCells, IdentityHead } from "../components/LineIdentity";
+import { groupLines, identFrom } from "../components/lineIdent";
 import { EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
 import type { Cash } from "../data";
 import { useDeskData } from "../data/deskData";
@@ -725,31 +725,6 @@ function AttributionMatrix({ m, axisLabel }: { m: AttribMatrix | null; axisLabel
   );
 }
 
-// Per-trade P&L-attribution matrix — grouped by trade like Open positions: a
-// collapsible summary line per multi-leg trade (caret ▸, aggregated greek-P&L)
-// with its legs indented, single-leg trades as one row. Bottom Total foots.
-// Booked structure name from the trade's classifier verdict (structure_type),
-// mirroring Trade's Open positions so #90 reads "Straddle" not "Vanilla Put" even
-// when the mirror only holds one un-netted leg. null for empty/custom → fall back.
-function bookedName(type: string): string | null {
-  const l = (type || "").toLowerCase().trim();
-  if (!l || l === "custom") return null;
-  const sm = /strangle\s*(\d+)\s*d/.exec(l);
-  if (sm) return `Strangle ${sm[1]}Δ`;
-  if (l.includes("strangle")) return "Strangle";
-  if (l.includes("straddle")) return "Straddle";
-  if (l.includes("risk reversal")) return "Risk Reversal";
-  if (l.includes("butterfly")) return "Butterfly";
-  if (l.includes("calendar")) return "Calendar";
-  if (l.includes("call spread")) return "Call Spread";
-  if (l.includes("put spread")) return "Put Spread";
-  if (l.includes("vertical spread")) return "Vertical Spread";
-  if (l.includes("future")) return "Future";
-  const bare = l.replace(/^(long|short)\s+/, "");
-  if (bare === "call") return "Vanilla Call";
-  if (bare === "put") return "Vanilla Put";
-  return null;
-}
 
 function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): JSX.Element {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -778,24 +753,17 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
   );
   const legRow = (r: PositionAttribRow, main: boolean): JSX.Element => (
     <tr key={r.lineId ?? r.id} className={main ? undefined : "pos-leg"} data-line-id={r.lineId}>
-      <td className="l grp-fix mono dim">{main ? (r.tradeId != null ? "#" + r.tradeId : "—") : ""}</td>
-      <td className="l grp-fix mono dim">{r.contractId ?? "—"}</td>
-      <td className="l grp-fix">
-        <span className="sym">{main ? bookedName(r.type) ?? r.product : "↳ " + r.product}</span>
-      </td>
-      <td className="l grp-fix">
-        <span className="sym">{r.structure}</span>
-        <LineStatusTag status={r.lineStatus} />
-        {r.attribStatus && ATTRIB_NOTE[r.attribStatus] ? (
+      <IdentityCells
+        ident={r.ident ?? identFrom({ tradeId: r.tradeId, conId: r.contractId, product: r.product, structure: r.structure, side: r.side, tenor: r.tenor })}
+        main={main}
+        status={r.lineStatus}
+        cls="grp-fix"
+        extra={r.attribStatus && ATTRIB_NOTE[r.attribStatus] ? (
           <span className="tag tag-neutral" style={{ marginLeft: 6 }} title={ATTRIB_NOTE[r.attribStatus]!.title}>
             {ATTRIB_NOTE[r.attribStatus]!.label}
           </span>
         ) : null}
-      </td>
-      <td className="l grp-fix">
-        <span className={"side-pill " + (r.side === "BUY" ? "long" : "short")}>{r.side}</span>
-      </td>
-      <td className="r mono dim grp-fix">{r.tenor}</td>
+      />
       <td className="r mono dim grp-fix">{r.iv ? r.iv.toFixed(1) : "—"}</td>
       <td className="r mono dim grp-fix col-grp-end">{(r.nominal / 1e6).toFixed(2)}M</td>
       {attribCells(r)}
@@ -807,12 +775,7 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
       <table className="dt pb-table">
         <thead>
           <tr>
-            <th className="l grp-fix">Trade</th>
-            <th className="l grp-fix">Contract</th>
-            <th className="l grp-fix">Product</th>
-            <th className="l grp-fix">Structure</th>
-            <th className="l grp-fix">Side</th>
-            <th className="r grp-fix">Tenor</th>
+            <IdentityHead cls="grp-fix" />
             <th className="r grp-fix">IV</th>
             <th className="r grp-fix col-grp-end">Nominal €</th>
             <th className="r grp-pnl col-grp col-grp-end">
@@ -826,7 +789,7 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
           </tr>
         </thead>
         <tbody>
-          {groupByTradeId(m.rows).map((grp) => {
+          {groupLines(m.rows).map((grp) => {
             if (grp.legs.length === 1) return legRow(grp.legs[0]!, true);
             const isOpen = expanded.has(grp.key);
             const agg = {
@@ -834,30 +797,15 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
               gamma: attribTotal(grp.legs, (r) => r.gamma), vega: attribTotal(grp.legs, (r) => r.vega),
               theta: attribTotal(grp.legs, (r) => r.theta), residual: attribTotal(grp.legs, (r) => r.residual),
             };
-            const tenors = new Set(grp.legs.map((l) => l.tenor));
-            const side = structureSide(grp.legs);
             return (
               <Fragment key={grp.key}>
                 <tr className={"pos-main" + (isOpen ? " open" : "")} onClick={() => toggle(grp.key)}>
-                  <td className="l grp-fix mono dim">
-                    <button
-                      className="pos-caret"
-                      onClick={(e) => { e.stopPropagation(); toggle(grp.key); }}
-                      aria-expanded={isOpen}
-                    >
-                      {isOpen ? "▾" : "▸"}
-                    </button>
-                    {grp.tradeId ? "#" + grp.tradeId : "—"}
-                  </td>
-                  <td className="l grp-fix mono dim">{grp.legs.length} legs</td>
-                  <td className="l grp-fix">
-                    <span className="sym">{bookedName(grp.legs[0]!.type) ?? structureName(grp.legs)}</span>
-                  </td>
-                  <td className="l grp-fix mono dim">—</td>
-                  <td className="l grp-fix">
-                    <span className={"side-pill " + (side === "BUY" ? "long" : "short")}>{side}</span>
-                  </td>
-                  <td className="r mono dim grp-fix">{tenors.size === 1 ? [...tenors][0] : "—"}</td>
+                  <GroupIdentityCells
+                    idents={grp.legs.map((r) => r.ident ?? identFrom({ tradeId: r.tradeId, conId: r.contractId, product: r.product, structure: r.structure, side: r.side, tenor: r.tenor }))}
+                    isOpen={isOpen}
+                    onToggle={() => toggle(grp.key)}
+                    cls="grp-fix"
+                  />
                   <td className="r mono dim grp-fix">—</td>
                   <td className="r mono dim grp-fix col-grp-end">{(grp.legs.reduce((a, r) => a + r.nominal, 0) / 1e6).toFixed(2)}M</td>
                   {attribCells(agg)}
@@ -867,7 +815,7 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
             );
           })}
           <tr className="wf-total">
-            <td className="l grp-fix" colSpan={8}>
+            <td className="l grp-fix" colSpan={9}>
               <span className="sym">Total</span>
             </td>
             {attribSum(t.actual, "grp-pnl col-grp col-grp-end")}

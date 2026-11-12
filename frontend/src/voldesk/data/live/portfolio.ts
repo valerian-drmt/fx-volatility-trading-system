@@ -17,6 +17,7 @@
  * yet), the structure/tenor/mode waterfall pivots (only greek is live), and the
  * leverage strip (no endpoint).
  */
+import { adaptIdent, type LineIdent } from "../../components/lineIdent";
 import {
   type AccountState,
   type Position,
@@ -324,6 +325,7 @@ export interface PositionAttribRow {
   lineId?: string | undefined;
   lineStatus?: string | undefined;
   attribStatus?: string | undefined;
+  ident?: LineIdent | undefined;
 }
 export interface PositionAttribMatrix {
   rows: PositionAttribRow[];
@@ -362,6 +364,7 @@ export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
       lineId: lineField(r, "line_id"),
       lineStatus: lineField(r, "line_status"),
       attribStatus: lineField(r, "attrib_status"),
+      ident: adaptIdent((r as Record<string, unknown>).identity),
     }));
   // Total footed on the visible IB legs (not the endpoint totals, which include
   // booked). Sums only the legs that carry the term; null when none of them does,

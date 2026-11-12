@@ -12,6 +12,8 @@
  * gone: views render honest empty states when the backend has no data.
  */
 
+import type { LineIdent } from "../components/lineIdent";
+
 export const fmt = {
   px: (v: number, d = 4): string =>
     v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }),
@@ -212,6 +214,9 @@ export interface Position {
   lineId?: string | undefined;
   lineStatus?: string | undefined;
   unpriced?: boolean;
+  // The identity columns shared by the three position panels (built by the
+  // server, drawn by components/LineIdentity).
+  ident?: LineIdent | undefined;
 }
 
 export interface Cash {

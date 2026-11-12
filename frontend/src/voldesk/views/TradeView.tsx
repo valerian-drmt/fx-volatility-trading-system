@@ -13,6 +13,7 @@ import { FreshBadge } from "../components/FreshBadge";
 import { WsChip } from "../components/WsChip";
 import { OpenPositionsTable, type StructureCtx } from "../components/PositionsTable";
 import { PRODUCT_NAMES, formatStructLabel } from "../components/tradeGrouping";
+import { adaptIdent } from "../components/lineIdent";
 import { OrderBuilder } from "../components/OrderBuilder";
 import { TickerChart } from "../components/TickerChart";
 import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
@@ -269,7 +270,7 @@ function structuredToRows(
         pnlPct: nominal ? (pnl / nominal) * 100 : 0, dte: dteOf(l.expiry ?? ""),
         netted,
         lineId: l.line_id ?? undefined, lineStatus: l.line_status ?? undefined,
-        unpriced: l.delta_usd == null,
+        unpriced: l.delta_usd == null, ident: adaptIdent(l.identity),
       });
     }
   }
@@ -286,7 +287,7 @@ function structuredToRows(
       vanna: (u.vanna_usd ?? 0) / 1000, volga: (u.volga_usd ?? 0) / 1000,
       updated: "", opened: "", pnlPct: 0, dte: dteOf(u.expiry ?? ""),
       lineId: u.line_id ?? undefined, lineStatus: u.line_status ?? undefined,
-      unpriced: u.delta_usd == null,
+      unpriced: u.delta_usd == null, ident: adaptIdent(u.identity),
     });
   }
   return { positions, ctx };

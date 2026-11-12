@@ -28,7 +28,20 @@
   "line_status": "matched",
   "book_qty": 10.0,
   "broker_qty": 10.0,
-  "position_id": 52
+  "position_id": 52,
+  "identity": {
+   "trade_id": 87,
+   "contract_id": 853091487,
+   "symbol": "EUUG7 P1120",
+   "structure_type": null,
+   "structure_label": null,
+   "leg_label": "Vanilla Put",
+   "side": "BUY",
+   "qty": 10.0,
+   "tenor": "3M",
+   "legs_open": 1,
+   "legs_total": 1
+  }
  },
  {
   "id": 51,
@@ -59,6 +72,19 @@
   "line_status": "matched",
   "book_qty": 7.0,
   "broker_qty": 7.0,
-  "position_id": 51
+  "position_id": 51,
+  "identity": {
+   "trade_id": 88,
+   "contract_id": 550123082,
+   "symbol": "6EH7",
+   "structure_type": null,
+   "structure_label": null,
+   "leg_label": "Future - 6E",
+   "side": "BUY",
+   "qty": 7.0,
+   "tenor": "4M",
+   "legs_open": 1,
+   "legs_total": 1
+  }
  }
 ]

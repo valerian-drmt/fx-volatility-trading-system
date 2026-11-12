@@ -12,12 +12,13 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.contracts import is_cash_symbol
 from core.positions.line_set import BOOK_ONLY, BookLot, BrokerHolding, Line, build_lines
 from core.products import product_label_from_symbol
+from core.vol.tenors import tenor_bucket_from_expiry
 from persistence.models import LegPosition, OpenPosition, StructureOrder, TradeStructure
 from persistence.rows import open_position_row
 
@@ -36,6 +37,7 @@ class LineSet:
     orders: dict[int, StructureOrder]                  # every order behind a book lot
     legs: dict[int, LegPosition]                       # leg_position by order id
     structures: dict[int, TradeStructure] = field(default_factory=dict)
+    entry_legs: dict[int, int] = field(default_factory=dict)   # entry orders per trade
 
     def by_id(self) -> dict[str, Line]:
         return {ln.line_id: ln for ln in self.lines}
@@ -82,7 +84,18 @@ async def load_line_set(db: AsyncSession) -> LineSet:
                 select(TradeStructure).where(TradeStructure.id.in_(trade_ids))
             )).scalars().all()
         }
+    entry_legs: dict[int, int] = {}
+    if trade_ids:
+        entry_legs = {
+            int(sid): int(n) for sid, n in (await db.execute(
+                select(StructureOrder.structure_id, func.count(StructureOrder.id))
+                .where(StructureOrder.structure_id.in_(trade_ids))
+                .where(StructureOrder.order_role == "entry")
+                .group_by(StructureOrder.structure_id)
+            )).all()
+        }
     return LineSet(
+        entry_legs=entry_legs,
         lines=lines,
         positions={int(p.id): p for p in positions},
         orders={int(o.id): o for _, o in rows},
@@ -101,12 +114,44 @@ def _scale(row: dict[str, Any], share: float) -> dict[str, Any]:
     return out
 
 
-def line_fields(ln: Line) -> dict[str, Any]:
+def line_fields(ln: Line, ls: LineSet | None = None) -> dict[str, Any]:
     """The identity every panel row carries, whatever its other columns."""
-    return {
+    out: dict[str, Any] = {
         "line_id": ln.line_id, "line_status": ln.status,
         "book_qty": ln.book_qty, "broker_qty": ln.broker_qty,
         "position_id": ln.position_id,
+    }
+    if ls is not None:
+        out["identity"] = identity(ls, ln)
+    return out
+
+
+def identity(ls: LineSet, ln: Line, today: date | None = None) -> dict[str, Any]:
+    """The first columns of EVERY position panel, built in one place so the
+    Trade, Risk and Portfolio tables cannot describe one line differently:
+    trade number, IB contract number, product, contract symbol, side,
+    quantity, tenor, and how many of the trade's legs are still open.
+
+    The panels differ only in the columns after these."""
+    today = today or datetime.now(UTC).date()
+    struct = ls.structures.get(ln.trade_id) if ln.trade_id is not None else None
+    pos = ls.positions.get(ln.position_id) if ln.position_id is not None else None
+    order = ls.orders.get(ln.order_ids[0]) if ln.order_ids else None
+    con_id = pos.contract_id if pos is not None and pos.contract_id is not None else (
+        order.con_id if order is not None else None
+    )
+    return {
+        "trade_id": ln.trade_id,
+        "contract_id": int(con_id) if con_id is not None else None,
+        "symbol": ln.contract,
+        "structure_type": struct.structure_type if struct is not None else None,
+        "structure_label": struct.product_label if struct is not None else None,
+        "leg_label": product_label_from_symbol(ln.contract, None),
+        "side": "BUY" if ln.qty > 0 else "SELL",
+        "qty": abs(ln.qty),
+        "tenor": tenor_bucket_from_expiry(pos.expiry, today) if pos is not None and pos.expiry else None,
+        "legs_open": len(ls.for_trade(ln.trade_id)) if ln.trade_id is not None else 1,
+        "legs_total": ls.entry_legs.get(int(ln.trade_id), 1) if ln.trade_id is not None else 1,
     }
 
 
@@ -158,7 +203,7 @@ def mirror_rows(ls: LineSet, today: date | None = None) -> list[dict[str, Any]]:
                 "iv": None, "vanna_usd": None, "volga_usd": None,
                 "timestamp": None, "entry_timestamp": None,
             }
-        row.update(line_fields(ln))
+        row.update(line_fields(ln, ls))
         out.append(row)
     return out
 
@@ -220,6 +265,6 @@ def attribution_rows(per_position: list[dict[str, Any]], ls: LineSet) -> list[di
             }
         row["trade_id"] = ln.trade_id
         row["structure_type"] = struct.structure_type if struct is not None else row.get("structure_type")
-        row.update(line_fields(ln))
+        row.update(line_fields(ln, ls))
         out.append(row)
     return out
