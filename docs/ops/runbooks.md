@@ -226,3 +226,51 @@ portal or mobile login, and never run a local stack with the `ib` profile
 while prod holds the session.
 
 **Walked:** partly (see the table at the top).
+
+## 5. Read-only analysis access to the prod database
+
+Postgres has no public port. Analysis queries go through an SSM tunnel to the
+host's loopback, as a role that can only read, and only while the IB account
+is a paper account.
+
+| Piece | Where | What it guarantees |
+|---|---|---|
+| Role `fxvol_reader` | migration `064_reader_role` | SELECT only; every transaction read-only; 30 s statement timeout; 60 s idle-in-transaction timeout; 3 connections |
+| Login | `remote-deploy.sh`, `set_reader_login` | LOGIN exists only while `/fxvol/prod/DB_READONLY_PASSWORD` does; sent as a SCRAM verifier, never in clear |
+| Port | `docker-compose.yml`, `127.0.0.1:15432` on the host | loopback only, reachable through SSM (IAM-authenticated), never from the internet |
+| Client | `scripts/local/prod_db.py` | reads the password from SSM into memory, opens the tunnel, runs one read-only transaction (200 rows by default), closes the tunnel |
+| Manual tunnel | `.\scriptsws\ec2.ps1 db-tunnel` | `localhost:15433` on the PC for another client (psql, an IDE); open only while the window is |
+
+**Paper account only.** Three independent gates, each fail-closed:
+
+| Gate | When it runs | What it does |
+|---|---|---|
+| Deploy (`set_reader_login`) | every deploy | grants LOGIN only if the rendered `TRADING_MODE` is `paper` **and** `ib_connection_state.account_type` is `paper`; otherwise sets NOLOGIN and clears the password |
+| Execution engine (`close_reader_access`) | every heartbeat (10 s) | the gateway reports a live account id (`U...` / `F...`): `ALTER ROLE fxvol_reader NOLOGIN`, open sessions terminated, `reader_access_closed_live_account` logged at critical |
+| Client (`prod_db.py`) | every call | reads `account_type` first and refuses anything that is not `paper` (exit code 4) |
+
+Going back to paper does not reopen the access by itself: the next deploy does,
+once the engine has reported a paper account again.
+
+**Open the access (once):**
+
+1. AWS console, Parameter Store: create `/fxvol/prod/DB_READONLY_PASSWORD`
+   (SecureString, 32+ random URL-safe characters).
+2. Deploy (any merge to `main`, or `.\scriptsws\ec2.ps1 deploy`). The log
+   line `fxvol_reader login enabled` confirms it.
+
+**Query (nothing to start first):**
+
+```powershell
+python scripts/local/prod_db.py --tables
+python scripts/local/prod_db.py "SELECT status, count(*) FROM position GROUP BY 1"
+python scripts/local/prod_db.py -f query.sql --csv > out.csv
+```
+
+Needs the AWS CLI, the Session Manager plugin and the `fxvol-dev` (parameter)
+and `admin` (tunnel) profiles on the PC.
+
+**Close the access:** delete the parameter in the console and redeploy; the
+deploy sets the role back to NOLOGIN. **Rotate:** change the value, redeploy.
+
+**Walked:** no (added 2026-11-12).

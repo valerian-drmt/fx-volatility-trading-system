@@ -24,6 +24,11 @@
 
 .PARAMETER Action
   connect          Interactive shell on the host (SSM Session Manager).
+  db-tunnel        Read-only analysis path to the prod database: forwards
+                   localhost:15433 on this PC to Postgres on the host (bound to
+                   the host's loopback, no public port) through SSM. Keep the
+                   window open while querying as role fxvol_reader
+                   (scripts/local/prod_db.py, docs/ops/runbooks.md section 5). Ctrl-C closes it.
   deploy           Triggers the GitHub 'deploy-prod' workflow (build->ghcr->host).
                    With -Sha: rollback/deploy a specific commit (deploy_sha).
                    With -AllowSchemaDowngrade: a rollback past a migration may
@@ -85,7 +90,7 @@
 param(
     [Parameter(Mandatory, Position = 0)]
     [ValidateSet(
-        'connect', 'deploy', 'health', 'ps', 'stack', 'up', 'down', 'restart', 'logs',
+        'connect', 'db-tunnel', 'deploy', 'health', 'ps', 'stack', 'up', 'down', 'restart', 'logs',
         'alembic', 'inventory', 'fluidity', 'instance-status', 'instance-stop', 'instance-start'
     )]
     [string]$Action,
@@ -231,6 +236,26 @@ switch ($Action) {
         }
         finally {
             Remove-Item $sessFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    'db-tunnel' {
+        $iid = Resolve-InstanceId
+        Write-Step "Forwarding localhost:15433 -> prod Postgres (host loopback 15432) on $iid"
+        Write-Warn "Read-only role fxvol_reader only. Leave this window open; Ctrl-C closes the tunnel."
+        $fwdParams = @{ portNumber = @('15432'); localPortNumber = @('15433') } | ConvertTo-Json -Compress
+        $fwdFile = New-TemporaryFile
+        [System.IO.File]::WriteAllText(
+            $fwdFile.FullName, $fwdParams,
+            (New-Object System.Text.UTF8Encoding($false)))
+        try {
+            & aws ssm start-session `
+                --region $Region --profile $Profile --target $iid `
+                --document-name AWS-StartPortForwardingSession `
+                --parameters ("file://" + $fwdFile.FullName.Replace('', '/'))
+        }
+        finally {
+            Remove-Item $fwdFile -Force -ErrorAction SilentlyContinue
         }
     }
 

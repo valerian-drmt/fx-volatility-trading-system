@@ -59,7 +59,10 @@ $names = @(
     '/fxvol/prod/AUTH_SECRET',
     '/fxvol/prod/AUTH_PASSWORD_HASH',
     # Redis auth (URL-safe chars only : embedded un-encoded in REDIS_URL).
-    '/fxvol/prod/REDIS_PASSWORD'
+    '/fxvol/prod/REDIS_PASSWORD',
+    # Read-only analysis role on the prod database (fxvol_reader, SELECT only).
+    # Optional: absent from SSM = the access is closed (docs/ops/runbooks.md section 5).
+    '/fxvol/prod/DB_READONLY_PASSWORD'
 )
 $json = aws ssm get-parameters `
     --names $names `

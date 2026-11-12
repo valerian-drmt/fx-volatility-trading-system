@@ -26,7 +26,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from persistence.models import IbConnectionState, StructureOrder, TradeEvent
@@ -51,8 +51,10 @@ async def update_heartbeat_row(
     is_connected: bool,
     account_summary: dict[str, Any] | None,
     now: datetime,
-) -> None:
-    """Single-row UPDATE on ``ib_connection_state``. Caller commits."""
+) -> str | None:
+    """Single-row UPDATE on ``ib_connection_state``. Caller commits.
+
+    Returns the row's ``account_type`` ('paper', 'live' or None when unknown)."""
     row = (await db.execute(
         select(IbConnectionState).where(IbConnectionState.broker == "IB").limit(1)
     )).scalar_one_or_none()
@@ -83,6 +85,34 @@ async def update_heartbeat_row(
     if was_connected and not is_connected:
         row.last_disconnect_at = now
         row.n_disconnects_24h = (row.n_disconnects_24h or 0) + 1
+    return row.account_type
+
+
+READER_ROLE = "fxvol_reader"
+
+
+async def close_reader_access(db: AsyncSession) -> bool:
+    """Take LOGIN away from the read-only analysis role and cut its sessions.
+
+    The role (migration 064, docs/ops/runbooks.md section 5) exists for
+    analysis of a PAPER account. The moment the gateway reports a live account
+    the access closes, whatever the deploy configured. Returns True when a
+    login was actually revoked. Caller commits. No-op off PostgreSQL or when
+    the role does not exist.
+    """
+    if db.get_bind().dialect.name != "postgresql":
+        return False
+    can_login = (await db.execute(
+        text("SELECT rolcanlogin FROM pg_roles WHERE rolname = :role"), {"role": READER_ROLE},
+    )).scalar_one_or_none()
+    if not can_login:
+        return False
+    await db.execute(text(f"ALTER ROLE {READER_ROLE} NOLOGIN"))
+    await db.execute(
+        text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename = :role"),
+        {"role": READER_ROLE},
+    )
+    return True
 
 
 async def heartbeat_loop(
@@ -104,10 +134,19 @@ async def heartbeat_loop(
                     logger.exception("heartbeat_account_summary_failed")
                     summary = None
             async with sessionmaker_factory() as db:
-                await update_heartbeat_row(
+                account_type = await update_heartbeat_row(
                     db, is_connected=connected, account_summary=summary, now=now,
                 )
                 await db.commit()
+            if account_type == "live":
+                # Own session and own try: the gate must never cost a heartbeat.
+                try:
+                    async with sessionmaker_factory() as db:
+                        if await close_reader_access(db):
+                            logger.critical("reader_access_closed_live_account role=%s", READER_ROLE)
+                        await db.commit()
+                except Exception:
+                    logger.exception("reader_access_close_failed")
         except asyncio.CancelledError:
             raise
         except Exception:
