@@ -23,6 +23,9 @@ EXCEPTIONS = {
     # LGPL-3.0 with the OpenSSL / linking exception; imported, never modified
     # or vendored; db-writer only (the async path is asyncpg, BSD).
     "psycopg2-binary": "LGPL with linking exception, dynamically linked, db-writer only",
+    # The wheel's classifier says Other/Proprietary while its License field and
+    # bundled LICENSE file are BSD-2-Clause (upstream metadata slip, #403).
+    "ib_async": "BSD-2-Clause per its LICENSE file; the classifier is wrong",
 }
 # Tooling that is not shipped in any image or wheel of ours.
 DEV_ONLY = {"pip-licenses", "pip-audit"}

@@ -82,6 +82,7 @@ Exceptions on record:
 | Package | License | Why it is fine |
 |---|---|---|
 | `psycopg2-binary` | LGPL-3.0 with linking exception | dynamically linked, never modified or vendored; db-writer only (the async path is asyncpg, BSD) |
+| `ib_async` | BSD-2-Clause per its LICENSE file and `License` field | the wheel's classifier says Other/Proprietary (upstream metadata slip) |
 | `stack-trace` (npm, via plotly) | MIT per its LICENSE file | the manifest has no `license` field |
 
 The Python gate reads `importlib.metadata`, the npm gate reads the lockfile's
