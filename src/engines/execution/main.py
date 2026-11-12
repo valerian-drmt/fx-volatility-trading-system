@@ -34,6 +34,7 @@ from engines.execution.ib_heartbeat import (
 )
 from engines.execution.ib_session import IbSessionSupervisor
 from engines.execution.latency import note_submit_start
+from engines.execution.lifecycle import lifecycle_loop
 from engines.execution.live_submit import (
     LiveSubmitAlreadyClaimed,
     LiveSubmitError,
@@ -220,6 +221,11 @@ async def lifespan(app: FastAPI):
     reconcile_pos_task = spawn_supervised(
         lambda: reconcile_positions_loop(sm, executor), name="position_reconcile_loop", engine=_ENGINE,
     )
+    # Contract lifecycle (#463): an expired contract closes its book legs, a
+    # trade whose legs are all flat is closed. Guarded by account_is_reporting.
+    lifecycle_task = spawn_supervised(
+        lambda: lifecycle_loop(sm, executor), name="lifecycle_loop", engine=_ENGINE,
+    )
     # IB reconnect watchdog (ENG-1) : recovers from the nightly IB Gateway
     # restart AND retries a failed startup connect — ``OrderExecutor.connect``
     # is idempotent + failure-swallowing, so this loop is safe to run forever.
@@ -239,9 +245,9 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         ib_watchdog_stop.set()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, ib_watchdog_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, ib_watchdog_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, ib_watchdog_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, ib_watchdog_task):
             try:
                 await task
             except asyncio.CancelledError:

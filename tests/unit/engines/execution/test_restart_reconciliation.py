@@ -221,8 +221,12 @@ async def test_a_new_break_is_logged_counted_and_gauged_once(sqlite_sessionmaker
     assert len(resolved) == 1 and resolved[0].open_for_s == 120.0
 
 
-def test_stale_booking_auto_close_is_a_warning_event() -> None:
+def test_the_broker_mirror_never_closes_a_booked_trade() -> None:
+    """#464: the check that closed a booked trade "flat at IB" matched on a
+    symbol rebuilt from the preview and closed trades that were still held.
+    The book closes a trade (persistence.book_close); the sync only informs."""
     from pathlib import Path
 
     src = (Path(__file__).resolve().parents[4] / "src/engines/execution/position_sync.py").read_text(encoding="utf-8")
-    assert 'event_type="position_reconciled_closed", severity="warning"' in src
+    assert "reconciled_flat_at_ib\"" not in src.split("async def reconcile_trade_positions(")[1].split('"""')[2]
+    assert 'tp.state = "closed"' not in src

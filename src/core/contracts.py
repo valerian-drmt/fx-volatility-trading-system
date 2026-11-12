@@ -150,3 +150,39 @@ def build_ib_local_symbol(
         right = "C" if ct == "call" else "P"
         return f"EUU{month_letter}{year_digit} {right}{int(float(strike) * 1000):04d}"
     return None
+
+
+def order_multiplier(contract_type: str | None, contract_symbol: str | None) -> float:
+    """Price point -> USD for one unit of a booked leg (``trade_order``):
+    1 for spot, the listed multiplier for futures and options on futures."""
+    if (contract_type or "").lower() == "spot":
+        return SPOT_MULTIPLIER
+    return multiplier_for(contract_symbol)
+
+
+_MONTH_CODE_RE = re.compile(r"^(?:EUU|M6E|6E)([FGHJKMNQUVXZ])(\d)")
+
+
+def contract_month_end(local_symbol: str | None, today: date) -> date | None:
+    """Last calendar day of the contract month coded in an IB localSymbol
+    (``EUUZ6 P1075`` -> 2026-12-31). An UPPER bound on the expiry: every EUR
+    future and option on it stops trading inside its contract month, so a
+    contract is certainly dead after this date. Used only when the listed
+    expiry is unknown (#463). The year digit resolves to the year nearest
+    ``today``."""
+    m = _MONTH_CODE_RE.match(local_symbol or "")
+    if not m:
+        return None
+    month = _FUT_MONTH_LETTERS.index(m.group(1)) + 1
+    digit = int(m.group(2))
+    year = min(
+        (y for y in range(today.year - 5, today.year + 5) if y % 10 == digit),
+        key=lambda y: abs(y - today.year),
+    )
+    first_next = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
+    return date.fromordinal(first_next.toordinal() - 1)
+
+
+def contract_expiry(local_symbol: str | None, listed: date | None, today: date) -> date | None:
+    """The listed expiry when the broker told us, else the contract month end."""
+    return listed if listed is not None else contract_month_end(local_symbol, today)

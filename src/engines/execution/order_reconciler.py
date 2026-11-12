@@ -25,6 +25,7 @@ from core.contracts import parse_local_symbol
 from core.execution.fills import state_from_recorded_fills
 from engines.execution.fills_handler import maybe_complete_structure
 from persistence.models import OpenPosition, StructureFill, StructureOrder, TradeEvent
+from persistence.position_events import record_repair
 from persistence.projection import rebuild_leg
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,16 @@ async def reconcile_stuck_orders(
                 )
             if o.ib_local_symbol is None and match.structure:
                 o.ib_local_symbol = str(match.structure)[:20]
+            if o.con_id is None and match.contract_id is not None:
+                o.con_id = int(match.contract_id)
             o.fully_filled_at = now
+            # The order is filled but no execution reached us: record the
+            # quantity as a ``repair`` event so the leg HAS a book quantity
+            # (#465). It used to be marked filled with no fill at all, and the
+            # reconciler reported a booked, held contract as unbooked. If the
+            # real executions arrive later (reconnect replay), the projection
+            # counts the event only for what the fills do not cover.
+            await record_repair(db, order=o, price=o.avg_fill_price, now=now)
             filled_ids.append(int(o.id))
             affected.add(int(o.structure_id))
 

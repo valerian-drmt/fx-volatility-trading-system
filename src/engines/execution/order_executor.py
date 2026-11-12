@@ -359,6 +359,7 @@ class OrderExecutor:
                 "exchange": c.exchange,
                 "currency": c.currency,
                 "local_symbol": c.localSymbol,
+                "multiplier": getattr(c, "multiplier", None) or None,
                 "con_id": c.conId,
                 "position": float(p.position),
                 "avg_cost": float(avg or 0.0),
