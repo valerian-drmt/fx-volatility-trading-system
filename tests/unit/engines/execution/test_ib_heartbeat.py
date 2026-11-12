@@ -216,3 +216,111 @@ async def test_already_alerted_recently_dedupes_by_order_id():
             ) is False
     finally:
         await engine.dispose()
+
+
+# --------------------------------------------------------------------------
+# Paper-only gate on the read-only analysis role (runbooks section 5)
+# --------------------------------------------------------------------------
+
+
+async def test_update_heartbeat_row_reports_the_account_type():
+    from engines.execution.ib_heartbeat import update_heartbeat_row
+
+    maker, engine = await _make_session()
+    try:
+        now = datetime.now(UTC)
+        async with maker() as db:
+            paper = await update_heartbeat_row(
+                db, is_connected=True, account_summary={"account": "DU123"}, now=now)
+            live = await update_heartbeat_row(
+                db, is_connected=True, account_summary={"account": "U7654321"}, now=now)
+            # a dropped connection keeps the last known type: the gate stays shut
+            kept = await update_heartbeat_row(db, is_connected=False, account_summary=None, now=now)
+        assert (paper, live, kept) == ("paper", "live", "live")
+    finally:
+        await engine.dispose()
+
+
+class _FakePg:
+    """An AsyncSession stand-in that answers as PostgreSQL and records the SQL."""
+
+    def __init__(self, can_login):
+        self.can_login = can_login
+        self.sql: list[str] = []
+
+    def get_bind(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+    async def execute(self, statement, params=None):
+        from types import SimpleNamespace
+        self.sql.append(str(statement))
+        return SimpleNamespace(scalar_one_or_none=lambda: self.can_login)
+
+
+async def test_close_reader_access_revokes_login_and_cuts_sessions():
+    from engines.execution.ib_heartbeat import close_reader_access
+
+    db = _FakePg(can_login=True)
+    assert await close_reader_access(db) is True
+    assert any("ALTER ROLE fxvol_reader NOLOGIN" in s for s in db.sql)
+    assert any("pg_terminate_backend" in s for s in db.sql)
+
+
+@pytest.mark.parametrize("can_login", [False, None])
+async def test_close_reader_access_is_a_noop_when_already_closed_or_absent(can_login):
+    from engines.execution.ib_heartbeat import close_reader_access
+
+    db = _FakePg(can_login=can_login)
+    assert await close_reader_access(db) is False
+    assert not any("ALTER ROLE" in s for s in db.sql)
+
+
+async def test_close_reader_access_does_nothing_off_postgres():
+    from engines.execution.ib_heartbeat import close_reader_access
+
+    maker, engine = await _make_session()
+    try:
+        async with maker() as db:
+            assert await close_reader_access(db) is False
+    finally:
+        await engine.dispose()
+
+
+async def test_heartbeat_loop_closes_the_reader_on_a_live_account(monkeypatch):
+    import asyncio
+
+    from engines.execution import ib_heartbeat
+
+    maker, engine = await _make_session()
+    closed: list[bool] = []
+
+    async def _close(db):
+        closed.append(True)
+        return True
+
+    monkeypatch.setattr(ib_heartbeat, "close_reader_access", _close)
+
+    class _Executor:
+        def __init__(self, account):
+            self.account = account
+
+        def is_connected(self):
+            return True
+
+        async def account_summary(self):
+            return {"account": self.account}
+
+    async def _one_cycle(account):
+        task = asyncio.create_task(ib_heartbeat.heartbeat_loop(maker, _Executor(account), interval_s=3600))
+        await asyncio.sleep(0.2)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    try:
+        await _one_cycle("DU123")
+        assert closed == [], "a paper account leaves the access open"
+        await _one_cycle("U7654321")
+        assert closed == [True]
+    finally:
+        await engine.dispose()

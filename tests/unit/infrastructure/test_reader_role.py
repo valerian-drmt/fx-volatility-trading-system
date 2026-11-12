@@ -1,7 +1,8 @@
 """Read-only analysis path to the prod database (runbooks section 5).
 
 The role can only read, the port is loopback-only, the deploy never sends the
-password in clear, and the SCRAM verifier is the one Postgres computes.
+password in clear, the SCRAM verifier is the one Postgres computes, and the
+access exists for a paper account only.
 """
 from __future__ import annotations
 
@@ -35,6 +36,11 @@ def _load(path: Path):
     return module
 
 
+def _deploy_gate() -> str:
+    deploy = (ROOT / "infrastructure" / "ec2" / "remote-deploy.sh").read_text(encoding="utf-8")
+    return deploy.split("set_reader_login() {", 1)[1].split("\n}\n", 1)[0]
+
+
 def test_scram_verifier_matches_rfc_7677_derivation() -> None:
     scram = _load(ROOT / "infrastructure" / "ec2" / "scram_verifier.py")
     salt = bytes(range(16))
@@ -60,20 +66,48 @@ def test_postgres_is_published_on_the_host_loopback_only() -> None:
 
 def test_deploy_sets_the_reader_login_from_a_verifier_and_closes_it_without_a_password() -> None:
     deploy = (ROOT / "infrastructure" / "ec2" / "remote-deploy.sh").read_text(encoding="utf-8")
-    assert "ssm /fxvol/prod/DB_READONLY_PASSWORD" in deploy
-    assert "python3 infrastructure/ec2/scram_verifier.py" in deploy
-    assert "ALTER ROLE fxvol_reader WITH NOLOGIN PASSWORD NULL" in deploy
+    gate = _deploy_gate()
+    assert "ssm /fxvol/prod/DB_READONLY_PASSWORD" in gate
+    assert "python3 infrastructure/ec2/scram_verifier.py" in gate
+    assert "ALTER ROLE fxvol_reader WITH NOLOGIN PASSWORD NULL" in gate
     # the clear password is only ever piped to the verifier, never to psql or .env
     assert "DB_READONLY_PASSWORD=" not in deploy
-    assert 'PASSWORD \'%s\';\n" "$verifier"' in deploy
+    assert "PASSWORD '%s';\\n\" \"$verifier\"" in gate
     assert "set_reader_login ||" in deploy, "a failure here must not fail the deploy"
+
+
+def test_deploy_grants_the_login_for_a_paper_account_only() -> None:
+    gate = _deploy_gate()
+    # both the configured mode and the account the gateway reported must be paper
+    assert "SELECT account_type FROM ib_connection_state WHERE broker = 'IB'" in gate
+    assert '[ "$configured_mode" != "paper" ] || [ "$account_type" != "paper" ]' in gate
+    refusal = gate.index('ro_pw=""')
+    assert gate.index("configured_mode=") < refusal < gate.index('if [ -n "$ro_pw" ]'), (
+        "the password is dropped before the branch that grants LOGIN"
+    )
+
+
+def test_client_refuses_anything_but_a_paper_account() -> None:
+    client = _load(ROOT / "scripts" / "local" / "prod_db.py")
+    assert client.paper_only("paper") is None
+    for other in ("live", None, "", "PAPER", "demo"):
+        refusal = client.paper_only(other)
+        assert refusal and "PAPER account only" in refusal, other
+    source = (ROOT / "scripts" / "local" / "prod_db.py").read_text(encoding="utf-8")
+    body = source.split("async def run", 1)[1]
+    assert body.index("paper_only(") < body.index("conn.cursor(sql)"), "the check runs before the query"
+    assert "readonly=True" in body
+    # the password is never printed nor passed on a command line
+    assert "print(password" not in source and '"--password"' not in source
 
 
 def test_reader_role_migration_grants_select_only() -> None:
     text = (ROOT / "src/persistence/migrations/versions/064_reader_role.py").read_text(encoding="utf-8")
     body = text.split("def upgrade", 1)[1].split("def downgrade", 1)[0]
     grants = [line for line in body.splitlines() if "GRANT" in line]
-    assert grants and all(("SELECT" in g) or ("USAGE ON SCHEMA" in g) or ("CONNECT ON DATABASE" in g) for g in grants), grants
+    assert grants and all(
+        ("SELECT" in g) or ("USAGE ON SCHEMA" in g) or ("CONNECT ON DATABASE" in g) for g in grants
+    ), grants
     for forbidden in ("INSERT", "UPDATE", "DELETE", "TRUNCATE", "ALL PRIVILEGES", "SUPERUSER", "CREATEROLE"):
         assert forbidden not in body, forbidden
     assert "default_transaction_read_only = on" in body and "statement_timeout = '30s'" in body

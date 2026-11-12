@@ -364,18 +364,32 @@ docker compose exec -T api python -m alembic -c src/persistence/alembic.ini upgr
 # LOGIN only while /fxvol/prod/DB_READONLY_PASSWORD exists; deleting the
 # parameter and redeploying closes the access. The password goes to Postgres as
 # a SCRAM verifier over stdin: never in clear on the server, never in argv.
+# PAPER ONLY: the login is granted only when the stack is configured for paper
+# AND the account the gateway last reported is a paper one
+# (ib_connection_state.account_type, written by the execution engine from the
+# IB account id). Anything else, unknown included, closes the access; the
+# execution engine also closes it on the first heartbeat of a live account.
 # Best-effort: this must never fail an otherwise-good deploy.
 set_reader_login() {
-  local ro_pw verifier
+  local ro_pw verifier account_type configured_mode
+  local psql_cmd=(docker compose exec -T postgres psql -U fxvol -d fxvol -q -v ON_ERROR_STOP=1)
   ro_pw="$(ssm /fxvol/prod/DB_READONLY_PASSWORD 2>/dev/null || echo "")"
+  account_type="$("${psql_cmd[@]}" -At \
+    -c "SELECT account_type FROM ib_connection_state WHERE broker = 'IB' LIMIT 1" 2>/dev/null || echo "")"
+  configured_mode="$(sed -n 's/^TRADING_MODE=//p' < /opt/fxvol/.env)"
+  if [ "$configured_mode" != "paper" ] || [ "$account_type" != "paper" ]; then
+    ro_pw=""
+    echo "remote-deploy: fxvol_reader stays closed: not a paper account (mode='${configured_mode}', account_type='${account_type}')"
+  fi
   if [ -n "$ro_pw" ]; then
     verifier="$(printf '%s' "$ro_pw" | python3 infrastructure/ec2/scram_verifier.py)" || return 1
-    printf "ALTER ROLE fxvol_reader WITH LOGIN PASSWORD '%s';
-" "$verifier"       | docker compose exec -T postgres psql -U fxvol -d fxvol -q -v ON_ERROR_STOP=1 >/dev/null || return 1
+    printf "ALTER ROLE fxvol_reader WITH LOGIN PASSWORD '%s';\n" "$verifier" \
+      | "${psql_cmd[@]}" >/dev/null || return 1
     echo "remote-deploy: fxvol_reader login enabled"
   else
-    echo "ALTER ROLE fxvol_reader WITH NOLOGIN PASSWORD NULL;"       | docker compose exec -T postgres psql -U fxvol -d fxvol -q -v ON_ERROR_STOP=1 >/dev/null || return 1
-    echo "remote-deploy: fxvol_reader login disabled (no DB_READONLY_PASSWORD in SSM)"
+    echo "ALTER ROLE fxvol_reader WITH NOLOGIN PASSWORD NULL;" \
+      | "${psql_cmd[@]}" >/dev/null || return 1
+    echo "remote-deploy: fxvol_reader login disabled"
   fi
 }
 set_reader_login || echo "remote-deploy: could not set the fxvol_reader login (non-fatal)" >&2
