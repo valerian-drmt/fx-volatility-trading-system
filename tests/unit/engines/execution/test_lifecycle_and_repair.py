@@ -90,9 +90,21 @@ def test_contract_month_end_from_the_ib_symbol() -> None:
     assert contract_month_end("EUR.USD", TODAY) is None
 
 
-def test_listed_expiry_wins_over_the_month_end() -> None:
-    assert contract_expiry("EUUZ6 P1075", date(2026, 12, 4), TODAY) == date(2026, 12, 4)
-    assert contract_expiry("EUUZ6 P1075", None, TODAY) == date(2026, 12, 31)
+def test_rule_expiry_matches_what_ib_reports_for_the_contracts_held() -> None:
+    from core.contracts import rule_expiry
+
+    # prod open_position.expiry on 2026-11-12
+    assert rule_expiry("EUUZ6 C1210", TODAY) == date(2026, 12, 4)
+    assert rule_expiry("EUUG7 P1120", TODAY) == date(2027, 2, 5)
+    assert rule_expiry("6EH7", TODAY) == date(2027, 3, 15)
+    assert rule_expiry("EUUX6 C1115", TODAY) == date(2026, 11, 6)
+    assert rule_expiry("6EZ6", TODAY) == date(2026, 12, 14)
+    assert rule_expiry("EUR.USD", TODAY) is None
+
+
+def test_listed_expiry_wins_over_the_rule() -> None:
+    assert contract_expiry("EUUZ6 P1075", date(2026, 12, 3), TODAY) == date(2026, 12, 3)
+    assert contract_expiry("EUUZ6 P1075", None, TODAY) == date(2026, 12, 4)
 
 
 # ── lifecycle ────────────────────────────────────────────────────────────────
@@ -128,10 +140,20 @@ async def test_expired_leg_still_at_the_broker_is_left_alone(sqlite_sessionmaker
         assert await _open_qty(db, o.id) == 100
 
 
-async def test_listed_expiry_is_used_before_the_month_end(sqlite_sessionmaker: Any) -> None:
+async def test_an_option_expired_this_month_is_swept_without_waiting_for_the_month_end(sqlite_sessionmaker: Any) -> None:
+    """Prod, 2026-11-12: six EUUX6 legs (expired on the 6th) stayed "book
+    only" because the fallback waited for 1 December."""
     async with sqlite_sessionmaker() as db:
-        _, o = await _leg(db, "EUUX6 C1115", 10)     # November 2026: month not over
-        assert (await expire_legs(db, today=TODAY, now=NOW))["expired_legs"] == []
+        _, o = await _leg(db, "EUUX6 C1115", 10)
+        _, later = await _leg(db, "EUUZ6 C1210", 10)        # expires 4 December: untouched
+        out = await expire_legs(db, today=TODAY, now=NOW)
+        assert out["expired_legs"] == [o.id]
+        assert await _open_qty(db, later.id) == 10
+
+
+async def test_the_listed_expiry_is_recorded_from_the_broker(sqlite_sessionmaker: Any) -> None:
+    async with sqlite_sessionmaker() as db:
+        _, o = await _leg(db, "EUUX6 C1115", 10)
         await upsert_instruments(db, [instrument_from_ib_position({
             "con_id": 777, "local_symbol": "EUUX6 C1115", "sec_type": "FOP", "symbol": "EUR",
             "expiry": "20261106", "strike": 1.115, "right": "C", "multiplier": "125000",

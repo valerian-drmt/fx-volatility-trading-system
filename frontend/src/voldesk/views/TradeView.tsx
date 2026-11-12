@@ -256,7 +256,11 @@ function structuredToRows(
         id: netted ? `${tid}-l${l.leg_idx}` : String(l.position_id),
         packageId: "", tradeId: tid, conId: l.con_id ?? 0,
         product: legProduct(l.contract_type), structure: l.ib_local_symbol ?? "—",
-        side: l.held_side ?? l.side, qty: l.held_qty ?? (Math.abs(l.open_qty ?? 0) || l.qty),
+        // What the LINE holds: the broker's part when held, else the book
+        // quantity of the line (after opposite trades on the contract cancel
+        // out), never the leg's raw quantity.
+        side: l.held_side ?? l.side,
+        qty: l.held_qty ?? (Math.abs(l.book_qty ?? l.open_qty ?? 0) || l.qty),
         tenor: l.tenor ?? s.tenor ?? "", expiry: l.expiry ?? "", strike: l.strike ?? 0,
         entry: l.entry ?? 0, mark: l.mark ?? 0, iv: (l.iv ?? 0) * 100, pnl, nominal,
         delta: l.delta_usd ?? 0, gamma: l.gamma_usd ?? 0, vega: l.vega_usd ?? 0, theta: l.theta_usd ?? 0,
@@ -270,6 +274,8 @@ function structuredToRows(
     }
   }
   for (const u of asArray(data.unlinked)) {
+    // A spot FX balance is cash, not a contract: it is not a position row.
+    if (u.line_status === "cash") continue;
     const pnl = u.pnl_usd ?? 0;
     positions.push({
       id: String(u.id), packageId: "", tradeId: "", conId: 0,

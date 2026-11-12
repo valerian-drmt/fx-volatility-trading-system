@@ -62,6 +62,8 @@ describe("position lines (#461)", () => {
     const put = { ...all.find((r) => r.lineId === "EUUG7 P1120|-")!, unpriced: true };
     const spot = all.find((r) => r.lineId === "EUR.USD|-")!;
     const { container } = render(<PositionBreakdown positions={[put, spot]} />);
+    // cash is not a contract: no row for the spot balance
+    expect(container.querySelector('tr[data-line-id="EUR.USD|-"]')).toBeNull();
     const tr = container.querySelector('tr[data-line-id="EUUG7 P1120|-"]')!;
     const cells = [...tr.querySelectorAll("td")].map((td) => td.textContent);
     expect(cells[8]).toBe("—");                  // delta
@@ -71,10 +73,12 @@ describe("position lines (#461)", () => {
 
   it("says which lines are missing from the net greeks (#459)", () => {
     const rows = adaptPositions(RAW, Date.now());
+    // a "book only" line is not held: it blocks nothing and is not announced
     const { container, rerender } = render(<UnpricedNotice positions={rows} />);
-    expect(screen.getByTestId("unpriced-notice")).toHaveTextContent("EUUZ6 P1075");
-    expect(screen.getByTestId("unpriced-notice")).toHaveTextContent("1 line");
-    rerender(<UnpricedNotice positions={rows.filter((r) => !r.unpriced)} />);
     expect(container).toBeEmptyDOMElement();
+    // a position the broker holds and nothing priced is
+    const held = { ...rows.find((r) => r.lineId === "EUUG7 P1120|-")!, unpriced: true };
+    rerender(<UnpricedNotice positions={[...rows, held]} />);
+    expect(screen.getByTestId("unpriced-notice")).toHaveTextContent("1 held position not priced (EUUG7 P1120)");
   });
 });

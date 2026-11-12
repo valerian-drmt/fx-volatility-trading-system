@@ -22,7 +22,10 @@ interface NumVals {
   pnl: number | null;
 }
 
-export function PositionBreakdown({ positions }: { positions: Position[] }): JSX.Element {
+export function PositionBreakdown({ positions: all }: { positions: Position[] }): JSX.Element {
+  // A spot FX balance is cash, not a contract: it is not a position row. Its
+  // delta stays in the net greeks, which are summed from the full feed.
+  const positions = all.filter((p) => p.lineStatus !== "cash");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggle = (key: string): void =>
     setExpanded((prev) => {
@@ -70,7 +73,7 @@ export function PositionBreakdown({ positions }: { positions: Position[] }): JSX
       </td>
       <td className="r mono dim grp-fix">{p.tenor || "—"}</td>
       <td className="r mono dim grp-fix">{p.iv ? p.iv.toFixed(1) : "—"}</td>
-      <td className="r mono dim grp-fix">{(p.nominal / 1e6).toFixed(2)}M</td>
+      <td className="r mono dim grp-fix">{p.unpriced ? "—" : (p.nominal / 1e6).toFixed(2) + "M"}</td>
       {numCells(p.unpriced ? { ...legVals(p), delta: null, pnl: null } : legVals(p), !!p.iv)}
     </tr>
   );

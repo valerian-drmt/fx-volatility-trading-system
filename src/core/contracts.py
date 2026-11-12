@@ -188,6 +188,34 @@ def contract_month_end(local_symbol: str | None, today: date) -> date | None:
     return date.fromordinal(first_next.toordinal() - 1)
 
 
+def _third_wednesday(year: int, month: int) -> date:
+    first = date(year, month, 1)
+    return date.fromordinal(first.toordinal() + (2 - first.weekday()) % 7 + 14)
+
+
+def rule_expiry(local_symbol: str | None, today: date) -> date | None:
+    """The last trading day CME's contract rules give for an IB localSymbol:
+
+    * ``6E`` / ``M6E`` futures: two business days before the third Wednesday
+      of the contract month (``6EH7`` -> Monday 2027-03-15);
+    * ``EUU`` monthly options: two Fridays before that Wednesday
+      (``EUUZ6`` -> 2026-12-04, ``EUUX6`` -> 2026-11-06).
+
+    Exchange holidays are not modelled, so the date can be one business day
+    late or early around one; the caller only acts on it for a contract the
+    broker no longer holds. Checked against the expiries IB reports for the
+    contracts held on 2026-11-12."""
+    end = contract_month_end(local_symbol, today)
+    if end is None:
+        return None
+    wed = _third_wednesday(end.year, end.month)
+    if (local_symbol or "").startswith("EUU"):
+        return date.fromordinal(wed.toordinal() - 12)   # the Friday of the week before the previous one
+    return date.fromordinal(wed.toordinal() - 2)        # Monday
+
+
 def contract_expiry(local_symbol: str | None, listed: date | None, today: date) -> date | None:
-    """The listed expiry when the broker told us, else the contract month end."""
-    return listed if listed is not None else contract_month_end(local_symbol, today)
+    """The listed expiry when the broker told us, else the one the contract
+    rules give. The month end used to stand in here, which kept an option
+    expired on the 6th "open" in the book until the 1st of the next month."""
+    return listed if listed is not None else rule_expiry(local_symbol, today)

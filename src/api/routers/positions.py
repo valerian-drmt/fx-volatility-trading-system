@@ -41,6 +41,7 @@ from core.contracts import multiplier_for, parse_local_symbol
 from core.execution.reconciliation import classify_break
 from core.ledger import LedgerFill, fold_fills, unrealized_pnl
 from core.products import product_label_from_symbol
+from core.vol.tenors import tenor_bucket_from_expiry
 from persistence.models import (
     AppConfigScalar,  # replaces DeltaHedgeConfig (migration 024)
     BookedPosition,
@@ -398,6 +399,7 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
         return float(v) if v is not None else None
 
     ls = await load_line_set(db)
+    today = datetime.now(UTC).date()
     structs = sorted(ls.structures.values(), key=lambda s: (s.created_at is None, s.created_at), reverse=True)
     legs_by_struct: dict[int, list[StructureOrder]] = {}
     if structs:
@@ -466,7 +468,10 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             # entry price: the mirror's when linked, else the book's avg fill price.
             "entry": _f(lp.contract_price_entry) if lp else (_f(bp.avg_price) if bp is not None else None),
             "nominal_eur": _scaled(lp.nominal_eur, share) if lp else None,
-            "tenor": (lp.tenor if lp and lp.tenor else None),
+            # The bucket by days to expiry, the same rule as /positions/open
+            # (tenor_now) and the attribution, so one line reads the same
+            # tenor on the three panels.
+            "tenor": (tenor_bucket_from_expiry(lp.expiry, today) or lp.tenor) if lp else None,
             "opened": lp.entry_timestamp.isoformat() if (lp and lp.entry_timestamp) else None,
             "updated": lp.timestamp.isoformat() if (lp and lp.timestamp) else None,
             **_marks(lp, share),
