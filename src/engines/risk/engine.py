@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys, publisher
 from bus.spot_cache import parse_spot
-from core.contracts import INSTRUMENT_FUTURE, multiplier_for, parse_local_symbol
+from core.contracts import INSTRUMENT_SPOT, is_linear, multiplier_for, parse_local_symbol
 from core.pricing.bs import (
     bs_implied_vol,
     bs_price,
@@ -197,6 +197,11 @@ class RiskEngine:
             # had no usable pillar (#310, audit 03#5). Consumers can refuse or
             # badge the numbers; the log makes a schema drift loud.
             greeks["iv_fallback_legs"] = self._iv_fallback_legs
+            unparsed = list(getattr(self, "_unparsed", []))
+            greeks["n_positions"] = int(greeks.get("n_positions", 0)) + len(unparsed)
+            greeks["unpriced"] = unparsed
+            if unparsed and (self._cycle - 1) % HISTORY_PERSIST_CYCLES == 0:
+                logger.warning("risk_unpriced_positions n=%s structures=%s", len(unparsed), unparsed)
             if self._iv_fallback_legs:
                 logger.warning(
                     "risk_iv_fallback legs=%s n_positions=%s n_pillars=%s",
@@ -268,10 +273,15 @@ class RiskEngine:
                 select(OpenPosition)
             )).scalars().all()
         out: list[dict] = []
+        self._unparsed = []
         for p in rows:
             spec = parse_local_symbol(p.structure)
             if spec is None:
-                continue  # unparseable localSymbol — skip rather than mislead the BS path
+                # Not priced, and SAID so: the row still counts in n_positions
+                # and is named in ``unpriced`` (#459). It used to vanish, and
+                # the aggregate claimed to cover the whole book.
+                self._unparsed.append(str(p.structure))
+                continue
             qty = float(p.quantity) if p.quantity is not None else 0.0
             signed_qty = qty if p.side == "BUY" else -qty
             right: str | None
@@ -338,7 +348,7 @@ class RiskEngine:
                 mult = float(pos.get("multiplier") or multiplier_for(pos.get("symbol")))
 
                 vanna = volga = None
-                if instr == INSTRUMENT_FUTURE:
+                if is_linear(instr):
                     g = future_greeks(qty, mult, F)
                     delta, gamma, vega, theta = g.delta_usd, 0.0, 0.0, 0.0
                     vanna = volga = 0.0
@@ -381,6 +391,8 @@ class RiskEngine:
                 # — falling back to spot would mislead panel E (option premium
                 # ≠ spot, near-dated FUT ≈ spot but not equal).
                 mark = contract_marks.get(int(pos["id"]))
+                if mark is None and instr == INSTRUMENT_SPOT:
+                    mark = F   # a spot position's own price IS the spot (#460)
 
                 # Encoded once for both UPDATE (live row) and INSERT (snapshot copy).
                 delta_dec = Decimal(str(round(delta, 2))) if delta is not None else None
@@ -574,7 +586,7 @@ class RiskEngine:
             # not the IB secType "FUT" — comparing against "FUT" silently
             # zeroed every futures delta.
             mult = float(pos.get("multiplier") or multiplier_for(pos.get("symbol")))
-            if instr == INSTRUMENT_FUTURE:
+            if is_linear(instr):
                 items.append(future_greeks(qty, mult, F))
                 continue
             if right not in ("C", "P"):
@@ -612,7 +624,7 @@ class RiskEngine:
             qty = float(pos.get("quantity", 0))
             cost = float(pos.get("cost_per_unit") or 0)
             if right not in ("C", "P"):
-                if pos.get("instrument_type") == INSTRUMENT_FUTURE:
+                if is_linear(pos.get("instrument_type")):
                     pnls += (spots - cost) * qty
                 continue
             K = float(pos.get("strike") or 0)

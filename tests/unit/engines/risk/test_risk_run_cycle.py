@@ -140,3 +140,15 @@ async def test_publish_failure_is_reported_not_raised() -> None:
 
 def test_fallback_vol_is_the_documented_constant() -> None:
     assert abs(FALLBACK_IV - 0.08) < 1e-12
+
+
+async def test_a_row_the_engine_cannot_read_still_counts_and_is_named() -> None:
+    """#459: an unparseable mirror row used to vanish, so the published
+    aggregate claimed n_priced == n_positions while a position was missing."""
+    r = _Redis({keys.LATEST_SPOT.format(symbol="EURUSD"): json.dumps({"value": 1.1, "ts": "2026-11-07T10:00:00Z"})})
+    eng = _engine(r, positions=[_option()])
+    eng._unparsed = ["XYZ.ABC"]   # what _load_positions_from_db records
+    assert await eng.run_cycle() is True
+    g = _greeks_published(r)
+    assert g["n_positions"] == 2 and g["n_priced"] == 1
+    assert g["unpriced"] == ["XYZ.ABC"]

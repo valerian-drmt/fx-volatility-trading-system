@@ -72,7 +72,7 @@ def position_greeks(
 ) -> PositionGreeks | None:
     """Dispatch on instrument. None when an option cannot be priced (no
     strike / expiry / IV): the caller decides whether to count it as missing."""
-    if instrument_type == "FUTURE":
+    if instrument_type in ("FUTURE", "SPOT"):   # delta-one: spot is mult 1
         return future_greeks(qty, mult, F)
     if right in ("C", "P") and K and K > 0 and T and T > 0 and iv and iv > 0:
         return option_greeks(qty=qty, mult=mult, F=F, K=K, T=T, iv=iv, right=right)

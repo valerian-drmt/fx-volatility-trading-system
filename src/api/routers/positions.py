@@ -1086,6 +1086,13 @@ async def close_one_open_position(
 
     The caller commits / rollbacks the session.
     """
+    spot_spec = parse_local_symbol(pos.structure)
+    if spot_spec is not None and spot_spec.instrument_type == "SPOT":
+        # The close flow below builds a listed-contract order (future / FOP);
+        # a spot position must never be turned into one.
+        raise HTTPException(
+            400, f"position #{pos.id} is spot FX: close it with a spot ticket, not the close panel",
+        )
     open_qty = int(abs(pos.quantity))
     if open_qty == 0:
         raise HTTPException(400, f"position #{pos.id} has zero open qty")

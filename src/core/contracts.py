@@ -45,9 +45,21 @@ _FUT_RE = re.compile(r"^(M6E|6E)([FGHJKMNQUVXZ])(\d)$")
 # Canonical ``instrument_type`` values — NOT the IB ``secType`` strings
 # ("FUT"/"FOP"/...). Compare against these constants so the literal can
 # never drift again (cf. the risk-engine "FUT" vs "FUTURE" bug).
-InstrumentType = Literal["FUTURE", "OPTION"]
+InstrumentType = Literal["FUTURE", "OPTION", "SPOT"]
 INSTRUMENT_FUTURE: Final = "FUTURE"
 INSTRUMENT_OPTION: Final = "OPTION"
+INSTRUMENT_SPOT: Final = "SPOT"
+# Delta-one instruments: P&L and delta are linear in the underlying, every
+# other greek is zero. A spot FX position is priced like a future of
+# multiplier 1 (#460).
+LINEAR_INSTRUMENTS: Final = frozenset({INSTRUMENT_FUTURE, INSTRUMENT_SPOT})
+SPOT_MULTIPLIER: Final = 1.0
+# IB localSymbol of a spot FX (CASH) position: "EUR.USD".
+_SPOT_RE = re.compile(r"^(EUR)\.(USD)$")
+
+
+def is_linear(instrument_type: str | None) -> bool:
+    return instrument_type in LINEAR_INSTRUMENTS
 
 
 @dataclass(frozen=True)
@@ -56,7 +68,7 @@ class ContractSpec:
     NOT here — the DB ``positions`` table keeps it as a typed ``date`` column
     (cleaner for SQL queries than reparsing month-letter every time)."""
     symbol: str            # "EUR" or "M6E"
-    instrument_type: str   # "FUTURE" or "OPTION"
+    instrument_type: str   # "FUTURE", "OPTION" or "SPOT"
     multiplier: float
     strike: float | None
     option_type: str | None  # "CALL" / "PUT" / None
@@ -69,6 +81,7 @@ def parse_local_symbol(ls: str | None) -> ContractSpec | None:
       - ``6E<M><Y>``    : standard EUR FX future on CME (multiplier 125 000).
       - ``M6E<M><Y>``   : Micro EUR FX future (multiplier 12 500).
       - ``EUU<M><Y> <C|P><strike×1000>`` : FOP option on EUR (multiplier 125 000).
+      - ``EUR.USD``     : spot FX (IB secType CASH), quantity in EUR, multiplier 1.
 
     Returns None for unrecognised codes — caller handles fallback.
     """
@@ -92,6 +105,15 @@ def parse_local_symbol(ls: str | None) -> ContractSpec | None:
             symbol=symbol,
             instrument_type=INSTRUMENT_FUTURE,
             multiplier=multiplier_for(symbol),
+            strike=None,
+            option_type=None,
+        )
+    m = _SPOT_RE.match(ls)
+    if m:
+        return ContractSpec(
+            symbol=m.group(1),
+            instrument_type=INSTRUMENT_SPOT,
+            multiplier=SPOT_MULTIPLIER,
             strike=None,
             option_type=None,
         )
