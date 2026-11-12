@@ -73,3 +73,31 @@ async def record_repair(
     await db.flush()
     await rebuild_leg(db, order_id=int(order.id))
     return ev
+
+
+async def record_writeoff(
+    db: AsyncSession, *, order: StructureOrder, source: str = "lifecycle",
+    note: str | None = None, now: datetime | None = None,
+) -> PositionEvent | None:
+    """Bring a leg to zero because the broker does not hold it (the book was
+    wrong). Priced at the leg's own average, so no P&L is invented. One per
+    leg and day; a no-op on a flat leg. Caller commits."""
+    lp = (await db.execute(
+        select(LegPosition).where(LegPosition.order_id == order.id)
+    )).scalar_one_or_none()
+    open_qty = float(lp.open_qty or 0) if lp is not None else 0.0
+    when = now or datetime.now(UTC)
+    key = when.date().isoformat()
+    if lp is None or open_qty == 0.0 or await _exists(db, int(order.id), "writeoff", key):
+        return None
+    ev = PositionEvent(
+        order_id=int(order.id), kind="writeoff",
+        side="SELL" if open_qty > 0 else "BUY", qty=Decimal(str(abs(open_qty))),
+        price=Decimal(str(float(lp.avg_price or 0))),
+        occurred_at=when, dedup_key=key, source=source[:40],
+        note=(note or "the broker does not hold this contract; the book quantity was wrong")[:200],
+    )
+    db.add(ev)
+    await db.flush()
+    await rebuild_leg(db, order_id=int(order.id))
+    return ev
