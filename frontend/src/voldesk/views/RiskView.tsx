@@ -11,6 +11,7 @@ import { Panel } from "../components/common";
 import { FreshBadge } from "../components/FreshBadge";
 import { gk$, pnlCls } from "../components/format";
 import { PositionBreakdown } from "../components/PositionBreakdown";
+import { UnpricedNotice } from "../components/UnpricedNotice";
 import { fmt } from "../data";
 import type { Position } from "../data";
 import { groupByTradeId, structureName, structureNamesByTrade } from "../components/tradeGrouping";
@@ -617,6 +618,7 @@ export function RiskView(): JSX.Element {
       <StressEngine />
       <LiveLadders />
       <Panel title="Position breakdown" dataPp="position-breakdown" right={<PanelLive status={portfolio.status} />} pad={false} className="ladder-panel">
+        <UnpricedNotice positions={asArray(portfolio.data?.positions)} />
         <PositionBreakdown positions={asArray(portfolio.data?.positions)} />
       </Panel>
     </div>

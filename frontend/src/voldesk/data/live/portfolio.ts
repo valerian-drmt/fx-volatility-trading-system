@@ -319,12 +319,22 @@ export interface PositionAttribRow {
   vega: number | null;
   theta: number | null;
   residual: number | null;
+  // The position line this row is (#461) and why its terms may be empty:
+  // ok | opened_in_window | insufficient_history | not_held | pending.
+  lineId?: string | undefined;
+  lineStatus?: string | undefined;
+  attribStatus?: string | undefined;
 }
 export interface PositionAttribMatrix {
   rows: PositionAttribRow[];
   totals: AttribRow;
   computedAt: string | null;
 }
+
+const lineField = (r: unknown, key: string): string | undefined => {
+  const v = (r as Record<string, unknown>)[key];
+  return typeof v === "string" ? v : undefined;
+};
 
 /** /portfolio/pnl-attribution (no group_by) → per-leg attribution matrix (IB legs). */
 export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
@@ -348,6 +358,9 @@ export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
       vega: nn(r.vega_pnl_usd),
       theta: nn(r.theta_pnl_usd),
       residual: nn(r.residual_usd),
+      lineId: lineField(r, "line_id"),
+      lineStatus: lineField(r, "line_status"),
+      attribStatus: lineField(r, "attrib_status"),
     }));
   // Total footed on the visible IB legs (not the endpoint totals, which include
   // booked). Sums only the legs that carry the term; null when none of them does,

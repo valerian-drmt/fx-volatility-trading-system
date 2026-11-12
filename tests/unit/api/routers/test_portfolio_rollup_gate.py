@@ -108,6 +108,22 @@ async def test_stats_sharpe_from_rollup_closes_plus_small_tables() -> None:
     assert out["computed_at"] == "2026-11-06T11:55:00+00:00"
 
 
+async def _no_lines(_db: Any) -> Any:
+    from api.orchestration.position_lines import LineSet
+
+    return LineSet(lines=[], positions={}, orders={}, legs={})
+
+
+async def _one_line(_db: Any) -> Any:
+    """The line set behind the stored row: position 1, held, no trade."""
+    from api.orchestration.position_lines import LineSet
+    from core.positions.line_set import BROKER_ONLY, Line
+
+    line = Line(line_id="X|-", contract="X", trade_id=None, book_qty=0.0, broker_qty=1.0,
+                status=BROKER_ONLY, position_id=1, broker_total=1.0)
+    return LineSet(lines=[line], positions={}, orders={}, legs={})
+
+
 @pytest.mark.asyncio
 async def test_pnl_attribution_serves_the_stored_row_and_pivots_it(monkeypatch: pytest.MonkeyPatch) -> None:
     stored = {
@@ -127,6 +143,7 @@ async def test_pnl_attribution_serves_the_stored_row_and_pivots_it(monkeypatch: 
 
     monkeypatch.setattr(pp, "read_attribution_latest", _read)
     monkeypatch.setattr(pp, "compute_attribution", _compute)
+    monkeypatch.setattr(pp, "load_line_set", _one_line)
     out = await pp.pnl_attribution(_Db(), None, lookback_hours=24, group_by="tenor", source="ib_live")  # type: ignore[arg-type]
     assert out["rollup"] == "materialised" and out["computed_at"] == "2026-11-06T11:55:00+00:00"
     assert out["groups"][0]["label"] == "3M" and out["totals"]["actual_pnl_usd"] == 100.0
@@ -149,6 +166,7 @@ async def test_pnl_attribution_computes_inline_only_without_a_fresh_row(monkeypa
 
     monkeypatch.setattr(pp, "read_attribution_latest", _read)
     monkeypatch.setattr(pp, "compute_attribution", _compute)
+    monkeypatch.setattr(pp, "load_line_set", _no_lines)
     monkeypatch.setattr(pp, "spot_fallbacks", _fb)
     out = await pp.pnl_attribution(_Db(), None, lookback_hours=4, group_by=None, source="ib_live")  # type: ignore[arg-type]
     assert out["rollup"] == "inline" and out["per_position"] == [] and out["totals"]["actual_pnl_usd"] is None

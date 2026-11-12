@@ -1640,6 +1640,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/positions/lines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Lines
+         * @description The position line set itself: ids and statuses, no market columns.
+         *     What the three panels must agree on; used by the parity checks.
+         */
+        get: operations["list_lines_api_v1_positions_lines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/positions/monitor/run-once": {
         parameters: {
             query?: never;
@@ -1672,13 +1693,14 @@ export interface paths {
         };
         /**
          * List Open
-         * @description Raw ``open_position`` rows — one record per live IB contract.
+         * @description One row per position LINE, with the broker mirror's columns.
          *
-         *     Direct mirror of the table : risk-engine UPDATEs greeks / market_price /
-         *     pnl every 2 s, position_sync_loop INSERTs / DELETEs rows every 30 s on
-         *     IB diffs. No join, no merge — the panel renders exactly what the DB
-         *     holds. ``open_position_history`` carries the time series (snapshot
-         *     per cycle) with the same shape minus the FK / current-state state.
+         *     The rows are the shared line set (``core.positions.line_set``, #461), the
+         *     same lines as ``/positions/structured`` and ``/portfolio/pnl-attribution``.
+         *     A line the broker holds carries the ``open_position`` numbers (risk-engine
+         *     greeks, mark, P&L; scaled to the line's share when several trades hold the
+         *     contract). A line only the book holds is listed too, flagged
+         *     ``line_status = book_only``, with unknown numbers as null.
          */
         get: operations["list_open_api_v1_positions_open_get"];
         put?: never;
@@ -1727,21 +1749,20 @@ export interface paths {
         };
         /**
          * List Structured
-         * @description Open positions grouped by the booked ``trade_structure`` — so a Risk
+         * @description Position lines grouped by the booked ``trade_structure``: a Risk
          *     Reversal reads as ONE 2-leg group labelled from ``structure_type`` +
-         *     ``reference_tenor`` (the values you actually traded), not re-parsed from the
-         *     IB ``localSymbol``. Live marks/greeks are attached from ``open_position`` when
-         *     a leg matches (by ``ib_local_symbol`` or the ``trade_id`` FK). IB-account
-         *     positions not tied to any booked leg are returned separately as ``unlinked``.
+         *     ``reference_tenor`` (the values you actually traded).
          *
-         *     This is the desk view; ``/open`` stays the raw IB mirror.
+         *     The rows are the shared line set (``core.positions.line_set``, #461): the
+         *     same lines as ``/positions/open`` and ``/portfolio/pnl-attribution``. A
+         *     trade is listed when it owns at least one line; a leg is ``open`` when it
+         *     carries a line. Lines no trade explains come back as ``unlinked``.
          *
-         *     Only structures with at least one **actually-open** leg (a linked
-         *     ``open_position`` row) are returned — a purely-``submitted`` structure whose
-         *     legs never filled is an *order*, not a position, and stays in the Orders
-         *     blotter. This keeps Open positions from mixing pending orders with real
-         *     positions. A half-filled structure (e.g. an RR whose put filled but call
-         *     didn't) still shows here, flagged as a naked residual.
+         *     ``limit`` is accepted for compatibility and ignored: what is visible
+         *     follows what is held, not how recently the trade was created. The old
+         *     rule (the 50 newest trades owning a mirror row, then every leg the book
+         *     said was open) showed legs the broker no longer held and hid old trades
+         *     still held.
          */
         get: operations["list_structured_api_v1_positions_structured_get"];
         put?: never;
@@ -3817,6 +3838,10 @@ export interface components {
          * @description One `/positions/open` row (the IB mirror), as `persistence.rows.open_position_row` builds it.
          */
         OpenPositionRow: {
+            /** Book Qty */
+            book_qty?: number | null;
+            /** Broker Qty */
+            broker_qty?: number | null;
             /** Contract Id */
             contract_id?: number | null;
             /** Contract Price Entry */
@@ -3835,12 +3860,18 @@ export interface components {
             id: number;
             /** Iv */
             iv?: number | null;
+            /** Line Id */
+            line_id?: string | null;
+            /** Line Status */
+            line_status?: string | null;
             /** Market Price */
             market_price?: number | null;
             /** Nominal Eur */
             nominal_eur?: number | null;
             /** Package Id */
             package_id?: number | null;
+            /** Position Id */
+            position_id?: number | null;
             /** Product Label */
             product_label?: string | null;
             /** Quantity */
@@ -9356,6 +9387,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PositionsLedger"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_lines_api_v1_positions_lines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */

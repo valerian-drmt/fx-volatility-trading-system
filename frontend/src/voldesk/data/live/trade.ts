@@ -53,6 +53,9 @@ interface BackendPosition {
   volga_usd?: number | null;
   timestamp?: string | null;
   entry_timestamp?: string | null;
+  line_id?: string | null;
+  line_status?: string | null;
+  position_id?: number | null;
 }
 
 const n = (v: number | null | undefined): number => (typeof v === "number" ? v : 0);
@@ -72,6 +75,12 @@ export function adaptPositions(raw: unknown, now: number): Position[] {
     const pnl = n(r.current_pnl_usd);
     return {
       id: String(r.id ?? ""),
+      lineId: r.line_id ?? undefined,
+      lineStatus: r.line_status ?? undefined,
+      // No delta = nothing priced this line (a leg only the book holds, an
+      // instrument the risk engine cannot read). Shown as "—", never as 0.
+      unpriced: r.delta_usd == null,
+      netted: r.line_id != null && r.position_id == null,
       packageId: r.package_id ?? "",
       tradeId: r.trade_id ?? "",
       conId: r.contract_id ?? 0,

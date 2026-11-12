@@ -9,16 +9,17 @@ import { Fragment, useState } from "react";
 import { fmt } from "../data";
 import type { Position } from "../data";
 import { pnlCls } from "./format";
+import { LineStatusTag } from "./LineStatus";
 import { groupByTradeId, structureName, structureSide } from "./tradeGrouping";
 
 interface NumVals {
-  delta: number;
+  delta: number | null;   // null = nothing priced the line: shown "—", not 0
   gamma: number;
   vega: number;
   theta: number;
   vanna: number;
   volga: number;
-  pnl: number;
+  pnl: number | null;
 }
 
 export function PositionBreakdown({ positions }: { positions: Position[] }): JSX.Element {
@@ -45,7 +46,7 @@ export function PositionBreakdown({ positions }: { positions: Position[] }): JSX
       <td className={(hasGreeks ? col(v.theta) : "r mono dim") + " grp-grk"}>{hasGreeks ? k(v.theta) : "—"}</td>
       <td className={(hasGreeks ? col(v.vanna) : "r mono dim") + " grp-grk"}>{hasGreeks ? k(v.vanna) : "—"}</td>
       <td className={(hasGreeks ? col(v.volga) : "r mono dim") + " grp-grk col-grp-end"}>{hasGreeks ? k(v.volga) : "—"}</td>
-      <td className={col(v.pnl) + " grp-pnl col-grp col-grp-end"}>{fmt.usdk(v.pnl)}</td>
+      <td className={col(v.pnl) + " grp-pnl col-grp col-grp-end"}>{v.pnl == null ? "—" : fmt.usdk(v.pnl)}</td>
     </>
   );
 
@@ -54,7 +55,7 @@ export function PositionBreakdown({ positions }: { positions: Position[] }): JSX
   });
 
   const legRow = (p: Position, main: boolean): JSX.Element => (
-    <tr key={p.id} className={main ? undefined : "pos-leg"}>
+    <tr key={p.lineId ?? p.id} className={main ? undefined : "pos-leg"} data-line-id={p.lineId}>
       <td className="l grp-fix mono dim">{main ? p.tradeId || p.packageId || "—" : ""}</td>
       <td className="l grp-fix mono dim">{p.conId || "—"}</td>
       <td className="l grp-fix">
@@ -62,6 +63,7 @@ export function PositionBreakdown({ positions }: { positions: Position[] }): JSX
       </td>
       <td className="l grp-fix">
         <span className="sym">{p.structure}</span>
+        <LineStatusTag status={p.lineStatus} />
       </td>
       <td className="l grp-fix">
         <span className={"side-pill " + (p.side === "BUY" ? "long" : "short")}>{p.side}</span>
@@ -69,7 +71,7 @@ export function PositionBreakdown({ positions }: { positions: Position[] }): JSX
       <td className="r mono dim grp-fix">{p.tenor || "—"}</td>
       <td className="r mono dim grp-fix">{p.iv ? p.iv.toFixed(1) : "—"}</td>
       <td className="r mono dim grp-fix">{(p.nominal / 1e6).toFixed(2)}M</td>
-      {numCells(legVals(p), !!p.iv)}
+      {numCells(p.unpriced ? { ...legVals(p), delta: null, pnl: null } : legVals(p), !!p.iv)}
     </tr>
   );
 

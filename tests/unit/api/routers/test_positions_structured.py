@@ -24,6 +24,21 @@ def _pos(**kw):
     return OpenPosition(**base)
 
 
+async def _book_filled(db) -> None:
+    """Give every filled leg its book quantity, as the fill handler does: the
+    position lines come from the book (``leg_position``), #461."""
+    from decimal import Decimal
+
+    from sqlalchemy import select
+
+    from persistence.models import LegPosition, StructureOrder
+    await db.flush()
+    have = set((await db.execute(select(LegPosition.order_id))).scalars().all())
+    for o in (await db.execute(select(StructureOrder).where(StructureOrder.state == "filled"))).scalars().all():
+        if o.id not in have:
+            db.add(LegPosition(order_id=o.id, open_qty=Decimal(o.qty if o.side == "BUY" else -o.qty)))
+
+
 async def test_structured_groups_by_booking_and_buckets_unlinked():
     from api.routers.positions import list_structured
     from persistence.models import StructureOrder, TradeStructure
@@ -54,6 +69,7 @@ async def test_structured_groups_by_booking_and_buckets_unlinked():
                 _pos(structure="EUUU6 P1145", side="SELL", trade_id=None,
                      product_label="Vanilla Put", tenor="2M", delta_usd=999),
             ])
+            await _book_filled(db)
             await db.commit()
 
             out = await list_structured(db, limit=50)
@@ -83,6 +99,7 @@ async def test_structured_excludes_closed_structures():
         async with maker() as db:
             db.add(TradeStructure(structure_type="straddle_atm", reference_tenor="1M",
                                   base_qty=10, state="closed"))
+            await _book_filled(db)
             await db.commit()
             out = await list_structured(db, limit=50)
         assert out["structures"] == []
@@ -112,6 +129,7 @@ async def test_structured_excludes_submitted_but_unfilled_structure():
                                qty=10, state="pending", ib_local_symbol=None),
             ])
             # no open_position rows → nothing is actually open
+            await _book_filled(db)
             await db.commit()
             out = await list_structured(db, limit=50)
         assert out["structures"] == []       # pending order, excluded from positions
@@ -147,6 +165,7 @@ async def test_shared_contract_does_not_cross_link():
                 _pos(structure="EUUQ6 C1130", side="BUY", trade_id=a.id, delta_usd=100),
                 _pos(structure="EUUQ6 C1145", side="SELL", trade_id=b.id, delta_usd=-100),
             ])
+            await _book_filled(db)
             await db.commit()
             out = await list_structured(db, limit=50)
 
@@ -183,6 +202,7 @@ async def test_structured_keeps_half_filled_as_naked_residual():
             ])
             db.add(_pos(structure="EUUV6 P1087", side="SELL", delta_usd=-50,
                         current_pnl_usd=5, product_label="Vanilla Put", tenor="3M"))
+            await _book_filled(db)
             await db.commit()
             out = await list_structured(db, limit=50)
         assert len(out["structures"]) == 1

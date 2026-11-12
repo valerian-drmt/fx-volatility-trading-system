@@ -24,10 +24,13 @@ export function groupByTradeId<T extends { id: string | number; tradeId?: string
   const groups: { key: string; tradeId: string | null; legs: T[] }[] = [];
   const idx: Record<string, number> = {};
   for (const p of rows) {
-    const key = p.tradeId != null ? "T" + p.tradeId : "S" + p.id;
+    // "" is "no trade" too: the adapters turn a null trade id into "", and
+    // every such row used to land in one shared group "T".
+    const hasTrade = p.tradeId != null && p.tradeId !== "";
+    const key = hasTrade ? "T" + p.tradeId : "S" + p.id;
     if (idx[key] === undefined) {
       idx[key] = groups.length;
-      groups.push({ key, tradeId: p.tradeId != null ? String(p.tradeId) : null, legs: [] });
+      groups.push({ key, tradeId: hasTrade ? String(p.tradeId) : null, legs: [] });
     }
     groups[idx[key]]!.legs.push(p);
   }

@@ -31,7 +31,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.contracts import parse_local_symbol
+from core.contracts import is_linear, parse_local_symbol
 from core.risk.attribution import attrib_tenor_bucket, decompose_row, iv_fraction_to_pts
 from core.units import PIP_SIZE
 from persistence.models import AccountHistory, PnlAttributionLatest, PortfolioDaily
@@ -251,69 +251,45 @@ _IB_SQL = text("""
            t1.gamma_usd       AS gamma_then,
            t1.vega_usd        AS vega_then,
            t1.theta_usd       AS theta_then,
-           t1.timestamp       AS t_then
+           t1.nominal_eur     AS nominal_then,
+           t1.timestamp       AS t_then,
+           older.timestamp    AS t_older
       FROM open_position p
       LEFT JOIN LATERAL (
              SELECT h.timestamp, h.market_price, h.current_pnl_usd, h.iv,
-                    h.delta_usd, h.gamma_usd, h.vega_usd, h.theta_usd
+                    h.delta_usd, h.gamma_usd, h.vega_usd, h.theta_usd, h.nominal_eur
                FROM open_position_history h
               WHERE h.position_id = p.id
                 AND h.timestamp <= :cutoff
+                AND h.timestamp >= :floor
               ORDER BY h.timestamp DESC
               LIMIT 1
            ) t1 ON TRUE
+      LEFT JOIN LATERAL (
+             SELECT h.timestamp
+               FROM open_position_history h
+              WHERE h.position_id = p.id
+                AND h.timestamp < :floor
+              ORDER BY h.timestamp DESC
+              LIMIT 1
+           ) older ON TRUE
       LEFT JOIN trade_structure ts ON ts.id = p.trade_id
 """)
 
-_BOOKED_SQL = text("""
-    SELECT bp.id, bp.state,
-           ts.product_label AS product_label,
-           ts.reference_tenor AS tenor,
-           ts.expiry_date AS expiry,
-           ts.structure_type AS structure_type,
-           latest.current_pnl_gross_usd AS pnl_now,
-           latest.spot                  AS spot_now,
-           latest.iv_avg_legs_pct       AS iv_now,
-           latest.current_delta_unhedged AS delta_now,
-           latest.current_gamma_usd_per_pip2 AS gamma_now,
-           latest.current_vega_usd_per_volpt AS vega_now,
-           latest.current_theta_usd_per_day  AS theta_now,
-           t1.current_pnl_gross_usd AS pnl_then,
-           t1.spot                  AS spot_then,
-           t1.iv_avg_legs_pct       AS iv_then,
-           t1.current_delta_unhedged     AS delta_then,
-           t1.current_gamma_usd_per_pip2 AS gamma_then,
-           t1.current_vega_usd_per_volpt AS vega_then,
-           t1.current_theta_usd_per_day  AS theta_then,
-           t1.timestamp             AS t_then
-      FROM booked_position bp
-      LEFT JOIN trade_structure ts ON ts.id = bp.structure_id
-      LEFT JOIN LATERAL (
-             SELECT h.timestamp, h.spot, h.iv_avg_legs_pct,
-                    h.current_pnl_gross_usd, h.current_pnl_net_usd,
-                    h.current_vega_usd_per_volpt, h.current_gamma_usd_per_pip2,
-                    h.current_theta_usd_per_day, h.current_delta_unhedged
-               FROM booked_position_metric_history h
-              WHERE h.position_id = bp.id
-              ORDER BY h.timestamp DESC
-              LIMIT 1
-           ) latest ON TRUE
-      LEFT JOIN LATERAL (
-             SELECT h.timestamp, h.spot, h.iv_avg_legs_pct,
-                    h.current_pnl_gross_usd, h.current_delta_unhedged,
-                    h.current_gamma_usd_per_pip2, h.current_vega_usd_per_volpt,
-                    h.current_theta_usd_per_day
-               FROM booked_position_metric_history h
-              WHERE h.position_id = bp.id
-                AND h.timestamp <= :cutoff
-              ORDER BY h.timestamp DESC
-              LIMIT 1
-           ) t1 ON TRUE
-     WHERE bp.state = 'open'
-""")
+# The window-start snapshot must sit within this distance BEFORE the cutoff.
+# The risk engine writes a row at least every 15 min, so a snapshot older than
+# this means history has a hole there. On 2026-11-12 the "24 h" attribution
+# anchored on a price 46 h old (the engine had been disconnected from IB for a
+# day) and every delta term came out about 2.3 times too large (#467).
+THEN_TOLERANCE = timedelta(minutes=45)
 
+STATUS_OK = "ok"
+STATUS_OPENED_IN_WINDOW = "opened_in_window"        # no history before the cutoff at all
+STATUS_INSUFFICIENT_HISTORY = "insufficient_history"  # history exists, but not near the cutoff
 
-async def underlying_forward(db: AsyncSession, cutoff: datetime) -> tuple[float | None, float | None]:
+async def underlying_forward(
+    db: AsyncSession, cutoff: datetime, floor: datetime | None = None,
+) -> tuple[float | None, float | None]:
     """Book-level underlying forward (the 6E future's market price) now and at
     the latest snapshot ≤ ``cutoff``. The t-1 probe is anchored on the OPEN 6E
     positions' ids and walks the ``(position_id, timestamp)`` index one step
@@ -333,13 +309,14 @@ async def underlying_forward(db: AsyncSession, cutoff: datetime) -> tuple[float 
         "          FROM open_position_history h "
         "         WHERE h.position_id = op.id "
         "           AND h.timestamp <= :cutoff "
+        "           AND h.timestamp >= :floor "
         "           AND h.market_price IS NOT NULL "
         "         ORDER BY h.timestamp DESC "
         "         LIMIT 1"
         "       ) h ON TRUE "
         " WHERE op.structure LIKE '6E%' "
         " ORDER BY h.timestamp DESC LIMIT 1"
-    ), {"cutoff": cutoff})).first()
+    ), {"cutoff": cutoff, "floor": floor or (cutoff - THEN_TOLERANCE)})).first()
     forward_then = float(fwd_then_row[0]) if fwd_then_row and fwd_then_row[0] is not None else None
     return forward, forward_then
 
@@ -358,6 +335,21 @@ def _wing(local_symbol: str | None, forward: float | None) -> str:
     if abs(moneyness) <= 0.005:
         return "Body (ATM)"
     return "Put wing" if moneyness < 0 else "Call wing"
+
+
+def _wing_detail(local_symbol: str | None, forward: float | None) -> str | None:
+    """The wing with the option's own right when they differ: a call struck
+    below the forward sits on the put wing of the smile and is an ITM call,
+    which the bare label hid ("Put wing" on a call)."""
+    wing = _wing(local_symbol, forward)
+    spec = parse_local_symbol(local_symbol)
+    if spec is None or spec.option_type is None:
+        return wing
+    if wing == "Put wing" and spec.option_type == "CALL":
+        return "Put wing (ITM call)"
+    if wing == "Call wing" and spec.option_type == "PUT":
+        return "Call wing (ITM put)"
+    return wing
 
 
 def _f(v: Any) -> float | None:
@@ -386,9 +378,9 @@ async def compute_attribution(
     ``spot_fallback`` is the market-data cache's (now, then) spot, used for
     whichever side of dS no open 6E future provides."""
     cutoff = now - timedelta(hours=lookback_hours)
-    ib_rows = (await db.execute(_IB_SQL, {"cutoff": cutoff})).all()
-    booked_rows = (await db.execute(_BOOKED_SQL, {"cutoff": cutoff})).all()
-    forward, forward_then = await underlying_forward(db, cutoff)
+    floor = cutoff - THEN_TOLERANCE
+    ib_rows = (await db.execute(_IB_SQL, {"cutoff": cutoff, "floor": floor})).all()
+    forward, forward_then = await underlying_forward(db, cutoff, floor)
     forward_source = "future_mark"
     if forward is None or forward_then is None:
         fb_now, fb_then = spot_fallback or (None, None)
@@ -403,33 +395,67 @@ async def compute_attribution(
     today = now.date()
     per_position: list[dict[str, Any]] = []
     for r in ib_rows:
-        is_future = (r.product_label or "").lower().startswith("future") or (r.structure or "").startswith("6E")
-        if is_future:
-            spot_now_u, spot_then_u = _f(r.spot_now), _f(r.spot_then)
-            gamma_u: float | None = 0.0
-            gamma_then_u: float | None = 0.0
-            vega_u: float | None = 0.0
-            vega_then_u: float | None = 0.0
-            theta_u: float | None = 0.0
-            theta_then_u: float | None = 0.0
-            iv_now_u: float | None = 0.0
-            iv_then_u: float | None = 0.0
-            gscale = 1.0
-        else:
-            spot_now_u, spot_then_u = forward, forward_then
-            gamma_u, gamma_then_u = _f(r.gamma_now), _f(r.gamma_then)
-            vega_u, vega_then_u = _f(r.vega_now), _f(r.vega_then)
-            theta_u, theta_then_u = _f(r.theta_now), _f(r.theta_then)
-            iv_now_u, iv_then_u = iv_fraction_to_pts(r.iv_now), iv_fraction_to_pts(r.iv_then)
-            gscale = 1.0 / PIP_SIZE
-        decomp = decompose_row(
-            now=now, pnl_now=_f(r.pnl_now), pnl_then=_f(r.pnl_then),
-            spot_now=spot_now_u, spot_then=spot_then_u, iv_now=iv_now_u, iv_then=iv_then_u,
-            delta=(float(r.delta_now) / spot_now_u) if (r.delta_now is not None and spot_now_u) else None,
-            gamma=gamma_u, vega=vega_u, theta=theta_u, t_then=_dt(r.t_then),
-            delta_then=(float(r.delta_then) / spot_then_u) if (r.delta_then is not None and spot_then_u) else None,
-            gamma_then=gamma_then_u, vega_then=vega_then_u, theta_then=theta_then_u, gamma_scale=gscale,
+        spec = parse_local_symbol(r.structure)
+        linear = (
+            (spec is not None and is_linear(spec.instrument_type))
+            or (r.product_label or "").lower().startswith("future")
         )
+        t_then = _dt(r.t_then)
+        if t_then is None:
+            status = STATUS_INSUFFICIENT_HISTORY if _dt(getattr(r, "t_older", None)) is not None else STATUS_OPENED_IN_WINDOW
+        else:
+            status = STATUS_OK
+
+        # ONE P&L source at both ends of the window: the contract's own IB
+        # mark. ``current_pnl_usd`` is IB's unrealised P&L when IB reports it
+        # and our model's otherwise, so a window that started on one and
+        # ended on the other showed the gap between them as a gain (+1,610 on
+        # a future on 2026-11-12: spot-to-future basis). The marks give the
+        # same answer whatever the engine was connected to. Only when the
+        # quantity did not change, and both marks exist.
+        mark_now, mark_then = _f(r.spot_now), _f(r.spot_then)
+        nominal, nominal_then = _f(r.nominal_eur), _f(getattr(r, "nominal_then", None))
+        sign = 1.0 if (r.side or "").upper() == "BUY" else -1.0
+        same_size = nominal is not None and (nominal_then is None or abs(nominal - nominal_then) < 1e-6)
+        pnl_basis = "pnl_column"
+        pnl_now_u, pnl_then_u = _f(r.pnl_now), _f(r.pnl_then)
+        mark_move: float | None = None
+        if (
+            t_then is not None and mark_now is not None and mark_then is not None
+            and nominal is not None and same_size
+        ):
+            mark_move = sign * nominal * (mark_now - mark_then)
+            pnl_now_u, pnl_then_u = mark_move, 0.0
+            pnl_basis = "ib_mark"
+
+        decomp: dict[str, float | None]
+        if linear:
+            # A delta-one line's P&L IS its delta term: quantity x multiplier
+            # x the move of its own price. Nothing else, no residual.
+            if mark_move is not None:
+                move = round(mark_move, 2)
+                decomp = {
+                    "actual_pnl_usd": move, "delta_pnl_usd": move, "gamma_pnl_usd": 0.0,
+                    "vega_pnl_usd": 0.0, "theta_pnl_usd": 0.0, "residual_usd": 0.0,
+                }
+            else:
+                decomp = dict.fromkeys(
+                    ("actual_pnl_usd", "delta_pnl_usd", "gamma_pnl_usd", "vega_pnl_usd", "theta_pnl_usd", "residual_usd"),
+                    None,
+                )
+                if status == STATUS_OK:
+                    status = STATUS_INSUFFICIENT_HISTORY   # a snapshot without a mark cannot price the move
+        else:
+            decomp = decompose_row(
+                now=now, pnl_now=pnl_now_u, pnl_then=pnl_then_u,
+                spot_now=forward, spot_then=forward_then,
+                iv_now=iv_fraction_to_pts(r.iv_now), iv_then=iv_fraction_to_pts(r.iv_then),
+                delta=(float(r.delta_now) / forward) if (r.delta_now is not None and forward) else None,
+                gamma=_f(r.gamma_now), vega=_f(r.vega_now), theta=_f(r.theta_now), t_then=t_then,
+                delta_then=(float(r.delta_then) / forward_then) if (r.delta_then is not None and forward_then) else None,
+                gamma_then=_f(r.gamma_then), vega_then=_f(r.vega_then), theta_then=_f(r.theta_then),
+                gamma_scale=1.0 / PIP_SIZE,
+            )
         expiry = r.expiry if not isinstance(r.expiry, str) else date.fromisoformat(r.expiry)
         per_position.append({
             "id": int(r.id), "source": "ib_live",
@@ -442,31 +468,21 @@ async def compute_attribution(
             "iv": _f(r.iv_now),
             "structure_type": r.structure_type,
             "wing": _wing(r.structure, forward),
+            "wing_detail": _wing_detail(r.structure, forward),
+            "attrib_status": status,
+            "pnl_basis": pnl_basis,
+            "t_then": t_then.isoformat() if t_then is not None else None,
             **decomp,
         })
-    for r in booked_rows:
-        decomp = decompose_row(
-            now=now, pnl_now=_f(r.pnl_now), pnl_then=_f(r.pnl_then),
-            spot_now=_f(r.spot_now), spot_then=_f(r.spot_then), iv_now=_f(r.iv_now), iv_then=_f(r.iv_then),
-            delta=_f(r.delta_now), gamma=_f(r.gamma_now), vega=_f(r.vega_now), theta=_f(r.theta_now),
-            t_then=_dt(r.t_then), delta_then=_f(r.delta_then), gamma_then=_f(r.gamma_then),
-            vega_then=_f(r.vega_then), theta_then=_f(r.theta_then),
-            gamma_scale=1.0 / (PIP_SIZE * PIP_SIZE),  # booked gamma is $/pip²
-        )
-        expiry = r.expiry if not isinstance(r.expiry, str) else date.fromisoformat(r.expiry)
-        per_position.append({
-            "id": int(r.id), "source": "booked",
-            "structure": None, "product_label": r.product_label,
-            "side": None, "tenor": r.tenor,
-            "attrib_tenor": attrib_tenor_bucket(expiry, today),
-            "structure_type": r.structure_type, "wing": "other",
-            **decomp,
-        })
+    # No ``booked_position`` rows any more (#461, #467): they were a second,
+    # trade-level copy of positions the lines above already carry, stored and
+    # then hidden by a filter. The line set is the one list.
     meta = {
         "lookback_hours": lookback_hours,
         "computed_at": now.isoformat(),
         "window_start": cutoff.isoformat(),
         "forward_source": forward_source,
+        "then_tolerance_minutes": int(THEN_TOLERANCE.total_seconds() // 60),
     }
     return {"per_position": per_position, "meta": meta}
 

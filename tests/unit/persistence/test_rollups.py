@@ -142,10 +142,10 @@ def _row(**kw: Any) -> SimpleNamespace:
 
 def _fake_db(ib_rows: list[Any], booked_rows: list[Any], fwd: tuple | None, fwd_then: tuple | None) -> AsyncMock:
     results = []
-    for payload in (ib_rows, booked_rows):
-        r = MagicMock()
-        r.all.return_value = payload
-        results.append(r)
+    del booked_rows   # the rollup no longer reads booked_position rows (#467)
+    r = MagicMock()
+    r.all.return_value = ib_rows
+    results.append(r)
     r1 = MagicMock()
     r1.first.return_value = fwd
     results.append(r1)
@@ -168,7 +168,9 @@ async def test_compute_attribution_uses_the_future_forward_and_tags_the_source()
     # anchored on the t-1 greek: delta_usd / F_then * dF with dF = +0.0043
     assert row["delta_pnl_usd"] == pytest.approx(600_000.0 / 1.1198 * 0.0043, rel=1e-3)
     assert row["vega_pnl_usd"] == pytest.approx(2779.58 * 0.1, rel=1e-3), "IV fraction -> vol points"
-    assert row["actual_pnl_usd"] == 300.0
+    # one P&L source, the contract's IB mark: +1 x 1.25M EUR x (0.0131 - 0.0123)
+    assert row["actual_pnl_usd"] == pytest.approx(1000.0) and row["pnl_basis"] == "ib_mark"
+    assert row["attrib_status"] == "ok"
 
 
 async def test_compute_attribution_falls_back_to_the_spot_cache_when_no_future_is_open() -> None:
@@ -178,7 +180,7 @@ async def test_compute_attribution_falls_back_to_the_spot_cache_when_no_future_i
     out = await compute_attribution(db, now=NOW, lookback_hours=24, spot_fallback=(1.1250, 1.1200))
     assert out["meta"]["forward_source"] == "spot_cache"
     assert out["per_position"][0]["delta_pnl_usd"] == pytest.approx(600_000.0 / 1.1200 * 0.005, rel=1e-3)
-    assert db.execute.await_count == 3, "no history walk when no 6E is open"
+    assert db.execute.await_count == 2, "no history walk when no 6E is open"
 
     none = await compute_attribution(_fake_db([_row()], [], None, None), now=NOW, lookback_hours=24)
     assert none["meta"]["forward_source"] == "none" and none["per_position"][0]["delta_pnl_usd"] is None

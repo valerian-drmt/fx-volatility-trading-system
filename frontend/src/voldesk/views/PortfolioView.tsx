@@ -22,6 +22,7 @@ import { WsChip } from "../components/WsChip";
 import { gk$, pnlCls } from "../components/format";
 import { PERF_WINS, recapDd, recapMoney, recapRow, type RecapRow } from "../components/perfRecap";
 import { groupByTradeId, structureName, structureSide } from "../components/tradeGrouping";
+import { LineStatusTag } from "../components/LineStatus";
 import { EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
 import type { Cash } from "../data";
 import { useDeskData } from "../data/deskData";
@@ -776,7 +777,7 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
     </>
   );
   const legRow = (r: PositionAttribRow, main: boolean): JSX.Element => (
-    <tr key={r.id} className={main ? undefined : "pos-leg"}>
+    <tr key={r.lineId ?? r.id} className={main ? undefined : "pos-leg"} data-line-id={r.lineId}>
       <td className="l grp-fix mono dim">{main ? (r.tradeId != null ? "#" + r.tradeId : "—") : ""}</td>
       <td className="l grp-fix mono dim">{r.contractId ?? "—"}</td>
       <td className="l grp-fix">
@@ -784,6 +785,12 @@ function PositionAttributionMatrix({ m }: { m: PositionAttribMatrix | null }): J
       </td>
       <td className="l grp-fix">
         <span className="sym">{r.structure}</span>
+        <LineStatusTag status={r.lineStatus} />
+        {r.attribStatus && ATTRIB_NOTE[r.attribStatus] ? (
+          <span className="tag tag-neutral" style={{ marginLeft: 6 }} title={ATTRIB_NOTE[r.attribStatus]!.title}>
+            {ATTRIB_NOTE[r.attribStatus]!.label}
+          </span>
+        ) : null}
       </td>
       <td className="l grp-fix">
         <span className={"side-pill " + (r.side === "BUY" ? "long" : "short")}>{r.side}</span>
@@ -1065,6 +1072,18 @@ function ValuationChart({
     </svg>
   );
 }
+
+// Why a line of the by-trade attribution has empty terms (#467). An empty
+// cell is "not measurable", and the reason is on the row.
+const ATTRIB_NOTE: Record<string, { label: string; title: string }> = {
+  opened_in_window: { label: "new", title: "Opened inside the window: there is no starting value to compare with." },
+  insufficient_history: {
+    label: "no history",
+    title: "No snapshot near the start of the window (history gap): the move cannot be measured.",
+  },
+  not_held: { label: "not held", title: "The broker does not hold this line: there is nothing to attribute." },
+  pending: { label: "pending", title: "Held, not priced yet: the next attribution run will include it." },
+};
 
 export function PortfolioView(): JSX.Element {
   const { portfolio, trade, streams } = useDeskData();

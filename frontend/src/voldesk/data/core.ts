@@ -206,6 +206,12 @@ export interface Position {
   // Open per the book but netted-away at IB (no mirror row) → can't be closed by
   // the per-contract path; the individual Close is disabled (use the trade close).
   netted?: boolean;
+  // The position line this row is (#461): same id and status on the Trade,
+  // Risk and Portfolio panels. `unpriced` = the risk numbers are unknown
+  // (nothing priced the line), which is not the same as zero.
+  lineId?: string | undefined;
+  lineStatus?: string | undefined;
+  unpriced?: boolean;
 }
 
 export interface Cash {
