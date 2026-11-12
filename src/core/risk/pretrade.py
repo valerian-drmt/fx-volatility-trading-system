@@ -24,6 +24,7 @@ class BookGreeks:
     gamma_usd_per_pip: float
     n_positions: int
     n_priced: int
+    unpriced: tuple[str, ...] = ()   # contracts held with no delta, named for the trader
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,7 @@ def evaluate_pretrade(i: GateInputs) -> GateResult:
         if i.book.n_priced < i.book.n_positions:
             f.append("book_partially_priced")
             d["book_unpriced"] = i.book.n_positions - i.book.n_priced
+            d["book_unpriced_lines"] = list(i.book.unpriced)
         post_delta = i.book.delta_usd + i.trade.delta_usd
         post_vega = i.book.vega_usd_per_volpt + i.trade.vega_usd_per_volpt
         post_gamma = i.book.gamma_usd_per_pip + i.trade.gamma_usd_per_pip

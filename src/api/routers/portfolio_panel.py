@@ -35,7 +35,7 @@ from api.schemas import route_models as rm
 from bus import keys
 from bus.account_cache import read_account_snapshot
 from bus.spot_cache import spot_fallbacks
-from core.contracts import parse_local_symbol
+from core.contracts import is_linear, parse_local_symbol
 from core.pricing.bs import bs_delta, bs_gamma, bs_price, bs_theta, bs_vega
 from core.risk import greek_limits as gl
 from core.risk.attribution import (
@@ -855,7 +855,7 @@ async def _resolve_book(db: AsyncSession, redis: aioredis.Redis | None = None) -
             dropped.append({"id": str(p.id), "reason": "unparseable_symbol"})
             continue
         qty_signed = float(p.quantity) * (1.0 if p.side == "BUY" else -1.0)
-        if spec.instrument_type == "FUTURE":
+        if is_linear(spec.instrument_type):
             baselines.append({
                 "id": str(p.id), "type": "FUTURE",
                 "qty_signed": qty_signed, "mult": spec.multiplier,
@@ -1322,7 +1322,7 @@ async def scenarios(db: DbDep) -> dict[str, Any]:
             continue
         qty_signed = float(p.quantity) * (1.0 if p.side == "BUY" else -1.0)
         mult = spec.multiplier
-        if spec.instrument_type == "FUTURE":
+        if is_linear(spec.instrument_type):
             positions_resolved.append({
                 "type": "FUTURE", "qty_signed": qty_signed, "mult": mult,
                 "npv_base": qty_signed * mult * current_spot,

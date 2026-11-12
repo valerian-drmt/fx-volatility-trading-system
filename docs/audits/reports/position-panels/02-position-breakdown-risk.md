@@ -111,9 +111,15 @@ at 1.10942 on 2026-11-12 09:38 UTC. Its delta is about -22,533 EUR, roughly
 
 - the net delta of the Risk view (a frontend sum of these rows, null as 0);
 - the Redis aggregate `latest_greeks:portfolio` and everything fed by it;
-- the pre-trade delta check, which sums `open_position.delta_usd` and skips
-  NULLs (`src/api/orchestration/pretrade_gate.py:143-149`);
 - `open_position_history`, so it can never be attributed.
+
+The pre-trade check does **not** let it through. It counts held rows against
+priced rows and refuses when they differ (`book_partially_priced`,
+`src/core/risk/pretrade.py:122`). So while the spot row has no delta, every
+new structured trade is refused: prod `trade_event` 618, 2026-11-12 11:35 UTC.
+The refusal gave a count, not the name of the line. The published aggregate
+had the opposite flaw: it dropped the row before counting, so it reported
+`n_priced == n_positions`.
 
 Prod row, as stored:
 

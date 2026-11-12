@@ -67,6 +67,9 @@ def product_label_from_symbol(
         return "Vanilla Call"
     if " P" in sym:
         return "Vanilla Put"
+    # Spot FX (IB CASH localSymbol "EUR.USD"): its own label, never a future's.
+    if "." in sym:
+        return "Spot " + sym.replace(".", "/")
     # Otherwise treat as a future symbol (6E* full / M6E* micro).
     return _future_label(sym)
 

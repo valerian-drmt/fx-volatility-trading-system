@@ -147,7 +147,13 @@ async def run_pretrade_gate(
             func.count(OpenPosition.id),
             func.count(OpenPosition.delta_usd),
         ))).one()
-        book = BookGreeks(float(r[0]), float(r[1]), float(r[2]), int(r[3]), int(r[4]))
+        unpriced: tuple[str, ...] = ()
+        if int(r[4]) < int(r[3]):
+            unpriced = tuple(str(s) for s in (await db.execute(
+                select(OpenPosition.structure).where(OpenPosition.delta_usd.is_(None))
+                .order_by(OpenPosition.structure).limit(20)
+            )).scalars().all())
+        book = BookGreeks(float(r[0]), float(r[1]), float(r[2]), int(r[3]), int(r[4]), unpriced)
     except Exception:
         logger.exception("pretrade_book_read_failed")
         book = None
