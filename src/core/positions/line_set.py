@@ -93,6 +93,31 @@ def _same_sign(a: float, b: float) -> bool:
     return (a > 0) == (b > 0)
 
 
+def _offset_opposites(
+    trades: list[tuple[int, float, tuple[int, ...]]],
+) -> list[tuple[int, float, tuple[int, ...]]]:
+    """Long and short lots of different trades on ONE contract cancel out,
+    oldest first: the broker nets a contract, so two trades on opposite sides
+    hold nothing between them. Only the residual stays a line.
+
+    Prod, 2026-11-12: fourteen July trades on 6EZ6 (179 long, 192 short, none
+    closed against another) showed as fourteen "book only" lines; what the
+    book really disagrees with the broker about is the residual, 13 short."""
+    longs = [[t, q, o] for t, q, o in trades if q > 0]
+    shorts = [[t, q, o] for t, q, o in trades if q < 0]
+    i = j = 0
+    while i < len(longs) and j < len(shorts):
+        cut = min(longs[i][1], -shorts[j][1])
+        longs[i][1] -= cut
+        shorts[j][1] += cut
+        if longs[i][1] <= EPS:
+            i += 1
+        if shorts[j][1] >= -EPS:
+            j += 1
+    left = [(t, q, o) for t, q, o in (*longs, *shorts) if abs(q) > EPS]
+    return sorted(left, key=lambda x: x[0])
+
+
 def build_lines(lots: Iterable[BookLot], holdings: Iterable[BrokerHolding]) -> list[Line]:
     """The line set. Deterministic: contracts in name order, trades oldest first."""
     by_contract: dict[str, dict[int, list[BookLot]]] = defaultdict(lambda: defaultdict(list))
@@ -120,6 +145,7 @@ def build_lines(lots: Iterable[BookLot], holdings: Iterable[BrokerHolding]) -> l
             qty = sum(lot.qty for lot in legs)
             if abs(qty) > EPS:
                 trades.append((trade_id, qty, tuple(sorted(lot.order_id for lot in legs))))
+        trades = _offset_opposites(trades)
         for trade_id, book_qty, order_ids in trades:
             given = 0.0
             if abs(remaining) > EPS and _same_sign(book_qty, remaining):

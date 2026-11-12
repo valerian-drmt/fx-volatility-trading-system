@@ -92,3 +92,18 @@ def test_the_set_is_deterministic() -> None:
     lots = [BookLot(CALL, 90, 2, 30), BookLot(PUT, 60, 75, 100), BookLot(CALL, 79, 1, 10)]
     held = [BrokerHolding(CALL, 40, 5)]
     assert [ln.line_id for ln in build_lines(lots, held)] == [ln.line_id for ln in build_lines(lots[::-1], held)]
+
+
+def test_opposite_trades_on_one_contract_cancel_and_only_the_residual_is_a_line() -> None:
+    """The broker nets a contract: a long trade and a short trade on it hold
+    nothing between them. Prod: 14 offsetting July trades on 6EZ6."""
+    lots = [BookLot("6EZ6", 8, 9, 57), BookLot("6EZ6", 33, 38, -10), BookLot("6EZ6", 63, 80, -100),
+            BookLot("6EZ6", 70, 89, 40)]
+    lines = build_lines(lots, [])
+    assert [(ln.line_id, ln.book_qty, ln.status) for ln in lines] == [("6EZ6|T63", -13, BOOK_ONLY)]
+    # fully offsetting trades leave no line at all
+    assert build_lines([BookLot("6EZ6", 1, 1, 5), BookLot("6EZ6", 2, 2, -5)], []) == []
+    # the residual is what is matched against the broker
+    held = build_lines(lots, [BrokerHolding("6EZ6", -13, 7)])
+    assert [(ln.line_id, ln.status) for ln in held] == [("6EZ6|T63", MATCHED)]
+

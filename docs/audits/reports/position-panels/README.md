@@ -117,5 +117,34 @@ that owns it):
 | 5 | The booked-trade "closed" check matches on the contract the broker actually filled | 04 |
 | 6 | Attribution: a future's P&L is its delta term; the underlying move comes from one consistent price | 03 |
 
-Nothing in this folder has been implemented; these notes describe the system as
-it runs at commit `dbc237bc`.
+These notes describe the system as it ran at commit `dbc237bc`, before the
+changes below.
+
+## What was changed (epic #469)
+
+| # | Change | Where |
+|---|---|---|
+| #461 | One position line set, a line per (contract, trade) lot with a status, served to the three panels | `src/core/positions/line_set.py`, `src/api/orchestration/position_lines.py` |
+| #462 | A close reduces the leg it closes; a trade whose legs are flat is closed by the book | `src/persistence/projection.py`, `src/persistence/book_close.py` |
+| #463 | An expired contract closes its legs through a `position_event`; hourly lifecycle pass | `src/engines/execution/lifecycle.py`, migration 065 |
+| #464 | The broker mirror no longer closes a booked trade; the count matches on the contract filled | `src/engines/execution/position_sync.py` |
+| #465 | An order repaired without executions gets a `repair` event, so the leg has a quantity | `src/persistence/position_events.py` |
+| #466 | A manual future or option ticket is booked, as a trade or as the close of the leg it reduces | `src/engines/execution/manual_tickets.py` |
+| #460 | `instrument` table keyed by IB contract id; spot FX priced (multiplier 1, mark, P&L, delta) | `src/persistence/instruments.py`, migration 066 |
+| #467 | Attribution: the start snapshot must be within 45 min of the cutoff, P&L from the contract's IB mark, a delta-one line is pure delta | `src/persistence/rollups.py` |
+| #459 | An unpriced line is named by the pre-trade check, counted by the risk aggregate, shown on the Risk view | `src/core/risk/pretrade.py`, `frontend/.../UnpricedNotice.tsx` |
+| #468 | One-time repair of the existing rows | migration 067 |
+
+Two decisions differ from the first plan:
+
+- **Spot FX is not booked as a trade.** IB reports a spot trade as a virtual
+  FX position and stops listing it after its nightly restart, so a booked spot
+  leg could never reconcile. Spot stays in `spot_order`; its line has the
+  status `cash` on the three panels and the reconciler raises no break for it.
+- **The old close reason is kept** on the booked trades that the mirror check
+  closed and that really are closed. Only the ones still held are reopened.
+
+What happens at the first engine start after the deploy: every leg is rebuilt
+with the netting rule, then the lifecycle pass writes one `expiry` event per
+leg on a dead contract and closes the trades left flat. The reconciliation
+breaks resolve by themselves on the next reconciler pass.
