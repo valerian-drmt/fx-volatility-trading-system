@@ -419,15 +419,21 @@ async def compute_attribution(
         same_size = nominal is not None and (nominal_then is None or abs(nominal - nominal_then) < 1e-6)
         pnl_basis = "pnl_column"
         pnl_now_u, pnl_then_u = _f(r.pnl_now), _f(r.pnl_then)
-        if t_then is not None and mark_now is not None and mark_then is not None and same_size:
-            pnl_now_u, pnl_then_u = sign * float(nominal) * (mark_now - mark_then), 0.0
+        mark_move: float | None = None
+        if (
+            t_then is not None and mark_now is not None and mark_then is not None
+            and nominal is not None and same_size
+        ):
+            mark_move = sign * nominal * (mark_now - mark_then)
+            pnl_now_u, pnl_then_u = mark_move, 0.0
             pnl_basis = "ib_mark"
 
+        decomp: dict[str, float | None]
         if linear:
             # A delta-one line's P&L IS its delta term: quantity x multiplier
             # x the move of its own price. Nothing else, no residual.
-            if pnl_basis == "ib_mark":
-                move = round(float(pnl_now_u), 2)
+            if mark_move is not None:
+                move = round(mark_move, 2)
                 decomp = {
                     "actual_pnl_usd": move, "delta_pnl_usd": move, "gamma_pnl_usd": 0.0,
                     "vega_pnl_usd": 0.0, "theta_pnl_usd": 0.0, "residual_usd": 0.0,
