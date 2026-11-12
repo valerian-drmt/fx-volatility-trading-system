@@ -17,6 +17,40 @@ export interface LineIdent {
   tenor: string;
   legsOpen: number;
   legsTotal: number;
+  /** The close in flight on this line, when there is one. */
+  closing?: LineClosing | undefined;
+}
+
+/** A close order on its way: `sending` (not at IB yet), `sent` (placed, not
+ * confirmed), `waiting` (IB confirmed it holds the order and it waits for a
+ * counterparty), `partial` (partly filled). Never "rejected": a rejection is
+ * IB refusing the order, and then there is no close in flight. */
+export interface LineClosing {
+  phase: "sending" | "sent" | "waiting" | "partial";
+  qty: number;
+  limit: number | null;
+  orders: number;
+  structureIds: number[];
+}
+
+/** The desk's words for a working order state, in Open positions and Orders. */
+export const CLOSE_PHASE_LABEL: Record<LineClosing["phase"], string> = {
+  sending: "closing · sending",
+  sent: "closing · sent to IB",
+  waiting: "closing · waiting at IB",
+  partial: "closing · partly filled",
+};
+
+function adaptClosing(raw: unknown): LineClosing | undefined {
+  if (raw == null || typeof raw !== "object") return undefined;
+  const r = raw as {
+    phase?: string; qty?: number; limit_price?: number | null; n_orders?: number; structure_ids?: number[];
+  };
+  const phase = r.phase === "sending" || r.phase === "waiting" || r.phase === "partial" ? r.phase : "sent";
+  return {
+    phase, qty: r.qty ?? 0, limit: r.limit_price ?? null, orders: r.n_orders ?? 1,
+    structureIds: Array.isArray(r.structure_ids) ? r.structure_ids : [],
+  };
 }
 
 interface RawIdentity {
@@ -31,6 +65,7 @@ interface RawIdentity {
   tenor?: string | null;
   legs_open?: number | null;
   legs_total?: number | null;
+  closing?: unknown;
 }
 
 /** The trade's name from its booked type, the same rule on every panel. */
@@ -55,6 +90,7 @@ export function adaptIdent(raw: unknown): LineIdent | undefined {
     tenor: r.tenor ?? "—",
     legsOpen: r.legs_open ?? 1,
     legsTotal: r.legs_total ?? 1,
+    closing: adaptClosing(r.closing),
   };
 }
 

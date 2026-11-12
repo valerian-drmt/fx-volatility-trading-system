@@ -18,7 +18,31 @@
  */
 import type { JSX, ReactNode } from "react";
 import { LineStatusTag } from "./LineStatus";
-import type { LineIdent } from "./lineIdent";
+import { CLOSE_PHASE_LABEL, type LineClosing, type LineIdent } from "./lineIdent";
+
+/** "closing · waiting at IB": the position has a close order in flight. */
+function ClosingTag({ closing }: { closing?: LineClosing | undefined }): JSX.Element | null {
+  if (!closing) return null;
+  const price = closing.limit != null ? ` @ ${closing.limit}` : " at market";
+  const dup = closing.orders > 1 ? ` · ${closing.orders} orders` : "";
+  return (
+    <span
+      className={"tag " + (closing.orders > 1 ? "tag-warn" : "tag-info")}
+      data-closing={closing.phase}
+      style={{ marginLeft: 6 }}
+      title={
+        `close of ${closing.qty}${price}` +
+        (closing.phase === "waiting" ? " — IB holds the order, it waits for a counterparty"
+          : closing.phase === "partial" ? " — partly filled, the rest waits at IB"
+            : closing.phase === "sent" ? " — placed, waiting for IB to confirm it"
+              : " — being sent to IB") +
+        (closing.orders > 1 ? `. ${closing.orders} close orders are working on this position: cancel the extra one.` : "")
+      }
+    >
+      {CLOSE_PHASE_LABEL[closing.phase]}{dup}
+    </span>
+  );
+}
 
 const fmtQty = (q: number): string => (Number.isInteger(q) ? String(q) : q.toFixed(2));
 
@@ -65,6 +89,7 @@ export function IdentityCells({
       <td className={"l " + cls}>
         <span className="sym">{ident.symbol}</span>
         <LineStatusTag status={status} />
+        <ClosingTag closing={ident.closing} />
       </td>
       <td className={"l " + cls}>
         <span className={"side-pill " + (ident.side === "BUY" ? "long" : "short")}>{ident.side}</span>
@@ -108,7 +133,10 @@ export function GroupIdentityCells({
         <span className="sym">{first.tradeName}</span>
         {extra}
       </td>
-      <td className={"l mono dim " + cls}>—</td>
+      <td className={"l mono dim " + cls}>
+        —
+        <ClosingTag closing={idents.find((i) => i.closing)?.closing} />
+      </td>
       <td className={"l " + cls}>
         <span className={"side-pill " + (side === "BUY" ? "long" : "short")}>{side}</span>
       </td>

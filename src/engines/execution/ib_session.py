@@ -177,6 +177,7 @@ async def _attach_option_handlers(
         o.state_updated_at = now
         o.rejected_at = None
         o.rejection_text = None
+        o.acknowledged_at = o.acknowledged_at or now   # IB lists it open: IB has it
         struct = await db.get(TradeStructure, int(o.structure_id))
         if struct is not None and struct.state == "fully_failed":
             struct.state = "submitted"   # its order is working after all

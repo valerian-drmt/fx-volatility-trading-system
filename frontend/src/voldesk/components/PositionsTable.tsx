@@ -80,9 +80,10 @@ const EMPTY_CLOSING: Set<string> = new Set();
 // `main=false` renders it indented under its trade's summary line.
 function legRow(
   p: Position,
-  opts: { showGreeks: boolean; extended: boolean; onClose: ((p: Position) => void) | undefined; main: boolean; closing: Set<string> },
+  opts: { showGreeks: boolean; extended: boolean; onClose: ((p: Position) => void) | undefined; main: boolean; closing: Set<string>; onCancelClose?: ((structureIds: number[]) => void) | undefined },
 ): JSX.Element {
-  const { showGreeks, extended, onClose, main, closing } = opts;
+  const { showGreeks, extended, onClose, main, closing, onCancelClose } = opts;
+  const inFlight = p.ident?.closing;
   // Locked while this leg (or its whole trade) has a close in flight.
   const isClosing = closing.has(p.id) || (p.tradeId != null && closing.has("t:" + p.tradeId));
   return (
@@ -114,17 +115,30 @@ function legRow(
       <td className="r mono dim">{p.unpriced ? "—" : (p.nominal / 1e6).toFixed(2) + "M"}</td>
       <td className={"r mono " + (p.unpriced ? "dim" : pnlCls(p.pnl))}>{p.unpriced ? "—" : fmt.usdk(p.pnl)}</td>
       <td className="r">
-        <button
-          className="row-close"
-          disabled={isClosing || p.netted}
-          title={
-            p.netted ? "netted flat at IB (held opposite by another trade) — nothing to close on this contract"
-              : isClosing ? "a close for this position is already in flight" : undefined
-          }
-          onClick={() => onClose && onClose(p)}
-        >
-          {isClosing ? "Closing…" : "Close"}
-        </button>
+        {inFlight ? (
+          // A close order is on its way or waiting at IB: the action left is
+          // to cancel it, not to send another one on top.
+          <button
+            className="row-close"
+            disabled={!onCancelClose}
+            title={`cancel the close order${inFlight.orders > 1 ? "s" : ""} working on this position`}
+            onClick={() => onCancelClose && onCancelClose(inFlight.structureIds)}
+          >
+            Cancel close
+          </button>
+        ) : (
+          <button
+            className="row-close"
+            disabled={isClosing || p.netted}
+            title={
+              p.netted ? "netted flat at IB (held opposite by another trade) — nothing to close on this contract"
+                : isClosing ? "the close order is being sent" : undefined
+            }
+            onClick={() => onClose && onClose(p)}
+          >
+            {isClosing ? "Sending…" : "Close"}
+          </button>
+        )}
       </td>
     </tr>
   );
@@ -146,6 +160,8 @@ interface OpenPositionsTableProps {
   onClose?: (p: Position) => void;
   /** Close a whole multi-leg trade at once (main summary line). */
   onCloseTrade?: (legs: Position[]) => void;
+  /** Cancel the close order(s) in flight on a position (their trade ids). */
+  onCancelClose?: (structureIds: number[]) => void;
   /** trade_id → booking context (name + fill status), keyed as a string. */
   structureContext?: Record<string, StructureCtx>;
   /** Keys with a close in flight → lock the matching Close button. Key = a
@@ -165,6 +181,7 @@ export function OpenPositionsTable({
   extended = false,
   onClose,
   onCloseTrade,
+  onCancelClose,
   structureContext,
   closing = EMPTY_CLOSING,
   dense = false,
@@ -297,7 +314,7 @@ export function OpenPositionsTable({
               // is a plain row that says "1/2 legs" (components/LineIdentity).
               const isMulti = grp.legs.length > 1;
               if (!isMulti) {
-                return legRow(grp.legs[0]!, { showGreeks, extended, onClose, main: true, closing });
+                return legRow(grp.legs[0]!, { showGreeks, extended, onClose, main: true, closing, onCancelClose });
               }
               const tradeClosing = grp.tradeId != null && closing.has("t:" + grp.tradeId);
               const a = aggregate(grp.legs);
@@ -344,7 +361,7 @@ export function OpenPositionsTable({
                       </button>
                     </td>
                   </tr>
-                  {isOpen && grp.legs.map((p) => legRow(p, { showGreeks, extended, onClose, main: false, closing }))}
+                  {isOpen && grp.legs.map((p) => legRow(p, { showGreeks, extended, onClose, main: false, closing, onCancelClose }))}
                 </Fragment>
               );
             })}

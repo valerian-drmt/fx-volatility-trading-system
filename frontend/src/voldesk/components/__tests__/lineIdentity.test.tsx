@@ -1,5 +1,5 @@
-import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { adaptPositions } from "../../data/live/trade";
 import { PositionBreakdown } from "../PositionBreakdown";
@@ -70,5 +70,32 @@ describe("identity columns shared by the position panels", () => {
       // one leg of a two-leg trade left: a plain row that still says so, on every panel
       ["#60", "747303265", "Strangle 10Δ1/2 legs", "EUUZ6 C1210", "BUY", "100", "1M"],
     ]);
+  });
+
+  it("shows a position being closed as closing, with a cancel, never as rejected", () => {
+    // Position -> Close -> IB confirms it holds the order -> the line says so
+    // on every panel, and the button left is to cancel that order.
+    const closing = { phase: "waiting", qty: 100, n_orders: 1, limit_price: 0.0001, structure_ids: [95] };
+    const positions = adaptPositions([row(41, {}, ident({ closing }))], Date.now());
+    const onCancelClose = vi.fn();
+    const onClose = vi.fn();
+    const trade = render(
+      <OpenPositionsTable positions={positions} showNet={false} onClose={onClose} onCancelClose={onCancelClose} />,
+    );
+    expect(screen.getByText("closing · waiting at IB")).toHaveAttribute("data-closing", "waiting");
+    expect(screen.queryByText("Close")).toBeNull();
+    fireEvent.click(screen.getByText("Cancel close"));
+    expect(onCancelClose).toHaveBeenCalledWith([95]);
+    expect(onClose).not.toHaveBeenCalled();
+    trade.unmount();
+
+    render(<PositionBreakdown positions={positions} />);
+    expect(screen.getByText("closing · waiting at IB")).toBeInTheDocument();
+  });
+
+  it("warns when two close orders are working on one position", () => {
+    const closing = { phase: "waiting", qty: 200, n_orders: 2, limit_price: 0.0001, structure_ids: [89, 95] };
+    render(<PositionBreakdown positions={adaptPositions([row(41, {}, ident({ closing }))], Date.now())} />);
+    expect(screen.getByText("closing · waiting at IB · 2 orders")).toHaveClass("tag-warn");
   });
 });

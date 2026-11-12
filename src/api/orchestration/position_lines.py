@@ -38,6 +38,7 @@ class LineSet:
     legs: dict[int, LegPosition]                       # leg_position by order id
     structures: dict[int, TradeStructure] = field(default_factory=dict)
     entry_legs: dict[int, int] = field(default_factory=dict)   # entry orders per trade
+    closing: dict[str, dict[str, Any]] = field(default_factory=dict)   # line_id -> close in flight
 
     def by_id(self) -> dict[str, Line]:
         return {ln.line_id: ln for ln in self.lines}
@@ -96,12 +97,84 @@ async def load_line_set(db: AsyncSession) -> LineSet:
         }
     return LineSet(
         entry_legs=entry_legs,
+        closing=await _closes_in_flight(db, lines),
         lines=lines,
         positions={int(p.id): p for p in positions},
         orders={int(o.id): o for _, o in rows},
         legs={int(o.id): lp for lp, o in rows},
         structures=structures,
     )
+
+
+# A closing order that is not terminal: it is on its way to IB or working there.
+_WORKING = ("pending", "submitted", "acknowledged", "partially_filled")
+
+
+def close_phase(order: StructureOrder) -> str:
+    """Where a closing order stands, in the desk's words:
+
+    ``sending``  written, not yet placed at IB
+    ``sent``     placed, IB has not confirmed it yet
+    ``waiting``  IB confirmed it holds the order; it waits for a counterparty
+    ``partial``  IB filled part of it, the rest is waiting
+
+    A close is never "rejected" here: a rejection is IB refusing the order,
+    it is terminal and the position is simply open again."""
+    if order.state == "partially_filled":
+        return "partial"
+    if order.state == "pending":
+        return "sending"
+    if order.state == "acknowledged" or order.acknowledged_at is not None:
+        return "waiting"
+    return "sent"
+
+
+async def _closes_in_flight(db: AsyncSession, lines: list[Line]) -> dict[str, dict[str, Any]]:
+    """The close in flight on each line: quantity still to close, limit, and
+    whether IB has confirmed it holds the order. A close names the leg it
+    closes (``closes_order_id``); one that does not is matched on its contract."""
+    orders = (await db.execute(
+        select(StructureOrder)
+        .where(StructureOrder.order_role == "closing")
+        .where(StructureOrder.state.in_(_WORKING))
+        .order_by(StructureOrder.id)
+    )).scalars().all()
+    if not orders:
+        return {}
+    by_order: dict[int, Line] = {oid: ln for ln in lines for oid in ln.order_ids}
+    by_contract: dict[str, Line] = {}
+    for ln in lines:
+        by_contract.setdefault(ln.contract, ln)
+    out: dict[str, dict[str, Any]] = {}
+    rank = {"sending": 0, "sent": 1, "waiting": 2, "partial": 3}
+    for o in orders:
+        ln = by_order.get(int(o.closes_order_id)) if o.closes_order_id is not None else None
+        if ln is None and o.ib_local_symbol:
+            ln = by_contract.get(str(o.ib_local_symbol))
+        if ln is None:
+            continue
+        phase = close_phase(o)
+        remaining = max(int(o.qty) - int(o.qty_filled or 0), 0)
+        cur = out.get(ln.line_id)
+        if cur is None:
+            out[ln.line_id] = {
+                "phase": phase, "qty": remaining, "n_orders": 1,
+                "limit_price": float(o.limit_price) if o.limit_price is not None else None,
+                "order_type": o.order_type,
+                "structure_ids": [int(o.structure_id)], "order_ids": [int(o.id)],
+                "ib_order_ids": [o.ib_order_id] if o.ib_order_id else [],
+                "since": o.submitted_at.isoformat() if o.submitted_at else None,
+            }
+            continue
+        cur["qty"] += remaining
+        cur["n_orders"] += 1
+        cur["structure_ids"].append(int(o.structure_id))
+        cur["order_ids"].append(int(o.id))
+        if o.ib_order_id:
+            cur["ib_order_ids"].append(o.ib_order_id)
+        if rank[phase] < rank[cur["phase"]]:
+            cur["phase"] = phase   # the least advanced order tells the state of the close
+    return out
 
 
 def _scale(row: dict[str, Any], share: float) -> dict[str, Any]:
@@ -152,6 +225,9 @@ def identity(ls: LineSet, ln: Line, today: date | None = None) -> dict[str, Any]
         "tenor": tenor_bucket_from_expiry(pos.expiry, today) if pos is not None and pos.expiry else None,
         "legs_open": len(ls.for_trade(ln.trade_id)) if ln.trade_id is not None else 1,
         "legs_total": ls.entry_legs.get(int(ln.trade_id), 1) if ln.trade_id is not None else 1,
+        # The close in flight on this line, None when there is none: the
+        # three panels show the position as closing instead of plain open.
+        "closing": ls.closing.get(ln.line_id),
     }
 
 

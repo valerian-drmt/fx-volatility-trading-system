@@ -165,3 +165,44 @@ async def test_the_three_panels_describe_a_line_with_the_same_identity(sqlite_se
         assert shared["qty"] == 10 and shared["legs_total"] == 1
         assert risk["EUUG7 P1120|-"]["trade_id"] is None and risk["EUUG7 P1120|-"]["legs_total"] == 1
 
+
+async def test_a_close_in_flight_is_shown_on_the_line_with_what_ib_confirmed(sqlite_sessionmaker: Any) -> None:
+    """Position -> Close -> the line says "closing" on the three panels, with
+    whether IB has confirmed the order. Never "rejected" for an order that is
+    waiting at the broker (prod 2026-11-12, EUUZ6 C1210)."""
+    from sqlalchemy import select
+
+    async with sqlite_sessionmaker() as db:
+        t = await _seed(db)
+        entry = (await db.execute(
+            select(StructureOrder).where(StructureOrder.ib_local_symbol == "EUUZ6 C1210")
+        )).scalar_one()
+        ticket = TradeStructure(structure_type="vanilla_call", reference_tenor="1M", base_qty=100,
+                                state="submitted", execution_mode="live")
+        db.add(ticket)
+        await db.flush()
+        close = StructureOrder(structure_id=ticket.id, leg_idx=0, order_role="closing", contract_type="call",
+                               side="SELL", qty=100, order_type="LMT", limit_price=0.0001, state="submitted",
+                               ib_local_symbol="EUUZ6 C1210", closes_order_id=entry.id, ib_order_id="31")
+        db.add(close)
+        await db.commit()
+        line = f"EUUZ6 C1210|T{t['t60']}"
+
+        ident = {r["line_id"]: r["identity"] for r in await list_open(db)}
+        assert ident[line]["closing"] == {
+            "phase": "sent", "qty": 100, "n_orders": 1, "limit_price": 0.0001, "order_type": "LMT",
+            "structure_ids": [ticket.id], "order_ids": [close.id], "ib_order_ids": ["31"], "since": None,
+        }
+        assert ident[f"EUUG7 C1110|T{t['t79']}"]["closing"] is None
+
+        close.acknowledged_at = NOW          # IB confirmed it holds the order
+        await db.commit()
+        trade = await list_structured(db, limit=50)
+        legs = {leg["line_id"]: leg["identity"] for s in trade["structures"] for leg in s["legs"] if leg["open"]}
+        portfolio = {r["line_id"]: r["identity"] for r in attribution_rows([], await load_line_set(db))}
+        assert legs[line]["closing"]["phase"] == portfolio[line]["closing"]["phase"] == "waiting"
+
+        close.state = "rejected"             # IB refused it: terminal, the position is plain open again
+        await db.commit()
+        assert {r["line_id"]: r["identity"] for r in await list_open(db)}[line]["closing"] is None
+
