@@ -73,9 +73,13 @@ def read_password() -> str | None:
         "--query", "Parameter.Value", "--output", "text", profile=SECRET_PROFILE,
     )
     if out.returncode != 0:
-        # stderr names the error and the parameter, never a value.
-        reason = out.stderr.strip().splitlines()[-1] if out.stderr.strip() else "aws failed"
-        print(f"Cannot read {PARAM} with profile {SECRET_PROFILE}: {reason}", file=sys.stderr)
+        # Fixed messages only: nothing that came back from the call is echoed.
+        if "ParameterNotFound" in out.stderr:
+            print("The reader parameter does not exist in SSM: the access is closed.", file=sys.stderr)
+        elif "AccessDenied" in out.stderr:
+            print("The AWS profile for secrets is not allowed to read the reader parameter.", file=sys.stderr)
+        else:
+            print("Could not read the reader parameter from SSM (AWS CLI error: login expired?).", file=sys.stderr)
         return None
     return out.stdout.strip() or None
 
