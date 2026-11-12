@@ -64,7 +64,7 @@ async def rebuild_leg(db: AsyncSession, *, order_id: int, _follow: bool = True) 
     now = datetime.now(UTC)
     lp = await _leg_row(db, order_id)
 
-    if is_attributed_close(order):
+    if order is not None and is_attributed_close(order) and order.closes_order_id is not None:
         # The close holds nothing: its quantity lives on the leg it closes.
         own = fold_fills(Fill(side=f.side, qty=float(f.qty_filled), price=float(f.fill_price)) for f in own_fills)
         lp.open_qty = Decimal("0")
