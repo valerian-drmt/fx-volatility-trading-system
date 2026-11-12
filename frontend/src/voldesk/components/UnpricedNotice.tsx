@@ -1,16 +1,20 @@
 /**
  * VOLDESK — "the net greeks are incomplete" notice (#459).
  *
- * A held line with no delta is not a line with zero delta: nothing priced it
- * (a leg only the book holds, an instrument the risk engine cannot read). The
- * totals above the table are then short of it, and the pre-trade check
- * refuses new trades for the same reason. This says so, and names the lines.
+ * A position the broker HOLDS with no delta is not a position with zero
+ * delta: the risk engine could not price it. The net greeks are then short of
+ * it and the pre-trade check refuses new trades (it counts the broker's rows
+ * with no delta). This says so and names the contracts.
+ *
+ * A "book only" line is not concerned: the broker does not hold it, so it
+ * carries no risk and blocks nothing. The first version of this notice
+ * counted those lines too and announced refusals that were not happening.
  */
 import type { JSX } from "react";
 import type { Position } from "../data";
 
 export function UnpricedNotice({ positions }: { positions: Position[] }): JSX.Element | null {
-  const missing = positions.filter((p) => p.unpriced);
+  const missing = positions.filter((p) => p.unpriced && !p.netted);
   if (missing.length === 0) return null;
   const names = missing.map((p) => p.structure).join(", ");
   return (
@@ -20,8 +24,8 @@ export function UnpricedNotice({ positions }: { positions: Position[] }): JSX.El
       role="status"
       style={{ padding: "8px 10px", color: "var(--warn)", borderBottom: "1px solid var(--bg-3)" }}
     >
-      Net greeks incomplete: {missing.length} line{missing.length > 1 ? "s" : ""} not priced ({names}).
-      New trades are refused until every held line has a delta.
+      Net greeks incomplete: {missing.length} held position{missing.length > 1 ? "s" : ""} not priced ({names}).
+      New trades are refused until each has a delta.
     </div>
   );
 }

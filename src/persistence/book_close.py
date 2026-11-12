@@ -32,6 +32,7 @@ _WORKING = ("pending", "submitted", "acknowledged", "partially_filled")
 _CLOSABLE = ("partial_fill", "fully_filled", "partial_fail")
 REASON_TRADE = "closed_by_trade"
 REASON_EXPIRY = "expired"
+REASON_WRITEOFF = "written_off"
 
 
 async def close_structure_if_flat(

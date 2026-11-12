@@ -90,9 +90,21 @@ def test_contract_month_end_from_the_ib_symbol() -> None:
     assert contract_month_end("EUR.USD", TODAY) is None
 
 
-def test_listed_expiry_wins_over_the_month_end() -> None:
-    assert contract_expiry("EUUZ6 P1075", date(2026, 12, 4), TODAY) == date(2026, 12, 4)
-    assert contract_expiry("EUUZ6 P1075", None, TODAY) == date(2026, 12, 31)
+def test_rule_expiry_matches_what_ib_reports_for_the_contracts_held() -> None:
+    from core.contracts import rule_expiry
+
+    # prod open_position.expiry on 2026-11-12
+    assert rule_expiry("EUUZ6 C1210", TODAY) == date(2026, 12, 4)
+    assert rule_expiry("EUUG7 P1120", TODAY) == date(2027, 2, 5)
+    assert rule_expiry("6EH7", TODAY) == date(2027, 3, 15)
+    assert rule_expiry("EUUX6 C1115", TODAY) == date(2026, 11, 6)
+    assert rule_expiry("6EZ6", TODAY) == date(2026, 12, 14)
+    assert rule_expiry("EUR.USD", TODAY) is None
+
+
+def test_listed_expiry_wins_over_the_rule() -> None:
+    assert contract_expiry("EUUZ6 P1075", date(2026, 12, 3), TODAY) == date(2026, 12, 3)
+    assert contract_expiry("EUUZ6 P1075", None, TODAY) == date(2026, 12, 4)
 
 
 # ── lifecycle ────────────────────────────────────────────────────────────────
@@ -128,10 +140,20 @@ async def test_expired_leg_still_at_the_broker_is_left_alone(sqlite_sessionmaker
         assert await _open_qty(db, o.id) == 100
 
 
-async def test_listed_expiry_is_used_before_the_month_end(sqlite_sessionmaker: Any) -> None:
+async def test_an_option_expired_this_month_is_swept_without_waiting_for_the_month_end(sqlite_sessionmaker: Any) -> None:
+    """Prod, 2026-11-12: six EUUX6 legs (expired on the 6th) stayed "book
+    only" because the fallback waited for 1 December."""
     async with sqlite_sessionmaker() as db:
-        _, o = await _leg(db, "EUUX6 C1115", 10)     # November 2026: month not over
-        assert (await expire_legs(db, today=TODAY, now=NOW))["expired_legs"] == []
+        _, o = await _leg(db, "EUUX6 C1115", 10)
+        _, later = await _leg(db, "EUUZ6 C1210", 10)        # expires 4 December: untouched
+        out = await expire_legs(db, today=TODAY, now=NOW)
+        assert out["expired_legs"] == [o.id]
+        assert await _open_qty(db, later.id) == 10
+
+
+async def test_the_listed_expiry_is_recorded_from_the_broker(sqlite_sessionmaker: Any) -> None:
+    async with sqlite_sessionmaker() as db:
+        _, o = await _leg(db, "EUUX6 C1115", 10)
         await upsert_instruments(db, [instrument_from_ib_position({
             "con_id": 777, "local_symbol": "EUUX6 C1115", "sec_type": "FOP", "symbol": "EUR",
             "expiry": "20261106", "strike": 1.115, "right": "C", "multiplier": "125000",
@@ -221,3 +243,63 @@ async def test_repair_gives_the_leg_its_quantity_and_yields_to_real_fills(sqlite
         await rebuild_leg(db, order_id=o.id)
         await db.flush()
         assert await _open_qty(db, o.id) == 10
+
+
+# ── write-off: the book is corrected to what the broker holds ────────────────
+
+async def _age(db: Any, order: StructureOrder, hours: float) -> None:
+    from datetime import timedelta
+
+    order.fully_filled_at = NOW - timedelta(hours=hours)
+    order.state_updated_at = NOW - timedelta(hours=hours)
+    await db.flush()
+
+
+async def test_a_leg_the_broker_has_not_held_for_a_day_is_written_off(sqlite_sessionmaker: Any) -> None:
+    """Prod, 2026-11-12: July test trades left 13 short 6EZ6 and 11 EUUF7 C1150
+    in the book; the broker held neither. A "book only" line is an error of
+    ours, so the book is corrected, with an audit event."""
+    from engines.execution.lifecycle import write_off_unheld
+    from persistence.models import TradeEvent
+
+    async with sqlite_sessionmaker() as db:
+        s_old, old = await _leg(db, "EUUF7 C1150", 11)                   # not held, months old
+        s_long, long_leg = await _leg(db, "6EZ6", 57, ctype="future")    # offsetting test trades
+        s_short, short_leg = await _leg(db, "6EZ6", 70, side="SELL", ctype="future")
+        s_held, held = await _leg(db, "EUUG7 C1110", 10)                 # the broker holds it
+        _, new = await _leg(db, "EUUG7 C1155", 10)                   # filled an hour ago, mirror not there yet
+        for o in (old, long_leg, short_leg, held):
+            await _age(db, o, 24 * 90)
+        await _age(db, new, 1)
+        db.add(OpenPosition(structure="EUUG7 C1110", side="BUY", quantity=Decimal(10), entry_timestamp=NOW))
+        await db.flush()
+
+        out = await write_off_unheld(db, now=NOW)
+        await db.flush()
+        assert out["written_off"] == {"6EZ6": -13.0, "EUUF7 C1150": 11.0}
+        assert sorted(out["closed_written_off"]) == sorted([s_old.id, s_long.id, s_short.id])
+        for o in (old, long_leg, short_leg):
+            assert await _open_qty(db, o.id) == 0
+        assert await _open_qty(db, held.id) == 10 and await _open_qty(db, new.id) == 10
+        assert (await db.get(TradeStructure, s_old.id)).close_reason == "written_off"
+        assert (await db.get(TradeStructure, s_held.id)).state == "fully_filled"
+        events = (await db.execute(select(PositionEvent).where(PositionEvent.kind == "writeoff"))).scalars().all()
+        assert len(events) == 3 and all(float(e.price) == pytest.approx(0.01) for e in events), "no P&L invented"
+        audit = (await db.execute(select(TradeEvent).where(TradeEvent.event_type == "position_written_off"))).scalars().all()
+        assert len(audit) == 2 and all(a.severity == "warning" for a in audit)
+        # idempotent
+        assert (await write_off_unheld(db, now=NOW))["written_off"] == {}
+
+
+async def test_no_write_off_while_a_close_is_working_on_the_contract(sqlite_sessionmaker: Any) -> None:
+    from engines.execution.lifecycle import write_off_unheld
+
+    async with sqlite_sessionmaker() as db:
+        s, leg = await _leg(db, "EUUF7 C1150", 11)
+        await _age(db, leg, 24 * 90)
+        db.add(StructureOrder(structure_id=s.id, leg_idx=1, order_role="closing", contract_type="call", side="SELL",
+                              qty=11, order_type="LMT", state="submitted", ib_local_symbol="EUUF7 C1150",
+                              closes_order_id=leg.id))
+        await db.flush()
+        assert (await write_off_unheld(db, now=NOW))["written_off"] == {}
+        assert await _open_qty(db, leg.id) == 11

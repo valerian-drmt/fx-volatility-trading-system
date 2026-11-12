@@ -963,7 +963,7 @@ class PositionEvent(Base):
     __tablename__ = "position_event"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('expiry','exercise','assignment','repair')",
+            "kind IN ('expiry','exercise','assignment','repair','writeoff')",
             name="ck_position_event_kind",
         ),
         CheckConstraint("side IN ('BUY','SELL')", name="ck_position_event_side"),

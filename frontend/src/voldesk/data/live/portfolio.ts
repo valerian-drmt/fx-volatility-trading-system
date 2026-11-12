@@ -340,7 +340,7 @@ const lineField = (r: unknown, key: string): string | undefined => {
 export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
   const o = (raw ?? {}) as S["PortfolioPnlAttribution"];
   const rows: PositionAttribRow[] = (o.per_position ?? [])
-    .filter((r) => r.source === "ib_live")
+    .filter((r) => r.source === "ib_live" && lineField(r, "line_status") !== "cash")
     .map((r) => ({
       id: n(r.id),
       tradeId: r.trade_id == null ? null : n(r.trade_id),
@@ -349,7 +349,8 @@ export function adaptPositionAttribution(raw: unknown): PositionAttribMatrix {
       type: String(r.structure_type ?? ""),
       structure: String(r.structure ?? "—"),
       side: String(r.side ?? "—"),
-      tenor: String(r.tenor ?? "—"),
+      // the bucket by days to expiry, as on the Trade and Risk panels
+      tenor: String(lineField(r, "attrib_tenor") ?? r.tenor ?? "—"),
       iv: n(r.iv) * 100,
       nominal: n(r.nominal_eur),
       actual: nn(r.actual_pnl_usd),

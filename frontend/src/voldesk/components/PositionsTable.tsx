@@ -165,7 +165,7 @@ function legRow(
       <td className="r mono dim">{p.iv ? p.iv.toFixed(1) : "—"}</td>
       {showGreeks && (
         <>
-          <td className={"r mono " + pnlCls(p.delta)}>{gkc(p.delta)}</td>
+          <td className={"r mono " + (p.unpriced ? "dim" : pnlCls(p.delta))}>{p.unpriced ? "—" : gkc(p.delta)}</td>
           <td className="r mono dim">{p.iv ? gkc(p.gamma) : "—"}</td>
           <td className="r mono dim">{p.iv ? gkc(p.vega) : "—"}</td>
           <td className="r mono dim">{p.iv ? gkc(p.theta) : "—"}</td>
@@ -177,8 +177,8 @@ function legRow(
           <td className="r mono dim">{p.iv ? fmt.sgn(p.volga, 0) + "k" : "—"}</td>
         </>
       )}
-      <td className="r mono dim">{(p.nominal / 1e6).toFixed(2)}M</td>
-      <td className={"r mono " + pnlCls(p.pnl)}>{fmt.usdk(p.pnl)}</td>
+      <td className="r mono dim">{p.unpriced ? "—" : (p.nominal / 1e6).toFixed(2) + "M"}</td>
+      <td className={"r mono " + (p.unpriced ? "dim" : pnlCls(p.pnl))}>{p.unpriced ? "—" : fmt.usdk(p.pnl)}</td>
       <td className="r">
         <button
           className="row-close"
