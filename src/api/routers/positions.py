@@ -31,6 +31,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.auth import require_write
 from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
+from api.orchestration.position_lines import line_fields, load_line_set, mirror_rows
+from api.orchestration.position_lines import summary as line_summary
 from api.orchestration.position_monitor import build_position_monitor_scheduler
 from api.schemas import route_models as rm
 from api.schemas.reads import DeltaHedgeSetting, ExitRuleConfig, OpenPositionRow
@@ -56,7 +58,6 @@ from persistence.models import (
     TradeStructure,
 )
 from persistence.reservation import recompute_reservation
-from persistence.rows import open_position_row
 from shared.internal_auth import internal_headers
 from shared.trace import current_trace_id
 
@@ -274,21 +275,32 @@ def _serialize_position(pos: BookedPosition, struct: TradeStructure | None,
 
 @router.get("/open", response_model=list[OpenPositionRow])
 async def list_open(db: DbDep) -> list[dict[str, Any]]:
-    """Raw ``open_position`` rows — one record per live IB contract.
+    """One row per position LINE, with the broker mirror's columns.
 
-    Direct mirror of the table : risk-engine UPDATEs greeks / market_price /
-    pnl every 2 s, position_sync_loop INSERTs / DELETEs rows every 30 s on
-    IB diffs. No join, no merge — the panel renders exactly what the DB
-    holds. ``open_position_history`` carries the time series (snapshot
-    per cycle) with the same shape minus the FK / current-state state.
+    The rows are the shared line set (``core.positions.line_set``, #461), the
+    same lines as ``/positions/structured`` and ``/portfolio/pnl-attribution``.
+    A line the broker holds carries the ``open_position`` numbers (risk-engine
+    greeks, mark, P&L; scaled to the line's share when several trades hold the
+    contract). A line only the book holds is listed too, flagged
+    ``line_status = book_only``, with unknown numbers as null.
     """
-    rows = (await db.execute(
-        select(OpenPosition).order_by(desc(OpenPosition.entry_timestamp))
-    )).scalars().all()
-    today = datetime.now(UTC).date()
-    # Same serialiser as the ``positions`` channel (#366): a WebSocket patch
-    # and this read carry identical keys.
-    return [open_position_row(r, today) for r in rows]
+    ls = await load_line_set(db)
+    rows = mirror_rows(ls, datetime.now(UTC).date())
+    rows.sort(key=lambda r: r.get("entry_timestamp") or "", reverse=True)
+    return rows
+
+
+@router.get("/lines")
+async def list_lines(db: DbDep) -> dict[str, Any]:
+    """The position line set itself: ids and statuses, no market columns.
+    What the three panels must agree on; used by the parity checks."""
+    ls = await load_line_set(db)
+    out = line_summary(ls)
+    out["lines"] = [
+        {**line_fields(ln), "contract": ln.contract, "trade_id": ln.trade_id, "order_ids": list(ln.order_ids)}
+        for ln in ls.lines
+    ]
+    return out
 
 
 @router.get("/book", response_model=list[rm.PositionsBookRow], response_model_exclude_unset=True)
@@ -365,51 +377,37 @@ async def list_breaks(db: DbDep, include_resolved: bool = Query(False)) -> list[
 
 @router.get("/structured", response_model=rm.PositionsStructured, response_model_exclude_unset=True)
 async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> dict[str, Any]:
-    """Open positions grouped by the booked ``trade_structure`` — so a Risk
+    """Position lines grouped by the booked ``trade_structure``: a Risk
     Reversal reads as ONE 2-leg group labelled from ``structure_type`` +
-    ``reference_tenor`` (the values you actually traded), not re-parsed from the
-    IB ``localSymbol``. Live marks/greeks are attached from ``open_position`` when
-    a leg matches (by ``ib_local_symbol`` or the ``trade_id`` FK). IB-account
-    positions not tied to any booked leg are returned separately as ``unlinked``.
+    ``reference_tenor`` (the values you actually traded).
 
-    This is the desk view; ``/open`` stays the raw IB mirror.
+    The rows are the shared line set (``core.positions.line_set``, #461): the
+    same lines as ``/positions/open`` and ``/portfolio/pnl-attribution``. A
+    trade is listed when it owns at least one line; a leg is ``open`` when it
+    carries a line. Lines no trade explains come back as ``unlinked``.
 
-    Only structures with at least one **actually-open** leg (a linked
-    ``open_position`` row) are returned — a purely-``submitted`` structure whose
-    legs never filled is an *order*, not a position, and stays in the Orders
-    blotter. This keeps Open positions from mixing pending orders with real
-    positions. A half-filled structure (e.g. an RR whose put filled but call
-    didn't) still shows here, flagged as a naked residual.
+    ``limit`` is accepted for compatibility and ignored: what is visible
+    follows what is held, not how recently the trade was created. The old
+    rule (the 50 newest trades owning a mirror row, then every leg the book
+    said was open) showed legs the broker no longer held and hid old trades
+    still held.
     """
+    del limit
+
     def _f(v: Any) -> float | None:
         return float(v) if v is not None else None
 
-    # 1. non-closed structures + their entry legs (the desk's own booking record)
-    structs = (await db.execute(
-        select(TradeStructure).where(TradeStructure.state != "closed")
-        .order_by(desc(TradeStructure.created_at)).limit(limit)
-    )).scalars().all()
-    struct_ids = [s.id for s in structs]
+    ls = await load_line_set(db)
+    structs = sorted(ls.structures.values(), key=lambda s: (s.created_at is None, s.created_at), reverse=True)
     legs_by_struct: dict[int, list[StructureOrder]] = {}
-    symbol_to_struct: dict[str, int] = {}
-    if struct_ids:
-        legs = (await db.execute(
-            select(StructureOrder).where(StructureOrder.structure_id.in_(struct_ids))
+    if structs:
+        for lg in (await db.execute(
+            select(StructureOrder).where(StructureOrder.structure_id.in_([s.id for s in structs]))
             .order_by(StructureOrder.structure_id, StructureOrder.leg_idx)
-        )).scalars().all()
-        for lg in legs:
-            legs_by_struct.setdefault(lg.structure_id, []).append(lg)
-            if lg.ib_local_symbol:
-                symbol_to_struct[lg.ib_local_symbol] = lg.structure_id
-
-    # 1b. the BOOK (leg_position) — the authority for what each leg holds (I3/I7).
-    # A leg is "open" if its book open_qty != 0, EVEN when the netted IB mirror has
-    # no row for it: two trades on opposite sides of one contract net to zero at IB,
-    # so the mirror can't show either leg — but the book knows both are real. Without
-    # this the surviving leg reads as a detached "Vanilla Call" and the netted-away
-    # leg vanishes entirely.
+        )).scalars().all():
+            legs_by_struct.setdefault(int(lg.structure_id), []).append(lg)
     book_by_order: dict[int, LegPosition] = {}
-    order_ids = [lg.id for lgs in legs_by_struct.values() for lg in lgs]
+    order_ids = [int(lg.id) for lgs in legs_by_struct.values() for lg in lgs]
     if order_ids:
         book_by_order = {
             int(bp.order_id): bp for bp in (await db.execute(
@@ -417,106 +415,98 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             )).scalars().all()
         }
 
-    def _book_open_qty(lg: StructureOrder) -> float | None:
-        bp = book_by_order.get(lg.id)
-        return float(bp.open_qty) if bp and bp.open_qty is not None else None
+    def _scaled(v: Any, share: float) -> float | None:
+        return float(v) * abs(share) if v is not None else None
 
-    def _leg_is_open(lg: StructureOrder, lp: OpenPosition | None) -> bool:
-        # Open if the netted mirror links it OR the book holds a non-zero qty.
-        if lp is not None:
-            return True
-        q = _book_open_qty(lg)
-        return q is not None and abs(q) > 1e-9
-
-    # 2. live IB mirror → link each row to a structure (FK or leg symbol); the rest is "unlinked"
-    positions = (await db.execute(select(OpenPosition))).scalars().all()
-    struct_by_id = {s.id: s for s in structs}
-    net0 = lambda: {"delta_usd": 0.0, "gamma_usd": 0.0, "vega_usd": 0.0, "theta_usd": 0.0, "pnl_usd": 0.0, "n_linked": 0}  # noqa: E731
-    net_by_struct: dict[int, dict[str, float]] = {s.id: net0() for s in structs}
-    # Positions grouped BY STRUCTURE (not globally by symbol) : each netted IB
-    # position belongs to exactly one structure (its trade_id, set by position_sync),
-    # so a leg links only to a position its OWN structure owns — two structures that
-    # share the same contract don't cross-claim each other's fill.
-    pos_by_struct: dict[int, dict[str, OpenPosition]] = {}
-    unlinked: list[dict[str, Any]] = []
-
-    def _marks(p: OpenPosition | None) -> dict[str, Any]:
+    def _marks(p: OpenPosition | None, share: float = 1.0) -> dict[str, Any]:
+        # Additive columns carry the line's share of the holding; a price, an
+        # IV are per unit and are not scaled. No holding: unknown, not zero.
         return {
-            "mark": _f(p.market_price) if p else None, "pnl_usd": _f(p.current_pnl_usd) if p else None,
-            "delta_usd": _f(p.delta_usd) if p else None, "gamma_usd": _f(p.gamma_usd) if p else None,
-            "vega_usd": _f(p.vega_usd) if p else None, "theta_usd": _f(p.theta_usd) if p else None,
-            "vanna_usd": _f(p.vanna_usd) if p else None, "volga_usd": _f(p.volga_usd) if p else None,
+            "mark": _f(p.market_price) if p else None,
+            "pnl_usd": _scaled(p.current_pnl_usd, share) if p else None,
+            "delta_usd": _scaled(p.delta_usd, share) if p else None,
+            "gamma_usd": _scaled(p.gamma_usd, share) if p else None,
+            "vega_usd": _scaled(p.vega_usd, share) if p else None,
+            "theta_usd": _scaled(p.theta_usd, share) if p else None,
+            "vanna_usd": _scaled(p.vanna_usd, share) if p else None,
+            "volga_usd": _scaled(p.volga_usd, share) if p else None,
             "iv": _f(p.iv) if p else None,
         }
 
-    def _leg_dict(lg: StructureOrder, lp: OpenPosition | None) -> dict[str, Any]:
-        # One hydrated leg : DB identity/terms (from the StructureOrder) + the live
-        # IB mirror (from the linked open_position). This is the SINGLE payload the
-        # Open positions panel renders — no client-side inference, no second fetch.
+    def _leg_dict(lg: StructureOrder) -> dict[str, Any]:
+        # One hydrated leg : DB identity/terms (from the StructureOrder) + the
+        # line it carries + the live IB mirror behind that line.
+        ln = ls.for_order(int(lg.id))
+        lp = ls.positions.get(ln.position_id) if ln is not None and ln.position_id is not None else None
+        share = ln.share if ln is not None else 1.0
+        bp = book_by_order.get(int(lg.id))
         return {
             "leg_idx": lg.leg_idx, "contract_type": lg.contract_type, "side": lg.side, "qty": lg.qty,
             "strike": _f(lg.contract_strike),
-            "expiry": lg.contract_expiry.isoformat() if lg.contract_expiry else None,
+            # The contract's own expiry when the broker holds it; the booked
+            # date (today + tenor at preview time) is only an entry detail.
+            "expiry": (
+                lp.expiry.isoformat() if lp is not None and lp.expiry
+                else (lg.contract_expiry.isoformat() if lg.contract_expiry else None)
+            ),
+            "booked_expiry": lg.contract_expiry.isoformat() if lg.contract_expiry else None,
+            "order_role": lg.order_role,
             "state": lg.state, "qty_filled": lg.qty_filled, "ib_local_symbol": lg.ib_local_symbol,
-            # linked = THIS structure has a live IB position for this leg's contract.
-            # Keyed within the structure's own positions, so a contract shared with
-            # another structure can't produce a false "filled".
+            # linked = the broker holds (part of) this leg's line.
             "linked": lp is not None,
-            # open = the leg is really held per the BOOK (leg_position), independent of
-            # whether IB's netted mirror can show it. This is what the panel renders on
-            # so a netted leg doesn't vanish. open_qty is the signed book holding.
-            "open": _leg_is_open(lg, lp),
-            "open_qty": _book_open_qty(lg),
-            # Live IB-mirror identity — present only when a real position backs this
-            # leg. position_id is the open_position row the UI closes by.
-            "position_id": lp.id if lp else None,
-            "con_id": lp.contract_id if lp else None,
-            "held_qty": _f(lp.quantity) if lp else None,
+            # open = the leg carries a position line. open_qty is the signed book holding.
+            "open": ln is not None,
+            "open_qty": float(bp.open_qty) if bp is not None and bp.open_qty is not None else None,
+            **(line_fields(ln) if ln is not None else {
+                "line_id": None, "line_status": None, "book_qty": None, "broker_qty": None, "position_id": None,
+            }),
+            "con_id": lp.contract_id if lp else (int(lg.con_id) if lg.con_id is not None else None),
+            "held_qty": abs(ln.broker_qty) if (ln is not None and lp is not None) else None,
             "held_side": lp.side if lp else None,
             # entry price: the mirror's when linked, else the book's avg fill price.
-            "entry": _f(lp.contract_price_entry) if lp else (
-                _f(book_by_order[lg.id].avg_price) if lg.id in book_by_order else None
-            ),
-            "nominal_eur": _f(lp.nominal_eur) if lp else None,
+            "entry": _f(lp.contract_price_entry) if lp else (_f(bp.avg_price) if bp is not None else None),
+            "nominal_eur": _scaled(lp.nominal_eur, share) if lp else None,
             "tenor": (lp.tenor if lp and lp.tenor else None),
             "opened": lp.entry_timestamp.isoformat() if (lp and lp.entry_timestamp) else None,
             "updated": lp.timestamp.isoformat() if (lp and lp.timestamp) else None,
-            **_marks(lp),
+            **_marks(lp, share),
         }
 
-    for p in positions:
-        sid = p.trade_id if p.trade_id in struct_by_id else symbol_to_struct.get(p.structure)
-        if sid is None:
-            unlinked.append({
-                "id": p.id, "symbol": p.structure, "product_label": p.product_label,
-                "side": p.side, "qty": _f(p.quantity), "tenor": p.tenor,
-                "expiry": p.expiry.isoformat() if p.expiry else None, **_marks(p),
-            })
-            continue
-        n = net_by_struct[sid]
-        n["delta_usd"] += float(p.delta_usd or 0)
-        n["gamma_usd"] += float(p.gamma_usd or 0)
-        n["vega_usd"] += float(p.vega_usd or 0)
-        n["theta_usd"] += float(p.theta_usd or 0)
-        n["pnl_usd"] += float(p.current_pnl_usd or 0)
-        n["n_linked"] += 1
-        pos_by_struct.setdefault(sid, {})[p.structure] = p
+    def _net(struct_id: int) -> dict[str, float]:
+        n = {"delta_usd": 0.0, "gamma_usd": 0.0, "vega_usd": 0.0, "theta_usd": 0.0, "pnl_usd": 0.0, "n_linked": 0}
+        for ln in ls.for_trade(struct_id):
+            p = ls.positions.get(ln.position_id) if ln.position_id is not None else None
+            if p is None:
+                continue
+            m = _marks(p, ln.share)
+            for k in ("delta_usd", "gamma_usd", "vega_usd", "theta_usd", "pnl_usd"):
+                n[k] += float(m[k] or 0)
+            n["n_linked"] += 1
+        n["n_lines"] = len(ls.for_trade(struct_id))
+        return n
 
-    # Show a structure only if it has LIVE IB presence (>=1 mirror-linked leg) — a
-    # fully-netted trade (every leg offset flat at IB by an opposite trade) carries
-    # zero live risk and would otherwise flood the panel with all-zero rows. WITHIN a
-    # shown structure we still render every book-open leg (below), so a live spread
-    # shows both legs including a netted-away sibling — the actual fix.
+    unlinked: list[dict[str, Any]] = []
+    for ln in ls.lines:
+        if ln.trade_id is not None:
+            continue
+        p = ls.positions.get(ln.position_id) if ln.position_id is not None else None
+        if p is None:
+            continue
+        unlinked.append({
+            "id": p.id, "symbol": p.structure, "product_label": p.product_label,
+            "side": "BUY" if ln.broker_qty > 0 else "SELL", "qty": abs(ln.broker_qty), "tenor": p.tenor,
+            "expiry": p.expiry.isoformat() if p.expiry else None,
+            "entry": _f(p.contract_price_entry),
+            **line_fields(ln), **_marks(p, ln.share),
+        })
+
     out_structs = [{
         "structure_id": s.id, "structure_type": s.structure_type, "product_label": s.product_label,
         "tenor": s.reference_tenor, "state": s.state, "base_qty": s.base_qty,
         "created_at": s.created_at.isoformat() if s.created_at else None,
-        "legs": [
-            _leg_dict(lg, pos_by_struct.get(s.id, {}).get(lg.ib_local_symbol or ""))
-            for lg in legs_by_struct.get(s.id, [])
-        ],
-        "net": net_by_struct[s.id],
-    } for s in structs if net_by_struct[s.id]["n_linked"] > 0]
+        "legs": [_leg_dict(lg) for lg in legs_by_struct.get(int(s.id), [])],
+        "net": _net(int(s.id)),
+    } for s in structs]
     return {"structures": out_structs, "unlinked": unlinked}
 
 

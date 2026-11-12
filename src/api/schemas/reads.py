@@ -149,6 +149,12 @@ class OpenPositionRow(_Open):
     iv: float | None = None
     timestamp: str | None = None
     entry_timestamp: str | None = None
+    # The position line this row is (#461): same id and status on every panel.
+    line_id: str | None = None
+    line_status: str | None = None     # matched | qty_mismatch | book_only | broker_only | cash
+    book_qty: float | None = None      # signed, what the book says this lot holds
+    broker_qty: float | None = None    # signed, the broker's part given to this lot
+    position_id: int | None = None     # the open_position row behind it, when held
 
 
 class FitWindow(_Open):

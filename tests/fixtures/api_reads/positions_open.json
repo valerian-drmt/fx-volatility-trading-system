@@ -23,7 +23,12 @@
   "vanna_usd": 18068.18,
   "volga_usd": 18.0,
   "timestamp": "2026-11-11T09:28:50.229368+00:00",
-  "entry_timestamp": "2026-11-05T11:57:14.419079+00:00"
+  "entry_timestamp": "2026-11-05T11:57:14.419079+00:00",
+  "line_id": "EUUG7 P1120|T87",
+  "line_status": "matched",
+  "book_qty": 10.0,
+  "broker_qty": 10.0,
+  "position_id": 52
  },
  {
   "id": 51,
@@ -49,6 +54,11 @@
   "vanna_usd": 0.0,
   "volga_usd": 0.0,
   "timestamp": "2026-11-11T09:28:50.229368+00:00",
-  "entry_timestamp": "2026-11-05T11:44:19.324074+00:00"
+  "entry_timestamp": "2026-11-05T11:44:19.324074+00:00",
+  "line_id": "6EH7|T88",
+  "line_status": "matched",
+  "book_qty": 7.0,
+  "broker_qty": 7.0,
+  "position_id": 51
  }
 ]
