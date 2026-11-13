@@ -1430,6 +1430,8 @@ async def list_submitted_structures(
             # IB's own words when it refused or cancelled the order (#478).
             "rejection_text": o.rejection_text,
             "order_id": int(o.id),   # so one leg can be cancelled, not the whole trade (#487)
+            # entry / hedge / closing / unwind of THIS leg: a package's future is a hedge
+            "order_role": o.order_role,
         } for o in legs_rows]
         out.append({
             "id": s.id, "created_at": s.created_at, "structure_type": s.structure_type,

@@ -1047,6 +1047,7 @@ class TradeSpotOrdersRow(_Open):
     qty: Lenient[int | float | None] = None
     qty_filled: Lenient[int | float | None] = None
     rejection_text: Lenient[str | None] = None
+    order_role: Lenient[str | None] = None
     side: Lenient[str | None] = None
     state: Lenient[str | None] = None
     state_updated_at: Lenient[str | None] = None

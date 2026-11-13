@@ -6454,6 +6454,8 @@ export interface components {
             limit_price?: number | null;
             /** Local Symbol */
             local_symbol?: string | null;
+            /** Order Role */
+            order_role?: string | null;
             /** Order Type */
             order_type?: string | null;
             /** Qty */
