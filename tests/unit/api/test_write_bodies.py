@@ -72,6 +72,9 @@ def test_orders_route_refuses_a_bad_body_before_forwarding(monkeypatch: pytest.M
     app = FastAPI()
     app.include_router(orders_mod.router)
     app.dependency_overrides[require_write] = lambda: {"sub": "trader"}
+    # the route takes a session for the spot gate (#491); a futures order does not use it
+    from api.dependencies import get_db_session
+    app.dependency_overrides[get_db_session] = lambda: None
     c = TestClient(app)
 
     r = c.post("/api/v1/orders", json={"symbol": "EUR", "sec_type": "FUT", "side": "BUY", "qty": 5})
@@ -81,6 +84,9 @@ def test_orders_route_refuses_a_bad_body_before_forwarding(monkeypatch: pytest.M
     assert forwarded[0][1] == "/internal/orders" and forwarded[0][2]["qty"] == 5
     r = c.post("/api/v1/exec/positions/7/close", json={"limit_price": -1})
     assert r.status_code == 422
+    # a valid body no longer reaches the engine: the route is switched off (#491)
+    r = c.post("/api/v1/exec/positions/7/close", json={"limit_price": 0.01})
+    assert r.status_code == 410 and len(forwarded) == 1
 
 
 def test_login_body_is_bounded_and_a_wrong_username_is_a_401(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -104,21 +104,25 @@ def revalidate_preview(
     # older than the limit does not submit, and an unknown age is not a pass.
     # The caller turns the gate off (``max_iv_age_seconds=None``) outside
     # live mode, the same scope as the pre-trade gate's ``surface_stale``.
+    # The checks below are independent of each other: all the ones that fail
+    # are reported together (``details["reasons"]``), so the trader does not
+    # fix one and meet the next (#480). ``reason`` stays the first of them.
+    failed: list[tuple[str, dict[str, Any]]] = []
     if max_iv_age_seconds is not None:
         if surface_age_seconds is None:
-            return RevalidationResult(
-                False, "surface_age_unknown", {"max_iv_age_seconds": max_iv_age_seconds}
-            )
-        if surface_age_seconds > max_iv_age_seconds:
-            return RevalidationResult(
-                False,
+            failed.append(("surface_age_unknown", {"max_iv_age_seconds": max_iv_age_seconds}))
+        elif surface_age_seconds > max_iv_age_seconds:
+            failed.append((
                 "surface_stale",
                 {"surface_age_seconds": surface_age_seconds, "max_iv_age_seconds": max_iv_age_seconds},
-            )
-
+            ))
     if current_regime == "pre_event":
-        return RevalidationResult(
-            False, "regime_pre_event", {"regime": current_regime}
-        )
+        failed.append(("regime_pre_event", {"regime": current_regime}))
+    if failed:
+        details: dict[str, Any] = {}
+        for _, d in failed:
+            details.update(d)
+        details["reasons"] = [r for r, _ in failed]
+        return RevalidationResult(False, failed[0][0], details)
 
     return RevalidationResult(True, None, {})

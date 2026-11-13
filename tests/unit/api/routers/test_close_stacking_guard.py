@@ -22,9 +22,10 @@ def _rem(**kw: object) -> int:
         "qty": 8, "qty_filled": 0, "submitted_at": _NOW, "state_updated_at": _NOW,
     }
     base.update(kw)
+    state = base.pop("state", None)
     return close_inflight_remaining(
         base["qty"], base["qty_filled"], base["submitted_at"],  # type: ignore[arg-type]
-        base["state_updated_at"], _NOW, _WINDOW,  # type: ignore[arg-type]
+        base["state_updated_at"], _NOW, _WINDOW, state,  # type: ignore[arg-type]
     )
 
 
@@ -35,17 +36,24 @@ def test_fresh_dispatched_close_counts_full_remaining() -> None:
     assert _rem(qty=8, qty_filled=3, submitted_at=_NOW) == 5
 
 
-def test_old_dispatched_close_self_heals_to_zero() -> None:
-    # submitted 10 min ago, still unfilled → stuck at IB, must NOT block a new close
+def test_a_dispatched_close_counts_for_as_long_as_it_can_fill() -> None:
+    """#486. Prod, 2026-11-12: a SELL 100 resting at IB for more than three
+    minutes stopped counting, and a second SELL 100 was accepted on a long of
+    100. An order that was dispatched ends by a fill, a cancel or the reaper,
+    never by getting old."""
     old = _NOW - timedelta(minutes=10)
-    assert _rem(submitted_at=old, state_updated_at=old) == 0
+    assert _rem(submitted_at=old, state_updated_at=old, state="submitted") == 8
+    assert _rem(submitted_at=old, state_updated_at=old, state="partially_filled", qty_filled=3) == 5
+    days = _NOW - timedelta(days=2)
+    assert _rem(submitted_at=days, state_updated_at=days, state="submitted") == 8
 
 
 def test_never_dispatched_close_counts_only_within_window() -> None:
     # submitted_at IS NULL (engine was down): fresh creation → still counts …
-    assert _rem(submitted_at=None, state_updated_at=_NOW) == 8
+    assert _rem(submitted_at=None, state_updated_at=_NOW, state="pending") == 8
     # … but once older than the window it self-heals — the permanent-lock bug fix.
+    # Only this case ages out: the order never reached the broker.
     old = _NOW - timedelta(minutes=10)
-    assert _rem(submitted_at=None, state_updated_at=old) == 0
+    assert _rem(submitted_at=None, state_updated_at=old, state="pending") == 0
     # both timestamps missing → nothing to age it against → still counts (safe)
-    assert _rem(submitted_at=None, state_updated_at=None) == 8
+    assert _rem(submitted_at=None, state_updated_at=None, state="pending") == 8

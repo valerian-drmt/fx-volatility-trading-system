@@ -51,11 +51,27 @@ def test_a_real_rejection_is_still_a_rejection() -> None:
 
 
 def test_every_order_states_its_time_in_force() -> None:
+    """No order leaves without a time in force (#488): IB answers a missing
+    one with the notice that was read as a rejection."""
     from pathlib import Path
 
-    src = (Path(__file__).resolve().parents[4] / "src/engines/execution/order_executor.py").read_text(encoding="utf-8")
+    root = Path(__file__).resolve().parents[4] / "src/engines/execution"
     assert DEFAULT_TIF == "DAY"
-    assert src.count("order.tif = DEFAULT_TIF") == 2, "the close path and the manual / spot path"
+    executor = (root / "order_executor.py").read_text(encoding="utf-8")
+    assert executor.count("order.tif = DEFAULT_TIF") == executor.count("ib.placeOrder("), \
+        "every placeOrder of the executor sets the time in force"
+    for name in ("rollback_runner.py", "hedge_executor.py"):
+        assert "ib_order.tif = DEFAULT_TIF" in (root / name).read_text(encoding="utf-8"), name
+    assert ".tif = " in (root / "live_submit.py").read_text(encoding="utf-8")
+
+
+def test_a_real_cancel_after_a_notice_is_a_cancel() -> None:
+    """The order got the notice when it was placed and stayed live; hours
+    later the operator cancels it. The library adds its own entry: the last
+    thing that happened is a cancel, not a notice."""
+    later = _trade("Cancelled", (10349, NOTICE), (0, ""))
+    assert is_notice_cancel(later) is False
+    assert is_notice_cancel(_trade("Cancelled", (10349, NOTICE))) is True
 
 
 async def _order(db: Any, state: str = "submitted") -> StructureOrder:

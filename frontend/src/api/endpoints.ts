@@ -249,6 +249,7 @@ export interface TradePreview {
   state: string;                         // "valid_for_submit" | "blocked" | …
   blocking_reasons?: string[];
   structure?: { type?: string };
+  costs?: { commission_usd?: number; total_trade_cost_usd?: number };
   pricing?: {
     premium_paid_usd?: number;
     max_loss_usd?: number;
@@ -261,16 +262,22 @@ export interface TradePreview {
   surface_age_seconds?: number | null;
   max_surface_age_seconds?: number | null;
   risk_budget?: RiskBudget | null;
+  // The package's hedge, sized by the server (#482): the futures the engine
+  // sends as the options fill. null when the trade is not hedged.
+  hedge?: { side: string; qty: number; residual_delta_usd: number; structure_delta_usd: number } | null;
+  // The trade is inside the limits but above their warning share (#481).
+  needs_confirmation?: boolean;
 }
 
-export const createTradePreview = (legs: PreviewLeg[], qty: number, symbol = "EURUSD") =>
-  apiPost<TradePreview>("/api/v1/trade/preview", { legs, qty }, { query: { symbol } });
+export const createTradePreview = (legs: PreviewLeg[], qty: number, symbol = "EURUSD", hedge = false) =>
+  apiPost<TradePreview>("/api/v1/trade/preview", { legs, qty, hedge }, { query: { symbol } });
 
 /** Submit a previewed structure. execution_mode "live" = IB paper account. */
-export const submitTrade = (previewId: string, executionMode: "live" | "mock" = "live") =>
+export const submitTrade = (previewId: string, executionMode: "live" | "mock" = "live", confirmLimits = false) =>
   apiPost<Record<string, unknown>>("/api/v1/trade/submit", {
     preview_id: previewId,
     execution_mode: executionMode,
+    confirm_limits: confirmLimits,
   });
 
 // Persisted submitted structures (DB: trade_structure + booked_position). Read-only,
@@ -285,6 +292,7 @@ export interface SubmittedLeg {
   qty_filled: number; // filled so far
   state: string; // per-leg order state
   rejection_text?: string | null; // IB's reason when it refused or cancelled the order
+  order_id?: number; // trade_order id, to cancel this leg only
 }
 export interface SubmittedTrade {
   id: number;
@@ -359,12 +367,34 @@ export const closeContract = (positionId: number, qty: number) =>
   apiPost<Record<string, unknown>>(`/api/v1/positions/${positionId}/close`, { qty });
 
 /** Close every open leg of a trade (OpenPosition.trade_id). */
+export interface TradeCloseResult {
+  closed_legs?: number;
+  failed_legs?: number;
+  legs?: { local_symbol?: string; ok?: boolean; error?: string }[];
+}
 export const closeTrade = (tradeId: number) =>
-  apiPost<Record<string, unknown>>(`/api/v1/trades/${tradeId}/close`, {});
+  apiPost<TradeCloseResult>(`/api/v1/trades/${tradeId}/close`, {});
 
 /** Cancel every non-terminal order of a trade at IB + terminalise the structure. */
-export const cancelTrade = (structureId: number) =>
-  apiPost<Record<string, unknown>>(`/api/v1/trades/${structureId}/cancel`, {});
+/** Cancel a trade's working orders, or one leg of it (`orderId`). IB's
+ * confirmation ends the order; `cancel_requested` counts the ones still
+ * waiting for it. */
+export const cancelTrade = (structureId: number, orderId?: number) =>
+  apiPost<{ cancelled?: number; cancel_requested?: number }>(
+    `/api/v1/trades/${structureId}/cancel`, {}, orderId != null ? { query: { order_id: orderId } } : undefined,
+  );
+
+/** Orders our own checks refused before the broker (gate, revalidation). */
+export interface Refusal {
+  id: number;
+  ts: string;
+  kind: string;
+  failures: string[];
+  details: Record<string, unknown> | null;
+  preview_id?: string | null;
+}
+export const fetchRefusals = (limit = 20) =>
+  apiGet<Refusal[]>("/api/v1/trade/refusals", { query: { limit } });
 
 // Dev / system
 export const fetchDevEngines = () => apiGet<Get<"/api/v1/dev/engines", 200>>("/api/v1/dev/engines");

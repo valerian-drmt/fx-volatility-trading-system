@@ -520,9 +520,21 @@ async def submit_structure_live(
             if failed_struct is not None:
                 failed_struct.state = "partial_fail"
                 failed_struct.state_updated_at = datetime.now(UTC)
+            # A multi-leg order whose later leg could not be placed must not
+            # leave its first legs out alone (#490). The ones still working
+            # are cancelled now; IB's confirmation ends each row. A leg that
+            # already FILLED cannot be undone here: it is a real position, the
+            # critical event below says so and the trade shows as partial.
+            pulled: list[int] = []
+            for leg in placed:
+                try:
+                    if await executor.cancel_order(int(leg["ib_order_id"])) is not None:
+                        pulled.append(int(leg["order_id"]))
+                except Exception:
+                    logger.exception("partial_failure_cancel_failed order_id=%s", leg.get("order_id"))
             db.add(TradeEvent(
                 structure_id=structure_id,
-                event_type="live_submit_partial_failure", severity="error",
+                event_type="live_submit_partial_failure", severity="critical",
                 description=(
                     f"live submit failed after {len(placed)}/{len(prepared)} "
                     f"legs placed: {str(e)[:200]}"
@@ -530,6 +542,7 @@ async def submit_structure_live(
                 payload={
                     "n_placed": len(placed), "n_total": len(prepared),
                     "placed": placed, "error": str(e)[:300],
+                    "cancel_requested_order_ids": pulled,
                 },
             ))
             await db.commit()

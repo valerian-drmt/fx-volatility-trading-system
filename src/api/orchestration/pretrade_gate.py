@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_NOTIONAL_EUR = 5_000_000.0
 DEFAULT_MAX_RISK_HEARTBEAT_AGE_S = 30.0
+DEFAULT_WARN_FRACTION = 0.8
+DEFAULT_MAX_ORDER_CONTRACTS = 200.0
 
 
 def _allowed_symbols() -> tuple[str, ...]:
@@ -90,6 +92,13 @@ def trade_greeks_from_preview(payload: dict[str, Any], spot: float | None) -> Tr
         delta_usd = float(g.get("delta_unhedged") or 0.0)
     except (TypeError, ValueError):
         return None
+    # A package is judged as it will sit in the book: with its hedge on (#482).
+    hedge = payload.get("hedge") or {}
+    if hedge.get("qty"):
+        try:
+            delta_usd = float(hedge["residual_delta_usd"])
+        except (KeyError, TypeError, ValueError):
+            return None
     mult = float((payload.get("structure") or {}).get("future_multiplier_eur") or EUR_FOP_MULTIPLIER)
     notional = sum(abs(float(leg.get("qty") or 0)) for leg in legs) * mult
     return TradeGreeks(
@@ -113,6 +122,7 @@ async def run_pretrade_gate(
     payload: dict[str, Any], live_mode: bool,
     surface_age_s: float | None = None,
     log_refusal: bool = True,
+    confirmed: bool = False,
 ) -> GateResult:
     # kill switch
     try:
@@ -193,6 +203,13 @@ async def run_pretrade_gate(
         ),
         max_surface_age_s=surface_age_limit_s(limits.get("max_iv_data_age_seconds")),
         arb_ok=arb if isinstance(arb, bool) else None,
+        warn_fraction=float(limits.get("limit_warn_fraction", DEFAULT_WARN_FRACTION)),
+        confirmed=confirmed,
+        order_contracts=sum(
+            abs(float(leg.get("qty") or 0)) for leg in ((payload.get("structure") or {}).get("legs") or [])
+            if (leg.get("contract_type") or "") != "spot"
+        ),
+        max_order_contracts=float(limits.get("max_order_contracts", DEFAULT_MAX_ORDER_CONTRACTS)),
     )
     result = evaluate_pretrade(inputs)
     if not result.passed and log_refusal:
@@ -212,7 +229,37 @@ _BUDGET_ROWS = (
 _SESSION_ONLY = frozenset({"account_type_mismatch", "risk_engine_stale", "surface_stale"})
 
 
-def budget_from_gate(result: GateResult) -> dict[str, Any]:
+def max_qty_within_limits(rows: list[dict[str, Any]], qty: int) -> int | None:
+    """The largest size of this same trade that stays inside every limit.
+
+    Greeks are linear in the size, so per limit: the book before, plus n
+    times the trade's contribution per unit, must stay within the cap. 0 when
+    even one unit does not fit; None when a limit is unknown. The delta of a
+    hedged package is its residual, which does not scale with the size, so it
+    does not bind here."""
+    if qty <= 0:
+        return None
+    best: float | None = None
+    for r in rows:
+        cap, trade = r.get("cap"), r.get("trade")
+        if cap is None or trade is None:
+            return None
+        if r["key"] == "delta" and r.get("hedged"):
+            continue
+        unit = float(trade) / qty
+        if abs(unit) < 1e-12:
+            continue
+        before = float(r.get("before") or 0.0)
+        # |before + n * unit| <= cap, n >= 0, on the side the trade pushes to
+        room = float(cap) - (before if unit > 0 else -before)
+        n = room / abs(unit)
+        best = n if best is None else min(best, n)
+    if best is None:
+        return None
+    return max(0, int(best + 1e-9))
+
+
+def budget_from_gate(result: GateResult, qty: int | None = None, hedged: bool = False) -> dict[str, Any]:
     """The gate's verdict as the ticket shows it (#479): per limit, the cap,
     the book before, the trade, the book after, and the share of the cap used
     after the trade. Same numbers as the decision, because it IS the decision."""
@@ -227,14 +274,20 @@ def budget_from_gate(result: GateResult) -> dict[str, Any]:
         after = post.get(value_key)
         used = (abs(float(after)) / float(cap)) if (cap and after is not None and float(cap) > 0) else None
         rows.append({
+            "hedged": hedged and key == "delta",
             "key": key, "label": label, "unit": unit, "cap": cap,
             "before": book.get(value_key) if key != "notional" else None,
             "trade": trade.get(value_key), "after": after,
             "used": round(used, 4) if used is not None else None,
             "breached": code in result.failures,
+            "warning": f"warn_{key}" in result.warnings,
         })
     return {
         "rows": rows if caps else [],
+        "warnings": list(result.warnings),
+        "warn_fraction": d.get("warn_fraction"),
+        "max_qty": max_qty_within_limits(rows, qty) if (caps and qty) else None,
+        "qty": qty,
         "failures": [f for f in result.failures if f not in _SESSION_ONLY],
         "details": {k: d[k] for k in ("book_unpriced", "book_unpriced_lines", "symbols", "allowed_symbols", "halt_reason") if k in d},
     }
@@ -246,5 +299,47 @@ async def preview_risk_budget(
     """The gate, run on a preview: what the trade would use of each limit and
     which limits it would break. ``live_mode=False`` leaves out the checks
     that only make sense at submit (account, heartbeat, surface age)."""
-    result = await run_pretrade_gate(db, redis, payload=payload, live_mode=False, log_refusal=False)
-    return budget_from_gate(result)
+    # confirmed=True: a preview shows the warning zone, it does not refuse on it
+    result = await run_pretrade_gate(
+        db, redis, payload=payload, live_mode=False, log_refusal=False, confirmed=True,
+    )
+    qty = int((payload.get("sizing") or {}).get("base_qty") or 0) or None
+    return budget_from_gate(result, qty=qty, hedged=bool((payload.get("hedge") or {}).get("qty")))
+
+
+async def run_spot_order_gate(
+    db: AsyncSession, redis: aioredis.Redis | None, *, side: str, qty_eur: float,
+) -> GateResult:
+    """The pre-trade checks for a spot FX order (#491): the kill switch, the
+    book being priced, the delta limit on the book after the order, and the
+    notional limit. A spot order has delta only.
+
+    An order that brings the book's delta closer to zero is never refused by
+    the delta limit: reducing risk must stay possible when the book is over
+    it. The spot ticket used to reach the broker with none of these checks.
+    """
+    spot = await _spot(redis, {})
+    signed_eur = float(qty_eur) if side.upper() == "BUY" else -float(qty_eur)
+    payload = {
+        "spot": spot,
+        "greeks_net": {
+            "delta_unhedged": signed_eur * float(spot or 0.0),
+            "vega_usd_per_volpt": 0.0, "gamma_usd_per_pip2": 0.0,
+        },
+        # notional in EUR = contracts x 125,000: express the order in contracts
+        "structure": {"legs": [{"contract_type": "spot", "qty": abs(float(qty_eur)) / EUR_FOP_MULTIPLIER}]},
+    }
+    result = await run_pretrade_gate(db, redis, payload=payload, live_mode=False, log_refusal=False, confirmed=True)
+    failures = list(result.failures)
+    book = (result.details.get("book") or {}) if isinstance(result.details, dict) else {}
+    post = (result.details.get("post_trade") or {}) if isinstance(result.details, dict) else {}
+    try:
+        reduces = abs(float(post["delta_usd"])) <= abs(float(book["delta_usd"]))  # type: ignore[index]
+    except (KeyError, TypeError, ValueError):
+        reduces = False
+    if reduces and "cap_delta" in failures:
+        failures.remove("cap_delta")
+    if failures:
+        logger.warning("spot_order_gate_refused failures=%s", ",".join(failures))
+    return GateResult(passed=not failures, failures=failures, details=result.details, warnings=result.warnings)
+

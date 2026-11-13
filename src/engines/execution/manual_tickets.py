@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.contracts import build_ib_local_symbol
 from persistence.models import Instrument, LegPosition, StructureOrder, TradeStructure
+from persistence.order_state import end_order
 from persistence.reservation import recompute_reservation
 from shared.trace import current_trace_id
 
@@ -105,7 +106,7 @@ async def book_manual_ticket(
     sm: async_sessionmaker[AsyncSession], *,
     symbol: str, sec_type: str, side: str, qty: int, limit_price: float | None,
     expiry: str | None, strike: float | None, right: str | None,
-    exchange: str = "CME", currency: str = "USD",
+    exchange: str = "CME", currency: str = "USD", reduce_only: bool = False,
 ) -> tuple[int, int]:
     """Write the trade and its order, ``pending``. Returns
     ``(structure_id, order_id)``; the caller places the order and wires the
@@ -126,6 +127,14 @@ async def book_manual_ticket(
             if local_symbol else None
         )
         closing = target is not None
+        if reduce_only and not closing:
+            # One door (#491): a NEW position is opened through the order
+            # ticket, where the pre-trade checks are. This route had none of
+            # them: no cap, no symbol list, no price collar.
+            raise ValueError(
+                "this ticket can only reduce a position the book holds: no leg with "
+                f"{qty} available on {local_symbol or 'that contract'}; open through the order ticket"
+            )
         struct = TradeStructure(
             structure_type=_structure_type(contract_type, side, closing),
             reference_tenor="manual", expiry_date=expiry_date, base_qty=int(qty),
@@ -165,13 +174,7 @@ async def fail_manual_ticket(
         order = await db.get(StructureOrder, order_id)
         struct = await db.get(TradeStructure, structure_id)
         if order is not None:
-            order.state = "rejected"
-            order.state_updated_at = now
-            order.rejected_at = now
-            order.rejection_text = reason[:300]
-            if order.closes_order_id is not None:
-                await db.flush()
-                await recompute_reservation(db, entry_order_id=int(order.closes_order_id))
+            await end_order(db, order, "rejected", reason=reason, now=now)
         if struct is not None:
             struct.state = "fully_failed"
             struct.state_updated_at = now

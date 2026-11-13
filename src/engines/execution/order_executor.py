@@ -427,6 +427,18 @@ class OrderExecutor:
                 return trade_to_dict(t)
         return None
 
+    async def cancel_order_by_ref(self, order_ref: str) -> dict[str, Any] | None:
+        """Cancel the open order carrying this ``orderRef``. For a row that
+        never got its IB id back (a placement that timed out): the reference
+        was stamped on the order before it left, so the order can be found
+        without the id. None when no open order carries it."""
+        ib = self._ensure()
+        for t in ib.openTrades():
+            if (getattr(t.order, "orderRef", None) or "") == order_ref:
+                ib.cancelOrder(t.order)
+                return trade_to_dict(t)
+        return None
+
     async def close_position(
         self, con_id: int, limit_price: float, *, order_ref: str | None = None,
     ) -> dict[str, Any]:
@@ -447,6 +459,7 @@ class OrderExecutor:
         order = LimitOrder(side, qty, limit_price)
         if order_ref:
             order.orderRef = order_ref
+        order.tif = DEFAULT_TIF
         trade = ib.placeOrder(target.contract, order)
         return trade_to_dict(trade)
 
@@ -457,6 +470,7 @@ class OrderExecutor:
         limit_price: float | None = None,
         *,
         order_ref: str | None = None,
+        limit_is_operator: bool = False,
     ) -> Any:
         """Submit a reverse order closing ``qty`` contracts of the live
         IB position matching ``local_symbol``.
@@ -519,7 +533,8 @@ class OrderExecutor:
             # touch even on a wide spread — this is what fills easiest. Only fall
             # back to the API's mark-based limit when IB returns no quote (common on
             # paper), and to a market order only if we have neither.
-            lp = await _marketable_close_price(ib, contract, side)
+            # The operator's own limit is the price: it is never re-priced.
+            lp = limit_price if (limit_is_operator and limit_price) else await _marketable_close_price(ib, contract, side)
             if lp is None:
                 lp = limit_price
             order = LimitOrder(side, close_qty, lp) if lp else MarketOrder(side, close_qty)

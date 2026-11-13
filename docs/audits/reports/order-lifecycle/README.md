@@ -109,6 +109,43 @@ waits instead of reading "rejected".
   off by default), mock mode, and the vol engine's publishing cadence, which
   note 02 assumes from the refusals observed.
 
+## What was changed since (epic #498)
+
+The audit above describes commit `384b5a70`. The changes below followed it;
+each ticket carries a note of what is done and what is left.
+
+| Stage | Ticket | What changed |
+|---|---|---|
+| 1 See | #478 | refusals shown in words with the server's numbers; read back from the server after a reload as "refused"; IB's reason on a rejected order |
+| 1 See | #479 | the preview carries the gate's verdict; the ticket's premium, commission and main greeks are the server's once a preview exists |
+| 1 See | #480 | the surface freshness limit follows the 180 s publishing cadence (never below 270 s); the submit checks the age now; every independent reason is reported |
+| 2 Trade | #481 | two levels per limit (confirmation above 80 %), a per-order contracts limit, delta judged after the hedge, the largest size that fits |
+| 2 Trade | #482 | structure and hedge are one package: sized by the server, judged together, hedged on each fill, retried every minute |
+| 2 Trade | #483 | each leg priced on its own forward, a typed strike at the vol of the smile there |
+| 3 Evidence | #484 | the order reconciler settles an order from its own fills or IB's executions, never from a position |
+| 3 Evidence | #485 | an order IB holds is working; a fill on an ended order does not reopen it; the reaper ends an order under its lock |
+| 3 Evidence | #486 | a dispatched close counts for as long as it can fill; the guard matches the contract kind and is serialised |
+| 3 Evidence | #487 | a cancel is recorded when IB confirms it, by id or by reference; one leg can be cancelled; a dead close frees its leg |
+| 3 Evidence | #488 | a notice is ignored only when it is the last thing that happened; every order states its time in force |
+| 4 Structure | #489 | one function records that an order ended, with the leg it reserved and its trade |
+| 4 Structure | #490 | a row that never left is ended, a filled trade is completed after a restart, a partial placement pulls back its working legs |
+| 4 Structure | #491 | the spot ticket passes the delta limit, the manual ticket only reduces, closing by contract id is switched off |
+| Other | #492 | an operator's limit is sent as typed, the row records the price sent, a half-closed trade is reported as such |
+| Other | #493, #494 | a test keeps auto-exit and monitor hedges off; a migration finalises the trades left `submitted` |
+
+Still open, by design of this pass:
+
+- the placement is not yet an intent row with a worker (#490): the api still
+  calls the engine after its commit, and a leg that already filled in a
+  partial placement is alerted, not undone;
+- the pre-trade checks are a short guarded list of routes, not one function
+  inside the engine (#491), and six places still end an order by hand (#489);
+- observability (#495), a simulated broker for scenario tests (#496) and
+  idempotency keys (#497) are not started.
+
+None of the changes has run against IB: they are covered by unit tests with a
+fake broker.
+
 ## Decisions for the owner
 
 1. **Caps or sizes.** Keep the caps and trade one to seven contracts, or

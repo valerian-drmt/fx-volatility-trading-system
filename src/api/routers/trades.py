@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,7 @@ from api.routers.positions import close_one_open_position
 from api.schemas import route_models as rm
 from core.execution.reaper_policy import plan_structure_terminal_state
 from persistence.models import OpenPosition, StructureOrder, TradeStructure
+from persistence.order_state import end_order
 from shared.internal_auth import internal_headers
 
 _EXECUTION_URL = get_settings().EXECUTION_URL
@@ -115,7 +116,8 @@ async def close_trade(
     entry_legs = (await db.execute(
         select(StructureOrder)
         .where(StructureOrder.structure_id == trade_id)
-        .where(StructureOrder.order_role == "entry")
+        # the entries and the hedge the package put on with them (#482)
+        .where(StructureOrder.order_role.in_(("entry", "hedge")))
         .where(StructureOrder.qty_filled > 0)
         .order_by(StructureOrder.leg_idx)
     )).scalars().all()
@@ -186,7 +188,10 @@ async def close_trade(
 
 
 @router.post("/{trade_id}/cancel", response_model=rm.TradeCancelResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
-async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
+async def cancel_trade(
+    trade_id: int, db: DbDep,
+    order_id: int | None = Query(None, ge=1, description="cancel this one leg only"),
+) -> dict[str, Any]:
     """Cancel every non-terminal order of ``trade_id`` at IB, then terminalise the
     structure. Frees a stuck 'submitted' trade in two ways :
 
@@ -205,34 +210,49 @@ async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
     if struct is None:
         raise HTTPException(404, f"trade #{trade_id} not found")
 
-    orders = (await db.execute(
+    if not isinstance(order_id, int):
+        order_id = None
+    stmt = (
         select(StructureOrder)
         .where(StructureOrder.structure_id == trade_id)
         .where(StructureOrder.state.in_(_CANCELLABLE_STATES))
         .order_by(StructureOrder.leg_idx)
-    )).scalars().all()
+    )
+    if order_id is not None:
+        # One leg (#487): the Cancel on a leg row used to cancel every working
+        # leg of the trade.
+        stmt = stmt.where(StructureOrder.id == order_id)
+    orders = (await db.execute(stmt)).scalars().all()
 
     now = datetime.now(UTC)
     results: list[dict[str, Any]] = []
     cancelled = 0
+    requested = 0
     failed = 0
     for o in orders:
         try:
-            if o.ib_order_id:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    r = await client.delete(
-                        f"{_EXECUTION_URL}/internal/orders/{int(o.ib_order_id)}",
-                        headers=internal_headers(),
-                    )
-                # 404 = the order isn't live at IB anymore (already gone) → OK.
-                if r.status_code >= 400 and r.status_code != 404:
-                    raise HTTPException(r.status_code, str(r.text)[:300])
-            o.state = "cancelled"
-            o.state_updated_at = now
-            results.append({
-                "order_id": o.id, "ib_order_id": o.ib_order_id, "ok": True,
-            })
-            cancelled += 1
+            # Ask IB, by the order's id, or by the reference it was sent with
+            # when the id never came back (a placement that timed out).
+            url = (
+                f"{_EXECUTION_URL}/internal/orders/{int(o.ib_order_id)}" if o.ib_order_id
+                else f"{_EXECUTION_URL}/internal/orders/by-ref/{int(o.structure_id)}/{int(o.id)}"
+            )
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.delete(url, headers=internal_headers())
+            if r.status_code >= 400 and r.status_code != 404:
+                raise HTTPException(r.status_code, str(r.text)[:300])
+            if r.status_code == 404:
+                # IB has no such open order: it is not working there. Recording
+                # it cancelled is then a fact, and the leg it reserved is free.
+                await end_order(db, o, "cancelled", now=now)
+                results.append({"order_id": o.id, "ib_order_id": o.ib_order_id, "ok": True, "status": "cancelled"})
+                cancelled += 1
+            else:
+                # IB took the request. The row is NOT cancelled yet (#487): it
+                # becomes so when IB confirms, through the status handler. It
+                # used to be written cancelled here, before IB had answered.
+                results.append({"order_id": o.id, "ib_order_id": o.ib_order_id, "ok": True, "status": "cancel_requested"})
+                requested += 1
         except HTTPException as e:
             results.append({
                 "order_id": o.id, "ok": False,
@@ -271,6 +291,6 @@ async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
 
     await db.commit()
     return {
-        "trade_id": trade_id, "cancelled": cancelled, "failed": failed,
+        "trade_id": trade_id, "cancelled": cancelled, "cancel_requested": requested, "failed": failed,
         "structure_state": struct.state, "results": results,
     }

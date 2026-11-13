@@ -50,7 +50,8 @@ def test_timed_out_close_counts_against_the_stacking_guard() -> None:
     """The handler stamps state='submitted' + submitted_at=now on 'unknown';
     the guard's accounting must then count the full qty for the window."""
     now = datetime(2026, 11, 6, 15, 0, tzinfo=UTC)
-    assert close_inflight_remaining(3, 0, now, now, now, _INFLIGHT_CLOSE_WINDOW) == 3
-    # ... and self-heal after the window if nothing ever settles it.
+    assert close_inflight_remaining(3, 0, now, now, now, _INFLIGHT_CLOSE_WINDOW, "submitted") == 3
+    # ... and it keeps counting after the window (#486): the order may be live
+    # at IB. The reaper settles it (adopts it by its orderRef, or expires it).
     later = now + _INFLIGHT_CLOSE_WINDOW + timedelta(seconds=1)
-    assert close_inflight_remaining(3, 0, now, now, later, _INFLIGHT_CLOSE_WINDOW) == 0
+    assert close_inflight_remaining(3, 0, now, now, later, _INFLIGHT_CLOSE_WINDOW, "submitted") == 3

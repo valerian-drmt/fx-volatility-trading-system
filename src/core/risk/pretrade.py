@@ -61,6 +61,15 @@ class GateInputs:
     surface_age_s: float | None
     max_surface_age_s: float
     arb_ok: bool | None                 # surface meta butterfly check; None = not reported
+    # Two levels per limit (#481). Above ``warn_fraction`` of a cap the trade
+    # needs an explicit confirmation; above the cap it is refused, confirmed
+    # or not.
+    warn_fraction: float = 0.8
+    confirmed: bool = False
+    # Fat-finger limit (#481): the size of ONE order, whatever the book. A
+    # mistyped quantity is refused before any risk arithmetic. None = off.
+    order_contracts: float | None = None
+    max_order_contracts: float | None = None
 
 
 @dataclass(frozen=True)
@@ -68,10 +77,14 @@ class GateResult:
     passed: bool
     failures: list[str] = field(default_factory=list)
     details: dict[str, object] = field(default_factory=dict)
+    # Limits in the warning zone (``warn_delta`` ...). Informational once
+    # confirmed; ``limits_need_confirmation`` is in ``failures`` until then.
+    warnings: list[str] = field(default_factory=list)
 
 
 def evaluate_pretrade(i: GateInputs) -> GateResult:
     f: list[str] = []
+    w: list[str] = []
     d: dict[str, object] = {}
 
     # 0. Kill switch, unknown = halted.
@@ -112,6 +125,15 @@ def evaluate_pretrade(i: GateInputs) -> GateResult:
     if i.arb_ok is False:
         f.append("surface_arbitrage")
 
+    # 5b. Fat-finger: contracts in this one order.
+    if (
+        i.order_contracts is not None and i.max_order_contracts is not None
+        and i.order_contracts > i.max_order_contracts
+    ):
+        f.append("cap_contracts")
+        d["order_contracts"] = i.order_contracts
+        d["max_order_contracts"] = i.max_order_contracts
+
     # 6. Caps on the POST-trade book, every axis, plus notional.
     if i.caps is None:
         f.append("caps_unavailable")
@@ -146,13 +168,19 @@ def evaluate_pretrade(i: GateInputs) -> GateResult:
         if i.caps.delta_usd <= 0 or i.caps.vega_usd_per_volpt <= 0 or i.caps.gamma_usd_per_pip <= 0:
             f.append("caps_not_established")   # no NAV history / no spot yet: refuse
         else:
-            if abs(post_delta) > i.caps.delta_usd:
-                f.append("cap_delta")
-            if abs(post_vega) > i.caps.vega_usd_per_volpt:
-                f.append("cap_vega")
-            if abs(post_gamma) > i.caps.gamma_usd_per_pip:
-                f.append("cap_gamma")
+            for axis, value, cap in (
+                ("delta", post_delta, i.caps.delta_usd),
+                ("vega", post_vega, i.caps.vega_usd_per_volpt),
+                ("gamma", post_gamma, i.caps.gamma_usd_per_pip),
+            ):
+                if abs(value) > cap:
+                    f.append(f"cap_{axis}")
+                elif abs(value) > cap * i.warn_fraction:
+                    w.append(f"warn_{axis}")
         if i.trade.notional_eur > i.caps.max_notional_eur:
             f.append("cap_notional")
 
-    return GateResult(passed=not f, failures=f, details=d)
+    d["warn_fraction"] = i.warn_fraction
+    if w and not i.confirmed:
+        f.append("limits_need_confirmation")
+    return GateResult(passed=not f, failures=f, details=d, warnings=w)

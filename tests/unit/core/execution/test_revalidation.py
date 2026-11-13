@@ -67,7 +67,18 @@ def test_blocks_on_stale_surface():
     # against a 120 s limit.
     r = _ok(surface_age_seconds=300.0, max_iv_age_seconds=120.0)
     assert not r.passed and r.reason == "surface_stale"
-    assert r.details == {"surface_age_seconds": 300.0, "max_iv_age_seconds": 120.0}
+    assert r.details == {
+        "surface_age_seconds": 300.0, "max_iv_age_seconds": 120.0, "reasons": ["surface_stale"],
+    }
+
+
+def test_every_independent_reason_is_reported_together():
+    # #480: a stale surface AND a pre-event regime used to be reported one at
+    # a time, so the trader fixed the first and met the second.
+    r = _ok(surface_age_seconds=300.0, max_iv_age_seconds=120.0, current_regime="pre_event")
+    assert not r.passed and r.reason == "surface_stale"
+    assert r.details["reasons"] == ["surface_stale", "regime_pre_event"]
+    assert r.details["regime"] == "pre_event" and r.details["surface_age_seconds"] == 300.0
 
 
 def test_unknown_surface_age_is_not_a_pass():

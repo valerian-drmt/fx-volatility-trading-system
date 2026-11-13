@@ -25,6 +25,7 @@ from core.execution.rollback import (
     decide_rollback,
 )
 from engines.execution.live_submit import order_ref
+from engines.execution.order_executor import DEFAULT_TIF
 from engines.execution.placement import AlreadyClaimed, place_with_claim
 from persistence.models import StructureOrder, TradeEvent, TradeStructure
 
@@ -215,6 +216,7 @@ async def run_rollback(
                 )
                 continue
             ib_order = LimitOrder(action.side, action.qty, unwind_limit)
+            ib_order.tif = DEFAULT_TIF
             try:
                 trade = await place_with_claim(
                     sm=sm, model=StructureOrder, row_id=unwind_order.id,

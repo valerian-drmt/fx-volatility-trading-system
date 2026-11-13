@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -48,6 +49,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.order_state import end_order
 from persistence.projection import rebuild_leg
 from persistence.reservation import recompute_reservation
 from shared.tasks import log_task_result
@@ -160,15 +162,14 @@ async def _on_order_status(
                        f"ib status={status}", {})
                 ws_event = {"event_type": "order_acknowledged"}
             elif tr.new_state == "rejected":
-                order.state = "rejected"
-                order.rejected_at = now
                 # IB's reason (error text off the trade log), not the status word.
-                order.rejection_text = (reason or status or "")[:300]
+                # end_order: the order, the leg it reserved, and its trade (#489).
+                await end_order(db, order, "rejected", reason=(reason or status or ""), now=now)
                 _audit(db, order, "order_rejected", "error",
                        f"ib status={status} reason={order.rejection_text}", {"old_state": old_state})
                 ws_event = {"event_type": "order_rejected", "reason": order.rejection_text}
             elif tr.new_state == "cancelled":
-                order.state = "cancelled"
+                await end_order(db, order, "cancelled", now=now)
                 _audit(db, order, "order_cancelled", "warning",
                        f"ib status={status}", {"old_state": old_state})
                 ws_event = {"event_type": "order_cancelled"}
@@ -272,6 +273,14 @@ async def _persist_fill(
                    f"qty={agg.qty_filled} avg={agg.avg_fill_price}",
                    {"slippage_per_contract": agg.slippage_per_contract})
             full_fill = True
+        elif not agg.fully_filled and order.state in ("cancelled", "rejected", "expired"):
+            # A fill on a row that already ended (cancelled after a partial
+            # fill, or expired by the reaper while IB still had it): the
+            # execution is booked and the leg rebuilt, the row stays ended.
+            # It used to go back to partially_filled, the reaper expired it
+            # again five minutes later, and so on.
+            _audit(db, order, "fill_on_ended_order", "warning",
+                   f"fill of {qty} booked on an order already {order.state}", {"state": order.state})
         elif not agg.fully_filled:
             order.state = "partially_filled"
         # Keep the forward projection (the book) current: this leg's position is
@@ -296,6 +305,31 @@ async def _persist_fill(
         if agg.fully_filled:
             await maybe_complete_structure(sm, structure_id)
         await settle_book(sm, order_id)
+        await _run_post_fill_hooks(sm, order_id)
+
+
+# What must follow a booked fill and needs more than the database: the engine
+# registers the package hedger here (it holds the IB connection, this module
+# does not). A hook never breaks the fill path: the fill is already booked.
+PostFillHook = Callable[[async_sessionmaker[AsyncSession], int], Awaitable[Any]]
+_POST_FILL_HOOKS: list[PostFillHook] = []
+
+
+def register_post_fill_hook(hook: PostFillHook) -> None:
+    if hook not in _POST_FILL_HOOKS:
+        _POST_FILL_HOOKS.append(hook)
+
+
+def clear_post_fill_hooks() -> None:
+    _POST_FILL_HOOKS.clear()
+
+
+async def _run_post_fill_hooks(sm: async_sessionmaker[AsyncSession], order_id: int) -> None:
+    for hook in list(_POST_FILL_HOOKS):
+        try:
+            await hook(sm, order_id)
+        except Exception:
+            logger.exception("post_fill_hook_failed order_id=%s", order_id)
 
 
 async def settle_book(sm: async_sessionmaker[AsyncSession], order_id: int) -> None:
@@ -455,6 +489,9 @@ async def _on_combo_status(
     filled by real per-leg executions are skipped."""
     try:
         status = getattr(trade.orderStatus, "status", "")
+        if is_notice_cancel(trade):
+            logger.info("combo_status_notice_ignored order_ids=%s ib_status=%s", order_ids, status)
+            return
         reason = ib_reason_from_trade(trade)
         probe = next_state("submitted", status, has_error_reason=reason is not None)
         if probe.kind == "fill_pending":

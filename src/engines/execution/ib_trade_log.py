@@ -43,14 +43,23 @@ def ib_reason_from_trade(trade: Any) -> str | None:
 
 
 def is_notice_cancel(trade: Any) -> bool:
-    """True when the trade reads Cancelled only because a notice arrived on
-    the error channel: the order is still live at the broker and its state
-    must not change."""
+    """True when the trade reads Cancelled BECAUSE a notice arrived on the
+    error channel: the order is still live at the broker and its state must
+    not change.
+
+    The library records what made it change the status as the last entry of
+    the trade's log. So the cancel is a notice's doing only when that last
+    entry carries a notice code. A real cancel that comes later (the
+    operator, the end of the day) adds its own entry after it and is a
+    cancel. The first version of this rule looked at the whole log: an order
+    that had once received the notice could never be cancelled in the book."""
     status = str(getattr(getattr(trade, "orderStatus", None), "status", "") or "")
     if status not in ("Cancelled", "ApiCancelled"):
         return False
-    errors = _errors(trade)
-    return bool(errors) and all(code in INFORMATIONAL_CODES for code, _ in errors)
+    log = list(getattr(trade, "log", None) or [])
+    if not log:
+        return False
+    return int(getattr(log[-1], "errorCode", 0) or 0) in INFORMATIONAL_CODES
 
 
 def ib_why_held(trade: Any) -> str | None:

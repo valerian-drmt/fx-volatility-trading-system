@@ -977,21 +977,26 @@ def close_inflight_remaining(
     state_updated_at: datetime | None,
     now: datetime,
     window: timedelta,
+    state: str | None = None,
 ) -> int:
-    """Unfilled qty of a close order that still counts against the stacking guard
-    (pure/testable). Returns 0 (self-healed) once the order is older than
-    ``window``, so a stuck close never locks the position forever.
+    """Unfilled qty of a close order that still counts against the stacking
+    guard (pure/testable).
 
-    Age is measured from ``submitted_at`` when the order was dispatched, else from
-    ``state_updated_at`` — the crucial case: a close CREATED but never dispatched
-    (``submitted_at IS NULL``, e.g. the engine was down) keeps a NULL
-    ``submitted_at`` indefinitely, so without the ``state_updated_at`` fallback it
-    would be counted as in-flight forever and permanently block every new close.
+    A close counts for as long as it can still fill: there is no time window
+    on an order that was dispatched (#486). The window used to make a close
+    resting more than 3 minutes invisible, and a second full-size close was
+    accepted on top of it (prod 2026-11-12: two SELL 100 on a long of 100).
+    Such an order ends by a fill, a cancel, or the reaper, never by ageing.
+
+    The one case that ages out is a close that was CREATED and never
+    dispatched (``state == 'pending'``, e.g. the engine was down): it holds
+    nothing at the broker, no loop will ever move it, and without the window
+    it would block every new close for ever.
     """
-    cutoff = now - window
-    age_ts = submitted_at if submitted_at is not None else state_updated_at
-    if age_ts is not None and age_ts < cutoff:
-        return 0  # stuck / cancelled at IB, or never dispatched — don't block
+    if state == "pending":
+        age_ts = submitted_at if submitted_at is not None else state_updated_at
+        if age_ts is not None and age_ts < now - window:
+            return 0
     return max(0, int(qty) - int(qty_filled or 0))
 
 
@@ -1110,11 +1115,19 @@ async def close_one_open_position(
     strike_val = float(spec.strike) if (spec and spec.strike is not None) else None
     reverse_side = "SELL" if pos.side == "BUY" else "BUY"
     now = datetime.now(UTC)
+    # One close decision at a time per position: the check below and the rows
+    # written after it are one unit (two simultaneous requests used to both
+    # pass the check). A no-op on engines without row locks.
+    await db.execute(select(OpenPosition.id).where(OpenPosition.id == pos.id).with_for_update())
+    contract_kind = (spec.option_type or "").lower() if is_option else "future"
     inflight_conds = [
         StructureOrder.order_role == "closing",
         StructureOrder.side == reverse_side,
         StructureOrder.contract_expiry == pos.expiry,
-        StructureOrder.state.in_(("pending", "submitted", "partially_filled")),
+        # the same kind of contract: a call and a put with the same strike and
+        # expiry no longer share one budget
+        StructureOrder.contract_type == contract_kind,
+        StructureOrder.state.in_(("pending", "submitted", "acknowledged", "partially_filled")),
     ]
     if strike_val is not None:
         inflight_conds.append(StructureOrder.contract_strike == strike_val)
@@ -1127,7 +1140,7 @@ async def close_one_open_position(
     already_closing = sum(
         close_inflight_remaining(
             o.qty, o.qty_filled, o.submitted_at, o.state_updated_at,
-            now, _INFLIGHT_CLOSE_WINDOW,
+            now, _INFLIGHT_CLOSE_WINDOW, o.state,
         )
         for o in close_orders
     )
@@ -1248,6 +1261,9 @@ async def close_one_open_position(
     }
     if limit_price is not None:
         payload["limit_price"] = limit_price
+        # A limit the operator typed is sent as typed (#492). The engine used
+        # to replace it with the live quote, like the automatic price.
+        payload["limit_is_operator"] = limit_price_override is not None
     exec_url = get_settings().EXECUTION_URL
     url = f"{exec_url}/internal/positions/close-by-symbol"
     try:
@@ -1321,6 +1337,12 @@ async def close_one_open_position(
         closing_order.ib_perm_id = str(perm_id)
     closing_order.state = "submitted"
     closing_order.submitted_at = datetime.now(UTC)
+    # The row says what was SENT (#492): the engine prices an option close off
+    # the live quote, so the price at the broker is its answer, not our guess.
+    sent_price = ib_response.get("limit_price")
+    if isinstance(sent_price, (int, float)) and sent_price > 0:
+        closing_order.limit_price = float(sent_price)
+        closing_order.order_type = "LMT"
     await db.commit()
 
     return {

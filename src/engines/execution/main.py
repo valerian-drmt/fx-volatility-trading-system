@@ -24,7 +24,7 @@ from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys
-from engines.execution.fills_handler import attach_fill_handlers
+from engines.execution.fills_handler import attach_fill_handlers, register_post_fill_hook
 from engines.execution.halt_guard import cancel_all_open, require_not_halted
 from engines.execution.hedge_executor import HedgeSubmitError, submit_hedge_order
 from engines.execution.ib_heartbeat import (
@@ -49,6 +49,7 @@ from engines.execution.order_executor import (
     trade_to_dict,
 )
 from engines.execution.order_reconciler import reconcile_loop, reconcile_stuck_orders
+from engines.execution.package_hedge import hedge_after_fill, hedge_retry_loop
 from engines.execution.placement import (
     claim_submit,
     manual_order_ref,
@@ -222,6 +223,12 @@ async def lifespan(app: FastAPI):
     reconcile_pos_task = spawn_supervised(
         lambda: reconcile_positions_loop(sm, executor), name="position_reconcile_loop", engine=_ENGINE,
     )
+    # Package hedge (#482): after each booked option fill, bring the trade's
+    # futures hedge to the share of the options that has filled.
+    register_post_fill_hook(lambda _sm, oid: hedge_after_fill(_sm, executor, oid))
+    hedge_retry_task = spawn_supervised(
+        lambda: hedge_retry_loop(sm, executor), name="hedge_retry_loop", engine=_ENGINE,
+    )
     # Contract lifecycle (#463): an expired contract closes its book legs, a
     # trade whose legs are all flat is closed. Guarded by account_is_reporting.
     lifecycle_task = spawn_supervised(
@@ -246,9 +253,9 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         ib_watchdog_stop.set()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, ib_watchdog_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, hedge_retry_task, ib_watchdog_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, ib_watchdog_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, hedge_retry_task, ib_watchdog_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -477,6 +484,10 @@ class ClosePositionBySymbolBody(BaseModel):
     # limit_price=None ⇒ MarketOrder (default for closes). Explicit value
     # ⇒ LimitOrder (operator override).
     limit_price: float | None = Field(default=None, gt=0)
+    # True when the operator typed ``limit_price``: it is then sent as it is.
+    # False: it is the api's estimate off the mark, and the engine replaces it
+    # with the live quote when it has one.
+    limit_is_operator: bool = False
     # Optional DB ``trade_order.id`` so the execution-engine can wire
     # fills_handler callbacks (status / execution events → DB updates).
     # When omitted, the close still goes through to IB but qty_filled
@@ -524,7 +535,7 @@ async def place_order(
             # before the order reaches IB, the fill handlers keep them
             # current. It used to place with no row at all, so the position
             # it opened was "unbooked at IB" by construction.
-            manual = await book_manual_ticket(sm, **ticket_fields(body))
+            manual = await book_manual_ticket(sm, **ticket_fields(body), reduce_only=True)
             ref = structure_order_ref(manual[0], manual[1])
             await claim_submit(sm, StructureOrder, manual[1])
             trade = await ex.place_order_trade(OrderRequest(**payload), order_ref=ref)
@@ -567,6 +578,27 @@ async def cancel_order(
         await _log_event(sm, action_type="CANCEL", request_payload=payload,
                          response_payload=None, success=False, error_message=str(e)[:500])
         raise HTTPException(status_code=503, detail=str(e)) from e
+
+
+@router.delete("/orders/by-ref/{structure_id}/{db_order_id}")
+async def cancel_order_by_ref(
+    structure_id: int,
+    db_order_id: int,
+    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Cancel an order by the reference it was sent with (#487). 404 when IB
+    has no open order carrying it: the order is then not working there."""
+    ref = structure_order_ref(structure_id, db_order_id)
+    payload = {"order_ref": ref}
+    try:
+        result = await ex.cancel_order_by_ref(ref)
+    except OrderExecutorUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"no open order with ref {ref}")
+    await _log_event(sm, action_type="CANCEL", request_payload=payload, response_payload=result, success=True)
+    return result
 
 
 @router.get("/orders")
@@ -666,6 +698,7 @@ async def close_position_by_symbol(
                 qty=body.qty,
                 limit_price=body.limit_price,
                 order_ref=order_ref,
+                limit_is_operator=body.limit_is_operator,
             )
         except Exception:
             if body.db_order_id is not None:

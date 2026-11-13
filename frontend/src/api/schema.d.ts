@@ -638,7 +638,10 @@ export interface paths {
         put?: never;
         /**
          * Close Position
-         * @description Close one IB position (by contract id) through the execution engine.
+         * @description Switched off (#491). This route closed a whole position by contract id
+         *     with no row in the book, no guard against a second close and no trace on
+         *     the panels. Close through ``POST /positions/{id}/close``, which books the
+         *     close, reserves the leg and shows the position as closing.
          */
         post: operations["close_position_api_v1_exec_positions__con_id__close_post"];
         delete?: never;
@@ -793,7 +796,17 @@ export interface paths {
         put?: never;
         /**
          * Place Order
-         * @description Place one order through the execution engine. Requires the trader cookie; the engine's pre-trade gate and the kill switch apply.
+         * @description Place one order through the execution engine. Requires the trader cookie.
+         *
+         *     What applies (#491):
+         *
+         *     * a **spot** order passes the pre-trade checks here: kill switch, book
+         *       priced, delta and notional limits on the book after the order (an order
+         *       that reduces the book's delta is never refused by the delta limit);
+         *     * a **future or option** order can only reduce a position the book holds
+         *       (the engine refuses anything else): a new position is opened through
+         *       the order ticket, where the full pre-trade gate is;
+         *     * the engine's kill switch and ready gate apply to both.
          */
         post: operations["place_order_api_v1_orders_post"];
         delete?: never;
@@ -2294,6 +2307,30 @@ export interface paths {
          * @description Mark a stored preview as cancelled so it can no longer be submitted. 404 when unknown, 400 when it was already submitted or cancelled.
          */
         post: operations["cancel_preview_api_v1_trade_preview__preview_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trade/refusals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Refusals
+         * @description Orders OUR checks refused before they reached the broker, newest first
+         *     (#478): the pre-trade gate, the revalidation, the spot gate. Each carries
+         *     the codes and the numbers that were returned to the ticket, so a refusal
+         *     is still readable after a page reload. "Refused" is ours; "rejected" is
+         *     the broker's and lives on the order.
+         */
+        get: operations["list_refusals_api_v1_trade_refusals_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5381,6 +5418,11 @@ export interface components {
             delta_pillar?: string | null;
             /** Future Contract Size */
             future_contract_size?: ("full" | "micro") | null;
+            /**
+             * Hedge
+             * @default false
+             */
+            hedge: boolean;
             /** Legs */
             legs?: components["schemas"]["LegSpec"][] | null;
             /** Override Far Tenor */
@@ -6032,6 +6074,11 @@ export interface components {
          * @description ``POST /trade/submit`` (#300, audit 01#14): a preview id and the mode.
          */
         SubmitBody: {
+            /**
+             * Confirm Limits
+             * @default false
+             */
+            confirm_limits: boolean;
             /**
              * Execution Mode
              * @default mock
@@ -7971,6 +8018,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Error. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -8260,6 +8316,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IbOrder"];
+                };
+            };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
@@ -10749,6 +10814,48 @@ export interface operations {
             };
         };
     };
+    list_refusals_api_v1_trade_refusals_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_spot_orders_api_v1_trade_spot_orders_get: {
         parameters: {
             query?: {
@@ -10929,7 +11036,10 @@ export interface operations {
     };
     cancel_trade_api_v1_trades__trade_id__cancel_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description cancel this one leg only */
+                order_id?: number | null;
+            };
             header?: never;
             path: {
                 trade_id: number;

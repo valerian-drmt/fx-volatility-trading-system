@@ -7,7 +7,7 @@
  * book impact, §3 skew flag, §4 bundled hedge, §5 premium reconciliation).
  * Same JSX / classNames / logic as the prototype — only types + ES modules added.
  */
-import { explainGateFailure, fmtBudget, refusalText } from "./refusal";
+import { explainGateFailure, fmtBudget, isRecordedRefusal, refusalText } from "./refusal";
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtCcy, fmtCcySigned, gk$, pnlCls } from "./format";
@@ -168,7 +168,7 @@ export interface BuilderState {
 }
 
 // Callback shape matches TradeView's OrderRecord (kept local to avoid a view↔component import cycle).
-type OrderLog = (rec: { action: "open" | "close"; label: string; side: string; qty: number; state: "sent" | "rejected"; note?: string }) => void;
+type OrderLog = (rec: { action: "open" | "close"; label: string; side: string; qty: number; state: "sent" | "rejected"; note?: string; recorded?: boolean }) => void;
 
 interface OrderBuilderProps {
   prefill?: Prefill | null;
@@ -313,16 +313,29 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   ].filter(Boolean).join(" · ") || "—";
   const net = useMemo(() => previewGreeks(legs, mult, spotMid), [legs, mult, spotMid]);
 
-  const commission = Math.round(legs.length * qty * 2.1);
-  const isCredit = net.cost < 0; // SELL-heavy structures take in premium
-  const premiumAbs = Math.abs(net.cost);
+  // Once a preview exists the ticket shows what the SERVER priced: premium,
+  // commission, and below the greeks the gate judges (#479). The browser's
+  // model is only the sketch before a preview, and for the two greeks the
+  // server does not send (vanna, volga), which are then labelled estimates.
+  const srvPremium = server?.pricing?.premium_paid_usd;
+  const srvCommission = server?.costs?.commission_usd;
+  const commission = srvCommission != null ? Math.round(srvCommission) : Math.round(legs.length * qty * 2.1);
+  const isCredit = srvPremium != null ? srvPremium < 0 : net.cost < 0; // SELL-heavy structures take in premium
+  const premiumAbs = srvPremium != null ? Math.abs(srvPremium) : Math.abs(net.cost);
   const naked = meta.naked(side); // a sold leg with no long cover → unbounded tail
   // A future is already delta-one — you don't delta-hedge it with another future,
   // so the bundle is disabled for futures (also hidden in the UI).
   const hedgeOn = bundleHedge && !isFut;
-  const hedgeQty = Math.round(Math.abs(net.d) / deltaPer6E(spotMid));
-  const hedgeSide = net.d > 0 ? "SELL" : "BUY";
-  const hedgedDelta = Math.round(net.d - Math.sign(net.d) * hedgeQty * deltaPer6E(spotMid)); // delta once the bundle is applied
+  // The hedge is part of the package (#482): sized by the server with the
+  // preview, judged with the structure, sent by the engine on each fill. The
+  // browser's figure is only the sketch shown before a preview exists.
+  const serverHedge = server?.hedge ?? null;
+  const estHedgeQty = Math.round(Math.abs(net.d) / deltaPer6E(spotMid));
+  const hedgeQty = serverHedge ? serverHedge.qty : estHedgeQty;
+  const hedgeSide = serverHedge ? serverHedge.side : net.d > 0 ? "SELL" : "BUY";
+  const hedgedDelta = serverHedge
+    ? Math.round(serverHedge.residual_delta_usd)
+    : Math.round(net.d - Math.sign(net.d) * estHedgeQty * deltaPer6E(spotMid)); // delta once the bundle is applied
   // When the delta-hedge is bundled, the 6E futures leg neutralises delta and
   // adds its own commission — the ticket must re-price as the HEDGED structure
   // (futures are delta-only : Γ/Vega/Θ unchanged).
@@ -335,13 +348,20 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const g = trade.data?.greeks ?? EMPTY_GREEKS;
   const kfmt = (x: number): string => fmt.sgn(x, 1) + "k"; // $k greeks — 1 dp so small values don't collapse to "+0k"
   const netCash = (isCredit ? premiumAbs : -premiumAbs) - totalCommission;
+  const srv = (key: string): { val: number; before: number; after: number } | null => {
+    const r = server?.risk_budget?.rows.find((x) => x.key === key);
+    return r && r.trade != null && r.after != null ? { val: r.trade, before: r.before ?? 0, after: r.after } : null;
+  };
+  const srvTheta = typeof server?.greeks_net?.theta_usd_per_day === "number" ? server.greeks_net.theta_usd_per_day : null;
+  const est = server ? " (est.)" : "";
+  const dS = srv("delta"), gS = srv("gamma"), vS = srv("vega");
   const impactRows = [
-    { name: "Delta", unit: "USD", val: effDelta, before: g.netDelta, after: g.netDelta + effDelta, f: gk$ },
-    { name: "Gamma", unit: "USD/pip", val: net.g, before: g.netGamma, after: g.netGamma + net.g, f: gk$ },
-    { name: "Vega", unit: "$/vp", val: net.v, before: g.netVega, after: g.netVega + net.v, f: gk$ },
-    { name: "Theta", unit: "$/day", val: net.t, before: g.netTheta, after: g.netTheta + net.t, f: gk$ },
-    { name: "Vanna", unit: "$k/vp·fig", val: net.vn, before: g.netVanna, after: g.netVanna + net.vn, f: kfmt },
-    { name: "Volga", unit: "$k/vp", val: net.vg, before: g.netVolga, after: g.netVolga + net.vg, f: kfmt },
+    { name: "Delta", unit: "USD", ...(dS ?? { val: effDelta, before: g.netDelta, after: g.netDelta + effDelta }), f: gk$ },
+    { name: "Gamma", unit: "USD/pip", ...(gS ?? { val: net.g, before: g.netGamma, after: g.netGamma + net.g }), f: gk$ },
+    { name: "Vega", unit: "$/vp", ...(vS ?? { val: net.v, before: g.netVega, after: g.netVega + net.v }), f: gk$ },
+    { name: "Theta", unit: "$/day", val: srvTheta ?? net.t, before: g.netTheta, after: g.netTheta + (srvTheta ?? net.t), f: gk$ },
+    { name: "Vanna" + est, unit: "$k/vp·fig", val: net.vn, before: g.netVanna, after: g.netVanna + net.vn, f: kfmt },
+    { name: "Volga" + est, unit: "$k/vp", val: net.vg, before: g.netVolga, after: g.netVolga + net.vg, f: kfmt },
   ];
 
   // report the live structure up so the Indicators pre-trade check reads the SAME engine (state, not signal)
@@ -358,7 +378,10 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
     setErr(null);
     setServer(null);
     try {
-      const resp = await createTradePreview(builderToLegs(product, side, tenor, farTenor, strike, wing, csize, spreadSide, spreadNear, spreadFar), qty);
+      const resp = await createTradePreview(
+        builderToLegs(product, side, tenor, farTenor, strike, wing, csize, spreadSide, spreadNear, spreadFar),
+        qty, "EURUSD", hedgeOn,
+      );
       setServer(resp);
     } catch (e) {
       setErr(errMsg(e));
@@ -367,45 +390,27 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
       setStage("preview");
     }
   };
-  // Place = submit the server-validated preview to the IB paper account. When a
-  // delta hedge is bundled, a SECOND order (the 6E futures hedge) is fired right
-  // after the structure — the desk sends two linked orders. The hedge is best-
-  // effort : if it fails, the structure stays live and we surface the hedge error.
-  const submitHedge = async (): Promise<void> => {
-    const hLabel = `${hedgeQty}× 6E hedge (${product} ${tenor})`;
-    try {
-      const hp = await createTradePreview(
-        [{ contract_type: "future", side: hedgeSide as "BUY" | "SELL", tenor, future_contract_size: "full" }],
-        hedgeQty,
-      );
-      if (hp.state !== "valid_for_submit") {
-        throw new Error(hp.blocking_reasons?.join(" · ") || `hedge preview ${hp.state}`);
-      }
-      await submitTrade(hp.preview_id, "live");
-      onOrder?.({ action: "open", label: hLabel, side: hedgeSide, qty: hedgeQty, state: "sent" });
-    } catch (he) {
-      const hm = errMsg(he);
-      setErr(`structure placed — hedge failed: ${hm}`);
-      onOrder?.({ action: "open", label: hLabel, side: hedgeSide, qty: hedgeQty, state: "rejected", note: hm });
-    }
-  };
+  // Place = submit the server-validated preview to the IB paper account. A
+  // hedged trade is ONE order here: the server sized the hedge with the
+  // preview and the engine sends the futures as the options fill. The second
+  // order the browser used to fire is gone.
   const onPlace = async (): Promise<void> => {
     if (!canWrite || !server || server.state !== "valid_for_submit" || busy) return;
     setBusy(true);
     setErr(null);
     const label = `${product}${isFut ? "" : " " + tenor}${isCal ? "/" + farTenor : ""}${!isFut && STRUCT[product]!.mode.includes("wing") ? " " + wingLevel : ""}`;
     try {
-      const result = await submitTrade(server.preview_id, "live");
+      const result = await submitTrade(server.preview_id, "live", needsConfirm);
       setPlaced(result);
       setBooked({ side, product, qty, tenor, bundleHedge: hedgeOn, hedgeQty, hedgeSide });
       onOrder?.({ action: "open", label, side, qty, state: "sent" });
-      // second, linked order : the bundled futures delta hedge
-      if (hedgeOn && hedgeQty > 0) await submitHedge();
       setStage("booked");
     } catch (e) {
       const m = errMsg(e);
       setErr(m);
-      onOrder?.({ action: "open", label, side, qty, state: "rejected", note: m });
+      // A refusal by our own checks is recorded by the server; the blotter
+      // reads it back from there ("refused"), so it is not added from memory.
+      onOrder?.({ action: "open", label, side, qty, state: "rejected", note: m, recorded: isRecordedRefusal(e) });
     } finally {
       setBusy(false);
     }
@@ -416,6 +421,9 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const blockers = server?.submit_blockers ?? [];
   const budget = server?.risk_budget ?? null;
   const canPlace = canWrite && server?.state === "valid_for_submit" && blockers.length === 0 && !busy;
+  // Inside the limits, above their warning share: placing is a confirmation.
+  const needsConfirm = server?.needs_confirmation === true;
+  const maxQty = budget?.max_qty ?? null;
   const stateText = !canWrite ? "auth required" : busy && !server ? "pricing…" : (server?.state ?? "—");
   const stateCls = server?.state === "valid_for_submit" ? "pos" : server?.state ? "warn" : "dim";
 
@@ -730,6 +738,14 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
             )}
             {blockers.length > 0 && (
               <div className="ob-blocking mono small" data-testid="submit-blockers">
+                {maxQty != null && maxQty < qty && (
+                  <div data-testid="max-qty" style={{ marginBottom: 4 }}>
+                    {maxQty > 0
+                      ? <>Largest size inside the limits: <b>{maxQty}</b> contract{maxQty > 1 ? "s" : ""}{" "}
+                          <button className="row-close" onClick={() => { setQty(maxQty); reset(); }}>use {maxQty}</button></>
+                      : "Not even one contract of this trade fits the limits."}
+                  </div>
+                )}
                 ⛔ This order would be refused:
                 <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
                   {blockers.map((c) => (
@@ -747,11 +763,19 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
               </div>
             )}
 
+            {needsConfirm && blockers.length === 0 && (
+              <div className="ob-blocking mono small" data-testid="needs-confirmation">
+                ⚠ This trade uses more than 80 % of a limit ({(budget?.rows ?? []).filter((r) => r.warning).map((r) => r.label).join(", ")}).
+                Placing it is recorded as your confirmation.
+              </div>
+            )}
+
             {/* delta-hedge bundle (no "Δ unhedged" row) */}
             {!isFut && (
               <div className="hedge-bundle">
                 <label className="hb-toggle">
-                  <input type="checkbox" checked={bundleHedge} onChange={(e) => setBundleHedge(e.target.checked)} />
+                  {/* the hedge is part of what was previewed: changing it asks for a new preview */}
+                  <input type="checkbox" checked={bundleHedge} onChange={(e) => { setBundleHedge(e.target.checked); reset(); }} />
                   <span>Delta hedge: <b className="mono">{hedgeSide} {hedgeQty}× 6E</b> → Delta {gk$(hedgedDelta)}</span>
                 </label>
               </div>
@@ -788,7 +812,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
                   title={canWrite ? (canPlace ? "submit to IB paper account" : "preview must be valid_for_submit") : GATE_TITLE}
                   onClick={onPlace}
                 >
-                  {busy ? "Placing…" : "Place order"}
+                  {busy ? "Placing…" : needsConfirm ? "Confirm and place" : "Place order"}
                 </button>
                 <button className="btn-draft-cancel" disabled={busy} onClick={reset}>Cancel</button>
               </div>
