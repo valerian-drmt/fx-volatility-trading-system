@@ -112,6 +112,7 @@ async def run_pretrade_gate(
     db: AsyncSession, redis: aioredis.Redis | None, *,
     payload: dict[str, Any], live_mode: bool,
     surface_age_s: float | None = None,
+    log_refusal: bool = True,
 ) -> GateResult:
     # kill switch
     try:
@@ -194,6 +195,56 @@ async def run_pretrade_gate(
         arb_ok=arb if isinstance(arb, bool) else None,
     )
     result = evaluate_pretrade(inputs)
-    if not result.passed:
+    if not result.passed and log_refusal:
         logger.warning("pretrade_gate_refused failures=%s", ",".join(result.failures))
     return result
+
+
+# What each limit is called on the ticket, and the keys of the gate's details.
+_BUDGET_ROWS = (
+    ("delta", "Delta", "USD", "delta_usd", "delta_usd", "cap_delta"),
+    ("vega", "Vega", "USD per vol point", "vega_usd_per_volpt", "vega_usd_per_volpt", "cap_vega"),
+    ("gamma", "Gamma", "USD per pip", "gamma_usd_per_pip", "gamma_usd_per_pip", "cap_gamma"),
+    ("notional", "Notional", "EUR", "notional_eur", "max_notional_eur", "cap_notional"),
+)
+# Failures that depend on the session at submit time, not on the trade: the
+# preview does not announce them.
+_SESSION_ONLY = frozenset({"account_type_mismatch", "risk_engine_stale", "surface_stale"})
+
+
+def budget_from_gate(result: GateResult) -> dict[str, Any]:
+    """The gate's verdict as the ticket shows it (#479): per limit, the cap,
+    the book before, the trade, the book after, and the share of the cap used
+    after the trade. Same numbers as the decision, because it IS the decision."""
+    d = result.details
+    caps = d.get("caps") or {}
+    book = d.get("book") or {}
+    trade = d.get("trade") or {}
+    post = d.get("post_trade") or {}
+    rows: list[dict[str, Any]] = []
+    for key, label, unit, value_key, cap_key, code in _BUDGET_ROWS:
+        cap = caps.get(cap_key)
+        after = post.get(value_key)
+        used = (abs(float(after)) / float(cap)) if (cap and after is not None and float(cap) > 0) else None
+        rows.append({
+            "key": key, "label": label, "unit": unit, "cap": cap,
+            "before": book.get(value_key) if key != "notional" else None,
+            "trade": trade.get(value_key), "after": after,
+            "used": round(used, 4) if used is not None else None,
+            "breached": code in result.failures,
+        })
+    return {
+        "rows": rows if caps else [],
+        "failures": [f for f in result.failures if f not in _SESSION_ONLY],
+        "details": {k: d[k] for k in ("book_unpriced", "book_unpriced_lines", "symbols", "allowed_symbols", "halt_reason") if k in d},
+    }
+
+
+async def preview_risk_budget(
+    db: AsyncSession, redis: aioredis.Redis | None, payload: dict[str, Any],
+) -> dict[str, Any]:
+    """The gate, run on a preview: what the trade would use of each limit and
+    which limits it would break. ``live_mode=False`` leaves out the checks
+    that only make sense at submit (account, heartbeat, surface age)."""
+    result = await run_pretrade_gate(db, redis, payload=payload, live_mode=False, log_refusal=False)
+    return budget_from_gate(result)

@@ -14,6 +14,7 @@ import { WsChip } from "../components/WsChip";
 import { OpenPositionsTable, type StructureCtx } from "../components/PositionsTable";
 import { PRODUCT_NAMES, formatStructLabel } from "../components/tradeGrouping";
 import { adaptIdent } from "../components/lineIdent";
+import { refusalText } from "../components/refusal";
 import { OrderBuilder } from "../components/OrderBuilder";
 import { TickerChart } from "../components/TickerChart";
 import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
@@ -21,7 +22,6 @@ import type { AccountState, Cash, Greeks, Position } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
-import { ApiError } from "../../api/client";
 import { cancelIbOrder, cancelTrade, closeContract, closeTrade, fetchSpotOrders, fetchStructuredPositions, fetchSubmitted, postSpotOrder, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
 import { adaptSpotOrders, spotLimitPrice } from "../data/live/spot";
 import { patchSpotOrderRows } from "../data/live/patch";
@@ -32,14 +32,9 @@ import { useNow } from "../../hooks/useNow";
 
 const GATE_TITLE = "write disabled — auth required (Phase 2)";
 
-function closeErr(e: unknown): string {
-  if (e instanceof ApiError) {
-    const detail = (e.body as { detail?: unknown } | null)?.detail;
-    if (typeof detail === "string") return detail;
-    return `broker/API error ${e.status}`;
-  }
-  return e instanceof Error ? e.message : "unknown error";
-}
+// Every reason the server gave, in words (components/refusal). It used to
+// print "broker/API error 504" for anything that was not a plain string.
+const closeErr = (e: unknown): string => refusalText(e);
 
 interface TradeTweaks {
   density: string;
@@ -972,6 +967,8 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
       qtyFilled: leg.qty_filled,
       legIdx: leg.leg_idx,
       state: leg.state,
+      // IB's own reason on a refused or cancelled order, not just the word.
+      ...(leg.rejection_text ? { note: leg.rejection_text } : {}),
     }));
   });
   const spotRows: BlotterRow[] = adaptSpotOrders(spotRowsRaw).map((r) => ({

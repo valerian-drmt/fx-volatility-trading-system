@@ -7,12 +7,12 @@
  * book impact, §3 skew flag, §4 bundled hedge, §5 premium reconciliation).
  * Same JSX / classNames / logic as the prototype — only types + ES modules added.
  */
+import { explainGateFailure, fmtBudget, refusalText } from "./refusal";
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtCcy, fmtCcySigned, gk$, pnlCls } from "./format";
 import { DATA, EMPTY_GREEKS, fmt } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
-import { ApiError } from "../../api/client";
 import { createTradePreview, submitTrade, type TradePreview } from "../../api/endpoints";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
@@ -99,24 +99,16 @@ export interface Prefill {
 // ({error, exception} unreachable / {error, status, body} failed) so the operator
 // sees the REAL cause ("IB Gateway not connected", "Connection refused") instead
 // of an opaque "502".
-function errMsg(e: unknown): string {
-  if (e instanceof ApiError) {
-    const detail = (e.body as { detail?: unknown } | null)?.detail;
-    if (typeof detail === "string") return detail;
-    if (detail && typeof detail === "object") {
-      const d = detail as { message?: unknown; error?: unknown; exception?: unknown; body?: unknown; status?: unknown };
-      if (typeof d.message === "string") return d.message;
-      const parts: string[] = [];
-      if (typeof d.error === "string") parts.push(d.error.replace(/_/g, " "));
-      if (typeof d.exception === "string") parts.push(d.exception);
-      else if (typeof d.body === "string" && d.body) parts.push(d.body);
-      else if (typeof d.status === "number") parts.push(`upstream ${d.status}`);
-      if (parts.length) return parts.join(" — ");
-    }
-    return `broker/API error ${e.status}`;
-  }
-  return e instanceof Error ? e.message : "unknown error";
-}
+// The keys the gate's details use for each budget row.
+const VALUE_KEY: Record<string, string> = {
+  delta: "delta_usd", vega: "vega_usd_per_volpt", gamma: "gamma_usd_per_pip", notional: "notional_eur",
+};
+const CAP_KEY: Record<string, string> = { ...VALUE_KEY, notional: "max_notional_eur" };
+
+// Every reason the server gave, in words. This used to keep the error name
+// only: a gate refusal with three limits and their numbers was printed as
+// "pretrade gate failed" (components/refusal, #478).
+const errMsg = (e: unknown): string => refusalText(e);
 
 // Client-side ESTIMATE of a structure's net greeks (a real BS greek needs the
 // write-gated /trade/preview). Toy sensitivity model, but every greek scales with
@@ -418,7 +410,12 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
       setBusy(false);
     }
   };
-  const canPlace = canWrite && server?.state === "valid_for_submit" && !busy;
+  // What the submit would refuse right now, known from the preview: a limit
+  // the trade breaks, a surface too old. Place is offered only when the
+  // submit can pass; the reasons are listed under the server's verdict.
+  const blockers = server?.submit_blockers ?? [];
+  const budget = server?.risk_budget ?? null;
+  const canPlace = canWrite && server?.state === "valid_for_submit" && blockers.length === 0 && !busy;
   const stateText = !canWrite ? "auth required" : busy && !server ? "pricing…" : (server?.state ?? "—");
   const stateCls = server?.state === "valid_for_submit" ? "pos" : server?.state ? "warn" : "dim";
 
@@ -701,6 +698,54 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
                 ))}
               </tbody>
             </table>
+
+            {/* The server's verdict on this trade: the limits, what the book
+                uses before and after, as the pre-trade gate will judge it.
+                These are the numbers the system books and limits; the table
+                above is the browser's estimate. */}
+            {budget && budget.rows.length > 0 && (
+              <table className="dt bi-table impact-table" data-testid="risk-budget">
+                <thead>
+                  <tr>
+                    <th className="l">Limit check <em className="unit mono">server</em></th>
+                    <th className="r">This trade</th><th className="r">Book before</th>
+                    <th className="r after-col">Book after</th><th className="r">Limit</th><th className="r">Used</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {budget.rows.map((r) => (
+                    <tr key={r.key} data-breached={r.breached || undefined}>
+                      <td className="l">{r.label} <em className="unit mono">{r.unit}</em></td>
+                      <td className="r mono">{fmtBudget(r, r.trade)}</td>
+                      <td className="r mono">{fmtBudget(r, r.before)}</td>
+                      <td className={"r mono after-col " + (r.breached ? "neg" : "")}>{fmtBudget(r, r.after)}</td>
+                      <td className="r mono dim">{fmtBudget(r, r.cap)}</td>
+                      <td className={"r mono " + (r.breached ? "neg" : r.used != null && r.used > 0.8 ? "warn" : "pos")}>
+                        {r.used == null ? "—" : Math.round(r.used * 100) + "%"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {blockers.length > 0 && (
+              <div className="ob-blocking mono small" data-testid="submit-blockers">
+                ⛔ This order would be refused:
+                <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                  {blockers.map((c) => (
+                    <li key={c}>
+                      {explainGateFailure(c, {
+                        ...(budget?.details ?? {}),
+                        caps: Object.fromEntries((budget?.rows ?? []).map((r) => [CAP_KEY[r.key] ?? r.key, r.cap])),
+                        post_trade: Object.fromEntries((budget?.rows ?? []).map((r) => [VALUE_KEY[r.key] ?? r.key, r.after])),
+                        surface_age_s: server?.surface_age_seconds,
+                        max_surface_age_s: server?.max_surface_age_seconds,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {/* delta-hedge bundle (no "Δ unhedged" row) */}
             {!isFut && (

@@ -26,7 +26,7 @@ from api.auth import require_write
 from api.config import get_settings
 from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.book_state_refresh import refresh_book_state
-from api.orchestration.pretrade_gate import run_pretrade_gate
+from api.orchestration.pretrade_gate import preview_risk_budget, run_pretrade_gate
 from api.schemas import route_models as rm
 from api.schemas.reads import BookState, RiskLimit
 from bus import keys
@@ -676,6 +676,8 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         "submit_blockers": (
             [] if is_surface_fresh(surface_age_s, limits.get("max_iv_data_age_seconds")) else ["surface_stale"]
         ),
+        # Filled just below: the gate's verdict on this trade (#479).
+        "risk_budget": None,
         # Where the surface came from (#328): live | synthetic. A synthetic
         # grid is a sandbox convenience; it never passes iv_data_fresh.
         "surface_source": surface_source,
@@ -686,6 +688,16 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         # forward when the FX market is closed).
         "spot": _spot_from_surface(surface),
     }
+
+    # 6b. The gate's verdict on this trade, on the preview (#479): the ticket
+    # shows the limits, what the trade uses of each, and what the submit
+    # would refuse, from the same function that decides at submit.
+    try:
+        budget = await preview_risk_budget(db, get_redis_client_or_none(), payload)
+        payload["risk_budget"] = budget
+        payload["submit_blockers"] = [*payload["submit_blockers"], *budget["failures"]]
+    except Exception:
+        logger.exception("preview_risk_budget_failed preview_id=%s", preview_id)
 
     # 7. Persist (audit)
     row = TradePreviewRow(
@@ -1367,6 +1379,8 @@ async def list_submitted_structures(
             "qty": int(o.qty or 0),
             "qty_filled": int(o.qty_filled or 0),
             "state": o.state,
+            # IB's own words when it refused or cancelled the order (#478).
+            "rejection_text": o.rejection_text,
         } for o in legs_rows]
         out.append({
             "id": s.id, "created_at": s.created_at, "structure_type": s.structure_type,
