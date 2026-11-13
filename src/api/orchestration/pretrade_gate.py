@@ -35,6 +35,69 @@ DEFAULT_WARN_FRACTION = 0.8
 DEFAULT_MAX_ORDER_CONTRACTS = 200.0
 
 
+# The limits a trader sets himself, in the ``risk`` config namespace. Absent =
+# no hard limit on that axis: the level the code derives is then only a
+# reference the trade may exceed with a confirmation.
+TRADER_LIMIT_KEYS = {
+    "delta": "hard_max_delta_usd",
+    "vega": "hard_max_vega_usd_per_volpt",
+    "gamma": "hard_max_gamma_usd_per_pip",
+    "notional": "hard_max_notional_eur",
+    "contracts": "hard_max_order_contracts",
+}
+
+
+def trader_limits(limits: dict[str, float]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for axis, key in TRADER_LIMIT_KEYS.items():
+        v = limits.get(key)
+        if v is not None and float(v) > 0:
+            out[axis] = float(v)
+    return out
+
+
+def _premium_to_pay(payload: dict[str, Any]) -> float | None:
+    """Premium and commission the whole order pays out; None for a credit.
+
+    ``pricing.premium_paid_usd`` is per unit of the structure and carries the
+    sign (+ = paid); ``costs.total_trade_cost_usd`` is the sized amount."""
+    try:
+        per_unit = float((payload.get("pricing") or {}).get("premium_paid_usd") or 0.0)
+        total = float((payload.get("costs") or {}).get("total_trade_cost_usd") or 0.0)
+    except (TypeError, ValueError):
+        return None
+    return total if (per_unit > 0 and total > 0) else None
+
+
+async def _account_funds(db: AsyncSession, spot: float | None = None) -> tuple[float | None, float | None]:
+    """(funds available, net liquidation) from the latest account snapshot;
+    (None, None) when there is none, and then nothing is concluded.
+
+    IB reports the snapshot in the account's base currency, which the row
+    does not record. The refusal must be a fact in either case, so the net
+    liquidation is taken at the larger of its two readings (as USD, or as EUR
+    converted at spot): a premium above it cannot be paid whatever the base."""
+    try:
+        from persistence.rollups import latest_account_row
+
+        row = await latest_account_row(db)
+    except Exception:
+        return None, None
+    if not row:
+        return None, None
+
+    def _num(v: Any) -> float | None:
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    net_liq = _num(row.get("net_liq_usd"))
+    if net_liq is not None and spot and spot > 1.0:
+        net_liq = net_liq * float(spot)
+    return _num(row.get("excess_liquidity")), net_liq
+
+
 def _allowed_symbols() -> tuple[str, ...]:
     return get_settings().allowed_symbols
 
@@ -185,6 +248,7 @@ async def run_pretrade_gate(
         caps = None
 
     spot = await _spot(redis, payload)
+    funds = await _account_funds(db, spot)
     meta = payload.get("surface_meta") or {}
     arb = meta.get("butterfly_ok")
     inputs = GateInputs(
@@ -210,6 +274,9 @@ async def run_pretrade_gate(
             if (leg.get("contract_type") or "") != "spot"
         ),
         max_order_contracts=float(limits.get("max_order_contracts", DEFAULT_MAX_ORDER_CONTRACTS)),
+        hard_limits=trader_limits(limits),
+        premium_to_pay_usd=_premium_to_pay(payload),
+        available_funds_usd=funds[0], net_liquidation_usd=funds[1],
     )
     result = evaluate_pretrade(inputs)
     if not result.passed and log_refusal:
@@ -230,7 +297,9 @@ _SESSION_ONLY = frozenset({"account_type_mismatch", "risk_engine_stale", "surfac
 
 
 def max_qty_within_limits(rows: list[dict[str, Any]], qty: int) -> int | None:
-    """The largest size of this same trade that stays inside every limit.
+    """The largest size of this same trade that stays inside every level
+    shown on the ticket (the trader's limit where there is one, the reference
+    level otherwise). A hint for sizing, not a rule.
 
     Greeks are linear in the size, so per limit: the book before, plus n
     times the trade's contribution per unit, must stay within the cap. 0 when
@@ -279,8 +348,12 @@ def budget_from_gate(result: GateResult, qty: int | None = None, hedged: bool = 
             "before": book.get(value_key) if key != "notional" else None,
             "trade": trade.get(value_key), "after": after,
             "used": round(used, 4) if used is not None else None,
+            # breached = over a limit the trader set: refused.
+            # over = over a reference level: allowed with a confirmation.
             "breached": code in result.failures,
-            "warning": f"warn_{key}" in result.warnings,
+            "over": f"over_{key}" in result.warnings,
+            "warning": f"warn_{key}" in result.warnings or f"over_{key}" in result.warnings,
+            "hard": key in (d.get("hard_limits") or []),
         })
     return {
         "rows": rows if caps else [],
@@ -289,7 +362,11 @@ def budget_from_gate(result: GateResult, qty: int | None = None, hedged: bool = 
         "max_qty": max_qty_within_limits(rows, qty) if (caps and qty) else None,
         "qty": qty,
         "failures": [f for f in result.failures if f not in _SESSION_ONLY],
-        "details": {k: d[k] for k in ("book_unpriced", "book_unpriced_lines", "symbols", "allowed_symbols", "halt_reason") if k in d},
+        "details": {k: d[k] for k in (
+            "book_unpriced", "book_unpriced_lines", "symbols", "allowed_symbols", "halt_reason",
+            "premium_to_pay_usd", "net_liquidation_usd", "available_funds_usd",
+            "order_contracts", "max_order_contracts", "hard_limits",
+        ) if k in d},
     }
 
 
@@ -310,13 +387,13 @@ async def preview_risk_budget(
 async def run_spot_order_gate(
     db: AsyncSession, redis: aioredis.Redis | None, *, side: str, qty_eur: float,
 ) -> GateResult:
-    """The pre-trade checks for a spot FX order (#491): the kill switch, the
-    book being priced, the delta limit on the book after the order, and the
-    notional limit. A spot order has delta only.
+    """The pre-trade checks for a spot FX order (#491): the kill switch, a
+    book that can be read, and the delta and notional limits the TRADER set,
+    if any. Levels the code derives never refuse (owner's rule, 2026-11-13).
 
     An order that brings the book's delta closer to zero is never refused by
     the delta limit: reducing risk must stay possible when the book is over
-    it. The spot ticket used to reach the broker with none of these checks.
+    it.
     """
     spot = await _spot(redis, {})
     signed_eur = float(qty_eur) if side.upper() == "BUY" else -float(qty_eur)

@@ -94,9 +94,12 @@ def test_two_levels_per_limit() -> None:
     assert not res.passed and res.failures == ["limits_need_confirmation"] and res.warnings == ["warn_vega"]
     confirmed = evaluate_pretrade(replace(warn, confirmed=True))
     assert confirmed.passed and confirmed.warnings == ["warn_vega"]
-    # over the limit: refused, confirmed or not
-    over = replace(_OK, trade=replace(_OK.trade, vega_usd_per_volpt=2_000.0), confirmed=True)
-    assert evaluate_pretrade(over).failures == ["cap_vega"]
+    # over a level the code derived: still the trader's call, with a confirmation
+    over = replace(_OK, trade=replace(_OK.trade, vega_usd_per_volpt=2_000.0))
+    assert evaluate_pretrade(over).failures == ["limits_need_confirmation"]
+    assert evaluate_pretrade(replace(over, confirmed=True)).passed
+    # over a limit the trader set himself: refused, confirmed or not
+    assert evaluate_pretrade(replace(over, confirmed=True, hard_limits={"vega": 1_888.0})).failures == ["cap_vega"]
 
 
 def test_the_largest_size_that_fits() -> None:
@@ -110,7 +113,9 @@ def test_the_largest_size_that_fits() -> None:
     ))
     budget = budget_from_gate(result, qty=40, hedged=True)
     assert budget["max_qty"] == 6
-    assert {r["key"]: r["breached"] for r in budget["rows"]} == {"delta": False, "vega": True, "gamma": True, "notional": False}
+    assert {r["key"]: r["over"] for r in budget["rows"]} == {"delta": False, "vega": True, "gamma": True, "notional": False}
+    assert not any(r["breached"] for r in budget["rows"]), "over a reference level, not refused"
+    assert budget["failures"] == []
     # a book already long vega leaves less room for more
     rows = [{"key": "vega", "cap": 1_888.0, "trade": 2_730.0, "before": 1_000.0}]
     assert max_qty_within_limits(rows, 10) == 3
@@ -219,12 +224,15 @@ async def test_a_trade_without_a_hedge_or_a_future_leg_is_left_alone(sqlite_sess
     assert await hedge_after_fill(sqlite_sessionmaker, ex, oid, now=NOW) is None and ex.placed == []
 
 
-def test_a_fat_finger_size_is_refused_whatever_the_book() -> None:
+def test_a_fat_finger_size_asks_for_a_confirmation_or_refuses_on_the_traders_limit() -> None:
     """#481: one order of more contracts than the per-order limit is refused
     before any risk arithmetic."""
     big = replace(_OK, order_contracts=500.0, max_order_contracts=200.0)
     res = evaluate_pretrade(big)
-    assert "cap_contracts" in res.failures and res.details["max_order_contracts"] == 200.0
+    assert res.failures == ["limits_need_confirmation"] and res.warnings == ["over_contracts"]
+    assert res.details["max_order_contracts"] == 200.0
+    hard = evaluate_pretrade(replace(big, hard_limits={"contracts": 300.0}, confirmed=True))
+    assert hard.failures == ["cap_contracts"] and hard.details["max_order_contracts"] == 300.0
     assert evaluate_pretrade(replace(_OK, order_contracts=40.0, max_order_contracts=200.0)).passed
     assert evaluate_pretrade(replace(_OK, order_contracts=500.0, max_order_contracts=None)).passed, "limit off"
 

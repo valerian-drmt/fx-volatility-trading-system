@@ -33,11 +33,17 @@ def _inputs(**over):
 
 
 def test_budget_rows_are_the_gate_numbers_of_the_refused_order() -> None:
-    budget = budget_from_gate(evaluate_pretrade(_inputs()))
+    budget = budget_from_gate(evaluate_pretrade(_inputs(confirmed=True)))
     rows = {r["key"]: r for r in budget["rows"]}
-    assert budget["failures"] == ["cap_delta", "cap_vega", "cap_gamma"]
+    assert budget["failures"] == [], "levels the code derived do not refuse"
+    assert [w for w in budget["warnings"] if w.startswith("over_")] == ["over_delta", "over_vega", "over_gamma"]
     assert rows["delta"]["cap"] == 90_645.12 and rows["delta"]["after"] == -2_575_628.94
-    assert rows["delta"]["used"] == pytest.approx(28.41, abs=0.01) and rows["delta"]["breached"] is True
+    assert rows["delta"]["used"] == pytest.approx(28.41, abs=0.01)
+    assert rows["delta"]["over"] is True and rows["delta"]["breached"] is False and rows["delta"]["hard"] is False
+    # the same trade against limits the trader set: refused
+    hard = budget_from_gate(evaluate_pretrade(_inputs(confirmed=True, hard_limits={"vega": 5_000.0})))
+    hrows = {r["key"]: r for r in hard["rows"]}
+    assert hard["failures"] == ["cap_vega"] and hrows["vega"]["breached"] is True and hrows["vega"]["cap"] == 5_000.0
     assert rows["vega"]["used"] == pytest.approx(5.79, abs=0.01)
     assert rows["notional"]["used"] == 1.0 and rows["notional"]["breached"] is False
     assert rows["notional"]["before"] is None, "notional is per order, there is no book notional"
@@ -55,12 +61,14 @@ def test_a_trade_inside_the_limits_shows_what_it_uses() -> None:
 
 
 def test_session_only_failures_are_not_announced_on_a_preview() -> None:
-    live = _inputs(live_mode=True, risk_heartbeat_age_s=None, ib_account_type=None, surface_age_s=None)
+    live = _inputs(live_mode=True, risk_heartbeat_age_s=None, ib_account_type=None, surface_age_s=None,
+                   hard_limits={"vega": 5_000.0}, confirmed=True)
     result = evaluate_pretrade(live)
     assert {"account_type_mismatch", "risk_engine_stale", "surface_stale"} <= set(result.failures)
-    assert budget_from_gate(result)["failures"] == ["cap_delta", "cap_vega", "cap_gamma"]
+    assert budget_from_gate(result)["failures"] == ["cap_vega"]
 
 
-def test_no_caps_means_no_rows_and_the_reason() -> None:
-    budget = budget_from_gate(evaluate_pretrade(_inputs(caps=None)))
-    assert budget["rows"] == [] and budget["failures"] == ["caps_unavailable"]
+def test_no_reference_levels_is_said_not_refused() -> None:
+    budget = budget_from_gate(evaluate_pretrade(_inputs(caps=None, confirmed=True)))
+    assert budget["failures"] == [] and "reference_limits_unavailable" in budget["warnings"]
+    assert all(r["cap"] is None and r["used"] is None for r in budget["rows"])

@@ -94,6 +94,7 @@ _OK = GateInputs(
 def test_gate_names_the_lines_it_could_not_price() -> None:
     assert evaluate_pretrade(_OK).passed
     res = evaluate_pretrade(replace(_OK, book=replace(_OK.book, n_priced=1, unpriced=("XYZ.ABC",))))
-    assert not res.passed and "book_partially_priced" in res.failures
+    # said, and it asks for a confirmation; it does not refuse (owner's rule)
+    assert res.failures == ["limits_need_confirmation"] and "book_partially_priced" in res.warnings
     assert res.details["book_unpriced"] == 1
     assert res.details["book_unpriced_lines"] == ["XYZ.ABC"]

@@ -27,18 +27,39 @@ export function explainGateFailure(code: string, details: unknown): string {
   const caps = dict(d.caps);
   const post = dict(d.post_trade);
   const over = (label: string, value: unknown, cap: unknown, unit: string): string =>
-    `${label} after the trade ${usd(value)}${unit}, limit ${usd(cap)}${unit}`;
+    `${label} after the trade ${usd(value)}${unit}, your limit ${usd(cap)}${unit}`;
+  const ref = (label: string, value: unknown, cap: unknown, unit: string): string =>
+    `${label} after the trade ${usd(value)}${unit}, above the reference level ${usd(cap)}${unit}`;
+  const near = (label: string, value: unknown, cap: unknown, unit: string): string =>
+    `${label} after the trade ${usd(value)}${unit}, close to the level ${usd(cap)}${unit}`;
+  const eur = (v: unknown): string => "€" + (Number(v) / 1e6).toFixed(2) + "M";
+  const num = (v: unknown): string => (Number.isFinite(Number(v)) ? String(Math.round(Number(v))) : "—");
   switch (code) {
+    // cap_*: a limit the trader set himself. The only limits that refuse.
     case "cap_delta": return over("Delta", post.delta_usd, caps.delta_usd, "");
     case "cap_vega": return over("Vega", post.vega_usd_per_volpt, caps.vega_usd_per_volpt, " per vol point");
     case "cap_gamma": return over("Gamma", post.gamma_usd_per_pip, caps.gamma_usd_per_pip, " per pip");
-    case "cap_notional": {
-      const eur = (v: unknown): string => "€" + (Number(v) / 1e6).toFixed(2) + "M";
-      return `Notional ${eur(post.notional_eur)}, limit ${eur(caps.max_notional_eur)}`;
-    }
+    case "cap_notional": return `Notional ${eur(post.notional_eur)}, your limit ${eur(caps.max_notional_eur)}`;
+    case "cap_contracts": return `${num(d.order_contracts)} contracts in one order, your limit ${num(d.max_order_contracts)}`;
+    case "insufficient_funds":
+      return `The premium to pay, ${usd(d.premium_to_pay_usd)}, is more than the account is worth (${usd(d.net_liquidation_usd)})`;
+    // over_* / warn_*: a level the system computed. Never a refusal.
+    case "over_delta": return ref("Delta", post.delta_usd, caps.delta_usd, "");
+    case "over_vega": return ref("Vega", post.vega_usd_per_volpt, caps.vega_usd_per_volpt, " per vol point");
+    case "over_gamma": return ref("Gamma", post.gamma_usd_per_pip, caps.gamma_usd_per_pip, " per pip");
+    case "over_notional": return `Notional ${eur(post.notional_eur)}, above the reference level ${eur(caps.max_notional_eur)}`;
+    case "over_contracts": return `${num(d.order_contracts)} contracts in one order, above the usual size (${num(d.max_order_contracts)})`;
+    case "warn_delta": return near("Delta", post.delta_usd, caps.delta_usd, "");
+    case "warn_vega": return near("Vega", post.vega_usd_per_volpt, caps.vega_usd_per_volpt, " per vol point");
+    case "warn_gamma": return near("Gamma", post.gamma_usd_per_pip, caps.gamma_usd_per_pip, " per pip");
+    case "warn_notional": return `Notional ${eur(post.notional_eur)}, close to the level ${eur(caps.max_notional_eur)}`;
+    case "warn_contracts": return `${num(d.order_contracts)} contracts in one order, close to the usual size (${num(d.max_order_contracts)})`;
+    case "over_available_funds":
+      return `The premium to pay, ${usd(d.premium_to_pay_usd)}, is above the funds available (${usd(d.available_funds_usd)}): the broker decides on margin`;
+    case "reference_limits_unavailable": return "No reference levels yet (no account history or no spot): nothing to compare the trade with";
     case "book_partially_priced": {
       const lines = Array.isArray(d.book_unpriced_lines) ? (d.book_unpriced_lines as unknown[]).join(", ") : "";
-      return `A held position has no delta, so the book cannot be checked${lines ? ` (${lines})` : ""}`;
+      return `A held position has no delta, so the book figures are incomplete${lines ? ` (${lines})` : ""}`;
     }
     case "trading_halted": return `Trading is halted${d.halt_reason ? `: ${String(d.halt_reason)}` : ""}`;
     case "halt_flag_unreadable": return "The kill switch could not be read";
@@ -54,7 +75,7 @@ export function explainGateFailure(code: string, details: unknown): string {
     case "caps_not_established": return "The limits are not established yet (no account history or no spot)";
     case "book_unavailable": return "The book could not be read";
     case "trade_greeks_unavailable": return "The trade's greeks are missing from the preview";
-    case "limits_need_confirmation": return "The trade is close to a limit and needs your confirmation";
+    case "limits_need_confirmation": return "The trade is above a reference level and needs your confirmation";
     case "preview_expired": return "The preview has expired: preview again";
     case "preview_already_actioned": return "This preview was already sent or cancelled";
     case "preview_state_not_valid": return "The preview is not valid for submit";
@@ -101,15 +122,17 @@ export interface BudgetRow {
   trade: number | null;
   after: number | null;
   used: number | null;
-  breached: boolean;
-  warning?: boolean; // inside the limit, above its warning share
+  breached: boolean; // over a limit the trader set: refused
+  over?: boolean; // over a level the system computed: allowed, with a confirmation
+  warning?: boolean; // over, or close to, that level
+  hard?: boolean; // the level shown is the trader's own limit
 }
 export interface RiskBudget {
   rows: BudgetRow[];
   failures: string[];
   details?: Dict;
   warnings?: string[];
-  max_qty?: number | null; // largest size of this trade inside every limit
+  max_qty?: number | null; // largest size of this trade inside every level shown
   qty?: number | null;
 }
 
