@@ -91,7 +91,8 @@ async def load_line_set(db: AsyncSession) -> LineSet:
             int(sid): int(n) for sid, n in (await db.execute(
                 select(StructureOrder.structure_id, func.count(StructureOrder.id))
                 .where(StructureOrder.structure_id.in_(trade_ids))
-                .where(StructureOrder.order_role == "entry")
+                .where(StructureOrder.order_role.in_(("entry", "hedge")))
+                .where(StructureOrder.state.notin_(("rejected", "cancelled")))
                 .group_by(StructureOrder.structure_id)
             )).all()
         }

@@ -115,7 +115,8 @@ async def close_trade(
     entry_legs = (await db.execute(
         select(StructureOrder)
         .where(StructureOrder.structure_id == trade_id)
-        .where(StructureOrder.order_role == "entry")
+        # the entries and the hedge the package put on with them (#482)
+        .where(StructureOrder.order_role.in_(("entry", "hedge")))
         .where(StructureOrder.qty_filled > 0)
         .order_by(StructureOrder.leg_idx)
     )).scalars().all()

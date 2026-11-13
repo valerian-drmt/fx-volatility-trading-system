@@ -31,6 +31,7 @@ from api.schemas import route_models as rm
 from api.schemas.reads import BookState, RiskLimit
 from bus import keys
 from core.contracts import build_ib_local_symbol
+from core.execution.package_hedge import plan_hedge
 from core.execution.revalidation import revalidate_preview
 from core.execution.slippage import compute_limit_price
 from core.products import product_label_from_symbol
@@ -108,6 +109,9 @@ class SubmitBody(BaseModel):
     """``POST /trade/submit`` (#300, audit 01#14): a preview id and the mode."""
     preview_id: str = Field(min_length=1, max_length=64)
     execution_mode: Literal["mock", "live"] = "mock"
+    # The trader has seen that the trade uses more than the warning share of
+    # a limit and confirms it (#481). Never lifts a hard limit.
+    confirm_limits: bool = False
 
 
 class PreviewRequest(BaseModel):
@@ -120,6 +124,9 @@ class PreviewRequest(BaseModel):
     tenor: str | None = Field(default=None, max_length=8)             # manual mode reference tenor
     tenor_far: str | None = Field(default=None, max_length=8)         # manual mode (calendar only)
     qty: int | None = Field(default=None, ge=1, le=1000)              # manual mode base_qty (contracts)
+    # Delta-hedge the structure as one package (#482): the futures are sized
+    # here, judged with the structure, and sent by the engine on each fill.
+    hedge: bool = False
     delta_pillar: str | None = Field(default=None, max_length=8)      # single-leg only : override pillar
     strike_override: float | None = Field(default=None, gt=0, lt=100) # single-leg only : override strike
     override_tenor: str | None = Field(default=None, max_length=8)
@@ -689,6 +696,13 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         "spot": _spot_from_surface(surface),
     }
 
+    # 6a. The package's hedge (#482), sized on the server's own delta.
+    payload["hedge"] = None
+    if req.hedge and any((leg.get("contract_type") or "") != "future" for leg in payload["structure"]["legs"]):
+        plan = plan_hedge(float(payload["greeks_net"]["delta_unhedged"]), float(payload.get("spot") or 0.0))
+        payload["hedge"] = plan.as_dict() if plan is not None else None
+        payload["greeks_net"]["delta_post_hedge"] = plan.residual_delta_usd if plan is not None else payload["greeks_net"]["delta_unhedged"]
+
     # 6b. The gate's verdict on this trade, on the preview (#479): the ticket
     # shows the limits, what the trade uses of each, and what the submit
     # would refuse, from the same function that decides at submit.
@@ -696,6 +710,7 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         budget = await preview_risk_budget(db, get_redis_client_or_none(), payload)
         payload["risk_budget"] = budget
         payload["submit_blockers"] = [*payload["submit_blockers"], *budget["failures"]]
+        payload["needs_confirmation"] = bool(budget["warnings"])
     except Exception:
         logger.exception("preview_risk_budget_failed preview_id=%s", preview_id)
 
@@ -843,6 +858,7 @@ async def _submit_preview_impl(
     preview_id = body.get("preview_id")
     if not preview_id:
         raise HTTPException(400, "preview_id required")
+    confirm_limits = bool(body.get("confirm_limits"))
 
     # execution_mode : 'mock' (default — synthetic fills, no IB) or 'live'
     # ('live' currently no-ops past the gating check ; real ib_async wiring
@@ -979,8 +995,15 @@ async def _submit_preview_impl(
     # cap + the notional cap on the POST-trade book. Every reason at once.
     gate = await run_pretrade_gate(
         db, get_redis_client_or_none(), payload=payload, live_mode=(execution_mode == "live"),
-        surface_age_s=surface_age,
+        surface_age_s=surface_age, confirmed=confirm_limits,
     )
+    if gate.passed and gate.warnings:
+        # Who took the trade into the warning zone, and on which limits.
+        db.add(TradeEvent(
+            structure_id=None, event_type="limits_confirmed", severity="warning",
+            description=("limits confirmed: " + ", ".join(gate.warnings))[:450],
+            payload={"preview_id": preview_id, "warnings": gate.warnings, "details": gate.details},
+        ))
     if not gate.passed:
         db.add(TradeEvent(
             structure_id=None, event_type="submission_blocked",

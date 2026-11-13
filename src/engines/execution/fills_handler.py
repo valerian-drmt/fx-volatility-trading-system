@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -296,6 +297,31 @@ async def _persist_fill(
         if agg.fully_filled:
             await maybe_complete_structure(sm, structure_id)
         await settle_book(sm, order_id)
+        await _run_post_fill_hooks(sm, order_id)
+
+
+# What must follow a booked fill and needs more than the database: the engine
+# registers the package hedger here (it holds the IB connection, this module
+# does not). A hook never breaks the fill path: the fill is already booked.
+PostFillHook = Callable[[async_sessionmaker[AsyncSession], int], Awaitable[Any]]
+_POST_FILL_HOOKS: list[PostFillHook] = []
+
+
+def register_post_fill_hook(hook: PostFillHook) -> None:
+    if hook not in _POST_FILL_HOOKS:
+        _POST_FILL_HOOKS.append(hook)
+
+
+def clear_post_fill_hooks() -> None:
+    _POST_FILL_HOOKS.clear()
+
+
+async def _run_post_fill_hooks(sm: async_sessionmaker[AsyncSession], order_id: int) -> None:
+    for hook in list(_POST_FILL_HOOKS):
+        try:
+            await hook(sm, order_id)
+        except Exception:
+            logger.exception("post_fill_hook_failed order_id=%s", order_id)
 
 
 async def settle_book(sm: async_sessionmaker[AsyncSession], order_id: int) -> None:

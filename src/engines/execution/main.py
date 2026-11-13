@@ -24,7 +24,7 @@ from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys
-from engines.execution.fills_handler import attach_fill_handlers
+from engines.execution.fills_handler import attach_fill_handlers, register_post_fill_hook
 from engines.execution.halt_guard import cancel_all_open, require_not_halted
 from engines.execution.hedge_executor import HedgeSubmitError, submit_hedge_order
 from engines.execution.ib_heartbeat import (
@@ -49,6 +49,7 @@ from engines.execution.order_executor import (
     trade_to_dict,
 )
 from engines.execution.order_reconciler import reconcile_loop, reconcile_stuck_orders
+from engines.execution.package_hedge import hedge_after_fill
 from engines.execution.placement import (
     claim_submit,
     manual_order_ref,
@@ -222,6 +223,9 @@ async def lifespan(app: FastAPI):
     reconcile_pos_task = spawn_supervised(
         lambda: reconcile_positions_loop(sm, executor), name="position_reconcile_loop", engine=_ENGINE,
     )
+    # Package hedge (#482): after each booked option fill, bring the trade's
+    # futures hedge to the share of the options that has filled.
+    register_post_fill_hook(lambda _sm, oid: hedge_after_fill(_sm, executor, oid))
     # Contract lifecycle (#463): an expired contract closes its book legs, a
     # trade whose legs are all flat is closed. Guarded by account_is_reporting.
     lifecycle_task = spawn_supervised(
