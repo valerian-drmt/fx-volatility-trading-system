@@ -196,7 +196,7 @@ async def test_create_preview_from_free_legs(monkeypatch):
             from sqlalchemy import select
             row = (await db.execute(select(TradePreviewRow))).scalar_one()
             assert row.structure_type == "long strangle"
-            assert row.product_label == "long strangle"
+            assert row.product_label == "Strangle"
     finally:
         await engine.dispose()
 

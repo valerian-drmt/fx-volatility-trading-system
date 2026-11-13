@@ -86,36 +86,24 @@ _OK = GateInputs(
 )
 
 
-def test_two_levels_per_limit() -> None:
+def test_only_a_limit_the_trader_set_refuses() -> None:
     assert evaluate_pretrade(_OK).passed and evaluate_pretrade(_OK).warnings == []
-    # 85 % of the vega limit: allowed only with a confirmation
-    warn = replace(_OK, trade=replace(_OK.trade, vega_usd_per_volpt=1_600.0))
-    res = evaluate_pretrade(warn)
-    assert not res.passed and res.failures == ["limits_need_confirmation"] and res.warnings == ["warn_vega"]
-    confirmed = evaluate_pretrade(replace(warn, confirmed=True))
-    assert confirmed.passed and confirmed.warnings == ["warn_vega"]
-    # over a level the code derived: still the trader's call, with a confirmation
-    over = replace(_OK, trade=replace(_OK.trade, vega_usd_per_volpt=2_000.0))
-    assert evaluate_pretrade(over).failures == ["limits_need_confirmation"]
-    assert evaluate_pretrade(replace(over, confirmed=True)).passed
-    # over a limit the trader set himself: refused, confirmed or not
-    assert evaluate_pretrade(replace(over, confirmed=True, hard_limits={"vega": 1_888.0})).failures == ["cap_vega"]
+    over = replace(_OK, trade=replace(_OK.trade, vega_usd_per_volpt=2_000_000.0))
+    res = evaluate_pretrade(over)
+    assert res.passed and res.warnings == [], "no level of the application's own, no confirmation"
+    assert evaluate_pretrade(replace(over, hard_limits={"vega": 1_888.0})).failures == ["cap_vega"]
 
 
-def test_the_largest_size_that_fits() -> None:
-    # 40 contracts: vega 10,927 for a limit of 1,888 -> 6 contracts fit (273 each)
-    result = evaluate_pretrade(replace(
-        _OK, confirmed=True,
-        trade=TradeGreeks(delta_usd=-30_000.0, vega_usd_per_volpt=10_927.32, gamma_usd_per_pip=5_875.6,
-                          notional_eur=5_000_000.0),
-        caps=Caps(delta_usd=90_645.12, vega_usd_per_volpt=1_888.44, gamma_usd_per_pip=1_018.33,
-                  max_notional_eur=5_000_000.0),
-    ))
-    budget = budget_from_gate(result, qty=40, hedged=True)
-    assert budget["max_qty"] == 6
-    assert {r["key"]: r["over"] for r in budget["rows"]} == {"delta": False, "vega": True, "gamma": True, "notional": False}
-    assert not any(r["breached"] for r in budget["rows"]), "over a reference level, not refused"
-    assert budget["failures"] == []
+def test_a_size_is_suggested_only_against_the_traders_own_limit() -> None:
+    trade = TradeGreeks(delta_usd=-30_000.0, vega_usd_per_volpt=10_927.32, gamma_usd_per_pip=5_875.6,
+                        notional_eur=5_000_000.0)
+    free = budget_from_gate(evaluate_pretrade(replace(_OK, trade=trade)), qty=40, hedged=True)
+    assert free["max_qty"] is None and free["failures"] == [] and free["warnings"] == []
+    assert all(r["cap"] is None and not r["breached"] for r in free["rows"])
+    # the trader typed a vega limit of 1,888: 40 contracts at 273 each -> 6 fit
+    own = budget_from_gate(evaluate_pretrade(replace(_OK, trade=trade, hard_limits={"vega": 1_888.44})),
+                           qty=40, hedged=True)
+    assert own["failures"] == ["cap_vega"] and own["max_qty"] == 6
     # a book already long vega leaves less room for more
     rows = [{"key": "vega", "cap": 1_888.0, "trade": 2_730.0, "before": 1_000.0}]
     assert max_qty_within_limits(rows, 10) == 3
@@ -224,17 +212,12 @@ async def test_a_trade_without_a_hedge_or_a_future_leg_is_left_alone(sqlite_sess
     assert await hedge_after_fill(sqlite_sessionmaker, ex, oid, now=NOW) is None and ex.placed == []
 
 
-def test_a_fat_finger_size_asks_for_a_confirmation_or_refuses_on_the_traders_limit() -> None:
-    """#481: one order of more contracts than the per-order limit is refused
-    before any risk arithmetic."""
+def test_the_size_of_an_order_is_the_traders_decision() -> None:
     big = replace(_OK, order_contracts=500.0, max_order_contracts=200.0)
     res = evaluate_pretrade(big)
-    assert res.failures == ["limits_need_confirmation"] and res.warnings == ["over_contracts"]
-    assert res.details["max_order_contracts"] == 200.0
-    hard = evaluate_pretrade(replace(big, hard_limits={"contracts": 300.0}, confirmed=True))
+    assert res.passed and res.warnings == [] and res.details["max_order_contracts"] is None
+    hard = evaluate_pretrade(replace(big, hard_limits={"contracts": 300.0}))
     assert hard.failures == ["cap_contracts"] and hard.details["max_order_contracts"] == 300.0
-    assert evaluate_pretrade(replace(_OK, order_contracts=40.0, max_order_contracts=200.0)).passed
-    assert evaluate_pretrade(replace(_OK, order_contracts=500.0, max_order_contracts=None)).passed, "limit off"
 
 
 class _Reporting(_Executor):

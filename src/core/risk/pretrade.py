@@ -133,54 +133,43 @@ def evaluate_pretrade(i: GateInputs) -> GateResult:
         f.append("surface_arbitrage")
 
     # ── Limits (owner's rule, 2026-11-13) ───────────────────────────────────
-    # The TRADER decides what the desk may hold. A level this code derives
-    # (from the account's size, from a default) is a REFERENCE: going over it
-    # asks for a confirmation, recorded with the trade, and never refuses.
-    # Only a limit the trader set himself (``hard_limits``) refuses, and so do
-    # concrete facts: trading halted, the wrong account, data that cannot be
-    # used, a premium the account cannot pay.
+    # The application is not the trader. It computes no limit, no reference
+    # level, no suggested size, and asks for no confirmation. What stops an
+    # order is the market and the account: trading halted, the wrong account,
+    # data that cannot be used, a premium the account cannot pay, and the
+    # broker's own answer. The one exception is a limit the trader typed in
+    # himself (``hard_limits``); none exists unless he sets it. ``i.caps``
+    # (levels derived from the account's size) is not read here.
     hard = dict(i.hard_limits or {})
 
-    def _check(axis: str, value: float, reference: float | None) -> None:
+    def _check(axis: str, value: float) -> None:
         limit = hard.get(axis)
         if limit is not None and abs(value) > limit:
             f.append(f"cap_{axis}")
-            return
-        if reference is None or reference <= 0:
-            return
-        if abs(value) > reference:
-            w.append(f"over_{axis}")
-        elif abs(value) > reference * i.warn_fraction:
-            w.append(f"warn_{axis}")
 
-    # 5b. The size of this one order.
+    # 5b. The size of this one order, against the trader's own limit if any.
     if i.order_contracts is not None:
         d["order_contracts"] = i.order_contracts
-        d["max_order_contracts"] = hard.get("contracts", i.max_order_contracts)
-        _check("contracts", i.order_contracts, i.max_order_contracts)
+        d["max_order_contracts"] = hard.get("contracts")
+        _check("contracts", i.order_contracts)
 
-    # 5c. A premium larger than the whole account cannot be paid: a fact, not
-    #     a judgement. Above the funds available it is a warning; the broker
-    #     has the last word on margin.
+    # 5c. A premium larger than the whole account cannot be paid: a fact.
+    #     Margin is the broker's decision and is left to the broker.
     if i.premium_to_pay_usd is not None and i.premium_to_pay_usd > 0:
         d["premium_to_pay_usd"] = round(i.premium_to_pay_usd, 2)
         if i.net_liquidation_usd is not None and i.premium_to_pay_usd > i.net_liquidation_usd:
             f.append("insufficient_funds")
             d["net_liquidation_usd"] = round(i.net_liquidation_usd, 2)
-        elif i.available_funds_usd is not None and i.premium_to_pay_usd > i.available_funds_usd:
-            w.append("over_available_funds")
-            d["available_funds_usd"] = round(i.available_funds_usd, 2)
 
-    # 6. The book after the trade, against the limits.
+    # 6. The book after the trade: shown on the ticket, judged only against
+    #    the trader's own limits.
     if i.book is None:
         f.append("book_unavailable")
     elif i.trade is None:
         f.append("trade_greeks_unavailable")
     else:
         if i.book.n_priced < i.book.n_positions:
-            # The book's greeks are short of a position: the figures below are
-            # incomplete. Said, not refused: the trader may still trade.
-            w.append("book_partially_priced")
+            # information for the ticket: the book figures miss a position
             d["book_unpriced"] = i.book.n_positions - i.book.n_priced
             d["book_unpriced_lines"] = list(i.book.unpriced)
         post_delta = i.book.delta_usd + i.trade.delta_usd
@@ -198,27 +187,15 @@ def evaluate_pretrade(i: GateInputs) -> GateResult:
             "delta_usd": round(post_delta, 2), "vega_usd_per_volpt": round(post_vega, 2),
             "gamma_usd_per_pip": round(post_gamma, 2), "notional_eur": round(i.trade.notional_eur, 2),
         }
-        ref_delta = i.caps.delta_usd if i.caps is not None else None
-        ref_vega = i.caps.vega_usd_per_volpt if i.caps is not None else None
-        ref_gamma = i.caps.gamma_usd_per_pip if i.caps is not None else None
-        ref_notional = i.caps.max_notional_eur if i.caps is not None else None
-        # what each row is compared with: the trader's limit when there is one
+        # the trader's own limits, None where he set none
         d["caps"] = {
-            "delta_usd": hard.get("delta", round(ref_delta, 2) if ref_delta else None),
-            "vega_usd_per_volpt": hard.get("vega", round(ref_vega, 2) if ref_vega else None),
-            "gamma_usd_per_pip": hard.get("gamma", round(ref_gamma, 2) if ref_gamma else None),
-            "max_notional_eur": hard.get("notional", ref_notional),
+            "delta_usd": hard.get("delta"), "vega_usd_per_volpt": hard.get("vega"),
+            "gamma_usd_per_pip": hard.get("gamma"), "max_notional_eur": hard.get("notional"),
         }
         d["hard_limits"] = sorted(hard)
-        if i.caps is None or (ref_delta or 0) <= 0 or (ref_vega or 0) <= 0 or (ref_gamma or 0) <= 0:
-            # no account history or no spot yet: there is no reference to show
-            w.append("reference_limits_unavailable")
-        _check("delta", post_delta, ref_delta)
-        _check("vega", post_vega, ref_vega)
-        _check("gamma", post_gamma, ref_gamma)
-        _check("notional", i.trade.notional_eur, ref_notional)
+        _check("delta", post_delta)
+        _check("vega", post_vega)
+        _check("gamma", post_gamma)
+        _check("notional", i.trade.notional_eur)
 
-    d["warn_fraction"] = i.warn_fraction
-    if w and not i.confirmed:
-        f.append("limits_need_confirmation")
     return GateResult(passed=not f, failures=f, details=d, warnings=w)
