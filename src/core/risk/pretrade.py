@@ -66,6 +66,10 @@ class GateInputs:
     # or not.
     warn_fraction: float = 0.8
     confirmed: bool = False
+    # Fat-finger limit (#481): the size of ONE order, whatever the book. A
+    # mistyped quantity is refused before any risk arithmetic. None = off.
+    order_contracts: float | None = None
+    max_order_contracts: float | None = None
 
 
 @dataclass(frozen=True)
@@ -120,6 +124,15 @@ def evaluate_pretrade(i: GateInputs) -> GateResult:
     # 5. Static-arbitrage flag from the surface meta: explicit False refuses.
     if i.arb_ok is False:
         f.append("surface_arbitrage")
+
+    # 5b. Fat-finger: contracts in this one order.
+    if (
+        i.order_contracts is not None and i.max_order_contracts is not None
+        and i.order_contracts > i.max_order_contracts
+    ):
+        f.append("cap_contracts")
+        d["order_contracts"] = i.order_contracts
+        d["max_order_contracts"] = i.max_order_contracts
 
     # 6. Caps on the POST-trade book, every axis, plus notional.
     if i.caps is None:

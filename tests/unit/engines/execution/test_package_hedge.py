@@ -217,3 +217,61 @@ async def test_a_trade_without_a_hedge_or_a_future_leg_is_left_alone(sqlite_sess
     async with sqlite_sessionmaker() as db:
         _, oid = await _package(db, hedge=False, filled=40)
     assert await hedge_after_fill(sqlite_sessionmaker, ex, oid, now=NOW) is None and ex.placed == []
+
+
+def test_a_fat_finger_size_is_refused_whatever_the_book() -> None:
+    """#481: one order of more contracts than the per-order limit is refused
+    before any risk arithmetic."""
+    big = replace(_OK, order_contracts=500.0, max_order_contracts=200.0)
+    res = evaluate_pretrade(big)
+    assert "cap_contracts" in res.failures and res.details["max_order_contracts"] == 200.0
+    assert evaluate_pretrade(replace(_OK, order_contracts=40.0, max_order_contracts=200.0)).passed
+    assert evaluate_pretrade(replace(_OK, order_contracts=500.0, max_order_contracts=None)).passed, "limit off"
+
+
+class _Reporting(_Executor):
+    def is_connected(self) -> bool:
+        return True
+
+    def account_is_reporting(self) -> bool:
+        return True
+
+
+async def test_a_failed_hedge_is_retried_without_another_fill(sqlite_sessionmaker: Any) -> None:
+    """#482: a fully filled trade has no further fill to wait for. The sweep
+    brings its hedge to where the fills say it should be."""
+    from engines.execution.package_hedge import hedge_sweep
+
+    async with sqlite_sessionmaker() as db:
+        sid, oid = await _package(db, filled=40)
+        (await db.get(TradeStructure, sid)).created_at = NOW
+        await db.commit()
+    failed = _Reporting(fail=True)
+    assert (await hedge_after_fill(sqlite_sessionmaker, failed, oid, now=NOW))["placed"] == 0
+
+    ok = _Reporting()
+    out = await hedge_sweep(sqlite_sessionmaker, ok, now=NOW)
+    assert out == {"trades": 1, "placed": 19}
+    assert (await hedge_sweep(sqlite_sessionmaker, ok, now=NOW))["placed"] == 0, "nothing more once it is on"
+
+    class _Dead(_Executor):
+        def is_connected(self) -> bool:
+            return True
+
+        def account_is_reporting(self) -> bool:
+            return False
+
+    assert await hedge_sweep(sqlite_sessionmaker, _Dead(), now=NOW) == {"skipped": "account_not_reporting"}
+
+
+def test_the_features_that_are_not_ready_are_off() -> None:
+    """#493: auto-exit would strand positions in `closing` and the monitor's
+    hedges have no expiry, no status handling and no line in the blotter.
+    Both must stay off until they are finished or removed."""
+    import inspect
+
+    from api.config import Settings
+    from api.orchestration.position_monitor import PositionMonitorScheduler
+
+    assert Settings.model_fields["EXIT_AUTO_EXECUTE_ENABLED"].default == "false"
+    assert inspect.signature(PositionMonitorScheduler.__init__).parameters["execute_hedge"].default is False

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -34,6 +34,7 @@ from engines.execution.live_submit import order_ref as structure_order_ref
 from engines.execution.order_executor import OrderRequest
 from engines.execution.placement import claim_submit, stamp_placement
 from persistence.models import StructureOrder, TradeEvent, TradePreviewRow, TradeStructure
+from persistence.order_state import end_order
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +131,7 @@ async def hedge_after_fill(
         except Exception as e:
             row = await db.get(StructureOrder, hedge_id)
             if row is not None:
-                row.state = "rejected"
-                row.state_updated_at = now
-                row.rejected_at = now
-                row.rejection_text = f"hedge not placed: {e}"[:300]
+                await end_order(db, row, "rejected", reason=f"hedge not placed: {e}", now=now)
             db.add(TradeEvent(
                 structure_id=structure_id, order_id=hedge_id,
                 event_type="package_hedge_failed", severity="critical",
@@ -156,3 +154,52 @@ async def hedge_after_fill(
             structure_id, side, need, month, target,
         )
         return {"structure_id": structure_id, "target": target, "in_place": in_place, "placed": need, "order_id": hedge_id}
+
+
+HEDGE_RETRY_INTERVAL_S = 60.0
+# Trades younger than this are looked at: an older trade whose hedge is still
+# short is an operator matter (the critical event was raised when it failed).
+HEDGE_RETRY_WINDOW = timedelta(days=2)
+
+
+async def hedge_sweep(
+    sm: async_sessionmaker[AsyncSession], executor: Any, *, now: datetime | None = None,
+) -> dict[str, Any]:
+    """Bring every recent package's hedge to where its fills say it should
+    be. The hedge is placed on a fill; when that placement failed (IB not
+    answering, the contract not resolved) nothing tried again until another
+    fill arrived, and a fully filled trade has no other fill to wait for."""
+    if not executor.is_connected() or not executor.account_is_reporting():
+        return {"skipped": "account_not_reporting"}
+    now = now or datetime.now(UTC)
+    async with sm() as db:
+        rows = (await db.execute(
+            select(func.min(StructureOrder.id))
+            .join(TradeStructure, TradeStructure.id == StructureOrder.structure_id)
+            .where(TradeStructure.preview_id.is_not(None))
+            .where(TradeStructure.state.in_(("submitted", "fully_filled", "partial_fail")))
+            .where(TradeStructure.created_at >= now - HEDGE_RETRY_WINDOW)
+            .where(StructureOrder.order_role == "entry")
+            .where(StructureOrder.contract_type != "future")
+            .where(StructureOrder.qty_filled > 0)
+            .group_by(StructureOrder.structure_id)
+        )).scalars().all()
+    placed = 0
+    for order_id in rows:
+        out = await hedge_after_fill(sm, executor, int(order_id), now=now)
+        placed += int((out or {}).get("placed") or 0)
+    return {"trades": len(rows), "placed": placed}
+
+
+async def hedge_retry_loop(
+    sm: async_sessionmaker[AsyncSession], executor: Any, *, interval_s: float = HEDGE_RETRY_INTERVAL_S,
+) -> None:
+    while True:
+        try:
+            await hedge_sweep(sm, executor)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("hedge_retry_loop_error")
+        await asyncio.sleep(interval_s)
+

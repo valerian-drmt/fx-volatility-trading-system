@@ -33,6 +33,7 @@ from core.execution.reaper_policy import (
     REAPABLE_STATES,
     decide_reap,
 )
+from engines.execution.fills_handler import _lock_for
 from engines.execution.order_reconciler import _leg_matches_position
 from engines.execution.settings import get_execution_settings
 from persistence.models import (
@@ -209,9 +210,14 @@ async def reap_stale_orders(
                         "age_seconds": age_s, "ib_order_id": o.ib_order_id,
                     },
                 ))
-                # The order, the leg it reserved, and its trade, in one place (#489).
-                if await end_order(db, o, "expired", now=now):
-                    expired_ids.append(int(o.id))
+                # The order, the leg it reserved, and its trade, in one place
+                # (#489), under the order's own lock and on its state NOW: a
+                # fill or a cancel handled since this pass read the row wins
+                # (#485). The reaper used to write over it.
+                async with _lock_for(int(o.id)):
+                    await db.refresh(o)
+                    if o.state in REAPABLE_STATES and await end_order(db, o, "expired", now=now):
+                        expired_ids.append(int(o.id))
 
         await db.commit()
 

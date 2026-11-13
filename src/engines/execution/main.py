@@ -49,7 +49,7 @@ from engines.execution.order_executor import (
     trade_to_dict,
 )
 from engines.execution.order_reconciler import reconcile_loop, reconcile_stuck_orders
-from engines.execution.package_hedge import hedge_after_fill
+from engines.execution.package_hedge import hedge_after_fill, hedge_retry_loop
 from engines.execution.placement import (
     claim_submit,
     manual_order_ref,
@@ -226,6 +226,9 @@ async def lifespan(app: FastAPI):
     # Package hedge (#482): after each booked option fill, bring the trade's
     # futures hedge to the share of the options that has filled.
     register_post_fill_hook(lambda _sm, oid: hedge_after_fill(_sm, executor, oid))
+    hedge_retry_task = spawn_supervised(
+        lambda: hedge_retry_loop(sm, executor), name="hedge_retry_loop", engine=_ENGINE,
+    )
     # Contract lifecycle (#463): an expired contract closes its book legs, a
     # trade whose legs are all flat is closed. Guarded by account_is_reporting.
     lifecycle_task = spawn_supervised(
@@ -250,9 +253,9 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         ib_watchdog_stop.set()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, ib_watchdog_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, hedge_retry_task, ib_watchdog_task):
             task.cancel()
-        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, ib_watchdog_task):
+        for task in (sync_task, heartbeat_task, stuck_task, reconcile_task, reaper_task, reconcile_pos_task, lifecycle_task, hedge_retry_task, ib_watchdog_task):
             try:
                 await task
             except asyncio.CancelledError:

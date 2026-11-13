@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_NOTIONAL_EUR = 5_000_000.0
 DEFAULT_MAX_RISK_HEARTBEAT_AGE_S = 30.0
 DEFAULT_WARN_FRACTION = 0.8
+DEFAULT_MAX_ORDER_CONTRACTS = 200.0
 
 
 def _allowed_symbols() -> tuple[str, ...]:
@@ -204,6 +205,11 @@ async def run_pretrade_gate(
         arb_ok=arb if isinstance(arb, bool) else None,
         warn_fraction=float(limits.get("limit_warn_fraction", DEFAULT_WARN_FRACTION)),
         confirmed=confirmed,
+        order_contracts=sum(
+            abs(float(leg.get("qty") or 0)) for leg in ((payload.get("structure") or {}).get("legs") or [])
+            if (leg.get("contract_type") or "") != "spot"
+        ),
+        max_order_contracts=float(limits.get("max_order_contracts", DEFAULT_MAX_ORDER_CONTRACTS)),
     )
     result = evaluate_pretrade(inputs)
     if not result.passed and log_refusal:
