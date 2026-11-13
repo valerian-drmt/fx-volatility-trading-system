@@ -52,8 +52,13 @@ REAPER_TAU_STALE_S = get_execution_settings().REAPER_TAU_STALE_S
 # IB order statuses that mean the order is still WORKING. A resting limit that
 # hasn't filled (e.g. a thin OTM wing) is neither held nor dead — the reaper must
 # leave it alone (spec §6.2 `if at_ib: continue`).
+# "Inactive" is an order IB HOLDS (outside trading hours, a price cap): it is
+# at the broker and can fill when the hold lifts. "PendingCancel" is a cancel
+# asked and not yet confirmed. Neither was in this list, so a held order was
+# expired after five minutes and its reservation freed while it could still
+# fill (#485).
 _LIVE_IB_STATUSES = frozenset(
-    {"Submitted", "PreSubmitted", "PendingSubmit", "ApiPending"}
+    {"Submitted", "PreSubmitted", "PendingSubmit", "ApiPending", "Inactive", "PendingCancel"}
 )
 
 

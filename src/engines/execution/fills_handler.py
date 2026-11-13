@@ -108,6 +108,15 @@ def attach_fill_handlers(
         )
 
 
+async def _release_reservation(db: AsyncSession, order: StructureOrder) -> None:
+    """A close that died no longer holds the leg it was closing (#487). Only a
+    fill and the reaper used to release it: a close cancelled or rejected by
+    IB left the leg looking partly reserved."""
+    if order.order_role == "closing" and order.closes_order_id is not None:
+        await db.flush()
+        await recompute_reservation(db, entry_order_id=int(order.closes_order_id))
+
+
 async def _on_order_status(
     trade: Any, order_id: int,
     sm: async_sessionmaker[AsyncSession],
@@ -168,11 +177,13 @@ async def _on_order_status(
                 _audit(db, order, "order_rejected", "error",
                        f"ib status={status} reason={order.rejection_text}", {"old_state": old_state})
                 ws_event = {"event_type": "order_rejected", "reason": order.rejection_text}
+                await _release_reservation(db, order)
             elif tr.new_state == "cancelled":
                 order.state = "cancelled"
                 _audit(db, order, "order_cancelled", "warning",
                        f"ib status={status}", {"old_state": old_state})
                 ws_event = {"event_type": "order_cancelled"}
+                await _release_reservation(db, order)
             # Filled is handled in _on_execution after fill aggregates ; we
             # don't transition here to avoid races (tr.kind == fill_pending).
             await db.commit()
@@ -273,6 +284,14 @@ async def _persist_fill(
                    f"qty={agg.qty_filled} avg={agg.avg_fill_price}",
                    {"slippage_per_contract": agg.slippage_per_contract})
             full_fill = True
+        elif not agg.fully_filled and order.state in ("cancelled", "rejected", "expired"):
+            # A fill on a row that already ended (cancelled after a partial
+            # fill, or expired by the reaper while IB still had it): the
+            # execution is booked and the leg rebuilt, the row stays ended.
+            # It used to go back to partially_filled, the reaper expired it
+            # again five minutes later, and so on.
+            _audit(db, order, "fill_on_ended_order", "warning",
+                   f"fill of {qty} booked on an order already {order.state}", {"state": order.state})
         elif not agg.fully_filled:
             order.state = "partially_filled"
         # Keep the forward projection (the book) current: this leg's position is
@@ -481,6 +500,9 @@ async def _on_combo_status(
     filled by real per-leg executions are skipped."""
     try:
         status = getattr(trade.orderStatus, "status", "")
+        if is_notice_cancel(trade):
+            logger.info("combo_status_notice_ignored order_ids=%s ib_status=%s", order_ids, status)
+            return
         reason = ib_reason_from_trade(trade)
         probe = next_state("submitted", status, has_error_reason=reason is not None)
         if probe.kind == "fill_pending":

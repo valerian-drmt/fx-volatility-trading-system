@@ -396,8 +396,13 @@ function ClosePanel({
 
   // Real close → IB paper account. Contract = one leg (OpenPosition.id, partial
   // via qty); trade = every leg sharing the trade_id. Parent refreshes on poll.
+  // A synchronous guard, like the spot ticket: React state is set on the
+  // next render, so two clicks in the same frame both passed the busy
+  // check and sent two closes (#486).
+  const closingRef = useRef(false);
   const onExec = async (): Promise<void> => {
-    if (!sel || !canWrite || busy) return;
+    if (!sel || !canWrite || busy || closingRef.current) return;
+    closingRef.current = true;
     setBusy(true);
     setErr(null);
     const label = type === "contract"
@@ -422,6 +427,7 @@ function ClosePanel({
       setErr(m);
       onOrder({ action: "close", label, side: "—", qty: oqty, state: "rejected", note: m });
     } finally {
+      closingRef.current = false;
       setBusy(false);
     }
   };

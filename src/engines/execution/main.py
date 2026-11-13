@@ -573,6 +573,27 @@ async def cancel_order(
         raise HTTPException(status_code=503, detail=str(e)) from e
 
 
+@router.delete("/orders/by-ref/{structure_id}/{db_order_id}")
+async def cancel_order_by_ref(
+    structure_id: int,
+    db_order_id: int,
+    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
+    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+) -> dict[str, Any]:
+    """Cancel an order by the reference it was sent with (#487). 404 when IB
+    has no open order carrying it: the order is then not working there."""
+    ref = structure_order_ref(structure_id, db_order_id)
+    payload = {"order_ref": ref}
+    try:
+        result = await ex.cancel_order_by_ref(ref)
+    except OrderExecutorUnavailable as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"no open order with ref {ref}")
+    await _log_event(sm, action_type="CANCEL", request_payload=payload, response_payload=result, success=True)
+    return result
+
+
 @router.get("/orders")
 async def list_orders(ex: Annotated[OrderExecutor, Depends(_executor_dep)]) -> dict[str, Any]:
     orders = await ex.list_open_orders()

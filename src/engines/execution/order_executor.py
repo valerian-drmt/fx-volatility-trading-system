@@ -427,6 +427,18 @@ class OrderExecutor:
                 return trade_to_dict(t)
         return None
 
+    async def cancel_order_by_ref(self, order_ref: str) -> dict[str, Any] | None:
+        """Cancel the open order carrying this ``orderRef``. For a row that
+        never got its IB id back (a placement that timed out): the reference
+        was stamped on the order before it left, so the order can be found
+        without the id. None when no open order carries it."""
+        ib = self._ensure()
+        for t in ib.openTrades():
+            if (getattr(t.order, "orderRef", None) or "") == order_ref:
+                ib.cancelOrder(t.order)
+                return trade_to_dict(t)
+        return None
+
     async def close_position(
         self, con_id: int, limit_price: float, *, order_ref: str | None = None,
     ) -> dict[str, Any]:
@@ -447,6 +459,7 @@ class OrderExecutor:
         order = LimitOrder(side, qty, limit_price)
         if order_ref:
             order.orderRef = order_ref
+        order.tif = DEFAULT_TIF
         trade = ib.placeOrder(target.contract, order)
         return trade_to_dict(trade)
 

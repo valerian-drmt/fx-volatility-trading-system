@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from engines.execution.order_executor import DEFAULT_TIF
 from engines.execution.placement import AlreadyClaimed, hedge_order_ref, place_with_claim
 from persistence.models import HedgeOrder
 from shared.tasks import log_task_result
@@ -107,6 +108,7 @@ async def submit_hedge_order(
             raise HedgeSubmitError("no valid limit price for hedge order")
 
         ib_order = LimitOrder(hedge.side, hedge.hedge_qty, lmt)
+        ib_order.tif = DEFAULT_TIF
         # Claim the row, stamp the durable key, place, stamp the ids (#318):
         # a replayed POST /internal/hedge can no longer place a second future.
         # Nothing is pending on ``db`` here, so the helper's own transactions
