@@ -2313,6 +2313,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trade/refusals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Refusals
+         * @description Orders OUR checks refused before they reached the broker, newest first
+         *     (#478): the pre-trade gate, the revalidation, the spot gate. Each carries
+         *     the codes and the numbers that were returned to the ticket, so a refusal
+         *     is still readable after a page reload. "Refused" is ours; "rejected" is
+         *     the broker's and lives on the order.
+         */
+        get: operations["list_refusals_api_v1_trade_refusals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/trade/spot-orders": {
         parameters: {
             query?: never;
@@ -10790,6 +10814,48 @@ export interface operations {
             };
         };
     };
+    list_refusals_api_v1_trade_refusals_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_spot_orders_api_v1_trade_spot_orders_get: {
         parameters: {
             query?: {
@@ -10970,7 +11036,10 @@ export interface operations {
     };
     cancel_trade_api_v1_trades__trade_id__cancel_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description cancel this one leg only */
+                order_id?: number | null;
+            };
             header?: never;
             path: {
                 trade_id: number;

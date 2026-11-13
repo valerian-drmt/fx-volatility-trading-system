@@ -1315,6 +1315,33 @@ async def _submit_preview_impl(
     }
 
 
+@router.get("/refusals")
+async def list_refusals(db: DbDep, limit: int = Query(20, ge=1, le=100)) -> list[dict[str, Any]]:
+    """Orders OUR checks refused before they reached the broker, newest first
+    (#478): the pre-trade gate, the revalidation, the spot gate. Each carries
+    the codes and the numbers that were returned to the ticket, so a refusal
+    is still readable after a page reload. "Refused" is ours; "rejected" is
+    the broker's and lives on the order."""
+    rows = (await db.execute(
+        select(TradeEvent).where(TradeEvent.event_type == "submission_blocked")
+        .order_by(desc(TradeEvent.ts)).limit(limit)
+    )).scalars().all()
+    out: list[dict[str, Any]] = []
+    for e in rows:
+        p = e.payload or {}
+        kind, _, tail = (e.description or "").partition(":")
+        failures = p.get("failures")
+        if not isinstance(failures, list):
+            failures = [tail.strip()] if tail.strip() else []
+        out.append({
+            "id": int(e.id), "ts": e.ts, "kind": kind.strip(), "failures": failures,
+            # the gate nests its numbers under "details"; the revalidation's payload IS the details
+            "details": p.get("details") if isinstance(p.get("details"), dict) else p,
+            "preview_id": p.get("preview_id"),
+        })
+    return out
+
+
 @router.get("/submitted", response_model=list[rm.TradeSubmittedRow], response_model_exclude_unset=True)
 async def list_submitted_structures(
     db: DbDep, limit: int = Query(50, ge=1, le=500),
@@ -1404,6 +1431,7 @@ async def list_submitted_structures(
             "state": o.state,
             # IB's own words when it refused or cancelled the order (#478).
             "rejection_text": o.rejection_text,
+            "order_id": int(o.id),   # so one leg can be cancelled, not the whole trade (#487)
         } for o in legs_rows]
         out.append({
             "id": s.id, "created_at": s.created_at, "structure_type": s.structure_type,

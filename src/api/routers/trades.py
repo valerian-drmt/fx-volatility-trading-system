@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -188,7 +188,10 @@ async def close_trade(
 
 
 @router.post("/{trade_id}/cancel", response_model=rm.TradeCancelResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
-async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
+async def cancel_trade(
+    trade_id: int, db: DbDep,
+    order_id: int | None = Query(None, ge=1, description="cancel this one leg only"),
+) -> dict[str, Any]:
     """Cancel every non-terminal order of ``trade_id`` at IB, then terminalise the
     structure. Frees a stuck 'submitted' trade in two ways :
 
@@ -207,12 +210,19 @@ async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
     if struct is None:
         raise HTTPException(404, f"trade #{trade_id} not found")
 
-    orders = (await db.execute(
+    if not isinstance(order_id, int):
+        order_id = None
+    stmt = (
         select(StructureOrder)
         .where(StructureOrder.structure_id == trade_id)
         .where(StructureOrder.state.in_(_CANCELLABLE_STATES))
         .order_by(StructureOrder.leg_idx)
-    )).scalars().all()
+    )
+    if order_id is not None:
+        # One leg (#487): the Cancel on a leg row used to cancel every working
+        # leg of the trade.
+        stmt = stmt.where(StructureOrder.id == order_id)
+    orders = (await db.execute(stmt)).scalars().all()
 
     now = datetime.now(UTC)
     results: list[dict[str, Any]] = []

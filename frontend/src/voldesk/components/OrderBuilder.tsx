@@ -7,7 +7,7 @@
  * book impact, §3 skew flag, §4 bundled hedge, §5 premium reconciliation).
  * Same JSX / classNames / logic as the prototype — only types + ES modules added.
  */
-import { explainGateFailure, fmtBudget, refusalText } from "./refusal";
+import { explainGateFailure, fmtBudget, isRecordedRefusal, refusalText } from "./refusal";
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtCcy, fmtCcySigned, gk$, pnlCls } from "./format";
@@ -168,7 +168,7 @@ export interface BuilderState {
 }
 
 // Callback shape matches TradeView's OrderRecord (kept local to avoid a view↔component import cycle).
-type OrderLog = (rec: { action: "open" | "close"; label: string; side: string; qty: number; state: "sent" | "rejected"; note?: string }) => void;
+type OrderLog = (rec: { action: "open" | "close"; label: string; side: string; qty: number; state: "sent" | "rejected"; note?: string; recorded?: boolean }) => void;
 
 interface OrderBuilderProps {
   prefill?: Prefill | null;
@@ -313,9 +313,15 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   ].filter(Boolean).join(" · ") || "—";
   const net = useMemo(() => previewGreeks(legs, mult, spotMid), [legs, mult, spotMid]);
 
-  const commission = Math.round(legs.length * qty * 2.1);
-  const isCredit = net.cost < 0; // SELL-heavy structures take in premium
-  const premiumAbs = Math.abs(net.cost);
+  // Once a preview exists the ticket shows what the SERVER priced: premium,
+  // commission, and below the greeks the gate judges (#479). The browser's
+  // model is only the sketch before a preview, and for the two greeks the
+  // server does not send (vanna, volga), which are then labelled estimates.
+  const srvPremium = server?.pricing?.premium_paid_usd;
+  const srvCommission = server?.costs?.commission_usd;
+  const commission = srvCommission != null ? Math.round(srvCommission) : Math.round(legs.length * qty * 2.1);
+  const isCredit = srvPremium != null ? srvPremium < 0 : net.cost < 0; // SELL-heavy structures take in premium
+  const premiumAbs = srvPremium != null ? Math.abs(srvPremium) : Math.abs(net.cost);
   const naked = meta.naked(side); // a sold leg with no long cover → unbounded tail
   // A future is already delta-one — you don't delta-hedge it with another future,
   // so the bundle is disabled for futures (also hidden in the UI).
@@ -342,13 +348,20 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const g = trade.data?.greeks ?? EMPTY_GREEKS;
   const kfmt = (x: number): string => fmt.sgn(x, 1) + "k"; // $k greeks — 1 dp so small values don't collapse to "+0k"
   const netCash = (isCredit ? premiumAbs : -premiumAbs) - totalCommission;
+  const srv = (key: string): { val: number; before: number; after: number } | null => {
+    const r = server?.risk_budget?.rows.find((x) => x.key === key);
+    return r && r.trade != null && r.after != null ? { val: r.trade, before: r.before ?? 0, after: r.after } : null;
+  };
+  const srvTheta = typeof server?.greeks_net?.theta_usd_per_day === "number" ? server.greeks_net.theta_usd_per_day : null;
+  const est = server ? " (est.)" : "";
+  const dS = srv("delta"), gS = srv("gamma"), vS = srv("vega");
   const impactRows = [
-    { name: "Delta", unit: "USD", val: effDelta, before: g.netDelta, after: g.netDelta + effDelta, f: gk$ },
-    { name: "Gamma", unit: "USD/pip", val: net.g, before: g.netGamma, after: g.netGamma + net.g, f: gk$ },
-    { name: "Vega", unit: "$/vp", val: net.v, before: g.netVega, after: g.netVega + net.v, f: gk$ },
-    { name: "Theta", unit: "$/day", val: net.t, before: g.netTheta, after: g.netTheta + net.t, f: gk$ },
-    { name: "Vanna", unit: "$k/vp·fig", val: net.vn, before: g.netVanna, after: g.netVanna + net.vn, f: kfmt },
-    { name: "Volga", unit: "$k/vp", val: net.vg, before: g.netVolga, after: g.netVolga + net.vg, f: kfmt },
+    { name: "Delta", unit: "USD", ...(dS ?? { val: effDelta, before: g.netDelta, after: g.netDelta + effDelta }), f: gk$ },
+    { name: "Gamma", unit: "USD/pip", ...(gS ?? { val: net.g, before: g.netGamma, after: g.netGamma + net.g }), f: gk$ },
+    { name: "Vega", unit: "$/vp", ...(vS ?? { val: net.v, before: g.netVega, after: g.netVega + net.v }), f: gk$ },
+    { name: "Theta", unit: "$/day", val: srvTheta ?? net.t, before: g.netTheta, after: g.netTheta + (srvTheta ?? net.t), f: gk$ },
+    { name: "Vanna" + est, unit: "$k/vp·fig", val: net.vn, before: g.netVanna, after: g.netVanna + net.vn, f: kfmt },
+    { name: "Volga" + est, unit: "$k/vp", val: net.vg, before: g.netVolga, after: g.netVolga + net.vg, f: kfmt },
   ];
 
   // report the live structure up so the Indicators pre-trade check reads the SAME engine (state, not signal)
@@ -395,7 +408,9 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
     } catch (e) {
       const m = errMsg(e);
       setErr(m);
-      onOrder?.({ action: "open", label, side, qty, state: "rejected", note: m });
+      // A refusal by our own checks is recorded by the server; the blotter
+      // reads it back from there ("refused"), so it is not added from memory.
+      onOrder?.({ action: "open", label, side, qty, state: "rejected", note: m, recorded: isRecordedRefusal(e) });
     } finally {
       setBusy(false);
     }

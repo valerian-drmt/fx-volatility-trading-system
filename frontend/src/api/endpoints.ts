@@ -249,6 +249,7 @@ export interface TradePreview {
   state: string;                         // "valid_for_submit" | "blocked" | …
   blocking_reasons?: string[];
   structure?: { type?: string };
+  costs?: { commission_usd?: number; total_trade_cost_usd?: number };
   pricing?: {
     premium_paid_usd?: number;
     max_loss_usd?: number;
@@ -291,6 +292,7 @@ export interface SubmittedLeg {
   qty_filled: number; // filled so far
   state: string; // per-leg order state
   rejection_text?: string | null; // IB's reason when it refused or cancelled the order
+  order_id?: number; // trade_order id, to cancel this leg only
 }
 export interface SubmittedTrade {
   id: number;
@@ -369,8 +371,25 @@ export const closeTrade = (tradeId: number) =>
   apiPost<Record<string, unknown>>(`/api/v1/trades/${tradeId}/close`, {});
 
 /** Cancel every non-terminal order of a trade at IB + terminalise the structure. */
-export const cancelTrade = (structureId: number) =>
-  apiPost<Record<string, unknown>>(`/api/v1/trades/${structureId}/cancel`, {});
+/** Cancel a trade's working orders, or one leg of it (`orderId`). IB's
+ * confirmation ends the order; `cancel_requested` counts the ones still
+ * waiting for it. */
+export const cancelTrade = (structureId: number, orderId?: number) =>
+  apiPost<{ cancelled?: number; cancel_requested?: number }>(
+    `/api/v1/trades/${structureId}/cancel`, {}, orderId != null ? { query: { order_id: orderId } } : undefined,
+  );
+
+/** Orders our own checks refused before the broker (gate, revalidation). */
+export interface Refusal {
+  id: number;
+  ts: string;
+  kind: string;
+  failures: string[];
+  details: Record<string, unknown> | null;
+  preview_id?: string | null;
+}
+export const fetchRefusals = (limit = 20) =>
+  apiGet<Refusal[]>("/api/v1/trade/refusals", { query: { limit } });
 
 // Dev / system
 export const fetchDevEngines = () => apiGet<Get<"/api/v1/dev/engines", 200>>("/api/v1/dev/engines");

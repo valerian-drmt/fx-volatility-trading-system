@@ -14,7 +14,7 @@ import { WsChip } from "../components/WsChip";
 import { OpenPositionsTable, type StructureCtx } from "../components/PositionsTable";
 import { PRODUCT_NAMES, formatStructLabel } from "../components/tradeGrouping";
 import { adaptIdent } from "../components/lineIdent";
-import { refusalText } from "../components/refusal";
+import { refusalLine, refusalText } from "../components/refusal";
 import { OrderBuilder } from "../components/OrderBuilder";
 import { TickerChart } from "../components/TickerChart";
 import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
@@ -22,7 +22,7 @@ import type { AccountState, Cash, Greeks, Position } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import { WRITE_ENABLED } from "../data/writeEnabled";
 import { useAuthStore } from "../../store/authStore";
-import { cancelIbOrder, cancelTrade, closeContract, closeTrade, fetchSpotOrders, fetchStructuredPositions, fetchSubmitted, postSpotOrder, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
+import { cancelIbOrder, cancelTrade, closeContract, closeTrade, fetchRefusals, fetchSpotOrders, fetchStructuredPositions, fetchSubmitted, postSpotOrder, type Refusal, type StructuredPositions, type SubmittedLeg, type SubmittedTrade } from "../../api/endpoints";
 import { adaptSpotOrders, spotLimitPrice } from "../data/live/spot";
 import { patchSpotOrderRows } from "../data/live/patch";
 import { useFetch } from "../../hooks/useFetch";
@@ -49,6 +49,7 @@ export interface OrderRecord {
   qty: number;
   state: "sent" | "rejected";
   note?: string;
+  recorded?: boolean; // the server keeps this refusal (/trade/refusals): not kept in memory too
 }
 interface BlotterRow {
   id: string;
@@ -67,6 +68,7 @@ interface BlotterRow {
   qtyTotal?: number; // total contracts (this leg, or the whole structure for 1-row entries)
   legIdx?: number; // leg position — keeps a structure's leg rows contiguous + ordered
   groupWaiting?: boolean; // is ANY leg of this structure still working (for the sort)
+  orderId?: number; // trade_order id of this leg: Cancel acts on it alone
   state: string; // "sent"/"rejected" (session) or the DB state ("active", "closed", …)
   note?: string;
 }
@@ -107,7 +109,8 @@ const fmtBlotterTs = (d: Date): string =>
 // still working, so it must be caught by the orange rule before the green one.
 function stateTone(s: string): string {
   const t = s.toLowerCase();
-  if (/reject|cancel|fail|error|block|expire/.test(t)) return "rejected";        // red
+  if (/reject|refus|cancelled|fail|error|block|expire/.test(t)) return "rejected"; // red
+  if (/cancelling/.test(t)) return "pending";                                    // orange: asked, not confirmed
   if (/partial|submit|pending|presubmit|sent|acknowledg|working/.test(t)) return "pending"; // orange
   if (/fill|open|active|live|done|settled|closed/.test(t)) return "filled";      // green
   return "pending";
@@ -892,10 +895,16 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   const structureCtx = structRows.ctx;
   const [rejects, setRejects] = useState<BlotterRow[]>([]);
   const [cancelling, setCancelling] = useState<Set<number>>(new Set());
+  // Cancels IB accepted and has not confirmed: "o<order id>" or "s<trade id>".
+  const [cancelAsked, setCancelAsked] = useState<Set<string>>(new Set());
+  // Orders our own checks refused, read from the server so they survive a reload.
+  const refusals = useFetch<Refusal[]>(() => fetchRefusals(20), 120_000, true, 60_000);
   const canWrite = useAuthStore((s) => s.authenticated) || WRITE_ENABLED;
   const seq = useRef(0);
   const addOrder = (rec: OrderRecord): void => {
-    if (rec.state === "rejected") {
+    if (rec.state === "rejected" && rec.recorded) {
+      refusals.reload();   // the server has it: read it back
+    } else if (rec.state === "rejected") {
       // eslint-disable-next-line react-hooks/purity -- event handler (an order came back), not render
       const now = Date.now();
       setRejects((prev) => [{
@@ -914,10 +923,15 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
   };
   // Cancel a stuck order/structure at IB + terminalise it, then refresh the
   // blotter + positions. Failures surface as a session reject row.
-  const onCancelOrder = async (structureId: number): Promise<void> => {
+  const onCancelOrder = async (structureId: number, orderId?: number): Promise<void> => {
     setCancelling((s) => new Set(s).add(structureId));
     try {
-      await cancelTrade(structureId);
+      const out = await cancelTrade(structureId, orderId);
+      // IB took the request and has not confirmed yet: the row reads
+      // "cancelling" until its state changes (#487).
+      if ((out.cancel_requested ?? 0) > 0) {
+        setCancelAsked((s) => new Set(s).add(orderId != null ? `o${orderId}` : `s${structureId}`));
+      }
       submitted.reload();
       structured.reload();    // the position's "closing" tag
       reloadTrade();
@@ -972,6 +986,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
       qtyTotal: leg.qty,
       qtyFilled: leg.qty_filled,
       legIdx: leg.leg_idx,
+      ...(leg.order_id != null ? { orderId: leg.order_id } : {}),
       state: leg.state,
       // IB's own reason on a refused or cancelled order, not just the word.
       ...(leg.rejection_text ? { note: leg.rejection_text } : {}),
@@ -1008,7 +1023,20 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     const t = setTimeout(reloadSubmitted, 300);
     return () => clearTimeout(t);
   }, [ordersStream.asOf, reloadSubmitted]);
-  const orders = [...rejects, ...dbRows, ...spotRows]
+  // Refused by our own checks before the broker: "refused", with the reasons.
+  // "Rejected" is kept for the broker refusing an order.
+  const refusedRows: BlotterRow[] = asArray(refusals.data).map((r) => ({
+    id: "b" + r.id,
+    ts: fmtBlotterTs(new Date(r.ts)),
+    tsSort: Date.parse(r.ts) || 0,
+    action: "open" as const,
+    role: "entry",
+    label: r.kind.replace(/_/g, " "),
+    qty: 0,
+    state: "refused",
+    note: refusalLine(r.failures, r.details),
+  }));
+  const orders = [...rejects, ...refusedRows, ...dbRows, ...spotRows]
     .sort((a, b) => {
       // working structures first, newest-first; a structure's legs stay together
       // (same structureId) and in leg order.
@@ -1119,7 +1147,11 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
                           : o.qty}
                       </td>
                       <td>
-                        <span className={"ord-state " + tone} title={`state: ${o.state}`}>{orderStateLabel(o.state)}</span>
+                        <span className={"ord-state " + tone} title={`state: ${o.state}`}>
+                          {isWaitingState(o.state) && (cancelAsked.has(`o${o.orderId}`) || cancelAsked.has(`s${o.structureId}`))
+                            ? "cancelling"
+                            : orderStateLabel(o.state)}
+                        </span>
                         {stale && (
                           <span className="ord-stale mono" title="working > 10 min with no fill — review or cancel">
                             ⏱ {fmtAge(ageMs)}
@@ -1141,8 +1173,8 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
                           <button
                             className="row-close"
                             disabled={cancelling.has(o.structureId)}
-                            title="Cancel this order at IB and terminalise the trade"
-                            onClick={() => o.structureId != null && onCancelOrder(o.structureId)}
+                            title="Cancel this order at IB"
+                            onClick={() => o.structureId != null && onCancelOrder(o.structureId, o.orderId)}
                           >
                             {cancelling.has(o.structureId) ? "…" : "Cancel"}
                           </button>

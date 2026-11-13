@@ -118,3 +118,18 @@ export const fmtBudget = (row: BudgetRow, v: number | null): string => {
   if (row.key === "notional") return "€" + (v / 1e6).toFixed(2) + "M";
   return usd(v);
 };
+
+/** True when the server recorded this refusal itself (`/trade/refusals`):
+ * the blotter reads it from there, so it survives a reload and is not added
+ * a second time from memory. */
+export function isRecordedRefusal(e: unknown): boolean {
+  if (!(e instanceof ApiError)) return false;
+  const err = dict((e.body as { detail?: unknown } | null)?.detail).error;
+  return err === "pretrade_gate_failed" || err === "revalidation_failed";
+}
+
+/** One line for a refusal read back from the server. */
+export function refusalLine(failures: string[], details: unknown): string {
+  return failures.map((c) => explainGateFailure(c, details)).join(" · ");
+}
+
