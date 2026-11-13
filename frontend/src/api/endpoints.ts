@@ -367,8 +367,13 @@ export const closeContract = (positionId: number, qty: number) =>
   apiPost<Record<string, unknown>>(`/api/v1/positions/${positionId}/close`, { qty });
 
 /** Close every open leg of a trade (OpenPosition.trade_id). */
+export interface TradeCloseResult {
+  closed_legs?: number;
+  failed_legs?: number;
+  legs?: { local_symbol?: string; ok?: boolean; error?: string }[];
+}
 export const closeTrade = (tradeId: number) =>
-  apiPost<Record<string, unknown>>(`/api/v1/trades/${tradeId}/close`, {});
+  apiPost<TradeCloseResult>(`/api/v1/trades/${tradeId}/close`, {});
 
 /** Cancel every non-terminal order of a trade at IB + terminalise the structure. */
 /** Cancel a trade's working orders, or one leg of it (`orderId`). IB's

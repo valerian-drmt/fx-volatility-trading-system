@@ -470,6 +470,7 @@ class OrderExecutor:
         limit_price: float | None = None,
         *,
         order_ref: str | None = None,
+        limit_is_operator: bool = False,
     ) -> Any:
         """Submit a reverse order closing ``qty`` contracts of the live
         IB position matching ``local_symbol``.
@@ -532,7 +533,8 @@ class OrderExecutor:
             # touch even on a wide spread — this is what fills easiest. Only fall
             # back to the API's mark-based limit when IB returns no quote (common on
             # paper), and to a market order only if we have neither.
-            lp = await _marketable_close_price(ib, contract, side)
+            # The operator's own limit is the price: it is never re-priced.
+            lp = limit_price if (limit_is_operator and limit_price) else await _marketable_close_price(ib, contract, side)
             if lp is None:
                 lp = limit_price
             order = LimitOrder(side, close_qty, lp) if lp else MarketOrder(side, close_qty)

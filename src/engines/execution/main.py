@@ -484,6 +484,10 @@ class ClosePositionBySymbolBody(BaseModel):
     # limit_price=None ⇒ MarketOrder (default for closes). Explicit value
     # ⇒ LimitOrder (operator override).
     limit_price: float | None = Field(default=None, gt=0)
+    # True when the operator typed ``limit_price``: it is then sent as it is.
+    # False: it is the api's estimate off the mark, and the engine replaces it
+    # with the live quote when it has one.
+    limit_is_operator: bool = False
     # Optional DB ``trade_order.id`` so the execution-engine can wire
     # fills_handler callbacks (status / execution events → DB updates).
     # When omitted, the close still goes through to IB but qty_filled
@@ -694,6 +698,7 @@ async def close_position_by_symbol(
                 qty=body.qty,
                 limit_price=body.limit_price,
                 order_ref=order_ref,
+                limit_is_operator=body.limit_is_operator,
             )
         except Exception:
             if body.db_order_id is not None:

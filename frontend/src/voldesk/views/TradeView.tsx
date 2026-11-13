@@ -418,7 +418,19 @@ function ClosePanel({
         onClosing(String(contractId));
       } else {
         if (!tradeId || Number.isNaN(Number(tradeId))) throw new Error("no backend trade id for this trade");
-        await closeTrade(Number(tradeId));
+        const out = await closeTrade(Number(tradeId));
+        // The answer is 200 even when legs failed: a half-closed trade must
+        // not read "Close submitted" (#492).
+        const failed = out.failed_legs ?? 0;
+        if (failed > 0) {
+          const closed = out.closed_legs ?? 0;
+          if (closed > 0) onClosing("t:" + String(tradeId));
+          throw new Error(
+            closed > 0
+              ? `only ${closed} of ${closed + failed} legs are closing: ${failed} could not be sent. The trade is partly closed.`
+              : `none of the ${failed} legs could be sent`,
+          );
+        }
         onClosing("t:" + String(tradeId));
       }
       onOrder({ action: "close", label, side: "—", qty: oqty, state: "sent" });

@@ -243,3 +243,14 @@ def test_every_engine_route_that_places_an_order_is_known_and_guarded() -> None:
     api_orders = (ROOT / "src/api/routers/orders.py").read_text(encoding="utf-8")
     assert "run_spot_order_gate(" in api_orders and "raise HTTPException(410" in api_orders
     assert "run_pretrade_gate(" in (ROOT / "src/api/routers/trade.py").read_text(encoding="utf-8")
+
+
+def test_a_close_keeps_the_operator_limit_and_records_the_price_sent() -> None:
+    """#492: the engine replaced any close limit, including one the operator
+    typed, with the live quote, and the row kept the api's guess."""
+    executor = (ROOT / "src/engines/execution/order_executor.py").read_text(encoding="utf-8")
+    assert "limit_price if (limit_is_operator and limit_price) else await _marketable_close_price(" in executor
+    api = (ROOT / "src/api/routers/positions.py").read_text(encoding="utf-8")
+    assert 'payload["limit_is_operator"] = limit_price_override is not None' in api
+    assert 'closing_order.limit_price = float(sent_price)' in api
+

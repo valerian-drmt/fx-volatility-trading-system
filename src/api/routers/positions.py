@@ -1261,6 +1261,9 @@ async def close_one_open_position(
     }
     if limit_price is not None:
         payload["limit_price"] = limit_price
+        # A limit the operator typed is sent as typed (#492). The engine used
+        # to replace it with the live quote, like the automatic price.
+        payload["limit_is_operator"] = limit_price_override is not None
     exec_url = get_settings().EXECUTION_URL
     url = f"{exec_url}/internal/positions/close-by-symbol"
     try:
@@ -1334,6 +1337,12 @@ async def close_one_open_position(
         closing_order.ib_perm_id = str(perm_id)
     closing_order.state = "submitted"
     closing_order.submitted_at = datetime.now(UTC)
+    # The row says what was SENT (#492): the engine prices an option close off
+    # the live quote, so the price at the broker is its answer, not our guess.
+    sent_price = ib_response.get("limit_price")
+    if isinstance(sent_price, (int, float)) and sent_price > 0:
+        closing_order.limit_price = float(sent_price)
+        closing_order.order_type = "LMT"
     await db.commit()
 
     return {
