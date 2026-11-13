@@ -103,7 +103,27 @@ def test_opposite_trades_on_one_contract_cancel_and_only_the_residual_is_a_line(
     assert [(ln.line_id, ln.book_qty, ln.status) for ln in lines] == [("6EZ6|T63", -13, BOOK_ONLY)]
     # fully offsetting trades leave no line at all
     assert build_lines([BookLot("6EZ6", 1, 1, 5), BookLot("6EZ6", 2, 2, -5)], []) == []
-    # the residual is what is matched against the broker
+    # when the lots add up to what the broker holds, the book is right: every
+    # trade keeps its own lot, long or short
     held = build_lines(lots, [BrokerHolding("6EZ6", -13, 7)])
-    assert [(ln.line_id, ln.status) for ln in held] == [("6EZ6|T63", MATCHED)]
+    assert [(ln.line_id, ln.book_qty, ln.status) for ln in held] == [
+        ("6EZ6|T8", 57, MATCHED), ("6EZ6|T33", -10, MATCHED), ("6EZ6|T63", -100, MATCHED), ("6EZ6|T70", 40, MATCHED),
+    ]
+
+
+def test_prod_2026_11_13_each_package_keeps_its_own_hedge() -> None:
+    """Five trades on 6EH7 (four of them the hedge of an option package):
+    +30, +1, -37, +22, +6, and the broker holds 22. Netting the lots first
+    showed two lines (16 and 6) and left three packages with no hedge line."""
+    lots = [BookLot("6EH7", 98, 120, 30), BookLot("6EH7", 100, 124, 1), BookLot("6EH7", 99, 125, -1),
+            BookLot("6EH7", 99, 126, -36), BookLot("6EH7", 101, 127, 22), BookLot("6EH7", 102, 129, 6)]
+    lines = build_lines(lots, [BrokerHolding("6EH7", 22, 57)])
+    assert [(ln.trade_id, ln.qty, ln.status) for ln in lines] == [
+        (98, 30, MATCHED), (99, -37, MATCHED), (100, 1, MATCHED), (101, 22, MATCHED), (102, 6, MATCHED),
+    ]
+    assert sum(ln.share for ln in lines) == pytest.approx(1.0), "the lines carry the whole holding, no more"
+    assert next(ln for ln in lines if ln.trade_id == 99).share < 0, "a short lot carries the opposite greeks"
+    # the book and the broker disagree by one future: the disagreement shows on its own
+    off = build_lines(lots, [BrokerHolding("6EH7", 21, 57)])
+    assert [ln.status for ln in off if ln.status != MATCHED] != []
 

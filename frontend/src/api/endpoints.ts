@@ -292,6 +292,7 @@ export interface SubmittedLeg {
   qty_filled: number; // filled so far
   state: string; // per-leg order state
   rejection_text?: string | null; // IB's reason when it refused or cancelled the order
+  order_role?: string | null; // entry / hedge / closing / unwind of this leg
   order_id?: number; // trade_order id, to cancel this leg only
 }
 export interface SubmittedTrade {

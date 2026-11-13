@@ -9,8 +9,11 @@ A line is one **(contract, trade) lot**:
 
 * the book says how much each trade holds of each contract (netted legs);
 * the broker says how much of each contract the account holds;
-* the broker quantity is allocated to the book lots of that contract, oldest
-  trade first; what cannot be allocated is a line of its own.
+* when the lots of a contract add up to what the broker holds, each lot is a
+  line as its trade holds it (long or short);
+* when they do not, opposite lots cancel and the broker quantity is allocated
+  to what is left, oldest trade first; what cannot be allocated is a line of
+  its own.
 
 Every line carries a status, so a disagreement between the book and the
 broker is VISIBLE on every panel instead of being a row on one of them:
@@ -145,6 +148,25 @@ def build_lines(lots: Iterable[BookLot], holdings: Iterable[BrokerHolding]) -> l
             qty = sum(lot.qty for lot in legs)
             if abs(qty) > EPS:
                 trades.append((trade_id, qty, tuple(sorted(lot.order_id for lot in legs))))
+        if trades and abs(total) > EPS and abs(sum(q for _, q, _ in trades) - total) <= EPS:
+            # The book and the broker agree on this contract: every trade's lot
+            # is a line, as the trade holds it, long or short. The broker nets
+            # a contract, the desk does not: the futures that hedge one package
+            # stay on that package even when another package holds the other
+            # side. (Prod, 2026-11-13: +30, +1, -37, +22, +6 on 6EH7, 22 held;
+            # netting the lots first showed 16 and 6, and three hedges on no
+            # line at all.) A lot carries its signed share of the holding.
+            # A contract the broker does not hold at all has no mark to show:
+            # lots that cancel there stay off the panels, as before.
+            for trade_id, book_qty, order_ids in trades:
+                out.append(Line(
+                    line_id=line_id(contract, trade_id), contract=contract, trade_id=trade_id,
+                    book_qty=book_qty, broker_qty=book_qty, status=MATCHED,
+                    position_id=pid, order_ids=order_ids, broker_total=total,
+                ))
+            continue
+        # They disagree: only what is left once opposite lots cancel can be
+        # compared with the broker, so the disagreement shows on its own.
         trades = _offset_opposites(trades)
         for trade_id, book_qty, order_ids in trades:
             given = 0.0

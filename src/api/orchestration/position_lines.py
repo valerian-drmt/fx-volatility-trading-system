@@ -15,11 +15,11 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.contracts import is_cash_symbol
+from core.contracts import is_cash_symbol, parse_local_symbol
 from core.positions.line_set import BOOK_ONLY, BookLot, BrokerHolding, Line, build_lines
 from core.products import product_label_from_symbol
 from core.vol.tenors import tenor_bucket_from_expiry
-from persistence.models import LegPosition, OpenPosition, StructureOrder, TradeStructure
+from persistence.models import LegPosition, OpenPosition, StructureFill, StructureOrder, TradeStructure
 from persistence.rows import open_position_row
 
 # Columns of a mirror row that are additive in quantity: a line carrying a
@@ -39,6 +39,7 @@ class LineSet:
     structures: dict[int, TradeStructure] = field(default_factory=dict)
     entry_legs: dict[int, int] = field(default_factory=dict)   # entry orders per trade
     closing: dict[str, dict[str, Any]] = field(default_factory=dict)   # line_id -> close in flight
+    first_fill: dict[int, datetime] = field(default_factory=dict)     # order id -> its first execution
 
     def by_id(self) -> dict[str, Line]:
         return {ln.line_id: ln for ln in self.lines}
@@ -96,7 +97,18 @@ async def load_line_set(db: AsyncSession) -> LineSet:
                 .group_by(StructureOrder.structure_id)
             )).all()
         }
+    first_fill: dict[int, datetime] = {}
+    lot_orders = sorted({int(o.id) for _, o in rows})
+    if lot_orders:
+        first_fill = {
+            int(oid): ts for oid, ts in (await db.execute(
+                select(StructureFill.order_id, func.min(StructureFill.timestamp))
+                .where(StructureFill.order_id.in_(lot_orders))
+                .group_by(StructureFill.order_id)
+            )).all() if ts is not None
+        }
     return LineSet(
+        first_fill=first_fill,
         entry_legs=entry_legs,
         closing=await _closes_in_flight(db, lines),
         lines=lines,
@@ -179,13 +191,52 @@ async def _closes_in_flight(db: AsyncSession, lines: list[Line]) -> dict[str, di
 
 
 def _scale(row: dict[str, Any], share: float) -> dict[str, Any]:
+    """The line's share of a mirror row. The share is signed: a lot on the
+    other side of the holding (a short hedge in a net long contract) carries
+    the opposite greeks and P&L. Quantity and nominal stay positive, the side
+    says the direction."""
     if abs(share - 1.0) < 1e-9:
         return row
     out = dict(row)
     for k in _SCALED:
         if out.get(k) is not None:
-            out[k] = float(out[k]) * abs(share)
+            out[k] = float(out[k]) * (abs(share) if k in ("quantity", "nominal_eur") else share)
+    if share < 0 and out.get("side"):
+        out["side"] = "SELL" if str(out["side"]).upper() == "BUY" else "BUY"
     return out
+
+
+def lot_entry(ls: LineSet, ln: Line) -> tuple[float | None, datetime | None]:
+    """(average entry price, time of the first execution) of the line's OWN
+    lot, from the book. The broker mirror has one average and one "first
+    seen" per contract: on a contract several trades hold, every line showed
+    the oldest trade's time and the blended price."""
+    qty = cost = 0.0
+    times: list[datetime] = []
+    for oid in ln.order_ids:
+        leg = ls.legs.get(oid)
+        if leg is not None and leg.avg_price is not None and leg.open_qty:
+            q = abs(float(leg.open_qty))
+            qty += q
+            cost += q * float(leg.avg_price)
+        if oid in ls.first_fill:
+            times.append(ls.first_fill[oid])
+    return (cost / qty if qty > 0 else None), (min(times) if times else None)
+
+
+def _own_lot(row: dict[str, Any], ls: LineSet, ln: Line) -> None:
+    """Put the lot's own entry on a mirror-based row, and its P&L from that
+    entry to the current mark."""
+    price, when = lot_entry(ls, ln)
+    if when is not None:
+        row["entry_timestamp"] = when.isoformat()
+    if price is None:
+        return
+    row["contract_price_entry"] = price
+    mark = row.get("market_price")
+    spec = parse_local_symbol(ln.contract)
+    if mark is not None and spec is not None:
+        row["current_pnl_usd"] = (float(mark) - price) * ln.qty * float(spec.multiplier)
 
 
 def line_fields(ln: Line, ls: LineSet | None = None) -> dict[str, Any]:
@@ -257,7 +308,11 @@ def mirror_rows(ls: LineSet, today: date | None = None) -> list[dict[str, Any]]:
             row["trade_id"] = ln.trade_id
             if struct is not None:
                 row["package_id"] = struct.package_id
-                row["product_label"] = product_label_from_symbol(ln.contract, struct.structure_type) or row["product_label"]
+            # the product of a row is the contract's; the trade's structure is
+            # in ``identity.structure_label`` (a hedge future is a future)
+            row["product_label"] = product_label_from_symbol(ln.contract, None) or row["product_label"]
+            if ln.trade_id is not None:
+                _own_lot(row, ls, ln)
         else:
             order = ls.orders.get(ln.order_ids[0]) if ln.order_ids else None
             leg = ls.legs.get(ln.order_ids[0]) if ln.order_ids else None
@@ -266,9 +321,7 @@ def mirror_rows(ls: LineSet, today: date | None = None) -> list[dict[str, Any]]:
                 "package_id": struct.package_id if struct is not None else None,
                 "trade_id": ln.trade_id,
                 "contract_id": int(order.con_id) if order is not None and order.con_id is not None else None,
-                "product_label": product_label_from_symbol(
-                    ln.contract, struct.structure_type if struct is not None else None,
-                ),
+                "product_label": product_label_from_symbol(ln.contract, None),
                 "structure": ln.contract,
                 "side": "BUY" if ln.book_qty > 0 else "SELL",
                 "quantity": abs(ln.book_qty),
@@ -278,7 +331,8 @@ def mirror_rows(ls: LineSet, today: date | None = None) -> list[dict[str, Any]]:
                 "nominal_eur": None,
                 "delta_usd": None, "gamma_usd": None, "vega_usd": None, "theta_usd": None,
                 "iv": None, "vanna_usd": None, "volga_usd": None,
-                "timestamp": None, "entry_timestamp": None,
+                "timestamp": None,
+                "entry_timestamp": (lambda t: t.isoformat() if t is not None else None)(lot_entry(ls, ln)[1]),
             }
         row.update(line_fields(ln, ls))
         out.append(row)
@@ -320,11 +374,13 @@ def attribution_rows(per_position: list[dict[str, Any]], ls: LineSet) -> list[di
         base = stored.get(int(ln.position_id)) if ln.position_id is not None else None
         if base is not None:
             row = dict(base)
-            share = abs(ln.share)
+            share = ln.share   # signed: a lot on the other side carries the opposite P&L
             if abs(share - 1.0) > 1e-9:
                 for k in (*_ATTRIB_TERMS, "nominal_eur"):
                     if row.get(k) is not None:
-                        row[k] = round(float(row[k]) * share, 2)
+                        row[k] = round(float(row[k]) * (abs(share) if k == "nominal_eur" else share), 2)
+                if share < 0 and row.get("side"):
+                    row["side"] = "SELL" if str(row["side"]).upper() == "BUY" else "BUY"
         else:
             row = {
                 "id": int(pos.id) if pos is not None else (-int(ln.order_ids[0]) if ln.order_ids else 0),

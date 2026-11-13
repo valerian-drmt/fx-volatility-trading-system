@@ -85,7 +85,11 @@ function orderStateLabel(state: string): string {
 
 const ROLE_LABEL: Record<string, string> = { entry: "Entry", closing: "Closing", unwind: "Unwind", hedge: "Hedge", spot: "Spot" };
 function roleLabel(role: string): string { return ROLE_LABEL[role] ?? "Entry"; }
-function roleTone(role: string): "open" | "close" { return role === "closing" || role === "unwind" ? "close" : "open"; }
+function roleTone(role: string): "open" | "close" | "hedge" | "spot" {
+  if (role === "closing" || role === "unwind") return "close";
+  if (role === "hedge") return "hedge";
+  return role === "spot" ? "spot" : "open";
+}
 // In-flight (waiting) order states — pinned above resolved rows in the blotter,
 // since "submitted" / partial fills are pending, not final (fully_filled / *_fail).
 const _WAITING_STATES = new Set([
@@ -993,6 +997,8 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
       // which would make an unfilled leg borrow a filled sibling's localSymbol (a
       // spread's two strikes would then read identical). "—" until IB assigns one.
       ...(leg.contract ? { contract: leg.contract } : {}),
+      // the leg's own type: the future of a hedged package reads "Hedge"
+      role: leg.order_role ?? common.role,
       label: legBlotterLabel(s, leg),
       qty: leg.qty,
       qtyTotal: leg.qty,
