@@ -5381,6 +5381,11 @@ export interface components {
             delta_pillar?: string | null;
             /** Future Contract Size */
             future_contract_size?: ("full" | "micro") | null;
+            /**
+             * Hedge
+             * @default false
+             */
+            hedge: boolean;
             /** Legs */
             legs?: components["schemas"]["LegSpec"][] | null;
             /** Override Far Tenor */
@@ -6032,6 +6037,11 @@ export interface components {
          * @description ``POST /trade/submit`` (#300, audit 01#14): a preview id and the mode.
          */
         SubmitBody: {
+            /**
+             * Confirm Limits
+             * @default false
+             */
+            confirm_limits: boolean;
             /**
              * Execution Mode
              * @default mock

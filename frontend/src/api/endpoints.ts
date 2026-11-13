@@ -261,16 +261,22 @@ export interface TradePreview {
   surface_age_seconds?: number | null;
   max_surface_age_seconds?: number | null;
   risk_budget?: RiskBudget | null;
+  // The package's hedge, sized by the server (#482): the futures the engine
+  // sends as the options fill. null when the trade is not hedged.
+  hedge?: { side: string; qty: number; residual_delta_usd: number; structure_delta_usd: number } | null;
+  // The trade is inside the limits but above their warning share (#481).
+  needs_confirmation?: boolean;
 }
 
-export const createTradePreview = (legs: PreviewLeg[], qty: number, symbol = "EURUSD") =>
-  apiPost<TradePreview>("/api/v1/trade/preview", { legs, qty }, { query: { symbol } });
+export const createTradePreview = (legs: PreviewLeg[], qty: number, symbol = "EURUSD", hedge = false) =>
+  apiPost<TradePreview>("/api/v1/trade/preview", { legs, qty, hedge }, { query: { symbol } });
 
 /** Submit a previewed structure. execution_mode "live" = IB paper account. */
-export const submitTrade = (previewId: string, executionMode: "live" | "mock" = "live") =>
+export const submitTrade = (previewId: string, executionMode: "live" | "mock" = "live", confirmLimits = false) =>
   apiPost<Record<string, unknown>>("/api/v1/trade/submit", {
     preview_id: previewId,
     execution_mode: executionMode,
+    confirm_limits: confirmLimits,
   });
 
 // Persisted submitted structures (DB: trade_structure + booked_position). Read-only,
