@@ -12,6 +12,7 @@ top-level function maps 1:1 to a section of the spec.
 """
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -512,6 +513,9 @@ def build_from_legs(
         iv = node.get("iv")
         if strike_override is not None:
             strike: float | None = float(strike_override)
+            # the vol of the smile AT that strike, not the pillar's
+            smile_iv = iv_at_strike(surface, eff_tenor, float(strike_override))
+            iv = smile_iv if smile_iv is not None else iv
         else:
             strike = float(node_strike) if isinstance(node_strike, (int, float)) else None
         legs.append(Leg(
@@ -581,8 +585,43 @@ def _spot_from_surface(surface: dict[str, Any]) -> float:
     return 1.0
 
 
+def forward_for_tenor(surface: dict[str, Any], tenor: str | None) -> float:
+    """The forward of ONE tenor: its own at-the-money strike. The 1M forward
+    used to price every tenor; on a 3-month option that moves the price and
+    the delta by the forward points the surface already carries (#483)."""
+    node = (surface.get(tenor or "") or {}).get("atm") or {}
+    if isinstance(node.get("strike"), (int, float)) and float(node["strike"]) > 0:
+        return float(node["strike"])
+    return _spot_from_surface(surface)
+
+
+def iv_at_strike(surface: dict[str, Any], tenor: str | None, strike: float) -> float | None:
+    """The vol of a tenor's smile AT a strike: linear in strike between the
+    pillars the surface holds, flat beyond the wings. None when the tenor has
+    no pillar with both a strike and a vol.
+
+    A strike typed on the ticket used to be priced at the at-the-money vol,
+    whatever its distance from the money: a wing was priced without its skew
+    (#483)."""
+    nodes = surface.get(tenor or "") or {}
+    points = sorted(
+        (float(n["strike"]), float(n["iv"]))
+        for n in (nodes.get(p) or {} for p in DELTA_PILLARS)
+        if isinstance(n.get("strike"), (int, float)) and isinstance(n.get("iv"), (int, float))
+    )
+    if not points:
+        return None
+    if strike <= points[0][0]:
+        return points[0][1]
+    if strike >= points[-1][0]:
+        return points[-1][1]
+    for (k0, v0), (k1, v1) in itertools.pairwise(points):
+        if k0 <= strike <= k1:
+            return v0 if k1 == k0 else v0 + (v1 - v0) * (strike - k0) / (k1 - k0)
+    return points[-1][1]
+
+
 def price_structure(structure: Structure, surface: dict[str, Any]) -> PricingResult:
-    spot = _spot_from_surface(surface)
     leg_prices: list[float] = []
     total = 0.0
     for leg in structure.legs:
@@ -590,7 +629,8 @@ def price_structure(structure: Structure, surface: dict[str, Any]) -> PricingRes
             T = leg.dte / 365.0
             sigma = leg.entry_iv_pct / 100.0
             # bs_price is in price points ; × EUR_FOP_MULTIPLIER = real USD
-            # per contract (cf. core.units).
+            # per contract (cf. core.units). Priced on the leg's own forward.
+            spot = forward_for_tenor(surface, leg.tenor)
             price = bs_price(spot, leg.strike, T, sigma, leg.contract_type) * EUR_FOP_MULTIPLIER
             leg_prices.append(price)
             sign = +1 if leg.side == "BUY" else -1
@@ -643,11 +683,11 @@ def _leg_greeks(leg: Leg, spot: float, fut_mult: float) -> dict[str, float]:
 
 
 def compute_net_greeks(structure: Structure, surface: dict[str, Any]) -> NetGreeks:
-    spot = _spot_from_surface(surface)
     fut_mult = FUTURE_MULTIPLIERS.get(structure.future_contract_size or "full", 125_000)
     vega = gamma = theta = delta = 0.0
     for leg in structure.legs:
-        g = _leg_greeks(leg, spot, fut_mult)
+        # each leg on the forward of its own tenor
+        g = _leg_greeks(leg, forward_for_tenor(surface, leg.tenor), fut_mult)
         vega += g["vega"]
         gamma += g["gamma"]
         theta += g["theta"]
