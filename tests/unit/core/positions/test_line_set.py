@@ -12,6 +12,7 @@ from core.positions.line_set import (
     BookLot,
     BrokerHolding,
     build_lines,
+    is_pooled,
     unmatched,
 )
 
@@ -26,10 +27,10 @@ def _by_id(lines):
 
 def test_matched_book_and_broker_give_one_line_per_lot() -> None:
     lines = build_lines(
-        [BookLot(CALL, 60, 76, 100), BookLot(FUT, 88, 110, -7)],
-        [BrokerHolding(CALL, 100, 1), BrokerHolding(FUT, -7, 2)],
+        [BookLot(CALL, 60, 76, 100), BookLot(PUT, 88, 110, -7)],
+        [BrokerHolding(CALL, 100, 1), BrokerHolding(PUT, -7, 2)],
     )
-    assert [(ln.line_id, ln.status) for ln in lines] == [(f"{FUT}|T88", MATCHED), (f"{CALL}|T60", MATCHED)]
+    assert [(ln.line_id, ln.status) for ln in lines] == [(f"{CALL}|T60", MATCHED), (f"{PUT}|T88", MATCHED)]
     assert all(ln.share == 1.0 for ln in lines) and unmatched(lines) == []
 
 
@@ -75,9 +76,9 @@ def test_broker_holds_less_or_more_than_the_book() -> None:
 
 
 def test_opposite_direction_is_never_matched() -> None:
-    lines = _by_id(build_lines([BookLot(FUT, 88, 1, 7)], [BrokerHolding(FUT, -7, 3)]))
-    assert lines[f"{FUT}|T88"].status == BOOK_ONLY
-    assert lines[f"{FUT}|-"].status == BROKER_ONLY and lines[f"{FUT}|-"].broker_qty == -7
+    lines = _by_id(build_lines([BookLot(CALL, 88, 1, 7)], [BrokerHolding(CALL, -7, 3)]))
+    assert lines[f"{CALL}|T88"].status == BOOK_ONLY
+    assert lines[f"{CALL}|-"].status == BROKER_ONLY and lines[f"{CALL}|-"].broker_qty == -7
 
 
 def test_legs_of_one_trade_on_one_contract_net_into_one_line() -> None:
@@ -96,34 +97,48 @@ def test_the_set_is_deterministic() -> None:
 
 def test_opposite_trades_on_one_contract_cancel_and_only_the_residual_is_a_line() -> None:
     """The broker nets a contract: a long trade and a short trade on it hold
-    nothing between them. Prod: 14 offsetting July trades on 6EZ6."""
-    lots = [BookLot("6EZ6", 8, 9, 57), BookLot("6EZ6", 33, 38, -10), BookLot("6EZ6", 63, 80, -100),
-            BookLot("6EZ6", 70, 89, 40)]
+    nothing between them. Prod: offsetting trades on one option."""
+    lots = [BookLot("EUUG7 C1090", 8, 9, 57), BookLot("EUUG7 C1090", 33, 38, -10), BookLot("EUUG7 C1090", 63, 80, -100),
+            BookLot("EUUG7 C1090", 70, 89, 40)]
     lines = build_lines(lots, [])
-    assert [(ln.line_id, ln.book_qty, ln.status) for ln in lines] == [("6EZ6|T63", -13, BOOK_ONLY)]
+    assert [(ln.line_id, ln.book_qty, ln.status) for ln in lines] == [("EUUG7 C1090|T63", -13, BOOK_ONLY)]
     # fully offsetting trades leave no line at all
-    assert build_lines([BookLot("6EZ6", 1, 1, 5), BookLot("6EZ6", 2, 2, -5)], []) == []
+    assert build_lines([BookLot("EUUG7 C1090", 1, 1, 5), BookLot("EUUG7 C1090", 2, 2, -5)], []) == []
     # when the lots add up to what the broker holds, the book is right: every
     # trade keeps its own lot, long or short
-    held = build_lines(lots, [BrokerHolding("6EZ6", -13, 7)])
+    held = build_lines(lots, [BrokerHolding("EUUG7 C1090", -13, 7)])
     assert [(ln.line_id, ln.book_qty, ln.status) for ln in held] == [
-        ("6EZ6|T8", 57, MATCHED), ("6EZ6|T33", -10, MATCHED), ("6EZ6|T63", -100, MATCHED), ("6EZ6|T70", 40, MATCHED),
+        ("EUUG7 C1090|T8", 57, MATCHED), ("EUUG7 C1090|T33", -10, MATCHED), ("EUUG7 C1090|T63", -100, MATCHED), ("EUUG7 C1090|T70", 40, MATCHED),
     ]
 
 
-def test_prod_2026_11_13_each_package_keeps_its_own_hedge() -> None:
-    """Five trades on 6EH7 (four of them the hedge of an option package):
-    +30, +1, -37, +22, +6, and the broker holds 22. Netting the lots first
-    showed two lines (16 and 6) and left three packages with no hedge line."""
-    lots = [BookLot("6EH7", 98, 120, 30), BookLot("6EH7", 100, 124, 1), BookLot("6EH7", 99, 125, -1),
-            BookLot("6EH7", 99, 126, -36), BookLot("6EH7", 101, 127, 22), BookLot("6EH7", 102, 129, 6)]
-    lines = build_lines(lots, [BrokerHolding("6EH7", 22, 57)])
+def test_trades_on_one_option_each_keep_their_lot_when_the_book_is_right() -> None:
+    lots = [BookLot(CALL, 98, 120, 30), BookLot(CALL, 99, 126, -37), BookLot(CALL, 101, 127, 22),
+            BookLot(CALL, 102, 129, 7)]
+    lines = build_lines(lots, [BrokerHolding(CALL, 22, 57)])
     assert [(ln.trade_id, ln.qty, ln.status) for ln in lines] == [
-        (98, 30, MATCHED), (99, -37, MATCHED), (100, 1, MATCHED), (101, 22, MATCHED), (102, 6, MATCHED),
+        (98, 30, MATCHED), (99, -37, MATCHED), (101, 22, MATCHED), (102, 7, MATCHED),
     ]
     assert sum(ln.share for ln in lines) == pytest.approx(1.0), "the lines carry the whole holding, no more"
     assert next(ln for ln in lines if ln.trade_id == 99).share < 0, "a short lot carries the opposite greeks"
-    # the book and the broker disagree by one future: the disagreement shows on its own
-    off = build_lines(lots, [BrokerHolding("6EH7", 21, 57)])
-    assert [ln.status for ln in off if ln.status != MATCHED] != []
 
+
+def test_a_future_is_one_line_per_contract_whatever_trades_hold_it() -> None:
+    """Owner's rule, 2026-11-13. Five trades on 6EH7 (four of them the hedge
+    of an option package): +30, +1, -37, +22, +6, and the broker holds 22.
+    A trade is its options; the future is one position of the account."""
+    lots = [BookLot("6EH7", 98, 120, 30), BookLot("6EH7", 100, 124, 1), BookLot("6EH7", 99, 125, -1),
+            BookLot("6EH7", 99, 126, -36), BookLot("6EH7", 101, 127, 22), BookLot("6EH7", 102, 129, 6),
+            BookLot(PUT, 102, 128, 22)]
+    lines = build_lines(lots, [BrokerHolding("6EH7", 22, 57), BrokerHolding(PUT, 22, 58)])
+    assert [(ln.line_id, ln.trade_id, ln.qty, ln.status, ln.share) for ln in lines] == [
+        ("6EH7|-", None, 22, MATCHED, 1.0), (f"{PUT}|T102", 102, 22, MATCHED, 1.0),
+    ]
+    assert is_pooled("6EH7") and is_pooled("M6EZ6") and not is_pooled(PUT) and not is_pooled(SPOT)
+    # the book and the broker disagree: still one line, and it says so
+    off = build_lines(lots[:6], [BrokerHolding("6EH7", 21, 57)])
+    assert [(ln.line_id, ln.book_qty, ln.broker_qty, ln.status) for ln in off] == [("6EH7|-", 22, 21, QTY_MISMATCH)]
+    assert [ln.status for ln in build_lines(lots[:6], [])] == [BOOK_ONLY]
+    assert [ln.status for ln in build_lines([], [BrokerHolding("6EH7", 3, 57)])] == [BROKER_ONLY]
+    # futures that cancel in the book and are not held: nothing to show
+    assert build_lines([BookLot("6EH7", 1, 1, 5), BookLot("6EH7", 2, 2, -5)], []) == []

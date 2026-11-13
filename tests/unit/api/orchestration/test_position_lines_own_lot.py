@@ -1,4 +1,7 @@
-"""A line shows ITS lot: its side, its entry price, its entry time.
+"""An option line shows ITS lot: its side, its entry price, its entry time.
+
+(Futures are one line per contract since the owner's rule of 2026-11-13;
+the case below is the same shape on an option several trades hold.)
 
 Prod, 2026-11-13 (times UTC). A put bought with its hedge at 14:16: the
 option line said 14:16, the hedge future line said 13:32. The future was
@@ -25,15 +28,15 @@ T_NEW = datetime(2026, 11, 13, 14, 16, 40, tzinfo=UTC)
 
 
 def _line_set() -> LineSet:
-    lots = [BookLot("6EH7", 98, 120, 30), BookLot("6EH7", 99, 126, -36), BookLot("6EH7", 99, 125, -1),
-            BookLot("6EH7", 101, 127, 23), BookLot("6EH7", 102, 129, 6)]
+    lots = [BookLot("EUUG7 C1090", 98, 120, 30), BookLot("EUUG7 C1090", 99, 126, -36), BookLot("EUUG7 C1090", 99, 125, -1),
+            BookLot("EUUG7 C1090", 101, 127, 23), BookLot("EUUG7 C1090", 102, 129, 6)]
     legs: dict[int, Any] = {
         120: SimpleNamespace(open_qty=30, avg_price=1.11195), 126: SimpleNamespace(open_qty=-36, avg_price=1.1108),
         125: SimpleNamespace(open_qty=-1, avg_price=1.1108), 127: SimpleNamespace(open_qty=23, avg_price=1.11125),
         129: SimpleNamespace(open_qty=6, avg_price=1.1112),
     }
     return LineSet(
-        lines=build_lines(lots, [BrokerHolding("6EH7", 22, 57)]), positions={}, orders={}, legs=legs,
+        lines=build_lines(lots, [BrokerHolding("EUUG7 C1090", 22, 57)]), positions={}, orders={}, legs=legs,
         first_fill={120: T_OLD, 126: datetime(2026, 11, 13, 13, 59, 55, tzinfo=UTC), 129: T_NEW},
     )
 

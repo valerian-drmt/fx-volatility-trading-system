@@ -71,7 +71,7 @@ async def test_three_panels_one_line_set(sqlite_sessionmaker: Any) -> None:
         expected = {
             f"EUUZ6 P1075|T{t['t60']}", f"EUUZ6 C1210|T{t['t60']}",
             f"EUUG7 C1110|T{t['t79']}", f"EUUG7 C1110|T{t['t90']}",
-            f"6EH7|T{t['t88']}", "EUUG7 P1120|-", "EUR.USD|-",
+            "6EH7|-", "EUUG7 P1120|-", "EUR.USD|-",
         }
         trade = await list_structured(db, limit=50)
         risk = await list_open(db)
@@ -87,12 +87,12 @@ async def test_three_panels_one_line_set(sqlite_sessionmaker: Any) -> None:
         status = {r["line_id"]: r["line_status"] for r in risk}
         assert status[f"EUUZ6 P1075|T{t['t60']}"] == "book_only"
         assert status[f"EUUZ6 C1210|T{t['t60']}"] == "matched"
-        assert status[f"6EH7|T{t['t88']}"] == "qty_mismatch"
+        assert status["6EH7|-"] == "qty_mismatch", "a future is one line per contract"
         assert status["EUUG7 P1120|-"] == "broker_only"
         assert status["EUR.USD|-"] == "cash"
         # same status on the other two panels
         assert {u["line_id"]: u["line_status"] for u in trade["unlinked"]} == {
-            "EUUG7 P1120|-": "broker_only", "EUR.USD|-": "cash",
+            "EUUG7 P1120|-": "broker_only", "EUR.USD|-": "cash", "6EH7|-": "qty_mismatch",
         }
         assert {r["line_id"]: r["line_status"] for r in portfolio} == status
 
@@ -134,14 +134,15 @@ async def test_trade_panel_shows_the_flagged_leg_inside_its_trade(sqlite_session
         t = await _seed(db)
         out = await list_structured(db, limit=1)     # the limit no longer hides a held trade
         by_id = {s["structure_id"]: s for s in out["structures"]}
-        assert set(by_id) == set(t.values())
+        # a trade is its options: the futures-only trade is not a trade row
+        assert set(by_id) == set(t.values()) - {t["t88"]}
         legs = {leg["ib_local_symbol"]: leg for leg in by_id[t["t60"]]["legs"]}
         assert legs["EUUZ6 P1075"]["open"] is True and legs["EUUZ6 P1075"]["linked"] is False
         assert legs["EUUZ6 P1075"]["line_status"] == "book_only" and legs["EUUZ6 P1075"]["delta_usd"] is None
         assert legs["EUUZ6 C1210"]["linked"] is True and legs["EUUZ6 C1210"]["line_status"] == "matched"
         assert by_id[t["t60"]]["net"]["n_linked"] == 1 and by_id[t["t60"]]["net"]["n_lines"] == 2
-        fut = by_id[t["t88"]]["legs"][0]
-        assert fut["line_status"] == "qty_mismatch" and fut["held_qty"] == 5 and fut["open_qty"] == 7
+        fut = next(u for u in out["unlinked"] if u["symbol"] == "6EH7")
+        assert fut["line_status"] == "qty_mismatch" and fut["qty"] == 5 and fut["book_qty"] == 7
 
 
 async def test_the_three_panels_describe_a_line_with_the_same_identity(sqlite_sessionmaker: Any) -> None:
