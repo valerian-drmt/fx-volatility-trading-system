@@ -710,9 +710,8 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         budget = await preview_risk_budget(db, get_redis_client_or_none(), payload)
         payload["risk_budget"] = budget
         payload["submit_blockers"] = [*payload["submit_blockers"], *budget["failures"]]
-        # over a reference level, or a figure that is incomplete: the trader
-        # decides, and placing is recorded as the confirmation
-        payload["needs_confirmation"] = bool(budget["warnings"])
+        # the application asks for no confirmation (owner's rule, 2026-11-13)
+        payload["needs_confirmation"] = False
     except Exception:
         logger.exception("preview_risk_budget_failed preview_id=%s", preview_id)
 

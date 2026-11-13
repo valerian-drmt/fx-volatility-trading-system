@@ -416,15 +416,13 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
     }
   };
   // What the submit would refuse right now, known from the preview: facts
-  // only (a limit the trader set, a premium the account cannot pay, a surface
-  // too old). A level the system computed never refuses: it asks for a
-  // confirmation. The reasons are listed under the server's verdict.
+  // only (a premium the account cannot pay, a surface too old, a limit the
+  // trader typed in himself). The application computes no limit, suggests no
+  // size and asks for no confirmation: the trader decides.
   const blockers = server?.submit_blockers ?? [];
   const budget = server?.risk_budget ?? null;
   const canPlace = canWrite && server?.state === "valid_for_submit" && blockers.length === 0 && !busy;
-  // Above a reference level, or a figure is incomplete: placing is the
-  // trader's confirmation, recorded with the trade.
-  const needsConfirm = server?.needs_confirmation === true;
+  const needsConfirm = false;
   const gateDetails = {
     ...(budget?.details ?? {}),
     caps: Object.fromEntries((budget?.rows ?? []).map((r) => [CAP_KEY[r.key] ?? r.key, r.cap])),
@@ -432,7 +430,9 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
     surface_age_s: server?.surface_age_seconds,
     max_surface_age_s: server?.max_surface_age_seconds,
   };
-  const overLevel = (budget?.rows ?? []).some((r) => r.over || r.breached);
+  const hasOwnLimits = (budget?.rows ?? []).some((r) => r.cap != null);
+  // green above zero, red below, like the table above; a notional has no sign
+  const sign = (r: { key: string }, v: number | null): string => (r.key === "notional" || v == null ? "" : pnlCls(v));
   const maxQty = budget?.max_qty ?? null;
   const stateText = !canWrite ? "auth required" : busy && !server ? "pricing…" : (server?.state ?? "—");
   const stateCls = server?.state === "valid_for_submit" ? "pos" : server?.state ? "warn" : "dim";
@@ -725,26 +725,27 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
               <table className="dt bi-table impact-table" data-testid="risk-budget">
                 <thead>
                   <tr>
-                    <th className="l">Risk check <em className="unit mono">server</em></th>
+                    <th className="l">Book impact <em className="unit mono">server</em></th>
                     <th className="r">This trade</th><th className="r">Book before</th>
                     <th className="r after-col">Book after</th>
-                    <th className="r" title="Your limit refuses an order. A reference level is computed from the account and only asks for a confirmation.">Level</th>
-                    <th className="r">Used</th>
+                    {hasOwnLimits && <><th className="r">Your limit</th><th className="r">Used</th></>}
                   </tr>
                 </thead>
                 <tbody>
                   {budget.rows.map((r) => (
                     <tr key={r.key} data-breached={r.breached || undefined}>
                       <td className="l">{r.label} <em className="unit mono">{r.unit}</em></td>
-                      <td className="r mono">{fmtBudget(r, r.trade)}</td>
-                      <td className="r mono">{fmtBudget(r, r.before)}</td>
-                      <td className={"r mono after-col " + (r.breached ? "neg" : r.over ? "warn" : "")}>{fmtBudget(r, r.after)}</td>
-                      <td className="r mono dim">
-                        {fmtBudget(r, r.cap)}{r.cap != null && <em className="unit mono"> {r.hard ? "your limit" : "reference"}</em>}
-                      </td>
-                      <td className={"r mono " + (r.breached ? "neg" : r.warning ? "warn" : "pos")}>
-                        {r.used == null ? "—" : Math.round(r.used * 100) + "%"}
-                      </td>
+                      <td className={"r mono " + sign(r, r.trade)}>{fmtBudget(r, r.trade)}</td>
+                      <td className={"r mono " + sign(r, r.before)}>{fmtBudget(r, r.before)}</td>
+                      <td className={"r mono after-col " + sign(r, r.after)}>{fmtBudget(r, r.after)}</td>
+                      {hasOwnLimits && (
+                        <>
+                          <td className="r mono dim">{fmtBudget(r, r.cap)}</td>
+                          <td className={"r mono " + (r.breached ? "neg" : "")}>
+                            {r.used == null ? "—" : Math.round(r.used * 100) + "%"}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -756,18 +757,9 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
                 <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
                   {blockers.map((c) => <li key={c}>{explainGateFailure(c, gateDetails)}</li>)}
                 </ul>
-              </div>
-            )}
-
-            {needsConfirm && (
-              <div className="ob-blocking mono small" data-testid="needs-confirmation">
-                ⚠ Your call{blockers.length === 0 ? ": placing this order is recorded as your confirmation" : ""}.
-                <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
-                  {(budget?.warnings ?? []).map((c) => <li key={c}>{explainGateFailure(c, gateDetails)}</li>)}
-                </ul>
-                {overLevel && maxQty != null && maxQty > 0 && maxQty < qty && (
+                {maxQty != null && maxQty > 0 && maxQty < qty && (
                   <div data-testid="max-qty" style={{ marginTop: 4 }}>
-                    Size inside every level shown: <b>{maxQty}</b> contract{maxQty > 1 ? "s" : ""}{" "}
+                    Inside your own limits: <b>{maxQty}</b> contract{maxQty > 1 ? "s" : ""}{" "}
                     <button className="row-close" onClick={() => { setQty(maxQty); reset(); }}>use {maxQty}</button>
                   </div>
                 )}

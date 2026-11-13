@@ -32,27 +32,25 @@ def _inputs(**over):
     return GateInputs(**base)
 
 
-def test_budget_rows_are_the_gate_numbers_of_the_refused_order() -> None:
-    budget = budget_from_gate(evaluate_pretrade(_inputs(confirmed=True)))
+def test_budget_rows_are_the_gate_numbers_and_carry_no_level_of_the_applications_own() -> None:
+    budget = budget_from_gate(evaluate_pretrade(_inputs()), qty=40)
     rows = {r["key"]: r for r in budget["rows"]}
-    assert budget["failures"] == [], "levels the code derived do not refuse"
-    assert [w for w in budget["warnings"] if w.startswith("over_")] == ["over_delta", "over_vega", "over_gamma"]
-    assert rows["delta"]["cap"] == 90_645.12 and rows["delta"]["after"] == -2_575_628.94
-    assert rows["delta"]["used"] == pytest.approx(28.41, abs=0.01)
-    assert rows["delta"]["over"] is True and rows["delta"]["breached"] is False and rows["delta"]["hard"] is False
-    # the same trade against limits the trader set: refused
-    hard = budget_from_gate(evaluate_pretrade(_inputs(confirmed=True, hard_limits={"vega": 5_000.0})))
+    assert budget["failures"] == [] and budget["warnings"] == [] and budget["max_qty"] is None
+    assert rows["delta"]["after"] == -2_575_628.94 and rows["vega"]["trade"] == 10_927.32
+    assert all(r["cap"] is None and r["used"] is None and not r["breached"] for r in budget["rows"])
+    assert rows["notional"]["before"] is None, "notional is per order, there is no book notional"
+    # the same trade against a limit the trader set: refused, with his number
+    hard = budget_from_gate(evaluate_pretrade(_inputs(hard_limits={"vega": 5_000.0})), qty=40)
     hrows = {r["key"]: r for r in hard["rows"]}
     assert hard["failures"] == ["cap_vega"] and hrows["vega"]["breached"] is True and hrows["vega"]["cap"] == 5_000.0
-    assert rows["vega"]["used"] == pytest.approx(5.79, abs=0.01)
-    assert rows["notional"]["used"] == 1.0 and rows["notional"]["breached"] is False
-    assert rows["notional"]["before"] is None, "notional is per order, there is no book notional"
+    assert hrows["vega"]["used"] == pytest.approx(2.185, abs=0.01) and hrows["delta"]["cap"] is None
+    assert hard["max_qty"] == 18
 
 
-def test_a_trade_inside_the_limits_shows_what_it_uses() -> None:
+def test_a_trade_inside_the_traders_limit_shows_what_it_uses() -> None:
     small = TradeGreeks(delta_usd=-20_000.0, vega_usd_per_volpt=270.0, gamma_usd_per_pip=150.0, notional_eur=125_000.0)
     book = BookGreeks(delta_usd=10_000.0, vega_usd_per_volpt=500.0, gamma_usd_per_pip=100.0, n_positions=2, n_priced=2)
-    budget = budget_from_gate(evaluate_pretrade(_inputs(trade=small, book=book)))
+    budget = budget_from_gate(evaluate_pretrade(_inputs(trade=small, book=book, hard_limits={"vega": 1_888.44})))
     rows = {r["key"]: r for r in budget["rows"]}
     assert budget["failures"] == []
     assert (rows["vega"]["before"], rows["vega"]["trade"], rows["vega"]["after"]) == (500.0, 270.0, 770.0)
@@ -68,7 +66,6 @@ def test_session_only_failures_are_not_announced_on_a_preview() -> None:
     assert budget_from_gate(result)["failures"] == ["cap_vega"]
 
 
-def test_no_reference_levels_is_said_not_refused() -> None:
-    budget = budget_from_gate(evaluate_pretrade(_inputs(caps=None, confirmed=True)))
-    assert budget["failures"] == [] and "reference_limits_unavailable" in budget["warnings"]
-    assert all(r["cap"] is None and r["used"] is None for r in budget["rows"])
+def test_without_derived_levels_the_rows_are_still_shown() -> None:
+    budget = budget_from_gate(evaluate_pretrade(_inputs(caps=None)))
+    assert budget["failures"] == [] and budget["warnings"] == [] and len(budget["rows"]) == 4

@@ -18,7 +18,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.config import get_settings
-from api.orchestration.greek_caps import compute_live_caps
 from bus import keys
 from bus.spot_cache import parse_spot
 from core.risk.pretrade import BookGreeks, Caps, GateInputs, GateResult, TradeGreeks, evaluate_pretrade
@@ -234,18 +233,9 @@ async def run_pretrade_gate(
         logger.exception("pretrade_book_read_failed")
         book = None
 
-    # caps from the same computation as the panel
-    caps: Caps | None
-    try:
-        live = await compute_live_caps(db)
-        caps = Caps(
-            delta_usd=live.caps.delta_usd, vega_usd_per_volpt=live.caps.vega_usd,
-            gamma_usd_per_pip=live.caps.gamma_pip,
-            max_notional_eur=limits.get("max_notional_eur", DEFAULT_MAX_NOTIONAL_EUR),
-        )
-    except Exception:
-        logger.exception("pretrade_caps_failed")
-        caps = None
+    # No level is derived from the account's size here (owner's rule,
+    # 2026-11-13): the gate judges facts and the trader's own limits only.
+    caps: Caps | None = None
 
     spot = await _spot(redis, payload)
     funds = await _account_funds(db, spot)
@@ -273,7 +263,7 @@ async def run_pretrade_gate(
             abs(float(leg.get("qty") or 0)) for leg in ((payload.get("structure") or {}).get("legs") or [])
             if (leg.get("contract_type") or "") != "spot"
         ),
-        max_order_contracts=float(limits.get("max_order_contracts", DEFAULT_MAX_ORDER_CONTRACTS)),
+        max_order_contracts=None,
         hard_limits=trader_limits(limits),
         premium_to_pay_usd=_premium_to_pay(payload),
         available_funds_usd=funds[0], net_liquidation_usd=funds[1],
@@ -297,9 +287,8 @@ _SESSION_ONLY = frozenset({"account_type_mismatch", "risk_engine_stale", "surfac
 
 
 def max_qty_within_limits(rows: list[dict[str, Any]], qty: int) -> int | None:
-    """The largest size of this same trade that stays inside every level
-    shown on the ticket (the trader's limit where there is one, the reference
-    level otherwise). A hint for sizing, not a rule.
+    """The largest size of this same trade that stays inside the limits the
+    trader set himself (``rows`` = those limits only).
 
     Greeks are linear in the size, so per limit: the book before, plus n
     times the trade's contribution per unit, must stay within the cap. 0 when
@@ -348,18 +337,20 @@ def budget_from_gate(result: GateResult, qty: int | None = None, hedged: bool = 
             "before": book.get(value_key) if key != "notional" else None,
             "trade": trade.get(value_key), "after": after,
             "used": round(used, 4) if used is not None else None,
-            # breached = over a limit the trader set: refused.
-            # over = over a reference level: allowed with a confirmation.
+            # cap = a limit the trader set himself, None otherwise.
+            # breached = over that limit: refused.
             "breached": code in result.failures,
-            "over": f"over_{key}" in result.warnings,
-            "warning": f"warn_{key}" in result.warnings or f"over_{key}" in result.warnings,
             "hard": key in (d.get("hard_limits") or []),
         })
     return {
-        "rows": rows if caps else [],
+        "rows": rows if (d.get("post_trade") or d.get("trade")) else [],
         "warnings": list(result.warnings),
         "warn_fraction": d.get("warn_fraction"),
-        "max_qty": max_qty_within_limits(rows, qty) if (caps and qty) else None,
+        # a size is suggested only when one of the trader's own limits refuses
+        "max_qty": (
+            max_qty_within_limits([r for r in rows if r["hard"]], qty)
+            if (qty and any(r["breached"] for r in rows)) else None
+        ),
         "qty": qty,
         "failures": [f for f in result.failures if f not in _SESSION_ONLY],
         "details": {k: d[k] for k in (
