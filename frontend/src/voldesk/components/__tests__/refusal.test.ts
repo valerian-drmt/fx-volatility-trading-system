@@ -17,11 +17,11 @@ const GATE = new ApiError(400, "/api/v1/trade/submit", {
 });
 
 describe("refusal reasons (#478)", () => {
-  it("says which limits the trade breaks, with the numbers", () => {
+  it("says which of the trader's own limits the trade breaks, with the numbers", () => {
     expect(refusalReasons(GATE)).toEqual([
-      "Delta after the trade -$2.58M, limit $90.6k",
-      "Vega after the trade $10.9k per vol point, limit $1.9k per vol point",
-      "Gamma after the trade $5.9k per pip, limit $1.0k per pip",
+      "Delta after the trade -$2.58M, your limit $90.6k",
+      "Vega after the trade $10.9k per vol point, your limit $1.9k per vol point",
+      "Gamma after the trade $5.9k per pip, your limit $1.0k per pip",
     ]);
     expect(refusalText(GATE)).not.toContain("pretrade gate failed");
   });
@@ -33,9 +33,28 @@ describe("refusal reasons (#478)", () => {
     expect(refusalReasons(e)).toEqual(["The vol surface is 132 s old, limit 120 s"]);
   });
 
-  it("names the unpriced position that blocks the book check", () => {
+  it("names the unpriced position that leaves the book figures incomplete", () => {
     expect(explainGateFailure("book_partially_priced", { book_unpriced_lines: ["EUR.USD"] }))
-      .toBe("A held position has no delta, so the book cannot be checked (EUR.USD)");
+      .toBe("A held position has no delta, so the book figures are incomplete (EUR.USD)");
+  });
+
+  // Owner's rule, 2026-11-13: a level the system computed is the trader's
+  // call, and it is worded as a level, never as a limit or a refusal.
+  it("words a computed level as a reference, and a fact as a fact", () => {
+    const d = {
+      caps: { vega_usd_per_volpt: 1888.44 }, post_trade: { vega_usd_per_volpt: 8000 },
+      premium_to_pay_usd: 250000, net_liquidation_usd: 170000, available_funds_usd: 90000,
+      order_contracts: 500, max_order_contracts: 200,
+    };
+    expect(explainGateFailure("over_vega", d))
+      .toBe("Vega after the trade $8.0k per vol point, above the reference level $1.9k per vol point");
+    expect(explainGateFailure("over_contracts", d)).toBe("500 contracts in one order, above the usual size (200)");
+    expect(explainGateFailure("insufficient_funds", d))
+      .toBe("The premium to pay, $250.0k, is more than the account is worth ($170.0k)");
+    expect(explainGateFailure("over_available_funds", d)).toContain("the broker decides on margin");
+    for (const code of ["over_delta", "over_gamma", "over_notional", "warn_vega", "reference_limits_unavailable"]) {
+      expect(explainGateFailure(code, d)).not.toMatch(/limit\b|refus/i);
+    }
   });
 
   it("keeps the reason and the trace id of the other refusals", () => {
