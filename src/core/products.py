@@ -19,6 +19,7 @@ from __future__ import annotations
 PRODUCT_LABELS = (
     "Vanilla Call", "Vanilla Put", "Straddle", "Strangle",
     "Butterfly", "Calendar", "Future - 6E", "Future - M6E",
+    "Call Spread", "Put Spread", "Vertical Spread", "Risk Reversal", "Custom",
 )
 
 _STRUCTURE_TYPE_TO_LABEL: dict[str, str] = {
@@ -52,7 +53,7 @@ def product_label_from_symbol(
     if structure_type:
         if structure_type.startswith("future_"):
             return _future_label(ib_symbol)
-        label = _STRUCTURE_TYPE_TO_LABEL.get(structure_type)
+        label = _STRUCTURE_TYPE_TO_LABEL.get(structure_type) or _family_label(structure_type, ib_symbol)
         if label is not None:
             return label
     if not ib_symbol:
@@ -72,6 +73,36 @@ def product_label_from_symbol(
         return "Spot " + sym.replace(".", "/")
     # Otherwise treat as a future symbol (6E* full / M6E* micro).
     return _future_label(sym)
+
+
+def _family_label(structure_type: str, ib_symbol: str | None) -> str | None:
+    """The product family of a name the ticket's classifier wrote
+    (``core.trade_preview.classify_legs``: "long put", "short straddle",
+    "risk reversal 25d", "call spread", "long future"...).
+
+    Trades opened from the ticket carry those names, trades written by a
+    close carry the template codes above; both must read as the same product
+    (prod, 2026-11-13: 54 trades had no label at all). Order matters: the
+    multi-leg families are tested before the bare call / put."""
+    name = structure_type.replace("_", " ").strip().lower()
+    if not name:
+        return None
+    if "future" in name and "option" not in name:
+        return _future_label(ib_symbol)
+    for key, label in (
+        ("straddle", "Straddle"), ("strangle", "Strangle"), ("butterfly", "Butterfly"),
+        ("calendar", "Calendar"), ("risk reversal", "Risk Reversal"),
+        ("call spread", "Call Spread"), ("put spread", "Put Spread"), ("spread", "Vertical Spread"),
+        ("custom", "Custom"),
+    ):
+        if key in name:
+            return label
+    words = name.split()
+    if "call" in words:
+        return "Vanilla Call"
+    if "put" in words:
+        return "Vanilla Put"
+    return None
 
 
 def _future_label(ib_symbol: str | None) -> str:

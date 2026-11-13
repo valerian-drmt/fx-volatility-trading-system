@@ -139,3 +139,32 @@ class TestParentStructureWinsOverSymbolForMultiLegProducts:
         self, parent_st: str, leg_sym: str, expected: str,
     ) -> None:
         assert product_label_from_symbol(leg_sym, parent_st) == expected
+
+
+class TestClassifierVocabulary:
+    """Trades opened from the ticket carry the classifier's names
+    (``classify_legs``); they read as the same products as the template
+    codes. Prod, 2026-11-13: these had no label at all."""
+
+    @pytest.mark.parametrize(("st", "label"), [
+        ("long put", "Vanilla Put"), ("short put", "Vanilla Put"),
+        ("long call", "Vanilla Call"), ("short call", "Vanilla Call"),
+        ("short straddle", "Straddle"), ("long straddle", "Straddle"),
+        ("long strangle 25d", "Strangle"), ("long strangle 10d", "Strangle"),
+        ("butterfly", "Butterfly"), ("calendar", "Calendar"),
+        ("risk reversal", "Risk Reversal"), ("risk reversal 25d", "Risk Reversal"),
+        ("call spread", "Call Spread"), ("put spread", "Put Spread"),
+        ("long vertical spread", "Vertical Spread"),
+        ("long future", "Future - 6E"), ("short future", "Future - 6E"),
+        ("custom", "Custom"), ("custom (options + future)", "Custom"),
+    ])
+    def test_every_classifier_name_has_a_label(self, st: str, label: str) -> None:
+        assert product_label_from_symbol(None, st) == label
+        assert label in PRODUCT_LABELS
+
+    def test_an_entry_and_its_close_read_as_the_same_product(self) -> None:
+        assert product_label_from_symbol(None, "long put") == product_label_from_symbol(None, "vanilla_put")
+        assert product_label_from_symbol(None, "long future") == product_label_from_symbol("6EH7", "future_buy")
+
+    def test_a_micro_future_keeps_its_own_label(self) -> None:
+        assert product_label_from_symbol("M6EH7", "long future") == "Future - M6E"

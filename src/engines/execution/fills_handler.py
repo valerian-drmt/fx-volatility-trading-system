@@ -269,6 +269,9 @@ async def _persist_fill(
         if agg.fully_filled and order.state != "filled":
             order.state = "filled"
             order.fully_filled_at = datetime.now(UTC)
+            # a filled order was not refused: an IB notice kept from before
+            # the fill (10349, a price cap) is not shown as a reason
+            order.rejection_text = None
             _audit(db, order, "order_filled", "info",
                    f"qty={agg.qty_filled} avg={agg.avg_fill_price}",
                    {"slippage_per_contract": agg.slippage_per_contract})

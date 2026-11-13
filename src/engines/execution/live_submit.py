@@ -43,6 +43,7 @@ from engines.execution.fills_handler import (
     attach_fill_handlers,
 )
 from engines.execution.latency import note_submit_start
+from engines.execution.placement import record_contract
 from engines.execution.settings import get_execution_settings
 from persistence.models import (
     StructureOrder,
@@ -307,6 +308,7 @@ async def submit_structure_live(
         if use_combo and combo_eligible and all_options and len(orders) >= 2:
             try:
                 conid_to_order: dict[int, int] = {}
+                leg_contracts: dict[int, Any] = {}
                 combo_input: list[dict[str, Any]] = []
                 for order in orders:
                     if order.contract_expiry is None or order.contract_strike is None:
@@ -321,6 +323,7 @@ async def submit_structure_live(
                         raise LiveSubmitError(f"combo leg not qualified for order {order.id} (sent: {ck})")
                     qc = qualified[0]
                     conid_to_order[int(qc.conId)] = order.id
+                    leg_contracts[int(order.id)] = qc
                     combo_input.append({
                         "conId": int(qc.conId), "side": order.side, "qty": int(order.qty),
                         # None when the desk sends the leg as a market order → market BAG
@@ -365,6 +368,8 @@ async def submit_structure_live(
                 order.ib_perm_id = str(trade.order.permId) if trade.order.permId else None
                 order.state = "submitted"
                 order.submitted_at = now
+                # each leg carries its own contract, not the BAG's
+                await record_contract(db, order, leg_contracts.get(int(order.id)))
             net_price = co.get("lmtPrice")  # None for a market BAG
             db.add(TradeEvent(
                 structure_id=structure_id, event_type="live_submit_combo", severity="info",
@@ -501,6 +506,7 @@ async def submit_structure_live(
                 order.ib_perm_id = str(trade.order.permId) if trade.order.permId else None
                 order.state = "submitted"
                 order.submitted_at = datetime.now(UTC)
+                await record_contract(db, order, contract)
                 leg_summary = {
                     "leg_idx": order.leg_idx,
                     "order_id": order.id,

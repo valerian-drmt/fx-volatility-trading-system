@@ -727,10 +727,7 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         structure_type=display_structure_type,
         # Free-legs carry the classifier label directly (not in the template→label
         # map); templates resolve via the canonical helper.
-        product_label=(
-            structure.product_label if free_legs
-            else product_label_from_symbol(None, display_structure_type)
-        ),
+        product_label=product_label_from_symbol(None, display_structure_type),
         reference_tenor=structure.reference_tenor,
         structure_full_payload=payload, state=state,
         pre_submit_checks=payload["pre_submit_checks"],

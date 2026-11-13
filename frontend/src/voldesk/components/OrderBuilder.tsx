@@ -355,8 +355,24 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const srvTheta = typeof server?.greeks_net?.theta_usd_per_day === "number" ? server.greeks_net.theta_usd_per_day : null;
   const est = server ? " (est.)" : "";
   const dS = srv("delta"), gS = srv("gamma"), vS = srv("vega");
+  // A hedged package has TWO deltas and the ticket shows both. "Delta" is the
+  // options' own delta: it grows with the size. "Delta after hedge" is what
+  // the futures leave: futures come in whole contracts, so it moves between
+  // minus and plus half a future as the size changes and flips sign each
+  // time one more future is added. Showing only the second one under the
+  // name "Delta" read as a bug (prod, 2026-11-13: 60k, -60k, 60k, 56k).
+  const hedged = hedgeOn && hedgeQty > 0;
+  const structDelta = serverHedge ? serverHedge.structure_delta_usd : net.d;
+  const bookDelta = dS ? dS.before : g.netDelta;
+  const halfFuture = deltaPer6E(spotMid) / 2;
+  const deltaRows = hedged
+    ? [
+      { name: "Delta", unit: "USD", val: structDelta, before: bookDelta, after: bookDelta + structDelta, f: gk$ },
+      { name: "Delta after hedge", unit: "USD", ...(dS ?? { val: hedgedDelta, before: bookDelta, after: bookDelta + hedgedDelta }), f: gk$ },
+    ]
+    : [{ name: "Delta", unit: "USD", ...(dS ?? { val: effDelta, before: g.netDelta, after: g.netDelta + effDelta }), f: gk$ }];
   const impactRows = [
-    { name: "Delta", unit: "USD", ...(dS ?? { val: effDelta, before: g.netDelta, after: g.netDelta + effDelta }), f: gk$ },
+    ...deltaRows,
     { name: "Gamma", unit: "USD/pip", ...(gS ?? { val: net.g, before: g.netGamma, after: g.netGamma + net.g }), f: gk$ },
     { name: "Vega", unit: "$/vp", ...(vS ?? { val: net.v, before: g.netVega, after: g.netVega + net.v }), f: gk$ },
     { name: "Theta", unit: "$/day", val: srvTheta ?? net.t, before: g.netTheta, after: g.netTheta + (srvTheta ?? net.t), f: gk$ },
@@ -734,7 +750,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
                 <tbody>
                   {budget.rows.map((r) => (
                     <tr key={r.key} data-breached={r.breached || undefined}>
-                      <td className="l">{r.label} <em className="unit mono">{r.unit}</em></td>
+                      <td className="l">{r.label}{r.key === "delta" && hedged ? " after hedge" : ""} <em className="unit mono">{r.unit}</em></td>
                       <td className={"r mono " + sign(r, r.trade)}>{fmtBudget(r, r.trade)}</td>
                       <td className={"r mono " + sign(r, r.before)}>{fmtBudget(r, r.before)}</td>
                       <td className={"r mono after-col " + sign(r, r.after)}>{fmtBudget(r, r.after)}</td>
@@ -772,7 +788,11 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
                 <label className="hb-toggle">
                   {/* the hedge is part of what was previewed: changing it asks for a new preview */}
                   <input type="checkbox" checked={bundleHedge} onChange={(e) => { setBundleHedge(e.target.checked); reset(); }} />
-                  <span>Delta hedge: <b className="mono">{hedgeSide} {hedgeQty}× 6E</b> → Delta {gk$(hedgedDelta)}</span>
+                  <span>
+                    Delta hedge: <b className="mono">{hedgeSide} {hedgeQty}× 6E</b>
+                    {" "}against {gk$(structDelta)} → leaves <b className="mono">{gk$(hedgedDelta)}</b>
+                    <em className="unit mono"> whole futures only: within ±{gk$(halfFuture)}</em>
+                  </span>
                 </label>
               </div>
             )}
