@@ -1,6 +1,7 @@
 // Typed helpers built on top of the generated OpenAPI schema. Any drift between
 // FastAPI Pydantic models and `schema.d.ts` is caught at `tsc --noEmit` time
 // (or earlier by `npm run gen:api:check` in CI).
+import type { RiskBudget } from "../voldesk/components/refusal";
 import type { paths } from "./schema";
 import { apiDelete, apiGet, apiPost, apiPut } from "./client";
 export { ApiError } from "./client";
@@ -254,6 +255,12 @@ export interface TradePreview {
     max_loss_at_expiry_only?: boolean;
   };
   greeks_net?: Record<string, number | Record<string, number>>;
+  // What the submit would refuse right now, and the gate's verdict on this
+  // trade: per limit, cap / book before / trade / book after (#478, #479).
+  submit_blockers?: string[];
+  surface_age_seconds?: number | null;
+  max_surface_age_seconds?: number | null;
+  risk_budget?: RiskBudget | null;
 }
 
 export const createTradePreview = (legs: PreviewLeg[], qty: number, symbol = "EURUSD") =>
@@ -277,6 +284,7 @@ export interface SubmittedLeg {
   qty: number; // ordered contracts for this leg
   qty_filled: number; // filled so far
   state: string; // per-leg order state
+  rejection_text?: string | null; // IB's reason when it refused or cancelled the order
 }
 export interface SubmittedTrade {
   id: number;

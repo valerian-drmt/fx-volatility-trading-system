@@ -127,6 +127,14 @@ def evaluate_pretrade(i: GateInputs) -> GateResult:
         post_delta = i.book.delta_usd + i.trade.delta_usd
         post_vega = i.book.vega_usd_per_volpt + i.trade.vega_usd_per_volpt
         post_gamma = i.book.gamma_usd_per_pip + i.trade.gamma_usd_per_pip
+        d["book"] = {
+            "delta_usd": round(i.book.delta_usd, 2), "vega_usd_per_volpt": round(i.book.vega_usd_per_volpt, 2),
+            "gamma_usd_per_pip": round(i.book.gamma_usd_per_pip, 2),
+        }
+        d["trade"] = {
+            "delta_usd": round(i.trade.delta_usd, 2), "vega_usd_per_volpt": round(i.trade.vega_usd_per_volpt, 2),
+            "gamma_usd_per_pip": round(i.trade.gamma_usd_per_pip, 2), "notional_eur": round(i.trade.notional_eur, 2),
+        }
         d["post_trade"] = {
             "delta_usd": round(post_delta, 2), "vega_usd_per_volpt": round(post_vega, 2),
             "gamma_usd_per_pip": round(post_gamma, 2), "notional_eur": round(i.trade.notional_eur, 2),

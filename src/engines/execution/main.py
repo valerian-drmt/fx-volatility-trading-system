@@ -174,7 +174,7 @@ async def lifespan(app: FastAPI):
         executor, sm,
         extra_steps={
             "sync_positions": _pass_sync_positions,
-            "reconcile_stuck_orders": lambda: reconcile_stuck_orders(sm),
+            "reconcile_stuck_orders": lambda: reconcile_stuck_orders(sm, executor),
         },
         pass_timeout_s=SESSION_PASS_TIMEOUT_S,
     )
@@ -211,7 +211,7 @@ async def lifespan(app: FastAPI):
     # BAG fills report on the combo conId → the per-leg router can miss them ; this
     # flips a submitted leg to filled once IB actually holds that contract.
     reconcile_task = spawn_supervised(
-        lambda: reconcile_loop(sm, interval_s=RECONCILE_INTERVAL_S),
+        lambda: reconcile_loop(sm, executor, interval_s=RECONCILE_INTERVAL_S),
         name="order_reconcile_loop", engine=_ENGINE,
     )
     # Liveness (I2 / D1) : terminalise stale orders IB does not hold to `expired`.
@@ -773,11 +773,12 @@ class HedgeOrderBody(BaseModel):
 @router.post("/reconcile")
 async def reconcile_now(
     sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
+    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
 ) -> dict[str, Any]:
-    """Run one reconciliation pass NOW (on top of the 60s loop) — flip stuck
-    orders to filled where the IB gateway actually holds the position. Useful to
-    catch up the backlog immediately after a deploy."""
-    return await reconcile_stuck_orders(sm)
+    """Run one reconciliation pass NOW (on top of the 60s loop): settle stuck
+    orders from their own recorded fills and from the executions IB reports
+    for them. Nothing is inferred from positions (#484)."""
+    return await reconcile_stuck_orders(sm, ex)
 
 
 @router.post("/reap")

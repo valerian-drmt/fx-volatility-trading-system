@@ -39,6 +39,7 @@ from typing import Any, Protocol
 from bus import keys, publisher
 from bus.spot_cache import parse_spot
 from core.config import CapacityConfig, VolTradingConfig
+from core.vol.cadence import SURFACE_PUBLISH_INTERVAL_S
 from core.vol.pchip_smile import interpolate_delta_pillars
 from core.vol.tenors import to_display_surface
 from persistence.retention import next_retention_run
@@ -46,7 +47,7 @@ from shared.market_hours import is_fx_market_open, market_gate_active
 
 logger = logging.getLogger(__name__)
 
-CYCLE_S = 180.0        # hard 3-min cadence : work-then-sleep-to-deadline.
+CYCLE_S = SURFACE_PUBLISH_INTERVAL_S   # hard 3-min cadence : work-then-sleep-to-deadline.
 SKIP_BACKOFF_S = 5.0   # short sleep when a cycle skipped (no spot / no surface)
                        # — prevents CPU spin while the upstream feed catches up.
 # Engine-side retention for the append-only Signal-tab tables. Nothing reads
