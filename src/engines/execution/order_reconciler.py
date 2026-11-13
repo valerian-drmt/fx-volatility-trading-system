@@ -1,15 +1,25 @@
-"""Reconcile stuck orders against the live IB positions (gateway truth).
+"""Bring a stuck order's row in line with what happened, on EVIDENCE only (#484).
 
-A combo (BAG) fill is reported by IB on the combo's OWN conId, so the per-leg
-fill router can miss it. That's fixed going forward in ``fills_handler``, but past
-submissions already lost the fill event and sit forever in ``submitted``.
+An order is "stuck" when its row is still ``submitted`` or
+``partially_filled`` although something may have happened at the broker that
+the engine did not record (an event before the handlers were attached, a
+restart). Two sources can settle it, and nothing else:
 
-This backfills them : a ``trade_order`` still in ``submitted`` / ``acknowledged``
-whose contract is *actually held at IB* — i.e. present in ``open_position``, which
-``position_sync`` mirrors from the IB gateway every cycle — is flipped to
-``filled``. A leg with NO live IB position (e.g. a combo leg that filled then went
-flat) is left untouched : we never invent a phantom fill. When every entry leg of
-a structure is filled, the structure cascade books it (``maybe_complete_structure``).
+1. **Its own recorded fills.** If ``trade_fill`` already covers the order,
+   the state simply never advanced: it is set from the book.
+2. **The executions IB reports for that order.** The day's executions are
+   asked from IB and each one carrying the order's ``orderRef`` is booked
+   through the idempotent fill path, exactly as a live fill.
+
+What this module no longer does: conclude that an order filled because the
+broker *holds some of that contract*. That rule marked a partly filled order
+still working at IB as filled at its full quantity, and gave a new unfilled
+order the fills of an older trade on the same contract; the book then held a
+quantity the broker did not. A position is not evidence of an execution.
+
+An order neither source can settle is left exactly as it is. The stuck-order
+watcher raises it to the operator after ten minutes; the reaper decides on
+its liveness. Guessing is not this module's job, nor anyone's.
 """
 from __future__ import annotations
 
@@ -23,9 +33,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.contracts import parse_local_symbol
 from core.execution.fills import state_from_recorded_fills
-from engines.execution.fills_handler import maybe_complete_structure
+from engines.execution.fills_handler import _lock_for, maybe_complete_structure, persist_fill, settle_book
 from persistence.models import OpenPosition, StructureFill, StructureOrder, TradeEvent
-from persistence.position_events import record_repair
 from persistence.projection import rebuild_leg
 
 logger = logging.getLogger(__name__)
@@ -37,7 +46,10 @@ _STRIKE_TOL = 0.006
 
 
 def _leg_matches_position(order: StructureOrder, pos: OpenPosition) -> bool:
-    """True if the live IB ``pos`` is this order leg (same side + contract)."""
+    """True if the live IB ``pos`` is this order leg (same side + contract).
+
+    Kept for diagnostics and tests. It is NOT used to settle an order any
+    more: holding a contract does not prove that this order executed."""
     if (order.side or "").upper() != (pos.side or "").upper():
         return False
     spec = parse_local_symbol(pos.structure)
@@ -53,121 +65,132 @@ def _leg_matches_position(order: StructureOrder, pos: OpenPosition) -> bool:
     return abs(float(order.contract_strike) - float(spec.strike)) <= _STRIKE_TOL
 
 
+async def _settle_from_recorded_fills(
+    sm: async_sessionmaker[AsyncSession], order_id: int, now: datetime,
+) -> tuple[str | None, int | None]:
+    """Source 1, one order, under its lock: state from its own ``trade_fill``
+    rows. Returns ``(new_state, structure_id)``; ``(None, None)`` when the
+    row is not stuck any more or its fills say nothing new."""
+    async with _lock_for(order_id), sm() as db:
+        o = await db.get(StructureOrder, order_id)
+        if o is None or o.state not in _STUCK_STATES:
+            return None, None       # a handler moved it since we listed it
+        recorded = int((await db.execute(
+            select(func.coalesce(func.sum(StructureFill.qty_filled), 0))
+            .where(StructureFill.order_id == order_id)
+        )).scalar_one() or 0)
+        new_state = state_from_recorded_fills(recorded, int(o.qty), o.state)
+        if new_state is None:
+            return None, None
+        o.state = new_state
+        o.state_updated_at = now
+        o.qty_filled = min(recorded, int(o.qty))
+        await rebuild_leg(db, order_id=order_id)  # keep the projection in step (I3)
+        if new_state == "filled":
+            o.fully_filled_at = now
+        sid = int(o.structure_id)
+        await db.commit()
+        return new_state, sid
+
+
+async def _executions_by_order(executor: Any) -> dict[int, list[Any]] | None:
+    """Source 2: the executions IB reports, grouped by the ``trade_order`` id
+    in their ``orderRef``. None when IB cannot be asked (not connected, not
+    reporting): the caller then leaves every order alone."""
+    if executor is None:
+        return None
+    try:
+        if not executor.is_connected() or not executor.account_is_reporting():
+            return None
+        fills = await executor.replay_executions()
+    except Exception:
+        logger.warning("reconcile_executions_unavailable", exc_info=True)
+        return None
+    from engines.execution.reaper import parse_order_ref  # the reaper imports this module
+
+    out: dict[int, list[Any]] = {}
+    for f in fills:
+        parsed = parse_order_ref(getattr(getattr(f, "execution", None), "orderRef", None))
+        if parsed is not None:
+            out.setdefault(int(parsed[1]), []).append(f)
+    return out
+
+
 async def reconcile_stuck_orders(
-    sm: async_sessionmaker[AsyncSession],
+    sm: async_sessionmaker[AsyncSession], executor: Any = None,
 ) -> dict[str, Any]:
-    """One reconciliation pass. Returns a small summary for logging / the endpoint."""
+    """One pass. Returns a small summary for logging / the endpoint."""
     now = datetime.now(UTC)
+    async with sm() as db:
+        stuck_ids = [int(i) for i in (await db.execute(
+            select(StructureOrder.id).where(StructureOrder.state.in_(_STUCK_STATES))
+        )).scalars().all()]
+    if not stuck_ids:
+        return {"stuck": 0, "filled": 0, "from_ib": 0, "structures": [], "asked_ib": False}
+
     filled_ids: list[int] = []
     affected: set[int] = set()
 
-    async with sm() as db:
-        stuck = (await db.execute(
-            select(StructureOrder).where(StructureOrder.state.in_(_STUCK_STATES))
-        )).scalars().all()
-        if not stuck:
-            return {"stuck": 0, "filled": 0, "structures": []}
+    # ── Source 1: the book. Never invents a fill: only orders with recorded
+    # trade_fill rows move.
+    for oid in stuck_ids:
+        new_state, sid = await _settle_from_recorded_fills(sm, oid, now)
+        if new_state == "filled" and sid is not None:
+            filled_ids.append(oid)
+            affected.add(sid)
 
-        # ── Pass 1 : book-consistency (the authority the netted mirror can't be) ──
-        # An order whose OWN recorded fills already cover its qty, but whose state
-        # never advanced (a missed state update, or a fill on a contract IB later
-        # netted to zero so pass 2 below can't confirm it) is repaired from the book.
-        # Never invents a fill: only orders with recorded StructureFill rows move.
-        stuck_ids = [int(o.id) for o in stuck]
-        recorded_rows = (await db.execute(
-            select(StructureFill.order_id, func.coalesce(func.sum(StructureFill.qty_filled), 0))
-            .where(StructureFill.order_id.in_(stuck_ids))
-            .group_by(StructureFill.order_id)
-        )).all()
-        recorded_by_order = {int(oid): int(q or 0) for oid, q in recorded_rows}
-        resolved: set[int] = set()
-        for o in stuck:
-            new_state = state_from_recorded_fills(
-                recorded_by_order.get(int(o.id), 0), int(o.qty), o.state,
-            )
-            if new_state is None:
-                continue
-            o.state = new_state
-            o.qty_filled = min(recorded_by_order.get(int(o.id), 0), int(o.qty))
-            await rebuild_leg(db, order_id=int(o.id))  # keep the projection in step (I3)
-            if new_state == "filled":
-                o.fully_filled_at = now
-                filled_ids.append(int(o.id))
-                affected.add(int(o.structure_id))
-            resolved.add(int(o.id))
-        # Only orders still stuck after the book pass go to the IB-mirror pass.
-        stuck = [o for o in stuck if int(o.id) not in resolved]
+    # ── Source 2: IB's own executions for these orders. persist_fill is the
+    # live fill path: idempotent on the execution id, under the order's lock,
+    # and it completes and settles the trade itself.
+    executions = await _executions_by_order(executor)
+    booked_from_ib = 0
+    if executions:
+        still_stuck = set(stuck_ids) - set(filled_ids)
+        for oid in sorted(still_stuck & set(executions)):
+            for fill in executions[oid]:
+                try:
+                    await persist_fill(fill, oid, sm)
+                    booked_from_ib += 1
+                except Exception:
+                    logger.exception("reconcile_persist_fill_failed order_id=%s", oid)
 
-        struct_ids = {int(o.structure_id) for o in stuck}
-        positions = (await db.execute(
-            select(OpenPosition).where(OpenPosition.trade_id.in_(struct_ids))
-        )).scalars().all()
-        pos_by_struct: dict[int, list[OpenPosition]] = {}
-        for p in positions:
-            if p.trade_id is not None:
-                pos_by_struct.setdefault(int(p.trade_id), []).append(p)
-
-        used: set[int] = set()  # each IB position matches at most one leg
-        for o in stuck:
-            cands = pos_by_struct.get(int(o.structure_id), [])
-            match = next(
-                (p for p in cands if p.id not in used and _leg_matches_position(o, p)),
-                None,
-            )
-            if match is None:
-                continue
-            used.add(match.id)
-            o.state = "filled"
-            o.qty_filled = int(o.qty)
-            if o.avg_fill_price is None:
-                o.avg_fill_price = (
-                    float(match.market_price) if match.market_price is not None
-                    else (float(o.preview_price) if o.preview_price is not None else None)
-                )
-            if o.ib_local_symbol is None and match.structure:
-                o.ib_local_symbol = str(match.structure)[:20]
-            if o.con_id is None and match.contract_id is not None:
-                o.con_id = int(match.contract_id)
-            o.fully_filled_at = now
-            # The order is filled but no execution reached us: record the
-            # quantity as a ``repair`` event so the leg HAS a book quantity
-            # (#465). It used to be marked filled with no fill at all, and the
-            # reconciler reported a booked, held contract as unbooked. If the
-            # real executions arrive later (reconnect replay), the projection
-            # counts the event only for what the fills do not cover.
-            await record_repair(db, order=o, price=o.avg_fill_price, now=now)
-            filled_ids.append(int(o.id))
-            affected.add(int(o.structure_id))
-
-        for sid in affected:
-            db.add(TradeEvent(
-                structure_id=sid, event_type="order_reconciled_from_ib", severity="info",
-                description="stuck leg(s) reconciled to filled (own recorded fills, or a live IB position)",
-                payload={"filled_order_ids": [i for i in filled_ids]},
-            ))
-        await db.commit()
-
-    for sid in affected:
+    if affected:
+        async with sm() as db:
+            for sid in sorted(affected):
+                db.add(TradeEvent(
+                    structure_id=sid, event_type="order_reconciled_from_book", severity="info",
+                    description="stuck leg(s) set to filled from their own recorded fills",
+                    payload={"filled_order_ids": filled_ids},
+                ))
+            await db.commit()
+    for sid in sorted(affected):
         try:
             await maybe_complete_structure(sm, sid)
         except Exception:
             logger.exception("reconcile_complete_failed structure_id=%s", sid)
+    for oid in filled_ids:
+        await settle_book(sm, oid)
 
-    if filled_ids:
+    if filled_ids or booked_from_ib:
         logger.info(
-            "reconcile_stuck_orders filled=%s structures=%s",
-            filled_ids, sorted(affected),
+            "reconcile_stuck_orders filled_from_book=%s executions_booked_from_ib=%s structures=%s",
+            filled_ids, booked_from_ib, sorted(affected),
         )
-    return {"stuck": len(stuck), "filled": len(filled_ids), "structures": sorted(affected)}
+    return {
+        "stuck": len(stuck_ids), "filled": len(filled_ids), "from_ib": booked_from_ib,
+        "structures": sorted(affected), "asked_ib": executions is not None,
+    }
 
 
 async def reconcile_loop(
-    sm: async_sessionmaker[AsyncSession], *, interval_s: float = 60.0,
+    sm: async_sessionmaker[AsyncSession], executor: Any = None, *, interval_s: float = 60.0,
 ) -> None:
     """Run forever ; reconcile every ``interval_s``. Cancellable via task.cancel()."""
     while True:
         try:
-            await reconcile_stuck_orders(sm)
+            await reconcile_stuck_orders(sm, executor)
+        except asyncio.CancelledError:
+            raise
         except Exception:
             logger.exception("reconcile_loop_error")
         await asyncio.sleep(interval_s)
