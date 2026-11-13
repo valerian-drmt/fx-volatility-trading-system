@@ -528,7 +528,7 @@ async def place_order(
             # before the order reaches IB, the fill handlers keep them
             # current. It used to place with no row at all, so the position
             # it opened was "unbooked at IB" by construction.
-            manual = await book_manual_ticket(sm, **ticket_fields(body))
+            manual = await book_manual_ticket(sm, **ticket_fields(body), reduce_only=True)
             ref = structure_order_ref(manual[0], manual[1])
             await claim_submit(sm, StructureOrder, manual[1])
             trade = await ex.place_order_trade(OrderRequest(**payload), order_ref=ref)

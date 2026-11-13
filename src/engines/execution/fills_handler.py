@@ -49,6 +49,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.order_state import end_order
 from persistence.projection import rebuild_leg
 from persistence.reservation import recompute_reservation
 from shared.tasks import log_task_result
@@ -108,15 +109,6 @@ def attach_fill_handlers(
         )
 
 
-async def _release_reservation(db: AsyncSession, order: StructureOrder) -> None:
-    """A close that died no longer holds the leg it was closing (#487). Only a
-    fill and the reaper used to release it: a close cancelled or rejected by
-    IB left the leg looking partly reserved."""
-    if order.order_role == "closing" and order.closes_order_id is not None:
-        await db.flush()
-        await recompute_reservation(db, entry_order_id=int(order.closes_order_id))
-
-
 async def _on_order_status(
     trade: Any, order_id: int,
     sm: async_sessionmaker[AsyncSession],
@@ -170,20 +162,17 @@ async def _on_order_status(
                        f"ib status={status}", {})
                 ws_event = {"event_type": "order_acknowledged"}
             elif tr.new_state == "rejected":
-                order.state = "rejected"
-                order.rejected_at = now
                 # IB's reason (error text off the trade log), not the status word.
-                order.rejection_text = (reason or status or "")[:300]
+                # end_order: the order, the leg it reserved, and its trade (#489).
+                await end_order(db, order, "rejected", reason=(reason or status or ""), now=now)
                 _audit(db, order, "order_rejected", "error",
                        f"ib status={status} reason={order.rejection_text}", {"old_state": old_state})
                 ws_event = {"event_type": "order_rejected", "reason": order.rejection_text}
-                await _release_reservation(db, order)
             elif tr.new_state == "cancelled":
-                order.state = "cancelled"
+                await end_order(db, order, "cancelled", now=now)
                 _audit(db, order, "order_cancelled", "warning",
                        f"ib status={status}", {"old_state": old_state})
                 ws_event = {"event_type": "order_cancelled"}
-                await _release_reservation(db, order)
             # Filled is handled in _on_execution after fill aggregates ; we
             # don't transition here to avoid races (tr.kind == fill_pending).
             await db.commit()

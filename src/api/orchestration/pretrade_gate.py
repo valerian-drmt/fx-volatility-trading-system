@@ -299,3 +299,41 @@ async def preview_risk_budget(
     )
     qty = int((payload.get("sizing") or {}).get("base_qty") or 0) or None
     return budget_from_gate(result, qty=qty, hedged=bool((payload.get("hedge") or {}).get("qty")))
+
+
+async def run_spot_order_gate(
+    db: AsyncSession, redis: aioredis.Redis | None, *, side: str, qty_eur: float,
+) -> GateResult:
+    """The pre-trade checks for a spot FX order (#491): the kill switch, the
+    book being priced, the delta limit on the book after the order, and the
+    notional limit. A spot order has delta only.
+
+    An order that brings the book's delta closer to zero is never refused by
+    the delta limit: reducing risk must stay possible when the book is over
+    it. The spot ticket used to reach the broker with none of these checks.
+    """
+    spot = await _spot(redis, {})
+    signed_eur = float(qty_eur) if side.upper() == "BUY" else -float(qty_eur)
+    payload = {
+        "spot": spot,
+        "greeks_net": {
+            "delta_unhedged": signed_eur * float(spot or 0.0),
+            "vega_usd_per_volpt": 0.0, "gamma_usd_per_pip2": 0.0,
+        },
+        # notional in EUR = contracts x 125,000: express the order in contracts
+        "structure": {"legs": [{"contract_type": "spot", "qty": abs(float(qty_eur)) / EUR_FOP_MULTIPLIER}]},
+    }
+    result = await run_pretrade_gate(db, redis, payload=payload, live_mode=False, log_refusal=False, confirmed=True)
+    failures = list(result.failures)
+    book = (result.details.get("book") or {}) if isinstance(result.details, dict) else {}
+    post = (result.details.get("post_trade") or {}) if isinstance(result.details, dict) else {}
+    try:
+        reduces = abs(float(post["delta_usd"])) <= abs(float(book["delta_usd"]))  # type: ignore[index]
+    except (KeyError, TypeError, ValueError):
+        reduces = False
+    if reduces and "cap_delta" in failures:
+        failures.remove("cap_delta")
+    if failures:
+        logger.warning("spot_order_gate_refused failures=%s", ",".join(failures))
+    return GateResult(passed=not failures, failures=failures, details=result.details, warnings=result.warnings)
+

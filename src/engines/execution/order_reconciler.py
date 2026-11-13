@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.contracts import parse_local_symbol
 from core.execution.fills import state_from_recorded_fills
 from engines.execution.fills_handler import _lock_for, maybe_complete_structure, persist_fill, settle_book
-from persistence.models import OpenPosition, StructureFill, StructureOrder, TradeEvent
+from persistence.models import OpenPosition, StructureFill, StructureOrder, TradeEvent, TradeStructure
 from persistence.projection import rebuild_leg
 
 logger = logging.getLogger(__name__)
@@ -126,10 +126,12 @@ async def reconcile_stuck_orders(
             select(StructureOrder.id).where(StructureOrder.state.in_(_STUCK_STATES))
         )).scalars().all()]
     if not stuck_ids:
-        return {"stuck": 0, "filled": 0, "from_ib": 0, "structures": [], "asked_ib": False}
+        stuck_ids = []
 
     filled_ids: list[int] = []
     affected: set[int] = set()
+    executions: dict[int, list[Any]] | None = None
+    booked_from_ib = 0
 
     # ── Source 1: the book. Never invents a fill: only orders with recorded
     # trade_fill rows move.
@@ -142,8 +144,8 @@ async def reconcile_stuck_orders(
     # ── Source 2: IB's own executions for these orders. persist_fill is the
     # live fill path: idempotent on the execution id, under the order's lock,
     # and it completes and settles the trade itself.
-    executions = await _executions_by_order(executor)
-    booked_from_ib = 0
+    if stuck_ids:
+        executions = await _executions_by_order(executor)
     if executions:
         still_stuck = set(stuck_ids) - set(filled_ids)
         for oid in sorted(still_stuck & set(executions)):
@@ -163,7 +165,25 @@ async def reconcile_stuck_orders(
                     payload={"filled_order_ids": filled_ids},
                 ))
             await db.commit()
-    for sid in sorted(affected):
+    # A trade whose entry legs have ALL filled and that is still "submitted":
+    # the engine stopped between the commit of the last fill and the step that
+    # completes the trade. Nothing retried that step: the fill was already
+    # there on restart, so the handler returned early, and the trade stayed
+    # without a booked position (#490).
+    async with sm() as db:
+        filled_struct = select(StructureOrder.structure_id).where(
+            StructureOrder.order_role == "entry", StructureOrder.state == "filled",
+        )
+        unfilled_struct = select(StructureOrder.structure_id).where(
+            StructureOrder.order_role == "entry", StructureOrder.state != "filled",
+        )
+        incomplete = [int(i) for i in (await db.execute(
+            select(TradeStructure.id)
+            .where(TradeStructure.state == "submitted")
+            .where(TradeStructure.id.in_(filled_struct))
+            .where(TradeStructure.id.notin_(unfilled_struct))
+        )).scalars().all()]
+    for sid in sorted(affected | set(incomplete)):
         try:
             await maybe_complete_structure(sm, sid)
         except Exception:
@@ -178,7 +198,7 @@ async def reconcile_stuck_orders(
         )
     return {
         "stuck": len(stuck_ids), "filled": len(filled_ids), "from_ib": booked_from_ib,
-        "structures": sorted(affected), "asked_ib": executions is not None,
+        "structures": sorted(affected), "asked_ib": executions is not None, "completed": incomplete,
     }
 
 

@@ -28,7 +28,7 @@ from api.routers.positions import close_one_open_position
 from api.schemas import route_models as rm
 from core.execution.reaper_policy import plan_structure_terminal_state
 from persistence.models import OpenPosition, StructureOrder, TradeStructure
-from persistence.reservation import recompute_reservation
+from persistence.order_state import end_order
 from shared.internal_auth import internal_headers
 
 _EXECUTION_URL = get_settings().EXECUTION_URL
@@ -234,11 +234,7 @@ async def cancel_trade(trade_id: int, db: DbDep) -> dict[str, Any]:
             if r.status_code == 404:
                 # IB has no such open order: it is not working there. Recording
                 # it cancelled is then a fact, and the leg it reserved is free.
-                o.state = "cancelled"
-                o.state_updated_at = now
-                if o.order_role == "closing" and o.closes_order_id is not None:
-                    await db.flush()
-                    await recompute_reservation(db, entry_order_id=int(o.closes_order_id))
+                await end_order(db, o, "cancelled", now=now)
                 results.append({"order_id": o.id, "ib_order_id": o.ib_order_id, "ok": True, "status": "cancelled"})
                 cancelled += 1
             else:

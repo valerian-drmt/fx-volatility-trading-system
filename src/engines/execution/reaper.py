@@ -32,7 +32,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.execution.reaper_policy import (
     REAPABLE_STATES,
     decide_reap,
-    plan_structure_terminal_state,
 )
 from engines.execution.order_reconciler import _leg_matches_position
 from engines.execution.settings import get_execution_settings
@@ -40,9 +39,8 @@ from persistence.models import (
     OpenPosition,
     StructureOrder,
     TradeEvent,
-    TradeStructure,
 )
-from persistence.reservation import recompute_reservation
+from persistence.order_state import end_order
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +121,30 @@ async def reap_stale_orders(
         # between placeOrder and the per-leg commit before judging staleness.
         adopted_ids = await _adopt_orphaned_orders(db, ib_trades, now)
 
+        # Rows that never left (#490). An order still ``pending`` after tau
+        # was written by the api and never placed (the engine was unreachable,
+        # refused, or the call timed out). The adoption sweep just above has
+        # already picked up any such row whose order IS at IB, by its
+        # reference; what is left holds nothing at the broker. No loop used
+        # to read pending rows: they waited for ever and kept their leg
+        # reserved.
+        never_placed = (await db.execute(
+            select(StructureOrder)
+            .where(StructureOrder.state == "pending")
+            .where(StructureOrder.ib_order_id.is_(None))
+            .where(StructureOrder.state_updated_at < cutoff)
+        )).scalars().all()
+        never_placed_ids: list[int] = []
+        for o in never_placed:
+            db.add(TradeEvent(
+                structure_id=int(o.structure_id), order_id=int(o.id),
+                event_type="order_never_placed", severity="warning",
+                description=f"order {o.id} still pending after {tau_stale_s:.0f}s and not at IB -> expired",
+                payload={"order_id": int(o.id), "order_role": o.order_role},
+            ))
+            if await end_order(db, o, "expired", reason="never placed at the broker", now=now):
+                never_placed_ids.append(int(o.id))
+
         stale = (await db.execute(
             select(StructureOrder)
             .where(StructureOrder.state.in_(tuple(REAPABLE_STATES)))
@@ -130,9 +152,9 @@ async def reap_stale_orders(
             .where(StructureOrder.submitted_at < cutoff)
         )).scalars().all()
         if not stale:
-            if adopted_ids:
+            if adopted_ids or never_placed_ids:
                 await db.commit()
-            return {"reaped": 0, "expired": [], "adopted": adopted_ids}
+            return {"reaped": len(never_placed_ids), "expired": never_placed_ids, "adopted": adopted_ids}
 
         # Which of our orders are still WORKING at IB? A resting limit that hasn't
         # filled is neither held nor dead — leave it (spec §6.2 `if at_ib`).
@@ -187,38 +209,13 @@ async def reap_stale_orders(
                         "age_seconds": age_s, "ib_order_id": o.ib_order_id,
                     },
                 ))
-                o.state = "expired"
-                o.state_updated_at = now
-                expired_ids.append(int(o.id))
-                # Release the reservation this dead close was holding (I5, spec §6.2).
-                if o.order_role == "closing" and o.closes_order_id is not None:
-                    await recompute_reservation(db, entry_order_id=o.closes_order_id)
-
-        # Propagate to the STRUCTURE FSM (D1 at the structure level). Expiring a
-        # leg can make every order of its structure terminal — but the happy path
-        # (fills_handler) only ever set 'fully_filled' when ALL legs filled, so a
-        # structure with an expired/never-filled leg would sit 'submitted' forever.
-        # Terminalise any affected structure whose orders are now all terminal.
-        for sid in {int(o.structure_id) for o in stale if int(o.id) in expired_ids}:
-            all_states = (await db.execute(
-                select(StructureOrder.state).where(StructureOrder.structure_id == sid)
-            )).scalars().all()
-            new_state = plan_structure_terminal_state(list(all_states))
-            if new_state is None:
-                continue
-            struct = await db.get(TradeStructure, sid)
-            if struct is not None and struct.state != new_state:
-                struct.state = new_state
-                struct.state_updated_at = now
-                db.add(TradeEvent(
-                    structure_id=sid, order_id=None,
-                    event_type="structure_terminalised", severity="info",
-                    description=f"structure {sid} -> {new_state} (all legs terminal)",
-                    payload={"structure_id": sid, "new_state": new_state},
-                ))
+                # The order, the leg it reserved, and its trade, in one place (#489).
+                if await end_order(db, o, "expired", now=now):
+                    expired_ids.append(int(o.id))
 
         await db.commit()
 
+    expired_ids = [*never_placed_ids, *expired_ids]
     if expired_ids:
         logger.warning("order_reaper expired=%s", expired_ids)
     return {"reaped": len(expired_ids), "expired": expired_ids, "adopted": adopted_ids}

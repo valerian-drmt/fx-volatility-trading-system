@@ -14,18 +14,23 @@ Endpoints unchanged from the client's point of view:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
 from api.config import get_settings
+from api.dependencies import get_db_session, get_redis_client_or_none
+from api.orchestration.pretrade_gate import run_spot_order_gate
 from api.schemas import route_models as rm
 from api.schemas.orders import ClosePositionBody, PlaceOrderBody
+from persistence.models import TradeEvent
 from shared.internal_auth import internal_headers
 
 router = APIRouter(prefix="/api/v1", tags=["orders"])
+DbDep = Annotated[AsyncSession, Depends(get_db_session)]
 logger = logging.getLogger(__name__)
 
 EXECUTION_URL = get_settings().EXECUTION_URL
@@ -60,8 +65,31 @@ async def list_orders(_: Request) -> dict[str, Any]:
 
 
 @router.post("/orders", response_model=rm.IbOrder, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
-async def place_order(body: PlaceOrderBody, _: Request) -> dict[str, Any]:
-    """Place one order through the execution engine. Requires the trader cookie; the engine's pre-trade gate and the kill switch apply."""
+async def place_order(body: PlaceOrderBody, _: Request, db: DbDep) -> dict[str, Any]:
+    """Place one order through the execution engine. Requires the trader cookie.
+
+    What applies (#491):
+
+    * a **spot** order passes the pre-trade checks here: kill switch, book
+      priced, delta and notional limits on the book after the order (an order
+      that reduces the book's delta is never refused by the delta limit);
+    * a **future or option** order can only reduce a position the book holds
+      (the engine refuses anything else): a new position is opened through
+      the order ticket, where the full pre-trade gate is;
+    * the engine's kill switch and ready gate apply to both.
+    """
+    if body.sec_type == "CASH":
+        gate = await run_spot_order_gate(db, get_redis_client_or_none(), side=body.side, qty_eur=float(body.qty))
+        if not gate.passed:
+            db.add(TradeEvent(
+                structure_id=None, event_type="submission_blocked", severity="warning",
+                description=("spot order gate: " + ", ".join(gate.failures))[:450],
+                payload={"failures": gate.failures, "details": gate.details, "order": body.model_dump()},
+            ))
+            await db.commit()
+            raise HTTPException(400, detail={
+                "error": "pretrade_gate_failed", "failures": gate.failures, "details": gate.details,
+            })
     return await _forward("POST", "/internal/orders", json=body.model_dump())
 
 
@@ -79,5 +107,11 @@ async def live_positions(_: Request) -> dict[str, Any]:
 
 @router.post("/exec/positions/{con_id}/close", response_model=rm.IbOrder, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
 async def close_position(con_id: int, body: ClosePositionBody, _: Request) -> dict[str, Any]:
-    """Close one IB position (by contract id) through the execution engine."""
-    return await _forward("POST", f"/internal/positions/{con_id}/close", json=body.model_dump())
+    """Switched off (#491). This route closed a whole position by contract id
+    with no row in the book, no guard against a second close and no trace on
+    the panels. Close through ``POST /positions/{id}/close``, which books the
+    close, reserves the leg and shows the position as closing."""
+    del body
+    raise HTTPException(410, detail=(
+        f"closing by contract id ({con_id}) is switched off: use POST /api/v1/positions/{{id}}/close"
+    ))

@@ -638,7 +638,10 @@ export interface paths {
         put?: never;
         /**
          * Close Position
-         * @description Close one IB position (by contract id) through the execution engine.
+         * @description Switched off (#491). This route closed a whole position by contract id
+         *     with no row in the book, no guard against a second close and no trace on
+         *     the panels. Close through ``POST /positions/{id}/close``, which books the
+         *     close, reserves the leg and shows the position as closing.
          */
         post: operations["close_position_api_v1_exec_positions__con_id__close_post"];
         delete?: never;
@@ -793,7 +796,17 @@ export interface paths {
         put?: never;
         /**
          * Place Order
-         * @description Place one order through the execution engine. Requires the trader cookie; the engine's pre-trade gate and the kill switch apply.
+         * @description Place one order through the execution engine. Requires the trader cookie.
+         *
+         *     What applies (#491):
+         *
+         *     * a **spot** order passes the pre-trade checks here: kill switch, book
+         *       priced, delta and notional limits on the book after the order (an order
+         *       that reduces the book's delta is never refused by the delta limit);
+         *     * a **future or option** order can only reduce a position the book holds
+         *       (the engine refuses anything else): a new position is opened through
+         *       the order ticket, where the full pre-trade gate is;
+         *     * the engine's kill switch and ready gate apply to both.
          */
         post: operations["place_order_api_v1_orders_post"];
         delete?: never;
@@ -7981,6 +7994,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Error. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -8270,6 +8292,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IbOrder"];
+                };
+            };
+            /** @description Request rejected by a business rule (the detail says which). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
