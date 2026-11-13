@@ -5,7 +5,9 @@ portfolio: the same lines, different columns. They used to answer "what is
 open?" from three different tables with three different rules (8, 7 and 7
 rows for 7 holdings on 2026-11-12). This module is the single answer.
 
-A line is one **(contract, trade) lot**:
+A FUTURE is one line per contract, whatever trades hold it (``is_pooled``).
+
+An option line is one **(contract, trade) lot**:
 
 * the book says how much each trade holds of each contract (netted legs);
 * the broker says how much of each contract the account holds;
@@ -31,6 +33,8 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
+
+from core.contracts import INSTRUMENT_FUTURE, parse_local_symbol
 
 EPS = 1e-6
 
@@ -92,6 +96,34 @@ def line_id(contract: str, trade_id: int | None) -> str:
     return f"{contract}|T{trade_id}" if trade_id is not None else f"{contract}|-"
 
 
+def is_pooled(contract: str) -> bool:
+    """A future is ONE position per contract, whatever trades bought or sold
+    it (owner's rule, 2026-11-13). A trade is one or several options; the
+    futures, bought outright or sent as the hedge of a package, are the
+    account's stock of a handful of contracts (one per quarter) and sit on
+    one line each. The book still knows which trade traded what."""
+    spec = parse_local_symbol(contract)
+    return spec is not None and spec.instrument_type == INSTRUMENT_FUTURE
+
+
+def _pooled_line(contract: str, book: float, total: float, pid: int | None) -> Line | None:
+    if abs(book) <= EPS and abs(total) <= EPS:
+        return None
+    if abs(book - total) <= EPS:
+        status = MATCHED
+    elif abs(total) <= EPS:
+        status = BOOK_ONLY
+    elif abs(book) <= EPS:
+        status = BROKER_ONLY
+    else:
+        status = QTY_MISMATCH
+    return Line(
+        line_id=line_id(contract, None), contract=contract, trade_id=None,
+        book_qty=book, broker_qty=total, status=status,
+        position_id=pid if abs(total) > EPS else None, broker_total=total,
+    )
+
+
 def _same_sign(a: float, b: float) -> bool:
     return (a > 0) == (b > 0)
 
@@ -141,6 +173,12 @@ def build_lines(lots: Iterable[BookLot], holdings: Iterable[BrokerHolding]) -> l
         holding = held.get(contract)
         total = holding.qty if holding is not None else 0.0
         pid = holding.position_id if holding is not None else None
+        if is_pooled(contract):
+            book = sum(lot.qty for legs in by_contract.get(contract, {}).values() for lot in legs)
+            pooled = _pooled_line(contract, book, total, pid)
+            if pooled is not None:
+                out.append(pooled)
+            continue
         remaining = total
         trades = []
         for trade_id in sorted(by_contract.get(contract, {})):

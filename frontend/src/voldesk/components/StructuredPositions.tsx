@@ -67,7 +67,9 @@ export function StructuredPositions(): JSX.Element {
             <>
               <tr className="sp-group sp-unlinked-head">
                 <td className="l" colSpan={8}>
-                  Unlinked <span className="dim small">· IB account · not booked through the desk ({unlinked.length})</span>
+                  {unlinked.every((p) => p.line_status !== "broker_only")
+                    ? <>Futures <span className="dim small">· one line per contract ({unlinked.length})</span></>
+                    : <>Futures and unlinked <span className="dim small">· one line per future contract · other IB holdings not booked through the desk ({unlinked.length})</span></>}
                 </td>
               </tr>
               {unlinked.map((p) => (

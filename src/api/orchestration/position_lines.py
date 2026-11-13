@@ -92,7 +92,9 @@ async def load_line_set(db: AsyncSession) -> LineSet:
             int(sid): int(n) for sid, n in (await db.execute(
                 select(StructureOrder.structure_id, func.count(StructureOrder.id))
                 .where(StructureOrder.structure_id.in_(trade_ids))
-                .where(StructureOrder.order_role.in_(("entry", "hedge")))
+                .where(StructureOrder.order_role == "entry")
+                # a trade is its options: futures are pooled on one line per contract
+                .where(StructureOrder.contract_type != "future")
                 .where(StructureOrder.state.notin_(("rejected", "cancelled")))
                 .group_by(StructureOrder.structure_id)
             )).all()
