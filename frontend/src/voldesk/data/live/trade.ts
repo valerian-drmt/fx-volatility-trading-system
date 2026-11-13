@@ -17,6 +17,7 @@
  * ⚠️ Cash-by-currency (holdings donut) needs /account/cash (G-trade gap) — stays
  * mock. Vanna/volga units (backend $ vs mock $k) are flagged in 09.
  */
+import { adaptIdent } from "../../components/lineIdent";
 import {
   type AccountState,
   type Cash,
@@ -56,6 +57,7 @@ interface BackendPosition {
   line_id?: string | null;
   line_status?: string | null;
   position_id?: number | null;
+  identity?: unknown;
 }
 
 const n = (v: number | null | undefined): number => (typeof v === "number" ? v : 0);
@@ -77,6 +79,7 @@ export function adaptPositions(raw: unknown, now: number): Position[] {
       id: String(r.id ?? ""),
       lineId: r.line_id ?? undefined,
       lineStatus: r.line_status ?? undefined,
+      ident: adaptIdent(r.identity),
       // No delta = nothing priced this line (a leg only the book holds, an
       // instrument the risk engine cannot read). Shown as "—", never as 0.
       unpriced: r.delta_usd == null,

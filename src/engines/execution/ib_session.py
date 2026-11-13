@@ -41,7 +41,7 @@ from engines.execution.spot_orders import (
     fold_spot_fills,
     parse_spot_order_ref,
 )
-from persistence.models import SpotOrder, StructureOrder, TradeEvent
+from persistence.models import SpotOrder, StructureOrder, TradeEvent, TradeStructure
 
 logger = logging.getLogger(__name__)
 
@@ -156,11 +156,40 @@ async def _attach_option_handlers(
         by_order_id[parsed[1]] = t
     if not by_order_id:
         return []
-    rows = (await db.execute(
+    rows = list((await db.execute(
         select(StructureOrder)
         .where(StructureOrder.id.in_(tuple(by_order_id)))
         .where(StructureOrder.state.in_(_OPEN_ORDER_STATES))
-    )).scalars().all()
+    )).scalars().all())
+    # An order IB still holds OPEN cannot be rejected or cancelled, whatever
+    # the row says: the broker is the authority on its own orders. Rows wrongly
+    # terminalised (notice 10349 read as a cancel) come back to ``submitted``,
+    # so the desk sees the order working and can cancel it.
+    revived = list((await db.execute(
+        select(StructureOrder)
+        .where(StructureOrder.id.in_(tuple(by_order_id)))
+        .where(StructureOrder.state.in_(("rejected", "cancelled", "expired")))
+        .where(StructureOrder.qty_filled < StructureOrder.qty)
+    )).scalars().all())
+    for o in revived:
+        prev = o.state
+        o.state = "submitted"
+        o.state_updated_at = now
+        o.rejected_at = None
+        o.rejection_text = None
+        o.acknowledged_at = o.acknowledged_at or now   # IB lists it open: IB has it
+        struct = await db.get(TradeStructure, int(o.structure_id))
+        if struct is not None and struct.state == "fully_failed":
+            struct.state = "submitted"   # its order is working after all
+            struct.state_updated_at = now
+        db.add(TradeEvent(
+            structure_id=int(o.structure_id), order_id=int(o.id),
+            event_type="order_revived_open_at_ib", severity="warning",
+            description=f"order {o.id} was '{prev}' in the book but is open at IB: back to submitted"[:300],
+            payload={"previous_state": prev},
+        ))
+        logger.warning("order_revived_open_at_ib order_id=%s previous_state=%s", o.id, prev)
+    rows += revived
     wired: list[int] = []
     for o in rows:
         t = by_order_id[int(o.id)]

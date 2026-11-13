@@ -13,6 +13,7 @@ import { FreshBadge } from "../components/FreshBadge";
 import { WsChip } from "../components/WsChip";
 import { OpenPositionsTable, type StructureCtx } from "../components/PositionsTable";
 import { PRODUCT_NAMES, formatStructLabel } from "../components/tradeGrouping";
+import { adaptIdent } from "../components/lineIdent";
 import { OrderBuilder } from "../components/OrderBuilder";
 import { TickerChart } from "../components/TickerChart";
 import { DATA, EMPTY_ACCOUNT, EMPTY_GREEKS, fmt } from "../data";
@@ -75,6 +76,16 @@ interface BlotterRow {
   note?: string;
 }
 // Order role → the desk's professional label + open/close tone for the "Type" cell.
+// The desk's word for an order state. A working order "waits" at IB;
+// "rejected" is kept for what it means: IB refused the order.
+function orderStateLabel(state: string): string {
+  const s = (state || "").toLowerCase();
+  if (s === "pending") return "sending";
+  if (s === "submitted" || s === "acknowledged" || s === "presubmitted") return "waiting at IB";
+  if (s === "partially_filled" || s === "partial_fill") return "partly filled";
+  return state;
+}
+
 const ROLE_LABEL: Record<string, string> = { entry: "Entry", closing: "Closing", unwind: "Unwind", hedge: "Hedge", spot: "Spot" };
 function roleLabel(role: string): string { return ROLE_LABEL[role] ?? "Entry"; }
 function roleTone(role: string): "open" | "close" { return role === "closing" || role === "unwind" ? "close" : "open"; }
@@ -269,7 +280,7 @@ function structuredToRows(
         pnlPct: nominal ? (pnl / nominal) * 100 : 0, dte: dteOf(l.expiry ?? ""),
         netted,
         lineId: l.line_id ?? undefined, lineStatus: l.line_status ?? undefined,
-        unpriced: l.delta_usd == null,
+        unpriced: l.delta_usd == null, ident: adaptIdent(l.identity),
       });
     }
   }
@@ -286,7 +297,7 @@ function structuredToRows(
       vanna: (u.vanna_usd ?? 0) / 1000, volga: (u.volga_usd ?? 0) / 1000,
       updated: "", opened: "", pnlPct: 0, dte: dteOf(u.expiry ?? ""),
       lineId: u.line_id ?? undefined, lineStatus: u.line_status ?? undefined,
-      unpriced: u.delta_usd == null,
+      unpriced: u.delta_usd == null, ident: adaptIdent(u.identity),
     });
   }
   return { positions, ctx };
@@ -907,6 +918,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
     try {
       await cancelTrade(structureId);
       submitted.reload();
+      structured.reload();    // the position's "closing" tag
       reloadTrade();
     } catch (e) {
       addOrder({ action: "close", label: `cancel #${structureId}`, side: "—", qty: 0, state: "rejected", note: closeErr(e) });
@@ -1065,6 +1077,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
           extended={tweaks.showGreeks}
           onClose={(p) => setCloseReq({ kind: "contract", pos: p })}
           onCloseTrade={(legs) => setCloseReq({ kind: "trade", legs })}
+          onCancelClose={(ids) => { for (const id of ids) void onCancelOrder(id); }}
           structureContext={structureCtx}
           closing={closing}
           dense={tweaks.density === "compact"}
@@ -1103,7 +1116,7 @@ export function TradeView({ tweaks }: { tweaks: TradeTweaks }): JSX.Element {
                           : o.qty}
                       </td>
                       <td>
-                        <span className={"ord-state " + tone}>{o.state}</span>
+                        <span className={"ord-state " + tone} title={`state: ${o.state}`}>{orderStateLabel(o.state)}</span>
                         {stale && (
                           <span className="ord-stale mono" title="working > 10 min with no fill — review or cancel">
                             ⏱ {fmtAge(ageMs)}

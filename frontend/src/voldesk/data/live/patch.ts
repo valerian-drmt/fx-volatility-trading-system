@@ -45,7 +45,7 @@ export function patchPositions(positions: Position[], msg: PositionsChangedMsg, 
     // row keeps the line identity it got from the last read.
     const next: Position =
       pushed.lineId === undefined && p.lineId !== undefined
-        ? { ...pushed, lineId: p.lineId, lineStatus: p.lineStatus, netted: p.netted ?? false }
+        ? { ...pushed, lineId: p.lineId, lineStatus: p.lineStatus, netted: p.netted ?? false, ident: p.ident }
         : pushed;
     byId.delete(p.id);
     if (samePosition(p, next)) out.push(p);

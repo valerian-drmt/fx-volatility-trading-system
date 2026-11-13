@@ -142,3 +142,67 @@ async def test_trade_panel_shows_the_flagged_leg_inside_its_trade(sqlite_session
         assert by_id[t["t60"]]["net"]["n_linked"] == 1 and by_id[t["t60"]]["net"]["n_lines"] == 2
         fut = by_id[t["t88"]]["legs"][0]
         assert fut["line_status"] == "qty_mismatch" and fut["held_qty"] == 5 and fut["open_qty"] == 7
+
+
+async def test_the_three_panels_describe_a_line_with_the_same_identity(sqlite_sessionmaker: Any) -> None:
+    """Same lines is not enough: the first columns (trade, contract, product,
+    symbol, side, quantity, tenor, legs) must be THE SAME on the three
+    panels; only the columns after them differ."""
+    async with sqlite_sessionmaker() as db:
+        t = await _seed(db)
+        trade = await list_structured(db, limit=50)
+        risk = {r["line_id"]: r["identity"] for r in await list_open(db)}
+        portfolio = {r["line_id"]: r["identity"] for r in attribution_rows([], await load_line_set(db))}
+        desk = {leg["line_id"]: leg["identity"] for s in trade["structures"] for leg in s["legs"] if leg["open"]}
+        desk.update({u["line_id"]: u["identity"] for u in trade["unlinked"]})
+        assert desk == risk == portfolio
+
+        strangle_call = risk[f"EUUZ6 C1210|T{t['t60']}"]
+        assert strangle_call["structure_type"] == "long strangle 10d" and strangle_call["leg_label"] == "Vanilla Call"
+        assert (strangle_call["side"], strangle_call["qty"]) == ("BUY", 100)
+        assert (strangle_call["legs_open"], strangle_call["legs_total"]) == (2, 2)
+        shared = risk[f"EUUG7 C1110|T{t['t79']}"]
+        assert shared["qty"] == 10 and shared["legs_total"] == 1
+        assert risk["EUUG7 P1120|-"]["trade_id"] is None and risk["EUUG7 P1120|-"]["legs_total"] == 1
+
+
+async def test_a_close_in_flight_is_shown_on_the_line_with_what_ib_confirmed(sqlite_sessionmaker: Any) -> None:
+    """Position -> Close -> the line says "closing" on the three panels, with
+    whether IB has confirmed the order. Never "rejected" for an order that is
+    waiting at the broker (prod 2026-11-12, EUUZ6 C1210)."""
+    from sqlalchemy import select
+
+    async with sqlite_sessionmaker() as db:
+        t = await _seed(db)
+        entry = (await db.execute(
+            select(StructureOrder).where(StructureOrder.ib_local_symbol == "EUUZ6 C1210")
+        )).scalar_one()
+        ticket = TradeStructure(structure_type="vanilla_call", reference_tenor="1M", base_qty=100,
+                                state="submitted", execution_mode="live")
+        db.add(ticket)
+        await db.flush()
+        close = StructureOrder(structure_id=ticket.id, leg_idx=0, order_role="closing", contract_type="call",
+                               side="SELL", qty=100, order_type="LMT", limit_price=0.0001, state="submitted",
+                               ib_local_symbol="EUUZ6 C1210", closes_order_id=entry.id, ib_order_id="31")
+        db.add(close)
+        await db.commit()
+        line = f"EUUZ6 C1210|T{t['t60']}"
+
+        ident = {r["line_id"]: r["identity"] for r in await list_open(db)}
+        assert ident[line]["closing"] == {
+            "phase": "sent", "qty": 100, "n_orders": 1, "limit_price": 0.0001, "order_type": "LMT",
+            "structure_ids": [ticket.id], "order_ids": [close.id], "ib_order_ids": ["31"], "since": None,
+        }
+        assert ident[f"EUUG7 C1110|T{t['t79']}"]["closing"] is None
+
+        close.acknowledged_at = NOW          # IB confirmed it holds the order
+        await db.commit()
+        trade = await list_structured(db, limit=50)
+        legs = {leg["line_id"]: leg["identity"] for s in trade["structures"] for leg in s["legs"] if leg["open"]}
+        portfolio = {r["line_id"]: r["identity"] for r in attribution_rows([], await load_line_set(db))}
+        assert legs[line]["closing"]["phase"] == portfolio[line]["closing"]["phase"] == "waiting"
+
+        close.state = "rejected"             # IB refused it: terminal, the position is plain open again
+        await db.commit()
+        assert {r["line_id"]: r["identity"] for r in await list_open(db)}[line]["closing"] is None
+

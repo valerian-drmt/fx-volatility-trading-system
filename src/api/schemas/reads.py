@@ -155,6 +155,9 @@ class OpenPositionRow(_Open):
     book_qty: float | None = None      # signed, what the book says this lot holds
     broker_qty: float | None = None    # signed, the broker's part given to this lot
     position_id: int | None = None     # the open_position row behind it, when held
+    # The identity columns shared by the three panels (trade, contract number,
+    # product, symbol, side, quantity, tenor, legs open / total).
+    identity: dict[str, Any] | None = None
 
 
 class FitWindow(_Open):

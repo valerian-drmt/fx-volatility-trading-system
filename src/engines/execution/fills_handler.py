@@ -35,7 +35,7 @@ from core.execution.fills import (
     update_order_aggregates,
 )
 from core.execution.order_states import next_state
-from engines.execution.ib_trade_log import ib_reason_from_trade, ib_why_held
+from engines.execution.ib_trade_log import ib_reason_from_trade, ib_why_held, is_notice_cancel
 from engines.execution.latency import note_fill, observe_orders_publish, observe_submitted
 from engines.execution.redis_state import get_client as _get_redis
 from persistence.book_close import close_after_leg_change
@@ -114,6 +114,10 @@ async def _on_order_status(
     """Persist state transitions on ``structure_orders`` + audit log."""
     try:
         status = trade.orderStatus.status
+        if is_notice_cancel(trade):
+            # Not a cancel: IB sent a notice, the order is live (ib_trade_log).
+            logger.info("order_status_notice_ignored order_id=%s ib_status=%s", order_id, status)
+            return
         reason = ib_reason_from_trade(trade)
         why_held = ib_why_held(trade)
         async with _lock_for(order_id), sm() as db:

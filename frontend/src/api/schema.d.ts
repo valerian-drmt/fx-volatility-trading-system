@@ -2378,7 +2378,14 @@ export interface paths {
         };
         /**
          * List Submitted Structures
-         * @description List recent submitted trade_structures (for the new positions tab).
+         * @description The Orders blotter: the ``limit`` most recent trade_structures, PLUS
+         *     every structure that still has an order in flight, however old.
+         *
+         *     An unfinished order must never fall out of the blotter because newer
+         *     trades pushed it past the window: it is the one the desk has to act on.
+         *     The rows come back newest first, as stored; pinning the unfinished ones at
+         *     the top is the screen's job (a display order, nothing is reordered or
+         *     rewritten in the database).
          */
         get: operations["list_submitted_structures_api_v1_trade_submitted_get"];
         put?: never;
@@ -3858,6 +3865,10 @@ export interface components {
             gamma_usd?: number | null;
             /** Id */
             id: number;
+            /** Identity */
+            identity?: {
+                [key: string]: unknown;
+            } | null;
             /** Iv */
             iv?: number | null;
             /** Line Id */

@@ -7,8 +7,8 @@
 import type { JSX } from "react";
 import { Fragment, useState } from "react";
 import { pnlCls } from "./format";
-import { LineStatusTag } from "./LineStatus";
-import { legStrikeNum, structureName, structureSide } from "./tradeGrouping";
+import { GroupIdentityCells, IdentityCells, IdentityHead } from "./LineIdentity";
+import { groupLines, identFrom } from "./lineIdent";
 import { EMPTY_GREEKS, fmt } from "../data";
 import type { Greeks, Position } from "../data";
 
@@ -23,30 +23,7 @@ function gkc(v: number | null | undefined): string {
   return s + Math.round(a);
 }
 
-// ── Trade grouping : one main line per trade + its legs as sub-rows ──
-// The flat backend feed is per-leg (Vanilla Call / Vanilla Put …) all tagged
-// with the same trade_id. We group by trade so a Risk Reversal reads as ONE
-// summary line (net greeks / P&L) with the two legs indented under it.
-interface PosGroup {
-  key: string;
-  tradeId: string;
-  legs: Position[];
-}
 
-function groupByTrade(rows: Position[]): PosGroup[] {
-  const groups: PosGroup[] = [];
-  const idx: Record<string, number> = {};
-  for (const p of rows) {
-    // rows with no trade_id (unlinked IB positions) stay their own singleton
-    const key = p.tradeId ? "T" + p.tradeId : "S" + p.id;
-    if (idx[key] === undefined) {
-      idx[key] = groups.length;
-      groups.push({ key, tradeId: p.tradeId, legs: [] });
-    }
-    groups[idx[key]]!.legs.push(p);
-  }
-  return groups;
-}
 
 const _gcd = (a: number, b: number): number => (b === 0 ? a : _gcd(b, a % b));
 
@@ -84,40 +61,8 @@ function aggregate(legs: Position[]): GroupAgg {
   };
 }
 
-// One leg row. `main=true` renders it as a standalone (single-leg trade) line;
-// Strike for a leg : the live feed carries no strike column, but the IB
-// localSymbol encodes it ("EUUQ6 C1145" → 1.1450). Falls back to p.strike (mock).
-function legStrike(p: Position): string {
-  if (p.strike && p.strike > 0) return p.strike.toFixed(4);
-  const m = /\s[CP](\d{3,5})$/.exec(p.structure || "");
-  if (m) return (parseInt(m[1]!, 10) / 1000).toFixed(4);
-  return "—";
-}
 
-// The wing for a leg comes from the STRUCTURE's declared wings (parsed from its
-// name, e.g. "Strangle 25Δ"), NOT from bucketing the live strike against the mock
-// smile (spot 1.0842) — that snaps every live strike to the outermost pillar, so
-// a 25Δ strangle would read 10Δ. One wing → all legs share it; two wings (a
-// spread) → assign by strike rank (near→far), calls low-strike-first, puts high.
-function legWingFor(p: Position, siblings: Position[], wings: string[]): string {
-  if (wings.length <= 1) return wings[0] ?? "";
-  const isCall = /call/i.test(p.product);
-  const peers = siblings
-    .filter((l) => /call/i.test(l.product) === isCall)
-    .map((l) => ({ id: l.id, k: legStrikeNum(l) }))
-    .filter((x): x is { id: string; k: number } => x.k != null)
-    .sort((a, b) => (isCall ? a.k - b.k : b.k - a.k));
-  const idx = peers.findIndex((x) => x.id === p.id);
-  return wings[Math.min(idx < 0 ? 0 : idx, wings.length - 1)]!;
-}
 
-// Leg product with its wing appended ("Vanilla Put" → "Vanilla Put 25Δ") so each
-// leg row says which wing it is, consistent with the structure's main-row name.
-// Skips if the product already carries a wing tag.
-function legProductLabel(p: Position, wing: string): string {
-  const prod = p.product || "—";
-  return wing && !/\d+Δ|ATM/.test(prod) ? `${prod} ${wing}` : prod;
-}
 
 // Fill date in English format ("02 Jul 2026, 14:30"). Falls back to the raw value
 // for the mock's pre-formatted strings, "" when absent.
@@ -135,30 +80,20 @@ const EMPTY_CLOSING: Set<string> = new Set();
 // `main=false` renders it indented under its trade's summary line.
 function legRow(
   p: Position,
-  opts: { showGreeks: boolean; extended: boolean; onClose: ((p: Position) => void) | undefined; main: boolean; closing: Set<string>; legWing?: string },
+  opts: { showGreeks: boolean; extended: boolean; onClose: ((p: Position) => void) | undefined; main: boolean; closing: Set<string>; onCancelClose?: ((structureIds: number[]) => void) | undefined },
 ): JSX.Element {
-  const { showGreeks, extended, onClose, main, closing, legWing = "" } = opts;
+  const { showGreeks, extended, onClose, main, closing, onCancelClose } = opts;
+  const inFlight = p.ident?.closing;
   // Locked while this leg (or its whole trade) has a close in flight.
   const isClosing = closing.has(p.id) || (p.tradeId != null && closing.has("t:" + p.tradeId));
   return (
     <tr key={p.lineId ?? p.id} className={main ? "pkg-start" : "pos-leg"} data-line-id={p.lineId}>
-      <td className="l mono dim">{main ? (p.tradeId ? "#" + p.tradeId : "—") : ""}</td>
-      <td className="l mono dim">
-        {p.structure || "—"}
-        <LineStatusTag status={p.lineStatus} />
-      </td>
-      <td className="l">
-        <span className="sym">{main ? "" : "↳ "}{legProductLabel(p, legWing)}</span>
-        {fmtFillDate(p.opened) && (
-          <span className="substruct">filled {fmtFillDate(p.opened)}</span>
-        )}
-      </td>
-      <td className="r mono dim">{legStrike(p)}</td>
-      <td>
-        <span className={"side-pill " + (p.side === "BUY" ? "long" : "short")}>{p.side}</span>
-      </td>
-      <td className="r mono">{p.qty}</td>
-      <td className="r mono dim">{p.tenor}</td>
+      <IdentityCells
+        ident={p.ident ?? identFrom(p)}
+        main={main}
+        status={p.lineStatus}
+        extra={fmtFillDate(p.opened) ? <span className="substruct">filled {fmtFillDate(p.opened)}</span> : null}
+      />
       <td className="r mono dim">{p.iv ? p.dte + "d" : "—"}</td>
       <td className="r mono">{p.entry ? p.entry.toFixed(p.entry > 1.5 ? 4 : 5) : "—"}</td>
       <td className="r mono">{p.mark ? p.mark.toFixed(p.mark > 1.5 ? 4 : 5) : "—"}</td>
@@ -180,17 +115,30 @@ function legRow(
       <td className="r mono dim">{p.unpriced ? "—" : (p.nominal / 1e6).toFixed(2) + "M"}</td>
       <td className={"r mono " + (p.unpriced ? "dim" : pnlCls(p.pnl))}>{p.unpriced ? "—" : fmt.usdk(p.pnl)}</td>
       <td className="r">
-        <button
-          className="row-close"
-          disabled={isClosing || p.netted}
-          title={
-            p.netted ? "netted flat at IB (held opposite by another trade) — nothing to close on this contract"
-              : isClosing ? "a close for this position is already in flight" : undefined
-          }
-          onClick={() => onClose && onClose(p)}
-        >
-          {isClosing ? "Closing…" : "Close"}
-        </button>
+        {inFlight ? (
+          // A close order is on its way or waiting at IB: the action left is
+          // to cancel it, not to send another one on top.
+          <button
+            className="row-close"
+            disabled={!onCancelClose}
+            title={`cancel the close order${inFlight.orders > 1 ? "s" : ""} working on this position`}
+            onClick={() => onCancelClose && onCancelClose(inFlight.structureIds)}
+          >
+            Cancel close
+          </button>
+        ) : (
+          <button
+            className="row-close"
+            disabled={isClosing || p.netted}
+            title={
+              p.netted ? "netted flat at IB (held opposite by another trade) — nothing to close on this contract"
+                : isClosing ? "the close order is being sent" : undefined
+            }
+            onClick={() => onClose && onClose(p)}
+          >
+            {isClosing ? "Sending…" : "Close"}
+          </button>
+        )}
       </td>
     </tr>
   );
@@ -212,6 +160,8 @@ interface OpenPositionsTableProps {
   onClose?: (p: Position) => void;
   /** Close a whole multi-leg trade at once (main summary line). */
   onCloseTrade?: (legs: Position[]) => void;
+  /** Cancel the close order(s) in flight on a position (their trade ids). */
+  onCancelClose?: (structureIds: number[]) => void;
   /** trade_id → booking context (name + fill status), keyed as a string. */
   structureContext?: Record<string, StructureCtx>;
   /** Keys with a close in flight → lock the matching Close button. Key = a
@@ -231,6 +181,7 @@ export function OpenPositionsTable({
   extended = false,
   onClose,
   onCloseTrade,
+  onCancelClose,
   structureContext,
   closing = EMPTY_CLOSING,
   dense = false,
@@ -316,13 +267,7 @@ export function OpenPositionsTable({
         <table className={"dt positions-table" + (dense ? " dense" : "")}>
           <thead>
             <tr>
-              <th className="l">Trade</th>
-              <th className="l">Contract</th>
-              <th className="l">Product</th>
-              <th className="r">Strike</th>
-              <th>Side</th>
-              <th className="r">Contracts</th>
-              <th className="r">Tenor</th>
+              <IdentityHead />
               <th className="r">DTE</th>
               <th className="r">Entry</th>
               <th className="r">Mark</th>
@@ -359,47 +304,32 @@ export function OpenPositionsTable({
             </tr>
           </thead>
           <tbody>
-            {groupByTrade(rows).map((grp) => {
+            {groupLines(rows).map((grp) => {
               const ctx = grp.tradeId ? structureContext?.[grp.tradeId] : undefined;
               // A trade is "multi" if it has >1 filled leg OR the booking says it's
               // a multi-leg structure (so a partially-filled RR still reads as an RR,
               // not the one leg that happened to fill).
-              const isMulti = grp.legs.length > 1 || (ctx != null && ctx.total > 1);
+              // ONE grouping rule for the three position panels: a header only
+              // when the trade has several open lines. A trade with one line left
+              // is a plain row that says "1/2 legs" (components/LineIdentity).
+              const isMulti = grp.legs.length > 1;
               if (!isMulti) {
-                return legRow(grp.legs[0]!, { showGreeks, extended, onClose, main: true, closing });
+                return legRow(grp.legs[0]!, { showGreeks, extended, onClose, main: true, closing, onCancelClose });
               }
               const tradeClosing = grp.tradeId != null && closing.has("t:" + grp.tradeId);
-              const name = ctx?.name ?? structureName(grp.legs);
-              const wings = name.match(/\d+Δ|ATM/g) ?? []; // structure's declared wings
               const a = aggregate(grp.legs);
-              const sSide = structureSide(grp.legs);
               const isOpen = expanded.has(grp.key);
-              const legsLabel = ctx ? `${ctx.filled}/${ctx.total} legs` : `${grp.legs.length} legs`;
               return (
                 <Fragment key={grp.key}>
                   <tr className={"pkg-start pos-main" + (isOpen ? " open" : "")} onClick={() => toggle(grp.key)}>
-                    <td className="l mono dim">
-                      <button
-                        className="pos-caret"
-                        onClick={(e) => { e.stopPropagation(); toggle(grp.key); }}
-                        aria-label={isOpen ? "collapse legs" : "expand legs"}
-                        aria-expanded={isOpen}
-                      >
-                        {isOpen ? "▾" : "▸"}
-                      </button>
-                      {grp.tradeId ? "#" + grp.tradeId : "—"}
-                    </td>
-                    <td className="l mono dim">{legsLabel}</td>
-                    <td className="l">
-                      <span className="sym">{name}</span>
-                      {ctx?.naked && (
+                    <GroupIdentityCells
+                      idents={grp.legs.map((p) => p.ident ?? identFrom(p))}
+                      isOpen={isOpen}
+                      onToggle={() => toggle(grp.key)}
+                      extra={ctx?.naked ? (
                         <span className="pos-naked" title="a sold leg filled but its long hedge leg hasn't — unbounded tail until it fills or is cancelled"> ⚠ naked</span>
-                      )}
-                    </td>
-                    <td className="r mono dim">—</td>
-                    <td><span className={"side-pill " + (sSide === "BUY" ? "long" : "short")}>{sSide}</span></td>
-                    <td className="r mono">{a.qty || "—"}</td>
-                    <td className="r mono dim">{a.tenor}</td>
+                      ) : null}
+                    />
                     <td className="r mono dim">{a.dte ? a.dte + "d" : "—"}</td>
                     <td className="r mono dim">—</td>
                     <td className="r mono dim">—</td>
@@ -431,7 +361,7 @@ export function OpenPositionsTable({
                       </button>
                     </td>
                   </tr>
-                  {isOpen && grp.legs.map((p) => legRow(p, { showGreeks, extended, onClose, main: false, closing, legWing: legWingFor(p, grp.legs, wings) }))}
+                  {isOpen && grp.legs.map((p) => legRow(p, { showGreeks, extended, onClose, main: false, closing, onCancelClose }))}
                 </Fragment>
               );
             })}

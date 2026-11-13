@@ -298,7 +298,7 @@ async def list_lines(db: DbDep) -> dict[str, Any]:
     ls = await load_line_set(db)
     out = line_summary(ls)
     out["lines"] = [
-        {**line_fields(ln), "contract": ln.contract, "trade_id": ln.trade_id, "order_ids": list(ln.order_ids)}
+        {**line_fields(ln, ls), "contract": ln.contract, "trade_id": ln.trade_id, "order_ids": list(ln.order_ids)}
         for ln in ls.lines
     ]
     return out
@@ -459,8 +459,9 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             # open = the leg carries a position line. open_qty is the signed book holding.
             "open": ln is not None,
             "open_qty": float(bp.open_qty) if bp is not None and bp.open_qty is not None else None,
-            **(line_fields(ln) if ln is not None else {
+            **(line_fields(ln, ls) if ln is not None else {
                 "line_id": None, "line_status": None, "book_qty": None, "broker_qty": None, "position_id": None,
+                "identity": None,
             }),
             "con_id": lp.contract_id if lp else (int(lg.con_id) if lg.con_id is not None else None),
             "held_qty": abs(ln.broker_qty) if (ln is not None and lp is not None) else None,
@@ -502,7 +503,7 @@ async def list_structured(db: DbDep, limit: int = Query(50, ge=1, le=200)) -> di
             "side": "BUY" if ln.broker_qty > 0 else "SELL", "qty": abs(ln.broker_qty), "tenor": p.tenor,
             "expiry": p.expiry.isoformat() if p.expiry else None,
             "entry": _f(p.contract_price_entry),
-            **line_fields(ln), **_marks(p, ln.share),
+            **line_fields(ln, ls), **_marks(p, ln.share),
         })
 
     out_structs = [{

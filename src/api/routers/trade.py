@@ -1265,10 +1265,27 @@ async def _submit_preview_impl(
 async def list_submitted_structures(
     db: DbDep, limit: int = Query(50, ge=1, le=500),
 ) -> list[dict[str, Any]]:
-    """List recent submitted trade_structures (for the new positions tab)."""
-    rows = (await db.execute(
+    """The Orders blotter: the ``limit`` most recent trade_structures, PLUS
+    every structure that still has an order in flight, however old.
+
+    An unfinished order must never fall out of the blotter because newer
+    trades pushed it past the window: it is the one the desk has to act on.
+    The rows come back newest first, as stored; pinning the unfinished ones at
+    the top is the screen's job (a display order, nothing is reordered or
+    rewritten in the database)."""
+    rows = list((await db.execute(
         select(TradeStructure).order_by(desc(TradeStructure.created_at)).limit(limit)
+    )).scalars().all())
+    in_flight = select(StructureOrder.structure_id).where(
+        StructureOrder.state.in_(("pending", "submitted", "acknowledged", "partially_filled"))
+    )
+    older = (await db.execute(
+        select(TradeStructure)
+        .where(TradeStructure.id.in_(in_flight))
+        .where(TradeStructure.id.notin_([s.id for s in rows] or [0]))
+        .order_by(desc(TradeStructure.created_at))
     )).scalars().all()
+    rows += list(older)
     out: list[dict[str, Any]] = []
     for s in rows:
         position = (await db.execute(

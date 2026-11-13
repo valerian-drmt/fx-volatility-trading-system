@@ -57,6 +57,12 @@ async def _marketable_close_price(ib: Any, contract: Any, side: str) -> float | 
     return round(lp, 6) if lp > 0 else None
 
 
+# Every order states its time in force. Left empty, IB applies its preset and
+# says so with notice 10349 on the error channel, which ib_async takes for a
+# rejection (see engines.execution.ib_trade_log).
+DEFAULT_TIF = "DAY"
+
+
 @dataclass
 class OrderRequest:
     """Normalized payload for place/close. Built from the API body."""
@@ -409,6 +415,7 @@ class OrderExecutor:
         )
         if order_ref:
             order.orderRef = order_ref
+        order.tif = DEFAULT_TIF
         # Don't wait for the fill — return immediately ; the UI polls the state.
         return ib.placeOrder(contract, order)
 
@@ -522,6 +529,7 @@ class OrderExecutor:
             order = MarketOrder(side, close_qty)               # future in RTH
         if order_ref:
             order.orderRef = order_ref  # durable key, matched by the reaper (#318)
+        order.tif = DEFAULT_TIF
         return ib.placeOrder(contract, order)
 
 
