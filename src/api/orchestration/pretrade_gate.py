@@ -23,6 +23,7 @@ from bus import keys
 from bus.spot_cache import parse_spot
 from core.risk.pretrade import BookGreeks, Caps, GateInputs, GateResult, TradeGreeks, evaluate_pretrade
 from core.units import EUR_FOP_MULTIPLIER, PIP_SIZE
+from core.vol.cadence import surface_age_limit_s
 from persistence.halt import get_halt
 from persistence.models import AppConfigScalar, IbConnectionState, OpenPosition
 
@@ -110,6 +111,7 @@ def leg_symbols(payload: dict[str, Any]) -> tuple[str, ...]:
 async def run_pretrade_gate(
     db: AsyncSession, redis: aioredis.Redis | None, *,
     payload: dict[str, Any], live_mode: bool,
+    surface_age_s: float | None = None,
 ) -> GateResult:
     # kill switch
     try:
@@ -182,8 +184,13 @@ async def run_pretrade_gate(
         required_account_type=_required_account_type(),
         book=book, trade=trade_greeks_from_preview(payload, spot), caps=caps,
         symbols=leg_symbols(payload), allowed_symbols=_allowed_symbols(),
-        surface_age_s=float(payload["surface_age_seconds"]) if payload.get("surface_age_seconds") is not None else None,
-        max_surface_age_s=limits.get("max_iv_data_age_seconds", 120.0),
+        # The caller's age NOW of the latest surface when it has one, else the
+        # age recorded on the preview (#480); the limit follows the cadence.
+        surface_age_s=(
+            surface_age_s if surface_age_s is not None
+            else (float(payload["surface_age_seconds"]) if payload.get("surface_age_seconds") is not None else None)
+        ),
+        max_surface_age_s=surface_age_limit_s(limits.get("max_iv_data_age_seconds")),
         arb_ok=arb if isinstance(arb, bool) else None,
     )
     result = evaluate_pretrade(inputs)

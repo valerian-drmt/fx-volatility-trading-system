@@ -55,7 +55,8 @@ DOMAINS: dict[str, list[ConfigParam]] = {
     "signal": [
         ConfigParam("z_threshold_min", "risk", 1.5, "count", "Min |z| considered actionable"),
         ConfigParam("max_z_multiplier", "risk", 2, "count", "Cap on the z-score sizing factor"),
-        ConfigParam("max_iv_data_age_seconds", "risk", 120, "count", "IV data must be fresher than this (seconds)"),
+        ConfigParam("max_iv_data_age_seconds", "risk", 120, "count",
+                    "IV data must be fresher than this (seconds); never enforced below 1.5 x the surface publishing interval"),
     ],
     "portfolio": [
         ConfigParam("var_lookback_days", "portfolio", 504, "days", "Window for the historical-VaR net-liq series"),

@@ -49,6 +49,7 @@ from core.trade_preview import (
 )
 from core.trade_preview_regime import apply_regime_to_limits, regime_label
 from core.units import EUR_FOP_MULTIPLIER
+from core.vol.cadence import is_surface_fresh, surface_age_limit_s
 from persistence.models import (
     AppConfigScalar,  # replaces RiskLimit (migration 024)
     BookedPosition,
@@ -539,7 +540,7 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         structure_vega_usd=structure_vega_at_size,
         max_book_vega_usd=limits.get("max_book_vega_usd", 5000.0),
         surface_age_seconds=surface_age_s,
-        max_iv_age_s=limits.get("max_iv_data_age_seconds", 120),
+        max_iv_age_s=surface_age_limit_s(limits.get("max_iv_data_age_seconds")),
         has_arb_violation=False,            # MVP : no arb check on synth surface
         min_quoted_size=99,                 # MVP : assume liquid
         min_liquidity=int(limits.get("min_liquidity_quoted_size", 10)),
@@ -668,6 +669,13 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         "state": state,
         "blocking_reasons": blocking,
         "surface_age_seconds": surface_age_s,
+        # The limit the submit enforces, and what it would refuse right now
+        # (#480). The preview stays valid: the ticket shows the blocker and
+        # offers a new preview instead of a submit that cannot pass.
+        "max_surface_age_seconds": surface_age_limit_s(limits.get("max_iv_data_age_seconds")),
+        "submit_blockers": (
+            [] if is_surface_fresh(surface_age_s, limits.get("max_iv_data_age_seconds")) else ["surface_stale"]
+        ),
         # Where the surface came from (#328): live | synthetic. A synthetic
         # grid is a sandbox convenience; it never passes iv_data_fresh.
         "surface_source": surface_source,
@@ -899,8 +907,18 @@ async def _submit_preview_impl(
             current_z_revalidate = armed_z_revalidate
     # None (unknown) stays None: the revalidation gate fails closed on it in
     # live mode instead of reading a missing age as "fresh" (EX-08, #339).
+    # The age that matters at submit is the age NOW of the latest surface:
+    # is market data alive? The age recorded when the preview was built is
+    # frozen, so a preview born 1 s over the limit used to be refused for its
+    # whole life while a fresh surface had arrived (#480). The preview's own
+    # staleness is bounded by its validity (``preview_expired`` above).
+    _live_surface, _live_age = await _read_surface_redis()
     _raw_age = payload_for_revalidation.get("surface_age_seconds")
-    surface_age = float(_raw_age) if _raw_age is not None else None
+    surface_age: float | None
+    if _live_surface is not None:
+        surface_age = float(_live_age)
+    else:
+        surface_age = float(_raw_age) if _raw_age is not None else None
     limits_for_revalidation = await _load_limits(db)
     regime_for_revalidation = await _load_regime(db)
     revalidation = revalidate_preview(
@@ -913,7 +931,7 @@ async def _submit_preview_impl(
         z_threshold_min=limits_for_revalidation.get("z_threshold_min", 1.5),
         surface_age_seconds=surface_age,
         max_iv_age_seconds=(
-            limits_for_revalidation.get("max_iv_data_age_seconds", 120.0)
+            surface_age_limit_s(limits_for_revalidation.get("max_iv_data_age_seconds"))
             if execution_mode == "live" else None
         ),
         current_regime=regime_label(regime_for_revalidation) if regime_for_revalidation else None,
@@ -949,6 +967,7 @@ async def _submit_preview_impl(
     # cap + the notional cap on the POST-trade book. Every reason at once.
     gate = await run_pretrade_gate(
         db, get_redis_client_or_none(), payload=payload, live_mode=(execution_mode == "live"),
+        surface_age_s=surface_age,
     )
     if not gate.passed:
         db.add(TradeEvent(
