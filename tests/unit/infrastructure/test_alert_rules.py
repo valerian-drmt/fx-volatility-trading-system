@@ -22,6 +22,9 @@ KNOWN_METRICS = {
     "order_submit_latency_seconds", "fill_to_publish_seconds",
     # api (src/api/routers/health.py)
     "fxvol_postgres_backup_age_seconds", "fxvol_host_disk_used_bytes", "fxvol_host_disk_total_bytes",
+    # the order path (#495): api gate counters, execution-engine gauges
+    "order_gate_decisions_total", "order_refusals_total", "orders_waiting",
+    "orders_oldest_waiting_seconds", "order_loop_last_run_timestamp_seconds",
     # prometheus / cadvisor
     "up", "container_start_time_seconds", "container_fs_usage_bytes", "container_fs_limit_bytes",
     "container_memory_working_set_bytes", "container_spec_memory_limit_bytes",
@@ -89,3 +92,54 @@ def test_disk_alerts_read_one_series_for_the_root_filesystem() -> None:
     used = REGISTRY.get_sample_value("fxvol_host_disk_used_bytes")
     total = REGISTRY.get_sample_value("fxvol_host_disk_total_bytes")
     assert used is not None and total and 0 < used <= total
+
+
+ORDER_ALERTS = ("OrderNeverPlaced", "OrderOutlivedItsDay", "GateRefusingEverything", "OrderLoopStalled",
+                "ReconciliationBreakOpen")
+
+
+def test_every_order_alert_has_a_firing_test_and_a_silent_one() -> None:
+    """#495: an alert nothing ever evaluated against data is an alert nobody
+    knows fires. ``promtool test rules obs/alerts_test.yml`` runs in CI; this
+    checks the file covers each rule with a case that fires."""
+    tests = yaml.safe_load((ROOT / "obs" / "alerts_test.yml").read_text(encoding="utf-8"))
+    assert tests["rule_files"] == ["alerts.yml"]
+    fires: set[str] = set()
+    silent: set[str] = set()
+    for t in tests["tests"]:
+        for case in t["alert_rule_test"]:
+            (fires if case["exp_alerts"] else silent).add(case["alertname"])
+    names = {r["alert"] for r in _rules()}
+    for alert in ORDER_ALERTS:
+        assert alert in names, alert
+        assert alert in fires, f"{alert}: no case where it fires"
+        assert alert in silent, f"{alert}: no case where it must stay silent"
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "test rules /obs/alerts_test.yml" in ci and "check rules /obs/alerts.yml" in ci
+
+
+def test_expected_annotations_are_the_rules_text() -> None:
+    """The fixed part of each expected annotation is copied from the rule, so
+    a rule reworded without its test fails here before it fails in CI."""
+    tests = yaml.safe_load((ROOT / "obs" / "alerts_test.yml").read_text(encoding="utf-8"))
+    by_name = {r["alert"]: r for r in _rules()}
+    for t in tests["tests"]:
+        for case in t["alert_rule_test"]:
+            for exp in case["exp_alerts"]:
+                rule = by_name[case["alertname"]]
+                for key in ("summary", "description"):
+                    template = rule["annotations"][key]
+                    pattern = "^" + re.sub(r"\\\{\\\{.*?\\\}\\\}", ".+?", re.escape(template)) + "$"
+                    assert re.match(pattern, exp["exp_annotations"][key], re.S), (case["alertname"], key)
+
+
+def test_the_order_metrics_exist_where_the_rules_expect_them() -> None:
+    from shared import observability as o
+
+    for name in ("order_gate_decisions_total", "order_refusals_total", "orders_waiting",
+                 "orders_oldest_waiting_seconds", "order_loop_last_run_timestamp_seconds"):
+        assert hasattr(o, name), name
+    dash = (ROOT / "obs/grafana/dashboards/desk-fluidity.json").read_text(encoding="utf-8")
+    assert "Submits refused, by reason" in dash and "order_refusals_total" in dash
+    runbook = (ROOT / "docs/ops/runbooks.md").read_text(encoding="utf-8")
+    assert "## 6. An order is stuck" in runbook

@@ -34,6 +34,7 @@ from core.execution.reaper_policy import (
     decide_reap,
 )
 from engines.execution.fills_handler import _lock_for
+from engines.execution.ib_heartbeat import mark_loop_ran
 from engines.execution.order_reconciler import _leg_matches_position
 from engines.execution.settings import get_execution_settings
 from persistence.models import (
@@ -294,6 +295,7 @@ async def reaper_loop(
     while True:
         try:
             await reap_stale_orders(sm, executor, tau_stale_s=tau_stale_s)
+            mark_loop_ran("reaper")
         except asyncio.CancelledError:
             raise
         except Exception:

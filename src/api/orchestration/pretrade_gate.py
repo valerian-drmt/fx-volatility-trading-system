@@ -263,9 +263,25 @@ async def run_pretrade_gate(
         available_funds_usd=funds[0], net_liquidation_usd=funds[1],
     )
     result = evaluate_pretrade(inputs)
+    if log_refusal:   # a submit, not a preview
+        count_gate_decision(result.failures)
     if not result.passed and log_refusal:
         logger.warning("pretrade_gate_refused failures=%s", ",".join(result.failures))
     return result
+
+
+def count_gate_decision(failures: list[str]) -> None:
+    """Refusals by reason and the passed / refused split (#495). Nothing
+    counted the reasons: "the gate refuses every order" was found by reading
+    logs. Never raises."""
+    try:
+        from shared.observability import order_gate_decisions_total, order_refusals_total
+
+        order_gate_decisions_total.labels(outcome="refused" if failures else "passed").inc()
+        for reason in failures:
+            order_refusals_total.labels(reason=reason).inc()
+    except Exception:
+        logger.debug("gate_metrics_failed", exc_info=True)
 
 
 # What each limit is called on the ticket, and the keys of the gate's details.

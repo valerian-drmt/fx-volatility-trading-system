@@ -274,3 +274,68 @@ and `admin` (tunnel) profiles on the PC.
 deploy sets the role back to NOLOGIN. **Rotate:** change the value, redeploy.
 
 **Walked:** no (added 2026-11-12).
+
+## 6. An order is stuck
+
+For the alerts `OrderNeverPlaced`, `OrderOutlivedItsDay`, `OrderLoopStalled`,
+`GateRefusingEverything` and `ReconciliationBreakOpen`, and for an order the
+desk shows as waiting longer than it should.
+
+**What "stuck" can mean.** An order row is `pending` (written by the api, not
+yet at the broker), `submitted` or `partially_filled` (at the broker), or
+ended (`filled`, `cancelled`, `rejected`, `expired`). Three loops of the
+execution engine follow a row to its end, each once a minute:
+
+| Loop | What it does | Without it |
+|---|---|---|
+| reaper | ends a `pending` row that never left after 5 min, expires a row IB no longer holds, adopts an order found at IB by its reference | rows wait for ever and keep their leg reserved |
+| reconciler | books fills the handlers missed, from the recorded fills and from IB's executions; completes a trade whose entries all filled | a filled order reads `submitted` |
+| watcher | raises a critical event on a row working for more than 10 min; publishes the waiting-order gauges | no alert |
+
+**Step 1: what does the book say.** Read-only, from the PC:
+
+```powershell
+python scripts/local/prod_db.py "SELECT id, structure_id, order_role, state, side, qty, qty_filled, ib_order_id, ib_local_symbol, submitted_at, state_updated_at, cancel_requested_at, rejection_text FROM trade_order WHERE state IN ('pending','submitted','partially_filled') ORDER BY id"
+python scripts/local/prod_db.py "SELECT created_at, event_type, severity, description FROM trade_event WHERE order_id = <id> ORDER BY id"
+```
+
+**Step 2: what does the broker say.** `GET /api/v1/orders` (the desk's Orders
+blotter reads it) lists what IB holds open. The order's reference is
+`fxvol:<structure_id>:<order_id>`.
+
+**Step 3: read the pair.**
+
+| Book | Broker | Meaning | What to do |
+|---|---|---|---|
+| `pending`, no `ib_order_id`, under 5 min | absent | being placed, or the engine was unreachable | wait; the reaper ends it at 5 min and frees the leg |
+| `pending`, no `ib_order_id`, over 10 min | absent | the reaper is not running (`OrderNeverPlaced`, `OrderLoopStalled`) | step 4 |
+| `pending` | present, with our reference | the engine died between the send and the commit | nothing: the reaper adopts it on its next pass |
+| `submitted` | present, `Submitted` or `PreSubmitted` | a resting order | nothing; cancel it from the blotter if it is not wanted |
+| `submitted` | present, `Inactive` | IB holds it (outside hours, a price cap); `order_held` event says why | nothing; it is working |
+| `submitted`, over a day | absent | IB ended it and the handler missed it (`OrderOutlivedItsDay`) | the reaper expires it within 5 min of a pass; if not, step 4 |
+| `submitted` | absent, and a position changed | a fill was missed | the reconciler books it from IB's executions within a minute; a break opens meanwhile |
+| ended | present and open | the book ended an order IB still works | the session pass revives the row on the next reconnect; cancel at IB from the blotter if unwanted |
+
+**Step 4: a loop is stalled.** On the host:
+
+```bash
+docker logs --since 30m fxvol-execution 2>&1 | grep -iE "reaper_loop_error|reconcile_loop_error|stuck_order_watcher_cycle_crashed"
+curl -s localhost:8000/api/v1/health/extended | jq '.components'
+docker compose restart execution-engine      # handlers are re-attached to open orders at startup
+```
+
+A restart is safe for orders at IB: they stay at IB, and the engine
+re-attaches to each by its order id or its reference.
+
+**The gate refuses everything** (`GateRefusingEverything`). The reasons are
+counted: Grafana "Desk fluidity", panel "Submits refused, by reason", or
+`GET /api/v1/trade/refusals`. The usual three: `surface_stale` (the vol
+engine is behind: section 4), `trading_halted` (a halt left on: `GET
+/api/v1/admin/halt` says who and why), `cap_*` (a limit the trader typed,
+tighter than the book: the Risk settings).
+
+**Never:** change a `trade_order.state` by hand to "unstick" it. The state is
+written by one module (`persistence.order_state`), which also releases the
+reservation and finalises the trade; a hand edit leaves both behind.
+
+**Walked:** no (added 2026-11-14).

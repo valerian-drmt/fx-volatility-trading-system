@@ -232,11 +232,57 @@ async def stuck_order_watcher_loop(
                         order.id, order.structure_id, age_s,
                     )
                 await db.commit()
+                await publish_waiting_orders(db, now)
+            mark_loop_ran("watcher")
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("stuck_order_watcher_cycle_crashed")
         await asyncio.sleep(interval_s)
+
+
+WAITING_STATES = ("pending", "submitted", "partially_filled")
+
+
+async def waiting_orders(db: AsyncSession, now: datetime) -> dict[str, tuple[int, float]]:
+    """``{state: (count, age in seconds of the oldest)}`` for the orders that
+    have not ended. The age runs from the moment the order entered the wait:
+    its row's last state change for a pending row, its submission otherwise."""
+    out: dict[str, tuple[int, float]] = {s: (0, 0.0) for s in WAITING_STATES}
+    rows = (await db.execute(
+        select(StructureOrder.state, StructureOrder.submitted_at, StructureOrder.state_updated_at)
+        .where(StructureOrder.state.in_(WAITING_STATES))
+    )).all()
+    for state, submitted_at, state_updated_at in rows:
+        since = state_updated_at if state == "pending" else (submitted_at or state_updated_at)
+        if since is not None and since.tzinfo is None:
+            since = since.replace(tzinfo=UTC)
+        age = max((now - since).total_seconds(), 0.0) if since is not None else 0.0
+        n, oldest = out[state]
+        out[state] = (n + 1, max(oldest, age))
+    return out
+
+
+async def publish_waiting_orders(db: AsyncSession, now: datetime) -> None:
+    """Gauges for the alerts of #495. Never raises into the watcher."""
+    try:
+        from shared.observability import orders_oldest_waiting_seconds, orders_waiting
+
+        for state, (n, oldest) in (await waiting_orders(db, now)).items():
+            orders_waiting.labels(state=state).set(n)
+            orders_oldest_waiting_seconds.labels(state=state).set(oldest)
+    except Exception:
+        logger.debug("waiting_orders_metrics_failed", exc_info=True)
+
+
+def mark_loop_ran(loop: str) -> None:
+    """Stamp a completed pass of an order loop (``OrderLoopStalled``)."""
+    try:
+        from shared.observability import order_loop_last_run_timestamp_seconds
+
+        order_loop_last_run_timestamp_seconds.labels(loop=loop).set(datetime.now(UTC).timestamp())
+    except Exception:
+        logger.debug("loop_metric_failed loop=%s", loop, exc_info=True)
 
 
 async def mark_disconnected(db: AsyncSession, now: datetime) -> None:

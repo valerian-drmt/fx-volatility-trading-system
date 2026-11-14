@@ -180,6 +180,37 @@ reconciliation_breaks_open = Gauge(
     "Book-vs-broker breaks currently open after the last reconciliation pass (#323).",
 )
 
+# ── the order path (#495) ────────────────────────────────────────────────────
+order_gate_decisions_total = Counter(
+    "order_gate_decisions_total",
+    "Submits judged by the pre-trade gate, by outcome (passed / refused). Previews are not counted.",
+    ["outcome"],
+)
+
+order_refusals_total = Counter(
+    "order_refusals_total",
+    "Reasons the pre-trade gate refused a submit; one increment per reason of each refused submit.",
+    ["reason"],
+)
+
+orders_waiting = Gauge(
+    "orders_waiting",
+    "Orders not ended yet, by state (pending / submitted / partially_filled), from the last watcher pass.",
+    ["state"],
+)
+
+orders_oldest_waiting_seconds = Gauge(
+    "orders_oldest_waiting_seconds",
+    "Age of the oldest order still in each waiting state; 0 when there is none.",
+    ["state"],
+)
+
+order_loop_last_run_timestamp_seconds = Gauge(
+    "order_loop_last_run_timestamp_seconds",
+    "Unix time of the last pass each order loop completed without an error (reaper, reconciler, watcher).",
+    ["loop"],
+)
+
 ib_session_events_total = Counter(
     "ib_session_events_total",
     "IB session events seen by an engine: errorEvent codes bucketed "

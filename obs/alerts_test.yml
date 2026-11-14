@@ -1,0 +1,124 @@
+# Firing tests for the order-path alerts (#495): each rule is fed the condition
+# it exists for and must fire, then a healthy series and must stay silent.
+#
+#   promtool test rules obs/alerts_test.yml          (CI: job "quality")
+#   docker run --rm -v "$PWD/obs:/obs" --entrypoint promtool prom/prometheus test rules /obs/alerts_test.yml
+#
+# The audit of 2026-11-13 could not confirm that ReconciliationBreakOpen fires
+# on an open break: nothing had ever evaluated the rule against data.
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── a break between the book and the broker stays open ───────────────────
+  - interval: 1m
+    input_series:
+      - series: 'reconciliation_breaks_open{instance="execution-engine:9104"}'
+        values: '0x5 3x30'          # opens at minute 6 and stays
+    alert_rule_test:
+      - eval_time: 15m              # open for 9 minutes: not yet
+        alertname: ReconciliationBreakOpen
+        exp_alerts: []
+      - eval_time: 25m              # open for more than 15 minutes
+        alertname: ReconciliationBreakOpen
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "3 book-vs-broker reconciliation break(s) open for 15 min"
+              description: "`GET /api/v1/positions/breaks` lists them; `docker logs fxvol-execution | grep reconciliation_break_opened` gives the contract, type and quantities."
+
+  - interval: 1m
+    input_series:
+      - series: 'reconciliation_breaks_open{instance="execution-engine:9104"}'
+        values: '0x5 2x8 0x30'      # an in-flight fill: closed within 15 minutes
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: ReconciliationBreakOpen
+        exp_alerts: []
+
+  # ── a row that never left for the broker ─────────────────────────────────
+  - interval: 1m
+    input_series:
+      - series: 'orders_oldest_waiting_seconds{state="pending"}'
+        values: '0x2 60+60x30'      # one pending row ageing a minute per minute
+      - series: 'orders_oldest_waiting_seconds{state="submitted"}'
+        values: '7200x40'           # a resting limit order: normal
+    alert_rule_test:
+      - eval_time: 8m               # 6 minutes old: the reaper has until 5 + its interval
+        alertname: OrderNeverPlaced
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: OrderNeverPlaced
+        exp_alerts:
+          - exp_labels: {severity: critical, state: pending}
+            exp_annotations:
+              summary: "an order has been pending for 18m 0s: it never left for the broker"
+              description: "The reaper ends a pending row after 5 min; it did not. Runbook: docs/ops/runbooks.md section 6 (an order is stuck)."
+
+  # ── a DAY order that outlived its day ────────────────────────────────────
+  - interval: 1h
+    input_series:
+      - series: 'orders_oldest_waiting_seconds{state="submitted"}'
+        values: '3600+3600x50'      # one more hour every hour
+    alert_rule_test:
+      - eval_time: 20h              # the trading day is not over
+        alertname: OrderOutlivedItsDay
+        exp_alerts: []
+      - eval_time: 40h
+        alertname: OrderOutlivedItsDay
+        exp_alerts:
+          - exp_labels: {severity: warning, state: submitted}
+            exp_annotations:
+              summary: "an order has been submitted for 1d 17h 0m 0s: a DAY order ends with its day"
+              description: "IB ended it and the book did not hear, or the book lost the order. Runbook: docs/ops/runbooks.md section 6 (an order is stuck)."
+
+  # ── the gate refuses every submit ────────────────────────────────────────
+  - interval: 1m
+    input_series:
+      - series: 'order_gate_decisions_total{outcome="refused"}'
+        values: '0x5 1 2 3 4 4x60'  # four refusals in a row
+      - series: 'order_gate_decisions_total{outcome="passed"}'
+        values: '0x70'              # nothing passes
+    alert_rule_test:
+      - eval_time: 7m               # two refusals: a trader correcting a ticket
+        alertname: GateRefusingEverything
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: GateRefusingEverything
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "the pre-trade gate refused all 4 submits of the last hour"
+              description: "Reasons: Grafana 'Desk fluidity', panel 'Submits refused, by reason', or `GET /api/v1/trade/refusals`. A stale surface, a halt left on or a limit typed too tight refuse everything."
+
+  - interval: 1m
+    input_series:
+      - series: 'order_gate_decisions_total{outcome="refused"}'
+        values: '0x5 1 2 3 4 4x60'
+      - series: 'order_gate_decisions_total{outcome="passed"}'
+        values: '0x8 1x60'          # one submit passed: the gate works
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: GateRefusingEverything
+        exp_alerts: []
+
+  # ── a loop of the order path stopped ─────────────────────────────────────
+  - interval: 1m
+    input_series:
+      - series: 'order_loop_last_run_timestamp_seconds{loop="reaper"}'
+        values: '0+60x5 300x40'     # runs every minute, then stops at t=300 s
+      - series: 'order_loop_last_run_timestamp_seconds{loop="reconciler"}'
+        values: '0+60x45'           # keeps running
+    alert_rule_test:
+      - eval_time: 8m               # 3 minutes without a pass: a slow pass
+        alertname: OrderLoopStalled
+        exp_alerts: []
+      - eval_time: 25m              # stale past 10 min since minute 16, held 5 min
+        alertname: OrderLoopStalled
+        exp_alerts:
+          - exp_labels: {severity: critical, loop: reaper}
+            exp_annotations:
+              summary: "the reaper loop of the execution engine has not completed a pass for 20m 0s"
+              description: "Orders are no longer followed to their end by this loop. `docker logs fxvol-execution | grep -i reaper`; restart the engine if it does not recover. Runbook: docs/ops/runbooks.md section 6."
