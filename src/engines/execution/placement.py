@@ -33,6 +33,7 @@ from typing import Any
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from engines.execution.door import place_at_broker
 from engines.execution.latency import note_submit_start
 from persistence.instruments import instrument_from_ib_contract, upsert_instruments
 
@@ -183,7 +184,7 @@ async def place_with_claim(
     order.orderRef = order_ref
     note_submit_start((str(getattr(model, '__tablename__', model.__name__)), int(row_id)))
     try:
-        trade = ib.placeOrder(contract, order)
+        trade = await place_at_broker(ib, contract, order)
     except Exception:
         # placeOrder raised before handing the order to the socket: nothing is
         # live at IB, so a retry must be allowed.

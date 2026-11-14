@@ -25,6 +25,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys
+from engines.execution import door
 from engines.execution.fills_handler import attach_fill_handlers, register_post_fill_hook
 from engines.execution.halt_guard import cancel_all_open, require_not_halted
 from engines.execution.ib_heartbeat import (
@@ -181,6 +182,7 @@ async def lifespan(app: FastAPI):
     )
     session.install()
     app.state.session = session
+    door.configure(sm, session)   # every order passes the kill switch and the ready gate (#491)
     if executor.is_connected():
         # The startup connect ran before install(): wire the hooks onto the
         # live IB object now, then run the first pass before serving.

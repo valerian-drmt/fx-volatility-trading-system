@@ -16,6 +16,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from engines.execution.door import place_at_broker
+
 logger = logging.getLogger(__name__)
 
 _OPT_TICK = 0.0001  # CME EUR-FOP minimum price variation
@@ -417,7 +419,7 @@ class OrderExecutor:
             order.orderRef = order_ref
         order.tif = DEFAULT_TIF
         # Don't wait for the fill — return immediately ; the UI polls the state.
-        return ib.placeOrder(contract, order)
+        return await place_at_broker(ib, contract, order)
 
     async def cancel_order(self, order_id: int) -> dict[str, Any] | None:
         ib = self._ensure()
@@ -460,7 +462,7 @@ class OrderExecutor:
         if order_ref:
             order.orderRef = order_ref
         order.tif = DEFAULT_TIF
-        trade = ib.placeOrder(target.contract, order)
+        trade = await place_at_broker(ib, target.contract, order)
         return trade_to_dict(trade)
 
     async def close_position_by_symbol(
@@ -545,7 +547,7 @@ class OrderExecutor:
         if order_ref:
             order.orderRef = order_ref  # durable key, matched by the reaper (#318)
         order.tif = DEFAULT_TIF
-        return ib.placeOrder(contract, order)
+        return await place_at_broker(ib, contract, order)
 
 
 def trade_to_dict(trade: Any) -> dict[str, Any]:

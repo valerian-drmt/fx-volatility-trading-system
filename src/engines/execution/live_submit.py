@@ -38,6 +38,7 @@ from core.execution.contract_builder import (
     build_order_kwargs,
     can_use_combo,
 )
+from engines.execution.door import place_at_broker
 from engines.execution.fills_handler import (
     attach_combo_fill_handlers,
     attach_fill_handlers,
@@ -359,7 +360,7 @@ async def submit_structure_live(
                 raise
             for order in orders:
                 note_submit_start(("trade_order", int(order.id)), submit_t0)
-            trade = ib.placeOrder(bag, combo_order)
+            trade = await place_at_broker(ib, bag, combo_order)
             attach_combo_fill_handlers(
                 trade=trade, conid_to_order=conid_to_order, sessionmaker_factory=sm,
             )
@@ -502,7 +503,7 @@ async def submit_structure_live(
                 ib_order.orderRef = order_ref(structure_id, order.id)
 
                 note_submit_start(("trade_order", int(order.id)), submit_t0)
-                trade = ib.placeOrder(contract, ib_order)
+                trade = await place_at_broker(ib, contract, ib_order)
                 # Handlers first, before anything can yield (#490): a fill
                 # that arrived during the commit below used to find no
                 # handler and wait for the executions sweep.
