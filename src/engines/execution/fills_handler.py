@@ -49,7 +49,15 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
-from persistence.order_state import end_order
+from persistence.order_state import (
+    ENDED_STATES,
+    EXPIRED_AT_BROKER,
+    apply_fill_state,
+    end_order,
+    lock_order,
+    mark_submitted,
+    state_of_broker_cancel,
+)
 from persistence.projection import rebuild_leg
 from persistence.reservation import recompute_reservation
 from shared.tasks import log_task_result
@@ -129,6 +137,7 @@ async def _on_order_status(
                 return
             if order.trace_id:  # this status event's logs share the request's id
                 bind_trace_id(order.trace_id)
+            await lock_order(db, order)   # the api writes this row too (#489)
             old_state = order.state
             now = datetime.now(UTC)
             ws_event: dict | None = None
@@ -150,8 +159,7 @@ async def _on_order_status(
                 ws_event = {"event_type": "order_held", "why_held": why_held}
             elif tr.new_state == "submitted":
                 observe_submitted(("trade_order", order_id))
-                order.state = "submitted"
-                order.submitted_at = order.submitted_at or now
+                await mark_submitted(db, order, now=now)
                 _audit(db, order, "order_acknowledged", "info",
                        f"ib status={status}", {"old_state": old_state})
                 ws_event = {"event_type": "order_acknowledged"}
@@ -169,10 +177,14 @@ async def _on_order_status(
                        f"ib status={status} reason={order.rejection_text}", {"old_state": old_state})
                 ws_event = {"event_type": "order_rejected", "reason": order.rejection_text}
             elif tr.new_state == "cancelled":
-                await end_order(db, order, "cancelled", now=now)
-                _audit(db, order, "order_cancelled", "warning",
+                # Cancelled by the desk, or ended by the broker on its own
+                # (the close of the day for a DAY order): one rule (#485).
+                ended = state_of_broker_cancel(order)
+                await end_order(db, order, ended, now=now,
+                                reason=EXPIRED_AT_BROKER if ended == "expired" else None)
+                _audit(db, order, f"order_{ended}", "warning",
                        f"ib status={status}", {"old_state": old_state})
-                ws_event = {"event_type": "order_cancelled"}
+                ws_event = {"event_type": f"order_{ended}"}
             # Filled is handled in _on_execution after fill aggregates ; we
             # don't transition here to avoid races (tr.kind == fill_pending).
             await db.commit()
@@ -264,28 +276,21 @@ async def _persist_fill(
                         await upsert_instruments(db, [item])
                 except Exception:
                     logger.warning("instrument_upsert_failed order_id=%s", order_id, exc_info=True)
+        await lock_order(db, order)   # the api writes this row too (#489)
         agg = await _recompute_aggregates(db, order)
-        full_fill = False
-        if agg.fully_filled and order.state != "filled":
-            order.state = "filled"
-            order.fully_filled_at = datetime.now(UTC)
-            # a filled order was not refused: an IB notice kept from before
-            # the fill (10349, a price cap) is not shown as a reason
-            order.rejection_text = None
+        ended_before = order.state in ENDED_STATES
+        written = apply_fill_state(order, fully_filled=agg.fully_filled)
+        full_fill = written == "filled"
+        if full_fill:
             _audit(db, order, "order_filled", "info",
                    f"qty={agg.qty_filled} avg={agg.avg_fill_price}",
                    {"slippage_per_contract": agg.slippage_per_contract})
-            full_fill = True
-        elif not agg.fully_filled and order.state in ("cancelled", "rejected", "expired"):
+        elif written is None and ended_before:
             # A fill on a row that already ended (cancelled after a partial
             # fill, or expired by the reaper while IB still had it): the
             # execution is booked and the leg rebuilt, the row stays ended.
-            # It used to go back to partially_filled, the reaper expired it
-            # again five minutes later, and so on.
             _audit(db, order, "fill_on_ended_order", "warning",
                    f"fill of {qty} booked on an order already {order.state}", {"state": order.state})
-        elif not agg.fully_filled:
-            order.state = "partially_filled"
         # Keep the forward projection (the book) current: this leg's position is
         # a pure fold of its fills (I3). Single writer = persistence.projection.
         await rebuild_leg(db, order_id=order_id)
@@ -513,11 +518,18 @@ async def _on_combo_status(
                 tr = next_state(o.state, status, has_error_reason=reason is not None)
                 if tr.new_state not in ("cancelled", "rejected"):
                     continue  # terminal guard per leg
-                o.state = tr.new_state
+                # end_order: the row, the leg it reserved and its trade (#489).
+                # This path used to write the state alone.
                 if tr.new_state == "rejected":
-                    o.rejected_at = datetime.now(UTC)
-                    o.rejection_text = (reason or status or "")[:300]
-                _audit(db, o, f"order_{tr.new_state}", "warning",
+                    ended = "rejected"
+                    done = await end_order(db, o, ended, reason=(reason or status or ""))
+                else:
+                    ended = state_of_broker_cancel(o)
+                    done = await end_order(
+                        db, o, ended, reason=EXPIRED_AT_BROKER if ended == "expired" else None)
+                if not done:
+                    continue
+                _audit(db, o, f"order_{ended}", "warning",
                        f"combo ib status={status} reason={reason or '-'}", {})
             await db.commit()
     except Exception:
@@ -558,8 +570,8 @@ async def _book_combo_filled(
             o.qty_filled = int(o.qty)
             if o.avg_fill_price is None:
                 o.avg_fill_price = price
-            o.state = "filled"
-            o.fully_filled_at = now
+            await lock_order(db, o)
+            apply_fill_state(o, fully_filled=True, now=now)
             _audit(db, o, "order_filled", "info",
                    f"combo BAG filled (aggregate) status={getattr(trade.orderStatus, 'status', '')}", {})
             await rebuild_leg(db, order_id=oid)  # keep the book current (I3)

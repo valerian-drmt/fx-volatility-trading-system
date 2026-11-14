@@ -9,7 +9,6 @@ GET  /api/v1/positions/{id}/signal-tracking   signal vs entry trail
 GET  /api/v1/positions/reconciliation         book (filled orders) vs broker (IB mirror) breaks
 GET  /api/v1/positions/ledger                 positions + P&L folded from the trade_fill event log
 POST /api/v1/positions/{id}/close             partial/full close (live, forwards to exec-engine)
-POST /api/v1/positions/{id}/close-manual      mark for manual close (mock — Step 5 phase 1)
 POST /api/v1/positions/monitor/run-once       trigger 1 cycle on demand (dev/debug)
 GET  /api/v1/positions/aggregate              greeks aggregate across open positions
 GET  /api/v1/positions/exit-rules-config      hot-reload config visibility
@@ -25,7 +24,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import and_, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
@@ -39,6 +38,7 @@ from api.schemas.reads import DeltaHedgeSetting, ExitRuleConfig, OpenPositionRow
 from bus import keys
 from core.contracts import multiplier_for, parse_local_symbol
 from core.execution.reconciliation import classify_break
+from core.execution.ticks import OPTION_TICK, snap, tick_for
 from core.ledger import LedgerFill, fold_fills, unrealized_pnl
 from core.products import product_label_from_symbol
 from core.vol.tenors import tenor_bucket_from_expiry
@@ -58,6 +58,7 @@ from persistence.models import (
     TradeEvent,
     TradeStructure,
 )
+from persistence.order_state import end_order, mark_submitted
 from persistence.reservation import recompute_reservation
 from shared.internal_auth import internal_headers
 from shared.trace import current_trace_id
@@ -940,7 +941,7 @@ def _compute_breaks(
 # closes), so an option close is ALWAYS a marketable LMT priced well through the
 # touch. Wide because option spreads are wide ; snapped to the 0.0001 grid or IB
 # rejects with Warning 110. Same buffer as the entry path (MARKETABLE_LIMIT_BUFFER).
-_OPT_TICK = 0.0001
+_OPT_TICK = OPTION_TICK
 _MKT_CLOSE_BUFFER = get_settings().MARKETABLE_LIMIT_BUFFER
 
 # How long a closing order counts as "in flight" for the stacking guard. Past
@@ -1120,17 +1121,23 @@ async def close_one_open_position(
     # pass the check). A no-op on engines without row locks.
     await db.execute(select(OpenPosition.id).where(OpenPosition.id == pos.id).with_for_update())
     contract_kind = (spec.option_type or "").lower() if is_option else "future"
+    # The guard keys on the CONTRACT (#486): the close row carries the
+    # position's IB symbol from its creation. Side, expiry, strike and kind
+    # only matched rows written before that (a 6E and an M6E future of the
+    # same month shared one budget).
+    legacy = [
+        StructureOrder.ib_local_symbol.is_(None),
+        StructureOrder.contract_expiry == pos.expiry,
+        StructureOrder.contract_type == contract_kind,
+    ]
+    if strike_val is not None:
+        legacy.append(StructureOrder.contract_strike == strike_val)
     inflight_conds = [
         StructureOrder.order_role == "closing",
         StructureOrder.side == reverse_side,
-        StructureOrder.contract_expiry == pos.expiry,
-        # the same kind of contract: a call and a put with the same strike and
-        # expiry no longer share one budget
-        StructureOrder.contract_type == contract_kind,
-        StructureOrder.state.in_(("pending", "submitted", "acknowledged", "partially_filled")),
+        StructureOrder.state.in_(("pending", "submitted", "partially_filled")),
+        or_(StructureOrder.ib_local_symbol == pos.structure, and_(*legacy)),
     ]
-    if strike_val is not None:
-        inflight_conds.append(StructureOrder.contract_strike == strike_val)
     # Sum the still-in-flight remaining qty in Python via the pure predicate — the
     # self-heal boundary (incl. the never-dispatched submitted_at IS NULL case)
     # lives in one tested place instead of drifting inside a SQL expression.
@@ -1159,8 +1166,11 @@ async def close_one_open_position(
     #      never completing). Falls back to MKT only if there's no mark to price.
     #   3. Futures inside RTH → MarketOrder (deep book, no cap).
     #   4. Futures outside RTH → LMT at mark × (1 ± 5 bps) on the close side.
+    tick = tick_for(pos.structure, is_option=is_option)
     if limit_price_override is not None:
-        limit_price: float | None = round(float(limit_price_override), 6)
+        # The operator's price, on the contract's grid (#492): IB refuses a
+        # limit between two ticks. It was only rounded to six decimals.
+        limit_price: float | None = snap(float(limit_price_override), tick)
     elif is_option and pos.market_price is not None:
         limit_price = _marketable_close_from_mark(float(pos.market_price), pos.side)
     elif _is_cme_fx_rth():
@@ -1172,8 +1182,11 @@ async def close_one_open_position(
                 f"position #{pos.id} has no market_price and CME is outside RTH ; "
                 "supply an explicit limit_price",
             )
-        limit_price = round(
-            _close_limit_from_mark(float(pos.market_price), pos.side), 6,
+        # on the grid, on the side that keeps the limit marketable: we SELL
+        # to close a long (down), BUY to close a short (up)
+        limit_price = snap(
+            _close_limit_from_mark(float(pos.market_price), pos.side), tick,
+            toward="down" if pos.side == "BUY" else "up",
         )
     order_type = "LMT" if limit_price is not None else "MKT"
 
@@ -1220,7 +1233,7 @@ async def close_one_open_position(
         state="pending",
         trace_id=trace_id,
         closes_order_id=entry_order_id,
-        **contract_fields,
+        **{**contract_fields, "ib_local_symbol": str(pos.structure)[:20]},
     )
     db.add(closing_order)
     if entry_order_id is not None:
@@ -1274,9 +1287,10 @@ async def close_one_open_position(
         if outcome == "not_sent":
             # The request never reached the engine: nothing is live at IB, the
             # close is safely dead and the operator can retry.
-            closing_struct.state = "partial_fail"
-            closing_order.state = "rejected"
-            closing_order.rejection_text = f"execution-engine unreachable: {type(e).__name__}"
+            # end_order: the row, the leg it reserved (it stayed reserved
+            # here) and the ticket's state (#489)
+            await end_order(db, closing_order, "rejected",
+                            reason=f"execution-engine unreachable: {type(e).__name__}")
             await db.commit()
             raise HTTPException(503, detail={
                 "error": "execution_engine_unreachable",
@@ -1289,8 +1303,7 @@ async def close_one_open_position(
         # guard ignores rejected rows. Keep it in flight instead: state
         # 'submitted' + submitted_at = now, so the guard counts it for the
         # in-flight window and the reconciler / fills handler settle it.
-        closing_order.state = "submitted"
-        closing_order.submitted_at = datetime.now(UTC)
+        await mark_submitted(db, closing_order)
         db.add(TradeEvent(
             structure_id=closing_struct.id,
             event_type="close_dispatch_timeout",
@@ -1320,23 +1333,23 @@ async def close_one_open_position(
             detail = r.json().get("detail", r.text)
         except Exception:
             detail = r.text
-        closing_struct.state = "partial_fail"
-        closing_order.state = "rejected"
-        closing_order.rejection_text = str(detail)[:300]
+        await end_order(db, closing_order, "rejected", reason=str(detail))
         await db.commit()
         raise HTTPException(r.status_code, detail)
 
     ib_response = r.json()
 
     # ── 3. Stamp IB orderId + flip the leg state to 'submitted'. ──
+    # mark_submitted re-reads the row under its lock: the engine's handlers
+    # are live by now, and a fill they booked while the answer travelled was
+    # written over with "submitted" here (#489).
     ib_order_id = ib_response.get("order_id")
-    if ib_order_id is not None:
-        closing_order.ib_order_id = str(ib_order_id)
     perm_id = ib_response.get("perm_id")
-    if perm_id is not None:
-        closing_order.ib_perm_id = str(perm_id)
-    closing_order.state = "submitted"
-    closing_order.submitted_at = datetime.now(UTC)
+    await mark_submitted(
+        db, closing_order,
+        ib_order_id=str(ib_order_id) if ib_order_id is not None else None,
+        ib_perm_id=str(perm_id) if perm_id is not None else None,
+    )
     # The row says what was SENT (#492): the engine prices an option close off
     # the live quote, so the price at the broker is its answer, not our guess.
     sent_price = ib_response.get("limit_price")
@@ -1379,36 +1392,7 @@ async def close_live_position(
     )
 
 
-@router.post("/{position_id}/close-manual", response_model=rm.ManualCloseResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
-async def close_manual(position_id: int, db: DbDep) -> dict[str, Any]:
-    """Mark a position for manual close. Step 5 phase 1 = state flip only.
 
-    The actual closing-structure submit + fills will be wired when markets-open
-    phase lands (tracked on the GitHub board). For now we record an audit alert.
-    """
-    pos = (await db.execute(
-        select(BookedPosition).where(BookedPosition.id == position_id).limit(1)
-    )).scalar_one_or_none()
-    if pos is None:
-        raise HTTPException(404, "position not found")
-    if pos.state != "open":
-        raise HTTPException(400, f"position state is {pos.state}, expected 'open'")
-
-    now = datetime.now(UTC)
-    pos.state = "closing"
-    pos.state_updated_at = now
-
-    db.add(ExitAlert(
-        position_id=position_id, timestamp=now,
-        rule_triggered="manual_close",
-        action_recommended="EXIT",
-        priority=10,
-        rule_detail={"source": "user", "phase": "mock"},
-        auto_executed=False, execution_status="in_progress",
-    ))
-
-    await db.commit()
-    return {"position_id": position_id, "state": pos.state, "phase": "mock"}
 
 
 @router.post("/monitor/run-once", response_model=rm.MonitorRunReport, response_model_exclude_unset=True, dependencies=[Depends(require_write)])

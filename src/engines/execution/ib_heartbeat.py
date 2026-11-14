@@ -12,7 +12,7 @@ Two background tasks owned by `engines.execution.main:lifespan` :
 
 2. ``stuck_order_watcher_loop`` — every ``STUCK_WATCH_INTERVAL_S`` (default
    60 s) : pick all ``structure_orders`` rows still in
-   ``state ∈ ('submitted','acknowledged')`` whose ``submitted_at`` is older
+   ``state = 'submitted'`` whose ``submitted_at`` is older
    than ``stuck_after_seconds`` (default 600 s = 10 min). For each, log a
    single ``execution_audit_log`` row at severity=critical. **No auto-cancel
    in V1** (spec §7.4) — operator decides.
@@ -158,7 +158,7 @@ async def heartbeat_loop(
 # Stuck-order watcher (spec §7.4 — alert only, no auto-cancel V1)
 # --------------------------------------------------------------------------
 
-_STUCK_STATES = ("submitted", "acknowledged")
+_STUCK_STATES = ("submitted",)
 _STUCK_AUDIT_EVENT = "stuck_order_alert"
 
 

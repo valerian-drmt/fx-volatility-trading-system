@@ -78,8 +78,8 @@ interface BlotterRow {
 function orderStateLabel(state: string): string {
   const s = (state || "").toLowerCase();
   if (s === "pending") return "sending";
-  if (s === "submitted" || s === "acknowledged" || s === "presubmitted") return "waiting at IB";
-  if (s === "partially_filled" || s === "partial_fill") return "partly filled";
+  if (s === "submitted" || s === "presubmitted") return "waiting at IB";
+  if (s === "partially_filled") return "partly filled";
   return state;
 }
 
@@ -93,7 +93,7 @@ function roleTone(role: string): "open" | "close" | "hedge" | "spot" {
 // In-flight (waiting) order states — pinned above resolved rows in the blotter,
 // since "submitted" / partial fills are pending, not final (fully_filled / *_fail).
 const _WAITING_STATES = new Set([
-  "submitted", "pending", "acknowledged", "partial_fill", "partially_filled", "submitting", "closing",
+  "submitted", "pending", "partially_filled", "submitting", "closing",
 ]);
 const isWaitingState = (s: string | null | undefined): boolean =>
   _WAITING_STATES.has((s ?? "").toLowerCase());

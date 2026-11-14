@@ -1356,7 +1356,7 @@ async def list_submitted_structures(
         select(TradeStructure).order_by(desc(TradeStructure.created_at)).limit(limit)
     )).scalars().all())
     in_flight = select(StructureOrder.structure_id).where(
-        StructureOrder.state.in_(("pending", "submitted", "acknowledged", "partially_filled"))
+        StructureOrder.state.in_(("pending", "submitted", "partially_filled"))
     )
     older = (await db.execute(
         select(TradeStructure)

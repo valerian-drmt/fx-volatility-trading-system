@@ -41,7 +41,7 @@ from persistence.models import (
     StructureOrder,
     TradeEvent,
 )
-from persistence.order_state import end_order
+from persistence.order_state import EXPIRED_AT_BROKER, end_order, mark_submitted
 
 logger = logging.getLogger(__name__)
 
@@ -143,8 +143,13 @@ async def reap_stale_orders(
                 description=f"order {o.id} still pending after {tau_stale_s:.0f}s and not at IB -> expired",
                 payload={"order_id": int(o.id), "order_role": o.order_role},
             ))
-            if await end_order(db, o, "expired", reason="never placed at the broker", now=now):
-                never_placed_ids.append(int(o.id))
+            # under the order's lock, on its state NOW (#485): the adoption
+            # or a late answer of the engine may have moved it since the select
+            async with _lock_for(int(o.id)):
+                await db.refresh(o)
+                if o.state == "pending" and o.ib_order_id is None and await end_order(
+                        db, o, "expired", reason="never placed at the broker", now=now):
+                    never_placed_ids.append(int(o.id))
 
         stale = (await db.execute(
             select(StructureOrder)
@@ -216,7 +221,9 @@ async def reap_stale_orders(
                 # (#485). The reaper used to write over it.
                 async with _lock_for(int(o.id)):
                     await db.refresh(o)
-                    if o.state in REAPABLE_STATES and await end_order(db, o, "expired", now=now):
+                    if o.state in REAPABLE_STATES and await end_order(
+                            db, o, "expired", now=now,
+                            reason=None if o.rejection_text else EXPIRED_AT_BROKER):
                         expired_ids.append(int(o.id))
 
         await db.commit()
@@ -253,13 +260,11 @@ async def _adopt_orphaned_orders(
     adopted: list[int] = []
     for o in rows:
         t = ref_map[int(o.id)]
-        o.ib_order_id = str(t["order_id"]) if t.get("order_id") is not None else None
-        o.ib_perm_id = str(t["perm_id"]) if t.get("perm_id") is not None else None
-        if o.state == "pending":
-            o.state = "submitted"
-            o.state_updated_at = now
-        if o.submitted_at is None:
-            o.submitted_at = now
+        await mark_submitted(
+            db, o, now=now,
+            ib_order_id=str(t["order_id"]) if t.get("order_id") is not None else None,
+            ib_perm_id=str(t["perm_id"]) if t.get("perm_id") is not None else None,
+        )
         db.add(TradeEvent(
             structure_id=int(o.structure_id), order_id=int(o.id),
             event_type="order_adopted_from_ib", severity="warning",

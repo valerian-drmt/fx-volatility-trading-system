@@ -402,7 +402,7 @@ def _pick(summary: dict, aliases: list[str]) -> Decimal | None:
     return None
 
 
-_PARENT_LIVE_STATES = ("submitted", "partial_fill", "fully_filled", "partial_fail")
+_PARENT_LIVE_STATES = ("submitted", "fully_filled", "partial_fail")
 
 
 async def _build_leg_to_trade_map(

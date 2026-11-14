@@ -149,6 +149,7 @@ async def run_rollback(
             for trade in ib.openTrades():
                 if trade.order.orderId == ib_order_id_int:
                     ib.cancelOrder(trade.order)
+                    order.cancel_requested_at = datetime.now(UTC)
                     break
             db.add(TradeEvent(
                 structure_id=structure_id, order_id=order.id,

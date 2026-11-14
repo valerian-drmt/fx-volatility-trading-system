@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from persistence.models import LegPosition, StructureOrder
 
 # An in-flight close still holding a reservation (everything not terminal).
-_NON_TERMINAL = ("pending", "submitted", "acknowledged", "partially_filled")
+_NON_TERMINAL = ("pending", "submitted", "partially_filled")
 
 
 async def _leg_row(db: AsyncSession, order_id: int) -> LegPosition:

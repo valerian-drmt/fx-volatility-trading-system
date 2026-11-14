@@ -7,14 +7,16 @@ Per cycle, per open position :
     1. compute MTM (linearised against entry snapshot)
     2. attribute P&L (vega / gamma / theta / other)
     3. evaluate the 5 exit rules → pick winner
-    4. cooldown-aware delta-hedge check
-    5. persist `position_mtm_history` + `position_signal_tracking` rows
-    6. if EXIT triggered : create `exit_alerts` row (5-min cooldown to avoid spam)
-    7. if hedge triggered : create `hedge_orders` row (in 'pending' state — real
-       IB submit is deferred to execution-engine when markets are open)
+    4. persist `position_mtm_history` + `position_signal_tracking` rows
+    5. if EXIT triggered : create `exit_alerts` row (5-min cooldown to avoid spam)
 
-In sandbox / mock mode, ``execute_hedge=False`` keeps everything as DB rows
-without any IB call.
+The monitor OBSERVES and alerts. It places nothing (#493, owner rule "the
+app is not the trader"): an exit alert is a line on the screen, the trader
+closes. It used to carry two dormant features, one flag away from trading on
+its own: an automatic close on an EXIT alert (which could not work: its
+closing rows were refused by the engine and the position stayed `closing`)
+and a delta hedge row written every cycle that nothing sent. A package's
+hedge is the trader's choice on the ticket (`engines.execution.package_hedge`).
 """
 from __future__ import annotations
 
@@ -28,9 +30,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from api.config import get_settings
-from bus import keys
 from bus.publisher import publish_exit_alert, publish_position_update
-from core.positions.delta_hedge import check_delta_hedge_needed, net_pending_hedge_delta
 from core.positions.exit_rules import (
     EXIT_RULES,
     CurrentSignal,
@@ -42,7 +42,6 @@ from core.positions.mtm import attribute_pnl, compute_mtm
 from core.positions.position_pricing import LegSpec, PositionMark, price_position
 from core.vol.tenors import nearest_tenor
 from persistence.models import (
-    AppConfigScalar,  # replaces DeltaHedgeConfig (migration 024)
     BookedPosition,
     BookedPositionMetricHistory,
     ExitAlert,
@@ -52,7 +51,6 @@ from persistence.models import (
     StructureOrder,
     TradeStructure,
 )
-from shared.internal_auth import internal_headers
 
 logger = logging.getLogger(__name__)
 
@@ -67,21 +65,13 @@ class PositionMonitorScheduler:
         interval_s: float = 60.0,
         startup_delay_s: float = 30.0,
         alert_cooldown_minutes: float = 5.0,
-        hedge_cooldown_seconds: float = 300.0,
-        execute_hedge: bool = False,
     ):
         self._sm_factory = sessionmaker_factory
         self.symbol = symbol
         self.interval_s = interval_s
         self.startup_delay_s = startup_delay_s
         self.alert_cooldown = timedelta(minutes=alert_cooldown_minutes)
-        self.hedge_cooldown_seconds = hedge_cooldown_seconds
-        self.execute_hedge = execute_hedge
         self._task: asyncio.Task[None] | None = None
-        # Hedge IDs to POST to execution-engine after the cycle commits.
-        self._pending_hedge_ids: list[int] = []
-        # (position_id, alert_id, rule_name) tuples to close after commit.
-        self._pending_close_alerts: list[tuple[int, int, str]] = []
         # WS payloads accumulated during the cycle, dispatched after commit.
         self._pending_position_updates: list[dict] = []
         self._pending_exit_alerts: list[dict] = []
@@ -128,7 +118,6 @@ class PositionMonitorScheduler:
         surface, spot_now, iv_now_pct = await self._best_effort_market_snapshot_full()
 
         n_alerts = 0
-        n_hedges = 0
         now = datetime.now(UTC)
 
         for pos in open_positions:
@@ -138,49 +127,17 @@ class PositionMonitorScheduler:
                     current_regime, surface,
                 )
                 n_alerts += report["alert_persisted"]
-                n_hedges += report["hedge_persisted"]
             except Exception:
                 logger.exception("position_monitor_one_failed position_id=%s", pos.id)
 
         await db.commit()
 
-        # Post-commit : fire pending hedges to execution-engine. Failures
-        # leave the row in 'pending' state — operator retries.
-        await self._dispatch_pending_hedges()
-        await self._dispatch_pending_closes()
         await self._publish_ws_updates()
 
         return {
             "open_positions": len(open_positions),
             "alerts": n_alerts,
-            "hedges": n_hedges,
         }
-
-    async def _dispatch_pending_hedges(self) -> None:
-        if not self._pending_hedge_ids:
-            return
-        ids = list(self._pending_hedge_ids)
-        self._pending_hedge_ids.clear()
-        try:
-            import httpx
-            base = get_settings().EXECUTION_URL
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                for hid in ids:
-                    try:
-                        resp = await client.post(
-                            f"{base.rstrip('/')}/internal/hedge",
-                            json={"hedge_order_id": hid},
-                            headers=internal_headers(),
-                        )
-                        if resp.status_code >= 400:
-                            logger.warning(
-                                "hedge_dispatch_failed id=%s status=%s",
-                                hid, resp.status_code,
-                            )
-                    except Exception:
-                        logger.exception("hedge_dispatch_exception id=%s", hid)
-        except Exception:
-            logger.exception("hedge_dispatch_loop_crashed")
 
     async def _monitor_one(
         self, db: AsyncSession, pos: BookedPosition, now: datetime,
@@ -194,7 +151,7 @@ class PositionMonitorScheduler:
             select(TradeStructure).where(TradeStructure.id == pos.structure_id).limit(1)
         )).scalar_one_or_none()
         if struct is None:
-            return {"alert_persisted": 0, "hedge_persisted": 0}
+            return {"alert_persisted": 0}
 
         spot_eff = spot_now if spot_now is not None else (pos.entry_spot or 1.085)
         iv_eff = iv_now_pct if iv_now_pct is not None else (pos.entry_iv_avg or 7.0)
@@ -377,58 +334,8 @@ class PositionMonitorScheduler:
                 "priority": winner.priority,
                 "rule_detail": winner.detail,
             })
-            # Phase 3 : EXIT alerts trigger an automatic close.
-            from api.orchestration.position_close import auto_execute_enabled
-            if winner.action == "EXIT" and auto_execute_enabled():
-                self._pending_close_alerts.append(
-                    (pos.id, new_alert.id, winner.rule_name),
-                )
 
-        # Delta hedge — feeds on the live ``current_delta_unhedged`` computed
-        # above. ``execute_hedge=True`` POSTs the new HedgeOrder row to
-        # execution-engine ``/internal/hedge`` after persisting it.
-        hedge_persisted = 0
-        last_hedge = (await db.execute(
-            select(HedgeOrder).where(HedgeOrder.position_id == pos.id)
-            .order_by(desc(HedgeOrder.triggered_at)).limit(1)
-        )).scalar_one_or_none()
-        cfg = await self._load_hedge_config(db)
-        # Net the hedges already in flight for this position (pending /
-        # submitted, not yet filled) so the same imbalance is not hedged twice
-        # while IB works the first future (#318).
-        pending_rows = (await db.execute(
-            select(HedgeOrder.side, HedgeOrder.hedge_qty)
-            .where(HedgeOrder.position_id == pos.id)
-            .where(HedgeOrder.state.in_(("pending", "submitted")))
-        )).all()
-        delta_for_decision = net_pending_hedge_delta(
-            current_delta_unhedged, [(r[0], int(r[1])) for r in pending_rows],
-        )
-        decision = check_delta_hedge_needed(
-            delta_unhedged=delta_for_decision,  # None = unknown, never 0.0
-            threshold=cfg["rebalance_threshold_delta"],
-            min_hedge_qty=int(cfg["min_hedge_qty"]),
-            last_hedge_at=last_hedge.triggered_at if last_hedge else None,
-            now=now,
-            cooldown_seconds=cfg["max_hedge_frequency_seconds"],
-        )
-        if decision.needs_hedge:
-            hedge = HedgeOrder(
-                position_id=pos.id, triggered_at=now,
-                delta_imbalance_at_trigger=decision.delta_imbalance,
-                rebalance_threshold_used=decision.threshold_used,
-                hedge_qty=decision.hedge_qty, side=decision.side,
-                state="pending",
-            )
-            db.add(hedge)
-            await db.flush()
-            hedge_persisted = 1
-            if self.execute_hedge:
-                # Caller fires the IB submit out-of-band so this DB
-                # transaction commits independently.
-                self._pending_hedge_ids.append(hedge.id)
-
-        return {"alert_persisted": alert_persisted, "hedge_persisted": hedge_persisted}
+        return {"alert_persisted": alert_persisted}
 
     async def _publish_ws_updates(self) -> None:
         """Best-effort PUBLISH of position_updates + exit_alerts to Redis.
@@ -459,26 +366,6 @@ class PositionMonitorScheduler:
                     logger.warning("publish_exit_alert_failed", exc_info=True)
         except Exception:
             logger.exception("ws_publish_loop_crashed")
-
-    async def _dispatch_pending_closes(self) -> None:
-        if not self._pending_close_alerts:
-            return
-        items = list(self._pending_close_alerts)
-        self._pending_close_alerts.clear()
-        from api.orchestration.position_close import initiate_position_close
-        for position_id, alert_id, rule_name in items:
-            try:
-                await initiate_position_close(
-                    sessionmaker_factory=self._sm_factory,
-                    position_id=position_id,
-                    reason=f"auto-exit: {rule_name}",
-                    exit_alert_id=alert_id,
-                    execution_mode="live",
-                )
-            except Exception:
-                logger.exception(
-                    "auto_close_failed pos=%s alert=%s", position_id, alert_id,
-                )
 
     async def _reprice_position(
         self, db: AsyncSession, structure_id: int,
@@ -585,65 +472,6 @@ class PositionMonitorScheduler:
                     pc_id=r.pc_id, z_score=float(r.z_score), label=r.label,
                 )
         return out
-
-    async def _load_hedge_config(self, db: AsyncSession) -> dict[str, float]:
-        # delta_hedge_config rows folded into config_scalar with
-        # namespace='delta_hedge' (migration 024 ; 037 renamed
-        # app_config_scalar → config_scalar for prefix alignment).
-        rows = (await db.execute(
-            select(AppConfigScalar).where(AppConfigScalar.namespace == "delta_hedge")
-        )).scalars().all()
-        defaults = {
-            "rebalance_threshold_delta": 0.05,
-            "min_hedge_qty": 1.0,
-            "max_hedge_frequency_seconds": 300.0,
-            "hedge_during_close": 0.0,
-        }
-        out = dict(defaults)
-        for r in rows:
-            out[r.name] = r.value
-        return out
-
-    async def _recent_alert_exists(
-        self, db: AsyncSession, position_id: int, rule_name: str, now: datetime,
-    ) -> bool:
-        cutoff = now - self.alert_cooldown
-        existing = (await db.execute(
-            select(ExitAlert).where(ExitAlert.position_id == position_id)
-            .where(ExitAlert.rule_triggered == rule_name)
-            .where(ExitAlert.timestamp > cutoff).limit(1)
-        )).scalar_one_or_none()
-        return existing is not None
-
-    async def _best_effort_market_snapshot_full(
-        self,
-    ) -> tuple[dict | None, float | None, float | None]:
-        """Read full surface + spot + 3M ATM IV from Redis.
-
-        Returns (surface_dict, spot, iv_3m_atm_pct). All three None when
-        Redis is empty or unreachable (markets-closed sandbox).
-        """
-        try:
-            from api.dependencies import get_redis_client_or_none
-            client = get_redis_client_or_none()
-            if client is None:
-                return None, None, None
-            raw = await client.get(keys.LATEST_VOL_SURFACE.format(symbol=self.symbol))
-            if not raw:
-                return None, None, None
-            import json
-            payload = json.loads(raw)
-            surface = payload.get("surface") or payload
-            spot = payload.get("spot")
-            atm_3m = (surface.get("3M") or {}).get("atm", {})
-            iv_3m = atm_3m.get("iv") if isinstance(atm_3m, dict) else None
-            return (
-                surface if isinstance(surface, dict) else None,
-                float(spot) if spot is not None else None,
-                float(iv_3m) * 100.0 if iv_3m is not None else None,
-            )
-        except Exception:
-            return None, None, None
 
 
 def build_position_monitor_scheduler() -> PositionMonitorScheduler:

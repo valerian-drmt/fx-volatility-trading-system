@@ -27,9 +27,9 @@ from persistence.models import (
 
 logger = logging.getLogger(__name__)
 
-_WORKING = ("pending", "submitted", "acknowledged", "partially_filled")
+_WORKING = ("pending", "submitted", "partially_filled")
 # States from which a trade can be closed: it has traded.
-_CLOSABLE = ("partial_fill", "fully_filled", "partial_fail")
+_CLOSABLE = ("fully_filled", "partial_fail")
 REASON_TRADE = "closed_by_trade"
 REASON_EXPIRY = "expired"
 REASON_WRITEOFF = "written_off"

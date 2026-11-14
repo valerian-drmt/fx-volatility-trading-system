@@ -13,7 +13,7 @@ from __future__ import annotations
 TERMINAL_STATES = frozenset({"filled", "rejected", "cancelled", "expired"})
 # Non-terminal states an order can be stuck in *after dispatch*. Pre-dispatch
 # 'pending' is the dual-write / outbox concern (P3), not the reaper's.
-REAPABLE_STATES = frozenset({"submitted", "acknowledged", "partially_filled"})
+REAPABLE_STATES = frozenset({"submitted", "partially_filled"})
 
 
 def decide_reap(

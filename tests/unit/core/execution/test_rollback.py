@@ -58,8 +58,8 @@ def test_empty_input_noop():
     assert decide_rollback([]).is_noop()
 
 
-def test_acknowledged_state_cancellable():
-    plan = decide_rollback([_o(0, "acknowledged")])
+def test_partially_filled_state_cancellable():
+    plan = decide_rollback([_o(0, "partially_filled")])
     assert len(plan.cancels) == 1
 
 

@@ -122,7 +122,7 @@ async def load_line_set(db: AsyncSession) -> LineSet:
 
 
 # A closing order that is not terminal: it is on its way to IB or working there.
-_WORKING = ("pending", "submitted", "acknowledged", "partially_filled")
+_WORKING = ("pending", "submitted", "partially_filled")
 
 
 def close_phase(order: StructureOrder) -> str:
@@ -139,7 +139,7 @@ def close_phase(order: StructureOrder) -> str:
         return "partial"
     if order.state == "pending":
         return "sending"
-    if order.state == "acknowledged" or order.acknowledged_at is not None:
+    if order.acknowledged_at is not None:
         return "waiting"
     return "sent"
 

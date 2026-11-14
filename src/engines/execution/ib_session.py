@@ -42,6 +42,7 @@ from engines.execution.spot_orders import (
     parse_spot_order_ref,
 )
 from persistence.models import SpotOrder, StructureOrder, TradeEvent, TradeStructure
+from persistence.order_state import lock_order, mark_submitted, revive_order
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ SOCKET_CLOSED = 507
 # Farm status notices (2103..2108, 2157/2158): informational, very chatty.
 _FARM_CODES = frozenset({2103, 2104, 2105, 2106, 2107, 2108, 2119, 2157, 2158})
 
-_OPEN_ORDER_STATES = ("pending", "submitted", "acknowledged", "partially_filled")
+_OPEN_ORDER_STATES = ("pending", "submitted", "partially_filled")
 _SPOT_OPEN_STATES = ("pending", "submitted", "partially_filled")
 
 ReadyReason = str
@@ -172,12 +173,11 @@ async def _attach_option_handlers(
         .where(StructureOrder.qty_filled < StructureOrder.qty)
     )).scalars().all())
     for o in revived:
+        await lock_order(db, o)
+        if o.state not in ("rejected", "cancelled", "expired"):
+            continue   # a handler moved it since the select
         prev = o.state
-        o.state = "submitted"
-        o.state_updated_at = now
-        o.rejected_at = None
-        o.rejection_text = None
-        o.acknowledged_at = o.acknowledged_at or now   # IB lists it open: IB has it
+        revive_order(o, now=now)   # IB lists it open: IB has it
         struct = await db.get(TradeStructure, int(o.structure_id))
         if struct is not None and struct.state == "fully_failed":
             struct.state = "submitted"   # its order is working after all
@@ -200,9 +200,7 @@ async def _attach_option_handlers(
             o.ib_order_id = str(order.orderId)
         if o.ib_perm_id is None and getattr(order, "permId", None):
             o.ib_perm_id = str(order.permId)
-        if o.state == "pending":
-            o.state = "submitted"
-            o.state_updated_at = now
+        await mark_submitted(db, o, now=now)
         attach_fill_handlers(trade=t, order_id=int(o.id), sessionmaker_factory=sm)
         wired.append(int(o.id))
     if wired:

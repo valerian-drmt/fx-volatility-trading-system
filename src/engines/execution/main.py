@@ -21,12 +21,13 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 from redis import asyncio as aioredis
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bus import keys
+from engines.execution import door
 from engines.execution.fills_handler import attach_fill_handlers, register_post_fill_hook
 from engines.execution.halt_guard import cancel_all_open, require_not_halted
-from engines.execution.hedge_executor import HedgeSubmitError, submit_hedge_order
 from engines.execution.ib_heartbeat import (
     heartbeat_loop,
     mark_disconnected,
@@ -181,6 +182,7 @@ async def lifespan(app: FastAPI):
     )
     session.install()
     app.state.session = session
+    door.configure(sm, session)   # every order passes the kill switch and the ready gate (#491)
     if executor.is_connected():
         # The startup connect ran before install(): wire the hooks onto the
         # live IB object now, then run the first pass before serving.
@@ -797,10 +799,7 @@ class RollbackStructureBody(BaseModel):
     structure_id: int = Field(gt=0)
 
 
-class HedgeOrderBody(BaseModel):
-    hedge_order_id: int = Field(gt=0)
-    front_month_expiry: str | None = Field(None, pattern=r"^\d{6,8}$")
-    limit_price: float | None = Field(None, gt=0)
+
 
 
 @router.post("/reconcile")
@@ -925,28 +924,17 @@ async def halt_cancel_all(
     ex: OrderExecutor = request.app.state.executor
     ib = ex._ib if ex.is_connected() else None
     result = await cancel_all_open(ib) if ib is not None else {"cancelled": 0, "failed": 0, "global_cancel": 0, "ib": "disconnected"}
+    if ib is not None:
+        # the desk asked for these cancels: the rows end "cancelled" (#485)
+        async with sm() as db:
+            await db.execute(
+                update(StructureOrder)
+                .where(StructureOrder.state.in_(("pending", "submitted", "partially_filled")))
+                .values(cancel_requested_at=datetime.now(UTC)))
+            await db.commit()
     await _log_event(sm, action_type="HALT_CANCEL_ALL", request_payload={}, response_payload=result, success=True)
     logger.error("trading_halted_cancel_all result=%s", result)
     return result
-
-
-@router.post("/hedge", dependencies=[Depends(require_not_halted), Depends(require_ready)])
-async def submit_hedge(
-    body: HedgeOrderBody,
-    ex: Annotated[OrderExecutor, Depends(_executor_dep)],
-    sm: Annotated[async_sessionmaker[AsyncSession], Depends(_sm_dep)],
-) -> dict[str, Any]:
-    """Submit a delta-hedge HedgeOrder row (state='pending') as an EUR FUT
-    LMT order. OpenPosition-monitor calls this after creating the row."""
-    try:
-        return await submit_hedge_order(
-            sessionmaker_factory=sm, executor=ex,
-            hedge_order_id=body.hedge_order_id,
-            front_month_expiry=body.front_month_expiry,
-            limit_price=body.limit_price,
-        )
-    except HedgeSubmitError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 app.include_router(router)

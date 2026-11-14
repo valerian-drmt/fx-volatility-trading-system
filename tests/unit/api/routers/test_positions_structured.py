@@ -148,7 +148,7 @@ async def test_shared_contract_does_not_cross_link():
     try:
         async with maker() as db:
             a = TradeStructure(structure_type="butterfly", reference_tenor="1M",
-                               base_qty=25, state="partial_fill")
+                               base_qty=25, state="submitted")
             b = TradeStructure(structure_type="call spread", reference_tenor="1M",
                                base_qty=25, state="fully_filled")
             db.add_all([a, b])
@@ -190,7 +190,7 @@ async def test_structured_keeps_half_filled_as_naked_residual():
         async with maker() as db:
             s = TradeStructure(
                 structure_type="risk_reversal", product_label="Risk Reversal",
-                reference_tenor="3M", base_qty=25, state="partial_fill",
+                reference_tenor="3M", base_qty=25, state="submitted",
             )
             db.add(s)
             await db.flush()
@@ -256,7 +256,7 @@ async def test_reconciliation_endpoint_flags_a_quantity_break():
     try:
         async with maker() as db:
             s = TradeStructure(structure_type="strangle", reference_tenor="3M",
-                               base_qty=10, state="partial_fill")
+                               base_qty=10, state="submitted")
             db.add(s)
             await db.flush()
             db.add_all([

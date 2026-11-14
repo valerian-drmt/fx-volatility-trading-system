@@ -33,6 +33,7 @@ from typing import Any
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from engines.execution.door import place_at_broker
 from engines.execution.latency import note_submit_start
 from persistence.instruments import instrument_from_ib_contract, upsert_instruments
 
@@ -145,7 +146,18 @@ async def stamp_placement(
         k: v for k, v in contract_identity(getattr(trade, "contract", None)).items() if hasattr(model, k)
     }
     async with sm() as db:
-        await db.execute(update(model).where(model.id == row_id).values(**values, **ident))
+        if getattr(model, "__tablename__", "") == "trade_order":
+            # An order row is only moved forward (#489): the handlers are
+            # attached before this runs on some paths, and a fill or a reject
+            # they booked must not be written over with "submitted".
+            values.pop("state")
+            values.pop("state_updated_at", None)
+            await db.execute(update(model).where(model.id == row_id).values(**values, **ident))
+            await db.execute(
+                update(model).where(model.id == row_id).where(model.state == "pending")
+                .values(state=state, state_updated_at=datetime.now(UTC)))
+        else:
+            await db.execute(update(model).where(model.id == row_id).values(**values, **ident))
         if ident:
             try:
                 async with db.begin_nested():
@@ -172,7 +184,7 @@ async def place_with_claim(
     order.orderRef = order_ref
     note_submit_start((str(getattr(model, '__tablename__', model.__name__)), int(row_id)))
     try:
-        trade = ib.placeOrder(contract, order)
+        trade = await place_at_broker(ib, contract, order)
     except Exception:
         # placeOrder raised before handing the order to the socket: nothing is
         # live at IB, so a retry must be allowed.

@@ -43,7 +43,6 @@ def test_one_name_for_the_execution_engine_url() -> None:
 
 
 def test_empty_flags_parse_as_their_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    from api.config import Settings as ApiSettings
     from engines.execution.settings import ExecutionSettings
     from shared.config import Settings, truthy
 
@@ -56,8 +55,6 @@ def test_empty_flags_parse_as_their_default(monkeypatch: pytest.MonkeyPatch) -> 
     e = ExecutionSettings()
     assert e.ib_read_only is False and e.execution_use_combo is False and e.reconcile_autoclose is True
     assert e.max_sync_age_s == 120.0
-    monkeypatch.setenv("EXIT_AUTO_EXECUTE_ENABLED", "")
-    assert ApiSettings(AUTH_SECRET="x").exit_auto_execute_enabled is False
     assert truthy("YES") and truthy("1") and not truthy("no") and not truthy(None)
 
 

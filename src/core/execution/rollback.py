@@ -25,7 +25,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class OrderState:
     leg_idx: int
-    state: str           # 'pending'|'submitted'|'acknowledged'|'partially_filled'|'filled'|'rejected'|'cancelled'
+    state: str           # 'pending'|'submitted'|'partially_filled'|'filled'|'rejected'|'cancelled'
     side: str            # 'BUY'|'SELL'
     qty: int
     qty_filled: int
@@ -63,7 +63,7 @@ class RollbackPlan:
 
 
 _OPPOSITE = {"BUY": "SELL", "SELL": "BUY"}
-_CANCELLABLE_STATES = frozenset({"submitted", "acknowledged", "partially_filled", "pending"})
+_CANCELLABLE_STATES = frozenset({"submitted", "partially_filled", "pending"})
 # Unwind orders in these states cover nothing — their qty must be re-unwound.
 _FAILED_UNWIND_STATES = frozenset({"rejected", "cancelled", "expired"})
 
