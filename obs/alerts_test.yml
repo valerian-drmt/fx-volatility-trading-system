@@ -58,10 +58,10 @@ tests:
               description: "The reaper ends a pending row after 5 min; it did not. Runbook: docs/ops/runbooks.md section 6 (an order is stuck)."
 
   # ── a DAY order that outlived its day ────────────────────────────────────
-  - interval: 1h
+  - interval: 1m                  # a sample older than 5 min is stale: the series must be continuous
     input_series:
       - series: 'orders_oldest_waiting_seconds{state="submitted"}'
-        values: '3600+3600x50'      # one more hour every hour
+        values: '0+60x2500'         # one more minute every minute, for 41 hours
     alert_rule_test:
       - eval_time: 20h              # the trading day is not over
         alertname: OrderOutlivedItsDay
@@ -71,7 +71,7 @@ tests:
         exp_alerts:
           - exp_labels: {severity: warning, state: submitted}
             exp_annotations:
-              summary: "an order has been submitted for 1d 17h 0m 0s: a DAY order ends with its day"
+              summary: "an order has been submitted for 1d 16h 0m 0s: a DAY order ends with its day"
               description: "IB ended it and the book did not hear, or the book lost the order. Runbook: docs/ops/runbooks.md section 6 (an order is stuck)."
 
   # ── the gate refuses every submit ────────────────────────────────────────

@@ -148,3 +148,97 @@ def test_every_order_endpoint_of_the_browser_sends_a_key() -> None:
         assert re.search(needle, src), needle
     main = (ROOT / "src/api/main.py").read_text(encoding="utf-8")
     assert "app.add_middleware(IdempotencyMiddleware" in main
+
+
+# ── the paths around the handler, called directly ───────────────────────────
+
+class _Req:
+    def __init__(self, method: str = "POST", path: str = "/api/v1/orders", key: str | None = KEY) -> None:
+        self.method = method
+        self.url = type("U", (), {"path": path})()
+        self.headers = {HEADER: key} if key else {}
+
+
+def _mw(sm: Any) -> IdempotencyMiddleware:
+    async def app(_scope: Any, _receive: Any, _send: Any) -> None:
+        return None
+    return IdempotencyMiddleware(app, sessionmaker_factory=lambda: sm)
+
+
+def _answer(status: int, body: bytes) -> Any:
+    # what the middleware receives from the app: a streamed body
+    from starlette.responses import StreamingResponse
+    return StreamingResponse(iter([body]), status_code=status, media_type="application/json")
+
+
+async def test_dispatch_runs_once_and_replays(sqlite_sessionmaker: Any) -> None:
+    mw = _mw(sqlite_sessionmaker)
+    n = {"calls": 0}
+
+    async def call_next(_r: Any) -> Any:
+        n["calls"] += 1
+        return _answer(200, b'{"order_id": 1}')
+
+    first = await mw.dispatch(_Req(), call_next)
+    again = await mw.dispatch(_Req(), call_next)
+    assert n["calls"] == 1 and first.status_code == again.status_code == 200
+    assert again.headers["Idempotent-Replay"] == "true" and again.body == b'{"order_id":1}'
+    other = await mw.dispatch(_Req(path="/api/v1/positions/3/close"), call_next)
+    assert other.status_code == 422
+    assert (await mw.dispatch(_Req(key="bad"), call_next)).status_code == 422
+
+
+async def test_a_handler_that_raises_gives_the_key_back(sqlite_sessionmaker: Any) -> None:
+    mw = _mw(sqlite_sessionmaker)
+
+    async def boom(_r: Any) -> Any:
+        raise RuntimeError("handler crashed before answering")
+
+    with pytest.raises(RuntimeError):
+        await mw.dispatch(_Req(), boom)
+    assert await _rows(sqlite_sessionmaker) == [], "nothing was answered: the request may be sent again"
+
+
+async def test_an_answer_that_is_not_json_is_kept_as_text(sqlite_sessionmaker: Any) -> None:
+    mw = _mw(sqlite_sessionmaker)
+
+    async def call_next(_r: Any) -> Any:
+        return _answer(502, b"Bad Gateway")
+
+    await mw.dispatch(_Req(), call_next)
+    (row,) = await _rows(sqlite_sessionmaker)
+    assert (row.state, row.status_code, row.response) == ("done", 502, {"detail": "Bad Gateway"})
+
+
+async def test_the_request_is_not_run_when_the_key_store_is_down() -> None:
+    def broken() -> Any:
+        raise ConnectionError("database down")
+
+    mw = IdempotencyMiddleware(lambda *_a: None, sessionmaker_factory=lambda: broken)
+    n = {"calls": 0}
+
+    async def call_next(_r: Any) -> Any:
+        n["calls"] += 1
+        return _answer(200, b"{}")
+
+    r = await mw.dispatch(_Req(), call_next)
+    assert r.status_code == 503 and n["calls"] == 0
+    # storing or forgetting on a dead store never raises into the answer
+    await mw._store(KEY, 200, b"{}")
+    await mw._forget(KEY)
+
+
+async def test_a_key_deleted_between_the_insert_and_the_read_reads_in_progress(
+    sqlite_sessionmaker: Any, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    mw = _mw(sqlite_sessionmaker)
+
+    async def conflict(self: Any) -> None:
+        raise IntegrityError("insert", {}, Exception("duplicate key"))
+
+    monkeypatch.setattr(AsyncSession, "commit", conflict)
+    r = await mw._claim(KEY, "POST /api/v1/orders")
+    assert r is not None and r.status_code == 409

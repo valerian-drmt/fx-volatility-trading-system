@@ -35,7 +35,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -138,11 +138,10 @@ class IdempotencyMiddleware(BaseHTTPMiddleware):
             content = {"detail": body.decode("utf-8", "replace")[:2000]}
         try:
             async with self._sm_factory()() as db:
-                row = await db.get(IdempotencyKey, key)
-                if row is not None:
-                    row.state, row.status_code, row.response = "done", status, content
-                    row.completed_at = datetime.now(UTC)
-                    await db.commit()
+                await db.execute(
+                    update(IdempotencyKey).where(IdempotencyKey.key == key)
+                    .values(state="done", status_code=status, response=content, completed_at=datetime.now(UTC)))
+                await db.commit()
         except Exception:
             # The request ran and its answer goes out; the key stays in
             # flight, so a repeat gets 409, never a second run.
