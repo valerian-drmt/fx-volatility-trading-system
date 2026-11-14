@@ -118,11 +118,13 @@ groups:
 
   - name: fxvol-host
     rules:
-      # Root filesystem as cAdvisor sees it (id="/" = the host). Disk fills were
-      # the cause of the 2026-07 deploy stalls (images accumulated).
+      # The host's root filesystem, measured by the api (one series). Not
+      # cAdvisor's id="/": that is one series per device, and six small full
+      # ones kept DiskUsageCritical firing for days at 64 % used (2026-11).
+      # Disk fills were the cause of the 2026-07 deploy stalls.
       - alert: DiskUsageHigh
         expr: |
-          container_fs_usage_bytes{id="/"} / container_fs_limit_bytes{id="/"} > 0.80
+          fxvol_host_disk_used_bytes / fxvol_host_disk_total_bytes > 0.80
         for: 10m
         labels: {severity: warning}
         annotations:
@@ -131,7 +133,7 @@ groups:
 
       - alert: DiskUsageCritical
         expr: |
-          container_fs_usage_bytes{id="/"} / container_fs_limit_bytes{id="/"} > 0.90
+          fxvol_host_disk_used_bytes / fxvol_host_disk_total_bytes > 0.90
         for: 5m
         labels: {severity: critical}
         annotations:

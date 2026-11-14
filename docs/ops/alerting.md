@@ -31,7 +31,7 @@ third leg: it restarts the gateway and the four IB-bound engines
 | `IBSessionDown` | any engine's IB session disconnected 3 min | critical | 2 min = the nightly IBC restart; longer: competing login, 2FA, gateway version drift (`docs/execution/ib-integration.md`) |
 | `ContainerCrashLoop` | 3+ restarts in 15 min | critical | `docker inspect --format '{{.State.OOMKilled}}' <name>`; raise the cap or read the boot error |
 | `DbWriterLag` | db-writer no cycle for 3 min | warning | frames are being lost; check Redis and the writer log |
-| `DiskUsageHigh` / `DiskUsageCritical` | root fs > 80 % 10 min / > 90 % 5 min | warning / critical | `docker image prune -af`, `journalctl --disk-usage` |
+| `DiskUsageHigh` / `DiskUsageCritical` | root fs (api gauges `fxvol_host_disk_*_bytes`, one series) > 80 % 10 min / > 90 % 5 min | warning / critical | `docker image prune -af`, `journalctl --disk-usage` |
 | `BackupStale` | backup stamp older than 26 h for 30 min | critical | `tail /var/log/fxvol-postgres-backup.log`; `RESTORE.md` §5 |
 | `BackupSignalMissing` | no backup-age metric at all | warning | api not scraped or `BACKUP_STATE_FILE` unset |
 | `MemoryNearLimit` | a container above 90 % of its cap 10 min | warning | an OOM kill follows |
