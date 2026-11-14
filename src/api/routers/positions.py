@@ -38,6 +38,7 @@ from api.schemas.reads import DeltaHedgeSetting, ExitRuleConfig, OpenPositionRow
 from bus import keys
 from core.contracts import multiplier_for, parse_local_symbol
 from core.execution.reconciliation import classify_break
+from core.execution.ticks import OPTION_TICK, snap, tick_for
 from core.ledger import LedgerFill, fold_fills, unrealized_pnl
 from core.products import product_label_from_symbol
 from core.vol.tenors import tenor_bucket_from_expiry
@@ -940,7 +941,7 @@ def _compute_breaks(
 # closes), so an option close is ALWAYS a marketable LMT priced well through the
 # touch. Wide because option spreads are wide ; snapped to the 0.0001 grid or IB
 # rejects with Warning 110. Same buffer as the entry path (MARKETABLE_LIMIT_BUFFER).
-_OPT_TICK = 0.0001
+_OPT_TICK = OPTION_TICK
 _MKT_CLOSE_BUFFER = get_settings().MARKETABLE_LIMIT_BUFFER
 
 # How long a closing order counts as "in flight" for the stacking guard. Past
@@ -1165,8 +1166,11 @@ async def close_one_open_position(
     #      never completing). Falls back to MKT only if there's no mark to price.
     #   3. Futures inside RTH → MarketOrder (deep book, no cap).
     #   4. Futures outside RTH → LMT at mark × (1 ± 5 bps) on the close side.
+    tick = tick_for(pos.structure, is_option=is_option)
     if limit_price_override is not None:
-        limit_price: float | None = round(float(limit_price_override), 6)
+        # The operator's price, on the contract's grid (#492): IB refuses a
+        # limit between two ticks. It was only rounded to six decimals.
+        limit_price: float | None = snap(float(limit_price_override), tick)
     elif is_option and pos.market_price is not None:
         limit_price = _marketable_close_from_mark(float(pos.market_price), pos.side)
     elif _is_cme_fx_rth():
@@ -1178,8 +1182,11 @@ async def close_one_open_position(
                 f"position #{pos.id} has no market_price and CME is outside RTH ; "
                 "supply an explicit limit_price",
             )
-        limit_price = round(
-            _close_limit_from_mark(float(pos.market_price), pos.side), 6,
+        # on the grid, on the side that keeps the limit marketable: we SELL
+        # to close a long (down), BUY to close a short (up)
+        limit_price = snap(
+            _close_limit_from_mark(float(pos.market_price), pos.side), tick,
+            toward="down" if pos.side == "BUY" else "up",
         )
     order_type = "LMT" if limit_price is not None else "MKT"
 

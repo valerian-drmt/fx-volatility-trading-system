@@ -16,11 +16,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from core.execution.ticks import OPTION_TICK
 from engines.execution.door import place_at_broker
 
 logger = logging.getLogger(__name__)
 
-_OPT_TICK = 0.0001  # CME EUR-FOP minimum price variation
+_OPT_TICK = OPTION_TICK  # one table for every contract: core.execution.ticks
 
 
 def _pos_num(x: Any) -> float | None:
