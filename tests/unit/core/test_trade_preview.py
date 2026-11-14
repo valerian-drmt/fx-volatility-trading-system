@@ -63,7 +63,8 @@ def test_build_structure_straddle_atm_2_legs():
     assert len(s.legs) == 2
     assert {leg.contract_type for leg in s.legs} == {"call", "put"}
     assert all(leg.tenor == "3M" for leg in s.legs)
-    assert all(leg.dte == 90 for leg in s.legs)
+    # priced to the listed February option (2027-02-05), not to "90 days"
+    assert all((leg.dte, leg.expiry) == (87, "2027-02-05") for leg in s.legs)
     assert s.legs[0].strike == s.legs[1].strike  # both ATM
 
 
@@ -367,67 +368,96 @@ def _ok_args() -> dict:
     return {
         "regime": {"regime": "calm"},
         "armed_z": 2.0, "current_z": 2.0, "threshold_min": 1.5,
-        "max_loss_usd": 500.0, "capital_total_usd": 100_000.0, "max_loss_pct": 2.0,
-        "book_total_vega_usd": 0.0, "structure_vega_usd": 200.0, "max_book_vega_usd": 5000.0,
-        "surface_age_seconds": 30.0, "max_iv_age_s": 120,
-        "has_arb_violation": False, "min_quoted_size": 50, "min_liquidity": 10,
+        "butterfly_arb_free": True, "calendar_arb_free": True,
     }
 
 
-def test_all_checks_pass_baseline():
+def _check(checks: list, name: str):
+    return next(c for c in checks if c.name == name)
+
+
+def test_all_checks_baseline():
     checks = run_pre_submit_checks(**_ok_args())
-    assert all(c.passed for c in checks)
-    # max_loss_under_capital_limit + iv_data_fresh dropped on request — too
-    # punitive for short-vol structures + redundant with the YELLOW block
-    # freshness display.
     assert {c.name for c in checks} == {
         "regime_not_pre_event", "signal_still_actionable",
-        "vega_under_book_limit", "no_arb_violation_on_legs", "minimum_liquidity",
+        "no_arb_violation_on_legs", "minimum_liquidity",
     }
+    assert not any(c.blocks for c in checks)
+    # no limit computed by the code is a check any more (owner rule)
+    assert "vega_under_book_limit" not in {c.name for c in checks}
 
 
 def test_check_pre_event_blocks():
     args = _ok_args()
     args["regime"] = {"regime": "pre_event"}
-    checks = run_pre_submit_checks(**args)
-    assert next(c for c in checks if c.name == "regime_not_pre_event").passed is False
+    c = _check(run_pre_submit_checks(**args), "regime_not_pre_event")
+    assert c.passed is False and c.blocks
 
 
 def test_check_signal_flipped_blocks():
     args = _ok_args()
     args["armed_z"] = 2.0
     args["current_z"] = -0.5
-    checks = run_pre_submit_checks(**args)
-    assert next(c for c in checks if c.name == "signal_still_actionable").passed is False
+    assert _check(run_pre_submit_checks(**args), "signal_still_actionable").blocks
 
 
 def test_check_signal_too_weak_blocks():
     args = _ok_args()
     args["current_z"] = 0.5  # below threshold * 0.7 = 1.05
-    checks = run_pre_submit_checks(**args)
-    assert next(c for c in checks if c.name == "signal_still_actionable").passed is False
+    assert _check(run_pre_submit_checks(**args), "signal_still_actionable").blocks
 
 
-def test_check_vega_book_limit_blocks():
+def test_the_arbitrage_check_reads_the_surface_and_informs():
+    """#483: it was the constant ``has_arb_violation=False``. It now reports
+    the flags of the surface's own fit, and does not stop an order: the
+    calendar flag is raised on about a third of prod surfaces."""
     args = _ok_args()
-    args["book_total_vega_usd"] = 4900.0
-    args["structure_vega_usd"] = 200.0           # post = 5100 > limit 5000
-    checks = run_pre_submit_checks(**args)
-    assert next(c for c in checks if c.name == "vega_under_book_limit").passed is False
+    args["calendar_arb_free"] = False
+    c = _check(run_pre_submit_checks(**args), "no_arb_violation_on_legs")
+    assert c.passed is False and not c.blocks
+    assert c.details == {"butterfly_arb_free": True, "calendar_arb_free": False}
 
 
-def test_check_arb_violation_blocks():
+def test_a_check_that_cannot_be_evaluated_is_not_passed():
     args = _ok_args()
-    args["has_arb_violation"] = True
+    args["butterfly_arb_free"] = args["calendar_arb_free"] = None
     checks = run_pre_submit_checks(**args)
-    assert next(c for c in checks if c.name == "no_arb_violation_on_legs").passed is False
+    assert _check(checks, "no_arb_violation_on_legs").passed is None
+    # no quoted size reaches the preview: liquidity was the constant 99
+    liq = _check(checks, "minimum_liquidity")
+    assert liq.passed is None and not liq.blocks
 
 
-def test_check_liquidity_blocks():
-    args = _ok_args()
-    args["min_quoted_size"] = 5
-    checks = run_pre_submit_checks(**args)
-    assert next(c for c in checks if c.name == "minimum_liquidity").passed is False
+def test_the_premium_is_the_premium_of_the_whole_order():
+    """#483: on a manual ticket base == final, and the premium was scaled by
+    final / base: a 22-lot showed, and was checked on, one contract's premium
+    (prod preview tp_1b093610a10f: 769.32 for 22 puts)."""
+    s = build_structure("straddle_atm", "3M", None, _mock_surface())
+    sizing = compute_sizing(
+        z_score=1.5, structure=s, total_premium=769.32, book_total_vega_usd=0.0,
+        book_vega_neutral_threshold=2000.0, base_qty=22, threshold_min=1.5,
+        max_z_multiplier=1.0, book_alpha=0.0, regime=None, qty_override=22,
+    )
+    assert sizing.final_qty_per_leg == 22
+    assert sizing.final_premium_usd == pytest.approx(22 * 769.32)
+
+
+def test_an_option_is_priced_to_the_listed_expiry_of_its_month():
+    from datetime import date
+
+    from core.execution.contract_builder import listed_option_expiry
+    from core.trade_preview import priced_expiry
+
+    # the three expiries prod holds
+    assert listed_option_expiry("2026-12-20") == date(2026, 12, 4)
+    assert listed_option_expiry(date(2027, 2, 12)) == date(2027, 2, 5)
+    assert listed_option_expiry("202703") == date(2027, 3, 5)
+    today = date(2026, 11, 13)
+    assert priced_expiry(date(2027, 2, 11), today, is_option=True) == (date(2027, 2, 5), 84)
+    # the month's option has expired: the target is kept
+    assert priced_expiry(date(2026, 11, 20), today, is_option=True) == (date(2026, 11, 20), 7)
+    # a future is not an option: its date is the tenor's
+    assert priced_expiry(date(2027, 2, 11), today, is_option=False) == (date(2027, 2, 11), 90)
 
 
 # ────────────────────────────────────────────────────────────────
@@ -629,3 +659,20 @@ def test_classify_legs_calendar_two_tenors():
         _mock_surface(),
     )
     assert classify_legs(real.legs) == "calendar"
+
+
+def test_the_browser_sketch_uses_the_server_commission_table():
+    """One table (#483): the ticket showed 2.1 per contract from a browser
+    constant next to the server's 2.0 / 2.40. The sketch shown before a
+    preview reads a copy of the server's table; this keeps the copy equal."""
+    import re
+    from pathlib import Path
+
+    from core.trade_preview import COMMISSION_USD
+
+    ts = (Path(__file__).resolve().parents[3]
+          / "frontend/src/voldesk/components/ticketNumbers.ts").read_text(encoding="utf-8")
+    m = re.search(r"COMMISSION_USD = \{([^}]*)\}", ts)
+    assert m, "COMMISSION_USD not found in ticketNumbers.ts"
+    browser = {k: float(v) for k, v in re.findall(r"(\w+):\s*([0-9.]+)", m.group(1))}
+    assert browser == COMMISSION_USD

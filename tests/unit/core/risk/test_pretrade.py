@@ -34,7 +34,7 @@ def test_the_application_computes_no_limit_and_asks_for_no_confirmation() -> Non
     flagged and nothing is to confirm."""
     big = TradeGreeks(delta_usd=200_000.0, vega_usd_per_volpt=4_500.0, gamma_usd_per_pip=2_600.0, notional_eur=6_000_000.0)
     r = evaluate_pretrade(replace(OK, trade=big))
-    assert r.passed and r.warnings == [] and r.failures == []
+    assert r.passed and r.failures == []
     assert r.details["caps"] == {"delta_usd": None, "vega_usd_per_volpt": None, "gamma_usd_per_pip": None,
                                  "max_notional_eur": None}
 
@@ -42,10 +42,10 @@ def test_the_application_computes_no_limit_and_asks_for_no_confirmation() -> Non
 def test_a_limit_the_trader_set_refuses() -> None:
     big = TradeGreeks(delta_usd=200_000.0, vega_usd_per_volpt=4_500.0, gamma_usd_per_pip=2_600.0, notional_eur=6_000_000.0)
     hard = {"delta": 100_000.0, "vega": 2_000.0, "gamma": 1_000.0, "notional": 5_000_000.0}
-    r = evaluate_pretrade(replace(OK, trade=big, hard_limits=hard, confirmed=True))
+    r = evaluate_pretrade(replace(OK, trade=big, hard_limits=hard))
     assert set(r.failures) == {"cap_delta", "cap_vega", "cap_gamma", "cap_notional"}
     one = evaluate_pretrade(replace(OK, trade=big, hard_limits={"vega": 1_000.0}))
-    assert one.failures == ["cap_vega"] and one.warnings == []
+    assert one.failures == ["cap_vega"]
     assert one.details["caps"]["vega_usd_per_volpt"] == 1_000.0 and one.details["caps"]["delta_usd"] is None
 
 
@@ -53,7 +53,7 @@ def test_derived_levels_are_not_read_but_unusable_data_refuses() -> None:
     tiny = Caps(delta_usd=1.0, vega_usd_per_volpt=1.0, gamma_usd_per_pip=1.0, max_notional_eur=1.0)
     for caps in (tiny, None):
         r = evaluate_pretrade(replace(OK, caps=caps))
-        assert r.passed and r.warnings == []
+        assert r.passed
     assert "book_unavailable" in evaluate_pretrade(replace(OK, book=None)).failures
     assert "trade_greeks_unavailable" in evaluate_pretrade(replace(OK, trade=None)).failures
 
@@ -66,7 +66,7 @@ def test_a_premium_the_account_cannot_pay_is_a_fact() -> None:
     assert r.failures == ["insufficient_funds"] and r.details["net_liquidation_usd"] == 170_000.0
     tight = evaluate_pretrade(replace(OK, premium_to_pay_usd=120_000.0, net_liquidation_usd=170_000.0,
                                       available_funds_usd=90_000.0))
-    assert tight.passed and tight.warnings == []
+    assert tight.passed
     assert evaluate_pretrade(replace(OK, premium_to_pay_usd=9e9)).passed, "no account snapshot: nothing is concluded"
 
 
@@ -93,7 +93,7 @@ def test_allow_list_partial_pricing_and_arbitrage_flag() -> None:
     assert "symbol_not_allowed" in evaluate_pretrade(replace(OK, symbols=("GBP",))).failures
     assert "symbol_not_allowed" in evaluate_pretrade(replace(OK, symbols=())).failures
     partial = evaluate_pretrade(replace(OK, book=replace(OK.book, n_priced=3)))
-    assert partial.passed and partial.warnings == [] and "book_unpriced" in partial.details
+    assert partial.passed and "book_unpriced" in partial.details
     assert "surface_arbitrage" in evaluate_pretrade(replace(OK, arb_ok=False)).failures
     assert evaluate_pretrade(replace(OK, arb_ok=None)).passed   # not reported != violated
 

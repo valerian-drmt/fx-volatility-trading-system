@@ -69,8 +69,8 @@ budget; a failed step is reported in `/internal/session`, not a permanent
 lock-out.
 
 **The gate.** `/internal/orders`, `/positions/.../close`,
-`/positions/close-by-symbol`, `/structure/submit`, `/structure/rollback` and
-`/hedge` answer `503 {"code": "reconciliation_in_progress", "reason": ...}`
+`/positions/close-by-symbol`, `/structure/submit` and `/structure/rollback`
+answer `503 {"code": "reconciliation_in_progress", "reason": ...}`
 until the pass has completed on the current connection. Reads stay open.
 `/health` carries `ready`, `ready_reason`, `ib_upstream_ok`,
 `upstream_down_s`; `/internal/session` the full snapshot (last pass summary,

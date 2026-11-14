@@ -6038,11 +6038,6 @@ export interface components {
          */
         SubmitBody: {
             /**
-             * Confirm Limits
-             * @default false
-             */
-            confirm_limits: boolean;
-            /**
              * Execution Mode
              * @default mock
              * @enum {string}

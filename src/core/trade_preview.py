@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import itertools
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
+from core.execution.contract_builder import listed_option_expiry
 from core.execution.revalidation import SIGNAL_ACTIONABLE_FACTOR, signal_still_actionable
 from core.pricing import bs as _bs
 from core.products import product_label_from_symbol
@@ -272,8 +273,23 @@ FUTURE_IB_SYMBOLS: dict[str, str] = {"full": "EUR", "micro": "M6E"}
 # Trader-friendly label shown in the UI (the IB Contract.symbol is not what
 # the operator reads on a chart — "6E" / "M6E" matches the ticker).
 FUTURE_DISPLAY_SYMBOLS: dict[str, str] = {"full": "6E", "micro": "M6E"}
-# Commission per round-trip-side (entry only) in USD. IB published rates.
-FUTURE_COMMISSION_USD: dict[str, float] = {"full": 2.40, "micro": 0.60}
+# Commission per contract and per side, in USD: the ONE table (#483). The
+# ticket showed 2.1 from a browser constant next to the server's 2.0 / 2.40.
+COMMISSION_USD: dict[str, float] = {"option": 2.00, "full": 2.40, "micro": 0.60}
+FUTURE_COMMISSION_USD: dict[str, float] = {k: COMMISSION_USD[k] for k in ("full", "micro")}
+
+
+def priced_expiry(target: date, today: date, *, is_option: bool) -> tuple[date, int]:
+    """(expiry, days) a leg is priced to. A tenor is a target ("3M" = 90
+    days), the order trades the listed contract of that month: an option is
+    priced to THAT expiry (#483; a 3M leg was priced on 90 days while its
+    contract had 84 left). When the month's option has already expired the
+    target is kept: there is nothing better to price to."""
+    if is_option:
+        listed = listed_option_expiry(target)
+        if listed > today:
+            return listed, (listed - today).days
+    return target, max((target - today).days, 0)
 
 
 def _resolve_tenor(template_leg: dict, near: str, far: str | None) -> str:
@@ -345,9 +361,10 @@ def build_structure(
         node = (surface.get(actual_tenor) or {}).get(pillar) or {}
         node_strike = node.get("strike")
         iv = node.get("iv")
-        dte = TENOR_TO_DTE.get(actual_tenor, 90)
-        expiry = (as_of + timedelta(days=dte)).date().isoformat()  # the caller's clock (#332)
         is_future = lt["contract_type"] == "future"
+        target = (as_of + timedelta(days=TENOR_TO_DTE.get(actual_tenor, 90))).date()  # the caller's clock (#332)
+        expiry_d, dte = priced_expiry(target, as_of.date(), is_option=not is_future)
+        expiry = expiry_d.isoformat()
         if is_future:
             strike: float | None = None
         elif is_single_leg and strike_override is not None:
@@ -505,8 +522,9 @@ def build_from_legs(
         # the leg for the ticket. Surfaces without source flags (synthetic
         # sandbox) treat every present tenor as listed → no snap.
         eff_tenor, snapped = snap_tenor(tenor, surface)
-        eff_dte = TENOR_TO_DTE.get(eff_tenor, dte)
-        eff_expiry = (now + timedelta(days=eff_dte)).date().isoformat()
+        eff_target = (now + timedelta(days=TENOR_TO_DTE.get(eff_tenor, dte))).date()
+        eff_expiry_d, eff_dte = priced_expiry(eff_target, now.date(), is_option=True)
+        eff_expiry = eff_expiry_d.isoformat()
         node = (surface.get(eff_tenor) or {}).get(pillar) or {}
         strike_override = spec.get("strike")
         node_strike = node.get("strike")
@@ -854,7 +872,10 @@ def compute_sizing(
     if qty_override is not None and qty_override > 0:
         final_qty = int(qty_override)
     leg_quantities = {leg.leg_idx: final_qty * leg.qty_factor for leg in structure.legs}
-    final_premium = total_premium * (final_qty / max(base_qty, 1))
+    # ``total_premium`` is the premium of ONE unit of the structure. It was
+    # scaled by final/base, which is 1 on a manual ticket: a 22-lot showed
+    # and was checked on the premium of one contract (#483).
+    final_premium = total_premium * final_qty
     return SizingResult(
         base_qty=base_qty,
         multipliers={
@@ -877,21 +898,28 @@ def compute_sizing(
 
 @dataclass
 class Check:
+    """One pre-submit check. ``passed`` is None when the check could not be
+    evaluated: it is then reported as not evaluated, never as passed (#483)."""
     name: str
-    passed: bool
+    passed: bool | None
     details: dict[str, Any] = field(default_factory=dict)
+    blocking: bool = True
+
+    @property
+    def blocks(self) -> bool:
+        return self.blocking and self.passed is False
 
 
 def run_pre_submit_checks(
     *,
     regime: dict[str, Any] | None,
     armed_z: float, current_z: float, threshold_min: float,
-    max_loss_usd: float, capital_total_usd: float, max_loss_pct: float,
-    book_total_vega_usd: float, structure_vega_usd: float, max_book_vega_usd: float,
-    surface_age_seconds: float, max_iv_age_s: float,
-    has_arb_violation: bool,
-    min_quoted_size: int, min_liquidity: int,
+    butterfly_arb_free: bool | None = None, calendar_arb_free: bool | None = None,
 ) -> list[Check]:
+    """``*_arb_free`` are the flags of the surface's SSVI fit; None when the
+    surface carries no fit."""
+    flags = [f for f in (butterfly_arb_free, calendar_arb_free) if f is not None]
+    arb_free: bool | None = all(flags) if flags else None
     checks: list[Check] = []
     regime_label = (regime or {}).get("regime") or (regime or {}).get("label") or "calm"
     checks.append(Check(
@@ -905,24 +933,16 @@ def run_pre_submit_checks(
         {"armed_z": armed_z, "current_z": current_z, "threshold": threshold_min * SIGNAL_ACTIONABLE_FACTOR},
     ))
 
-    # max_loss_under_capital_limit + iv_data_fresh removed by request — the
-    # first was too punitive for products where max_loss is uncapped (short
-    # vol), the second was redundant with the freshness shown on the YELLOW
-    # block. Keep the post-vega book limit which IS a real risk gate.
-
-    post_vega = book_total_vega_usd + structure_vega_usd
+    # What blocks a preview is what the submit refuses (#483): the regime and
+    # the signal above, then the gate's own verdict (``submit_blockers``).
+    # The two checks below INFORM. No limit computed by the code blocks an
+    # order (owner rule): the vega check against ``max_book_vega_usd`` is
+    # gone, the trader's own vega limit is judged by the gate.
     checks.append(Check(
-        "vega_under_book_limit", abs(post_vega) <= max_book_vega_usd,
-        {"post_trade_vega": round(post_vega, 2), "limit": max_book_vega_usd},
+        "no_arb_violation_on_legs", arb_free,
+        {"butterfly_arb_free": butterfly_arb_free, "calendar_arb_free": calendar_arb_free},
+        blocking=False,
     ))
-
-    checks.append(Check(
-        "no_arb_violation_on_legs", not has_arb_violation,
-        {},
-    ))
-
-    checks.append(Check(
-        "minimum_liquidity", min_quoted_size >= min_liquidity,
-        {"min_quoted_size": min_quoted_size, "limit": min_liquidity},
-    ))
+    # No quoted size reaches the preview: not evaluated, not "passed".
+    checks.append(Check("minimum_liquidity", None, {"reason": "no quoted size available"}, blocking=False))
     return checks

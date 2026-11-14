@@ -10,7 +10,7 @@ construction) + §13 decision 7 (LMT with 0.5 % tolerance).
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import date
+from datetime import date, timedelta
 from functools import reduce
 from math import gcd
 
@@ -61,6 +61,21 @@ def _option_yyyymm(d: date | str) -> str:
         s = d.replace("-", "")
         return s[:6]
     return d.strftime("%Y%m")
+
+
+def listed_option_expiry(d: date | str) -> date:
+    """Expiry of the monthly EUR/USD option of the contract month ``d`` falls
+    in: two Fridays before the third Wednesday of that month (CME rule; prod
+    holds EUUZ6 2026-12-04, EUUG7 2027-02-05, EUUH7 2027-03-05).
+
+    This is the contract an order built from ``d`` trades, since only the
+    month is sent to IB (``_option_yyyymm``)."""
+    ym = _option_yyyymm(d)
+    year, month = int(ym[:4]), int(ym[4:6])
+    first = date(year, month, 1)
+    third_wed = first + timedelta(days=(2 - first.weekday()) % 7 + 14)
+    # the Friday before that Wednesday is 5 days back; one more week back
+    return third_wed - timedelta(days=12)
 
 
 # CME EUR FOP standard strike grid : 0.005 increments (1.175 / 1.180 / 1.185).

@@ -19,10 +19,6 @@ def _preview_check(armed_z: float, current_z: float) -> bool:
     checks = run_pre_submit_checks(
         regime={"regime": "calm"},
         armed_z=armed_z, current_z=current_z, threshold_min=THRESHOLD,
-        max_loss_usd=100.0, capital_total_usd=1_000_000.0, max_loss_pct=0.02,
-        book_total_vega_usd=0.0, structure_vega_usd=100.0, max_book_vega_usd=1e9,
-        surface_age_seconds=10.0, max_iv_age_s=120.0,
-        has_arb_violation=False, min_quoted_size=10, min_liquidity=1,
     )
     return next(c for c in checks if c.name == "signal_still_actionable").passed
 

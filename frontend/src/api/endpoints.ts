@@ -248,10 +248,24 @@ export interface TradePreview {
   preview_id: string;
   state: string;                         // "valid_for_submit" | "blocked" | …
   blocking_reasons?: string[];
-  structure?: { type?: string };
-  costs?: { commission_usd?: number; total_trade_cost_usd?: number };
+  structure?: {
+    type?: string;
+    // the legs as the server priced them: strike, vol, price per contract
+    legs?: {
+      contract_type?: string; side?: string; tenor?: string; qty?: number;
+      strike?: number | null; entry_iv_pct?: number | null; entry_price_per_contract_usd?: number | null;
+      expiry?: string; dte?: number;
+    }[];
+  };
+  // commission of the structure's own contracts; the hedge's is separate
+  costs?: {
+    commission_usd?: number; commission_per_contract_usd?: number;
+    hedge_commission_usd?: number; total_trade_cost_usd?: number;
+  };
+  // at the size traded, signed (+ = paid); premium_per_unit_usd is one unit
   pricing?: {
     premium_paid_usd?: number;
+    premium_per_unit_usd?: number;
     max_loss_usd?: number;
     max_loss_at_expiry_only?: boolean;
   };
@@ -265,19 +279,18 @@ export interface TradePreview {
   // The package's hedge, sized by the server (#482): the futures the engine
   // sends as the options fill. null when the trade is not hedged.
   hedge?: { side: string; qty: number; residual_delta_usd: number; structure_delta_usd: number } | null;
-  // The trade is inside the limits but above their warning share (#481).
-  needs_confirmation?: boolean;
+  // Each check of the preview; passed is null when it could not be evaluated.
+  pre_submit_checks?: { name: string; passed: boolean | null; evaluated?: boolean; blocking?: boolean }[];
 }
 
 export const createTradePreview = (legs: PreviewLeg[], qty: number, symbol = "EURUSD", hedge = false) =>
   apiPost<TradePreview>("/api/v1/trade/preview", { legs, qty, hedge }, { query: { symbol } });
 
 /** Submit a previewed structure. execution_mode "live" = IB paper account. */
-export const submitTrade = (previewId: string, executionMode: "live" | "mock" = "live", confirmLimits = false) =>
+export const submitTrade = (previewId: string, executionMode: "live" | "mock" = "live") =>
   apiPost<Record<string, unknown>>("/api/v1/trade/submit", {
     preview_id: previewId,
     execution_mode: executionMode,
-    confirm_limits: confirmLimits,
   });
 
 // Persisted submitted structures (DB: trade_structure + booked_position). Read-only,

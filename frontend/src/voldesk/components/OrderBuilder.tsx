@@ -11,6 +11,7 @@ import { explainGateFailure, fmtBudget, isRecordedRefusal, refusalText } from ".
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtCcy, fmtCcySigned, gk$, pnlCls } from "./format";
+import { serverLegs, ticketNumbers, type TicketLeg } from "./ticketNumbers";
 import { DATA, EMPTY_GREEKS, fmt } from "../data";
 import { useDeskData, useTicks } from "../data/deskData";
 import { createTradePreview, submitTrade, type TradePreview } from "../../api/endpoints";
@@ -313,71 +314,33 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   ].filter(Boolean).join(" · ") || "—";
   const net = useMemo(() => previewGreeks(legs, mult, spotMid), [legs, mult, spotMid]);
 
-  // Once a preview exists the ticket shows what the SERVER priced: premium,
-  // commission, and below the greeks the gate judges (#479). The browser's
-  // model is only the sketch before a preview, and for the two greeks the
-  // server does not send (vanna, volga), which are then labelled estimates.
-  const srvPremium = server?.pricing?.premium_paid_usd;
-  const srvCommission = server?.costs?.commission_usd;
-  const commission = srvCommission != null ? Math.round(srvCommission) : Math.round(legs.length * qty * 2.1);
-  const isCredit = srvPremium != null ? srvPremium < 0 : net.cost < 0; // SELL-heavy structures take in premium
-  const premiumAbs = srvPremium != null ? Math.abs(srvPremium) : Math.abs(net.cost);
   const naked = meta.naked(side); // a sold leg with no long cover → unbounded tail
   // A future is already delta-one — you don't delta-hedge it with another future,
   // so the bundle is disabled for futures (also hidden in the UI).
   const hedgeOn = bundleHedge && !isFut;
-  // The hedge is part of the package (#482): sized by the server with the
-  // preview, judged with the structure, sent by the engine on each fill. The
-  // browser's figure is only the sketch shown before a preview exists.
-  const serverHedge = server?.hedge ?? null;
-  const estHedgeQty = Math.round(Math.abs(net.d) / deltaPer6E(spotMid));
-  const hedgeQty = serverHedge ? serverHedge.qty : estHedgeQty;
-  const hedgeSide = serverHedge ? serverHedge.side : net.d > 0 ? "SELL" : "BUY";
-  const hedgedDelta = serverHedge
-    ? Math.round(serverHedge.residual_delta_usd)
-    : Math.round(net.d - Math.sign(net.d) * estHedgeQty * deltaPer6E(spotMid)); // delta once the bundle is applied
-  // When the delta-hedge is bundled, the 6E futures leg neutralises delta and
-  // adds its own commission — the ticket must re-price as the HEDGED structure
-  // (futures are delta-only : Γ/Vega/Θ unchanged).
-  const effDelta = hedgeOn ? hedgedDelta : net.d;
-  const hedgeComm = hedgeOn ? Math.round(hedgeQty * 2.1) : 0;
-  const totalCommission = commission + hedgeComm;
-
-  // structure value + book before/after, one row per greek (and the cash legs below).
   // Same live book greeks the Trade "Portfolio greeks" panel shows (zeros until live).
   const g = trade.data?.greeks ?? EMPTY_GREEKS;
+  // Every number of the ticket, and where it comes from (#479): the server's
+  // once a preview exists, the browser's sketch before. See ticketNumbers.ts.
+  const tn = ticketNumbers({
+    server, net, book: g, hedgeOn, deltaPerFuture: deltaPer6E(spotMid),
+    nLegs: legs.length, qty, isFuture: isFut, futureSize: csize.startsWith("M6E") ? "micro" : "full",
+  });
+  const { premiumAbs, isCredit, netCash, hedgeQty, hedgeSide, hedged, structDelta } = tn;
+  const totalCommission = tn.commission;
   const kfmt = (x: number): string => fmt.sgn(x, 1) + "k"; // $k greeks — 1 dp so small values don't collapse to "+0k"
-  const netCash = (isCredit ? premiumAbs : -premiumAbs) - totalCommission;
-  const srv = (key: string): { val: number; before: number; after: number } | null => {
-    const r = server?.risk_budget?.rows.find((x) => x.key === key);
-    return r && r.trade != null && r.after != null ? { val: r.trade, before: r.before ?? 0, after: r.after } : null;
-  };
-  const srvTheta = typeof server?.greeks_net?.theta_usd_per_day === "number" ? server.greeks_net.theta_usd_per_day : null;
-  const est = server ? " (est.)" : "";
-  const dS = srv("delta"), gS = srv("gamma"), vS = srv("vega");
-  // A hedged package has TWO deltas and the ticket shows both. "Delta" is the
-  // options' own delta: it grows with the size. "Delta after hedge" is what
-  // the futures leave: futures come in whole contracts, so it moves between
-  // minus and plus half a future as the size changes and flips sign each
-  // time one more future is added. Showing only the second one under the
-  // name "Delta" read as a bug (prod, 2026-11-13: 60k, -60k, 60k, 56k).
-  const hedged = hedgeOn && hedgeQty > 0;
-  const structDelta = serverHedge ? serverHedge.structure_delta_usd : net.d;
-  const bookDelta = dS ? dS.before : g.netDelta;
-  const deltaRows = hedged
-    ? [
-      { name: "Delta", unit: "USD", val: structDelta, before: bookDelta, after: bookDelta + structDelta, f: gk$ },
-      { name: "Delta after hedge", unit: "USD", ...(dS ?? { val: hedgedDelta, before: bookDelta, after: bookDelta + hedgedDelta }), f: gk$ },
-    ]
-    : [{ name: "Delta", unit: "USD", ...(dS ?? { val: effDelta, before: g.netDelta, after: g.netDelta + effDelta }), f: gk$ }];
-  const impactRows = [
-    ...deltaRows,
-    { name: "Gamma", unit: "USD/pip", ...(gS ?? { val: net.g, before: g.netGamma, after: g.netGamma + net.g }), f: gk$ },
-    { name: "Vega", unit: "$/vp", ...(vS ?? { val: net.v, before: g.netVega, after: g.netVega + net.v }), f: gk$ },
-    { name: "Theta", unit: "$/day", val: srvTheta ?? net.t, before: g.netTheta, after: g.netTheta + (srvTheta ?? net.t), f: gk$ },
-    { name: "Vanna" + est, unit: "$k/vp·fig", val: net.vn, before: g.netVanna, after: g.netVanna + net.vn, f: kfmt },
-    { name: "Volga" + est, unit: "$k/vp", val: net.vg, before: g.netVolga, after: g.netVolga + net.vg, f: kfmt },
-  ];
+  const cell = (r: { fmt: "usd" | "k" }, v: number | null): string => (v == null ? "—" : r.fmt === "k" ? kfmt(v) : gk$(v));
+  const impactRows = tn.rows;
+  // The legs table: the server's strikes, vols and prices once a preview
+  // exists, the browser's sketch before.
+  const legRows: TicketLeg[] = server
+    ? serverLegs(server)
+    : legs.map((l, i) => ({
+      label: `${l.qty}× ${l.type} ${l.tenor}`, side: l.side,
+      strike: l.type === "Future" ? null : l.strike,
+      ivPct: l.iv || null,
+      premium: net.detail[i] ? net.detail[i]!.prem : null,
+    }));
 
   // report the live structure up so the Indicators pre-trade check reads the SAME engine (state, not signal)
   useEffect(() => {
@@ -415,7 +378,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
     setErr(null);
     const label = `${product}${isFut ? "" : " " + tenor}${isCal ? "/" + farTenor : ""}${!isFut && STRUCT[product]!.mode.includes("wing") ? " " + wingLevel : ""}`;
     try {
-      const result = await submitTrade(server.preview_id, "live", needsConfirm);
+      const result = await submitTrade(server.preview_id, "live");
       setPlaced(result);
       setBooked({ side, product, qty, tenor, bundleHedge: hedgeOn, hedgeQty, hedgeSide });
       onOrder?.({ action: "open", label, side, qty, state: "sent" });
@@ -437,7 +400,6 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const blockers = server?.submit_blockers ?? [];
   const budget = server?.risk_budget ?? null;
   const canPlace = canWrite && server?.state === "valid_for_submit" && blockers.length === 0 && !busy;
-  const needsConfirm = false;
   const gateDetails = {
     ...(budget?.details ?? {}),
     caps: Object.fromEntries((budget?.rows ?? []).map((r) => [CAP_KEY[r.key] ?? r.key, r.cap])),
@@ -689,23 +651,23 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
         </div>
         <div className="book-kv">
           <div><span>Structure</span><b>{side} {qty}× {product}{isFut ? "" : " " + tenor}{isCal ? "/" + farTenor : ""}{!isFut && STRUCT[product]!.mode.includes("wing") ? " " + wingLevel : ""}</b></div>
-          <div><span>Premium <em className="unit">Σ legs</em></span><b className={"mono " + (isCredit ? "pos" : "neg")}>{isCredit ? "+" : "−"}{fmt.usd(premiumAbs)}</b></div>
-          <div><span>Commission{hedgeOn && hedgeQty > 0 ? " + hedge" : ""}</span><b className="mono neg">−{fmt.usd(totalCommission)}</b></div>
-          <div><span>Net cash</span><b className={"mono " + (netCash >= 0 ? "pos" : "neg")}>{gk$(netCash)}</b></div>
+          <div><span>Premium <em className="unit">Σ legs</em></span><b className={"mono " + (isCredit ? "pos" : "neg")}>{premiumAbs == null ? "—" : (isCredit ? "+" : "−") + fmt.usd(premiumAbs)}</b></div>
+          <div><span>Commission{hedged ? " + hedge" : ""}</span><b className="mono neg">{totalCommission == null ? "—" : "−" + fmt.usd(totalCommission)}</b></div>
+          <div><span>Net cash</span><b className={"mono " + pnlCls(netCash ?? 0)}>{netCash == null ? "—" : gk$(netCash)}</b></div>
         </div>
             <table className="dt legs">
               <thead><tr><th className="l">Leg</th><th>Side</th><th className="r">K</th><th className="r">IV</th><th className="r">Prem $</th></tr></thead>
               <tbody>
-                {legs.map((l, i) => (
+                {legRows.map((l, i) => (
                   <tr key={i}>
-                    <td className="l">{l.qty}× {l.type} {l.tenor}</td>
+                    <td className="l">{l.label}</td>
                     <td><span className={"side-pill " + (l.side === "BUY" ? "long" : "short")}>{l.side}</span></td>
-                    <td className="r mono">{l.type === "Future" ? "—" : l.strike.toFixed(4)}</td>
-                    <td className="r mono dim">{l.iv ? l.iv.toFixed(1) : "—"}</td>
-                    <td className={"r mono " + pnlCls(net.detail[i] ? -net.detail[i]!.prem : 0)}>{net.detail[i] ? gk$(net.detail[i]!.prem) : "—"}</td>
+                    <td className="r mono">{l.strike == null ? "—" : l.strike.toFixed(4)}</td>
+                    <td className="r mono dim">{l.ivPct == null ? "—" : l.ivPct.toFixed(1)}</td>
+                    <td className={"r mono " + pnlCls(l.premium ?? 0)}>{l.premium == null ? "—" : gk$(l.premium)}</td>
                   </tr>
                 ))}
-                {hedgeOn && hedgeQty > 0 && (
+                {hedged && (
                   <tr className="hedge-leg-row">
                     <td className="l">{hedgeQty}× 6E hedge</td>
                     <td><span className={"side-pill " + (hedgeSide === "BUY" ? "long" : "short")}>{hedgeSide}</span></td>
@@ -724,9 +686,9 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
                 {impactRows.map((r) => (
                   <tr key={r.name}>
                     <td className="l">{r.name} <em className="unit mono">{r.unit}</em></td>
-                    <td className={"r mono " + pnlCls(r.val)}>{r.f(r.val)}</td>
-                    <td className={"r mono " + pnlCls(r.before)}>{r.f(r.before)}</td>
-                    <td className={"r mono after-col " + pnlCls(r.after)}>{r.f(r.after)}</td>
+                    <td className={"r mono " + pnlCls(r.val ?? 0)}>{cell(r, r.val)}</td>
+                    <td className={"r mono " + pnlCls(r.before ?? 0)}>{cell(r, r.before)}</td>
+                    <td className={"r mono after-col " + pnlCls(r.after ?? 0)}>{cell(r, r.after)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -734,8 +696,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
 
             {/* The server's verdict on this trade: the limits, what the book
                 uses before and after, as the pre-trade gate will judge it.
-                These are the numbers the system books and limits; the table
-                above is the browser's estimate. */}
+                These are the numbers the system books and limits. */}
             {budget && budget.rows.length > 0 && (
               <table className="dt bi-table impact-table" data-testid="risk-budget">
                 <thead>
@@ -787,7 +748,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
                 <label className="hb-toggle">
                   {/* the hedge is part of what was previewed: changing it asks for a new preview */}
                   <input type="checkbox" checked={bundleHedge} onChange={(e) => { setBundleHedge(e.target.checked); reset(); }} />
-                  <span>Delta hedge: <b className="mono">{hedgeSide} {hedgeQty}× 6E</b> against {gk$(structDelta)}</span>
+                  <span>Delta hedge: <b className="mono">{hedgeSide} {hedgeQty}× 6E</b> against {structDelta == null ? "—" : gk$(structDelta)}</span>
                 </label>
               </div>
             )}
@@ -823,7 +784,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
                   title={canWrite ? (canPlace ? "submit to IB paper account" : "preview must be valid_for_submit") : GATE_TITLE}
                   onClick={onPlace}
                 >
-                  {busy ? "Placing…" : needsConfirm ? "Confirm and place" : "Place order"}
+                  {busy ? "Placing…" : "Place order"}
                 </button>
                 <button className="btn-draft-cancel" disabled={busy} onClick={reset}>Cancel</button>
               </div>

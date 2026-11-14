@@ -35,7 +35,7 @@ def _inputs(**over):
 def test_budget_rows_are_the_gate_numbers_and_carry_no_level_of_the_applications_own() -> None:
     budget = budget_from_gate(evaluate_pretrade(_inputs()), qty=40)
     rows = {r["key"]: r for r in budget["rows"]}
-    assert budget["failures"] == [] and budget["warnings"] == [] and budget["max_qty"] is None
+    assert budget["failures"] == [] and budget["max_qty"] is None
     assert rows["delta"]["after"] == -2_575_628.94 and rows["vega"]["trade"] == 10_927.32
     assert all(r["cap"] is None and r["used"] is None and not r["breached"] for r in budget["rows"])
     assert rows["notional"]["before"] is None, "notional is per order, there is no book notional"
@@ -60,7 +60,7 @@ def test_a_trade_inside_the_traders_limit_shows_what_it_uses() -> None:
 
 def test_session_only_failures_are_not_announced_on_a_preview() -> None:
     live = _inputs(live_mode=True, risk_heartbeat_age_s=None, ib_account_type=None, surface_age_s=None,
-                   hard_limits={"vega": 5_000.0}, confirmed=True)
+                   hard_limits={"vega": 5_000.0})
     result = evaluate_pretrade(live)
     assert {"account_type_mismatch", "risk_engine_stale", "surface_stale"} <= set(result.failures)
     assert budget_from_gate(result)["failures"] == ["cap_vega"]
@@ -68,4 +68,4 @@ def test_session_only_failures_are_not_announced_on_a_preview() -> None:
 
 def test_without_derived_levels_the_rows_are_still_shown() -> None:
     budget = budget_from_gate(evaluate_pretrade(_inputs(caps=None)))
-    assert budget["failures"] == [] and budget["warnings"] == [] and len(budget["rows"]) == 4
+    assert budget["failures"] == [] and len(budget["rows"]) == 4

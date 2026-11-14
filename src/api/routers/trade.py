@@ -36,6 +36,7 @@ from core.execution.revalidation import revalidate_preview
 from core.execution.slippage import compute_limit_price
 from core.products import product_label_from_symbol
 from core.trade_preview import (
+    COMMISSION_USD,
     TEMPLATES,
     _spot_from_surface,
     build_from_legs,
@@ -109,9 +110,6 @@ class SubmitBody(BaseModel):
     """``POST /trade/submit`` (#300, audit 01#14): a preview id and the mode."""
     preview_id: str = Field(min_length=1, max_length=64)
     execution_mode: Literal["mock", "live"] = "mock"
-    # The trader has seen that the trade uses more than the warning share of
-    # a limit and confirms it (#481). Never lifts a hard limit.
-    confirm_limits: bool = False
 
 
 class PreviewRequest(BaseModel):
@@ -504,7 +502,7 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
     # greeks_net above. ``qty_factor`` becomes the final per-leg quantity
     # (qty_factor × base_qty) so the operator sees "what's actually
     # being traded".
-    _base_qty_for_scaling = max(sizing.base_qty, 1)
+    _base_qty_for_scaling = max(sizing.final_qty_per_leg, 1)
     legs_greeks: list[dict[str, Any]] = []
     for r in legs_greeks_raw:
         scaled = dict(r)
@@ -516,8 +514,12 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         legs_greeks.append(scaled)
 
     # 6. Pre-submit checks
-    structure_vega_at_size = greeks.vega_usd_per_volpt * (sizing.final_qty_per_leg / max(sizing.base_qty, 1))
-    sized_max_loss = pricing.max_loss_usd * (sizing.final_qty_per_leg / max(sizing.base_qty, 1))
+    # Pricing and greeks are computed for ONE unit of the structure; what the
+    # trade pays, risks and adds to the book is that times the quantity
+    # traded (#483: the premium and the funds check were one unit's).
+    n_units = max(int(sizing.final_qty_per_leg), 0)
+    sized_premium = pricing.total_premium_usd * n_units
+    sized_max_loss = pricing.max_loss_usd * n_units if pricing.max_loss_usd is not None else None
 
     # latest signal under same model + pc_id (for "still actionable" gate)
     if manual_mode:
@@ -536,36 +538,26 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         armed_z_for_check = float(signal.z_score)
         current_z = float(latest.z_score) if latest else armed_z_for_check
 
+    # The arbitrage flags of the surface's own fit (#483): they were logged by
+    # the vol engine and the check here was a constant.
+    ssvi_meta = surface.get("_ssvi") if isinstance(surface.get("_ssvi"), dict) else {}
+    butterfly_ok = ssvi_meta.get("butterfly_arb_free") if isinstance(ssvi_meta.get("butterfly_arb_free"), bool) else None
+    calendar_ok = ssvi_meta.get("calendar_arb_free") if isinstance(ssvi_meta.get("calendar_arb_free"), bool) else None
     checks = run_pre_submit_checks(
         regime=regime,
         armed_z=armed_z_for_check, current_z=current_z,
         threshold_min=limits.get("z_threshold_min", 1.5),
-        max_loss_usd=sized_max_loss,
-        capital_total_usd=float(book.capital_total_usd or limits.get("starting_capital_usd", 100000.0)),
-        max_loss_pct=limits.get("max_loss_per_trade_pct", 2.0),
-        book_total_vega_usd=float(book.total_vega_usd),
-        structure_vega_usd=structure_vega_at_size,
-        max_book_vega_usd=limits.get("max_book_vega_usd", 5000.0),
-        surface_age_seconds=surface_age_s,
-        max_iv_age_s=surface_age_limit_s(limits.get("max_iv_data_age_seconds")),
-        has_arb_violation=False,            # MVP : no arb check on synth surface
-        min_quoted_size=99,                 # MVP : assume liquid
-        min_liquidity=int(limits.get("min_liquidity_quoted_size", 10)),
+        butterfly_arb_free=butterfly_ok, calendar_arb_free=calendar_ok,
     )
 
-    blocking = [c.name for c in checks if not c.passed]
-    state = "blocked" if blocking else "valid_for_submit"
+    blocking = [c.name for c in checks if c.blocks]
 
     # Costs : commission + total trade cost. Commission = $/contract × total
     # contracts (sum across legs, weighted by qty_factor). Premium per contract
     # is the structure premium for qty=base_qty divided by base_qty.
     # For futures we override the generic per-contract rate with the
     # CME-published rate for the chosen contract size (6E: $2.40, M6E: $0.60).
-    if structure.future_contract_size:
-        from core.trade_preview import FUTURE_COMMISSION_USD
-        commission_per_contract = FUTURE_COMMISSION_USD[structure.future_contract_size]
-    else:
-        commission_per_contract = limits.get("commission_per_contract_usd", 2.0)
+    commission_per_contract = COMMISSION_USD[structure.future_contract_size or "option"]
     total_contracts = sum(abs(q) for q in sizing.leg_quantities.values())
     commission_usd = float(total_contracts) * commission_per_contract
     # "Cost per contract" displayed on the RED block. Options : premium of
@@ -575,11 +567,8 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
     if structure.future_contract_size:
         premium_per_contract_usd = commission_per_contract
     else:
-        premium_per_contract_usd = (
-            pricing.total_premium_usd / max(sizing.base_qty, 1)
-            if sizing.base_qty else 0.0
-        )
-    total_trade_cost_usd = abs(sizing.final_premium_usd) + commission_usd
+        premium_per_contract_usd = pricing.total_premium_usd
+    total_trade_cost_usd = abs(sized_premium) + commission_usd
 
     preview_id = "tp_" + secrets.token_hex(6)
     expires_at = datetime.now(UTC) + timedelta(seconds=int(limits.get("preview_validity_seconds", 120)))
@@ -631,15 +620,14 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
                 } for leg in structure.legs
             ],
         },
-        # greeks scaled to the actual trade size (× base_qty). compute_net_greeks
-        # returns per-structure-unit values; the operator-facing display
-        # ought to reflect the full trade impact.
+        # greeks at the size traded. compute_net_greeks returns the values of
+        # one unit of the structure.
         "greeks_net": {
-            "vega_usd_per_volpt": round(greeks.vega_usd_per_volpt * sizing.base_qty, 4),
-            "gamma_usd_per_pip2": round(greeks.gamma_usd_per_pip2 * sizing.base_qty, 6),
-            "theta_usd_per_day": round(greeks.theta_usd_per_day * sizing.base_qty, 4),
-            "delta_unhedged": round(greeks.delta_unhedged * sizing.base_qty, 4),
-            "delta_post_hedge": round(greeks.delta_post_hedge * sizing.base_qty, 4),
+            "vega_usd_per_volpt": round(greeks.vega_usd_per_volpt * n_units, 4),
+            "gamma_usd_per_pip2": round(greeks.gamma_usd_per_pip2 * n_units, 6),
+            "theta_usd_per_day": round(greeks.theta_usd_per_day * n_units, 4),
+            "delta_unhedged": round(greeks.delta_unhedged * n_units, 4),
+            "delta_post_hedge": round(greeks.delta_post_hedge * n_units, 4),
             "_per_unit": {  # raw per-structure-unit values (for debug / scaling)
                 "vega_usd_per_volpt": greeks.vega_usd_per_volpt,
                 "gamma_usd_per_pip2": greeks.gamma_usd_per_pip2,
@@ -648,15 +636,21 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
                 "delta_post_hedge": greeks.delta_post_hedge,
             },
         },
+        # At the size traded, signed (+ = paid). ``premium_per_unit_usd`` is
+        # one unit of the structure.
         "pricing": {
-            "premium_paid_usd": pricing.total_premium_usd,
-            "max_loss_usd": pricing.max_loss_usd,
+            "premium_paid_usd": round(sized_premium, 4),
+            "premium_per_unit_usd": pricing.total_premium_usd,
+            "max_loss_usd": sized_max_loss,
             "max_loss_at_expiry_only": pricing.max_loss_at_expiry_only,
             "breakeven_pips_each_side": pricing.breakeven_pips_each_side,
         },
         "costs": {
             "premium_per_contract_usd": round(premium_per_contract_usd, 4),
             "commission_usd": round(commission_usd, 2),
+            "commission_per_contract_usd": commission_per_contract,
+            # filled with the hedge below, when the package has one
+            "hedge_commission_usd": 0.0,
             "total_trade_cost_usd": round(total_trade_cost_usd, 2),
         },
         "scenarios": scenarios,
@@ -670,11 +664,17 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
             "final_premium_usd": sizing.final_premium_usd,
             "sizing_formula": sizing.sizing_formula,
         },
+        # ``passed`` is null for a check that could not be evaluated;
+        # ``blocking`` says whether a failure stops the submit.
         "pre_submit_checks": [
-            {"name": c.name, "passed": c.passed, "details": c.details} for c in checks
+            {"name": c.name, "passed": c.passed, "evaluated": c.passed is not None,
+             "blocking": c.blocking, "details": c.details} for c in checks
         ],
-        "state": state,
+        # decided below, once the gate has spoken
+        "state": "blocked" if blocking else "valid_for_submit",
         "blocking_reasons": blocking,
+        # the surface's arbitrage flags, read by the gate (#483)
+        "surface_meta": {"butterfly_ok": butterfly_ok, "calendar_ok": calendar_ok},
         "surface_age_seconds": surface_age_s,
         # The limit the submit enforces, and what it would refuse right now
         # (#480). The preview stays valid: the ticket shows the blocker and
@@ -701,6 +701,12 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
     if req.hedge and any((leg.get("contract_type") or "") != "future" for leg in payload["structure"]["legs"]):
         plan = plan_hedge(float(payload["greeks_net"]["delta_unhedged"]), float(payload.get("spot") or 0.0))
         payload["hedge"] = plan.as_dict() if plan is not None else None
+        if plan is not None:
+            # the hedge's own commission, from the same table (the ticket
+            # computed it in the browser at another rate)
+            hedge_comm = round(plan.qty * COMMISSION_USD["full"], 2)
+            payload["costs"]["hedge_commission_usd"] = hedge_comm
+            payload["costs"]["total_trade_cost_usd"] = round(total_trade_cost_usd + hedge_comm, 2)
         payload["greeks_net"]["delta_post_hedge"] = plan.residual_delta_usd if plan is not None else payload["greeks_net"]["delta_unhedged"]
 
     # 6b. The gate's verdict on this trade, on the preview (#479): the ticket
@@ -710,10 +716,16 @@ async def create_preview(req: PreviewRequest, db: DbDep, symbol: str = Query("EU
         budget = await preview_risk_budget(db, get_redis_client_or_none(), payload)
         payload["risk_budget"] = budget
         payload["submit_blockers"] = [*payload["submit_blockers"], *budget["failures"]]
-        # the application asks for no confirmation (owner's rule, 2026-11-13)
-        payload["needs_confirmation"] = False
     except Exception:
+        # The gate could not be asked: that is not a pass (#483).
         logger.exception("preview_risk_budget_failed preview_id=%s", preview_id)
+        payload["submit_blockers"] = [*payload["submit_blockers"], "gate_unavailable"]
+
+    # ONE verdict (#483): "valid_for_submit" means the submit would accept
+    # this now. It used to be decided by the checks alone, while the gate's
+    # refusals sat beside it in ``submit_blockers``.
+    state = "blocked" if (blocking or payload["submit_blockers"]) else "valid_for_submit"
+    payload["state"] = state
 
     # 7. Persist (audit)
     row = TradePreviewRow(
@@ -856,7 +868,6 @@ async def _submit_preview_impl(
     preview_id = body.get("preview_id")
     if not preview_id:
         raise HTTPException(400, "preview_id required")
-    confirm_limits = bool(body.get("confirm_limits"))
 
     # execution_mode : 'mock' (default — synthetic fills, no IB) or 'live'
     # ('live' currently no-ops past the gating check ; real ib_async wiring
@@ -993,15 +1004,8 @@ async def _submit_preview_impl(
     # cap + the notional cap on the POST-trade book. Every reason at once.
     gate = await run_pretrade_gate(
         db, get_redis_client_or_none(), payload=payload, live_mode=(execution_mode == "live"),
-        surface_age_s=surface_age, confirmed=confirm_limits,
+        surface_age_s=surface_age,
     )
-    if gate.passed and gate.warnings:
-        # Who took the trade into the warning zone, and on which limits.
-        db.add(TradeEvent(
-            structure_id=None, event_type="limits_confirmed", severity="warning",
-            description=("limits confirmed: " + ", ".join(gate.warnings))[:450],
-            payload={"preview_id": preview_id, "warnings": gate.warnings, "details": gate.details},
-        ))
     if not gate.passed:
         db.add(TradeEvent(
             structure_id=None, event_type="submission_blocked",
@@ -1016,7 +1020,7 @@ async def _submit_preview_impl(
         })
 
     limits_for_submit = await _load_limits(db)
-    commission_per_contract = limits_for_submit.get("commission_per_contract_usd", 2.0)
+    commission_per_contract = COMMISSION_USD["option"]
     slippage_tolerance_pct = float(
         limits_for_submit.get("slippage_tolerance_pct", 0.5)
     )
