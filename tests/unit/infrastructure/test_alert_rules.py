@@ -21,7 +21,7 @@ KNOWN_METRICS = {
     "history_prune_failures_total", "db_writer_queue_dropped_total", "reconciliation_breaks_open", "db_writer_dead_letter_total",
     "order_submit_latency_seconds", "fill_to_publish_seconds",
     # api (src/api/routers/health.py)
-    "fxvol_postgres_backup_age_seconds",
+    "fxvol_postgres_backup_age_seconds", "fxvol_host_disk_used_bytes", "fxvol_host_disk_total_bytes",
     # prometheus / cadvisor
     "up", "container_start_time_seconds", "container_fs_usage_bytes", "container_fs_limit_bytes",
     "container_memory_working_set_bytes", "container_spec_memory_limit_bytes",
@@ -73,3 +73,19 @@ def test_alertmanager_routes_to_the_sns_topic_with_resolve() -> None:
     sns = recv["sns_configs"][0]
     assert sns["topic_arn"].endswith(":fxvol-alarms") and sns["sigv4"]["region"] == "eu-west-1"
     assert sns["send_resolved"] is True
+
+
+def test_disk_alerts_read_one_series_for_the_root_filesystem() -> None:
+    """cAdvisor's id="/" is one series per device: six full small devices kept
+    DiskUsageCritical firing at 64 % used. The api's gauges are one series."""
+    from prometheus_client import REGISTRY
+
+    import api.routers.health  # noqa: F401  (registers the collector)
+
+    for name in ("DiskUsageHigh", "DiskUsageCritical"):
+        expr = next(r for r in _rules() if r["alert"] == name)["expr"]
+        assert "fxvol_host_disk_used_bytes / fxvol_host_disk_total_bytes" in expr, name
+        assert "container_fs" not in expr, name
+    used = REGISTRY.get_sample_value("fxvol_host_disk_used_bytes")
+    total = REGISTRY.get_sample_value("fxvol_host_disk_total_bytes")
+    assert used is not None and total and 0 < used <= total

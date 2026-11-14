@@ -364,7 +364,6 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
   const hedged = hedgeOn && hedgeQty > 0;
   const structDelta = serverHedge ? serverHedge.structure_delta_usd : net.d;
   const bookDelta = dS ? dS.before : g.netDelta;
-  const halfFuture = deltaPer6E(spotMid) / 2;
   const deltaRows = hedged
     ? [
       { name: "Delta", unit: "USD", val: structDelta, before: bookDelta, after: bookDelta + structDelta, f: gk$ },
@@ -788,11 +787,7 @@ export function OrderBuilder({ prefill, onClearPrefill, onState, onOrder }: Orde
                 <label className="hb-toggle">
                   {/* the hedge is part of what was previewed: changing it asks for a new preview */}
                   <input type="checkbox" checked={bundleHedge} onChange={(e) => { setBundleHedge(e.target.checked); reset(); }} />
-                  <span>
-                    Delta hedge: <b className="mono">{hedgeSide} {hedgeQty}× 6E</b>
-                    {" "}against {gk$(structDelta)} → leaves <b className="mono">{gk$(hedgedDelta)}</b>
-                    <em className="unit mono"> whole futures only: within ±{gk$(halfFuture)}</em>
-                  </span>
+                  <span>Delta hedge: <b className="mono">{hedgeSide} {hedgeQty}× 6E</b> against {gk$(structDelta)}</span>
                 </label>
               </div>
             )}

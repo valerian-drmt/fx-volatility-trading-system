@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shutil
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError
@@ -189,10 +190,33 @@ class _BackupAgeCollector:
         yield gauge
 
 
-try:
-    REGISTRY.register(_BackupAgeCollector())
-except ValueError:  # already registered (module re-import under tests)
-    pass
+class _HostDiskCollector:
+    """Prometheus collector: the filesystem the stack lives on, read at scrape
+    time. The container's "/" is an overlay on the host's root volume, so this
+    is the number ``df /`` prints on the host (and the Hardware tab shows).
+    The disk alerts read these two gauges: cAdvisor's ``id="/"`` carries one
+    series per device, and the small full ones fired the alert at 64 % used."""
+
+    def collect(self) -> Iterator[GaugeMetricFamily]:
+        try:
+            usage = shutil.disk_usage("/")
+        except OSError:
+            return
+        used = GaugeMetricFamily(
+            "fxvol_host_disk_used_bytes", "Bytes used on the host's root filesystem.")
+        used.add_metric([], float(usage.used))
+        total = GaugeMetricFamily(
+            "fxvol_host_disk_total_bytes", "Size of the host's root filesystem in bytes.")
+        total.add_metric([], float(usage.total))
+        yield used
+        yield total
+
+
+for _collector in (_BackupAgeCollector(), _HostDiskCollector()):
+    try:
+        REGISTRY.register(_collector)
+    except ValueError:  # already registered (module re-import under tests)
+        pass
 
 
 async def _check_redis(redis: aioredis.Redis) -> str:
