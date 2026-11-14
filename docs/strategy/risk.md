@@ -23,44 +23,41 @@ across legs. The book tracks six sensitivities:
 Vanna and volga are the risk-reversal and butterfly exposures respectively; the
 order builder surfaces all six as book *before → after* on every ticket.
 
-## Computed greek limits
+## Limits: the trader's, and only the trader's
 
-[`core/risk/greek_limits.py`](../../src/core/risk/greek_limits.py) does **not**
-hardcode caps. One daily stress-loss appetite `L* = alpha × nav_base` is
-projected onto each axis by inverting that axis' shock:
+Owner rule (2026-11-13): **the app is not the trader**. The code computes no
+limit, no reference level, no suggested size, and asks for no confirmation.
+An order is refused on a fact (the market, the account, the broker) or on a
+limit the trader typed, and on nothing else.
 
-```
-greek_cap = beta_axis * L* / shock_axis
-```
+The trader's limits are five keys of the risk configuration. None is set by
+default, and a key that is not set does not exist for the gate:
 
-`compute_caps(nav_base, spot, regime_mult, params)` returns `GreekCaps`:
+| Key | Refuses when | Failure code |
+|---|---|---|
+| `hard_max_delta_usd` | post-trade book \|delta\| is above it (after the package's hedge) | `cap_delta` |
+| `hard_max_vega_usd_per_volpt` | post-trade book \|vega\| is above it | `cap_vega` |
+| `hard_max_gamma_usd_per_pip` | post-trade book \|gamma\| is above it | `cap_gamma` |
+| `hard_max_notional_eur` | the order's notional is above it | `cap_notional` |
+| `hard_max_order_contracts` | the order's contracts are above it | `cap_contracts` |
 
-- `delta_usd  = beta_delta * L* / shock_spot`
-- `vega_usd   = beta_vega  * L* / shock_vol`
-- `gamma_pip  = 2 * beta_gamma * L* / (shock_spot² · spot · 1e4)`
-- `cross_usd  = beta_cross * L*` (vanna+volga, scenario-grid enforced)
+When one of them refuses, the preview shows the limit, what the book uses of
+it before and after, and the largest size that fits. It shows nothing of the
+kind otherwise.
 
-Defaults: `alpha=0.05`, `beta = {delta .15, vega .50, gamma .25, cross .10}`,
-`shock_spot=2.5%`, `shock_vol=4 vol pts`. Vega gets the largest share — it is the
-*intended* risk of a vol book.
+[`core/risk/greek_limits.py`](../../src/core/risk/greek_limits.py) still
+projects a stress-loss appetite onto each greek (`GET /portfolio/greek-limits`).
+It is a calculator: no screen of the desk reads it and the gate does not
+either. Between 2026-11-13 and the owner rule the gate enforced those numbers
+and refused every standard trade; they were removed from the order path.
 
-Two anti-procyclicality guards:
+## Pre-trade gate (facts, fail closed)
 
-- **`nav_base`** is a slow anchor, `max(hwm × 0.9, ewma(nav, halflife=20d))`, not
-  the live NAV — a drawdown does not instantly tighten every cap.
-- **`regime_mult`** = `clamp(current_vol / calm_baseline, 1, 3)` scales shocks up
-  (caps down) as vol rises.
-
-All eight policy values are editable in the Risk settings panel
-(`CONFIG_DEFAULTS` / `CONFIG_META`), overlaid via `params=`.
-
-## Pre-trade gate (enforced, fail closed)
-
-Since #315 every `POST /trade/submit` runs
+Every `POST /trade/submit` runs
 [`core/risk/pretrade.py`](../../src/core/risk/pretrade.py) with inputs
-collected by `api/orchestration/pretrade_gate.py`. The gate refuses with HTTP
-400 `pretrade_gate_failed` and lists every failing reason; an input that
-cannot be read is a failure, never a pass.
+collected by `api/orchestration/pretrade_gate.py`. It refuses with HTTP 400
+`pretrade_gate_failed` and lists every reason at once; an input that cannot
+be read is a refusal, never a pass.
 
 | Check | Failure code | Source |
 |---|---|---|
@@ -68,32 +65,50 @@ cannot be read is a failure, never a pass.
 | leg symbols allowed | `symbol_not_allowed` | `ALLOWED_SYMBOLS` (default `EUR,M6E`) |
 | IB session is the account type `TRADING_MODE` promises (live mode) | `account_type_mismatch` | `ib_connection_state.account_type` |
 | risk engine heartbeat younger than 30 s (live mode) | `risk_engine_stale` | Redis `heartbeat:risk_engine` |
-| surface age below `max_iv_data_age_seconds` (live mode) | `surface_stale` | preview `surface_age_seconds` |
-| surface not flagged arbitrageable | `surface_arbitrage` | surface meta `butterfly_ok` (unknown passes) |
-| every open position priced | `book_partially_priced` | `open_position` greeks |
-| post-trade \|delta\| ≤ cap, \|vega\| ≤ cap, \|gamma\| ≤ cap | `cap_delta`, `cap_vega`, `cap_gamma` | book greeks + preview `greeks_net` vs `compute_caps` |
-| caps established (NAV history + spot) | `caps_not_established`, `caps_unavailable` | `api.orchestration.greek_caps` |
-| structure notional ≤ `max_notional_eur` (default 5 M EUR) | `cap_notional` | `config_scalar` risk namespace |
+| surface age below `max_iv_data_age_seconds` (live mode) | `surface_stale` | the latest surface's age at submit |
+| surface free of butterfly arbitrage | `surface_arbitrage` | the surface's SSVI fit, carried on the preview as `surface_meta.butterfly_ok` (not reported passes) |
+| the book can be read and the trade's greeks exist | `book_unavailable`, `trade_greeks_unavailable` | `open_position` greeks, preview `greeks_net` |
+| the premium to pay is not above the account's net liquidation | `insufficient_funds` | preview `costs.total_trade_cost_usd` (at the size), latest account snapshot |
+| the trader's own limits, when set | `cap_*` | the table above |
 
-The caps are the same numbers the Risk settings panel shows
-(`GET /portfolio/greek-limits` and the gate call one helper). Mock-mode
-submits skip the three live-session checks and keep the rest.
+Mock-mode submits skip the three live-session checks and keep the rest.
 
-In the execution engine, `live_submit` adds two checks before any leg is
-placed: the symbol allow-list again, and a **price collar**: the live
-marketable limit of every leg must sit within `LIVE_SUBMIT_COLLAR_PCT`
-(default 50 %) of the preview premium, or the whole structure is refused and
-the submit claim released. Not assessed, and recorded as a waiver: quoted
-size / liquidity (the preview has no per-leg depth yet).
+**The preview says what the submit will do.** The preview runs the same gate
+and its `state` is `valid_for_submit` only when nothing would refuse:
+`submit_blockers` lists the gate's refusals (plus `gate_unavailable` when it
+could not be asked) and `blocking_reasons` the two checks the submit re-runs
+(regime not `pre_event`, signal still actionable). The other pre-submit
+checks inform and never block: `no_arb_violation_on_legs` reports both flags
+of the surface's fit (the calendar flag is raised on about a third of prod
+surfaces), and `minimum_liquidity` is reported as not evaluated, because no
+quoted size reaches the preview. A check that cannot be evaluated has
+`passed: null`.
+
+**The preview's figures are those of the whole order.** Premium, maximum
+loss, cost and greeks are one unit of the structure times the quantity
+traded; `pricing.premium_per_unit_usd` is one unit. A leg is priced to the
+expiry of the contract it trades: the listed monthly option of the tenor's
+month (two Fridays before the third Wednesday), not the tenor's round day
+count. Commission comes from one table,
+`core.trade_preview.COMMISSION_USD` (option 2.00, 6E 2.40, M6E 0.60 USD per
+contract and side), also used for the hedge.
+
+In the execution engine, every order goes through one door
+(`engines/execution/door.py`): the kill switch and the ready gate, whatever
+path placed it. `live_submit` adds two checks before any leg is placed: the
+symbol allow-list again, and a **price collar**: the live marketable limit
+of every leg must sit within `LIVE_SUBMIT_COLLAR_PCT` (default 50 %) of the
+preview price, or the whole structure is refused and the submit claim
+released.
 
 Between Arm and Submit, `core/execution/revalidation.py` re-runs the gates
 that can change while the operator sits on a preview: not actioned, not
 expired, signal still actionable, surface fresh, regime not `pre_event`.
-The signal gate uses one bar at Arm and at Submit since #314: `|z| >= z_threshold_min` (`SIGNAL_ACTIONABLE_FACTOR = 1.0` in `core/execution/revalidation.py`; the pre-submit check used 0.7 x, so a preview could arm and then be refused on the same z). The surface gate fails closed since #339 (audit EX-08): a preview priced on
-a surface older than `max_iv_data_age_seconds` is refused with
+The signal gate uses one bar at Arm and at Submit (`|z| >= z_threshold_min`,
+`SIGNAL_ACTIONABLE_FACTOR = 1.0`). The surface gate fails closed: a preview
+priced on a surface older than `max_iv_data_age_seconds` is refused with
 `surface_stale`, and a preview with no recorded age with
-`surface_age_unknown`. Like the pre-trade gate's `surface_stale`, it runs in
-live mode; mock and paper submits pass `max_iv_age_seconds=None`.
+`surface_age_unknown`.
 
 ## Kill switch
 
@@ -107,29 +122,22 @@ so the desk can badge it. Setting it:
 3. calls the execution engine's `POST /internal/halt`, which cancels every
    working order of the IB session and issues IB's global cancel.
 
-While halted, every order-creating route of the execution engine (`/orders`,
-`/structure/submit`, `/structure/rollback`, both closes, `/hedge`) answers
-**423**, the api's `/trade/submit` fails the gate with `trading_halted`, and
-the position monitor's automatic hedge is refused by the engine. A database
-that cannot be read counts as halted (503). Resuming is a deliberate second
-call with its own reason; nothing resumes on its own.
+While halted, nothing leaves the execution engine: the door every order
+passes (`engines/execution/door.py`) answers **423**, for the routes
+(`/orders`, `/structure/submit`, `/structure/rollback`, the close) as for the
+package hedge sent after a fill and its retry loop. The api's `/trade/submit`
+fails the gate with `trading_halted`. A database that cannot be read counts
+as halted (503). Resuming is a deliberate second call with its own reason;
+nothing resumes on its own.
 
-## A position under the limits and the kill switch
+## After entry: the monitor alerts, the trader acts
 
-The limits act once, at submit. After entry a booked position moves only
-through the position monitor's exit rules (every 60 s), a manual close, or
-IB reconciliation; the code has no warning or breach state, so a book that
-drifts past a greek cap is neither flagged nor closed.
-
-![A booked position has no limit state: exit rules close it, and a kill switch set mid-close leaves it in closing](../diagrams/position-limits-killswitch-states.svg)
-
-`initiate_position_close` flips the position to `closing` and commits before
-it calls the execution engine. When the kill switch is on, that call answers
-423 and nothing rolls the position back to `open`: it stays `closing` with
-pending closing orders, and the position monitor, which selects only `open`
-positions, does not retry it.
-Automatic closes run only when `EXIT_AUTO_EXECUTE_ENABLED` is set; otherwise
-an `EXIT` decision is an `ExitAlert` row for the operator.
+The limits act once, at submit. After entry the position monitor (every
+60 s) marks each booked position, attributes its P&L and evaluates the exit
+rules. An `EXIT` decision is an `ExitAlert` row and a line on the screen.
+Nothing is closed and nothing is hedged automatically: the automatic exit
+and the monitor's delta hedges were removed (#493), the trader closes and
+hedges.
 
 ## VaR
 
@@ -181,17 +189,20 @@ an attribution matrix; each row's residual foots to `actual − explained`.
 
 ## Delta hedging
 
-[`core/positions/delta_hedge.py`](../../src/core/positions/delta_hedge.py) is a
-pure decision function. `check_delta_hedge_needed(...)` fires a hedge when
-`|delta_unhedged| > threshold` (default 0.05) **and** outside a cooldown
-(default 300s). Hedge qty = `round(|delta|)`; if it rounds to 0 → skip; side is
-opposite the imbalance (SELL futures when delta > 0). It returns a
-`HedgeDecision` with the qty, side, and post-hedge residual, or a `skip_reason`
-(`below_threshold` / `rounded_to_zero` / `cooldown`).
+A hedge is the trader's choice on the ticket. With "Delta hedge" ticked the
+preview sizes the futures on the server's own delta
+([`core/execution/package_hedge.py`](../../src/core/execution/package_hedge.py),
+`plan_hedge`): whole 6E futures, so the residual sits within half a future
+on either side of zero and changes sign as the size grows. The ticket shows
+both numbers: "Delta" (the options' own) and "Delta after hedge".
 
-Hedge behaviour is configured by `DeltaHedgeConfig` in
-[`vol_params.py`](../../src/core/config/vol_params.py): `mode`
-(`static` / `threshold` / `scheduled`), `threshold_delta`,
-`scheduled_interval_minutes`. In the order builder a delta hedge can be *bundled*:
-a second linked `6E` futures order fires right after the structure to flatten its
-net delta.
+The structure and its hedge are one package: the gate judges the residual,
+and the engine sends the futures after each option fill, for the share
+filled (`engines/execution/package_hedge.py`). Nothing is sent before a
+fill. A hedge that cannot be placed is a rejected order with a critical
+event, retried by the hedge loop. On a multi-leg structure filled unevenly
+the share is counted in contracts, an approximation.
+
+[`core/positions/delta_hedge.py`](../../src/core/positions/delta_hedge.py)
+is the pure decision function of the former monitor hedge
+(`check_delta_hedge_needed`). Nothing calls it on the order path.

@@ -87,10 +87,10 @@ _OK = GateInputs(
 
 
 def test_only_a_limit_the_trader_set_refuses() -> None:
-    assert evaluate_pretrade(_OK).passed and evaluate_pretrade(_OK).warnings == []
+    assert evaluate_pretrade(_OK).passed
     over = replace(_OK, trade=replace(_OK.trade, vega_usd_per_volpt=2_000_000.0))
     res = evaluate_pretrade(over)
-    assert res.passed and res.warnings == [], "no level of the application's own, no confirmation"
+    assert res.passed, "no level of the application's own, no confirmation"
     assert evaluate_pretrade(replace(over, hard_limits={"vega": 1_888.0})).failures == ["cap_vega"]
 
 
@@ -98,7 +98,7 @@ def test_a_size_is_suggested_only_against_the_traders_own_limit() -> None:
     trade = TradeGreeks(delta_usd=-30_000.0, vega_usd_per_volpt=10_927.32, gamma_usd_per_pip=5_875.6,
                         notional_eur=5_000_000.0)
     free = budget_from_gate(evaluate_pretrade(replace(_OK, trade=trade)), qty=40, hedged=True)
-    assert free["max_qty"] is None and free["failures"] == [] and free["warnings"] == []
+    assert free["max_qty"] is None and free["failures"] == []
     assert all(r["cap"] is None and not r["breached"] for r in free["rows"])
     # the trader typed a vega limit of 1,888: 40 contracts at 273 each -> 6 fit
     own = budget_from_gate(evaluate_pretrade(replace(_OK, trade=trade, hard_limits={"vega": 1_888.44})),
@@ -213,9 +213,9 @@ async def test_a_trade_without_a_hedge_or_a_future_leg_is_left_alone(sqlite_sess
 
 
 def test_the_size_of_an_order_is_the_traders_decision() -> None:
-    big = replace(_OK, order_contracts=500.0, max_order_contracts=200.0)
+    big = replace(_OK, order_contracts=500.0)
     res = evaluate_pretrade(big)
-    assert res.passed and res.warnings == [] and res.details["max_order_contracts"] is None
+    assert res.passed and res.details["max_order_contracts"] is None
     hard = evaluate_pretrade(replace(big, hard_limits={"contracts": 300.0}))
     assert hard.failures == ["cap_contracts"] and hard.details["max_order_contracts"] == 300.0
 

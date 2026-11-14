@@ -61,17 +61,11 @@ class GateInputs:
     surface_age_s: float | None
     max_surface_age_s: float
     arb_ok: bool | None                 # surface meta butterfly check; None = not reported
-    # Two levels per limit (#481). Above ``warn_fraction`` of a cap the trade
-    # needs an explicit confirmation; above the cap it is refused, confirmed
-    # or not.
-    warn_fraction: float = 0.8
-    confirmed: bool = False
-    # Fat-finger limit (#481): the size of ONE order, whatever the book. A
-    # mistyped quantity is refused before any risk arithmetic. None = off.
+    # The size of this order, in contracts, for the trader's own limit on it.
     order_contracts: float | None = None
-    max_order_contracts: float | None = None
     # Limits the TRADER set himself, by axis: delta, vega, gamma, notional,
-    # contracts. These refuse. Everything else above is a reference level.
+    # contracts. They are the only limits: the code computes none, has no
+    # warning level and asks for no confirmation (owner rule, 2026-11-13).
     hard_limits: dict[str, float] | None = None
     # A premium to pay, against what the account has.
     premium_to_pay_usd: float | None = None
@@ -84,14 +78,10 @@ class GateResult:
     passed: bool
     failures: list[str] = field(default_factory=list)
     details: dict[str, object] = field(default_factory=dict)
-    # Limits in the warning zone (``warn_delta`` ...). Informational once
-    # confirmed; ``limits_need_confirmation`` is in ``failures`` until then.
-    warnings: list[str] = field(default_factory=list)
 
 
 def evaluate_pretrade(i: GateInputs) -> GateResult:
     f: list[str] = []
-    w: list[str] = []
     d: dict[str, object] = {}
 
     # 0. Kill switch, unknown = halted.
@@ -198,4 +188,4 @@ def evaluate_pretrade(i: GateInputs) -> GateResult:
         _check("gamma", post_gamma)
         _check("notional", i.trade.notional_eur)
 
-    return GateResult(passed=not f, failures=f, details=d, warnings=w)
+    return GateResult(passed=not f, failures=f, details=d)

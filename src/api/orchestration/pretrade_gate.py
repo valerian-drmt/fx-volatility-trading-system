@@ -30,8 +30,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_NOTIONAL_EUR = 5_000_000.0
 DEFAULT_MAX_RISK_HEARTBEAT_AGE_S = 30.0
-DEFAULT_WARN_FRACTION = 0.8
-DEFAULT_MAX_ORDER_CONTRACTS = 200.0
 
 
 # The limits a trader sets himself, in the ``risk`` config namespace. Absent =
@@ -184,7 +182,6 @@ async def run_pretrade_gate(
     payload: dict[str, Any], live_mode: bool,
     surface_age_s: float | None = None,
     log_refusal: bool = True,
-    confirmed: bool = False,
 ) -> GateResult:
     # kill switch
     try:
@@ -257,13 +254,10 @@ async def run_pretrade_gate(
         ),
         max_surface_age_s=surface_age_limit_s(limits.get("max_iv_data_age_seconds")),
         arb_ok=arb if isinstance(arb, bool) else None,
-        warn_fraction=float(limits.get("limit_warn_fraction", DEFAULT_WARN_FRACTION)),
-        confirmed=confirmed,
         order_contracts=sum(
             abs(float(leg.get("qty") or 0)) for leg in ((payload.get("structure") or {}).get("legs") or [])
             if (leg.get("contract_type") or "") != "spot"
         ),
-        max_order_contracts=None,
         hard_limits=trader_limits(limits),
         premium_to_pay_usd=_premium_to_pay(payload),
         available_funds_usd=funds[0], net_liquidation_usd=funds[1],
@@ -344,8 +338,6 @@ def budget_from_gate(result: GateResult, qty: int | None = None, hedged: bool = 
         })
     return {
         "rows": rows if (d.get("post_trade") or d.get("trade")) else [],
-        "warnings": list(result.warnings),
-        "warn_fraction": d.get("warn_fraction"),
         # a size is suggested only when one of the trader's own limits refuses
         "max_qty": (
             max_qty_within_limits([r for r in rows if r["hard"]], qty)
@@ -367,9 +359,8 @@ async def preview_risk_budget(
     """The gate, run on a preview: what the trade would use of each limit and
     which limits it would break. ``live_mode=False`` leaves out the checks
     that only make sense at submit (account, heartbeat, surface age)."""
-    # confirmed=True: a preview shows the warning zone, it does not refuse on it
     result = await run_pretrade_gate(
-        db, redis, payload=payload, live_mode=False, log_refusal=False, confirmed=True,
+        db, redis, payload=payload, live_mode=False, log_refusal=False,
     )
     qty = int((payload.get("sizing") or {}).get("base_qty") or 0) or None
     return budget_from_gate(result, qty=qty, hedged=bool((payload.get("hedge") or {}).get("qty")))
@@ -397,7 +388,7 @@ async def run_spot_order_gate(
         # notional in EUR = contracts x 125,000: express the order in contracts
         "structure": {"legs": [{"contract_type": "spot", "qty": abs(float(qty_eur)) / EUR_FOP_MULTIPLIER}]},
     }
-    result = await run_pretrade_gate(db, redis, payload=payload, live_mode=False, log_refusal=False, confirmed=True)
+    result = await run_pretrade_gate(db, redis, payload=payload, live_mode=False, log_refusal=False)
     failures = list(result.failures)
     book = (result.details.get("book") or {}) if isinstance(result.details, dict) else {}
     post = (result.details.get("post_trade") or {}) if isinstance(result.details, dict) else {}
@@ -409,5 +400,5 @@ async def run_spot_order_gate(
         failures.remove("cap_delta")
     if failures:
         logger.warning("spot_order_gate_refused failures=%s", ",".join(failures))
-    return GateResult(passed=not failures, failures=failures, details=result.details, warnings=result.warnings)
+    return GateResult(passed=not failures, failures=failures, details=result.details)
 
