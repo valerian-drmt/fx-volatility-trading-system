@@ -144,7 +144,7 @@ outbound). The 6 Python engines live behind the `engines` compose profile, `ib-g
 
 Shared Python libs under `src/` (no container of their own):
 - **`core/`** — pure pricing + vol + risk algorithms (no I/O)
-- **`persistence/`** — SQLAlchemy 2 ORM (33 classes) + Alembic revisions + `AsyncDatabaseWriter`
+- **`persistence/`** — SQLAlchemy 2 ORM (34 classes) + Alembic revisions + `AsyncDatabaseWriter`
 - **`bus/`** — Redis pub/sub helpers + channel/key constants
 - **`shared/`** — config, structlog, IB connection wrapper, observability
 
@@ -298,7 +298,7 @@ fx-volatility-trading-system/
 │   ├── api/                       → api container: main, 17 routers, ws, middleware, schemas, orchestration/events
 │   ├── engines/                   6 long-running services (market_data, vol, risk, db_writer, analytics, execution)
 │   ├── core/                      pure algos — vol (svi/ssvi/garch/har_rv/pca/gmm/…), pricing/bs, risk/greeks
-│   ├── persistence/               DB adapter — models (33 ORM classes), db, writer, migrations/ (76 revisions)
+│   ├── persistence/               DB adapter — models (34 ORM classes), db, writer, migrations/ (77 revisions)
 │   ├── bus/                       Redis adapter — client, publisher, channels, keys
 │   └── shared/                    config, logging, ib_connection, observability
 ├── frontend/                      React + TS + Vite — 7 voldesk views + a dev console (/dev)

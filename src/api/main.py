@@ -15,6 +15,7 @@ from starlette.responses import Response
 
 from api.config import get_settings
 from api.dependencies import set_redis_client
+from api.middleware.idempotency import IdempotencyMiddleware
 from api.middleware.logging import AccessLogMiddleware, configure_logging
 from api.middleware.rate_limit import limiter, rate_limit_exceeded_handler
 from api.middleware.timing import TimingMiddleware
@@ -208,6 +209,11 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Order requests carrying an Idempotency-Key run once (#497). Added before
+    # the two below, so it sits inside them: a replayed answer is timed and
+    # logged like any other.
+    from persistence.db import get_sessionmaker as _get_sessionmaker
+    app.add_middleware(IdempotencyMiddleware, sessionmaker_factory=_get_sessionmaker)
     app.add_middleware(TimingMiddleware)
     app.add_middleware(AccessLogMiddleware)
 

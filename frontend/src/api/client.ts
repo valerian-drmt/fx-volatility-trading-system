@@ -30,6 +30,8 @@ async function parseBody(res: Response): Promise<unknown> {
 export interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
   signal?: AbortSignal;
+  /** Sent as `Idempotency-Key` on an order request (#497). */
+  idempotencyKey?: string;
 }
 
 function buildUrl(path: string, query?: RequestOptions["query"]): string {
@@ -83,6 +85,19 @@ export async function apiGet<T>(path: string, opts: RequestOptions = {}): Promis
   return body as T;
 }
 
+/** A fresh key for one user action on an order (#497). The server runs a
+ * request once per key and replays its answer on a repeat, so a double send
+ * of the SAME request (a proxy resend, a retry after a timeout) cannot place
+ * a second order. Each call of an order endpoint is one action: one key. */
+export function newIdempotencyKey(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+const keyHeader = (opts: RequestOptions): Record<string, string> =>
+  (opts.idempotencyKey ? { "Idempotency-Key": opts.idempotencyKey } : {});
+
 export async function apiPost<T>(
   path: string,
   payload: unknown,
@@ -91,7 +106,7 @@ export async function apiPost<T>(
   const url = buildUrl(path, opts.query);
   const init: RequestInit = {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...keyHeader(opts) },
     body: JSON.stringify(payload),
   };
   const res = await fetch(url, buildInit(init, opts.signal));
@@ -102,7 +117,7 @@ export async function apiPost<T>(
 
 export async function apiDelete<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const url = buildUrl(path, opts.query);
-  const res = await fetch(url, buildInit({ method: "DELETE" }, opts.signal));
+  const res = await fetch(url, buildInit({ method: "DELETE", headers: keyHeader(opts) }, opts.signal));
   const body = await parseBody(res);
   if (!res.ok) throw new ApiError(res.status, url, body);
   return body as T;
