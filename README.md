@@ -298,7 +298,7 @@ fx-volatility-trading-system/
 │   ├── api/                       → api container: main, 17 routers, ws, middleware, schemas, orchestration/events
 │   ├── engines/                   6 long-running services (market_data, vol, risk, db_writer, analytics, execution)
 │   ├── core/                      pure algos — vol (svi/ssvi/garch/har_rv/pca/gmm/…), pricing/bs, risk/greeks
-│   ├── persistence/               DB adapter — models (34 ORM classes), db, writer, migrations/ (77 revisions)
+│   ├── persistence/               DB adapter — models (34 ORM classes), db, writer, migrations/ (78 revisions)
 │   ├── bus/                       Redis adapter — client, publisher, channels, keys
 │   └── shared/                    config, logging, ib_connection, observability
 ├── frontend/                      React + TS + Vite — 7 voldesk views + a dev console (/dev)
