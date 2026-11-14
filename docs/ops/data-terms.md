@@ -7,7 +7,7 @@ attribution strings below are the ones the desk and the README show
 
 ## Sources
 
-![Every source is attributed; the two open decisions are the raw IB quotes on the public desk (D1) and FRED release dates stored in Postgres (D2)](../diagrams/data-sources-terms.svg)
+![Every source is attributed; the two decisions are the raw IB quotes on the public desk (D1) and FRED release dates (D2)](../diagrams/data-sources-terms.svg)
 
 | Source | How | What is stored | Attribution shown |
 |---|---|---|---|
@@ -31,7 +31,7 @@ not endorsed or certified by the Federal Reserve Bank of St. Louis.") and the
 OGL v3.0 statement for ONS; the rail says the market data is IB, delayed, on a
 paper account; the README has the same list. Done in #307.
 
-### D1, IB-derived data on the public desk: **open, owner decision**
+### D1, IB-derived data on the public desk: decided 2026-11-14
 
 The public read-only desk and the WebSocket streams show IB-derived data to
 anyone: the EUR/USD mid / bid / ask (delayed), the option-chain-derived IV
@@ -39,14 +39,16 @@ surface, and positions / P&L of the paper account. IB's market-data
 agreements restrict redistribution by a non-professional subscriber, delayed
 data included (release gate §8.1).
 
-Recommendation: **keep raw quotes behind the trader login, keep derived
-analytics public.** Concretely: `/ws/ticks`, the bars endpoint and the top-bar
-quote become trader-only; the IV surface (a model output), signals, regime,
-greeks and the paper book stay public with the "delayed · paper" label. It is
-the cheapest stance that removes the raw-quote redistribution, keeps the
-public demo meaningful, and is one auth dependency on three routes plus the
-socket. Alternatives: take the whole deployment private (no public demo), or
-obtain a redistribution entitlement from IB (cost, paperwork).
+Decision (owner): **the public desk stays as it is.** The public view is the
+view recruiters see, and it must show the desk working, quotes included. The
+line that matters is already drawn: a visitor reads, only the trader login
+writes. No second "viewer" access is added. The data stays labelled "IB,
+delayed · paper" wherever it appears.
+
+The exposure is accepted and known: IB could object to the delayed quotes
+being readable without a login. If it does, the fallback is the stance
+considered and not taken: `/ws/ticks`, the bars endpoint and the top-bar
+quote behind the trader login, derived analytics public.
 
 ### D2, FRED storage: decided 2026-11-14
 

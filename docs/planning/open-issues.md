@@ -28,7 +28,7 @@ their commit is merged (`git update`). Nothing is deployed yet.
 | #495 observability | done; the alert firing tests run for the first time in CI | `d5d3c317` |
 | #496 simulated broker | done: 14 scenarios | `159b635a` |
 | #494 rows on prod | done: migration 073 | this commit |
-| #307 data terms | D2 (FRED out of Postgres) done, `8020e648`; **D1 open**: owner decision on IB quotes for visitors | |
+| #307 data terms | done: FRED out of Postgres (`8020e648`); the public desk stays as it is (owner decision, recorded in `docs/ops/data-terms.md`) | |
 | #341, #345, #346 | **open**: operator on the host | |
 | #498, #360, #361, #363, #364 | epics: close with their last child | |
 
