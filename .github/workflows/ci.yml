@@ -203,6 +203,17 @@ jobs:
               printf "events{}\nhttp{\n  include /conf/nginx.conf;\n}\n" > /tmp/nginx.conf;
               nginx -t -c /tmp/nginx.conf'
 
+      # Alert rules (#495): they load, and each order-path rule fires on the
+      # condition it exists for (obs/alerts_test.yml). Same image as prod.
+      - name: promtool check rules + firing tests
+        run: |
+          docker run --rm -v "$PWD/obs":/obs:ro --entrypoint promtool \
+            prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06 \
+            check rules /obs/alerts.yml
+          docker run --rm -v "$PWD/obs":/obs:ro --entrypoint promtool \
+            prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06 \
+            test rules /obs/alerts_test.yml
+
       - name: Set up Python 3.11
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:

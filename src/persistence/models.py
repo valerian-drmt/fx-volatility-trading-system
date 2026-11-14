@@ -950,6 +950,27 @@ class Instrument(Base):
     )
 
 
+class IdempotencyKey(Base):
+    """One row per ``Idempotency-Key`` an order request carried (#497): the
+    key, the request it was used for, and the answer it got. A repeat of the
+    request is answered from here and runs nothing. Rows older than two days
+    are deleted by the api as it writes new ones."""
+    __tablename__ = "idempotency_key"
+    __table_args__ = (
+        CheckConstraint("state IN ('in_flight','done')", name="ck_idempotency_key_state"),
+        Index("ix_idempotency_key_created_at", "created_at"),
+    )
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    scope: Mapped[str] = mapped_column(String(200), nullable=False)   # "POST /api/v1/positions/7/close"
+    state: Mapped[str] = mapped_column(String(10), nullable=False, default="in_flight")
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    response: Mapped[Any | None] = mapped_column(JSONB_PORTABLE)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class PositionEvent(Base):
     """A change to a leg's position that is NOT an execution (#463).
 

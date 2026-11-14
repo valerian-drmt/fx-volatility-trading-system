@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.contracts import parse_local_symbol
 from core.execution.fills import state_from_recorded_fills
 from engines.execution.fills_handler import _lock_for, maybe_complete_structure, persist_fill, settle_book
+from engines.execution.ib_heartbeat import mark_loop_ran
 from persistence.models import OpenPosition, StructureFill, StructureOrder, TradeEvent, TradeStructure
 from persistence.order_state import apply_fill_state, lock_order
 from persistence.projection import rebuild_leg
@@ -210,6 +211,7 @@ async def reconcile_loop(
     while True:
         try:
             await reconcile_stuck_orders(sm, executor)
+            mark_loop_ran("reconciler")
         except asyncio.CancelledError:
             raise
         except Exception:

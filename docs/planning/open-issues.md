@@ -6,6 +6,51 @@ date). The analysis of the order path itself is in
 `docs/audits/reports/order-lifecycle/`; this file only says what remains and
 what closes each ticket.
 
+## Where it stands (2026-11-14, end of day)
+
+Fourteen of the fifteen code tickets are done on local `main` and close when
+their commit is merged (`git update`). Nothing is deployed yet.
+
+| Ticket | State | Commit |
+|---|---|---|
+| #482 package hedge | closed | shipped earlier |
+| #489 one writer | done | `afebab18` |
+| #485 end of a DAY order | done | `afebab18` |
+| #486 close guard | done | `afebab18` |
+| #490 placement owner | done, with two parts declined on the owner rule (below) | `afebab18` |
+| #493 dormant features | done: both deleted | `6f7806a9` |
+| #491 one door | done | `22787c66` |
+| #492 close path | done | `469889ca` |
+| #483 preview | done | `43b4cf81` |
+| #479 ticket numbers | done | `43b4cf81` |
+| #481 limit framework | superseded, remnants removed, doc rewritten | `43b4cf81` |
+| #497 idempotency keys | done | `80d4c45e` |
+| #495 observability | done; the alert firing tests run for the first time in CI | `d5d3c317` |
+| #496 simulated broker | done: 14 scenarios | `159b635a` |
+| #494 rows on prod | done: migration 073 | this commit |
+| #307 data terms | done: FRED out of Postgres (`8020e648`); the public desk stays as it is (owner decision, recorded in `docs/ops/data-terms.md`) | |
+| #341, #345, #346 | **open**: operator on the host | |
+| #498, #360, #361, #363, #364 | epics: close with their last child | |
+
+Found on the way and fixed:
+
+- The preview's premium, maximum loss and cost were those of ONE contract,
+  whatever the size, and the funds check used that figure (#483).
+- The api could write "submitted" over a fill on a close (#489).
+- Automatic exit could not work at all: the engine refused its orders (#493).
+- Two closes of 2026-11-04 were recorded "rejected" and had filled (#494).
+- The disk alert had been firing for three days on a disk 64 % full.
+
+What is not proven:
+
+- Nothing here was run against IB. The simulated broker speaks the library's
+  objects, not the broker's behaviour.
+- The alert firing tests (`obs/alerts_test.yml`) have not been executed:
+  no `promtool` on this machine. Their first run is the CI of the merge.
+- Migrations 071, 072 and 073 ran on SQLite in tests, not on Postgres.
+- No screen was looked at: the ticket's new number source is tested as a
+  function, not as a rendered page.
+
 Two owner rules decide several tickets:
 
 - **The app is not the trader** (2026-11-13). No limit, reference level, size
@@ -144,8 +189,20 @@ Closes with: the flag, the dispatch, the `/hedge` route, the monitor's hedge
 rows and `close-manual` removed; exit alerts stay as alerts.
 
 ### #494 Order rows left on prod
-Migration 069 ran. Left: the `partial_fail` trades examined one by one
-(read-only on prod), result recorded below.
+Migration 069 ran. The three `partial_fail` trades, read on prod on
+2026-11-14: none is a multi-leg order with a leg out alone. Each is a ticket
+of one close written on 2026-11-04 by the api's old failure path.
+
+| Trade | Order | What the row says | What happened |
+|---|---|---|---|
+| 81 | 102, SELL 89 EUUF7 C1150 | `rejected`, "execution-engine unreachable" | filled 89 of 89 |
+| 82 | 103, BUY 100 EUUF7 C1180 | `rejected`, same | filled 100 of 100 |
+| 78 | 97, SELL 10 | `cancelled` | nothing filled; the leg it closed still shows 10 reserved |
+
+The fills are booked and the legs flat: the book is right, the labels are
+wrong. Migration 073 relabels an order whose fill rows cover its quantity as
+`filled`, gives a `partial_fail` trade the state its orders say, and
+recomputes every reservation. Rules, not ids; idempotent.
 
 ### #495 Observability of the order path
 Missing: refusals by reason, orders waiting by state and age, firing tests,

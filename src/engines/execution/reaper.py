@@ -34,6 +34,7 @@ from core.execution.reaper_policy import (
     decide_reap,
 )
 from engines.execution.fills_handler import _lock_for
+from engines.execution.ib_heartbeat import mark_loop_ran
 from engines.execution.order_reconciler import _leg_matches_position
 from engines.execution.settings import get_execution_settings
 from persistence.models import (
@@ -189,7 +190,10 @@ async def reap_stale_orders(
                 None,
             )
             held = match is not None
-            age_s = (now - o.submitted_at).total_seconds()
+            submitted_at = o.submitted_at
+            if now.tzinfo is not None and submitted_at.tzinfo is None:
+                submitted_at = submitted_at.replace(tzinfo=UTC)   # a driver that drops the zone
+            age_s = (now - submitted_at).total_seconds()
             target = decide_reap(
                 state=o.state, age_s=age_s, tau_s=tau_stale_s,
                 held_at_ib=held, matches_contract=held,
@@ -294,6 +298,7 @@ async def reaper_loop(
     while True:
         try:
             await reap_stale_orders(sm, executor, tau_stale_s=tau_stale_s)
+            mark_loop_ran("reaper")
         except asyncio.CancelledError:
             raise
         except Exception:

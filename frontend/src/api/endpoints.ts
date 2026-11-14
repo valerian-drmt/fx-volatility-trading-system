@@ -3,7 +3,11 @@
 // (or earlier by `npm run gen:api:check` in CI).
 import type { RiskBudget } from "../voldesk/components/refusal";
 import type { paths } from "./schema";
-import { apiDelete, apiGet, apiPost, apiPut } from "./client";
+import { apiDelete, apiGet, apiPost, apiPut, newIdempotencyKey } from "./client";
+
+// Every order request carries a key of its own (#497): one call = one user
+// action = one key. The server runs a key once and replays its answer.
+const once = () => ({ idempotencyKey: newIdempotencyKey() });
 export { ApiError } from "./client";
 
 type Get<P extends keyof paths, S extends 200> = paths[P] extends {
@@ -181,10 +185,10 @@ export interface SpotOrderBody {
   limit_price?: number;
 }
 export const postSpotOrder = (body: SpotOrderBody) =>
-  apiPost<{ spot_order_id?: number; order_id?: number; status?: string }>("/api/v1/orders", body);
+  apiPost<{ spot_order_id?: number; order_id?: number; status?: string }>("/api/v1/orders", body, once());
 /** Cancel an IB order by its IB orderId (spot rows carry it as ib_order_id). */
 export const cancelIbOrder = (ibOrderId: number) =>
-  apiDelete<Record<string, unknown>>(`/api/v1/orders/${ibOrderId}`);
+  apiDelete<Record<string, unknown>>(`/api/v1/orders/${ibOrderId}`, once());
 
 // Persisted spot FX (CASH) orders from the cash ticket (DB: spot_order, #291).
 export interface SpotOrderRow {
@@ -291,7 +295,7 @@ export const submitTrade = (previewId: string, executionMode: "live" | "mock" = 
   apiPost<Record<string, unknown>>("/api/v1/trade/submit", {
     preview_id: previewId,
     execution_mode: executionMode,
-  });
+  }, once());
 
 // Persisted submitted structures (DB: trade_structure + booked_position). Read-only,
 // so the Orders blotter survives refresh and reflects the real DB state.
@@ -378,7 +382,7 @@ export const fetchStructuredPositions = () =>
 
 /** Close a single leg (OpenPosition.id). Partial close via `qty`. */
 export const closeContract = (positionId: number, qty: number) =>
-  apiPost<Record<string, unknown>>(`/api/v1/positions/${positionId}/close`, { qty });
+  apiPost<Record<string, unknown>>(`/api/v1/positions/${positionId}/close`, { qty }, once());
 
 /** Close every open leg of a trade (OpenPosition.trade_id). */
 export interface TradeCloseResult {
@@ -387,7 +391,7 @@ export interface TradeCloseResult {
   legs?: { local_symbol?: string; ok?: boolean; error?: string }[];
 }
 export const closeTrade = (tradeId: number) =>
-  apiPost<TradeCloseResult>(`/api/v1/trades/${tradeId}/close`, {});
+  apiPost<TradeCloseResult>(`/api/v1/trades/${tradeId}/close`, {}, once());
 
 /** Cancel every non-terminal order of a trade at IB + terminalise the structure. */
 /** Cancel a trade's working orders, or one leg of it (`orderId`). IB's
@@ -395,7 +399,8 @@ export const closeTrade = (tradeId: number) =>
  * waiting for it. */
 export const cancelTrade = (structureId: number, orderId?: number) =>
   apiPost<{ cancelled?: number; cancel_requested?: number }>(
-    `/api/v1/trades/${structureId}/cancel`, {}, orderId != null ? { query: { order_id: orderId } } : undefined,
+    `/api/v1/trades/${structureId}/cancel`, {},
+    orderId != null ? { query: { order_id: orderId }, ...once() } : once(),
   );
 
 /** Orders our own checks refused before the broker (gate, revalidation). */

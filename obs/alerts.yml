@@ -116,6 +116,55 @@ groups:
           summary: "history prune failing on {{ $labels.table }} ({{ $labels.engine }})"
           description: "`docker logs fxvol-{{ $labels.engine }} | grep history_prune_failed`; the table keeps growing until fixed."
 
+  # The order path (#495). Each rule has a firing test in obs/alerts_test.yml
+  # (`promtool test rules`, run in CI): a rule nothing ever evaluated against
+  # data is a rule nobody knows fires.
+  - name: fxvol-orders
+    rules:
+      # A pending row is written by the api and placed by the engine within
+      # seconds. The reaper ends one that never left after 5 min; past 10 the
+      # reaper is not doing it either.
+      - alert: OrderNeverPlaced
+        expr: orders_oldest_waiting_seconds{state="pending"} > 600
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "an order has been pending for {{ $value | humanizeDuration }}: it never left for the broker"
+          description: "The reaper ends a pending row after 5 min; it did not. Runbook: docs/ops/runbooks.md section 6 (an order is stuck)."
+
+      # Every order is DAY. A row still working 36 h after its submission
+      # outlived the day it could fill in.
+      - alert: OrderOutlivedItsDay
+        expr: orders_oldest_waiting_seconds{state=~"submitted|partially_filled"} > 129600
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "an order has been {{ $labels.state }} for {{ $value | humanizeDuration }}: a DAY order ends with its day"
+          description: "IB ended it and the book did not hear, or the book lost the order. Runbook: docs/ops/runbooks.md section 6 (an order is stuck)."
+
+      # Three submits or more in an hour and none accepted. On 2026-11-13 the
+      # gate refused every standard trade for a day before anyone counted.
+      - alert: GateRefusingEverything
+        expr: |
+          sum(increase(order_gate_decisions_total{outcome="refused"}[1h])) >= 3
+          unless
+          sum(increase(order_gate_decisions_total{outcome="passed"}[1h])) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "the pre-trade gate refused all {{ $value | printf \"%.0f\" }} submits of the last hour"
+          description: "Reasons: Grafana 'Desk fluidity', panel 'Submits refused, by reason', or `GET /api/v1/trade/refusals`. A stale surface, a halt left on or a limit typed too tight refuse everything."
+
+      # The loops that follow an order to its end. Each stamps the time of its
+      # last pass without an error; they run every minute.
+      - alert: OrderLoopStalled
+        expr: time() - order_loop_last_run_timestamp_seconds > 600
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "the {{ $labels.loop }} loop of the execution engine has not completed a pass for {{ $value | humanizeDuration }}"
+          description: "Orders are no longer followed to their end by this loop. `docker logs fxvol-execution | grep -i {{ $labels.loop }}`; restart the engine if it does not recover. Runbook: docs/ops/runbooks.md section 6."
+
   - name: fxvol-host
     rules:
       # The host's root filesystem, measured by the api (one series). Not
