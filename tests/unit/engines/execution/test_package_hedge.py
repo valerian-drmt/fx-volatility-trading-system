@@ -255,14 +255,24 @@ async def test_a_failed_hedge_is_retried_without_another_fill(sqlite_sessionmake
     assert await hedge_sweep(sqlite_sessionmaker, _Dead(), now=NOW) == {"skipped": "account_not_reporting"}
 
 
-def test_the_features_that_are_not_ready_are_off() -> None:
-    """#493: auto-exit would strand positions in `closing` and the monitor's
-    hedges have no expiry, no status handling and no line in the blotter.
-    Both must stay off until they are finished or removed."""
+def test_nothing_trades_on_its_own() -> None:
+    """#493, owner rule "the app is not the trader": the automatic exit and
+    the monitor's hedges are removed, not switched off. The monitor alerts;
+    the trader closes and hedges."""
     import inspect
+    from pathlib import Path
 
     from api.config import Settings
-    from api.orchestration.position_monitor import PositionMonitorScheduler
+    from api.orchestration import position_monitor
 
-    assert Settings.model_fields["EXIT_AUTO_EXECUTE_ENABLED"].default == "false"
-    assert inspect.signature(PositionMonitorScheduler.__init__).parameters["execute_hedge"].default is False
+    assert "EXIT_AUTO_EXECUTE_ENABLED" not in Settings.model_fields
+    params = inspect.signature(position_monitor.PositionMonitorScheduler.__init__).parameters
+    assert "execute_hedge" not in params
+    src = Path(position_monitor.__file__).read_text(encoding="utf-8")
+    for gone in ("HedgeOrder(", "httpx", "initiate_position_close", "/internal/"):
+        assert gone not in src, f"the monitor places nothing: {gone}"
+    root = Path(position_monitor.__file__).resolve().parents[2]
+    assert not (root / "api/orchestration/position_close.py").exists()
+    assert not (root / "engines/execution/hedge_executor.py").exists()
+    assert '"/hedge"' not in (root / "engines/execution/main.py").read_text(encoding="utf-8")
+    assert "close-manual" not in (root / "api/routers/positions.py").read_text(encoding="utf-8")

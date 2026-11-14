@@ -125,8 +125,6 @@ def test_no_code_writes_an_order_state_outside_order_state() -> None:
         ("src/api/routers/trade.py", 'row.state = "cancelled"'),
         ("src/api/routers/trades.py", "struct.state = new_state"),
         ("src/engines/execution/fills_handler.py", 'struct.state = "fully_filled"'),
-        ("src/engines/execution/hedge_executor.py", 'hedge.state = "failed"'),
-        ("src/engines/execution/hedge_executor.py", 'hedge.state = "filled"'),
         ("src/engines/execution/ib_session.py", 'struct.state = "submitted"'),
         ("src/engines/execution/ib_session.py", "self.state = SessionState()"),
         ("src/engines/execution/live_submit.py", 'failed_struct.state = "partial_fail"'),
@@ -292,7 +290,6 @@ def test_every_engine_route_that_places_an_order_is_known_and_guarded() -> None:
         "/positions/close-by-symbol",    # a close of a booked position, guarded by the api
         "/structure/submit",             # the order ticket: full pre-trade gate in the api
         "/structure/rollback",
-        "/hedge",                        # monitor hedges, dormant
     }
     assert "reduce_only=True" in src
     api_orders = (ROOT / "src/api/routers/orders.py").read_text(encoding="utf-8")

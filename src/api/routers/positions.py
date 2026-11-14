@@ -9,7 +9,6 @@ GET  /api/v1/positions/{id}/signal-tracking   signal vs entry trail
 GET  /api/v1/positions/reconciliation         book (filled orders) vs broker (IB mirror) breaks
 GET  /api/v1/positions/ledger                 positions + P&L folded from the trade_fill event log
 POST /api/v1/positions/{id}/close             partial/full close (live, forwards to exec-engine)
-POST /api/v1/positions/{id}/close-manual      mark for manual close (mock — Step 5 phase 1)
 POST /api/v1/positions/monitor/run-once       trigger 1 cycle on demand (dev/debug)
 GET  /api/v1/positions/aggregate              greeks aggregate across open positions
 GET  /api/v1/positions/exit-rules-config      hot-reload config visibility
@@ -1386,36 +1385,7 @@ async def close_live_position(
     )
 
 
-@router.post("/{position_id}/close-manual", response_model=rm.ManualCloseResult, response_model_exclude_unset=True, dependencies=[Depends(require_write)])
-async def close_manual(position_id: int, db: DbDep) -> dict[str, Any]:
-    """Mark a position for manual close. Step 5 phase 1 = state flip only.
 
-    The actual closing-structure submit + fills will be wired when markets-open
-    phase lands (tracked on the GitHub board). For now we record an audit alert.
-    """
-    pos = (await db.execute(
-        select(BookedPosition).where(BookedPosition.id == position_id).limit(1)
-    )).scalar_one_or_none()
-    if pos is None:
-        raise HTTPException(404, "position not found")
-    if pos.state != "open":
-        raise HTTPException(400, f"position state is {pos.state}, expected 'open'")
-
-    now = datetime.now(UTC)
-    pos.state = "closing"
-    pos.state_updated_at = now
-
-    db.add(ExitAlert(
-        position_id=position_id, timestamp=now,
-        rule_triggered="manual_close",
-        action_recommended="EXIT",
-        priority=10,
-        rule_detail={"source": "user", "phase": "mock"},
-        auto_executed=False, execution_status="in_progress",
-    ))
-
-    await db.commit()
-    return {"position_id": position_id, "state": pos.state, "phase": "mock"}
 
 
 @router.post("/monitor/run-once", response_model=rm.MonitorRunReport, response_model_exclude_unset=True, dependencies=[Depends(require_write)])

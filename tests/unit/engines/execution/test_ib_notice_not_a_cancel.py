@@ -60,7 +60,7 @@ def test_every_order_states_its_time_in_force() -> None:
     executor = (root / "order_executor.py").read_text(encoding="utf-8")
     assert executor.count("order.tif = DEFAULT_TIF") == executor.count("ib.placeOrder("), \
         "every placeOrder of the executor sets the time in force"
-    for name in ("rollback_runner.py", "hedge_executor.py"):
+    for name in ("rollback_runner.py",):
         assert "ib_order.tif = DEFAULT_TIF" in (root / name).read_text(encoding="utf-8"), name
     assert ".tif = " in (root / "live_submit.py").read_text(encoding="utf-8")
 

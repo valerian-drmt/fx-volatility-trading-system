@@ -1173,12 +1173,6 @@ class ClosePositionResult(_Open):
     ib: Any = None
 
 
-class ManualCloseResult(_Open):
-    """A position marked closed by hand."""
-
-    position_id: Any = None
-    state: Any = None
-    phase: Any = None
 
 
 class MonitorRunReport(_Open):

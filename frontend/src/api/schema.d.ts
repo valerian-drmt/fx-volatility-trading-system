@@ -1850,29 +1850,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/positions/{position_id}/close-manual": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Close Manual
-         * @description Mark a position for manual close. Step 5 phase 1 = state flip only.
-         *
-         *     The actual closing-structure submit + fills will be wired when markets-open
-         *     phase lands (tracked on the GitHub board). For now we record an audit alert.
-         */
-        post: operations["close_manual_api_v1_positions__position_id__close_manual_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/positions/{position_id}/hedges": {
         parameters: {
             query?: never;
@@ -3799,20 +3776,6 @@ export interface components {
             scheduled_at: string;
             /** Source */
             source?: string | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /**
-         * ManualCloseResult
-         * @description A position marked closed by hand.
-         */
-        ManualCloseResult: {
-            /** Phase */
-            phase?: unknown;
-            /** Position Id */
-            position_id?: unknown;
-            /** State */
-            state?: unknown;
         } & {
             [key: string]: unknown;
         };
@@ -9758,73 +9721,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClosePositionResult"];
-                };
-            };
-            /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description The referenced object does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Rate limited (per client IP; login also locks a username after repeated failures). See `Retry-After`. */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    close_manual_api_v1_positions__position_id__close_manual_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                position_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ManualCloseResult"];
-                };
-            };
-            /** @description Request rejected by a business rule (the detail says which). */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description No valid trader cookie: sign in through `POST /api/v1/auth/login`. */
