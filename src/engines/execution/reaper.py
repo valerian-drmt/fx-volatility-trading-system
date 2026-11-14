@@ -190,7 +190,10 @@ async def reap_stale_orders(
                 None,
             )
             held = match is not None
-            age_s = (now - o.submitted_at).total_seconds()
+            submitted_at = o.submitted_at
+            if now.tzinfo is not None and submitted_at.tzinfo is None:
+                submitted_at = submitted_at.replace(tzinfo=UTC)   # a driver that drops the zone
+            age_s = (now - submitted_at).total_seconds()
             target = decide_reap(
                 state=o.state, age_s=age_s, tau_s=tau_stale_s,
                 held_at_ib=held, matches_contract=held,
