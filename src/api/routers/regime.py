@@ -17,10 +17,12 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.auth import require_write
-from api.dependencies import get_db_session
+from api.dependencies import get_db_session, get_redis_client_or_none
 from api.orchestration.regime_features import build_features_payload
 from api.schemas import route_models as rm
 from api.schemas.reads import MacroEvent, RegimeSnapshotRow
+from bus.fred_cache import load_fred_events
+from core.calendar_merge import merge_events, next_event
 from core.vol.regime_engine import gate_decision
 from persistence.models import Event, RegimeSnapshot
 
@@ -138,32 +140,42 @@ async def features(
     return payload
 
 
+def _event_row(e: Event) -> dict[str, Any]:
+    return {
+        "id": e.id, "event_type": e.event_type, "impact": e.impact, "region": e.region,
+        "scheduled_at": e.scheduled_at if e.scheduled_at.tzinfo else e.scheduled_at.replace(tzinfo=UTC),
+        "description": e.description, "source": e.source,
+    }
+
+
+async def _calendar(db: AsyncSession, since: datetime) -> list[dict[str, Any]]:
+    """The whole calendar after ``since``: the database rows and the FRED
+    releases cached in Redis (#307: FRED content is not stored in Postgres)."""
+    rows = (await db.execute(
+        select(Event).where(Event.scheduled_at > since).order_by(Event.scheduled_at)
+    )).scalars().all()
+    cached = [e for e in await load_fred_events(get_redis_client_or_none()) if e["scheduled_at"] > since]
+    return merge_events([_event_row(e) for e in rows], cached)
+
+
 async def _fetch_next_events(
     db: AsyncSession,
 ) -> tuple[NextEventOut | None, NextEventOut | None]:
-    """Return (next_any_impact, next_high_impact) — separate queries."""
-    from datetime import UTC, datetime
+    """Return (next_any_impact, next_high_impact)."""
     now = datetime.now(UTC)
-    next_any = (await db.execute(
-        select(Event).where(Event.scheduled_at > now)
-        .order_by(Event.scheduled_at).limit(1)
-    )).scalar_one_or_none()
-    next_high = (await db.execute(
-        select(Event).where(Event.scheduled_at > now).where(Event.impact == "high")
-        .order_by(Event.scheduled_at).limit(1)
-    )).scalar_one_or_none()
+    events = await _calendar(db, now)
 
-    def _to_out(e: Event | None) -> NextEventOut | None:
+    def _to_out(e: dict[str, Any] | None) -> NextEventOut | None:
         if e is None:
             return None
-        days = (e.scheduled_at - now).total_seconds() / 86400.0
+        days = (e["scheduled_at"] - now).total_seconds() / 86400.0
         return NextEventOut(
-            event_type=e.event_type, impact=e.impact, region=e.region,
-            scheduled_at=e.scheduled_at,
+            event_type=e["event_type"], impact=e["impact"], region=e["region"],
+            scheduled_at=e["scheduled_at"],
             days_remaining=round(days, 4),
-            description=e.description,
+            description=e["description"],
         )
-    return _to_out(next_any), _to_out(next_high)
+    return _to_out(next_event(events, now)), _to_out(next_event(events, now, impact="high"))
 
 
 @router.get("/history", response_model=list[RegimeSnapshotRow])
@@ -203,17 +215,7 @@ async def list_events(
     """Upcoming events; `past_days > 0` extends the window backwards so charts
     can plot recent past events too (default 0 keeps the future-only contract)."""
     since = datetime.now(UTC) - timedelta(days=past_days)
-    rows = (await db.execute(
-        select(Event).where(Event.scheduled_at > since)
-        .order_by(Event.scheduled_at).limit(n)
-    )).scalars().all()
-    return [
-        {
-            "id": e.id, "event_type": e.event_type, "impact": e.impact,
-            "region": e.region, "scheduled_at": e.scheduled_at,
-            "description": e.description, "source": e.source,
-        } for e in rows
-    ]
+    return (await _calendar(db, since))[:n]
 
 
 @router.get("/transitions", response_model=rm.RegimeTransitions, response_model_exclude_unset=True)

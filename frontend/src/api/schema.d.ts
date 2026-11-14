@@ -3764,7 +3764,7 @@ export interface components {
             /** Event Type */
             event_type: string;
             /** Id */
-            id: number;
+            id?: number | null;
             /** Impact */
             impact?: string | null;
             /** Region */

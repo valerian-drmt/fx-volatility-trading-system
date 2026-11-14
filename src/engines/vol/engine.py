@@ -37,7 +37,10 @@ import logging
 from typing import Any, Protocol
 
 from bus import keys, publisher
+from bus.fred_cache import load_fred_events
 from bus.spot_cache import parse_spot
+from core.calendar_merge import merge_events
+from core.calendar_merge import next_event as pick_next_event
 from core.config import CapacityConfig, VolTradingConfig
 from core.vol.cadence import SURFACE_PUBLISH_INTERVAL_S
 from core.vol.pchip_smile import interpolate_delta_pillars
@@ -1058,20 +1061,30 @@ class VolEngine:
                     "term_slope": [float(r[5]) for r in hist_rows if r[5] is not None],
                 }
 
-                next_event_obj = (await session.execute(
-                    select(Event)
-                    .where(Event.impact == "high")
-                    .where(Event.region.in_(["EU", "US"]))
-                    .where(Event.scheduled_at > now)
-                    .order_by(Event.scheduled_at)
-                    .limit(1)
-                )).scalar_one_or_none()
+                # The calendar is the database rows plus the FRED releases
+                # cached in Redis (#307: FRED content is not stored in Postgres).
+                db_events = [
+                    {"event_type": e.event_type, "impact": e.impact, "region": e.region,
+                     "scheduled_at": e.scheduled_at, "description": e.description, "source": e.source}
+                    for e in (await session.execute(
+                        select(Event)
+                        .where(Event.impact == "high")
+                        .where(Event.region.in_(["EU", "US"]))
+                        .where(Event.scheduled_at > now)
+                        .order_by(Event.scheduled_at)
+                        .limit(5)
+                    )).scalars().all()
+                ]
+                next_event_obj = pick_next_event(
+                    merge_events(db_events, await load_fred_events(self.redis)),
+                    now, impact="high", regions=("EU", "US"),
+                )
                 next_event = None
                 if next_event_obj is not None:
-                    days = (next_event_obj.scheduled_at - now).total_seconds() / 86400.0
+                    days = (next_event_obj["scheduled_at"] - now).total_seconds() / 86400.0
                     next_event = {
-                        "event_type": next_event_obj.event_type,
-                        "scheduled_at_iso": next_event_obj.scheduled_at.isoformat().replace("+00:00", "Z"),
+                        "event_type": next_event_obj["event_type"],
+                        "scheduled_at_iso": next_event_obj["scheduled_at"].isoformat().replace("+00:00", "Z"),
                         "days_remaining": round(days, 4),
                     }
 

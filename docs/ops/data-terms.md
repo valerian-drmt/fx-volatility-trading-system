@@ -12,7 +12,7 @@ attribution strings below are the ones the desk and the README show
 | Source | How | What is stored | Attribution shown |
 |---|---|---|---|
 | Interactive Brokers (paper account) | `ib_async` to IB Gateway, **delayed** market data (`reqMarketDataType(3)`, execution `4`) | ticks (Redis, TTL), vol surfaces and fits, positions, orders, fills, account values (Postgres) | rail: "Market data: IB, delayed · paper"; README |
-| FRED (Federal Reserve Bank of St. Louis) | `GET /fred/releases/dates` with an API key | release **dates** of whitelisted US releases in `events` | the FRED notice under Macro events and in the README |
+| FRED (Federal Reserve Bank of St. Louis) | `GET /fred/releases/dates` with an API key | nothing in Postgres: release **dates** of whitelisted US releases in a Redis key, 24 h | the FRED notice under Macro events and in the README |
 | Federal Reserve (FOMC) | meeting dates, hardcoded from federalreserve.gov | rows in `events` | "Federal Reserve" under Macro events |
 | ECB | monetary-policy meeting dates, hardcoded from ecb.europa.eu | rows in `events` | "ECB" |
 | Bank of England | MPC dates, hardcoded from bankofengland.co.uk | rows in `events` | "Bank of England" |
@@ -48,17 +48,24 @@ public demo meaningful, and is one auth dependency on three routes plus the
 socket. Alternatives: take the whole deployment private (no public demo), or
 obtain a redistribution entitlement from IB (cost, paperwork).
 
-### D2, FRED storage: **open, owner decision**
+### D2, FRED storage: decided 2026-11-14
 
 The FRED terms prohibit storing FRED content in a database; the events
-pipeline persists FRED release dates in `events` (release gate §8.2).
+pipeline persisted FRED release dates in `event_calendar`.
 
-Recommendation: **stop persisting FRED rows; fetch them into a Redis cache
-with a 24 h TTL and merge them at read time.** The regime gate and the
-macro-events panel keep the same data, nothing FRED-sourced lands in Postgres
-or in the backups, and the other calendars (all hardcoded or computed) are
-unaffected. Alternative: drop FRED and hardcode the handful of US releases the
-whitelist uses (CPI, NFP, GDP, PCE), like the ECB / BoE / FOMC dates.
+Decision: **FRED rows are not database content.** The scheduler puts them in
+one Redis key (`events:fred`, `bus/fred_cache.py`) that expires after 24
+hours and refreshes it every 12. The api (macro-events panel, regime
+endpoints) and the vol engine (regime gate) merge that list with the
+database rows through `core/calendar_merge.py`, so they see one calendar.
+Migration 074 deletes the FRED rows already stored; prod held none (no FRED
+key is configured there). Nothing FRED-sourced lands in Postgres or in the
+backups any more.
+
+What it costs: when FRED cannot be reached for 24 hours the US releases
+(CPI, NFP, GDP, PCE) drop out of the calendar until the next successful
+fetch, and the regime gate does not see them. The FOMC, ECB, BoE, Eurostat
+and ONS calendars are hardcoded or computed and are unaffected.
 
 ## How to change a source
 

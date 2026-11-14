@@ -136,6 +136,7 @@ def _build_events_scheduler():
     be enabled one by one as their parsers are written.
     """
 
+    from api.dependencies import get_redis_client_or_none
     from api.orchestration.events.deduplicator import EventDeduplicator
     from api.orchestration.events.repository import EventsRepository
     from api.orchestration.events.scheduler import EventsScheduler
@@ -160,6 +161,7 @@ def _build_events_scheduler():
         sources=sources,
         repository=EventsRepository(get_sessionmaker()),
         deduplicator=EventDeduplicator(),
+        redis_getter=get_redis_client_or_none,
     )
 
 

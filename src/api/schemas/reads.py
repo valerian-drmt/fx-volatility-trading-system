@@ -196,7 +196,8 @@ class BookState(_Open):
 
 
 class MacroEvent(_Open):
-    id: int
+    # None for a FRED release: it is cached, not a database row (#307)
+    id: int | None = None
     event_type: str
     impact: str | None = None
     region: str | None = None
